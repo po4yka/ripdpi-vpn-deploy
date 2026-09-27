@@ -59,6 +59,9 @@ class Wrapper(NamedTuple):
 class Runtime:
     """Real process, clock and pinned-SSH boundaries for staging acceptance."""
 
+    def __init__(self):
+        self._control_fds = {}
+
     @staticmethod
     def _guard(inputs):
         bootstrap._verify_inputs(inputs)
@@ -160,28 +163,44 @@ print(json.dumps({'units':units},sort_keys=True))
         ]
         return current not in baseline
 
+    @staticmethod
+    def _pending_barrier(marker_fd, control_fd):
+        """Publish pending once, then die if the owning parent disappears."""
+        if os.write(marker_fd, b"P") != 1:
+            os._exit(74)
+        while True:
+            readable, _, _ = select.select([control_fd], [], [], 0.2)
+            if readable:
+                # The parent never writes. EOF proves every parent copy of the
+                # write end closed, including an unhandled crash on macOS.
+                if os.read(control_fd, 1) == b"":
+                    os._exit(73)
+                os._exit(74)
+
     def spawn_pending(self, inputs, auth_key):
         read_fd, write_fd = os.pipe()
+        control_read_fd, control_write_fd = os.pipe()
         try:
             pid = os.fork()
         except OSError:
-            os.close(read_fd)
-            os.close(write_fd)
+            for descriptor in (read_fd, write_fd, control_read_fd, control_write_fd):
+                os.close(descriptor)
             raise
         if pid == 0:
             os.close(read_fd)
+            os.close(control_write_fd)
             try:
-                def pending_barrier():
-                    os.write(write_fd, b"P")
-                    # The worker can leave durable pending only by being killed;
-                    # it can never race the parent into proof or confirmation.
-                    while True:
-                        signal.pause()
-                bootstrap.run(inputs, auth_key, pending_hook=pending_barrier)
-            except BaseException:
+                bootstrap.run(
+                    inputs, auth_key,
+                    pending_hook=lambda: self._pending_barrier(write_fd, control_read_fd),
+                )
+            except (Exception, KeyboardInterrupt, SystemExit):
+                # Child diagnostics are intentionally categorical and private.
                 os._exit(71)
             os._exit(72)  # Acceptance must kill the child before confirmation.
         os.close(write_fd)
+        os.close(control_read_fd)
+        self._control_fds[pid] = control_write_fd
         try:
             from bootstrap_readiness import check_cancelled
             deadline = time.monotonic() + PENDING_TIMEOUT_SECONDS
@@ -198,18 +217,20 @@ print(json.dumps({'units':units},sort_keys=True))
             if marker != b"P":
                 raise RecoveryError("recovery-pending-not-reached")
             return pid
-        except BaseException:
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            try:
-                os.waitpid(pid, 0)
-            except ChildProcessError:
-                pass
+        except (Exception, KeyboardInterrupt, SystemExit):
+            self.cleanup_pending(pid)
             raise
         finally:
             os.close(read_fd)
+
+    def _close_control(self, child):
+        descriptor = self._control_fds.pop(child, None)
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                # Cleanup remains best effort after the child has terminated.
+                return
 
     def kill_pending(self, child):
         try:
@@ -217,6 +238,8 @@ print(json.dumps({'units':units},sort_keys=True))
             _pid, status = os.waitpid(child, 0)
         except (ChildProcessError, OSError):
             raise RecoveryError("recovery-controller-loss-unproven") from None
+        finally:
+            self._close_control(child)
         if not os.WIFSIGNALED(status) or os.WTERMSIG(status) != signal.SIGKILL:
             raise RecoveryError("recovery-controller-loss-unproven")
 
@@ -225,11 +248,23 @@ print(json.dumps({'units':units},sort_keys=True))
         try:
             os.kill(child, signal.SIGKILL)
         except OSError:
-            pass
+            # A dead child still needs a best-effort reap below.
+            kill_was_already_unavailable = True
+        else:
+            kill_was_already_unavailable = False
+        # Closing the ownership pipe is a second termination path if SIGKILL
+        # itself was interrupted: the blocked child observes EOF and exits.
+        self._close_control(child)
         try:
             os.waitpid(child, 0)
         except (ChildProcessError, OSError):
-            pass
+            # It may already have been reaped by the verified kill path.
+            reap_was_already_complete = True
+        else:
+            reap_was_already_complete = False
+        # Named outcomes keep this intentionally lossy cleanup visible to
+        # static analysis without changing the original exception path.
+        _cleanup_outcome = (kill_was_already_unavailable, reap_was_already_complete)
 
     def sleep(self, seconds):
         from bootstrap_readiness import check_cancelled
@@ -311,6 +346,32 @@ print(json.dumps({'units':units},sort_keys=True))
     def final_guard(self, inputs):
         self._guard(inputs)
 
+    def audit(self, environment, environment_name, provider, scenario, evidence):
+        """Append one categorical best-effort record after evidence is durable."""
+        import sys
+        from bootstrap_readiness import ReadinessError, run_command
+        audit_environment = {
+            key: environment[key]
+            for key in ("PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE",
+                        "AGE_KEY", "AUDIT_LOG_FILE", "AUDIT_ACTOR")
+            if key in environment
+        }
+        command = [
+            str(ROOT / "scripts/audit-log.sh"), "append-best-effort",
+            "--action", "staging-tailnet-recovery",
+            "--env", environment_name,
+            "--provider", provider,
+            "--note", f"scenario={scenario} result=passed",
+        ]
+        try:
+            status, _output = run_command(
+                command, environment=audit_environment, cwd=ROOT, timeout=30,
+            )
+        except ReadinessError:
+            status = 1
+        if status:
+            print("warning: staging Tailnet recovery audit unavailable", file=sys.stderr)
+
 
 def _absolute(value, reason):
     if not isinstance(value, str) or not Path(value).is_absolute():
@@ -363,6 +424,7 @@ def run_scenario(scenario, inputs, auth_key, *, fresh_inputs, runtime):
                          if scenario == "controller-loss" else None)
     child = None
     pending_recovery = None
+    previous_boot = None
     try:
         child = runtime.spawn_pending(inputs, auth_key)
         if scenario == "controller-loss":
@@ -371,7 +433,7 @@ def run_scenario(scenario, inputs, auth_key, *, fresh_inputs, runtime):
             # autonomous timer recovery compared with the pre-enroll baseline.
             pending_recovery = runtime.recovery_baseline(inputs)
         runtime.kill_pending(child)
-    except BaseException:
+    except (Exception, KeyboardInterrupt, SystemExit):
         if child is not None:
             runtime.cleanup_pending(child)
         raise
@@ -392,8 +454,11 @@ def run_scenario(scenario, inputs, auth_key, *, fresh_inputs, runtime):
                         and not runtime.autonomous_recovery(
                             candidate, (recovery_baseline, pending_recovery))):
                     raise RecoveryError("recovery-autonomous-proof-failed")
-                if scenario == "reboot" and not runtime.reboot_recovery(candidate, previous_boot):
-                    raise RecoveryError("recovery-current-boot-proof-failed")
+                if scenario == "reboot":
+                    if previous_boot is None:
+                        raise RecoveryError("recovery-previous-boot-missing")
+                    if not runtime.reboot_recovery(candidate, previous_boot):
+                        raise RecoveryError("recovery-current-boot-proof-failed")
                 runtime.postconditions(candidate)
                 runtime.final_guard(candidate)
                 recovered = candidate
@@ -470,6 +535,8 @@ def execute(environment, runtime=None):
                 or re.fullmatch(r"ci-staging-[A-Za-z0-9][A-Za-z0-9-]{0,47}",
                                 inputs.config["environment"]) is None):
             raise RecoveryError("recovery-staging-only")
+        if Path(inputs.config["output"]) == wrapper.evidence:
+            raise RecoveryError("recovery-evidence-collision")
         result = run_scenario(
             wrapper.scenario, inputs, environment.get("TAILSCALE_AUTH_KEY"),
             fresh_inputs=fresh_inputs, runtime=runtime,
@@ -483,9 +550,15 @@ def execute(environment, runtime=None):
                 tailnet._canonical_bytes(bootstrap._binding(inputs))
             ).hexdigest(),
         }
+        audit_environment_name = inputs.config["environment"]
+        audit_provider = inputs.config["provider"]
     deploy.verify_input_fence(wrapper.fence)
     result = {**result, "input_sha256": wrapper.input_sha256}
     _publish(wrapper, result)
+    runtime.audit(
+        environment, audit_environment_name, audit_provider, wrapper.scenario,
+        wrapper.evidence,
+    )
     return result
 
 

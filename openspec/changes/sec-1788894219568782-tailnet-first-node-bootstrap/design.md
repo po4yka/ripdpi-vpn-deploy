@@ -187,13 +187,17 @@ the exact-source local/hosted and authorized staging gates.
 - Recovery acceptance: one staging-only controller behind two fixed Make verbs
   reuses bootstrap validation, installation, enrollment and status. A dedicated
   child owns the pending enrollment and is killed with `SIGKILL`; the parent
-  never receives a general fault selector and never calls confirm or rollback.
+  holds a private liveness pipe so an unexpected parent exit also terminates the
+  child. The parent never receives a general fault selector and never calls
+  confirm or rollback.
   Controller-loss waits through the durable lease and requires a new successful
   recovery invocation. Reboot requires a changed boot identity plus current-
   boot success from both recovery units. The harness adds no guest RPC or
-  persistent privilege. Its atomic mode-`0600` evidence contains hashes and
-  categorical verdicts only, never addresses, raw nonce/capability material,
-  keys, provider state, or remote output.
+  persistent privilege. Its evidence path must differ from the positive
+  bootstrap handoff. Atomic mode-`0600` evidence contains hashes and categorical
+  verdicts only, never addresses, raw nonce/capability material, keys, provider
+  state, or remote output; successful publication is followed by a categorical
+  canonical best-effort audit record.
 - Guest: `scripts/tailnet_management.py`, its configure/check/recover entry
   points, recovery units, `ansible/roles/tailnet-management/`, and a dedicated
   `ansible/playbooks/bootstrap-tailnet.yml`.

@@ -207,12 +207,15 @@ Terraform rollback.
 `staging-tailnet-recovery.py` reuses the bootstrap module's validation,
 installation, durable enrollment and status implementation behind distinct
 controller-loss and reboot Make verbs. A dedicated child reaches `pending` and
-is killed with `SIGKILL`; the parent has no confirmation or explicit rollback
-path. Controller loss requires a fresh post-deadline recovery invocation;
+is killed with `SIGKILL`; a private parent-liveness pipe prevents an orphaned
+paused worker after controller death. The parent has no confirmation or explicit
+rollback path. Controller loss requires a fresh post-deadline recovery invocation;
 reboot requires a new boot identity and current-boot success from both phases.
 Both finish through pinned public SSH/SFTP and idle-state proof. The only
-published artifact is atomic mode-`0600` redacted evidence. Do not deepen this
-interface with a general fault selector or a new permanent guest capability.
+published artifact is atomic mode-`0600` redacted evidence at a path distinct
+from the positive bootstrap handoff; a categorical `append-best-effort` audit
+record follows publication. Do not deepen this interface with a general fault
+selector or a new permanent guest capability.
 
 ## Observability — `observability-operator.py`
 

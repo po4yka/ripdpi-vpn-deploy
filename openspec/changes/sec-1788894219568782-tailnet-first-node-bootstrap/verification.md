@@ -51,9 +51,10 @@ and external evidence below remain required.
   a valid exact-node promotion configuration; no capability consumed.
 - Staging: one authorized disposable clean node; redacted private evidence from
   the fixed controller-loss and reboot operations, including exact worker death,
-  fresh recovery invocations, changed boot identity for reboot, idle state and
-  restored public SSH/SFTP; then positive bootstrap, ordinary deploy, provider
-  firewall promotion and acceptance.
+  parent-loss worker cleanup, fresh recovery invocations, changed boot identity
+  for reboot, idle state, restored public SSH/SFTP, distinct recovery/handoff
+  outputs, and categorical audit records; then positive bootstrap, ordinary
+  deploy, provider firewall promotion and acceptance.
 - Live: agreed serial one-node checks after staging and a valid operator
   window, preserving public recovery. Lack of current authority blocks this
   category and must not be relabeled as a local-only success.

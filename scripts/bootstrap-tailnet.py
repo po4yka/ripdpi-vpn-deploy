@@ -485,14 +485,15 @@ def run(inputs, auth_key, *, pending_hook=None):
             configured = _capability(inputs, _rpc(inputs, "status", binding=binding))
         if configured["status"] != "configured" or configured["nonce"] != pending["nonce"]:
             raise BootstrapError("bootstrap-confirmation-uncertain")
-    except BaseException:
+    except (Exception, KeyboardInterrupt, SystemExit):
         if pending is not None:
             try:
                 state = _rpc(inputs, "status", binding=binding)
                 if state.get("status") == "pending":
                     _rpc(inputs, "rollback", capability=pending)
             except Exception:
-                pass  # The durable timer remains authoritative; never claim rollback.
+                # The durable timer remains authoritative; never claim rollback.
+                rollback_was_not_observed = True
         raise
     # Publication failure cannot turn a confirmed transaction into a logout.
     _publish(inputs, configured, contexts, parent_identity)

@@ -114,9 +114,12 @@ Independent controller homes are not a supported shared-ownership mechanism.
 
 - **Normal bootstrap cancellation is not controller-loss evidence.** Its
   exception path requests rollback. Recovery acceptance must use the fixed
-  staging-only harness, observe exact worker `SIGKILL`, and accept only fresh
-  timer or current-boot recovery unit results plus public SSH/SFTP and idle
-  state. Never add a caller-selected fault mode to the production bootstrap.
+  staging-only harness, keep its child bound to parent liveness, observe exact
+  worker `SIGKILL`, and accept only fresh timer or current-boot recovery unit
+  results plus public SSH/SFTP and idle state. Recovery evidence must not reuse
+  the positive handoff path, and a successful run must append its categorical
+  best-effort audit record. Never add a caller-selected fault mode to the
+  production bootstrap.
 
 - **Mutation builds require sibling inputs** — `test-vpnd-mutants.sh` copies
   tracked working-tree files before using cargo-mutants in-place in that owned

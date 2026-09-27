@@ -100,8 +100,16 @@ class ScenarioRuntime:
     def final_guard(self, inputs):
         self.events.append(("final-guard", inputs.name))
 
+    def audit(self, environment, environment_name, provider, scenario, evidence):
+        assert evidence.exists(), "audit must follow durable evidence publication"
+        self.events.append(("audit", environment_name, provider, scenario))
+
 
 class ExecuteRuntime(ScenarioRuntime):
+    def __init__(self, scenario):
+        super().__init__(scenario)
+        self.bootstrap_output = "/private/tmp/tailnet-bootstrap-handoff.json"
+
     @contextmanager
     def open_inputs(self, environment, bootstrap_config, inventory_alias):
         self.events.append(("inputs", str(bootstrap_config), inventory_alias))
@@ -110,6 +118,7 @@ class ExecuteRuntime(ScenarioRuntime):
             name=f"generation-{number}",
             config={
                 "environment": "ci-staging-fixture", "inventory_alias": inventory_alias,
+                "provider": "upcloud", "output": self.bootstrap_output,
                 "source_revision": "a" * 40, "deployable_digest": "b" * 64,
                 "public_address": "192.0.2.10", "ssh_port": 2222,
                 "public_sources": ["198.51.100.10"],
@@ -197,6 +206,35 @@ def test_execute_uses_external_scenario_and_publishes_only_redacted_evidence(
     assert result["source_revision"] == "a" * 40
     assert result["deployable_digest"] == "b" * 64
     assert len(result["binding_sha256"]) == 64
+    assert runtime.events[-1] == (
+        "audit", "ci-staging-fixture", "upcloud", "controller-loss",
+    )
+
+
+def test_evidence_cannot_alias_bootstrap_output_before_destructive_action(
+        controller, tmp_path):
+    evidence = tmp_path / "evidence.json"
+    bootstrap_config = tmp_path / "bootstrap.json"
+    bootstrap_config.write_text("private bootstrap fixture")
+    wrapper = tmp_path / "recovery.json"
+    wrapper.write_text(json.dumps({
+        "schema_version": 1, "bootstrap_config": str(bootstrap_config),
+        "evidence": str(evidence),
+    }))
+    wrapper.chmod(0o600)
+    runtime = ExecuteRuntime("controller-loss")
+    runtime.bootstrap_output = str(evidence)
+
+    with pytest.raises(controller.RecoveryError, match="recovery-evidence-collision"):
+        controller.execute({
+            "TAILNET_RECOVERY_CONFIG": str(wrapper),
+            "TAILNET_RECOVERY_SCENARIO": "controller-loss",
+            "TAILNET_RECOVERY_TARGET": "node-one",
+            "TAILSCALE_AUTH_KEY": "tskey-auth-fixture_key",
+        }, runtime=runtime)
+
+    assert [event[0] for event in runtime.events] == ["inputs"]
+    assert not evidence.exists()
 
 
 def test_production_wrapper_refuses_before_fault_or_evidence(controller, tmp_path):
@@ -309,7 +347,8 @@ def test_spawn_cancellation_kills_and_reaps_blocked_child(controller, monkeypatc
     closed = []
     killed = []
     waited = []
-    monkeypatch.setattr(controller.os, "pipe", lambda: (10, 11))
+    pipes = iter([(10, 11), (12, 13)])
+    monkeypatch.setattr(controller.os, "pipe", lambda: next(pipes))
     monkeypatch.setattr(controller.os, "fork", lambda: 321)
     monkeypatch.setattr(controller.os, "close", lambda fd: closed.append(fd))
     monkeypatch.setattr(controller.select, "select", lambda *_args: (_ for _ in ()).throw(KeyboardInterrupt()))
@@ -321,7 +360,7 @@ def test_spawn_cancellation_kills_and_reaps_blocked_child(controller, monkeypatc
 
     assert killed == [(321, controller.signal.SIGKILL)]
     assert waited == [(321, 0)]
-    assert sorted(closed) == [10, 11]
+    assert sorted(closed) == [10, 11, 12, 13]
 
 
 def test_spawn_select_poll_observes_recorded_signal_and_reaps_child(controller, monkeypatch):
@@ -331,7 +370,8 @@ def test_spawn_select_poll_observes_recorded_signal_and_reaps_child(controller, 
     killed = []
     waited = []
     monkeypatch.setattr(bootstrap_readiness, "_cancelled", 0)
-    monkeypatch.setattr(controller.os, "pipe", lambda: (10, 11))
+    pipes = iter([(10, 11), (12, 13)])
+    monkeypatch.setattr(controller.os, "pipe", lambda: next(pipes))
     monkeypatch.setattr(controller.os, "fork", lambda: 321)
     monkeypatch.setattr(controller.os, "close", lambda _fd: None)
 
@@ -350,6 +390,110 @@ def test_spawn_select_poll_observes_recorded_signal_and_reaps_child(controller, 
     assert len(delays) == 1 and 0 < delays[0] <= 0.25
     assert killed == [(321, controller.signal.SIGKILL)]
     assert waited == [(321, 0)]
+
+
+def test_normal_pending_marker_keeps_parent_control_until_verified_sigkill(
+        controller, monkeypatch):
+    runtime = controller.Runtime()
+    pipes = iter([(10, 11), (12, 13)])
+    closed = []
+    killed = []
+    waited = []
+    monkeypatch.setattr(controller.os, "pipe", lambda: next(pipes))
+    monkeypatch.setattr(controller.os, "fork", lambda: 321)
+    monkeypatch.setattr(controller.os, "close", lambda fd: closed.append(fd))
+    monkeypatch.setattr(controller.select, "select", lambda *_args: ([10], [], []))
+    monkeypatch.setattr(controller.os, "read", lambda fd, limit: b"P")
+    monkeypatch.setattr(controller.os, "kill", lambda pid, sig: killed.append((pid, sig)))
+    monkeypatch.setattr(controller.os, "waitpid",
+                        lambda pid, flags: waited.append((pid, flags)) or (pid, 9))
+    monkeypatch.setattr(controller.os, "WIFSIGNALED", lambda status: status == 9)
+    monkeypatch.setattr(controller.os, "WTERMSIG", lambda status: controller.signal.SIGKILL)
+
+    child = runtime.spawn_pending(SimpleNamespace(), "tskey-auth-fixture_key")
+
+    assert child == 321
+    assert runtime._control_fds == {321: 13}
+    assert sorted(closed) == [10, 11, 12]
+    runtime.kill_pending(child)
+    assert killed == [(321, controller.signal.SIGKILL)]
+    assert waited == [(321, 0)]
+    assert runtime._control_fds == {}
+    assert sorted(closed) == [10, 11, 12, 13]
+
+
+def test_cleanup_closes_parent_control_before_reap_when_sigkill_is_unavailable(
+        controller, monkeypatch):
+    runtime = controller.Runtime()
+    runtime._control_fds[321] = 13
+    events = []
+    monkeypatch.setattr(controller.os, "kill",
+                        lambda *_args: (_ for _ in ()).throw(InterruptedError()))
+    monkeypatch.setattr(controller.os, "close", lambda fd: events.append(("close", fd)))
+
+    def reap(pid, flags):
+        assert events == [("close", 13)]
+        events.append(("reap", pid, flags))
+        return pid, 0
+
+    monkeypatch.setattr(controller.os, "waitpid", reap)
+
+    runtime.cleanup_pending(321)
+
+    assert events == [("close", 13), ("reap", 321, 0)]
+    assert runtime._control_fds == {}
+
+
+def test_pending_barrier_exits_on_parent_control_pipe_eof(controller, monkeypatch):
+    class ChildExit(Exception):
+        """Sentinel replacing os._exit inside the unit-test process."""
+
+    writes = []
+    polls = []
+    exits = []
+    replies = iter([([], [], []), ([77], [], [])])
+    monkeypatch.setattr(controller.os, "write", lambda fd, data: writes.append((fd, data)) or len(data))
+    monkeypatch.setattr(controller.select, "select",
+                        lambda read, write, error, delay: polls.append((read, delay)) or next(replies))
+    monkeypatch.setattr(controller.os, "read", lambda fd, limit: b"")
+
+    def child_exit(code):
+        exits.append(code)
+        raise ChildExit
+
+    monkeypatch.setattr(controller.os, "_exit", child_exit)
+
+    with pytest.raises(ChildExit):
+        controller.Runtime._pending_barrier(55, 77)
+
+    assert writes == [(55, b"P")]
+    assert polls == [([77], 0.2), ([77], 0.2)]
+    assert exits == [73]
+
+
+def test_audit_uses_canonical_redacted_best_effort_record(controller, monkeypatch, tmp_path):
+    import bootstrap_readiness
+    observed = []
+    monkeypatch.setattr(bootstrap_readiness, "run_command",
+                        lambda command, **kwargs: observed.append((command, kwargs)) or (0, b""))
+    evidence = tmp_path / "evidence.json"
+    evidence.write_text("{}")
+
+    controller.Runtime().audit({
+        "PATH": "/usr/bin", "HOME": str(tmp_path),
+        "TAILSCALE_AUTH_KEY": "tskey-auth-secret", "PRIVATE_ADDRESS": "192.0.2.10",
+    }, "ci-staging-fixture", "upcloud", "reboot", evidence)
+
+    assert observed[0][0] == [
+        str(ROOT / "scripts/audit-log.sh"), "append-best-effort",
+        "--action", "staging-tailnet-recovery", "--env", "ci-staging-fixture",
+        "--provider", "upcloud", "--note", "scenario=reboot result=passed",
+    ]
+    assert observed[0][1]["cwd"] == ROOT
+    assert observed[0][1]["timeout"] == 30
+    assert set(observed[0][1]["environment"]) == {"PATH", "HOME"}
+    encoded = json.dumps(observed, default=str)
+    assert "tskey-auth-secret" not in encoded and "192.0.2.10" not in encoded
 
 
 def test_cancellation_after_spawn_still_kills_blocked_child(controller):
