@@ -14,7 +14,7 @@ import signal
 import stat
 import tempfile
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from typing import NamedTuple
 from uuid import UUID
 
@@ -166,8 +166,21 @@ print(json.dumps({'units':units},sort_keys=True))
     @staticmethod
     def _pending_barrier(marker_fd, control_fd):
         """Publish pending once, then die if the owning parent disappears."""
-        if os.write(marker_fd, b"P") != 1:
+        readable, _, _ = select.select([control_fd], [], [], 0)
+        if readable:
+            # EOF before publication means the parent died after fork but
+            # before it could observe durable pending. Never unwind into the
+            # bootstrap rollback path in that case.
+            if os.read(control_fd, 1) == b"":
+                os._exit(73)
             os._exit(74)
+        try:
+            if os.write(marker_fd, b"P") != 1:
+                os._exit(74)
+        except BrokenPipeError:
+            # The parent can die between the liveness poll and marker write.
+            # Exit here so bootstrap.run cannot interpret it as rollback work.
+            os._exit(73)
         while True:
             readable, _, _ = select.select([control_fd], [], [], 0.2)
             if readable:
@@ -245,26 +258,13 @@ print(json.dumps({'units':units},sort_keys=True))
 
     def cleanup_pending(self, child):
         """Best-effort cancellation cleanup; never claim this as death proof."""
-        try:
+        with suppress(OSError):
             os.kill(child, signal.SIGKILL)
-        except OSError:
-            # A dead child still needs a best-effort reap below.
-            kill_was_already_unavailable = True
-        else:
-            kill_was_already_unavailable = False
         # Closing the ownership pipe is a second termination path if SIGKILL
         # itself was interrupted: the blocked child observes EOF and exits.
         self._close_control(child)
-        try:
+        with suppress(ChildProcessError, OSError):
             os.waitpid(child, 0)
-        except (ChildProcessError, OSError):
-            # It may already have been reaped by the verified kill path.
-            reap_was_already_complete = True
-        else:
-            reap_was_already_complete = False
-        # Named outcomes keep this intentionally lossy cleanup visible to
-        # static analysis without changing the original exception path.
-        _cleanup_outcome = (kill_was_already_unavailable, reap_was_already_complete)
 
     def sleep(self, seconds):
         from bootstrap_readiness import check_cancelled

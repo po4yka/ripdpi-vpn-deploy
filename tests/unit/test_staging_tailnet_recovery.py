@@ -444,6 +444,60 @@ def test_cleanup_closes_parent_control_before_reap_when_sigkill_is_unavailable(
     assert runtime._control_fds == {}
 
 
+def test_pending_barrier_exits_before_marker_when_parent_is_already_gone(
+        controller, monkeypatch):
+    class ChildExit(Exception):
+        """Sentinel replacing os._exit inside the unit-test process."""
+
+    polls = []
+    exits = []
+    monkeypatch.setattr(
+        controller.select, "select",
+        lambda read, write, error, delay: polls.append((read, delay)) or ([77], [], []),
+    )
+    monkeypatch.setattr(controller.os, "read", lambda fd, limit: b"")
+    monkeypatch.setattr(
+        controller.os, "write",
+        lambda *_args: pytest.fail("dead parent must be detected before marker publication"),
+    )
+
+    def child_exit(code):
+        exits.append(code)
+        raise ChildExit
+
+    monkeypatch.setattr(controller.os, "_exit", child_exit)
+
+    with pytest.raises(ChildExit):
+        controller.Runtime._pending_barrier(55, 77)
+
+    assert polls == [([77], 0)]
+    assert exits == [73]
+
+
+def test_pending_barrier_treats_broken_marker_pipe_as_parent_loss(
+        controller, monkeypatch):
+    class ChildExit(Exception):
+        """Sentinel replacing os._exit inside the unit-test process."""
+
+    exits = []
+    monkeypatch.setattr(controller.select, "select", lambda *_args: ([], [], []))
+    monkeypatch.setattr(
+        controller.os, "write",
+        lambda *_args: (_ for _ in ()).throw(BrokenPipeError()),
+    )
+
+    def child_exit(code):
+        exits.append(code)
+        raise ChildExit
+
+    monkeypatch.setattr(controller.os, "_exit", child_exit)
+
+    with pytest.raises(ChildExit):
+        controller.Runtime._pending_barrier(55, 77)
+
+    assert exits == [73]
+
+
 def test_pending_barrier_exits_on_parent_control_pipe_eof(controller, monkeypatch):
     class ChildExit(Exception):
         """Sentinel replacing os._exit inside the unit-test process."""
@@ -467,7 +521,7 @@ def test_pending_barrier_exits_on_parent_control_pipe_eof(controller, monkeypatc
         controller.Runtime._pending_barrier(55, 77)
 
     assert writes == [(55, b"P")]
-    assert polls == [([77], 0.2), ([77], 0.2)]
+    assert polls == [([77], 0), ([77], 0.2)]
     assert exits == [73]
 
 

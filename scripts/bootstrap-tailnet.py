@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import stat
 import tempfile
+from contextlib import suppress
 from typing import NamedTuple
 
 import yaml
@@ -487,13 +488,12 @@ def run(inputs, auth_key, *, pending_hook=None):
             raise BootstrapError("bootstrap-confirmation-uncertain")
     except (Exception, KeyboardInterrupt, SystemExit):
         if pending is not None:
-            try:
+            # The durable timer remains authoritative when this best-effort
+            # reconciliation cannot observe or roll back pending state.
+            with suppress(Exception):
                 state = _rpc(inputs, "status", binding=binding)
                 if state.get("status") == "pending":
                     _rpc(inputs, "rollback", capability=pending)
-            except Exception:
-                # The durable timer remains authoritative; never claim rollback.
-                rollback_was_not_observed = True
         raise
     # Publication failure cannot turn a confirmed transaction into a logout.
     _publish(inputs, configured, contexts, parent_identity)
