@@ -62,6 +62,10 @@ proof of tunneled DNS.
 `TemporaryDirectory` a path beneath symlinked `/var`. Resolve the controller's
 new private directory before passing its executor snapshots to the evaluator;
 the evaluator still rejects symlinked private input paths.
+Disposable liveness de-onboarding after provider firewall promotion supplies
+both the original binding manifest and its reissued cleanup manifest. Their
+private hashes, immutable resource identity, account, deadline and state path
+must match the verified provider absence receipt before local removal.
 
 **Provider promotion snapshots only Terraform inputs** — pin the two referenced
 `terraform/shared` files explicitly. A recursive shared-directory copy would

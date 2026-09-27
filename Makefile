@@ -1251,6 +1251,8 @@ deonboard-disposable-liveness:
 	  --registry "$${LIVENESS_SENTINEL_REGISTRY}" \
 	  --config "$${LIVENESS_CONFIG}" \
 	  --sops-file "$${SOPS_FILE}" \
+	  $(if $(BOUND_CLEANUP_MANIFEST),--bound-cleanup-manifest "$(BOUND_CLEANUP_MANIFEST)") \
+	  $(if $(REISSUED_CLEANUP_MANIFEST),--reissued-cleanup-manifest "$(REISSUED_CLEANUP_MANIFEST)") \
 	  --output "$${DEONBOARD_EVIDENCE}"
 
 .PHONY: retire-unbound-staging-client
