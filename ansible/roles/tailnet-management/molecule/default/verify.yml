@@ -10,6 +10,30 @@
         - 100.64.10.20
         - fd7a:115c:a1e0::1234
   tasks:
+    - name: Verify the complete recovery and SSH boot dependency graph
+      ansible.builtin.command:
+        argv:
+          - systemd-analyze
+          - verify
+          - --man=no
+          - vpn-tailnet-firewall-recover.service
+          - vpn-tailnet-recover.service
+          - vpn-tailnet-recover.timer
+          - tailscaled.service
+          - ssh.socket
+          - ssh.service
+          - basic.target
+          - sockets.target
+          - multi-user.target
+          - network-pre.target
+          - nftables.service
+      register: _tailnet_boot_graph
+      changed_when: false
+      failed_when: >-
+        _tailnet_boot_graph.rc != 0 or
+        (_tailnet_boot_graph.stdout | trim | length) != 0 or
+        (_tailnet_boot_graph.stderr | trim | length) != 0
+
     - name: Read fixture enrollment calls
       ansible.builtin.slurp:
         src: /var/lib/tailscale-fixture-calls

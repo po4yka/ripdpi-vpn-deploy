@@ -194,10 +194,17 @@ the exact-source local/hosted and authorized staging gates.
   recovery invocation. Reboot requires a changed boot identity plus current-
   boot success from both recovery units. The harness adds no guest RPC or
   persistent privilege. Its evidence path must differ from the positive
-  bootstrap handoff. Atomic mode-`0600` evidence contains hashes and categorical
-  verdicts only, never addresses, raw nonce/capability material, keys, provider
-  state, or remote output; successful publication is followed by a categorical
-  canonical best-effort audit record.
+  bootstrap handoff. A separate diagnostic path must differ from both. Atomic
+  mode-`0600` success evidence contains hashes and categorical verdicts only,
+  never addresses, raw nonce/capability material, keys, provider state, or
+  remote output; successful publication is followed by a categorical canonical
+  best-effort audit record. A reboot failure after observed SSH loss may instead
+  publish a redacted `incomplete` diagnostic with only reboot-request, SSH
+  down/up, recovery-status and unit-proof categories. It is not success evidence
+  and never emits a passed audit record.
+  The wrapper contract advances to schema 2 and requires both absent output
+  paths. Schema 1 refuses before SSH; operators replace it by adding a fresh
+  diagnostic path rather than relying on a compatibility mode.
 - Guest: `scripts/tailnet_management.py`, its configure/check/recover entry
   points, recovery units, `ansible/roles/tailnet-management/`, and a dedicated
   `ansible/playbooks/bootstrap-tailnet.yml`.

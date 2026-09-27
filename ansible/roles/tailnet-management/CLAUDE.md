@@ -53,6 +53,8 @@ persistent timer. Revalidate their results under the transaction lock.
 - Validate the complete boot graph, including `basic.target` and `ssh.socket`.
   A late service before the socket can cycle through `sockets.target`;
   systemd-analyze may remove a job and return 0, so inspect diagnostics too.
+  Molecule supplies an inert daemon unit only to exercise that graph under a
+  real systemd PID 1; it is not evidence for the pinned vendor Tailscale unit.
 - Real tailscaled startup creates empty ip/ip6 filter/nat tables before
   login. Only that exact object-free quartet qualifies as inert; preserve it
   in snapshots and replay without accepting foreign chains, sets or rules.

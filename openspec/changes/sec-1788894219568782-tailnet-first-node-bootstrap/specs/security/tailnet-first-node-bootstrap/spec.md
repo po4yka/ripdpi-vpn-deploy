@@ -204,6 +204,16 @@ enrollment key, addresses, or private artifact paths.
 - **WHEN** a recovery unit result predates the transaction, the controller worker was not killed as specified, a boot identity did not change, or final state is not idle
 - **THEN** no success evidence is published and the remaining private/guest state is retained for diagnosis.
 
+#### Scenario: Public SSH does not return within the reboot proof budget
+
+- **WHEN** the reboot request has been attempted, public SSH loss was observed, and every bounded post-reboot SSH attempt fails
+- **THEN** no success evidence or passed audit is published, and a distinct private mode-`0600` diagnostic records only `status: incomplete`, the categorical reboot-request result, SSH down/up observations, `recovery_status: not_observed`, and `unit_proof_stage: not_started`.
+
+#### Scenario: A later reboot proof stage refuses
+
+- **WHEN** public SSH returned but status inspection, current-boot unit proof, or final public postconditions refuse
+- **THEN** no success evidence or passed audit is published, and the distinct private mode-`0600` diagnostic records only the last observed categorical recovery status and `unit_proof_stage` of `not_started`, `rejected`, or `passed`, without exception text or remote output.
+
 #### Scenario: Recovery controller exits unexpectedly
 
 - **WHEN** the parent controller disappears before it can terminate the paused enrollment worker
@@ -213,6 +223,16 @@ enrollment key, addresses, or private artifact paths.
 
 - **WHEN** a recovery operation names the referenced bootstrap handoff path as its evidence path
 - **THEN** it refuses before enrollment, reboot, or any other destructive action.
+
+#### Scenario: Recovery success and diagnostic outputs collide
+
+- **WHEN** a recovery operation names the same path for success evidence and incomplete diagnostics
+- **THEN** it refuses before enrollment, reboot, or any other destructive action.
+
+#### Scenario: An operator supplies an obsolete recovery wrapper
+
+- **WHEN** the recovery wrapper declares schema 1 or omits the distinct diagnostic path
+- **THEN** it refuses before SSH, enrollment, reboot, or any other guest change; the operator must replace it with schema 2 and a fresh absent diagnostic path.
 
 #### Scenario: Local tests pass without staging
 

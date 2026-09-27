@@ -38,6 +38,8 @@ both dependencies before resources are created.
   and reboot. They stop after durable enrollment, never call confirmation or
   rollback, and publish only redacted private evidence after autonomous
   recovery and fresh public SSH/SFTP succeed.
+- BREAKING: recovery wrapper schema 2 adds a distinct private diagnostic path;
+  schema-1 wrappers are rejected before SSH or guest changes.
 - BREAKING: first Tailnet enrollment must use the bootstrap command; ordinary
   deploy becomes verification-only for Tailnet and rejects enrollment keys.
   Update every documented and tested caller; no alternate enrollment path.

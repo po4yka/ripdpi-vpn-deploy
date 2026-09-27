@@ -20,7 +20,7 @@ from uuid import UUID
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG_FIELDS = {"schema_version", "bootstrap_config", "evidence"}
+CONFIG_FIELDS = {"schema_version", "bootstrap_config", "evidence", "diagnostic"}
 SCENARIOS = {"controller-loss", "reboot"}
 
 
@@ -51,8 +51,10 @@ class Wrapper(NamedTuple):
     inventory_alias: str
     bootstrap_config: Path
     evidence: Path
+    diagnostic: Path
     fence: object
-    parent_identity: tuple[int, int]
+    evidence_parent_identity: tuple[int, int]
+    diagnostic_parent_identity: tuple[int, int]
     input_sha256: str
 
 
@@ -302,6 +304,7 @@ print(json.dumps({'units':units},sort_keys=True))
             self.sleep(2)
         if not down:
             raise RecoveryError("recovery-reboot-unobserved")
+        return "accepted" if status == 0 else "indeterminate"
 
     def wait_after_reboot(self, inputs):
         from bootstrap_readiness import wait_for_bootstrap
@@ -399,7 +402,7 @@ def _load_wrapper(environment):
         raw, fence = deploy.read_fenced_input(path, private=True, exact_mode=0o600)
         value = json.loads(raw, object_pairs_hook=deploy.unique_object)
         if (not isinstance(value, dict) or set(value) != CONFIG_FIELDS
-                or type(value["schema_version"]) is not int or value["schema_version"] != 1):
+                or type(value["schema_version"]) is not int or value["schema_version"] != 2):
             raise RecoveryError("recovery-config-invalid")
         inventory_alias = environment["TAILNET_RECOVERY_TARGET"]
         if (not isinstance(inventory_alias, str)
@@ -408,15 +411,22 @@ def _load_wrapper(environment):
             raise RecoveryError("recovery-config-invalid")
         bootstrap_config = _absolute(value["bootstrap_config"], "recovery-config-invalid")
         evidence = bootstrap._output_path(value["evidence"])
-        parent = evidence.parent
-        info = parent.stat()
-        return Wrapper(scenario, inventory_alias, bootstrap_config, evidence, fence,
-                       (info.st_dev, info.st_ino), hashlib.sha256(raw).hexdigest())
+        diagnostic = bootstrap._output_path(value["diagnostic"])
+        if diagnostic == evidence:
+            raise RecoveryError("recovery-output-collision")
+        evidence_info = evidence.parent.stat()
+        diagnostic_info = diagnostic.parent.stat()
+        return Wrapper(
+            scenario, inventory_alias, bootstrap_config, evidence, diagnostic, fence,
+            (evidence_info.st_dev, evidence_info.st_ino),
+            (diagnostic_info.st_dev, diagnostic_info.st_ino),
+            hashlib.sha256(raw).hexdigest(),
+        )
     except (KeyError, TypeError, ValueError, OSError):
         raise RecoveryError("recovery-inputs-refused") from None
 
 
-def run_scenario(scenario, inputs, auth_key, *, fresh_inputs, runtime):
+def run_scenario(scenario, inputs, auth_key, *, fresh_inputs, runtime, diagnostic=None):
     """Kill one armed enrollment and prove recovery from a fresh invocation."""
     if scenario not in SCENARIOS:
         raise RecoveryError("recovery-scenario-invalid")
@@ -451,7 +461,12 @@ def run_scenario(scenario, inputs, auth_key, *, fresh_inputs, runtime):
         runtime.sleep(tailnet.LEASE_SECONDS + 1)
     else:
         previous_boot = runtime.boot_id(inputs)
-        runtime.reboot(inputs)
+        reboot_request = runtime.reboot(inputs)
+        if diagnostic is not None:
+            diagnostic.update({
+                "reboot_request": reboot_request,
+                "ssh_down_observed": True,
+            })
 
     from bootstrap_readiness import SshTransportError
 
@@ -462,7 +477,14 @@ def run_scenario(scenario, inputs, auth_key, *, fresh_inputs, runtime):
             with fresh_inputs() as candidate:
                 if scenario == "reboot" and attempt == 0:
                     runtime.wait_after_reboot(candidate)
+                    if diagnostic is not None:
+                        diagnostic["ssh_up_observed"] = True
                 status = runtime.recovered_status(candidate)
+                if scenario == "reboot" and diagnostic is not None:
+                    diagnostic.update({
+                        "ssh_up_observed": True,
+                        "recovery_status": status,
+                    })
                 if status == "idle":
                     if (scenario == "controller-loss"
                             and not runtime.autonomous_recovery(
@@ -472,7 +494,11 @@ def run_scenario(scenario, inputs, auth_key, *, fresh_inputs, runtime):
                         if previous_boot is None:
                             raise RecoveryError("recovery-previous-boot-missing")
                         if not runtime.reboot_recovery(candidate, previous_boot):
+                            if diagnostic is not None:
+                                diagnostic["unit_proof_stage"] = "rejected"
                             raise RecoveryError("recovery-current-boot-proof-failed")
+                        if diagnostic is not None:
+                            diagnostic["unit_proof_stage"] = "passed"
                     runtime.postconditions(candidate)
                     runtime.final_guard(candidate)
                     recovered = candidate
@@ -504,14 +530,14 @@ def run_scenario(scenario, inputs, auth_key, *, fresh_inputs, runtime):
     }
 
 
-def _publish(wrapper, result):
+def _publish(path, parent_identity, result):
     payload = tailnet._canonical_bytes(result)
-    parent_fd = os.open(wrapper.evidence.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    parent_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     temporary = ".tailnet-recovery-" + secrets.token_hex(16)
     created = False
     try:
         info = os.fstat(parent_fd)
-        if ((info.st_dev, info.st_ino) != wrapper.parent_identity
+        if ((info.st_dev, info.st_ino) != parent_identity
                 or info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o700):
             raise RecoveryError("recovery-evidence-parent-changed")
         handle = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
@@ -523,7 +549,7 @@ def _publish(wrapper, result):
             os.fsync(handle)
         finally:
             os.close(handle)
-        os.link(temporary, wrapper.evidence.name, src_dir_fd=parent_fd,
+        os.link(temporary, path.name, src_dir_fd=parent_fd,
                 dst_dir_fd=parent_fd, follow_symlinks=False)
         os.unlink(temporary, dir_fd=parent_fd)
         created = False
@@ -546,6 +572,16 @@ def execute(environment, runtime=None):
         deploy.verify_input_fence(wrapper.fence)
         return runtime.open_inputs(environment, wrapper.bootstrap_config, wrapper.inventory_alias)
 
+    diagnostic = {
+        "schema_version": 1,
+        "status": "incomplete",
+        "scenario": "reboot",
+        "reboot_request": "indeterminate",
+        "ssh_down_observed": False,
+        "ssh_up_observed": False,
+        "recovery_status": "not_observed",
+        "unit_proof_stage": "not_started",
+    }
     with fresh_inputs() as inputs:
         if (not isinstance(inputs.config, dict)
                 or inputs.config.get("inventory_alias") != wrapper.inventory_alias
@@ -553,12 +589,20 @@ def execute(environment, runtime=None):
                 or re.fullmatch(r"ci-staging-[A-Za-z0-9][A-Za-z0-9-]{0,47}",
                                 inputs.config["environment"]) is None):
             raise RecoveryError("recovery-staging-only")
-        if Path(inputs.config["output"]) == wrapper.evidence:
+        if Path(inputs.config["output"]) in {wrapper.evidence, wrapper.diagnostic}:
             raise RecoveryError("recovery-evidence-collision")
-        result = run_scenario(
-            wrapper.scenario, inputs, environment.get("TAILSCALE_AUTH_KEY"),
-            fresh_inputs=fresh_inputs, runtime=runtime,
-        )
+        try:
+            result = run_scenario(
+                wrapper.scenario, inputs, environment.get("TAILSCALE_AUTH_KEY"),
+                fresh_inputs=fresh_inputs, runtime=runtime,
+                diagnostic=diagnostic if wrapper.scenario == "reboot" else None,
+            )
+        except (Exception, KeyboardInterrupt, SystemExit):
+            if wrapper.scenario == "reboot" and diagnostic["ssh_down_observed"]:
+                _publish(
+                    wrapper.diagnostic, wrapper.diagnostic_parent_identity, diagnostic,
+                )
+            raise
         runtime.final_guard(inputs)
         result = {
             **result,
@@ -572,7 +616,7 @@ def execute(environment, runtime=None):
         audit_provider = inputs.config["provider"]
     deploy.verify_input_fence(wrapper.fence)
     result = {**result, "input_sha256": wrapper.input_sha256}
-    _publish(wrapper, result)
+    _publish(wrapper.evidence, wrapper.evidence_parent_identity, result)
     runtime.audit(
         environment, audit_environment_name, audit_provider, wrapper.scenario,
         wrapper.evidence,
