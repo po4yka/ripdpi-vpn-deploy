@@ -285,6 +285,39 @@ def test_reboot_refuses_unchanged_boot_before_public_postconditions(controller):
     assert not any(event[0] == "public-ssh-sftp-preinstall" for event in runtime.events)
 
 
+def test_reboot_uses_bounded_first_boot_retry_after_public_ssh_goes_down(
+        controller, monkeypatch):
+    import bootstrap_readiness
+    runtime = controller.Runtime()
+    environment = {"PATH": "/usr/bin"}
+    inputs = SimpleNamespace(
+        ssh=["ssh", "-F", "pinned-config", "node-one"],
+        environment=environment,
+    )
+    events = []
+    replies = iter([(0, b""), (255, b"")])
+    monkeypatch.setattr(runtime, "_guard", lambda *_args: None)
+
+    def run_command(command, **kwargs):
+        events.append(("command", command, kwargs["timeout"], kwargs["environment"]))
+        return next(replies)
+
+    def wait_for_bootstrap(ssh, *, environment, first_boot):
+        events.append(("wait", ssh, environment, first_boot))
+
+    monkeypatch.setattr(bootstrap_readiness, "run_command", run_command)
+    monkeypatch.setattr(bootstrap_readiness, "wait_for_bootstrap", wait_for_bootstrap)
+
+    runtime.reboot(inputs)
+
+    assert events == [
+        ("command", ["ssh", "-F", "pinned-config",
+                     "sudo -n /usr/bin/systemctl reboot --no-wall"], 20, environment),
+        ("command", ["ssh", "-F", "pinned-config", "true"], 5, environment),
+        ("wait", ["ssh", "-F", "pinned-config"], environment, True),
+    ]
+
+
 def test_controller_loss_refuses_stale_recovery_invocation(controller):
     runtime = ScenarioRuntime("controller-loss")
     runtime.recovery = ["idle"]

@@ -302,7 +302,9 @@ print(json.dumps({'units':units},sort_keys=True))
             self.sleep(2)
         if not down:
             raise RecoveryError("recovery-reboot-unobserved")
-        wait_for_bootstrap(inputs.ssh[:-1], environment=inputs.environment)
+        wait_for_bootstrap(
+            inputs.ssh[:-1], environment=inputs.environment, first_boot=True,
+        )
 
     def recovered_status(self, inputs):
         from bootstrap_readiness import wait_for_bootstrap
