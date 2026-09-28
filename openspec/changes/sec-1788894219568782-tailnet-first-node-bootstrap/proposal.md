@@ -24,6 +24,9 @@ both dependencies before resources are created.
 - Keep the ordinary deploy controller's dual-path and protocol proof gates.
   Bootstrap establishes access only; it does not publish a deployed manifest
   or declare any VPN profile accepted.
+- Preserve ordinary deploy's otherwise hidden SSH baseline failure category in
+  a fresh private per-node receipt without exposing Ansible output, target
+  identity, transaction material, or child diagnostics.
 - Derive inventory's Tailnet SSH transport only from the private confirmed
   bootstrap handoff bound to the exact Terraform node; raw Tailnet addresses
   are no longer an accepted inventory input.

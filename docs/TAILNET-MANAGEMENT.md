@@ -182,7 +182,8 @@ to the exact Terraform alias, public address and SSH port, and derives the
 management address whose IPv4 or IPv6 path was actually confirmed. It keeps
 Terraform's public service address
 separate. The handoff itself is not the deploy input schema. Keep the separate
-`DEPLOY_PROMOTION_CONFIG_FILE` required by
+`DEPLOY_PROMOTION_CONFIG_FILE` and fresh private
+`DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE` required by
 [RUNBOOK-deploy.md](RUNBOOK-deploy.md); bootstrap does not satisfy protocol proof.
 Both `make dry-run` and `make deploy` reject enrollment keys and require the
 existing dual paths. The ordinary Tailnet role verifies installed state only;

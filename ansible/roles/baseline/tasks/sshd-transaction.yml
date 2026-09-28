@@ -8,6 +8,8 @@
       - ssh_transaction_contexts is defined
       - ssh_transaction_bundle_generation is match('^[0-9a-f]{64}$')
       - ssh_transaction_target_identity is defined
+      - ssh_transaction_failure_receipt_path is defined
+      - ssh_transaction_failure_receipt_parent_identity is defined
       - ansible_play_hosts_all | length == 1
     fail_msg: SSH baseline convergence requires the exact-node deployment controller
   no_log: true
@@ -21,7 +23,7 @@
     stdin: >-
       {{
         {
-          'schema_version': 1,
+          'schema_version': 2,
           'mode': ('check' if ansible_check_mode else 'deploy'),
           'inventory_alias': inventory_hostname,
           'inventory_path': ssh_transaction_inventory_path,
@@ -31,6 +33,8 @@
           'bundle_generation': ssh_transaction_bundle_generation,
           'timeout_seconds': ssh_transaction_timeout_seconds | default(180),
           'promotion_config_path': (none if ansible_check_mode else ssh_transaction_promotion_config_path),
+          'failure_receipt_path': (none if ansible_check_mode else ssh_transaction_failure_receipt_path),
+          'failure_receipt_parent_identity': (none if ansible_check_mode else ssh_transaction_failure_receipt_parent_identity),
           'target_identity': ssh_transaction_target_identity
         } | to_json
       }}

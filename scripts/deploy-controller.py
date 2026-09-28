@@ -188,6 +188,42 @@ def read_fenced_input(path, *, private=False, exact_mode=None, limit=fleet_inspe
     return data, (original, private, exact_mode, limit, fingerprint)
 
 
+def fresh_private_output(value):
+    """Validate one fresh diagnostic path without creating controller state."""
+    if (not isinstance(value, str) or not Path(value).is_absolute()
+            or str(Path(value)) != value or any(part in (".", "..") for part in Path(value).parts)
+            or any(ord(char) < 32 or ord(char) == 127 for char in value)):
+        raise DeployError("SSH failure receipt path invalid")
+    path = Path(value)
+    try:
+        if os.path.lexists(path):
+            raise DeployError("SSH failure receipt path unavailable")
+        parent = path.parent
+        info = parent.lstat()
+        if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid()
+                or stat.S_IMODE(info.st_mode) != 0o700):
+            raise DeployError("SSH failure receipt directory unsafe")
+        for ancestor in parent.parents:
+            current = ancestor.lstat()
+            sticky_root = current.st_uid == 0 and current.st_mode & stat.S_ISVTX
+            if (not stat.S_ISDIR(current.st_mode)
+                    or current.st_uid not in (0, os.geteuid())
+                    or (current.st_mode & 0o022 and not sticky_root)):
+                raise DeployError("SSH failure receipt directory unsafe")
+    except DeployError:
+        raise
+    except OSError:
+        raise DeployError("SSH failure receipt path unavailable") from None
+    return path, {"device": info.st_dev, "inode": info.st_ino}
+
+
+def recheck_private_output(path, expected_identity):
+    current_path, current_identity = fresh_private_output(path)
+    if current_identity != expected_identity:
+        raise DeployError("SSH failure receipt directory changed")
+    return current_path
+
+
 def verify_input_fence(fence):
     path, private, exact_mode, limit, expected = fence
     data = read_input(path, private=private, exact_mode=exact_mode, limit=limit)
@@ -469,6 +505,7 @@ def transaction_inputs(mode, hosts, identity, directory, root, environment, *,
         raise DeployError("SSH contexts invalid") from None
     generation, _manifest = bundle_manifest()
     promotions = None
+    failure_receipts = None
     if mode == "deploy":
         try:
             promotion_raw = read_input(
@@ -479,6 +516,23 @@ def transaction_inputs(mode, hosts, identity, directory, root, environment, *,
         if (not isinstance(promotions, dict) or set(promotions) != names
                 or any(not isinstance(config, dict) or not config for config in promotions.values())):
             raise DeployError("promotion proof configs do not match selection")
+        try:
+            receipt_raw = read_input(
+                os.environ["DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE"], private=True, exact_mode=0o600)
+            receipt_values = json.loads(receipt_raw, object_pairs_hook=unique_object)
+        except (KeyError, ValueError, UnicodeError):
+            raise DeployError("SSH failure receipt paths unavailable") from None
+        if not isinstance(receipt_values, dict) or set(receipt_values) != names:
+            raise DeployError("SSH failure receipt paths do not match selection")
+        failure_receipts = {
+            alias: fresh_private_output(receipt_values[alias]) for alias in sorted(names)
+        }
+        receipt_targets = {
+            (item[1]["device"], item[1]["inode"], item[0].name)
+            for item in failure_receipts.values()
+        }
+        if len(receipt_targets) != len(failure_receipts):
+            raise DeployError("SSH failure receipt paths collide")
     result = {}
     promotion_paths = []
     for host in hosts:
@@ -513,6 +567,12 @@ def transaction_inputs(mode, hosts, identity, directory, root, environment, *,
             "ssh_transaction_bundle_generation": generation,
             "ssh_transaction_timeout_seconds": TRANSACTION_TIMEOUT_SECONDS,
             "ssh_transaction_promotion_config_path": str(promotion) if promotion else None,
+            "ssh_transaction_failure_receipt_path": (
+                str(failure_receipts[alias][0]) if failure_receipts is not None else None
+            ),
+            "ssh_transaction_failure_receipt_parent_identity": (
+                failure_receipts[alias][1] if failure_receipts is not None else None
+            ),
             "ssh_transaction_target_identity": expected_target,
         }
     for promotion in promotion_paths:
@@ -632,6 +692,12 @@ def controller(mode):
         for fence in input_fences:
             verify_input_fence(fence)
         for host, command, playbooks, arguments in prepared:
+            transaction = transactions[host["name"]]
+            if mode == "deploy":
+                recheck_private_output(
+                    transaction["ssh_transaction_failure_receipt_path"],
+                    transaction["ssh_transaction_failure_receipt_parent_identity"],
+                )
             wait_for_bootstrap(command[:-1], environment=environment)
             require_recovery_foundation(
                 command, transactions[host["name"]]["ssh_transaction_bundle_generation"], environment)

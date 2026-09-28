@@ -37,7 +37,7 @@ step is closed by the reboot checkpoint alone.
 | REQ-TFB-BOUNDARY | SEC-1788894503320732 | Firewall candidate validation and real nftables source isolation; preserved sshd/DNS/routes | Required |
 | REQ-TFB-RECOVERY | SEC-1788894502776578 | Domain fault injection plus native two-phase boot ordering, interruption, timer and controller-loss recovery | Required |
 | REQ-TFB-PROOF | SEC-1788894503869488 | Fresh public/Tailnet SSH and SFTP with matching host key and observed socket identities | Required |
-| REQ-TFB-DEPLOY | SEC-1788894503869488 | Deploy tests reject enrollment keys and absent management; normal VPN proof still runs | Required |
+| REQ-TFB-DEPLOY | SEC-1788894503869488 | Deploy tests reject enrollment keys and absent management; normal VPN proof still runs; handled SSH baseline failures publish only an atomic allowlisted private category while success and check mode leave no receipt | Required |
 | REQ-UPF-STAGING | SEC-1788894504408980 | Cleanup guard tests and exact-state manifests before bootstrap and after firewall transitions | Required |
 | REQ-TFB-ACCEPTANCE | SEC-1788894504951632 | Fixed staging-only controller-loss/reboot harness, exact-SHA local/hosted gates, positive staging, recovery, deployment, protocol proof, provider absence | Required |
 
@@ -62,6 +62,8 @@ step is closed by the reboot checkpoint alone.
 - Client: real authenticated required VPN profiles with exact target binding;
   successful enrollment or on-node status does not satisfy this category.
 - Artifact: private mode-0600 recovery evidence and observed-context handoff,
+  private mode-0600 SSH baseline failure receipts with unsafe/existing preflight
+  refusal, late no-clobber race, and redaction regressions,
   unchanged host identity, cleanup manifests with unchanged resource
   identities/deadlines, redacted guarded-delete receipts, and authenticated
   exact-resource provider absence.
