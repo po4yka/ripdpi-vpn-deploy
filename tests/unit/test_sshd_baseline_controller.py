@@ -445,29 +445,31 @@ def test_check_mode_does_not_read_or_finalize_onboarding_capability(transaction_
     result = controller.execute(request, {}, onboard=forbidden, proof=forbidden,
         rpc=lambda *a, **k: {"status": "unchanged", "snapshot_digest": "e" * 64})
     assert result == {"status": "unchanged"}
+    with pytest.raises(controller.BaselineError, match="prepare-rpc-failed"):
+        controller.execute(
+            request, {}, onboard=forbidden, proof=forbidden,
+            rpc=lambda *a, **k: (_ for _ in ()).throw(
+                controller.BaselineError("prepare-rpc-failed")
+            ),
+        )
+    assert not Path(transaction_request["failure_receipt_path"]).exists()
 
 
-@pytest.mark.parametrize(
-    ("detail", "expected"),
-    [
-        ("secret-address=192.0.2.10", "controller-failure"),
-        ("prepare-rpc-failed", "prepare-rpc-failed"),
-    ],
-)
+@pytest.mark.parametrize("detail", ["secret-address=192.0.2.10", "prepare-rpc-failed"])
 def test_handled_failure_publishes_only_allowlisted_private_category(
-        transaction_request, detail, expected):
+        transaction_request, detail):
     controller = module()
     path = Path(transaction_request["failure_receipt_path"])
 
     def rpc(*args, **kwargs):
         raise controller.BaselineError(detail)
 
-    with pytest.raises(controller.BaselineError, match=detail):
+    with pytest.raises(controller.BaselineError, match="rollback-uncertain-recovery-armed"):
         controller.execute(transaction_request, {}, rpc=rpc)
     assert json.loads(path.read_bytes()) == {
         "schema_version": 1,
         "status": "failed",
-        "reason": expected,
+        "reason": "rollback-uncertain-recovery-armed",
     }
     assert path.stat().st_mode & 0o777 == 0o600
     assert b"192.0.2.10" not in path.read_bytes()
@@ -523,6 +525,27 @@ def test_interruption_after_prepare_rolls_back_and_publishes(
         "schema_version": 1,
         "status": "failed",
         "reason": "controller-failure",
+    }
+
+    prepare_path = path.with_name("prepare-interruption.json")
+    prepare_request = dict(transaction_request, failure_receipt_path=str(prepare_path))
+    prepare_calls = []
+    prepare_interruption = (KeyboardInterrupt() if isinstance(interruption, KeyboardInterrupt)
+                            else SystemExit(interruption.code))
+
+    def interrupted_prepare(host, known, action, request, environment, cleanup=False):
+        prepare_calls.append((action, cleanup))
+        raise prepare_interruption
+
+    with pytest.raises(type(prepare_interruption)) as raised:
+        controller.execute(prepare_request, {}, rpc=interrupted_prepare)
+    if isinstance(prepare_interruption, SystemExit):
+        assert raised.value.code == prepare_interruption.code
+    assert prepare_calls == [("prepare", False)]
+    assert json.loads(prepare_path.read_bytes()) == {
+        "schema_version": 1,
+        "status": "failed",
+        "reason": "rollback-uncertain-recovery-armed",
     }
 
 

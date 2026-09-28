@@ -58,6 +58,14 @@ class BaselineError(Exception):
     """Categorical only; never include paths, addresses, output or nonces."""
 
 
+class _PrepareOutcomeUnknown(BaseException):
+    """Preserve an operator interruption after prepare may have armed state."""
+
+    def __init__(self, interruption):
+        super().__init__()
+        self.interruption = interruption
+
+
 def _is_hex(value):
     return isinstance(value, str) and HEX.fullmatch(value) is not None
 
@@ -327,14 +335,20 @@ def _execute_validated(value, environment, *, rpc, sftp, proof, clock, onboard):
     prepare = {"intent": "sshd-baseline", "contexts": value["contexts"],
                "hardening_b64": value["hardening_b64"], "timeout": value["timeout_seconds"],
                "check_mode": value["mode"] == "check", "bundle_generation": value["bundle_generation"]}
-    receipt = rpc(host, known_hosts, "prepare", prepare, environment)
     if value["mode"] == "check":
+        receipt = rpc(host, known_hosts, "prepare", prepare, environment)
         if (not isinstance(receipt, dict)
                 or set(receipt) != {"status", "snapshot_digest"}
                 or receipt["status"] not in {"unchanged", "would-change"}
                 or not _is_hex(receipt["snapshot_digest"])):
             raise BaselineError("transaction-receipt-invalid")
         return {"status": receipt["status"]}
+    try:
+        receipt = rpc(host, known_hosts, "prepare", prepare, environment)
+    except (KeyboardInterrupt, SystemExit) as error:
+        raise _PrepareOutcomeUnknown(error) from None
+    except BaseException:
+        raise BaselineError("rollback-uncertain-recovery-armed") from None
     if receipt == {"status": "unchanged"}:
         return receipt
     rollback_capability = None
@@ -392,9 +406,10 @@ def execute(request, environment, *, rpc=transaction_rpc, sftp=fresh_sftp, proof
             value, environment, rpc=rpc, sftp=sftp, proof=proof, clock=clock, onboard=onboard,
         )
     except (BaselineError, ReadinessError, fleet_inspection.InspectionError, OSError, ValueError,
-            KeyboardInterrupt, SystemExit) as error:
+            KeyboardInterrupt, SystemExit, _PrepareOutcomeUnknown) as error:
         if failure_sink is not None:
-            reason = (str(error)
+            reason = ("rollback-uncertain-recovery-armed"
+                      if isinstance(error, _PrepareOutcomeUnknown) else str(error)
                       if isinstance(error, BaselineError) and str(error) in FAILURE_REASONS
                       else "controller-failure")
             try:
@@ -402,6 +417,8 @@ def execute(request, environment, *, rpc=transaction_rpc, sftp=fresh_sftp, proof
             except (OSError, UnicodeError):
                 # Preserve the original controller failure when the private receipt cannot be published.
                 pass
+        if isinstance(error, _PrepareOutcomeUnknown):
+            raise error.interruption from None
         raise
 
 

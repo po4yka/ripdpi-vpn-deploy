@@ -705,7 +705,6 @@ def controller(mode):
                     transaction["ssh_transaction_failure_receipt_parent_identity"],
                 )
         for host, command, playbooks, arguments in prepared:
-            transaction = transactions[host["name"]]
             wait_for_bootstrap(command[:-1], environment=environment)
             require_recovery_foundation(
                 command, transactions[host["name"]]["ssh_transaction_bundle_generation"], environment)

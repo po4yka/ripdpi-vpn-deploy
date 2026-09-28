@@ -228,6 +228,8 @@ the exact-source local/hosted and authorized staging gates.
   Malformed prepare receipts enter rollback protection immediately: a valid
   generation and nonce drive bounded rollback, while an unusable capability or
   failed rollback becomes `rollback-uncertain-recovery-armed` before publication.
+  A deploy prepare RPC that returns no receipt is likewise uncertain and cannot
+  attempt rollback without a capability; check-mode preview remains non-mutating.
   Success writes nothing; an absent receipt after abnormal controller death or
   publication failure remains an unknown outcome. The receipt is diagnostic
   state only and never participates in confirmation or protocol proof.

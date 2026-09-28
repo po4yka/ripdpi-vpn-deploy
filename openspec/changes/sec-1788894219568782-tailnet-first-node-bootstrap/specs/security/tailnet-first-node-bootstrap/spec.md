@@ -185,6 +185,12 @@ migration implicitly.
 - **WHEN** the prepare RPC returns an invalid receipt after it may have armed durable guest state
 - **THEN** the controller attempts bounded rollback when the generation and nonce are safely recoverable, otherwise records `rollback-uncertain-recovery-armed`, and publishes no receipt before that outcome is known.
 
+#### Scenario: Prepare returns no receipt
+
+- **WHEN** a deploy-mode prepare RPC times out, disconnects, or is interrupted before the controller receives a receipt
+- **THEN** the controller records `rollback-uncertain-recovery-armed` without attempting rollback because durable guest state may exist but no capability was received; an operator interruption retains its original nonzero exit status.
+- **AND** check-mode preview failures retain their non-mutating RPC category and publish no receipt.
+
 #### Scenario: Failure receipt authority is unsafe before SSH
 
 - **WHEN** the alias mapping is missing or mismatched, a pathname contains an unencodable surrogate, paths collide including same-directory names that differ only by case or canonical Unicode normalization, a receipt already exists, path ancestry is unsafe, or the parent changes before the deploy controller's pre-SSH recheck

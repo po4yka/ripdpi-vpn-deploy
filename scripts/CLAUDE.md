@@ -81,7 +81,10 @@ every operator filesystem. The baseline controller validates the sink before
 the rest of the deploy request without coupling that authority check to
 unrelated request fields. A malformed prepare receipt attempts bounded
 rollback when its generation and nonce remain usable; otherwise it publishes
-the categorically uncertain result. Publication occurs only after that
+the categorically uncertain result. A deploy prepare RPC that returns no
+receipt is also categorically uncertain because durable guest state may already
+be armed; it cannot attempt rollback without the capability. Check-mode preview
+retains its non-mutating RPC category. Publication occurs only after that
 rollback or a handled interrupt has rolled back. Its CLI preserves a
 nonzero interrupt status but emits only the generic public error. It publishes
 only its allowlisted failure category with no-follow, no-clobber and fsync.
