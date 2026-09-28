@@ -67,6 +67,31 @@ proof of tunneled DNS.
 `TemporaryDirectory` a path beneath symlinked `/var`. Resolve the controller's
 new private directory before passing its executor snapshots to the evaluator;
 the evaluator still rejects symlinked private input paths.
+
+**SSH baseline failures have private categorical receipts** — deploy requires
+an exact-alias mode-`0600` mapping to fresh absent outputs in owner-controlled
+mode-`0700` directories. The deploy controller validates and freezes those
+paths and parent device/inode before readiness, rechecks every selected sink
+in one all-host preflight before the first SSH, and passes it to the baseline
+controller for another identity check before publication. Unencodable surrogate
+pathnames refuse before SSH.
+Same-directory output names are case-folded and
+Unicode-normalized so case-only and canonically equivalent variants refuse on
+every operator filesystem. The baseline controller validates the sink before
+the rest of the deploy request without coupling that authority check to
+unrelated request fields. A malformed prepare receipt attempts bounded
+rollback when its generation and nonce remain usable; otherwise it publishes
+the categorically uncertain result. A deploy prepare RPC that returns no
+receipt is also categorically uncertain because durable guest state may already
+be armed; it cannot attempt rollback without the capability. Check-mode preview
+retains its non-mutating RPC category. Publication occurs only after that
+rollback or a handled interrupt has rolled back. Its CLI preserves a
+nonzero interrupt status but emits only the generic public error. It publishes
+only its allowlisted failure category with no-follow, no-clobber and fsync.
+Keep the Ansible task
+`no_log`; success and check mode leave the output absent. A missing receipt
+after abnormal controller death or publication failure is an unknown outcome,
+not success, and receipts never satisfy promotion or protocol proof.
 Disposable liveness de-onboarding after provider firewall promotion supplies
 both the original binding manifest and its reissued cleanup manifest. Their
 private hashes, immutable resource identity, account, deadline and state path

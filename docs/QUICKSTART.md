@@ -177,7 +177,9 @@ make inventory
 make wait              # 30–120 s, waits for cloud-init
 # Before ordinary deploy: install exact-node SSH recovery, then establish
 # Tailnet with make bootstrap-tailnet; see TAILNET-MANAGEMENT.md.
-# Supply observed DEPLOY_SSH_CONTEXTS_FILE and the reviewed promotion config.
+# Supply observed DEPLOY_SSH_CONTEXTS_FILE, the reviewed promotion config, and
+# a deploy-only DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE mapping to fresh
+# private paths; see RUNBOOK-deploy.md.
 make dry-run           # ansible --check --diff; review what will change
 make deploy            # real run
 make verify            # post-deploy gates

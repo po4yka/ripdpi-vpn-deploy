@@ -326,6 +326,7 @@ ANSIBLE_LIMIT ?=
 ANSIBLE_EXTRA_VARS_FILE ?=
 DEPLOY_SSH_CONTEXTS_FILE ?=
 DEPLOY_PROMOTION_CONFIG_FILE ?=
+DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE ?=
 NETWORK_EXPOSURE_CONFIG ?=
 
 TF_ROOT       := terraform/providers/$(PROVIDER)
@@ -385,6 +386,7 @@ help:
 	@echo "  ANSIBLE_EXTRA_VARS_FILE   Optional limited same-owner mode-0600 YAML; requires ANSIBLE_LIMIT"
 	@echo "  DEPLOY_SSH_CONTEXTS_FILE  Required mode-0600 JSON mapping: exact alias → 2–8 SSH contexts"
 	@echo "  DEPLOY_PROMOTION_CONFIG_FILE  Deploy-only mode-0600 JSON mapping: exact alias → promotion proof config"
+	@echo "  DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE  Deploy-only mode-0600 JSON mapping: exact alias → fresh private baseline failure receipt"
 	@echo ""
 	@echo "── DAY-1 ──────────────────────────────────────────────────────────────"
 	@echo "  check-prereqs              Verify required CLI tools are installed"
@@ -417,7 +419,7 @@ help:
 	@echo "  migrate-ssh-ownership      Explicit one-node policy-preserving SSH ownership transaction"
 	@echo "  staging-tailnet-controller-loss-test  Prove autonomous lease recovery after controller SIGKILL"
 	@echo "  staging-tailnet-reboot-recovery-test  Prove two-phase recovery across a real reboot"
-	@echo "  deploy                     Serial exact-node transaction; also requires DEPLOY_PROMOTION_CONFIG_FILE"
+	@echo "  deploy                     Serial exact-node transaction; requires promotion and fresh baseline-failure receipt mappings"
 	@echo "  deploy-canary              Deploy ENV=canary through the normal deploy flow"
 	@echo "  os-maintenance             Rolling full OS upgrade + required reboot + verification"
 	@echo "  verify [TAG_ON_SUCCESS=1]  ACTIVE checks; watchdog may restart services (+ optional tag)"
@@ -603,6 +605,7 @@ override ANSIBLE_EXTRA_VARS_FILE := $(if $(filter file default undefined,$(origi
 override INSPECT_KNOWN_HOSTS := $(if $(filter file default undefined,$(origin INSPECT_KNOWN_HOSTS)),$(INSPECT_KNOWN_HOSTS),$(value INSPECT_KNOWN_HOSTS))
 override DEPLOY_SSH_CONTEXTS_FILE := $(value DEPLOY_SSH_CONTEXTS_FILE)
 override DEPLOY_PROMOTION_CONFIG_FILE := $(value DEPLOY_PROMOTION_CONFIG_FILE)
+override DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE := $(value DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE)
 override TAILNET_NETWORK_CONFIG := $(value TAILNET_NETWORK_CONFIG)
 endif
 deploy dry-run deploy-canary: override DEPLOY_SOURCE_REVISION :=
@@ -615,6 +618,7 @@ deploy dry-run: export DEPLOY_EXTRA_VARS_FILE = $(ANSIBLE_EXTRA_VARS_FILE)
 deploy dry-run: export DEPLOY_KNOWN_HOSTS = $(INSPECT_KNOWN_HOSTS)
 deploy dry-run: export DEPLOY_SSH_CONTEXTS_FILE := $(DEPLOY_SSH_CONTEXTS_FILE)
 deploy dry-run: export DEPLOY_PROMOTION_CONFIG_FILE := $(DEPLOY_PROMOTION_CONFIG_FILE)
+deploy dry-run: export DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE := $(DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE)
 deploy dry-run: export DEPLOY_ENV = $(ENV)
 deploy dry-run: export DEPLOY_PROVIDER = $(PROVIDER)
 dry-run:

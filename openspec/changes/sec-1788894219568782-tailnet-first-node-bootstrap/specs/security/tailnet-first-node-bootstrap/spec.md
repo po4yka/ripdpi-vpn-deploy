@@ -118,6 +118,28 @@ management paths and MUST retain the exact-node protocol promotion gate.
 First enrollment MUST move to bootstrap; deploy MUST reject enrollment keys
 and verify existing Tailnet state without invoking login. All existing callers
 and tests MUST migrate; no legacy credential-forwarding fallback is permitted.
+Deploy mode MUST require a private exact-alias mapping to fresh absent SSH
+baseline failure-receipt paths before readiness or SSH. Each path MUST be
+absolute, distinct, and beneath a same-owner mode-`0700` directory. The deploy
+controller MUST recheck every selected sink in one all-host pass before the
+first SSH or mutation of any selected host. The
+baseline controller MUST publish a receipt for any handled deploy-mode
+controller failure after safe receipt-sink validation. When a transaction has
+been armed, publication occurs only after rollback has either completed or
+become categorically uncertain. Publication MUST be atomic, no-follow,
+no-clobber, mode `0600`, and fsync both data and directory. Its exact schema is
+`schema_version: 1`, `status: failed`, and `reason`, where `reason` is exactly
+one of `apply-rpc-failed`, `confirm-rpc-failed`, `controller-failure`,
+`fresh-sftp-failed`, `management-transport-required`, `onboarding-refused`,
+`promotion-proof-failed`, `promotion-proof-mismatch`, `prepare-rpc-failed`,
+`rollback-uncertain-recovery-armed`, `status-rpc-failed`,
+`transaction-identity-mismatch`, or `transaction-receipt-invalid`. It MUST NOT contain
+an alias, address, path, key, nonce, capability, digest, child output,
+exception text, or traceback. Public output and the Ansible task MUST remain
+generic and `no_log`. A successful transaction MUST leave the fresh receipt
+path absent. A missing receipt after controller death or publication failure
+is an unknown outcome, never success or acceptance evidence. Check mode MUST
+not require or write a failure receipt.
 An already bootstrapped node may be verified idempotently without consuming a
 new key, mutating its identity, or replacing mismatched operator inputs.
 On a fresh Debian node with known shadowed packaged SSH directives, an
@@ -152,6 +174,32 @@ migration implicitly.
 
 - **WHEN** ordinary deployment cannot prove required VPN profiles
 - **THEN** deployment fails under its existing rollback contract and bootstrap evidence cannot satisfy that gate.
+
+#### Scenario: SSH baseline convergence fails under hidden Ansible output
+
+- **WHEN** a handled baseline pre-transaction validation, onboarding, prepare, apply, fresh transport proof, promotion proof, confirmation, or rollback operation refuses during ordinary deploy
+- **THEN** the deployment remains failed and a fresh private receipt records only the final allowlisted category, while Ansible output remains redacted and the receipt cannot satisfy deployment or VPN acceptance.
+
+#### Scenario: Prepare arms state but returns a malformed receipt
+
+- **WHEN** the prepare RPC returns an invalid receipt after it may have armed durable guest state
+- **THEN** the controller attempts bounded rollback when the generation and nonce are safely recoverable, otherwise records `rollback-uncertain-recovery-armed`, and publishes no receipt before that outcome is known.
+
+#### Scenario: Prepare returns no receipt
+
+- **WHEN** a deploy-mode prepare RPC times out, disconnects, or is interrupted before the controller receives a receipt
+- **THEN** the controller records `rollback-uncertain-recovery-armed` without attempting rollback because durable guest state may exist but no capability was received; an operator interruption retains its original nonzero exit status.
+- **AND** check-mode preview failures retain their non-mutating RPC category and publish no receipt.
+
+#### Scenario: Failure receipt authority is unsafe before SSH
+
+- **WHEN** the alias mapping is missing or mismatched, a pathname contains an unencodable surrogate, paths collide including same-directory names that differ only by case or canonical Unicode normalization, a receipt already exists, path ancestry is unsafe, or the parent changes before the deploy controller's pre-SSH recheck
+- **THEN** the controller's single all-host recheck refuses deployment before readiness, SSH, or mutation of any selected host; no existing receipt is replaced and no transaction is armed.
+
+#### Scenario: Failure receipt authority changes after preflight
+
+- **WHEN** the receipt parent or final path changes after preflight or after the baseline transaction is armed
+- **THEN** no existing file is replaced, deployment remains failed, and an absent receipt is an unknown outcome rather than success or acceptance evidence.
 
 #### Scenario: AWG protocol proof resolves a hostname in its namespace
 

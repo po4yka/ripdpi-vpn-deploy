@@ -85,6 +85,9 @@ def workspace(tmp_path):
         context_pairs[name] = [context, {**context, "addr": "100.64.0.44", "laddr": management}]
     contexts = write(tmp_path.resolve() / "ssh-contexts.json", "{}\n")
     promotion = write(tmp_path.resolve() / "promotion.json", "{}\n")
+    receipts = tmp_path.resolve() / "ssh-baseline-receipts"
+    receipts.mkdir(mode=0o700)
+    receipt_mapping = write(tmp_path.resolve() / "ssh-baseline-receipts.json", "{}\n")
     calls = tmp_path.resolve() / "calls.jsonl"
     binary = tmp_path.resolve() / "bin"
     binary.mkdir()
@@ -117,7 +120,8 @@ sys.exit(0)
     environment.update(HOME=str(home), PATH=str(binary) + os.pathsep + os.environ["PATH"],
                        INSPECT_KNOWN_HOSTS=str(known_hosts),
                        DEPLOY_SSH_CONTEXTS_FILE=str(contexts),
-                       DEPLOY_PROMOTION_CONFIG_FILE=str(promotion))
+                       DEPLOY_PROMOTION_CONFIG_FILE=str(promotion),
+                       DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE=str(receipt_mapping))
     for command in (["git", "init", "-q"], ["git", "config", "user.name", "Deploy fixture"],
                     ["git", "config", "user.email", "fixture@example.invalid"],
                     ["git", "add", "."], ["git", "-c", "commit.gpgsign=false", "commit", "-qm", "test: fixture source"]):
@@ -128,6 +132,7 @@ sys.exit(0)
     return {"root": root, "home": home, "inventory": inventory, "key": key,
             "context_pairs": context_pairs,
             "contexts": contexts, "known_hosts": known_hosts, "secrets": secrets,
+            "receipt_mapping": receipt_mapping, "receipts": receipts,
             "calls": calls, "env": environment, "source_digest": source_digest}
 
 
@@ -145,6 +150,9 @@ def set_contexts(workspace, limit, context_pairs=None):
             "public_service_address_sha256": hashlib.sha256(addresses[name].encode()).hexdigest(),
             "deployable_digest": digest,
         }} for name in sorted(selected)}) + "\n")
+    workspace["receipt_mapping"].write_text(json.dumps({
+        name: str(workspace["receipts"] / (name + ".json")) for name in sorted(selected)
+    }) + "\n")
 
 
 def invoke(workspace, target="dry-run", limit="", context_pairs=None, **values):
@@ -458,6 +466,7 @@ runpy.run_path(sys.argv[0], run_name='__main__')
     ("ANSIBLE_LIMIT", "dry-run"), ("SECRETS_FILE", "dry-run"),
     ("ANSIBLE_EXTRA_VARS_FILE", "dry-run"), ("INSPECT_KNOWN_HOSTS", "dry-run"),
     ("DEPLOY_SSH_CONTEXTS_FILE", "dry-run"), ("DEPLOY_PROMOTION_CONFIG_FILE", "deploy"),
+    ("DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE", "deploy"),
 ])
 def test_make_inputs_do_not_expand_make_functions(workspace, field, target):
     marker = workspace["root"].parent / "expanded"
@@ -702,9 +711,11 @@ def test_network_exposure_promotion_must_equal_exact_inventory_selection(workspa
 
 @pytest.mark.parametrize("fault", ["contexts-mode", "contexts-selection", "contexts-value",
                                     "contexts-port", "contexts-duplicate",
-                                    "promotion-mode", "promotion-selection", "promotion-duplicate"])
+                                    "promotion-mode", "promotion-selection", "promotion-duplicate",
+                                    "receipt-mode", "receipt-selection", "receipt-duplicate",
+                                    "receipt-relative", "receipt-existing", "receipt-unsafe-parent"])
 def test_transaction_inputs_are_validated_before_first_ssh(workspace, fault):
-    target = "deploy" if fault.startswith("promotion-") else "dry-run"
+    target = "deploy" if fault.startswith(("promotion-", "receipt-")) else "dry-run"
     set_contexts(workspace, "node-one")
     if fault == "contexts-mode":
         workspace["contexts"].chmod(0o640)
@@ -726,15 +737,72 @@ def test_transaction_inputs_are_validated_before_first_ssh(workspace, fault):
     elif fault == "promotion-selection":
         Path(workspace["env"]["DEPLOY_PROMOTION_CONFIG_FILE"]).write_text(json.dumps({
             "node-two": {"schema_version": 1, "fixture": "node-two"}}) + "\n")
-    else:
+    elif fault == "promotion-duplicate":
         promotion = Path(workspace["env"]["DEPLOY_PROMOTION_CONFIG_FILE"])
         promotion.write_text(promotion.read_text().replace(
             '"fixture": "node-one"', '"fixture": "node-one", "fixture": "reject"'))
+    elif fault == "receipt-mode":
+        workspace["receipt_mapping"].chmod(0o640)
+    elif fault == "receipt-selection":
+        workspace["receipt_mapping"].write_text(json.dumps({
+            "node-two": str(workspace["receipts"] / "node-two.json")}) + "\n")
+    elif fault == "receipt-duplicate":
+        path = str(workspace["receipts"] / "node-one.json")
+        workspace["receipt_mapping"].write_text(
+            json.dumps({"node-one": path})[:-1] + ',"node-one":' + json.dumps(path) + "}\n")
+    elif fault == "receipt-relative":
+        workspace["receipt_mapping"].write_text('{"node-one":"relative.json"}\n')
+    elif fault == "receipt-existing":
+        (workspace["receipts"] / "node-one.json").write_text("foreign")
+    else:
+        workspace["receipts"].chmod(0o755)
     result = subprocess.run(["make", target, "ANSIBLE_LIMIT=node-one",
                              "SECRETS_FILE=" + str(workspace["secrets"])],
                             cwd=workspace["root"], env=workspace["env"],
                             text=True, capture_output=True, timeout=25)
     assert result.returncode != 0
+    assert not any(entry["program"] in {"ssh", "ansible-playbook"} for entry in calls(workspace))
+
+
+@pytest.mark.parametrize("second_spelling", [
+    "same", "double-leading-slash", "case-variant", "unicode-normalization-variant",
+])
+def test_failure_receipt_paths_must_be_distinct_before_first_ssh(workspace, second_spelling):
+    set_contexts(workspace, "")
+    shared = str(workspace["receipts"] / "shared.json")
+    if second_spelling == "unicode-normalization-variant":
+        shared = str(workspace["receipts"] / "caf\N{LATIN SMALL LETTER E WITH ACUTE}.json")
+    second = ({
+        "same": shared,
+        "double-leading-slash": "//" + shared.lstrip("/"),
+        "case-variant": str(workspace["receipts"] / "SHARED.JSON"),
+        "unicode-normalization-variant": str(workspace["receipts"] / "cafe\N{COMBINING ACUTE ACCENT}.json"),
+    })[second_spelling]
+    workspace["receipt_mapping"].write_text(json.dumps({
+        "node-one": shared,
+        "node-two": second,
+    }) + "\n")
+    result = subprocess.run(
+        ["make", "deploy", "SECRETS_FILE=" + str(workspace["secrets"])],
+        cwd=workspace["root"], env=workspace["env"], text=True, capture_output=True, timeout=25,
+    )
+    assert result.returncode != 0
+    assert not any(entry["program"] in {"ssh", "ansible-playbook"} for entry in calls(workspace))
+
+
+def test_unencodable_failure_receipt_path_refuses_before_first_ssh(workspace):
+    set_contexts(workspace, "node-one")
+    workspace["receipt_mapping"].write_text(json.dumps({
+        "node-one": str(workspace["receipts"] / "bad\ud800.json"),
+    }) + "\n")
+    result = subprocess.run(
+        ["make", "deploy", "ANSIBLE_LIMIT=node-one",
+         "SECRETS_FILE=" + str(workspace["secrets"])],
+        cwd=workspace["root"], env=workspace["env"], text=True,
+        capture_output=True, timeout=25,
+    )
+    assert result.returncode != 0
+    assert "Traceback" not in result.stdout + result.stderr
     assert not any(entry["program"] in {"ssh", "ansible-playbook"} for entry in calls(workspace))
 
 
@@ -801,10 +869,68 @@ pathlib.Path({str(record)!r}).write_text(json.dumps(transaction))
     observed = json.loads(record.read_text())
     assert observed["ssh_transaction_controller_managed"] is True
     assert observed["ssh_transaction_promotion_config_path"] is None
+    assert observed["ssh_transaction_failure_receipt_path"] is None
+    assert observed["ssh_transaction_failure_receipt_parent_identity"] is None
     assert observed["ssh_transaction_target_identity"]["inventory_alias"] == "node-one"
     assert len(observed["ssh_transaction_bundle_generation"]) == 64
     assert Path(observed["ssh_transaction_inventory_path"]).name == "0-inventory.ini"
     assert Path(observed["ssh_transaction_known_hosts_path"]).name == "known_hosts"
+
+
+def test_deploy_wrapper_contains_persistent_failure_receipt_path(workspace):
+    record = workspace["root"].parent / "transaction.json"
+    executable = Path(workspace["env"]["PATH"].split(os.pathsep)[0]) / "ansible-playbook"
+    write(executable, f"""#!{sys.executable}
+import json, pathlib, sys
+document = json.loads(pathlib.Path(sys.argv[1]).read_text())
+files = document[0]['vars']['deployment_input_files']['node-one']
+transaction = json.loads(pathlib.Path(next(path for path in files if path.endswith('-ssh-transaction.json'))).read_text())
+pathlib.Path({str(record)!r}).write_text(json.dumps(transaction))
+""", 0o700)
+    result = invoke(workspace, target="deploy", limit="node-one")
+    assert result.returncode == 0, result.stderr
+    observed = json.loads(record.read_text())
+    assert observed["ssh_transaction_failure_receipt_path"] == str(
+        workspace["receipts"] / "node-one.json"
+    )
+    parent = workspace["receipts"].stat()
+    assert observed["ssh_transaction_failure_receipt_parent_identity"] == {
+        "device": parent.st_dev,
+        "inode": parent.st_ino,
+    }
+
+
+def test_later_receipt_parent_replacement_refuses_before_any_host_ssh(workspace):
+    later_receipts = workspace["receipts"].with_name("later-receipts")
+    later_receipts.mkdir(mode=0o700)
+    proof = workspace["root"] / "scripts/sshd-promotion-proof.py"
+    original = later_receipts.with_name("original-later-receipts")
+    proof.write_text(proof.read_text().replace(
+        "    config = json.loads(pathlib.Path(sys.argv[sys.argv.index('--config') + 1]).read_text())",
+        f"""    config = json.loads(pathlib.Path(sys.argv[sys.argv.index('--config') + 1]).read_text())
+    if config.get('fixture') == 'node-two':
+        pathlib.Path({str(later_receipts)!r}).rename(pathlib.Path({str(original)!r}))
+        pathlib.Path({str(later_receipts)!r}).mkdir(mode=0o700)
+""",
+    ))
+    commit_fixture(workspace)
+    set_contexts(workspace, "")
+    workspace["receipt_mapping"].write_text(json.dumps({
+        "node-one": str(workspace["receipts"] / "node-one.json"),
+        "node-two": str(later_receipts / "node-two.json"),
+    }) + "\n")
+
+    result = subprocess.run(
+        ["make", "deploy", "SECRETS_FILE=" + str(workspace["secrets"])],
+        cwd=workspace["root"], env=workspace["env"], text=True,
+        capture_output=True, timeout=25,
+    )
+
+    assert result.returncode != 0
+    assert not any(entry["program"] in {"ssh", "ansible-playbook"} for entry in calls(workspace))
+    assert not (workspace["receipts"] / "node-one.json").exists()
+    assert not (later_receipts / "node-two.json").exists()
+    assert not (original / "node-two.json").exists()
 
 
 def test_private_read_only_ssh_key_remains_usable(workspace):

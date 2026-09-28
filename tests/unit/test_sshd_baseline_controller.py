@@ -37,8 +37,11 @@ def transaction_request(tmp_path):
     proof = tmp_path / "proof.yaml"
     proof.write_text("{}")
     proof.chmod(0o600)
+    receipts = tmp_path / "receipts"
+    receipts.mkdir(mode=0o700)
+    receipt_parent = receipts.stat()
     return {
-        "schema_version": 1, "mode": "deploy", "inventory_alias": "node-a",
+        "schema_version": 2, "mode": "deploy", "inventory_alias": "node-a",
         "inventory_path": str(inventory), "known_hosts_path": str(known),
         "contexts": [
             {"user": "deploy", "host": "controller-a", "addr": "198.51.100.2",
@@ -49,6 +52,11 @@ def transaction_request(tmp_path):
         "hardening_b64": base64.b64encode(b"X11Forwarding no\nSubsystem sftp internal-sftp\n").decode(),
         "bundle_generation": "a" * 64, "timeout_seconds": 180,
         "promotion_config_path": str(proof),
+        "failure_receipt_path": str(receipts / "failure.json"),
+        "failure_receipt_parent_identity": {
+            "device": receipt_parent.st_dev,
+            "inode": receipt_parent.st_ino,
+        },
         "target_identity": {"inventory_alias": "node-a", "public_service_address_sha256": "b" * 64,
                             "deployable_digest": "c" * 64},
     }
@@ -99,7 +107,8 @@ def test_deploy_orders_apply_fresh_public_and_management_proofs_before_confirm(t
 
 def test_check_mode_only_previews_and_creates_no_promotion_dependency(transaction_request):
     controller = module()
-    transaction_request = dict(transaction_request, mode="check", promotion_config_path=None)
+    transaction_request = dict(transaction_request, mode="check", promotion_config_path=None,
+                               failure_receipt_path=None, failure_receipt_parent_identity=None)
     calls = []
 
     def rpc(host, known, action, payload, environment, cleanup=False):
@@ -170,7 +179,7 @@ def test_every_post_prepare_failure_attempts_one_bounded_rollback(transaction_re
     assert "confirm" not in [call[0] for call in calls] or failure == "confirm"
 
 
-@pytest.mark.parametrize("mutation", ["status", "extra", "observed", "identity"])
+@pytest.mark.parametrize("mutation", ["status", "extra", "observed", "identity", "identity-type"])
 def test_promotion_receipt_parser_requires_exact_safe_schema(transaction_request, mutation, monkeypatch):
     controller = module()
     value = proof_receipt(transaction_request)
@@ -180,8 +189,10 @@ def test_promotion_receipt_parser_requires_exact_safe_schema(transaction_request
         value["detail"] = "unsafe"
     elif mutation == "observed":
         value["observed_at"] = True
-    else:
+    elif mutation == "identity":
         value["target_identity"] = {**value["target_identity"], "extra": "unsafe"}
+    else:
+        value["target_identity"]["deployable_digest"] = 1
     monkeypatch.setattr(controller, "run_command", lambda *args, **kwargs: (0, json.dumps(value)))
     with pytest.raises(controller.BaselineError, match="promotion-proof-failed"):
         controller.promotion_proof(ROOT, Path(transaction_request["promotion_config_path"]), {})
@@ -285,6 +296,74 @@ def test_uncertain_rollback_is_a_distinct_fail_closed_result(transaction_request
         controller.execute(transaction_request, {}, rpc=rpc)
 
 
+@pytest.mark.parametrize(
+    ("mutation", "expected_reason"),
+    [("snapshot", "transaction-receipt-invalid"),
+     ("status", "transaction-identity-mismatch")],
+)
+def test_invalid_prepare_receipt_rolls_back_before_publication(
+        transaction_request, mutation, expected_reason):
+    controller = module()
+    path = Path(transaction_request["failure_receipt_path"])
+    calls = []
+
+    def rpc(host, known, action, payload, environment, cleanup=False):
+        calls.append((action, cleanup))
+        if action == "prepare":
+            value = receipt("prepared")
+            if mutation == "snapshot":
+                value["snapshot_digest"] = 1
+            else:
+                value["status"] = "unexpected"
+            return value
+        assert action == "rollback"
+        return receipt("rolled_back")
+
+    with pytest.raises(controller.BaselineError, match=expected_reason):
+        controller.execute(transaction_request, {}, rpc=rpc)
+    assert calls == [("prepare", False), ("rollback", True)]
+    assert json.loads(path.read_bytes()) == {
+        "schema_version": 1,
+        "status": "failed",
+        "reason": expected_reason,
+    }
+
+
+@pytest.mark.parametrize("field", ["generation", "nonce"])
+def test_invalid_prepare_rollback_capability_is_categorically_uncertain(
+        transaction_request, field):
+    controller = module()
+    path = Path(transaction_request["failure_receipt_path"])
+    calls = []
+
+    def rpc(host, known, action, payload, environment, cleanup=False):
+        calls.append((action, cleanup))
+        value = receipt("prepared")
+        value[field] = 1
+        return value
+
+    with pytest.raises(controller.BaselineError, match="rollback-uncertain-recovery-armed"):
+        controller.execute(transaction_request, {}, rpc=rpc)
+    assert calls == [("prepare", False)]
+    assert json.loads(path.read_bytes()) == {
+        "schema_version": 1,
+        "status": "failed",
+        "reason": "rollback-uncertain-recovery-armed",
+    }
+
+
+@pytest.mark.parametrize(
+    "remote_receipt",
+    [{"status": "unchanged", "snapshot_digest": 1}, [{}]],
+)
+def test_malformed_check_receipt_is_categorical(transaction_request, remote_receipt):
+    controller = module()
+    request = dict(transaction_request, mode="check", promotion_config_path=None,
+                   failure_receipt_path=None, failure_receipt_parent_identity=None)
+    with pytest.raises(controller.BaselineError, match="transaction-receipt-invalid"):
+        controller.execute(request, {}, rpc=lambda *args, **kwargs: remote_receipt)
+
+
 @pytest.mark.parametrize("mutation", ["unknown-alias", "bad-generation", "one-context",
                                        "proof-in-check", "missing-proof-in-deploy"])
 def test_request_boundaries_fail_before_rpc(transaction_request, mutation):
@@ -359,9 +438,297 @@ def test_onboarding_failure_never_arms_ssh_transaction(transaction_request, fail
 
 def test_check_mode_does_not_read_or_finalize_onboarding_capability(transaction_request):
     controller = module()
-    request = dict(transaction_request, mode="check", promotion_config_path=None)
+    request = dict(transaction_request, mode="check", promotion_config_path=None,
+                   failure_receipt_path=None, failure_receipt_parent_identity=None)
     def forbidden(*args):
         pytest.fail("check mode must not read onboarding inputs or launch evaluator")
     result = controller.execute(request, {}, onboard=forbidden, proof=forbidden,
         rpc=lambda *a, **k: {"status": "unchanged", "snapshot_digest": "e" * 64})
     assert result == {"status": "unchanged"}
+    with pytest.raises(controller.BaselineError, match="prepare-rpc-failed"):
+        controller.execute(
+            request, {}, onboard=forbidden, proof=forbidden,
+            rpc=lambda *a, **k: (_ for _ in ()).throw(
+                controller.BaselineError("prepare-rpc-failed")
+            ),
+        )
+    assert not Path(transaction_request["failure_receipt_path"]).exists()
+
+
+@pytest.mark.parametrize("detail", ["secret-address=192.0.2.10", "prepare-rpc-failed"])
+def test_handled_failure_publishes_only_allowlisted_private_category(
+        transaction_request, detail):
+    controller = module()
+    path = Path(transaction_request["failure_receipt_path"])
+
+    def rpc(*args, **kwargs):
+        raise controller.BaselineError(detail)
+
+    with pytest.raises(controller.BaselineError, match="rollback-uncertain-recovery-armed"):
+        controller.execute(transaction_request, {}, rpc=rpc)
+    assert json.loads(path.read_bytes()) == {
+        "schema_version": 1,
+        "status": "failed",
+        "reason": "rollback-uncertain-recovery-armed",
+    }
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert b"192.0.2.10" not in path.read_bytes()
+
+
+@pytest.mark.parametrize("mutation", ["invalid-target", "missing-target", "unexpected-field"])
+def test_safe_sink_validation_failure_publishes_before_rpc(transaction_request, mutation):
+    controller = module()
+    path = Path(transaction_request["failure_receipt_path"])
+    request = dict(transaction_request)
+    if mutation == "invalid-target":
+        request["target_identity"] = {}
+    elif mutation == "missing-target":
+        del request["target_identity"]
+    else:
+        request["unexpected"] = "field"
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("invalid request must refuse before RPC")
+
+    with pytest.raises(controller.BaselineError, match="request-invalid"):
+        controller.execute(request, {}, rpc=forbidden)
+    assert json.loads(path.read_bytes()) == {
+        "schema_version": 1,
+        "status": "failed",
+        "reason": "controller-failure",
+    }
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize("interruption", [KeyboardInterrupt(), SystemExit(130)])
+def test_interruption_after_prepare_rolls_back_and_publishes(
+        transaction_request, interruption):
+    controller = module()
+    path = Path(transaction_request["failure_receipt_path"])
+    calls = []
+
+    def rpc(host, known, action, request, environment, cleanup=False):
+        calls.append((action, cleanup))
+        if action == "prepare":
+            return receipt("prepared")
+        if action == "apply":
+            raise interruption
+        assert action == "rollback"
+        return receipt("rolled_back")
+
+    with pytest.raises(type(interruption)) as raised:
+        controller.execute(transaction_request, {}, rpc=rpc)
+    if isinstance(interruption, SystemExit):
+        assert raised.value.code == 130
+    assert calls == [("prepare", False), ("apply", False), ("rollback", True)]
+    assert json.loads(path.read_bytes()) == {
+        "schema_version": 1,
+        "status": "failed",
+        "reason": "controller-failure",
+    }
+
+    prepare_path = path.with_name("prepare-interruption.json")
+    prepare_request = dict(transaction_request, failure_receipt_path=str(prepare_path))
+    prepare_calls = []
+    prepare_interruption = (KeyboardInterrupt() if isinstance(interruption, KeyboardInterrupt)
+                            else SystemExit(interruption.code))
+
+    def interrupted_prepare(host, known, action, request, environment, cleanup=False):
+        prepare_calls.append((action, cleanup))
+        raise prepare_interruption
+
+    with pytest.raises(type(prepare_interruption)) as raised:
+        controller.execute(prepare_request, {}, rpc=interrupted_prepare)
+    if isinstance(prepare_interruption, SystemExit):
+        assert raised.value.code == prepare_interruption.code
+    assert prepare_calls == [("prepare", False)]
+    assert json.loads(prepare_path.read_bytes()) == {
+        "schema_version": 1,
+        "status": "failed",
+        "reason": "rollback-uncertain-recovery-armed",
+    }
+
+
+def test_success_and_check_mode_leave_failure_receipt_absent(transaction_request):
+    controller = module()
+    path = Path(transaction_request["failure_receipt_path"])
+    assert controller.execute(
+        transaction_request, {}, rpc=lambda *args, **kwargs: {"status": "unchanged"},
+        proof=lambda *args: proof_receipt(transaction_request), onboard=lambda path, env: (path, False),
+    ) == {"status": "unchanged"}
+    assert not path.exists()
+
+    check = dict(transaction_request, mode="check", promotion_config_path=None,
+                 failure_receipt_path=None, failure_receipt_parent_identity=None)
+    assert controller.execute(
+        check, {}, rpc=lambda *args, **kwargs: {"status": "unchanged", "snapshot_digest": "f" * 64},
+    ) == {"status": "unchanged"}
+    assert not path.exists()
+
+
+@pytest.mark.parametrize("case", ["existing", "symlink", "unsafe-parent"])
+def test_unsafe_failure_receipt_refuses_before_rpc(transaction_request, case):
+    controller = module()
+    value = dict(transaction_request)
+    path = Path(value["failure_receipt_path"])
+    if case == "existing":
+        path.write_text("foreign")
+    elif case == "symlink":
+        target = path.parent.with_name("other-receipts")
+        target.mkdir(mode=0o700)
+        path.parent.rmdir()
+        path.parent.symlink_to(target, target_is_directory=True)
+    else:
+        path.parent.chmod(0o755)
+    called = False
+
+    def rpc(*args, **kwargs):
+        nonlocal called
+        called = True
+
+    with pytest.raises(controller.BaselineError, match="request-invalid"):
+        controller.execute(value, {}, rpc=rpc)
+    assert not called
+    if case == "existing":
+        assert path.read_text() == "foreign"
+
+
+def test_unencodable_failure_receipt_refuses_before_rpc(transaction_request):
+    controller = module()
+    value = dict(transaction_request)
+    value["failure_receipt_path"] = str(Path(value["failure_receipt_path"]).parent) + "/bad\ud800.json"
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("unencodable receipt path must refuse before RPC")
+
+    with pytest.raises(controller.BaselineError, match="request-invalid"):
+        controller.execute(value, {}, rpc=forbidden)
+
+
+def test_publication_encoding_failure_preserves_generic_main_error(
+        transaction_request, monkeypatch, capsys):
+    controller = module()
+    monkeypatch.setattr(controller, "_request", lambda: transaction_request)
+    monkeypatch.setattr(
+        controller,
+        "_execute_validated",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            controller.BaselineError("prepare-rpc-failed")
+        ),
+    )
+    monkeypatch.setattr(
+        controller,
+        "_publish_failure",
+        lambda *args: (_ for _ in ()).throw(
+            UnicodeEncodeError("utf-8", "fixture", 0, 1, "unencodable")
+        ),
+    )
+
+    assert controller.main() == 1
+    assert json.loads(capsys.readouterr().out) == {
+        "status": "error",
+        "reason": "ssh-baseline-transaction-failed",
+    }
+
+
+def test_parent_replacement_cannot_receive_or_mask_failure_receipt(transaction_request):
+    controller = module()
+    path = Path(transaction_request["failure_receipt_path"])
+    original_parent = path.parent.with_name("original-receipts")
+
+    def onboard(*args):
+        path.parent.rename(original_parent)
+        path.parent.mkdir(mode=0o700)
+        raise controller.BaselineError("onboarding-refused")
+
+    with pytest.raises(controller.BaselineError, match="onboarding-refused"):
+        controller.execute(transaction_request, {}, onboard=onboard)
+    assert not path.exists()
+    assert not (original_parent / path.name).exists()
+
+
+def test_final_path_creation_race_is_not_overwritten_or_masked(transaction_request):
+    controller = module()
+    path = Path(transaction_request["failure_receipt_path"])
+
+    def onboard(*args):
+        path.write_bytes(b"foreign-private-state\n")
+        path.chmod(0o600)
+        raise controller.BaselineError("onboarding-refused")
+
+    with pytest.raises(controller.BaselineError, match="onboarding-refused"):
+        controller.execute(transaction_request, {}, onboard=onboard)
+    assert path.read_bytes() == b"foreign-private-state\n"
+
+
+def test_final_path_race_after_prepare_preserves_failure_and_foreign_file(transaction_request):
+    controller = module()
+    path = Path(transaction_request["failure_receipt_path"])
+    calls = []
+
+    def rpc(host, known, action, request, environment, cleanup=False):
+        calls.append((action, cleanup))
+        if action == "prepare":
+            return receipt("prepared")
+        if action == "apply":
+            path.write_bytes(b"foreign-private-state\n")
+            path.chmod(0o600)
+            raise controller.BaselineError("apply-rpc-failed")
+        assert action == "rollback"
+        return receipt("rolled_back")
+
+    with pytest.raises(controller.BaselineError, match="apply-rpc-failed"):
+        controller.execute(transaction_request, {}, rpc=rpc)
+    assert calls == [("prepare", False), ("apply", False), ("rollback", True)]
+    assert path.read_bytes() == b"foreign-private-state\n"
+
+
+def test_main_keeps_public_failure_generic_while_private_receipt_is_redacted(
+        transaction_request, monkeypatch, capsys):
+    controller = module()
+    path = Path(transaction_request["failure_receipt_path"])
+    monkeypatch.setattr(controller, "_request", lambda: transaction_request)
+    monkeypatch.setattr(
+        controller,
+        "_execute_validated",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            controller.BaselineError("private-address=192.0.2.10")
+        ),
+    )
+    assert controller.main() == 1
+    assert json.loads(capsys.readouterr().out) == {
+        "status": "error",
+        "reason": "ssh-baseline-transaction-failed",
+    }
+    assert json.loads(path.read_bytes()) == {
+        "schema_version": 1,
+        "status": "failed",
+        "reason": "controller-failure",
+    }
+
+
+@pytest.mark.parametrize(
+    ("interruption", "expected_status"),
+    [(KeyboardInterrupt(), 130), (SystemExit(75), 75), (SystemExit(0), 1)],
+)
+def test_main_keeps_handled_interrupt_public_failure_generic(
+        transaction_request, monkeypatch, capsys, interruption, expected_status):
+    controller = module()
+    path = Path(transaction_request["failure_receipt_path"])
+    monkeypatch.setattr(controller, "_request", lambda: transaction_request)
+    monkeypatch.setattr(
+        controller,
+        "_execute_validated",
+        lambda *args, **kwargs: (_ for _ in ()).throw(interruption),
+    )
+
+    assert controller.main() == expected_status
+    assert json.loads(capsys.readouterr().out) == {
+        "status": "error",
+        "reason": "ssh-baseline-transaction-failed",
+    }
+    assert json.loads(path.read_bytes()) == {
+        "schema_version": 1,
+        "status": "failed",
+        "reason": "controller-failure",
+    }
