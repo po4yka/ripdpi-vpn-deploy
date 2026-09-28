@@ -224,6 +224,9 @@ the exact-source local/hosted and authorized staging gates.
   sink, validates it before the rest of the deploy request, and on handled
   failure or a successfully rolled-back interrupt publishes only an allowlisted final
   category with mode `0600`, no-clobber linking and data/directory fsync.
+  Malformed prepare receipts enter rollback protection immediately: a valid
+  generation and nonce drive bounded rollback, while an unusable capability or
+  failed rollback becomes `rollback-uncertain-recovery-armed` before publication.
   Success writes nothing; an absent receipt after abnormal controller death or
   publication failure remains an unknown outcome. The receipt is diagnostic
   state only and never participates in confirmation or protocol proof.

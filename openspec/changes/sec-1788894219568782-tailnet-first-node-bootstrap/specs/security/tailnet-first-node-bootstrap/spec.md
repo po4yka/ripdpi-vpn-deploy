@@ -178,6 +178,11 @@ migration implicitly.
 - **WHEN** a handled baseline pre-transaction validation, onboarding, prepare, apply, fresh transport proof, promotion proof, confirmation, or rollback operation refuses during ordinary deploy
 - **THEN** the deployment remains failed and a fresh private receipt records only the final allowlisted category, while Ansible output remains redacted and the receipt cannot satisfy deployment or VPN acceptance.
 
+#### Scenario: Prepare arms state but returns a malformed receipt
+
+- **WHEN** the prepare RPC returns an invalid receipt after it may have armed durable guest state
+- **THEN** the controller attempts bounded rollback when the generation and nonce are safely recoverable, otherwise records `rollback-uncertain-recovery-armed`, and publishes no receipt before that outcome is known.
+
 #### Scenario: Failure receipt authority is unsafe before SSH
 
 - **WHEN** the alias mapping is missing or mismatched, paths collide including same-directory names that differ only by case or canonical Unicode normalization, a receipt already exists, path ancestry is unsafe, or the parent changes before the deploy controller's pre-SSH recheck

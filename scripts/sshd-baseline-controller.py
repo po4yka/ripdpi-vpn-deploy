@@ -58,6 +58,10 @@ class BaselineError(Exception):
     """Categorical only; never include paths, addresses, output or nonces."""
 
 
+def _is_hex(value):
+    return isinstance(value, str) and HEX.fullmatch(value) is not None
+
+
 def validate_request(value, failure_sink=UNVALIDATED_FAILURE_SINK):
     try:
         if not isinstance(value, dict) or set(value) != REQUEST_FIELDS or value["schema_version"] != 2:
@@ -67,7 +71,7 @@ def validate_request(value, failure_sink=UNVALIDATED_FAILURE_SINK):
         if any(not isinstance(value[key], str) or not value[key] for key in
                ("inventory_path", "known_hosts_path", "hardening_b64", "bundle_generation")):
             raise ValueError
-        if HEX.fullmatch(value["bundle_generation"]) is None:
+        if not _is_hex(value["bundle_generation"]):
             raise ValueError
         if (type(value["timeout_seconds"]) is not int
                 or not 60 <= value["timeout_seconds"] <= TRANSACTION_TIMEOUT_SECONDS):
@@ -80,7 +84,7 @@ def validate_request(value, failure_sink=UNVALIDATED_FAILURE_SINK):
         if (not isinstance(target, dict)
                 or set(target) != {"inventory_alias", "public_service_address_sha256", "deployable_digest"}
                 or target["inventory_alias"] != value["inventory_alias"]
-                or any(HEX.fullmatch(target[key]) is None
+                or any(not _is_hex(target[key])
                        for key in ("public_service_address_sha256", "deployable_digest"))):
             raise ValueError
         if value["mode"] == "deploy":
@@ -104,12 +108,12 @@ def validate_request(value, failure_sink=UNVALIDATED_FAILURE_SINK):
 
 
 def _prevalidated_failure_sink(value):
-    if (not isinstance(value, dict) or set(value) != REQUEST_FIELDS
-            or value.get("schema_version") != 2 or value.get("mode") != "deploy"):
+    if (not isinstance(value, dict) or value.get("schema_version") != 2
+            or value.get("mode") != "deploy"):
         return None
     try:
         return _failure_sink(
-            value["failure_receipt_path"], value["failure_receipt_parent_identity"]
+            value.get("failure_receipt_path"), value.get("failure_receipt_parent_identity")
         )
     except BaselineError:
         return None
@@ -244,26 +248,31 @@ def promotion_proof(root, config, environment):
             or type(result["observed_at"]) is not int or result["observed_at"] < 0
             or not isinstance(identity, dict) or set(identity) != identity_fields
             or not isinstance(identity["inventory_alias"], str)
-            or HEX.fullmatch(identity["public_service_address_sha256"]) is None
-            or HEX.fullmatch(identity["deployable_digest"]) is None):
+            or not _is_hex(identity["public_service_address_sha256"])
+            or not _is_hex(identity["deployable_digest"])):
         raise BaselineError("promotion-proof-failed")
     return result
 
 
-def _identity(receipt):
-    fields = {"generation", "nonce", "status", "deadline", "snapshot_digest"}
-    if (not isinstance(receipt, dict) or set(receipt) != fields
-            or not isinstance(receipt["generation"], str)
-            or HEX.fullmatch(receipt["nonce"]) is None
-            or HEX.fullmatch(receipt["snapshot_digest"]) is None
-            or type(receipt["deadline"]) is not int):
+def _rollback_capability(receipt):
+    if (not isinstance(receipt, dict) or not isinstance(receipt.get("generation"), str)
+            or not _is_hex(receipt.get("nonce"))):
         raise BaselineError("transaction-receipt-invalid")
     try:
         if str(UUID(receipt["generation"])) != receipt["generation"]:
             raise ValueError
     except ValueError:
         raise BaselineError("transaction-receipt-invalid") from None
-    return {key: receipt[key] for key in ("generation", "nonce", "snapshot_digest")}
+    return {key: receipt[key] for key in ("generation", "nonce")}
+
+
+def _identity(receipt):
+    fields = {"generation", "nonce", "status", "deadline", "snapshot_digest"}
+    capability = _rollback_capability(receipt)
+    if (set(receipt) != fields or not _is_hex(receipt["snapshot_digest"])
+            or type(receipt["deadline"]) is not int):
+        raise BaselineError("transaction-receipt-invalid")
+    return capability | {"snapshot_digest": receipt["snapshot_digest"]}
 
 
 def _same_identity(receipt, identity, status):
@@ -319,17 +328,21 @@ def _execute_validated(value, environment, *, rpc, sftp, proof, clock, onboard):
                "check_mode": value["mode"] == "check", "bundle_generation": value["bundle_generation"]}
     receipt = rpc(host, known_hosts, "prepare", prepare, environment)
     if value["mode"] == "check":
-        if (set(receipt) != {"status", "snapshot_digest"}
+        if (not isinstance(receipt, dict)
+                or set(receipt) != {"status", "snapshot_digest"}
                 or receipt["status"] not in {"unchanged", "would-change"}
-                or HEX.fullmatch(receipt["snapshot_digest"]) is None):
+                or not _is_hex(receipt["snapshot_digest"])):
             raise BaselineError("transaction-receipt-invalid")
         return {"status": receipt["status"]}
     if receipt == {"status": "unchanged"}:
         return receipt
-    identity = _identity(receipt)
-    _same_identity(receipt, identity, "prepared")
+    rollback_capability = None
+    identity = None
     rollback_needed = True
     try:
+        rollback_capability = _rollback_capability(receipt)
+        identity = _identity(receipt)
+        _same_identity(receipt, identity, "prepared")
         applied = rpc(host, known_hosts, "apply", {"generation": identity["generation"],
                       "nonce": identity["nonce"]}, environment)
         _same_identity(applied, identity, "applied")
@@ -353,10 +366,17 @@ def _execute_validated(value, environment, *, rpc, sftp, proof, clock, onboard):
         return {"status": "committed"}
     except BaseException:
         if rollback_needed:
+            if rollback_capability is None:
+                raise BaselineError("rollback-uncertain-recovery-armed") from None
             try:
-                rolled = rpc(host, known_hosts, "rollback", {"generation": identity["generation"],
-                             "nonce": identity["nonce"]}, environment, cleanup=True)
-                _same_identity(rolled, identity, "rolled_back")
+                rolled = rpc(host, known_hosts, "rollback", rollback_capability,
+                             environment, cleanup=True)
+                rolled_identity = _identity(rolled)
+                _same_identity(rolled, rolled_identity, "rolled_back")
+                expected = identity if identity is not None else rollback_capability
+                if any(rolled_identity.get(key) != expected_value
+                       for key, expected_value in expected.items()):
+                    raise BaselineError("transaction-identity-mismatch")
             except BaseException:
                 raise BaselineError("rollback-uncertain-recovery-armed") from None
         raise

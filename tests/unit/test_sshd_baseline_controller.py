@@ -179,7 +179,7 @@ def test_every_post_prepare_failure_attempts_one_bounded_rollback(transaction_re
     assert "confirm" not in [call[0] for call in calls] or failure == "confirm"
 
 
-@pytest.mark.parametrize("mutation", ["status", "extra", "observed", "identity"])
+@pytest.mark.parametrize("mutation", ["status", "extra", "observed", "identity", "identity-type"])
 def test_promotion_receipt_parser_requires_exact_safe_schema(transaction_request, mutation, monkeypatch):
     controller = module()
     value = proof_receipt(transaction_request)
@@ -189,8 +189,10 @@ def test_promotion_receipt_parser_requires_exact_safe_schema(transaction_request
         value["detail"] = "unsafe"
     elif mutation == "observed":
         value["observed_at"] = True
-    else:
+    elif mutation == "identity":
         value["target_identity"] = {**value["target_identity"], "extra": "unsafe"}
+    else:
+        value["target_identity"]["deployable_digest"] = 1
     monkeypatch.setattr(controller, "run_command", lambda *args, **kwargs: (0, json.dumps(value)))
     with pytest.raises(controller.BaselineError, match="promotion-proof-failed"):
         controller.promotion_proof(ROOT, Path(transaction_request["promotion_config_path"]), {})
@@ -292,6 +294,74 @@ def test_uncertain_rollback_is_a_distinct_fail_closed_result(transaction_request
 
     with pytest.raises(controller.BaselineError, match="rollback-uncertain-recovery-armed"):
         controller.execute(transaction_request, {}, rpc=rpc)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_reason"),
+    [("snapshot", "transaction-receipt-invalid"),
+     ("status", "transaction-identity-mismatch")],
+)
+def test_invalid_prepare_receipt_rolls_back_before_publication(
+        transaction_request, mutation, expected_reason):
+    controller = module()
+    path = Path(transaction_request["failure_receipt_path"])
+    calls = []
+
+    def rpc(host, known, action, payload, environment, cleanup=False):
+        calls.append((action, cleanup))
+        if action == "prepare":
+            value = receipt("prepared")
+            if mutation == "snapshot":
+                value["snapshot_digest"] = 1
+            else:
+                value["status"] = "unexpected"
+            return value
+        assert action == "rollback"
+        return receipt("rolled_back")
+
+    with pytest.raises(controller.BaselineError, match=expected_reason):
+        controller.execute(transaction_request, {}, rpc=rpc)
+    assert calls == [("prepare", False), ("rollback", True)]
+    assert json.loads(path.read_bytes()) == {
+        "schema_version": 1,
+        "status": "failed",
+        "reason": expected_reason,
+    }
+
+
+@pytest.mark.parametrize("field", ["generation", "nonce"])
+def test_invalid_prepare_rollback_capability_is_categorically_uncertain(
+        transaction_request, field):
+    controller = module()
+    path = Path(transaction_request["failure_receipt_path"])
+    calls = []
+
+    def rpc(host, known, action, payload, environment, cleanup=False):
+        calls.append((action, cleanup))
+        value = receipt("prepared")
+        value[field] = 1
+        return value
+
+    with pytest.raises(controller.BaselineError, match="rollback-uncertain-recovery-armed"):
+        controller.execute(transaction_request, {}, rpc=rpc)
+    assert calls == [("prepare", False)]
+    assert json.loads(path.read_bytes()) == {
+        "schema_version": 1,
+        "status": "failed",
+        "reason": "rollback-uncertain-recovery-armed",
+    }
+
+
+@pytest.mark.parametrize(
+    "remote_receipt",
+    [{"status": "unchanged", "snapshot_digest": 1}, [{}]],
+)
+def test_malformed_check_receipt_is_categorical(transaction_request, remote_receipt):
+    controller = module()
+    request = dict(transaction_request, mode="check", promotion_config_path=None,
+                   failure_receipt_path=None, failure_receipt_parent_identity=None)
+    with pytest.raises(controller.BaselineError, match="transaction-receipt-invalid"):
+        controller.execute(request, {}, rpc=lambda *args, **kwargs: remote_receipt)
 
 
 @pytest.mark.parametrize("mutation", ["unknown-alias", "bad-generation", "one-context",
@@ -403,10 +473,17 @@ def test_handled_failure_publishes_only_allowlisted_private_category(
     assert b"192.0.2.10" not in path.read_bytes()
 
 
-def test_safe_sink_validation_failure_publishes_before_rpc(transaction_request):
+@pytest.mark.parametrize("mutation", ["invalid-target", "missing-target", "unexpected-field"])
+def test_safe_sink_validation_failure_publishes_before_rpc(transaction_request, mutation):
     controller = module()
     path = Path(transaction_request["failure_receipt_path"])
-    request = dict(transaction_request, target_identity={})
+    request = dict(transaction_request)
+    if mutation == "invalid-target":
+        request["target_identity"] = {}
+    elif mutation == "missing-target":
+        del request["target_identity"]
+    else:
+        request["unexpected"] = "field"
 
     def forbidden(*args, **kwargs):
         pytest.fail("invalid request must refuse before RPC")
