@@ -146,7 +146,8 @@ make deploy ANSIBLE_LIMIT=vpn-p0-node-a \
 The final deploy-only input is a same-owner mode-`0600` JSON mapping with the
 same exact alias set. Each value is a distinct absolute path for a new private
 failure receipt beneath an owner-controlled mode-`0700` directory. The paths
-must not exist before deploy. If the controller handles an SSH baseline
+must not exist before deploy, and same-directory filenames must not differ
+only by case or Unicode normalization. If the controller handles an SSH baseline
 failure, it creates one mode-`0600` receipt containing only a fixed categorical
 reason; Ansible remains `no_log` and public output remains generic. A successful
 deploy leaves the path absent. Never reuse or delete an existing receipt to

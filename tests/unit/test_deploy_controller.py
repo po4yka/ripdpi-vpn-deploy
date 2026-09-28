@@ -764,11 +764,20 @@ def test_transaction_inputs_are_validated_before_first_ssh(workspace, fault):
     assert not any(entry["program"] in {"ssh", "ansible-playbook"} for entry in calls(workspace))
 
 
-@pytest.mark.parametrize("second_spelling", ["same", "double-leading-slash"])
+@pytest.mark.parametrize("second_spelling", [
+    "same", "double-leading-slash", "case-variant", "unicode-normalization-variant",
+])
 def test_failure_receipt_paths_must_be_distinct_before_first_ssh(workspace, second_spelling):
     set_contexts(workspace, "")
     shared = str(workspace["receipts"] / "shared.json")
-    second = shared if second_spelling == "same" else "//" + shared.lstrip("/")
+    if second_spelling == "unicode-normalization-variant":
+        shared = str(workspace["receipts"] / "caf\N{LATIN SMALL LETTER E WITH ACUTE}.json")
+    second = ({
+        "same": shared,
+        "double-leading-slash": "//" + shared.lstrip("/"),
+        "case-variant": str(workspace["receipts"] / "SHARED.JSON"),
+        "unicode-normalization-variant": str(workspace["receipts"] / "cafe\N{COMBINING ACUTE ACCENT}.json"),
+    })[second_spelling]
     workspace["receipt_mapping"].write_text(json.dumps({
         "node-one": shared,
         "node-two": second,

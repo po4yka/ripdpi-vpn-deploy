@@ -45,19 +45,22 @@ FAILURE_REASONS = {
     "transaction-receipt-invalid",
     "status-rpc-failed",
 }
+REQUEST_FIELDS = {
+    "schema_version", "mode", "inventory_alias", "inventory_path", "known_hosts_path",
+    "contexts", "hardening_b64", "bundle_generation", "timeout_seconds",
+    "promotion_config_path", "failure_receipt_path", "failure_receipt_parent_identity",
+    "target_identity",
+}
+UNVALIDATED_FAILURE_SINK = object()
 
 
 class BaselineError(Exception):
     """Categorical only; never include paths, addresses, output or nonces."""
 
 
-def validate_request(value):
-    fields = {"schema_version", "mode", "inventory_alias", "inventory_path", "known_hosts_path",
-              "contexts", "hardening_b64", "bundle_generation", "timeout_seconds",
-              "promotion_config_path", "failure_receipt_path", "failure_receipt_parent_identity",
-              "target_identity"}
+def validate_request(value, failure_sink=UNVALIDATED_FAILURE_SINK):
     try:
-        if not isinstance(value, dict) or set(value) != fields or value["schema_version"] != 2:
+        if not isinstance(value, dict) or set(value) != REQUEST_FIELDS or value["schema_version"] != 2:
             raise ValueError
         if value["mode"] not in {"deploy", "check"} or NAME.fullmatch(value["inventory_alias"]) is None:
             raise ValueError
@@ -83,9 +86,12 @@ def validate_request(value):
         if value["mode"] == "deploy":
             if not isinstance(value["promotion_config_path"], str) or not value["promotion_config_path"]:
                 raise ValueError
-            failure_sink = _failure_sink(
-                value["failure_receipt_path"], value["failure_receipt_parent_identity"]
-            )
+            if failure_sink is UNVALIDATED_FAILURE_SINK:
+                failure_sink = _failure_sink(
+                    value["failure_receipt_path"], value["failure_receipt_parent_identity"]
+                )
+            elif failure_sink is None:
+                raise ValueError
         elif (value["promotion_config_path"] is not None
               or value["failure_receipt_path"] is not None
               or value["failure_receipt_parent_identity"] is not None):
@@ -95,6 +101,18 @@ def validate_request(value):
         return value | {"hardening": hardening, "failure_sink": failure_sink}
     except (ValueError, TypeError, KeyError, BaselineError, ContextError):
         raise BaselineError("request-invalid") from None
+
+
+def _prevalidated_failure_sink(value):
+    if (not isinstance(value, dict) or set(value) != REQUEST_FIELDS
+            or value.get("schema_version") != 2 or value.get("mode") != "deploy"):
+        return None
+    try:
+        return _failure_sink(
+            value["failure_receipt_path"], value["failure_receipt_parent_identity"]
+        )
+    except BaselineError:
+        return None
 
 
 def _json(value):
@@ -346,18 +364,20 @@ def _execute_validated(value, environment, *, rpc, sftp, proof, clock, onboard):
 
 def execute(request, environment, *, rpc=transaction_rpc, sftp=fresh_sftp, proof=promotion_proof,
             clock=time.time, onboard=prepare_promotion):
-    value = validate_request(request)
+    failure_sink = _prevalidated_failure_sink(request)
     try:
+        value = validate_request(request, failure_sink)
         return _execute_validated(
             value, environment, rpc=rpc, sftp=sftp, proof=proof, clock=clock, onboard=onboard,
         )
-    except (BaselineError, ReadinessError, fleet_inspection.InspectionError, OSError, ValueError) as error:
-        if value["failure_sink"] is not None:
+    except (BaselineError, ReadinessError, fleet_inspection.InspectionError, OSError, ValueError,
+            KeyboardInterrupt, SystemExit) as error:
+        if failure_sink is not None:
             reason = (str(error)
                       if isinstance(error, BaselineError) and str(error) in FAILURE_REASONS
                       else "controller-failure")
             try:
-                _publish_failure(value["failure_sink"], reason)
+                _publish_failure(failure_sink, reason)
             except OSError:
                 # Preserve the original controller failure when the private receipt cannot be published.
                 pass

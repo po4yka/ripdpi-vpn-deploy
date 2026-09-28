@@ -73,8 +73,11 @@ an exact-alias mode-`0600` mapping to fresh absent outputs in owner-controlled
 mode-`0700` directories. The deploy controller validates and freezes those
 paths and parent device/inode before readiness, rechecks that authority before
 the first SSH, and passes it to the baseline controller for another identity
-check before publication. The controller publishes only its allowlisted
-failure category with no-follow, no-clobber and fsync. Keep the Ansible task
+check before publication. Same-directory output names are case-folded and
+Unicode-normalized so case-only and canonically equivalent variants refuse on
+every operator filesystem. The baseline controller validates the sink before the rest of the deploy request
+and publishes after a handled interrupt has rolled back. It publishes only its
+allowlisted failure category with no-follow, no-clobber and fsync. Keep the Ansible task
 `no_log`; success and check mode leave the output absent. A missing receipt
 after abnormal controller death or publication failure is an unknown outcome,
 not success, and receipts never satisfy promotion or protocol proof.

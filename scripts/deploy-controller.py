@@ -11,6 +11,7 @@ import shlex
 import stat
 import sys
 import tempfile
+import unicodedata
 
 import yaml
 
@@ -528,7 +529,8 @@ def transaction_inputs(mode, hosts, identity, directory, root, environment, *,
             alias: fresh_private_output(receipt_values[alias]) for alias in sorted(names)
         }
         receipt_targets = {
-            (item[1]["device"], item[1]["inode"], item[0].name)
+            (item[1]["device"], item[1]["inode"],
+             unicodedata.normalize("NFD", item[0].name.casefold()))
             for item in failure_receipts.values()
         }
         if len(receipt_targets) != len(failure_receipts):

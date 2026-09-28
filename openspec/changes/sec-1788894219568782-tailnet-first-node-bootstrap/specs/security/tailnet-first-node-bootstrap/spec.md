@@ -180,7 +180,7 @@ migration implicitly.
 
 #### Scenario: Failure receipt authority is unsafe before SSH
 
-- **WHEN** the alias mapping is missing or mismatched, paths collide, a receipt already exists, path ancestry is unsafe, or the parent changes before the deploy controller's pre-SSH recheck
+- **WHEN** the alias mapping is missing or mismatched, paths collide including same-directory names that differ only by case or canonical Unicode normalization, a receipt already exists, path ancestry is unsafe, or the parent changes before the deploy controller's pre-SSH recheck
 - **THEN** deployment refuses before readiness or SSH; no existing receipt is replaced and no transaction is armed.
 
 #### Scenario: Failure receipt authority changes after preflight

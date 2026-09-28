@@ -403,6 +403,52 @@ def test_handled_failure_publishes_only_allowlisted_private_category(
     assert b"192.0.2.10" not in path.read_bytes()
 
 
+def test_safe_sink_validation_failure_publishes_before_rpc(transaction_request):
+    controller = module()
+    path = Path(transaction_request["failure_receipt_path"])
+    request = dict(transaction_request, target_identity={})
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("invalid request must refuse before RPC")
+
+    with pytest.raises(controller.BaselineError, match="request-invalid"):
+        controller.execute(request, {}, rpc=forbidden)
+    assert json.loads(path.read_bytes()) == {
+        "schema_version": 1,
+        "status": "failed",
+        "reason": "controller-failure",
+    }
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize("interruption", [KeyboardInterrupt(), SystemExit(130)])
+def test_interruption_after_prepare_rolls_back_and_publishes(
+        transaction_request, interruption):
+    controller = module()
+    path = Path(transaction_request["failure_receipt_path"])
+    calls = []
+
+    def rpc(host, known, action, request, environment, cleanup=False):
+        calls.append((action, cleanup))
+        if action == "prepare":
+            return receipt("prepared")
+        if action == "apply":
+            raise interruption
+        assert action == "rollback"
+        return receipt("rolled_back")
+
+    with pytest.raises(type(interruption)) as raised:
+        controller.execute(transaction_request, {}, rpc=rpc)
+    if isinstance(interruption, SystemExit):
+        assert raised.value.code == 130
+    assert calls == [("prepare", False), ("apply", False), ("rollback", True)]
+    assert json.loads(path.read_bytes()) == {
+        "schema_version": 1,
+        "status": "failed",
+        "reason": "controller-failure",
+    }
+
+
 def test_success_and_check_mode_leave_failure_receipt_absent(transaction_request):
     controller = module()
     path = Path(transaction_request["failure_receipt_path"])
@@ -443,6 +489,8 @@ def test_unsafe_failure_receipt_refuses_before_rpc(transaction_request, case):
     with pytest.raises(controller.BaselineError, match="request-invalid"):
         controller.execute(value, {}, rpc=rpc)
     assert not called
+    if case == "existing":
+        assert path.read_text() == "foreign"
 
 
 def test_parent_replacement_cannot_receive_or_mask_failure_receipt(transaction_request):

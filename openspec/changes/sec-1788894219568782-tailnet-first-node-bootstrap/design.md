@@ -215,11 +215,14 @@ the exact-source local/hosted and authorized staging gates.
   Deploy mode also consumes a same-owner mode-`0600` exact-alias mapping to
   fresh private SSH baseline failure-receipt paths. The deploy controller
   freezes and validates every path plus its parent device/inode before
-  readiness, rechecks that authority before the first SSH, passes the selected
+  readiness, rejects same-directory case-only or canonically equivalent
+  Unicode filename variants, rechecks that authority before the first SSH,
+  passes the selected
   path and frozen parent identity through the private per-host transaction
   variables, and keeps the Ansible task `no_log`. The baseline controller
-  requires that same parent identity before preparing the no-follow output
-  sink before SSH and, on handled failure, publishes only an allowlisted final
+  requires that same parent identity before accepting the no-follow output
+  sink, validates it before the rest of the deploy request, and on handled
+  failure or a successfully rolled-back interrupt publishes only an allowlisted final
   category with mode `0600`, no-clobber linking and data/directory fsync.
   Success writes nothing; an absent receipt after abnormal controller death or
   publication failure remains an unknown outcome. The receipt is diagnostic
