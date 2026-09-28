@@ -24,7 +24,7 @@ profiles, or evidence paths during an active invocation.
 ## Execution
 
 - [x] EPC-1788891640190305 Freeze exact protected source and complete the no-write external capability preflight #feature !crit @item:EPC-1788891270457728
-- [ ] EPC-1788891640866927 Create and exercise one manifest-bound isolated staging node and verify provider cleanup #feature !crit @item:EPC-1788891270457728
+- [x] EPC-1788891640866927 Create and exercise one manifest-bound isolated staging node and verify provider cleanup #feature !crit @item:EPC-1788891270457728
 - [ ] EPC-1788891641535013 Run fleet dry-run and serial convergence with SSH recovery security and source-drift proof #feature !crit @item:EPC-1788891270457728
 - [ ] EPC-1788891642225067 Prove authenticated four-transport traffic and fresh AmneziaWG acceptance #feature !high @item:EPC-1788891270457728
 - [ ] EPC-1788891642969936 Prove post-firewall client traffic and guarded retirement of the owned client and executor #feature !high @item:EPC-1788891270457728

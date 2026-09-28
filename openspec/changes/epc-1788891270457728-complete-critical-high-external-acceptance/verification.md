@@ -1,21 +1,21 @@
 ---
 task_id: EPC-1788891270457728
 change: epc-1788891270457728-complete-critical-high-external-acceptance
-commit_sha: b5682b9a8b0c30515a1e2576ac4ab385fb29d077
+commit_sha: 52eda3d97feb4b697e1465beee55df2e9f5b3eed
 local: blocked
-local_evidence: The clean protected-main source b5682b9a8b0c30515a1e2576ac4ab385fb29d077 has deployable digest 5e2512c8a029a92cffc14251daea2ac56e6299ba7d358b536379d17c05753082. Task contracts and strict OpenSpec validation passed. Owner-only reports 58868c86 and c3a70e3d record successful credential-class, SOPS decrypt, strict secret, spot-check, certificate, plaintext-removal, source-identity, and zero-mutation preflights. Overall local verification remains blocked because strict SSH contexts, promotion configs, provider-bound staging manifest, cleanup reservation, and their identity checks cannot yet run.
+local_evidence: "The clean frozen protected source has deployable digest a86591e11b5fc6d1f5b2b9405089353cc5e177e66ebe85c65062e6a4952fb983 and its complete local checks recorded in the linked bootstrap verification. Current permanent-node strict SSH contexts and promotion inputs remain unavailable; the production certificate also fails the fourteen-day deployment floor."
 remote_ci: passed
-remote_ci_evidence: Exact post-merge source b5682b9a8b0c30515a1e2576ac4ab385fb29d077 passed push CI run 34263738849 with all 75 jobs successful, CodeQL run 34263737976, Scorecard run 34263738091, and release-please run 34263738004.
+remote_ci_evidence: "Exact protected source 52eda3d97feb4b697e1465beee55df2e9f5b3eed completed ci, codeql, scorecard and release-please successfully, with 80 post-merge check runs and no failures. Later CI-only integration is not substituted for this runtime source."
 dry_run: blocked
-dry_run_evidence: Three-host generated inventory plus encrypted production secrets and a private age key are available. The canonical secret, certificate, and plaintext-removal gate passed. Tailscale was restored to Running with the local node online, but zero of the three inventory management identities match the current Tailnet peer set, passive inspection returned unknown command-failed for all three exact targets and all six public or management configured-SSH-port reachability checks timed out. Owner-only evidence reports have SHA-256 62c3679d00f7cac64e01337d76b02803d0a9ae41ba177b5d21f7db351860e4c7 and 6d1e796e6f9711d7739611624411aeb61b37e248376bd4edcea1c8df599a5563. Strict SSH contexts are absent and no Ansible dry-run was started.
-staging: blocked
-staging_evidence: No provider credential mode is present and no current provider account binding, owner-approved cost ceiling or expiry, unique staging identity, or cleanup reservation exists. No provider read or resource creation was attempted.
+dry_run_evidence: "The isolated staging dry-run passed on the frozen source. Permanent-fleet dry-run remains unperformed because strict management access has not been restored."
+staging: required
+staging_evidence: "The manifest-bound ordinary staging lifecycle passed on 52eda3d9: positive pinned bootstrap, observed dual-path handoff, SSH ownership transaction, dry-run, deploy, verify, security-verify, four authenticated profiles, provider-firewall promotion with state-bound manifest reissue, repeated profiles and fresh AWG handshake, guarded retirement and authenticated server/root-storage absence. A separate fresh controller-loss invocation passed on the same exact source and digest and was provider-cleaned before expiry. The exact-source reboot proof is recorded in the bootstrap verification. The broader custom-listener/live prerequisite still requires reconciliation."
 live: blocked
-live_evidence: Zero of three inventory management identities match the current Tailnet peer set. All three exact fleet targets time out on both public and management SSH transports, strict SSH-context and promotion-config snapshots are absent, and passive inspection returned no observed node report. No host or network mutation was attempted.
+live_evidence: "P0 and P1 provider allowlists were changed only by specifically approved plans; strict public SSH still timed out. P0 rescue returned the original boot and storage without mounting or writing the root disk because both console paths were unavailable. P2 provider credential returned 401. No permanent-node Ansible deploy, verify, security-verify or source-drift was performed."
 client: blocked
-client_evidence: No current signed RIPDPI artifact or invocation-bound signer or relay handoff is available. Prior source, fixture, and server evidence cannot satisfy current-client four-transport or recurring AmneziaWG acceptance.
-artifact: blocked
-artifact_evidence: No authenticated primary or independent alert-delivery capability, offsite-storage capability, or isolated restore target is available. No alert, copy, restore, rotation, or pruning action was attempted.
+client_evidence: "Isolated current profiles and pinned runtimes proved authenticated REALITY, XHTTP, Hysteria2 and AmneziaWG before and after provider-firewall promotion, with distinct fresh AWG handshakes. Permanent-fleet traffic and the complete recurring acceptance contract remain unproved."
+artifact: required
+artifact_evidence: "The owned staging client was canonically de-onboarded, its executor was retired, temporary DNS records and own Tailnet nodes are absent, and private disposable capabilities were removed. Shared temporary ACL and provider capability are preserved for the unrelated active invocation. Production VNC is disabled; a credential exposed during console inspection requires owner rotation. No excluded Android, alert or restore observation is credited."
 ---
 
 # Verification
@@ -30,19 +30,53 @@ AWG invocation. Historical category snapshots above remain historical; final
 closure must replace them with observed in-scope evidence. The artifact category
 now covers post-firewall traffic and guarded client/executor retirement.
 
+## Observed staging lifecycle — 2026-09-28
+
+The frozen runtime source is `52eda3d97feb4b697e1465beee55df2e9f5b3eed`
+and its deployable digest is
+`a86591e11b5fc6d1f5b2b9405089353cc5e177e66ebe85c65062e6a4952fb983`.
+The ordinary disposable invocation completed positive bootstrap and handoff,
+SSH ownership, dry-run, deployment, verify and security-verify. Its eight
+recorded command log hashes were independently matched after completion.
+Authenticated REALITY, XHTTP, Hysteria2 and AWG profiles succeeded both before
+and after provider-firewall promotion; both invocations observed fresh AWG
+handshakes. The firewall transition preserved resource identities and used a
+new state-bound cleanup manifest without extending its deadline.
+
+Canonical de-onboarding retired the owned client and executor. Authenticated
+cleanup evidence reports server and root storage absent, no active owned
+billing resources, and completion within the approved expiry. Separate current
+observations supersede the intermediate checkpoint's remaining-node count:
+the ordinary invocation's own ephemeral node and temporary DNS records are
+absent; unrelated nodes remain intact.
+
+A separate fresh disposable controller-loss invocation killed durable pending
+without confirmation or explicit rollback and passed autonomous recovery,
+idle, strict preinstall, pinned public SSH and SFTP on the same source/digest.
+Its distinct diagnostic remained absent; the success file and parent retained
+modes 0600/0700 and its wrapper input hash matched. It was guardedly destroyed
+at 17:32:34 UTC, with fresh provider 404 responses for server and root storage;
+its ephemeral node disappeared automatically. The existing exact-source reboot
+proof remains a distinct observation.
+
+Only the isolated-resource lifecycle step is completed here. Permanent-fleet
+management recovery, custom-listener prerequisite reconciliation, serial
+convergence, source drift, production client traffic and final predecessor
+closure remain open. No staging source-drift result was observed.
+
 ## Requirement evidence
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-EPC-1788891270457728-001 | EPC-1788891640190305 | Exact protected-main source `b5682b9a` and deployable digest `5e2512c8` passed push CI 75/75, CodeQL, and Scorecard | passed |
+| REQ-EPC-1788891270457728-001 | EPC-1788891640190305 | Frozen protected-main source `52eda3d9` and deployable digest `a86591e1` passed exact post-merge CI, CodeQL, Scorecard and release-please | passed |
 | REQ-EPC-1788891270457728-002 | EPC-1788891643660976 | Maintain separate category states and reject closure while any required category lacks scope-matching evidence | pending |
-| REQ-EPC-1788891270457728-003 | EPC-1788891640866927 | Guarded staging manifest, account and state binding, approved cost and expiry, exercised node, and post-destroy provider absence | blocked: provider capability and authorization not verified |
+| REQ-EPC-1788891270457728-003 | EPC-1788891640866927 | Guarded staging manifest, account and state binding, approved cost and expiry, exercised node, and post-destroy provider absence | passed: owned ordinary staging and separate controller-loss resources were exercised and provider-cleaned within the approved window |
 | REQ-EPC-1788891270457728-004 | EPC-1788891641535013 | Canonical precheck, fleet dry-run, serial convergence, verify, security-verify, and source-drift outcomes | blocked: all three public and management SSH transports time out and strict contexts are unavailable |
-| REQ-EPC-1788891270457728-005 | EPC-1788891641535013 | Isolated custom-listener rehearsal, recovery path, listener and firewall parity, and unchanged VPN paths before promotion | blocked: isolated staging unavailable and all fleet SSH transports time out |
+| REQ-EPC-1788891270457728-005 | EPC-1788891641535013 | Isolated custom-listener rehearsal, recovery path, listener and firewall parity, and unchanged VPN paths before promotion | pending: isolated recovery and VPN paths passed; custom-listener prerequisite and live management remain unreconciled |
 | REQ-EPC-1788891270457728-006 | EPC-1788891642225067 | Current profiles, pinned runtimes, and independent authenticated REALITY, XHTTP, Hysteria2, and AmneziaWG traffic observations | pending: current fleet client-path evidence required |
 | REQ-EPC-1788891270457728-007 | EPC-1788891642225067 | Fresh recurring nonce, revision, source, artifact, traffic, recovery, and cleanup evidence with replay negatives | blocked: current client and disposable executor inputs unavailable |
 | REQ-EPC-1788891270457728-008 | EPC-1788891643660976 | Owner-approved scope exclusion dated 2026-09-28; no alert proof claimed | excluded by owner; not passed |
 | REQ-EPC-1788891270457728-009 | EPC-1788891643660976 | Owner-approved scope exclusion dated 2026-09-28; retained copies remain intact | excluded by owner; not passed |
-| REQ-EPC-1788891270457728-010 | EPC-1788891640190305 | Owner-only reports `58868c86` and `c3a70e3d` checked credential classes, SOPS decrypt, strict secrets and certificates, then removed plaintext; zero external calls or mutations | passed |
-| REQ-EPC-1788891270457728-011 | EPC-1788891640190305 | Successor remains active as blocked with exact provider, SSH, Tailnet, client, alert, and restore capability gaps | passed |
+| REQ-EPC-1788891270457728-010 | EPC-1788891640190305 | Historical no-write preflight checked credential classes, SOPS inputs and plaintext removal; current console exposure requires owner rotation while VNC is disabled | pending: owner VNC credential rotation |
+| REQ-EPC-1788891270457728-011 | EPC-1788891640190305 | Successor remains active with exact permanent-node management, provider, certificate, production-client and final reconciliation gaps | passed |
 | REQ-EPC-1788891270457728-012 | EPC-1788891643660976 | Thirteen-row predecessor matrix, exact evidence, rollback and cleanup reconciliation, strict validation, and archive readiness | pending |
