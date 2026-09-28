@@ -171,6 +171,7 @@ def _publish_failure(sink, reason):
                 os.unlink(temporary, dir_fd=parent)
                 os.fsync(parent)
             except OSError:
+                # Best-effort cleanup must not replace the publication error.
                 pass
         os.close(parent)
 
@@ -358,6 +359,7 @@ def execute(request, environment, *, rpc=transaction_rpc, sftp=fresh_sftp, proof
             try:
                 _publish_failure(value["failure_sink"], reason)
             except OSError:
+                # Preserve the original controller failure when the private receipt cannot be published.
                 pass
         raise
 
