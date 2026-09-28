@@ -76,6 +76,11 @@ Rust. Keep Ansible scenarios together for cross-role inputs, and full CI for
 main/manual/shared/unknown changes. The final gate requires every selected job
 and permits only planned skips; adding a job must update the selector and tests.
 
+**Cloud-init schema uses Ubuntu package sources only** — its installer selects
+the runner's `ubuntu.sources` for both APT operations. An unrelated preinstalled
+repository cannot block this gate. Missing Ubuntu sources and failed updates
+remain fatal; package signatures and the real schema validator stay enforced.
+
 ## What's done well
 
 - **Provider example parity is checked** — every explicit staging/prod listener
