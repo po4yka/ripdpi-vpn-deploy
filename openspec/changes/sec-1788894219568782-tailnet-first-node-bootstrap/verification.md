@@ -7,27 +7,51 @@ local_evidence: "Exact main 52eda3d97feb4b697e1465beee55df2e9f5b3eed passed buil
 remote_ci: required
 remote_ci_evidence: "The source commit 25fba763724280560f797b023786118b69e964ba passed all 81 pull-request checks before protected-branch merge. The resulting exact main commit 52eda3d97feb4b697e1465beee55df2e9f5b3eed then completed ci, codeql, scorecard and release-please successfully; its 80 post-merge check runs had no failures."
 dry_run: required
-dry_run_evidence: "Not yet exercised with a positive bootstrap handoff and exact-node promotion configuration."
+dry_run_evidence: "Ordinary isolated staging dry-run passed with a positive observed-context bootstrap handoff and exact-node promotion configuration. Permanent-node dry-run remains unperformed."
 staging: required
-staging_evidence: "On exact main 52eda3d97feb4b697e1465beee55df2e9f5b3eed, the authorized disposable reboot harness consumed a new single-use ephemeral enrollment key and exited zero. It observed worker termination, SSH loss, a changed boot identity, current-boot success from both recovery services, idle state, fresh pinned public SSH and SFTP, and the strict preinstall probe. A separate post-run retry reconfirmed idle state, both current-success units, SSH, SFTP and preinstall state after one isolated transport retry. Earlier controller-loss evidence remains bound to its earlier main revision; positive bootstrap, ordinary deployment, provider-firewall promotion and final acceptance remain outstanding."
+staging_evidence: "Exact source 52eda3d97feb4b697e1465beee55df2e9f5b3eed now has distinct positive reboot and controller-loss recovery observations plus ordinary positive bootstrap, dry-run/deploy, verify, security-verify, four-profile traffic, provider-firewall promotion, state-bound manifest reissue, guarded retirement and provider-confirmed server/root-storage absence. The broader agreed permanent-node acceptance remains outstanding."
 live: required
 live_evidence: "No permanent-node rollout or serial live acceptance was performed."
 client: required
-client_evidence: "No authenticated required-profile traffic proof was performed."
+client_evidence: "The owned isolated invocation proved authenticated REALITY, XHTTP, Hysteria2 and AWG before and after provider-firewall promotion, including distinct fresh AWG handshakes. No permanent-fleet traffic proof was performed."
 artifact: required
-artifact_evidence: "The reboot success evidence was atomically present as an owner-controlled mode-0600 regular file under a mode-0700 directory, matched the exact wrapper input digest, contained only the specified hashes and seven true categorical checks, and excluded the target alias, public address, enrollment key and remote output. The distinct incomplete diagnostic path remained absent. The single-use key was no longer valid after the run. Positive bootstrap handoff, deployment proof, cleanup reissue and guarded-delete receipts remain outstanding."
+artifact_evidence: "Separate current-source reboot and controller-loss success files matched exact wrapper/source/digest bindings under owner-only modes 0600/0700; their diagnostics remained absent. Ordinary observed-context handoff, deployment proof, identity-preserving cleanup reissue, canonical client/executor retirement and guarded provider absence were observed. Own temporary nodes and private capabilities were retired; shared capabilities needed by an unrelated active invocation are preserved."
 ---
 
 # Verification
 
-Implementation remains in progress in the dedicated worktree. Exact main
-`52eda3d97feb4b697e1465beee55df2e9f5b3eed` now has complete local and hosted
-gates plus positive disposable reboot-recovery evidence. The earlier
-controller-loss evidence is retained on its recorded earlier main revision.
-Positive bootstrap, ordinary dry-run/deploy, authenticated protocol proof,
-provider-firewall promotion and manifest reissue, guarded deletion/provider
-absence, and any agreed permanent-node rollout remain required. No execution
-step is closed by the reboot checkpoint alone.
+Runtime implementation is integrated on the frozen protected source
+`52eda3d97feb4b697e1465beee55df2e9f5b3eed`. Local/hosted gates and isolated
+ordinary, controller-loss and reboot observations are recorded independently.
+Agreed permanent-node rollout and requirement reconciliation remain required.
+No execution step is closed by extrapolation from isolated staging.
+
+## Current ordinary staging and controller-loss checkpoint — 2026-09-28
+
+On the same exact protected source `52eda3d97feb4b697e1465beee55df2e9f5b3eed`
+and digest `a86591e11b5fc6d1f5b2b9405089353cc5e177e66ebe85c65062e6a4952fb983`,
+the owned ordinary invocation passed positive pinned bootstrap, dual-path
+handoff, SSH ownership transaction, ordinary dry-run/deploy, verify and
+security-verify. All four authenticated profiles passed before and after
+provider-firewall promotion, with a distinct fresh AWG handshake. Resource
+identity and expiry were retained through state-bound cleanup-manifest reissue.
+Canonical client/executor retirement and guarded provider absence passed.
+
+A fresh, separate controller-loss invocation then exited zero after SIGKILL of
+durable pending without confirmation or explicit rollback. Autonomous recovery,
+idle, preinstall, pinned public SSH and SFTP passed. Its atomically published
+0600 success file beneath a 0700 parent matched the exact source, deployable
+digest and wrapper input hash; the incomplete diagnostic was absent. Unlike
+reboot, boot-change and current-boot flags are correctly false for this scenario.
+Guarded deletion completed at 17:32:34 UTC within expiry, with server/root 404,
+no active owned billing resources, automatic own ephemeral-node absence and
+retirement of the own watchdog and private one-use capabilities.
+
+This checkpoint supersedes the earlier statements that ordinary staging and
+current-source controller-loss were unavailable. The earlier exact-source
+reboot proof remains separate. Agreed permanent-node acceptance and remaining
+requirement reconciliation still prevent terminal closure; no execution step
+is marked complete by extrapolation from staging.
 
 ## Requirement evidence
 
