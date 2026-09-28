@@ -20,6 +20,14 @@ the transaction engine's maximum. The controller's promotion proof budget can
 consume that full interval; a narrower adapter bound refuses otherwise valid
 check-mode and deploy requests before the engine sees them.
 
+**Baseline failure diagnostics stay controller-private** — deploy passes one
+fresh persistent receipt path and its frozen parent identity through the
+private transaction variables. The localhost controller validates them before
+SSH and writes only an allowlisted
+category after a handled failure; this role keeps the command `no_log` and
+never registers, renders, or debugs receipt contents. Check mode passes null,
+success writes nothing, and the receipt cannot authorize confirmation.
+
 **No host-firmware daemon on VPS guests** — cloud nodes cannot flash their
 hypervisor firmware. Baseline removes `fwupd` instead of leaving an irrelevant
 daemon able to degrade systemd after a partial package update.

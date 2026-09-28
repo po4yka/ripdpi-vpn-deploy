@@ -65,7 +65,8 @@ make dry-run ANSIBLE_LIMIT=<exact-inventory-alias> \
   DEPLOY_SSH_CONTEXTS_FILE="$HOME/.config/vpn-provision/ssh-contexts.json"
 make deploy ANSIBLE_LIMIT=<exact-inventory-alias> \
   DEPLOY_SSH_CONTEXTS_FILE="$HOME/.config/vpn-provision/ssh-contexts.json" \
-  DEPLOY_PROMOTION_CONFIG_FILE="$HOME/.config/vpn-provision/promotion-configs.json"
+  DEPLOY_PROMOTION_CONFIG_FILE="$HOME/.config/vpn-provision/promotion-configs.json" \
+  DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE="$HOME/.config/vpn-provision/ssh-baseline-failure-receipts.json"
 ```
 
 Run the installer serially in an exclusive maintenance window. Ordinary
@@ -138,11 +139,26 @@ make dry-run ANSIBLE_LIMIT=vpn-p0-node-a \
 
 make deploy ANSIBLE_LIMIT=vpn-p0-node-a \
   DEPLOY_SSH_CONTEXTS_FILE="$HOME/.config/vpn-provision/ssh-contexts.json" \
-  DEPLOY_PROMOTION_CONFIG_FILE="$HOME/.config/vpn-provision/promotion-configs.json"
+  DEPLOY_PROMOTION_CONFIG_FILE="$HOME/.config/vpn-provision/promotion-configs.json" \
+  DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE="$HOME/.config/vpn-provision/ssh-baseline-failure-receipts.json"
 ```
 
+The final deploy-only input is a same-owner mode-`0600` JSON mapping with the
+same exact alias set. Each value is a distinct absolute path for a new private
+failure receipt beneath an owner-controlled mode-`0700` directory. The paths
+must not exist before deploy. If the controller handles an SSH baseline
+failure, it creates one mode-`0600` receipt containing only a fixed categorical
+reason; Ansible remains `no_log` and public output remains generic. A successful
+deploy leaves the path absent. Never reuse or delete an existing receipt to
+make a retry pass: configure a fresh path. If the SSH baseline task fails but
+the expected receipt is absent, treat that transaction outcome as unknown and
+inspect retained controller/guest state. Receipt absence says nothing about a
+failure elsewhere in Ansible or deploy. The receipt is diagnostic only and is
+never protocol or deployment acceptance evidence. `dry-run` neither requires
+nor writes this mapping.
+
 Do not put addresses, identities, probe receipts, or credentials on the command
-line. The two mapping files are operator inputs and must remain outside the
+line. The private mapping files are operator inputs and must remain outside the
 repository. A successful local config preflight is not live VPN evidence.
 
 Readiness, convergence and the automatic source-drift check use the same

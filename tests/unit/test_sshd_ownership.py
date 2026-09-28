@@ -107,6 +107,9 @@ def test_transaction_role_uses_controller_preview_during_ansible_check():
     assert command["check_mode"] is False and command["diff"] is False and command["no_log"] is True
     stdin = command["ansible.builtin.command"]["stdin"]
     assert "('check' if ansible_check_mode else 'deploy')" in stdin
+    assert "'schema_version': 2" in stdin
+    assert "'failure_receipt_path': (none if ansible_check_mode else ssh_transaction_failure_receipt_path)" in stdin
+    assert "'failure_receipt_parent_identity': (none if ansible_check_mode else ssh_transaction_failure_receipt_parent_identity)" in stdin
     assert "sshd-baseline-controller.py" in command["ansible.builtin.command"]["argv"][1]
 
 
@@ -134,6 +137,8 @@ def test_real_ansible_check_invokes_read_only_transaction_preview(tmp_path):
         "ssh_transaction_contexts": contexts,
         "ssh_transaction_bundle_generation": "a" * 64,
         "ssh_transaction_promotion_config_path": None,
+        "ssh_transaction_failure_receipt_path": None,
+        "ssh_transaction_failure_receipt_parent_identity": None,
         "ssh_transaction_target_identity": {
             "inventory_alias": "node-one", "public_service_address_sha256": "b" * 64,
             "deployable_digest": "c" * 64},
@@ -150,7 +155,10 @@ def test_real_ansible_check_invokes_read_only_transaction_preview(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     request = json.loads(record.read_text())
     assert request["mode"] == "check"
+    assert request["schema_version"] == 2
     assert request["promotion_config_path"] is None
+    assert request["failure_receipt_path"] is None
+    assert request["failure_receipt_parent_identity"] is None
 
 
 @pytest.fixture

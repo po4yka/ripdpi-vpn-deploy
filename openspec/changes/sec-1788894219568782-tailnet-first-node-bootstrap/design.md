@@ -212,6 +212,18 @@ the exact-source local/hosted and authorized staging gates.
   layouts; shared guest recovery primitives remain narrow and testable.
 - Deploy: remove enrollment forwarding from `scripts/deploy-controller.py`
   and make the role verification-only during ordinary site convergence.
+  Deploy mode also consumes a same-owner mode-`0600` exact-alias mapping to
+  fresh private SSH baseline failure-receipt paths. The deploy controller
+  freezes and validates every path plus its parent device/inode before
+  readiness, rechecks that authority before the first SSH, passes the selected
+  path and frozen parent identity through the private per-host transaction
+  variables, and keeps the Ansible task `no_log`. The baseline controller
+  requires that same parent identity before preparing the no-follow output
+  sink before SSH and, on handled failure, publishes only an allowlisted final
+  category with mode `0600`, no-clobber linking and data/directory fsync.
+  Success writes nothing; an absent receipt after abnormal controller death or
+  publication failure remains an unknown outcome. The receipt is diagnostic
+  state only and never participates in confirmation or protocol proof.
 - Cleanup: existing UpCloud/Vultr Make guard dispatch remains authoritative;
   change `scripts/staging-cleanup-guard.py` only if regression evidence proves
   a missing enforcement rule. No Terraform resource schema change is planned.

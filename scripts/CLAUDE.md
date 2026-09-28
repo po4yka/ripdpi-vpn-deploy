@@ -67,6 +67,17 @@ proof of tunneled DNS.
 `TemporaryDirectory` a path beneath symlinked `/var`. Resolve the controller's
 new private directory before passing its executor snapshots to the evaluator;
 the evaluator still rejects symlinked private input paths.
+
+**SSH baseline failures have private categorical receipts** — deploy requires
+an exact-alias mode-`0600` mapping to fresh absent outputs in owner-controlled
+mode-`0700` directories. The deploy controller validates and freezes those
+paths and parent device/inode before readiness, rechecks that authority before
+the first SSH, and passes it to the baseline controller for another identity
+check before publication. The controller publishes only its allowlisted
+failure category with no-follow, no-clobber and fsync. Keep the Ansible task
+`no_log`; success and check mode leave the output absent. A missing receipt
+after abnormal controller death or publication failure is an unknown outcome,
+not success, and receipts never satisfy promotion or protocol proof.
 Disposable liveness de-onboarding after provider firewall promotion supplies
 both the original binding manifest and its reissued cleanup manifest. Their
 private hashes, immutable resource identity, account, deadline and state path

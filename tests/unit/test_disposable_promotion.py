@@ -763,6 +763,11 @@ def test_deploy_controller_prepares_intent_before_any_checked_command(
             "promotions.json",
             {host["name"]: capabilities["intent"]},
         ),
+        (
+            "DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE",
+            "failure-receipts.json",
+            {host["name"]: str(directory / "baseline-failure.json")},
+        ),
     ):
         path = directory / name
         path.write_text(json.dumps(doc))
@@ -800,6 +805,14 @@ def test_deploy_controller_prepares_intent_before_any_checked_command(
     )
     assert calls == ["decrypt", "validate"]
     assert result[host["name"]]["ssh_transaction_promotion_config_path"]
+    assert result[host["name"]]["ssh_transaction_failure_receipt_path"] == str(
+        directory / "baseline-failure.json"
+    )
+    parent = directory.stat()
+    assert result[host["name"]]["ssh_transaction_failure_receipt_parent_identity"] == {
+        "device": parent.st_dev,
+        "inode": parent.st_ino,
+    }
 
 
 def test_promotion_cli_accepts_intent_only_in_validation_mode(intent, tmp_path):
