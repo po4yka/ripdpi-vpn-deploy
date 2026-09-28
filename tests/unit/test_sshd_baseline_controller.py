@@ -570,6 +570,44 @@ def test_unsafe_failure_receipt_refuses_before_rpc(transaction_request, case):
         assert path.read_text() == "foreign"
 
 
+def test_unencodable_failure_receipt_refuses_before_rpc(transaction_request):
+    controller = module()
+    value = dict(transaction_request)
+    value["failure_receipt_path"] = str(Path(value["failure_receipt_path"]).parent) + "/bad\ud800.json"
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("unencodable receipt path must refuse before RPC")
+
+    with pytest.raises(controller.BaselineError, match="request-invalid"):
+        controller.execute(value, {}, rpc=forbidden)
+
+
+def test_publication_encoding_failure_preserves_generic_main_error(
+        transaction_request, monkeypatch, capsys):
+    controller = module()
+    monkeypatch.setattr(controller, "_request", lambda: transaction_request)
+    monkeypatch.setattr(
+        controller,
+        "_execute_validated",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            controller.BaselineError("prepare-rpc-failed")
+        ),
+    )
+    monkeypatch.setattr(
+        controller,
+        "_publish_failure",
+        lambda *args: (_ for _ in ()).throw(
+            UnicodeEncodeError("utf-8", "fixture", 0, 1, "unencodable")
+        ),
+    )
+
+    assert controller.main() == 1
+    assert json.loads(capsys.readouterr().out) == {
+        "status": "error",
+        "reason": "ssh-baseline-transaction-failed",
+    }
+
+
 def test_parent_replacement_cannot_receive_or_mask_failure_receipt(transaction_request):
     controller = module()
     path = Path(transaction_request["failure_receipt_path"])

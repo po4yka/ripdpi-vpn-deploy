@@ -790,6 +790,22 @@ def test_failure_receipt_paths_must_be_distinct_before_first_ssh(workspace, seco
     assert not any(entry["program"] in {"ssh", "ansible-playbook"} for entry in calls(workspace))
 
 
+def test_unencodable_failure_receipt_path_refuses_before_first_ssh(workspace):
+    set_contexts(workspace, "node-one")
+    workspace["receipt_mapping"].write_text(json.dumps({
+        "node-one": str(workspace["receipts"] / "bad\ud800.json"),
+    }) + "\n")
+    result = subprocess.run(
+        ["make", "deploy", "ANSIBLE_LIMIT=node-one",
+         "SECRETS_FILE=" + str(workspace["secrets"])],
+        cwd=workspace["root"], env=workspace["env"], text=True,
+        capture_output=True, timeout=25,
+    )
+    assert result.returncode != 0
+    assert "Traceback" not in result.stdout + result.stderr
+    assert not any(entry["program"] in {"ssh", "ansible-playbook"} for entry in calls(workspace))
+
+
 def test_swapped_valid_promotion_configs_refuse_before_validation_or_ssh(workspace):
     set_contexts(workspace, "")
     promotion = Path(workspace["env"]["DEPLOY_PROMOTION_CONFIG_FILE"])

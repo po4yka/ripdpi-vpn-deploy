@@ -193,7 +193,8 @@ def fresh_private_output(value):
     """Validate one fresh diagnostic path without creating controller state."""
     if (not isinstance(value, str) or not Path(value).is_absolute()
             or str(Path(value)) != value or any(part in (".", "..") for part in Path(value).parts)
-            or any(ord(char) < 32 or ord(char) == 127 for char in value)):
+            or any(ord(char) < 32 or ord(char) == 127
+                   or 0xD800 <= ord(char) <= 0xDFFF for char in value)):
         raise DeployError("SSH failure receipt path invalid")
     path = Path(value)
     try:
@@ -213,7 +214,7 @@ def fresh_private_output(value):
                 raise DeployError("SSH failure receipt directory unsafe")
     except DeployError:
         raise
-    except OSError:
+    except (OSError, UnicodeError):
         raise DeployError("SSH failure receipt path unavailable") from None
     return path, {"device": info.st_dev, "inode": info.st_ino}
 

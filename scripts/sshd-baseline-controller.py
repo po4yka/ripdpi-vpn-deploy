@@ -126,7 +126,8 @@ def _json(value):
 def _failure_sink(value, expected_identity):
     if (not isinstance(value, str) or not Path(value).is_absolute()
             or str(Path(value)) != value or any(part in (".", "..") for part in Path(value).parts)
-            or any(ord(char) < 32 or ord(char) == 127 for char in value)
+            or any(ord(char) < 32 or ord(char) == 127
+                   or 0xD800 <= ord(char) <= 0xDFFF for char in value)
             or not isinstance(expected_identity, dict)
             or set(expected_identity) != {"device", "inode"}
             or any(type(expected_identity[key]) is not int or expected_identity[key] < 0
@@ -152,7 +153,7 @@ def _failure_sink(value, expected_identity):
         return path, (info.st_dev, info.st_ino)
     except BaselineError:
         raise
-    except OSError:
+    except (OSError, UnicodeError):
         raise BaselineError("request-invalid") from None
 
 
@@ -398,7 +399,7 @@ def execute(request, environment, *, rpc=transaction_rpc, sftp=fresh_sftp, proof
                       else "controller-failure")
             try:
                 _publish_failure(failure_sink, reason)
-            except OSError:
+            except (OSError, UnicodeError):
                 # Preserve the original controller failure when the private receipt cannot be published.
                 pass
         raise
