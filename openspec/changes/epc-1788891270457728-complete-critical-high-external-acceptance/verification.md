@@ -20,6 +20,16 @@ artifact_evidence: No authenticated primary or independent alert-delivery capabi
 
 # Verification
 
+## Owner-approved scope
+
+On 2026-09-28 the owner excluded Android installation/device testing, primary
+and independent alert drills, and offsite copy/restore. These are exclusions,
+not passes. Current profiles and pinned client runtimes still require real
+authenticated REALITY, XHTTP, Hysteria2, and AmneziaWG traffic, including a fresh
+AWG invocation. Historical category snapshots above remain historical; final
+closure must replace them with observed in-scope evidence. The artifact category
+now covers post-firewall traffic and guarded client/executor retirement.
+
 ## Requirement evidence
 
 | Requirement | Execution step | Evidence | Result |
@@ -29,10 +39,10 @@ artifact_evidence: No authenticated primary or independent alert-delivery capabi
 | REQ-EPC-1788891270457728-003 | EPC-1788891640866927 | Guarded staging manifest, account and state binding, approved cost and expiry, exercised node, and post-destroy provider absence | blocked: provider capability and authorization not verified |
 | REQ-EPC-1788891270457728-004 | EPC-1788891641535013 | Canonical precheck, fleet dry-run, serial convergence, verify, security-verify, and source-drift outcomes | blocked: all three public and management SSH transports time out and strict contexts are unavailable |
 | REQ-EPC-1788891270457728-005 | EPC-1788891641535013 | Isolated custom-listener rehearsal, recovery path, listener and firewall parity, and unchanged VPN paths before promotion | blocked: isolated staging unavailable and all fleet SSH transports time out |
-| REQ-EPC-1788891270457728-006 | EPC-1788891642225067 | Current signed artifact and independent authenticated REALITY, XHTTP, Hysteria2, and AmneziaWG traffic observations | blocked: current client and signer or relay handoff unavailable |
+| REQ-EPC-1788891270457728-006 | EPC-1788891642225067 | Current profiles, pinned runtimes, and independent authenticated REALITY, XHTTP, Hysteria2, and AmneziaWG traffic observations | pending: current fleet client-path evidence required |
 | REQ-EPC-1788891270457728-007 | EPC-1788891642225067 | Fresh recurring nonce, revision, source, artifact, traffic, recovery, and cleanup evidence with replay negatives | blocked: current client and disposable executor inputs unavailable |
-| REQ-EPC-1788891270457728-008 | EPC-1788891642969936 | Fresh expected-target metrics plus controlled primary and independent alert firing, recovery, rotation, rollback, and cutover | blocked: alert-delivery capability not verified |
-| REQ-EPC-1788891270457728-009 | EPC-1788891642969936 | Observed offsite copy and isolated non-pruning restore | blocked: storage capability and restore target not verified |
+| REQ-EPC-1788891270457728-008 | EPC-1788891643660976 | Owner-approved scope exclusion dated 2026-09-28; no alert proof claimed | excluded by owner; not passed |
+| REQ-EPC-1788891270457728-009 | EPC-1788891643660976 | Owner-approved scope exclusion dated 2026-09-28; retained copies remain intact | excluded by owner; not passed |
 | REQ-EPC-1788891270457728-010 | EPC-1788891640190305 | Owner-only reports `58868c86` and `c3a70e3d` checked credential classes, SOPS decrypt, strict secrets and certificates, then removed plaintext; zero external calls or mutations | passed |
 | REQ-EPC-1788891270457728-011 | EPC-1788891640190305 | Successor remains active as blocked with exact provider, SSH, Tailnet, client, alert, and restore capability gaps | passed |
 | REQ-EPC-1788891270457728-012 | EPC-1788891643660976 | Thirteen-row predecessor matrix, exact evidence, rollback and cleanup reconciliation, strict validation, and archive readiness | pending |

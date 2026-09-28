@@ -2,7 +2,9 @@
 
 Define the observable evidence and safety contract for completing the remaining
 Critical and High deployment work across protected source, dry-run, isolated
-staging, live fleet, current clients, alert delivery, recovery, and cleanup.
+staging, live fleet, authenticated clients, recovery, and cleanup. The owner
+excluded Android device testing, alert drills, and offsite copy/restore on
+2026-09-28; these exclusions MUST NOT be represented as successful observations.
 
 ## ADDED Requirements
 
@@ -96,10 +98,10 @@ required VPN paths before any serial live rollout.
 - **THEN** live promotion is refused
 - **AND** staging is rolled back or destroyed through its guarded lifecycle
 
-### Requirement: REQ-EPC-1788891270457728-006 — Require current-client four-transport traffic
+### Requirement: REQ-EPC-1788891270457728-006 — Require authenticated four-transport traffic
 
-Client acceptance MUST use a current signed RIPDPI artifact and invocation-bound
-handoff to prove authenticated REALITY, XHTTP, Hysteria2, and AmneziaWG traffic
+Client acceptance MUST use current profiles, pinned client runtimes, and an
+invocation-bound handoff to prove authenticated REALITY, XHTTP, Hysteria2, and AmneziaWG traffic
 from the required independent vantage points.
 
 #### Scenario: Partial transport evidence remains incomplete
@@ -119,7 +121,7 @@ cleanup outcome to each invocation.
 #### Scenario: Infrastructure is unavailable after a valid pass
 
 - **GIVEN** a prior valid PASS exists and a later invocation cannot acquire its
-  provider, executor, signer, relay, or current client input
+  provider, executor, or current client input
 - **WHEN** recurring status is published
 - **THEN** the prior PASS remains historical rather than becoming a new PASS
 - **AND** the new invocation reports infrastructure unavailable with its blocker
@@ -131,37 +133,35 @@ cleanup outcome to each invocation.
 - **WHEN** the recurring verifier evaluates it
 - **THEN** the invocation fails closed and cannot update the current PASS
 
-### Requirement: REQ-EPC-1788891270457728-008 — Prove primary and independent alert recovery
+### Requirement: REQ-EPC-1788891270457728-008 — Keep alert drills outside this acceptance
 
-Observability acceptance MUST deploy the expected target set and prove fresh
-exact-source metrics, controlled failure detection, primary alert delivery,
-independent dead-man delivery, recovery notification, rotation, rollback, and
-removal of the superseded direct delivery path.
+This acceptance MUST NOT require primary or independent alert drills after the
+owner-approved scope reduction, MUST NOT credit missing delivery observations
+as passes, and MUST NOT remove existing alert paths on the basis of that exclusion.
 
-#### Scenario: One alert authority is unavailable
+#### Scenario: Alert drills are excluded
 
-- **GIVEN** metrics are fresh but either primary or independent delivery cannot
-  be observed end to end
-- **WHEN** the alert drill is evaluated
-- **THEN** observability remains incomplete
-- **AND** direct legacy delivery is not removed
+- **GIVEN** the owner has excluded alert drills from this deployment acceptance
+- **WHEN** the acceptance matrix is reconciled
+- **THEN** historical alert obligations name this explicit scope exclusion
+- **AND** no alert delivery or recovery is marked passed without observation
 
-### Requirement: REQ-EPC-1788891270457728-009 — Prove isolated offsite restore
+### Requirement: REQ-EPC-1788891270457728-009 — Preserve retained backups outside this acceptance
 
-Backup acceptance MUST observe an initial offsite copy and a restore into an
-isolated destination without pruning or mutating retained backup data.
+This acceptance MUST NOT require an offsite copy or restore drill after the
+owner-approved scope reduction, MUST NOT claim restore success without an
+observation, and MUST leave retained backup data intact.
 
-#### Scenario: Offsite account or restore target is unavailable
+#### Scenario: Offsite restore is excluded
 
-- **GIVEN** the storage account, credential, copy, or isolated restore target is
-  unavailable
-- **WHEN** backup acceptance is evaluated
-- **THEN** the task remains open with the exact unavailable capability
+- **GIVEN** the owner has excluded offsite copy and restore from this acceptance
+- **WHEN** the acceptance matrix is reconciled
+- **THEN** historical restore obligations name this explicit scope exclusion
 - **AND** local backup configuration is not credited as offsite restore proof
 
 ### Requirement: REQ-EPC-1788891270457728-010 — Isolate credentials and private evidence
 
-Provider, fleet, client, alert, and offsite credentials MUST enter only through
+Provider, fleet, and client credentials MUST enter only through
 their documented environment or encrypted-input interfaces, while private
 evidence MUST be owner-only, redacted, identity-bound, and excluded from Git.
 
@@ -177,7 +177,7 @@ evidence MUST be owner-only, redacted, identity-bound, and excluded from Git.
 ### Requirement: REQ-EPC-1788891270457728-011 — Keep externally blocked work active
 
 The portfolio record MUST remain active whenever a required external account,
-credential, target, signer, relay, current client artifact, or human executor is
+credential, target, client runtime, or authorized executor required by this scope is
 unavailable, and MUST name the exact blocker and last completed safe boundary.
 
 #### Scenario: External blocker persists
@@ -191,14 +191,16 @@ unavailable, and MUST name the exact blocker and last completed safe boundary.
 ### Requirement: REQ-EPC-1788891270457728-012 — Reconcile predecessor obligations before closure
 
 Final closure MUST map every unfinished Critical and High predecessor
-requirement to current exact evidence or an explicit superseding requirement,
+requirement to current exact evidence, an explicit superseding requirement,
+or the owner-approved scope exclusions in this change,
 and MUST pass task, OpenSpec, source, hosted, staging, live, client, artifact,
 rollback, and cleanup validation applicable to that requirement.
 
 #### Scenario: A predecessor obligation lacks proof
 
 - **GIVEN** any unfinished requirement from a named predecessor has neither
-  scope-matching current evidence nor a documented superseding requirement
+  scope-matching current evidence, a documented superseding requirement,
+  nor an owner-approved scope exclusion
 - **WHEN** terminal closure is requested
 - **THEN** archive readiness and closure fail
 - **AND** the missing obligation remains visible in the active task
