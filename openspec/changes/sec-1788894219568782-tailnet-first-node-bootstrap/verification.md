@@ -1,32 +1,33 @@
 ---
 task_id: SEC-1788894219568782
 change: sec-1788894219568782-tailnet-first-node-bootstrap
-commit_sha: null
+commit_sha: 52eda3d97feb4b697e1465beee55df2e9f5b3eed
 local: required
-local_evidence: null
+local_evidence: "Exact main 52eda3d97feb4b697e1465beee55df2e9f5b3eed passed build-gate -- make check, including 4665 portable pytest cases, 4 deselected, 20 subtests, 55 Bats cases, 104 vpnd library tests, provider validation and policy checks, snapshots, gitleaks, actionlint, zizmor, Ansible lint and syntax, shellcheck, cargo-deny, clippy and Rust tests. The focused recovery suites passed 177 tests; strict OpenSpec and task validation passed. Local ARM Molecule reached real PID 1 but the emulated sandbox failed an early unit with Result=resources, so it remains setup-failure evidence rather than native runtime proof."
 remote_ci: required
-remote_ci_evidence: null
+remote_ci_evidence: "The source commit 25fba763724280560f797b023786118b69e964ba passed all 81 pull-request checks before protected-branch merge. The resulting exact main commit 52eda3d97feb4b697e1465beee55df2e9f5b3eed then completed ci, codeql, scorecard and release-please successfully; its 80 post-merge check runs had no failures."
 dry_run: required
-dry_run_evidence: null
+dry_run_evidence: "Not yet exercised with a positive bootstrap handoff and exact-node promotion configuration."
 staging: required
-staging_evidence: null
+staging_evidence: "On exact main 52eda3d97feb4b697e1465beee55df2e9f5b3eed, the authorized disposable reboot harness consumed a new single-use ephemeral enrollment key and exited zero. It observed worker termination, SSH loss, a changed boot identity, current-boot success from both recovery services, idle state, fresh pinned public SSH and SFTP, and the strict preinstall probe. A separate post-run retry reconfirmed idle state, both current-success units, SSH, SFTP and preinstall state after one isolated transport retry. Earlier controller-loss evidence remains bound to its earlier main revision; positive bootstrap, ordinary deployment, provider-firewall promotion and final acceptance remain outstanding."
 live: required
-live_evidence: null
+live_evidence: "No permanent-node rollout or serial live acceptance was performed."
 client: required
-client_evidence: null
+client_evidence: "No authenticated required-profile traffic proof was performed."
 artifact: required
-artifact_evidence: null
+artifact_evidence: "The reboot success evidence was atomically present as an owner-controlled mode-0600 regular file under a mode-0700 directory, matched the exact wrapper input digest, contained only the specified hashes and seven true categorical checks, and excluded the target alias, public address, enrollment key and remote output. The distinct incomplete diagnostic path remained absent. The single-use key was no longer valid after the run. Positive bootstrap handoff, deployment proof, cleanup reissue and guarded-delete receipts remain outstanding."
 ---
 
 # Verification
 
-Implementation is in progress in the dedicated worktree; no implementation
-commit or external acceptance exists yet. The inspected baseline is
-`3a7a48220e89e99e4d2f96125941eecfcf281479`; it is not an implementation SHA.
-Its existing deploy module tests passed (105 tests), and direct local context
-validation refused a public-only fresh-node configuration. These observations
-establish the dependency defect, not bootstrap acceptance. All implementation
-and external evidence below remain required.
+Implementation remains in progress in the dedicated worktree. Exact main
+`52eda3d97feb4b697e1465beee55df2e9f5b3eed` now has complete local and hosted
+gates plus positive disposable reboot-recovery evidence. The earlier
+controller-loss evidence is retained on its recorded earlier main revision.
+Positive bootstrap, ordinary dry-run/deploy, authenticated protocol proof,
+provider-firewall promotion and manifest reissue, guarded deletion/provider
+absence, and any agreed permanent-node rollout remain required. No execution
+step is closed by the reboot checkpoint alone.
 
 ## Requirement evidence
 
@@ -87,6 +88,47 @@ reboot evidence. This checkpoint is failure analysis, not acceptance. The patch,
 its exact-SHA local/hosted gates, the repeated reboot exercise, positive
 bootstrap, ordinary deployment, protocol proof and guarded deletion all remain
 required; execution step `SEC-1788894504951632` stays open.
+
+## Successful exact-main reboot acceptance — 2026-09-28
+
+The diagnostic hardening merged through the protected branch as exact main
+`52eda3d97feb4b697e1465beee55df2e9f5b3eed`, with deployable digest
+`a86591e11b5fc6d1f5b2b9405089353cc5e177e66ebe85c65062e6a4952fb983`.
+All 81 pull-request checks passed before merge. The exact main push then
+completed `ci`, `codeql`, `scorecard` and `release-please` successfully; all
+80 post-merge check runs completed without a failure.
+
+An operator-authorized disposable provider run replaced the obsolete wrapper
+with schema 2 and fresh distinct success/diagnostic outputs, then supplied a
+new single-use one-day ephemeral enrollment key without placing it in command
+arguments, logs or repository files. The fixed reboot harness exited zero and
+published success evidence with all seven categorical checks true:
+
+- the durable pending enrollment worker was killed without confirmation or
+  explicit rollback;
+- public SSH loss was observed and the boot identity changed;
+- both recovery services proved current-boot success;
+- the guest returned to idle unconfirmed state;
+- fresh pinned public SSH and SFTP succeeded; and
+- the strict preinstall probe accepted the restored state.
+
+The success artifact was independently checked as an owner-controlled regular
+mode-`0600` file beneath a mode-`0700` directory. Its exact field set, source
+revision, deployable digest and wrapper input digest matched; it contained no
+target alias, public address, enrollment key or remote output. The distinct
+diagnostic path remained absent. A post-run live check reconfirmed idle state,
+both recovery services, pinned SSH, SFTP and the preinstall probe after one
+isolated transport retry. The control-plane key inventory then showed no valid
+auth keys and one additional invalidated key, confirming single-use
+consumption.
+
+This closes the previously failed reboot-recovery acceptance checkpoint, not
+execution step `SEC-1788894504951632`. The earlier controller-loss result is
+still bound to its earlier main revision. Positive bootstrap with a third
+fresh key, observed dual-path handoff, SSH ownership transaction, ordinary
+dry-run/deploy, authenticated protocol proof, provider-firewall
+promotion/manifest reissue, guarded deletion and authenticated provider
+absence remain required.
 
 ## Two-phase implementation checkpoint — 2026-09-09
 
