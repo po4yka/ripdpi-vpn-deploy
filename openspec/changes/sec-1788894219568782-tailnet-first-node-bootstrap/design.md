@@ -216,7 +216,8 @@ the exact-source local/hosted and authorized staging gates.
   fresh private SSH baseline failure-receipt paths. The deploy controller
   freezes and validates every path plus its parent device/inode before
   readiness, rejects unencodable surrogate pathnames and same-directory
-  case-only or canonically equivalent Unicode filename variants, rechecks that authority before the first SSH,
+  case-only or canonically equivalent Unicode filename variants, rechecks every
+  selected authority in a separate all-host pass before the first SSH,
   passes the selected
   path and frozen parent identity through the private per-host transaction
   variables, and keeps the Ansible task `no_log`. The baseline controller

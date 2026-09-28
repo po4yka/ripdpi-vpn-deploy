@@ -71,9 +71,10 @@ the evaluator still rejects symlinked private input paths.
 **SSH baseline failures have private categorical receipts** — deploy requires
 an exact-alias mode-`0600` mapping to fresh absent outputs in owner-controlled
 mode-`0700` directories. The deploy controller validates and freezes those
-paths and parent device/inode before readiness, rechecks that authority before
-the first SSH, and passes it to the baseline controller for another identity
-check before publication. Unencodable surrogate pathnames refuse before SSH.
+paths and parent device/inode before readiness, rechecks every selected sink
+in one all-host preflight before the first SSH, and passes it to the baseline
+controller for another identity check before publication. Unencodable surrogate
+pathnames refuse before SSH.
 Same-directory output names are case-folded and
 Unicode-normalized so case-only and canonically equivalent variants refuse on
 every operator filesystem. The baseline controller validates the sink before

@@ -694,13 +694,18 @@ def controller(mode):
             checked([str(root / "scripts/check-certs.sh")], environment=precheck_environment, cwd=directory)
         for fence in input_fences:
             verify_input_fence(fence)
-        for host, command, playbooks, arguments in prepared:
-            transaction = transactions[host["name"]]
-            if mode == "deploy":
+        if mode == "deploy":
+            # Recheck every selected sink before the first host can be changed.
+            # Checking inside the host loop could discover a later unsafe sink
+            # only after earlier hosts had already converged.
+            for host, _command, _playbooks, _arguments in prepared:
+                transaction = transactions[host["name"]]
                 recheck_private_output(
                     transaction["ssh_transaction_failure_receipt_path"],
                     transaction["ssh_transaction_failure_receipt_parent_identity"],
                 )
+        for host, command, playbooks, arguments in prepared:
+            transaction = transactions[host["name"]]
             wait_for_bootstrap(command[:-1], environment=environment)
             require_recovery_foundation(
                 command, transactions[host["name"]]["ssh_transaction_bundle_generation"], environment)

@@ -120,7 +120,9 @@ and verify existing Tailnet state without invoking login. All existing callers
 and tests MUST migrate; no legacy credential-forwarding fallback is permitted.
 Deploy mode MUST require a private exact-alias mapping to fresh absent SSH
 baseline failure-receipt paths before readiness or SSH. Each path MUST be
-absolute, distinct, and beneath a same-owner mode-`0700` directory. The
+absolute, distinct, and beneath a same-owner mode-`0700` directory. The deploy
+controller MUST recheck every selected sink in one all-host pass before the
+first SSH or mutation of any selected host. The
 baseline controller MUST publish a receipt for any handled deploy-mode
 controller failure after safe receipt-sink validation. When a transaction has
 been armed, publication occurs only after rollback has either completed or
@@ -186,7 +188,7 @@ migration implicitly.
 #### Scenario: Failure receipt authority is unsafe before SSH
 
 - **WHEN** the alias mapping is missing or mismatched, a pathname contains an unencodable surrogate, paths collide including same-directory names that differ only by case or canonical Unicode normalization, a receipt already exists, path ancestry is unsafe, or the parent changes before the deploy controller's pre-SSH recheck
-- **THEN** deployment refuses before readiness or SSH; no existing receipt is replaced and no transaction is armed.
+- **THEN** the controller's single all-host recheck refuses deployment before readiness, SSH, or mutation of any selected host; no existing receipt is replaced and no transaction is armed.
 
 #### Scenario: Failure receipt authority changes after preflight
 

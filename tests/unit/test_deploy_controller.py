@@ -900,22 +900,37 @@ pathlib.Path({str(record)!r}).write_text(json.dumps(transaction))
     }
 
 
-def test_receipt_parent_replacement_after_preflight_refuses_before_first_ssh(workspace):
+def test_later_receipt_parent_replacement_refuses_before_any_host_ssh(workspace):
+    later_receipts = workspace["receipts"].with_name("later-receipts")
+    later_receipts.mkdir(mode=0o700)
     proof = workspace["root"] / "scripts/sshd-promotion-proof.py"
-    original = workspace["receipts"].with_name("original-receipts")
+    original = later_receipts.with_name("original-later-receipts")
     proof.write_text(proof.read_text().replace(
         "    config = json.loads(pathlib.Path(sys.argv[sys.argv.index('--config') + 1]).read_text())",
         f"""    config = json.loads(pathlib.Path(sys.argv[sys.argv.index('--config') + 1]).read_text())
-    pathlib.Path({str(workspace['receipts'])!r}).rename(pathlib.Path({str(original)!r}))
-    pathlib.Path({str(workspace['receipts'])!r}).mkdir(mode=0o700)
+    if config.get('fixture') == 'node-two':
+        pathlib.Path({str(later_receipts)!r}).rename(pathlib.Path({str(original)!r}))
+        pathlib.Path({str(later_receipts)!r}).mkdir(mode=0o700)
 """,
     ))
     commit_fixture(workspace)
-    result = invoke(workspace, target="deploy", limit="node-one")
+    set_contexts(workspace, "")
+    workspace["receipt_mapping"].write_text(json.dumps({
+        "node-one": str(workspace["receipts"] / "node-one.json"),
+        "node-two": str(later_receipts / "node-two.json"),
+    }) + "\n")
+
+    result = subprocess.run(
+        ["make", "deploy", "SECRETS_FILE=" + str(workspace["secrets"])],
+        cwd=workspace["root"], env=workspace["env"], text=True,
+        capture_output=True, timeout=25,
+    )
+
     assert result.returncode != 0
     assert not any(entry["program"] in {"ssh", "ansible-playbook"} for entry in calls(workspace))
     assert not (workspace["receipts"] / "node-one.json").exists()
-    assert not (original / "node-one.json").exists()
+    assert not (later_receipts / "node-two.json").exists()
+    assert not (original / "node-two.json").exists()
 
 
 def test_private_read_only_ssh_key_remains_usable(workspace):
