@@ -7,6 +7,11 @@ Their terminal cancellation records correctly state that unperformed evidence
 did not pass, yet the current objective requires those gaps to remain active and
 be completed when their external capabilities are available.
 
+On 2026-09-28 the owner excluded Android installation/device testing, alert
+drills, and offsite copy/restore from this acceptance. Historical obligations
+remain identifiable, but these exclusions are not successful observations and
+do not authorize removing configured alert paths or retained backups.
+
 Current protected main is the only source candidate. External execution must
 not use the conflicted shared checkout, stale inventories, cached evidence, or
 prior PASS records. Provider state is local, deployment secrets are SOPS-owned,
@@ -16,10 +21,10 @@ outside Git with same-owner mode 0600.
 ## Goals / Non-Goals
 
 - Goal: Preserve one active, auditable successor for every unfinished Critical
-  and High external acceptance obligation.
+  and High external acceptance obligation within the owner-approved scope.
 - Goal: Execute the shortest safe path from exact protected source through
-  capability preflight, guarded staging, serial live convergence, current-client
-  traffic, alert recovery, offsite restore, and provider-confirmed cleanup.
+  capability preflight, guarded staging, serial live convergence, authenticated
+  client traffic, recovery, and provider-confirmed cleanup.
 - Goal: Stop at the exact missing external capability without weakening a gate
   or converting missing evidence into a pass.
 - Non-goal: Reuse or rewrite the terminal predecessor task IDs or their Git
@@ -29,8 +34,8 @@ outside Git with same-owner mode 0600.
 - Non-goal: Create a permanent staging fleet, expand production topology, enable
   a public administration surface, or spend beyond an explicit current owner
   authorization.
-- Non-goal: Treat fixtures, hosted runners, provider dashboards, or server-side
-  probes as current physical-client proof.
+- Non-goal: Require Android, alert drills, or offsite restore in this scoped run,
+  or credit their exclusion as proof that those capabilities work.
 
 ## Decisions
 
@@ -45,10 +50,10 @@ outside Git with same-owner mode 0600.
   without reading values, provider account identity, selected environment and
   state, cost and expiry authorization, unique staging identifiers, cleanup
   reservation, SOPS decryption, inventory, strict SSH contexts, current client
-  artifact and signer handoff, alert destinations, and isolated restore target.
+  profiles, pinned runtimes, and the authorized client executor.
 - Keep missing capabilities as typed blockers in the task and verification
-  frontmatter. An unavailable provider credential, target, signer, relay,
-  current client artifact, alert destination, storage account, or human action
+  frontmatter. An unavailable provider credential, target, client runtime,
+  executor, or human action required by the scoped run
   blocks only its owning phase and never becomes `not_applicable`.
 - Use the repository Makefile and typed controllers as the operator surface.
   Raw Terraform, ad hoc Ansible, browser-cookie extraction, plaintext provider
@@ -65,9 +70,9 @@ outside Git with same-owner mode 0600.
   separate evidence. Four-transport proof covers current client reachability;
   recurring proof additionally requires a fresh nonce, revision, recovery, and
   teardown result and may retain but never republish an older PASS.
-- Perform controlled alert and backup drills only after fleet source and runtime
-  parity is established. Remove the legacy direct alert path only after both
-  primary and independent delivery plus recovery are observed.
+- Require post-firewall authenticated profiles and guarded client/executor
+  retirement. The scope decision does not remove existing alert paths or
+  retained backups and does not authorize an alert or restore drill.
 
 ## Contracts and ownership
 
@@ -84,23 +89,19 @@ outside Git with same-owner mode 0600.
   variables only.
 - **Ansible:** `scripts/deploy-controller.py`, rendered inventory, strict SSH
   contexts, and the canonical playbooks own dry-run, deployment, verification,
-  security verification, source drift, SSH recovery, observability, and backup
+  security verification, source drift, and SSH recovery
   runtime state. Exact target limits and serial ordering are mandatory.
 - **Secrets and evidence:** SOPS+age owns deployment secrets at rest. Private
-  manifests, reports, journals, client handoffs, and restore evidence live in a
+  manifests, reports, journals, and client handoffs live in a
   same-owner mode-0600 directory outside the repository and contain redacted
   target data.
-- **Client and AWG:** The RIPDPI repository or its authorized build executor owns
-  the current signed artifact and invocation-bound signer or relay evidence.
-  This repository validates the handoff, drives the disposable target, and
-  records traffic and cleanup; it does not fabricate a client result.
-- **Alerting and backup:** The configured primary and independent notification
-  destinations own delivery observations. The configured offsite store and an
-  isolated restore target own copy and recovery evidence. Missing access remains
-  an explicit blocker.
+- **Client and AWG:** Current profiles and pinned client runtimes belong to the
+  authorized executor. This repository validates their invocation-bound
+  handoff, drives the disposable target, and records actual authenticated
+  traffic and cleanup; it does not fabricate a client result.
 - **Execution ownership:** This task uses one provider/network writer at a time.
   No parallel task may create, mutate, promote, or destroy the same provider,
-  state, inventory, SSH path, alert authority, or staging identity.
+  state, inventory, SSH path, executor, or staging identity.
 
 ## Risks / Trade-offs
 
@@ -138,18 +139,18 @@ outside Git with same-owner mode 0600.
 5. Run canonical fleet dry-run and then serial live convergence. After each
    target, run verification, security verification, and source drift; stop and
    roll back on the first failure.
-6. With a current signed client and signer or relay handoff, execute
+6. With current profiles, pinned runtimes, and an authorized executor, execute
    four-transport traffic acceptance and a distinct recurring AmneziaWG
    invocation with failure, recovery, and teardown evidence.
-7. Execute controlled primary and independent alert drills, reconcile the
-   expected target set, then prove the initial offsite copy and isolated restore.
+7. Repeat authenticated traffic after firewall promotion and retire only the
+   invocation-owned client, executor, and temporary access capabilities.
 8. Reconcile every predecessor row, exact source, rollback, and cleanup result.
    Only then transition to review, run strict validation and archive readiness,
    and follow the two-commit taskctl close lifecycle.
 
 Rollback is phase-specific: abort before mutation on preflight failure; destroy
 only manifest-bound staging resources after staging failure; use reviewed SSH,
-configuration, credential, and alert rollback controllers for live failures;
-retain the last valid recurring PASS as historical evidence; never prune the
-offsite store during a restore drill. There is no compatibility migration for
+configuration and credential rollback controllers for live failures;
+retain the last valid recurring PASS as historical evidence and leave retained
+offsite copies intact. There is no compatibility migration for
 terminal task IDs: they remain terminal and the new successor ID is canonical.
