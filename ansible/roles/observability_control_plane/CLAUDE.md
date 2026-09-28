@@ -84,6 +84,8 @@ reloads only previously active services; first-install rollback stops new units
 before removing their files. A failed restore retains the private snapshot and
 blocks publication/disable until manual recovery. Runtime-release binaries and
 abrupt host/process death are outside this configuration rollback boundary.
+Every loopback authority-readiness request disables proxy inheritance; local
+transaction health must never depend on ambient controller proxy settings.
 
 Previous active AM and gateway must form one chain. Partial active topology is
 refused before authority publication; standalone active Prometheus before
