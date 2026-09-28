@@ -567,3 +567,30 @@ def test_main_keeps_public_failure_generic_while_private_receipt_is_redacted(
         "status": "failed",
         "reason": "controller-failure",
     }
+
+
+@pytest.mark.parametrize(
+    ("interruption", "expected_status"),
+    [(KeyboardInterrupt(), 130), (SystemExit(75), 75), (SystemExit(0), 1)],
+)
+def test_main_keeps_handled_interrupt_public_failure_generic(
+        transaction_request, monkeypatch, capsys, interruption, expected_status):
+    controller = module()
+    path = Path(transaction_request["failure_receipt_path"])
+    monkeypatch.setattr(controller, "_request", lambda: transaction_request)
+    monkeypatch.setattr(
+        controller,
+        "_execute_validated",
+        lambda *args, **kwargs: (_ for _ in ()).throw(interruption),
+    )
+
+    assert controller.main() == expected_status
+    assert json.loads(capsys.readouterr().out) == {
+        "status": "error",
+        "reason": "ssh-baseline-transaction-failed",
+    }
+    assert json.loads(path.read_bytes()) == {
+        "schema_version": 1,
+        "status": "failed",
+        "reason": "controller-failure",
+    }

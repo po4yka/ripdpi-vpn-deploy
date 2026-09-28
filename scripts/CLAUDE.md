@@ -76,8 +76,9 @@ the first SSH, and passes it to the baseline controller for another identity
 check before publication. Same-directory output names are case-folded and
 Unicode-normalized so case-only and canonically equivalent variants refuse on
 every operator filesystem. The baseline controller validates the sink before the rest of the deploy request
-and publishes after a handled interrupt has rolled back. It publishes only its
-allowlisted failure category with no-follow, no-clobber and fsync. Keep the Ansible task
+and publishes after a handled interrupt has rolled back. Its CLI preserves a
+nonzero interrupt status but emits only the generic public error. It publishes
+only its allowlisted failure category with no-follow, no-clobber and fsync. Keep the Ansible task
 `no_log`; success and check mode leave the output absent. A missing receipt
 after abnormal controller death or publication failure is an unknown outcome,
 not success, and receipts never satisfy promotion or protocol proof.

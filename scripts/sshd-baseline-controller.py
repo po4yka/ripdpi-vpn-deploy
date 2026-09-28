@@ -401,6 +401,12 @@ def main():
         result = execute(_request(), environment)
         print(json.dumps(result, sort_keys=True))
         return 0
+    except KeyboardInterrupt:
+        print(json.dumps({"status": "error", "reason": "ssh-baseline-transaction-failed"}))
+        return 130
+    except SystemExit as error:
+        print(json.dumps({"status": "error", "reason": "ssh-baseline-transaction-failed"}))
+        return error.code if type(error.code) is int and error.code != 0 else 1
     except (BaselineError, ReadinessError, fleet_inspection.InspectionError, OSError, ValueError):
         print(json.dumps({"status": "error", "reason": "ssh-baseline-transaction-failed"}))
         return 1
