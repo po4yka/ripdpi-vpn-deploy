@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 from tests.unit.test_observability_silence_gateway import _tls
 
 import yaml
@@ -827,6 +828,21 @@ def test_alerting_tasks_validate_before_activation_and_rollback() -> None:
         task["name"] for task in activation["block"]
     ]
 
+    def nested_tasks(items):
+        for item in items:
+            yield item
+            for section in ("block", "rescue", "always"):
+                yield from nested_tasks(item.get(section, []))
+
+    loopback_readiness = [
+        task["ansible.builtin.uri"]
+        for task in nested_tasks([activation])
+        if "ansible.builtin.uri" in task
+        and task["ansible.builtin.uri"]["url"].startswith("http://127.0.0.1:")
+    ]
+    assert len(loopback_readiness) == 6
+    assert all(uri["use_proxy"] is False for uri in loopback_readiness)
+
 
 def test_alertmanager_restart_condition_uses_one_ansible_expression(
     tmp_path: Path,
@@ -1167,10 +1183,9 @@ def test_real_gateway_credential_templates_publish_only_token_digests(tmp_path):
     ],
 )
 def test_authority_rotation_failure_restores_files_and_service_snapshots(
-    tmp_path, initial
+    tmp_path, initial, request
 ):
     """Real Ansible transaction; temp filesystem and HTTP-process systemd adapters."""
-    import socket
     from urllib.error import HTTPError
     from urllib.request import Request, urlopen
 
@@ -1195,11 +1210,12 @@ def test_authority_rotation_failure_restores_files_and_service_snapshots(
     generations.mkdir()
     (generations / ("alertmanager-" + "a" * 64 + ".yml")).write_text("old\n")
     (generations / ("alertmanager-" + "b" * 64 + ".yml")).write_text("candidate\n")
-    ports = {}
-    for name in ("alertmanager", "telegram-relay", "silence-gateway", "prometheus"):
-        with socket.socket() as listener:
-            listener.bind(("127.0.0.1", 0))
-            ports[name] = listener.getsockname()[1]
+    service_names = (
+        "alertmanager",
+        "telegram-relay",
+        "silence-gateway",
+        "prometheus",
+    )
     old_token, new_token = "a1" * 32, "b2" * 32
     old_relay_token, new_relay_token = "c3" * 32, "d4" * 32
     contract = _contract()
@@ -1237,7 +1253,7 @@ def test_authority_rotation_failure_restores_files_and_service_snapshots(
         (credentials.parent / "alertmanager-current.yml").symlink_to(
             generations / ("alertmanager-" + "a" * 64 + ".yml")
         )
-        for name in ports:
+        for name in service_names:
             (
                 root / "etc/systemd/system" / ("observability-" + name + ".service")
             ).write_text("prior unit\n")
@@ -1254,7 +1270,7 @@ def test_authority_rotation_failure_restores_files_and_service_snapshots(
             "observability-"
             + name
             + ".service": {"state": "stopped", "status": "disabled"}
-            for name in ports
+            for name in service_names
         }
         if initial != "absent"
         else {}
@@ -1271,56 +1287,98 @@ def test_authority_rotation_failure_restores_files_and_service_snapshots(
             "prior unit\n"
         )
     (tmp_path / "facts.json").write_text(json.dumps(facts))
-    (tmp_path / "ports.json").write_text(json.dumps(ports))
     control = tmp_path / "services.py"
-    control.write_text("""import hashlib,json,os,signal,subprocess,sys,time
+    control.write_text("""import hashlib,json,os,sys
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler,HTTPServer
 from urllib.request import Request,urlopen
 base=Path(sys.argv[1]); action=sys.argv[2]
-ports=json.loads((base/'ports.json').read_text()); creds=base/'root/etc/observability-control-plane/credentials'
+creds=base/'root/etc/observability-control-plane/credentials'
 if action=='serve':
  name=sys.argv[3]
- token=(creds/'silence-sender-token').read_text() if name=='prometheus' and (creds/'silence-sender-token').exists() else ''
- relay_token=(creds/'telegram-relay-auth-token').read_text() if name=='telegram-relay' and (creds/'telegram-relay-auth-token').exists() else ''
- digest=json.loads((creds/'silence-auth.json').read_text())['sender_token_sha256'] if name=='silence-gateway' else ''
  class Handler(BaseHTTPRequestHandler):
   def do_GET(self):
-   code=200
-   if name=='silence-gateway':
+   facts=json.loads((base/'facts.json').read_text()); key='observability-'+name+'.service'
+   code=200 if facts.get(key,{}).get('state')=='running' else 503
+   snapshot=base/(name+'.credential')
+   credential=snapshot.read_text() if snapshot.exists() else ''
+   if code==200 and name=='silence-gateway':
     supplied=self.headers.get('Authorization','').removeprefix('Bearer ')
-    code=200 if hashlib.sha256(supplied.encode()).hexdigest()==digest else 403
-    if (base/'fail-candidate').exists() and digest==hashlib.sha256(('b2'*32).encode()).hexdigest(): code=503
-   if name=='telegram-relay':
+    code=200 if hashlib.sha256(supplied.encode()).hexdigest()==credential else 403
+    if (base/'fail-candidate').exists() and credential==hashlib.sha256(('b2'*32).encode()).hexdigest(): code=503
+   if code==200 and name=='telegram-relay':
     supplied=self.headers.get('Authorization','').removeprefix('Bearer ')
-    code=200 if supplied==relay_token else 403
-   if name=='prometheus' and token:
+    code=200 if supplied==credential else 403
+   if code==200 and name=='prometheus' and credential:
     try:
-     with urlopen(Request('http://127.0.0.1:'+str(ports['silence-gateway'])+'/-/ready',headers={'Authorization':'Bearer '+token}),timeout=1): pass
+     ports=json.loads((base/'ports.json').read_text())
+     with urlopen(Request('http://127.0.0.1:'+str(ports['silence-gateway'])+'/-/ready',headers={'Authorization':'Bearer '+credential}),timeout=1): pass
     except OSError: code=503
    self.send_response(code);self.end_headers()
   def log_message(self,*args): pass
- HTTPServer(('127.0.0.1',ports[name]),Handler).serve_forever()
+ server=HTTPServer(('127.0.0.1',0),Handler)
+ port_path=base/(name+'.port'); port_tmp=base/(name+'.port.tmp')
+ port_tmp.write_text(str(server.server_port)); os.replace(port_tmp,port_path)
+ server.serve_forever()
 else:
  name=sys.argv[3].removeprefix('observability-').removesuffix('.service'); state=sys.argv[4]; enabled=sys.argv[5] if len(sys.argv)>5 else 'unchanged'
- path=base/(name+'.pid'); facts=json.loads((base/'facts.json').read_text()); key='observability-'+name+'.service'
+ facts=json.loads((base/'facts.json').read_text()); key='observability-'+name+'.service'
  row=facts.setdefault(key,{'state':'stopped','status':'disabled'})
+ was_running=row['state']=='running'
  if state=='stopped' and name=='silence-gateway' and (base/'fail-restore').exists():
   target=creds/'silence-policy.json'
   if os.path.lexists(target): target.unlink()
   target.symlink_to(base/'foreign-file')
- if state in ('restarted','stopped') and path.exists():
-  try: os.kill(int(path.read_text()),signal.SIGTERM)
-  except ProcessLookupError: path.unlink(missing_ok=True)
-  else: path.unlink()
-  time.sleep(.1);row['state']='stopped'
  if state=='stopped': row['state']='stopped'
- if state in ('restarted','started') and not path.exists():
-  child=subprocess.Popen([sys.executable,__file__,str(base),'serve',name],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
-  path.write_text(str(child.pid));time.sleep(.15);row['state']='running'
+ if state=='restarted' or (state=='started' and not was_running):
+  credential=''
+  if name=='prometheus' and (creds/'silence-sender-token').exists(): credential=(creds/'silence-sender-token').read_text()
+  if name=='telegram-relay' and (creds/'telegram-relay-auth-token').exists(): credential=(creds/'telegram-relay-auth-token').read_text()
+  if name=='silence-gateway' and (creds/'silence-auth.json').exists(): credential=json.loads((creds/'silence-auth.json').read_text())['sender_token_sha256']
+  (base/(name+'.credential')).write_text(credential)
+ if state in ('restarted','started'):
+  row['state']='running'
  if enabled in ('True','true','False','false'): row['status']='enabled' if enabled.lower()=='true' else 'disabled'
  (base/'facts.json').write_text(json.dumps(facts))
 """)
+
+    servers = {}
+    ports = {}
+
+    def stop_servers():
+        for server in servers.values():
+            if server.poll() is None:
+                server.terminate()
+        for server in servers.values():
+            try:
+                server.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                server.kill()
+                server.wait(timeout=2)
+
+    try:
+        for name in service_names:
+            port_file = tmp_path / (name + ".port")
+            server = subprocess.Popen(
+                [os.sys.executable, str(control), str(tmp_path), "serve", name],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            servers[name] = server
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline and server.poll() is None:
+                if port_file.exists():
+                    ports[name] = int(port_file.read_text())
+                    break
+                time.sleep(0.02)
+            else:
+                raise AssertionError(name + " fake service failed to bind")
+        assert len(set(ports.values())) == len(service_names)
+        (tmp_path / "ports.json").write_text(json.dumps(ports))
+    except BaseException:
+        stop_servers()
+        raise
+    request.addfinalizer(stop_servers)
 
     def service(name, state, enabled):
         subprocess.run(
@@ -1670,5 +1728,8 @@ else:
             ) as response:
                 assert response.status == 200
     finally:
-        for name in ports:
-            service(name, "stopped", "false")
+        try:
+            for name in ports:
+                service(name, "stopped", "false")
+        finally:
+            stop_servers()
