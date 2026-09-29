@@ -112,6 +112,22 @@ rejection, exact rollback and TSDB-preserving component removal. Terminal state
 is reduced to the cleanup journal schema and still requires owner-confirmed
 primary/secondary observations.
 
+**Observability staging inputs are created before external mutation** —
+`prepare-observability-staging.py` is a local-only, no-clobber preparer. It
+binds the fixed controller rows from a clean protected-main source, generates
+task-scoped SSH, age and short-lived PKI material, encrypts runtime and retained
+CA authority documents directly with SOPS, and leaves approvals, provider
+binding, old-material, rollback and role-variable inputs deliberately
+non-authoritative. Existing Telegram bot/destination values enter only through
+a same-owner mode-`0600` canonical file; the preparer never creates or probes
+them and never prints private paths or values. Plaintext SOPS materialization is
+an explicit second command into the same mode-`0700` root. Path traversal is
+symlink-free and requires current-user/root ownership at every ancestor;
+writable ancestors must be sticky, while direct private parents remain
+current-user mode `0700`. Creation and materialization use pinned directory
+descriptors and final inode-binding checks so an intervening pathname
+substitution cannot receive secrets or be reported as the prepared root.
+
 ## Client emission — `emit-bundle.sh`, `emit-singbox.sh`
 
 **Bundle topology is host-order independent** — `emit-bundle.sh` aggregates

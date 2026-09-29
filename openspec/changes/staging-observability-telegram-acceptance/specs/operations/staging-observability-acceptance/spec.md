@@ -61,6 +61,48 @@ and failure rollback MUST be covered by focused tests.
   host class, or expected source identity differs from the bootstrap request
 - **THEN** bootstrap refuses before firewall mutation or component deployment.
 
+### Requirement: REQ-STG-OBS-PRIVATE-INPUTS — Staging private inputs are prepared and materialized fail closed
+
+The repository MUST expose a local-only preparation surface that consumes
+canonical private configuration and Telegram inputs; creates unique operator
+SSH, age, and short-lived observability PKI authorities; encrypts runtime and
+retained authority documents with SOPS; and emits the canonical manifest,
+approval, observation, binding, rollback, and candidate-input scaffolding. It
+MUST NOT create provider or Telegram credentials or contact providers, hosts,
+or Telegram APIs. Plaintext runtime materialization MUST be a separate explicit
+operation that validates the decrypted schema and atomically writes a
+mode-0600 file.
+
+Every private input and task-root path component MUST be opened without
+following symlinks and owned by the current user or root. A group/world-writable
+ancestor MUST have sticky-directory semantics, and the direct private parent,
+task root, and generated subdirectories MUST be current-user-owned mode 0700.
+Root, secret, and materialized-file operations MUST remain bound to verified
+directory descriptors and MUST recheck their inode bindings before success.
+
+#### Scenario: Private authorities and scaffolding are prepared locally
+
+- **WHEN** the operator supplies canonical mode-0600 preparation and Telegram
+  inputs under a secure ancestry and selects a new absolute task-private root
+- **THEN** preparation creates unique local authorities, SOPS ciphertext, and
+  fail-closed canonical scaffolding without printing plaintext secrets,
+  creating external credentials, or contacting any external system.
+
+#### Scenario: Runtime secrets are explicitly materialized
+
+- **WHEN** the operator explicitly materializes a prepared runtime ciphertext
+  whose decrypted document satisfies the secrets schema
+- **THEN** the plaintext replaces only the descriptor-bound canonical runtime
+  output atomically at mode 0600 and no retained PKI authority is decrypted.
+
+#### Scenario: Private ancestry or pathname binding is unsafe
+
+- **WHEN** an input or root ancestor is owned by another user, is writable
+  without sticky-directory semantics, contains a symlink, or a verified root or
+  subdirectory is substituted during preparation or materialization
+- **THEN** the operation refuses without writing secret material into the
+  replacement path or claiming successful preparation or materialization.
+
 ### Requirement: REQ-STG-OBS-AUTHORIZATION — Every external mutation has exact separate authority
 
 Provider creation, component deployment, service fault injection, provider
@@ -206,6 +248,13 @@ human receipt MUST NOT satisfy this requirement.
 - **THEN** primary Telegram acceptance remains incomplete and no fleet or
   production paging claim is made.
 
+#### Scenario: A private non-forum chat is selected
+
+- **WHEN** the canonical primary Telegram input uses `topic_id` zero
+- **THEN** preparation accepts the destination and the relay omits
+  `message_thread_id`; a negative or boolean topic value is rejected before
+  materialization or Telegram access.
+
 #### Scenario: The active primary Telegram authority fails
 
 - **WHEN** a separately authorized staging revocation makes the active primary
@@ -234,6 +283,12 @@ or regressing pulses MUST NOT produce a healthy or recovery state.
 - **WHEN** a replayed, expired, future, invalidly authenticated, or
   sequence-regressing pulse arrives during a firing dead-man incident
 - **THEN** it is rejected and cannot emit or record recovery.
+
+#### Scenario: The secondary route uses a private non-forum chat
+
+- **WHEN** the canonical secondary Telegram input uses `topic_id` zero
+- **THEN** preparation accepts the destination and the dead-man sender omits
+  `message_thread_id` from each Telegram request.
 
 ### Requirement: REQ-STG-OBS-FAILURE — The controlled failure matrix preserves truthful state
 

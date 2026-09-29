@@ -93,6 +93,26 @@ These are regular same-owner files with the modes required by repository
 controllers. No plaintext secret, state, or endpoint is copied into task,
 OpenSpec, audit, or CI artifacts.
 
+`make observability-staging-prepare` consumes canonical mode-0600 preparation
+and Telegram input files, creates unique operator SSH and age identities plus
+short-lived observability authorities, encrypts the runtime and retained PKI
+authority documents with SOPS, and creates the canonical fail-closed manifest,
+approval, observation, binding, rollback, and candidate-input scaffolding. It
+does not create bot/provider credentials or contact a provider, host, or
+Telegram API. `make observability-staging-materialize` is the separate explicit
+step that decrypts only the runtime document into an atomic mode-0600 private
+file.
+
+Preparation and materialization walk every absolute path component without
+following symlinks. Every ancestor is owned by the current user or root;
+group/world-writable ancestors are accepted only with sticky-directory
+semantics, while each direct private parent and task root is current-user-owned
+mode 0700. Root, subdirectory, secret-file, and atomic-replacement operations
+remain bound to open directory descriptors, and their inode bindings are
+rechecked before success. A writable non-sticky ancestor or path substitution
+therefore refuses without publishing plaintext or reporting success against a
+replacement tree.
+
 The staging secret document supplies unique sender mTLS identity, ingestion
 authority, relay credential, primary Telegram bot authority, pulse authority,
 reverse-health identity, and secondary Telegram bot authority. Equality and
@@ -101,6 +121,10 @@ selection and later BotFather token revocation are separate operator-owned
 external prerequisites. Each revocation requires its own approval record and a
 private old-token file; absence blocks before the action rather than producing
 placeholder credentials or an inferred rejection.
+
+Telegram `topic_id` uses zero as the canonical direct/non-forum-chat value and
+a positive integer for a real forum topic. The primary relay and dead-man omit
+`message_thread_id` when the prepared value is zero.
 
 ### 4. Implement exact-host bootstrap and bounded staging acceptance before live work
 

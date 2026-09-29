@@ -2,7 +2,7 @@
 id: MON-1790650904289505
 title: Deploy and accept staging observability and Telegram alerting
 kind: feature
-status: backlog
+status: doing
 area: monitoring
 priority: high
 risk: high

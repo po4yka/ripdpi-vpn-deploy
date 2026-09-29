@@ -12,11 +12,14 @@ import json
 import os
 from pathlib import Path
 import re
+import selectors
 import shlex
+import signal
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 from typing import Any
 from uuid import UUID
 
@@ -91,6 +94,14 @@ MUTATING_COMMANDS = frozenset(
     }
 )
 SAFE_GENERATION = re.compile(r"^[0-9a-f]{64}$")
+ROLE_GUARD_TASKS = {
+    "control-plane": (
+        "observability_control_plane : "
+        "Require a complete bounded control-plane contract"
+    ),
+}
+ROLE_GUARD_OUTPUT_LIMIT = 64 * 1024
+ROLE_GUARD_TIMEOUT_SECONDS = 900
 TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 AUTOLOAD_DIRS = (
     "action_plugins",
@@ -540,9 +551,7 @@ def _bootstrap_variables(
             raise ValueError
 
         topology = _validated_bootstrap_topology(
-            _decode_json_b64(
-                values.get("observability_topology_b64"), limit=262_144
-            )
+            _decode_json_b64(values.get("observability_topology_b64"), limit=262_144)
         )
         if (
             not isinstance(topology, dict)
@@ -559,9 +568,7 @@ def _bootstrap_variables(
             and node.get("node_id") == values["observability_node_id"]
         ]
         topology_listener = {
-            key: value
-            for key, value in expected_listener.items()
-            if value is not None
+            key: value for key, value in expected_listener.items() if value is not None
         }
         if len(matching) != 1 or matching[0] != {
             "node_id": values["observability_node_id"],
@@ -580,9 +587,7 @@ def _bootstrap_variables(
         "provider": expected_provider,
         "env": "staging",
         "allowed_ssh_cidrs": canonical_sources,
-        "terraform_public_listeners_b64": values[
-            "terraform_public_listeners_b64"
-        ],
+        "terraform_public_listeners_b64": values["terraform_public_listeners_b64"],
         "observability_node_id": values["observability_node_id"],
         "observability_host_class": host_class,
         "observability_failure_domain": failure_domain,
@@ -706,6 +711,59 @@ def _playbook(
     return yaml.safe_dump([play], sort_keys=False)
 
 
+def _bounded_role_guard_command(
+    command: list[str],
+    *,
+    cwd: Path,
+    environment: dict[str, str],
+    timeout: float = ROLE_GUARD_TIMEOUT_SECONDS,
+) -> tuple[int, bytes]:
+    """Capture only the bounded stdout needed to type a role-guard refusal."""
+    process = subprocess.Popen(
+        command,
+        cwd=cwd,
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    assert process.stdout is not None
+    output = bytearray()
+    deadline = time.monotonic() + timeout
+    try:
+        os.set_blocking(process.stdout.fileno(), False)
+        with selectors.DefaultSelector() as selector:
+            selector.register(process.stdout, selectors.EVENT_READ)
+            while selector.get_map():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise OperatorError("ansible command failed")
+                for key, _event in selector.select(remaining):
+                    chunk = os.read(key.fd, 4096)
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        continue
+                    if len(chunk) > ROLE_GUARD_OUTPUT_LIMIT - len(output):
+                        raise OperatorError("ansible command failed")
+                    output.extend(chunk)
+            try:
+                returncode = process.wait(
+                    timeout=max(0.001, deadline - time.monotonic())
+                )
+            except subprocess.TimeoutExpired:
+                raise OperatorError("ansible command failed") from None
+        return returncode, bytes(output)
+    finally:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            # The owned Ansible process group already exited completely.
+            pass
+        process.wait()
+        process.stdout.close()
+
+
 def _run_playbook(
     args: argparse.Namespace,
     *,
@@ -716,7 +774,8 @@ def _run_playbook(
     initial: bool = False,
     remove: bool = False,
     component_vars: dict[str, Any] | None = None,
-) -> None:
+    expect_role_guard_refusal: bool = False,
+) -> bool:
     payload = _playbook(
         args.component,
         args.host,
@@ -779,19 +838,45 @@ def _run_playbook(
             environment["DEPLOY_SOURCE_REVISION"] = revision
             environment["DEPLOYABLE_SOURCE_DIGEST"] = digest
             environment["ANSIBLE_HOME"] = str(Path(directory) / "ansible-home")
-            result = subprocess.run(
-                command,
-                cwd=ROOT,
-                env=environment,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-            )
+            if expect_role_guard_refusal:
+                returncode, output = _bounded_role_guard_command(
+                    command,
+                    cwd=ROOT,
+                    environment=environment,
+                )
+            else:
+                result = subprocess.run(
+                    command,
+                    cwd=ROOT,
+                    env=environment,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+                returncode = result.returncode
+                output = b""
         except OSError:
             raise OperatorError("ansible unavailable") from None
-        if result.returncode:
+        if expect_role_guard_refusal:
+            if returncode == 0:
+                raise OperatorError("expected role guard refusal was accepted")
+            task_headers = re.findall(
+                rb"^TASK \[([^\]\r\n]+)\] \*+\r?$", output, re.MULTILINE
+            )
+            expected = ROLE_GUARD_TASKS.get(args.component, "").encode("utf-8")
+            if (
+                not task_headers
+                or task_headers[-1] != expected
+                or not re.search(
+                    rb"^fatal: \[[^\]\r\n]+\]: FAILED!", output, re.MULTILINE
+                )
+            ):
+                raise OperatorError("ansible command failed")
+            return True
+        if returncode:
             raise OperatorError("ansible command failed")
+        return False
 
 
 def _gateway_program(owner: str | None = None) -> str:
@@ -1195,6 +1280,8 @@ def _parser() -> argparse.ArgumentParser:
     for command in ("deploy", "rotate", "rollback", "remove"):
         mutation = commands.add_parser(command, parents=[common])
         mutation.add_argument("--confirm", action="store_true")
+        if command == "rotate":
+            mutation.add_argument("--expect-role-guard-refusal", action="store_true")
     bootstrap = commands.add_parser("bootstrap", parents=[common])
     bootstrap.add_argument("--confirm", action="store_true")
     bootstrap.add_argument("--check", action="store_true")
@@ -1212,6 +1299,12 @@ def main(argv: list[str] | None = None) -> int:
                 raise OperatorError("bootstrap host class rejected")
             if not args.check and not args.confirm:
                 raise OperatorError("--confirm required")
+        if getattr(args, "expect_role_guard_refusal", False) and (
+            args.command != "rotate"
+            or args.environment != "staging"
+            or args.component != "control-plane"
+        ):
+            raise OperatorError("role guard expectation rejected")
         if args.command == "drill":
             if not args.confirm_notification:
                 raise OperatorError("--confirm-notification required")
@@ -1324,12 +1417,17 @@ def main(argv: list[str] | None = None) -> int:
                 "state": "deployed",
             }
         elif args.command == "rotate":
-            _run_playbook(args, secrets=secrets, host=host)
+            refused = _run_playbook(
+                args,
+                secrets=secrets,
+                host=host,
+                expect_role_guard_refusal=args.expect_role_guard_refusal,
+            )
             result = {
                 "schema_version": 1,
                 "component": args.component,
                 "host": args.host,
-                "state": "rotated",
+                "state": "role-guard-refused" if refused else "rotated",
             }
         elif args.command == "rollback":
             assert (

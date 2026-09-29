@@ -59,7 +59,20 @@ uses the installer's exact sorted JSON format.
 unit tests keep the fixed staging row order, exact-host and private-file
 boundaries, real one-hour critical reminder program, interruption restoration,
 durable receipt reconciliation, human-observation gate, complete-set cleanup
-plans, provider-specific absence and redacted terminal schemas separate. A
+plans, provider-specific absence and redacted terminal schemas separate. The
+rollback tests distinguish retained last-known-good inputs from the active
+candidate, and invalid-candidate credit requires an exact one-field mutation
+plus the typed first role-guard failure; another Ansible failure is never
+accepted. Typed-refusal capture tests enforce the fixed 64 KiB streaming cap,
+redacted failure, deadline, and owned-process cleanup. Authenticated negative
+ingestion probes require an explicit HTTP
+status while only plaintext and missing-identity TLS probes accept transport
+refusal. The
+local input preparer is contract-locked to that row order and proves no-clobber
+private roots, fail-closed draft approvals/bindings, schema-valid SOPS runtime
+fragments, secure sticky-only writable ancestry, descriptor-bound refusal on
+root substitution, and real OpenSSL certificate purposes without provider or
+Telegram access. A
 fixture executor or synthetic HTTP status is source evidence only; it never
 marks a live Telegram or provider action complete.
 
