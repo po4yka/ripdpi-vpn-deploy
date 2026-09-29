@@ -1,6 +1,58 @@
 PROVIDER ?= upcloud
 ENV      ?= prod
 
+# The staging acceptance coordinator accepts only three private absolute paths.
+# Capture command-line values literally before any included make logic can
+# expand them, and expose no generic action or environment selector.
+ifneq ($(filter observability-staging-acceptance,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error observability staging acceptance requires exactly one make goal)
+endif
+
+_OBSERVABILITY_STAGING_ACCEPTANCE_ALLOWED := OBSERVABILITY_STAGING_ACCEPTANCE_MANIFEST OBSERVABILITY_STAGING_ACCEPTANCE_JOURNAL OBSERVABILITY_STAGING_ACCEPTANCE_RECEIPTS
+_OBSERVABILITY_STAGING_ACCEPTANCE_COMMAND := $(foreach variable,$(.VARIABLES),$(if $(filter command line override,$(origin $(variable))),$(variable)))
+ifneq ($(strip $(filter-out $(_OBSERVABILITY_STAGING_ACCEPTANCE_ALLOWED),$(_OBSERVABILITY_STAGING_ACCEPTANCE_COMMAND))),)
+$(error observability staging acceptance accepts only manifest, journal, and receipts paths)
+endif
+override OBSERVABILITY_STAGING_ACCEPTANCE_MANIFEST_LITERAL := $(value OBSERVABILITY_STAGING_ACCEPTANCE_MANIFEST)
+override OBSERVABILITY_STAGING_ACCEPTANCE_JOURNAL_LITERAL := $(value OBSERVABILITY_STAGING_ACCEPTANCE_JOURNAL)
+override OBSERVABILITY_STAGING_ACCEPTANCE_RECEIPTS_LITERAL := $(value OBSERVABILITY_STAGING_ACCEPTANCE_RECEIPTS)
+export OBSERVABILITY_STAGING_ACCEPTANCE_MANIFEST_LITERAL
+export OBSERVABILITY_STAGING_ACCEPTANCE_JOURNAL_LITERAL
+export OBSERVABILITY_STAGING_ACCEPTANCE_RECEIPTS_LITERAL
+unexport OBSERVABILITY_STAGING_ACCEPTANCE_MANIFEST OBSERVABILITY_STAGING_ACCEPTANCE_JOURNAL OBSERVABILITY_STAGING_ACCEPTANCE_RECEIPTS
+unexport MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+endif
+
+_OBSERVABILITY_STAGING_CLEANUP_GOALS := observability-staging-cleanup-preflight observability-staging-cleanup-snapshot observability-staging-cleanup-seal observability-staging-cleanup-validate observability-staging-cleanup
+ifneq ($(filter $(_OBSERVABILITY_STAGING_CLEANUP_GOALS),$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error observability staging cleanup requires exactly one make goal)
+endif
+_OBSERVABILITY_STAGING_CLEANUP_CREDENTIALS := UPCLOUD_TOKEN UPCLOUD_USERNAME UPCLOUD_PASSWORD UPCLOUD_API_USERNAME UPCLOUD_API_PASSWORD HCLOUD_TOKEN SCW_ACCESS_KEY SCW_SECRET_KEY SCW_DEFAULT_PROJECT_ID SCW_DEFAULT_ORGANIZATION_ID
+ifneq ($(strip $(foreach variable,$(_OBSERVABILITY_STAGING_CLEANUP_CREDENTIALS),$(if $(filter-out undefined environment,$(origin $(variable))),$(variable)))),)
+$(error observability staging cleanup credentials must come from the environment)
+endif
+_OBSERVABILITY_STAGING_CLEANUP_ALLOWED := OBSERVABILITY_STAGING_CLEANUP_JOURNAL OBSERVABILITY_STAGING_CLEANUP_SNAPSHOT OBSERVABILITY_STAGING_CLEANUP_APPROVAL OBSERVABILITY_STAGING_CLEANUP_MANIFEST OBSERVABILITY_STAGING_CLEANUP_RECEIPT
+_OBSERVABILITY_STAGING_CLEANUP_COMMAND := $(foreach variable,$(.VARIABLES),$(if $(filter command line override,$(origin $(variable))),$(variable)))
+ifneq ($(strip $(filter-out $(_OBSERVABILITY_STAGING_CLEANUP_ALLOWED),$(_OBSERVABILITY_STAGING_CLEANUP_COMMAND))),)
+$(error observability staging cleanup accepts only private artifact paths)
+endif
+override OBSERVABILITY_STAGING_CLEANUP_JOURNAL_LITERAL := $(value OBSERVABILITY_STAGING_CLEANUP_JOURNAL)
+override OBSERVABILITY_STAGING_CLEANUP_SNAPSHOT_LITERAL := $(value OBSERVABILITY_STAGING_CLEANUP_SNAPSHOT)
+override OBSERVABILITY_STAGING_CLEANUP_APPROVAL_LITERAL := $(value OBSERVABILITY_STAGING_CLEANUP_APPROVAL)
+override OBSERVABILITY_STAGING_CLEANUP_MANIFEST_LITERAL := $(value OBSERVABILITY_STAGING_CLEANUP_MANIFEST)
+override OBSERVABILITY_STAGING_CLEANUP_RECEIPT_LITERAL := $(value OBSERVABILITY_STAGING_CLEANUP_RECEIPT)
+export OBSERVABILITY_STAGING_CLEANUP_JOURNAL_LITERAL OBSERVABILITY_STAGING_CLEANUP_SNAPSHOT_LITERAL
+export OBSERVABILITY_STAGING_CLEANUP_APPROVAL_LITERAL OBSERVABILITY_STAGING_CLEANUP_MANIFEST_LITERAL
+export OBSERVABILITY_STAGING_CLEANUP_RECEIPT_LITERAL
+unexport OBSERVABILITY_STAGING_CLEANUP_JOURNAL OBSERVABILITY_STAGING_CLEANUP_SNAPSHOT
+unexport OBSERVABILITY_STAGING_CLEANUP_APPROVAL OBSERVABILITY_STAGING_CLEANUP_MANIFEST
+unexport OBSERVABILITY_STAGING_CLEANUP_RECEIPT MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+endif
+
 # Bootstrap accepts a literal one-node selector and private configuration.
 # Reject capability assignments before Make can expand exported expressions.
 ifneq ($(filter bootstrap-tailnet,$(MAKECMDGOALS)),)
@@ -366,9 +418,10 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         emit-sbom molecule-full-stack audit-log audit-log-append pyinfra-audit \
         setup-yubikey check-killswitch install-operator-crons \
         remove-operator-crons issue-sub-token sub-reads \
-        observability-render observability-validate observability-status \
+        observability-render observability-validate observability-status observability-host-bootstrap \
         observability-drill observability-deploy observability-rotate observability-rollback \
-        observability-remove observability-silence-create observability-silence-delete \
+        observability-remove observability-silence-create observability-silence-delete observability-staging-acceptance \
+        observability-staging-cleanup-preflight observability-staging-cleanup-snapshot observability-staging-cleanup-seal observability-staging-cleanup-validate observability-staging-cleanup \
         awg-evidence-provision \
         test-native-runtime test-probe-matrix-mtproto test-unit test-unit-profile test-unit-shard snapshot-check snapshot-update validate-secrets \
         actionlint-check zizmor-check zizmor-test cloud-init-schema tf-test yamllint-check shellcheck \
@@ -472,7 +525,11 @@ help:
 	@echo ""
 	@echo "── OBSERVABILITY / DEFENSIVE ──────────────────────────────────────────"
 	@echo "  observability-{render,validate,status}  Exact-host configuration/read surface"
+	@echo "  observability-host-bootstrap  Exact staging control/dead-man host baseline (CHECK=1 for check mode)"
 	@echo "  observability-{drill,deploy,rotate,rollback,remove}  Confirmed exact-host lifecycle"
+	@echo "  observability-staging-acceptance  Advance one fixed disposable acceptance row"
+	@echo "  observability-staging-cleanup-{preflight,snapshot,seal,validate}  Prepare exact three-provider cleanup"
+	@echo "  observability-staging-cleanup  Destroy sealed staging scope and prove provider absence"
 	@echo "  burn-check                 External IP reachability probe"
 	@echo "  asn-drift                  Alert on VPS ASN reassignment"
 	@echo "  check-ip-reputation        Spamhaus / optional FireHOL file / AbuseIPDB"
@@ -1315,7 +1372,7 @@ OBSERVABILITY_ENVIRONMENT ?=
 OBSERVABILITY_KNOWN_HOSTS ?= $(HOME)/.ssh/known_hosts
 OBSERVABILITY_SECRETS_FILE ?= $(SECRETS_FILE)
 
-ifneq ($(filter observability-render observability-validate observability-status observability-drill observability-deploy observability-rotate observability-rollback observability-remove observability-silence-create observability-silence-delete,$(MAKECMDGOALS)),)
+ifneq ($(filter observability-render observability-validate observability-status observability-host-bootstrap observability-drill observability-deploy observability-rotate observability-rollback observability-remove observability-silence-create observability-silence-delete,$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error observability operator commands require exactly one make goal)
 endif
@@ -1330,6 +1387,7 @@ override OBSERVABILITY_ROLLBACK_MANIFEST_LITERAL := $(value OBSERVABILITY_ROLLBA
 override OBSERVABILITY_SILENCE_OWNER_LITERAL := $(value OBSERVABILITY_SILENCE_OWNER)
 override OBSERVABILITY_SILENCE_REQUEST_LITERAL := $(value OBSERVABILITY_SILENCE_REQUEST)
 override OBSERVABILITY_SILENCE_ID_LITERAL := $(value OBSERVABILITY_SILENCE_ID)
+override OBSERVABILITY_BOOTSTRAP_CHECK_LITERAL := $(value OBSERVABILITY_BOOTSTRAP_CHECK)
 ifeq ($(strip $(OBSERVABILITY_ENVIRONMENT_LITERAL)),)
 $(error observability operator commands require OBSERVABILITY_ENVIRONMENT explicitly)
 endif
@@ -1338,7 +1396,9 @@ export OBSERVABILITY_ENVIRONMENT_LITERAL OBSERVABILITY_COMPONENT_LITERAL
 export OBSERVABILITY_KNOWN_HOSTS_LITERAL OBSERVABILITY_SECRETS_LITERAL
 export OBSERVABILITY_VARS_LITERAL OBSERVABILITY_ROLLBACK_MANIFEST_LITERAL OBSERVABILITY_SILENCE_OWNER_LITERAL
 export OBSERVABILITY_SILENCE_REQUEST_LITERAL OBSERVABILITY_SILENCE_ID_LITERAL
+export OBSERVABILITY_BOOTSTRAP_CHECK_LITERAL
 unexport OBSERVABILITY_SILENCE_OWNER OBSERVABILITY_SILENCE_REQUEST OBSERVABILITY_SILENCE_ID
+unexport OBSERVABILITY_BOOTSTRAP_CHECK
 unexport MAKEFLAGS MFLAGS
 MAKEOVERRIDES :=
 endif
@@ -1361,6 +1421,14 @@ observability-validate:
 
 observability-status:
 	@python3 scripts/observability-operator.py status $(observability_common)
+
+observability-host-bootstrap:
+	@case "$${OBSERVABILITY_BOOTSTRAP_CHECK_LITERAL}" in \
+	  ""|0|false|no) mode=--confirm ;; \
+	  1|true|yes) mode=--check ;; \
+	  *) echo "OBSERVABILITY_BOOTSTRAP_CHECK must be 0 or 1" >&2; exit 2 ;; \
+	 esac; \
+	 python3 scripts/observability-operator.py bootstrap $(observability_common) "$$mode"
 
 observability-drill:
 	@python3 scripts/observability-operator.py drill $(observability_common) \
@@ -1395,6 +1463,41 @@ observability-rollback:
 observability-remove:
 	@python3 scripts/observability-operator.py remove $(observability_common) \
 	  --vars "$${OBSERVABILITY_VARS_LITERAL}" --confirm
+
+observability-staging-acceptance:
+	@python3 scripts/observability-staging-acceptance.py advance \
+	  --manifest "$${OBSERVABILITY_STAGING_ACCEPTANCE_MANIFEST_LITERAL}" \
+	  --journal "$${OBSERVABILITY_STAGING_ACCEPTANCE_JOURNAL_LITERAL}" \
+	  --receipts "$${OBSERVABILITY_STAGING_ACCEPTANCE_RECEIPTS_LITERAL}" --confirm
+
+observability-staging-cleanup-preflight:
+	@if [ -n "$${OBSERVABILITY_STAGING_CLEANUP_MANIFEST_LITERAL}" ]; then \
+	  python3 scripts/observability-staging-cleanup.py preflight --manifest "$${OBSERVABILITY_STAGING_CLEANUP_MANIFEST_LITERAL}"; \
+	 else \
+	  python3 scripts/observability-staging-cleanup.py preflight; \
+	 fi
+
+observability-staging-cleanup-snapshot:
+	@python3 scripts/observability-staging-cleanup.py snapshot \
+	  --acceptance-journal "$${OBSERVABILITY_STAGING_CLEANUP_JOURNAL_LITERAL}" \
+	  --output "$${OBSERVABILITY_STAGING_CLEANUP_SNAPSHOT_LITERAL}"
+
+observability-staging-cleanup-seal:
+	@python3 scripts/observability-staging-cleanup.py seal \
+	  --snapshot "$${OBSERVABILITY_STAGING_CLEANUP_SNAPSHOT_LITERAL}" \
+	  --approval "$${OBSERVABILITY_STAGING_CLEANUP_APPROVAL_LITERAL}" \
+	  --output "$${OBSERVABILITY_STAGING_CLEANUP_MANIFEST_LITERAL}"
+
+observability-staging-cleanup-validate:
+	@python3 scripts/observability-staging-cleanup.py validate \
+	  --manifest "$${OBSERVABILITY_STAGING_CLEANUP_MANIFEST_LITERAL}" \
+	  --acceptance-journal "$${OBSERVABILITY_STAGING_CLEANUP_JOURNAL_LITERAL}"
+
+observability-staging-cleanup:
+	@python3 scripts/observability-staging-cleanup.py run \
+	  --manifest "$${OBSERVABILITY_STAGING_CLEANUP_MANIFEST_LITERAL}" \
+	  --acceptance-journal "$${OBSERVABILITY_STAGING_CLEANUP_JOURNAL_LITERAL}" \
+	  --receipt "$${OBSERVABILITY_STAGING_CLEANUP_RECEIPT_LITERAL}" --confirm
 
 scan-targets:
 	@test -n "$(SEEDS)$(CIDR)$(CRAWL)" || { \

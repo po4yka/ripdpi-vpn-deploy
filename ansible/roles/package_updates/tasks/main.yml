@@ -17,6 +17,7 @@
     update_cache: true
     cache_valid_time: 3600
     install_recommends: false
+  register: package_updates_packages
   when: package_updates.enabled | default(true)
 
 - name: Check whether apticron is available
@@ -70,4 +71,6 @@
   ansible.builtin.command:
     cmd: unattended-upgrade -d --dry-run
   changed_when: false
-  when: package_updates.enabled | default(true)
+  when:
+    - package_updates.enabled | default(true)
+    - not ansible_check_mode or not (package_updates_packages.changed | default(false))

@@ -55,6 +55,14 @@ Disposable de-onboarding fixtures use the current UpCloud schema-3 absence
 receipt and reject an obsolete version before mutation. Its registry fixture
 uses the installer's exact sorted JSON format.
 
+**Disposable observability acceptance is evidence-class strict** — focused
+unit tests keep the fixed staging row order, exact-host and private-file
+boundaries, real one-hour critical reminder program, interruption restoration,
+durable receipt reconciliation, human-observation gate, complete-set cleanup
+plans, provider-specific absence and redacted terminal schemas separate. A
+fixture executor or synthetic HTTP status is source evidence only; it never
+marks a live Telegram or provider action complete.
+
 **Molecule per role > monolithic test** — role-level scenarios catch
 config drift inside a role. Full-stack catches order/handler interactions.
 The two full-stack scenarios run on separate matrix runners with fail-fast

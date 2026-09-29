@@ -1,0 +1,220 @@
+---
+- name: Bootstrap one exact non-VPN observability host
+  hosts: observability-bootstrap-target
+  serial: 1
+  any_errors_fatal: true
+  become: true
+  gather_facts: true
+
+  vars:
+    vpn:
+      enable_xray_reality: false
+      enable_reality_self_steal: false
+      enable_nginx_xhttp: false
+      enable_naive: false
+      enable_hysteria: false
+      enable_amneziawg: false
+      enable_geodata: false
+      enable_monitoring: true
+      enable_watchdog: false
+      enable_backup: false
+      enable_subscription_host: false
+      enable_tailnet_management: false
+      enable_policy_ratelimit: false
+      enable_cdn_front: false
+      enable_honeypot: false
+      enable_warp_outbound: false
+      enable_dns_morph_bridge: false
+      enable_hysteria_realm: false
+      enable_split_hop_egress: false
+      enable_split_hop_ingress: false
+      enable_probe_matrix_target: false
+      enable_snell: false
+      enable_cascade_ingress: false
+      enable_cascade_egress: false
+    security_controls:
+      ssh_strict: true
+      ssh_allow_tcp_forwarding: false
+      ssh_prune_moduli: true
+      ssh_required_rsa_size: 0
+      ssh_max_sessions: 2
+      ssh_max_startups: "10:30:20"
+      unattended_upgrades: true
+      fail2ban: false
+    package_updates:
+      enabled: true
+      security_only: true
+      automatic_reboot: false
+      mail: root
+      mail_only_on_error: true
+      remove_unused_dependencies: true
+      install_apticron: false
+    monitoring:
+      node_exporter_listen: "127.0.0.1:9100"
+      node_exporter_user: prometheus
+      node_exporter_group: prometheus
+      node_exporter_textfile_dir: /var/lib/node_exporter/textfile
+      node_exporter_textfile_group: node_exporter_textfile
+      xray_stats_interval: 60s
+    vpn_subscription_only: false
+    firewall_egress_policy: strict
+    network_exposure_gate:
+      mode: disabled
+
+  pre_tasks:
+    - name: Validate observability bootstrap scope before host mutation
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all | length == 1
+          - env == 'staging'
+          - observability_host_class in ['control-plane', 'deadman']
+          - >-
+            (observability_host_class == 'control-plane' and provider == 'hetzner') or
+            (observability_host_class == 'deadman' and provider == 'scaleway')
+          - observability_node_id == provider ~ '-staging'
+          - observability_failure_domain is match('^[a-z][a-z0-9_-]{0,63}$')
+          - allowed_ssh_cidrs is sequence
+          - allowed_ssh_cidrs is not string
+          - allowed_ssh_cidrs | length > 0
+          - allowed_ssh_cidrs | length <= 16
+        fail_msg: Exact staging observability bootstrap scope is required.
+        quiet: true
+      tags: [always]
+
+    - name: Decode provider listener contract before host mutation
+      ansible.builtin.set_fact:
+        public_listener_contract: >-
+          {{ terraform_public_listeners_b64 | b64decode | from_json }}
+        observability_expected_listener: >-
+          {{
+            {
+              'name': (
+                'observability-ingest'
+                if observability_host_class == 'control-plane'
+                else 'observability-deadman-pulse'
+              ),
+              'protocol': 'tcp',
+              'port': (9443 if observability_host_class == 'control-plane' else 9444),
+              'port_range': none
+            }
+          }}
+      tags: [always]
+
+    - name: Require exact provider listener contract for host class
+      ansible.builtin.assert:
+        that:
+          - public_listener_contract == [observability_expected_listener]
+        fail_msg: Provider listener contract does not match the exact host class.
+        quiet: true
+      tags: [always]
+
+    - name: Build non-secret host-class listener manifest
+      ansible.builtin.set_fact:
+        public_listener_manifest:
+          - role: "{{ observability_expected_listener.name }}"
+            protocol: tcp
+            port: "{{ observability_expected_listener.port | int }}"
+            enabled: true
+            reason: "{{ observability_host_class }} component ingress"
+      tags: [always]
+
+    - name: Read effective SSH policy before host mutation
+      ansible.builtin.command:
+        cmd: sshd -T
+      register: observability_bootstrap_sshd
+      changed_when: false
+      check_mode: false
+      tags: [always]
+
+    - name: Select effective SSH listener before host mutation
+      ansible.builtin.set_fact:
+        observability_bootstrap_ssh_ports: >-
+          {{
+            observability_bootstrap_sshd.stdout_lines
+            | select('match', '^port [0-9]+$')
+            | map('regex_replace', '^port ', '')
+            | map('int')
+            | list
+          }}
+      tags: [always]
+
+    - name: Require effective SSH listener ownership before host mutation
+      ansible.builtin.assert:
+        that:
+          - observability_bootstrap_ssh_ports | length == 1
+          - observability_bootstrap_ssh_ports[0] | int == ansible_port | int
+        fail_msg: Effective SSH listener differs from the exact inventory binding.
+        quiet: true
+      tags: [always]
+
+    - name: Inspect existing VPN and observability component state
+      ansible.builtin.stat:
+        path: "{{ item }}"
+        follow: false
+      loop:
+        - /etc/systemd/system/xray.service
+        - /etc/systemd/system/hysteria-server.service
+        - /etc/systemd/system/awg-quick@.service
+        - /etc/nginx/sites-enabled/vpn-xhttp.conf
+        - /etc/systemd/system/observability-prometheus.service
+        - /etc/systemd/system/observability-deadman.service
+      register: observability_bootstrap_existing_components
+      tags: [always]
+
+    - name: Refuse a host with existing VPN transport state
+      ansible.builtin.assert:
+        that:
+          - >-
+            observability_bootstrap_existing_components.results
+            | selectattr('stat.exists', 'defined')
+            | selectattr('stat.exists')
+            | list
+            | length == 0
+        fail_msg: Fresh non-VPN observability host required.
+        quiet: true
+      tags: [always]
+
+  tasks:
+    - name: Apply hardened host baseline
+      ansible.builtin.include_role:
+        name: baseline
+
+    - name: Configure unattended security updates
+      ansible.builtin.include_role:
+        name: package_updates
+
+    - name: Apply exact host-class guest firewall
+      ansible.builtin.include_role:
+        name: firewall
+
+    - name: Configure loopback-only host monitoring
+      ansible.builtin.include_role:
+        name: monitoring
+
+    - name: Publish exact source and host-class manifest
+      ansible.builtin.include_role:
+        name: node_manifest
+
+  post_tasks:
+    - name: Verify loopback node exporter readiness
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9100/metrics
+        method: GET
+        status_code: 200
+        return_content: false
+        use_proxy: false
+      when: not ansible_check_mode
+
+    - name: Verify public listener ports are not active before component deploy
+      ansible.builtin.command:
+        argv:
+          - ss
+          - -H
+          - -lnt
+          - sport
+          - "="
+          - ":{{ observability_expected_listener.port | int }}"
+      register: observability_bootstrap_component_listener
+      changed_when: false
+      failed_when: observability_bootstrap_component_listener.stdout | trim | length > 0
+      when: not ansible_check_mode

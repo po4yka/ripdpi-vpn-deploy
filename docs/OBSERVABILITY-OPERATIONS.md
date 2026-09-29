@@ -51,6 +51,7 @@ generation derived from agent credentials.
 
 | Command | Reads | Mutates | Notifies or injects failure |
 |---|---|---|---|
+| `make observability-host-bootstrap` | exact staging inventory host, provider listener/topology contract and strict SSH binding | converges only baseline, updates, guest firewall, loopback monitoring and node manifest on a fresh control-plane or dead-man host | no; rejects VPN transport state and does not deploy an observability component |
 | `make observability-render` | private vars/secrets, exact inventory, selected host facts | Ansible check mode only | no |
 | `make observability-validate` | private vars/secrets and role syntax | no host contact | no |
 | `make observability-status` | fixed systemd properties and loopback readiness on one host | no | no |
@@ -61,6 +62,8 @@ generation derived from agent credentials.
 | `make observability-rotate` | replacement private vars/secrets | converges only the selected role and host | may restart that role's units |
 | `make observability-rollback` | private last-known-good vars/secrets plus a digest-bound rollback manifest | reconverges only the control-plane role and host to its remotely retained previous generation | may restart that role's units; no notification is claimed |
 | `make observability-remove` | private deployment vars snapshot | converges `enabled: false` for only the selected role and host | no; control-plane TSDB retention remains intact |
+| `make observability-staging-acceptance` | one private fixed-sequence manifest, per-row approvals, journal and owner-only receipt directory | advances exactly one staging acceptance row and restores or records interruption before later rows | yes, only for the fixed live rows and only after their separate approval |
+| `make observability-staging-cleanup` | sealed three-provider cleanup manifest, terminal acceptance journal and fresh receipt path | destroys only the complete reviewed staging resource sets, then proves provider absence | no notification; destructive and separately approved |
 
 The status output is a bounded JSON object containing only the requested alias,
 component, categorical unit states and aggregate readiness. It is passive and
@@ -201,6 +204,22 @@ archive export and retention changes require a separate approved action.
 
 ## Workflow
 
+Fresh control-plane and dead-man hosts use the dedicated non-VPN bootstrap
+before component validation or deployment. Select exactly one inventory alias,
+set its matching `OBSERVABILITY_COMPONENT`, and use check mode first:
+
+```sh
+export OBSERVABILITY_BOOTSTRAP_CHECK=1
+make observability-host-bootstrap
+unset OBSERVABILITY_BOOTSTRAP_CHECK
+make observability-host-bootstrap
+```
+
+The bootstrap command is staging-only and accepts only the fixed Hetzner
+control-plane or Scaleway dead-man host classes. It validates the clean source,
+topology, provider listener, source CIDRs and effective SSH port before Ansible.
+It is not a generic role selector and never calls `site.yml`.
+
 Validate syntax, then run the remote check-mode render:
 
 ```sh
@@ -301,6 +320,89 @@ A deterministic HTTP stub may prove retry classification, bounds and
 redaction. It is fixture evidence, not real Telegram delivery. Likewise, API
 2xx, a green service, local self-dial and a single client vantage do not satisfy
 the live rows.
+
+### Resumable disposable acceptance
+
+The full disposable run uses `make observability-staging-acceptance`, not the
+short warning drill. Its mode-0600 canonical JSON manifest names three exact
+staging aliases and private paths for inventory, known-hosts, role inputs,
+rollback material, old-token negative checks, human observations and one
+approval per fixed row. The Make target accepts only the manifest, journal and
+receipt-directory paths:
+
+```sh
+make observability-staging-acceptance \
+  OBSERVABILITY_STAGING_ACCEPTANCE_MANIFEST=/owner/private/run/manifest.json \
+  OBSERVABILITY_STAGING_ACCEPTANCE_JOURNAL=/owner/private/run/journal.json \
+  OBSERVABILITY_STAGING_ACCEPTANCE_RECEIPTS=/owner/private/run/receipts
+```
+
+Each invocation advances at most one row. The critical primary and independent
+secondary reminders wait for the real one-hour contract; no staging timing
+override is installed. A completed transport action is not credited until the
+corresponding human observation binds its exact private machine receipt.
+Interruption before a receipt restores the fixed row action and stops for
+review; a published receipt is reconciled without repeating the fault. The
+terminal journal contains only the redacted cleanup contract and is the sole
+acceptance input to provider cleanup.
+
+Every row approval is canonical JSON with exactly these fields:
+`schema_version`, `task_id`, `change`, `action`, `target`, `restore_action`,
+`approved`, `approved_at`, `expires_at`, `deadline_seconds`, and
+`cancellation_condition`. The cancellation condition is always
+`restore-and-stop`; target/action/restore must equal the controller's fixed row
+contract. The human-observation file is also canonical JSON. It contains
+`schema_version: 1` and a `rows` object for `primary-lifecycle`,
+`deadman-lifecycle`, `control-service-loss`, `control-host-loss`,
+`deadman-service-loss`, and `primary-authority-loss`. Each row is exactly:
+
+```json
+{"observed":true,"observed_at":"<at or after receipt.completed_at>","receipt_sha256":"<sha256 of exact receipt bytes>","started_at":"<exact current_step.started_at>"}
+```
+
+Set it only after the machine receipt exists and the row was observed in the
+intended private destination. A boolean prepared before the row, a different
+start timestamp or receipt digest, an observation before receipt completion, a
+future time, or an API success is refused.
+
+### Guarded provider cleanup
+
+Cleanup is a separate post-evidence transaction. First create a private scope
+snapshot from the terminal acceptance journal, review its delete-only plans,
+then seal it with a fresh private approval whose scope digest closes the
+rollback/retention window. Only the sealed manifest may be passed to the run
+target. The guard is fixed to staging UpCloud, Hetzner and Scaleway roots; it
+rechecks clean source, account/project, state digest, complete Terraform address
+set, provider identities and every reviewed plan before the first delete.
+Final success requires independently authenticated 404 absence for every
+addressable resource. Do not retire local recovery material until the redacted
+receipt says `provider-absence-verified`; a missing approval or partial outcome
+keeps it retained.
+
+The destructive approval passed to `seal` has exactly:
+`schema_version`, `task_id`, `change`, `snapshot_sha256`, `source_revision`,
+`deployable_digest`, `acceptance_journal_sha256`, `scope_sha256`,
+`approval_id`, `approved_at`, `expires_at`, and
+`rollback_retention_closed: true`. Its hashes are copied from the reviewed
+snapshot, never recomputed from hand-entered resource IDs. Use the Make
+preparation surfaces in order:
+
+```sh
+make observability-staging-cleanup-snapshot \
+  OBSERVABILITY_STAGING_CLEANUP_JOURNAL=/owner/private/run/journal.json \
+  OBSERVABILITY_STAGING_CLEANUP_SNAPSHOT=/owner/private/run/cleanup-snapshot.json
+make observability-staging-cleanup-seal \
+  OBSERVABILITY_STAGING_CLEANUP_SNAPSHOT=/owner/private/run/cleanup-snapshot.json \
+  OBSERVABILITY_STAGING_CLEANUP_APPROVAL=/owner/private/run/destructive-approval.json \
+  OBSERVABILITY_STAGING_CLEANUP_MANIFEST=/owner/private/run/cleanup-manifest.json
+make observability-staging-cleanup-validate \
+  OBSERVABILITY_STAGING_CLEANUP_MANIFEST=/owner/private/run/cleanup-manifest.json \
+  OBSERVABILITY_STAGING_CLEANUP_JOURNAL=/owner/private/run/journal.json
+make observability-staging-cleanup \
+  OBSERVABILITY_STAGING_CLEANUP_MANIFEST=/owner/private/run/cleanup-manifest.json \
+  OBSERVABILITY_STAGING_CLEANUP_JOURNAL=/owner/private/run/journal.json \
+  OBSERVABILITY_STAGING_CLEANUP_RECEIPT=/owner/private/run/cleanup-receipt.json
+```
 
 ## Finite maintenance silences
 

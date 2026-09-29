@@ -30,6 +30,10 @@ required operator-controlled reboot, one host at a time.
 
 ## Pitfalls
 
+- **Fresh-host check mode has no unattended-upgrade binary yet** — when the
+  package task plans an install, defer the binary-backed dry-run. Check mode on
+  an already provisioned host still runs the validation, and real convergence
+  always validates after installation.
 - **Do not manage Xray/Hysteria/AmneziaWG pins here** — binary version policy
   lives in role defaults, SOPS schema, and release-line docs.
 - **Container dry-runs are weaker than real hosts** — Molecule verifies

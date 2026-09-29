@@ -30,12 +30,19 @@ fleet-wide monitoring, full staging-matrix acceptance, or production cutover.
   manifests, receipts, and journals remain outside Git. They are
   single-operator serialized state and are never edited concurrently.
 - Shared repository task/board files are updated only through `./taskctl`.
+- Parallel source-slice ownership for the implementation wave is explicit:
+  the primary agent owns `Makefile`, the staging acceptance coordinator,
+  shared documentation, task/OpenSpec lifecycle files, and final integration;
+  the bootstrap worker owns the exact-host operator/playbook and its focused
+  tests; the cleanup worker owns the guarded provider cleanup coordinator and
+  its focused tests. Shared files are changed only in the primary lane, and no
+  worker reverts or rewrites another lane.
 
 ## Execution
 
-- [ ] MON-1790652096462210 Implement and test exact-host observability baseline and host-class firewall bootstrap #feature !high @item:MON-1790650904289505
-- [ ] MON-1790652096934376 Implement and test bounded staging acceptance actions and redacted receipts #feature !high @item:MON-1790650904289505
-- [ ] MON-1790652346357417 Implement and test identity-bound guarded UpCloud Hetzner and Scaleway cleanup and absence proof #feature !high @item:MON-1790650904289505
+- [x] MON-1790652096462210 Implement and test exact-host observability baseline and host-class firewall bootstrap #feature !high @item:MON-1790650904289505
+- [x] MON-1790652096934376 Implement and test bounded staging acceptance actions and redacted receipts #feature !high @item:MON-1790650904289505
+- [x] MON-1790652346357417 Implement and test identity-bound guarded UpCloud Hetzner and Scaleway cleanup and absence proof #feature !high @item:MON-1790650904289505
 - [ ] MON-1790651216954415 Preflight provider, SSH, SOPS, Telegram, cleanup, and exact protected-main execution authority #feature !high @item:MON-1790650904289505
 - [ ] MON-1790651217409733 Provision or reconcile the disposable three-host staging topology and render validated private inventory #feature !high @item:MON-1790650904289505
 - [ ] MON-1790651217861152 Deploy independent dead-man, control plane, and canary agent from one exact source revision #feature !high @item:MON-1790650904289505

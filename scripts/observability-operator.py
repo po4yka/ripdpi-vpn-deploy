@@ -4,7 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import hashlib
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -27,6 +30,25 @@ COMPONENTS = {
     "agent": "observability_agent",
     "control-plane": "observability_control_plane",
     "deadman": "observability_deadman",
+}
+BOOTSTRAP_PLAYBOOK = ANSIBLE / "playbooks" / "observability-host-bootstrap.yml"
+BOOTSTRAP_PROVIDERS = {
+    "control-plane": "hetzner",
+    "deadman": "scaleway",
+}
+BOOTSTRAP_LISTENERS = {
+    "control-plane": {
+        "name": "observability-ingest",
+        "protocol": "tcp",
+        "port": 9443,
+        "port_range": None,
+    },
+    "deadman": {
+        "name": "observability-deadman-pulse",
+        "protocol": "tcp",
+        "port": 9444,
+        "port_range": None,
+    },
 }
 INSTALL_MARKERS = {
     "agent": "/etc/systemd/system/observability-agent.service",
@@ -397,6 +419,240 @@ def _require_inventory_scope(args: argparse.Namespace, host: dict[str, Any]) -> 
         raise
     except (KeyError, TypeError):
         raise OperatorError("inventory scope rejected") from None
+
+
+def _json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError("duplicate key")
+        value[key] = item
+    return value
+
+
+def _decode_json_b64(value: Any, *, limit: int) -> Any:
+    if not isinstance(value, str) or len(value) > limit * 2:
+        raise OperatorError("bootstrap inventory rejected")
+    try:
+        raw = base64.b64decode(value, validate=True)
+        if not raw or len(raw) > limit:
+            raise ValueError
+        return json.loads(raw.decode("utf-8"), object_pairs_hook=_json_object)
+    except (binascii.Error, UnicodeError, ValueError, json.JSONDecodeError):
+        raise OperatorError("bootstrap inventory rejected") from None
+
+
+def _validated_bootstrap_topology(document: Any) -> dict[str, Any]:
+    if not isinstance(document, dict):
+        raise OperatorError("bootstrap inventory rejected")
+    with tempfile.TemporaryDirectory(prefix="observability-topology-") as directory:
+        os.chmod(directory, 0o700)
+        path = Path(directory).resolve() / "topology.json"
+        descriptor = os.open(
+            path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        try:
+            payload = json.dumps(
+                document, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+            os.write(descriptor, payload)
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        try:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "observability-contract.py"),
+                    "topology",
+                    "--document",
+                    str(path),
+                ],
+                cwd=ROOT,
+                env=_environment(),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=10,
+            )
+            if result.returncode or len(result.stdout) > 262_144:
+                raise OperatorError("bootstrap inventory rejected")
+            canonical = json.loads(
+                result.stdout.decode("utf-8"), object_pairs_hook=_json_object
+            )
+        except OperatorError:
+            raise
+        except (OSError, subprocess.SubprocessError, UnicodeError, ValueError):
+            raise OperatorError("bootstrap inventory rejected") from None
+    if not isinstance(canonical, dict):
+        raise OperatorError("bootstrap inventory rejected")
+    return canonical
+
+
+def _bootstrap_variables(
+    args: argparse.Namespace,
+    host: dict[str, Any],
+    source_revision: str,
+) -> dict[str, Any]:
+    """Return only reviewed non-secret inventory fields for host bootstrap."""
+    try:
+        values = host["variables"]
+        host_class = args.component
+        expected_provider = BOOTSTRAP_PROVIDERS[host_class]
+        if (
+            not isinstance(values, dict)
+            or values.get("env") != "staging"
+            or values.get("observability_host_class") != host_class
+            or values.get("provider") != expected_provider
+            or values.get("observability_node_id") != f"{expected_provider}-staging"
+        ):
+            raise ValueError
+        failure_domain = values.get("observability_failure_domain")
+        if not isinstance(failure_domain, str) or not re.fullmatch(
+            r"[a-z][a-z0-9_-]{0,63}", failure_domain
+        ):
+            raise ValueError
+
+        sources = values.get("allowed_ssh_cidrs")
+        if isinstance(sources, str):
+            sources = json.loads(sources, object_pairs_hook=_json_object)
+        if not isinstance(sources, list) or not 1 <= len(sources) <= 16:
+            raise ValueError
+        canonical_sources: list[str] = []
+        for source in sources:
+            if not isinstance(source, str):
+                raise ValueError
+            network = ipaddress.ip_network(source, strict=True)
+            if network.prefixlen == 0 or str(network) != source:
+                raise ValueError
+            canonical_sources.append(source)
+        if len(set(canonical_sources)) != len(canonical_sources):
+            raise ValueError
+
+        listeners = _decode_json_b64(
+            values.get("terraform_public_listeners_b64"), limit=16_384
+        )
+        expected_listener = BOOTSTRAP_LISTENERS[host_class]
+        if listeners != [expected_listener]:
+            raise ValueError
+
+        topology = _validated_bootstrap_topology(
+            _decode_json_b64(
+                values.get("observability_topology_b64"), limit=262_144
+            )
+        )
+        if (
+            not isinstance(topology, dict)
+            or topology.get("schema_version") != 1
+            or topology.get("credential_mode") != "systemd"
+            or topology.get("source_revision") != source_revision
+            or not isinstance(topology.get("nodes"), list)
+        ):
+            raise ValueError
+        matching = [
+            node
+            for node in topology["nodes"]
+            if isinstance(node, dict)
+            and node.get("node_id") == values["observability_node_id"]
+        ]
+        topology_listener = {
+            key: value
+            for key, value in expected_listener.items()
+            if value is not None
+        }
+        if len(matching) != 1 or matching[0] != {
+            "node_id": values["observability_node_id"],
+            "provider": expected_provider,
+            "environment": "staging",
+            "host_class": host_class,
+            "failure_domain": failure_domain,
+            "public_listeners": [topology_listener],
+        }:
+            raise ValueError
+    except OperatorError:
+        raise
+    except (KeyError, TypeError, ValueError):
+        raise OperatorError("bootstrap inventory rejected") from None
+    return {
+        "provider": expected_provider,
+        "env": "staging",
+        "allowed_ssh_cidrs": canonical_sources,
+        "terraform_public_listeners_b64": values[
+            "terraform_public_listeners_b64"
+        ],
+        "observability_node_id": values["observability_node_id"],
+        "observability_host_class": host_class,
+        "observability_failure_domain": failure_domain,
+    }
+
+
+def _run_bootstrap_playbook(
+    args: argparse.Namespace,
+    *,
+    host: dict[str, Any],
+    variables: dict[str, Any],
+    check: bool,
+) -> None:
+    revision, digest = _clean_source_identity()
+    with tempfile.TemporaryDirectory(prefix="observability-bootstrap-") as directory:
+        os.chmod(directory, 0o700)
+        inventory = Path(directory) / "inventory.ini"
+        options = fleet_inspection._strict_connection_options(host, args.known_hosts)
+        ssh_args = shlex.join(
+            ["-F", "/dev/null", *sum((["-o", option] for option in options), [])]
+        )
+        inventory_values = {
+            "ansible_host": host["transport"],
+            "ansible_user": host["user"],
+            "ansible_port": host["port"],
+            "ansible_python_interpreter": "/usr/bin/python3",
+            "ansible_ssh_private_key_file": host["key"],
+            "ansible_ssh_common_args": ssh_args,
+            **variables,
+        }
+        tokens = [args.host]
+        for name, value in inventory_values.items():
+            if isinstance(value, (list, dict)):
+                rendered = json.dumps(value, sort_keys=True, separators=(",", ":"))
+            else:
+                rendered = str(value)
+            tokens.append(f"{name}={shlex.quote(rendered)}")
+        inventory.write_text(
+            "[observability-bootstrap-target]\n" + " ".join(tokens) + "\n",
+            encoding="utf-8",
+        )
+        inventory.chmod(0o600)
+        command = [
+            "ansible-playbook",
+            str(BOOTSTRAP_PLAYBOOK),
+            "-i",
+            str(inventory),
+            "--limit",
+            args.host,
+        ]
+        if check:
+            command.append("--check")
+        try:
+            environment = _environment()
+            environment["DEPLOY_SOURCE_REVISION"] = revision
+            environment["DEPLOYABLE_SOURCE_DIGEST"] = digest
+            environment["ANSIBLE_HOME"] = str(Path(directory) / "ansible-home")
+            result = subprocess.run(
+                command,
+                cwd=ROOT,
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        except OSError:
+            raise OperatorError("ansible unavailable") from None
+        if result.returncode:
+            raise OperatorError("ansible command failed")
 
 
 def _playbook(
@@ -939,6 +1195,9 @@ def _parser() -> argparse.ArgumentParser:
     for command in ("deploy", "rotate", "rollback", "remove"):
         mutation = commands.add_parser(command, parents=[common])
         mutation.add_argument("--confirm", action="store_true")
+    bootstrap = commands.add_parser("bootstrap", parents=[common])
+    bootstrap.add_argument("--confirm", action="store_true")
+    bootstrap.add_argument("--check", action="store_true")
     return parser
 
 
@@ -946,6 +1205,13 @@ def main(argv: list[str] | None = None) -> int:
     try:
         args = _parser().parse_args(argv)
         _debug_disabled()
+        if args.command == "bootstrap":
+            if args.environment != "staging":
+                raise OperatorError("bootstrap requires staging")
+            if args.component not in BOOTSTRAP_PROVIDERS:
+                raise OperatorError("bootstrap host class rejected")
+            if not args.check and not args.confirm:
+                raise OperatorError("--confirm required")
         if args.command == "drill":
             if not args.confirm_notification:
                 raise OperatorError("--confirm-notification required")
@@ -1035,6 +1301,20 @@ def main(argv: list[str] | None = None) -> int:
             result = _remote(
                 args, host, _status_program(args.component), operation="status"
             )
+        elif args.command == "bootstrap":
+            variables = _bootstrap_variables(args, host, source_revision)
+            _run_bootstrap_playbook(
+                args,
+                host=host,
+                variables=variables,
+                check=args.check,
+            )
+            result = {
+                "schema_version": 1,
+                "component": args.component,
+                "host": args.host,
+                "state": "bootstrap-check" if args.check else "bootstrapped",
+            }
         elif args.command == "deploy":
             _run_playbook(args, secrets=secrets, host=host, initial=True)
             result = {

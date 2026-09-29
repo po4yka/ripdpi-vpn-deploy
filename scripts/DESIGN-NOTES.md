@@ -69,6 +69,49 @@ contexts stay pinned.
 
 **Staging cleanup exports only the selected provider credential** — Vultr accepts one ambient `VULTR_API_KEY`; UpCloud prefers `UPCLOUD_TOKEN` and retains one complete primary or API-alias username/password pair. The Make boundary rejects command-line credentials before expansion, unexports the other provider's credentials, and keeps authorization out of tfvars and diagnostics.
 
+**Observability cleanup has a distinct three-provider guard** —
+`observability-staging-cleanup.py` is deliberately separate from the disposable
+`ci-staging-*` guards. It is fixed to `ENV=staging` and consumes the exact
+completed acceptance journal. `snapshot` authenticates UpCloud, Hetzner, and
+Scaleway, derives the complete managed Terraform address and separately
+queryable provider-identity sets from routed local state, and records a stable
+delete-plan summary digest. `seal` accepts only a fresh separate approval bound
+to the canonical snapshot digest, complete scope digest, source, deployable
+generation, acceptance journal, expiry, and closed rollback/retention window.
+
+`run` rebuilds all three plans and finishes every account, resource, state, and
+delete-only validation before the first delete. Each plan lives in an
+owner-only temporary directory, is opened no-follow, unlinked, hashed, and
+applied through the same descriptor via `terraform-env.sh`. The temporary
+lifecycle override exists only long enough to plan around the roots' existing
+`prevent_destroy` contract. Provider absence is queried independently with
+fixed provider URLs. Hetzner primary storage and firewall attachment are
+implicit in their owning server/firewall lifecycle; separately addressable
+resources remain separate checks. The final receipt exposes provider names and
+categorical absence only. It permits a later local-retirement transaction but
+does not itself delete operator-local recovery material.
+
+A private receipt-side progress journal is published before the first apply and
+advances monotonically through `pending`, `apply-started`, and `absent` for each
+provider. Recovery re-authenticates the account and every provider identity. An
+`apply-started` provider may be retried only when every direct resource is still
+present, the complete frozen state bytes still match, the reviewed plan still
+matches, and approval is still current; complete absence advances without a
+second apply, while mixed provider state remains an explicit manual-inspection
+refusal. Pending providers are never destroyed after approval expiry.
+
+**Observability acceptance advances one fixed row per process** —
+`observability-staging-acceptance.py` binds exact staging aliases, source
+identity, private inputs and separate per-row approvals in a canonical
+manifest. The private journal records the current row before mutation; a later
+invocation restores an interrupted row or reconciles its already-published
+receipt, then stops. Live rows use only embedded actions: fresh central metric
+queries, the real one-hour critical lifecycle, fixed service/provider loss and
+restore, forced primary canary, component rotation, categorical old-token
+rejection, exact rollback and TSDB-preserving component removal. Terminal state
+is reduced to the cleanup journal schema and still requires owner-confirmed
+primary/secondary observations.
+
 ## Client emission — `emit-bundle.sh`, `emit-singbox.sh`
 
 **Bundle topology is host-order independent** — `emit-bundle.sh` aggregates
