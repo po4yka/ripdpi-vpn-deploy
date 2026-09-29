@@ -202,7 +202,9 @@ def test_advance_runs_only_the_fixed_next_step_and_publishes_redacted_receipt(
     journal = json.loads(acceptance["journal"].read_text())
     assert journal["completed_checks"] == [module.STEPS[0]]
     assert journal["current_step"] is None
-    receipt = json.loads(next(acceptance["receipts"].iterdir()).read_text())
+    receipt = json.loads(
+        module._receipt_path(acceptance["receipts"], module.STEPS[0]).read_text()
+    )
     assert set(receipt) == {
         "schema_version",
         "action",
