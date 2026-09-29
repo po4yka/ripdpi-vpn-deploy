@@ -5,7 +5,6 @@ from __future__ import annotations
 import importlib.util
 import hashlib
 import json
-import os
 from pathlib import Path
 import stat
 import subprocess
