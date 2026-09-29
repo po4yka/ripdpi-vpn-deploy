@@ -48,6 +48,7 @@
   "hostname": "{{ ansible_facts.get('hostname', inventory_hostname | default('unknown')) }}",
   "environment": "{{ node_manifest_environment | default('') }}",
   "provider": "{{ node_manifest_provider | default('') }}",
+  "host_class": {{ node_manifest_host_class | default('vpn') | to_json }},
   "enabled_transports": {{ ns.transports | to_json }},
   "public_listeners": {{ ns.public_listeners | to_json }},
   "security_controls": {

@@ -18,6 +18,7 @@ def test_node_manifest_prefers_per_host_fleet_labels() -> None:
 
     assert 'node_manifest_environment: "{{ env | default(lookup(\'env\', \'ENV\'), true) }}"' in tasks
     assert 'node_manifest_provider: "{{ provider | default(lookup(\'env\', \'PROVIDER\'), true) }}"' in tasks
+    assert 'node_manifest_host_class: "{{ observability_host_class | default(\'vpn\', true) }}"' in tasks
 
 _ctr_spec = importlib.util.spec_from_file_location("check_templates_render", CTR)
 ctr = importlib.util.module_from_spec(_ctr_spec)
@@ -31,13 +32,17 @@ def _render_manifest(vars_: dict | None = None) -> dict:
         "inventory_hostname": "vpn-test",
         "node_manifest_environment": "prod",
         "node_manifest_provider": "upcloud",
+        "node_manifest_host_class": "vpn",
         "node_manifest_source_revision": "1" * 40,
         "node_manifest_deployable_digest": "2" * 64,
     })
     merged["ansible_facts"] = {**merged["ansible_facts"], "hostname": "vpn-test"}
     if vars_:
         merged.update(vars_)
-    merged["public_listener_manifest"] = json.loads(ctr.render_template(LISTENER_TEMPLATE, merged))
+    if not vars_ or "public_listener_manifest" not in vars_:
+        merged["public_listener_manifest"] = json.loads(
+            ctr.render_template(LISTENER_TEMPLATE, merged)
+        )
     return json.loads(ctr.render_template(NODE_TEMPLATE, merged))
 
 
@@ -49,6 +54,7 @@ def test_default_manifest_contract():
     assert manifest["hostname"] == "vpn-test"
     assert manifest["environment"] == "prod"
     assert manifest["provider"] == "upcloud"
+    assert manifest["host_class"] == "vpn"
     assert set(manifest) == {
         "schema_version",
         "source_revision",
@@ -56,6 +62,7 @@ def test_default_manifest_contract():
         "hostname",
         "environment",
         "provider",
+        "host_class",
         "enabled_transports",
         "public_listeners",
         "security_controls",
@@ -85,6 +92,35 @@ def test_subscription_only_manifest_skips_transport_roles():
     })
     assert manifest["enabled_transports"] == ["subscription-host"]
     assert manifest["public_listeners"] == [{"proto": "tcp", "port": 8444, "role": "subscription-host"}]
+
+
+def test_observability_host_manifest_records_class_without_vpn_transports():
+    manifest = _render_manifest(
+        {
+            "node_manifest_host_class": "control-plane",
+            "vpn": {
+                "enable_xray_reality": False,
+                "enable_nginx_xhttp": False,
+                "enable_hysteria": False,
+                "enable_amneziawg": False,
+                "enable_subscription_host": False,
+            },
+            "public_listener_manifest": [
+                {
+                    "role": "observability-ingest",
+                    "protocol": "tcp",
+                    "port": 9443,
+                    "enabled": True,
+                }
+            ],
+        }
+    )
+
+    assert manifest["host_class"] == "control-plane"
+    assert manifest["enabled_transports"] == []
+    assert manifest["public_listeners"] == [
+        {"proto": "tcp", "port": 9443, "role": "observability-ingest"}
+    ]
 
 
 def test_manifest_does_not_emit_obvious_secret_material():

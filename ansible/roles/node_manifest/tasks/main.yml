@@ -11,6 +11,7 @@
   ansible.builtin.set_fact:
     node_manifest_environment: "{{ env | default(lookup('env', 'ENV'), true) }}"
     node_manifest_provider: "{{ provider | default(lookup('env', 'PROVIDER'), true) }}"
+    node_manifest_host_class: "{{ observability_host_class | default('vpn', true) }}"
     node_manifest_source_revision: "{{ lookup('env', 'DEPLOY_SOURCE_REVISION') }}"
     node_manifest_deployable_digest: "{{ lookup('env', 'DEPLOYABLE_SOURCE_DIGEST') }}"
 

@@ -3,6 +3,11 @@
 ## Design decisions
 
 **One playbook per intent** — `site.yml` (deploy), `os-maintenance.yml` (serial OS upgrades/reboots), `verify.yml`, `security-verify.yml`, `smoke-test.yml`, `rollback-config.yml`, `rollback-xray.yml`, `rotate-credentials.yml`. No mega-playbook with conditional flags; new intent = new playbook.
+`observability-host-bootstrap.yml` is the staging-only exact-host baseline for
+fresh control-plane and dead-man nodes. It validates SSH and the provider
+listener contract before converging baseline, package updates, firewall,
+loopback monitoring, and the node manifest; it never imports a VPN transport or
+an observability component role.
 `install-sshd-recovery.yml` installs the isolated recovery foundation on one
 explicit node; it never activates a migration or imports baseline handlers.
 

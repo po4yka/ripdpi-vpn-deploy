@@ -9,6 +9,17 @@ data shaping are Python and use only stdlib + pinned `PyYAML`, `Jinja2`, or
 
 **One file per operator verb** — `bootstrap-secrets.sh`, `rotate-secrets.sh`,
 `fleet-rotate.sh`. The Makefile wraps these with `make <target>` shorthand.
+`observability-operator.py bootstrap` is the fixed staging-only exception for
+fresh control-plane and dead-man hosts: it validates the clean topology-bound
+host class, provider listener contract and source-restricted SSH CIDRs before
+running only `observability-host-bootstrap.yml` against one isolated host.
+It never accepts VPN-class hosts, production, arbitrary roles, or secrets.
+`observability-staging-acceptance.py` is the other staging-only exception: one
+invocation advances one repository-defined live row from a private canonical
+manifest, approval and journal. Keep the critical reminder at the real one-hour
+interval, require separate human-observation booleans, restore interrupted rows
+before later work, and emit only categorical private receipts. Never add a
+caller-supplied command, unit, endpoint, environment or arbitrary fault.
 `ssh-ownership.py` is the explicit fresh-node SSH ownership verb between
 dual-path Tailnet bootstrap and ordinary deployment. Its private configuration
 binds the exact source and one inventory alias; check mode only previews.
@@ -119,6 +130,15 @@ rendering; `destroy.sh` and staging cleanup; `emit-*.sh`; `fleet-inspect.py`;
 liveness sentinels and probes (`*liveness*`, `probe-*`, `snell-refinement.py`,
 real-VPS AWG evidence); `tailnet-*`; `observability-operator.py`; cloud-init
 acceptance harnesses; SSH recovery installation.
+
+**Observability staging cleanup is an aggregate all-provider transaction** —
+`observability-staging-cleanup.py` is fixed to the exact `staging` UpCloud,
+Hetzner, and Scaleway tuple. Its snapshot derives identities from routed local
+Terraform state, `seal` binds the separately supplied destructive-data
+approval, and `run` validates every account, state, resource and reviewed
+delete-only plan before the first apply. It emits a redacted receipt only after
+provider-authenticated absence; never turn it into a generic provider,
+environment, URL, address, or command runner.
 
 ## What's done well
 

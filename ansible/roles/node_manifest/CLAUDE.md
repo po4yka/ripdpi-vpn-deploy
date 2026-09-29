@@ -8,7 +8,11 @@
 
 **Local JSON validation** — the template task uses `python3 -m json.tool` as a write-time validator and the verify playbooks assert the deployed file parses as JSON.
 
-**Per-host fleet labels** — multi-provider inventories carry `provider` and `env` host variables. The role prefers those values and only falls back to the operator process environment for legacy single-host inventories.
+**Per-host fleet labels** — multi-provider inventories carry `provider`, `env`,
+and, for observability topology members, `observability_host_class` host
+variables. The role prefers those values, defaults ordinary nodes to `vpn`,
+and only falls back to the operator process environment for legacy single-host
+inventories.
 
 **Deploy provenance is deterministic** — the manifest records the clean Git
 revision used by the operator and a digest of deployable repository paths.

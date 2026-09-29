@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import base64
 import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
 import subprocess
@@ -30,16 +32,85 @@ def operator(tmp_path: Path) -> dict[str, object]:
     known_hosts = _write(
         tmp_path / "known_hosts", "fixture.invalid ssh-ed25519 AAAA\n", 0o644
     )
+    topology = base64.b64encode(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "credential_mode": "systemd",
+                "source_revision": "0" * 40,
+                "nodes": [
+                    {
+                        "node_id": "upcloud-staging",
+                        "provider": "upcloud",
+                        "environment": "staging",
+                        "host_class": "vpn",
+                        "failure_domain": "edge-a",
+                        "public_listeners": [
+                            {"name": "xray", "protocol": "tcp", "port": 443}
+                        ],
+                    },
+                    {
+                        "node_id": "hetzner-staging",
+                        "provider": "hetzner",
+                        "environment": "staging",
+                        "host_class": "control-plane",
+                        "failure_domain": "control-a",
+                        "public_listeners": [
+                            {
+                                "name": "observability-ingest",
+                                "protocol": "tcp",
+                                "port": 9443,
+                            }
+                        ],
+                    },
+                    {
+                        "node_id": "scaleway-staging",
+                        "provider": "scaleway",
+                        "environment": "staging",
+                        "host_class": "deadman",
+                        "failure_domain": "deadman-a",
+                        "public_listeners": [
+                            {
+                                "name": "observability-deadman-pulse",
+                                "protocol": "tcp",
+                                "port": 9444,
+                            }
+                        ],
+                    },
+                ],
+                "sentinels": [
+                    {
+                        "sentinel_id": "filtered-a",
+                        "path_signature": "fixed-egress-a",
+                        "failure_domain": "sentinel-a",
+                    },
+                    {
+                        "sentinel_id": "filtered-b",
+                        "path_signature": "fixed-egress-b",
+                        "failure_domain": "sentinel-b",
+                    },
+                ],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).decode("ascii")
+    control_listeners = base64.b64encode(
+        b'[{"name":"observability-ingest","protocol":"tcp","port":9443,"port_range":null}]'
+    ).decode("ascii")
+    deadman_listeners = base64.b64encode(
+        b'[{"name":"observability-deadman-pulse","protocol":"tcp","port":9444,"port_range":null}]'
+    ).decode("ascii")
     inventory = _write(
         tmp_path / "inventory.ini",
         """[vpn]
-node-agent ansible_host=agent.fixture.invalid ansible_user=deploy ansible_port=22 env=staging observability_host_class=vpn
+node-agent ansible_host=agent.fixture.invalid ansible_user=deploy ansible_port=22 provider=upcloud env=staging observability_node_id=upcloud-staging observability_host_class=vpn observability_failure_domain=edge-a
 
 [vpn-observability-control]
-node-a ansible_host=fixture.invalid ansible_user=deploy ansible_port=22 env=staging observability_host_class=control-plane
+node-a ansible_host=fixture.invalid ansible_user=deploy ansible_port=22 provider=hetzner env=staging allowed_ssh_cidrs='["203.0.113.7/32"]' terraform_public_listeners_b64={control_listeners} observability_node_id=hetzner-staging observability_host_class=control-plane observability_failure_domain=control-a
 
 [vpn-observability-deadman]
-node-deadman ansible_host=deadman.fixture.invalid ansible_user=deploy ansible_port=22 env=staging observability_host_class=deadman
+node-deadman ansible_host=deadman.fixture.invalid ansible_user=deploy ansible_port=22 provider=scaleway env=staging allowed_ssh_cidrs='["2001:db8::7/128"]' terraform_public_listeners_b64={deadman_listeners} observability_node_id=scaleway-staging observability_host_class=deadman observability_failure_domain=deadman-a
 
 [observability:children]
 vpn
@@ -53,8 +124,13 @@ ansible_python_interpreter=/usr/bin/python3
 [observability:vars]
 ansible_ssh_private_key_file={key}
 ansible_python_interpreter=/usr/bin/python3
-observability_topology_b64=eyJzY2hlbWFfdmVyc2lvbiI6MX0=
-""".format(key=key),
+observability_topology_b64={topology}
+""".format(
+            key=key,
+            topology=topology,
+            control_listeners=control_listeners,
+            deadman_listeners=deadman_listeners,
+        ),
         0o644,
     )
     secrets = _write(tmp_path / "secrets.yml", "observability_secrets: {{}}\n")
@@ -408,6 +484,177 @@ def test_deploy_requires_confirmation_before_transport(
     assert _calls(operator) == []
 
 
+def test_host_bootstrap_requires_staging_non_vpn_scope_and_confirmation(
+    operator: dict[str, object],
+) -> None:
+    result = _run(operator, "bootstrap")
+    assert result.returncode == 2
+    assert result.stderr == "observability-operator: --confirm required\n"
+    assert _calls(operator) == []
+
+    common = operator["common"]
+    assert isinstance(common, list)
+    common[common.index("staging")] = "prod"
+    result = _run(operator, "bootstrap", "--confirm")
+    assert result.returncode == 2
+    assert result.stderr == "observability-operator: bootstrap requires staging\n"
+    assert _calls(operator) == []
+
+    common[common.index("prod")] = "staging"
+    common[common.index("control-plane")] = "agent"
+    common[common.index("node-a")] = "node-agent"
+    result = _run(operator, "bootstrap", "--confirm")
+    assert result.returncode == 2
+    assert result.stderr == "observability-operator: bootstrap host class rejected\n"
+    assert _calls(operator) == []
+
+
+def test_host_bootstrap_uses_fixed_exact_host_playbook_and_private_inventory(
+    operator: dict[str, object],
+) -> None:
+    result = _run(operator, "bootstrap", "--confirm")
+
+    assert result.returncode == 0, result.stderr
+    report = json.loads(result.stdout)
+    assert report["state"] == "bootstrapped"
+    call = _calls(operator)[0]
+    assert call["program"] == "ansible-playbook"
+    assert call["argv"][call["argv"].index("--limit") + 1] == "node-a"
+    assert "ansible/playbooks/observability-host-bootstrap.yml" in " ".join(
+        call["argv"]
+    )
+    assert "site.yml" not in " ".join(call["argv"])
+    assert "--check" not in call["argv"]
+    isolated = call["inventory"]
+    assert "provider=hetzner" in isolated
+    assert "env=staging" in isolated
+    assert "ansible_python_interpreter=/usr/bin/python3" in isolated
+    assert "observability_host_class=control-plane" in isolated
+    assert "observability_node_id=hetzner-staging" in isolated
+    assert "observability_failure_domain=control-a" in isolated
+    assert "allowed_ssh_cidrs='[\"203.0.113.7/32\"]'" in isolated
+    assert "terraform_public_listeners_b64=" in isolated
+    assert "observability_topology_b64" not in isolated
+    assert "VPN_SECRETS_FILE" not in call.get("environment", {})
+
+
+def test_host_bootstrap_check_mode_is_non_mutating_and_needs_no_confirmation(
+    operator: dict[str, object],
+) -> None:
+    result = _run(operator, "bootstrap", "--check")
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["state"] == "bootstrap-check"
+    call = _calls(operator)[0]
+    assert "--check" in call["argv"]
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        (
+            "terraform_public_listeners_b64",
+            base64.b64encode(
+                b'[{"name":"observability-ingest","protocol":"tcp","port":9090,"port_range":null}]'
+            ).decode("ascii"),
+        ),
+        ("allowed_ssh_cidrs", "['0.0.0.0/0']"),
+        ("observability_failure_domain", "INVALID"),
+    ],
+)
+def test_host_bootstrap_rejects_unbound_host_policy_before_ansible(
+    operator: dict[str, object], field: str, replacement: str
+) -> None:
+    inventory = Path(operator["common"][1])
+    source = inventory.read_text(encoding="utf-8")
+    if field == "terraform_public_listeners_b64":
+        source = re.sub(
+            r"terraform_public_listeners_b64=[A-Za-z0-9+/=]+",
+            f"terraform_public_listeners_b64={replacement}",
+            source,
+            count=1,
+        )
+    elif field == "allowed_ssh_cidrs":
+        source = source.replace(
+            "allowed_ssh_cidrs='[\"203.0.113.7/32\"]'",
+            f'allowed_ssh_cidrs="{replacement}"',
+        )
+    else:
+        source = source.replace(
+            "observability_failure_domain=control-a",
+            f"observability_failure_domain={replacement}",
+        )
+    inventory.write_text(source, encoding="utf-8")
+
+    result = _run(operator, "bootstrap", "--confirm")
+
+    assert result.returncode == 2
+    assert result.stderr == "observability-operator: bootstrap inventory rejected\n"
+    assert _calls(operator) == []
+
+
+def test_host_bootstrap_refuses_topology_source_drift_before_ansible(
+    operator: dict[str, object],
+) -> None:
+    inventory = Path(operator["common"][1])
+    source = inventory.read_text(encoding="utf-8")
+    topology_match = re.search(r"observability_topology_b64=([A-Za-z0-9+/=]+)", source)
+    assert topology_match is not None
+    topology = json.loads(base64.b64decode(topology_match.group(1)))
+    topology["source_revision"] = "1" * 40
+    encoded = base64.b64encode(
+        json.dumps(topology, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).decode("ascii")
+    inventory.write_text(
+        source.replace(topology_match.group(1), encoded), encoding="utf-8"
+    )
+
+    result = _run(operator, "bootstrap", "--confirm")
+
+    assert result.returncode == 2
+    assert result.stderr == "observability-operator: bootstrap inventory rejected\n"
+    assert _calls(operator) == []
+
+
+def test_host_bootstrap_playbook_is_non_vpn_and_preflights_before_roles() -> None:
+    document = yaml.safe_load(
+        (ROOT / "ansible/playbooks/observability-host-bootstrap.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    play = document[0]
+    assert play["hosts"] == "observability-bootstrap-target"
+    assert play["serial"] == 1
+    assert play["any_errors_fatal"] is True
+    names = [task["name"] for task in play["pre_tasks"]]
+    assert "Validate observability bootstrap scope before host mutation" in names
+    assert "Require exact provider listener contract for host class" in names
+    assert "Require effective SSH listener ownership before host mutation" in names
+    assert "Refuse a host with existing VPN transport state" in names
+    roles = [task["ansible.builtin.include_role"]["name"] for task in play["tasks"]]
+    assert roles == [
+        "baseline",
+        "package_updates",
+        "firewall",
+        "monitoring",
+        "node_manifest",
+    ]
+    assert not {
+        "xray",
+        "nginx-xhttp",
+        "hysteria",
+        "amneziawg",
+        "observability_control_plane",
+        "observability_deadman",
+    } & set(roles)
+    assert play["vars"]["monitoring"]["node_exporter_listen"] == "127.0.0.1:9100"
+    assert not any(
+        enabled
+        for name, enabled in play["vars"]["vpn"].items()
+        if name.startswith("enable_") and name != "enable_monitoring"
+    )
+
+
 def test_deploy_is_initial_only_exact_host_role_convergence(
     operator: dict[str, object],
 ) -> None:
@@ -724,10 +971,13 @@ def test_component_inventory_rejects_duplicate_unsafe_or_wrong_class(
     if mutation.startswith("["):
         source += "\\n" + mutation + "\\n"
     else:
-        source = source.replace(
-            "node-a ansible_host=fixture.invalid ansible_user=deploy ansible_port=22 env=staging observability_host_class=control-plane",
+        source = re.sub(
+            r"^node-a .*$",
             "node-a ansible_host=fixture.invalid ansible_user=deploy ansible_port=22 "
             + mutation,
+            source,
+            count=1,
+            flags=re.MULTILINE,
         )
     inventory.write_text(source, encoding="utf-8")
     args = module._parser().parse_args(["status", *common])
