@@ -273,6 +273,34 @@ def test_relay_delivery_constructs_the_exact_validated_telegram_origin() -> None
     ]
 
 
+def test_relay_private_chat_omits_message_thread_id() -> None:
+    relay = _relay()
+    captured: list[dict[str, object]] = []
+
+    def opener(outbound, timeout):  # type: ignore[no-untyped-def]
+        assert timeout == 5
+        captured.append(json.loads(outbound.data))
+        return _Response(200, b'{"ok":true}')
+
+    relay.deliver(
+        api_url="https://api.telegram.org",
+        token="123456789:fixture-token-not-real",
+        chat_id="100000001",
+        topic_id=0,
+        message="bounded",
+        opener=opener,
+    )
+
+    assert captured == [
+        {
+            "chat_id": "100000001",
+            "text": "bounded",
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        }
+    ]
+
+
 def test_relay_reads_only_single_line_ascii_systemd_credentials(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

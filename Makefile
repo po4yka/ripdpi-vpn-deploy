@@ -25,6 +25,30 @@ unexport MAKEFLAGS MFLAGS
 MAKEOVERRIDES :=
 endif
 
+_OBSERVABILITY_STAGING_PREPARATION_GOALS := observability-staging-prepare observability-staging-materialize
+ifneq ($(filter $(_OBSERVABILITY_STAGING_PREPARATION_GOALS),$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error observability staging input preparation requires exactly one make goal)
+endif
+ifeq ($(filter observability-staging-prepare,$(MAKECMDGOALS)),observability-staging-prepare)
+_OBSERVABILITY_STAGING_PREPARATION_ALLOWED := OBSERVABILITY_STAGING_ROOT OBSERVABILITY_STAGING_CONFIG OBSERVABILITY_STAGING_TELEGRAM_INPUT
+else
+_OBSERVABILITY_STAGING_PREPARATION_ALLOWED := OBSERVABILITY_STAGING_ROOT
+endif
+_OBSERVABILITY_STAGING_PREPARATION_COMMAND := $(foreach variable,$(.VARIABLES),$(if $(filter command line override,$(origin $(variable))),$(variable)))
+ifneq ($(strip $(filter-out $(_OBSERVABILITY_STAGING_PREPARATION_ALLOWED),$(_OBSERVABILITY_STAGING_PREPARATION_COMMAND))),)
+$(error observability staging input preparation accepts only the required private paths)
+endif
+override OBSERVABILITY_STAGING_ROOT_LITERAL := $(value OBSERVABILITY_STAGING_ROOT)
+override OBSERVABILITY_STAGING_CONFIG_LITERAL := $(value OBSERVABILITY_STAGING_CONFIG)
+override OBSERVABILITY_STAGING_TELEGRAM_INPUT_LITERAL := $(value OBSERVABILITY_STAGING_TELEGRAM_INPUT)
+export OBSERVABILITY_STAGING_ROOT_LITERAL OBSERVABILITY_STAGING_CONFIG_LITERAL
+export OBSERVABILITY_STAGING_TELEGRAM_INPUT_LITERAL
+unexport OBSERVABILITY_STAGING_ROOT OBSERVABILITY_STAGING_CONFIG OBSERVABILITY_STAGING_TELEGRAM_INPUT
+unexport MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+endif
+
 _OBSERVABILITY_STAGING_CLEANUP_GOALS := observability-staging-cleanup-preflight observability-staging-cleanup-snapshot observability-staging-cleanup-seal observability-staging-cleanup-validate observability-staging-cleanup
 ifneq ($(filter $(_OBSERVABILITY_STAGING_CLEANUP_GOALS),$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
@@ -420,7 +444,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         remove-operator-crons issue-sub-token sub-reads \
         observability-render observability-validate observability-status observability-host-bootstrap \
         observability-drill observability-deploy observability-rotate observability-rollback \
-        observability-remove observability-silence-create observability-silence-delete observability-staging-acceptance \
+        observability-remove observability-silence-create observability-silence-delete observability-staging-prepare observability-staging-materialize observability-staging-acceptance \
         observability-staging-cleanup-preflight observability-staging-cleanup-snapshot observability-staging-cleanup-seal observability-staging-cleanup-validate observability-staging-cleanup \
         awg-evidence-provision \
         test-native-runtime test-probe-matrix-mtproto test-unit test-unit-profile test-unit-shard snapshot-check snapshot-update validate-secrets \
@@ -527,6 +551,8 @@ help:
 	@echo "  observability-{render,validate,status}  Exact-host configuration/read surface"
 	@echo "  observability-host-bootstrap  Exact staging control/dead-man host baseline (CHECK=1 for check mode)"
 	@echo "  observability-{drill,deploy,rotate,rollback,remove}  Confirmed exact-host lifecycle"
+	@echo "  observability-staging-prepare  Create a new private staging input root"
+	@echo "  observability-staging-materialize  Decrypt the prepared runtime fragment locally"
 	@echo "  observability-staging-acceptance  Advance one fixed disposable acceptance row"
 	@echo "  observability-staging-cleanup-{preflight,snapshot,seal,validate}  Prepare exact three-provider cleanup"
 	@echo "  observability-staging-cleanup  Destroy sealed staging scope and prove provider absence"
@@ -1463,6 +1489,16 @@ observability-rollback:
 observability-remove:
 	@python3 scripts/observability-operator.py remove $(observability_common) \
 	  --vars "$${OBSERVABILITY_VARS_LITERAL}" --confirm
+
+observability-staging-prepare:
+	@python3 scripts/prepare-observability-staging.py prepare \
+	  --root "$${OBSERVABILITY_STAGING_ROOT_LITERAL}" \
+	  --config "$${OBSERVABILITY_STAGING_CONFIG_LITERAL}" \
+	  --telegram-input "$${OBSERVABILITY_STAGING_TELEGRAM_INPUT_LITERAL}"
+
+observability-staging-materialize:
+	@python3 scripts/prepare-observability-staging.py materialize \
+	  --root "$${OBSERVABILITY_STAGING_ROOT_LITERAL}"
 
 observability-staging-acceptance:
 	@python3 scripts/observability-staging-acceptance.py advance \

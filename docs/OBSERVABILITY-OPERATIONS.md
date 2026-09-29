@@ -323,6 +323,92 @@ the live rows.
 
 ### Resumable disposable acceptance
 
+Prepare the private staging inputs only after the selected revision is the
+clean local `origin/main`. `scripts/prepare-observability-staging.py` performs
+no provider, SSH, Telegram, BotFather, or bot API request. It generates a new
+task-scoped SSH identity, age identity, receiver/pulse/silence PKI, runtime
+tokens and SOPS ciphertext. The primary and secondary bot tokens and private
+destination identifiers must already exist and enter only through a canonical,
+same-owner mode-`0600` JSON file in a mode-`0700` directory.
+
+The private preparation config has exactly this shape; use the final technical
+inventory aliases and distinct DNS identities that the role variables will
+also use:
+
+```json
+{"hosts":{"canary":"canary-a","control-plane":"control-a","deadman":"deadman-a"},"pki":{"control_plane_dns_san":"control.example.invalid","deadman_pulse_sni":"pulse.example.invalid","ingress_sni":"ingest.example.invalid"},"schema_version":1,"sender_ids":{"canary":"canary-a","deadman-reverse":"deadman-reverse-a"},"silence_operator":"operator-a"}
+```
+
+The Telegram input has exactly this shape. Replace the angle-bracket values in
+the private file; do not put them in argv, environment variables, shell history,
+or repository files:
+
+```json
+{"primary":{"bot_token":"<existing-primary-bot-token>","chat_id":"<private-primary-chat-id>","topic_id":0},"schema_version":1,"secondary":{"bot_token":"<existing-secondary-bot-token>","chat_id":"<private-secondary-chat-id>","topic_id":0}}
+```
+
+Use `topic_id: 0` for a direct or non-forum chat so the Telegram request omits
+`message_thread_id`; use the positive forum topic identifier only when the
+destination is a forum topic.
+
+Both documents must use canonical JSON (UTF-8, sorted keys, compact separators,
+one trailing newline). A draft can be canonicalized without sending its bytes
+to stdout by writing `jq -S -c .` into a new mode-`0600` file and atomically
+renaming it inside the same private directory. Then create a new root; an
+existing target is always refused:
+
+Every ancestor of the input files and selected root must be owned by the
+current user or root. A group/world-writable ancestor is allowed only when it
+has the sticky bit (for example a system temporary directory); each direct
+input/root parent must itself be current-user mode `0700`. Symlinked path
+components, writable non-sticky ancestors, and any root/subdirectory inode
+substitution fail before success. Root, secret, and materialized-file writes
+are bound to already-open directory descriptors rather than re-resolving a
+checked pathname.
+
+```sh
+make observability-staging-prepare \
+  OBSERVABILITY_STAGING_ROOT=/owner/private/run \
+  OBSERVABILITY_STAGING_CONFIG=/owner/private/intake/preparation.json \
+  OBSERVABILITY_STAGING_TELEGRAM_INPUT=/owner/private/intake/telegram.json
+```
+
+The categorical success result contains no path or credential. The root holds
+the SSH public/private pair, age identity/recipient, encrypted runtime and CA
+authority SOPS documents, empty private inventory and known-hosts files, and a
+fixed acceptance manifest. Approval drafts are `approved: false`, provider and
+rollback bindings contain null authority fields, observation rows are false,
+old-material files are empty, and role-variable documents are `{}`. These are
+intentional blockers: fill and independently review each exact input only at
+its owning execution step. The preparer does not create provider/API/bot
+credentials or authorize any external mutation.
+
+The candidate control-plane vars and secrets paths are distinct from the
+active pair. Keep both `{}` until a separately reviewed candidate exists. The
+invalid-candidate vars file must later contain the complete candidate mapping
+with only its intentional pre-mutation refusal (the controller fixture uses a
+public `prometheus_listen`); do not substitute a truncated mapping that could
+fail before the intended guard. Capture the retained canary generation and
+the rollback hashes of the retained last-known-good control-plane vars and
+secrets only after those exact artifacts exist.
+
+After the encrypted runtime fragment has been retained in protected operator
+storage, explicitly materialize it for the exact-host controller:
+
+```sh
+make observability-staging-materialize \
+  OBSERVABILITY_STAGING_ROOT=/owner/private/run
+```
+
+This decrypts only to
+`materialized/observability-secrets.yml` under the owner-only root, validates
+the generated fragment against the repository observability secret schema, and
+publishes it atomically with mode `0600`. The same path is bound to the three
+component secret inputs; complete per-role variable snapshots remain separate.
+Retain the encrypted CA-authority document for bounded rotation and retire the
+materialized plaintext only after guarded cleanup and the rollback/retention
+window close.
+
 The full disposable run uses `make observability-staging-acceptance`, not the
 short warning drill. Its mode-0600 canonical JSON manifest names three exact
 staging aliases and private paths for inventory, known-hosts, role inputs,

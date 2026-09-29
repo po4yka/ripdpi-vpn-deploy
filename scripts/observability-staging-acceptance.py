@@ -9,6 +9,7 @@ can be resumed without turning the interface into an arbitrary remote runner.
 from __future__ import annotations
 
 import argparse
+import copy
 import datetime as dt
 import fcntl
 import hashlib
@@ -27,6 +28,7 @@ import urllib.error
 import urllib.request
 
 import fleet_inspection
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 TASK_ID = "MON-1790650904289505"
@@ -52,6 +54,11 @@ STEP_OBSERVATIONS = {
 OBSERVATION_STEPS = tuple(STEP_OBSERVATIONS)
 ACCEPTANCE_CHECKS = (
     "fresh-metrics",
+    "ingestion-negative",
+    "agent-wal",
+    "staleness",
+    "grouping-inhibition",
+    "finite-silence",
     "primary-lifecycle",
     "deadman-lifecycle",
     "control-service-loss",
@@ -62,11 +69,18 @@ ACCEPTANCE_CHECKS = (
     "primary-bot-rotation",
     "secondary-bot-rotation",
     "old-material-rejection",
+    "invalid-candidate-refusal",
+    "valid-candidate-activation",
     "control-plane-rollback",
 )
 STEPS = ACCEPTANCE_CHECKS + ("component-removal",)
 STEP_TARGETS = {
     "fresh-metrics": "control-plane",
+    "ingestion-negative": "canary-to-control-plane",
+    "agent-wal": "canary-to-control-plane",
+    "staleness": "canary-to-control-plane",
+    "grouping-inhibition": "primary-route",
+    "finite-silence": "primary-route",
     "primary-lifecycle": "primary-route",
     "deadman-lifecycle": "secondary-route",
     "control-service-loss": "control-plane",
@@ -77,11 +91,18 @@ STEP_TARGETS = {
     "primary-bot-rotation": "primary-route",
     "secondary-bot-rotation": "secondary-route",
     "old-material-rejection": "primary-and-secondary-route",
+    "invalid-candidate-refusal": "control-plane",
+    "valid-candidate-activation": "control-plane",
     "control-plane-rollback": "control-plane",
     "component-removal": "staging-components",
 }
 STEP_RESTORES = {
     "fresh-metrics": "none",
+    "ingestion-negative": "none",
+    "agent-wal": "start-control-plane-ingress",
+    "staleness": "restore-canary-producer-and-sender",
+    "grouping-inhibition": "resolve-staging-matrix-alerts",
+    "finite-silence": "expire-delete-staging-silence",
     "primary-lifecycle": "resolve-critical-drill",
     "deadman-lifecycle": "restore-control-plane-pulses",
     "control-service-loss": "start-control-plane-services",
@@ -92,11 +113,18 @@ STEP_RESTORES = {
     "primary-bot-rotation": "restore-control-plane-generation",
     "secondary-bot-rotation": "restore-deadman-generation",
     "old-material-rejection": "none",
+    "invalid-candidate-refusal": "preserve-current-control-plane-generation",
+    "valid-candidate-activation": "restore-prior-control-plane-generation",
     "control-plane-rollback": "restore-prior-control-plane-generation",
     "component-removal": "retain-provider-resources",
 }
 STEP_MIN_DEADLINES = {
     "fresh-metrics": 130,
+    "ingestion-negative": 120,
+    "agent-wal": 600,
+    "staleness": 1800,
+    "grouping-inhibition": 300,
+    "finite-silence": 300,
     "primary-lifecycle": 4800,
     "deadman-lifecycle": 4800,
     "control-service-loss": 1200,
@@ -107,6 +135,8 @@ STEP_MIN_DEADLINES = {
     "primary-bot-rotation": 600,
     "secondary-bot-rotation": 600,
     "old-material-rejection": 60,
+    "invalid-candidate-refusal": 600,
+    "valid-candidate-activation": 600,
     "control-plane-rollback": 600,
     "component-removal": 900,
 }
@@ -116,11 +146,16 @@ STEP_MAX_DEADLINES = {
 INPUT_KEYS = {
     "control_plane_vars",
     "control_plane_secrets",
+    "candidate_control_plane_vars",
+    "candidate_control_plane_secrets",
     "deadman_vars",
     "deadman_secrets",
     "canary_vars",
     "canary_secrets",
+    "canary_old_generation",
     "rollback_manifest",
+    "invalid_control_plane_vars",
+    "silence_owner",
     "hetzner_binding",
     "primary_old_token",
     "secondary_old_token",
@@ -596,7 +631,14 @@ def _source_identity(manifest: dict[str, Any]) -> None:
 
 
 def _operator(
-    manifest: dict[str, Any], command: str, component: str, *, confirm: bool = False
+    manifest: dict[str, Any],
+    command: str,
+    component: str,
+    *,
+    confirm: bool = False,
+    variables: str | None = None,
+    secrets: str | None = None,
+    expect_role_guard_refusal: bool = False,
 ) -> dict[str, Any]:
     host_key = {
         "agent": "canary",
@@ -627,15 +669,19 @@ def _operator(
         argv.extend(
             [
                 "--secrets",
-                manifest["inputs"][f"{prefix}_secrets"],
+                secrets or manifest["inputs"][f"{prefix}_secrets"],
                 "--vars",
-                manifest["inputs"][f"{prefix}_vars"],
+                variables or manifest["inputs"][f"{prefix}_vars"],
             ]
         )
     elif command == "remove":
         argv.extend(["--vars", manifest["inputs"][f"{prefix}_vars"]])
     if command == "rollback":
         argv.extend(["--rollback-manifest", manifest["inputs"]["rollback_manifest"]])
+    if expect_role_guard_refusal:
+        if command != "rotate" or component != "control-plane":
+            raise AcceptanceError("role guard expectation rejected")
+        argv.append("--expect-role-guard-refusal")
     if confirm:
         argv.append("--confirm")
     result = subprocess.run(
@@ -732,6 +778,363 @@ if second <= first:
     raise SystemExit(2)
 print(json.dumps({"schema_version":1,"state":"advancing","metric":"vpn_observability_adapter_collected_timestamp_seconds"}, sort_keys=True))
 """
+
+
+def _ingestion_negative_program() -> bytes:
+    return b"""import json, os, re, socket, ssl, stat
+from urllib.parse import urlsplit
+root="/etc/observability-agent/credentials"
+current=os.path.join(root,"current")
+resolved=os.path.realpath(current)
+generations=os.path.join(root,"generations")+os.sep
+if not os.path.islink(current) or not resolved.startswith(generations): raise SystemExit(2)
+for name,mode in (("prometheus.yml",0o644),("receiver-ca.crt",0o600),("client.crt",0o600),("client.key",0o600)):
+ path=os.path.join(resolved,name); info=os.stat(path,follow_symlinks=False)
+ if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or stat.S_IMODE(info.st_mode)!=mode or info.st_nlink!=1: raise SystemExit(2)
+config=open(os.path.join(resolved,"prometheus.yml"),encoding="utf-8").read(65537)
+urls=re.findall(r'^\\s*- url: "(https://[^"\\s]+)"$',config,re.M)
+snis=re.findall(r'^\\s*server_name: "([^"\\s]+)"$',config,re.M)
+if len(urls)!=1 or len(snis)!=1: raise SystemExit(2)
+parsed=urlsplit(urls[0])
+if parsed.scheme!="https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment: raise SystemExit(2)
+port=parsed.port or 443
+def status(path,method="POST",identity=True,tls=True,body=b"x"):
+ sock=socket.create_connection((parsed.hostname,port),timeout=5)
+ try:
+  if tls:
+   context=ssl.create_default_context(cafile=os.path.join(resolved,"receiver-ca.crt"))
+   if identity: context.load_cert_chain(os.path.join(resolved,"client.crt"),os.path.join(resolved,"client.key"))
+   sock=context.wrap_socket(sock,server_hostname=snis[0])
+  request=(method+" "+path+" HTTP/1.1\\r\\nHost: "+snis[0]+"\\r\\nConnection: close\\r\\nContent-Type: application/x-protobuf\\r\\nContent-Length: "+str(len(body))+"\\r\\n\\r\\n").encode()+body
+  sock.sendall(request); raw=sock.recv(4097)
+  match=re.match(br"HTTP/1[.]1 ([0-9]{3}) ",raw)
+  return int(match.group(1)) if match else None
+ finally: sock.close()
+valid=status(parsed.path)
+if valid not in (400,415): raise SystemExit(2)
+def http_rejected(*args,**kwargs):
+ code=status(*args,**kwargs)
+ return code is not None and not 200<=code<300
+def transport_or_http_rejected(*args,**kwargs):
+ try:
+  code=status(*args,**kwargs)
+ except (ssl.SSLError,ConnectionError,OSError):
+  return True
+ return code is not None and not 200<=code<300
+wrong_node=parsed.path.rsplit("/",1)[0]+"/rejected-cross-node"
+checks=(http_rejected(wrong_node),http_rejected(parsed.path,method="GET",body=b""),http_rejected("/api/v1/query",method="GET",body=b""),http_rejected("/-/ready",method="GET",body=b""),transport_or_http_rejected(parsed.path,tls=False),transport_or_http_rejected(parsed.path,identity=False))
+if not all(checks): raise SystemExit(2)
+print(json.dumps({"schema_version":1,"state":"verified"},sort_keys=True))
+"""
+
+
+def _wal_metrics_program() -> bytes:
+    return b"""import json, re, urllib.request
+opener=urllib.request.build_opener(urllib.request.ProxyHandler({}))
+with opener.open("http://127.0.0.1:19090/metrics",timeout=5) as response: raw=response.read(1048577)
+if len(raw)>1048576: raise SystemExit(2)
+text=raw.decode("utf-8")
+names=("prometheus_remote_storage_samples_pending","prometheus_remote_storage_samples_failed_total","prometheus_remote_storage_samples_retried_total","prometheus_remote_storage_samples_dropped_total","prometheus_remote_storage_queue_highest_timestamp_seconds","prometheus_remote_storage_queue_highest_sent_timestamp_seconds")
+values={}
+for name in names:
+ matches=[float(item) for item in re.findall(r"^"+re.escape(name)+r"(?:\\{[^}]*\\})? ([0-9.eE+-]+)$",text,re.M)]
+ if not matches: raise SystemExit(2)
+ values[name]=sum(matches) if name.endswith(("pending","total")) else max(matches)
+values["schema_version"]=1; values["state"]="sampled"
+print(json.dumps(values,sort_keys=True))
+"""
+
+
+def _wal_sample(raw: bytes) -> dict[str, float]:
+    names = {
+        "prometheus_remote_storage_samples_pending",
+        "prometheus_remote_storage_samples_failed_total",
+        "prometheus_remote_storage_samples_retried_total",
+        "prometheus_remote_storage_samples_dropped_total",
+        "prometheus_remote_storage_queue_highest_timestamp_seconds",
+        "prometheus_remote_storage_queue_highest_sent_timestamp_seconds",
+    }
+    try:
+        value = json.loads(raw)
+        if (
+            set(value) != names | {"schema_version", "state"}
+            or value["schema_version"] != 1
+            or value["state"] != "sampled"
+            or any(type(value[name]) not in {int, float} for name in names)
+            or any(value[name] < 0 for name in names)
+        ):
+            raise ValueError
+    except (UnicodeError, ValueError, TypeError, json.JSONDecodeError):
+        raise AcceptanceError("agent WAL evidence rejected") from None
+    return {name: float(value[name]) for name in names}
+
+
+def _stale_producer_program(action: str) -> bytes:
+    if action not in {"inject", "restore"}:
+        raise AcceptanceError("stale producer action rejected")
+    return f"""import json, os, stat, subprocess, tempfile, time
+action={action!r}
+path="/var/lib/vpn-watchdog/state"
+directory="/var/lib/observability-staging-acceptance"
+journal=directory+"/staleness.json"
+try: os.mkdir(directory,0o700)
+except FileExistsError: pass
+directory_info=os.stat(directory,follow_symlinks=False)
+if not stat.S_ISDIR(directory_info.st_mode) or directory_info.st_uid!=0 or stat.S_IMODE(directory_info.st_mode)!=0o700: raise SystemExit(2)
+def sync_directory():
+ descriptor=os.open(directory,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+ try: os.fsync(descriptor)
+ finally: os.close(descriptor)
+def write(value):
+ payload=(json.dumps(value,sort_keys=True,separators=(",",":"))+"\\n").encode(); temporary=None
+ try:
+  descriptor,temporary=tempfile.mkstemp(prefix=".staleness-",dir=directory)
+  with os.fdopen(descriptor,"wb") as stream:
+   os.fchmod(stream.fileno(),0o600); stream.write(payload); stream.flush(); os.fsync(stream.fileno())
+  os.replace(temporary,journal); temporary=None; sync_directory()
+ finally:
+  if temporary and os.path.lexists(temporary): os.unlink(temporary)
+def read():
+ descriptor=os.open(journal,os.O_RDONLY|os.O_NOFOLLOW)
+ with os.fdopen(descriptor,"rb") as stream:
+  info=os.fstat(stream.fileno()); raw=stream.read(4097)
+ if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or stat.S_IMODE(info.st_mode)!=0o600 or info.st_nlink!=1 or len(raw)>4096: raise SystemExit(2)
+ value=json.loads(raw)
+ base={{"schema_version","path","phase","timer_active"}}
+ if value.get("phase")=="pending": expected=base
+ elif value.get("phase")=="holding": expected=base|{{"device","inode","atime_ns","mtime_ns","injected_mtime_ns"}}
+ else: raise SystemExit(2)
+ if set(value)!=expected or value["schema_version"]!=1 or value["path"]!=path or type(value["timer_active"]) is not bool or (value["phase"]=="holding" and any(type(value[name]) is not int for name in ("device","inode","atime_ns","mtime_ns","injected_mtime_ns"))): raise SystemExit(2)
+ return value
+def adapter(expect_success):
+ subprocess.run(["/usr/bin/systemctl","reset-failed","observability-agent-health-adapter.service"],check=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+ result=subprocess.run(["/usr/bin/systemctl","start","observability-agent-health-adapter.service"],check=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+ if (result.returncode==0) is not expect_success: raise SystemExit(2)
+def restore(value):
+ if value["phase"]=="holding":
+  info=os.stat(path,follow_symlinks=False)
+  if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or stat.S_IMODE(info.st_mode)!=0o640 or info.st_nlink!=1 or info.st_dev!=value["device"] or info.st_ino!=value["inode"] or info.st_mtime_ns not in (value["mtime_ns"],value["injected_mtime_ns"]): raise SystemExit(2)
+  os.utime(path,ns=(value["atime_ns"],value["mtime_ns"]),follow_symlinks=False)
+ if value["timer_active"]: subprocess.run(["/usr/bin/systemctl","start","vpn-watchdog.timer"],check=True,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+ adapter(True); os.unlink(journal); sync_directory()
+if action=="inject":
+ if os.path.lexists(journal): raise SystemExit(2)
+ adapter(True)
+ timer_active=subprocess.run(["/usr/bin/systemctl","is-active","--quiet","vpn-watchdog.timer"],check=False,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0
+ write({{"schema_version":1,"path":path,"phase":"pending","timer_active":timer_active}})
+ try:
+  if timer_active: subprocess.run(["/usr/bin/systemctl","stop","vpn-watchdog.timer"],check=True,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+  info=os.stat(path,follow_symlinks=False)
+  if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or stat.S_IMODE(info.st_mode)!=0o640 or info.st_nlink!=1: raise SystemExit(2)
+  injected=int((time.time()-3600)*1000000000)
+  value={{"schema_version":1,"path":path,"phase":"holding","device":info.st_dev,"inode":info.st_ino,"atime_ns":info.st_atime_ns,"mtime_ns":info.st_mtime_ns,"injected_mtime_ns":injected,"timer_active":timer_active}}
+  write(value)
+  os.utime(path,ns=(info.st_atime_ns,injected),follow_symlinks=False); adapter(False)
+ except BaseException:
+  restore(read()); raise
+ state="held"
+else:
+ if not os.path.lexists(journal): state="absent"
+ else: restore(read()); state="restored"
+print(json.dumps({{"schema_version":1,"state":state}},sort_keys=True))
+""".encode()
+
+
+def _alert_evidence_program(
+    *, exact: tuple[str, ...] = (), prefixes: tuple[str, ...] = (), wait_seconds: int
+) -> bytes:
+    prelude = _critical_resolve_program().decode("utf-8").split("labels=", 1)[0]
+    return (
+        prelude
+        + f"""import time
+required={exact!r}; prefixes={prefixes!r}
+opener=urllib.request.build_opener(urllib.request.ProxyHandler({{}}),NoRedirect())
+deadline=time.monotonic()+{wait_seconds}
+while True:
+ request=urllib.request.Request("http://127.0.0.1:19094/api/v2/alerts",headers={{"Authorization":"Bearer "+token.decode().strip()}},method="GET")
+ with opener.open(request,timeout=5) as response: observed=json.load(response)
+ active={{item.get("labels",{{}}).get("alertname") for item in observed if isinstance(item,dict) and item.get("status",{{}}).get("state") in ("active","suppressed")}}
+ if all(name in active for name in required) and all(any(name.startswith(prefix) for name in active) for prefix in prefixes): break
+ if time.monotonic()>=deadline: raise SystemExit(2)
+ time.sleep(min(10,max(0,deadline-time.monotonic())))
+print(json.dumps({{"schema_version":1,"state":"verified"}},sort_keys=True))
+"""
+    ).encode()
+
+
+def _grouping_inhibition_program(node: str) -> bytes:
+    prelude = _critical_resolve_program().decode("utf-8").split("labels=", 1)[0]
+    return (
+        prelude
+        + f"""import datetime, time
+opener=urllib.request.build_opener(urllib.request.ProxyHandler({{}}),NoRedirect())
+now=datetime.datetime.now(datetime.timezone.utc)
+base={{"environment":"staging","node":{node!r},"component":"backup"}}
+def alert(name): return {{"labels":dict(base,alertname=name,severity="warning"),"annotations":{{"summary":"staging matrix"}},"startsAt":now.isoformat()}}
+alerts=[alert("ObservabilityBackupStageFailed"),alert("ObservabilityBackupEvidenceStale")]
+def send(values):
+ request=urllib.request.Request("http://127.0.0.1:19094/api/v2/alerts",data=json.dumps(values).encode(),headers={{"Authorization":"Bearer "+token.decode().strip(),"Content-Type":"application/json"}},method="POST")
+ with opener.open(request,timeout=5) as response:
+  if response.status not in (200,202): raise SystemExit(2)
+send(alerts); time.sleep(35)
+def observed():
+ request=urllib.request.Request("http://127.0.0.1:19094/api/v2/alerts",headers={{"Authorization":"Bearer "+token.decode().strip()}},method="GET")
+ with opener.open(request,timeout=5) as response: return json.load(response)
+first={{item["labels"]["alertname"]:item for item in observed() if item.get("labels",{{}}).get("alertname") in {{"ObservabilityBackupStageFailed","ObservabilityBackupEvidenceStale"}}}}
+if set(first)!={{"ObservabilityBackupStageFailed","ObservabilityBackupEvidenceStale"}} or first["ObservabilityBackupStageFailed"].get("status",{{}}).get("state")!="active" or first["ObservabilityBackupEvidenceStale"].get("status",{{}}).get("state")!="suppressed": raise SystemExit(2)
+fingerprints={{name:item.get("fingerprint") for name,item in first.items()}}
+for item in alerts: item["annotations"]["summary"]="staging matrix update"
+send(alerts); time.sleep(2)
+second={{item["labels"]["alertname"]:item for item in observed() if item.get("labels",{{}}).get("alertname") in fingerprints}}
+if {{name:item.get("fingerprint") for name,item in second.items()}}!=fingerprints: raise SystemExit(2)
+for item in alerts: item["endsAt"]=datetime.datetime.now(datetime.timezone.utc).isoformat()
+send(alerts)
+print(json.dumps({{"schema_version":1,"state":"verified"}},sort_keys=True))
+"""
+    ).encode()
+
+
+def _silence_owner(manifest: dict[str, Any]) -> str:
+    value, _ = _private_json(
+        Path(manifest["inputs"]["silence_owner"]), "silence owner rejected"
+    )
+    owner = value.get("owner")
+    if (
+        set(value) != {"schema_version", "owner"}
+        or value.get("schema_version") != 1
+        or not isinstance(owner, str)
+        or not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", owner)
+    ):
+        raise AcceptanceError("silence owner rejected")
+    return owner
+
+
+def _silence_binding(approval: dict[str, Any]) -> str:
+    return hashlib.sha256(_canonical(approval)).hexdigest()[:16]
+
+
+def _finite_silence_support(owner: str, node: str, binding: str) -> str:
+    if not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", owner):
+        raise AcceptanceError("silence owner rejected")
+    if not re.fullmatch(r"[0-9a-f]{16}", binding):
+        raise AcceptanceError("silence binding rejected")
+    return f"""import datetime, json, os, pwd, re, stat, time, urllib.error, urllib.request
+from uuid import UUID
+owner={owner!r}; node={node!r}; reason={('staging-finite-' + binding)!r}
+def token(name):
+ root="/etc/observability-control-plane/credentials"; directory=os.open("/",os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+ try:
+  for part in root.strip("/").split("/"):
+   child=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=directory); os.close(directory); directory=child
+  descriptor=os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=directory)
+  try: info=os.fstat(descriptor); raw=os.read(descriptor,66)
+  finally: os.close(descriptor)
+ finally: os.close(directory)
+ if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or stat.S_IMODE(info.st_mode)!=0o600 or info.st_nlink!=1 or not re.fullmatch(b"[0-9a-f]{{64}}\\n?",raw): raise SystemExit(2)
+ return raw.decode().strip()
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+ def redirect_request(self,req,fp,code,msg,headers,newurl): raise RuntimeError
+opener=urllib.request.build_opener(urllib.request.ProxyHandler({{}}),NoRedirect())
+sender=token("silence-sender-token"); owner_token=token("silence-owner-"+owner+"-token")
+def request(path,credential,body=None,method="GET",expected=(200,)):
+ value=urllib.request.Request("http://127.0.0.1:19094"+path,data=None if body is None else json.dumps(body).encode(),headers={{"Authorization":"Bearer "+credential,"Content-Type":"application/json"}},method=method)
+ try:
+  with opener.open(value,timeout=5) as response:
+   if response.status not in expected: raise SystemExit(2)
+   raw=response.read(4097); return json.loads(raw) if raw else None
+ except urllib.error.HTTPError as exc:
+  exc.read(4097)
+  if exc.code not in expected: raise
+  return exc.code
+def gateway_silences():
+ directory="/var/lib/observability-silence-gateway"; path=directory+"/silences.json"; uid=pwd.getpwnam("observability-silence").pw_uid
+ info=os.stat(directory,follow_symlinks=False)
+ if not stat.S_ISDIR(info.st_mode) or info.st_uid!=uid or stat.S_IMODE(info.st_mode)!=0o700: raise SystemExit(2)
+ if not os.path.lexists(path): return {{}}
+ descriptor=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
+ with os.fdopen(descriptor,"rb") as stream:
+  info=os.fstat(stream.fileno()); raw=stream.read(1048577)
+ if not stat.S_ISREG(info.st_mode) or info.st_uid!=uid or stat.S_IMODE(info.st_mode)!=0o600 or info.st_nlink!=1 or len(raw)>1048576: raise SystemExit(2)
+ value=json.loads(raw)
+ if set(value)!={{"schema_version","silences","audit"}} or value["schema_version"]!=1 or not isinstance(value["silences"],dict) or not isinstance(value["audit"],list): raise SystemExit(2)
+ for identifier,row in value["silences"].items():
+  if str(UUID(identifier))!=identifier or set(row)!={{"owner","expires_at","scope","reason"}} or not isinstance(row["scope"],dict): raise SystemExit(2)
+ return value["silences"]
+scope={{"environment":"staging","node":node}}
+def owned_ids():
+ return sorted(identifier for identifier,row in gateway_silences().items() if row["owner"]==owner and row["reason"]==reason and row["scope"]==scope)
+def cleanup():
+ for _ in range(3):
+  identifiers=owned_ids()
+  if not identifiers: return
+  for identifier in identifiers: request("/v1/silences/"+identifier,owner_token,None,"DELETE",(200,403))
+ if owned_ids(): raise SystemExit(2)
+def silence(end,matchers):
+ now=datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
+ return {{"schema_version":1,"reason":reason,"starts_at":now.strftime("%Y-%m-%dT%H:%M:%SZ"),"ends_at":end.strftime("%Y-%m-%dT%H:%M:%SZ"),"matchers":matchers}}
+def resolve():
+ now=datetime.datetime.now(datetime.timezone.utc).isoformat(); alert={{"labels":{{"alertname":"ObservabilityStagingSilenceMatrix","environment":"staging","node":node,"component":"control-plane","severity":"warning"}},"annotations":{{"summary":"staging finite silence"}},"startsAt":now,"endsAt":now}}
+ request("/api/v2/alerts",sender,[alert],"POST",(200,202))
+"""
+
+
+def _finite_silence_program(owner: str, node: str, binding: str) -> bytes:
+    return (
+        _finite_silence_support(owner, node, binding)
+        + """cleanup()
+now=datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0); labels={"alertname":"ObservabilityStagingSilenceMatrix","environment":"staging","node":node,"component":"control-plane","severity":"warning"}
+active=silence(now+datetime.timedelta(seconds=70),scope)
+created=request("/v1/silences",owner_token,active,"POST",(201,)); identifier=created["silence_id"]
+alert={"labels":labels,"annotations":{"summary":"staging finite silence"},"startsAt":now.isoformat()}
+try:
+ request("/api/v2/alerts",sender,[alert],"POST",(200,202)); time.sleep(35)
+ observed=request("/api/v2/alerts",sender)
+ match=[item for item in observed if item.get("labels",{}).get("alertname")==labels["alertname"]]
+ if len(match)!=1 or match[0].get("status",{}).get("state")!="suppressed": raise SystemExit(2)
+ time.sleep(40); observed=request("/api/v2/alerts",sender)
+ match=[item for item in observed if item.get("labels",{}).get("alertname")==labels["alertname"]]
+ if len(match)!=1 or match[0].get("status",{}).get("state")!="active": raise SystemExit(2)
+ request("/v1/silences/"+identifier,owner_token,None,"DELETE",(403,))
+ second=request("/v1/silences",owner_token,silence(now+datetime.timedelta(seconds=300),scope),"POST",(201,))["silence_id"]
+ request("/v1/silences/"+second,owner_token,None,"DELETE",(200,))
+ request("/v1/silences",owner_token,silence(now+datetime.timedelta(seconds=20000),scope),"POST",(400,))
+ request("/v1/silences",owner_token,silence(now+datetime.timedelta(seconds=300),{"environment":"staging"}),"POST",(400,))
+ request("/v1/silences",owner_token,silence(now+datetime.timedelta(seconds=300),{"environment":"staging","node":node,"unknown":"value"}),"POST",(400,))
+ request("/v1/silences",sender,silence(now+datetime.timedelta(seconds=300),scope),"POST",(403,))
+finally:
+ try: resolve()
+ finally: cleanup()
+print(json.dumps({"schema_version":1,"state":"verified"},sort_keys=True))
+"""
+    ).encode()
+
+
+def _finite_silence_restore_program(owner: str, node: str, binding: str) -> bytes:
+    return (
+        _finite_silence_support(owner, node, binding)
+        + """cleanup(); resolve()
+print(json.dumps({"schema_version":1,"state":"restored"},sort_keys=True))
+"""
+    ).encode()
+
+
+def _matrix_resolve_program(node: str) -> bytes:
+    prelude = _critical_resolve_program().decode("utf-8").split("labels=", 1)[0]
+    return (
+        prelude
+        + f"""import datetime
+names=("ObservabilityBackupStageFailed","ObservabilityBackupEvidenceStale","ObservabilityStagingSilenceMatrix")
+now=datetime.datetime.now(datetime.timezone.utc).isoformat()
+alerts=[]
+for name in names:
+ component="backup" if name.startswith("ObservabilityBackup") else "control-plane"
+ alerts.append({{"labels":{{"alertname":name,"environment":"staging","node":{node!r},"component":component,"severity":"warning"}},"annotations":{{"summary":"staging matrix"}},"startsAt":now,"endsAt":now}})
+request=urllib.request.Request("http://127.0.0.1:19094/api/v2/alerts",data=json.dumps(alerts).encode(),headers={{"Authorization":"Bearer "+token.decode().strip(),"Content-Type":"application/json"}},method="POST")
+with urllib.request.build_opener(urllib.request.ProxyHandler({{}}),NoRedirect()).open(request,timeout=5) as response:
+ if response.status not in (200,202): raise SystemExit(2)
+print(json.dumps({{"schema_version":1,"state":"resolved"}},sort_keys=True))
+"""
+    ).encode()
 
 
 def _service_fault_program(units: tuple[str, ...], wait_seconds: int) -> bytes:
@@ -1127,6 +1530,164 @@ def _token_rejected(path: Path) -> bool:
         raise AcceptanceError("old token rejection unavailable") from None
 
 
+def _old_sender_generation(manifest: dict[str, Any]) -> str:
+    value, _ = _private_json(
+        Path(manifest["inputs"]["canary_old_generation"]),
+        "old sender generation rejected",
+    )
+    generation = value.get("generation")
+    if (
+        set(value) != {"schema_version", "generation"}
+        or value.get("schema_version") != 1
+        or not isinstance(generation, str)
+        or not HEX64.fullmatch(generation)
+    ):
+        raise AcceptanceError("old sender generation rejected")
+    return generation
+
+
+def _old_sender_rejection_program(generation: str) -> bytes:
+    return f"""import json, os, re, socket, ssl, stat
+from urllib.parse import urlsplit
+root="/etc/observability-agent/credentials"; generation={generation!r}; directory=os.path.join(root,"generations",generation)
+if os.path.realpath(directory)!=directory or not os.path.isdir(directory): raise SystemExit(2)
+for name,mode in (("prometheus.yml",0o644),("receiver-ca.crt",0o600),("client.crt",0o600),("client.key",0o600)):
+ path=os.path.join(directory,name); info=os.stat(path,follow_symlinks=False)
+ if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or stat.S_IMODE(info.st_mode)!=mode or info.st_nlink!=1: raise SystemExit(2)
+config=open(os.path.join(directory,"prometheus.yml"),encoding="utf-8").read(65537)
+urls=re.findall(r'^\\s*- url: "(https://[^"\\s]+)"$',config,re.M); snis=re.findall(r'^\\s*server_name: "([^"\\s]+)"$',config,re.M)
+if len(urls)!=1 or len(snis)!=1: raise SystemExit(2)
+parsed=urlsplit(urls[0]); sock=socket.create_connection((parsed.hostname,parsed.port or 443),timeout=5)
+try:
+ context=ssl.create_default_context(cafile=os.path.join(directory,"receiver-ca.crt")); context.load_cert_chain(os.path.join(directory,"client.crt"),os.path.join(directory,"client.key"))
+ try: context.wrap_socket(sock,server_hostname=snis[0])
+ except ssl.SSLError: rejected=True
+ else: rejected=False
+finally: sock.close()
+if not rejected: raise SystemExit(2)
+print(json.dumps({{"schema_version":1,"state":"rejected"}},sort_keys=True))
+""".encode()
+
+
+def _rollback_generation(manifest: dict[str, Any]) -> str:
+    value, _ = _private_json(
+        Path(manifest["inputs"]["rollback_manifest"]),
+        "rollback manifest rejected",
+    )
+    generation = value.get("previous_generation")
+    if (
+        set(value)
+        != {
+            "schema_version",
+            "host",
+            "component",
+            "previous_generation",
+            "vars_sha256",
+            "secrets_sha256",
+        }
+        or value.get("schema_version") != 1
+        or value.get("host") != manifest["hosts"]["control-plane"]
+        or value.get("component") != "control-plane"
+        or not isinstance(generation, str)
+        or not HEX64.fullmatch(generation)
+        or not HEX64.fullmatch(str(value.get("vars_sha256", "")))
+        or not HEX64.fullmatch(str(value.get("secrets_sha256", "")))
+    ):
+        raise AcceptanceError("rollback manifest rejected")
+    return generation
+
+
+def _invalid_candidate_vars(manifest: dict[str, Any]) -> str:
+    path = manifest["inputs"]["invalid_control_plane_vars"]
+    category = "invalid candidate rejected"
+    try:
+        invalid_raw, _ = _private_file(Path(path), category)
+        candidate_raw, _ = _private_file(
+            Path(manifest["inputs"]["candidate_control_plane_vars"]), category
+        )
+        invalid = yaml.safe_load(invalid_raw.decode("utf-8"))
+        candidate = yaml.safe_load(candidate_raw.decode("utf-8"))
+        candidate_role = candidate["observability_control_plane"]
+        expected = copy.deepcopy(candidate)
+        expected_role = expected["observability_control_plane"]
+        expected_role["prometheus_listen"] = "0.0.0.0:9090"
+        if (
+            not isinstance(candidate, dict)
+            or not isinstance(invalid, dict)
+            or not isinstance(candidate_role, dict)
+            or candidate_role.get("enabled") is not True
+            or candidate_role.get("prometheus_listen") != "127.0.0.1:9090"
+            or invalid != expected
+        ):
+            raise ValueError
+    except (
+        AcceptanceError,
+        UnicodeError,
+        ValueError,
+        KeyError,
+        TypeError,
+        yaml.YAMLError,
+    ):
+        raise AcceptanceError("invalid candidate rejected") from None
+    return path
+
+
+def _control_plane_generation_program() -> bytes:
+    return b"""import json, os, re, stat, subprocess
+root="/etc/observability-control-plane"; pattern=re.compile(r"^[0-9a-f]{64}[.]yml$")
+def generation(name,required):
+ path=os.path.join(root,name)
+ if not os.path.islink(path):
+  if required: raise SystemExit(2)
+  return None
+ resolved=os.path.realpath(path); parent=os.path.join(root,"generations")
+ if os.path.dirname(resolved)!=parent or not pattern.fullmatch(os.path.basename(resolved)): raise SystemExit(2)
+ info=os.stat(resolved,follow_symlinks=False)
+ if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or info.st_nlink!=1: raise SystemExit(2)
+ return os.path.basename(resolved).removesuffix(".yml")
+current=generation("current.yml",True); previous=generation("previous.yml",False)
+data=os.stat("/var/lib/observability-prometheus",follow_symlinks=False)
+if not stat.S_ISDIR(data.st_mode): raise SystemExit(2)
+result=subprocess.run(["/usr/bin/systemctl","list-units","--all","--plain","--no-legend","observability-*.timer"],check=False,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True)
+if result.returncode!=0: raise SystemExit(2)
+names=[line.split()[0] for line in result.stdout.splitlines() if line.split()]
+if len(names)!=len(set(names)): raise SystemExit(2)
+print(json.dumps({"schema_version":1,"state":"verified","current":current,"previous":previous,"tsdb_device":data.st_dev,"tsdb_inode":data.st_ino,"schedule_count":len(names)},sort_keys=True))
+"""
+
+
+def _generation_state(raw: bytes) -> dict[str, Any]:
+    try:
+        value = json.loads(raw)
+        if (
+            set(value)
+            != {
+                "schema_version",
+                "state",
+                "current",
+                "previous",
+                "tsdb_device",
+                "tsdb_inode",
+                "schedule_count",
+            }
+            or value.get("schema_version") != 1
+            or value.get("state") != "verified"
+            or not HEX64.fullmatch(str(value.get("current", "")))
+            or (
+                value.get("previous") is not None
+                and not HEX64.fullmatch(str(value["previous"]))
+            )
+            or any(
+                not isinstance(value.get(name), int) or value[name] < 0
+                for name in ("tsdb_device", "tsdb_inode", "schedule_count")
+            )
+        ):
+            raise ValueError
+    except (UnicodeError, ValueError, TypeError, json.JSONDecodeError):
+        raise AcceptanceError("control-plane generation evidence rejected") from None
+    return value
+
+
 def _default_execute(
     step: str, manifest: dict[str, Any], approval: dict[str, Any]
 ) -> str:
@@ -1135,6 +1696,158 @@ def _default_execute(
         raw = _remote(manifest, "control-plane", _metrics_program(), deadline)
         if json.loads(raw).get("state") != "advancing":
             raise AcceptanceError("fresh metrics unavailable")
+    elif step == "ingestion-negative":
+        raw = _remote(manifest, "canary", _ingestion_negative_program(), deadline)
+        _expect_remote_verified(raw, "ingestion negative matrix rejected")
+        raw = _remote(manifest, "control-plane", _metrics_program(), 130)
+        if json.loads(raw).get("state") != "advancing":
+            raise AcceptanceError("ingestion recovery rejected")
+    elif step == "agent-wal":
+        _require_healthy(manifest, "agent")
+        _require_healthy(manifest, "control-plane")
+        baseline = _wal_sample(
+            _remote(manifest, "canary", _wal_metrics_program(), 30)
+        )
+        _remote(
+            manifest,
+            "control-plane",
+            _unit_action_program("stop", ("nginx.service",)),
+            60,
+        )
+        try:
+            time.sleep(65)
+            outage = _wal_sample(
+                _remote(manifest, "canary", _wal_metrics_program(), 30)
+            )
+        finally:
+            _remote(
+                manifest,
+                "control-plane",
+                _unit_action_program("start", ("nginx.service",)),
+                60,
+            )
+        lag = (
+            outage["prometheus_remote_storage_queue_highest_timestamp_seconds"]
+            - outage[
+                "prometheus_remote_storage_queue_highest_sent_timestamp_seconds"
+            ]
+        )
+        if (
+            lag < 0
+            or lag > 3600
+            or outage["prometheus_remote_storage_samples_dropped_total"]
+            != baseline["prometheus_remote_storage_samples_dropped_total"]
+            or not (
+                outage["prometheus_remote_storage_samples_pending"]
+                > baseline["prometheus_remote_storage_samples_pending"]
+                or outage["prometheus_remote_storage_samples_failed_total"]
+                > baseline["prometheus_remote_storage_samples_failed_total"]
+                or outage["prometheus_remote_storage_samples_retried_total"]
+                > baseline["prometheus_remote_storage_samples_retried_total"]
+                or lag > 0
+            )
+        ):
+            raise AcceptanceError("agent WAL outage evidence rejected")
+        recovery_deadline = time.monotonic() + 180
+        while True:
+            recovered = _wal_sample(
+                _remote(manifest, "canary", _wal_metrics_program(), 30)
+            )
+            recovery_lag = (
+                recovered[
+                    "prometheus_remote_storage_queue_highest_timestamp_seconds"
+                ]
+                - recovered[
+                    "prometheus_remote_storage_queue_highest_sent_timestamp_seconds"
+                ]
+            )
+            if (
+                0 <= recovery_lag <= 60
+                and recovered[
+                    "prometheus_remote_storage_queue_highest_sent_timestamp_seconds"
+                ]
+                > baseline[
+                    "prometheus_remote_storage_queue_highest_sent_timestamp_seconds"
+                ]
+            ):
+                break
+            if time.monotonic() >= recovery_deadline:
+                raise AcceptanceError("agent WAL recovery rejected")
+            time.sleep(10)
+        raw = _remote(manifest, "control-plane", _metrics_program(), 130)
+        if json.loads(raw).get("state") != "advancing":
+            raise AcceptanceError("agent WAL delivery recovery rejected")
+    elif step == "staleness":
+        _require_healthy(manifest, "agent")
+        _require_healthy(manifest, "control-plane")
+        raw = _remote(manifest, "canary", _stale_producer_program("inject"), 60)
+        if json.loads(raw) != {"schema_version": 1, "state": "held"}:
+            raise AcceptanceError("stale producer fault rejected")
+        try:
+            raw = _remote(
+                manifest,
+                "control-plane",
+                _alert_evidence_program(
+                    exact=("ObservabilityWatchdogEvidenceStale",),
+                    wait_seconds=300,
+                ),
+                330,
+            )
+            _expect_remote_verified(raw, "stale producer evidence rejected")
+        finally:
+            restored = _remote(
+                manifest, "canary", _stale_producer_program("restore"), 60
+            )
+            if json.loads(restored) != {"schema_version": 1, "state": "restored"}:
+                raise AcceptanceError("stale producer restoration rejected")
+        _remote(
+            manifest,
+            "canary",
+            _unit_action_program("stop", ("observability-agent.service",)),
+            60,
+        )
+        try:
+            raw = _remote(
+                manifest,
+                "control-plane",
+                _alert_evidence_program(
+                    exact=("ObservabilityExpectedTargetMissing",),
+                    prefixes=("ObservabilityRequiredFamilyMissing_",),
+                    wait_seconds=600,
+                ),
+                630,
+            )
+            _expect_remote_verified(raw, "missing target evidence rejected")
+        finally:
+            _remote(
+                manifest,
+                "canary",
+                _unit_action_program("start", ("observability-agent.service",)),
+                60,
+            )
+        raw = _remote(manifest, "control-plane", _metrics_program(), 130)
+        if json.loads(raw).get("state") != "advancing":
+            raise AcceptanceError("staleness recovery rejected")
+    elif step == "grouping-inhibition":
+        raw = _remote(
+            manifest,
+            "control-plane",
+            _grouping_inhibition_program(manifest["hosts"]["canary"]),
+            deadline,
+        )
+        _expect_remote_verified(raw, "grouping and inhibition evidence rejected")
+    elif step == "finite-silence":
+        raw = _remote(
+            manifest,
+            "control-plane",
+            _finite_silence_program(
+                _silence_owner(manifest),
+                manifest["hosts"]["canary"],
+                _silence_binding(approval),
+            ),
+            deadline,
+        )
+        _expect_remote_verified(raw, "finite silence evidence rejected")
     elif step == "primary-lifecycle":
         raw = _remote(
             manifest, "control-plane", _critical_lifecycle_program(), deadline
@@ -1347,13 +2060,116 @@ def _default_execute(
         _operator(manifest, "rotate", "deadman", confirm=True)
         _require_healthy(manifest, "deadman")
     elif step == "old-material-rejection":
-        if not all(
+        old_sender = _remote(
+            manifest,
+            "canary",
+            _old_sender_rejection_program(_old_sender_generation(manifest)),
+            deadline,
+        )
+        try:
+            sender_rejected = json.loads(old_sender) == {
+                "schema_version": 1,
+                "state": "rejected",
+            }
+        except (UnicodeError, TypeError, json.JSONDecodeError):
+            sender_rejected = False
+        if not sender_rejected or not all(
             _token_rejected(Path(manifest["inputs"][name]))
             for name in ("primary_old_token", "secondary_old_token")
         ):
-            raise AcceptanceError("still-valid old Telegram authority")
+            raise AcceptanceError("still-valid old canary sender authority")
+        raw = _remote(manifest, "control-plane", _metrics_program(), 130)
+        if json.loads(raw).get("state") != "advancing":
+            raise AcceptanceError("replacement canary sender freshness rejected")
+    elif step == "invalid-candidate-refusal":
+        expected = _rollback_generation(manifest)
+        before = _generation_state(
+            _remote(manifest, "control-plane", _control_plane_generation_program(), 30)
+        )
+        if before["current"] != expected:
+            raise AcceptanceError("invalid candidate baseline rejected")
+        invalid_variables = _invalid_candidate_vars(manifest)
+        rendered = _operator(
+            manifest,
+            "render",
+            "control-plane",
+            variables=manifest["inputs"]["candidate_control_plane_vars"],
+            secrets=manifest["inputs"]["candidate_control_plane_secrets"],
+        )
+        if rendered.get("state") != "rendered-check":
+            raise AcceptanceError("candidate render evidence rejected")
+        refusal = _operator(
+            manifest,
+            "rotate",
+            "control-plane",
+            confirm=True,
+            variables=invalid_variables,
+            secrets=manifest["inputs"]["candidate_control_plane_secrets"],
+            expect_role_guard_refusal=True,
+        )
+        if refusal.get("state") != "role-guard-refused":
+            raise AcceptanceError("invalid candidate refusal evidence rejected")
+        after = _generation_state(
+            _remote(manifest, "control-plane", _control_plane_generation_program(), 30)
+        )
+        if after != before:
+            raise AcceptanceError("invalid candidate changed retained state")
+        _require_healthy(manifest, "control-plane")
+    elif step == "valid-candidate-activation":
+        expected = _rollback_generation(manifest)
+        before = _generation_state(
+            _remote(manifest, "control-plane", _control_plane_generation_program(), 30)
+        )
+        if before["current"] != expected:
+            raise AcceptanceError("candidate activation baseline rejected")
+        _operator(
+            manifest,
+            "rotate",
+            "control-plane",
+            confirm=True,
+            variables=manifest["inputs"]["candidate_control_plane_vars"],
+            secrets=manifest["inputs"]["candidate_control_plane_secrets"],
+        )
+        after = _generation_state(
+            _remote(manifest, "control-plane", _control_plane_generation_program(), 30)
+        )
+        if (
+            after["current"] == expected
+            or after["previous"] != expected
+            or after["tsdb_device"] != before["tsdb_device"]
+            or after["tsdb_inode"] != before["tsdb_inode"]
+            or after["schedule_count"] != before["schedule_count"]
+        ):
+            raise AcceptanceError("candidate activation evidence rejected")
+        _require_healthy(manifest, "control-plane")
+        raw = _remote(manifest, "control-plane", _metrics_program(), 130)
+        if json.loads(raw).get("state") != "advancing":
+            raise AcceptanceError("candidate activation freshness rejected")
     elif step == "control-plane-rollback":
-        _operator(manifest, "rollback", "control-plane", confirm=True)
+        expected = _rollback_generation(manifest)
+        before = _generation_state(
+            _remote(manifest, "control-plane", _control_plane_generation_program(), 30)
+        )
+        if before["current"] == expected or before["previous"] != expected:
+            raise AcceptanceError("rollback baseline rejected")
+        _operator(
+            manifest,
+            "rollback",
+            "control-plane",
+            confirm=True,
+            variables=manifest["inputs"]["control_plane_vars"],
+            secrets=manifest["inputs"]["control_plane_secrets"],
+        )
+        after = _generation_state(
+            _remote(manifest, "control-plane", _control_plane_generation_program(), 30)
+        )
+        if (
+            after["current"] != expected
+            or after["tsdb_device"] != before["tsdb_device"]
+            or after["tsdb_inode"] != before["tsdb_inode"]
+            or after["schedule_count"] != before["schedule_count"]
+        ):
+            raise AcceptanceError("rollback generation evidence rejected")
         _require_healthy(manifest, "control-plane")
         raw = _remote(manifest, "control-plane", _metrics_program(), 130)
         if json.loads(raw).get("state") != "advancing":
@@ -1375,7 +2191,52 @@ def _default_restore(
         _hetzner_action(manifest, "poweron")
         return
     timeout = min(approval["deadline_seconds"], 300)
-    if step == "primary-lifecycle":
+    if step == "agent-wal":
+        _remote(
+            manifest,
+            "control-plane",
+            _start_units_program(("nginx.service",)),
+            timeout,
+        )
+    elif step == "staleness":
+        raw = _remote(
+            manifest,
+            "canary",
+            _stale_producer_program("restore"),
+            timeout,
+        )
+        if json.loads(raw) not in (
+            {"schema_version": 1, "state": "absent"},
+            {"schema_version": 1, "state": "restored"},
+        ):
+            raise AcceptanceError("stale producer restoration rejected")
+        _remote(
+            manifest,
+            "canary",
+            _start_units_program(("observability-agent.service",)),
+            timeout,
+        )
+    elif step == "grouping-inhibition":
+        _remote(
+            manifest,
+            "control-plane",
+            _matrix_resolve_program(manifest["hosts"]["canary"]),
+            timeout,
+        )
+    elif step == "finite-silence":
+        raw = _remote(
+            manifest,
+            "control-plane",
+            _finite_silence_restore_program(
+                _silence_owner(manifest),
+                manifest["hosts"]["canary"],
+                _silence_binding(approval),
+            ),
+            timeout,
+        )
+        if json.loads(raw) != {"schema_version": 1, "state": "restored"}:
+            raise AcceptanceError("finite silence restoration rejected")
+    elif step == "primary-lifecycle":
         _remote(manifest, "control-plane", _critical_resolve_program(), timeout)
     elif step == "deadman-lifecycle":
         _remote(
@@ -1407,6 +2268,29 @@ def _default_restore(
     elif step == "primary-authority-loss":
         _operator(manifest, "rotate", "control-plane", confirm=True)
         _remote(manifest, "control-plane", _primary_canary_program(True), timeout)
+    elif step == "invalid-candidate-refusal":
+        expected = _rollback_generation(manifest)
+        state = _generation_state(
+            _remote(manifest, "control-plane", _control_plane_generation_program(), 30)
+        )
+        if state["current"] != expected:
+            _operator(
+                manifest,
+                "rollback",
+                "control-plane",
+                confirm=True,
+                variables=manifest["inputs"]["control_plane_vars"],
+                secrets=manifest["inputs"]["control_plane_secrets"],
+            )
+    elif step == "valid-candidate-activation":
+        _operator(
+            manifest,
+            "rollback",
+            "control-plane",
+            confirm=True,
+            variables=manifest["inputs"]["control_plane_vars"],
+            secrets=manifest["inputs"]["control_plane_secrets"],
+        )
 
 
 def _receipt_dir(path: Path) -> Path:

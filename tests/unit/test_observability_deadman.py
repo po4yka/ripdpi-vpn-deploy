@@ -595,6 +595,37 @@ def test_telegram_rate_limit_honours_bounded_retry_after_without_secret_output(
     assert TOKEN.decode() not in json.dumps(payload)
 
 
+def test_telegram_private_chat_omits_message_thread_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[bytes] = []
+
+    class Response:
+        status = 200
+
+        def __enter__(self):  # type: ignore[no-untyped-def]
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    def post(outbound, timeout):  # type: ignore[no-untyped-def]
+        assert timeout == 5
+        calls.append(outbound.data)
+        return Response()
+
+    private_chat = config()
+    private_chat["telegram"] = {"chat_id": "100000001", "topic_id": 0}
+    monkeypatch.setattr(deadman.request, "urlopen", post)
+
+    assert deadman._telegram(private_chat, TOKEN, "firing") is True
+    assert json.loads(calls[0]) == {
+        "chat_id": "100000001",
+        "text": "[secondary dead-man] monitoring-plane firing",
+        "disable_web_page_preview": True,
+    }
+
+
 @pytest.mark.parametrize(
     "failure",
     [TimeoutError("timeout"), OSError("network"), ValueError("invalid transport")],

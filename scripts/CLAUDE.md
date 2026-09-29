@@ -20,6 +20,46 @@ manifest, approval and journal. Keep the critical reminder at the real one-hour
 interval, require separate human-observation booleans, restore interrupted rows
 before later work, and emit only categorical private receipts. Never add a
 caller-supplied command, unit, endpoint, environment or arbitrary fault.
+The fixed sequence includes negative ingestion, bounded WAL recovery,
+missing/stale evidence, grouping/inhibition, finite-silence, sender and
+Telegram old-material rejection, invalid-candidate refusal, valid activation,
+and exact control-plane rollback rows. Old sender proof uses the retained
+private generation only for a rejected TLS handshake; candidate generation and
+TSDB identities remain private controller evidence and never enter receipts.
+Keep the staleness mutation journaled on the canary and held until the control
+plane independently observes the firing alert; every exit restores the exact
+producer timestamp and prior watchdog-timer state before later checks. Finite
+silences use an approval-derived reason and the gateway's private authoritative
+journal so normal and interrupted restore delete every silence created under
+that exact owner, node, and approval authority. Transport/TLS failure is valid
+rejection evidence only for the plaintext and missing-identity TLS probes;
+authenticated path, method, query, and admin probes require an explicit
+non-2xx HTTP response, and the authenticated positive write remains strict.
+The invalid-candidate row first render-checks the complete candidate, then
+accepts only the operator's exact pre-mutation control-plane role-guard refusal
+for a full configuration with only `prometheus_listen` changed. Real and
+interruption rollback always pass the digest-bound retained last-known-good
+vars and secrets, never the active candidate inputs. Capture typed role-guard
+output incrementally under the fixed 64 KiB cap and deadline; overflow or
+timeout must kill the owned process group and expose only the categorical
+failure.
+`prepare-observability-staging.py` is the local-only authority and input
+preparer for that fixed run. It requires a clean protected-main source and
+private canonical configuration plus already-issued Telegram values, creates a
+new task-private root without clobbering, retains SSH and age identities only
+there, and encrypts generated PKI/runtime authorities directly to SOPS. It must
+not contact provider or Telegram APIs, create bot/provider credentials, print
+private paths or values, infer approval, or turn null binding/rollback drafts
+into executable authority. Materialization is a separate explicit verb and
+publishes only a same-owner mode-`0600` file under that root.
+Every input/root ancestor is opened component-by-component without following
+symlinks and must be owned by the current user or root; writable ancestors are
+accepted only when sticky. Keep root, subdirectory, secret creation, and
+materialized replacement bound to directory descriptors and verify the
+canonical inode bindings before success. Do not regress this to path-based
+check-then-open operations.
+Telegram `topic_id` is `0` for direct/non-forum chats so runtime senders omit
+`message_thread_id`; positive values are reserved for real forum topics.
 `ssh-ownership.py` is the explicit fresh-node SSH ownership verb between
 dual-path Tailnet bootstrap and ordinary deployment. Its private configuration
 binds the exact source and one inventory alias; check mode only previews.

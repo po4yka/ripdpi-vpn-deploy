@@ -33,6 +33,7 @@ Archive is forbidden while any required category or mapped requirement remains
 |---|---|---|---|
 | REQ-STG-OBS-TOPOLOGY | MON-1790651217409733 | Reviewed UpCloud/Hetzner/Scaleway plans; three exact host classes and failure domains; cross-provider dead-man; topology/listener contracts; no public admin | required |
 | REQ-STG-OBS-BOOTSTRAP | MON-1790652096462210 | Focused bootstrap/firewall tests and exact-host baseline, updates, guest firewall, loopback monitoring, and source-manifest convergence before component deployment | required |
+| REQ-STG-OBS-PRIVATE-INPUTS | MON-1790651216954415 | Descriptor-bound private-root preparation and materialization; generated SSH, age, PKI and SOPS authorities; private-chat topic sentinel; non-sticky ancestor, symlink and path-substitution refusal | required |
 | REQ-STG-OBS-AUTHORIZATION | MON-1790651216954415 | Private per-action approvals bind exact target, action, restore, deadline, cancellation, window, BotFather revocation, and post-evidence destructive-data authority | required |
 | REQ-STG-OBS-OPERATOR | MON-1790652096934376 | Focused fail-before-mutation, staging-only, timeout/interruption, restore, receipt, redaction, central-query, critical-drill, fault, canary, and revocation-negative tests | required |
 | REQ-STG-OBS-SOURCE | MON-1790651217861152 | Installed control-plane, dead-man, and canary source/generation digests matched to `commit_sha` | required |

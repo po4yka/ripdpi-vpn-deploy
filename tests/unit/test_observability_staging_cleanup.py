@@ -14,6 +14,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/observability-staging-cleanup.py"
+ACCEPTANCE = ROOT / "scripts/observability-staging-acceptance.py"
 
 
 def _load():
@@ -39,18 +40,25 @@ def _journal() -> dict[str, object]:
         "source_revision": "a" * 40,
         "deployable_digest": "b" * 64,
         "completed_checks": [
+            "agent-wal",
             "canary-sender-rotation",
             "control-host-loss",
             "control-plane-rollback",
             "control-service-loss",
             "deadman-lifecycle",
             "deadman-service-loss",
+            "finite-silence",
             "fresh-metrics",
+            "grouping-inhibition",
+            "ingestion-negative",
+            "invalid-candidate-refusal",
             "old-material-rejection",
             "primary-authority-loss",
             "primary-bot-rotation",
             "primary-lifecycle",
             "secondary-bot-rotation",
+            "staleness",
+            "valid-candidate-activation",
         ],
         "human_observations": {
             "deadman_loss_primary": True,
@@ -60,6 +68,18 @@ def _journal() -> dict[str, object]:
         },
         "components_removed": True,
     }
+
+
+def test_cleanup_contract_matches_acceptance_terminal_rows() -> None:
+    cleanup = _load()
+    spec = importlib.util.spec_from_file_location(
+        "observability_staging_acceptance_for_cleanup", ACCEPTANCE
+    )
+    assert spec and spec.loader
+    acceptance = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(acceptance)
+
+    assert cleanup.COMPLETED_CHECKS == tuple(sorted(acceptance.ACCEPTANCE_CHECKS))
 
 
 def _providers() -> list[dict[str, object]]:

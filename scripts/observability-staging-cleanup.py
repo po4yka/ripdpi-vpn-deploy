@@ -55,18 +55,25 @@ UUID_RE = re.compile(
 )
 SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@/+~-]{0,255}$")
 COMPLETED_CHECKS = (
+    "agent-wal",
     "canary-sender-rotation",
     "control-host-loss",
     "control-plane-rollback",
     "control-service-loss",
     "deadman-lifecycle",
     "deadman-service-loss",
+    "finite-silence",
     "fresh-metrics",
+    "grouping-inhibition",
+    "ingestion-negative",
+    "invalid-candidate-refusal",
     "old-material-rejection",
     "primary-authority-loss",
     "primary-bot-rotation",
     "primary-lifecycle",
     "secondary-bot-rotation",
+    "staleness",
+    "valid-candidate-activation",
 )
 HUMAN_OBSERVATIONS = {
     "deadman_loss_primary": True,

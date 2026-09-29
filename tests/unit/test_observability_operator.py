@@ -142,7 +142,7 @@ observability_topology_b64={topology}
     binary.mkdir()
     log = tmp_path / "calls.jsonl"
     recorder = f"""#!{sys.executable}
-import json, os, pathlib, sys
+import json, os, pathlib, sys, time
 log = pathlib.Path({str(log)!r})
 entry = {{'program': pathlib.Path(sys.argv[0]).name, 'argv': sys.argv[1:]}}
 if entry['program'] == 'ansible-playbook':
@@ -162,6 +162,20 @@ if entry['program'] == 'ansible-playbook':
     print('token=fixture-secret-value', file=sys.stderr)
 with log.open('a') as stream:
     stream.write(json.dumps(entry) + '\\n')
+if entry['program'] == 'ansible-playbook' and '--extra-vars' in entry['argv']:
+    variables = pathlib.Path(entry['argv'][entry['argv'].index('--extra-vars') + 1].removeprefix('@')).read_text()
+    if '0.0.0.0:9090' in variables:
+        print('TASK [observability_control_plane : Require a complete bounded control-plane contract] ********')
+        print('fatal: [node-a]: FAILED! => {{"censored":"hidden"}}')
+        raise SystemExit(2)
+    if 'simulate_other_failure: true' in variables:
+        print('TASK [observability_control_plane : Create dedicated control-plane account] ********')
+        print('fatal: [node-a]: FAILED! => {{"changed":false}}')
+        raise SystemExit(2)
+    if 'simulate_over_cap_output: true' in variables:
+        sys.stdout.write('x' * (65536 + 1))
+        sys.stdout.flush()
+        time.sleep(30)
 if entry['program'] == 'ssh':
     payload = sys.stdin.read()
     entry = {{'program': 'ssh-payload', 'payload': payload}}
@@ -467,6 +481,123 @@ def test_rotate_is_explicit_exact_host_role_convergence(
     )
 
 
+def test_rotate_can_return_only_exact_typed_pre_mutation_role_guard_refusal(
+    operator: dict[str, object],
+) -> None:
+    invalid = _write(
+        operator["tmp"] / "invalid-vars.yml",
+        "observability_control_plane:\n"
+        "  enabled: true\n"
+        "  config_root: /etc/observability-control-plane\n"
+        "  prometheus_listen: 0.0.0.0:9090\n",
+    )
+    result = _run(
+        operator,
+        "rotate",
+        "--secrets",
+        str(operator["secrets"]),
+        "--vars",
+        str(invalid),
+        "--confirm",
+        "--expect-role-guard-refusal",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["state"] == "role-guard-refused"
+
+    unrelated = _write(
+        operator["tmp"] / "unrelated-failure-vars.yml",
+        "observability_control_plane:\n"
+        "  enabled: true\n"
+        "  config_root: /etc/observability-control-plane\n"
+        "  prometheus_listen: 127.0.0.1:9090\n"
+        "simulate_other_failure: true\n",
+    )
+    result = _run(
+        operator,
+        "rotate",
+        "--secrets",
+        str(operator["secrets"]),
+        "--vars",
+        str(unrelated),
+        "--confirm",
+        "--expect-role-guard-refusal",
+    )
+    assert result.returncode == 2
+    assert result.stderr == "observability-operator: ansible command failed\n"
+
+    result = _run(
+        operator,
+        "rotate",
+        "--secrets",
+        str(operator["secrets"]),
+        "--vars",
+        str(operator["vars"]),
+        "--confirm",
+        "--expect-role-guard-refusal",
+    )
+    assert result.returncode == 2
+    assert (
+        result.stderr
+        == "observability-operator: expected role guard refusal was accepted\n"
+    )
+
+
+def test_typed_role_guard_capture_fails_closed_over_fixed_output_cap(
+    operator: dict[str, object],
+) -> None:
+    noisy = _write(
+        operator["tmp"] / "noisy-vars.yml",
+        "observability_control_plane:\n"
+        "  enabled: true\n"
+        "  config_root: /etc/observability-control-plane\n"
+        "simulate_over_cap_output: true\n",
+    )
+
+    result = _run(
+        operator,
+        "rotate",
+        "--secrets",
+        str(operator["secrets"]),
+        "--vars",
+        str(noisy),
+        "--confirm",
+        "--expect-role-guard-refusal",
+    )
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert result.stderr == "observability-operator: ansible command failed\n"
+
+
+def test_typed_role_guard_capture_times_out_and_reaps_owned_process(
+    tmp_path: Path,
+) -> None:
+    module = _operator_module()
+    pid_path = tmp_path / "guard.pid"
+    command = [
+        sys.executable,
+        "-c",
+        (
+            "import os,pathlib,time;"
+            f"pathlib.Path({str(pid_path)!r}).write_text(str(os.getpid()));"
+            "time.sleep(30)"
+        ),
+    ]
+
+    with pytest.raises(module.OperatorError, match="^ansible command failed$"):
+        module._bounded_role_guard_command(
+            command,
+            cwd=ROOT,
+            environment=dict(os.environ),
+            timeout=0.1,
+        )
+
+    pid = int(pid_path.read_text(encoding="utf-8"))
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
+
+
 def test_deploy_requires_confirmation_before_transport(
     operator: dict[str, object],
 ) -> None:
@@ -765,8 +896,28 @@ def test_rollback_reconverges_one_role_from_private_last_known_good_inputs(
     call = calls[-1]
     assert call["program"] == "ansible-playbook"
     assert call["argv"][call["argv"].index("--limit") + 1] == "node-a"
+    assert call["argv"][call["argv"].index("--extra-vars") + 1] == f"@{variables}"
     assert "observability_control_plane" in call["playbook"]
     assert "site.yml" not in " ".join(call["argv"])
+
+    candidate = _write(
+        operator["tmp"] / "candidate-vars.yml",
+        variables.read_text(encoding="utf-8") + "candidate_generation: true\n",
+    )
+    result = _run(
+        operator,
+        "rollback",
+        "--secrets",
+        str(secrets),
+        "--vars",
+        str(candidate),
+        "--rollback-manifest",
+        str(manifest),
+        "--confirm",
+    )
+    assert result.returncode == 2
+    assert result.stderr == "observability-operator: rollback manifest rejected\n"
+    assert len(_calls(operator)) == len(calls)
 
 
 def test_remove_converges_only_selected_role_with_enabled_false(
