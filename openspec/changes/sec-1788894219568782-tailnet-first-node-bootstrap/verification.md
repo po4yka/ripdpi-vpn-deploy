@@ -1,30 +1,64 @@
 ---
 task_id: SEC-1788894219568782
 change: sec-1788894219568782-tailnet-first-node-bootstrap
-commit_sha: 52eda3d97feb4b697e1465beee55df2e9f5b3eed
-local: required
-local_evidence: "Exact main 52eda3d97feb4b697e1465beee55df2e9f5b3eed passed build-gate -- make check, including 4665 portable pytest cases, 4 deselected, 20 subtests, 55 Bats cases, 104 vpnd library tests, provider validation and policy checks, snapshots, gitleaks, actionlint, zizmor, Ansible lint and syntax, shellcheck, cargo-deny, clippy and Rust tests. The focused recovery suites passed 177 tests; strict OpenSpec and task validation passed. Local ARM Molecule reached real PID 1 but the emulated sandbox failed an early unit with Result=resources, so it remains setup-failure evidence rather than native runtime proof."
-remote_ci: required
-remote_ci_evidence: "The source commit 25fba763724280560f797b023786118b69e964ba passed all 81 pull-request checks before protected-branch merge. The resulting exact main commit 52eda3d97feb4b697e1465beee55df2e9f5b3eed then completed ci, codeql, scorecard and release-please successfully; its 80 post-merge check runs had no failures."
-dry_run: required
-dry_run_evidence: "Ordinary isolated staging dry-run passed with a positive observed-context bootstrap handoff and exact-node promotion configuration. Permanent-node dry-run remains unperformed."
-staging: required
-staging_evidence: "Exact source 52eda3d97feb4b697e1465beee55df2e9f5b3eed now has distinct positive reboot and controller-loss recovery observations plus ordinary positive bootstrap, dry-run/deploy, verify, security-verify, four-profile traffic, provider-firewall promotion, state-bound manifest reissue, guarded retirement and provider-confirmed server/root-storage absence. The broader agreed permanent-node acceptance remains outstanding."
-live: required
+commit_sha: 8ab19efc1e2f92f97235ddad8b56c95a7aed1b75
+local: passed
+local_evidence: "Exact protected source 8ab19efc1e2f92f97235ddad8b56c95a7aed1b75 passed build-gate -- make check: 4709 pytest cases, 4 canonical native-runtime cases deselected locally, 20 subtests, 55 Bats cases, Rust tests and clippy, Terraform validation and policies, snapshots, gitleaks, shellcheck, Ansible lint and syntax. Native runtime and affected Molecule scenarios passed in the exact-source hosted gate."
+remote_ci: passed
+remote_ci_evidence: "Protected-source push run 36496105992 completed successfully at exact SHA 8ab19efc1e2f92f97235ddad8b56c95a7aed1b75: all 75 jobs succeeded, including native runtime integration, tailnet-management/firewall/baseline Molecule, both full-stack jobs, failure scenarios, image scans and required checks."
+dry_run: passed
+dry_run_evidence: "Ordinary isolated staging dry-run used the confirmed observed-context handoff and exact-node promotion configuration: ok=214 changed=68 failed=0 unreachable=0. Permanent-node dry-run remains unperformed under the separate live category."
+staging: passed
+staging_evidence: "Three separate disposable nodes on exact 8ab19efc source and digest 4081ecaf5614deb40809dad09060d62d72be79435019121413ea6773bf7e60b9 proved ordinary SSH/2222 deployment, real enrolled controller-loss recovery and real enrolled reboot recovery. Normal staging included positive dual-path bootstrap, SSH ownership, deploy/reconvergence, verify, security-verify, source-drift, four protocols, provider-firewall promotion, identity/deadline-preserving manifest reissue and guarded server/root-storage absence for all three nodes."
+live: blocked
 live_evidence: "No permanent-node rollout or serial live acceptance was performed."
-client: required
-client_evidence: "The owned isolated invocation proved authenticated REALITY, XHTTP, Hysteria2 and AWG before and after provider-firewall promotion, including distinct fresh AWG handshakes. No permanent-fleet traffic proof was performed."
-artifact: required
-artifact_evidence: "Separate current-source reboot and controller-loss success files matched exact wrapper/source/digest bindings under owner-only modes 0600/0700; their diagnostics remained absent. Ordinary observed-context handoff, deployment proof, identity-preserving cleanup reissue, canonical client/executor retirement and guarded provider absence were observed. Own temporary nodes and private capabilities were retired; shared capabilities needed by an unrelated active invocation are preserved."
+client: passed
+client_evidence: "Owned isolated current profiles and pinned runtimes proved authenticated REALITY, XHTTP, Hysteria2 and AmneziaWG traffic plus tunneled DNS before and after firewall promotion. A separate post-promotion invocation observed a fresh AWG handshake. These are staging client observations; permanent-fleet traffic remains unproved."
+artifact: passed
+artifact_evidence: "Separate mode-0600 controller-loss/reboot artifacts matched exact source, deployable digest and wrapper hashes under mode-0700 parents; reboot binding was independently recomputed. Diagnostics and fault-test handoffs remained absent. Canonical client/executor retirement, DNS absence and all three guarded provider-absence receipts passed within expiry. Own ephemeral nodes and ACL are absent; persisted policy equals the original byte-for-byte. Own API token deletion returned 204 and the old credential subsequently returned 401 AUTHENTICATION_FAILED; its local plaintext file was removed. Foreign capabilities were preserved."
 ---
 
 # Verification
 
-Runtime implementation is integrated on the frozen protected source
-`52eda3d97feb4b697e1465beee55df2e9f5b3eed`. Local/hosted gates and isolated
-ordinary, controller-loss and reboot observations are recorded independently.
-Agreed permanent-node rollout and requirement reconciliation remain required.
-No execution step is closed by extrapolation from isolated staging.
+Runtime acceptance is bound to protected source
+`8ab19efc1e2f92f97235ddad8b56c95a7aed1b75`, not the later main tip.
+All six implementation steps have scope-matching local/hosted and isolated
+runtime proof. The task enters review but remains open: its required live
+category and the broader EPC acceptance have not passed.
+
+## Exact-source ordinary and separate recovery acceptance — 2026-09-29
+
+All three invocations used deployable digest
+`4081ecaf5614deb40809dad09060d62d72be79435019121413ea6773bf7e60b9`.
+Normal staging used SSH/2222, confirmed real public/Tailnet SSH and SFTP,
+then explicitly committed SSH ownership before ordinary deployment. The first
+deploy refused an active unattended-upgrade dpkg lock; after that OS operation
+completed, canonical reconvergence passed with ok=230 changed=18 and no failed
+or unreachable tasks. Verify, security-verify and separate source-drift passed
+before and after provider-firewall promotion. Promotion changed only the same
+server's firewall activation and reissued cleanup authority without extending
+expiry. Public/Tailnet SSH, SFTP, listener parity, outbound HTTPS/UDP DNS and
+authenticated four-profile traffic passed on both sides of promotion. A
+distinct later invocation proved another fresh AWG handshake.
+
+The separate controller-loss node killed a durably pending real enrollment
+without confirmation or explicit rollback. After the unchanged 300-second
+lease, autonomous recovery, idle state, strict preinstall, fresh public SSH
+and SFTP passed. Boot-change/current-boot flags were correctly false.
+
+The separate reboot node's third canonical invocation passed all seven checks,
+including changed boot identity and both current-boot recovery phases. Its
+first two invocations exited nonzero without success evidence or diagnostics;
+their failing stage is unproved and neither counts as acceptance. No lease,
+deadline, timeout or check was weakened for the successful invocation.
+
+Provider transport failures during cleanup remain failure observations; a
+later unchanged canonical guarded cleanup succeeded. All three server/root
+receipts verify absence, no active owned billing resources and completion
+within the approved deadline. Owned client/executor, keys, DNS, nodes, ACL and
+provider credential were retired. Permanent-node SSH still timed out; working
+console access and owner rotation of the exposed VNC credential remain needed.
+No permanent-node mutation or acceptance is credited here.
 
 ## Current ordinary staging and controller-loss checkpoint — 2026-09-28
 
@@ -57,13 +91,13 @@ is marked complete by extrapolation from staging.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-TFB-INPUT | SEC-1788894502237285 | New controller boundary tests; pinned public connection and zero-write negative cases | Required |
-| REQ-TFB-BOUNDARY | SEC-1788894503320732 | Firewall candidate validation and real nftables source isolation; preserved sshd/DNS/routes | Required |
-| REQ-TFB-RECOVERY | SEC-1788894502776578 | Domain fault injection plus native two-phase boot ordering, interruption, timer and controller-loss recovery | Required |
-| REQ-TFB-PROOF | SEC-1788894503869488 | Fresh public/Tailnet SSH and SFTP with matching host key and observed socket identities | Required |
-| REQ-TFB-DEPLOY | SEC-1788894503869488 | Deploy tests reject enrollment keys and absent management; normal VPN proof still runs; handled SSH baseline failures publish only an atomic allowlisted private category while success and check mode leave no receipt | Required |
-| REQ-UPF-STAGING | SEC-1788894504408980 | Cleanup guard tests and exact-state manifests before bootstrap and after firewall transitions | Required |
-| REQ-TFB-ACCEPTANCE | SEC-1788894504951632 | Fixed staging-only controller-loss/reboot harness, exact-SHA local/hosted gates, positive staging, recovery, deployment, protocol proof, provider absence | Required |
+| REQ-TFB-INPUT | SEC-1788894502237285 | Exact-source controller regressions, pinned public bootstrap and zero-write refusal cases | Passed on 8ab19efc |
+| REQ-TFB-BOUNDARY | SEC-1788894503320732 | Native/Molecule firewall checks and positive minimal-foundation staging | Passed on 8ab19efc |
+| REQ-TFB-RECOVERY | SEC-1788894502776578 | Fault regressions, native graph and separate real enrolled controller-loss/reboot recovery | Passed on 8ab19efc |
+| REQ-TFB-PROOF | SEC-1788894503869488 | Fresh real public/Tailnet SSH/SFTP and observed-context handoff | Passed on 8ab19efc |
+| REQ-TFB-DEPLOY | SEC-1788894503869488 | Receipt/refusal regressions, SSH ownership, ordinary dry-run/reconvergence and real protocol proof | Passed on 8ab19efc |
+| REQ-UPF-STAGING | SEC-1788894504408980 | Guard regressions, pre-write manifests, same-identity state-bound reissue and guarded absence | Passed on 8ab19efc |
+| REQ-TFB-ACCEPTANCE | SEC-1788894504951632 | Exact-source local/hosted/native gates, distinct staging scenarios, protocol proof and cleanup | Passed on 8ab19efc; required live category still blocks task closure |
 
 ## Required evidence scopes
 

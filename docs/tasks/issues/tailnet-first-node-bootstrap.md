@@ -2,7 +2,7 @@
 id: SEC-1788894219568782
 title: Bootstrap restricted Tailnet access before dual-path deployment
 kind: feature
-status: doing
+status: review
 area: security
 priority: high
 risk: high
@@ -12,8 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: sec-1788894219568782-tailnet-first-node-bootstrap
 created: 2026-09-08
-updated: 2026-09-09
+updated: 2026-09-29
 related_tasks: []
+status_detail: All six implementation steps passed exact protected-source 8ab19efc local/hosted/native gates and separate ordinary/controller-loss/reboot staging with protocol proof and guarded cleanup. Required permanent-node live acceptance remains blocked; no terminal closure.
 ---
 
 ## Goal
