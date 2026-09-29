@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-09-29
+goal: MON-1790650904289505 Deploy and accept staging observability and Telegram
+  alerting
