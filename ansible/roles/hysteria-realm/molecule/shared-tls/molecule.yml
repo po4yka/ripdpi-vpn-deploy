@@ -10,7 +10,7 @@ driver:
 
 platforms:
   - name: vpn-hysteria-realm-shared-tls-debian13
-    image: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-debian13@sha256:c3474ef1c942fd947b0efe59f7d84067966cdd27580cd8b68a54afefac0170c8
+    image: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-debian13@sha256:c19378bb95c244956907cbe3114eda1b85807afbdf18e3788e7ece4ce5a8545d
     pre_build_image: true
     privileged: true
     command: /lib/systemd/systemd
