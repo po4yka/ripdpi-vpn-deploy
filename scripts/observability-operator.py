@@ -855,7 +855,6 @@ def _run_playbook(
                     check=False,
                 )
                 returncode = result.returncode
-                output = b""
         except OSError:
             raise OperatorError("ansible unavailable") from None
         if expect_role_guard_refusal:

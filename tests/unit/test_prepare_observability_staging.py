@@ -501,6 +501,60 @@ def test_materialize_refuses_root_substitution_before_plaintext_write(
     assert not (displaced / "materialized" / "observability-secrets.yml").exists()
 
 
+def test_materialize_closes_open_directory_when_later_directory_open_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load(SCRIPT, "observability_preparer_materialize_directory_failure")
+    closed: list[int] = []
+    opened = iter((11,))
+
+    monkeypatch.setattr(module, "_existing_private_root", lambda _path: Path("/root"))
+    monkeypatch.setattr(module, "_open_secure_directory", lambda *_args, **_kwargs: 10)
+
+    def open_relative(*_args, **_kwargs) -> int:
+        try:
+            return next(opened)
+        except StopIteration:
+            raise module.PreparationError("encrypted authority rejected") from None
+
+    monkeypatch.setattr(module, "_open_relative_directory", open_relative)
+    monkeypatch.setattr(module.os, "close", closed.append)
+
+    with pytest.raises(module.PreparationError, match="encrypted authority rejected"):
+        module.materialize(Path("/root"))
+
+    assert closed == [11, 10]
+
+
+def test_materialize_closes_identity_when_encrypted_input_open_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load(SCRIPT, "observability_preparer_materialize_input_failure")
+    closed: list[int] = []
+    directories = iter((11, 12, 13))
+    files = iter((14,))
+
+    monkeypatch.setattr(module, "_existing_private_root", lambda _path: Path("/root"))
+    monkeypatch.setattr(module, "_open_secure_directory", lambda *_args, **_kwargs: 10)
+    monkeypatch.setattr(
+        module, "_open_relative_directory", lambda *_args, **_kwargs: next(directories)
+    )
+
+    def open_private(*_args, **_kwargs) -> int:
+        try:
+            return next(files)
+        except StopIteration:
+            raise module.PreparationError("encrypted authority rejected") from None
+
+    monkeypatch.setattr(module, "_open_private_at", open_private)
+    monkeypatch.setattr(module.os, "close", closed.append)
+
+    with pytest.raises(module.PreparationError, match="encrypted authority rejected"):
+        module.materialize(Path("/root"))
+
+    assert closed == [14, 13, 12, 11, 10]
+
+
 def test_real_openssl_pki_has_expected_uses_and_empty_crl(tmp_path: Path) -> None:
     module = _load(SCRIPT, "observability_preparer_openssl")
     config = {

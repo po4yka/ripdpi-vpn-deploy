@@ -848,7 +848,7 @@ def test_staleness_fault_is_held_through_independent_evidence_then_restored(
         if role == "control-plane" and "vpn_observability_adapter" in source:
             calls.append("fresh")
             return b'{"schema_version":1,"state":"advancing"}'
-        pytest.fail("unexpected remote program")
+        raise AssertionError("unexpected remote program")
 
     monkeypatch.setattr(module, "_remote", remote)
     monkeypatch.setattr(module, "_require_healthy", lambda *_args: None)
@@ -887,7 +887,7 @@ def test_staleness_restores_durable_fault_when_evidence_fails(
         if role == "canary" and "action='restore'" in source:
             calls.append("restore")
             return b'{"schema_version":1,"state":"restored"}'
-        pytest.fail("unexpected remote program")
+        raise AssertionError("unexpected remote program")
 
     monkeypatch.setattr(module, "_remote", remote)
     monkeypatch.setattr(module, "_require_healthy", lambda *_args: None)
