@@ -211,7 +211,7 @@ def test_configure_playbook_cannot_import_full_stack_or_service_handlers():
     make = (root / "Makefile").read_text().split("backup-configure:", 1)[1].split("\n\n", 1)[0]
     assert "require-clean-source" not in make and "require-inventory" not in make
     helper = (root / "scripts/backup-configure.py").read_text()
-    assert "fleet_inspection.select_hosts(Path(inventory), [alias])[0]" in helper
+    assert "fleet_inspection.select_hosts(Path(inventory), [alias], include_variables=True)[0]" in helper
     assert "environment.update(clean_source(root, environment))" in helper
     assert "validate-ansible-extra-vars.py" in helper
     assert "backup-configure.py" in make
@@ -430,7 +430,7 @@ def controller_adapter(configure, monkeypatch):
     def inventory(_source, alias, directory):
         target = directory / "inventory.ini"
         configure.private_file(target, f"[vpn]\n{alias}\n".encode())
-        return {}, [], target
+        return {"variables": {"env": "staging"}}, [], target
     monkeypatch.setattr(configure, "prepare_inventory", inventory)
     monkeypatch.setattr(configure, "transport_variables", lambda *_: {})
 
@@ -463,6 +463,7 @@ def test_controller_uses_one_private_snapshot_and_cleans_after_ansible(configure
     assert len(commands) == 4
     assert commands[-1][commands[-1].index("--limit") + 1] == "node-one"
     assert "--strict" in commands[0]
+    assert commands[0][-2:] == ["--environment", "staging"]
     assert all(not item.exists() for item in snapshots)
 
 

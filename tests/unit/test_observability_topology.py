@@ -308,7 +308,7 @@ def _inventory_repo(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     (root / "ansible" / "inventory" / "generated.ini").write_text("last-good\n")
     (root / "ansible" / "group_vars" / "vpn-p0-minimal.yml").write_text("---\n")
     (root / "ansible" / "group_vars" / "all.yml").write_text(
-        "---\nobservability_contract:\n  enabled: true\n  schema_version: 1\n  credential_mode: systemd\n"
+        "---\nobservability_contract:\n  enabled_environments: [test]\n  schema_version: 1\n  credential_mode: systemd\n"
     )
     bindir = tmp_path / "bin"
     bindir.mkdir()
@@ -495,12 +495,27 @@ def test_render_inventory_from_root_owned_sticky_tmp_is_supported() -> None:
     assert "observability_topology_b64=" in inventory
 
 
+@pytest.mark.parametrize("selection", ["upcloud:test,hetzner:prod,vultr:test", "upcloud:../prod"])
+def test_inventory_scope_refuses_before_terraform(tmp_path: Path, selection: str) -> None:
+    root, env = _inventory_repo(tmp_path)
+    env["HOSTS"] = selection
+    marker = tmp_path / "provider-called"
+    _make_stub(tmp_path / "bin" / "terraform", f'touch "{marker}"; exit 99')
+    result = subprocess.run(
+        ["bash", str(root / "scripts" / "render-inventory.sh")],
+        cwd=root, env=env, capture_output=True, text=True, timeout=20,
+    )
+    assert result.returncode != 0
+    assert not marker.exists()
+    assert (root / "ansible/inventory/generated.ini").read_text() == "last-good\n"
+
+
 def test_render_inventory_refuses_env_topology_when_tracked_selector_is_disabled(
     tmp_path: Path,
 ) -> None:
     root, env = _inventory_repo(tmp_path)
     (root / "ansible" / "group_vars" / "all.yml").write_text(
-        "---\nobservability_contract:\n  enabled: false\n  schema_version: 1\n  credential_mode: systemd\n"
+        "---\nobservability_contract:\n  enabled_environments: []\n  schema_version: 1\n  credential_mode: systemd\n"
     )
 
     result = subprocess.run(
@@ -629,7 +644,7 @@ def test_repository_runtime_mode_is_systemd_credentials_only() -> None:
     variables = yaml.safe_load((ROOT / "ansible" / "group_vars" / "all.yml").read_text())
 
     assert variables["observability_contract"] == {
-        "enabled": False,
+        "enabled_environments": ["staging"],
         "schema_version": 1,
         "credential_mode": "systemd",
     }

@@ -13,7 +13,7 @@ Modes:
                          This is what runs in pre-commit on the example
                          schema and what an operator runs against a
                          half-filled draft.
-  --strict               Reject any REPLACE_WITH_* placeholder. This is
+  --strict --environment Reject any REPLACE_WITH_* placeholder. This is
                          what runs in pre-deploy-check against the real
                          decrypted secrets file.
 
@@ -43,8 +43,8 @@ AWG_FINGERPRINT = re.compile(r"^sha256:([0-9a-fA-F]{16})$")
 OBSERVABILITY_ROTATION_MAX_SECONDS = 24 * 60 * 60
 
 
-def _observability_selector_enabled() -> bool:
-    """Read the single tracked observability enablement selector fail-closed."""
+def _observability_selector_enabled(environments: list[str] | None) -> bool:
+    """Bind tracked enablement to explicit operation scope, never ambient ENV."""
     try:
         metadata = OBSERVABILITY_CONFIG.lstat()
         if (
@@ -57,12 +57,23 @@ def _observability_selector_enabled() -> bool:
         contract = document["observability_contract"]
         if (
             not isinstance(contract, dict)
-            or not isinstance(contract.get("enabled"), bool)
+            or set(contract) != {"enabled_environments", "schema_version", "credential_mode"}
             or contract.get("schema_version") != 1
             or contract.get("credential_mode") != "systemd"
         ):
             raise ValueError
-        return contract["enabled"]
+        enabled = contract["enabled_environments"]
+        if not isinstance(enabled, list) or not environments:
+            raise ValueError
+        for name in [*enabled, *environments]:
+            if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]*", name):
+                raise ValueError
+        if len(enabled) != len(set(enabled)):
+            raise ValueError
+        states = {name in enabled for name in environments}
+        if len(states) != 1:
+            raise ValueError
+        return states.pop()
     except (KeyError, OSError, TypeError, ValueError, yaml.YAMLError) as exc:
         raise ValueError("invalid tracked observability selector") from exc
 
@@ -406,7 +417,7 @@ def _semantic_errors(
 
 
 def _observability_topology_errors(
-    doc: dict, topology_path: Path
+    doc: dict, topology_path: Path, environments: list[str] | None
 ) -> list[tuple[str, str]]:
     """Bind sender credential identities to the validated VPN topology."""
     try:
@@ -420,6 +431,8 @@ def _observability_topology_errors(
         topology = json.loads(topology_path.read_text())
         nodes = topology["nodes"]
         if not isinstance(nodes, list):
+            raise ValueError
+        if not environments or {node["environment"] for node in nodes} != set(environments):
             raise ValueError
         vpn_node_ids = {
             node["node_id"]
@@ -462,6 +475,11 @@ def main() -> int:
         "real secrets before deploy.",
     )
     ap.add_argument(
+        "--environment",
+        action="append",
+        help="Selected inventory environment; repeat for each scope. Required for strict checks and selector output.",
+    )
+    ap.add_argument(
         "--print-observability-selector",
         action="store_true",
         help="Print the validated tracked observability enablement selector.",
@@ -475,7 +493,7 @@ def main() -> int:
 
     if args.print_observability_selector:
         try:
-            print("true" if _observability_selector_enabled() else "false")
+            print("true" if _observability_selector_enabled(args.environment) else "false")
         except ValueError:
             print("validate-secrets: invalid tracked observability selector", file=sys.stderr)
             return 2
@@ -518,7 +536,7 @@ def main() -> int:
 
     try:
         observability_enabled = (
-            _observability_selector_enabled() if args.strict else False
+            _observability_selector_enabled(args.environment) if args.strict else False
         )
     except ValueError:
         print("validate-secrets: invalid tracked observability selector", file=sys.stderr)
@@ -529,7 +547,7 @@ def main() -> int:
     ) + _registry_errors(doc)
     if args.observability_topology is not None:
         semantic_errors += _observability_topology_errors(
-            doc, args.observability_topology
+            doc, args.observability_topology, args.environment
         )
     if semantic_errors:
         print(f"validate-secrets: {len(semantic_errors)} semantic violation(s) in {target}:", file=sys.stderr)

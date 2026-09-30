@@ -95,3 +95,4 @@ fleet-wide monitoring, full staging-matrix acceptance, or production cutover.
 - Artifact gate: `verification.md` contains only redacted technical aliases,
   categorical outcomes, timestamps, exact source revision, generation digests,
   and explicit remaining fleet/client/cutover gaps.
+- [x] MON-1790793779569506 Enable staging observability inventory and secret checks without enabling production #feature !high @item:MON-1790650904289505

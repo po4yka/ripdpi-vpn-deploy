@@ -13,6 +13,9 @@ explicit node; it never activates a migration or imports baseline handlers.
 
 **Roles are feature-toggleable** — `group_vars/all.yml` carries `vpn.enable_*`
 booleans. Disabling a profile is a config change, not a code change.
+Observability uses `observability_contract.enabled_environments` for inventory
+and secret validation; only `staging` is currently allowed. This is separate
+from runtime role enablement and must not silently enable production.
 
 **Deployment profiles are explicit** — prefer `vpn-p0-minimal`,
 `vpn-family-standard`, `vpn-device-full`, and `vpn-lab` group_vars for new

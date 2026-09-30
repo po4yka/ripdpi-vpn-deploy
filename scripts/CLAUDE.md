@@ -92,6 +92,11 @@ opt-out flag.
 **Provider roots share one inventory schema** — UpCloud, Hetzner, Vultr, and Scaleway export the same canonical outputs, so `render-inventory.sh` stays provider-neutral. Add provider-specific inventory code only when a control-plane address needs extra guest convergence proof, as Vultr's secondary IPv4 does.
 
 **Inventory inputs fail before publication** — nonempty cohort slugs must name an existing `group_vars/vpn-*.yml` profile, and host aliases must be unique across provider/environment pairs. Reject malformed profiles before Terraform calls and preserve the last valid inventory on either failure.
+Observability enablement comes from the tracked `enabled_environments` list and
+the selected provider/environment pairs, not ambient `ENV`. Reject mixed
+enabled/disabled scope before Terraform. Strict secret validation requires
+explicit `--environment` arguments; host controllers derive them from immutable
+inventory metadata. The old global boolean is not accepted.
 
 **Tailnet inventory transport is confirmed** — `TAILNET_HANDOFFS` accepts one
 private mode-0600 bootstrap handoff path or `-` per selected Terraform host.

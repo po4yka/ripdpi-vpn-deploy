@@ -313,7 +313,7 @@ def select_target(inventory, alias):
     import fleet_inspection
     if not alias or not fleet_inspection.SAFE_NAME.fullmatch(alias):
         raise ConfigError("exact-single-host-required")
-    return fleet_inspection.select_hosts(Path(inventory), [alias])[0]
+    return fleet_inspection.select_hosts(Path(inventory), [alias], include_variables=True)[0]
 
 
 def execution_environment(root):
@@ -486,7 +486,8 @@ def controller(inventory, alias, secrets):
         private_file(snapshot_file, materialized_bytes(secrets))
         environment.update(VPN_SECRETS_FILE=str(snapshot_file), BACKUP_CONFIGURE_HOST=alias,
                            BACKUP_CONFIGURATION_VARS_FILES=json.dumps(canonical_variables(root, cohorts)))
-        commands = ([sys.executable, str(root / "scripts/validate-secrets.py"), str(snapshot_file), "--strict"],
+        commands = ([sys.executable, str(root / "scripts/validate-secrets.py"), str(snapshot_file),
+                     "--strict", "--environment", host["variables"].get("env", "")],
                     [sys.executable, str(root / "scripts/spot-check-secrets.py")],
                     [str(root / "scripts/check-certs.sh")])
         for command in commands:

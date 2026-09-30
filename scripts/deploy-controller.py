@@ -687,7 +687,9 @@ def controller(mode):
             # Reclaim precheck secret copies even if their EXIT traps are killed.
             # Keep Ansible's default temp root: nested paths exceed macOS's RPC socket limit.
             precheck_environment = {**environment, "TMPDIR": str(directory)}
-            checked([sys.executable, str(root / "scripts/validate-secrets.py"), str(secrets), "--strict"],
+            scope = [argument for host in hosts
+                     for argument in ("--environment", str(metadata[host["name"]].get("env", "")))]
+            checked([sys.executable, str(root / "scripts/validate-secrets.py"), str(secrets), "--strict", *scope],
                     environment=precheck_environment, cwd=directory)
             checked([sys.executable, str(root / "scripts/spot-check-secrets.py")],
                     environment=precheck_environment, cwd=directory)

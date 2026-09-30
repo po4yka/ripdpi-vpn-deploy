@@ -1,5 +1,13 @@
 # Central observability operator surface
 
+The tracked `observability_contract.enabled_environments` currently contains
+only `staging`. Inventory derives scope from `HOSTS` (or `PROVIDER`/`ENV`) and
+rejects a mixture of enabled and disabled environments before provider access.
+Strict secret checks require `--environment <name>` for each selected scope;
+deployment controllers use inventory metadata. The former global `enabled`
+boolean is unsupported. Production enablement is a separate reviewed change,
+not an effect of passing staging role variables.
+
 This runbook covers the exact-host commands for the centralized observability
 agent, control plane, and independent dead-man. It does not authorize a
 provider change, production deployment, credential creation, fault injection,

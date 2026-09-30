@@ -672,7 +672,7 @@ pre-deploy-check:
 	@if [ "$(SKIP_PRECHECK)" = "1" ]; then \
 	  echo "pre-deploy-check: skipped (SKIP_PRECHECK=1)"; \
 	else \
-	  python3 ./scripts/validate-secrets.py $(SECRETS_FILE) --strict && \
+	  python3 ./scripts/validate-secrets.py $(SECRETS_FILE) --strict --environment "$(ENV)" && \
 	  VPN_SECRETS_FILE=$(SECRETS_FILE) python3 ./scripts/spot-check-secrets.py && \
 	  VPN_SECRETS_FILE=$(SECRETS_FILE) ./scripts/check-certs.sh; \
 	fi
@@ -986,7 +986,7 @@ snapshot-update:
 
 validate-secrets:
 	@if [ -f "$(SECRETS_FILE)" ]; then \
-	  python3 scripts/validate-secrets.py $(SECRETS_FILE) --strict; \
+	  python3 scripts/validate-secrets.py $(SECRETS_FILE) --strict --environment "$(ENV)"; \
 	else \
 	  python3 scripts/validate-secrets.py; \
 	fi
