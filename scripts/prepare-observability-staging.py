@@ -10,7 +10,6 @@ credential, private path, certificate, endpoint, or command output.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -1064,14 +1063,33 @@ def prepare(root_path: Path, config_path: Path, telegram_path: Path) -> None:
         telegram = _load_telegram(telegram_path)
         revision, digest = _source_identity()
         root_descriptor = _mkdir_private_at(parent_descriptor, root_name)
-        directories: dict[str, int] = {}
+        ssh_descriptor = -1
+        age_descriptor = -1
+        secrets_descriptor = -1
+        materialized_descriptor = -1
+        vars_descriptor = -1
+        acceptance_descriptor = -1
+        approvals_descriptor = -1
+        receipts_descriptor = -1
         try:
-            for name in ("ssh", "age", "secrets", "materialized", "vars", "acceptance"):
-                directories[name] = _mkdir_private_at(root_descriptor, name)
-            for name in ("approvals", "receipts"):
-                directories[f"acceptance/{name}"] = _mkdir_private_at(
-                    directories["acceptance"], name
-                )
+            ssh_descriptor = _mkdir_private_at(root_descriptor, "ssh")
+            age_descriptor = _mkdir_private_at(root_descriptor, "age")
+            secrets_descriptor = _mkdir_private_at(root_descriptor, "secrets")
+            materialized_descriptor = _mkdir_private_at(root_descriptor, "materialized")
+            vars_descriptor = _mkdir_private_at(root_descriptor, "vars")
+            acceptance_descriptor = _mkdir_private_at(root_descriptor, "acceptance")
+            approvals_descriptor = _mkdir_private_at(acceptance_descriptor, "approvals")
+            receipts_descriptor = _mkdir_private_at(acceptance_descriptor, "receipts")
+            directories = {
+                "ssh": ssh_descriptor,
+                "age": age_descriptor,
+                "secrets": secrets_descriptor,
+                "materialized": materialized_descriptor,
+                "vars": vars_descriptor,
+                "acceptance": acceptance_descriptor,
+                "acceptance/approvals": approvals_descriptor,
+                "acceptance/receipts": receipts_descriptor,
+            }
 
             with tempfile.TemporaryDirectory(
                 prefix=".observability-staging-"
@@ -1126,8 +1144,22 @@ def prepare(root_path: Path, config_path: Path, telegram_path: Path) -> None:
                 )
             _verify_root_binding(root, root_descriptor)
         finally:
-            for descriptor in directories.values():
-                os.close(descriptor)
+            if receipts_descriptor >= 0:
+                os.close(receipts_descriptor)
+            if approvals_descriptor >= 0:
+                os.close(approvals_descriptor)
+            if acceptance_descriptor >= 0:
+                os.close(acceptance_descriptor)
+            if vars_descriptor >= 0:
+                os.close(vars_descriptor)
+            if materialized_descriptor >= 0:
+                os.close(materialized_descriptor)
+            if secrets_descriptor >= 0:
+                os.close(secrets_descriptor)
+            if age_descriptor >= 0:
+                os.close(age_descriptor)
+            if ssh_descriptor >= 0:
+                os.close(ssh_descriptor)
     except Exception:
         if root_descriptor >= 0:
             try:
@@ -1143,6 +1175,7 @@ def prepare(root_path: Path, config_path: Path, telegram_path: Path) -> None:
                 finally:
                     os.close(bound)
             except OSError:
+                # Cleanup is best effort so the original preparation error wins.
                 pass
         raise
     finally:
@@ -1189,6 +1222,7 @@ def _atomic_materialized_at(directory: int, name: str, raw: bytes) -> None:
         try:
             os.unlink(temporary, dir_fd=directory)
         except FileNotFoundError:
+            # A successful atomic replace already consumed the temporary name.
             pass
 
 
@@ -1197,7 +1231,11 @@ def materialize(root_path: Path) -> None:
     root_descriptor = _open_secure_directory(
         root, "private root rejected", private=True
     )
-    descriptors: list[int] = []
+    age = -1
+    secret = -1
+    output = -1
+    identity = -1
+    encrypted = -1
     try:
         age = _open_relative_directory(
             root_descriptor, Path("age"), "age authority rejected"
@@ -1208,12 +1246,10 @@ def materialize(root_path: Path) -> None:
         output = _open_relative_directory(
             root_descriptor, Path("materialized"), "materialized output rejected"
         )
-        descriptors.extend((age, secret, output))
         identity = _open_private_at(age, "identity.txt", "age authority rejected")
         encrypted = _open_private_at(
             secret, "observability-secrets.sops.yaml", "encrypted authority rejected"
         )
-        descriptors.extend((identity, encrypted))
         plaintext = _run(
             [
                 "sops",
@@ -1260,8 +1296,16 @@ def materialize(root_path: Path) -> None:
             )
         _verify_root_binding(root, root_descriptor)
     finally:
-        for descriptor in reversed(descriptors):
-            os.close(descriptor)
+        if encrypted >= 0:
+            os.close(encrypted)
+        if identity >= 0:
+            os.close(identity)
+        if output >= 0:
+            os.close(output)
+        if secret >= 0:
+            os.close(secret)
+        if age >= 0:
+            os.close(age)
         os.close(root_descriptor)
 
 
