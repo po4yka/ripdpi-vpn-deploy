@@ -530,7 +530,7 @@ def _isolated_inventory_repo(tmp_path):
     (root / "ansible" / "group_vars").mkdir()
     (root / "ansible" / "group_vars" / "vpn-p0.yml").write_text("---\n")
     (root / "ansible" / "group_vars" / "all.yml").write_text(
-        "---\nobservability_contract:\n  enabled: false\n"
+        "---\nobservability_contract:\n  enabled_environments: []\n"
         "  schema_version: 1\n  credential_mode: systemd\n"
     )
     bindir = tmp_path / "bin"

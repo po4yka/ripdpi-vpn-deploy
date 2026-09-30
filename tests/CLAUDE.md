@@ -56,6 +56,10 @@ receipt and reject an obsolete version before mutation. Its registry fixture
 uses the installer's exact sorted JSON format.
 
 **Disposable observability acceptance is evidence-class strict** — focused
+selector tests prove staging-only enablement, disabled production, required
+explicit secret scope, and mixed-scope refusal before Terraform or publication.
+The old global boolean must fail, not become an implicit compatibility path.
+Focused
 unit tests keep the fixed staging row order, exact-host and private-file
 boundaries, real one-hour critical reminder program, interruption restoration,
 durable receipt reconciliation, human-observation gate, complete-set cleanup

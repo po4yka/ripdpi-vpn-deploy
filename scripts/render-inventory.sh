@@ -57,7 +57,15 @@ IFS=',' read -r -a observability_host_class_list <<< "${OBSERVABILITY_HOST_CLASS
 IFS=',' read -r -a observability_failure_domain_list <<< "${OBSERVABILITY_FAILURE_DOMAINS:-}"
 
 observability_enabled=false
-observability_selector="$(python3 "${REPO_ROOT}/scripts/validate-secrets.py" --print-observability-selector)" || {
+observability_scope_args=()
+for pair in "${host_pairs[@]}"; do
+  if [[ ! "$pair" =~ ^(upcloud|hetzner|vultr|scaleway):[A-Za-z0-9][A-Za-z0-9-]*$ ]]; then
+    echo "invalid provider/environment selection" >&2
+    exit 1
+  fi
+  observability_scope_args+=(--environment "${pair#*:}")
+done
+observability_selector="$(python3 "${REPO_ROOT}/scripts/validate-secrets.py" --print-observability-selector "${observability_scope_args[@]}")" || {
   echo "invalid tracked observability selector" >&2
   exit 1
 }
@@ -471,7 +479,7 @@ if [[ "$observability_enabled" == true ]]; then
   chmod 0600 "$topology_temp"
   topology_json="$(python3 "${REPO_ROOT}/scripts/observability-contract.py" topology --document "$topology_temp")"
   python3 "${REPO_ROOT}/scripts/validate-secrets.py" \
-    "$VPN_SECRETS_FILE" --strict --observability-topology "$topology_temp" >/dev/null
+    "$VPN_SECRETS_FILE" --strict "${observability_scope_args[@]}" --observability-topology "$topology_temp" >/dev/null
   rm -f -- "$topology_temp"
   topology_temp=""
   current_source_revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"

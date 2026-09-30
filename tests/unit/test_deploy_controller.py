@@ -242,7 +242,7 @@ record = {{'program': name, 'args': sys.argv[1:], 'secret': str(secret),
           'mode': stat.S_IMODE(secret.stat().st_mode),
           'digest': hashlib.sha256(secret.read_bytes()).hexdigest()}}
 if name == 'validate-secrets.py':
-    assert sys.argv[1:] == [str(secret), '--strict']
+    assert sys.argv[1:] == [str(secret), '--strict', '--environment', 'prod']
 if name == 'ansible-playbook':
     play = json.loads(pathlib.Path(sys.argv[1]).read_text())
     assert all(str(secret) in files for files in play[0]['vars']['deployment_input_files'].values())
@@ -1013,8 +1013,18 @@ def test_prechecks_keep_strict_schema_validation_before_readiness(workspace):
     assert result.returncode != 0
     observed = calls(workspace)
     assert [entry["program"] for entry in observed] == ["validate-secrets.py"]
-    assert observed[0]["args"][-1] == "--strict"
+    assert observed[0]["args"][1:] == ["--strict", "--environment", "prod", "--environment", "prod"]
     assert not Path(observed[0]["args"][0]).exists(), "private secrets snapshot must be cleaned"
+
+
+def test_precheck_environment_comes_from_inventory_not_ambient_scope(workspace):
+    inventory = workspace["root"] / "ansible/inventory/generated.ini"
+    inventory.write_text(inventory.read_text().replace("env=prod", "env=staging"))
+    workspace["env"]["ENV"] = "prod"
+    result = invoke(workspace, limit="node-one")
+    assert result.returncode == 0, result.stderr
+    validation = next(entry for entry in calls(workspace) if entry["program"] == "validate-secrets.py")
+    assert validation["args"][1:] == ["--strict", "--environment", "staging"]
 
 
 @pytest.mark.parametrize("failure", ["timeout", "sigterm"])

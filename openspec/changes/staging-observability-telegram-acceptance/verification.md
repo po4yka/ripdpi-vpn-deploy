@@ -31,6 +31,7 @@ Archive is forbidden while any required category or mapped requirement remains
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
+| REQ-STG-OBS-ENABLEMENT | MON-1790793779569506 | Staging positive inventory and strict secrets; disabled production; malformed and mixed-scope refusal before provider access | required |
 | REQ-STG-OBS-TOPOLOGY | MON-1790651217409733 | Reviewed UpCloud/Hetzner/Scaleway plans; three exact host classes and failure domains; cross-provider dead-man; topology/listener contracts; no public admin | required |
 | REQ-STG-OBS-BOOTSTRAP | MON-1790652096462210 | Focused bootstrap/firewall tests and exact-host baseline, updates, guest firewall, loopback monitoring, and source-manifest convergence before component deployment | required |
 | REQ-STG-OBS-PRIVATE-INPUTS | MON-1790651216954415 | Descriptor-bound private-root preparation and materialization; generated SSH, age, PKI and SOPS authorities; private-chat topic sentinel; non-sticky ancestor, symlink and path-substitution refusal | required |

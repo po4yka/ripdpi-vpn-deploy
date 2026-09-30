@@ -25,6 +25,9 @@ full-matrix acceptance.
 
 ## What Changes
 
+- Replace global observability enablement with an explicit tracked environment
+  allowlist containing only `staging`; preserve disabled production behavior and
+  reject mixed enabled/disabled topology before provider access.
 - Add an exact-host bootstrap surface for fresh control-plane and dead-man hosts
   that converges the repository baseline, updates, guest firewall, local host
   monitoring, and source manifest before an observability component is allowed

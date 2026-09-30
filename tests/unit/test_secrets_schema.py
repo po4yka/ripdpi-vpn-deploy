@@ -10,6 +10,7 @@ Two threats this catches:
 from __future__ import annotations
 
 import json
+import importlib.util
 import shutil
 import subprocess
 import sys
@@ -24,6 +25,69 @@ SCHEMA = REPO_ROOT / "secrets" / "schema.json"
 EXAMPLE = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
 VALIDATOR = REPO_ROOT / "scripts" / "validate-secrets.py"
 PLAIN_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "secrets-sample.yml"
+
+
+@pytest.mark.parametrize(
+    ("enabled", "scope", "expected"),
+    [(["staging"], ["staging"], True), (["staging"], ["prod"], False),
+     (["staging"], ["staging", "staging"], True),
+     (["staging"], ["prod", "canary"], False),
+     (["staging"], ["staging", "prod"], None),
+     (["staging"], None, None), (["staging"], [""], None),
+     (["staging"], ["../prod"], None), (["staging", "staging"], ["staging"], None),
+     (True, ["staging"], None), ([True], ["staging"], None)],
+)
+def test_observability_selector_binds_explicit_scope(tmp_path, monkeypatch, enabled, scope, expected):
+    spec = importlib.util.spec_from_file_location("scoped_secrets_validator", VALIDATOR)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    config = tmp_path / "all.yml"
+    config.write_text(yaml.safe_dump({"observability_contract": {
+        "enabled_environments": enabled, "schema_version": 1, "credential_mode": "systemd",
+    }}))
+    monkeypatch.setattr(module, "OBSERVABILITY_CONFIG", config)
+    monkeypatch.setenv("ENV", "staging")
+    if expected is None:
+        with pytest.raises(ValueError, match="invalid tracked"):
+            module._observability_selector_enabled(scope)
+    else:
+        assert module._observability_selector_enabled(scope) is expected
+
+
+def test_observability_selector_rejects_old_global_boolean(tmp_path, monkeypatch):
+    spec = importlib.util.spec_from_file_location("old_secrets_validator", VALIDATOR)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    config = tmp_path / "all.yml"
+    config.write_text("observability_contract:\n  enabled: true\n  schema_version: 1\n  credential_mode: systemd\n")
+    monkeypatch.setattr(module, "OBSERVABILITY_CONFIG", config)
+    with pytest.raises(ValueError, match="invalid tracked"):
+        module._observability_selector_enabled(["staging"])
+
+
+@pytest.mark.parametrize("scope", [None, ["prod"], ["staging", "prod"], ["staging"]])
+def test_observability_secrets_scope_matches_topology(tmp_path, scope):
+    spec = importlib.util.spec_from_file_location("topology_secrets_validator", VALIDATOR)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    topology = tmp_path / "topology.json"
+    topology.write_text(json.dumps({"nodes": [
+        {"node_id": "upcloud-staging", "environment": "staging", "host_class": "vpn"},
+    ]}))
+    doc = {"observability_secrets": {"senders": [{"node_id": "upcloud-staging"}]}}
+    errors = module._observability_topology_errors(doc, topology, scope)
+    assert bool(errors) is (scope != ["staging"])
+
+
+def test_strict_cli_rejects_missing_environment(filled, tmp_path):
+    target = tmp_path / "secrets.yml"
+    target.write_text(yaml.safe_dump(filled))
+    result = subprocess.run(
+        [sys.executable, str(VALIDATOR), str(target), "--strict"],
+        capture_output=True, text=True, timeout=20,
+    )
+    assert result.returncode == 2
+    assert "invalid tracked observability selector" in result.stderr
 
 
 def _fake_private_key(fill: str) -> str:
@@ -587,7 +651,7 @@ def test_filled_validates_strict_via_cli(filled, tmp_path):
     p = tmp_path / "filled.yaml"
     p.write_text(yaml.safe_dump(filled))
     proc = subprocess.run(
-        [sys.executable, str(VALIDATOR), str(p), "--strict"],
+        [sys.executable, str(VALIDATOR), str(p), "--strict", "--environment", "prod"],
         capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
@@ -612,7 +676,7 @@ def test_plaintext_secrets_fixture_covers_required_hysteria_masquerade_url():
 
 def test_example_fails_strict_via_cli():
     proc = subprocess.run(
-        [sys.executable, str(VALIDATOR), str(EXAMPLE), "--strict"],
+        [sys.executable, str(VALIDATOR), str(EXAMPLE), "--strict", "--environment", "prod"],
         capture_output=True, text=True,
     )
     assert proc.returncode == 1
@@ -718,7 +782,7 @@ def _validate_cli(doc, tmp_path):
     path = tmp_path / "secrets.yaml"
     path.write_text(yaml.safe_dump(doc))
     return subprocess.run(
-        [sys.executable, str(VALIDATOR), str(path), "--strict"],
+        [sys.executable, str(VALIDATOR), str(path), "--strict", "--environment", "prod"],
         capture_output=True,
         text=True,
     )
@@ -735,7 +799,7 @@ def _validate_cli_with_selector(doc, tmp_path, *, enabled):
         yaml.safe_dump(
             {
                 "observability_contract": {
-                    "enabled": enabled,
+                    "enabled_environments": ["staging"] if enabled else [],
                     "schema_version": 1,
                     "credential_mode": "systemd",
                 }
@@ -745,7 +809,8 @@ def _validate_cli_with_selector(doc, tmp_path, *, enabled):
     target = root / "secrets.yaml"
     target.write_text(yaml.safe_dump(doc))
     return subprocess.run(
-        [sys.executable, str(root / "scripts" / "validate-secrets.py"), str(target), "--strict"],
+        [sys.executable, str(root / "scripts" / "validate-secrets.py"), str(target),
+         "--strict", "--environment", "staging"],
         capture_output=True,
         text=True,
     )

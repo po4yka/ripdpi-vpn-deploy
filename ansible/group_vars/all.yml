@@ -263,10 +263,10 @@ network_exposure_gate:
   authorized_hosts: []
 
 # Versioned observability configuration accepts systemd credentials only.
-# Role enablement remains separate and default-off until its implementation
-# steps land; no plaintext-file or environment fallback is supported.
+# Runtime role enablement remains separate. Only staging inventory and secret
+# validation are enabled; production cutover requires an explicit change.
 observability_contract:
-  enabled: false
+  enabled_environments: [staging]
   schema_version: 1
   credential_mode: systemd
 

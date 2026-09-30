@@ -41,6 +41,18 @@ outside captured command output.
 
 ## Decisions
 
+### 0. Scope inventory and secret enablement to an explicit environment
+
+Replace `observability_contract.enabled` with `enabled_environments: [staging]`.
+The inventory renderer derives each environment from its provider/environment
+selection, never from an unrelated ambient default. Secret prechecks receive
+the actual selected inventory environments explicitly. Missing or malformed
+scope and mixed enabled/disabled environments refuse before external access.
+Production remains disabled; this does not enable a runtime role or authorize
+production cutover. The former boolean contract is rejected, not retained as a
+fallback. Tests cover staging success, unchanged disabled production behavior,
+mixed-scope refusal, and required staging secret blocks.
+
 ### 1. Use three provider roots with `ENV=staging` and preserve cross-provider dead-man placement
 
 A new canary VPN node is created from the UpCloud `staging` root because the

@@ -6,6 +6,25 @@ separate full staging matrix, fleet rollout, or authoritative paging cutover.
 
 ## ADDED Requirements
 
+### Requirement: REQ-STG-OBS-ENABLEMENT — Enablement is environment scoped
+
+The tracked observability contract MUST explicitly allow only `staging` until
+production cutover is separately approved. Inventory and strict secret checks
+MUST use their actual selected environments and MUST reject missing, malformed,
+or mixed enabled/disabled scope. The old global boolean MUST NOT be accepted.
+
+#### Scenario: Staging topology is enabled without production cutover
+
+- **WHEN** all selected hosts belong to the enabled staging environment
+- **THEN** the renderer requires complete topology and staging secrets, while
+  production-only inventory retains its disabled behavior.
+
+#### Scenario: Enabled and disabled environments are mixed
+
+- **WHEN** a selection combines staging and production
+- **THEN** validation refuses before provider or host access and preserves the
+  last valid inventory.
+
 ### Requirement: REQ-STG-OBS-TOPOLOGY — Staging uses independent disposable failure domains
 
 The staging acceptance topology MUST contain one observability control plane,
