@@ -41,28 +41,38 @@ The implementation MUST expose metrics ingestion only on the collector's existin
 - **WHEN** a client lacks a trusted certificate, uses a revoked identity, or cannot verify the collector IP SAN
 - **THEN** ingestion fails closed without TLS bypass or public-listener fallback.
 
-### Requirement: REQ-RBO-WATCHDOG — Independent managed loss detection
+### Requirement: REQ-RBO-WATCHDOG — Independently hosted loss detection
 
-The implementation MUST use separately scoped Healthchecks check credentials only after service consent and free-account capacity verification. Each enrolled node MUST send its own heartbeat directly; the collector MUST NOT proxy or synthesize node health. Collector/pipeline and Telegram-delivery checks MUST have independent conditions and credentials. Empty heartbeat bodies and technical aliases MUST disclose no VPN identities, metrics, or logs; source-IP disclosure MUST be acknowledged before activation.
+The implementation MUST use Uptime Kuma on an admitted existing host outside the VPN fleet, with private administration and a restricted private push ingress. Each enrolled node MUST send its own heartbeat directly; the collector MUST NOT proxy or synthesize node health. Collector/pipeline and Telegram-delivery monitors MUST have independent conditions and credentials. Minimal heartbeats and technical aliases MUST disclose no VPN identities, metrics, or logs. Push credentials MUST NOT enter request logs or command arguments. No hosted monitoring account is required.
 
 #### Scenario: Collector or node disappears
 
 - **WHEN** a node or collector stops producing fresh qualifying heartbeats
-- **THEN** its managed check becomes down at the configured period-plus-grace deadline, independently of the collector, and uses the separately verified notification integration.
+- **THEN** its Kuma monitor becomes down within the tested detection bound in design.md, independently of the collector, and uses the separately verified notification integration.
 
-#### Scenario: Managed endpoint fails
+#### Scenario: Observer or private path fails
 
 - **WHEN** outbound heartbeat requests fail
-- **THEN** producers retain bounded failure status, never log secret URLs, and expose failure through the surviving primary route without claiming the managed check is healthy.
+- **THEN** producers retain bounded failure status, never log secret URLs, and expose external-coverage loss through the surviving primary route without declaring a confirmed VPN outage or a healthy observer.
+
+#### Scenario: Observer restart or upgrade
+
+- **WHEN** the observer restarts or its version changes
+- **THEN** the pinned runtime and persisted monitors recover, and an encrypted consistent backup can restore the prior data with its matching image without duplicate live notifications.
+
+#### Scenario: Observer and collector fail together
+
+- **WHEN** both notification-producing hosts are unavailable
+- **THEN** the documented coverage reports no guaranteed alert delivery; neither local process supervision nor a saved healthy status counts as independent detection.
 
 ### Requirement: REQ-RBO-DELIVERY — Honest notification proof
 
-The implementation MUST preserve the existing custom-bot primary route and use a separate native managed-service Telegram integration for loss alarms. It MUST report API acceptance separately from human receipt and fresh-message delivery separately from message-edit credentials checks. It MUST NOT claim Telegram-independent transport or hourly Telegram reminders without a verified additional integration.
+The implementation MUST preserve the existing custom-bot primary route and use Kuma's native Telegram integration with a distinct secondary bot credential for loss alarms. It MUST report API acceptance separately from human receipt and fresh-message delivery separately from message-edit credentials checks. It MUST NOT claim Telegram-independent transport or a reminder interval without actual validation. Live observer data and backups containing notification credentials MUST be protected as secret material.
 
 #### Scenario: Primary bot loses authorization
 
 - **WHEN** the real relay's periodic credential canary fails or its receipt becomes stale
-- **THEN** the delivery heartbeat fails and the managed route alerts within its configured bound, without leaking either credential.
+- **THEN** the delivery heartbeat fails and Kuma detects the stale signal within its configured bound and attempts secondary notification, without leaking either credential or equating detection time with delivery time.
 
 #### Scenario: Both Telegram routes are unavailable
 
