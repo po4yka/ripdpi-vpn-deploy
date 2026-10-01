@@ -577,6 +577,7 @@ def _certificate(
     extensions = [
         "basicConstraints=critical,CA:FALSE",
         "keyUsage=critical,digitalSignature",
+        "authorityKeyIdentifier=keyid,issuer",
         f"extendedKeyUsage={purpose}",
     ]
     if sans:

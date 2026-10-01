@@ -248,9 +248,13 @@ Independent controller homes are not a supported shared-ownership mechanism.
   Remote deadline retries are distinct from an unresponsive SSH session; cloud-init
   exit codes 1 and 2 both refuse readiness even when the marker already exists.
   Keep raw cloud-init output suppressed and reclaim the owned SSH group on interruption.
-- **First-boot SSH uses only its selected key** — the wait adapter must pass
-  `IdentitiesOnly=yes` with its `-i` key. An operator's SSH agent may otherwise
-  offer enough unrelated keys for the server to reject authentication first.
+- **First-boot SSH uses only its selected key** — the wait adapter must ignore
+  operator SSH config with `-F /dev/null`, disable the agent with
+  `IdentityAgent=none`, and pass `IdentitiesOnly=yes` with its `-i` key.
+  Otherwise unrelated configured or agent keys may exhaust server auth attempts.
+- **Staging observability leaf certificates carry their CA key ID** — OpenSSL 4
+  strict verification rejects a CA-issued client certificate without an
+  Authority Key Identifier. Keep it in the generated leaf extension file.
 - **Rollback state must be readable before mutation** — enforce the same byte
   limit on serialized pending writes and reads, including base64 snapshots.
   SSH/job/monitor deadlines must leave room around the shared probe budget.

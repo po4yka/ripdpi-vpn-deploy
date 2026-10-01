@@ -311,8 +311,9 @@ import json, os, subprocess, sys, time
 from pathlib import Path
 with open(os.environ["WAIT_SSH_LOG"], "a") as stream:
     stream.write(json.dumps(sys.argv[1:]) + "\\n")
-if os.environ.get("WAIT_REQUIRE_IDENTITIES_ONLY") == "1" and "IdentitiesOnly=yes" not in sys.argv[1:]:
-    sys.exit(255)
+if os.environ.get("WAIT_REQUIRE_IDENTITIES_ONLY") == "1":
+    if sys.argv[1:3] != ["-F", "/dev/null"] or "IdentitiesOnly=yes" not in sys.argv[1:] or "IdentityAgent=none" not in sys.argv[1:]:
+        sys.exit(255)
 if sys.argv[-1] == "true":
     sys.exit(0)
 if os.environ.get("WAIT_SSH_FAULT") == "hang":
@@ -368,6 +369,8 @@ def test_wait_uses_only_the_selected_key_when_an_agent_is_present(tmp_path):
     calls = [json.loads(line) for line in Path(environment["WAIT_SSH_LOG"]).read_text().splitlines()]
     assert len(calls) == 2
     assert all("IdentitiesOnly=yes" in call for call in calls)
+    assert all(call[:2] == ["-F", "/dev/null"] for call in calls)
+    assert all("IdentityAgent=none" in call for call in calls)
 
 
 @pytest.mark.parametrize("cloud_code", [124, 137])
