@@ -6,7 +6,7 @@ global:
 
 scrape_configs:
   - job_name: node-exporter
-    sample_limit: {{ observability_agent.scrape_sample_limit }}
+    sample_limit: {{ observability_agent.scrape_sample_limit - 200 }}
     label_limit: {{ observability_agent.scrape_label_limit }}
     label_name_length_limit: {{ observability_agent.scrape_label_name_length_limit }}
     label_value_length_limit: {{ observability_agent.scrape_label_value_length_limit }}
@@ -14,7 +14,7 @@ scrape_configs:
       - targets: ["127.0.0.1:9100"]
     metric_relabel_configs:
       - source_labels: [__name__]
-        regex: "^(node_(cpu|memory|filesystem|time|boot|network|disk|filefd)_.*|node_load(1|5|15)|vpn_(xray_stats|observability_|watchdog_|backup_|certificate_|honeypot_|policy_ratelimit_|burn_).*)$"
+        regex: "^(node_(cpu|memory|filesystem|time|boot|network|disk|filefd)_.*|node_load(1|5|15)|observability_push_.*|vpn_(xray_stats|observability_|watchdog_|backup_|certificate_|honeypot_|policy_ratelimit_|burn_).*)$"
         action: keep
       - source_labels: [mountpoint]
         regex: "^$|^/$"
@@ -22,10 +22,10 @@ scrape_configs:
       - source_labels: [device]
         regex: "^$|^(lo|eth[0-9]+|ens[0-9]+|enp[0-9a-z]+|vda[0-9]*|sda[0-9]*|nvme[0-9]+n[0-9]+p?[0-9]*)$"
         action: keep
-      - regex: "^(__name__|job|cpu|mode|device|fstype|mountpoint|node|role|state)$"
+      - regex: "^(__name__|job|cpu|mode|device|fstype|mountpoint|node|role|state|kind)$"
         action: labelkeep
   - job_name: node-exporter-required-services
-    sample_limit: {{ observability_agent.scrape_sample_limit }}
+    sample_limit: 150
     label_limit: {{ observability_agent.scrape_label_limit }}
     label_name_length_limit: {{ observability_agent.scrape_label_name_length_limit }}
     label_value_length_limit: {{ observability_agent.scrape_label_value_length_limit }}
@@ -38,7 +38,7 @@ scrape_configs:
       - regex: "^(__name__|job|name|state)$"
         action: labelkeep
   - job_name: observability-agent
-    sample_limit: {{ observability_agent.scrape_sample_limit }}
+    sample_limit: 50
     label_limit: {{ observability_agent.scrape_label_limit }}
     label_name_length_limit: {{ observability_agent.scrape_label_name_length_limit }}
     label_value_length_limit: {{ observability_agent.scrape_label_value_length_limit }}
@@ -57,10 +57,11 @@ remote_write:
       ca_file: receiver-ca.crt
       cert_file: client.crt
       key_file: client.key
-      server_name: "{{ observability_agent.receiver_sni }}"
+      server_name: "{{ observability_agent.receiver_address }}"
       insecure_skip_verify: false
     queue_config:
       capacity: {{ observability_agent.queue_capacity }}
-      max_shards: 4
+      min_shards: 1
+      max_shards: 1
       max_samples_per_send: {{ observability_agent.queue_max_samples_per_send }}
       batch_send_deadline: {{ observability_agent.queue_batch_send_deadline }}

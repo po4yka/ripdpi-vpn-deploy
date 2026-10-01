@@ -1,5 +1,5 @@
 global:
-  scrape_interval: 30s
+  scrape_interval: 60s
   external_labels:
     component: observability-control-plane
 
@@ -24,14 +24,23 @@ alerting:
 {% endif %}
 
 scrape_configs:
-  - job_name: observability-control-plane
-    static_configs:
-      - targets: ['127.0.0.1:9100']
 {% if (observability_control_plane.alerting | default({'enabled': false}, true)).enabled | default(false) %}
   - job_name: observability-alertmanager
+    sample_limit: 500
+    label_limit: 16
+    label_name_length_limit: 64
+    label_value_length_limit: 128
     authorization:
       type: Bearer
       credentials_file: /run/credentials/observability-prometheus.service/silence-sender-token
     static_configs:
       - targets: ['127.0.0.1:19094']
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "^alertmanager_notifications_(total|failed_total)$"
+        action: keep
+      - regex: "^(__name__|job|integration)$"
+        action: labelkeep
+{% else %}
+  []
 {% endif -%}

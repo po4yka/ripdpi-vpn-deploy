@@ -43,11 +43,6 @@ SERVICES = [
     "observability-telegram-relay.service",
     "observability-silence-gateway.service",
     "observability-prometheus.service",
-    "observability-deadman-pipeline.service",
-    "observability-deadman-pulse.service",
-    "observability-primary-canary.service",
-    "observability-deadman-pulse.timer",
-    "observability-primary-canary.timer",
 ]
 FIXED = (
     [CREDENTIALS + name for name in NAMES]

@@ -1,4 +1,13 @@
 ---
+- name: Reload observability resource boundary
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Restart observability disk guard
+  ansible.builtin.systemd_service:
+    name: observability-disk-guard
+    state: restarted
+
 - name: Reload systemd for observability control plane
   ansible.builtin.systemd_service:
     daemon_reload: true
@@ -13,6 +22,6 @@
 
 - name: Reload observability ingress
   ansible.builtin.systemd_service:
-    name: nginx
-    state: reloaded
+    name: observability-ingress
+    state: restarted
   when: not ansible_check_mode

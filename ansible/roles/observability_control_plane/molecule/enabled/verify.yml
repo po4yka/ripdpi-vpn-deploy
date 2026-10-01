@@ -3,9 +3,9 @@
   hosts: all
   become: true
   tasks:
-    - name: Assert nginx and Prometheus are enabled and active
+    - name: Assert isolated ingress and Prometheus are enabled and active
       ansible.builtin.command:
-        argv: [systemctl, is-active, --quiet, nginx]
+        argv: [systemctl, is-active, --quiet, observability-ingress]
       changed_when: false
 
     - name: Wait for the receiver and assert the authenticated GET refusal
@@ -19,7 +19,7 @@
           - --key
           - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.key
           - --server-name
-          - ingest.fixture.test
+          - 10.23.0.2
           - --path
           - /remote-write/v1/nodes/vpn-p0
       register: get_request
@@ -48,7 +48,7 @@
       register: expected_target_opt_out_surfaces
       failed_when: expected_target_opt_out_surfaces.stat.exists
 
-    - name: Assert alerting opt-out removed only its owned runtime surfaces
+    - name: Assert mandatory alerting retains its owned runtime surfaces
       ansible.builtin.stat:
         path: "{{ item }}"
         follow: false
@@ -56,15 +56,11 @@
         - /etc/systemd/system/observability-alertmanager.service
         - /etc/systemd/system/observability-silence-gateway.service
         - /usr/local/libexec/observability-silence-gateway
-        - /etc/observability-control-plane/credentials/silence-auth.json
-        - /etc/observability-control-plane/credentials/silence-owner-operator-a-token
         - /etc/observability-control-plane/alertmanager-current.yml
-        - /etc/observability-control-plane/alertmanager-previous.yml
-        - /etc/observability-control-plane/credentials/telegram-bot-token
       register: alerting_opt_out_surfaces
-      failed_when: alerting_opt_out_surfaces.stat.exists
+      failed_when: not alerting_opt_out_surfaces.stat.exists
 
-    - name: Assert Alertmanager state remains after alerting opt-out
+    - name: Assert Alertmanager state remains after expected-target opt-out
       ansible.builtin.stat:
         path: /var/lib/observability-alertmanager
       register: retained_alertmanager_state
@@ -142,7 +138,7 @@
           - --key
           - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.key
           - --server-name
-          - ingest.fixture.test
+          - 10.23.0.2
           - --path
           - /remote-write/v1/nodes/vpn-p1
       register: mismatched_cn
@@ -151,6 +147,29 @@
       retries: 2
       delay: 1
       until: (mismatched_cn.msg | default('')) != 'Error executing command.'
+
+    - name: Reject authenticated query parameters before remote-write forwarding
+      ansible.builtin.command:
+        argv:
+          - /var/tmp/observability-control-plane-fixture/mtls-client.py
+          - --method
+          - POST
+          - --ca
+          - /var/tmp/observability-control-plane-fixture/tls/ca.crt
+          - --cert
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.crt
+          - --key
+          - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.key
+          - --server-name
+          - 10.23.0.2
+          - --path
+          - /remote-write/v1/nodes/vpn-p0?probe=1
+      register: query_request
+      changed_when: false
+      failed_when: query_request.stdout != '400' or query_request.rc != 0
+      retries: 2
+      delay: 1
+      until: (query_request.msg | default('')) != 'Error executing command.'
 
     - name: Submit an oversized request and require exact server-side 413
       ansible.builtin.command:
@@ -167,7 +186,7 @@
           - --key
           - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.key
           - --server-name
-          - ingest.fixture.test
+          - 10.23.0.2
           - --path
           - /remote-write/v1/nodes/vpn-p0
       register: oversized_request
@@ -177,7 +196,7 @@
       delay: 1
       until: oversized_request.stdout == '413' and oversized_request.rc == 0
 
-    - name: Assert valid mTLS remote write reaches only loopback Prometheus
+    - name: Assert invalid protobuf reaches real Prometheus and is rejected
       ansible.builtin.command:
         argv:
           - /var/tmp/observability-control-plane-fixture/mtls-client.py
@@ -192,22 +211,35 @@
           - --key
           - /var/tmp/observability-control-plane-fixture/tls/client-vpn-p0.key
           - --server-name
-          - ingest.fixture.test
+          - 10.23.0.2
           - --path
           - /remote-write/v1/nodes/vpn-p0
       register: valid_write
       changed_when: false
-      failed_when: valid_write.stdout != '200'
+      failed_when: valid_write.stdout != '400'
       retries: 2
       delay: 1
       until: (valid_write.msg | default('')) != 'Error executing command.'
 
-    - name: Assert failed candidate rollback restores an immutable generation
+    - name: Assert published generation remains content-addressed
       ansible.builtin.command:
-        argv: [readlink, /etc/observability-control-plane/current.yml]
+        argv:
+          - python3
+          - -c
+          - |
+            import hashlib
+            from pathlib import Path
+            link = Path('/etc/observability-control-plane/current.yml')
+            assert link.is_symlink()
+            target = link.resolve(strict=True)
+            assert target.parent == link.parent / 'generations'
+            assert target.stem == hashlib.sha256(target.read_bytes()).hexdigest()
       changed_when: false
 
     - name: Assert TSDB free-space preflight remains enforced
       ansible.builtin.command:
         argv: [df, -PB1, /var/lib/observability-prometheus]
       changed_when: false
+
+    - name: Exercise real cohosted receiver and monitoring-only failure boundaries
+      ansible.builtin.include_tasks: tasks/bounded-runtime.yml

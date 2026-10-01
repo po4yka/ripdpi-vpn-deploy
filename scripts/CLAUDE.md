@@ -9,12 +9,16 @@ data shaping are Python and use only stdlib + pinned `PyYAML`, `Jinja2`, or
 
 **One file per operator verb** — `bootstrap-secrets.sh`, `rotate-secrets.sh`,
 `fleet-rotate.sh`. The Makefile wraps these with `make <target>` shorthand.
-`observability-operator.py bootstrap` is the fixed staging-only exception for
-fresh control-plane and dead-man hosts: it validates the clean topology-bound
-host class, provider listener contract and source-restricted SSH CIDRs before
-running only `observability-host-bootstrap.yml` against one isolated host.
-It never accepts VPN-class hosts, production, arbitrary roles, or secrets.
-`observability-staging-acceptance.py` is the other staging-only exception: one
+`observability-operator.py` now selects co-hosted VPN capabilities and the
+independent typed Kuma observer; dedicated-host `bootstrap` refuses before
+host access. Local `render` and syntax `validate` do not admit a host; `check`
+requires explicit host-access confirmation. Private-IP PKI preparation produces
+an encrypted fragment without contacting a host or issuing Telegram credentials.
+The shared PKI helpers explicitly emit CA/leaf subject-key identifiers and leaf
+authority-key identifiers; strict verification must not rely on OpenSSL's
+implicit extension defaults.
+`observability-staging-acceptance.py` retains the historical dedicated-host
+staging contract, not acceptance for the current co-hosted topology: one
 invocation advances one repository-defined live row from a private canonical
 manifest, approval and journal. Keep the critical reminder at the real one-hour
 interval, require separate human-observation booleans, restore interrupted rows

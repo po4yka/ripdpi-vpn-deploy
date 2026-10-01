@@ -123,12 +123,12 @@ def test_sender_constructs_exact_node_bound_write_path_and_sni() -> None:
     template = (ROLE / "templates" / "prometheus.yml.j2").read_text(encoding="utf-8")
 
     assert "/remote-write/v1/nodes/{{ observability_agent.node_id }}" in template
-    assert 'server_name: "{{ observability_agent.receiver_sni }}"' in template
+    assert 'server_name: "{{ observability_agent.receiver_address }}"' in template
     assert "cert_file: client.crt" in template
     assert "key_file: client.key" in template
     assert "ca_file: receiver-ca.crt" in template
     assert "/run/credentials/observability-agent.service" not in template
-    assert "max_shards: 4" in template
+    assert "max_shards: 1" in template
     assert "127.0.0.1:9100" in template
     assert "{{ observability_agent.web_listen }}" in template
 
@@ -143,7 +143,7 @@ def test_sender_template_renders_node_path_without_credential_values() -> None:
                 "required_systemd_units": ["nginx.service", "xray.service"]
             },
             observability_agent={
-                "scrape_interval": "30s",
+                "scrape_interval": "60s",
                 "scrape_sample_limit": 2000,
                 "scrape_label_limit": 16,
                 "scrape_label_name_length_limit": 64,
@@ -151,8 +151,8 @@ def test_sender_template_renders_node_path_without_credential_values() -> None:
                 "environment": "prod",
                 "node_id": "edge-prod",
                 "web_listen": "127.0.0.1:19090",
-                "receiver_origin": "https://receiver.test",
-                "receiver_sni": "ingest.internal.test",
+                "receiver_origin": "https://10.23.0.2:9443",
+                "receiver_address": "10.23.0.2",
                 "queue_capacity": 5000,
                 "queue_max_samples_per_send": 1000,
                 "queue_batch_send_deadline": "5s",
@@ -166,8 +166,8 @@ def test_sender_template_renders_node_path_without_credential_values() -> None:
         "node": "edge-prod",
     }
     receiver = document["remote_write"][0]
-    assert receiver["url"] == "https://receiver.test/remote-write/v1/nodes/edge-prod"
-    assert receiver["tls_config"]["server_name"] == "ingest.internal.test"
+    assert receiver["url"] == "https://10.23.0.2:9443/remote-write/v1/nodes/edge-prod"
+    assert receiver["tls_config"]["server_name"] == "10.23.0.2"
     assert receiver["tls_config"]["key_file"] == "client.key"
     assert "BEGIN" not in rendered
 
@@ -213,9 +213,10 @@ def test_scrapes_have_explicit_sample_and_label_bounds() -> None:
     template = (ROLE / "templates" / "prometheus.yml.j2").read_text(encoding="utf-8")
 
     assert (
-        template.count("sample_limit: {{ observability_agent.scrape_sample_limit }}")
-        == 3
+        "sample_limit: {{ observability_agent.scrape_sample_limit - 200 }}" in template
     )
+    assert "sample_limit: 150" in template
+    assert "sample_limit: 50" in template
     assert (
         template.count("label_limit: {{ observability_agent.scrape_label_limit }}") == 3
     )
@@ -227,9 +228,11 @@ def test_scrapes_have_explicit_sample_and_label_bounds() -> None:
     assert "node_mountpoint_allowlist" not in template
     assert "self_metric_name_allowlist" not in template
     assert "^(node_(cpu|memory|filesystem|time|boot|network|disk|filefd)_.*" in template
+    assert "observability_push_.*" in template
     assert "node_load(1|5|15)" in template
     assert (
-        "^(__name__|job|cpu|mode|device|fstype|mountpoint|node|role|state)$" in template
+        "^(__name__|job|cpu|mode|device|fstype|mountpoint|node|role|state|kind)$"
+        in template
     )
     assert 'node: "{{ observability_agent.node_id }}"' in template
     for family_prefix in (
@@ -253,7 +256,7 @@ def test_required_systemd_scrape_is_exactly_allowlisted() -> None:
                 "required_systemd_units": ["nginx.service", "xray.service"]
             },
             observability_agent={
-                "scrape_interval": "30s",
+                "scrape_interval": "60s",
                 "scrape_sample_limit": 2000,
                 "scrape_label_limit": 16,
                 "scrape_label_name_length_limit": 64,
@@ -261,8 +264,8 @@ def test_required_systemd_scrape_is_exactly_allowlisted() -> None:
                 "environment": "prod",
                 "node_id": "edge-prod",
                 "web_listen": "127.0.0.1:19090",
-                "receiver_origin": "https://receiver.test",
-                "receiver_sni": "ingest.internal.test",
+                "receiver_origin": "https://10.23.0.2:9443",
+                "receiver_address": "10.23.0.2",
                 "queue_capacity": 5000,
                 "queue_max_samples_per_send": 1000,
                 "queue_batch_send_deadline": "5s",
@@ -352,11 +355,7 @@ def test_credentials_are_validated_as_a_bundle_before_atomic_generation_switch()
     )
     restart_previous = tasks.index("Restart restored observability generation")
     assert (
-        restore
-        < bind_previous
-        < restore_unit
-        < restore_health_unit
-        < restart_previous
+        restore < bind_previous < restore_unit < restore_health_unit < restart_previous
     )
     normalize = tasks.index("Normalize active observability credential generation")
     rollback = tasks[restore:restart_previous]
@@ -677,7 +676,7 @@ def test_enabled_fixture_certificates_are_explicitly_valid_for_strict_mtls() -> 
     assert "keyUsage=critical,digitalSignature" in prepare
     assert "extendedKeyUsage=serverAuth" in prepare
     assert "extendedKeyUsage=clientAuth" in prepare
-    assert "subjectAltName=DNS:ingest.fixture.test" in prepare
+    assert "subjectAltName=IP:10.23.0.2" in prepare
 
 
 def test_enabled_fixture_creates_diagnostic_account_before_runtime_ownership() -> None:
@@ -709,7 +708,11 @@ def test_enabled_fixture_keeps_textfile_ancestors_private() -> None:
     tasks = yaml.safe_load(
         (ROLE / "molecule" / "enabled" / "prepare.yml").read_text(encoding="utf-8")
     )[0]["tasks"]
-    directories = tasks[0]["loop"]
+    directories = next(
+        task["loop"]
+        for task in tasks
+        if task["name"] == "Create observability fixture directories"
+    )
     by_path = {item["path"]: item["mode"] for item in directories}
     paths = [item["path"] for item in directories]
 

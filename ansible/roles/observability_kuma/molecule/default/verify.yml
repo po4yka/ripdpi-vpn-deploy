@@ -1,0 +1,74 @@
+---
+- name: Verify disabled observer lifecycle without claiming enabled convergence
+  hosts: all
+  become: true
+  tasks:
+    - name: Check historical data and credentials are retained
+      ansible.builtin.stat:
+        path: "{{ item }}/keep"
+      loop:
+        - /var/lib/observability-kuma
+        - /etc/observability-kuma
+      register: retained
+      failed_when: not retained.stat.exists
+
+    - name: Check obsolete push metric is absent
+      ansible.builtin.stat:
+        path: /var/lib/node_exporter/textfile/observability-push-node.prom
+      register: push_metric
+      failed_when: push_metric.stat.exists
+
+    - name: Verify role-owned fixtures stopped
+      ansible.builtin.command:
+        argv: [/usr/bin/systemctl, is-active, "{{ item }}"]
+      loop:
+        - observability-kuma-backup.timer
+        - observability-kuma-backup.service
+        - observability-kuma.service
+        - observability-push-node.service
+        - observability-push-node.timer
+      register: stopped
+      changed_when: false
+      failed_when: stopped.stdout | trim != 'inactive'
+
+    - name: Verify disabled observer and producer units cannot restart at boot
+      ansible.builtin.command:
+        argv: [/usr/bin/systemctl, is-enabled, "{{ item }}"]
+      loop:
+        - observability-kuma-backup.timer
+        - observability-kuma.service
+        - observability-push-node.service
+        - observability-push-node.timer
+      register: disabled
+      changed_when: false
+      failed_when: disabled.stdout | trim != 'disabled'
+
+    - name: Confirm backup finalizer actually restarted observer before final stop
+      ansible.builtin.slurp:
+        src: /var/lib/observability-kuma/backup-finalizer-ran
+      register: backup_finalizer
+      failed_when: (backup_finalizer.content | b64decode | trim) != 'observer restarted by backup finalizer'
+
+    - name: Exercise production restore extractor under its exact Linux capability boundary
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/systemd-run
+          - --wait
+          - --pipe
+          - --collect
+          - --property=CapabilityBoundingSet=CAP_CHOWN CAP_DAC_READ_SEARCH
+          - --property=NoNewPrivileges=true
+          - --property=ProtectSystem=strict
+          - --property=ReadWritePaths=/var/lib/observability-kuma-restores
+          - /usr/bin/python3
+          - /usr/local/libexec/observability-kuma-restore-capabilities.py
+      register: restore_capability_proof
+      changed_when: false
+      failed_when: >-
+        restore_capability_proof.rc != 0 or
+        (restore_capability_proof.stdout | from_json).production_extractor != 'passed'
+
+    - name: Verify unrelated service is still active
+      ansible.builtin.command:
+        argv: [/usr/bin/systemctl, is-active, --quiet, vpn-unrelated-fixture.service]
+      changed_when: false

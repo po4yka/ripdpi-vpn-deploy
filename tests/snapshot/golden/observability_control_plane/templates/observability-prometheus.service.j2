@@ -2,16 +2,20 @@
 Description=Observability Prometheus control plane
 After=network-online.target
 Wants=network-online.target
+BindsTo=observability-disk-guard.service
+After=observability-disk-guard.service
+ConditionPathExists=!/var/lib/observability-disk-guard/latched
 
 [Service]
-User=prometheus
-Group=prometheus
+Slice=observability-collector.slice
+User=observability-prometheus
+Group=observability-prometheus
 
-ExecStart=/usr/local/libexec/observability-prometheus --config.file=/etc/observability-control-plane/current.yml --web.listen-address=127.0.0.1:9090 --web.enable-remote-write-receiver --storage.tsdb.path=/var/lib/observability-prometheus --storage.tsdb.retention.time=30d --storage.tsdb.retention.size=20GB
+ExecStart=/usr/local/libexec/observability-prometheus --config.file=/etc/observability-control-plane/current.yml --web.listen-address=127.0.0.1:9090 --web.enable-remote-write-receiver --storage.tsdb.path=/var/lib/observability-prometheus --storage.tsdb.retention.time=7d --storage.tsdb.retention.size=1GB
 Restart=on-failure
 RestartSec=5s
 TimeoutStartSec=30s
-TimeoutStopSec=30s
+TimeoutStopSec=0s
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
@@ -27,7 +31,12 @@ RestrictNamespaces=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 ReadWritePaths=/var/lib/observability-prometheus
 ReadOnlyPaths=/etc/observability-control-plane /usr/local/libexec/observability-prometheus
-MemoryMax=1G
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+MemoryMax=512M
 TasksMax=256
 
 [Install]

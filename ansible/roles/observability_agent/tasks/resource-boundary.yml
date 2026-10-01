@@ -1,0 +1,16 @@
+---
+- name: Install fixed aggregate sender and producer resource boundary
+  ansible.builtin.template:
+    src: observability-agent.slice.j2
+    dest: /etc/systemd/system/observability-agent.slice
+    owner: root
+    group: root
+    mode: "0644"
+  register: _observability_agent_slice
+
+- name: Apply aggregate boundary before any sender or producer starts
+  ansible.builtin.systemd_service:
+    name: observability-agent.slice
+    state: started
+    daemon_reload: "{{ _observability_agent_slice.changed }}"
+  when: not ansible_check_mode

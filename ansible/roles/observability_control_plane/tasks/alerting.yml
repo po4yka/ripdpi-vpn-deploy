@@ -1,4 +1,18 @@
 ---
+- name: Create persistent primary relay group
+  ansible.builtin.group:
+    name: observability-telegram-relay
+    system: true
+
+- name: Create persistent primary relay account
+  ansible.builtin.user:
+    name: observability-telegram-relay
+    group: observability-telegram-relay
+    system: true
+    shell: /usr/sbin/nologin
+    home: /var/lib/observability-telegram-relay
+    create_home: false
+
 - name: Install pinned promtool through runtime-release
   ansible.builtin.include_role:
     name: runtime-release

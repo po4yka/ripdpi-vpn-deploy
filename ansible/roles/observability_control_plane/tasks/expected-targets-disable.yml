@@ -1,18 +1,21 @@
 ---
-- name: Gather expected-target adapter service facts
-  ansible.builtin.service_facts:
-
-- name: Stop and disable expected-target adapter units
-  ansible.builtin.systemd_service:
-    name: "{{ item }}"
-    enabled: false
-    state: stopped
+- name: Inspect expected-target adapter owned units
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/{{ item }}"
   loop:
     - observability-control-plane-adapter.timer
     - observability-control-plane-adapter.service
+  register: _observability_expected_target_units
+
+- name: Stop and disable expected-target adapter units
+  ansible.builtin.systemd_service:
+    name: "{{ item.item }}"
+    enabled: false
+    state: stopped
+  loop: "{{ _observability_expected_target_units.results }}"
   when:
     - not ansible_check_mode
-    - item in ansible_facts.services
+    - item.stat.exists
 
 - name: Remove expected-target adapter owned surfaces
   ansible.builtin.file:

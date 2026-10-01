@@ -1,0 +1,208 @@
+---
+- name: Verify actual cohosted runtime samples and aggregate resource boundaries
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json, pathlib, subprocess, time, urllib.error, urllib.parse, urllib.request
+        def prop(unit, name):
+            return subprocess.check_output(['systemctl', 'show', unit, '-p', name, '--value'], text=True).strip()
+        def query(expression):
+            url = 'http://127.0.0.1:9090/api/v1/query?' + urllib.parse.urlencode({'query': expression})
+            with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(url, timeout=5) as response:
+                return json.load(response)['data']['result']
+        deadline = time.monotonic() + 150
+        while time.monotonic() < deadline:
+            samples = query('up{job="node-exporter",node="vpn-p0"}')
+            if samples and samples[0]['value'][1] == '1':
+                break
+            time.sleep(3)
+        else:
+            raise RuntimeError('real_agent_remote_write_missing')
+        assert query('node_memory_MemAvailable_bytes{node="vpn-p0"}')
+        assert query('node_cpu_seconds_total{node="vpn-p0"}')
+        for unit, memory, cpu in [('observability-collector.slice', '536870912', '200ms'),
+                                  ('observability-agent.slice', '201326592', '100ms')]:
+            assert prop(unit, 'MemoryMax') == memory
+            assert prop(unit, 'MemorySwapMax') == '0'
+            assert prop(unit, 'CPUQuotaPerSecUSec') == cpu
+            assert prop(unit, 'IOWeight') == '10'
+        for unit in ['observability-prometheus', 'observability-ingress', 'observability-disk-guard',
+                     'observability-alertmanager', 'observability-silence-gateway', 'observability-telegram-relay']:
+            assert prop(unit, 'Slice') == 'observability-collector.slice', unit
+            assert prop(unit, 'ActiveState') == 'active', unit
+        for unit in ['observability-agent', 'observability-agent-adapter', 'observability-agent-health-adapter']:
+            assert prop(unit, 'Slice') == 'observability-agent.slice', unit
+        fixture = pathlib.Path('/var/tmp/observability-control-plane-fixture')
+        assert prop('nginx', 'MainPID') == (fixture/'public-nginx.pid').read_text().strip()
+        assert prop('nginx', 'Slice') == 'system.slice'
+        assert pathlib.Path('/etc/nginx/sites-enabled/default').is_symlink()
+        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open('http://127.0.0.1:80/', timeout=5) as response:
+            assert response.status == 200
+        assert not query('node_uname_info{node="vpn-p0"}')
+        print('real_remote_write=pass aggregate_limits=pass public_nginx_identity=unchanged')
+  changed_when: false
+
+- name: Verify fresh real rule-to-relay receipt and honest primary-delivery refusal
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json, pathlib, time, urllib.error, urllib.request
+        token = pathlib.Path('/etc/observability-control-plane/credentials/telegram-relay-auth-token').read_text().strip()
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        def request(path, method='GET'):
+            req = urllib.request.Request('http://127.0.0.1:19095' + path, method=method,
+                                         headers={'Authorization': 'Bearer ' + token})
+            with opener.open(req, timeout=40) as response:
+                return json.load(response)
+        deadline = time.monotonic() + 150
+        while time.monotonic() < deadline:
+            receipt = request('/v1/receipts')
+            if 0 <= time.time() - receipt['rule_to_relay_at'] <= 150:
+                break
+            time.sleep(3)
+        else:
+            raise RuntimeError('real_rule_to_relay_receipt_missing')
+        try:
+            request('/v1/delivery-canary', 'POST')
+        except urllib.error.HTTPError as error:
+            assert error.code == 502
+        else:
+            raise RuntimeError('fixture_must_not_claim_real_telegram_delivery')
+        receipt = request('/v1/receipts')
+        assert receipt['send_at'] == 0 and receipt['edit_at'] == 0
+        print('real_rule_to_relay=pass real_telegram_delivery=unverified_and_refused')
+  changed_when: false
+
+- name: Verify qualified producers use independent direct HTTPS transports
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json, pathlib, subprocess, time
+        path = pathlib.Path('/var/tmp/observability-control-plane-fixture/push-observations.json')
+        for kind in ['node', 'pipeline']:
+            subprocess.run(['systemctl', 'start', 'observability-push-' + kind + '.service'],
+                           check=True, capture_output=True)
+        observations = json.loads(path.read_text())
+        assert all(0 <= time.time() - observations[kind] < 30 for kind in ['node', 'pipeline'])
+        assert 'delivery' not in observations
+        print('qualified_node_and_pipeline_https=pass observer_monitor_semantics=separate_acceptance')
+  changed_when: false
+
+- name: Exercise real WAL retention across collector outage and agent restart
+  tags: [wal-recovery]
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json, pathlib, subprocess, time, urllib.error, urllib.parse, urllib.request
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        def systemctl(*args):
+            subprocess.run(['systemctl', *args], check=True, capture_output=True)
+        systemctl('stop', 'observability-ingress', 'observability-prometheus')
+        outage_at = time.time()
+        try:
+            time.sleep(70)
+            outage_end = time.time()
+            systemctl('restart', 'observability-agent')
+            assert any(pathlib.Path('/var/lib/observability-agent/wal').rglob('*'))
+            systemctl('is-active', '--quiet', 'nginx')
+        finally:
+            systemctl('start', 'observability-prometheus', 'observability-ingress')
+        expression = 'timestamp(up{job="node-exporter",node="vpn-p0"})'
+        url = 'http://127.0.0.1:9090/api/v1/query?' + urllib.parse.urlencode({'query': expression, 'time': outage_end})
+        deadline = time.monotonic() + 90
+        while time.monotonic() < deadline:
+            try:
+                with opener.open(url, timeout=5) as response:
+                    values = json.load(response)['data']['result']
+            except urllib.error.HTTPError as error:
+                if error.code != 503:
+                    raise
+                values = []
+            except urllib.error.URLError:
+                values = []
+            if values and outage_at < float(values[0]['value'][1]) <= outage_end:
+                break
+            time.sleep(3)
+        else:
+            raise RuntimeError('wal_backlog_not_recovered')
+        print('collector_outage_at_least=70s agent_restart=pass wal_recovery=pass')
+  changed_when: false
+
+- name: Exercise actual-filesystem high-water latch without altering VPN services
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import pathlib, subprocess, time
+        root = pathlib.Path('/var/lib/observability-prometheus')
+        pressure = root / 'molecule-pressure-only'
+        latch = pathlib.Path('/var/lib/observability-disk-guard/latched')
+        assert not pressure.exists() and not latch.exists()
+        def prop(unit, name):
+            return subprocess.check_output(['systemctl', 'show', unit, '-p', name, '--value'], text=True).strip()
+        original = prop('nginx', 'MainPID')
+        baseline = sum(path.lstat().st_blocks * 512 for path in root.rglob('*'))
+        pressure_bytes = 2*1024**3 - 128*1024**2 - baseline + 4096
+        assert pressure_bytes > 0
+        started = time.monotonic()
+        try:
+            subprocess.run(['fallocate', '-l', str(pressure_bytes), str(pressure)], check=True)
+            assert pressure.stat().st_blocks * 512 >= pressure_bytes
+            deadline = time.monotonic() + 45
+            while time.monotonic() < deadline:
+                if latch.exists() and all(prop(unit, 'ActiveState') != 'active'
+                                          for unit in ['observability-prometheus', 'observability-ingress']):
+                    break
+                time.sleep(1)
+            else:
+                raise RuntimeError('disk_high_water_did_not_stop_ingestion')
+            elapsed = time.monotonic() - started
+            subprocess.run(['systemctl', 'start', 'observability-prometheus', 'observability-ingress'],
+                           capture_output=True, check=False)
+            assert prop('observability-prometheus', 'ActiveState') != 'active'
+            assert prop('observability-ingress', 'ActiveState') != 'active'
+            assert prop('nginx', 'MainPID') == original
+            assert prop('nginx', 'ActiveState') == 'active'
+            assert prop('observability-agent', 'ActiveState') == 'active'
+            print('actual_filesystem_high_water=pass latch_restart_refusal=pass stop_seconds=%.2f' % elapsed)
+        finally:
+            if pressure.exists():
+                pressure.unlink()
+            # Explicit recovery is allowed only for this scenario's own pressure event.
+            if latch.exists():
+                latch.unlink()
+            subprocess.run(['systemctl', 'reset-failed', 'observability-disk-guard', 'observability-prometheus',
+                            'observability-ingress'], check=True, capture_output=True)
+            subprocess.run(['systemctl', 'start', 'observability-disk-guard', 'observability-prometheus',
+                            'observability-ingress'], check=True, capture_output=True)
+  changed_when: false
+  register: disk_guard_runtime
+
+- name: Report actual allocated-block guard stop observation
+  ansible.builtin.debug:
+    msg: "{{ disk_guard_runtime.stdout }}"
+
+- name: Require unchanged public TLS listener after monitoring failures
+  ansible.builtin.command:
+    argv:
+      - curl
+      - --disable
+      - --noproxy
+      - '*'
+      - --fail
+      - --silent
+      - --cacert
+      - /var/tmp/observability-control-plane-fixture/tls/ca.crt
+      - https://10.23.0.2/public-fixture
+  register: public_listener_after_failures
+  failed_when: public_listener_after_failures.stdout != 'public-listener-preserved'
+  changed_when: false

@@ -1,0 +1,171 @@
+---
+- name: Prepare disabled lifecycle state without a real observer
+  hosts: all
+  become: true
+  tasks:
+    - name: Create helper directory in the disposable test container
+      ansible.builtin.file:
+        path: /usr/local/libexec
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create historical secret-bearing data and credential directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      loop:
+        - /var/lib/observability-kuma
+        - /etc/observability-kuma
+        - /var/lib/node_exporter/textfile
+        - /var/lib/observability-kuma-restores
+
+    - name: Seed retained non-secret data markers
+      ansible.builtin.copy:
+        content: retained-test-marker
+        dest: "{{ item }}/keep"
+        owner: root
+        group: root
+        mode: "0600"
+      loop:
+        - /var/lib/observability-kuma
+        - /etc/observability-kuma
+
+    - name: Seed owned and unrelated service fixtures
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ item }}.service"
+        content: |
+          [Unit]
+          Description=Disabled lifecycle fixture only
+          [Service]
+          ExecStart=/usr/bin/sleep infinity
+          [Install]
+          WantedBy=multi-user.target
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - observability-kuma
+        - observability-push-node
+        - vpn-unrelated-fixture
+
+    - name: Seed owned timer fixture
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/observability-push-node.timer
+        content: |
+          [Unit]
+          Description=Disabled timer lifecycle fixture only
+          [Timer]
+          OnBootSec=1h
+          [Install]
+          WantedBy=timers.target
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Install actual production extractor and its shared path validator
+      ansible.builtin.copy:
+        src: "{{ playbook_dir | dirname | dirname }}/files/{{ item }}"
+        dest: "/usr/local/libexec/{{ item }}"
+        owner: root
+        group: root
+        mode: "0750"
+      loop:
+        - observability-kuma-backup.py
+        - observability-kuma-preflight.py
+
+    - name: Install capability and active-backup regression harnesses
+      ansible.builtin.copy:
+        src: "{{ playbook_dir | dirname }}/runtime/{{ item }}.py"
+        dest: "/usr/local/libexec/observability-kuma-{{ item }}.py"
+        owner: root
+        group: root
+        mode: "0750"
+      loop:
+        - restore-capabilities
+        - active-backup-fixture
+
+    - name: Seed active backup fixture with a real observer restart finalizer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/observability-kuma-backup.service
+        content: |
+          [Unit]
+          Description=Active backup disable-order fixture only
+          [Service]
+          Type=simple
+          ExecStart=/usr/bin/python3 /usr/local/libexec/observability-kuma-active-backup-fixture.py
+          TimeoutStopSec=20
+          NoNewPrivileges=true
+          PrivateTmp=true
+          ProtectHome=true
+          ProtectSystem=strict
+          ProtectKernelTunables=true
+          ProtectKernelModules=true
+          ProtectControlGroups=true
+          RestrictNamespaces=true
+          LockPersonality=true
+          RestrictRealtime=true
+          RestrictSUIDSGID=true
+          SystemCallArchitectures=native
+          ReadWritePaths=/var/lib/observability-kuma
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Seed active backup timer fixture
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/observability-kuma-backup.timer
+        content: |
+          [Unit]
+          Description=Backup timer disable-order fixture only
+          [Timer]
+          OnBootSec=1h
+          [Install]
+          WantedBy=timers.target
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Start owned and unrelated fixtures
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: true
+        state: started
+        daemon_reload: true
+      loop:
+        - observability-kuma.service
+        - observability-push-node.service
+        - observability-push-node.timer
+        - vpn-unrelated-fixture.service
+
+    - name: Start quiesced backup and its timer before disable convergence
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: "{{ true if item == 'observability-kuma-backup.timer' else omit }}"
+        state: started
+        daemon_reload: true
+      loop:
+        - observability-kuma-backup.service
+        - observability-kuma-backup.timer
+
+    - name: Wait for active backup to quiesce observer
+      ansible.builtin.wait_for:
+        path: /var/lib/observability-kuma/backup-fixture-ready
+        timeout: 20
+
+    - name: Confirm the active backup fixture is running
+      ansible.builtin.command:
+        argv: [/usr/bin/systemctl, is-active, --quiet, observability-kuma-backup.service]
+      changed_when: false
+
+    - name: Seed owned push metric for removal
+      ansible.builtin.copy:
+        dest: /var/lib/node_exporter/textfile/observability-push-node.prom
+        content: stale-test-metric
+        owner: root
+        group: root
+        mode: "0644"

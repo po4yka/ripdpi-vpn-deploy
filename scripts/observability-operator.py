@@ -7,7 +7,7 @@ import argparse
 import base64
 import binascii
 import hashlib
-import ipaddress
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -32,56 +32,35 @@ ANSIBLE = ROOT / "ansible"
 COMPONENTS = {
     "agent": "observability_agent",
     "control-plane": "observability_control_plane",
-    "deadman": "observability_deadman",
-}
-BOOTSTRAP_PLAYBOOK = ANSIBLE / "playbooks" / "observability-host-bootstrap.yml"
-BOOTSTRAP_PROVIDERS = {
-    "control-plane": "hetzner",
-    "deadman": "scaleway",
-}
-BOOTSTRAP_LISTENERS = {
-    "control-plane": {
-        "name": "observability-ingest",
-        "protocol": "tcp",
-        "port": 9443,
-        "port_range": None,
-    },
-    "deadman": {
-        "name": "observability-deadman-pulse",
-        "protocol": "tcp",
-        "port": 9444,
-        "port_range": None,
-    },
+    "kuma": "observability_kuma",
 }
 INSTALL_MARKERS = {
     "agent": "/etc/systemd/system/observability-agent.service",
     "control-plane": "/etc/systemd/system/observability-prometheus.service",
-    "deadman": "/etc/systemd/system/observability-deadman.service",
+    "kuma": "/etc/systemd/system/observability-kuma.service",
 }
 STATUS_UNITS = {
     "agent": (
         "observability-agent.service",
         "observability-agent-adapter.timer",
         "observability-agent-health-adapter.timer",
+        "observability-push-node.timer",
     ),
     "control-plane": (
-        "nginx.service",
+        "observability-ingress.service",
         "observability-prometheus.service",
         "observability-alertmanager.service",
         "observability-telegram-relay.service",
         "observability-silence-gateway.service",
         "observability-control-plane-adapter.timer",
         "observability-protocol-liveness-adapter.timer",
-        "observability-deadman-pipeline.service",
-        "observability-deadman-pulse.timer",
-        "observability-primary-canary.timer",
+        "observability-disk-guard.service",
+        "observability-push-pipeline.timer",
+        "observability-push-delivery.timer",
     ),
-    "deadman": (
-        "observability-deadman.service",
-        "observability-deadman-tick.timer",
-    ),
+    "kuma": ("observability-kuma.service", "nginx.service"),
 }
-SECRET_COMMANDS = frozenset({"render", "validate", "deploy", "rotate", "rollback"})
+SECRET_COMMANDS = frozenset({"render", "check", "validate", "deploy", "rotate", "rollback"})
 MUTATING_COMMANDS = frozenset(
     {
         "deploy",
@@ -399,7 +378,7 @@ def _selected_host(args: argparse.Namespace) -> dict[str, Any]:
     section = {
         "agent": "vpn",
         "control-plane": "vpn-observability-control",
-        "deadman": "vpn-observability-deadman",
+        "kuma": "observability-kuma",
     }[args.component]
     try:
         return fleet_inspection.select_hosts(
@@ -412,252 +391,61 @@ def _selected_host(args: argparse.Namespace) -> dict[str, Any]:
         raise OperatorError("exact inventory host rejected") from None
 
 
-def _require_inventory_scope(args: argparse.Namespace, host: dict[str, Any]) -> None:
+def _require_inventory_scope(
+    args: argparse.Namespace, host: dict[str, Any], source_revision: str | None = None
+) -> None:
     try:
         values = host["variables"]
-        expected_class = {
-            "agent": "vpn",
-            "control-plane": "control-plane",
-            "deadman": "deadman",
-        }[args.component]
+        capabilities = values.get("observability_capabilities", [])
+        if isinstance(capabilities, str):
+            capabilities = json.loads(capabilities)
+        scope_valid = (
+            values.get("observability_observer_kind") == "uptime-kuma"
+            and not capabilities
+            if args.component == "kuma"
+            else isinstance(capabilities, list)
+            and "vpn" in capabilities
+            and (args.component == "agent" or "collector" in capabilities)
+        )
         if (
             not isinstance(values, dict)
             or values.get("env") != args.environment
-            or values.get("observability_host_class") != expected_class
+            or not scope_valid
+            or "observability_host_class" in values
         ):
             raise OperatorError("inventory scope rejected")
+        encoded = values.get("observability_topology_b64", "")
+        if not isinstance(encoded, str) or len(encoded) > 524288:
+            raise OperatorError("inventory topology rejected")
+        raw = base64.b64decode(encoded, validate=True)
+        specification = importlib.util.spec_from_file_location(
+            "observability_contract", ROOT / "scripts/observability-contract.py"
+        )
+        contract = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(contract)
+        try:
+            topology = contract._canonical_topology(json.loads(raw))
+        except contract.ContractError:
+            raise OperatorError("inventory topology rejected") from None
+        if source_revision is not None and topology["source_revision"] != source_revision:
+            raise OperatorError("inventory topology source mismatch")
+        if args.component == "kuma":
+            if (topology["observer"]["host_alias"] != args.host
+                    or topology["observer"]["failure_domain"] != values.get("observability_failure_domain")):
+                raise OperatorError("inventory observer rejected")
+        else:
+            nodes = [node for node in topology["nodes"] if node["node_id"] == values.get("observability_node_id")]
+            if len(nodes) != 1 or any((
+                nodes[0]["provider"] != values.get("provider"),
+                nodes[0]["environment"] != args.environment,
+                set(nodes[0]["capabilities"]) != set(capabilities),
+                nodes[0]["failure_domain"] != values.get("observability_failure_domain"),
+            )):
+                raise OperatorError("inventory topology binding rejected")
     except OperatorError:
         raise
-    except (KeyError, TypeError):
+    except (KeyError, TypeError, ValueError, binascii.Error):
         raise OperatorError("inventory scope rejected") from None
-
-
-def _json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    value: dict[str, Any] = {}
-    for key, item in pairs:
-        if key in value:
-            raise ValueError("duplicate key")
-        value[key] = item
-    return value
-
-
-def _decode_json_b64(value: Any, *, limit: int) -> Any:
-    if not isinstance(value, str) or len(value) > limit * 2:
-        raise OperatorError("bootstrap inventory rejected")
-    try:
-        raw = base64.b64decode(value, validate=True)
-        if not raw or len(raw) > limit:
-            raise ValueError
-        return json.loads(raw.decode("utf-8"), object_pairs_hook=_json_object)
-    except (binascii.Error, UnicodeError, ValueError, json.JSONDecodeError):
-        raise OperatorError("bootstrap inventory rejected") from None
-
-
-def _validated_bootstrap_topology(document: Any) -> dict[str, Any]:
-    if not isinstance(document, dict):
-        raise OperatorError("bootstrap inventory rejected")
-    with tempfile.TemporaryDirectory(prefix="observability-topology-") as directory:
-        os.chmod(directory, 0o700)
-        path = Path(directory).resolve() / "topology.json"
-        descriptor = os.open(
-            path,
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
-            0o600,
-        )
-        try:
-            payload = json.dumps(
-                document, sort_keys=True, separators=(",", ":")
-            ).encode("utf-8")
-            os.write(descriptor, payload)
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
-        try:
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "scripts" / "observability-contract.py"),
-                    "topology",
-                    "--document",
-                    str(path),
-                ],
-                cwd=ROOT,
-                env=_environment(),
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                check=False,
-                timeout=10,
-            )
-            if result.returncode or len(result.stdout) > 262_144:
-                raise OperatorError("bootstrap inventory rejected")
-            canonical = json.loads(
-                result.stdout.decode("utf-8"), object_pairs_hook=_json_object
-            )
-        except OperatorError:
-            raise
-        except (OSError, subprocess.SubprocessError, UnicodeError, ValueError):
-            raise OperatorError("bootstrap inventory rejected") from None
-    if not isinstance(canonical, dict):
-        raise OperatorError("bootstrap inventory rejected")
-    return canonical
-
-
-def _bootstrap_variables(
-    args: argparse.Namespace,
-    host: dict[str, Any],
-    source_revision: str,
-) -> dict[str, Any]:
-    """Return only reviewed non-secret inventory fields for host bootstrap."""
-    try:
-        values = host["variables"]
-        host_class = args.component
-        expected_provider = BOOTSTRAP_PROVIDERS[host_class]
-        if (
-            not isinstance(values, dict)
-            or values.get("env") != "staging"
-            or values.get("observability_host_class") != host_class
-            or values.get("provider") != expected_provider
-            or values.get("observability_node_id") != f"{expected_provider}-staging"
-        ):
-            raise ValueError
-        failure_domain = values.get("observability_failure_domain")
-        if not isinstance(failure_domain, str) or not re.fullmatch(
-            r"[a-z][a-z0-9_-]{0,63}", failure_domain
-        ):
-            raise ValueError
-
-        sources = values.get("allowed_ssh_cidrs")
-        if isinstance(sources, str):
-            sources = json.loads(sources, object_pairs_hook=_json_object)
-        if not isinstance(sources, list) or not 1 <= len(sources) <= 16:
-            raise ValueError
-        canonical_sources: list[str] = []
-        for source in sources:
-            if not isinstance(source, str):
-                raise ValueError
-            network = ipaddress.ip_network(source, strict=True)
-            if network.prefixlen == 0 or str(network) != source:
-                raise ValueError
-            canonical_sources.append(source)
-        if len(set(canonical_sources)) != len(canonical_sources):
-            raise ValueError
-
-        listeners = _decode_json_b64(
-            values.get("terraform_public_listeners_b64"), limit=16_384
-        )
-        expected_listener = BOOTSTRAP_LISTENERS[host_class]
-        if listeners != [expected_listener]:
-            raise ValueError
-
-        topology = _validated_bootstrap_topology(
-            _decode_json_b64(values.get("observability_topology_b64"), limit=262_144)
-        )
-        if (
-            not isinstance(topology, dict)
-            or topology.get("schema_version") != 1
-            or topology.get("credential_mode") != "systemd"
-            or topology.get("source_revision") != source_revision
-            or not isinstance(topology.get("nodes"), list)
-        ):
-            raise ValueError
-        matching = [
-            node
-            for node in topology["nodes"]
-            if isinstance(node, dict)
-            and node.get("node_id") == values["observability_node_id"]
-        ]
-        topology_listener = {
-            key: value for key, value in expected_listener.items() if value is not None
-        }
-        if len(matching) != 1 or matching[0] != {
-            "node_id": values["observability_node_id"],
-            "provider": expected_provider,
-            "environment": "staging",
-            "host_class": host_class,
-            "failure_domain": failure_domain,
-            "public_listeners": [topology_listener],
-        }:
-            raise ValueError
-    except OperatorError:
-        raise
-    except (KeyError, TypeError, ValueError):
-        raise OperatorError("bootstrap inventory rejected") from None
-    return {
-        "provider": expected_provider,
-        "env": "staging",
-        "allowed_ssh_cidrs": canonical_sources,
-        "terraform_public_listeners_b64": values["terraform_public_listeners_b64"],
-        "observability_node_id": values["observability_node_id"],
-        "observability_host_class": host_class,
-        "observability_failure_domain": failure_domain,
-    }
-
-
-def _run_bootstrap_playbook(
-    args: argparse.Namespace,
-    *,
-    host: dict[str, Any],
-    variables: dict[str, Any],
-    check: bool,
-) -> None:
-    revision, digest = _clean_source_identity()
-    with tempfile.TemporaryDirectory(prefix="observability-bootstrap-") as directory:
-        os.chmod(directory, 0o700)
-        inventory = Path(directory) / "inventory.ini"
-        options = fleet_inspection._strict_connection_options(host, args.known_hosts)
-        ssh_args = shlex.join(
-            ["-F", "/dev/null", *sum((["-o", option] for option in options), [])]
-        )
-        inventory_values = {
-            "ansible_host": host["transport"],
-            "ansible_user": host["user"],
-            "ansible_port": host["port"],
-            "ansible_python_interpreter": "/usr/bin/python3",
-            "ansible_ssh_private_key_file": host["key"],
-            "ansible_ssh_common_args": ssh_args,
-            **variables,
-        }
-        tokens = [args.host]
-        for name, value in inventory_values.items():
-            if isinstance(value, (list, dict)):
-                rendered = json.dumps(value, sort_keys=True, separators=(",", ":"))
-            else:
-                rendered = str(value)
-            tokens.append(f"{name}={shlex.quote(rendered)}")
-        inventory.write_text(
-            "[observability-bootstrap-target]\n" + " ".join(tokens) + "\n",
-            encoding="utf-8",
-        )
-        inventory.chmod(0o600)
-        command = [
-            "ansible-playbook",
-            str(BOOTSTRAP_PLAYBOOK),
-            "-i",
-            str(inventory),
-            "--limit",
-            args.host,
-        ]
-        if check:
-            command.append("--check")
-        try:
-            environment = _environment()
-            environment["DEPLOY_SOURCE_REVISION"] = revision
-            environment["DEPLOYABLE_SOURCE_DIGEST"] = digest
-            environment["ANSIBLE_HOME"] = str(Path(directory) / "ansible-home")
-            result = subprocess.run(
-                command,
-                cwd=ROOT,
-                env=environment,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-            )
-        except OSError:
-            raise OperatorError("ansible unavailable") from None
-        if result.returncode:
-            raise OperatorError("ansible command failed")
 
 
 def _playbook(
@@ -709,6 +497,28 @@ def _playbook(
         ]
     play["roles"] = [{"role": role}]
     return yaml.safe_dump([play], sort_keys=False)
+
+
+def _render_local(component: str, variables: Path, secrets: Path) -> int:
+    """Render explicit inputs in memory; no host facts, SSH or secret output."""
+    from template_render import merge_render_vars, render_template
+
+    try:
+        context = merge_render_vars()
+        for path in (secrets, variables):
+            document = yaml.safe_load(_private_bytes(path))
+            if not isinstance(document, dict):
+                raise ValueError
+            context.update(document)
+        templates = sorted((ANSIBLE / "roles" / COMPONENTS[component] / "templates").glob("*.j2"))
+        if not templates:
+            raise ValueError
+        for template in templates:
+            render_template(template, context)
+        return len(templates)
+    except Exception:
+        # Jinja and YAML errors may include supplied secret values.
+        raise OperatorError("local template render rejected") from None
 
 
 def _bounded_role_guard_command(
@@ -803,7 +613,7 @@ def _run_playbook(
             ["-F", "/dev/null", *sum((["-o", option] for option in options), [])]
         )
         inventory.write_text(
-            "[vpn]\n"
+            ("[observability-kuma]\n" if args.component == "kuma" else "[vpn]\n")
             + args.host
             + " ansible_host="
             + host["transport"]
@@ -940,7 +750,7 @@ def _status_program(component: str) -> bytes:
             "http://127.0.0.1:9090/-/ready",
             "gateway",
         ),
-        "deadman": ("http://127.0.0.1:19094/v1/status",),
+        "kuma": ("http://127.0.0.1:13001/api/entry-page",),
     }[component]
     source = (
         (_gateway_program() if component == "control-plane" else "") + f"""import json
@@ -966,7 +776,11 @@ ready = []
 for url in READINESS:
     try:
         with (gateway_request("/-/ready") if url == "gateway" else urllib.request.build_opener(urllib.request.ProxyHandler({{}})).open(url, timeout=3)) as response:
-            ready.append(response.status == 200)
+            valid = response.status == 200
+            if COMPONENT == "kuma":
+                raw = response.read(4097)
+                valid = valid and len(raw) <= 4096 and json.loads(raw).get("type") == "entryPage"
+            ready.append(valid)
     except Exception:
         ready.append(False)
 healthy = all(value == "active" for value in states.values()) and all(ready)
@@ -1265,6 +1079,8 @@ def _parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     for command in ("render", "validate", "status"):
         commands.add_parser(command, parents=[common])
+    check = commands.add_parser("check", parents=[common])
+    check.add_argument("--confirm-host-access", action="store_true")
     drill = commands.add_parser("drill", parents=[common])
     drill.add_argument("--confirm-notification", action="store_true")
     drill.add_argument("--silence-owner")
@@ -1292,12 +1108,9 @@ def main(argv: list[str] | None = None) -> int:
         args = _parser().parse_args(argv)
         _debug_disabled()
         if args.command == "bootstrap":
-            if args.environment != "staging":
-                raise OperatorError("bootstrap requires staging")
-            if args.component not in BOOTSTRAP_PROVIDERS:
-                raise OperatorError("bootstrap host class rejected")
-            if not args.check and not args.confirm:
-                raise OperatorError("--confirm required")
+            raise OperatorError("dedicated host bootstrap retired; use existing admitted hosts")
+        if args.command == "check" and not args.confirm_host_access:
+            raise OperatorError("--confirm-host-access required")
         if getattr(args, "expect_role_guard_refusal", False) and (
             args.command != "rotate"
             or args.environment != "staging"
@@ -1338,7 +1151,7 @@ def main(argv: list[str] | None = None) -> int:
                 silence_request = _silence_request(args.request)
         source_revision, deployable_source_digest = _clean_source_identity()
         host = _selected_host(args)
-        _require_inventory_scope(args, host)
+        _require_inventory_scope(args, host, source_revision)
         try:
             fleet_inspection._local_file(args.known_hosts)
         except fleet_inspection.InspectionError:
@@ -1374,13 +1187,19 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command in MUTATING_COMMANDS and not getattr(args, "confirm", False):
             raise OperatorError("--confirm required")
         elif args.command == "render":
-            _run_playbook(args, secrets=secrets, host=host, check=True)
+            count = _render_local(args.component, args.vars, secrets)
             result = {
                 "schema_version": 1,
                 "component": args.component,
                 "host": args.host,
-                "state": "rendered-check",
+                "state": "templates-rendered",
+                "templates": count,
+                "host_admission": "unverified",
             }
+        elif args.command == "check":
+            _run_playbook(args, secrets=secrets, host=host, check=True)
+            result = {"schema_version": 1, "component": args.component,
+                      "host": args.host, "state": "checked-host"}
         elif args.command == "validate":
             _run_playbook(args, secrets=secrets, host=host, syntax=True)
             result = {
@@ -1393,20 +1212,6 @@ def main(argv: list[str] | None = None) -> int:
             result = _remote(
                 args, host, _status_program(args.component), operation="status"
             )
-        elif args.command == "bootstrap":
-            variables = _bootstrap_variables(args, host, source_revision)
-            _run_bootstrap_playbook(
-                args,
-                host=host,
-                variables=variables,
-                check=args.check,
-            )
-            result = {
-                "schema_version": 1,
-                "component": args.component,
-                "host": args.host,
-                "state": "bootstrap-check" if args.check else "bootstrapped",
-            }
         elif args.command == "deploy":
             _run_playbook(args, secrets=secrets, host=host, initial=True)
             result = {

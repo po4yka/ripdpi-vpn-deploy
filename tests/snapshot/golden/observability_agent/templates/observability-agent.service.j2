@@ -4,6 +4,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+Slice=observability-agent.slice
 Type=simple
 User=observability-agent
 Group=observability-agent
@@ -34,7 +35,7 @@ RestrictRealtime=true
 RestrictSUIDSGID=true
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
-MemoryMax=512M
+MemoryMax=192M
 TasksMax=64
 LimitNOFILE=65536
 ReadWritePaths=/var/lib/observability-agent/wal

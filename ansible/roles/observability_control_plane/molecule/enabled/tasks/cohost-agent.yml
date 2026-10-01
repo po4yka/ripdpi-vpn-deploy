@@ -1,0 +1,21 @@
+---
+- name: Define the real cohosted bounded agent
+  ansible.builtin.set_fact:
+    observability_contract: {schema_version: 1, credential_mode: systemd}
+    node_manifest: {path: /var/lib/ripdpi-vpn-deploy/manifest.json}
+    node_manifest_source_revision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    node_manifest_deployable_digest: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    observability_push: "{{ observability_push | combine({'kinds': ['node']}) }}"
+    observability_agent: >-
+      {{ (lookup('ansible.builtin.file', playbook_dir ~ '/../../../observability_agent/defaults/main.yml')
+      | from_yaml).observability_agent | combine({
+      'enabled': true, 'version': '3.14.0', 'node_id': 'vpn-p0', 'environment': 'staging',
+      'receiver_origin': 'https://10.23.0.2:9443', 'receiver_address': '10.23.0.2',
+      'release_urls': observability_control_plane.prometheus.urls,
+      'linux_amd64_sha256': observability_control_plane.prometheus.sha256.amd64,
+      'linux_arm64_sha256': observability_control_plane.prometheus.sha256.arm64}) }}
+  no_log: true
+
+- name: Converge the bounded cohosted agent
+  ansible.builtin.include_role:
+    name: observability_agent

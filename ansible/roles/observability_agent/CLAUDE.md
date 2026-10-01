@@ -12,12 +12,16 @@
 
 ## What's done well
 
-- The remote-write URL is constructed as one node-bound HTTPS path and SNI is supplied separately, so DNS routing cannot silently change the mTLS name.
-- Prometheus Agent is loopback-only, caps queue shards at four, and bounds WAL retention time.
-- Disable removes the sender's unit, configuration, credentials, adapter, and WAL without taking ownership of node_exporter, watchdog, or producer files.
+- The remote-write URL is constructed as one node-bound private-IP HTTPS path; the identical literal IP is verified against the server IP SAN, without DNS routing or TLS bypass.
+- Prometheus Agent is loopback-only, uses one shard and a one-hour WAL horizon. Scrapes are every 60 seconds; the total 2,000-sample allowance is split 1,800 host + 150 required-service + 50 self metrics. Push status retains only bounded kind labels.
+- Sender, adapters and heartbeat producers share `observability-agent.slice`: 192 MiB, 10% CPU, IOWeight 10, no swap. VPN units and exporters are not moved into this slice.
+- The variable-free `resource-boundary` entry point installs and activates the slice before either the sender or independent collector producers start, including collector-first convergence.
+- Disable removes sender units and adapters but retains credentials, configuration and WAL for explicit recovery, without taking ownership of node_exporter, watchdog, or producer files.
+- Disable inspects exact owned unit files and stops timers and in-flight adapter services before removing binaries; a stop failure aborts removal.
 
 ## Pitfalls
 
+- WAL retention is not restart replay assurance: the observed pinned 3.14.0 agent resumes forwarding newly scraped samples after restart but does not resend the earlier unsent backlog. The cohosted WAL outage/restart acceptance stays failing until a supported runtime actually recovers those historical samples; retaining files or logging WAL replay is not sufficient evidence.
 - This role needs the monitoring and node_manifest producers to have converged before it runs; site ordering is intentionally owned by a separate change.
 - Do not widen the metric regex or add a telemetry fallback without the metric contract and ingestion role changes.
 - Watchdog recovery is inferred only from its canonical consecutive-failure and hourly kick counters; it is local recovery evidence, never outside-in client-path recovery.

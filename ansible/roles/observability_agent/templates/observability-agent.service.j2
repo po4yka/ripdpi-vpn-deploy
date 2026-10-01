@@ -4,6 +4,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+Slice=observability-agent.slice
 Type=simple
 User=observability-agent
 Group=observability-agent

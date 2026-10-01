@@ -24,16 +24,31 @@
 - name: Disable observability agent when feature is disabled
   when: not (observability_agent.enabled | default(false) | bool)
   block:
-    - name: Stop and disable observability agent owned units
-      ansible.builtin.systemd_service:
-        name: "{{ item }}"
-        enabled: false
-        state: stopped
+    - name: Stop only the independently owned node heartbeat
+      ansible.builtin.include_role:
+        name: observability_kuma
+        tasks_from: producers-disable
+      vars:
+        observability_push_disable_kinds: [node]
+
+    - name: Inspect observability agent owned units before disable
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/{{ item }}"
       loop:
         - observability-agent.service
         - observability-agent-adapter.timer
         - observability-agent-health-adapter.timer
-      failed_when: false
+        - observability-agent-adapter.service
+        - observability-agent-health-adapter.service
+      register: _observability_agent_owned_units
+
+    - name: Stop and disable observability agent owned units
+      ansible.builtin.systemd_service:
+        name: "{{ item.item }}"
+        enabled: false
+        state: stopped
+      loop: "{{ _observability_agent_owned_units.results }}"
+      when: item.stat.exists
 
     - name: Remove observability agent owned runtime state
       ansible.builtin.file:
@@ -47,9 +62,6 @@
         - /etc/systemd/system/observability-agent-health-adapter.timer
         - /usr/local/libexec/observability-agent-adapter.py
         - /usr/local/libexec/observability-agent-health-adapter.py
-        - "{{ observability_agent.config_dir | default('/etc/observability-agent') }}"
-        - "{{ observability_agent.credential_dir | default('/etc/observability-agent/credentials') }}"
-        - "{{ observability_agent.wal_dir | default('/var/lib/observability-agent/wal') }}"
         - "{{ observability_agent.install_root | default('/opt/observability-agent') }}"
         - "{{ observability_agent.promtool_install_root | default('/opt/observability-agent-promtool') }}"
         - /usr/local/bin/prometheus-observability-agent
@@ -61,6 +73,19 @@
 - name: Configure observability agent when feature is enabled
   when: observability_agent.enabled | default(false) | bool
   block:
+    - name: Require direct node heartbeat scope before mutation
+      ansible.builtin.assert:
+        that:
+          - observability_push is defined
+          - observability_push.kinds == ['node']
+          - observability_push.node_id == observability_agent.node_id
+        fail_msg: Enabled agent requires its own direct node heartbeat configuration.
+
+    - name: Validate direct node heartbeat credentials before mutation
+      ansible.builtin.include_role:
+        name: observability_kuma
+        tasks_from: producers-contract
+
     - name: Assert observability agent contract and exact runtime pins
       ansible.builtin.assert:
         that:
@@ -73,21 +98,21 @@
             observability_agent.receiver_origin | default('')
             is match('^https://[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(?::[1-9][0-9]{0,4})?$')
           - observability_agent.receiver_origin | urlsplit('port') | default(443, true) | int <= 65535
-          - observability_agent.receiver_sni | default('') is match('^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$')
+          - observability_agent.receiver_address | default('') is match('^[0-9.]+$')
+          - observability_agent.receiver_origin == 'https://' ~ observability_agent.receiver_address ~ ':9443'
           - observability_agent.release_urls.amd64 | default('') is match('^https://')
           - observability_agent.release_urls.arm64 | default('') is match('^https://')
           - observability_agent.linux_amd64_sha256 | default('') is match('^[0-9a-f]{64}$')
           - observability_agent.linux_arm64_sha256 | default('') is match('^[0-9a-f]{64}$')
-          - observability_agent.wal_max_time | default('') is match('^(?:(?:[1-9]|[1-5][0-9]|60)m|(?:[1-9]|1[0-9]|2[0-4])h)$')
+          - observability_agent.wal_max_time | default('') == '1h'
           - observability_agent.web_listen | default('') is match('^127\\.0\\.0\\.1:[1-9][0-9]{0,4}$')
           - observability_agent.web_listen.split(':')[-1] | int <= 65535
           - node_manifest_source_revision | default('') is match('^[0-9a-f]{40}$')
           - node_manifest_deployable_digest | default('') is match('^[0-9a-f]{64}$')
-          - observability_agent.scrape_sample_limit | default(0) | int >= 1
-          - observability_agent.scrape_sample_limit | default(0) | int <= 10000
+          - observability_agent.scrape_sample_limit | default(0) | int == 2000
           - observability_agent.scrape_label_limit | default(0) | int >= 1
           - observability_agent.scrape_label_limit | default(0) | int <= 64
-          - observability_agent.scrape_interval | default('') is match('^(?:[1-9]|[1-9][0-9]|[12][0-9]{2}|300)s$')
+          - observability_agent.scrape_interval | default('') == '60s'
           - observability_agent.scrape_label_name_length_limit | default(0) | int >= 1
           - observability_agent.scrape_label_name_length_limit | default(0) | int <= 128
           - observability_agent.scrape_label_value_length_limit | default(0) | int >= 1
@@ -97,7 +122,7 @@
           - observability_agent.queue_max_samples_per_send | default(0) | int >= 1
           - observability_agent.queue_max_samples_per_send | default(0) | int <= 2000
           - observability_agent.queue_batch_send_deadline | default('') is match('^(?:[1-9]|[12][0-9]|30)s$')
-          - observability_agent.memory_max | default('') == '512M'
+          - observability_agent.memory_max | default('') == '192M'
           - observability_agent.tasks_max | default(0) | int == 64
           - observability_agent.nofile_limit | default(0) | int == 65536
           - observability_agent_watchdog_max_age_seconds | int >= 60
@@ -113,7 +138,7 @@
             observability_alert_policy.required_systemd_units | length
         fail_msg: >-
           Observability agent requires schema-1 systemd credentials, exact Prometheus
-          archive pins, technical node identity, HTTPS receiver origin, separate SNI,
+          archive pins, technical node identity, private IP HTTPS receiver origin,
           and a bounded WAL retention window.
 
     - name: Validate each required systemd selector
@@ -121,6 +146,20 @@
         that:
           - item is match('^[a-z0-9][a-z0-9@_-]{0,62}[.]service$')
       loop: "{{ observability_alert_policy.required_systemd_units }}"
+
+    - name: Verify the receiver is a literal private IPv4 address
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - >-
+            import ipaddress, sys;
+            a = ipaddress.ip_address(sys.argv[1]);
+            sys.exit(0 if any(a in ipaddress.ip_network(n) for n in
+            ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10']) else 1)
+          - "{{ observability_agent.receiver_address }}"
+      changed_when: false
+      check_mode: false
 
     - name: Select exact node mTLS sender authority
       ansible.builtin.set_fact:
@@ -138,6 +177,9 @@
           - _observability_agent_senders[0].private_key_pem | default('') | length > 0
         fail_msg: Observability sender credentials must contain exactly one identity for this node.
       no_log: true
+
+    - name: Apply aggregate sender and producer boundary before runtime mutation
+      ansible.builtin.include_tasks: resource-boundary.yml
 
     - name: Create observability agent runtime account
       ansible.builtin.user:
@@ -715,3 +757,8 @@
         enabled: true
         state: started
         daemon_reload: true
+
+    - name: Install explicitly scoped direct node heartbeat producer
+      ansible.builtin.include_role:
+        name: observability_kuma
+        tasks_from: producers

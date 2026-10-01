@@ -285,6 +285,19 @@ interface with a general fault selector or a new permanent guest capability.
 verbs remain distinct, while one bounded Python controller centralizes private
 input validation, literal scope, strict SSH and one-role Ansible execution.
 Initial `deploy` refuses an existing primary unit and never aliases `rotate`.
+Topology schema 2 enrolls VPN capabilities plus one co-hosted collector and a
+typed independent Kuma observer. Dedicated-host bootstrap is retired and
+refuses before host access. `render` is strictly local Jinja rendering;
+`validate` is syntax-only, and neither establishes host admission. `check`
+requires explicit host-access confirmation. Runtime status includes the node
+or pipeline/delivery push timers; healthy units never imply client-path proof.
+
+**Private-IP PKI preparation is local and encrypted** —
+`prepare-observability-pki.py` creates separate receiver and observer authorities,
+verified IP-SAN leaves and distinct per-node client identities. Its no-clobber
+output is a SOPS fragment plus retained revocation authority, not complete
+deployment secrets. Never deploy the authority keys or infer host authorization
+from successful preparation.
 
 ## Cloud-init acceptance — schema fallback and cloud-final restart harness
 

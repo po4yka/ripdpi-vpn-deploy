@@ -1,0 +1,13 @@
+[Unit]
+Description=Schedule qualified {{ item }} heartbeat
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec={{ '300s' if item == 'delivery' else '60s' }}
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=true
+Unit=observability-push-{{ item }}.service
+
+[Install]
+WantedBy=timers.target

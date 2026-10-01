@@ -4,9 +4,12 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-DynamicUser=yes
+Slice=observability-collector.slice
 User=observability-telegram-relay
 Group=observability-telegram-relay
+StateDirectory=observability-telegram-relay
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/observability-telegram-relay
 LoadCredential=telegram-bot-token:{{ observability_control_plane.alerting.credential_path }}
 LoadCredential=telegram-relay-auth-token:{{ observability_control_plane.alerting.telegram.relay_auth_path | default('/etc/observability-control-plane/credentials/telegram-relay-auth-token') }}
 ExecStart=/usr/local/libexec/observability-telegram-relay serve --listen {{ observability_control_plane.alerting.telegram.relay_listen | default('127.0.0.1:19095') }} --api-url {{ observability_control_plane.alerting.telegram.api_url | default('https://api.telegram.org') }} --chat-id {{ observability_control_plane.alerting.telegram.chat_id }} --topic-id {{ observability_control_plane.alerting.telegram.topic_id | int }} --bot-credential telegram-bot-token --auth-credential telegram-relay-auth-token
@@ -33,6 +36,7 @@ SystemCallArchitectures=native
 CapabilityBoundingSet=
 AmbientCapabilities=
 RestrictSUIDSGID=yes
+RestrictRealtime=true
 ProtectProc=invisible
 ProcSubset=pid
 

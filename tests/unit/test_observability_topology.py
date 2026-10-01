@@ -54,60 +54,24 @@ def trusted_root():
 
 def _topology() -> dict:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "credential_mode": "systemd",
         "source_revision": "a" * 40,
+        "observer": {"kind": "uptime-kuma", "host_alias": "observer-a", "failure_domain": "observer-a"},
         "nodes": [
             {
-                "node_id": "edge-prod",
-                "provider": "upcloud",
+                "node_id": name,
+                "provider": provider,
                 "environment": "prod",
-                "host_class": "vpn",
-                "failure_domain": "edge-a",
-                "public_listeners": [
-                    {"name": "xray", "protocol": "tcp", "port": 443}
-                ],
-            },
-            {
-                "node_id": "control-prod",
-                "provider": "hetzner",
-                "environment": "prod",
-                "host_class": "control-plane",
-                "failure_domain": "control-a",
-                "public_listeners": [
-                    {
-                        "name": "observability-ingest",
-                        "protocol": "tcp",
-                        "port": 9443,
-                    }
-                ],
-            },
-            {
-                "node_id": "deadman-prod",
-                "provider": "vultr",
-                "environment": "prod",
-                "host_class": "deadman",
-                "failure_domain": "deadman-a",
-                "public_listeners": [
-                    {
-                        "name": "observability-deadman-pulse",
-                        "protocol": "tcp",
-                        "port": 9444,
-                    }
-                ],
-            },
-        ],
-        "sentinels": [
-            {
-                "sentinel_id": "filtered-a",
-                "path_signature": "fixed-egress-a",
-                "failure_domain": "sentinel-a",
-            },
-            {
-                "sentinel_id": "filtered-b",
-                "path_signature": "fixed-egress-b",
-                "failure_domain": "sentinel-b",
-            },
+                "capabilities": capabilities,
+                "failure_domain": name,
+                "public_listeners": [{"name": "xray", "protocol": "tcp", "port": 443}],
+            }
+            for name, provider, capabilities in (
+                ("edge-prod", "upcloud", ["vpn"]),
+                ("control-prod", "hetzner", ["vpn", "collector"]),
+                ("third-prod", "vultr", ["vpn"]),
+            )
         ],
     }
 
@@ -128,7 +92,6 @@ def _validate(document: dict, root: Path) -> subprocess.CompletedProcess[str]:
 def test_topology_is_canonical_and_deterministic(trusted_root: Path) -> None:
     document = _topology()
     document["nodes"].reverse()
-    document["sentinels"].reverse()
 
     result = _validate(document, trusted_root)
 
@@ -136,13 +99,10 @@ def test_topology_is_canonical_and_deterministic(trusted_root: Path) -> None:
     rendered = json.loads(result.stdout)
     assert [node["node_id"] for node in rendered["nodes"]] == [
         "control-prod",
-        "deadman-prod",
         "edge-prod",
+        "third-prod",
     ]
-    assert [item["sentinel_id"] for item in rendered["sentinels"]] == [
-        "filtered-a",
-        "filtered-b",
-    ]
+    assert rendered["observer"] == document["observer"]
     assert result.stdout == json.dumps(rendered, sort_keys=True, separators=(",", ":")) + "\n"
     forbidden = ("198.51.100.", "example.com", "PRIVATE", "TOKEN")
     assert not any(value in result.stdout for value in forbidden)
@@ -152,21 +112,13 @@ def test_topology_is_canonical_and_deterministic(trusted_root: Path) -> None:
     ("mutation", "expected"),
     [
         ("duplicate-node", "duplicate identity"),
-        ("duplicate-sentinel", "duplicate identity"),
-        ("duplicate-path", "duplicate path signature"),
-        ("sentinel-on-node-domain", "sentinel placement"),
-        ("control-on-vpn-domain", "control-plane placement"),
-        ("deadman-provider", "dead-man placement"),
+        ("observer-on-node", "observer placement"),
+        ("observer-on-domain", "observer placement"),
         ("public-admin", "public listener"),
-        ("vpn-public-admin", "public listener"),
-        ("vpn-grafana", "public listener"),
-        ("vpn-metrics", "public listener"),
-        ("vpn-unknown", "public listener"),
-        ("vpn-observability-ingest", "public listener"),
-        ("vpn-observability-deadman", "public listener"),
-        ("missing-ingest", "public listener"),
-        ("missing-control", "control-plane count"),
-        ("one-sentinel", "sentinel count"),
+        ("public-ingest", "public listener"),
+        ("no-collector", "control-plane count"),
+        ("two-collectors", "control-plane count"),
+        ("obsolete", "obsolete dedicated topology"),
     ],
 )
 def test_topology_rejects_identity_placement_and_public_surface(
@@ -175,55 +127,41 @@ def test_topology_rejects_identity_placement_and_public_surface(
     document = _topology()
     if mutation == "duplicate-node":
         document["nodes"][1]["node_id"] = document["nodes"][0]["node_id"]
-    elif mutation == "duplicate-sentinel":
-        document["sentinels"][1]["sentinel_id"] = document["sentinels"][0]["sentinel_id"]
-    elif mutation == "duplicate-path":
-        document["sentinels"][1]["path_signature"] = document["sentinels"][0]["path_signature"]
-    elif mutation == "sentinel-on-node-domain":
-        document["sentinels"][1]["failure_domain"] = document["nodes"][0]["failure_domain"]
-    elif mutation == "control-on-vpn-domain":
-        document["nodes"][1]["failure_domain"] = document["nodes"][0]["failure_domain"]
-    elif mutation == "deadman-provider":
-        document["nodes"][2]["provider"] = document["nodes"][1]["provider"]
-    elif mutation == "public-admin":
+    elif mutation == "observer-on-node":
+        document["observer"]["host_alias"] = "edge-prod"
+    elif mutation == "observer-on-domain":
+        document["observer"]["failure_domain"] = "edge-prod"
+    elif mutation in {"public-admin", "public-ingest"}:
         document["nodes"][1]["public_listeners"] = [
-            {"name": "prometheus", "protocol": "tcp", "port": 9090}
+            {"name": "prometheus" if mutation == "public-admin" else "observability-ingest",
+             "protocol": "tcp", "port": 9443}
         ]
-    elif mutation == "vpn-public-admin":
-        document["nodes"][0]["public_listeners"] = [
-            {"name": "node-exporter", "protocol": "tcp", "port": 9100}
-        ]
-    elif mutation in {"vpn-grafana", "vpn-metrics", "vpn-unknown"}:
-        document["nodes"][0]["public_listeners"] = [
-            {"name": mutation.removeprefix("vpn-"), "protocol": "tcp", "port": 9443}
-        ]
-    elif mutation == "vpn-observability-ingest":
-        document["nodes"][0]["public_listeners"] = [
-            {"name": "observability-ingest", "protocol": "tcp", "port": 9443}
-        ]
-    elif mutation == "vpn-observability-deadman":
-        document["nodes"][0]["public_listeners"] = [
-            {
-                "name": "observability-deadman-pulse",
-                "protocol": "tcp",
-                "port": 9444,
-            }
-        ]
-    elif mutation == "missing-ingest":
-        document["nodes"][1]["public_listeners"] = []
-    elif mutation == "missing-control":
-        document["nodes"][1]["host_class"] = "vpn"
-        document["nodes"][1]["public_listeners"] = [
-            {"name": "xray", "protocol": "tcp", "port": 443}
-        ]
-    elif mutation == "one-sentinel":
-        document["sentinels"].pop()
-
+    elif mutation == "no-collector":
+        document["nodes"][1]["capabilities"] = ["vpn"]
+    elif mutation == "two-collectors":
+        document["nodes"][0]["capabilities"] = ["vpn", "collector"]
+    elif mutation == "obsolete":
+        document["schema_version"] = 1
     result = _validate(document, trusted_root)
-
     assert result.returncode == 2
     assert result.stdout == ""
     assert result.stderr == f"observability-contract: {expected} rejected\n"
+
+
+@pytest.mark.parametrize("fault", ["no-vpn", "unknown-capability", "unknown-observer", "eleven-nodes"])
+def test_topology_rejects_schema_faults(trusted_root: Path, fault: str) -> None:
+    document = _topology()
+    if fault == "no-vpn":
+        document["nodes"][1]["capabilities"] = ["collector"]
+    elif fault == "unknown-capability":
+        document["nodes"][0]["capabilities"].append("deadman")
+    elif fault == "unknown-observer":
+        document["observer"]["kind"] = "healthchecks"
+    else:
+        document["nodes"] *= 4
+    result = _validate(document, trusted_root)
+    assert result.returncode == 2
+    assert result.stdout == ""
 
 
 def test_topology_accepts_root_owned_sticky_ancestor_with_trusted_child() -> None:
@@ -297,7 +235,22 @@ def _inventory_repo(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     shutil.copyfile(ROOT / "secrets" / "schema.json", root / "secrets" / "schema.json")
     secrets = yaml.safe_load((ROOT / "tests" / "fixtures" / "secrets-sample.yml").read_text())
     secrets["hysteria"].setdefault("masquerade_url", "https://vpn.example.com")
-    secrets["observability_secrets"]["senders"][0]["node_id"] = "upcloud-test"
+    sender = secrets["observability_secrets"]["senders"][0]
+    secrets["observability_secrets"]["senders"] = [
+        {**sender, "node_id": f"{provider}-test",
+         "certificate_pem": sender["certificate_pem"] + provider,
+         "private_key_pem": sender["private_key_pem"] + provider}
+        for provider in ("upcloud", "hetzner", "vultr")
+    ]
+    secrets["observability_kuma_secrets"]["push_monitors"] = [
+        {"check_id": f"node-{provider}", "node_id": f"{provider}-test", "kind": "node",
+         "token": f"fixture-kuma-node-{provider}-not-real-0000"}
+        for provider in ("upcloud", "hetzner", "vultr")
+    ] + [
+        {"check_id": kind, "node_id": "hetzner-test", "kind": kind,
+         "token": f"fixture-kuma-{kind}-not-real-00000000"}
+        for kind in ("pipeline", "delivery")
+    ]
     secrets_path = root / "secrets" / "runtime.yml"
     secrets_path.write_text(yaml.safe_dump(secrets))
     secrets_path.chmod(0o600)
@@ -347,9 +300,9 @@ case "$key" in
         if [ "${LISTENER_FAULT:-}" = public-admin ]; then
           printf '[{"name":"prometheus","protocol":"tcp","port":9090,"port_range":null}]'
         else
-          printf '[{"name":"observability-ingest","protocol":"tcp","port":9443,"port_range":null}]'
+          printf '[{"name":"xray","protocol":"tcp","port":443,"port_range":null}]'
         fi ;;
-      vultr) printf '[{"name":"observability-deadman-pulse","protocol":"tcp","port":9444,"port_range":null}]' ;;
+      vultr) printf '[{"name":"xray","protocol":"tcp","port":443,"port_range":null}]' ;;
     esac ;;
 esac
 '''
@@ -391,22 +344,10 @@ esac
         "VPN_SECRETS_FILE": str(secrets_path),
         "GIT_STATE": str(tmp_path / "git-state"),
         "GIT_REPO_ROOT": str(root),
-        "OBSERVABILITY_HOST_CLASSES": "vpn,control-plane,deadman",
+        "OBSERVABILITY_CAPABILITIES": "vpn,vpn+collector,vpn",
         "OBSERVABILITY_FAILURE_DOMAINS": "edge-a,control-a,deadman-a",
-        "OBSERVABILITY_SENTINELS_JSON": json.dumps(
-            [
-                {
-                    "sentinel_id": "filtered-b",
-                    "path_signature": "fixed-egress-b",
-                    "failure_domain": "sentinel-b",
-                },
-                {
-                    "sentinel_id": "filtered-a",
-                    "path_signature": "fixed-egress-a",
-                    "failure_domain": "sentinel-a",
-                },
-            ]
-        ),
+        "OBSERVABILITY_OBSERVER_ALIAS": "observer-a",
+        "OBSERVABILITY_OBSERVER_DOMAIN": "observer-a",
     }
     return root, env
 
@@ -427,9 +368,10 @@ def test_render_inventory_publishes_validated_deterministic_topology(tmp_path: P
     inventory = (root / "ansible" / "inventory" / "generated.ini").read_text()
     assert "[vpn-observability-control]" in inventory
     assert "hetzner-test" in inventory
-    assert "[vpn-observability-deadman]" in inventory
+    assert "[vpn-observability-deadman]" not in inventory
     assert "vultr-test" in inventory
-    assert "observability_host_class=control-plane" in inventory
+    assert "observability_capabilities=" in inventory
+    assert "observability_host_class=" not in inventory
     encoded = next(
         line.split("=", 1)[1]
         for line in inventory.splitlines()
@@ -441,10 +383,7 @@ def test_render_inventory_publishes_validated_deterministic_topology(tmp_path: P
         "upcloud-test",
         "vultr-test",
     ]
-    assert [item["sentinel_id"] for item in topology["sentinels"]] == [
-        "filtered-a",
-        "filtered-b",
-    ]
+    assert topology["observer"]["kind"] == "uptime-kuma"
     assert topology["source_revision"] == "1" * 40
     assert "198.51.100.10" not in json.dumps(topology)
     parsed = subprocess.run(
@@ -465,8 +404,8 @@ def test_render_inventory_publishes_validated_deterministic_topology(tmp_path: P
         assert hostvars[host]["ansible_ssh_private_key_file"] == "/private/test-key"
         assert hostvars[host]["ansible_python_interpreter"] == "/usr/bin/python3"
     assert "vpn_service_address" in hostvars["upcloud-test"]
-    assert "vpn_service_address" not in hostvars["hetzner-test"]
-    assert "vpn_service_address" not in hostvars["vultr-test"]
+    assert "vpn_service_address" in hostvars["hetzner-test"]
+    assert "vpn_service_address" in hostvars["vultr-test"]
 
 
 def test_render_inventory_from_root_owned_sticky_tmp_is_supported() -> None:
@@ -532,15 +471,15 @@ def test_render_inventory_refuses_env_topology_when_tracked_selector_is_disabled
     assert (root / "ansible" / "inventory" / "generated.ini").read_text() == "last-good\n"
 
 
-@pytest.mark.parametrize("missing", ["all", "host-classes", "failure-domains", "sentinels"])
+@pytest.mark.parametrize("missing", ["all", "capabilities", "failure-domains", "observer"])
 def test_enabled_observability_requires_complete_topology_inputs_without_replacing_last_good(
     tmp_path: Path, missing: str
 ) -> None:
     root, env = _inventory_repo(tmp_path)
     keys = {
-        "host-classes": "OBSERVABILITY_HOST_CLASSES",
+        "capabilities": "OBSERVABILITY_CAPABILITIES",
         "failure-domains": "OBSERVABILITY_FAILURE_DOMAINS",
-        "sentinels": "OBSERVABILITY_SENTINELS_JSON",
+        "observer": "OBSERVABILITY_OBSERVER_ALIAS",
     }
     if missing == "all":
         for key in keys.values():
@@ -558,7 +497,7 @@ def test_enabled_observability_requires_complete_topology_inputs_without_replaci
     )
 
     assert result.returncode != 0
-    assert "enabled observability requires host classes, failure domains, and sentinels" in result.stderr
+    assert "enabled observability requires capabilities, failure domains, and observer identity" in result.stderr
     assert (root / "ansible" / "inventory" / "generated.ini").read_text() == "last-good\n"
 
 
@@ -594,6 +533,26 @@ def test_render_inventory_requires_exact_sender_set_without_replacing_last_good(
     assert (root / "ansible" / "inventory" / "generated.ini").read_text() == "last-good\n"
 
 
+@pytest.mark.parametrize("fault", ["missing-node", "extra-node", "wrong-collector"])
+def test_inventory_requires_exact_independent_monitor_bindings(tmp_path, fault):
+    root, env = _inventory_repo(tmp_path)
+    path = Path(env["VPN_SECRETS_FILE"])
+    secrets = yaml.safe_load(path.read_text())
+    monitors = secrets["observability_kuma_secrets"]["push_monitors"]
+    if fault == "missing-node":
+        monitors.pop(0)
+    elif fault == "extra-node":
+        monitors[0]["node_id"] = "foreign-node"
+    else:
+        monitors[-1]["node_id"] = "upcloud-test"
+    path.write_text(yaml.safe_dump(secrets))
+    result = subprocess.run(["bash", str(root / "scripts/render-inventory.sh")], cwd=root,
+                            env=env, capture_output=True, text=True, timeout=20)
+    assert result.returncode != 0
+    assert "monitor bindings must exactly match" in result.stderr
+    assert (root / "ansible/inventory/generated.ini").read_text() == "last-good\n"
+
+
 @pytest.mark.parametrize("fault", ["dirty", "stale"])
 def test_render_inventory_refuses_untrustworthy_source_identity_without_replacing_last_good(
     tmp_path: Path, fault: str
@@ -615,17 +574,15 @@ def test_render_inventory_refuses_untrustworthy_source_identity_without_replacin
     assert (root / "ansible" / "inventory" / "generated.ini").read_text() == "last-good\n"
 
 
-@pytest.mark.parametrize("fault", ["public-admin", "vpn-unknown", "duplicate-path"])
+@pytest.mark.parametrize("fault", ["public-admin", "vpn-unknown", "observer-placement"])
 def test_render_inventory_rejects_invalid_topology_without_replacing_last_good(
     tmp_path: Path, fault: str
 ) -> None:
     root, env = _inventory_repo(tmp_path)
-    if fault == "public-admin":
+    if fault in {"public-admin", "vpn-unknown"}:
         env["LISTENER_FAULT"] = fault
     else:
-        sentinels = json.loads(env["OBSERVABILITY_SENTINELS_JSON"])
-        sentinels[1]["path_signature"] = sentinels[0]["path_signature"]
-        env["OBSERVABILITY_SENTINELS_JSON"] = json.dumps(sentinels)
+        env["OBSERVABILITY_OBSERVER_DOMAIN"] = "edge-a"
 
     result = subprocess.run(
         ["bash", str(root / "scripts" / "render-inventory.sh")],

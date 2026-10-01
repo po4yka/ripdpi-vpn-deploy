@@ -2,14 +2,28 @@
 
 ## Design decisions
 
-Prometheus binds only `127.0.0.1:9090`; nginx is the sole public listener and
-accepts only mTLS `POST /remote-write/v1/nodes/<node_id>` requests on 9443.
-The default TLS virtual host rejects a missing or incorrect SNI before it can
-reach the write-only vhost. Prometheus generations are content-addressed and
+Prometheus binds only `127.0.0.1:9090`; an isolated unprivileged nginx master
+accepts only private-IP mTLS `POST /remote-write/v1/nodes/<node_id>` on 9443.
+The existing nginx binary runs with its own configuration, pid and temporary
+directory; shared VPN nginx units, sites and 80/443 listeners are never touched.
+Its IP SAN is verified without DNS or SNI. Prometheus generations are content-addressed and
 immutable; rollback repoints `current.yml` directly at the prior generation.
 The exact certificate subject maps to one technical node id. TLS validation
-uses the client CA, CRL, `clientAuth` purpose and two distinct server SANs.
-Prometheus is installed through `runtime-release` with explicit pins.
+uses the client CA, CRL, `clientAuth` purpose and the exact private server IP SAN.
+Prometheus is installed through `runtime-release` with explicit pins. Every
+receiver process uses the dedicated `observability-prometheus` account, never
+the distro node exporter's `prometheus` UID or home. Every
+dedicated collector service, including ingress, relay and adapters, belongs to
+`observability-collector.slice` (512 MiB, 20% CPU, IOWeight 10, no swap).
+Blocks retain at most seven days/1 GiB; WAL/head remain subject to the separate
+2 GiB operational high-water guard, not a promised filesystem quota. Admission
+precedes account/package writes and requires 1 GiB MemAvailable, allowance plus
+max(5 GiB,20% filesystem) reserve, and measured burst/stop headroom. The guard
+checks every five seconds; its ten-second systemd watchdog bounds a stalled
+scan. Headroom covers twice measured peak writes over watchdog plus enforced
+receiver stop timeout. Guard loss stops receiver and ingress via BindsTo;
+the durable latch survives disable and requires explicit operator inspection
+and recovery. Arithmetic tests are not actual-filesystem burst admission.
 When explicitly enabled, expected targets are validated from a repository
 inventory and rendered as bounded contract metrics; source/deploy identity,
 TSDB capacity, and pipeline status use the existing bounded evidence families.
@@ -18,21 +32,29 @@ redacted evidence. It maps that evidence to bounded one-hot metrics and never
 executes probes or recomputes sentinel, variant, profile, or quorum semantics.
 It is separately opt-in and owns only its adapter, units, timer, and one
 textfile; disable preserves the canonical evaluator evidence.
-Alerting is separately opt-in. Prometheus evaluates immutable validated rules;
+An enabled collector requires primary alerting. Prometheus evaluates immutable validated rules;
 Alertmanager remains loopback-only and sends bounded authenticated webhooks to
-a separate loopback relay. Only that relay receives the primary Telegram token
+a separate loopback relay. Host and adapter metrics arrive only through the
+cohosted agent's metric/label allowlist; the collector never scrapes raw node
+exporter metrics a second time. Its sole local scrape retains only bounded
+Alertmanager notification counters and integration labels.
+Only that relay receives the primary Telegram token
 through a systemd credential. Its separate random relay credential comes from
 the private secrets document and is never derived from the Prometheus sender
 authority. Telegram routing contains only bounded technical
 aliases and cannot authorize maintenance or infrastructure actions. The relay
 owns two bounded delivery attempts, escaping, redaction, truncation and exact
 omission counts; fixed group and repeat intervals bound route frequency. A
-synthetic pipeline watchdog may target only an explicitly enabled loopback
-canary receiver; the independent dead-man sender remains a separate owner. Its
-HTTPS pulse client trusts only the dedicated dead-man CA credential and binds
-the URL hostname to certificate verification. Authority rotation quiesces all
-pipeline writers before generation reconciliation and restores their exact
-enabled/active states if publication rolls back.
+synthetic rule-to-relay canary carries a fresh evaluation timestamp; replay
+cannot refresh its receipt. The real relay sends a silent message daily and
+edits its changing sequence every five minutes on an authenticated request.
+Durable send/edit receipts report API acceptance, never human receipt. Only
+the relay's persistent dedicated account receives the bot token. Kuma
+producers consume bounded receipts through loopback endpoints.
+Pipeline expected nodes must exactly match the enrolled ingestion identities,
+including the collector's own cohosted agent; omissions fail before mutation.
+Obsolete deadman runtime input is rejected; an active old alarm route blocks replacement
+pending explicit verified cutover, and old secret material is retained.
 Enabled alerting requires the private gateway on 127.0.0.1:19094. Only its
 separate UID receives the dedicated backend client certificate; Alertmanager
 requires that CA on HTTPS 127.0.0.1:9093. Prometheus holds only a sender token.
@@ -49,9 +71,8 @@ across restart. Alertmanager owns native expiration; no source health is changed
 ## What's done well
 
 The role checks available (not total) filesystem capacity, fixed request and
-retention bounds before writes, removes the distribution nginx site, and
-starts nginx explicitly after `policy_rc_d` installation. It disables only
-its units and generated configuration while retaining TSDB data.
+retention bounds before writes. It disables only its units and runtime
+configuration while retaining TSDB, latch, relay receipts and credentials.
 
 ## Pitfalls
 
@@ -67,7 +88,7 @@ Do not put Telegram tokens in Alertmanager YAML, argv, environment, metrics, or
 logs. Alertmanager holds only the relay authentication credential. A missing
 or reused relay credential is a pre-mutation refusal. The relay never follows an
 HTTP redirect away from the exact Telegram API destination. Disabling removes both
-alerting units, configuration and credential surfaces without deleting the
+alerting units and active configuration without deleting credentials or the
 Prometheus TSDB.
 
 Do not reuse ingestion CA or certificates for the backend, forward raw silence

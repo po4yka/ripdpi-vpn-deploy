@@ -56,6 +56,16 @@ receipt and reject an obsolete version before mutation. Its registry fixture
 uses the installer's exact sorted JSON format.
 
 **Disposable observability acceptance is evidence-class strict** — focused
+schema-2 tests cover co-hosted VPN capabilities, one collector, independent
+Kuma placement, exact push-monitor bindings and rejection of old host classes.
+PKI tests exercise real OpenSSL IP-SAN verification, scoped revocation and SOPS
+encryption/decryption, including strict certificate-chain checks with explicit
+key identifiers. Refresh the encrypted synthetic fixture whenever its plaintext
+counterpart changes. Tests that isolate HOME need real SOPS on PATH, not a
+version-manager shim whose trust state depends on the original home directory.
+Real pinned Kuma runtime timing is separate from mocked
+push or Telegram tests; no synthetic receipt proves human notification.
+Historical dedicated-host
 selector tests prove staging-only enablement, disabled production, required
 explicit secret scope, and mixed-scope refusal before Terraform or publication.
 The old global boolean must fail, not become an implicit compatibility path.

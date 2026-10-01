@@ -2,8 +2,12 @@
 Description=Observability Prometheus control plane
 After=network-online.target
 Wants=network-online.target
+BindsTo=observability-disk-guard.service
+After=observability-disk-guard.service
+ConditionPathExists=!/var/lib/observability-disk-guard/latched
 
 [Service]
+Slice=observability-collector.slice
 User={{ observability_control_plane.service_user }}
 Group={{ observability_control_plane.service_group }}
 {% if (observability_control_plane.alerting | default({'enabled': false}, true)).enabled | default(false) %}
@@ -13,7 +17,7 @@ ExecStart={{ observability_control_plane.binary_link }} --config.file={{ observa
 Restart=on-failure
 RestartSec=5s
 TimeoutStartSec=30s
-TimeoutStopSec=30s
+TimeoutStopSec={{ observability_control_plane.disk_measured_stop_seconds }}s
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
@@ -29,7 +33,12 @@ RestrictNamespaces=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 ReadWritePaths={{ observability_control_plane.data_dir }}
 ReadOnlyPaths={{ observability_control_plane.config_root }} {{ observability_control_plane.binary_link }}
-MemoryMax=1G
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+MemoryMax=512M
 TasksMax=256
 
 [Install]

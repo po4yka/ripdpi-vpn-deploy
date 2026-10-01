@@ -1,0 +1,34 @@
+---
+observability_kuma:
+  enabled: false
+  host_alias: ""
+  admission_approved: false
+  version: "2.5.5"
+  image_repository: louislam/uptime-kuma
+  image_digests:
+    x86_64: sha256:8bdad438d293e998fd7d45004cefb3baea0f96d3bc774502bba99c17d616e1f6
+    aarch64: sha256:c95c90afb9b774cfe78af58dc7660b47f955fb7edce9fd92b048f734b0d65cdb
+  bind_address: ""
+  port: 9444
+  allowed_sources: []
+  data_dir: /var/lib/observability-kuma
+  backup_directory: ""
+  admin_port: 13001
+  memory_bytes: 536870912
+  cpu_quota: "0.25"
+  minimum_available_memory_bytes: 805306368
+  data_allowance_bytes: 3221225472
+  reserve_minimum_bytes: 5368709120
+observability_kuma_secrets: {}
+observability_push_disable_kinds: [node, pipeline, delivery]
+# Include tasks_from: producers on VPN/collector hosts, not the observer role.
+observability_push:
+  node_id: ""
+  origin: ""
+  kinds: []
+  services: []
+  expected_nodes: []
+  prometheus_origin: http://127.0.0.1:9090
+  relay_origin: http://127.0.0.1:19095
+  relay_auth_path: /etc/observability-control-plane/credentials/telegram-relay-auth-token
+  textfile_dir: /var/lib/node_exporter/textfile

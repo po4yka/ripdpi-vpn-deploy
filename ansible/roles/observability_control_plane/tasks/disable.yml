@@ -15,6 +15,13 @@
 - name: Gather control-plane service facts before disable
   ansible.builtin.service_facts:
 
+- name: Stop collector producers without stopping independent node heartbeat
+  ansible.builtin.include_role:
+    name: observability_kuma
+    tasks_from: producers-disable
+  vars:
+    observability_push_disable_kinds: [pipeline, delivery]
+
 - name: Stop and disable existing control-plane service
   ansible.builtin.systemd_service:
     name: observability-prometheus
@@ -32,6 +39,23 @@
   when:
     - not ansible_check_mode
     - "'observability-silence-gateway.service' in ansible_facts.services"
+
+- name: Stop persistent disk guard without clearing its latch
+  ansible.builtin.systemd_service:
+    name: observability-disk-guard
+    state: stopped
+  when:
+    - not ansible_check_mode
+    - "'observability-disk-guard.service' in ansible_facts.services"
+
+- name: Stop isolated private ingress without touching VPN nginx
+  ansible.builtin.systemd_service:
+    name: observability-ingress
+    enabled: false
+    state: stopped
+  when:
+    - not ansible_check_mode
+    - "'observability-ingress.service' in ansible_facts.services"
 
 - name: Stop and disable existing Alertmanager service
   ansible.builtin.systemd_service:
@@ -51,69 +75,25 @@
     - not ansible_check_mode
     - "'observability-telegram-relay.service' in ansible_facts.services"
 
-- name: Stop and disable dead-man pipeline schedules before state reset
-  ansible.builtin.systemd_service:
-    name: "{{ item }}"
-    enabled: false
-    state: stopped
-  loop:
-    - observability-deadman-pulse.timer
-    - observability-primary-canary.timer
-    - observability-deadman-pulse.service
-    - observability-primary-canary.service
-    - observability-deadman-pipeline.service
-  when:
-    - not ansible_check_mode
-    - item in ansible_facts.services
-
-- name: Inspect installed dead-man pipeline helper before full disable
+- name: Inspect owned adapter units before disable
   ansible.builtin.stat:
-    path: /usr/local/libexec/observability-deadman-pipeline.py
-    follow: false
-  register: _observability_disabled_deadman_helper
-  changed_when: false
-
-- name: Reconcile generation-bound state before full disable
-  ansible.builtin.command:
-    argv:
-      - /usr/local/libexec/observability-deadman-pipeline.py
-      - reconcile-state
-      - --state-dir
-      - '{{ observability_control_plane.alerting.deadman.state_dir }}'
-      - --generation
-      - '0000000000000000000000000000000000000000'
-      - --disable
-  register: _observability_disabled_deadman_state
-  changed_when: >-
-    (_observability_disabled_deadman_state.stdout | from_json).changed | bool
-  no_log: true
-  when:
-    - not ansible_check_mode
-    - _observability_disabled_deadman_helper.stat.isreg | default(false)
-
-- name: Stop and disable protocol-liveness adapter units
-  ansible.builtin.systemd_service:
-    name: "{{ item }}"
-    enabled: false
-    state: stopped
+    path: "/etc/systemd/system/{{ item }}"
   loop:
     - observability-protocol-liveness-adapter.timer
+    - observability-control-plane-adapter.timer
     - observability-protocol-liveness-adapter.service
-  when:
-    - not ansible_check_mode
-    - item in ansible_facts.services
+    - observability-control-plane-adapter.service
+  register: _observability_collector_adapter_units
 
-- name: Stop and disable expected-target adapter units
+- name: Stop and disable collector adapter timers and in-flight services
   ansible.builtin.systemd_service:
-    name: "{{ item }}"
+    name: "{{ item.item }}"
     enabled: false
     state: stopped
-  loop:
-    - observability-control-plane-adapter.timer
-    - observability-control-plane-adapter.service
+  loop: "{{ _observability_collector_adapter_units.results }}"
   when:
     - not ansible_check_mode
-    - item in ansible_facts.services
+    - item.stat.exists
 
 - name: Remove protocol-liveness adapter owned surfaces
   ansible.builtin.file:
@@ -144,22 +124,15 @@
     state: absent
   loop:
     - /etc/systemd/system/observability-prometheus.service
+    - /etc/systemd/system/observability-ingress.service
+    - /etc/systemd/system/observability-disk-guard.service
+    - /etc/systemd/system/observability-collector.slice
+    - /usr/local/libexec/observability-disk-guard.py
     - /etc/systemd/system/observability-alertmanager.service
     - /etc/systemd/system/observability-telegram-relay.service
     - /etc/systemd/system/observability-silence-gateway.service
-    - /etc/systemd/system/observability-deadman-pipeline.service
-    - /etc/systemd/system/observability-deadman-pulse.service
-    - /etc/systemd/system/observability-deadman-pulse.timer
-    - /etc/systemd/system/observability-primary-canary.service
-    - /etc/systemd/system/observability-primary-canary.timer
     - /usr/local/libexec/observability-telegram-relay
     - /usr/local/libexec/observability-silence-gateway
-    - /usr/local/libexec/observability-deadman-pipeline.py
-    - /etc/nginx/sites-enabled/observability-remote-write.conf
-    - /etc/nginx/sites-available/observability-remote-write.conf
-    - "{{ observability_control_plane.alerting.deadman.metrics_path }}"
-    - "{{ observability_control_plane.config_root }}"
-  notify: Reload observability ingress
 
 - name: Reload systemd after removing owned service unit
   ansible.builtin.systemd_service:

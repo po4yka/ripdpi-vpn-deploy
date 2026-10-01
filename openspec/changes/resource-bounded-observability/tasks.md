@@ -8,11 +8,16 @@ Run affordable, bounded metrics and independently supervised alerts on existing 
 
 One serialized implementation lane owns `scripts/observability-*`, `contract/observability*`, `secrets/schema.json`, secret validators/coverage/examples, Make includes, and affected `vpnd/` callers. Runtime work owns `ansible/roles/observability_control_plane/`, `ansible/roles/observability_agent/`, affected deadman/shared-nginx integration, and corresponding tests/snapshots. Update the nearest role/subtree guidance when behavior changes. Terraform roots are not modified by this design. Preserve unrelated work and old task evidence.
 
-The same lane owns the new `ansible/roles/observability_kuma/` role, exact-observer playbook, pinned container/private ingress configuration and encrypted backup/restore tests. The observer is not a VPN node; preserve the existing host's deployment ownership and unrelated workloads.
+Parallel implementation ownership: the integration lane owns the shared contracts, scripts, secret schema, Make, fixtures, runbooks and task tracking above. The bounded-runtime lane exclusively owns `ansible/roles/observability_control_plane/`, `ansible/roles/observability_agent/` and their role-specific unit tests, including `tests/unit/test_observability_telegram_delivery.py`. The observer lane exclusively owns the new `ansible/roles/observability_kuma/`, `ansible/playbooks/observability-kuma.yml`, and new `tests/unit/test_observability_kuma*.py` / `test_observability_push*.py` tests. Shared files and cross-lane inputs are serialized through the integration lane. Workers do not commit or perform live actions. The observer is not a VPN node; preserve the existing host's deployment ownership and unrelated workloads.
+
+Observer implementation ownership has returned to the integration lane after
+its runtime/test handoff. The bounded-runtime lane additionally owns authority
+snapshot, generation and protocol-adapter integration regressions; shared
+historical dead-man test migration remains in the integration lane.
 
 ## Execution
 
-- [ ] MON-1790835427523974 Migrate observability inventory and secrets contracts to co-hosted capabilities and a typed Uptime Kuma observer; update scripts, Make and affected vpnd callers with positive and obsolete-input tests #feature !high @item:MON-1790835036464962
+- [x] MON-1790835427523974 Migrate observability inventory and secrets contracts to co-hosted capabilities and a typed Uptime Kuma observer; update scripts, Make and affected vpnd callers with positive and obsolete-input tests #feature !high @item:MON-1790835036464962
 - [ ] MON-1790835428068030 Implement bounded co-hosted collector and agent slices, ingestion budgets and latched disk-reserve guard; test load, WAL recovery, overload and VPN isolation #feature !high @item:MON-1790835036464962
 - [ ] MON-1790835428600254 Implement private-IP SAN mTLS ingress and safe shared-nginx ownership; test trusted ingestion, revocation, wrong SAN and unchanged public VPN listeners #feature !high @item:MON-1790835036464962
 - [ ] MON-1790835429142513 Implement pinned private Uptime Kuma runtime and scoped node/pipeline push producers with real-relay canaries; test stale receipts, credential rotation, observer loss, encrypted backup and isolated restore #feature !high @item:MON-1790835036464962

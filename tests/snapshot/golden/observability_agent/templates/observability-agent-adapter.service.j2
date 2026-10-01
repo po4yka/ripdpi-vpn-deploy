@@ -3,6 +3,7 @@ Description=RIPDPI schema-2 observability manifest adapter
 After=node-manifest.service
 
 [Service]
+Slice=observability-agent.slice
 Type=oneshot
 User=prometheus
 Group=prometheus

@@ -1,0 +1,32 @@
+[Unit]
+Description=Offline notification-isolated observer restore %i
+After=docker.service
+
+[Service]
+Type=oneshot
+User=root
+LoadCredential=age-identity:/etc/observability-kuma/restore-age-identity
+ExecStart=/usr/bin/python3 /usr/local/libexec/observability-kuma-backup.py restore %i
+TimeoutStartSec=600
+MemoryMax=128M
+CPUQuota=25%
+IOWeight=10
+TasksMax=32
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_READ_SEARCH
+RuntimeDirectory=observability-kuma-lifecycle
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=/var/lib/observability-kuma-restores /run/observability-kuma-lifecycle

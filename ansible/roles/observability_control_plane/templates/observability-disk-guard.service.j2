@@ -1,0 +1,29 @@
+[Unit]
+Description=Latched monitoring data and filesystem reserve guard
+Before=observability-prometheus.service
+
+[Service]
+Slice=observability-collector.slice
+Type=notify
+User=root
+ExecStart=/usr/local/libexec/observability-disk-guard.py --data-dir {{ observability_control_plane.data_dir }} --state-dir {{ observability_control_plane.disk_guard_state_dir }} --ingress-address {{ observability_control_plane.ingress_address }} --headroom-bytes {{ observability_control_plane.disk_write_headroom_bytes }} --peak-bytes-per-second {{ observability_control_plane.disk_measured_peak_bytes_per_second }} --stop-seconds {{ observability_control_plane.disk_measured_stop_seconds }} --interval-seconds {{ observability_control_plane.guard_interval_seconds }}
+Restart=no
+WatchdogSec=10s
+TimeoutStartSec=30s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX
+ReadWritePaths={{ observability_control_plane.disk_guard_state_dir }}
+UMask=0022

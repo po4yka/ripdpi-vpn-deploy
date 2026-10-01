@@ -40,6 +40,12 @@ def test_imported_namespace_is_local_but_context_values_are_not() -> None:
     assert checker.extract_toplevel_vars(template) == {"global_content"}
 
 
+def test_numeric_output_literals_are_not_context_variables() -> None:
+    template = "{{ 660 if kind == 'delivery' else 180 }} {{ 1.5 }} {{ _private }}"
+
+    assert checker.extract_toplevel_vars(template) == {"_private"}
+
+
 def test_macro_argument_does_not_hide_same_named_global_outside_macro() -> None:
     template = """
     {% macro card(title) %}<h2>{{ title }}</h2>{% endmacro %}

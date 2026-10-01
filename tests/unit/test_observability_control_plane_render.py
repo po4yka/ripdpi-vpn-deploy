@@ -36,8 +36,7 @@ def _values() -> dict:
     return {
         "observability_control_plane": {
             "ingress_port": 9443,
-            "ingress_sni": "ingest.example.test",
-            "control_plane_dns_san": "control.example.test",
+            "ingress_address": "10.23.0.2",
             "prometheus_listen": "127.0.0.1:9090",
             "remote_write_path_prefix": "/remote-write/v1/nodes",
             "request_body_limit": "8m",
@@ -49,8 +48,9 @@ def _values() -> dict:
             "service_user": "prometheus",
             "service_group": "prometheus",
             "binary_link": "/usr/local/libexec/observability-prometheus",
-            "tsdb_retention_time": "30d",
-            "tsdb_retention_size": "20GB",
+            "tsdb_retention_time": "7d",
+            "tsdb_retention_size": "1GB",
+            "disk_measured_stop_seconds": 30,
             "ingest_identities": [
                 {"node_id": "vpn-p0"},
                 {"node_id": "vpn-p2"},
@@ -125,11 +125,9 @@ def test_ingress_is_only_the_bounded_authenticated_write_path() -> None:
     )
 
     for required in (
-        "listen 9443 ssl http2 default_server;",
-        "ssl_reject_handshake on;",
-        "listen 9443 ssl http2;",
-        "ssl_client_certificate /etc/observability-control-plane/tls/client-ca.crt;",
-        "ssl_crl /etc/observability-control-plane/tls/client.crl;",
+        "listen 10.23.0.2:9443 ssl http2;",
+        "ssl_client_certificate /run/credentials/observability-ingress.service/client-ca.crt;",
+        "ssl_crl /run/credentials/observability-ingress.service/client.crl;",
         "ssl_verify_client on;",
         "client_max_body_size 8m;",
         "limit_conn observability_remote_write_conn 4;",
@@ -137,9 +135,11 @@ def test_ingress_is_only_the_bounded_authenticated_write_path() -> None:
         "burst=40 nodelay;",
         'location ~ "^/remote-write/v1/nodes/',
         "if ($request_method != POST) { return 405; }",
+        'if ($args != "") { return 400; }',
         "if ($observability_remote_write_node != $1) { return 403; }",
         "rewrite ^ /api/v1/write break;",
         "proxy_pass http://127.0.0.1:9090;",
+        'proxy_set_header Host "127.0.0.1:9090";',
         "X-Prometheus-Remote-Write-Version $http_x_prometheus_remote_write_version;",
         "location / { return 404; }",
     ):
@@ -159,7 +159,7 @@ def test_ingress_binds_each_certificate_subject_to_exact_node_path() -> None:
     assert 'default "";' in rendered
 
 
-def test_ingress_exposes_only_mtls_bound_deadman_reverse_receiver() -> None:
+def test_ingress_has_no_obsolete_deadman_reverse_receiver() -> None:
     values = _values()
     control = values["observability_control_plane"]
     control["ingest_identities"].append({"node_id": "deadman-control"})
@@ -176,14 +176,9 @@ def test_ingress_exposes_only_mtls_bound_deadman_reverse_receiver() -> None:
         ROLE / "templates/observability-remote-write.conf.j2", values
     )
 
-    assert "location = /observability/v1/deadman/reverse" in rendered
+    assert "location = /observability/v1/deadman/reverse" not in rendered
     assert "if ($ssl_client_verify != SUCCESS) { return 403; }" in rendered
-    assert (
-        "if ($observability_remote_write_node != deadman-control) { return 403; }"
-        in rendered
-    )
-    assert "client_max_body_size 4k;" in rendered
-    assert "proxy_pass http://127.0.0.1:19096/v1/deadman/reverse;" in rendered
+    assert "proxy_pass http://127.0.0.1:19096/v1/deadman/reverse;" not in rendered
 
 
 def test_prometheus_service_is_loopback_only_and_storage_is_bounded() -> None:
@@ -194,8 +189,8 @@ def test_prometheus_service_is_loopback_only_and_storage_is_bounded() -> None:
     for required in (
         "--web.listen-address=127.0.0.1:9090",
         "--web.enable-remote-write-receiver",
-        "--storage.tsdb.retention.time=30d",
-        "--storage.tsdb.retention.size=20GB",
+        "--storage.tsdb.retention.time=7d",
+        "--storage.tsdb.retention.size=1GB",
         "ProtectSystem=strict",
         "NoNewPrivileges=true",
         "PrivateDevices=true",
@@ -225,7 +220,9 @@ def test_role_defaults_and_tasks_fail_closed_before_host_writes() -> None:
     assert "requires exact bounded receiver settings" in enabled
     assert "- sslclient" in enabled
     assert "- -crl_check_all" in enabled
-    assert "ingress_sni != observability_control_plane.control_plane_dns_san" in enabled
+    assert "- -checkip" in enabled
+    assert "observability_control_plane.ingress_address" in enabled
+    assert "/etc/nginx/sites-enabled/default" not in enabled
 
 
 def test_enabled_role_refuses_missing_pins_and_mtls_before_mutation(
@@ -266,23 +263,23 @@ def test_enabled_molecule_archive_matches_runtime_release_strip_contract() -> No
     )
     config = fixture[-1]["ansible.builtin.set_fact"]["observability_control_plane"]
 
-    assert "prometheus-fixture/prometheus prometheus-fixture/promtool" in prepare
-    assert ".silence-fixture-v2" in prepare
+    assert "prometheus-fixture" not in prepare
+    assert ".private-fixture-v3" in prepare
     assert config["prometheus"]["archive_members"] == {
-        "amd64": "prometheus-fixture/prometheus",
-        "arm64": "prometheus-fixture/prometheus",
+        "amd64": "prometheus-3.14.0.linux-amd64/prometheus",
+        "arm64": "prometheus-3.14.0.linux-arm64/prometheus",
     }
     assert config["prometheus"]["promtool_archive_members"] == {
-        "amd64": "prometheus-fixture/promtool",
-        "arm64": "prometheus-fixture/promtool",
+        "amd64": "prometheus-3.14.0.linux-amd64/promtool",
+        "arm64": "prometheus-3.14.0.linux-arm64/promtool",
     }
     assert config["alerting"]["alertmanager"]["archive_members"] == {
-        "amd64": "alertmanager-fixture/alertmanager",
-        "arm64": "alertmanager-fixture/alertmanager",
+        "amd64": "alertmanager-0.28.1.linux-amd64/alertmanager",
+        "arm64": "alertmanager-0.28.1.linux-arm64/alertmanager",
     }
     assert config["alerting"]["alertmanager"]["amtool_archive_members"] == {
-        "amd64": "alertmanager-fixture/amtool",
-        "arm64": "alertmanager-fixture/amtool",
+        "amd64": "alertmanager-0.28.1.linux-amd64/amtool",
+        "arm64": "alertmanager-0.28.1.linux-arm64/amtool",
     }
     assert (
         "runtime_release_archive_strip_components: 1"
@@ -455,7 +452,7 @@ def test_enabled_receiver_waits_for_the_exact_get_refusal_before_red_path_checks
     command = readiness["ansible.builtin.command"]["argv"]
 
     assert command[0] == "/var/tmp/observability-control-plane-fixture/mtls-client.py"
-    assert command[command.index("--server-name") + 1] == "ingest.fixture.test"
+    assert command[command.index("--server-name") + 1] == "10.23.0.2"
     assert command[command.index("--path") + 1] == "/remote-write/v1/nodes/vpn-p0"
     assert readiness["failed_when"] is False
     assert readiness["retries"] == 10
@@ -467,7 +464,7 @@ def test_enabled_receiver_waits_for_the_exact_get_refusal_before_red_path_checks
         "Assert remote-write receiver rejects a missing or wrong SNI",
         "Assert remote-write receiver rejects a CN path mismatch",
         "Submit an oversized request and require exact server-side 413",
-        "Assert valid mTLS remote write reaches only loopback Prometheus",
+        "Assert invalid protobuf reaches real Prometheus and is rejected",
     ):
         assert names.index(readiness["name"]) < names.index(red_path)
 
@@ -509,7 +506,7 @@ def test_enabled_receiver_checks_use_the_bounded_direct_fixture_client() -> None
     )
     assert mismatch_command[mismatch_command.index("--path") + 1].endswith("/vpn-p1")
 
-    assert len(client_tasks) == 5
+    assert len(client_tasks) == 6
     for task in client_tasks:
         command = task["ansible.builtin.command"]["argv"]
         assert (
@@ -550,7 +547,7 @@ def test_enabled_receiver_fixture_normalizes_tls_rejections_only() -> None:
         if task["name"] == "Install curl for the bounded mTLS fixture client"
     )
     assert curl_dependency["ansible.builtin.apt"] == {
-        "name": "curl",
+        "name": ["curl", "logrotate"],
         "state": "present",
         "update_cache": True,
         "cache_valid_time": 3600,
@@ -687,6 +684,7 @@ def _run_oversized_request(
     timeout: float = 5,
 ) -> int:
     namespace["DIRECT_PORT"] = port
+    namespace["DIRECT_ADDRESS"] = "127.0.0.1"
     namespace["CURL_MAX_TIME"] = timeout
     namespace["CURL_PROCESS_TIMEOUT"] = timeout + 1
     args = argparse.Namespace(

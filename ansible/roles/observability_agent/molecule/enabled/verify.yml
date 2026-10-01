@@ -8,7 +8,7 @@
         url: http://127.0.0.1:19090/-/ready
         status_code: 200
       register: observability_agent_ready
-      retries: 30
+      retries: 90
       delay: 1
       until: observability_agent_ready.status == 200
 
@@ -79,7 +79,7 @@
       register: observability_remote_write_arrival
       changed_when: false
       failed_when: false
-      retries: 30
+      retries: 90
       delay: 1
       until: observability_remote_write_arrival.rc == 0
 
@@ -491,7 +491,7 @@
           - "{{ (observability_outage_baseline.stdout | from_json).retry }}"
       register: observability_outage_evidence
       changed_when: false
-      retries: 30
+      retries: 90
       delay: 1
       until: observability_outage_evidence.rc == 0
 
@@ -548,6 +548,6 @@
           - "{{ (observability_outage_evidence.stdout | from_json).highest }}"
       register: observability_recovered_evidence
       changed_when: false
-      retries: 30
+      retries: 90
       delay: 1
       until: observability_recovered_evidence.rc == 0

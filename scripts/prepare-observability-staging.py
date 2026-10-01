@@ -524,6 +524,8 @@ def _certificate_authority(directory: Path, name: str) -> dict[str, str]:
             "basicConstraints=critical,CA:TRUE",
             "-addext",
             "keyUsage=critical,keyCertSign,cRLSign",
+            "-addext",
+            "subjectKeyIdentifier=hash",
         ],
         directory,
     )
@@ -577,6 +579,8 @@ def _certificate(
     extensions = [
         "basicConstraints=critical,CA:FALSE",
         "keyUsage=critical,digitalSignature",
+        "subjectKeyIdentifier=hash",
+        "authorityKeyIdentifier=keyid:always,issuer",
         f"extendedKeyUsage={purpose}",
     ]
     if sans:

@@ -1,0 +1,41 @@
+# Only this private vhost is owned here. Administration remains loopback and
+# requires the existing authenticated SSH/private operator tunnel.
+server {
+    listen 100.64.0.8:9444 ssl;
+    server_name _;
+    ssl_certificate /etc/observability-kuma/generations/5555555555555555555555555555555555555555555555555555555555555555/server.crt;
+    ssl_certificate_key /etc/observability-kuma/generations/5555555555555555555555555555555555555555555555555555555555555555/server.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    access_log off;
+    # nginx errors can contain request paths (bearer tokens).
+    error_log /dev/null emerg;
+    client_max_body_size 1k;
+    client_body_timeout 5s;
+    send_timeout 5s;
+    # Override any shared proxy trust. This TCP-only vhost never accepts a
+    # rewritten source address from another site's trusted-forwarder policy.
+    set_real_ip_from unix:;
+    real_ip_header X-Real-IP;
+    real_ip_recursive off;
+
+    allow 100.64.0.1/32;
+
+    deny all;
+    location ~ ^/api/push/[A-Za-z0-9_-]{20,128}$ {
+        limit_except GET { deny all; }
+        if ($args != "") { return 400; }
+        proxy_pass http://127.0.0.1:13001;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header Cookie "";
+        proxy_set_header Authorization "";
+        proxy_set_header Host localhost;
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header X-Forwarded-Host "";
+        proxy_connect_timeout 3s;
+        proxy_read_timeout 5s;
+        proxy_send_timeout 5s;
+        proxy_buffering off;
+    }
+    location / { return 404; }
+}
