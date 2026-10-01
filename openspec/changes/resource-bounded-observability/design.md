@@ -19,7 +19,7 @@ The operator selected Uptime Kuma instead of hosted heartbeat monitoring. An exi
 
 Retain Prometheus, Alertmanager, the primary Telegram relay, finite silences, grouping, and existing useful host/protocol rules. Do not replace them with custom threshold scripts. Bind ingestion to the existing private-network IP; keep user-facing/query/admin listeners on loopback and use existing operator access. No Grafana or new public web interface is needed.
 
-Agents retain local exporters and bounded remote-write. At a 60-second scrape interval and 2,000 samples per node per scrape, ten nodes are at most approximately 333 samples/second before collector-local series. Limit local series separately and test receiver aggregate capacity. The inventory manifest remains the expected-target authority; observed samples cannot erase missing targets.
+Agents retain local exporters and bounded remote-write. The sender is a pinned Apache-2.0 vmagent binary, approved after the real Prometheus Agent restart test failed to deliver historical backlog. This replaces only the sender, not the Prometheus collector, Alertmanager or Kuma. Resolve stable per-architecture archives and checksums before execution; maintain this dependency's security updates separately. At a 60-second scrape interval and 2,000 samples per node per scrape, ten nodes are at most approximately 333 samples/second before collector-local series. Limit local series separately and test receiver aggregate capacity. The inventory manifest remains the expected-target authority; observed samples cannot erase missing targets.
 
 ### 2. Enforced budgets, then measured admission
 
@@ -31,9 +31,19 @@ These are initial acceptance budgets, not measurements or proof that the current
 | Agent, adapters, and heartbeat services together per node | Separate slice, MemoryMax 192 MiB, CPUQuota 10% of one CPU |
 | Collector blocks | 7 days and 1 GiB retention-size, whichever removes blocks first |
 | Collector total data including WAL/head | 2 GiB operational high-water mark; not a claim of hard quota |
-| Agent queue | One remote-write shard, bounded queue, at most one-hour WAL retention |
+| Agent queue | One remote-write worker, persistent disk queue configured at 512 MiB; upstream minimum rounds this to 512 MiB + 128 bytes; bounded memory buffering within the existing agent slice |
+| Agent queue filesystem admission | 2 GiB allowance for allocated segments and overhead, plus the protected filesystem reserve; not a larger logical queue or a hard quota |
 
 On the collector host both slices count: up to 704 MiB memory and 30% of one CPU. Admit only with at least 1 GiB MemAvailable at representative load, and free disk exceeding the data allowance plus a protected reserve of max(5 GiB, 20% of the filesystem). Preserve the existing journald limit; do not silently trade VPN diagnostics for monitoring capacity.
+
+The sender queue is size-bounded, not age-bounded: the prior one-hour WAL setting is removed rather than translated into an unsupported flag. Keep the queue in its own private directory, preserve any retired WAL without pretending it can be replayed by the new binary, and reject obsolete sender options. Account for queue segment and in-memory overhead in measured disk admission; do not describe the queue setting as a hard filesystem quota. Preserve dangling queues and bind the queue to its single receiver before activation; a changed receiver or unknown populated queue must fail before mutation rather than silently delete data or accumulate unbounded queues. Queue saturation may drop the oldest unsent blocks and must expose bounded failure metrics, never silent healthy status. Prove actual pre-restart samples reach the collector after both a clean restart and abrupt process termination during an outage, without increasing the 192 MiB / 10% CPU slice. Keep one worker and no fresh-data bypass workers to preserve sample order for Prometheus. Failed restart, resource or queue-pressure checks block deployment.
+
+Install vmagent under its distinct `/opt/observability-vmagent` release root.
+The historical `/opt/observability-agent/current/prometheus` target must remain
+unchanged and executable for exact-unit rollback. Reusing one release root for
+different binary names would either violate its activation receipt or break
+the prior public symlink; retaining the old root is rollback preservation,
+not a second selectable production sender.
 
 Use supported per-directory filesystem quota when available without repartitioning; otherwise require a separately tested reserve guard with bounded sampling interval and measured worst-case write headroom. The guard latches ingestion off, stops receiver writes, and requires explicit recovery after space inspection. Retention does not bound WAL/head peak size. If burst headroom cannot be demonstrated on the actual filesystem, admission fails. The safeguard covers monitoring writes, not unrelated processes exhausting the disk.
 

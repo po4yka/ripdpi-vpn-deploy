@@ -2,6 +2,9 @@
 - name: Prepare real observability-agent runtime fixture
   hosts: all
   become: true
+  module_defaults:
+    ansible.builtin.get_url:
+      timeout: 60
   tasks:
     - name: Assign isolated private fixture receiver address
       ansible.builtin.command:
@@ -55,6 +58,8 @@
         group: observability-agent
         system: true
         shell: /usr/sbin/nologin
+        home: /var/lib/observability-agent
+        create_home: false
 
     - name: Set credential diagnostic runtime directory authority
       ansible.builtin.file:
@@ -528,3 +533,6 @@
         - name: Refuse unavailable observability fixture services
           ansible.builtin.fail:
             msg: Observability fixture services did not start.
+
+    - name: Prepare a real previous sender for cutover and rollback acceptance
+      ansible.builtin.include_tasks: tasks/previous-runtime.yml

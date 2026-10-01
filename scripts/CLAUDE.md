@@ -24,12 +24,17 @@ manifest, approval and journal. Keep the critical reminder at the real one-hour
 interval, require separate human-observation booleans, restore interrupted rows
 before later work, and emit only categorical private receipts. Never add a
 caller-supplied command, unit, endpoint, environment or arbitrary fault.
-The fixed sequence includes negative ingestion, bounded WAL recovery,
+The fixed sequence includes negative ingestion, bounded persistent-queue recovery,
 missing/stale evidence, grouping/inhibition, finite-silence, sender and
 Telegram old-material rejection, invalid-candidate refusal, valid activation,
 and exact control-plane rollback rows. Old sender proof uses the retained
 private generation only for a rejected TLS handshake; candidate generation and
 TSDB identities remain private controller evidence and never enter receipts.
+The retained `agent-wal` row identifier now exercises the current vmagent sender.
+Read transport from the fixed service's stable MainPID and bounded argv, not
+removed Prometheus remote-write YAML fields. Queue bytes, sent blocks and HTTP
+or persistent-queue drops have distinct units; no counter substitutes for a
+collector query proving the exact node's historical sample inside the outage.
 Keep the staleness mutation journaled on the canary and held until the control
 plane independently observes the firing alert; every exit restores the exact
 producer timestamp and prior watchdog-timer state before later checks. Finite

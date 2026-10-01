@@ -113,6 +113,19 @@ groups:
           runbook: docs/RUNBOOK-incident.md
 
 
+  - name: observability_agent_delivery
+    rules:
+      - alert: ObservabilityAgentDeliveryLoss
+        expr: >-
+          (max by (environment, node) (increase(vmagent_remotewrite_packets_dropped_total[5m]) > bool 0) > 0)
+          or (max by (environment, node) (increase(vmagent_remotewrite_samples_dropped_total[5m]) > bool 0) > 0)
+          or (max by (environment, node) (increase(vm_persistentqueue_bytes_dropped_total[5m]) > bool 0) > 0)
+          or (max by (environment, node) (increase(vm_persistentqueue_blocks_dropped_total[5m]) > bool 0) > 0)
+          or (max by (environment, node) (increase(vm_rows_ignored_total[5m]) > bool 0) > 0)
+        for: 0s
+        keep_firing_for: 3m
+        labels: {severity: "warning", component: observability-agent}
+        annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/RUNBOOK-incident.md}
   - name: observability_node_resource_service
     rules:
       - alert: ObservabilityNodeCpuPressure

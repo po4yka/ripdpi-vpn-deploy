@@ -76,6 +76,12 @@ def merge_render_vars() -> dict:
     # Synthetic private endpoints make snapshots concrete without admitting a
     # real host or changing the deliberately inert deployment defaults.
     merged["observability_control_plane"]["ingress_address"] = "100.64.0.2"
+    merged["observability_agent"].update({
+        "node_id": "node-01",
+        "environment": "staging",
+        "receiver_origin": "https://100.64.0.2:9443",
+        "receiver_address": "100.64.0.2",
+    })
     merged["observability_push"].update({
         "node_id": "node-01",
         "expected_nodes": ["node-01", "node-02"],

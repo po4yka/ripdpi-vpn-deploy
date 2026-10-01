@@ -164,6 +164,8 @@ def test_enabled_molecule_declares_receiver_and_rollback_acceptance_boundaries()
     for proof in [
         "real_agent_remote_write_missing",
         "actual_filesystem_high_water=pass",
-        "wal_backlog_not_recovered",
+        "exact_historical_queue_sample_not_recovered_",
+        "vm_persistentqueue_blocks_written_total",
+        "vmagent_remotewrite_pending_inmemory_blocks",
     ]:
         assert proof in runtime

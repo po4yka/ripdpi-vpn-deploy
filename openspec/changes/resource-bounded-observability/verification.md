@@ -26,9 +26,95 @@ Required evidence fields remain unset until their complete gates pass. The
 contract/operator migration step is complete with its positive and obsolete-input
 tests; other steps and the overall feature remain open.
 
-## Observed local results (2026-10-01)
+## Sender replacement observations (2026-10-01)
 
-- **Open runtime blocker:** the actual Prometheus Agent 3.14.0 lost delivery of
+- The pinned vmagent runtime recovered exact pre-restart sample identities and
+  timestamps at the real Prometheus collector after both a clean restart and
+  SIGKILL during an outage. Observed queue allocation was 65,536 and 110,592
+  bytes respectively. These are process-restart tests, not host power-loss or
+  fsync durability proof.
+- The complete unfiltered alternate arm64 Linux runtime invocation passed
+  (596 tasks, 18 changes, zero failures). Actual-filesystem pressure stopped
+  ingestion in 5.03 seconds and the durable latch rejected a manual restart;
+  the public nginx PID and TLS listener remained unchanged. Native queue
+  saturation persisted 1,077,841,731 bytes, exceeding twice the effective queue
+  capacity, with a measured physical peak of 1,006,788,608 bytes below the 2 GiB
+  admission allowance. Native eviction reported 1,048 blocks / 574,098,462 bytes;
+  the original sender PID survived within its 192 MiB / 10% CPU slice. This is
+  local process/filesystem proof, not ten-node load, matched VPN performance,
+  live host admission or canonical Molecule acceptance.
+- The production staging queue-metrics program ran unchanged in the isolated
+  Linux container: all ten required native metrics existed with exactly one
+  series each. Initial drop/error counters were zero and real sent blocks
+  advanced. Strict native config parsing required moving unsupported YAML
+  label-length settings into whole-series-rejection runtime flags; the bounds
+  were preserved, not disabled.
+- Delivery-loss rules now cover native queue/HTTP discards and label-limit
+  rejections. Real promtool cases cover individual and simultaneously present
+  counters, including zero and nonzero mixtures. An initially discovered
+  duplicate-labelset expression error was corrected with independently
+  evaluated counters; their byte, block and row units are never added.
+- Independent source security re-review approved the replacement and its
+  follow-up parser/rule corrections. The latter review observed 80 agent and
+  alerting tests, all 147 snapshots and whitespace validation passing.
+- The complete `make -j2 check` passed through the machine-wide build gate:
+  4,979 portable Python tests and 20 subtests passed, with the four separate
+  native-runtime tests deselected by the normal portable contract. All 55 Bats
+  tests, release Clippy, Rust tests, lint, schemas, Terraform mock-provider
+  tests and snapshot checks passed. A preceding full run loaded two obsolete
+  sender assertions before the native parser correction; both were corrected
+  and the full run repeated successfully. A transient registry timeout also
+  cleared on the bounded retry without changing gates or pins.
+- The subsequently reviewed separate vmagent install root and final
+  pre-activation capacity recheck passed 53 agent/resource tests independently.
+  The historical runtime root remains intact for rollback. Actual failed-
+  activation evidence follows; canonical Molecule acceptance remains blocked.
+- The exact canonical Molecule image was subsequently pulled successfully,
+  but its only platform is amd64 and the authorized local VM is arm64 without
+  usable emulation for this image. A direct shell invocation returned
+  `exec /bin/sh: exec format error`; canonical role scenarios failed in prepare,
+  not in role convergence. The earlier manifest/registry errors are no longer
+  the blocker. Owned test containers were removed. No image pin, VM setting,
+  emulation registration or production configuration was changed.
+- A real failed-cutover test reproduced a false-positive readiness result:
+  an unrelated process serving HTTP 200 on the candidate port was accepted
+  after the candidate restart. Readiness now binds the listener socket inode
+  to the actual systemd MainPID and executable, checking unchanged process
+  identity before and after proxy-free HTTP. The unchanged predecessor-runtime
+  test then passed: exact prior unit, configuration generation and executable
+  were restored, with retained WAL and queue identities. The complete alternate
+  arm64 agent invocation then passed 400 tasks with 46 changes, zero failures
+  and four expected rescues. Both real Prometheus-to-vmagent and vmagent-to-vmagent
+  failed activations restored the captured unit SHA, generation, running
+  executable, historical binary SHA/link and WAL/queue inode identities.
+  The latter test first waited for nonzero persisted pending bytes and zero
+  in-memory blocks; pending bytes remained nonzero after rollback. This proves
+  activation rollback and retained pending data, while exact historical-sample
+  replay is established by the separate restart/SIGKILL tests above.
+- The alternate agent-disabled scenario passed prepare, converge and verify
+  with a final cumulative recap of 22 tasks, 8 changes and zero failures. It removed owned
+  vmagent runtime entries while retaining the historical runtime, credentials,
+  configuration, WAL, queue and unrelated producer file.
+- A separate no-op enabled convergence passed 104 tasks with zero changes and
+  zero failures after both rollback cases. Owned test containers and temporary
+  inventories were removed; shared VM settings, Docker images and unrelated
+  configuration were untouched.
+- After the final readiness change, 64 agent/resource/documentation-governance
+  tests passed; a separate operator/staging/alerting run passed all 204 tests.
+  Independent review observed 213 combined focused tests passing and all 147
+  snapshots matching. Collection is now 4,992 tests, including 4,887 unit tests.
+  These are post-change targeted checks, not a second full repository run.
+- All applicable final staged pre-commit hooks passed, including secret
+  scanning, Ansible/YAML lint, task contracts, secret coverage and snapshots.
+
+## Earlier local results before sender replacement (2026-10-01)
+
+- The operator explicitly approved replacing only Prometheus Agent with vmagent,
+  including a bounded disk queue of at least 500 MiB. The implementation target
+  is 512 MiB; collector, Kuma, private mTLS and the 192 MiB / 10% CPU agent slice
+  remain unchanged. This approval is not restart/resource proof or permission
+  for real-host deployment. The failed predecessor observation below is retained.
+- **Predecessor runtime failure:** the actual Prometheus Agent 3.14.0 lost delivery of
   pre-restart backlog during a 70-second collector outage plus agent restart.
   The unchanged historical-sample assertion failed with
   `wal_backlog_not_recovered`, while fresh post-restart samples arrived.
@@ -96,12 +182,12 @@ tests; other steps and the overall feature remain open.
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
 | REQ-RBO-COST | MON-1790835430228619 | Approved collector/observer admission and zero-new-paid-resource checks | Required; no deployment |
-| REQ-RBO-BOUNDS | MON-1790835428068030 | Cgroup/load/WAL/disk-guard tests and matched VPN performance runs | Partial local cgroup proof; restart backlog failed; VPN performance unverified |
+| REQ-RBO-BOUNDS | MON-1790835428068030 | Cgroup/load/queue/disk-guard tests and matched VPN performance runs | Local restart replay, queue saturation and filesystem latch passed; ten-node load and VPN performance remain unverified |
 | REQ-RBO-PRIVATE | MON-1790835428600254 | Real mTLS positive/revoked/wrong-SAN cases, listener inventory and unchanged VPN vhosts | Partial local ingestion and rejection proof; full gate remains required |
 | REQ-RBO-WATCHDOG | MON-1790835429142513 | Kuma direct-push missing-signal/recovery drills, observer outage, redaction, rotation and encrypted backup/isolated restore | Local application timing/restart/restore passed; production helper and host unverified |
 | REQ-RBO-DELIVERY | MON-1790835429142513 | Actual relay send/edit receipts, stale-receipt and token-failure cases, independent-route human receipt | Required |
 | REQ-RBO-EVIDENCE | MON-1790835429687617 | State-separation tests and authenticated external client verification | Required; no live client result |
-| REQ-RBO-MIGRATION | MON-1790835427523974 | Obsolete-topology rejection, migrated callers, rollback drill and explicit cutover approval | Contract/operator step passed; rollback and cutover remain required |
+| REQ-RBO-MIGRATION | MON-1790835427523974 | Obsolete-topology rejection, migrated callers, rollback drill and explicit cutover approval | Contract/operator step and local agent activation rollback passed; full rollback gate and live cutover remain required |
 
 ## Exact gates for implementation
 

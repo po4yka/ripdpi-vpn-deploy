@@ -1,0 +1,125 @@
+---
+- name: Capture the real active unit generation and previous runtime before failure
+  ansible.builtin.command:
+    argv: [python3, '-c', "{{ lookup('ansible.builtin.file', playbook_dir ~ '/runtime-snapshot.py') }}"]
+  changed_when: false
+  register: _rollback_before
+
+- name: Freeze a valid candidate that must fail to own its occupied listener
+  ansible.builtin.set_fact:
+    _rollback_candidate: '{{ observability_agent | combine({"web_listen": "127.0.0.1:19099"}) }}'
+    _rollback_expected_failure: false
+
+- name: Install the owned competing HTTP readiness fixture
+  ansible.builtin.copy:
+    dest: /var/lib/observability-fixture/port-conflict.py
+    owner: root
+    group: root
+    mode: '0600'
+    content: |
+      from http.server import BaseHTTPRequestHandler, HTTPServer
+      class Handler(BaseHTTPRequestHandler):
+          def do_GET(self):
+              self.send_response(200)
+              self.end_headers()
+              self.wfile.write(b'other-service-ready\n')
+          def log_message(self, *_args):
+              pass
+      HTTPServer(('127.0.0.1', 19099), Handler).serve_forever()
+
+- name: Install the loopback-only port-conflict unit owned by this fixture
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/observability-agent-port-conflict.service
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      [Service]
+      Type=simple
+      ExecStart=/usr/bin/python3 /var/lib/observability-fixture/port-conflict.py
+      NoNewPrivileges=true
+      PrivateTmp=true
+      ProtectSystem=strict
+      ProtectHome=true
+      RestrictAddressFamilies=AF_INET
+
+- name: Exercise actual activation failure and exact runtime restoration
+  block:
+    - name: Start the competing loopback listener
+      ansible.builtin.systemd_service:
+        name: observability-agent-port-conflict.service
+        state: started
+        daemon_reload: true
+
+    - name: Require the competing service to answer readiness successfully
+      ansible.builtin.uri:
+        url: http://127.0.0.1:19099/ready
+        use_proxy: false
+        status_code: 200
+      register: _conflict_ready
+      retries: 10
+      delay: 1
+      until: _conflict_ready.status == 200
+
+    - name: Submit the native-valid but unstartable generation
+      block:
+        - name: Exercise real sender activation with the occupied candidate port
+          ansible.builtin.include_role:
+            name: observability_agent
+          vars:
+            observability_agent: '{{ _rollback_candidate }}'
+      rescue:
+        - name: Require the actual activation rescue rather than preflight refusal
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Refuse failed observability generation activation'
+              - ansible_failed_result.msg == 'Observability agent generation failed readiness and was rolled back.'
+              - _observability_agent_can_restore_runtime | bool
+              - _observability_agent_restored_ready.rc == 0
+
+        - name: Record observed real activation failure and completed rescue
+          ansible.builtin.set_fact:
+            _rollback_expected_failure: true
+
+    - name: Refuse a false healthy result from the unrelated listener
+      ansible.builtin.assert:
+        that: _rollback_expected_failure | bool
+        fail_msg: Candidate activation incorrectly accepted the unrelated HTTP readiness responder.
+
+    - name: Capture restored runtime and retained previous binary identities
+      ansible.builtin.command:
+        argv: [python3, '-c', "{{ lookup('ansible.builtin.file', playbook_dir ~ '/runtime-snapshot.py') }}"]
+      changed_when: false
+      register: _rollback_after
+
+    - name: Require exact old unit generation executable and retained state after rescue
+      ansible.builtin.assert:
+        that:
+          - before.unit_sha256 == after.unit_sha256
+          - before.generation == after.generation
+          - before.running_binary == after.running_binary
+          - before.previous_binary == after.previous_binary
+          - before.previous_binary_sha256 == after.previous_binary_sha256
+          - before.previous_current == after.previous_current
+          - before.wal_inode == after.wal_inode
+          - before.queue_inode is none or before.queue_inode == after.queue_inode
+      vars:
+        before: '{{ _rollback_before.stdout | from_json }}'
+        after: '{{ _rollback_after.stdout | from_json }}'
+  always:
+    - name: Stop only this fixture competing listener
+      ansible.builtin.systemd_service:
+        name: observability-agent-port-conflict.service
+        state: stopped
+
+    - name: Remove only the owned competing listener artifacts
+      ansible.builtin.file:
+        path: '{{ item }}'
+        state: absent
+      loop:
+        - /etc/systemd/system/observability-agent-port-conflict.service
+        - /var/lib/observability-fixture/port-conflict.py
+
+    - name: Reload systemd after fixture listener cleanup
+      ansible.builtin.systemd_service:
+        daemon_reload: true

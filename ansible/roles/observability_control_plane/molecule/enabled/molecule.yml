@@ -24,6 +24,11 @@ provisioner:
   name: ansible
   env:
     ANSIBLE_ROLES_PATH: ../../..
+  inventory:
+    host_vars:
+      observability-control-plane-enabled-debian13:
+        ansible_user: root
+        ansible_python_interpreter: /usr/bin/python3
 
 verifier:
   name: ansible

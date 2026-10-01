@@ -745,7 +745,7 @@ def gateway_request(path, data=None, method="GET"):
 def _status_program(component: str) -> bytes:
     units = STATUS_UNITS[component]
     readiness = {
-        "agent": ("http://127.0.0.1:19090/-/ready",),
+        "agent": ("http://127.0.0.1:19090/ready",),
         "control-plane": (
             "http://127.0.0.1:9090/-/ready",
             "gateway",

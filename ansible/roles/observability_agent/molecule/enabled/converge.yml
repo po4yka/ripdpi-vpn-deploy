@@ -2,6 +2,9 @@
 - name: Converge real observability agent
   hosts: all
   become: true
+  module_defaults:
+    ansible.builtin.get_url:
+      timeout: 60
   pre_tasks:
     - name: Read fixture observability credentials
       ansible.builtin.slurp:
@@ -12,6 +15,17 @@
         - client.key
       register: observability_fixture_credentials
       no_log: true
+    - name: Identify whether the real previous sender still owns activation
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            from pathlib import Path
+            print('previous' if 'ExecStart=/usr/local/bin/prometheus-observability-agent '
+                  in Path('/etc/systemd/system/observability-agent.service').read_text() else 'current')
+      register: _previous_sender_owner
+      changed_when: false
 
     - name: Bind fixture observability authority
       ansible.builtin.set_fact:
@@ -28,6 +42,10 @@
               certificate_pem: "{{ observability_fixture_credentials.results[1].content | b64decode }}"
               private_key_pem: "{{ observability_fixture_credentials.results[2].content | b64decode }}"
       no_log: true
+
+    - name: Prove real failed Prometheus to vmagent cutover restores the previous runtime
+      ansible.builtin.include_tasks: tasks/failed-activation.yml
+      when: _previous_sender_owner.stdout == 'previous'
   vars:
     # This isolated sender scenario intentionally has no observer receiver;
     # heartbeat failure is honest. Real cohosted ingestion is covered by the
@@ -59,31 +77,27 @@
     node_manifest_deployable_digest: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
     observability_agent:
       enabled: true
-      version: 3.14.0
+      version: v1.153.0
       release_urls:
-        amd64: https://github.com/prometheus/prometheus/releases/download/v3.14.0/prometheus-3.14.0.linux-amd64.tar.gz
-        arm64: https://github.com/prometheus/prometheus/releases/download/v3.14.0/prometheus-3.14.0.linux-arm64.tar.gz
-      linux_amd64_sha256: f665c6da19eb7ba399c915d30c7d9793c9b417bf8a749b504bc470678631478d
-      linux_arm64_sha256: 077f3781ab7245dc04c9a3c9b78ba120fc8e41aa0dc97489b0af67247e50ba83
+        amd64: https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.153.0/vmutils-linux-amd64-v1.153.0.tar.gz
+        arm64: https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.153.0/vmutils-linux-arm64-v1.153.0.tar.gz
+      linux_amd64_sha256: 85aea24a4829cf26033d810aceb7888070bd4eaff321357168ff6db24bf7c00c
+      linux_arm64_sha256: 8153c4feb73564215950a299c803d5c1e974772cd34b8c162d43ea2c5b516df5
       node_id: node-fixture
       environment: ci
       receiver_origin: https://10.23.0.2:9443
       receiver_address: 10.23.0.2
-      install_root: /opt/observability-agent
-      promtool_install_root: /opt/observability-agent-promtool
+      install_root: /opt/observability-vmagent
       config_dir: /etc/observability-agent
       credential_dir: /etc/observability-agent/credentials
-      wal_dir: /var/lib/observability-agent/wal
-      wal_max_time: 1h
+      queue_dir: /var/lib/observability-agent/queue
+      queue_max_disk_bytes: 536870912
       web_listen: 127.0.0.1:19090
       scrape_interval: 60s
       scrape_sample_limit: 2000
       scrape_label_limit: 16
       scrape_label_name_length_limit: 64
       scrape_label_value_length_limit: 128
-      queue_capacity: 100
-      queue_max_samples_per_send: 20
-      queue_batch_send_deadline: 1s
       memory_max: 192M
       tasks_max: 64
       nofile_limit: 65536

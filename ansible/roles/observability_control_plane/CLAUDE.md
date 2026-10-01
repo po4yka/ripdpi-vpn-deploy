@@ -38,6 +38,8 @@ a separate loopback relay. Host and adapter metrics arrive only through the
 cohosted agent's metric/label allowlist; the collector never scrapes raw node
 exporter metrics a second time. Its sole local scrape retains only bounded
 Alertmanager notification counters and integration labels.
+Confirmed sender discards trigger delivery-loss alerts; byte, block and row
+counters are compared to zero separately, never added as interchangeable units.
 Only that relay receives the primary Telegram token
 through a systemd credential. Its separate random relay credential comes from
 the private secrets document and is never derived from the Prometheus sender
@@ -75,6 +77,8 @@ retention bounds before writes. It disables only its units and runtime
 configuration while retaining TSDB, latch, relay receipts and credentials.
 
 ## Pitfalls
+
+- The disk guard reserves the remaining 2 GiB physical sender-queue allowance on a shared filesystem, including before that queue exists. This reserve stays protected after collector stop so a queued sender cannot consume the host reserve. Separate filesystems are accounted independently; an over-budget or unsafe queue fails closed.
 
 Do not expose loopback Prometheus, add a query/admin path, decode Remote Write
 protobuf in nginx, or replace certificate/path identity checks with an IP

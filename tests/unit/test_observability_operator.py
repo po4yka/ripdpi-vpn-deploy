@@ -223,6 +223,24 @@ def test_kuma_status_requires_running_application_not_database_setup(monkeypatch
     assert json.loads(capsys.readouterr().out)["state"] == expected
 
 
+@pytest.mark.parametrize("ready_status,expected", [(200, "healthy"), (503, "degraded")])
+def test_agent_status_uses_vmagent_initialization_readiness(monkeypatch, capsys, ready_status, expected):
+    from types import SimpleNamespace
+    import urllib.request
+
+    module = _operator_module()
+    monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout="active\n"))
+
+    def open_readiness(url, timeout):
+        assert url == "http://127.0.0.1:19090/ready"
+        assert timeout == 3
+        return _DrillResponse(ready_status, {})
+
+    monkeypatch.setattr(urllib.request, "build_opener", lambda *_: SimpleNamespace(open=open_readiness))
+    exec(compile(module._status_program("agent"), "status-program", "exec"), {})
+    assert json.loads(capsys.readouterr().out)["state"] == expected
+
+
 def _calls(operator: dict[str, object]) -> list[dict[str, object]]:
     path = operator["log"]
     assert isinstance(path, Path)

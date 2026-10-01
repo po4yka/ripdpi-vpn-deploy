@@ -8,8 +8,6 @@ scrape_configs:
   - job_name: node-exporter
     sample_limit: {{ observability_agent.scrape_sample_limit - 200 }}
     label_limit: {{ observability_agent.scrape_label_limit }}
-    label_name_length_limit: {{ observability_agent.scrape_label_name_length_limit }}
-    label_value_length_limit: {{ observability_agent.scrape_label_value_length_limit }}
     static_configs:
       - targets: ["127.0.0.1:9100"]
     metric_relabel_configs:
@@ -27,8 +25,6 @@ scrape_configs:
   - job_name: node-exporter-required-services
     sample_limit: 150
     label_limit: {{ observability_agent.scrape_label_limit }}
-    label_name_length_limit: {{ observability_agent.scrape_label_name_length_limit }}
-    label_value_length_limit: {{ observability_agent.scrape_label_value_length_limit }}
     static_configs:
       - targets: ["127.0.0.1:9100"]
     metric_relabel_configs:
@@ -40,28 +36,14 @@ scrape_configs:
   - job_name: observability-agent
     sample_limit: 50
     label_limit: {{ observability_agent.scrape_label_limit }}
-    label_name_length_limit: {{ observability_agent.scrape_label_name_length_limit }}
-    label_value_length_limit: {{ observability_agent.scrape_label_value_length_limit }}
     static_configs:
       - targets: ["{{ observability_agent.web_listen }}"]
     metric_relabel_configs:
       - source_labels: [__name__]
-        regex: "^(process_(cpu_seconds_total|resident_memory_bytes|open_fds|max_fds|start_time_seconds)|go_(goroutines|threads)|prometheus_remote_storage_(samples_pending|samples_failed_total|samples_retried_total|samples_dropped_total|queue_highest_timestamp_seconds|queue_highest_sent_timestamp_seconds))$"
+        regex: "^(process_(cpu_seconds_total|resident_memory_bytes|open_fds|max_fds|start_time_seconds)|go_(goroutines|threads)|vm_rows_ignored_total|vmagent_remotewrite_(pending_data_bytes|pending_inmemory_blocks|queue_blocked|errors_total|packets_dropped_total|samples_dropped_total|retries_count_total|bytes_sent_total|blocks_sent_total)|vm_persistentqueue_(bytes_pending|bytes_dropped_total|blocks_dropped_total|bytes_written_total|blocks_written_total|bytes_read_total|blocks_read_total))$"
         action: keep
-      - regex: "^(__name__|job)$"
+      - source_labels: [__name__, reason]
+        regex: "^(vm_rows_ignored_total;(too_long_label_name|too_long_label_value|too_many_labels)|[^;]+;)$"
+        action: keep
+      - regex: "^(__name__|job|reason)$"
         action: labelkeep
-
-remote_write:
-  - url: "{{ observability_agent.receiver_origin }}/remote-write/v1/nodes/{{ observability_agent.node_id }}"
-    tls_config:
-      ca_file: receiver-ca.crt
-      cert_file: client.crt
-      key_file: client.key
-      server_name: "{{ observability_agent.receiver_address }}"
-      insecure_skip_verify: false
-    queue_config:
-      capacity: {{ observability_agent.queue_capacity }}
-      min_shards: 1
-      max_shards: 1
-      max_samples_per_send: {{ observability_agent.queue_max_samples_per_send }}
-      batch_send_deadline: {{ observability_agent.queue_batch_send_deadline }}

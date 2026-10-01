@@ -2,6 +2,9 @@
 - name: Converge enabled bounded control-plane receiver
   hosts: all
   become: true
+  module_defaults:
+    ansible.builtin.get_url:
+      timeout: 60
   pre_tasks:
     - name: Load complete enabled control-plane fixture contract
       ansible.builtin.include_tasks: tasks/fixture-contract.yml

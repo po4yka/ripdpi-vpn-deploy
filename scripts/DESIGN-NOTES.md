@@ -291,6 +291,10 @@ refuses before host access. `render` is strictly local Jinja rendering;
 `validate` is syntax-only, and neither establishes host admission. `check`
 requires explicit host-access confirmation. Runtime status includes the node
 or pipeline/delivery push timers; healthy units never imply client-path proof.
+The sender uses vmagent's `/ready` initialization endpoint, not Prometheus's
+`/-/ready`. The retained staging queue row parses native counters without
+renaming block or byte drops as sample counts and requires an outage-time
+collector sample, not only a drained queue or newly advancing data.
 
 **Private-IP PKI preparation is local and encrypted** —
 `prepare-observability-pki.py` creates separate receiver and observer authorities,

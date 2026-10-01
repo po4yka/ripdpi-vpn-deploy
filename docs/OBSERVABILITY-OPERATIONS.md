@@ -18,11 +18,12 @@ the replacement has positive acceptance. The old dedicated topology and
 The `deadman` operator component and dedicated host bootstrap are retired.
 Old task receipts and retained encrypted credentials do not accept this design.
 
-Rollout remains on hold: the pinned Prometheus Agent 3.14.0 does not recover
-unsent pre-restart samples in the real collector-outage/restart drill. Retained
-WAL files and a replay log do not prove delivery. Do not enable or cut over this
-replacement until the unchanged recovery acceptance test passes; choosing a
-different sender and storage contract requires approval.
+Rollout remains on hold pending replacement acceptance. The previous Prometheus
+Agent 3.14.0 failed to deliver unsent pre-restart samples in the real outage
+drill. The approved replacement is vmagent 1.153.0 with a byte-bounded persistent
+queue, not a one-hour WAL. Retained files and replay logs do not prove delivery:
+require actual historical samples after clean and abrupt restarts, measured
+queue overhead, and the unchanged resource and live acceptance gates.
 
 ## Inputs and exact-host authority
 
@@ -60,8 +61,9 @@ Private vars and materialized SOPS inputs must be same-owner, mode-0600 regular
 files below owner-controlled non-symlink paths. The vars file contains the
 complete selected role mapping with `enabled: true`, plus its producer
 configuration. Defaults describe the current contract; they are deliberately
-inert, not a ready deployment. Pin the real Prometheus/Alertmanager archives
-and digests. Use distinct sender certificates and one Kuma token per monitor.
+inert, not a ready deployment. Pin the real vmagent, Prometheus and Alertmanager
+archives and digests independently. Use distinct sender certificates and one
+Kuma token per monitor.
 `observability_kuma_secrets` holds observer TLS, N+2 monitor bindings, a distinct
 secondary Telegram credential, and the existing backup recipient.
 
@@ -126,8 +128,26 @@ installed nginx binary in that slice. Its config, PID, credentials and private
 The local agent and heartbeat jobs share `observability-agent.slice`: 192 MiB
 and 10% of one CPU. The collector host therefore budgets 704 MiB and 30% in
 total. Agents use 60-second scrapes, at most 2,000 samples across local jobs,
-one remote-write shard and at most one-hour WAL retention. VPN units stay
-outside both slices.
+one vmagent remote-write worker and no fresh-data bypass workers. The persistent
+queue setting is 512 MiB; the pinned upstream minimum rounds it to 512 MiB plus
+128 bytes. This limits pending data by size, not age or total allocated blocks.
+Admission reserves 2 GiB for segment overhead plus the filesystem reserve.
+Queue saturation discards oldest unsent blocks and must be reported as delivery
+loss. VPN units stay outside both slices.
+`ObservabilityAgentDeliveryLoss` reports queue/HTTP discards and native label-limit
+rejections after their counters reach the collector. It means incomplete telemetry,
+not a VPN failure; a disconnected collector cannot report the event immediately.
+
+The queue is bound to its single receiver before activation. A changed receiver
+or populated unbound queue refuses before mutation; do not delete it or the
+retired Prometheus WAL automatically. Retained WAL is not replayable by vmagent.
+Resolve a receiver migration with explicit offline data-handling authority.
+vmagent uses `/opt/observability-vmagent`; the retired Prometheus release root
+is retained separately so its public binary link remains usable for rollback.
+Status uses vmagent's loopback `/ready`; readiness is not backlog delivery.
+Activation and recovery additionally require the managed process to own the
+loopback listener, with unchanged process identity before and after HTTP
+readiness. A successful response from another process cannot accept a cutover.
 
 Before mutation require the configured private address locally, at least
 1 GiB MemAvailable, and free filesystem space for 2 GiB monitoring data plus
@@ -136,7 +156,10 @@ Blocks retain at most seven days/1 GiB; this is not a total filesystem quota.
 The total data high-water mark is 2 GiB. The five-second reserve guard latches
 receiver/ingress off on pressure; its watchdog also bounds a hung guard.
 Headroom must exceed twice measured peak write rate times the watchdog plus
-measured shutdown bound. A synthetic value is not a measured admission result.
+measured shutdown bound. On a shared filesystem, admission counts both the
+collector's 2 GiB and the sender's 2 GiB allowances; the reserve guard also
+protects the sender's remaining allowance. A synthetic value is not a measured
+admission result.
 After pressure, inspect the filesystem and perform explicit recovery; restarting
 a receiver must not bypass the latch.
 

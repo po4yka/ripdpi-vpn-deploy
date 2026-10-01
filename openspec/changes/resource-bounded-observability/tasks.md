@@ -15,6 +15,17 @@ its runtime/test handoff. The bounded-runtime lane additionally owns authority
 snapshot, generation and protocol-adapter integration regressions; shared
 historical dead-man test migration remains in the integration lane.
 
+The approved sender-replacement increment keeps that separation: the bounded-runtime
+lane owns the agent role, its tests, and the control-plane cohosting runtime
+fixtures, plus the collector disk-guard changes needed to account for the
+sender queue on a shared filesystem and their focused regressions. The integration lane owns active operator/staging callers, shared
+render fixtures, snapshots and documentation. The callsite audit and security
+review are read-only. The existing resource/WAL step now requires the equivalent
+persistent-queue outage/restart proof from the actual pinned vmagent runtime;
+its historical-sample assertion and resource ceilings are not relaxed.
+The integration lane also owns the collector alert-rule and rule-test templates
+and their alerting unit test for explicit sender delivery-loss reporting.
+
 ## Execution
 
 - [x] MON-1790835427523974 Migrate observability inventory and secrets contracts to co-hosted capabilities and a typed Uptime Kuma observer; update scripts, Make and affected vpnd callers with positive and obsolete-input tests #feature !high @item:MON-1790835036464962

@@ -13,9 +13,10 @@ LoadCredential=client.key:{{ observability_agent.credential_dir }}/generations/{
 LoadCredential=receiver-ca.crt:{{ observability_agent.credential_dir }}/generations/{{ _observability_agent_service_generation }}/receiver-ca.crt
 LoadCredential=prometheus.yml:{{ observability_agent.credential_dir }}/generations/{{ _observability_agent_service_generation }}/prometheus.yml
 WorkingDirectory=%d
-ExecStart=/usr/local/bin/prometheus-observability-agent --agent --config.file=%d/prometheus.yml --web.listen-address={{ observability_agent.web_listen }} --storage.agent.path={{ observability_agent.wal_dir }} --storage.agent.wal-compression --storage.agent.retention.max-time={{ observability_agent.wal_max_time }}
+ExecStart=/usr/local/bin/vmagent-observability-agent -promscrape.config=%d/prometheus.yml -remoteWrite.url={{ observability_agent.receiver_origin }}/remote-write/v1/nodes/{{ observability_agent.node_id }} -remoteWrite.tlsCAFile=%d/receiver-ca.crt -remoteWrite.tlsCertFile=%d/client.crt -remoteWrite.tlsKeyFile=%d/client.key -remoteWrite.tlsServerName={{ observability_agent.receiver_address }} -remoteWrite.forcePromProto=true -remoteWrite.queues=1 -remoteWrite.inmemoryQueues=0 -remoteWrite.keepDanglingQueues=true -remoteWrite.tmpDataPath={{ observability_agent.queue_dir }} -remoteWrite.maxDiskUsagePerURL={{ observability_agent.queue_max_disk_bytes }} -remoteWrite.maxRowsPerBlock=1000 -remoteWrite.maxBlockSize=1048576 -remoteWrite.flushInterval=5s -memory.allowedBytes=67108864 -maxLabelsPerTimeseries={{ observability_agent.scrape_label_limit }} -maxLabelNameLen={{ observability_agent.scrape_label_name_length_limit }} -maxLabelValueLen={{ observability_agent.scrape_label_value_length_limit }} -httpListenAddr={{ observability_agent.web_listen }}
 Restart=on-failure
 RestartSec=5s
+TimeoutStopSec=30s
 NoNewPrivileges=true
 CapabilityBoundingSet=
 AmbientCapabilities=
@@ -38,7 +39,7 @@ SystemCallFilter=@system-service
 MemoryMax={{ observability_agent.memory_max }}
 TasksMax={{ observability_agent.tasks_max }}
 LimitNOFILE={{ observability_agent.nofile_limit }}
-ReadWritePaths={{ observability_agent.wal_dir }}
+ReadWritePaths={{ observability_agent.queue_dir }}
 UMask=0077
 
 [Install]

@@ -9,6 +9,10 @@ adds bounded collector/agent slices to existing VPN hosts and a pinned Kuma
 container to an independently admitted existing host. Collector private ingress
 uses its own nginx master/unit with the installed binary in the collector
 slice; it never restarts or rewrites the VPN's global nginx service/sites.
+The sender uses independently pinned vmagent with one disk-backed remote-write
+queue. Its physical queue allowance and the collector allowance are both
+reserved on a shared filesystem; retained Prometheus WAL is not migrated or
+deleted automatically. Resource limits still apply to the entire agent slice.
 The Kuma playbook owns only observer runtime, private push ingress and backup.
 `install-sshd-recovery.yml` installs the isolated recovery foundation on one
 explicit node; it never activates a migration or imports baseline handlers.

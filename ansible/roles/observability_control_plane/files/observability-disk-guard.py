@@ -16,6 +16,7 @@ import sys
 import time
 
 GIB = 1024**3
+AGENT_QUEUE = Path("/var/lib/observability-agent/queue")
 
 
 def private_address(value):
@@ -79,6 +80,14 @@ def inspect(args):
     reserve = max(
         args.reserve_bytes, fs.f_blocks * fs.f_frsize * args.reserve_percent // 100
     )
+    queue_ancestor = AGENT_QUEUE
+    while not queue_ancestor.exists():
+        queue_ancestor = queue_ancestor.parent
+    if queue_ancestor.stat().st_dev == ancestor.stat().st_dev:
+        queue_used = allocated_bytes(AGENT_QUEUE, allow_missing=True)
+        if queue_used > args.agent_queue_allowance_bytes:
+            raise ValueError("agent_queue_allocation_exceeded")
+        reserve += args.agent_queue_allowance_bytes - queue_used
     used = allocated_bytes(root, allow_missing=getattr(args, "preflight", False))
     available = fs.f_bavail * fs.f_frsize
     if used + args.headroom_bytes >= args.high_water_bytes:
@@ -89,6 +98,8 @@ def inspect(args):
 
 
 def validate_measurement(args):
+    if args.agent_queue_allowance_bytes != 2 * GIB:
+        raise ValueError("invalid_agent_queue_allowance")
     if args.peak_bytes_per_second <= 0 or not 1 <= args.stop_seconds <= 30:
         raise ValueError("disk_write_measurement_required")
     if not 1 <= args.interval_seconds <= 5:
@@ -144,6 +155,7 @@ def main():
     parser.add_argument("--high-water-bytes", type=int, default=2 * GIB)
     parser.add_argument("--reserve-bytes", type=int, default=5 * GIB)
     parser.add_argument("--reserve-percent", type=int, default=20)
+    parser.add_argument("--agent-queue-allowance-bytes", type=int, default=2 * GIB)
     parser.add_argument("--headroom-bytes", type=int, required=True)
     parser.add_argument("--peak-bytes-per-second", type=int, required=True)
     parser.add_argument("--stop-seconds", type=int, required=True)

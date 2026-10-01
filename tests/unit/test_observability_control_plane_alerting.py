@@ -518,6 +518,7 @@ def test_rules_have_fixed_severity_recovery_and_deadman_boundaries(
         "ObservabilityRestoreReadinessStale",
         "ObservabilityPipelineCanary",
         "ObservabilityExternalCoverageUnavailable",
+        "ObservabilityAgentDeliveryLoss",
     }
     for rule in alerts:
         assert rule["labels"]["severity"] in {"warning", "critical", "watchdog"}

@@ -7,7 +7,7 @@
       enabled: false
       config_dir: /etc/observability-agent
       credential_dir: /etc/observability-agent/credentials
-      wal_dir: /var/lib/observability-agent/wal
-      install_root: /opt/observability-agent
+      queue_dir: /var/lib/observability-agent/queue
+      install_root: /opt/observability-vmagent
   roles:
     - role: observability_agent

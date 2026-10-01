@@ -65,6 +65,10 @@ counterpart changes. Tests that isolate HOME need real SOPS on PATH, not a
 version-manager shim whose trust state depends on the original home directory.
 Real pinned Kuma runtime timing is separate from mocked
 push or Telegram tests; no synthetic receipt proves human notification.
+Sender replacement checks use the actual pinned vmagent parser and persistent
+queue behavior. Clean and abrupt restart evidence must query pre-restart sample
+timestamps at the collector; queue files, empty buffers and fresh samples alone
+cannot pass. Byte/block drop counters are not interchangeable with sample counts.
 Historical dedicated-host
 selector tests prove staging-only enablement, disabled production, required
 explicit secret scope, and mixed-scope refusal before Terraform or publication.

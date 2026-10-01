@@ -23,6 +23,123 @@ def guard():
     return module
 
 
+def queue_boundary():
+    spec = importlib.util.spec_from_file_location(
+        "queue_boundary", AGENT / "files/observability-queue-boundary.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_queue_binding_refuses_unknown_backlog_and_receiver_changes(tmp_path):
+    import os
+
+    module = queue_boundary()
+    queue = tmp_path / "queue"
+    queue.mkdir(mode=0o700)
+    binding = tmp_path / "receiver"
+    receiver = "https://10.1.2.3:9443/remote-write/v1/nodes/vpn-p0"
+    arguments = dict(agent_uid=os.getuid(), root_uid=os.getuid())
+    module.inspect(queue, binding, receiver, **arguments)
+    (queue / "chunk").write_bytes(b"persisted-telemetry")
+    with pytest.raises(ValueError, match="unbound_retained_queue"):
+        module.inspect(queue, binding, receiver, **arguments)
+    binding.write_text(receiver + "\n")
+    binding.chmod(0o600)
+    module.inspect(queue, binding, receiver, **arguments)
+    with pytest.raises(ValueError, match="retained_queue_receiver_changed"):
+        module.inspect(
+            queue, binding, receiver.replace("10.1.2.3", "10.1.2.4"), **arguments
+        )
+    binding.chmod(0o644)
+    with pytest.raises(ValueError, match="unsafe_queue_binding"):
+        module.inspect(queue, binding, receiver, **arguments)
+
+
+def test_queue_capacity_adds_remaining_collector_budget(tmp_path, monkeypatch):
+    module = queue_boundary()
+    queue = tmp_path / "queue"
+    queue.mkdir()
+    fs = SimpleNamespace(f_blocks=40 * 1024**3, f_bavail=11 * 1024**3, f_frsize=1)
+    monkeypatch.setattr(module.os, "statvfs", lambda _path: fs)
+    monkeypatch.setattr(module, "allocated_bytes", lambda _path: 0)
+    monkeypatch.setattr(
+        module, "collector_allowance", lambda _device: 2 * 1024**3 + 128 * 1024**2
+    )
+    with pytest.raises(ValueError, match="queue_filesystem_reserve"):
+        module.capacity(queue)
+    fs.f_bavail = 13 * 1024**3
+    module.capacity(queue)
+    # A binary/candidate publication can consume the previously admitted margin.
+    fs.f_bavail = 11 * 1024**3
+    with pytest.raises(ValueError, match="queue_filesystem_reserve"):
+        module.capacity(queue)
+    fs.f_bavail = 13 * 1024**3
+    monkeypatch.setattr(module, "allocated_bytes", lambda _path: 2 * 1024**3 + 1)
+    with pytest.raises(ValueError, match="queue_allocation_exceeds_admission"):
+        module.capacity(queue)
+
+
+def test_collector_allowance_requires_new_guard_and_exact_owned_namespace(
+    tmp_path, monkeypatch
+):
+    module = queue_boundary()
+    unit = tmp_path / "guard.service"
+    collector = tmp_path / "collector"
+    collector.mkdir()
+    monkeypatch.setattr(module, "GUARD_UNIT", unit)
+    monkeypatch.setattr(module, "COLLECTOR", collector)
+    original = module.os.fstat
+
+    def owned(fd):
+        value = original(fd)
+        return SimpleNamespace(st_mode=value.st_mode, st_nlink=value.st_nlink, st_uid=0)
+
+    monkeypatch.setattr(module.os, "fstat", owned)
+    unit.write_text(
+        "ExecStart=/usr/local/libexec/observability-disk-guard.py --data-dir "
+        + str(collector)
+        + " --headroom-bytes 134217728\n"
+    )
+    unit.chmod(0o644)
+    with pytest.raises(ValueError, match="collector_shared_reserve_unproven"):
+        module.collector_allowance(collector.stat().st_dev)
+    unit.write_text(
+        unit.read_text().strip() + " --agent-queue-allowance-bytes 2147483648\n"
+    )
+    used = module.allocated_bytes(collector)
+    assert (
+        module.collector_allowance(collector.stat().st_dev)
+        == 2 * 1024**3 + 128 * 1024**2 - used
+    )
+    assert module.collector_allowance(collector.stat().st_dev + 1) == 0
+
+
+def test_shared_guard_reserve_tracks_remaining_queue_and_rejects_overflow(
+    tmp_path, monkeypatch
+):
+    module = guard()
+    queue = tmp_path / "queue"
+    queue.mkdir()
+    monkeypatch.setattr(module, "AGENT_QUEUE", queue)
+    fs = SimpleNamespace(f_blocks=40 * 1024**3, f_bavail=13 * 1024**3, f_frsize=1)
+    monkeypatch.setattr(module.os, "statvfs", lambda _path: fs)
+    monkeypatch.setattr(
+        module,
+        "allocated_bytes",
+        lambda path, **_kw: 512 * 1024**2 if path == queue else 0,
+    )
+    assert module.inspect(arguments(tmp_path))[1] == 8 * 1024**3 + 1536 * 1024**2
+    monkeypatch.setattr(
+        module,
+        "allocated_bytes",
+        lambda path, **_kw: 2 * 1024**3 + 1 if path == queue else 0,
+    )
+    with pytest.raises(ValueError, match="agent_queue_allocation_exceeded"):
+        module.inspect(arguments(tmp_path))
+
+
 def arguments(tmp_path, **changes):
     values = dict(
         data_dir=str(tmp_path),
@@ -33,6 +150,7 @@ def arguments(tmp_path, **changes):
         peak_bytes_per_second=1024**2,
         stop_seconds=30,
         interval_seconds=5,
+        agent_queue_allowance_bytes=2 * 1024**3,
     )
     values.update(changes)
     return argparse.Namespace(**values)
@@ -73,13 +191,14 @@ def test_guard_protects_total_filesystem_reserve_and_wal_head_highwater(
     tmp_path, monkeypatch
 ):
     module = guard()
-    fs = SimpleNamespace(f_blocks=40 * 1024**3, f_bavail=10 * 1024**3, f_frsize=1)
+    fs = SimpleNamespace(f_blocks=40 * 1024**3, f_bavail=12 * 1024**3, f_frsize=1)
+    monkeypatch.setattr(module, "AGENT_QUEUE", tmp_path / "future-queue")
     monkeypatch.setattr(module.os, "statvfs", lambda _path: fs)
-    assert module.inspect(arguments(tmp_path)) == (10 * 1024**3, 8 * 1024**3, 0)
-    fs.f_bavail = 8 * 1024**3 + 128 * 1024**2
+    assert module.inspect(arguments(tmp_path)) == (12 * 1024**3, 10 * 1024**3, 0)
+    fs.f_bavail = 10 * 1024**3 + 128 * 1024**2
     with pytest.raises(ValueError, match="filesystem_reserve"):
         module.inspect(arguments(tmp_path))
-    fs.f_bavail = 10 * 1024**3
+    fs.f_bavail = 12 * 1024**3
     monkeypatch.setattr(
         module, "allocated_bytes", lambda _path, **_kwargs: 2 * 1024**3 - 128 * 1024**2
     )
@@ -202,7 +321,9 @@ def test_capacity_preflight_precedes_all_mutations_and_disable_retains_data_and_
     ]
     assert agent["scrape_interval"] == "60s"
     assert agent["scrape_sample_limit"] == 2000
-    assert agent["wal_max_time"] == "1h"
+    assert agent["queue_max_disk_bytes"] == 536870912
+    assert agent["queue_dir"] == "/var/lib/observability-agent/queue"
+    assert "wal_max_time" not in agent
 
 
 def test_collector_does_not_bypass_the_cohosted_agent_privacy_allowlist():

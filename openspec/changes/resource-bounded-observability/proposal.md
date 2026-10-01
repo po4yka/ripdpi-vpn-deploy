@@ -10,6 +10,7 @@ Dedicated collector, deadman, and canary VPS nodes cost disproportionately much 
 
 - Co-host one private collector on an eligible existing VPN node, with measured resource and VPN-performance admission gates.
 - Keep Prometheus, Alertmanager, and the credential-isolated primary relay; shorten retention and bound ingestion for the actual small fleet.
+- Replace only the Prometheus Agent sender with an explicitly approved, pinned Apache-2.0 vmagent runtime. Use a bounded persistent remote-write queue and prove historical backlog delivery across restart; retain the Prometheus collector and existing private mTLS boundary.
 - Use self-hosted Uptime Kuma push monitors on an existing independent always-on host for each node and the primary alert pipeline. No monitoring-service account or subscription is needed.
 - BREAKING: replace dedicated-host observability topology with composable VPN/collector capabilities and a typed Uptime Kuma observer configuration. Remove mandatory dedicated deadman and sentinel hosts from this topology; retain the separate client-path verification contract.
 - Keep Kuma administration private, use a separate notification credential, and detect loss of the observer through the surviving primary route. Include backup/restore and observer outage acceptance.

@@ -17,6 +17,186 @@ ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / "ansible" / "roles" / "observability_agent"
 
 
+def _readiness_module():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "agent_readiness", ROLE / "files/observability-agent-readiness.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("owned", [True, False])
+def test_readiness_requires_socket_held_by_exact_managed_executable(tmp_path, owned):
+    module = _readiness_module()
+    module.PROC = tmp_path / "proc"
+    module.BIN = tmp_path / "bin"
+    module.BIN.mkdir()
+    binary = module.BIN / "vmagent-observability-agent"
+    binary.write_text("fixture executable inode, not a runtime proof")
+    process = module.PROC / "123"
+    (process / "fd").mkdir(parents=True)
+    (process / "net").mkdir()
+    (process / "exe").symlink_to(binary)
+    (process / "fd/5").symlink_to("socket:[12345]" if owned else "socket:[99999]")
+    (process / "net/tcp").write_text(
+        "header\n 0: 0100007F:4A92 00000000:0000 0A 0:0 0:0 0 0 0 12345\n"
+    )
+    if owned:
+        module.owns_listener(123, "vmagent", 19090)
+        binary.unlink()
+        binary.write_text("replacement inode")
+        # exe is normally a kernel-backed symlink retaining the running inode.
+        wrong_binary = tmp_path / "wrong-runtime"
+        wrong_binary.write_text("different executable")
+        (process / "exe").unlink()
+        (process / "exe").symlink_to(wrong_binary)
+        with pytest.raises(ValueError, match="executable_mismatch"):
+            module.owns_listener(123, "vmagent", 19090)
+    else:
+        with pytest.raises(ValueError, match="does_not_own_listener"):
+            module.owns_listener(123, "vmagent", 19090)
+
+
+@pytest.mark.parametrize("runtime", ["vmagent", "prometheus"])
+@pytest.mark.parametrize("changed", [False, True])
+def test_readiness_checks_stable_identity_around_proxy_free_http(
+    monkeypatch, runtime, changed
+):
+    module = _readiness_module()
+    identities = iter([(123, "456"), (123, "457" if changed else "456")])
+    monkeypatch.setattr(module, "identity", lambda: next(identities))
+    checked = []
+    monkeypatch.setattr(module, "owns_listener", lambda *args: checked.append(args))
+
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            pass
+
+    class Opener:
+        def open(self, url, timeout):
+            endpoint = "/ready" if runtime == "vmagent" else "/-/ready"
+            assert url == f"http://127.0.0.1:19090{endpoint}"
+            assert timeout == 2
+            return Response()
+
+    def opener(handler):
+        assert handler.proxies == {}
+        return Opener()
+
+    monkeypatch.setattr(module.urllib.request, "build_opener", opener)
+    if changed:
+        with pytest.raises(ValueError, match="changed_during_readiness"):
+            module.ready("127.0.0.1:19090", runtime)
+    else:
+        module.ready("127.0.0.1:19090", runtime)
+        assert checked == [(123, runtime, 19090)] * 2
+
+
+@pytest.mark.parametrize(
+    "listener", ["0.0.0.0:19090", "127.0.0.1:0", "127.0.0.1:65536"]
+)
+def test_readiness_rejects_non_loopback_or_invalid_listener(listener):
+    with pytest.raises(ValueError):
+        _readiness_module().ready(listener, "vmagent")
+
+
+@pytest.mark.parametrize(
+    "runtime,listener,active,unit_present,expected",
+    [
+        ("vmagent", "127.0.0.1:19093", 0, True, True),
+        ("prometheus", "127.0.0.1:19094", 0, True, True),
+        ("vmagent", "127.0.0.1:19095", 3, True, False),
+        ("vmagent", "127.0.0.1:19096", 0, False, False),
+    ],
+)
+def test_exact_runtime_and_listener_rollback_predicate(
+    tmp_path, runtime, listener, active, unit_present, expected
+):
+    import base64
+    import subprocess
+
+    def flatten(tasks):
+        for task in tasks:
+            yield task
+            for key in ("block", "rescue", "always"):
+                yield from flatten(task.get(key, []))
+
+    tasks = {
+        task.get("name"): task
+        for task in flatten(yaml.safe_load((ROLE / "tasks/main.yml").read_text()))
+    }
+    selected = [
+        dict(tasks[name])
+        for name in [
+            "Identify the exact captured runtime for rollback readiness only",
+            "Refuse an unrecognized captured sender runtime",
+            "Require coherent previously active runtime for live rollback",
+        ]
+    ]
+    flag = "-httpListenAddr=" if runtime == "vmagent" else "--web.listen-address="
+    unit = f"ExecStart=/usr/local/bin/{runtime}-observability-agent \\\n  {flag}{listener} \\\n  -other=value\n"
+    selected.append(
+        {
+            "ansible.builtin.assert": {
+                "that": [
+                    "_observability_agent_can_restore_runtime == expected_restore",
+                    "not previous_unit_present or _observability_agent_previous_listeners == [expected_listener]",
+                    "not previous_unit_present or _observability_agent_previous_runtimes == [expected_runtime]",
+                    "_observability_agent_previous_ready_path == expected_ready_path",
+                ]
+            }
+        }
+    )
+    play = tmp_path / "rollback.yml"
+    play.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "hosts": "localhost",
+                    "gather_facts": False,
+                    "vars": {
+                        "_observability_agent_previous_unit": {
+                            "stat": {"exists": unit_present}
+                        },
+                        "_observability_agent_previous_unit_bytes": {
+                            "content": base64.b64encode(unit.encode()).decode()
+                        },
+                        "_observability_agent_previous_generation": {
+                            "stat": {"islnk": True}
+                        },
+                        "_observability_agent_service_active": {"rc": active},
+                        "previous_unit_present": unit_present,
+                        "expected_restore": expected,
+                        "expected_listener": listener,
+                        "expected_runtime": runtime,
+                        "expected_ready_path": (
+                            "/-/ready"
+                            if runtime == "prometheus" and unit_present
+                            else "/ready"
+                        ),
+                    },
+                    "tasks": selected,
+                }
+            ]
+        )
+    )
+    result = subprocess.run(
+        ["ansible-playbook", "-i", "localhost,", "-c", "local", str(play)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def _run_embedded_verification_script(
     script: str,
     *,
@@ -70,6 +250,22 @@ def test_private_credentials_do_not_depend_on_system_credstore_traversal() -> No
     assert defaults["observability_agent"]["credential_dir"] == (
         "/etc/observability-agent/credentials"
     )
+    assert (
+        defaults["observability_agent"]["install_root"] == "/opt/observability-vmagent"
+    )
+    tasks = (ROLE / "tasks/main.yml").read_text()
+    assert "^/opt/observability-vmagent(?:-[a-z0-9-]+)?$" in tasks
+    assert "^/opt/observability-agent(?:-[a-z0-9-]+)?$" not in tasks
+    assert (
+        tasks.index("Refuse implicit retained queue migration before host mutation")
+        < tasks.index("Install pinned observability agent through runtime-release")
+        < tasks.index(
+            "Recheck queue capacity after publication before touching active units"
+        )
+        < tasks.index("Inspect prior sender unit before candidate publication")
+        < tasks.index("Install observability agent units")
+        < tasks.index("Switch current observability credential generation")
+    )
 
 
 def test_required_systemd_allowlist_matches_control_plane_policy() -> None:
@@ -105,8 +301,11 @@ def test_sender_is_fail_closed_and_uses_runtime_release() -> None:
     assert "linux_amd64_sha256" in tasks
     assert "include_role:" in tasks
     assert "name: runtime-release" in tasks
-    assert "runtime_release_archive_strip_components: 1" in tasks
-    assert "runtime_release_binary_name: promtool" in tasks
+    assert "runtime_release_archive_strip_components: 0" in tasks
+    assert "runtime_release_binary_name: vmagent-prod" in tasks
+    assert "runtime_release_binary_name: promtool" not in tasks
+    assert "- -dryRun" in tasks
+    assert "-promscrape.config=" in tasks
     assert "contract/observability-metric-manifest.example.json" in tasks
     assert "Validate candidate observability configuration" in tasks
     assert (
@@ -114,21 +313,22 @@ def test_sender_is_fail_closed_and_uses_runtime_release() -> None:
         not in tasks.split("Install pinned observability agent", 1)[0]
     )
     assert "Assert observability agent owned path boundary" in tasks
-    assert (
-        "promtool_install_root | default('/opt/observability-agent-promtool')" in tasks
-    )
+    assert "'promtool_install_root', 'wal_dir', 'wal_max_time'" in tasks
 
 
 def test_sender_constructs_exact_node_bound_write_path_and_sni() -> None:
     template = (ROLE / "templates" / "prometheus.yml.j2").read_text(encoding="utf-8")
-
-    assert "/remote-write/v1/nodes/{{ observability_agent.node_id }}" in template
-    assert 'server_name: "{{ observability_agent.receiver_address }}"' in template
-    assert "cert_file: client.crt" in template
-    assert "key_file: client.key" in template
-    assert "ca_file: receiver-ca.crt" in template
-    assert "/run/credentials/observability-agent.service" not in template
-    assert "max_shards: 1" in template
+    unit = (ROLE / "templates/observability-agent.service.j2").read_text()
+    assert "/remote-write/v1/nodes/{{ observability_agent.node_id }}" in unit
+    assert (
+        "-remoteWrite.tlsServerName={{ observability_agent.receiver_address }}" in unit
+    )
+    assert "-remoteWrite.tlsCertFile=%d/client.crt" in unit
+    assert "-remoteWrite.tlsKeyFile=%d/client.key" in unit
+    assert "-remoteWrite.tlsCAFile=%d/receiver-ca.crt" in unit
+    assert "/run/credentials/observability-agent.service" not in unit
+    assert "-remoteWrite.queues=1" in unit
+    assert "-remoteWrite.inmemoryQueues=0" in unit
     assert "127.0.0.1:9100" in template
     assert "{{ observability_agent.web_listen }}" in template
 
@@ -153,9 +353,6 @@ def test_sender_template_renders_node_path_without_credential_values() -> None:
                 "web_listen": "127.0.0.1:19090",
                 "receiver_origin": "https://10.23.0.2:9443",
                 "receiver_address": "10.23.0.2",
-                "queue_capacity": 5000,
-                "queue_max_samples_per_send": 1000,
-                "queue_batch_send_deadline": "5s",
             },
         )
     )
@@ -165,14 +362,12 @@ def test_sender_template_renders_node_path_without_credential_values() -> None:
         "environment": "prod",
         "node": "edge-prod",
     }
-    receiver = document["remote_write"][0]
-    assert receiver["url"] == "https://10.23.0.2:9443/remote-write/v1/nodes/edge-prod"
-    assert receiver["tls_config"]["server_name"] == "10.23.0.2"
-    assert receiver["tls_config"]["key_file"] == "client.key"
+    assert set(document) == {"global", "scrape_configs"}
+    assert "remote_write" not in document
     assert "BEGIN" not in rendered
 
 
-def test_service_uses_systemd_credentials_and_bounded_agent_wal() -> None:
+def test_service_uses_systemd_credentials_and_bounded_persistent_queue() -> None:
     unit = (ROLE / "templates" / "observability-agent.service.j2").read_text(
         encoding="utf-8"
     )
@@ -189,24 +384,28 @@ def test_service_uses_systemd_credentials_and_bounded_agent_wal() -> None:
         in unit
     )
     assert "/current/" not in unit
-    assert "--config.file=%d/prometheus.yml" in unit
-    assert "--config.file=${CREDENTIALS_DIRECTORY}/prometheus.yml" not in unit
+    assert "-promscrape.config=%d/prometheus.yml" in unit
+    assert "-promscrape.config=${CREDENTIALS_DIRECTORY}/prometheus.yml" not in unit
     assert (
-        "--config.file={{ observability_agent.credential_dir }}/current/prometheus.yml"
+        "-promscrape.config={{ observability_agent.credential_dir }}/current/prometheus.yml"
         not in unit
     )
     assert "config_dir }}/prometheus.yml" not in unit
-    assert " --agent " in unit
-    assert " prometheus-observability-agent agent " not in unit
-    assert "--storage.agent.retention.max-size=" not in unit
+    assert "/usr/local/bin/vmagent-observability-agent" in unit
+    assert "prometheus-observability-agent" not in unit
+    assert "--storage.agent." not in unit
     assert (
-        "--storage.agent.retention.max-time={{ observability_agent.wal_max_time }}"
+        "-remoteWrite.maxDiskUsagePerURL={{ observability_agent.queue_max_disk_bytes }}"
         in unit
     )
     assert "EnvironmentFile=" not in unit
     assert "MemoryMax=" in unit
     assert "TasksMax=" in unit
     assert "CapabilityBoundingSet=" in unit
+    assert "-remoteWrite.keepDanglingQueues=true" in unit
+    assert "-promscrape.config.strictParse=false" not in unit
+    assert "-promscrape.noStaleMarkers" not in unit
+    assert "-remoteWrite.disableOnDiskQueue" not in unit
 
 
 def test_scrapes_have_explicit_sample_and_label_bounds() -> None:
@@ -220,8 +419,20 @@ def test_scrapes_have_explicit_sample_and_label_bounds() -> None:
     assert (
         template.count("label_limit: {{ observability_agent.scrape_label_limit }}") == 3
     )
-    assert template.count("label_name_length_limit:") == 3
-    assert template.count("label_value_length_limit:") == 3
+    assert "label_name_length_limit:" not in template
+    assert "label_value_length_limit:" not in template
+    unit = (ROLE / "templates/observability-agent.service.j2").read_text()
+    for name, bound in [
+        ("maxLabelNameLen", "scrape_label_name_length_limit"),
+        ("maxLabelValueLen", "scrape_label_value_length_limit"),
+        ("maxLabelsPerTimeseries", "scrape_label_limit"),
+    ]:
+        assert "-" + name + "={{ observability_agent." + bound + " }}" in unit
+    assert "promscrape.config.strictParse=false" not in unit
+    assert (
+        "vm_rows_ignored_total;(too_long_label_name|too_long_label_value|too_many_labels)"
+        in template
+    )
     assert "node_metric_name_allowlist" not in template
     assert "node_metric_label_allowlist" not in template
     assert "node_device_allowlist" not in template
@@ -266,9 +477,6 @@ def test_required_systemd_scrape_is_exactly_allowlisted() -> None:
                 "web_listen": "127.0.0.1:19090",
                 "receiver_origin": "https://10.23.0.2:9443",
                 "receiver_address": "10.23.0.2",
-                "queue_capacity": 5000,
-                "queue_max_samples_per_send": 1000,
-                "queue_batch_send_deadline": "5s",
             },
         )
     )
@@ -396,10 +604,7 @@ def test_agent_policy_bounds_and_first_activation_rollback_are_fail_closed() -> 
         "observability_agent.scrape_interval",
         "observability_agent.scrape_label_name_length_limit",
         "observability_agent.scrape_label_value_length_limit",
-        "observability_agent.queue_capacity",
-        "observability_agent.queue_max_samples_per_send",
-        "observability_agent.queue_batch_send_deadline",
-        "observability_agent.wal_max_time",
+        "observability_agent.queue_max_disk_bytes",
         "observability_agent.memory_max",
         "observability_agent.tasks_max",
         "observability_agent.nofile_limit",
@@ -407,17 +612,19 @@ def test_agent_policy_bounds_and_first_activation_rollback_are_fail_closed() -> 
         assert bound in contract
     assert "urlsplit('port')" in contract
     assert "[^/?#]+" not in contract
-    assert "queue_highest_timestamp_seconds" in (
-        ROLE / "templates" / "prometheus.yml.j2"
-    ).read_text(encoding="utf-8")
-    assert "queue_highest_sent_timestamp_seconds" in (
-        ROLE / "templates" / "prometheus.yml.j2"
-    ).read_text(encoding="utf-8")
+    assert "pending_data_bytes" in (ROLE / "templates" / "prometheus.yml.j2").read_text(
+        encoding="utf-8"
+    )
+    assert "blocks_sent_total" in (ROLE / "templates" / "prometheus.yml.j2").read_text(
+        encoding="utf-8"
+    )
     template = (ROLE / "templates" / "prometheus.yml.j2").read_text(encoding="utf-8")
     for family in (
-        "samples_failed_total",
-        "samples_retried_total",
+        "errors_total",
+        "retries_count_total",
         "samples_dropped_total",
+        "bytes_dropped_total",
+        "blocks_dropped_total",
     ):
         assert family in template
     assert "failed_samples_total" not in template
@@ -455,7 +662,7 @@ def test_self_scrape_follows_the_configured_loopback_listener_and_drops_endpoint
     template = (ROLE / "templates" / "prometheus.yml.j2").read_text(encoding="utf-8")
 
     assert 'targets: ["{{ observability_agent.web_listen }}"]' in template
-    assert 'regex: "^(__name__|job)$"' in template
+    assert 'regex: "^(__name__|job|reason)$"' in template
     assert "action: labelkeep" in template
     assert "instance" not in template
 
@@ -487,7 +694,7 @@ def test_adapter_explicitly_joins_the_textfile_writer_group() -> None:
     assert unit.index("SupplementaryGroups=") < unit.index("ExecStart=")
 
 
-def test_enabled_scenario_proves_idempotence_queue_age_and_authenticated_drain() -> (
+def test_enabled_scenario_proves_idempotence_queue_bytes_and_authenticated_drain() -> (
     None
 ):
     molecule = (ROLE / "molecule" / "enabled" / "molecule.yml").read_text(
@@ -511,26 +718,24 @@ def test_enabled_scenario_proves_idempotence_queue_age_and_authenticated_drain()
     baseline = verify.index(
         "Capture authenticated receiver and remote-write counter baseline"
     )
-    stop = verify.index("Stop receiver to exercise bounded local WAL evidence")
-    outage = verify.index("Wait for a new remote-write retry and positive queue age")
+    stop = verify.index("Stop receiver to exercise bounded persistent queue transport")
+    outage = verify.index("Wait for a new remote-write retry and positive queue bytes")
     restore = verify.index("Restore receiver after bounded outage")
-    drain = verify.index(
-        "Wait for outage watermark recovery and new authenticated receiver arrival"
-    )
+    drain = verify.index("Wait for queued transport drain without discarded bytes")
     assert baseline < stop < outage < restore < drain
-    assert "queue_highest_timestamp_seconds" in verify[outage:restore]
-    assert "queue_highest_sent_timestamp_seconds" in verify[outage:restore]
+    assert "vmagent_remotewrite_pending_data_bytes" in verify[outage:restore]
+    assert "pending > 0" in verify[outage:restore]
     assert "retry > float(sys.argv[1])" in verify[outage:restore]
     assert "received > int(sys.argv[1])" in verify[drain:]
     arrival = verify[:baseline]
     for field in (
         "'arrived': arrived",
         "'received': len(rows)",
-        "'failed': maximum('prometheus_remote_storage_samples_failed_total')",
-        "'retried': maximum('prometheus_remote_storage_samples_retried_total')",
-        "'pending': maximum('prometheus_remote_storage_samples_pending')",
-        "'highest': maximum('prometheus_remote_storage_queue_highest_timestamp_seconds')",
-        "'highest_sent': maximum('prometheus_remote_storage_queue_highest_sent_timestamp_seconds')",
+        "'failed': maximum('vmagent_remotewrite_errors_total')",
+        "'retried': maximum('vmagent_remotewrite_retries_count_total')",
+        "'pending_bytes': maximum('vmagent_remotewrite_pending_data_bytes')",
+        "'blocks_sent': maximum('vmagent_remotewrite_blocks_sent_total')",
+        "'bytes_dropped': maximum('vm_persistentqueue_bytes_dropped_total')",
         "'request_headers': events.count('headers')",
         "'length_rejected': events.count('length_rejected')",
         "'short_body': events.count('short_body')",
@@ -556,23 +761,22 @@ def test_enabled_scenario_proves_idempotence_queue_age_and_authenticated_drain()
     assert "when: observability_remote_write_arrival.rc != 0" in verify
 
 
-def test_enabled_recovery_proves_outage_watermark_without_global_quiescence() -> None:
+def test_enabled_transport_drain_requires_no_pending_or_discarded_bytes() -> None:
     tasks = yaml.safe_load(
         (ROLE / "molecule" / "enabled" / "verify.yml").read_text(encoding="utf-8")
     )[0]["tasks"]
     by_name = {task["name"]: task for task in tasks}
-    outage_script = by_name["Wait for a new remote-write retry and positive queue age"][
-        "ansible.builtin.command"
-    ]["argv"][2]
+    outage_script = by_name[
+        "Wait for a new remote-write retry and positive queue bytes"
+    ]["ansible.builtin.command"]["argv"][2]
     recovery_script = by_name[
-        "Wait for outage watermark recovery and new authenticated receiver arrival"
+        "Wait for queued transport drain without discarded bytes"
     ]["ansible.builtin.command"]["argv"][2]
     outage_metrics = "\n".join(
         (
-            "prometheus_remote_storage_queue_highest_timestamp_seconds 42",
-            "prometheus_remote_storage_queue_highest_sent_timestamp_seconds 35",
-            "prometheus_remote_storage_samples_failed_total 2",
-            "prometheus_remote_storage_samples_retried_total 2",
+            "vmagent_remotewrite_pending_data_bytes 42",
+            "vmagent_remotewrite_errors_total 2",
+            "vmagent_remotewrite_retries_count_total 2",
         )
     )
     outage_code, outage = _run_embedded_verification_script(
@@ -583,12 +787,13 @@ def test_enabled_recovery_proves_outage_watermark_without_global_quiescence() ->
     )
 
     assert outage_code == 0
-    assert outage == {"highest": 42.0, "highest_sent": 35.0, "retry": 2.0}
+    assert outage == {"pending": 42.0, "retry": 2.0}
 
     recovered_metrics = "\n".join(
         (
-            "prometheus_remote_storage_samples_pending 7",
-            "prometheus_remote_storage_queue_highest_sent_timestamp_seconds 42",
+            "vmagent_remotewrite_pending_data_bytes 0",
+            "vmagent_remotewrite_blocks_sent_total 42",
+            "vm_persistentqueue_bytes_dropped_total 0",
         )
     )
     authenticated_rows = [
@@ -599,32 +804,50 @@ def test_enabled_recovery_proves_outage_watermark_without_global_quiescence() ->
         recovery_script,
         metrics=recovered_metrics,
         receiver_rows=authenticated_rows,
-        args=["54", str(outage["highest"])],
+        args=["54", "41", "0"],
     )
 
     assert recovered_code == 0
     assert recovered == {
-        "outage_highest": 42.0,
-        "pending": 7.0,
+        "pending": 0.0,
         "received": 55,
         "sent": 42.0,
+        "dropped": 0.0,
     }
 
     below_watermark_code, _ = _run_embedded_verification_script(
         recovery_script,
         metrics=recovered_metrics.replace(" 42", " 41"),
         receiver_rows=authenticated_rows,
-        args=["54", str(outage["highest"])],
+        args=["54", "41", "0"],
     )
     unchanged_receiver_code, _ = _run_embedded_verification_script(
         recovery_script,
         metrics=recovered_metrics,
         receiver_rows=authenticated_rows[:54],
-        args=["54", str(outage["highest"])],
+        args=["54", "41", "0"],
     )
 
     assert below_watermark_code == 1
     assert unchanged_receiver_code == 1
+    dropped_code, _ = _run_embedded_verification_script(
+        recovery_script,
+        metrics=recovered_metrics.replace(
+            "bytes_dropped_total 0", "bytes_dropped_total 1"
+        ),
+        receiver_rows=authenticated_rows,
+        args=["54", "41", "0"],
+    )
+    pending_code, _ = _run_embedded_verification_script(
+        recovery_script,
+        metrics=recovered_metrics.replace(
+            "pending_data_bytes 0", "pending_data_bytes 1"
+        ),
+        receiver_rows=authenticated_rows,
+        args=["54", "41", "0"],
+    )
+    assert dropped_code == 1
+    assert pending_code == 1
 
 
 def test_enabled_molecule_uses_exact_systemd_credentials_for_fail_only_probe() -> None:
@@ -696,6 +919,8 @@ def test_enabled_fixture_creates_diagnostic_account_before_runtime_ownership() -
         "group": "observability-agent",
         "system": True,
         "shell": "/usr/sbin/nologin",
+        "home": "/var/lib/observability-agent",
+        "create_home": False,
     }
     assert (
         names.index("Create observability agent fixture group")
