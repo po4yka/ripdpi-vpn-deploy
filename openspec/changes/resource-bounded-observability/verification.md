@@ -179,6 +179,29 @@ tests; other steps and the overall feature remain open.
 
 ## Requirement evidence
 
+### Publication and deployment preflight (2026-10-01)
+
+- Implementation revision `276b39f09d42a110eef8ea1876523d3240ac4dc6`
+  was published and its remote branch identity verified. Hosted CI run
+  `36873679819` detected the expected topology V2 / client-vendored V1 mismatch
+  and HIGH OpenSSL findings in the older Molecule base images. The existing
+  scan-clean image updates from main revision `8ab18771` are being integrated;
+  reverting the new topology or suppressing findings is not an acceptable fix.
+- The existing independent arm64 observer is reachable over pinned-key SSH,
+  with approximately 14.7 GiB available memory and 427.9 GiB free on its
+  separate local filesystem. Docker is active and the two required ports are
+  unused. It is not yet admitted: nginx and age are absent, and no qualifying
+  existing root-private backup directory was found on the separate filesystem.
+- All three existing VPN nodes timed out on strict SSH over both public and
+  Tailnet transports. The controller's current public address does not match
+  the inventory SSH allowlists. One provider independently rejected the API
+  request due to its IP allowlist; another confirmed its existing node is
+  running. Reachable public TCP/443 on two nodes is not authenticated VPN proof.
+- No live service, access rule, credential, host capacity or paid resource was
+  changed by these read-only checks. Host admission, private monitoring routes,
+  human delivery and the full cross-repository gate remain required before
+  deployment or cutover.
+
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
 | REQ-RBO-COST | MON-1790835430228619 | Approved collector/observer admission and zero-new-paid-resource checks | Required; no deployment |
