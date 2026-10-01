@@ -248,6 +248,9 @@ Independent controller homes are not a supported shared-ownership mechanism.
   Remote deadline retries are distinct from an unresponsive SSH session; cloud-init
   exit codes 1 and 2 both refuse readiness even when the marker already exists.
   Keep raw cloud-init output suppressed and reclaim the owned SSH group on interruption.
+- **First-boot SSH uses only its selected key** — the wait adapter must pass
+  `IdentitiesOnly=yes` with its `-i` key. An operator's SSH agent may otherwise
+  offer enough unrelated keys for the server to reject authentication first.
 - **Rollback state must be readable before mutation** — enforce the same byte
   limit on serialized pending writes and reads, including base64 snapshots.
   SSH/job/monitor deadlines must leave room around the shared probe budget.

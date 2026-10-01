@@ -311,6 +311,8 @@ import json, os, subprocess, sys, time
 from pathlib import Path
 with open(os.environ["WAIT_SSH_LOG"], "a") as stream:
     stream.write(json.dumps(sys.argv[1:]) + "\\n")
+if os.environ.get("WAIT_REQUIRE_IDENTITIES_ONLY") == "1" and "IdentitiesOnly=yes" not in sys.argv[1:]:
+    sys.exit(255)
 if sys.argv[-1] == "true":
     sys.exit(0)
 if os.environ.get("WAIT_SSH_FAULT") == "hang":
@@ -352,6 +354,20 @@ def test_wait_requires_error_free_cloud_init_even_with_marker(tmp_path, cloud_co
     assert all(call[call.index("-p") + 1] == "2222" for call in calls)
     assert all("StrictHostKeyChecking=accept-new" in call for call in calls)
     assert Path(environment["WAIT_CONTROLLER_LOG"]).read_text().splitlines() == ["controller"]
+
+
+def test_wait_uses_only_the_selected_key_when_an_agent_is_present(tmp_path):
+    script, environment = _isolated_wait_script(tmp_path)
+    environment["SSH_AUTH_SOCK"] = str(tmp_path / "agent.sock")
+    environment["WAIT_REQUIRE_IDENTITIES_ONLY"] = "1"
+    Path(environment["WAIT_MARKER"]).touch()
+
+    result = subprocess.run(["bash", str(script)], env=environment, capture_output=True, text=True, timeout=10)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = [json.loads(line) for line in Path(environment["WAIT_SSH_LOG"]).read_text().splitlines()]
+    assert len(calls) == 2
+    assert all("IdentitiesOnly=yes" in call for call in calls)
 
 
 @pytest.mark.parametrize("cloud_code", [124, 137])

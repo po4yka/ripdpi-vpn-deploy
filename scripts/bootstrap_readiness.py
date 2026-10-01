@@ -165,7 +165,8 @@ def main():
     # Only the existing Terraform first-boot adapter uses accept-new. Deployment
     # supplies the canonical strict SSH prefix instead, without this CLI path.
     address, user, port, key = sys.argv[1:]
-    ssh = ["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new",
+    ssh = ["ssh", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
+           "-o", "StrictHostKeyChecking=accept-new",
            "-o", "ConnectTimeout=10", "-p", port, "-i", key, user + "@" + address]
     try:
         with cancellation():
