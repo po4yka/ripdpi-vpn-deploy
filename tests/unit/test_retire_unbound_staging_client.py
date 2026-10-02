@@ -98,8 +98,10 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
                 "terraform_version": "1.14.5",
                 "serial": 4,
                 "lineage": "12345678-1234-4234-8234-123456789abc",
-                "outputs": {},
-                "resources": [],
+                "outputs": {"server_uuid": {"value": server_uuid}},
+                "resources": [
+                    {"mode": "managed", "type": "upcloud_server", "name": "vpn"}
+                ],
             }
         ),
     )
@@ -123,6 +125,10 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     }
     manifest_path = root / "cleanup.json"
     staging_lifecycle.publish(manifest, manifest_path)
+    absence_path = root / "post-destroy.json"
+    _load()._guard().reserve_evidence(
+        manifest_path, absence_path, now="2026-09-05T20:04:00Z"
+    )
     absence = {
         "schema_version": 3,
         "status": "verified",
@@ -140,7 +146,13 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         "root_storage_status": "absent",
         "billing_status": "no-active-owned-resources",
     }
-    absence_path = _private(root / "post-destroy.json", _canonical(absence))
+    absence_path = _private(absence_path, _canonical(absence))
+    # Real destroy changes the state bytes after the manifest was registered.
+    destroyed = json.loads(state.read_bytes())
+    destroyed["serial"] += 1
+    destroyed["outputs"] = {}
+    destroyed["resources"] = []
+    state.write_bytes(_canonical(destroyed))
 
     # Reuse the canonical schema-shaped liveness fixture and strip its epoch.
     fixture_spec = importlib.util.spec_from_file_location(
@@ -266,6 +278,189 @@ def _run(setup, **kwargs):
     return _load().retire(**values)
 
 
+@pytest.fixture
+def prepared_executor(setup, monkeypatch):
+    monkeypatch.setenv("BUILD_GATE_HELD", "1")
+    fixture_spec = importlib.util.spec_from_file_location(
+        "executor_fixture", ROOT / "tests/unit/test_disposable_liveness_executor.py"
+    )
+    assert fixture_spec and fixture_spec.loader
+    fixture = importlib.util.module_from_spec(fixture_spec)
+    fixture_spec.loader.exec_module(fixture)
+    home = Path(os.environ["HOME"])
+    vm = fixture.Runner(home)
+    manifest_path = Path(setup["intent"]["inputs"]["executor_manifest"])
+    _load().executor.prepare_executor(
+        profile="vpn-liveness-unbound",
+        manifest_path=manifest_path,
+        home=home,
+        now=1_700_000_000,
+        expires_at=1_700_003_600,
+        runner=vm,
+    )
+    default = home / ".colima/default"
+    default.mkdir()
+    (default / "keep.txt").write_text("unrelated")
+    _run(setup)
+    script_spec = importlib.util.spec_from_file_location(
+        "retire_executor", ROOT / "scripts/retire-unbound-staging-executor.py"
+    )
+    assert script_spec and script_spec.loader
+    module = importlib.util.module_from_spec(script_spec)
+    script_spec.loader.exec_module(module)
+
+    def runner(argv, **kwargs):
+        if argv[0] == "sops":
+            return setup["runner"](argv, **kwargs)
+        return vm(argv, **kwargs)
+
+    def remove():
+        return module.retire_executor(
+            **setup["paths"],
+            executor_receipt_path=setup["root"] / "executor-retired.json",
+            home=home,
+            runner=runner,
+        )
+
+    return vm, home, remove, fixture
+
+
+def test_prepared_executor_retirement_is_owned_and_idempotent(setup, prepared_executor):
+    vm, home, remove, _ = prepared_executor
+    before = setup["paths"]["sops_file"].read_bytes()
+    result = remove()
+    assert result["status"] == "retired-prepared"
+    assert result["changed"] is True
+    assert not (home / ".colima/vpn-liveness-unbound").exists()
+    assert (home / ".colima/default/keep.txt").read_text() == "unrelated"
+    assert vm.context == "default"
+    assert setup["paths"]["sops_file"].read_bytes() == before
+    repeated = remove()
+    assert repeated == {**result, "changed": False}
+    deleted = [call for call in vm.calls if call[:2] == ("colima", "delete")]
+    assert deleted == [
+        ("colima", "delete", "--profile", "vpn-liveness-unbound", "--force", "--data")
+    ]
+
+
+@pytest.mark.parametrize(
+    "fault",
+    ["marker", "context", "config", "receipt", "onboarding", "assignment", "lock"],
+)
+def test_prepared_executor_retirement_refuses_before_vm_mutation(
+    setup, prepared_executor, fault
+):
+    vm, home, remove, fixture = prepared_executor
+    module = _load().executor
+    if fault == "marker":
+        vm.executor_marker = "00000000-0000-4000-8000-000000000001"
+    elif fault == "context":
+        vm.context = "other"
+    elif fault == "config":
+        (home / ".colima/vpn-liveness-unbound/colima.yaml").write_text("drift")
+    elif fault == "receipt":
+        receipt = json.loads(setup["paths"]["receipt_path"].read_bytes())
+        receipt["client_sha256"] = "f" * 64
+        setup["paths"]["receipt_path"].write_bytes(_canonical(receipt))
+    elif fault == "onboarding":
+        _private(Path(setup["intent"]["outputs"]["binding"]), b"{}\n")
+    elif fault == "assignment":
+        config = _private(
+            setup["root"] / "other-config.yaml", b"sentinels:\n- id: other\n"
+        )
+        generation, provenance, target = fixture._identity()
+        module.bind_executor(
+            Path(setup["intent"]["inputs"]["executor_manifest"]),
+            setup["root"] / "other-binding.json",
+            config,
+            setup["paths"]["cleanup_manifest_path"],
+            sentinel="other",
+            client="other",
+            generation_id=generation,
+            provenance=provenance,
+            target_identity=target,
+            home=home,
+            now=1_700_000_001,
+            runner=vm,
+        )
+    before = len(vm.calls)
+    if fault == "lock":
+        with module._profile_lock(home, "vpn-liveness-unbound"):
+            with pytest.raises(ValueError, match="retirement-executor"):
+                remove()
+    else:
+        with pytest.raises(ValueError, match="retirement-"):
+            remove()
+    assert not any(
+        call[:2] in (("colima", "stop"), ("colima", "delete"))
+        for call in vm.calls[before:]
+    )
+    assert (home / ".colima/vpn-liveness-unbound").exists()
+    assert not (setup["root"] / "executor-retired.json").exists()
+
+
+def test_prepared_executor_retirement_resumes_after_stop(setup, prepared_executor):
+    vm, home, remove, _ = prepared_executor
+    vm.delete_fail_once = True
+    with pytest.raises(RuntimeError, match="delete failure"):
+        remove()
+    assert vm.profile_status == "Stopped"
+    assert not (setup["root"] / "executor-retired.json").exists()
+    resumed = remove()
+    assert resumed["status"] == "retired-prepared"
+    assert not (home / ".colima/vpn-liveness-unbound").exists()
+
+
+def test_prepared_executor_retirement_resumes_after_delete(
+    setup, prepared_executor, monkeypatch
+):
+    vm, home, remove, _ = prepared_executor
+    module = _load().executor
+    original = module._write_new
+
+    def fail_receipt(path, value):
+        if path.name == "executor-retired.json":
+            raise module.ExecutorError("evidence-write")
+        return original(path, value)
+
+    monkeypatch.setattr(module, "_write_new", fail_receipt)
+    with pytest.raises(ValueError, match="retirement-executor"):
+        remove()
+    assert not (home / ".colima/vpn-liveness-unbound").exists()
+    assert not (setup["root"] / "executor-retired.json").exists()
+    monkeypatch.setattr(module, "_write_new", original)
+    resumed = remove()
+    assert resumed["status"] == "retired-prepared"
+
+
+@pytest.mark.parametrize(
+    "fault", ["copied-manifest", "replaced-manifest", "unclaimed-evidence"]
+)
+def test_retirement_requires_registered_cleanup_authority(setup, fault):
+    paths = setup["paths"]
+    if fault == "copied-manifest":
+        paths["cleanup_manifest_path"] = _private(
+            setup["root"] / "copied-cleanup.json",
+            paths["cleanup_manifest_path"].read_bytes(),
+        )
+    elif fault == "replaced-manifest":
+        original = paths["cleanup_manifest_path"]
+        replacement = _private(
+            setup["root"] / "replacement.json", original.read_bytes()
+        )
+        replacement.replace(original)
+    else:
+        paths["absence_evidence_path"] = _private(
+            setup["root"] / "copied-absence.json",
+            paths["absence_evidence_path"].read_bytes(),
+        )
+    before = paths["sops_file"].read_bytes()
+    with pytest.raises(_load().RetirementError, match="retirement-absence"):
+        _run(setup)
+    assert paths["sops_file"].read_bytes() == before
+    assert setup["runner"].calls == []
+
+
 def test_retirement_removes_exact_issued_client_and_is_idempotent(setup):
     before = setup["paths"]["sops_file"].read_bytes()
     result = _run(setup)
@@ -288,7 +483,31 @@ def test_retirement_removes_exact_issued_client_and_is_idempotent(setup):
     assert len(setup["runner"].calls) == calls + 1  # semantic final reread only
 
 
-def test_retirement_round_trips_real_sops_ciphertext(setup, monkeypatch):
+@pytest.mark.parametrize("replace_inode", [False, True])
+def test_retirement_freezes_destroyed_state_until_publication(setup, replace_inode):
+    state = setup["paths"]["state_path"]
+    before = setup["paths"]["sops_file"].read_bytes()
+
+    def mutate(phase):
+        if phase != "before-publish":
+            return
+        payload = state.read_bytes()
+        if replace_inode:
+            _private(setup["root"] / "state-replacement.json", payload).replace(state)
+        else:
+            value = json.loads(payload)
+            value["serial"] += 1
+            state.write_bytes(_canonical(value))
+
+    with pytest.raises(_load().RetirementError, match="retirement-input"):
+        _run(setup, failpoint=mutate)
+    assert setup["paths"]["sops_file"].read_bytes() == before
+
+
+@pytest.mark.parametrize("configured_snell", [True, False])
+def test_retirement_round_trips_real_sops_ciphertext(setup, monkeypatch, configured_snell):
+    if not configured_snell:
+        setup["secrets"].pop("snell_secrets")
     roundtrip_spec = importlib.util.spec_from_file_location(
         "retirement_sops_roundtrip", ROOT / "tests/unit/test_sops_roundtrip.py"
     )
@@ -319,7 +538,10 @@ def test_retirement_round_trips_real_sops_ciphertext(setup, monkeypatch):
     assert final["xray"]["clients"] == []
     assert final["hysteria"]["clients"] == []
     assert final["amneziawg_secrets"]["peers"] == []
-    assert all(variant["users"] == [] for variant in final["snell_secrets"]["variants"])
+    if configured_snell:
+        assert all(variant["users"] == [] for variant in final["snell_secrets"]["variants"])
+    else:
+        assert "snell_secrets" not in final
     assert final["client_registry"] == {}
     assert b"private-" not in setup["paths"]["sops_file"].read_bytes()
 
@@ -384,6 +606,8 @@ def test_retirement_refuses_nonissued_registry_without_mutation(setup, status):
         "awg-missing",
         "snell-missing",
         "snell-duplicate",
+        "snell-root-null",
+        "snell-variants-missing",
         "registry-host",
     ],
 )
@@ -400,6 +624,10 @@ def test_retirement_refuses_partial_duplicate_or_foreign_client_state(setup, cas
         document["snell_secrets"]["variants"][0]["users"] = []
     elif case == "snell-duplicate":
         document["snell_secrets"]["variants"][0]["users"].append({"name": client})
+    elif case == "snell-root-null":
+        document["snell_secrets"] = None
+    elif case == "snell-variants-missing":
+        document["snell_secrets"].pop("variants")
     else:
         document["client_registry"][client]["hosts"] = ["upcloud:prod"]
     setup["paths"]["sops_file"].write_text(yaml.safe_dump(document))
@@ -1083,6 +1311,51 @@ def test_make_boundary_keeps_every_operator_path_literal(tmp_path: Path, field: 
     assert result.returncode != 0
     assert "literal values" in result.stderr
     assert not marker.exists()
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "UNBOUND_STAGING_INTENT",
+        "STAGING_CLEANUP_MANIFEST",
+        "STAGING_POST_DESTROY_EVIDENCE",
+        "STAGING_CLEANUP_STATE",
+        "SOPS_FILE",
+        "UNBOUND_CLIENT_JOURNAL",
+        "UNBOUND_CLIENT_RECEIPT",
+        "UNBOUND_EXECUTOR_RECEIPT",
+        "SOPS_AGE_KEY_FILE",
+        "HOME",
+        "MAKEFLAGS",
+    ],
+)
+def test_executor_make_boundary_refuses_expansion(tmp_path: Path, field: str):
+    marker = tmp_path / "expanded-executor"
+    args = _make_args()
+    args[args.index("retire-unbound-staging-client")] = (
+        "retire-unbound-staging-executor"
+    )
+    args.append("UNBOUND_EXECUTOR_RECEIPT=/private/g")
+    args = [arg for arg in args if not arg.startswith(field + "=")]
+    args.append(f"{field}=$(shell touch {marker})")
+    result = subprocess.run(args, cwd=ROOT, capture_output=True, text=True, timeout=20)
+    assert result.returncode != 0
+    assert not marker.exists()
+
+
+def test_executor_make_boundary_routes_only_canonical_controller():
+    args = _make_args()
+    args[args.index("retire-unbound-staging-client")] = (
+        "retire-unbound-staging-executor"
+    )
+    args.append("UNBOUND_EXECUTOR_RECEIPT=/private/g")
+    result = subprocess.run(args, cwd=ROOT, capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0
+    assert (
+        "build-gate -- python3 ./scripts/retire-unbound-staging-executor.py"
+        in result.stdout
+    )
+    assert '--executor-receipt "${UNBOUND_EXECUTOR_RECEIPT}"' in result.stdout
 
 
 @pytest.mark.parametrize(

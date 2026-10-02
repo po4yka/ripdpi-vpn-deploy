@@ -221,6 +221,30 @@ Every step is retryable; partial or foreign identities refuse without deleting
 them. The private manifest, binding, provider-absence evidence and categorical
 de-onboarding receipt remain as the audit boundary.
 
+When bootstrap fails before onboarding, do not synthesize a binding to use
+normal de-onboarding. First run `make retire-unbound-staging-client` with
+`UNBOUND_STAGING_INTENT`, `STAGING_CLEANUP_MANIFEST`,
+`STAGING_POST_DESTROY_EVIDENCE`, `STAGING_CLEANUP_STATE`, `SOPS_FILE`,
+`UNBOUND_CLIENT_JOURNAL` and `UNBOUND_CLIENT_RECEIPT`. The retained registered
+manifest binds pre-destroy state; the verified reserved absence and current
+private empty state authorize this separate encrypted transaction. The new
+state digest and inode are frozen through publication. Copied authority and
+any onboarding output refuse. Old unregistered retirement journals cannot
+resume under this authority contract.
+
+Then run `make retire-unbound-staging-executor` with the same seven inputs
+and a fresh `UNBOUND_EXECUTOR_RECEIPT`. It requires the verified client journal,
+matching final ciphertext and semantic client absence, then verifies the
+original prepared manifest's VM marker/configuration and Docker context.
+The first removal requires that VM running so its marker can be checked;
+an interrupted removal can resume after stop or delete. Expiry permits cleanup.
+A private profile journal serializes prepare, binding and removal, refuses
+assigned executors, and fences retired profile names from reuse. Retain these
+one-shot names and all evidence; use a new profile for a new run. Success
+requires both directory and `colima list` absence and never changes the default
+Docker context. Age credentials remain inherited environment values; these
+targets never contact providers or deployed hosts.
+
 Installation stages a complete private generation, then starts a bounded detached
 systemd job. A shared lock serializes install and probe. Pending state snapshots
 the previous launcher, engine, sudo rule and current generation before activation.

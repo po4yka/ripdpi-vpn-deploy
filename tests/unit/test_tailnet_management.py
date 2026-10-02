@@ -413,7 +413,7 @@ class FakeRunner:
                 ]
             )
             stdout = json.dumps([{"ifname": "tailscale0", "addr_info": addresses}])
-        elif argv[0].endswith("sshd") and command == ["-T"]:
+        elif argv[0].endswith("sshd") and command == ["-G"]:
             stdout = "port 22022\nhostkey /etc/ssh/ssh_host_ed25519_key\n"
             if self.drift == "sshd" and self.running:
                 stdout = "port 22\nhostkey /etc/ssh/ssh_host_ed25519_key\n"
@@ -523,6 +523,24 @@ def _paths(controller, root: Path):
         state_directory=root,
         systemctl="/fixture/systemctl",
     )
+
+
+def test_sshd_policy_inspection_does_not_require_daemon_runtime(tmp_path):
+    controller = _load_controller()
+    policy = "port 22\nhostkey /etc/ssh/ssh_host_ed25519_key\npasswordauthentication no\n"
+    calls = []
+
+    def cold_boot_runner(argv, **kwargs):
+        calls.append(argv)
+        if argv[1:] != ["-G"]:
+            raise subprocess.CalledProcessError(
+                255, argv, stderr="Missing privilege separation directory: /run/sshd"
+            )
+        return subprocess.CompletedProcess(argv, 0, policy, "")
+
+    paths = _paths(controller, tmp_path)
+    assert controller._sshd_policy(paths, cold_boot_runner) == policy.encode()
+    assert calls == [[paths.sshd, "-G"]]
 
 
 def test_sshd_policy_ignores_only_listener_enumeration_order(tmp_path):
@@ -1838,20 +1856,14 @@ def test_role_does_not_parse_success_json_when_the_controller_refuses() -> None:
     assert "(_tailnet_verified.stdout | from_json).status" in tasks
 
 
-def test_molecule_prepares_sshd_policy_inspection_runtime() -> None:
+def test_molecule_leaves_sshd_runtime_ownership_to_the_service() -> None:
     prepare = yaml.safe_load((ROLE / "molecule/default/prepare.yml").read_text())[0]
     directories = [
         task["ansible.builtin.file"]
         for task in prepare["tasks"]
         if "ansible.builtin.file" in task
     ]
-    assert {
-        "path": "/run/sshd",
-        "state": "directory",
-        "owner": "root",
-        "group": "root",
-        "mode": "0755",
-    } in directories
+    assert all(directory.get("path") != "/run/sshd" for directory in directories)
     assert all(
         task.get("ansible.builtin.copy", {}).get("dest") != "/usr/sbin/nft"
         for task in prepare["tasks"]

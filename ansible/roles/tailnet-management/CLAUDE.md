@@ -36,13 +36,17 @@ persistent timer. Revalidate their results under the transaction lock.
 - Exact stable package and repository key pins fail closed.
 - Existing running nodes without a matching confirmed identity are refused
   without writes, including when their preferences look correct.
-- Resolver bytes, default route and full `sshd -T` policy are compared across
+- Resolver bytes, default route and full `sshd -G` policy are compared across
   fresh enrollment; a failed postcondition logs the new node out.
 - Armed and confirmed transaction phases make process death unambiguous: only
   an armed receipt authorizes logout, while confirmed recovery is cleanup-only.
 
 ## Pitfalls
 
+- Boot recovery precedes `ssh.service`, which owns `/run/sshd`. Use `sshd -G`
+  for syntax validation and the complete effective policy; `-T` additionally
+  checks daemon runtime and fails before that directory exists. Molecule
+  verifies cold policy and warm `-T` parity in a private mount namespace.
 - `tailscale get --json all` represents no advertised routes as the empty
   string, not an array. Both the existing-node guard and enrollment verifier
   must reject arrays, null and nonempty route strings.

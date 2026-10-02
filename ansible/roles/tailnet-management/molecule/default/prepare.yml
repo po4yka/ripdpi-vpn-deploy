@@ -16,14 +16,6 @@
       ansible.builtin.command: ssh-keygen -A
       changed_when: false
 
-    - name: Create the volatile OpenSSH privilege-separation directory
-      ansible.builtin.file:
-        path: /run/sshd
-        state: directory
-        owner: root
-        group: root
-        mode: "0755"
-
     - name: Create the required Tailnet interface fixture
       ansible.builtin.shell: |
         set -eu

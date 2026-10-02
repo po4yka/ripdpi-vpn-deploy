@@ -175,6 +175,15 @@ provider receipt is schema 3; keep the provider and version check aligned
 before removing encrypted client state or the executor profile.
 The sentinel registry uses the installer's sorted JSON serialization, which
 the de-onboarding reader must preserve exactly during removal.
+Unbound recovery also requires the registered manifest inode and reserved
+verified-absence path; pre-destroy and genuinely empty post-destroy state
+hashes differ. Freeze the latter digest/inode throughout client retirement.
+The separate prepared-executor verb requires the completed client receipt and
+unchanged final ciphertext, serializes profile ownership against binding, and
+retains removal intent for stopped/absent retry. Never fabricate a binding to
+remove a prepared VM or reuse a retired one-shot profile name.
+Snell is optional in issuance and unbound retirement. An absent section has no
+client edges; configured variants must still contain exactly one issued client.
 
 **Xray migrations are changelog-driven** — `docs/XRAY-RELEASE-LINE.md` embeds the declarative guard registry consumed by `check-xray-breaking-changes.py`. Add version-aware rules there instead of hardcoding release cases in unrelated validators; render-sensitive rules use `template_render.py` so every fast check sees the same canonical Ansible context.
 
@@ -267,6 +276,10 @@ Independent controller homes are not a supported shared-ownership mechanism.
 - **Rollback state must be readable before mutation** — enforce the same byte
   limit on serialized pending writes and reads, including base64 snapshots.
   SSH/job/monitor deadlines must leave room around the shared probe budget.
+- **Tailnet boot recovery cannot depend on sshd runtime** — `ssh.service`
+  creates `/run/sshd` after recovery. Inspect the complete effective policy
+  with syntax-validating `sshd -G`; `-T` also tests daemon runtime and can
+  refuse a valid configuration before SSH starts. Keep full policy comparison.
 - **Shell-injection on operator-supplied input** — any script taking a host
   name, client name, or path uses `"$1"` quoting and `printf '%q'` when
   forwarding to nested shells. Never `eval`.

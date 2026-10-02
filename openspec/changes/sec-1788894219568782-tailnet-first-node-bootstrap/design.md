@@ -66,6 +66,11 @@ socket, because its `sockets.target` ordering precedes tailscaled through
 sshd until late recovery succeeds. Both workers share the same lock, nonce, snapshot,
 and rollback state; neither may confirm or mint another transaction. Once
 rollback starts, confirmation refuses even if the original lease remains valid.
+Effective OpenSSH policy inspection uses syntax-validating `sshd -G` and
+compares the complete dump. It must not depend on `/run/sshd`, which belongs
+to the later `ssh.service`; `-T` adds daemon runtime tests and can fail during
+recovery before SSH starts. Native regression checks compare cold `-G` with
+warm `-T` policy in an isolated mount namespace without changing service state.
 An interrupted early restore is replayable; a durable firewall-restored state
 still requires late reconciliation. Confirmed records are never rolled back. Reboot and wall
 clock rollback cannot extend a lease: bind boot identity and use a monotonic
@@ -151,6 +156,20 @@ creation-derived deadlines, previous artifacts, and every stale-state refusal.
 Add regression coverage for disabled-firewall creation, post-transition
 reissue, changed identity, unchanged deadlines, and pending destruction.
 Do not manually edit manifests or permit a general state-digest exception.
+
+Unbound retirement consumes the registered completed destruction, not an
+unchanged pre-destroy state. Hold the resource-journal lock before the existing
+nonblocking SOPS locks; require the registered manifest path/inode and its
+reserved verified-absence path. The retained manifest still binds pre-apply
+state. Freeze the current private empty state digest for the entire retirement
+transaction and revalidate all inputs under the SOPS locks. Copied authority,
+nonempty state, any onboarding output or another client generation refuses.
+Prepared-executor retirement is a separate explicit operation after that
+client receipt. It must verify the exact prepared manifest, VM marker,
+configuration and unchanged Docker context, reject onboarding assignments,
+serialize with binding, retain durable removal intent for interrupted retry,
+and verify absence before publishing a private categorical receipt. It may
+retire an expired prepared lease; it must never fabricate a binding.
 
 Both provider guards use one private resource journal under the trusted
 controller user's `~/.local/state/vpn-deploy/staging-cleanup/`. The key binds

@@ -81,6 +81,11 @@ network/firewall startup rather than permit an unconfirmed policy to load.
 - **WHEN** firewall restoration or its durable progress write is interrupted
 - **THEN** recovery safely retries under the same transaction and no confirmation can reverse the rollback decision.
 
+#### Scenario: OpenSSH has not created its volatile runtime directory
+
+- **WHEN** boot recovery runs before `ssh.service` and `/run/sshd` is absent
+- **THEN** effective-policy syntax validation and full-policy comparison succeed without creating that service-owned directory; invalid configuration and policy drift still refuse.
+
 #### Scenario: Controller disappears after enrollment
 
 - **WHEN** no durable external confirmation exists at expiry or boot
@@ -219,6 +224,28 @@ CI, and authorized disposable staging with fresh dual-path SSH, reboot and
 controller-loss recovery. Staging MUST then exercise normal deployment and
 real protocol proof followed by UUID-bound deletion and provider absence.
 Fixtures, refusal-only behavior, and source checks MUST NOT close this feature.
+
+Failed bootstrap MUST also support retirement of an issued but never-bound
+client and its prepared executor after registered guarded provider absence.
+The client transaction MUST hold cleanup authority and the canonical SOPS
+locks, require the genuine current empty Terraform state at the registered
+path, freeze its new digest, and reject copied manifests, unclaimed absence,
+onboarding outputs and state replacement. Pre-destroy and destroyed hashes
+MUST NOT be required to be equal. Prepared VM removal MUST require that
+client's completed receipt and absent onboarding outputs, verify its prepared
+manifest/configuration/marker and Docker context, serialize against binding,
+retain interrupted removal intent, and publish success only after exact
+profile absence. Expiry MUST NOT block verified cleanup.
+
+#### Scenario: Destroy changes state before unbound retirement
+
+- **WHEN** registered guarded destruction succeeds and Terraform writes its empty new state
+- **THEN** only the exact issued client can retire under unchanged registered authority and a frozen post-destroy digest; copied authority or nonempty/replaced state refuses before secret mutation.
+
+#### Scenario: An executor was prepared but never bound
+
+- **WHEN** that client's unbound retirement receipt is complete and its onboarding outputs remain absent
+- **THEN** the separate removal operation verifies and deletes only the exact owned prepared VM, safely resumes interrupted removal, and never synthesizes onboarding state.
 
 The supported staging interface MUST expose distinct controller-loss and reboot
 recovery operations rather than a caller-selected arbitrary fault. Each

@@ -32,6 +32,7 @@ from typing import Any, Callable
 from uuid import UUID, uuid4
 
 import yaml
+import staging_lifecycle as lifecycle
 
 LIMIT = 256 * 1024
 REPO = Path(__file__).resolve().parents[1]
@@ -99,6 +100,58 @@ def _canonical(value: Any) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode(
         "ascii"
     )
+
+
+@contextmanager
+def _profile_lock(home: Path, profile: str):
+    profile = _profile(profile)
+    try:
+        root = lifecycle.private_registry(home, "liveness-executors")
+        record = root / (hashlib.sha256(profile.encode("ascii")).hexdigest() + ".json")
+        with lifecycle._parent(record.with_suffix(".lock")) as (parent, name):
+            descriptor = os.open(
+                name,
+                os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK,
+                0o600,
+                dir_fd=parent,
+            )
+            try:
+                info = os.fstat(descriptor)
+                if (
+                    not stat.S_ISREG(info.st_mode)
+                    or info.st_uid != os.getuid()
+                    or stat.S_IMODE(info.st_mode) != 0o600
+                    or info.st_nlink != 1
+                ):
+                    raise ExecutorError("executor-lock")
+                try:
+                    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    raise ExecutorError("executor-busy") from None
+                current = os.stat(name, dir_fd=parent, follow_symlinks=False)
+                if (current.st_dev, current.st_ino) != (info.st_dev, info.st_ino):
+                    raise ExecutorError("executor-lock")
+                yield record
+            finally:
+                os.close(descriptor)
+    except (lifecycle.GuardError, OSError) as exc:
+        raise ExecutorError("executor-lock") from exc
+
+
+@contextmanager
+def _profile_lease(manifest_path: Path, home: Path):
+    manifest, payload = _read_private(manifest_path)
+    _validate_manifest(manifest, manifest["created_at"])
+    with _profile_lock(home, manifest["profile"]) as record:
+        if _read_private(manifest_path)[1] != payload:
+            raise ExecutorError("executor-manifest")
+        yield record, manifest, payload
+
+
+def _profile_record(path: Path) -> dict[str, Any] | None:
+    if not path.exists() and not path.is_symlink():
+        return None
+    return _read_private(path)[0]
 
 
 def _private_parent(path: Path) -> None:
@@ -277,7 +330,7 @@ def _config(home: Path, profile: str) -> tuple[Path, bytes, dict[str, Any]]:
     return path, payload, value
 
 
-def _listed_profile(profile: str, runner: Command) -> dict[str, Any]:
+def _profile_entries(runner: Command) -> list[dict[str, Any]]:
     try:
         raw = runner(("colima", "list", "--json"), timeout=30)
         entries = [json.loads(line) for line in raw.splitlines() if line.strip()]
@@ -285,6 +338,11 @@ def _listed_profile(profile: str, runner: Command) -> dict[str, Any]:
         raise ExecutorError("executor-status") from exc
     if any(not isinstance(entry, dict) for entry in entries):
         raise ExecutorError("executor-status")
+    return entries
+
+
+def _listed_profile(profile: str, runner: Command) -> dict[str, Any]:
+    entries = _profile_entries(runner)
     matches = [entry for entry in entries if entry.get("name") == profile]
     if (
         len(matches) != 1
@@ -400,6 +458,31 @@ def _read_marker(profile: str, runner: Command) -> str:
 
 
 def prepare_executor(
+    *,
+    profile: str,
+    manifest_path: Path,
+    home: Path,
+    now: int,
+    expires_at: int,
+    runner: Command,
+) -> dict[str, Any]:
+    if os.environ.get("BUILD_GATE_HELD") != "1":
+        raise ExecutorError("build-gate-required")
+    home = home.expanduser().resolve(strict=True)
+    with _profile_lock(home, profile) as record:
+        if _profile_record(record) is not None:
+            raise ExecutorError("executor-claimed")
+        return _prepare_owned(
+            profile=profile,
+            manifest_path=manifest_path,
+            home=home,
+            now=now,
+            expires_at=expires_at,
+            runner=runner,
+        )
+
+
+def _prepare_owned(
     *,
     profile: str,
     manifest_path: Path,
@@ -576,6 +659,124 @@ def _load_deonboard_executor(
     return manifest, state
 
 
+def _profile_identity(home: Path, profile: str) -> list[int]:
+    try:
+        with lifecycle._parent(
+            home / ".colima" / profile / "ownership", private=False
+        ) as (parent, _):
+            info = os.fstat(parent)
+            return [info.st_dev, info.st_ino]
+    except (lifecycle.GuardError, OSError) as exc:
+        raise ExecutorError("executor-profile") from exc
+
+
+def retire_prepared_executor(
+    manifest_path: Path,
+    output_path: Path,
+    *,
+    client_receipt_sha256: str,
+    home: Path,
+    runner: Command,
+    preflight: Callable[[], None],
+) -> dict[str, Any]:
+    """Internal removal primitive after verified unbound-client retirement."""
+    if os.environ.get("BUILD_GATE_HELD") != "1":
+        raise ExecutorError("build-gate-required")
+    if not HEX64.fullmatch(client_receipt_sha256):
+        raise ExecutorError("executor-retirement")
+    output_path = output_path.absolute()
+    _private_parent(output_path.parent)
+    if output_path == manifest_path.absolute():
+        raise ExecutorError("executor-retirement")
+    with _profile_lease(manifest_path, home) as (record_path, manifest, payload):
+        profile = manifest["profile"]
+        profile_path = home / ".colima" / profile
+        request = {
+            "schema_version": 1,
+            "state": "retiring",
+            "executor_id": manifest["executor_id"],
+            "executor_manifest_sha256": hashlib.sha256(payload).hexdigest(),
+            "client_receipt_sha256": client_receipt_sha256,
+            "output_path": str(output_path),
+        }
+        result = {
+            "schema_version": 1,
+            "status": "retired-prepared",
+            "executor_id_sha256": hashlib.sha256(
+                manifest["executor_id"].encode("ascii")
+            ).hexdigest(),
+            "executor_manifest_sha256": request["executor_manifest_sha256"],
+            "client_receipt_sha256": client_receipt_sha256,
+        }
+        existing = _profile_record(output_path)
+        if existing is not None and existing != result:
+            raise ExecutorError("executor-retirement")
+        record = _profile_record(record_path)
+        if record is None:
+            if output_path.exists() or output_path.is_symlink():
+                raise ExecutorError("executor-retirement")
+            loaded, state = _load_deonboard_executor(
+                manifest_path, home=home, runner=runner
+            )
+            if loaded != manifest or state != "Running":
+                raise ExecutorError("executor-marker")
+            preflight()
+            record = {**request, "profile_identity": _profile_identity(home, profile)}
+            _write_new(record_path, record)
+        elif (
+            set(record) != {*request, "profile_identity"}
+            or {key: record.get(key) for key in request} != request
+            or not isinstance(record.get("profile_identity"), list)
+            or len(record["profile_identity"]) != 2
+            or any(
+                type(value) is not int or value < 0
+                for value in record["profile_identity"]
+            )
+        ):
+            raise ExecutorError("executor-claimed")
+        if _context(runner) != manifest["initial_docker_context"]:
+            raise ExecutorError("executor-context")
+        if profile_path.exists() or profile_path.is_symlink():
+            if _profile_identity(home, profile) != record["profile_identity"]:
+                raise ExecutorError("executor-profile")
+            loaded, state = _load_deonboard_executor(
+                manifest_path, home=home, runner=runner
+            )
+            if loaded != manifest:
+                raise ExecutorError("executor-manifest")
+            preflight()
+            if _read_private(manifest_path)[1] != payload:
+                raise ExecutorError("executor-manifest")
+            if state == "Running":
+                runner(("colima", "stop", "--profile", profile), timeout=180)
+            preflight()
+            if (
+                _profile_identity(home, profile) != record["profile_identity"]
+                or hashlib.sha256(_config(home, profile)[1]).hexdigest()
+                != manifest["profile_config_sha256"]
+                or _context(runner) != manifest["initial_docker_context"]
+            ):
+                raise ExecutorError("executor-profile")
+            runner(
+                ("colima", "delete", "--profile", profile, "--force", "--data"),
+                timeout=180,
+            )
+        preflight()
+        if (
+            profile_path.exists()
+            or profile_path.is_symlink()
+            or any(entry.get("name") == profile for entry in _profile_entries(runner))
+            or _context(runner) != manifest["initial_docker_context"]
+        ):
+            raise ExecutorError("executor-profile")
+        current_output = _profile_record(output_path)
+        if current_output != existing:
+            raise ExecutorError("executor-retirement")
+        if existing is None:
+            _write_new(output_path, result)
+        return {**result, "changed": existing is None}
+
+
 def bind_executor(
     manifest_path: Path,
     binding_path: Path,
@@ -590,6 +791,40 @@ def bind_executor(
     home: Path,
     now: int,
     runner: Command,
+) -> dict[str, Any]:
+    with _profile_lease(manifest_path, home) as (record, _manifest, _payload):
+        return _bind_registered(
+            manifest_path,
+            binding_path,
+            config_path,
+            cleanup_manifest_path,
+            sentinel=sentinel,
+            client=client,
+            generation_id=generation_id,
+            provenance=provenance,
+            target_identity=target_identity,
+            home=home,
+            now=now,
+            runner=runner,
+            lifecycle_path=record,
+        )
+
+
+def _bind_registered(
+    manifest_path: Path,
+    binding_path: Path,
+    config_path: Path,
+    cleanup_manifest_path: Path,
+    *,
+    sentinel: str,
+    client: str,
+    generation_id: str,
+    provenance: dict[str, Any],
+    target_identity: dict[str, Any],
+    home: Path,
+    now: int,
+    runner: Command,
+    lifecycle_path: Path,
 ) -> dict[str, Any]:
     if not NAME.fullmatch(sentinel) or not NAME.fullmatch(client):
         raise ExecutorError("binding-identity")
@@ -630,6 +865,19 @@ def bind_executor(
         "provenance": provenance,
         "target_identity": target_identity,
     }
+    assignment = {
+        "schema_version": 1,
+        "state": "assigned",
+        "executor_id": manifest["executor_id"],
+        "executor_manifest_sha256": hashlib.sha256(manifest_payload).hexdigest(),
+        "binding_path": str(binding_path.absolute()),
+        "binding_sha256": hashlib.sha256(_canonical(binding)).hexdigest(),
+    }
+    current = _profile_record(lifecycle_path)
+    if current is None:
+        _write_new(lifecycle_path, assignment)
+    elif current != assignment:
+        raise ExecutorError("executor-claimed")
     if binding_path.exists():
         existing, existing_payload = _read_private(binding_path)
         if existing != binding or existing_payload != _canonical(binding):
@@ -758,19 +1006,21 @@ def deonboard(
             sops_file.with_name(sops_file.name + ".new-client.lock"),
         )
     ):
-        return _deonboard_locked(
-            binding_path=binding_path,
-            manifest_path=manifest_path,
-            absence_evidence_path=absence_evidence_path,
-            registry_path=registry_path,
-            config_path=config_path,
-            sops_file=sops_file,
-            output_path=output_path,
-            home=home,
-            runner=runner,
-            bound_cleanup_manifest_path=bound_cleanup_manifest_path,
-            reissued_cleanup_manifest_path=reissued_cleanup_manifest_path,
-        )
+        _verified_absence(absence_evidence_path)
+        with _profile_lease(manifest_path, home):
+            return _deonboard_locked(
+                binding_path=binding_path,
+                manifest_path=manifest_path,
+                absence_evidence_path=absence_evidence_path,
+                registry_path=registry_path,
+                config_path=config_path,
+                sops_file=sops_file,
+                output_path=output_path,
+                home=home,
+                runner=runner,
+                bound_cleanup_manifest_path=bound_cleanup_manifest_path,
+                reissued_cleanup_manifest_path=reissued_cleanup_manifest_path,
+            )
 
 
 def _deonboard_locked(

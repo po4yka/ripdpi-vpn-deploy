@@ -1,6 +1,37 @@
 ---
 task_id: SEC-1788894219568782
 change: sec-1788894219568782-tailnet-first-node-bootstrap
+commit_sha: null
+local: required
+local_evidence: "Cold-policy regression: 115 targeted tests and native Linux full-policy parity plus invalid-config refusal passed; complete local gate remains required."
+remote_ci: required
+remote_ci_evidence: "The corrected source requires fresh exact-revision hosted CI including native amd64 Molecule."
+dry_run: required
+dry_run_evidence: "Corrected-source ordinary staging dry-run remains unperformed."
+staging: required
+staging_evidence: "Fresh reboot recovery failed on the preceding source. Corrected-source controller-loss, reboot, positive bootstrap and ordinary deployment remain required."
+live: blocked
+live_evidence: "No permanent-node rollout or serial live acceptance was performed."
+client: required
+client_evidence: "Corrected-source four-protocol traffic remains unproved."
+artifact: required
+artifact_evidence: "Fresh failed-run diagnostics and exact-resource provider absence were observed; Owned temporary access, unbound client and prepared executor are retired; corrected-source runtime acceptance remains required."
+---
+
+# Verification
+
+Fresh reboot acceptance failed on the later protected source; the task returned
+to doing with two execution steps reopened. Current verification above belongs
+to the cold-policy repair and does not inherit earlier staging acceptance.
+The prior protected-source observations below remain historical evidence.
+
+## Exact-source ordinary and separate recovery acceptance — 2026-09-29
+
+### Historical acceptance metadata
+
+```yaml
+task_id: SEC-1788894219568782
+change: sec-1788894219568782-tailnet-first-node-bootstrap
 commit_sha: 8ab19efc1e2f92f97235ddad8b56c95a7aed1b75
 local: passed
 local_evidence: "Exact protected source 8ab19efc1e2f92f97235ddad8b56c95a7aed1b75 passed build-gate -- make check: 4709 pytest cases, 4 canonical native-runtime cases deselected locally, 20 subtests, 55 Bats cases, Rust tests and clippy, Terraform validation and policies, snapshots, gitleaks, shellcheck, Ansible lint and syntax. Native runtime and affected Molecule scenarios passed in the exact-source hosted gate."
@@ -16,17 +47,7 @@ client: passed
 client_evidence: "Owned isolated current profiles and pinned runtimes proved authenticated REALITY, XHTTP, Hysteria2 and AmneziaWG traffic plus tunneled DNS before and after firewall promotion. A separate post-promotion invocation observed a fresh AWG handshake. These are staging client observations; permanent-fleet traffic remains unproved."
 artifact: passed
 artifact_evidence: "Separate mode-0600 controller-loss/reboot artifacts matched exact source, deployable digest and wrapper hashes under mode-0700 parents; reboot binding was independently recomputed. Diagnostics and fault-test handoffs remained absent. Canonical client/executor retirement, DNS absence and all three guarded provider-absence receipts passed within expiry. Own ephemeral nodes and ACL are absent; persisted policy equals the original byte-for-byte. Own API token deletion returned 204 and the old credential subsequently returned 401 AUTHENTICATION_FAILED; its local plaintext file was removed. Foreign capabilities were preserved."
----
-
-# Verification
-
-Runtime acceptance is bound to protected source
-`8ab19efc1e2f92f97235ddad8b56c95a7aed1b75`, not the later main tip.
-All six implementation steps have scope-matching local/hosted and isolated
-runtime proof. The task enters review but remains open: its required live
-category and the broader EPC acceptance have not passed.
-
-## Exact-source ordinary and separate recovery acceptance — 2026-09-29
+```
 
 All three invocations used deployable digest
 `4081ecaf5614deb40809dad09060d62d72be79435019121413ea6773bf7e60b9`.
@@ -493,3 +514,70 @@ cases and Rust tests. Final `build-gate -- make validate` passed all provider
 roots, gitleaks, production-profile Ansible lint and site syntax. New
 exact-SHA hosted checks remain pending. No image was published, and no staging
 or permanent resource changed.
+
+## Cold OpenSSH policy inspection regression — 2026-10-02
+
+Fresh controller-loss staging evidence passed on the previous protected source,
+including autonomous recovery and new pinned SSH/SFTP proof. The separate
+reboot exercise observed SSH loss but never observed SSH returning and produced
+only an incomplete diagnostic. Provider-assisted restarts restored inspection
+access; they do not satisfy reboot acceptance. Volatile journals did not retain
+the failed boot, so its precise failure remains unconfirmed.
+
+A read-only private mount namespace on the actual staging Debian reproduced
+`sshd -T` refusing absent `/run/sshd` with exit 255 while `sshd -G` succeeded.
+The late recovery worker precedes `ssh.service`, which owns that directory.
+Policy inspection now uses syntax-validating `-G`, preserving the full dump and
+existing listener-only canonicalization. Preparation no longer creates the
+runtime directory. The new Molecule regression requires real cold `-T` refusal
+and equality between complete cold `-G`, ordinary policy, and warm `-T` policy.
+
+The targeted Tailnet suite passed 115 tests, including the new regression
+observed failing before the fix. The same native policy comparison and invalid-configuration refusal passed on
+an existing disposable Linux consumer in a private mount namespace. Local
+Molecule did not reach convergence: the pinned image has no arm64 manifest;
+its native amd64 hosted scenario remains required. No recovery or protocol
+acceptance is credited to these source and namespace checks.
+
+Canonical guarded cleanup verified the staging server and root storage absent
+at 16:28:27 UTC, before the user deadline. Independent exact-identity API reads
+also returned both absence categories. The cleanup heartbeat was stopped.
+The two reopened execution steps remain open: corrected-source hosted gates,
+fresh controller-loss and reboot proofs, positive bootstrap, ordinary deploy,
+protocol proof, and serial permanent-fleet acceptance are still required.
+
+## Unbound staging retirement — 2026-10-02
+
+Revision `7348cc3427840850408c030f62ecdf5fc96cdb66` completed the real
+canonical `retire-unbound-staging-client` and
+`retire-unbound-staging-executor` Make targets, both with exit zero.
+The original registered cleanup manifest, reserved provider-absence receipt
+and current empty provider state authorized the operations; no onboarding
+binding or authority was fabricated. The client receipt reports `retired`
+and the executor receipt reports `retired-prepared`.
+
+Independent in-memory inspection of the changed encrypted SOPS document
+found zero client secret paths and zero Xray cohort references. The owned
+prepared profile is absent from both its directory and fresh Colima listing.
+Docker context and the directory identities of all five unrelated Colima
+profiles are unchanged. Receipts and categorical verification were saved
+privately with mode 0600; plaintext secrets were not logged.
+
+The first retirement invocation refused an absent optional Snell root before
+writing a journal or modifying ciphertext. Canonical issuance permits this
+absence. The correction preserves refusal for configured null or malformed
+Snell state; its real SOPS round-trip regression covers configured and absent
+roots. The affected five-module suite passed 403 tests; two instruction/count
+governance tests passed. The preceding merged revision passed the complete
+local gate with 5017 portable pytest cases, four native cases deselected,
+20 subtests, 55 Bats cases and Rust checks. A complete final-revision gate and
+exact hosted checks remain required.
+
+The staging provider server and root were already verified absent before
+the approved deadline. The owned API credentials and temporary Tailnet policy
+were retired; the current unfiltered machine inventory contains the prior
+eight nodes and no owned staging node. Four one-use auth keys were consumed;
+a fifth was not created. No fresh paid resource or permanent-node mutation
+was performed. Corrected-source recovery, positive bootstrap, ordinary
+staging deployment, four-protocol proof and serial permanent-fleet acceptance
+remain open; this retirement does not close an execution step.

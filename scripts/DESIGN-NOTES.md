@@ -194,6 +194,14 @@ then reopens and compares that exact source under the original project lock
 before publishing;
 duplicate YAML mappings refuse before mutation. Normal de-onboarding must not
 inherit this recovery exception.
+Retirement holds the registered resource journal before the nonblocking SOPS
+locks and requires that manifest's reserved verified absence path. Its state
+digest/inode belong to the genuinely changed empty post-destroy state and are
+rechecked before publication and receipt. Prepared-executor removal then
+requires the completed client journal/receipt and final ciphertext. Its global
+profile lock and durable assignment/removal record serialize binding against
+cleanup; verified directory identity permits interrupted stopped/absent retry
+without inventing a binding or checking an expired enrollment lease.
 
 ### Probe scripts (`probe-*.sh`)
 

@@ -56,6 +56,14 @@ firewall promotion and reject a foreign server UUID before any local deletion.
 Disposable de-onboarding fixtures use the current UpCloud schema-3 absence
 receipt and reject an obsolete version before mutation. Its registry fixture
 uses the installer's exact sorted JSON format.
+Unbound-retirement fixtures must start with registered pre-destroy state and
+then write different empty state. Exercise copied/inode-replaced authority,
+unclaimed absence and post-destroy state replacement before SOPS publication.
+Prepared-executor tests require a completed real client retirement transaction,
+profile marker/configuration/context guards, assignment races and interrupted
+stop/delete retry; fixture success remains source evidence only.
+Exercise real SOPS retirement both with and without optional Snell collections;
+an absent section is valid, while malformed or partial configured state refuses.
 
 **Disposable observability acceptance is evidence-class strict** — focused
 schema-2 tests cover co-hosted VPN capabilities, one collector, independent
@@ -104,6 +112,9 @@ Tailnet role Molecule also asks the real `systemd-analyze` in a PID 1 container
 to parse the complete recovery/SSH dependency graph and fails on diagnostics
 even when `verify` returns zero. This is static graph evidence only: its inert
 `tailscaled.service` fixture is not vendor-unit, activation, or reboot evidence.
+Its native OpenSSH check hides `/run` in a private mount namespace, requires
+the real `-T` runtime refusal, and compares complete cold `-G` policy with
+the ordinary dump and warm `-T` output. Preparation must not create `/run/sshd`.
 
 **CI Python tooling shares one cached setup** — `setup-ci-python` always checks
 hash-pinned requirements, even on a pip cache hit. Galaxy consumers set the same
@@ -160,6 +171,8 @@ remain fatal; package signatures and the real schema validator stay enforced.
 - **Molecule needs Docker** — CI runners and operator workstations vary.
   Failing-to-find-docker is a setup error, not a test failure; the harness
   surfaces it explicitly.
+- **State-changing test calls precede assertions** — capture retirement or
+  retry results first, then assert them so optimized Python cannot omit the call.
 - **`validate-secrets.py` runs against the **schema**, not your real
   secrets** — by design. Strict mode (`--strict`) loads `VPN_SECRETS_FILE`
   and is operator-only.

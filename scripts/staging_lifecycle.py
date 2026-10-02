@@ -156,14 +156,20 @@ def _atomic(parent: int, name: str, raw: bytes, *, replace: bool) -> tuple[int, 
 
 def _registry() -> Path:
     # HOME is trusted controller configuration, not an operator command field.
-    home = Path.home()
+    return private_registry(Path.home(), "staging-cleanup")
+
+
+def private_registry(home: Path, namespace: str) -> Path:
+    """Open/create only the two fixed controller lifecycle namespaces."""
+    if namespace not in {"staging-cleanup", "liveness-executors"}:
+        raise GuardError("lifecycle registry namespace is invalid")
     if not home.is_absolute():
         raise GuardError("controller home must be an absolute path")
     home = _path(home)
     with _parent(home / ".local", private=False) as (home_fd, _):
         fd = os.dup(home_fd)
         try:
-            for part in (".local", "state", "vpn-deploy", "staging-cleanup"):
+            for part in (".local", "state", "vpn-deploy", namespace):
                 with contextlib.suppress(FileExistsError):
                     os.mkdir(part, 0o700, dir_fd=fd)
                     os.fsync(fd)
@@ -174,10 +180,7 @@ def _registry() -> Path:
                 if (
                     info.st_uid != os.getuid()
                     or stat.S_IMODE(info.st_mode) & 0o022
-                    or (
-                        part == "staging-cleanup"
-                        and stat.S_IMODE(info.st_mode) != 0o700
-                    )
+                    or (part == namespace and stat.S_IMODE(info.st_mode) != 0o700)
                 ):
                     os.close(child)
                     raise GuardError("lifecycle registry ownership or mode is unsafe")
@@ -185,7 +188,7 @@ def _registry() -> Path:
                 fd = child
         finally:
             os.close(fd)
-    return home / ".local/state/vpn-deploy/staging-cleanup"
+    return home / ".local/state/vpn-deploy" / namespace
 
 
 def key(manifest: dict[str, Any]) -> str:

@@ -400,6 +400,18 @@ def _validate_inputs(
         paths["absence_evidence_path"], "provider absence"
     )
     _validate_absence(absence, manifest, manifest_payload)
+    try:
+        with guard.lifecycle.locked(manifest) as journal:
+            journal.current(paths["cleanup_manifest_path"], manifest)
+            claim = journal.record["claim"]
+            if (
+                claim is None
+                or claim["phase"] != "reserved"
+                or claim["path"] != str(paths["absence_evidence_path"])
+            ):
+                raise RetirementError("retirement-absence")
+    except guard.GuardError as exc:
+        raise RetirementError("retirement-absence") from exc
     if (
         intent.get("host") != f"{manifest['provider']}:{manifest['environment']}"
         or intent.get("target_identity", {}).get("inventory_alias")
@@ -410,9 +422,9 @@ def _validate_inputs(
         or manifest.get("state", {}).get("path") != str(paths["state_path"])
     ):
         raise RetirementError("retirement-target")
-    state_payload, _ = _read_bytes(paths["state_path"], "destroyed state", MAX_STATE)
-    if _sha(state_payload) != manifest["state"]["sha256"]:
-        raise RetirementError("retirement-state")
+    state_payload, state_identity = _read_bytes(
+        paths["state_path"], "destroyed state", MAX_STATE
+    )
     try:
         state = json.loads(state_payload)
     except (UnicodeError, json.JSONDecodeError) as exc:
@@ -436,6 +448,7 @@ def _validate_inputs(
         "cleanup_manifest_sha256": _sha(manifest_payload),
         "absence_evidence_sha256": _sha(absence_payload),
         "state_sha256": _sha(state_payload),
+        "state_identity": list(state_identity),
         "client_sha256": _sha(intent["client"].encode("ascii")),
         "target_sha256": _sha(
             _canonical(
@@ -531,6 +544,8 @@ def _secret_plan(
     variants = (
         variants_parent.get("variants") if isinstance(variants_parent, dict) else None
     )
+    if "snell_secrets" not in document:
+        variants = []
     if not isinstance(variants, list) or any(
         not isinstance(item, dict) for item in variants
     ):
@@ -854,7 +869,7 @@ def _read_optional(path: Path, category: str) -> tuple[dict[str, Any], bytes] | 
         raise RetirementError(category) from exc
 
 
-def retire(
+def _retire_registered(
     *,
     intent_path: Path,
     cleanup_manifest_path: Path,
@@ -960,6 +975,8 @@ def retire(
         if state == "candidate":
             if candidate_location == "before":
                 callback("before-publish")
+                if _validate_inputs(paths)[1] != request_base:
+                    raise RetirementError("retirement-input")
                 _publish_candidate(paths["sops_file"], current, candidate)
             next_journal = _journal("published", request, candidate)
             _replace_document(
@@ -981,6 +998,8 @@ def retire(
         current_after, _ = _read_bytes(paths["sops_file"], "SOPS ciphertext", MAX_INPUT)
         if _sha(current_after) != candidate["sha256"]:
             raise RetirementError("retirement-ciphertext")
+        if _validate_inputs(paths)[1] != request_base:
+            raise RetirementError("retirement-input")
         terminal = _receipt(request, candidate)
         if receipt_item is None:
             _write_new(
@@ -1000,6 +1019,40 @@ def retire(
         else:
             raise RetirementError("retirement-journal")
         return {**terminal, "changed": changed}
+
+
+def retire(
+    *,
+    intent_path: Path,
+    cleanup_manifest_path: Path,
+    absence_evidence_path: Path,
+    state_path: Path,
+    sops_file: Path,
+    journal_path: Path,
+    receipt_path: Path,
+    runner: Runner,
+    failpoint: Failpoint | None = None,
+) -> dict[str, Any]:
+    manifest, _ = _read_json(cleanup_manifest_path.absolute(), "cleanup manifest")
+    guard = _guard()
+    try:
+        # Cleanup authority stays frozen across the existing nonblocking SOPS
+        # locks. Destroyed state has its own digest in the retirement request.
+        with guard.lifecycle.locked(manifest) as authority:
+            authority.current(cleanup_manifest_path.absolute(), manifest)
+            return _retire_registered(
+                intent_path=intent_path,
+                cleanup_manifest_path=cleanup_manifest_path,
+                absence_evidence_path=absence_evidence_path,
+                state_path=state_path,
+                sops_file=sops_file,
+                journal_path=journal_path,
+                receipt_path=receipt_path,
+                runner=runner,
+                failpoint=failpoint,
+            )
+    except guard.GuardError as exc:
+        raise RetirementError("retirement-absence") from exc
 
 
 def _run_command(
