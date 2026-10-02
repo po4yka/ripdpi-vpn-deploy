@@ -15,7 +15,7 @@ live_evidence: "No permanent-node rollout or serial live acceptance was performe
 client: required
 client_evidence: "Corrected-source four-protocol traffic remains unproved."
 artifact: required
-artifact_evidence: "Fresh failed-run diagnostics and exact-resource provider absence were observed; corrected-source acceptance and remaining temporary-access retirement remain required."
+artifact_evidence: "Fresh failed-run diagnostics and exact-resource provider absence were observed; Owned temporary access, unbound client and prepared executor are retired; corrected-source runtime acceptance remains required."
 ---
 
 # Verification
@@ -545,3 +545,39 @@ also returned both absence categories. The cleanup heartbeat was stopped.
 The two reopened execution steps remain open: corrected-source hosted gates,
 fresh controller-loss and reboot proofs, positive bootstrap, ordinary deploy,
 protocol proof, and serial permanent-fleet acceptance are still required.
+
+## Unbound staging retirement — 2026-10-02
+
+Revision `7348cc3427840850408c030f62ecdf5fc96cdb66` completed the real
+canonical `retire-unbound-staging-client` and
+`retire-unbound-staging-executor` Make targets, both with exit zero.
+The original registered cleanup manifest, reserved provider-absence receipt
+and current empty provider state authorized the operations; no onboarding
+binding or authority was fabricated. The client receipt reports `retired`
+and the executor receipt reports `retired-prepared`.
+
+Independent in-memory inspection of the changed encrypted SOPS document
+found zero client secret paths and zero Xray cohort references. The owned
+prepared profile is absent from both its directory and fresh Colima listing.
+Docker context and the directory identities of all five unrelated Colima
+profiles are unchanged. Receipts and categorical verification were saved
+privately with mode 0600; plaintext secrets were not logged.
+
+The first retirement invocation refused an absent optional Snell root before
+writing a journal or modifying ciphertext. Canonical issuance permits this
+absence. The correction preserves refusal for configured null or malformed
+Snell state; its real SOPS round-trip regression covers configured and absent
+roots. The affected five-module suite passed 403 tests; two instruction/count
+governance tests passed. The preceding merged revision passed the complete
+local gate with 5017 portable pytest cases, four native cases deselected,
+20 subtests, 55 Bats cases and Rust checks. A complete final-revision gate and
+exact hosted checks remain required.
+
+The staging provider server and root were already verified absent before
+the approved deadline. The owned API credentials and temporary Tailnet policy
+were retired; the current unfiltered machine inventory contains the prior
+eight nodes and no owned staging node. Four one-use auth keys were consumed;
+a fifth was not created. No fresh paid resource or permanent-node mutation
+was performed. Corrected-source recovery, positive bootstrap, ordinary
+staging deployment, four-protocol proof and serial permanent-fleet acceptance
+remain open; this retirement does not close an execution step.
