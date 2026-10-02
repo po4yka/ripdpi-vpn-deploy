@@ -81,6 +81,11 @@ network/firewall startup rather than permit an unconfirmed policy to load.
 - **WHEN** firewall restoration or its durable progress write is interrupted
 - **THEN** recovery safely retries under the same transaction and no confirmation can reverse the rollback decision.
 
+#### Scenario: OpenSSH has not created its volatile runtime directory
+
+- **WHEN** boot recovery runs before `ssh.service` and `/run/sshd` is absent
+- **THEN** effective-policy syntax validation and full-policy comparison succeed without creating that service-owned directory; invalid configuration and policy drift still refuse.
+
 #### Scenario: Controller disappears after enrollment
 
 - **WHEN** no durable external confirmation exists at expiry or boot

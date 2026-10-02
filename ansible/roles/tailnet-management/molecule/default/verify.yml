@@ -10,6 +10,50 @@
         - 100.64.10.20
         - fd7a:115c:a1e0::1234
   tasks:
+    - name: Verify complete OpenSSH policy without the volatile daemon runtime
+      ansible.builtin.command:
+        argv:
+          - unshare
+          - --mount
+          - --propagation
+          - private
+          - /usr/bin/python3
+          - -c
+          - |
+            import os
+            import pathlib
+            import shutil
+            import subprocess
+            import sys
+            import tempfile
+            import types
+
+            sys.path.insert(0, '/usr/local/lib/vpn-tailnet')
+            import tailnet_management as controller
+
+            paths = types.SimpleNamespace(sshd=shutil.which('sshd'))
+            baseline = controller._sshd_policy(paths, controller._run)
+            subprocess.run(['mount', '-t', 'tmpfs', '-o', 'mode=0755', 'tmpfs', '/run'], check=True)
+            assert not pathlib.Path('/run/sshd').exists()
+            cold_test = subprocess.run([paths.sshd, '-T'], capture_output=True, text=True)
+            assert cold_test.returncode == 255
+            assert 'Missing privilege separation directory: /run/sshd' in cold_test.stderr
+            cold_policy = controller._sshd_policy(paths, controller._run)
+            assert cold_policy == baseline
+            os.mkdir('/run/sshd', 0o755)
+            warm_test = controller._run([paths.sshd, '-T'], timeout=30)
+            assert cold_policy == controller._sshd_policy(paths, lambda argv, **kwargs: warm_test)
+            with tempfile.NamedTemporaryFile(mode='w') as invalid:
+                invalid.write('Port invalid\n')
+                invalid.flush()
+                try:
+                    controller._run([paths.sshd, '-G', '-f', invalid.name], timeout=30)
+                except controller.Refusal:
+                    pass
+                else:
+                    raise AssertionError('Invalid OpenSSH configuration was accepted')
+      changed_when: false
+
     - name: Verify the complete recovery and SSH boot dependency graph
       ansible.builtin.command:
         argv:

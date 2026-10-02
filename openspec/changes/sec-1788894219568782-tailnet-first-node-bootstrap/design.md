@@ -66,6 +66,11 @@ socket, because its `sockets.target` ordering precedes tailscaled through
 sshd until late recovery succeeds. Both workers share the same lock, nonce, snapshot,
 and rollback state; neither may confirm or mint another transaction. Once
 rollback starts, confirmation refuses even if the original lease remains valid.
+Effective OpenSSH policy inspection uses syntax-validating `sshd -G` and
+compares the complete dump. It must not depend on `/run/sshd`, which belongs
+to the later `ssh.service`; `-T` adds daemon runtime tests and can fail during
+recovery before SSH starts. Native regression checks compare cold `-G` with
+warm `-T` policy in an isolated mount namespace without changing service state.
 An interrupted early restore is replayable; a durable firewall-restored state
 still requires late reconciliation. Confirmed records are never rolled back. Reboot and wall
 clock rollback cannot extend a lease: bind boot identity and use a monotonic

@@ -200,7 +200,7 @@ Fresh enrollment must leave all of these true:
 - backend state is `Running` with DNS, route, exit-node, route advertisement,
   shields-up, Tailscale SSH and automatic netfilter management disabled;
 - both canonical Tailnet address families are present;
-- `/etc/resolv.conf`, the canonical default-route JSON and full `sshd -T`
+- `/etc/resolv.conf`, the canonical default-route JSON and full `sshd -G`
   policy are byte-identical to their pre-enrollment snapshots;
 - the nftables ruleset has no Tailscale-owned `ts-*` chain or jump.
 

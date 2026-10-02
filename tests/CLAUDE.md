@@ -88,6 +88,9 @@ Tailnet role Molecule also asks the real `systemd-analyze` in a PID 1 container
 to parse the complete recovery/SSH dependency graph and fails on diagnostics
 even when `verify` returns zero. This is static graph evidence only: its inert
 `tailscaled.service` fixture is not vendor-unit, activation, or reboot evidence.
+Its native OpenSSH check hides `/run` in a private mount namespace, requires
+the real `-T` runtime refusal, and compares complete cold `-G` policy with
+the ordinary dump and warm `-T` output. Preparation must not create `/run/sshd`.
 
 **CI Python tooling shares one cached setup** — `setup-ci-python` always checks
 hash-pinned requirements, even on a pip cache hit. Galaxy consumers set the same

@@ -258,6 +258,10 @@ Independent controller homes are not a supported shared-ownership mechanism.
 - **Rollback state must be readable before mutation** — enforce the same byte
   limit on serialized pending writes and reads, including base64 snapshots.
   SSH/job/monitor deadlines must leave room around the shared probe budget.
+- **Tailnet boot recovery cannot depend on sshd runtime** — `ssh.service`
+  creates `/run/sshd` after recovery. Inspect the complete effective policy
+  with syntax-validating `sshd -G`; `-T` also tests daemon runtime and can
+  refuse a valid configuration before SSH starts. Keep full policy comparison.
 - **Shell-injection on operator-supplied input** — any script taking a host
   name, client name, or path uses `"$1"` quoting and `printf '%q'` when
   forwarding to nested shells. Never `eval`.

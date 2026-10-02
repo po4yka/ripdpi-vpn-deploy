@@ -652,7 +652,9 @@ def _canonical_default_routes(paths: CommandPaths, runner: Runner) -> bytes:
 
 
 def _sshd_policy(paths: CommandPaths, runner: Runner) -> bytes:
-    output = runner([paths.sshd, "-T"], timeout=COMMAND_TIMEOUT_SECONDS).stdout.encode()
+    # Boot recovery precedes ssh.service, which owns /run/sshd. Dump and
+    # validate configuration without -T's additional daemon runtime checks.
+    output = runner([paths.sshd, "-G"], timeout=COMMAND_TIMEOUT_SECONDS).stdout.encode()
     if not output or len(output) > 262_144:
         raise Refusal("tailnet-sshd-policy-invalid")
     # getaddrinfo can enumerate the same listening endpoints differently in
