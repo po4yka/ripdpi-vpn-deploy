@@ -544,6 +544,8 @@ def _secret_plan(
     variants = (
         variants_parent.get("variants") if isinstance(variants_parent, dict) else None
     )
+    if "snell_secrets" not in document:
+        variants = []
     if not isinstance(variants, list) or any(
         not isinstance(item, dict) for item in variants
     ):

@@ -62,6 +62,8 @@ unclaimed absence and post-destroy state replacement before SOPS publication.
 Prepared-executor tests require a completed real client retirement transaction,
 profile marker/configuration/context guards, assignment races and interrupted
 stop/delete retry; fixture success remains source evidence only.
+Exercise real SOPS retirement both with and without optional Snell collections;
+an absent section is valid, while malformed or partial configured state refuses.
 
 **Disposable observability acceptance is evidence-class strict** — focused
 schema-2 tests cover co-hosted VPN capabilities, one collector, independent

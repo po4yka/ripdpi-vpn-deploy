@@ -501,7 +501,10 @@ def test_retirement_freezes_destroyed_state_until_publication(setup, replace_ino
     assert setup["paths"]["sops_file"].read_bytes() == before
 
 
-def test_retirement_round_trips_real_sops_ciphertext(setup, monkeypatch):
+@pytest.mark.parametrize("configured_snell", [True, False])
+def test_retirement_round_trips_real_sops_ciphertext(setup, monkeypatch, configured_snell):
+    if not configured_snell:
+        setup["secrets"].pop("snell_secrets")
     roundtrip_spec = importlib.util.spec_from_file_location(
         "retirement_sops_roundtrip", ROOT / "tests/unit/test_sops_roundtrip.py"
     )
@@ -532,7 +535,10 @@ def test_retirement_round_trips_real_sops_ciphertext(setup, monkeypatch):
     assert final["xray"]["clients"] == []
     assert final["hysteria"]["clients"] == []
     assert final["amneziawg_secrets"]["peers"] == []
-    assert all(variant["users"] == [] for variant in final["snell_secrets"]["variants"])
+    if configured_snell:
+        assert all(variant["users"] == [] for variant in final["snell_secrets"]["variants"])
+    else:
+        assert "snell_secrets" not in final
     assert final["client_registry"] == {}
     assert b"private-" not in setup["paths"]["sops_file"].read_bytes()
 
@@ -597,6 +603,8 @@ def test_retirement_refuses_nonissued_registry_without_mutation(setup, status):
         "awg-missing",
         "snell-missing",
         "snell-duplicate",
+        "snell-root-null",
+        "snell-variants-missing",
         "registry-host",
     ],
 )
@@ -613,6 +621,10 @@ def test_retirement_refuses_partial_duplicate_or_foreign_client_state(setup, cas
         document["snell_secrets"]["variants"][0]["users"] = []
     elif case == "snell-duplicate":
         document["snell_secrets"]["variants"][0]["users"].append({"name": client})
+    elif case == "snell-root-null":
+        document["snell_secrets"] = None
+    elif case == "snell-variants-missing":
+        document["snell_secrets"].pop("variants")
     else:
         document["client_registry"][client]["hosts"] = ["upcloud:prod"]
     setup["paths"]["sops_file"].write_text(yaml.safe_dump(document))

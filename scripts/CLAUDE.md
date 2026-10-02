@@ -182,6 +182,8 @@ The separate prepared-executor verb requires the completed client receipt and
 unchanged final ciphertext, serializes profile ownership against binding, and
 retains removal intent for stopped/absent retry. Never fabricate a binding to
 remove a prepared VM or reuse a retired one-shot profile name.
+Snell is optional in issuance and unbound retirement. An absent section has no
+client edges; configured variants must still contain exactly one issued client.
 
 **Xray migrations are changelog-driven** — `docs/XRAY-RELEASE-LINE.md` embeds the declarative guard registry consumed by `check-xray-breaking-changes.py`. Add version-aware rules there instead of hardcoding release cases in unrelated validators; render-sensitive rules use `template_render.py` so every fast check sees the same canonical Ansible context.
 
