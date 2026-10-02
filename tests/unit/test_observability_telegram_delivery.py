@@ -65,6 +65,103 @@ def _contract() -> dict[str, object]:
     }
 
 
+def test_canary_records_real_send_then_changing_edit_and_daily_send(
+    tmp_path, monkeypatch
+):
+    relay = _relay()
+    receipts = relay.Receipts(tmp_path / "receipts.json")
+    calls = []
+
+    def upstream(**kwargs):
+        calls.append(kwargs)
+        return {"ok": True, "result": {"message_id": kwargs.get("message_id", 42)}}
+
+    monkeypatch.setattr(relay, "deliver", upstream)
+    config = dict(api_url="unused", bot_token="unused", chat_id="1", topic_id=0)
+    receipts.canary(config, 100000)
+    assert [call.get("method", "sendMessage") for call in calls] == [
+        "sendMessage",
+        "editMessageText",
+    ]
+    assert calls[0]["silent"] is True
+    assert receipts.snapshot() == dict(
+        rule_to_relay_at=0, edit_sequence=1, edit_at=100000, send_at=100000
+    )
+    restarted = relay.Receipts(tmp_path / "receipts.json")
+    restarted.canary(config, 100300)
+    assert len(calls) == 3
+    assert calls[-1]["message"] != calls[-2]["message"]
+    assert restarted.snapshot()["edit_sequence"] == 2
+    restarted.canary(config, 186400)
+    assert [call.get("method", "sendMessage") for call in calls[-2:]] == [
+        "sendMessage",
+        "editMessageText",
+    ]
+    assert restarted.snapshot()["send_at"] == 186400
+
+
+def test_failed_deleted_message_edit_revokes_freshness_without_fabricated_send(
+    tmp_path, monkeypatch
+):
+    relay = _relay()
+    receipts = relay.Receipts(tmp_path / "receipts.json")
+    receipts.value.update(
+        message_id=42, send_at=100000, edit_at=100000, edit_sequence=1
+    )
+    receipts.save()
+
+    def fail(**kwargs):
+        assert kwargs["method"] == "editMessageText"
+        raise relay.DeliveryFailure("upstream-failure")
+
+    monkeypatch.setattr(relay, "deliver", fail)
+    with pytest.raises(relay.DeliveryFailure):
+        receipts.canary(
+            dict(api_url="unused", bot_token="unused", chat_id="1", topic_id=0), 100300
+        )
+    assert receipts.snapshot()["edit_at"] == 0
+    assert relay.Receipts(tmp_path / "receipts.json").snapshot()["edit_at"] == 0
+    assert receipts.snapshot()["edit_sequence"] == 1
+
+
+def test_pipeline_receipt_requires_fresh_evaluation_and_rejects_replay(tmp_path):
+    relay = _relay()
+    receipts = relay.Receipts(tmp_path / "receipts.json")
+    payload = _payload("firing", 1)
+    payload["receiver"] = "telegram-canary"
+    payload["alerts"][0]["labels"]["alertname"] = "ObservabilityPipelineCanary"
+    payload["alerts"][0]["annotations"]["evaluated_at"] = "100000"
+    receipts.pipeline(payload, 100020)
+    assert receipts.snapshot()["rule_to_relay_at"] == 100000
+    with pytest.raises(relay.Refusal, match="canary-replay"):
+        receipts.pipeline(payload, 100030)
+    for bad in ["99900", "100301", "nan", "inf", "invalid"]:
+        payload["alerts"][0]["annotations"]["evaluated_at"] = bad
+        with pytest.raises(relay.Refusal):
+            receipts.pipeline(payload, 100300)
+    assert receipts.snapshot()["rule_to_relay_at"] == 100000
+
+
+def test_authority_rotation_requires_new_send_and_invalidates_old_receipts(tmp_path):
+    relay = _relay()
+    path = tmp_path / "receipts.json"
+    old = relay.Receipts(path, "a" * 64)
+    old.value.update(
+        message_id=42,
+        send_at=100000,
+        edit_at=100000,
+        edit_sequence=5,
+        rule_to_relay_at=100000,
+    )
+    old.save()
+    rotated = relay.Receipts(path, "b" * 64)
+    assert rotated.snapshot() == dict(
+        rule_to_relay_at=0, edit_sequence=5, edit_at=0, send_at=0
+    )
+    assert rotated.value["message_id"] == 0
+    assert relay.Receipts(path, "b" * 64).snapshot() == rotated.snapshot()
+
+
 def _alert(status: str, suffix: str = "") -> dict[str, object]:
     return {
         "status": status,
@@ -111,6 +208,14 @@ def test_alertmanager_routes_to_authenticated_bounded_webhooks() -> None:
     assert parsed["route"]["group_wait"] == "30s"
     assert parsed["route"]["group_interval"] == "5m"
     assert parsed["route"]["routes"] == [
+        {
+            "receiver": "telegram-canary",
+            "matchers": ['alertname="ObservabilityPipelineCanary"'],
+            "group_wait": "0s",
+            "group_interval": "1m",
+            "repeat_interval": "1m",
+            "continue": False,
+        },
         {
             "receiver": "telegram-critical",
             "matchers": ['severity="critical"'],
@@ -713,7 +818,10 @@ def test_relay_systemd_unit_has_only_credentials_and_bounded_network_authority()
     None
 ):
     unit = (ROLE / "templates/observability-telegram-relay.service.j2").read_text()
-    assert "DynamicUser=yes" in unit
+    assert "DynamicUser=" not in unit
+    assert "User=observability-telegram-relay" in unit
+    assert "StateDirectory=observability-telegram-relay" in unit
+    assert "Slice=observability-collector.slice" in unit
     assert "LoadCredential=telegram-bot-token:" in unit
     assert "LoadCredential=telegram-relay-auth-token:" in unit
     assert "Environment=" not in unit

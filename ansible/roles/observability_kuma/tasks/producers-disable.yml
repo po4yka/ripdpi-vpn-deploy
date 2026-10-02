@@ -1,0 +1,39 @@
+---
+- name: Assert only owned heartbeat kinds can be disabled
+  ansible.builtin.assert:
+    that:
+      - observability_push_disable_kinds | difference(['node', 'pipeline', 'delivery']) | length == 0
+
+- name: Inspect role-owned timer units before disable
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/observability-push-{{ item }}.timer"
+  loop: "{{ observability_push_disable_kinds }}"
+  register: _observability_push_timer_units
+
+- name: Stop only requested heartbeat timers
+  ansible.builtin.systemd_service:
+    name: "observability-push-{{ item.item }}.timer"
+    state: stopped
+    enabled: false
+  when: item.stat.exists
+  loop: "{{ _observability_push_timer_units.results }}"
+
+- name: Inspect role-owned service units before disable
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/observability-push-{{ item }}.service"
+  loop: "{{ observability_push_disable_kinds }}"
+  register: _observability_push_service_units
+
+- name: Stop only requested in-flight heartbeat services
+  ansible.builtin.systemd_service:
+    name: "observability-push-{{ item.item }}.service"
+    state: stopped
+    enabled: false
+  when: item.stat.exists
+  loop: "{{ _observability_push_service_units.results }}"
+
+- name: Remove only disabled heartbeat textfile metrics
+  ansible.builtin.file:
+    path: "/var/lib/node_exporter/textfile/observability-push-{{ item }}.prom"
+    state: absent
+  loop: "{{ observability_push_disable_kinds }}"

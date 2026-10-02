@@ -85,10 +85,6 @@ SCHEMAS = {
     "topology": "observability-topology.schema.json",
 }
 
-PUBLIC_LISTENERS_BY_CLASS = {
-    "control-plane": frozenset({("observability-ingest", "tcp")}),
-    "deadman": frozenset({("observability-deadman-pulse", "tcp")}),
-}
 VPN_PUBLIC_LISTENERS = frozenset(
     {
         ("amneziawg", "udp"),
@@ -265,65 +261,28 @@ def _unique(items: list[dict[str, Any]], key: str) -> dict[str, dict[str, Any]]:
 
 
 def _canonical_topology(document: dict[str, Any]) -> dict[str, Any]:
-    """Validate independence/public-surface semantics and return canonical JSON."""
-    if isinstance(document, dict):
-        sentinels_value = document.get("sentinels")
-        if isinstance(sentinels_value, list) and len(sentinels_value) < 2:
-            raise ContractError("sentinel count")
+    """Validate co-hosting without adding a public monitoring listener."""
+    if isinstance(document, dict) and document.get("schema_version") == 1:
+        raise ContractError("obsolete dedicated topology")
     validate_document(_schema("topology"), document)
-    try:
-        nodes = _unique(document["nodes"], "node_id")
-        sentinels = _unique(document["sentinels"], "sentinel_id")
-    except ContractError as exc:
-        raise ContractError("duplicate identity") from exc
-    if set(nodes) & set(sentinels):
-        raise ContractError("duplicate identity")
-    path_signatures = [item["path_signature"] for item in sentinels.values()]
-    if len(path_signatures) != len(set(path_signatures)):
-        raise ContractError("duplicate path signature")
-
-    by_class: dict[str, list[dict[str, Any]]] = {
-        "vpn": [],
-        "control-plane": [],
-        "deadman": [],
-    }
+    nodes = _unique(document["nodes"], "node_id")
+    collectors = []
     for node in nodes.values():
-        by_class[node["host_class"]].append(node)
+        if "collector" in node["capabilities"]:
+            collectors.append(node)
         listeners = node["public_listeners"]
         identities = [(item["name"], item["protocol"]) for item in listeners]
         if len(identities) != len(set(identities)):
             raise ContractError("public listener")
-        allowed = PUBLIC_LISTENERS_BY_CLASS.get(node["host_class"])
-        if allowed is not None and set(identities) != allowed:
+        if not set(identities) <= VPN_PUBLIC_LISTENERS:
             raise ContractError("public listener")
-        if node["host_class"] == "vpn" and not set(identities) <= VPN_PUBLIC_LISTENERS:
-            raise ContractError("public listener")
-    if not by_class["vpn"]:
-        raise ContractError("vpn node count")
-    if len(by_class["control-plane"]) != 1:
+    if len(collectors) != 1:
         raise ContractError("control-plane count")
-    if len(by_class["deadman"]) != 1:
-        raise ContractError("dead-man count")
-    if len(sentinels) < 2:
-        raise ContractError("sentinel count")
-    node_failure_domains = {node["failure_domain"] for node in nodes.values()}
-    if any(
-        sentinel["failure_domain"] in node_failure_domains
-        for sentinel in sentinels.values()
-    ):
-        raise ContractError("sentinel placement")
-
-    control = by_class["control-plane"][0]
-    deadman = by_class["deadman"][0]
-    if any(
-        control["failure_domain"] == node["failure_domain"] for node in by_class["vpn"]
-    ):
-        raise ContractError("control-plane placement")
-    if (
-        deadman["provider"] == control["provider"]
-        or deadman["failure_domain"] == control["failure_domain"]
-    ):
-        raise ContractError("dead-man placement")
+    observer = document["observer"]
+    if observer["host_alias"] in nodes or observer["failure_domain"] in {
+        node["failure_domain"] for node in nodes.values()
+    }:
+        raise ContractError("observer placement")
 
     canonical_nodes = []
     for node in sorted(nodes.values(), key=lambda item: item["node_id"]):
@@ -338,8 +297,9 @@ def _canonical_topology(document: dict[str, Any]) -> dict[str, Any]:
                 **{
                     key: value
                     for key, value in node.items()
-                    if key != "public_listeners"
+                    if key not in {"public_listeners", "capabilities"}
                 },
+                "capabilities": sorted(node["capabilities"]),
                 "public_listeners": sorted(
                     listeners,
                     key=lambda item: (
@@ -356,7 +316,7 @@ def _canonical_topology(document: dict[str, Any]) -> dict[str, Any]:
         "credential_mode": document["credential_mode"],
         "source_revision": document["source_revision"],
         "nodes": canonical_nodes,
-        "sentinels": sorted(sentinels.values(), key=lambda item: item["sentinel_id"]),
+        "observer": observer,
     }
 
 
@@ -802,15 +762,10 @@ def main(argv: list[str] | None = None) -> int:
             category = str(exc) if isinstance(exc, ContractError) else "topology"
             if category not in {
                 "duplicate identity",
-                "duplicate path signature",
-                "control-plane placement",
-                "dead-man placement",
                 "public listener",
                 "control-plane count",
-                "dead-man count",
-                "sentinel count",
-                "sentinel placement",
-                "vpn node count",
+                "obsolete dedicated topology",
+                "observer placement",
             }:
                 category = "topology"
             print(f"observability-contract: {category} rejected", file=sys.stderr)

@@ -1,0 +1,36 @@
+[Unit]
+Description=Qualified {{ item }} Kuma heartbeat
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=observability-push
+Group=observability-push
+Slice=observability-agent.slice
+LoadCredential=config:/etc/observability-push/{{ item }}.json
+LoadCredential=push-token:/etc/observability-push/{{ item }}.token
+LoadCredential=observer-ca:/etc/observability-push/observer-ca.crt
+{% if item != 'node' %}
+LoadCredential=relay-auth-token:{{ observability_push.relay_auth_path }}
+{% endif %}
+ExecStart=/usr/bin/python3 /usr/local/libexec/observability-push.py {{ item }}
+StateDirectory=observability-push
+StateDirectoryMode=0700
+ReadWritePaths={{ observability_push.textfile_dir }}
+TimeoutStartSec=55
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

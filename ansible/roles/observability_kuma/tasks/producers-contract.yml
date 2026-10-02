@@ -1,0 +1,51 @@
+---
+- name: Assert direct per-node qualified push contract
+  ansible.builtin.assert:
+    that:
+      - observability_push.node_id is match('^[a-z][a-z0-9_-]{0,63}$')
+      - observability_push.kinds | length > 0
+      - observability_push.kinds | difference(['node', 'pipeline', 'delivery']) | length == 0
+      - observability_push.kinds | unique | length == observability_push.kinds | length
+      - observability_push.textfile_dir == '/var/lib/node_exporter/textfile'
+      - observability_push.relay_auth_path == '/etc/observability-control-plane/credentials/telegram-relay-auth-token'
+      - observability_kuma_secrets.schema_version | default(0) == 1
+      - observability_kuma_secrets.tls.ca_pem | length > 0
+      - >-
+        observability_kuma_secrets.push_monitors | map(attribute='token') | unique | length ==
+        observability_kuma_secrets.push_monitors | length
+    fail_msg: Qualified push configuration or credential scope is incomplete.
+  no_log: true
+
+- name: Require exactly one per-monitor bearer identity
+  ansible.builtin.assert:
+    that:
+      - >-
+        observability_kuma_secrets.push_monitors | selectattr('node_id', 'equalto', observability_push.node_id)
+        | selectattr('kind', 'equalto', item) | list | length == 1
+      - >-
+        (observability_kuma_secrets.push_monitors | selectattr('node_id', 'equalto', observability_push.node_id)
+        | selectattr('kind', 'equalto', item) | first).token is match('^[A-Za-z0-9_-]{20,128}$')
+    fail_msg: Each requested node and kind needs one distinct monitor credential.
+  loop: "{{ observability_push.kinds }}"
+  no_log: true
+
+- name: Validate exact private destinations and positive conditions before mutation
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -c
+      - |
+        import json, sys
+        source = {{ lookup('file', role_path ~ '/files/observability-push.py') | to_json }}
+        namespace = {'__name__': 'push_contract'}
+        exec(compile(source, 'push_contract', 'exec'), namespace)
+        namespace['validate_config'](json.load(sys.stdin))
+    stdin: >-
+      {{ {'kind': item, 'node_id': observability_push.node_id, 'origin': observability_push.origin,
+      'services': observability_push.services, 'expected_nodes': observability_push.expected_nodes,
+      'prometheus_origin': observability_push.prometheus_origin, 'relay_origin': observability_push.relay_origin,
+      'textfile_dir': observability_push.textfile_dir} | to_json }}
+  loop: "{{ observability_push.kinds }}"
+  changed_when: false
+  check_mode: false
+  no_log: true

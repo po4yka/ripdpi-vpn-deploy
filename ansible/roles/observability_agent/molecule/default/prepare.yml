@@ -21,7 +21,25 @@
         - /etc/observability-agent
         - /etc/observability-agent/credentials
         - /var/lib/observability-agent/wal
+        - /var/lib/observability-agent/queue
+        - /opt/observability-vmagent
         - /opt/observability-agent
+
+    - name: Preserve an explicitly synthetic previous-runtime namespace marker
+      ansible.builtin.copy:
+        dest: /opt/observability-agent/retained-release-marker
+        content: "previous runtime authority retained\n"
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Preserve the previous-runtime public reference without executing a substitute
+      ansible.builtin.file:
+        src: /opt/observability-agent/current/prometheus
+        dest: /usr/local/bin/prometheus-observability-agent
+        state: link
+        force: true
+
 
     - name: Create synthetic producer textfile that the agent does not own
       ansible.builtin.copy:

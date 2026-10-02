@@ -3,6 +3,7 @@ Description=Publish bounded observability control-plane evidence
 After=network-online.target
 
 [Service]
+Slice=observability-collector.slice
 Type=oneshot
 User=root
 Group=root

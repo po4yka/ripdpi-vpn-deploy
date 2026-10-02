@@ -10,23 +10,19 @@ observability_agent:
   node_id: ""
   environment: ""
   receiver_origin: ""
-  receiver_sni: ""
-  install_root: /opt/observability-agent
-  promtool_install_root: /opt/observability-agent-promtool
+  receiver_address: ""
+  install_root: /opt/observability-vmagent
   config_dir: /etc/observability-agent
   credential_dir: /etc/observability-agent/credentials
-  wal_dir: /var/lib/observability-agent/wal
-  wal_max_time: 1h
+  queue_dir: /var/lib/observability-agent/queue
+  queue_max_disk_bytes: 536870912
   web_listen: 127.0.0.1:19090
-  scrape_interval: 30s
+  scrape_interval: 60s
   scrape_sample_limit: 2000
   scrape_label_limit: 16
   scrape_label_name_length_limit: 64
   scrape_label_value_length_limit: 128
-  queue_capacity: 5000
-  queue_max_samples_per_send: 1000
-  queue_batch_send_deadline: 5s
-  memory_max: 512M
+  memory_max: 192M
   tasks_max: 64
   nofile_limit: 65536
 observability_agent_watchdog_state_path: /var/lib/vpn-watchdog/state

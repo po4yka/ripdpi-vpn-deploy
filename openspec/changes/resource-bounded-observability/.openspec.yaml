@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-01
+goal: MON-1790835036464962 Deliver resource-bounded monitoring without dedicated
+  VPS nodes

@@ -16,12 +16,28 @@ from tests.unit.test_observability_silence_gateway import _tls
 import yaml
 import pytest
 
-from scripts.template_render import merge_render_vars, render_template
+from scripts.template_render import (
+    merge_render_vars,
+    render_template as _render_template,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / "ansible/roles/observability_control_plane"
 PROMTOOL_VERSION = "3.14.0"
 REQUIRED_SYSTEMD_UNITS = ["nginx.service", "xray.service"]
+
+
+def render_template(path: Path, values: dict) -> str:
+    return _render_template(
+        path,
+        {
+            "observability_push": {
+                "node_id": "vpn-p0",
+                "expected_nodes": ["vpn-p0", "vpn-p1"],
+            },
+            **values,
+        },
+    )
 
 
 def _alert_policy() -> dict:
@@ -178,55 +194,26 @@ def test_alerting_defaults_are_inert_and_secret_free() -> None:
     assert alerting["source_generation"] == ""
     assert alerting["telegram"]["bot_token"] == ""
     assert alerting["telegram"]["chat_id"] == ""
-    assert alerting["deadman"]["enabled"] is False
-    assert alerting["deadman"]["canary_auth_path"].endswith(
-        "/deadman-canary-auth-token"
-    )
-    assert alerting["deadman"]["pulse_ca_path"].endswith("/deadman-pulse-ca.pem")
-    assert alerting["deadman"]["pulse_ca_credential"].endswith("/deadman-pulse-ca.pem")
+    assert "deadman" not in alerting
     assert alerting["listen"] == "127.0.0.1:9093"
 
 
-def test_enabled_molecule_deadman_opt_out_has_complete_owned_paths() -> None:
+def test_enabled_molecule_has_no_obsolete_deadman_configuration() -> None:
     fixture = yaml.safe_load(
         (ROLE / "molecule/enabled/tasks/fixture-contract.yml").read_text()
     )
-    deadman = fixture[-1]["ansible.builtin.set_fact"]["observability_control_plane"][
+    alerting = fixture[-1]["ansible.builtin.set_fact"]["observability_control_plane"][
         "alerting"
-    ]["deadman"]
-
-    assert deadman["state_dir"] == "/var/lib/observability-pipeline"
-    assert deadman["metrics_path"] == (
-        "/var/lib/node_exporter/textfile/observability-deadman.prom"
-    )
-    assert deadman["canary_auth_path"] == (
-        "/etc/observability-control-plane/credentials/deadman-canary-auth-token"
-    )
-    assert deadman["pulse_credential_path"] == (
-        "/etc/observability-control-plane/credentials/deadman-pulse-token"
-    )
-    assert deadman["pulse_ca_path"] == (
-        "/etc/observability-control-plane/credentials/deadman-pulse-ca.pem"
-    )
+    ]
+    assert "deadman" not in alerting
 
 
-def test_deadman_pulse_unit_loads_only_the_dedicated_ca_credential() -> None:
-    contract = _contract()
-    rendered = render_template(
-        ROLE / "templates/observability-deadman-pulse.service.j2",
-        {"observability_control_plane": contract},
-    )
-
+def test_obsolete_deadman_units_are_not_an_alternative_runtime() -> None:
+    assert not list((ROLE / "templates").glob("observability-deadman-*.j2"))
     assert (
-        "LoadCredential=deadman-pulse-ca.pem:"
-        "/etc/observability-control-plane/credentials/deadman-pulse-ca.pem" in rendered
+        "observability_control_plane.alerting.deadman.enabled"
+        not in (ROLE / "tasks/alerting-authority.yml").read_text()
     )
-    exec_start = next(
-        line for line in rendered.splitlines() if line.startswith("ExecStart=")
-    )
-    assert "--pulse-ca-credential deadman-pulse-ca.pem" in exec_start
-    assert "SSL_CERT_FILE" not in rendered
-    assert "SSL_CERT_DIR" not in rendered
 
 
 def test_missing_telegram_contract_refuses_without_changes_or_secret_output(
@@ -442,14 +429,14 @@ def test_alertmanager_routes_to_authenticated_relay_without_secrets() -> None:
     deadman = next(
         receiver
         for receiver in parsed["receivers"]
-        if receiver["name"] == "deadman-canary"
+        if receiver["name"] == "telegram-canary"
     )["webhook_configs"][0]
     assert deadman["send_resolved"] is False
     assert deadman["http_config"]["authorization"] == {
         "type": "Bearer",
         "credentials_file": (
             "/run/credentials/observability-alertmanager.service/"
-            "deadman-canary-auth-token"
+            "telegram-relay-auth-token"
         ),
     }
 
@@ -489,11 +476,23 @@ def test_prometheus_loads_alert_rules_and_scrapes_only_loopback_alertmanager() -
     ]
     assert parsed["scrape_configs"][-1] == {
         "job_name": "observability-alertmanager",
+        "sample_limit": 500,
+        "label_limit": 16,
+        "label_name_length_limit": 64,
+        "label_value_length_limit": 128,
         "authorization": {
             "type": "Bearer",
             "credentials_file": "/run/credentials/observability-prometheus.service/silence-sender-token",
         },
         "static_configs": [{"targets": ["127.0.0.1:19094"]}],
+        "metric_relabel_configs": [
+            {
+                "source_labels": ["__name__"],
+                "regex": "^alertmanager_notifications_(total|failed_total)$",
+                "action": "keep",
+            },
+            {"regex": "^(__name__|job|integration)$", "action": "labelkeep"},
+        ],
     }
 
 
@@ -517,14 +516,16 @@ def test_rules_have_fixed_severity_recovery_and_deadman_boundaries(
         "ObservabilityBackupEvidenceStale",
         "ObservabilityBackupStageFailed",
         "ObservabilityRestoreReadinessStale",
-        "ObservabilityPipelineWatchdog",
-        "ObservabilityDeadmanReverseMissing",
-        "ObservabilityDeadmanReverseUnhealthy",
+        "ObservabilityPipelineCanary",
+        "ObservabilityExternalCoverageUnavailable",
+        "ObservabilityAgentDeliveryLoss",
     }
     for rule in alerts:
         assert rule["labels"]["severity"] in {"warning", "critical", "watchdog"}
         assert rule["for"]
-        assert rule["keep_firing_for"] == "3m"
+        assert rule["keep_firing_for"] == (
+            "0s" if rule["alert"] == "ObservabilityPipelineCanary" else "3m"
+        )
         assert rule["annotations"]["incident_family"]
         assert rule["annotations"]["evidence_class"]
         assert rule["annotations"]["runbook"].startswith("docs/")
@@ -532,10 +533,10 @@ def test_rules_have_fixed_severity_recovery_and_deadman_boundaries(
         assert rule["annotations"]["source_generation"] == "c" * 40
         assert "token" not in str(rule).lower()
     assert (
-        next(
-            rule for rule in alerts if rule["alert"] == "ObservabilityPipelineWatchdog"
-        )["expr"]
-        == "vector(1)"
+        next(rule for rule in alerts if rule["alert"] == "ObservabilityPipelineCanary")[
+            "expr"
+        ]
+        == "vector(time())"
     )
     promtool = shutil.which("promtool")
     assert promtool is not None, f"promtool {PROMTOOL_VERSION} is required"
@@ -699,17 +700,246 @@ def test_promtool_rule_cases_cover_firing_stale_recovery_and_absent(
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_authority_snapshot_keeps_private_output_secret_and_reports_only_category() -> None:
+@pytest.mark.parametrize("missing", [None, ("vpn-p1", "node"), ("vpn-p0", "delivery")])
+def test_missing_expected_push_scopes_fire_relay_accepted_alerts(tmp_path, missing):
+    from tests.unit.test_observability_telegram_delivery import _payload, _relay
+
+    contract = _contract()
+    text = render_template(
+        ROLE / "templates/observability-alert-rules.yml.j2",
+        {
+            "observability_control_plane": contract,
+            "observability_alert_policy": _alert_policy(),
+        },
+    )
+    rules = [
+        rule
+        for group in yaml.safe_load(text)["groups"]
+        for rule in group["rules"]
+        if rule["alert"] == "ObservabilityExternalCoverageUnavailable"
+    ]
+    assert {(rule["labels"]["node"], rule["labels"]["kind"]) for rule in rules} == {
+        ("vpn-p0", "node"),
+        ("vpn-p1", "node"),
+        ("vpn-p0", "pipeline"),
+        ("vpn-p0", "delivery"),
+    }
+    absent = [
+        rule
+        for rule in rules
+        if missing is None
+        or (rule["labels"]["node"], rule["labels"]["kind"]) == missing
+    ]
+    series = []
+    for rule in rules:
+        if rule in absent:
+            continue
+        labels = rule["labels"]
+        selector = (
+            'environment="staging",node="'
+            + labels["node"]
+            + '",kind="'
+            + labels["kind"]
+            + '"'
+        )
+        series.extend(
+            [
+                {
+                    "series": "observability_push_success{" + selector + "}",
+                    "values": "1x3",
+                },
+                {
+                    "series": "observability_push_last_success_timestamp_seconds{"
+                    + selector
+                    + "}",
+                    "values": "0+60x3",
+                },
+            ]
+        )
+    (tmp_path / "alerts.yml").write_text(text)
+    (tmp_path / "absence.test.yml").write_text(
+        yaml.safe_dump(
+            {
+                "rule_files": ["alerts.yml"],
+                "evaluation_interval": "30s",
+                "tests": [
+                    {
+                        "interval": "1m",
+                        "input_series": series,
+                        "alert_rule_test": [
+                            {
+                                "eval_time": "2m",
+                                "alertname": "ObservabilityExternalCoverageUnavailable",
+                                "exp_alerts": [
+                                    {
+                                        "exp_labels": rule["labels"],
+                                        "exp_annotations": rule["annotations"],
+                                    }
+                                    for rule in absent
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+    )
+    result = subprocess.run(
+        [shutil.which("promtool"), "test", "rules", "absence.test.yml"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    relay = _relay()
+    for rule in absent:
+        payload = _payload()
+        labels = {"alertname": rule["alert"], **rule["labels"]}
+        payload["alerts"][0].update(labels=labels, annotations=rule["annotations"])
+        payload.update(commonLabels=labels, commonAnnotations=rule["annotations"])
+        parsed = relay.parse_payload(json.dumps(payload).encode())
+        assert parsed["alerts"][0]["labels"]["node"] == rule["labels"]["node"]
+
+
+@pytest.mark.parametrize(
+    "state,status,success",
+    [
+        ("stopped", "not-found", True),
+        ("running", "not-found", False),
+        ("stopped", "masked", False),
+    ],
+)
+def test_authority_snapshot_classifies_only_inactive_missing_units_as_absent(
+    tmp_path, state, status, success
+):
+    tasks = yaml.safe_load((ROLE / "tasks/alerting-authority.yml").read_text())
+    boundary = next(
+        index
+        for index, task in enumerate(tasks)
+        if task["name"]
+        == "Capture private authority snapshot before the first publication write"
+    )
+    preflight = tasks[1:boundary]
+    preflight.append(
+        {
+            "name": "Require missing unit is absent in the rollback contract",
+            "ansible.builtin.assert": {
+                "that": [
+                    "not _observability_authority_services['observability-prometheus.service'].exists",
+                    "not _observability_authority_services['observability-prometheus.service'].active",
+                ]
+            },
+        }
+    )
+    path = tmp_path / "missing-unit.yml"
+    path.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "name": "Classify systemd reference without mutating host",
+                    "hosts": "localhost",
+                    "connection": "local",
+                    "gather_facts": False,
+                    "vars": {
+                        "ansible_facts": {
+                            "services": {
+                                "observability-prometheus.service": {
+                                    "state": state,
+                                    "status": status,
+                                }
+                            }
+                        }
+                    },
+                    "tasks": preflight,
+                }
+            ]
+        )
+    )
+    result = subprocess.run(
+        ["ansible-playbook", "-i", "localhost,", str(path)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert (result.returncode == 0) == success, result.stdout + result.stderr
+    assert "changed=0" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "expected_nodes,collector,success",
+    [
+        (["vpn-p1", "vpn-p0"], "vpn-p0", True),
+        (["vpn-p0"], "vpn-p0", False),
+        (["vpn-p0", "vpn-p1", "vpn-p2"], "vpn-p0", False),
+        (["vpn-p0", "vpn-p1"], "vpn-p2", False),
+    ],
+)
+def test_collector_push_coverage_exactly_matches_enrolled_nodes_before_mutation(
+    tmp_path, expected_nodes, collector, success
+):
+    tasks = yaml.safe_load((ROLE / "tasks/enable.yml").read_text())
+    guard_name = (
+        "Require independent collector and delivery producer scope before mutation"
+    )
+    guard = next(task for task in tasks if task["name"] == guard_name)
+    assert tasks.index(guard) < next(
+        index for index, task in enumerate(tasks) if "ansible.builtin.command" in task
+    )
+    path = tmp_path / "coverage-contract.yml"
+    path.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "name": "Verify complete enrolled coverage without host writes",
+                    "hosts": "localhost",
+                    "connection": "local",
+                    "gather_facts": False,
+                    "vars": {
+                        "observability_push": {
+                            "kinds": ["pipeline", "delivery"],
+                            "node_id": collector,
+                            "expected_nodes": expected_nodes,
+                        },
+                        "observability_control_plane": {
+                            "alerting": {"enabled": True},
+                            "ingest_identities": [
+                                {"node_id": node} for node in ["vpn-p0", "vpn-p1"]
+                            ],
+                        },
+                    },
+                    "tasks": [guard],
+                }
+            ]
+        )
+    )
+    result = subprocess.run(
+        ["ansible-playbook", "-i", "localhost,", str(path)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert (result.returncode == 0) == success, result.stdout + result.stderr
+    assert "changed=0" in result.stdout
+
+
+def test_authority_snapshot_keeps_private_output_secret_and_reports_only_category() -> (
+    None
+):
     tasks = yaml.safe_load((ROLE / "tasks/alerting-authority.yml").read_text())
     capture = next(
         task
         for task in tasks
-        if task["name"] == "Capture private authority snapshot before the first publication write"
+        if task["name"]
+        == "Capture private authority snapshot before the first publication write"
     )
     classify = next(
         task
         for task in tasks
-        if task["name"] == "Classify authority snapshot refusal without exposing private state"
+        if task["name"]
+        == "Classify authority snapshot refusal without exposing private state"
     )
     refuse = next(
         task
@@ -806,7 +1036,6 @@ def test_alerting_tasks_validate_before_activation_and_rollback() -> None:
     assert restart["when"] == (
         "not ansible_check_mode and (_observability_alertmanager_runtime_changed | bool or "
         "_observability_telegram_credentials.changed or "
-        "(_observability_deadman_canary_credential.changed | default(false)) or "
         "_observability_silence_credentials.changed or "
         "_observability_silence_web.changed or "
         "_observability_alertmanager_unit.changed or "
@@ -868,7 +1097,6 @@ def test_alertmanager_restart_condition_uses_one_ansible_expression(
       - {name: all_false, runtime: false, credential: false, unit: false, link: false, expected: false}
       - {name: runtime, runtime: true, credential: false, unit: false, link: false, expected: true}
       - {name: credential, runtime: false, credential: true, unit: false, link: false, expected: true}
-      - {name: canary_credential, runtime: false, credential: false, canary_credential: true, unit: false, link: false, expected: true}
       - {name: unit, runtime: false, credential: false, unit: true, link: false, expected: true}
       - {name: link, runtime: false, credential: false, unit: false, link: true, expected: true}
   tasks:
@@ -877,7 +1105,6 @@ def test_alertmanager_restart_condition_uses_one_ansible_expression(
       vars:
         _observability_alertmanager_runtime_changed: "{{ item.runtime }}"
         _observability_telegram_credentials: {changed: "{{ item.credential }}"}
-        _observability_deadman_canary_credential: {changed: "{{ item.canary_credential | default(false) }}"}
         _observability_silence_credentials: {changed: "{{ item.silence | default(false) }}"}
         _observability_silence_web: {changed: "{{ item.web | default(false) }}"}
         _observability_alertmanager_unit: {changed: "{{ item.unit }}"}
@@ -979,8 +1206,8 @@ def test_alerting_disable_removes_owned_runtime_but_preserves_tsdb() -> None:
     assert "Stop disabled Alertmanager service" in names
     assert "Remove disabled alerting surfaces" in names
     assert "observability-alertmanager.service" in text
-    assert "observability_control_plane.alerting.credential_path" in text
-    assert "observability_control_plane.alerting.deadman.metrics_path" in text
+    assert "observability_control_plane.alerting.credential_path" not in text
+    assert "observability_control_plane.alerting.deadman.metrics_path" not in text
     assert "/var/lib/observability-prometheus" not in text
 
 
@@ -991,22 +1218,30 @@ def test_alerting_disable_removes_owned_runtime_but_preserves_tsdb() -> None:
         ("disable.yml", "Remove control-plane units and ingress only"),
     ],
 )
-def test_disable_tasks_remove_deadman_textfile_behaviorally(
+def test_disable_tasks_preserve_historical_evidence_outside_runtime_scope(
     tmp_path: Path, source: str, task_name: str
 ) -> None:
     production = yaml.safe_load((ROLE / "tasks" / source).read_text())
     task = next(row for row in production if row["name"] == task_name)
-    assert "observability_control_plane.alerting.deadman.metrics_path" in str(
+    assert "observability_control_plane.alerting.deadman.metrics_path" not in str(
         task["loop"]
     )
     metric = tmp_path / "textfile" / "observability-deadman.prom"
     metric.parent.mkdir(mode=0o700)
     metric.write_text("candidate_metric 1\n")
     metric.chmod(0o644)
+    literal_paths = (
+        re.findall(r"'(/[^']+)'", task["loop"])
+        if isinstance(task["loop"], str)
+        else [path for path in task["loop"] if path.startswith("/")]
+    )
+    owned = tmp_path / literal_paths[0].removeprefix("/")
+    owned.parent.mkdir(parents=True)
+    owned.write_text("owned runtime unit\n")
     isolated = {
         "name": task_name,
         "ansible.builtin.file": task["ansible.builtin.file"],
-        "loop": [str(metric)],
+        "loop": [str(owned)],
     }
     playbook = tmp_path / f"{source}.play.yml"
     playbook.write_text(
@@ -1035,7 +1270,8 @@ def test_disable_tasks_remove_deadman_textfile_behaviorally(
 
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert "changed=1" in completed.stdout
-    assert not metric.exists()
+    assert not owned.exists()
+    assert metric.read_text() == "candidate_metric 1\n"
 
 
 def test_silence_gateway_is_the_only_authenticated_alertmanager_route() -> None:

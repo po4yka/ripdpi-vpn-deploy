@@ -1045,13 +1045,8 @@ def test_deadman_reverse_summary_contains_every_bounded_health_axis(
     }
 
 
-def test_roles_install_pipeline_units_and_remove_them_on_disable() -> None:
-    control_enable = (CONTROL_ROLE / "tasks/alerting-authority.yml").read_text()
-    control_disable = (CONTROL_ROLE / "tasks/alerting-disable.yml").read_text()
-    deadman_unit = (
-        DEADMAN_ROLE / "templates/observability-deadman-tick.service.j2"
-    ).read_text()
-
+def test_current_collector_does_not_install_retired_pipeline_units() -> None:
+    authority = (CONTROL_ROLE / "tasks/alerting-authority.yml").read_text()
     for name in (
         "observability-deadman-pipeline.service",
         "observability-deadman-pulse.service",
@@ -1059,505 +1054,59 @@ def test_roles_install_pipeline_units_and_remove_them_on_disable() -> None:
         "observability-primary-canary.service",
         "observability-primary-canary.timer",
     ):
-        assert name in control_enable
-        assert name in control_disable
-    assert "reverse-health-ca" in deadman_unit
-    assert "reverse-health-client-cert" in deadman_unit
-    assert "reverse-health-client-key" in deadman_unit
+        assert name not in authority
+        assert not (CONTROL_ROLE / "templates" / (name + ".j2")).exists()
 
 
-def test_authority_quiesces_old_pipeline_generation_before_reconcile_and_restarts_in_order() -> (
-    None
-):
-    tasks = yaml.safe_load(
-        (CONTROL_ROLE / "tasks/alerting-authority.yml").read_text(encoding="utf-8")
-    )
-    activation = next(
-        task
-        for task in tasks
-        if task["name"] == "Activate validated Alertmanager generation with rollback"
-    )
-    body = activation["block"]
-    by_name = {task["name"]: task for task in body}
-    disable_schedules = by_name["Disable previous dead-man pipeline schedules"]
-    assert disable_schedules["ansible.builtin.systemd_service"] == {
-        "name": "{{ item }}",
-        "enabled": False,
-        "state": "stopped",
-    }
-    assert disable_schedules["loop"] == [
+def test_historical_alarm_route_is_refused_before_runtime_mutation() -> None:
+    tasks = yaml.safe_load((CONTROL_ROLE / "tasks/enable.yml").read_text())
+    names = [task["name"] for task in tasks]
+    probe = next(task for task in tasks if task["name"].startswith("Inspect historical alarm services"))
+    guard = next(task for task in tasks if task["name"].startswith("Preserve any working historical alarm"))
+    assert probe["ansible.builtin.command"]["argv"] == ["systemctl", "is-active", "--quiet", "{{ item }}"]
+    assert probe["loop"] == [
+        "observability-deadman-pipeline.service",
         "observability-deadman-pulse.timer",
         "observability-primary-canary.timer",
     ]
-    stop_workers = by_name["Stop previous dead-man pipeline workers"]
-    assert stop_workers["ansible.builtin.systemd_service"] == {
-        "name": "{{ item }}",
-        "state": "stopped",
-    }
-    assert stop_workers["loop"] == [
-        "observability-deadman-pulse.service",
-        "observability-primary-canary.service",
-        "observability-deadman-pipeline.service",
+    assert probe["check_mode"] is False
+    assert guard["ansible.builtin.assert"]["that"] == ["item.rc != 0"]
+    mutators = ("ansible.builtin.apt", "ansible.builtin.copy", "ansible.builtin.file",
+                "ansible.builtin.template", "ansible.builtin.user", "ansible.builtin.systemd_service")
+    first_mutation = next(index for index, task in enumerate(tasks) if any(key in task for key in mutators))
+    assert names.index(guard["name"]) < first_mutation
+
+
+def test_authority_snapshot_restores_only_current_authority_chain() -> None:
+    tasks = yaml.safe_load((CONTROL_ROLE / "tasks/alerting-authority.yml").read_text())
+    capture = next(task for task in tasks if task["name"] == "Capture previous active and enabled states")
+    expected = [
+        "observability-alertmanager.service",
+        "observability-telegram-relay.service",
+        "observability-silence-gateway.service",
+        "observability-prometheus.service",
     ]
-    names = [task["name"] for task in body]
-    assert names.index("Disable previous dead-man pipeline schedules") < names.index(
-        "Reconcile generation-bound dead-man pipeline state"
-    )
-    assert names.index("Stop previous dead-man pipeline workers") < names.index(
-        "Reconcile generation-bound dead-man pipeline state"
-    )
-    assert names.index(
-        "Ensure authenticated dead-man pipeline is running"
-    ) < names.index("Ensure dead-man canary schedules are running")
-    capture = next(
-        task
-        for task in tasks
-        if task["name"] == "Capture previous active and enabled states"
-    )
-    quiesced = set(disable_schedules["loop"] + stop_workers["loop"])
-    assert quiesced <= set(capture["loop"])
-    reboot_state = {
-        name: {"enabled": True, "active": True} for name in disable_schedules["loop"]
-    }
-    for name in disable_schedules["loop"]:
-        reboot_state[name].update(enabled=False, active=False)
-    for state in reboot_state.values():
-        state["active"] = state["enabled"]
-    assert all(not state["active"] for state in reboot_state.values())
-    restore_block = next(
-        task
-        for task in activation["rescue"]
-        if task["name"]
-        == "Restore the captured authority and service credential snapshots"
-    )["block"]
-    restore = next(
-        task
-        for task in restore_block
-        if task["name"]
-        == "Restore previous service state and LoadCredential snapshots in dependency order"
-    )
-    assert quiesced <= set(restore["loop"])
-    assert restore["ansible.builtin.systemd_service"]["enabled"] == (
-        "{{ _observability_authority.services[item].enabled }}"
-    )
-    assert (
-        "services[item].active" in restore["ansible.builtin.systemd_service"]["state"]
-    )
+    assert capture["loop"] == expected
+    activation = next(task for task in tasks if task["name"] == "Activate validated Alertmanager generation with rollback")
+    restore_block = next(task["block"] for task in activation["rescue"]
+                         if task["name"] == "Restore the captured authority and service credential snapshots")
+    restore = next(task for task in restore_block
+                   if task["name"] == "Restore previous service state and LoadCredential snapshots in dependency order")
+    assert set(restore["loop"]) == set(expected)
+    assert restore["ansible.builtin.systemd_service"]["enabled"] == "{{ _observability_authority.services[item].enabled }}"
+    assert "services[item].active" in restore["ansible.builtin.systemd_service"]["state"]
 
 
-def test_authority_failure_disables_schedules_across_reboot_before_exact_restore(
-    tmp_path: Path,
-) -> None:
-    tasks = yaml.safe_load(
-        (CONTROL_ROLE / "tasks/alerting-authority.yml").read_text(encoding="utf-8")
-    )
-    activation = next(
-        task
-        for task in tasks
-        if task["name"] == "Activate validated Alertmanager generation with rollback"
-    )
-    body = {task["name"]: task for task in activation["block"]}
-    restore_block = next(
-        task
-        for task in activation["rescue"]
-        if task["name"]
-        == "Restore the captured authority and service credential snapshots"
-    )["block"]
-    rescue = {task["name"]: task for task in restore_block}
-    enable_pipeline = body["Ensure authenticated dead-man pipeline is running"]
-    enable_schedules = body["Ensure dead-man canary schedules are running"]
-    disable = rescue["Disable attempted dead-man persistent writers before rollback"]
-    restore = rescue[
-        "Restore previous service state and LoadCredential snapshots in dependency order"
-    ]
-    persistent_writers = [
-        "observability-primary-canary.timer",
-        "observability-deadman-pulse.timer",
-        "observability-deadman-pipeline.service",
-    ]
-    assert disable["loop"] == [
-        "observability-deadman-pulse.timer",
-        "observability-primary-canary.timer",
-        "observability-deadman-pipeline.service",
-    ]
-    assert disable["ansible.builtin.systemd_service"] == {
-        "name": "{{ item }}",
-        "enabled": False,
-        "state": "stopped",
-    }
-    assert restore_block.index(disable) < restore_block.index(restore)
-
-    initial = {
-        persistent_writers[0]: {"enabled": True, "active": True},
-        persistent_writers[1]: {"enabled": False, "active": False},
-        persistent_writers[2]: {"enabled": False, "active": False},
-    }
-    state_path = tmp_path / "systemd.json"
-    reboot_path = tmp_path / "reboot.json"
-    state_path.write_text(json.dumps(initial), encoding="utf-8")
-    adapter = tmp_path / "systemd-adapter.py"
-    adapter.write_text(
-        """import json,sys
-from pathlib import Path
-state_path=Path(sys.argv[1]); action=sys.argv[2]
-state=json.loads(state_path.read_text())
-if action=='reboot':
- for row in state.values(): row['active']=row['enabled']
- Path(sys.argv[3]).write_text(json.dumps(state))
-else:
- name=sys.argv[3]; desired=sys.argv[4]; enabled=sys.argv[5].lower()
- row=state.setdefault(name,{'enabled':False,'active':False})
- if enabled in ('true','false'): row['enabled']=enabled=='true'
- if desired in ('started','restarted'): row['active']=True
- elif desired=='stopped': row['active']=False
-state_path.write_text(json.dumps(state))
-""",
-        encoding="utf-8",
-    )
-
-    def adapt(task: dict[str, object]) -> dict[str, object]:
-        adapted = json.loads(json.dumps(task))
-        module = adapted.pop("ansible.builtin.systemd_service")
-        adapted["ansible.builtin.command"] = {
-            "argv": [
-                sys.executable,
-                str(adapter),
-                str(state_path),
-                "control",
-                module["name"],
-                module.get("state", "unchanged"),
-                str(module.get("enabled", "unchanged")),
-            ]
-        }
-        adapted["changed_when"] = True
-        return adapted
-
-    captured = {
-        name: {
-            "exists": name in initial,
-            "active": initial.get(name, {}).get("active", False),
-            "enabled": initial.get(name, {}).get("enabled", False),
-        }
-        for name in restore["loop"]
-    }
-    playbook = tmp_path / "rollback-schedules.yml"
-    playbook.write_text(
-        yaml.safe_dump(
-            [
-                {
-                    "hosts": "localhost",
-                    "connection": "local",
-                    "become": False,
-                    "gather_facts": False,
-                    "vars": {
-                        "observability_control_plane": {
-                            "alerting": {"deadman": {"enabled": True}}
-                        },
-                        "ansible_facts": {"services": {name: {} for name in initial}},
-                        "_observability_authority": {"services": captured},
-                    },
-                    "tasks": [
-                        {
-                            "block": [
-                                adapt(enable_pipeline),
-                                adapt(enable_schedules),
-                                {
-                                    "name": "Inject failure after candidate schedule enable",
-                                    "ansible.builtin.fail": {"msg": "fixture-failure"},
-                                },
-                            ],
-                            "rescue": [
-                                adapt(disable),
-                                {
-                                    "name": "Simulate reboot before snapshot restore",
-                                    "ansible.builtin.command": {
-                                        "argv": [
-                                            sys.executable,
-                                            str(adapter),
-                                            str(state_path),
-                                            "reboot",
-                                            str(reboot_path),
-                                        ]
-                                    },
-                                    "changed_when": False,
-                                },
-                                adapt(restore),
-                            ],
-                        }
-                    ],
-                }
-            ],
-            sort_keys=False,
-        ),
-        encoding="utf-8",
-    )
-    result = subprocess.run(
-        ["ansible-playbook", "-i", "localhost,", str(playbook)],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        timeout=20,
-        check=False,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-    after_reboot = json.loads(reboot_path.read_text(encoding="utf-8"))
-    assert all(not after_reboot[name]["active"] for name in persistent_writers)
-    assert json.loads(state_path.read_text(encoding="utf-8")) == initial
-
-
-def test_nested_deadman_disable_preserves_alerting_and_is_reboot_idempotent() -> None:
-    disable_tasks = CONTROL_ROLE / "tasks/alerting-deadman-disable.yml"
-    alerting_tasks = yaml.safe_load(
-        (CONTROL_ROLE / "tasks/alerting-authority.yml").read_text(encoding="utf-8")
-    )
-    activation = next(
-        task
-        for task in alerting_tasks
-        if task["name"] == "Activate validated Alertmanager generation with rollback"
-    )
-    nested = next(
-        task
-        for task in activation["block"]
-        if task["name"] == "Converge nested dead-man opt-out"
-    )
-    assert nested["ansible.builtin.include_tasks"] == "alerting-deadman-disable.yml"
-    assert "not (observability_control_plane.alerting.deadman.enabled | bool)" in str(
-        nested["when"]
-    )
-    tasks = yaml.safe_load(disable_tasks.read_text(encoding="utf-8"))
-    names = {task["name"] for task in tasks}
-    assert {
-        "Stop and disable nested dead-man pipeline",
-        "Reconcile nested dead-man state before removing its helper",
-        "Remove nested dead-man pipeline surfaces",
-    } <= names
-
-    with tempfile.TemporaryDirectory(
-        prefix=".observability-deadman-disable-", dir=Path.home()
-    ) as directory:
-        root = Path(directory)
-        credentials = root / "etc/observability-control-plane/credentials"
-        state_dir = root / "var/lib/observability-pipeline"
-        units = root / "etc/systemd/system"
-        libexec = root / "usr/local/libexec"
-        metrics = root / "var/lib/node_exporter/textfile/observability-deadman.prom"
-        for path, mode in (
-            (credentials, 0o700),
-            (state_dir, 0o700),
-            (units, 0o755),
-            (libexec, 0o755),
-            (metrics.parent, 0o755),
-        ):
-            path.mkdir(parents=True, exist_ok=True)
-            path.chmod(mode)
-        pipeline = _module("nested_disable_pipeline", PIPELINE_SOURCE)
-        assert pipeline.reconcile_state(state_dir, GENERATION) is True
-        (state_dir / "canary.json").write_text(
-            json.dumps(
-                {
-                    "schema": 1,
-                    "generation": GENERATION,
-                    "kind": "alertmanager-watchdog",
-                    "observed_at": NOW,
-                }
-            ),
-            encoding="utf-8",
-        )
-        (state_dir / "canary.json").chmod(0o600)
-        surface_names = [
-            "observability-deadman-pipeline.service",
-            "observability-deadman-pulse.service",
-            "observability-primary-canary.service",
-            "observability-deadman-pulse.timer",
-            "observability-primary-canary.timer",
-        ]
-        for name in surface_names:
-            (units / name).write_text("owned\n", encoding="utf-8")
-        helper = libexec / "observability-deadman-pipeline.py"
-        helper.write_text(PIPELINE_SOURCE.read_text(encoding="utf-8"), encoding="utf-8")
-        helper.chmod(0o755)
-        for name in (
-            "deadman-pulse-token",
-            "deadman-pulse-ca.pem",
-            "deadman-canary-auth-token",
-        ):
-            path = credentials / name
-            path.write_text("private\n", encoding="utf-8")
-            path.chmod(0o600)
-        metrics.write_text("observability_deadman_reverse_ok 1\n", encoding="utf-8")
-        metrics.chmod(0o644)
-        global_unit = units / "observability-alertmanager.service"
-        global_unit.write_text("global-alerting\n", encoding="utf-8")
-        global_config = credentials.parent / "alertmanager-current.yml"
-        global_config.write_text("global-config\n", encoding="utf-8")
-
-        service_state = root / "service-state.json"
-        service_state.write_text(
-            json.dumps(
-                {
-                    **{
-                        name: {"state": "running", "status": "enabled"}
-                        for name in surface_names
-                    },
-                    "observability-alertmanager.service": {
-                        "state": "running",
-                        "status": "enabled",
-                    },
-                }
-            ),
-            encoding="utf-8",
-        )
-        adapter = root / "systemd-adapter.py"
-        adapter.write_text(
-            """import json,sys
-from pathlib import Path
-state_path=Path(sys.argv[1]); action=sys.argv[2]
-state=json.loads(state_path.read_text())
-if action=='reboot':
- for row in state.values(): row['state']='running' if row['status']=='enabled' else 'stopped'
- state_path.write_text(json.dumps(state))
-else:
- name=sys.argv[3]; row=state[name]; row.update(state='stopped',status='disabled')
- state_path.write_text(json.dumps(state))
-""",
-            encoding="utf-8",
-        )
-
-        def rooted(value: object) -> object:
-            if isinstance(value, str):
-                value = value.replace(".stat.uid == 0", f".stat.uid == {os.geteuid()}")
-                for prefix in ("/etc/", "/usr/local/", "/var/lib/"):
-                    if value.startswith(prefix):
-                        return str(root) + value
-                return value
-            if isinstance(value, list):
-                return [rooted(item) for item in value]
-            if not isinstance(value, dict):
-                return value
-            result = {key: rooted(item) for key, item in value.items()}
-            if "ansible.builtin.service_facts" in result:
-                result.pop("ansible.builtin.service_facts")
-                result["ansible.builtin.set_fact"] = {
-                    "ansible_facts": {
-                        "services": "{{ lookup('file', '"
-                        + str(service_state)
-                        + "') | from_json }}"
-                    }
-                }
-                result["changed_when"] = False
-            elif "ansible.builtin.systemd_service" in result:
-                module = result.pop("ansible.builtin.systemd_service")
-                if "name" in module:
-                    result["ansible.builtin.command"] = {
-                        "argv": [
-                            sys.executable,
-                            str(adapter),
-                            str(service_state),
-                            "stop",
-                            module["name"],
-                        ]
-                    }
-                    result["changed_when"] = True
-                else:
-                    result["ansible.builtin.debug"] = {"msg": "reload"}
-                    result["changed_when"] = False
-            elif "ansible.builtin.command" in result:
-                argv = result["ansible.builtin.command"]["argv"]
-                if argv and str(argv[0]).endswith("observability-deadman-pipeline.py"):
-                    result["ansible.builtin.command"]["argv"] = [
-                        sys.executable,
-                        "-c",
-                        PIPELINE_SOURCE.read_text(encoding="utf-8"),
-                        *argv[1:],
-                    ]
-            for module_name in ("ansible.builtin.file", "ansible.builtin.stat"):
-                if module_name in result:
-                    result[module_name].pop("owner", None)
-                    result[module_name].pop("group", None)
-            return result
-
-        adapted = [rooted(task) for task in tasks]
-        playbook = root / "nested-disable.yml"
-        playbook.write_text(
-            yaml.safe_dump(
-                [
-                    {
-                        "hosts": "localhost",
-                        "connection": "local",
-                        "become": False,
-                        "gather_facts": False,
-                        "vars": {
-                            "ansible_python_interpreter": sys.executable,
-                            "observability_control_plane": {
-                                "alerting": {
-                                    "deadman": {
-                                        "state_dir": str(state_dir),
-                                        "metrics_path": str(metrics),
-                                        "pulse_credential_path": str(
-                                            credentials / "deadman-pulse-token"
-                                        ),
-                                        "pulse_ca_path": str(
-                                            credentials / "deadman-pulse-ca.pem"
-                                        ),
-                                        "canary_auth_path": str(
-                                            credentials / "deadman-canary-auth-token"
-                                        ),
-                                    }
-                                }
-                            },
-                        },
-                        "tasks": adapted,
-                    }
-                ],
-                sort_keys=False,
-            ),
-            encoding="utf-8",
-        )
-
-        def run() -> subprocess.CompletedProcess[str]:
-            return subprocess.run(
-                ["ansible-playbook", "-i", "localhost,", str(playbook)],
-                cwd=ROOT,
-                capture_output=True,
-                text=True,
-                timeout=30,
-                check=False,
-            )
-
-        first = run()
-        assert first.returncode == 0, first.stdout + first.stderr
-        state = json.loads(service_state.read_text(encoding="utf-8"))
-        for name in surface_names:
-            assert state[name] == {"state": "stopped", "status": "disabled"}
-        subprocess.run(
-            [sys.executable, str(adapter), str(service_state), "reboot"],
-            check=True,
-        )
-        state = json.loads(service_state.read_text(encoding="utf-8"))
-        assert all(state[name]["state"] == "stopped" for name in surface_names)
-        assert state["observability-alertmanager.service"] == {
-            "state": "running",
-            "status": "enabled",
-        }
-        for path in [
-            *(units / name for name in surface_names),
-            helper,
-            credentials / "deadman-pulse-token",
-            credentials / "deadman-pulse-ca.pem",
-            credentials / "deadman-canary-auth-token",
-            metrics,
-        ]:
-            assert not path.exists()
-        assert not any(state_dir.glob("*.json"))
-        assert global_unit.read_text(encoding="utf-8") == "global-alerting\n"
-        assert global_config.read_text(encoding="utf-8") == "global-config\n"
-        first_tree = sorted(str(path.relative_to(root)) for path in root.rglob("*"))
-        second = run()
-        assert second.returncode == 0, second.stdout + second.stderr
-        assert (
-            sorted(str(path.relative_to(root)) for path in root.rglob("*"))
-            == first_tree
-        )
+def test_collector_disable_scopes_kuma_producers_without_erasing_legacy_credentials() -> None:
+    tasks = yaml.safe_load((CONTROL_ROLE / "tasks/disable.yml").read_text())
+    tasks += yaml.safe_load((CONTROL_ROLE / "tasks/alerting-disable.yml").read_text())
+    producer = next(task for task in tasks if task.get("ansible.builtin.include_role", {}).get("tasks_from") == "producers-disable")
+    assert producer["ansible.builtin.include_role"]["name"] == "observability_kuma"
+    assert producer["vars"]["observability_push_disable_kinds"] == ["pipeline", "delivery"]
+    removed = [item for task in tasks if task.get("ansible.builtin.file", {}).get("state") == "absent"
+               for item in task.get("loop", [])]
+    assert not any("deadman" in item for item in removed)
+    assert not (CONTROL_ROLE / "tasks/alerting-deadman-disable.yml").exists()
 
 
 @pytest.mark.parametrize(

@@ -303,6 +303,7 @@ observability_alert_policy:
     - nginx.service
     - observability-agent.service
     - observability-alertmanager.service
-    - observability-deadman.service
+    - observability-disk-guard.service
+    - observability-ingress.service
     - observability-prometheus.service
     - xray.service

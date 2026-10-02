@@ -358,7 +358,8 @@ def _local_file(path, private=False):
 def select_hosts(inventory_path, selected, *, primary_section="vpn", include_variables=False):
     if not selected or len(selected) != len(set(selected)) or any(not SAFE_NAME.fullmatch(s) or s == "all" for s in selected):
         raise InspectionError("explicit-host-subset-required")
-    if primary_section not in ("vpn", "vpn-observability-control", "vpn-observability-deadman"):
+    sections = ("vpn", "vpn-observability-control", "observability-kuma")
+    if primary_section not in sections:
         raise InspectionError("unsupported-inventory-section")
     try:
         with os.fdopen(_open_local_file(inventory_path), "rb") as stream:
@@ -386,13 +387,19 @@ def select_hosts(inventory_path, selected, *, primary_section="vpn", include_var
         if section in ("vpn:vars", "observability:vars"):
             target = global_vars if section == "vpn:vars" else observability_vars
             assignments = words
-        elif section in ("vpn", "vpn-observability-control", "vpn-observability-deadman"):
+        elif section == "vpn-observability-control" and len(words) == 1 and words[0] in hosts:
+            membership = hosts[words[0]]["__sections"]
+            if membership != {"vpn"}:
+                raise InspectionError("duplicate-or-invalid-host")
+            membership.add(section)
+            continue
+        elif section in sections:
             if not words or not SAFE_NAME.fullmatch(words[0]) or words[0] in hosts:
                 raise InspectionError("duplicate-or-invalid-host")
             target = hosts.setdefault(words[0], {})
-            target["__section"] = section
+            target["__sections"] = {section}
             assignments = words[1:]
-        elif section == "observability:children" and len(words) == 1 and words[0] in ("vpn", "vpn-observability-control", "vpn-observability-deadman"):
+        elif section == "observability:children" and len(words) == 1 and words[0] in sections:
             continue
         elif section.startswith("vpn-") and len(words) == 1 and SAFE_NAME.fullmatch(words[0]):
             continue
@@ -407,13 +414,13 @@ def select_hosts(inventory_path, selected, *, primary_section="vpn", include_var
             target[key] = value
     result = []
     for name in selected:
-        if name not in hosts or hosts[name].get("__section") != primary_section:
+        if name not in hosts or primary_section not in hosts[name].get("__sections", set()):
             raise InspectionError("host-not-found")
         host_values = hosts[name]
         if global_vars.keys() & host_values.keys():
             raise InspectionError("ambiguous-inventory-variable")
         inherited = dict(global_vars)
-        if primary_section != "vpn":
+        if observability_vars:
             for key, value in observability_vars.items():
                 if key in inherited and inherited[key] != value:
                     raise InspectionError("ambiguous-inventory-variable")
@@ -451,7 +458,7 @@ def select_hosts(inventory_path, selected, *, primary_section="vpn", include_var
                 "transport": _connection_name(values.get("inspection_transport_host", connection)),
                 "alias": _connection_name(values.get("inspection_host_key_alias", address))}
         if include_variables:
-            host["variables"] = {key: value for key, value in values.items() if key != "__section"}
+            host["variables"] = {key: value for key, value in values.items() if key != "__sections"}
         result.append(host)
     for key in ("alias", "transport"):
         identities = {(host[key].lower(), host["port"]) for host in result}

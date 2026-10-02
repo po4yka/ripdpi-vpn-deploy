@@ -5,10 +5,10 @@
   tasks:
     - name: Wait for the loopback agent readiness endpoint
       ansible.builtin.uri:
-        url: http://127.0.0.1:19090/-/ready
+        url: http://127.0.0.1:19090/ready
         status_code: 200
       register: observability_agent_ready
-      retries: 30
+      retries: 90
       delay: 1
       until: observability_agent_ready.status == 200
 
@@ -58,11 +58,11 @@
             print(json.dumps({
                 'arrived': arrived,
                 'received': len(rows),
-                'failed': maximum('prometheus_remote_storage_samples_failed_total'),
-                'retried': maximum('prometheus_remote_storage_samples_retried_total'),
-                'pending': maximum('prometheus_remote_storage_samples_pending'),
-                'highest': maximum('prometheus_remote_storage_queue_highest_timestamp_seconds'),
-                'highest_sent': maximum('prometheus_remote_storage_queue_highest_sent_timestamp_seconds'),
+                'failed': maximum('vmagent_remotewrite_errors_total'),
+                'retried': maximum('vmagent_remotewrite_retries_count_total'),
+                'pending_bytes': maximum('vmagent_remotewrite_pending_data_bytes'),
+                'blocks_sent': maximum('vmagent_remotewrite_blocks_sent_total'),
+                'bytes_dropped': maximum('vm_persistentqueue_bytes_dropped_total'),
                 'request_headers': events.count('headers'),
                 'length_rejected': events.count('length_rejected'),
                 'short_body': events.count('short_body'),
@@ -79,7 +79,7 @@
       register: observability_remote_write_arrival
       changed_when: false
       failed_when: false
-      retries: 30
+      retries: 90
       delay: 1
       until: observability_remote_write_arrival.rc == 0
 
@@ -424,10 +424,11 @@
             receiver = pathlib.Path("/var/lib/observability-fixture/receiver.log")
             rows = receiver.read_text().splitlines() if receiver.exists() else []
             required = (
-                "prometheus_remote_storage_queue_highest_timestamp_seconds",
-                "prometheus_remote_storage_queue_highest_sent_timestamp_seconds",
-                "prometheus_remote_storage_samples_failed_total",
-                "prometheus_remote_storage_samples_retried_total",
+                    "vmagent_remotewrite_pending_data_bytes",
+                    "vmagent_remotewrite_blocks_sent_total",
+                    "vmagent_remotewrite_errors_total",
+                    "vmagent_remotewrite_retries_count_total",
+                    "vm_persistentqueue_bytes_dropped_total",
             )
             if any(not values(name) for name in required):
                 raise SystemExit(2)
@@ -437,9 +438,11 @@
             }
             print(json.dumps({
                 "retry": max(
-                    max(values("prometheus_remote_storage_samples_failed_total")),
-                    max(values("prometheus_remote_storage_samples_retried_total")),
+                    max(values("vmagent_remotewrite_errors_total")),
+                    max(values("vmagent_remotewrite_retries_count_total")),
                 ),
+                "sent": max(values("vmagent_remotewrite_blocks_sent_total")),
+                "dropped": max(values("vm_persistentqueue_bytes_dropped_total")),
                 "received": sum(
                     json.loads(row) == expected for row in rows
                 ),
@@ -447,12 +450,12 @@
       register: observability_outage_baseline
       changed_when: false
 
-    - name: Stop receiver to exercise bounded local WAL evidence
+    - name: Stop receiver to exercise bounded persistent queue transport
       ansible.builtin.systemd_service:
         name: observability-receiver-fixture.service
         state: stopped
 
-    - name: Wait for a new remote-write retry and positive queue age
+    - name: Wait for a new remote-write retry and positive queue bytes
       ansible.builtin.command:
         argv:
           - /usr/bin/python3
@@ -473,25 +476,20 @@
                     re.M,
                 )]
                 return max(values) if values else 0.0
-            highest = maximum("prometheus_remote_storage_queue_highest_timestamp_seconds")
-            highest_sent = maximum(
-                "prometheus_remote_storage_queue_highest_sent_timestamp_seconds"
-            )
-            age = highest - highest_sent
+            pending = maximum("vmagent_remotewrite_pending_data_bytes")
             retry = max(
-                maximum("prometheus_remote_storage_samples_failed_total"),
-                maximum("prometheus_remote_storage_samples_retried_total"),
+                maximum("vmagent_remotewrite_errors_total"),
+                maximum("vmagent_remotewrite_retries_count_total"),
             )
             print(json.dumps({
-                "highest": highest,
-                "highest_sent": highest_sent,
+                "pending": pending,
                 "retry": retry,
             }, sort_keys=True))
-            raise SystemExit(0 if age > 0 and retry > float(sys.argv[1]) else 1)
+            raise SystemExit(0 if pending > 0 and retry > float(sys.argv[1]) else 1)
           - "{{ (observability_outage_baseline.stdout | from_json).retry }}"
       register: observability_outage_evidence
       changed_when: false
-      retries: 30
+      retries: 90
       delay: 1
       until: observability_outage_evidence.rc == 0
 
@@ -500,7 +498,7 @@
         name: observability-receiver-fixture.service
         state: started
 
-    - name: Wait for outage watermark recovery and new authenticated receiver arrival
+    - name: Wait for queued transport drain without discarded bytes
       ansible.builtin.command:
         argv:
           - /usr/bin/python3
@@ -532,22 +530,75 @@
             }
             received = sum(row == expected for row in rows)
             diagnostic = {
-                "outage_highest": float(sys.argv[2]),
-                "pending": maximum("prometheus_remote_storage_samples_pending"),
+                "pending": maximum("vmagent_remotewrite_pending_data_bytes"),
                 "received": received,
                 "sent": maximum(
-                    "prometheus_remote_storage_queue_highest_sent_timestamp_seconds"
+                    "vmagent_remotewrite_blocks_sent_total"
                 ),
+                "dropped": maximum("vm_persistentqueue_bytes_dropped_total"),
             }
             print(json.dumps(diagnostic, sort_keys=True))
             raise SystemExit(
-                0 if diagnostic["sent"] >= diagnostic["outage_highest"]
+                0 if diagnostic["sent"] > float(sys.argv[2])
+                and diagnostic["pending"] == 0
+                and diagnostic["dropped"] == float(sys.argv[3])
                 and received > int(sys.argv[1]) else 1
             )
           - "{{ (observability_outage_baseline.stdout | from_json).received }}"
-          - "{{ (observability_outage_evidence.stdout | from_json).highest }}"
+          - "{{ (observability_outage_baseline.stdout | from_json).sent }}"
+          - "{{ (observability_outage_baseline.stdout | from_json).dropped }}"
       register: observability_recovered_evidence
       changed_when: false
-      retries: 30
+      retries: 90
       delay: 1
       until: observability_recovered_evidence.rc == 0
+
+    - name: Load the same real fixture authority for failed activation acceptance
+      ansible.builtin.include_tasks: tasks/rollback-context.yml
+
+    - name: Exercise actual failed vmagent activation with retained queue bytes
+      block:
+        - name: Hold receiver offline while preparing retained rollback backlog
+          ansible.builtin.systemd_service:
+            name: observability-receiver-fixture.service
+            state: stopped
+
+        - name: Require actual persisted native backlog before activation failure
+          ansible.builtin.command:
+            argv:
+              - python3
+              - -c
+              - |
+                import re, urllib.request
+                text = urllib.request.urlopen('http://127.0.0.1:19090/metrics', timeout=5).read().decode()
+                def value(name):
+                    rows = re.findall(r'^' + name + r'(?:[{][^}]*[}])? ([0-9.eE+-]+)$', text, re.M)
+                    assert len(rows) == 1
+                    return float(rows[0])
+                assert value('vmagent_remotewrite_pending_data_bytes') > 0
+                assert value('vmagent_remotewrite_pending_inmemory_blocks') == 0
+          changed_when: false
+          register: _rollback_queue_persisted
+          retries: 90
+          delay: 2
+          until: _rollback_queue_persisted.rc == 0
+
+        - name: Prove actual failed vmagent activation restores its previous live generation
+          ansible.builtin.include_tasks: tasks/failed-activation.yml
+
+        - name: Require the retained queue remains pending after real recovery
+          ansible.builtin.command:
+            argv:
+              - python3
+              - -c
+              - |
+                import re, urllib.request
+                text = urllib.request.urlopen('http://127.0.0.1:19090/metrics', timeout=5).read().decode()
+                pending = re.findall(r'^vmagent_remotewrite_pending_data_bytes(?:[{][^}]*[}])? ([0-9.eE+-]+)$', text, re.M)
+                assert len(pending) == 1 and float(pending[0]) > 0
+          changed_when: false
+      always:
+        - name: Restore only the owned fixture receiver after the rollback proof
+          ansible.builtin.systemd_service:
+            name: observability-receiver-fixture.service
+            state: started

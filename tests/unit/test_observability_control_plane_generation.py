@@ -45,7 +45,9 @@ def test_disable_removes_only_owned_runtime_and_keeps_tsdb() -> None:
 
     assert "/var/lib/observability-prometheus" not in removed
     assert "observability-prometheus.service" in " ".join(removed)
-    assert "observability-remote-write.conf" in " ".join(removed)
+    assert "/etc/systemd/system/observability-ingress.service" in removed
+    assert not any(path.startswith("/etc/nginx/") for path in removed)
+    assert not any("credentials" in path or "latched" in path for path in removed)
     assert "Preserve TSDB on convergent disable" in tasks
 
 
@@ -55,10 +57,14 @@ def test_capacity_preflight_and_retention_have_no_auto_deletion_path() -> None:
         "observability_control_plane"
     ]
 
-    assert "Read filesystem capacity reserved for Prometheus TSDB" in source
-    assert "Require TSDB capacity before activation" in source
-    assert "split()[3]" in source
-    assert defaults["tsdb_required_bytes"] == 42949672960
+    assert (
+        "Require measured capacity and private address before host mutation" in source
+    )
+    assert "observability-disk-guard.py" in source
+    assert "--preflight" in source
+    assert defaults["tsdb_required_bytes"] == 2147483648
+    assert defaults["disk_reserve_bytes"] == 5368709120
+    assert defaults["disk_reserve_percent"] == 20
     assert (
         'path: "{{ observability_control_plane.data_dir }}"\n    state: absent'
         not in source
@@ -102,17 +108,27 @@ def test_generation_is_content_addressed_and_rollback_restores_the_original_link
     )
 
 
-def test_enable_removes_default_site_and_starts_nginx_after_policy_rc_d() -> None:
+def test_enable_preserves_shared_nginx_and_starts_only_isolated_ingress() -> None:
     tasks = _tasks("enable.yml")
     ordered = list(tasks)
 
-    assert ordered.index(
-        "Remove the distribution default ingress site"
-    ) < ordered.index("Validate ingress before reload")
-    nginx = tasks["Enable and start validated control-plane ingress"][
+    assert "Remove the distribution default ingress site" not in tasks
+    assert ordered.index("Render isolated write-only mTLS ingress") < ordered.index(
+        "Start isolated ingress without changing shared VPN nginx"
+    )
+    nginx = tasks["Start isolated ingress without changing shared VPN nginx"][
         "ansible.builtin.systemd_service"
     ]
-    assert nginx == {"name": "nginx", "enabled": True, "state": "started"}
+    assert nginx["name"] == "observability-ingress"
+    assert nginx["enabled"] is True
+    assert (
+        tasks["Install hardened ingress package"]["ansible.builtin.apt"]["policy_rc_d"]
+        == 101
+    )
+    assert not any(
+        task.get("ansible.builtin.systemd_service", {}).get("name") == "nginx"
+        for task in tasks.values()
+    )
 
 
 def test_playbook_keeps_the_control_plane_out_of_transport_site() -> None:
@@ -139,8 +155,17 @@ def test_enabled_molecule_declares_receiver_and_rollback_acceptance_boundaries()
         "authenticated GET refusal",
         "CN path mismatch",
         "oversized request",
-        "valid mTLS remote write reaches only loopback Prometheus",
-        "failed candidate rollback restores an immutable generation",
+        "invalid protobuf reaches real Prometheus and is rejected",
+        "published generation remains content-addressed",
         "TSDB free-space preflight remains enforced",
     ):
         assert required in verify
+    runtime = (ROLE / "molecule/enabled/tasks/bounded-runtime.yml").read_text()
+    for proof in [
+        "real_agent_remote_write_missing",
+        "actual_filesystem_high_water=pass",
+        "exact_historical_queue_sample_not_recovered_",
+        "vm_persistentqueue_blocks_written_total",
+        "vmagent_remotewrite_pending_inmemory_blocks",
+    ]:
+        assert proof in runtime

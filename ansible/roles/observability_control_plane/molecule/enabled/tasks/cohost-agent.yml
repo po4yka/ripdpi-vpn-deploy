@@ -1,0 +1,23 @@
+---
+- name: Define the real cohosted bounded agent
+  ansible.builtin.set_fact:
+    observability_contract: {schema_version: 1, credential_mode: systemd}
+    node_manifest: {path: /var/lib/ripdpi-vpn-deploy/manifest.json}
+    node_manifest_source_revision: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    node_manifest_deployable_digest: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    observability_push: "{{ observability_push | combine({'kinds': ['node']}) }}"
+    observability_agent: >-
+      {{ (lookup('ansible.builtin.file', playbook_dir ~ '/../../../observability_agent/defaults/main.yml')
+      | from_yaml).observability_agent | combine({
+      'enabled': true, 'version': 'v1.153.0', 'node_id': 'vpn-p0', 'environment': 'staging',
+      'receiver_origin': 'https://10.23.0.2:9443', 'receiver_address': '10.23.0.2',
+      'release_urls': {
+        'amd64': 'https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.153.0/vmutils-linux-amd64-v1.153.0.tar.gz',
+        'arm64': 'https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/v1.153.0/vmutils-linux-arm64-v1.153.0.tar.gz'},
+      'linux_amd64_sha256': '85aea24a4829cf26033d810aceb7888070bd4eaff321357168ff6db24bf7c00c',
+      'linux_arm64_sha256': '8153c4feb73564215950a299c803d5c1e974772cd34b8c162d43ea2c5b516df5'}) }}
+  no_log: true
+
+- name: Converge the bounded cohosted agent
+  ansible.builtin.include_role:
+    name: observability_agent

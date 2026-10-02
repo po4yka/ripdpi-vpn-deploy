@@ -4,6 +4,7 @@ After=observability-alertmanager.service
 Requires=observability-alertmanager.service
 
 [Service]
+Slice=observability-collector.slice
 User=observability-silence
 Group=observability-silence
 LoadCredential=silence-policy.json:/etc/observability-control-plane/credentials/silence-policy.json

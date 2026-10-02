@@ -1,18 +1,21 @@
 ---
-- name: Gather protocol-liveness adapter service facts
-  ansible.builtin.service_facts:
-
-- name: Stop and disable protocol-liveness adapter units
-  ansible.builtin.systemd_service:
-    name: "{{ item }}"
-    enabled: false
-    state: stopped
+- name: Inspect protocol-liveness adapter owned units
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/{{ item }}"
   loop:
     - observability-protocol-liveness-adapter.timer
     - observability-protocol-liveness-adapter.service
+  register: _observability_protocol_liveness_units
+
+- name: Stop and disable protocol-liveness adapter units
+  ansible.builtin.systemd_service:
+    name: "{{ item.item }}"
+    enabled: false
+    state: stopped
+  loop: "{{ _observability_protocol_liveness_units.results }}"
   when:
     - not ansible_check_mode
-    - item in ansible_facts.services
+    - item.stat.exists
 
 - name: Remove protocol-liveness adapter owned surfaces
   ansible.builtin.file:

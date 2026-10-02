@@ -1,13 +1,13 @@
 [Unit]
-Description=Schedule the independent observability pipeline pulse
+Description=Schedule qualified server-control heartbeat
 
 [Timer]
-OnBootSec=60s
+OnBootSec=30s
 OnUnitActiveSec=60s
 AccuracySec=1s
 RandomizedDelaySec=0
 Persistent=true
-Unit=observability-deadman-pulse.service
+Unit=observability-push-server-control.service
 
 [Install]
 WantedBy=timers.target

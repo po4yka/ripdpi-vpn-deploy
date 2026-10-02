@@ -1,6 +1,22 @@
 PROVIDER ?= upcloud
 ENV      ?= prod
 
+ifneq ($(filter observability-pki-prepare,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error observability PKI preparation requires exactly one make goal)
+endif
+_OBSERVABILITY_PKI_ALLOWED := OBSERVABILITY_PKI_CONFIG OBSERVABILITY_PKI_OUTPUT
+_OBSERVABILITY_PKI_COMMAND := $(foreach variable,$(.VARIABLES),$(if $(filter command line override,$(origin $(variable))),$(variable)))
+ifneq ($(strip $(filter-out $(_OBSERVABILITY_PKI_ALLOWED),$(_OBSERVABILITY_PKI_COMMAND))),)
+$(error observability PKI preparation accepts only private configuration and output paths)
+endif
+override OBSERVABILITY_PKI_CONFIG_LITERAL := $(value OBSERVABILITY_PKI_CONFIG)
+override OBSERVABILITY_PKI_OUTPUT_LITERAL := $(value OBSERVABILITY_PKI_OUTPUT)
+export OBSERVABILITY_PKI_CONFIG_LITERAL OBSERVABILITY_PKI_OUTPUT_LITERAL
+unexport OBSERVABILITY_PKI_CONFIG OBSERVABILITY_PKI_OUTPUT MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+endif
+
 # The staging acceptance coordinator accepts only three private absolute paths.
 # Capture command-line values literally before any included make logic can
 # expand them, and expose no generic action or environment selector.
@@ -446,7 +462,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         emit-sbom molecule-full-stack audit-log audit-log-append pyinfra-audit \
         setup-yubikey check-killswitch install-operator-crons \
         remove-operator-crons issue-sub-token sub-reads \
-        observability-render observability-validate observability-status observability-host-bootstrap \
+        observability-render observability-check observability-validate observability-status observability-host-bootstrap observability-pki-prepare \
         observability-drill observability-deploy observability-rotate observability-rollback \
         observability-remove observability-silence-create observability-silence-delete observability-staging-prepare observability-staging-materialize observability-staging-acceptance \
         observability-staging-cleanup-preflight observability-staging-cleanup-snapshot observability-staging-cleanup-seal observability-staging-cleanup-validate observability-staging-cleanup \
@@ -553,8 +569,9 @@ help:
 	@echo "  diff-secrets               Drift: deployed config vs current secrets"
 	@echo ""
 	@echo "── OBSERVABILITY / DEFENSIVE ──────────────────────────────────────────"
-	@echo "  observability-{render,validate,status}  Exact-host configuration/read surface"
-	@echo "  observability-host-bootstrap  Exact staging control/dead-man host baseline (CHECK=1 for check mode)"
+	@echo "  observability-{render,validate}  Local template/syntax validation"
+	@echo "  observability-{check,status}  Explicit exact-host inspection"
+	@echo "  observability-pki-prepare  Encrypt private-IP SAN PKI for existing collector/observer"
 	@echo "  observability-{drill,deploy,rotate,rollback,remove}  Confirmed exact-host lifecycle"
 	@echo "  observability-staging-prepare  Create a new private staging input root"
 	@echo "  observability-staging-materialize  Decrypt the prepared runtime fragment locally"
@@ -1419,7 +1436,7 @@ OBSERVABILITY_ENVIRONMENT ?=
 OBSERVABILITY_KNOWN_HOSTS ?= $(HOME)/.ssh/known_hosts
 OBSERVABILITY_SECRETS_FILE ?= $(SECRETS_FILE)
 
-ifneq ($(filter observability-render observability-validate observability-status observability-host-bootstrap observability-drill observability-deploy observability-rotate observability-rollback observability-remove observability-silence-create observability-silence-delete,$(MAKECMDGOALS)),)
+ifneq ($(filter observability-render observability-check observability-validate observability-status observability-host-bootstrap observability-drill observability-deploy observability-rotate observability-rollback observability-remove observability-silence-create observability-silence-delete,$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error observability operator commands require exactly one make goal)
 endif
@@ -1460,7 +1477,15 @@ endef
 
 observability-render:
 	@python3 scripts/observability-operator.py render $(observability_common) \
-	  --secrets "$${OBSERVABILITY_SECRETS_LITERAL}" --vars "$${OBSERVABILITY_VARS_LITERAL}"
+	    --secrets "$${OBSERVABILITY_SECRETS_LITERAL}" --vars "$${OBSERVABILITY_VARS_LITERAL}"
+
+observability-pki-prepare:
+	@python3 scripts/prepare-observability-pki.py \
+	  --config "$${OBSERVABILITY_PKI_CONFIG_LITERAL}" --output "$${OBSERVABILITY_PKI_OUTPUT_LITERAL}"
+
+observability-check:
+	@python3 scripts/observability-operator.py check $(observability_common) \
+	  --secrets "$${OBSERVABILITY_SECRETS_LITERAL}" --vars "$${OBSERVABILITY_VARS_LITERAL}" --confirm-host-access
 
 observability-validate:
 	@python3 scripts/observability-operator.py validate $(observability_common) \

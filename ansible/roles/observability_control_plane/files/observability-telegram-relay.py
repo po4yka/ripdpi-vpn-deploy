@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import hmac
 import html
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -219,7 +221,10 @@ def deliver(
     message: str,
     opener: Callable[..., object] | None = None,
     sleeper: Callable[[float], None] = time.sleep,
-) -> None:
+    method: str = "sendMessage",
+    message_id: int | None = None,
+    silent: bool = False,
+) -> dict[str, object]:
     validate_delivery_contract(api_url, token, chat_id, topic_id)
     open_request = opener or _open_without_redirect
     body: dict[str, object] = {
@@ -228,10 +233,18 @@ def deliver(
         "parse_mode": "HTML",
         "disable_web_page_preview": True,
     }
+    if method not in {"sendMessage", "editMessageText"}:
+        raise Refusal("delivery-method")
+    if method == "editMessageText":
+        if type(message_id) is not int or message_id <= 0:
+            raise Refusal("message-identity")
+        body["message_id"] = message_id
+    if silent:
+        body["disable_notification"] = True
     if topic_id:
         body["message_thread_id"] = topic_id
     outbound = request.Request(
-        f"{TELEGRAM_API_URL}/bot{parse.quote(token, safe=':_-')}/sendMessage",
+        f"{TELEGRAM_API_URL}/bot{parse.quote(token, safe=':_-')}/{method}",
         data=json.dumps(body, separators=(",", ":")).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",
@@ -247,7 +260,7 @@ def deliver(
                 parsed = json.loads(raw)
                 if not isinstance(parsed, dict) or parsed.get("ok") is not True:
                     raise DeliveryFailure("upstream-response")
-                return
+                return parsed
         except error.HTTPError as exc:
             try:
                 retryable = exc.code == 429 or 500 <= exc.code <= 599
@@ -262,6 +275,129 @@ def deliver(
             raise DeliveryFailure("upstream-failure")
         sleeper(delay)
     raise DeliveryFailure("upstream-failure")
+
+
+class Receipts:
+    """One bounded durable record, serialized across canary and webhook threads."""
+
+    def __init__(self, path: Path, authority: str = ""):
+        self.path = path
+        self.lock = threading.Lock()
+        self.value = {
+            "rule_to_relay_at": 0,
+            "edit_sequence": 0,
+            "edit_at": 0,
+            "send_at": 0,
+            "message_id": 0,
+            "authority": authority,
+        }
+        if path.exists():
+            metadata = path.lstat()
+            if not path.is_file() or path.is_symlink() or metadata.st_size > 1024:
+                raise Refusal("receipt-state")
+            value = json.loads(path.read_bytes())
+            if (
+                set(value) != set(self.value)
+                or any(
+                    type(v) is not int or v < 0
+                    for key, v in value.items()
+                    if key != "authority"
+                )
+                or not isinstance(value["authority"], str)
+            ):
+                raise Refusal("receipt-state")
+            if value["authority"] == authority:
+                self.value = value
+            else:
+                self.value["edit_sequence"] = value["edit_sequence"]
+                self.save()
+
+    def save(self):
+        temporary = self.path.with_suffix(".pending")
+        descriptor = os.open(
+            temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600
+        )
+        try:
+            os.write(descriptor, json.dumps(self.value, separators=(",", ":")).encode())
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        os.replace(temporary, self.path)
+        directory = os.open(self.path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+
+    def snapshot(self):
+        with self.lock:
+            return {
+                key: value
+                for key, value in self.value.items()
+                if key not in {"message_id", "authority"}
+            }
+
+    def pipeline(self, payload, now):
+        if payload["status"] != "firing" or len(payload["alerts"]) != 1:
+            raise Refusal("canary-payload")
+        alert = payload["alerts"][0]
+        if alert["labels"].get("alertname") != "ObservabilityPipelineCanary":
+            raise Refusal("canary-name")
+        try:
+            evaluated = float(alert["annotations"]["evaluated_at"])
+        except (KeyError, ValueError, TypeError) as exc:
+            raise Refusal("canary-freshness") from exc
+        if not math.isfinite(evaluated) or not 0 <= now - evaluated <= 150:
+            raise Refusal("canary-freshness")
+        with self.lock:
+            if int(evaluated) <= self.value["rule_to_relay_at"]:
+                raise Refusal("canary-replay")
+            self.value["rule_to_relay_at"] = int(evaluated)
+            self.save()
+
+    def canary(self, config, now):
+        with self.lock:
+            # Revoke prior freshness before attempting the real API calls.
+            self.value["edit_at"] = 0
+            self.save()
+            sequence = self.value["edit_sequence"] + 1
+            kwargs = dict(
+                api_url=str(config["api_url"]),
+                token=str(config["bot_token"]),
+                chat_id=str(config["chat_id"]),
+                topic_id=int(config["topic_id"]),
+            )
+            if (
+                not self.value["message_id"]
+                or not 0 <= now - self.value["send_at"] < 86400
+            ):
+                result = deliver(
+                    **kwargs,
+                    message=f"Monitoring delivery canary {sequence}",
+                    silent=True,
+                )
+                receipt = result.get("result")
+                message_id = (
+                    receipt.get("message_id") if isinstance(receipt, dict) else None
+                )
+                if type(message_id) is not int or message_id <= 0:
+                    raise DeliveryFailure("canary-send-receipt")
+                self.value.update(message_id=message_id, send_at=now)
+                self.save()
+            result = deliver(
+                **kwargs,
+                message=f"Monitoring delivery canary sequence {sequence}",
+                method="editMessageText",
+                message_id=self.value["message_id"],
+            )
+            receipt = result.get("result")
+            if (
+                not isinstance(receipt, dict)
+                or receipt.get("message_id") != self.value["message_id"]
+            ):
+                raise DeliveryFailure("canary-edit-receipt")
+            self.value.update(edit_sequence=sequence, edit_at=now)
+            self.save()
 
 
 def _credential(name: str) -> str:
@@ -312,17 +448,38 @@ def handler(config: dict[str, object]):  # type: ignore[no-untyped-def]
             self.wfile.write(body)
 
         def do_GET(self) -> None:  # noqa: N802
+            if self.path == "/v1/receipts" and self._authorized():
+                body = json.dumps(
+                    config["receipts"].snapshot(), separators=(",", ":")
+                ).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
             if self.path != "/-/ready" or not self._authorized():
                 self._reply(404 if self.path != "/-/ready" else 401, "refused")
                 return
             self._reply(200, "ready")
 
         def do_POST(self) -> None:  # noqa: N802
-            if self.path != "/alert":
+            if self.path not in {"/alert", "/v1/delivery-canary"}:
                 self._reply(404, "refused")
                 return
             if not self._authorized():
                 self._reply(401, "refused")
+                return
+            if self.path == "/v1/delivery-canary":
+                if self.headers.get("Content-Length", "0") not in {"0", "2"}:
+                    self._reply(400, "refused")
+                    return
+                try:
+                    config["receipts"].canary(config, int(time.time()))
+                except (OSError, ValueError, DeliveryFailure):
+                    self._reply(502, "delivery-failed")
+                    return
+                self._reply(200, "delivered")
                 return
             if self.headers.get("Content-Type") != "application/json":
                 self._reply(400, "refused")
@@ -337,6 +494,10 @@ def handler(config: dict[str, object]):  # type: ignore[no-untyped-def]
                 return
             try:
                 payload = parse_payload(self.rfile.read(length))
+                if payload["receiver"] == "telegram-canary":
+                    config["receipts"].pipeline(payload, int(time.time()))
+                    self._reply(200, "received")
+                    return
                 message = render_message(payload)
                 deliver(
                     api_url=str(config["api_url"]),
@@ -396,6 +557,7 @@ def main() -> int:
     parser.add_argument("--topic-id", type=int, required=True)
     parser.add_argument("--bot-credential", required=True)
     parser.add_argument("--auth-credential", required=True)
+    parser.add_argument("--state-dir", default="/var/lib/observability-telegram-relay")
     args = parser.parse_args()
     try:
         if args.serve != "serve" or args.listen != "127.0.0.1:19095":
@@ -415,6 +577,18 @@ def main() -> int:
         )
         if not re.fullmatch(r"[a-f0-9]{64}", config["auth_token"]):
             raise Refusal("auth-contract")
+        authority = hashlib.sha256(
+            json.dumps(
+                [
+                    config["bot_token"],
+                    config["chat_id"],
+                    config["topic_id"],
+                    config["auth_token"],
+                ],
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        config["receipts"] = Receipts(Path(args.state_dir) / "receipts.json", authority)
         server = RelayServer(("127.0.0.1", 19095), handler(config))
         server.serve_forever()
     except (OSError, Refusal, UnicodeError):

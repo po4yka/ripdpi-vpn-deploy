@@ -71,10 +71,18 @@ def test_observability_secrets_scope_matches_topology(tmp_path, scope):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     topology = tmp_path / "topology.json"
-    topology.write_text(json.dumps({"nodes": [
-        {"node_id": "upcloud-staging", "environment": "staging", "host_class": "vpn"},
-    ]}))
-    doc = {"observability_secrets": {"senders": [{"node_id": "upcloud-staging"}]}}
+    topology.write_text(json.dumps({
+        "schema_version": 2, "credential_mode": "systemd", "source_revision": "a" * 40,
+        "observer": {"kind": "uptime-kuma", "host_alias": "observer-a", "failure_domain": "observer-a"},
+        "nodes": [{"node_id": "upcloud-staging", "provider": "upcloud", "environment": "staging",
+                   "capabilities": ["vpn", "collector"], "failure_domain": "node-a", "public_listeners": []}],
+    }))
+    doc = {
+        "observability_secrets": {"senders": [{"node_id": "upcloud-staging"}]},
+        "observability_kuma_secrets": {"push_monitors": [
+            {"node_id": "upcloud-staging", "kind": kind} for kind in ("node", "pipeline", "delivery")
+        ]},
+    }
     errors = module._observability_topology_errors(doc, topology, scope)
     assert bool(errors) is (scope != ["staging"])
 
@@ -199,9 +207,39 @@ def test_example_validates_lenient(example_doc):
 
 
 def test_observability_secret_authorities_are_versioned_and_distinct(example_doc, schema):
-    for name in ("observability_secrets", "observability_deadman_secrets"):
+    for name in ("observability_secrets", "observability_kuma_secrets", "observability_deadman_secrets"):
         assert example_doc[name]["schema_version"] == 1
         assert schema["properties"][name]["properties"]["schema_version"] == {"const": 1}
+
+
+@pytest.mark.parametrize("fault", ["primary-bot", "primary-ca", "primary-certificate", "duplicate-token", "duplicate-check", "duplicate-binding"])
+def test_kuma_credential_isolation_rejects_reused_authority(tmp_path, fault):
+    doc = yaml.safe_load(PLAIN_FIXTURE.read_text())
+    kuma = doc["observability_kuma_secrets"]
+    if fault == "primary-bot":
+        kuma["telegram"]["bot_token"] = doc["observability_secrets"]["telegram"]["bot_token"]
+    elif fault == "primary-ca":
+        kuma["tls"]["ca_pem"] = doc["observability_secrets"]["receiver_ca_pem"]
+    elif fault == "primary-certificate":
+        kuma["tls"]["server_cert_pem"] = doc["observability_secrets"]["ingress_certificate_pem"]
+    elif fault == "duplicate-token":
+        kuma["push_monitors"][1]["token"] = kuma["push_monitors"][0]["token"]
+    elif fault == "duplicate-check":
+        kuma["push_monitors"][1]["check_id"] = kuma["push_monitors"][0]["check_id"]
+    else:
+        kuma["push_monitors"][1]["kind"] = "node"
+    result = _validate_cli_with_selector(doc, tmp_path, enabled=True)
+    assert result.returncode == 1
+    assert "duplicate" in result.stderr
+    assert kuma["telegram"]["bot_token"] not in result.stderr
+    assert kuma["push_monitors"][0]["token"] not in result.stderr
+
+
+@pytest.mark.parametrize("field", ["ca_pem", "server_cert_pem", "server_key_pem"])
+def test_kuma_tls_requires_complete_authority(example_doc, field):
+    doc = deepcopy(example_doc)
+    del doc["observability_kuma_secrets"]["tls"][field]
+    assert list(_validator().iter_errors(doc))
 
 
 @pytest.mark.parametrize("field", ["ca_pem", "server_cert_pem", "server_key_pem"])
@@ -502,6 +540,7 @@ def test_observability_rotation_is_single_authority_complete_and_bounded(
 
 
 def test_one_bounded_observability_rotation_validates(filled, tmp_path):
+    filled["observability_kuma_secrets"] = yaml.safe_load(PLAIN_FIXTURE.read_text())["observability_kuma_secrets"]
     cert = "-----BEGIN CERTIFICATE-----\n" + "C" * 64 + "\n-----END CERTIFICATE-----\n"
     private = _fake_private_key("P")
     filled["observability_secrets"] = {

@@ -1,5 +1,62 @@
 {% set policy = observability_alert_policy -%}
 groups:
+  - name: observability_pipeline_canary
+    interval: 30s
+    rules:
+      - alert: ObservabilityPipelineCanary
+        expr: vector(time())
+        for: 0s
+        keep_firing_for: 0s
+        labels:
+          severity: watchdog
+          environment: "{{ observability_control_plane.alerting.silence_gateway.environment }}"
+          node: collector
+          component: observability-pipeline
+        annotations:
+          evaluated_at: '{% raw %}{{ $value }}{% endraw %}'
+          incident_family: observability-pipeline
+          source_generation: "{{ observability_control_plane.alerting.source_generation }}"
+          summary: Synthetic rule-to-relay freshness receipt.
+          evidence_class: synthetic-pipeline
+          runbook: docs/RUNBOOK-incident.md
+{% for kind in ['node', 'pipeline', 'delivery'] %}
+{% for node in (observability_push.expected_nodes if kind == 'node' else [observability_push.node_id]) %}
+{% set selector = 'environment="' ~ observability_control_plane.alerting.silence_gateway.environment ~ '",node="' ~ node ~ '",kind="' ~ kind ~ '"' %}
+      - alert: ObservabilityExternalCoverageUnavailable
+        expr: >-
+          max((observability_push_success{ {{ selector }} } == 0)
+          or (time() - observability_push_last_success_timestamp_seconds{ {{ selector }} } > {{ 660 if kind == 'delivery' else 180 }})
+          or absent(observability_push_success{ {{ selector }} })
+          or absent(observability_push_last_success_timestamp_seconds{ {{ selector }} }))
+        for: 1m
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels:
+          severity: critical
+          component: observability-external-coverage
+          environment: "{{ observability_control_plane.alerting.silence_gateway.environment }}"
+          node: "{{ node }}"
+          kind: "{{ kind }}"
+        annotations:
+          source_generation: "{{ observability_control_plane.alerting.source_generation }}"
+          summary: Independent monitoring coverage is unavailable; VPN reachability is unknown.
+          incident_family: observability-external-coverage
+          evidence_class: external-coverage-unavailable
+          runbook: docs/RUNBOOK-incident.md
+{% endfor %}
+{% endfor %}
+  - name: observability_agent_delivery
+    rules:
+      - alert: ObservabilityAgentDeliveryLoss
+        expr: >-
+          (max by (environment, node) (increase(vmagent_remotewrite_packets_dropped_total[5m]) > bool 0) > 0)
+          or (max by (environment, node) (increase(vmagent_remotewrite_samples_dropped_total[5m]) > bool 0) > 0)
+          or (max by (environment, node) (increase(vm_persistentqueue_bytes_dropped_total[5m]) > bool 0) > 0)
+          or (max by (environment, node) (increase(vm_persistentqueue_blocks_dropped_total[5m]) > bool 0) > 0)
+          or (max by (environment, node) (increase(vm_rows_ignored_total[5m]) > bool 0) > 0)
+        for: 0s
+        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
+        labels: {severity: "{{ policy.warning_severity }}", component: observability-agent}
+        annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/RUNBOOK-incident.md}
   - name: observability_node_resource_service
     rules:
       - alert: ObservabilityNodeCpuPressure
@@ -232,50 +289,3 @@ groups:
           source_generation: "{{ observability_control_plane.alerting.source_generation }}"
           summary: Approved isolated restore evidence is stale.
           runbook: docs/RUNBOOK-restore.md
-{% if observability_control_plane.alerting.deadman.enabled %}
-  - name: observability_pipeline_watchdog
-    rules:
-      - alert: ObservabilityPipelineWatchdog
-        expr: vector(1)
-        for: 1m
-        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
-        labels:
-          severity: watchdog
-          component: observability-pipeline
-        annotations:
-          incident_family: observability-deadman
-          evidence_class: synthetic-pipeline-watchdog
-          source_generation: "{{ observability_control_plane.alerting.source_generation }}"
-          summary: Synthetic observability pipeline watchdog is firing.
-          runbook: docs/RUNBOOK-incident.md
-      - alert: ObservabilityDeadmanReverseMissing
-        expr: >-
-          absent(vpn_observability_deadman_reverse_timestamp_seconds{generation="{{ observability_control_plane.alerting.source_generation }}"})
-          or (time() - vpn_observability_deadman_reverse_timestamp_seconds{generation="{{ observability_control_plane.alerting.source_generation }}"}) > 300
-        for: 1m
-        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
-        labels:
-          severity: critical
-          component: observability-pipeline
-        annotations:
-          incident_family: observability-deadman
-          evidence_class: reverse-heartbeat-missing
-          source_generation: "{{ observability_control_plane.alerting.source_generation }}"
-          summary: Independent dead-man reverse health is missing or stale.
-          runbook: docs/RUNBOOK-incident.md
-      - alert: ObservabilityDeadmanReverseUnhealthy
-        expr: >-
-          max by (check, state)
-          (vpn_observability_deadman_health{generation="{{ observability_control_plane.alerting.source_generation }}",state=~"error|failed|incident|never"}) == 1
-        for: 1m
-        keep_firing_for: {{ observability_control_plane.alerting.recovery_stability }}
-        labels:
-          severity: critical
-          component: observability-pipeline
-        annotations:
-          incident_family: observability-deadman
-          evidence_class: reverse-heartbeat-unhealthy
-          source_generation: "{{ observability_control_plane.alerting.source_generation }}"
-          summary: Independent dead-man reported an unhealthy bounded subsystem.
-          runbook: docs/RUNBOOK-incident.md
-{% endif -%}

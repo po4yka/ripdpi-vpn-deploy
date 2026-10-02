@@ -15,6 +15,7 @@ import fcntl
 import hashlib
 import hmac
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -780,8 +781,36 @@ print(json.dumps({"schema_version":1,"state":"advancing","metric":"vpn_observabi
 """
 
 
+def _sender_transport_program() -> str:
+    return """import ipaddress, re, subprocess
+from urllib.parse import urlsplit
+def sender_transport():
+ def main_pid():
+  result=subprocess.run(["/usr/bin/systemctl","show","observability-agent.service","--property=MainPID","--value"],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=5,check=False)
+  if result.returncode or not re.fullmatch(rb"[1-9][0-9]{0,9}\\n?",result.stdout) or int(result.stdout)<=1: raise SystemExit(2)
+  return int(result.stdout)
+ pid=main_pid()
+ with open("/proc/"+str(pid)+"/cmdline","rb") as stream: raw=stream.read(16385)
+ if len(raw)>16384 or not raw.endswith(b"\\0") or main_pid()!=pid: raise SystemExit(2)
+ args=raw[:-1].decode("utf-8").split("\\0")
+ if not args or args[0]!="/usr/local/bin/vmagent-observability-agent": raise SystemExit(2)
+ args=[args[0]]+["-"+arg.lstrip("-") if arg.startswith("-") else arg for arg in args[1:]]
+ def flag(name):
+  prefix="-"+name+"="; found=[arg[len(prefix):] for arg in args[1:] if arg.startswith(prefix)]
+  if "-"+name in args or len(found)!=1 or not found[0]: raise SystemExit(2)
+  return found[0]
+ if any(arg.startswith("-remoteWrite.tlsInsecureSkipVerify") and arg!="-remoteWrite.tlsInsecureSkipVerify=false" for arg in args[1:]): raise SystemExit(2)
+ parsed=urlsplit(flag("remoteWrite.url")); server=flag("remoteWrite.tlsServerName")
+ if parsed.scheme!="https" or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.port!=9443 or parsed.hostname!=server: raise SystemExit(2)
+ address=ipaddress.ip_address(server)
+ if not any(address in ipaddress.ip_network(network) for network in ("10.0.0.0/8","172.16.0.0/12","192.168.0.0/16","100.64.0.0/10")): raise SystemExit(2)
+ if not re.fullmatch(r"/remote-write/v1/nodes/[a-z][a-z0-9_-]{0,63}",parsed.path): raise SystemExit(2)
+ return parsed,server
+"""
+
+
 def _ingestion_negative_program() -> bytes:
-    return b"""import json, os, re, socket, ssl, stat
+    return (_sender_transport_program() + """import json, os, re, socket, ssl, stat
 from urllib.parse import urlsplit
 root="/etc/observability-agent/credentials"
 current=os.path.join(root,"current")
@@ -791,12 +820,7 @@ if not os.path.islink(current) or not resolved.startswith(generations): raise Sy
 for name,mode in (("prometheus.yml",0o644),("receiver-ca.crt",0o600),("client.crt",0o600),("client.key",0o600)):
  path=os.path.join(resolved,name); info=os.stat(path,follow_symlinks=False)
  if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or stat.S_IMODE(info.st_mode)!=mode or info.st_nlink!=1: raise SystemExit(2)
-config=open(os.path.join(resolved,"prometheus.yml"),encoding="utf-8").read(65537)
-urls=re.findall(r'^\\s*- url: "(https://[^"\\s]+)"$',config,re.M)
-snis=re.findall(r'^\\s*server_name: "([^"\\s]+)"$',config,re.M)
-if len(urls)!=1 or len(snis)!=1: raise SystemExit(2)
-parsed=urlsplit(urls[0])
-if parsed.scheme!="https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment: raise SystemExit(2)
+parsed,server_name=sender_transport()
 port=parsed.port or 443
 def status(path,method="POST",identity=True,tls=True,body=b"x"):
  sock=socket.create_connection((parsed.hostname,port),timeout=5)
@@ -804,8 +828,8 @@ def status(path,method="POST",identity=True,tls=True,body=b"x"):
   if tls:
    context=ssl.create_default_context(cafile=os.path.join(resolved,"receiver-ca.crt"))
    if identity: context.load_cert_chain(os.path.join(resolved,"client.crt"),os.path.join(resolved,"client.key"))
-   sock=context.wrap_socket(sock,server_hostname=snis[0])
-  request=(method+" "+path+" HTTP/1.1\\r\\nHost: "+snis[0]+"\\r\\nConnection: close\\r\\nContent-Type: application/x-protobuf\\r\\nContent-Length: "+str(len(body))+"\\r\\n\\r\\n").encode()+body
+   sock=context.wrap_socket(sock,server_hostname=server_name)
+  request=(method+" "+path+" HTTP/1.1\\r\\nHost: "+server_name+"\\r\\nConnection: close\\r\\nContent-Type: application/x-protobuf\\r\\nContent-Length: "+str(len(body))+"\\r\\n\\r\\n").encode()+body
   sock.sendall(request); raw=sock.recv(4097)
   match=re.match(br"HTTP/1[.]1 ([0-9]{3}) ",raw)
   return int(match.group(1)) if match else None
@@ -825,48 +849,92 @@ wrong_node=parsed.path.rsplit("/",1)[0]+"/rejected-cross-node"
 checks=(http_rejected(wrong_node),http_rejected(parsed.path,method="GET",body=b""),http_rejected("/api/v1/query",method="GET",body=b""),http_rejected("/-/ready",method="GET",body=b""),transport_or_http_rejected(parsed.path,tls=False),transport_or_http_rejected(parsed.path,identity=False))
 if not all(checks): raise SystemExit(2)
 print(json.dumps({"schema_version":1,"state":"verified"},sort_keys=True))
-"""
+""").encode()
 
 
-def _wal_metrics_program() -> bytes:
-    return b"""import json, re, urllib.request
+AGENT_QUEUE_METRICS = (
+    "vmagent_remotewrite_pending_data_bytes",
+    "vmagent_remotewrite_pending_inmemory_blocks",
+    "vmagent_remotewrite_errors_total",
+    "vmagent_remotewrite_retries_count_total",
+    "vmagent_remotewrite_packets_dropped_total",
+    "vmagent_remotewrite_samples_dropped_total",
+    "vmagent_remotewrite_blocks_sent_total",
+    "vm_persistentqueue_bytes_dropped_total",
+    "vm_persistentqueue_blocks_dropped_total",
+    "process_start_time_seconds",
+)
+AGENT_QUEUE_DROP_METRICS = (
+    "vmagent_remotewrite_packets_dropped_total",
+    "vmagent_remotewrite_samples_dropped_total",
+    "vm_persistentqueue_bytes_dropped_total",
+    "vm_persistentqueue_blocks_dropped_total",
+)
+
+
+def _queue_metrics_program() -> bytes:
+    return (_sender_transport_program() + f"names={AGENT_QUEUE_METRICS!r}\n" + """import json, math, re, time, urllib.request
 opener=urllib.request.build_opener(urllib.request.ProxyHandler({}))
 with opener.open("http://127.0.0.1:19090/metrics",timeout=5) as response: raw=response.read(1048577)
 if len(raw)>1048576: raise SystemExit(2)
 text=raw.decode("utf-8")
-names=("prometheus_remote_storage_samples_pending","prometheus_remote_storage_samples_failed_total","prometheus_remote_storage_samples_retried_total","prometheus_remote_storage_samples_dropped_total","prometheus_remote_storage_queue_highest_timestamp_seconds","prometheus_remote_storage_queue_highest_sent_timestamp_seconds")
 values={}
 for name in names:
  matches=[float(item) for item in re.findall(r"^"+re.escape(name)+r"(?:\\{[^}]*\\})? ([0-9.eE+-]+)$",text,re.M)]
- if not matches: raise SystemExit(2)
- values[name]=sum(matches) if name.endswith(("pending","total")) else max(matches)
+ if len(matches)!=1 or not math.isfinite(matches[0]) or matches[0]<0: raise SystemExit(2)
+ values[name]=matches[0]
+parsed,_=sender_transport()
+values["node"]=parsed.path.rsplit("/",1)[-1]; values["observed_at"]=time.time()
 values["schema_version"]=1; values["state"]="sampled"
 print(json.dumps(values,sort_keys=True))
-"""
+""").encode()
 
 
-def _wal_sample(raw: bytes) -> dict[str, float]:
-    names = {
-        "prometheus_remote_storage_samples_pending",
-        "prometheus_remote_storage_samples_failed_total",
-        "prometheus_remote_storage_samples_retried_total",
-        "prometheus_remote_storage_samples_dropped_total",
-        "prometheus_remote_storage_queue_highest_timestamp_seconds",
-        "prometheus_remote_storage_queue_highest_sent_timestamp_seconds",
-    }
+def _queue_sample(raw: bytes) -> dict[str, Any]:
+    names = set(AGENT_QUEUE_METRICS) | {"observed_at"}
     try:
         value = json.loads(raw)
         if (
-            set(value) != names | {"schema_version", "state"}
+            set(value) != names | {"schema_version", "state", "node"}
+            or type(value["schema_version"]) is not int
             or value["schema_version"] != 1
             or value["state"] != "sampled"
             or any(type(value[name]) not in {int, float} for name in names)
-            or any(value[name] < 0 for name in names)
+            or any(not math.isfinite(value[name]) or value[name] < 0 for name in names)
+            or value["observed_at"] <= 0
+            or value["process_start_time_seconds"] <= 0
+            or not isinstance(value["node"], str)
+            or not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", value["node"])
         ):
             raise ValueError
-    except (UnicodeError, ValueError, TypeError, json.JSONDecodeError):
-        raise AcceptanceError("agent WAL evidence rejected") from None
-    return {name: float(value[name]) for name in names}
+    except (UnicodeError, ValueError, TypeError, OverflowError, json.JSONDecodeError):
+        raise AcceptanceError("agent queue evidence rejected") from None
+    return {**{name: float(value[name]) for name in names}, "node": value["node"]}
+
+
+def _queue_backlog_program(node: str, start: float, end: float) -> bytes:
+    if (not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", node)
+            or not all(math.isfinite(value) for value in (start, end))
+            or not 0 < start < end):
+        raise AcceptanceError("agent queue interval rejected")
+    expression = f'timestamp(up{{job="node-exporter",node="{node}"}})'
+    return f"""import json, math, time, urllib.parse, urllib.request
+opener=urllib.request.build_opener(urllib.request.ProxyHandler({{}}))
+query=urllib.parse.urlencode({{"query":{expression!r},"time":{end!r}}})
+deadline=time.monotonic()+30
+while True:
+ with opener.open("http://127.0.0.1:9090/api/v1/query?"+query,timeout=5) as response: raw=response.read(65537)
+ if len(raw)>65536: raise SystemExit(2)
+ value=json.loads(raw); result=value.get("data",{{}}).get("result",[])
+ if value.get("status")!="success" or not isinstance(result,list) or len(result)>1: raise SystemExit(2)
+ if result:
+  stamp=float(result[0]["value"][1])
+  if not math.isfinite(stamp): raise SystemExit(2)
+  if {start!r}<=stamp<={end!r}: break
+ if time.monotonic()>=deadline: raise SystemExit(2)
+ time.sleep(2)
+print(json.dumps({{"schema_version":1,"state":"verified"}},sort_keys=True))
+""".encode()
 
 
 def _stale_producer_program(action: str) -> bytes:
@@ -1547,26 +1615,23 @@ def _old_sender_generation(manifest: dict[str, Any]) -> str:
 
 
 def _old_sender_rejection_program(generation: str) -> bytes:
-    return f"""import json, os, re, socket, ssl, stat
+    return (_sender_transport_program() + f"""import json, os, re, socket, ssl, stat
 from urllib.parse import urlsplit
 root="/etc/observability-agent/credentials"; generation={generation!r}; directory=os.path.join(root,"generations",generation)
 if os.path.realpath(directory)!=directory or not os.path.isdir(directory): raise SystemExit(2)
 for name,mode in (("prometheus.yml",0o644),("receiver-ca.crt",0o600),("client.crt",0o600),("client.key",0o600)):
  path=os.path.join(directory,name); info=os.stat(path,follow_symlinks=False)
  if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or stat.S_IMODE(info.st_mode)!=mode or info.st_nlink!=1: raise SystemExit(2)
-config=open(os.path.join(directory,"prometheus.yml"),encoding="utf-8").read(65537)
-urls=re.findall(r'^\\s*- url: "(https://[^"\\s]+)"$',config,re.M); snis=re.findall(r'^\\s*server_name: "([^"\\s]+)"$',config,re.M)
-if len(urls)!=1 or len(snis)!=1: raise SystemExit(2)
-parsed=urlsplit(urls[0]); sock=socket.create_connection((parsed.hostname,parsed.port or 443),timeout=5)
+parsed,server_name=sender_transport(); sock=socket.create_connection((parsed.hostname,parsed.port or 443),timeout=5)
 try:
  context=ssl.create_default_context(cafile=os.path.join(directory,"receiver-ca.crt")); context.load_cert_chain(os.path.join(directory,"client.crt"),os.path.join(directory,"client.key"))
- try: context.wrap_socket(sock,server_hostname=snis[0])
+ try: context.wrap_socket(sock,server_hostname=server_name)
  except ssl.SSLError: rejected=True
  else: rejected=False
 finally: sock.close()
 if not rejected: raise SystemExit(2)
 print(json.dumps({{"schema_version":1,"state":"rejected"}},sort_keys=True))
-""".encode()
+""").encode()
 
 
 def _rollback_generation(manifest: dict[str, Any]) -> str:
@@ -1705,78 +1770,72 @@ def _default_execute(
     elif step == "agent-wal":
         _require_healthy(manifest, "agent")
         _require_healthy(manifest, "control-plane")
-        baseline = _wal_sample(
-            _remote(manifest, "canary", _wal_metrics_program(), 30)
+        baseline = _queue_sample(
+            _remote(manifest, "canary", _queue_metrics_program(), 30)
         )
         _remote(
             manifest,
             "control-plane",
-            _unit_action_program("stop", ("nginx.service",)),
+            _unit_action_program("stop", ("observability-ingress.service",)),
             60,
         )
         try:
+            started = _queue_sample(
+                _remote(manifest, "canary", _queue_metrics_program(), 30)
+            )
             time.sleep(65)
-            outage = _wal_sample(
-                _remote(manifest, "canary", _wal_metrics_program(), 30)
+            outage = _queue_sample(
+                _remote(manifest, "canary", _queue_metrics_program(), 30)
             )
         finally:
             _remote(
                 manifest,
                 "control-plane",
-                _unit_action_program("start", ("nginx.service",)),
+                _unit_action_program("start", ("observability-ingress.service",)),
                 60,
             )
-        lag = (
-            outage["prometheus_remote_storage_queue_highest_timestamp_seconds"]
-            - outage[
-                "prometheus_remote_storage_queue_highest_sent_timestamp_seconds"
-            ]
-        )
         if (
-            lag < 0
-            or lag > 3600
-            or outage["prometheus_remote_storage_samples_dropped_total"]
-            != baseline["prometheus_remote_storage_samples_dropped_total"]
-            or not (
-                outage["prometheus_remote_storage_samples_pending"]
-                > baseline["prometheus_remote_storage_samples_pending"]
-                or outage["prometheus_remote_storage_samples_failed_total"]
-                > baseline["prometheus_remote_storage_samples_failed_total"]
-                or outage["prometheus_remote_storage_samples_retried_total"]
-                > baseline["prometheus_remote_storage_samples_retried_total"]
-                or lag > 0
-            )
+            any(sample["node"] != baseline["node"] for sample in (started, outage))
+            or any(sample["process_start_time_seconds"] != baseline["process_start_time_seconds"]
+                   for sample in (started, outage))
+            or not baseline["observed_at"] <= started["observed_at"] < outage["observed_at"]
+            or any(sample[name] != baseline[name]
+                   for sample in (started, outage) for name in AGENT_QUEUE_DROP_METRICS)
+            or outage["vmagent_remotewrite_pending_data_bytes"]
+            <= baseline["vmagent_remotewrite_pending_data_bytes"]
         ):
-            raise AcceptanceError("agent WAL outage evidence rejected")
+            raise AcceptanceError("agent queue outage evidence rejected")
         recovery_deadline = time.monotonic() + 180
         while True:
-            recovered = _wal_sample(
-                _remote(manifest, "canary", _wal_metrics_program(), 30)
-            )
-            recovery_lag = (
-                recovered[
-                    "prometheus_remote_storage_queue_highest_timestamp_seconds"
-                ]
-                - recovered[
-                    "prometheus_remote_storage_queue_highest_sent_timestamp_seconds"
-                ]
+            recovered = _queue_sample(
+                _remote(manifest, "canary", _queue_metrics_program(), 30)
             )
             if (
-                0 <= recovery_lag <= 60
-                and recovered[
-                    "prometheus_remote_storage_queue_highest_sent_timestamp_seconds"
-                ]
-                > baseline[
-                    "prometheus_remote_storage_queue_highest_sent_timestamp_seconds"
-                ]
+                recovered["node"] != baseline["node"]
+                or recovered["process_start_time_seconds"] != baseline["process_start_time_seconds"]
+                or recovered["observed_at"] < outage["observed_at"]
+                or any(recovered[name] != baseline[name] for name in AGENT_QUEUE_DROP_METRICS)
+            ):
+                raise AcceptanceError("agent queue recovery evidence rejected")
+            if (
+                recovered["vmagent_remotewrite_pending_data_bytes"]
+                <= baseline["vmagent_remotewrite_pending_data_bytes"]
+                and recovered["vmagent_remotewrite_blocks_sent_total"]
+                > baseline["vmagent_remotewrite_blocks_sent_total"]
             ):
                 break
             if time.monotonic() >= recovery_deadline:
-                raise AcceptanceError("agent WAL recovery rejected")
+                raise AcceptanceError("agent queue recovery rejected")
             time.sleep(10)
+        raw = _remote(
+            manifest, "control-plane",
+            _queue_backlog_program(baseline["node"], started["observed_at"], outage["observed_at"]),
+            45,
+        )
+        _expect_remote_verified(raw, "agent historical backlog rejected")
         raw = _remote(manifest, "control-plane", _metrics_program(), 130)
         if json.loads(raw).get("state") != "advancing":
-            raise AcceptanceError("agent WAL delivery recovery rejected")
+            raise AcceptanceError("agent queue delivery recovery rejected")
     elif step == "staleness":
         _require_healthy(manifest, "agent")
         _require_healthy(manifest, "control-plane")
@@ -2195,7 +2254,7 @@ def _default_restore(
         _remote(
             manifest,
             "control-plane",
-            _start_units_program(("nginx.service",)),
+            _start_units_program(("observability-ingress.service",)),
             timeout,
         )
     elif step == "staleness":

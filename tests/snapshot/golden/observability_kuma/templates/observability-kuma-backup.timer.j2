@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily consistent encrypted observer backup
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 UTC
+Persistent=true
+AccuracySec=1m
+Unit=observability-kuma-backup.service
+
+[Install]
+WantedBy=timers.target

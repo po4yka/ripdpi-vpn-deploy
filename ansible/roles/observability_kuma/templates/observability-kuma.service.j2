@@ -1,0 +1,36 @@
+[Unit]
+Description=Independent private Uptime Kuma observer
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# The root Docker client manages only this role-owned container; the container
+# itself is rootless with no capabilities or host runtime socket.
+User=root
+ExecStart=/usr/bin/docker run --rm --name observability-kuma --label vpn-deploy.owner=observability-kuma --pull=never --user 1000:1000 --read-only --tmpfs /tmp:rw,nosuid,nodev,noexec,size=67108864 --cap-drop ALL --security-opt no-new-privileges --memory {{ observability_kuma.memory_bytes }} --memory-swap {{ observability_kuma.memory_bytes }} --cpus {{ observability_kuma.cpu_quota }} --pids-limit 128 --log-driver none --publish 127.0.0.1:{{ observability_kuma.admin_port }}:3001 --mount type=bind,src={{ observability_kuma.data_dir }},dst=/app/data --env UPTIME_KUMA_DB_TYPE=sqlite --env UPTIME_KUMA_HOST=0.0.0.0 {{ observability_kuma.image_repository }}@{{ observability_kuma.image_digests[ansible_facts['architecture']] }}
+ExecStop=/usr/bin/docker stop --time 30 observability-kuma
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=45
+# docker run attaches application output even with Docker log persistence off.
+StandardOutput=null
+StandardError=null
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

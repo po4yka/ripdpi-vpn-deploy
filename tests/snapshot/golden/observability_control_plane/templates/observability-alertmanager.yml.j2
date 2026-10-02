@@ -7,14 +7,29 @@ route:
   group_interval: 5m
   repeat_interval: 6h
   routes:
+    - receiver: telegram-canary
+      matchers: ['alertname="ObservabilityPipelineCanary"']
+      group_wait: 0s
+      group_interval: 1m
+      repeat_interval: 1m
+      continue: false
     - receiver: telegram-critical
       matchers: ['severity="critical"']
       repeat_interval: 1h
     - receiver: telegram-primary
       matchers: ['severity="warning"']
       repeat_interval: 6h
-
 receivers:
+  - name: telegram-canary
+    webhook_configs:
+      - url: http://127.0.0.1:19095/alert
+        send_resolved: false
+        max_alerts: 1
+        timeout: 5s
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: /run/credentials/observability-alertmanager.service/telegram-relay-auth-token
   - name: telegram-primary
     webhook_configs:
       - url: http://127.0.0.1:19095/alert
@@ -35,7 +50,6 @@ receivers:
           authorization:
             type: Bearer
             credentials_file: /run/credentials/observability-alertmanager.service/telegram-relay-auth-token
-
 inhibit_rules:
   - source_matchers: ['alertname="ObservabilityBackupStageFailed"']
     target_matchers: ['alertname="ObservabilityBackupEvidenceStale"']

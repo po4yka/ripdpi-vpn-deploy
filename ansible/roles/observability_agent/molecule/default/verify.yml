@@ -10,19 +10,32 @@
         - /etc/observability-agent
         - /etc/observability-agent/credentials
         - /var/lib/observability-agent/wal
-        - /opt/observability-agent
+        - /opt/observability-vmagent
         - /var/lib/node_exporter/textfile/observability-agent.prom
         - /var/lib/node_exporter/textfile/observability-health.prom
         - /var/lib/node_exporter/textfile/producer-owned.prom
+        - /var/lib/observability-agent/queue
       register: observability_agent_paths
 
     - name: Assert only agent-owned state was removed
       ansible.builtin.assert:
         that:
-          - not observability_agent_paths.results[0].stat.exists
-          - not observability_agent_paths.results[1].stat.exists
-          - not observability_agent_paths.results[2].stat.exists
+          - observability_agent_paths.results[0].stat.exists
+          - observability_agent_paths.results[1].stat.exists
+          - observability_agent_paths.results[2].stat.exists
           - not observability_agent_paths.results[3].stat.exists
           - not observability_agent_paths.results[4].stat.exists
           - not observability_agent_paths.results[5].stat.exists
           - observability_agent_paths.results[6].stat.exists
+          - observability_agent_paths.results[7].stat.exists
+
+    - name: Require the previous runtime namespace and public reference unchanged
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import os, pathlib
+            assert pathlib.Path('/opt/observability-agent/retained-release-marker').read_text() == 'previous runtime authority retained\n'
+            assert os.readlink('/usr/local/bin/prometheus-observability-agent') == '/opt/observability-agent/current/prometheus'
+      changed_when: false

@@ -29,6 +29,7 @@ EXAMPLE_FILE = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
 # roles' defaults. They legitimately appear in templates without being in the
 # secrets file.
 NON_SECRET_TOPLEVEL = {
+    "item",  # Ansible loop item; heartbeat service/timer kind
     "ansible_user",
     "ansible_host",
     "vpn_service_address",
@@ -92,6 +93,7 @@ NON_SECRET_TOPLEVEL = {
     "_observability_alert_rules_generation",
     "_observability_rules_generation",
     "_observability_telegram_generation",
+    "_observability_kuma_tls_generation",
     "public_listener_contract",
 }
 
@@ -113,6 +115,7 @@ EXPECTED_SECRET_TOPLEVEL = {
     "snell_secrets",
     "real_vps_awg_nat_secrets",
     "observability_secrets",
+    "observability_kuma_secrets",
     "observability_deadman_secrets",
     # Operator-side per-device configuration registry (issuance options,
     # lifecycle state, AWG private-key recovery copies). Not consumed by
@@ -167,7 +170,7 @@ def _extract_output_vars(scope_text: str, extra_locals: set[str]) -> set[str]:
     for match in JINJA_VAR.finditer(scope_text):
         expr = match.group(1)
         token = re.split(r"[\s.\[|]", expr, maxsplit=1)[0].strip()
-        if token and token.replace("_", "").isalnum():
+        if token and token.isidentifier():
             found.add(token)
     return found - locals_
 

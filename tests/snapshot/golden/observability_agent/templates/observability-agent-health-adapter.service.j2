@@ -3,12 +3,13 @@ Description=RIPDPI watchdog, backup, and certificate health adapter
 After=vpn-watchdog.service vpn-backup.service vpn-backup-restore-drill.service
 
 [Service]
+Slice=observability-agent.slice
 Type=oneshot
 User=root
 Group=node_exporter_textfile
 LoadCredential=client.crt:/etc/observability-agent/credentials/generations/3333333333333333333333333333333333333333333333333333333333333333/client.crt
 ExecStart=/usr/local/libexec/observability-agent-health-adapter.py \
-  --node-id  \
+  --node-id node-01 \
   --watchdog-state /var/lib/vpn-watchdog/state \
   --watchdog-fail-threshold 3 \
   --watchdog-alert-limit 4 \

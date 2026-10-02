@@ -2,7 +2,21 @@
 - name: Prepare enabled control-plane receiver fixture
   hosts: all
   become: true
+  vars:
+    vpn: {enable_xray_reality: false, enable_nginx_xhttp: false}
+    vpn_subscription_only: true
+    monitoring:
+      node_exporter_listen: 127.0.0.1:9100
+      node_exporter_user: prometheus
+      node_exporter_group: prometheus
+      node_exporter_textfile_dir: /var/lib/node_exporter/textfile
+      node_exporter_textfile_group: observability-textfile
   tasks:
+    - name: Assign isolated private fixture ingress address
+      ansible.builtin.command:
+        argv: [ip, address, replace, 10.23.0.2/32, dev, lo]
+      changed_when: false
+
     - name: Create the observability textfile collector group
       ansible.builtin.group:
         name: observability-textfile
@@ -50,12 +64,12 @@
 
     - name: Install curl for the bounded mTLS fixture client
       ansible.builtin.apt:
-        name: curl
+        name: [curl, logrotate]
         state: present
         update_cache: true
         cache_valid_time: 3600
 
-    - name: Create local pinned archive and mTLS fixture
+    - name: Create isolated mTLS fixture authority
       ansible.builtin.shell: |
         set -eu
         fixture=/var/tmp/observability-control-plane-fixture
@@ -90,7 +104,7 @@
         basicConstraints=critical,CA:FALSE
         keyUsage=critical,digitalSignature,keyEncipherment
         extendedKeyUsage=serverAuth
-        subjectAltName=DNS:ingest.fixture.test,DNS:control.fixture.test
+        subjectAltName=IP:10.23.0.2
         authorityKeyIdentifier=keyid,issuer
         subjectKeyIdentifier=hash
         EOF
@@ -129,58 +143,10 @@
             -CAcreateserial -in "$fixture/tls/silence-$identity.csr" \
             -out "$fixture/tls/silence-$identity.crt" -extfile "$fixture/silence.ext"
         done
-        cat > "$fixture/prometheus" <<'EOF'
-        #!/usr/bin/env python3
-        import http.server
-        class Handler(http.server.BaseHTTPRequestHandler):
-            def do_GET(self):
-                self.send_response(200 if self.path == '/-/ready' else 404); self.end_headers()
-            def do_POST(self):
-                self.send_response(200 if self.path == '/api/v1/write' else 404); self.end_headers()
-            def log_message(self, *_args): pass
-        http.server.HTTPServer(('127.0.0.1', 9090), Handler).serve_forever()
-        EOF
-        cat > "$fixture/promtool" <<'EOF'
-        #!/bin/sh
-        exit 0
-        EOF
-        cat > "$fixture/alertmanager" <<'EOF'
-        #!/usr/bin/env python3
-        from http.server import BaseHTTPRequestHandler, HTTPServer
-        import os
-        import ssl
-        class Handler(BaseHTTPRequestHandler):
-            def do_GET(self):
-                self.send_response(200 if self.path == '/-/ready' else 404)
-                self.end_headers()
-            def log_message(self, *_args):
-                pass
-        credentials = os.environ['CREDENTIALS_DIRECTORY']
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        context.load_cert_chain(credentials+'/silence-backend-server.crt', credentials+'/silence-backend-server.key')
-        context.load_verify_locations(credentials+'/silence-backend-ca.pem')
-        context.verify_mode = ssl.CERT_REQUIRED
-        server = HTTPServer(('127.0.0.1', 9093), Handler)
-        server.socket = context.wrap_socket(server.socket, server_side=True)
-        server.serve_forever()
-        EOF
-        cat > "$fixture/amtool" <<'EOF'
-        #!/bin/sh
-        exit 0
-        EOF
-        chmod 0755 "$fixture/prometheus" "$fixture/promtool" "$fixture/alertmanager" "$fixture/amtool"
-        mkdir -p "$fixture/prometheus-fixture"
-        cp "$fixture/prometheus" "$fixture/promtool" "$fixture/prometheus-fixture/"
-        tar -C "$fixture" -czf "$fixture/prometheus.tar.gz" \
-          prometheus-fixture/prometheus prometheus-fixture/promtool
-        mkdir -p "$fixture/alertmanager-fixture"
-        cp "$fixture/alertmanager" "$fixture/amtool" "$fixture/alertmanager-fixture/"
-        tar -C "$fixture" -czf "$fixture/alertmanager.tar.gz" \
-          alertmanager-fixture/alertmanager alertmanager-fixture/amtool
         dd if=/dev/zero of="$fixture/oversize.bin" bs=1M count=9 status=none
-        touch "$fixture/.silence-fixture-v2"
+        touch "$fixture/.private-fixture-v3"
       args:
-        creates: /var/tmp/observability-control-plane-fixture/.silence-fixture-v2
+        creates: /var/tmp/observability-control-plane-fixture/.private-fixture-v3
       changed_when: false
 
     - name: Install bounded direct mTLS fixture client
@@ -199,7 +165,7 @@
           import subprocess
           import sys
 
-          DIRECT_ADDRESS = "127.0.0.1"
+          DIRECT_ADDRESS = "10.23.0.2"
           DIRECT_PORT = 9443
           MAX_BODY_SIZE = 8 * 1024 * 1024 + 1
           CURL_MAX_TIME = 5
@@ -328,3 +294,131 @@
 
           if __name__ == "__main__":
               sys.exit(main())
+
+    - name: Install actual local exporter through the canonical role
+      ansible.builtin.include_role:
+        name: monitoring
+
+    - name: Create schema-2 manifest directory
+      ansible.builtin.file:
+        path: /var/lib/ripdpi-vpn-deploy
+        state: directory
+        mode: '0755'
+
+    - name: Write explicit source-fixture manifest for the cohosted agent
+      ansible.builtin.copy:
+        dest: /var/lib/ripdpi-vpn-deploy/manifest.json
+        mode: '0644'
+        content: >-
+          {"schema_version":2,"environment":"staging","provider":"fixture",
+          "source_revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "deployable_digest":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+
+    - name: Install shared nginx for unchanged public-listener ownership proof
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+        policy_rc_d: 101
+
+    - name: Publish fixture public TLS listener outside observability ownership
+      ansible.builtin.copy:
+        dest: /etc/nginx/conf.d/public-fixture.conf
+        mode: '0644'
+        content: |
+          server {
+            listen 443 ssl;
+            server_name 10.23.0.2;
+            ssl_certificate /var/tmp/observability-control-plane-fixture/tls/server.crt;
+            ssl_certificate_key /var/tmp/observability-control-plane-fixture/tls/server.key;
+            location = /public-fixture { return 200 'public-listener-preserved'; }
+          }
+
+    - name: Validate shared fixture nginx
+      ansible.builtin.command:
+        argv: [nginx, -t]
+      changed_when: false
+
+    - name: Start shared fixture nginx before monitoring convergence
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: started
+        enabled: true
+
+    - name: Capture public nginx original process identity
+      ansible.builtin.command:
+        argv: [systemctl, show, nginx, --property=MainPID, --value]
+      register: public_nginx_pid
+      changed_when: false
+
+    - name: Preserve public nginx process identity for the isolation assertion
+      ansible.builtin.copy:
+        dest: /var/tmp/observability-control-plane-fixture/public-nginx.pid
+        mode: '0600'
+        content: "{{ public_nginx_pid.stdout }}"
+
+    - name: Create fixture-only Telegram egress refusal boundary
+      ansible.builtin.file:
+        path: /etc/systemd/system/observability-telegram-relay.service.d
+        state: directory
+        mode: '0755'
+
+    - name: Refuse external Telegram access from credential-free runtime tests
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/observability-telegram-relay.service.d/no-external-api.conf
+        mode: '0644'
+        content: |
+          [Service]
+          IPAddressDeny=any
+          IPAddressAllow=localhost
+
+    - name: Install explicit TLS push-transport test endpoint
+      ansible.builtin.copy:
+        dest: /var/tmp/observability-control-plane-fixture/push-transport.py
+        mode: '0700'
+        content: |
+          #!/usr/bin/env python3
+          # This endpoint proves HTTPS transport only, never Kuma monitor behavior.
+          from http.server import BaseHTTPRequestHandler, HTTPServer
+          import json, ssl, time
+          from pathlib import Path
+          root = Path('/var/tmp/observability-control-plane-fixture')
+          tokens = {
+              'NodeFixtureToken00000000000000001': 'node',
+              'PipelineFixtureToken0000000000001': 'pipeline',
+              'DeliveryFixtureToken0000000000001': 'delivery',
+          }
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  token = self.path.removeprefix('/api/push/')
+                  if not self.path.startswith('/api/push/') or token not in tokens:
+                      self.send_response(404); self.end_headers(); return
+                  path = root / 'push-observations.json'
+                  value = json.loads(path.read_text()) if path.exists() else {}
+                  value[tokens[token]] = time.time()
+                  path.write_text(json.dumps(value))
+                  self.send_response(200)
+                  self.send_header('Content-Type', 'application/json')
+                  self.end_headers()
+                  self.wfile.write(b'{"ok":true}')
+              def log_message(self, *_args): pass
+          server = HTTPServer(('10.23.0.2', 9444), Handler)
+          context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+          context.load_cert_chain(root/'tls/server.crt', root/'tls/server.key')
+          server.socket = context.wrap_socket(server.socket, server_side=True)
+          server.serve_forever()
+
+    - name: Install isolated transport test service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/observability-push-transport-fixture.service
+        mode: '0644'
+        content: |
+          [Service]
+          ExecStart=/usr/bin/python3 /var/tmp/observability-control-plane-fixture/push-transport.py
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Start explicit push transport fixture
+      ansible.builtin.systemd_service:
+        name: observability-push-transport-fixture
+        state: started
+        daemon_reload: true

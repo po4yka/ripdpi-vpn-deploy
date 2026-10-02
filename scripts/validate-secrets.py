@@ -274,12 +274,12 @@ def _semantic_errors(
 
     if observability_enabled and not all(
         isinstance(doc.get(name), dict)
-        for name in ("observability_secrets", "observability_deadman_secrets")
+        for name in ("observability_secrets", "observability_kuma_secrets")
     ):
         errors.append(
             (
                 "observability secrets required when enabled",
-                "both control-plane and dead-man secret blocks are required",
+                "both control-plane and Uptime Kuma secret blocks are required",
             )
         )
 
@@ -362,6 +362,14 @@ def _semantic_errors(
 
     observability = doc.get("observability_secrets") or {}
     deadman = doc.get("observability_deadman_secrets") or {}
+    kuma = doc.get("observability_kuma_secrets") or {}
+    monitors = kuma.get("push_monitors") or []
+    for key in ("check_id", "token"):
+        if _duplicate_values(monitors, key):
+            errors.append(("observability_kuma_secrets.push_monitors", f"duplicate {key}"))
+    bindings = [(item.get("node_id"), item.get("kind")) for item in monitors if isinstance(item, dict)]
+    if len(bindings) != len(set(bindings)):
+        errors.append(("observability_kuma_secrets.push_monitors", "duplicate monitor binding"))
     senders = observability.get("senders") or []
     if ("ui_username" in observability) != ("ui_password" in observability):
         errors.append(
@@ -391,7 +399,12 @@ def _semantic_errors(
         (deadman.get("pulse_tls") or {}).get("server_cert_pem"),
         (deadman.get("pulse_tls") or {}).get("server_key_pem"),
         (deadman.get("telegram") or {}).get("bot_token"),
+        (kuma.get("telegram") or {}).get("bot_token"),
+        (kuma.get("tls") or {}).get("ca_pem"),
+        (kuma.get("tls") or {}).get("server_cert_pem"),
+        (kuma.get("tls") or {}).get("server_key_pem"),
     ]
+    authorities.extend(item.get("token") for item in monitors if isinstance(item, dict))
     authorities.extend(
         value
         for sender in senders
@@ -429,6 +442,17 @@ def _observability_topology_errors(
         ):
             raise ValueError
         topology = json.loads(topology_path.read_text())
+        import importlib.util
+
+        specification = importlib.util.spec_from_file_location(
+            "observability_contract", Path(__file__).with_name("observability-contract.py")
+        )
+        contract = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(contract)
+        try:
+            topology = contract._canonical_topology(topology)
+        except contract.ContractError:
+            raise ValueError from None
         nodes = topology["nodes"]
         if not isinstance(nodes, list):
             raise ValueError
@@ -437,7 +461,7 @@ def _observability_topology_errors(
         vpn_node_ids = {
             node["node_id"]
             for node in nodes
-            if isinstance(node, dict) and node.get("host_class") == "vpn"
+            if isinstance(node, dict) and "vpn" in node.get("capabilities", [])
         }
         if not vpn_node_ids or any(
             not isinstance(node_id, str) for node_id in vpn_node_ids
@@ -457,6 +481,14 @@ def _observability_topology_errors(
                 "observability sender node IDs must exactly match topology VPN node IDs",
             )
         ]
+    collector = next(node["node_id"] for node in nodes if "collector" in node["capabilities"])
+    expected = {(node_id, "node") for node_id in vpn_node_ids} | {
+        (collector, "pipeline"), (collector, "delivery")
+    }
+    monitors = (doc.get("observability_kuma_secrets") or {}).get("push_monitors") or []
+    actual = {(item.get("node_id"), item.get("kind")) for item in monitors if isinstance(item, dict)}
+    if actual != expected or len(monitors) != len(expected):
+        return [("observability_kuma_secrets.push_monitors", "monitor bindings must exactly match topology nodes and collector checks")]
     return []
 
 

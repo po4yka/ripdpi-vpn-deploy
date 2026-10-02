@@ -7,19 +7,29 @@ route:
   group_interval: {{ observability_control_plane.alerting.group_interval }}
   repeat_interval: {{ observability_control_plane.alerting.warning_repeat_interval }}
   routes:
+    - receiver: telegram-canary
+      matchers: ['alertname="ObservabilityPipelineCanary"']
+      group_wait: 0s
+      group_interval: 1m
+      repeat_interval: 1m
+      continue: false
     - receiver: telegram-critical
       matchers: ['severity="critical"']
       repeat_interval: {{ observability_control_plane.alerting.critical_repeat_interval }}
     - receiver: telegram-primary
       matchers: ['severity="warning"']
       repeat_interval: {{ observability_control_plane.alerting.warning_repeat_interval }}
-{% if observability_control_plane.alerting.deadman.enabled %}
-    - receiver: deadman-canary
-      matchers: ['alertname="ObservabilityPipelineWatchdog"']
-      repeat_interval: {{ observability_control_plane.alerting.deadman.repeat_interval }}
-      continue: false
-{% endif %}
 receivers:
+  - name: telegram-canary
+    webhook_configs:
+      - url: {{ observability_control_plane.alerting.telegram.relay_url | default('http://127.0.0.1:19095/alert') }}
+        send_resolved: false
+        max_alerts: 1
+        timeout: 5s
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: {{ observability_control_plane.alerting.telegram.relay_auth_credential | default('/run/credentials/observability-alertmanager.service/telegram-relay-auth-token') }}
   - name: telegram-primary
     webhook_configs:
       - url: {{ observability_control_plane.alerting.telegram.relay_url | default('http://127.0.0.1:19095/alert') }}
@@ -40,18 +50,6 @@ receivers:
           authorization:
             type: Bearer
             credentials_file: {{ observability_control_plane.alerting.telegram.relay_auth_credential | default('/run/credentials/observability-alertmanager.service/telegram-relay-auth-token') }}
-{% if observability_control_plane.alerting.deadman.enabled %}
-  - name: deadman-canary
-    webhook_configs:
-      - url: {{ observability_control_plane.alerting.deadman.receiver_url }}
-        send_resolved: false
-        max_alerts: 1
-        timeout: 5s
-        http_config:
-          authorization:
-            type: Bearer
-            credentials_file: {{ observability_control_plane.alerting.deadman.canary_auth_credential }}
-{% endif %}
 inhibit_rules:
   - source_matchers: ['alertname="ObservabilityBackupStageFailed"']
     target_matchers: ['alertname="ObservabilityBackupEvidenceStale"']

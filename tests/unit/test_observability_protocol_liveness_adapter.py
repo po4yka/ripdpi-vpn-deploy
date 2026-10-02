@@ -365,10 +365,18 @@ def test_role_wires_the_adapter_only_when_the_explicit_opt_in_is_enabled() -> No
     stop = next(
         task
         for task in disable
-        if task["name"] == "Stop and disable protocol-liveness adapter units"
+        if task["name"]
+        == "Stop and disable collector adapter timers and in-flight services"
     )
     assert "failed_when" not in stop
-    assert "item in ansible_facts.services" in stop["when"]
+    assert "item.stat.exists" in stop["when"]
+    inspected = next(
+        task
+        for task in disable
+        if task["name"] == "Inspect owned adapter units before disable"
+    )
+    assert "observability-protocol-liveness-adapter.timer" in inspected["loop"]
+    assert "observability-protocol-liveness-adapter.service" in inspected["loop"]
     removal = next(
         task
         for task in disable

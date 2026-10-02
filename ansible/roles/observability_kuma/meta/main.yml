@@ -1,0 +1,10 @@
+---
+galaxy_info:
+  author: vpn-deploy
+  description: Private independently hosted bounded Uptime Kuma observer
+  license: MIT
+  min_ansible_version: "2.18"
+  platforms:
+    - name: Ubuntu
+      versions: [noble]
+dependencies: []

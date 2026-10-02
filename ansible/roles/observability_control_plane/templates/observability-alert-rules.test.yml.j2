@@ -2,45 +2,50 @@ rule_files:
   - alerts.yml
 evaluation_interval: 1m
 tests:
-{% if observability_control_plane.alerting.deadman.enabled %}
+{% for increasing in [[], ['vm_persistentqueue_bytes_dropped_total'], ['vmagent_remotewrite_packets_dropped_total', 'vmagent_remotewrite_samples_dropped_total', 'vm_persistentqueue_bytes_dropped_total', 'vm_persistentqueue_blocks_dropped_total', 'vm_rows_ignored_total']] %}
   - interval: 1m
     input_series:
-      - series: 'vpn_observability_deadman_reverse_timestamp_seconds{generation="{{ observability_control_plane.alerting.source_generation }}"}'
-        values: '0x8'
+{% for metric in ['vmagent_remotewrite_packets_dropped_total', 'vmagent_remotewrite_samples_dropped_total', 'vm_persistentqueue_bytes_dropped_total', 'vm_persistentqueue_blocks_dropped_total', 'vm_rows_ignored_total'] %}
+      - series: '{{ metric }}{environment="staging",node="vpn-p0",job="observability-agent"}'
+        values: '{{ "0 1 1x10" if metric in increasing else "0x12" }}'
+{% endfor %}
     alert_rule_test:
-      - eval_time: 7m
-        alertname: ObservabilityDeadmanReverseMissing
+      - eval_time: 1m
+        alertname: ObservabilityAgentDeliveryLoss
+{% if increasing %}
         exp_alerts:
-          - exp_labels:
-              generation: "{{ observability_control_plane.alerting.source_generation }}"
-              component: observability-pipeline
-              severity: critical
-            exp_annotations:
-              incident_family: observability-deadman
-              evidence_class: reverse-heartbeat-missing
-              source_generation: "{{ observability_control_plane.alerting.source_generation }}"
-              summary: Independent dead-man reverse health is missing or stale.
-              runbook: docs/RUNBOOK-incident.md
-  - interval: 1m
-    input_series:
-      - series: 'vpn_observability_deadman_health{check="unit",generation="{{ observability_control_plane.alerting.source_generation }}",state="error"}'
-        values: '1x4'
-    alert_rule_test:
-      - eval_time: 2m
-        alertname: ObservabilityDeadmanReverseUnhealthy
-        exp_alerts:
-          - exp_labels:
-              check: unit
-              state: error
-              component: observability-pipeline
-              severity: critical
-            exp_annotations:
-              incident_family: observability-deadman
-              evidence_class: reverse-heartbeat-unhealthy
-              source_generation: "{{ observability_control_plane.alerting.source_generation }}"
-              summary: Independent dead-man reported an unhealthy bounded subsystem.
-              runbook: docs/RUNBOOK-incident.md
+          - exp_labels: {component: observability-agent, environment: staging, node: vpn-p0, severity: warning}
+            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/RUNBOOK-incident.md}
+{% else %}
+        exp_alerts: []
 {% endif %}
+{% endfor %}
+{% for metric, extra in [
+  ('vmagent_remotewrite_packets_dropped_total', ''),
+  ('vmagent_remotewrite_samples_dropped_total', ''),
+  ('vm_persistentqueue_bytes_dropped_total', ''),
+  ('vm_persistentqueue_blocks_dropped_total', ''),
+  ('vm_rows_ignored_total', 'reason="too_many_labels",'),
+  ('vm_rows_ignored_total', 'reason="too_long_label_name",'),
+  ('vm_rows_ignored_total', 'reason="too_long_label_value",')
+] %}
+  - interval: 1m
+    input_series:
+      - series: '{{ metric }}{ {{ extra }}environment="staging",node="vpn-p0"}'
+        values: '0 1 1x10'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: ObservabilityAgentDeliveryLoss
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: ObservabilityAgentDeliveryLoss
+        exp_alerts:
+          - exp_labels: {component: observability-agent, environment: staging, node: vpn-p0, severity: warning}
+            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/RUNBOOK-incident.md}
+      - eval_time: 10m
+        alertname: ObservabilityAgentDeliveryLoss
+        exp_alerts: []
+{% endfor %}
   - interval: 1m
     input_series:
       - series: 'vpn_watchdog_collection_success{node="vpn-p0",role="watchdog"}'

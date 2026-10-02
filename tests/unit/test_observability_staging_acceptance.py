@@ -710,7 +710,8 @@ def test_matrix_remote_programs_are_fixed_and_syntax_valid() -> None:
     module = _load()
     programs = {
         "ingestion": module._ingestion_negative_program(),
-        "wal": module._wal_metrics_program(),
+        "queue": module._queue_metrics_program(),
+        "queue-backlog": module._queue_backlog_program("canary-a", 100.0, 170.0),
         "stale-inject": module._stale_producer_program("inject"),
         "stale-restore": module._stale_producer_program("restore"),
         "alerts": module._alert_evidence_program(
@@ -1215,3 +1216,143 @@ def test_makefile_exposes_one_literal_staging_acceptance_target() -> None:
     assert '"$${OBSERVABILITY_STAGING_ACCEPTANCE_JOURNAL_LITERAL}"' in block
     assert '"$${OBSERVABILITY_STAGING_ACCEPTANCE_RECEIPTS_LITERAL}"' in block
     assert "--confirm" in block
+
+
+@pytest.mark.parametrize("case", ["valid", "public", "query", "cross-path", "wrong-san", "duplicate", "double-dash-duplicate", "insecure", "old-binary", "pid-changed", "oversized"])
+def test_sender_transport_reads_exact_running_vmagent_arguments(case):
+    import io
+    from types import SimpleNamespace
+
+    module = _load()
+    namespace = {}
+    exec(module._sender_transport_program(), namespace)
+    url = "https://100.64.0.2:9443/remote-write/v1/nodes/canary-a"
+    server = "100.64.0.2"
+    if case == "public":
+        url = url.replace(server, "192.0.2.2")
+        server = "192.0.2.2"
+    elif case == "query":
+        url += "?token=not-permitted"
+    elif case == "cross-path":
+        url = url.replace("/remote-write/v1/nodes/canary-a", "/api/v1/query")
+    elif case == "wrong-san":
+        server = "100.64.0.3"
+    args = ["/usr/local/bin/vmagent-observability-agent", "-remoteWrite.url=" + url, "-remoteWrite.tlsServerName=" + server]
+    if case in {"duplicate", "double-dash-duplicate"}:
+        args.append(("--" if case == "double-dash-duplicate" else "-") + "remoteWrite.url=" + url)
+    elif case == "insecure":
+        args.append("--remoteWrite.tlsInsecureSkipVerify=true")
+    elif case == "old-binary":
+        args[0] = "/usr/local/bin/prometheus-observability-agent"
+    elif case == "oversized":
+        args.append("x" * 16385)
+    raw = b"\0".join(arg.encode() for arg in args) + b"\0"
+    pids = iter([b"321\n", b"322\n" if case == "pid-changed" else b"321\n"])
+
+    def run(command, **kwargs):
+        assert command == ["/usr/bin/systemctl", "show", "observability-agent.service", "--property=MainPID", "--value"]
+        assert kwargs["timeout"] == 5
+        return SimpleNamespace(returncode=0, stdout=next(pids))
+
+    def read_args(path, mode):
+        assert (path, mode) == ("/proc/321/cmdline", "rb")
+        return io.BytesIO(raw)
+
+    namespace.update(subprocess=SimpleNamespace(run=run, DEVNULL=-3, PIPE=-1), open=read_args)
+    if case == "valid":
+        parsed, observed_server = namespace["sender_transport"]()
+        assert (parsed.geturl(), observed_server) == (url, server)
+    else:
+        with pytest.raises(SystemExit):
+            namespace["sender_transport"]()
+
+
+def _queue_fixture(module, *, observed_at=100.0, pending=0.0, sent=1.0):
+    value = {name: 0.0 for name in module.AGENT_QUEUE_METRICS}
+    value.update(schema_version=1, state="sampled", node="canary-a", observed_at=observed_at)
+    value["process_start_time_seconds"] = 1.0
+    value["vmagent_remotewrite_pending_data_bytes"] = pending
+    value["vmagent_remotewrite_blocks_sent_total"] = sent
+    return value
+
+
+@pytest.mark.parametrize("value", [-1, float("nan"), float("inf"), True, "0"])
+def test_queue_sample_rejects_invalid_numeric_evidence(value):
+    module = _load()
+    sample = _queue_fixture(module)
+    sample["vmagent_remotewrite_pending_data_bytes"] = value
+    with pytest.raises(module.AcceptanceError, match="queue evidence"):
+        module._queue_sample(json.dumps(sample).encode())
+
+
+@pytest.mark.parametrize("failure", [None, "no-backlog", "node", "restart", "http-drops", "disk-drops", "recovery-drops", "historical-sample"])
+def test_agent_queue_row_requires_no_loss_and_historical_delivery(monkeypatch, acceptance, failure):
+    module = _load()
+    samples = [_queue_fixture(module, observed_at=stamp, pending=pending, sent=sent)
+               for stamp, pending, sent in ((100, 0, 1), (101, 0, 1), (170, 4096, 1), (180, 0, 2))]
+    if failure == "no-backlog":
+        samples[2]["vmagent_remotewrite_pending_data_bytes"] = 0
+    elif failure == "node":
+        samples[2]["node"] = "canary-b"
+    elif failure == "restart":
+        samples[2]["process_start_time_seconds"] = 102
+    elif failure == "http-drops":
+        samples[2]["vmagent_remotewrite_packets_dropped_total"] = 1
+    elif failure == "disk-drops":
+        samples[2]["vm_persistentqueue_bytes_dropped_total"] = 32
+    elif failure == "recovery-drops":
+        samples[3]["vm_persistentqueue_blocks_dropped_total"] = 1
+    pending_samples = iter(samples)
+    actions = []
+
+    def remote(_manifest, role, program, timeout):
+        source = program.decode()
+        if role == "canary" and "vmagent_remotewrite_pending_data_bytes" in source:
+            return json.dumps(next(pending_samples)).encode()
+        if role == "control-plane" and "action='stop'" in source:
+            assert "observability-ingress.service" in source
+            assert "nginx.service" not in source
+            actions.append("stop")
+            return b"{}"
+        if role == "control-plane" and "action='start'" in source:
+            assert "observability-ingress.service" in source
+            assert "nginx.service" not in source
+            actions.append("start")
+            return b"{}"
+        if role == "control-plane" and "timestamp(up{" in source:
+            assert 'node="canary-a"' in source
+            assert "101.0<=stamp<=170.0" in source
+            actions.append("historical")
+            return b'{"schema_version":1,"state":"missing"}' if failure == "historical-sample" else b'{"schema_version":1,"state":"verified"}'
+        if role == "control-plane" and "vpn_observability_adapter" in source:
+            actions.append("fresh")
+            return b'{"schema_version":1,"state":"advancing"}'
+        raise AssertionError("unexpected queue action")
+
+    monkeypatch.setattr(module, "_remote", remote)
+    monkeypatch.setattr(module, "_require_healthy", lambda *_: None)
+    monkeypatch.setattr(module.time, "sleep", lambda *_: None)
+    if failure:
+        with pytest.raises(module.AcceptanceError):
+            module._default_execute("agent-wal", acceptance["manifest"], {"deadline_seconds": 600})
+        assert actions[:2] == ["stop", "start"]
+        assert "fresh" not in actions
+    else:
+        module._default_execute("agent-wal", acceptance["manifest"], {"deadline_seconds": 600})
+        assert actions == ["stop", "start", "historical", "fresh"]
+
+
+def test_interrupted_queue_row_restores_only_owned_ingress(monkeypatch, acceptance):
+    module = _load()
+    calls = []
+
+    def remote(_manifest, role, program, _timeout):
+        calls.append((role, program.decode()))
+        return b'{"schema_version":1,"state":"started"}'
+
+    monkeypatch.setattr(module, "_remote", remote)
+    module._default_restore("agent-wal", module.STEP_RESTORES["agent-wal"], acceptance["manifest"], {"deadline_seconds": 600})
+    assert len(calls) == 1
+    assert calls[0][0] == "control-plane"
+    assert "observability-ingress.service" in calls[0][1]
+    assert "nginx.service" not in calls[0][1]
