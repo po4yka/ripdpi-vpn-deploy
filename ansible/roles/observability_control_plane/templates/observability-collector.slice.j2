@@ -1,0 +1,12 @@
+[Unit]
+Description=Aggregate bounded observability collector
+
+[Slice]
+MemoryAccounting=true
+MemoryMax=512M
+MemorySwapMax=0
+CPUAccounting=true
+CPUQuota=20%
+IOAccounting=true
+IOWeight=10
+TasksMax=384

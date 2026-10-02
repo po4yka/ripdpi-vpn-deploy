@@ -1,0 +1,12 @@
+[Unit]
+Description=Aggregate bounded observability agent and heartbeat
+
+[Slice]
+MemoryAccounting=true
+MemoryMax=192M
+MemorySwapMax=0
+CPUAccounting=true
+CPUQuota=10%
+IOAccounting=true
+IOWeight=10
+TasksMax=96

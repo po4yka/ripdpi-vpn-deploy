@@ -195,8 +195,9 @@ Then:
     node_exporter counters, freshness checks, and failure interpretation.
 26. `docs/TAILNET-MANAGEMENT.md` — opt-in ordinary OpenSSH over Tailnet,
     one-node enrollment capability handling, and the separate ACL/live gates.
-27. `docs/OBSERVABILITY-OPERATIONS.md` — exact-host render, validation, passive
-    status, staging delivery drill, rotation, rollback, and removal boundaries.
+27. `docs/OBSERVABILITY-OPERATIONS.md` — bounded co-hosted metrics, private
+    independent Uptime Kuma, local render, exact-host admission and lifecycle,
+    encrypted backup/restore, and separate client/notification acceptance.
 
 Operational runbooks: `docs/RUNBOOK-{rotate,rollback,incident,restore,add-fallback}.md`.
 

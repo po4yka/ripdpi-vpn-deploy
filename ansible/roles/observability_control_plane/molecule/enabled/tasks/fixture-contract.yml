@@ -13,20 +13,9 @@
     - tls/silence-server.key
     - tls/silence-client.crt
     - tls/silence-client.key
+    - tls/client-vpn-p0.key
   register: control_plane_fixture_tls
   no_log: true
-
-- name: Read local Prometheus fixture archive digest
-  ansible.builtin.command:
-    argv: [sha256sum, /var/tmp/observability-control-plane-fixture/prometheus.tar.gz]
-  register: control_plane_fixture_archive
-  changed_when: false
-
-- name: Read local Alertmanager fixture archive digest
-  ansible.builtin.command:
-    argv: [sha256sum, /var/tmp/observability-control-plane-fixture/alertmanager.tar.gz]
-  register: control_plane_alertmanager_fixture_archive
-  changed_when: false
 
 - name: Define complete enabled control-plane fixture contract
   ansible.builtin.set_fact:
@@ -36,40 +25,75 @@
     observability_secrets:
       telegram:
         relay_auth_token: "{{ 'd4' * 32 }}"
+      receiver_ca_pem: "{{ control_plane_fixture_tls.results[2].content | b64decode }}"
+      senders:
+        - node_id: vpn-p0
+          certificate_pem: "{{ control_plane_fixture_tls.results[4].content | b64decode }}"
+          private_key_pem: "{{ control_plane_fixture_tls.results[10].content | b64decode }}"
+    monitoring:
+      node_exporter_user: prometheus
+      node_exporter_group: prometheus
+      node_exporter_textfile_group: observability-textfile
+      node_exporter_textfile_dir: /var/lib/node_exporter/textfile
+    observability_kuma_secrets:
+      schema_version: 1
+      tls:
+        ca_pem: "{{ control_plane_fixture_tls.results[2].content | b64decode }}"
+      push_monitors:
+        - {node_id: vpn-p0, kind: node, token: NodeFixtureToken00000000000000001}
+        - {node_id: vpn-p0, kind: pipeline, token: PipelineFixtureToken0000000000001}
+        - {node_id: vpn-p0, kind: delivery, token: DeliveryFixtureToken0000000000001}
+    observability_push:
+      node_id: vpn-p0
+      origin: https://10.23.0.2:9444
+      kinds: [pipeline, delivery]
+      services: [nginx.service]
+      expected_nodes: [vpn-p0]
+      prometheus_origin: http://127.0.0.1:9090
+      relay_origin: http://127.0.0.1:19095
+      relay_auth_path: /etc/observability-control-plane/credentials/telegram-relay-auth-token
+      textfile_dir: /var/lib/node_exporter/textfile
     observability_control_plane:
       enabled: true
-      service_user: prometheus
-      service_group: prometheus
+      service_user: observability-prometheus
+      service_group: observability-prometheus
       install_root: /opt/observability-prometheus
       binary_link: /usr/local/libexec/observability-prometheus
       config_root: /etc/observability-control-plane
       data_dir: /var/lib/observability-prometheus
       ingress_port: 9443
-      ingress_sni: ingest.fixture.test
-      control_plane_dns_san: control.fixture.test
+      ingress_address: 10.23.0.2
       prometheus_listen: 127.0.0.1:9090
       remote_write_path_prefix: /remote-write/v1/nodes
       request_body_limit: 8m
       request_concurrency: 4
       request_rate: 20r/s
       request_rate_burst: 40
-      tsdb_retention_time: 30d
-      tsdb_retention_size: 20GB
-      tsdb_required_bytes: 42949672960
+      tsdb_retention_time: 7d
+      tsdb_retention_size: 1GB
+      tsdb_required_bytes: 2147483648
+      tsdb_high_water_bytes: 2147483648
+      disk_reserve_bytes: 5368709120
+      disk_reserve_percent: 20
+      guard_interval_seconds: 5
+      disk_write_headroom_bytes: 134217728
+      disk_measured_peak_bytes_per_second: 1048576
+      disk_measured_stop_seconds: 30
+      disk_guard_state_dir: /var/lib/observability-disk-guard
       prometheus:
-        version: molecule-fixture-v1
+        version: 3.14.0
         urls:
-          amd64: file:///var/tmp/observability-control-plane-fixture/prometheus.tar.gz
-          arm64: file:///var/tmp/observability-control-plane-fixture/prometheus.tar.gz
+          amd64: https://github.com/prometheus/prometheus/releases/download/v3.14.0/prometheus-3.14.0.linux-amd64.tar.gz
+          arm64: https://github.com/prometheus/prometheus/releases/download/v3.14.0/prometheus-3.14.0.linux-arm64.tar.gz
         sha256:
-          amd64: "{{ control_plane_fixture_archive.stdout.split()[0] }}"
-          arm64: "{{ control_plane_fixture_archive.stdout.split()[0] }}"
+          amd64: f665c6da19eb7ba399c915d30c7d9793c9b417bf8a749b504bc470678631478d
+          arm64: 077f3781ab7245dc04c9a3c9b78ba120fc8e41aa0dc97489b0af67247e50ba83
         archive_members:
-          amd64: prometheus-fixture/prometheus
-          arm64: prometheus-fixture/prometheus
+          amd64: prometheus-3.14.0.linux-amd64/prometheus
+          arm64: prometheus-3.14.0.linux-arm64/prometheus
         promtool_archive_members:
-          amd64: prometheus-fixture/promtool
-          arm64: prometheus-fixture/promtool
+          amd64: prometheus-3.14.0.linux-amd64/promtool
+          arm64: prometheus-3.14.0.linux-arm64/promtool
       tls:
         server_cert_pem: "{{ control_plane_fixture_tls.results[0].content | b64decode }}"
         server_key_pem: "{{ control_plane_fixture_tls.results[1].content | b64decode }}"
@@ -120,19 +144,19 @@
         promtool_binary_link: /usr/local/libexec/observability-promtool
         credential_path: /etc/observability-control-plane/credentials/telegram-bot-token
         alertmanager:
-          version: molecule-fixture-v1
+          version: 0.28.1
           urls:
-            amd64: file:///var/tmp/observability-control-plane-fixture/alertmanager.tar.gz
-            arm64: file:///var/tmp/observability-control-plane-fixture/alertmanager.tar.gz
+            amd64: https://github.com/prometheus/alertmanager/releases/download/v0.28.1/alertmanager-0.28.1.linux-amd64.tar.gz
+            arm64: https://github.com/prometheus/alertmanager/releases/download/v0.28.1/alertmanager-0.28.1.linux-arm64.tar.gz
           sha256:
-            amd64: "{{ control_plane_alertmanager_fixture_archive.stdout.split()[0] }}"
-            arm64: "{{ control_plane_alertmanager_fixture_archive.stdout.split()[0] }}"
+            amd64: 5ac7ab5e4b8ee5ce4d8fb0988f9cb275efcc3f181b4b408179fafee121693311
+            arm64: d8832540e5b9f613d2fd759e31d603173b9c61cc7bb5e3bc7ae2f12038b1ce4f
           archive_members:
-            amd64: alertmanager-fixture/alertmanager
-            arm64: alertmanager-fixture/alertmanager
+            amd64: alertmanager-0.28.1.linux-amd64/alertmanager
+            arm64: alertmanager-0.28.1.linux-arm64/alertmanager
           amtool_archive_members:
-            amd64: alertmanager-fixture/amtool
-            arm64: alertmanager-fixture/amtool
+            amd64: alertmanager-0.28.1.linux-amd64/amtool
+            arm64: alertmanager-0.28.1.linux-arm64/amtool
         silence_gateway:
           enabled: true
           listen: 127.0.0.1:19094
@@ -158,13 +182,4 @@
         critical_repeat_interval: 1h
         warning_repeat_interval: 6h
         recovery_stability: 3m
-        deadman:
-          enabled: false
-          receiver_url: http://127.0.0.1:19093/alerts
-          canary_auth_path: /etc/observability-control-plane/credentials/deadman-canary-auth-token
-          pulse_credential_path: /etc/observability-control-plane/credentials/deadman-pulse-token
-          pulse_ca_path: /etc/observability-control-plane/credentials/deadman-pulse-ca.pem
-          state_dir: /var/lib/observability-pipeline
-          metrics_path: /var/lib/node_exporter/textfile/observability-deadman.prom
-          repeat_interval: 1m
   no_log: true

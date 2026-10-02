@@ -1,0 +1,422 @@
+---
+- name: Assert observer has its own exact approved host and fixed owned paths
+  ansible.builtin.assert:
+    that:
+      - observability_kuma.host_alias == inventory_hostname
+      - inventory_hostname not in (groups['vpn'] | default([]))
+      - observability_kuma.admission_approved | bool
+      - observability_kuma.data_dir == '/var/lib/observability-kuma'
+      - observability_kuma.admin_port | int == 13001
+      - observability_kuma.port | int == 9444
+      - observability_kuma.version == '2.5.5'
+      - observability_kuma.image_repository == 'louislam/uptime-kuma'
+      - observability_kuma.image_digests.x86_64 == 'sha256:8bdad438d293e998fd7d45004cefb3baea0f96d3bc774502bba99c17d616e1f6'
+      - observability_kuma.image_digests.aarch64 == 'sha256:c95c90afb9b774cfe78af58dc7660b47f955fb7edce9fd92b048f734b0d65cdb'
+      - ansible_facts['architecture'] in ['x86_64', 'aarch64']
+      - observability_kuma.memory_bytes | int <= 536870912
+      - observability_kuma.memory_bytes | int > 0
+      - observability_kuma.cpu_quota | float <= 0.25
+      - observability_kuma.cpu_quota | float > 0
+      - observability_kuma.minimum_available_memory_bytes | int >= 805306368
+      - observability_kuma.data_allowance_bytes | int >= 3221225472
+      - observability_kuma.reserve_minimum_bytes | int >= 5368709120
+      - observability_kuma.backup_directory is match('^/[A-Za-z0-9_/-]+$')
+      - observability_kuma.backup_directory not in ['/', '/var', '/var/lib', '/etc', '/home', '/root']
+    fail_msg: Observer needs exact independent host approval and fixed bounded runtime.
+
+- name: Inspect observer units for safe disable on absent deployment
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/{{ item }}"
+  loop:
+    - observability-kuma-backup.timer
+    - observability-kuma-backup.service
+    - observability-kuma.service
+  register: _observability_kuma_disable_units
+  when: not observability_kuma.enabled | bool
+
+- name: Stop observer without removing secret data or backup when disabled
+  ansible.builtin.systemd_service:
+    name: "{{ item.item }}"
+    enabled: "{{ omit if item.item == 'observability-kuma-backup.service' else false }}"
+    state: stopped
+  when:
+    - not observability_kuma.enabled | bool
+    - item.stat.exists
+  loop: "{{ _observability_kuma_disable_units.results | default([]) }}"
+
+- name: Remove only disabled observer ingress while retaining secret generations
+  when: not observability_kuma.enabled | bool
+  block:
+    - name: Inspect observer ingress before removing its link
+      ansible.builtin.stat:
+        path: /etc/nginx/conf.d/observability-kuma.conf
+        follow: false
+      register: _observability_kuma_disable_ingress
+
+    - name: Require role-owned link before observer ingress removal
+      ansible.builtin.assert:
+        that:
+          - >-
+            not (_observability_kuma_disable_ingress.stat.exists or
+            _observability_kuma_disable_ingress.stat.islnk | default(false)) or
+            (_observability_kuma_disable_ingress.stat.islnk | default(false) and
+            _observability_kuma_disable_ingress.stat.lnk_source is
+            match('^/etc/observability-kuma/generations/[a-f0-9]{64}/nginx.conf$'))
+
+    - name: Remove only the disabled observer vhost link
+      ansible.builtin.file:
+        path: /etc/nginx/conf.d/observability-kuma.conf
+        state: absent
+      when: _observability_kuma_disable_ingress.stat.exists or _observability_kuma_disable_ingress.stat.islnk | default(false)
+      register: _observability_kuma_disable_removed
+
+    - name: Validate shared nginx after observer-only removal # noqa no-handler
+      ansible.builtin.command:
+        argv: [/usr/sbin/nginx, -t]
+      changed_when: false
+      when: _observability_kuma_disable_removed.changed | default(false)
+      no_log: true
+
+    - name: Reload validated shared nginx after observer-only removal # noqa no-handler
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: reloaded
+      when: _observability_kuma_disable_removed.changed | default(false)
+
+- name: Converge the admitted independent observer
+  when: observability_kuma.enabled | bool
+  block:
+    - name: Check existing capacity storage runtime and private address before mutation
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - "{{ lookup('file', role_path ~ '/files/observability-kuma-preflight.py') }}"
+        stdin: "{{ observability_kuma | to_json }}"
+      changed_when: false
+      check_mode: false
+      no_log: true
+
+    - name: Require observer TLS and encrypted backup contract
+      ansible.builtin.assert:
+        that:
+          - observability_kuma_secrets.schema_version == 1
+          - observability_kuma_secrets.tls.server_cert_pem | length > 0
+          - observability_kuma_secrets.tls.server_key_pem | length > 0
+          - observability_kuma_secrets.tls.ca_pem | length > 0
+          - observability_kuma_secrets.backup.age_recipient is match('^age1[a-z0-9]{58}$')
+        fail_msg: Observer TLS and backup recipient are required.
+      no_log: true
+
+    - name: Inspect named container before taking lifecycle ownership
+      ansible.builtin.command:
+        argv: [/usr/bin/docker, inspect, observability-kuma]
+      register: _observability_kuma_existing
+      changed_when: false
+      failed_when: _observability_kuma_existing.rc not in [0, 1]
+      no_log: true
+
+    - name: Refuse unrelated container name collision
+      ansible.builtin.assert:
+        that:
+          - >-
+            (_observability_kuma_existing.stdout | from_json)[0].Config.Labels.get('vpn-deploy.owner', '')
+            == 'observability-kuma'
+        fail_msg: Existing container is not role-owned.
+      when: _observability_kuma_existing.rc == 0
+      no_log: true
+
+    - name: Inspect backup units before serializing observer convergence
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/{{ item }}"
+      loop:
+        - observability-kuma-backup.timer
+        - observability-kuma-backup.service
+      register: _observability_kuma_backup_units
+
+    - name: Quiesce timer then active backup before changing runtime or image
+      ansible.builtin.systemd_service:
+        name: "{{ item.item }}"
+        enabled: "{{ false if item.item == 'observability-kuma-backup.timer' else omit }}"
+        state: stopped
+      when: item.stat.exists
+      loop: "{{ _observability_kuma_backup_units.results }}"
+
+    - name: Require consistent encrypted backup before a pinned image change
+      ansible.builtin.command:
+        argv: [/usr/bin/systemctl, start, observability-kuma-backup.service]
+      changed_when: true
+      when:
+        - _observability_kuma_existing.rc == 0
+        - >-
+          (_observability_kuma_existing.stdout | from_json)[0].Config.Image !=
+          observability_kuma.image_repository ~ '@' ~ observability_kuma.image_digests[ansible_facts['architecture']]
+      no_log: true
+
+    - name: Create only observer-owned private directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner }}"
+        group: "{{ item.owner }}"
+        mode: "0700"
+      loop:
+        - {path: /etc/observability-kuma, owner: root}
+        - {path: /var/lib/observability-kuma, owner: "1000"}
+        - {path: /var/lib/observability-kuma-restores, owner: root}
+
+    - name: Derive complete immutable private ingress generation
+      ansible.builtin.set_fact:
+        _observability_kuma_tls_generation: >-
+          {{ {'tls': observability_kuma_secrets.tls, 'address': observability_kuma.bind_address,
+          'sources': observability_kuma.allowed_sources, 'version': 1} | to_json | hash('sha256') }}
+      no_log: true
+
+    - name: Create private immutable ingress generation directory
+      ansible.builtin.file:
+        path: "/etc/observability-kuma/generations/{{ _observability_kuma_tls_generation }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Install private candidate TLS credentials
+      ansible.builtin.copy:
+        content: "{{ item.content }}"
+        dest: "/etc/observability-kuma/generations/{{ _observability_kuma_tls_generation }}/{{ item.name }}"
+        owner: root
+        group: root
+        mode: "0600"
+      loop:
+        - {name: server.crt, content: "{{ observability_kuma_secrets.tls.server_cert_pem }}"}
+        - {name: server.key, content: "{{ observability_kuma_secrets.tls.server_key_pem }}"}
+        - {name: ca.crt, content: "{{ observability_kuma_secrets.tls.ca_pem }}"}
+      no_log: true
+      diff: false
+
+    - name: Verify observer certificate chain and private IP identity
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/openssl
+          - verify
+          - -purpose
+          - sslserver
+          - -verify_ip
+          - "{{ observability_kuma.bind_address }}"
+          - -CAfile
+          - "/etc/observability-kuma/generations/{{ _observability_kuma_tls_generation }}/ca.crt"
+          - "/etc/observability-kuma/generations/{{ _observability_kuma_tls_generation }}/server.crt"
+      changed_when: false
+      no_log: true
+
+    - name: Verify candidate TLS private key matches its certificate
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - "import ssl, sys; ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER).load_cert_chain(sys.argv[1], sys.argv[2])"
+          - "/etc/observability-kuma/generations/{{ _observability_kuma_tls_generation }}/server.crt"
+          - "/etc/observability-kuma/generations/{{ _observability_kuma_tls_generation }}/server.key"
+      changed_when: false
+      no_log: true
+
+    - name: Install backup encryption recipient
+      ansible.builtin.copy:
+        content: "{{ observability_kuma_secrets.backup.age_recipient }}"
+        dest: /etc/observability-kuma/backup-recipient
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+      diff: false
+
+    - name: Inspect existing exact architecture image
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/docker
+          - image
+          - inspect
+          - "{{ observability_kuma.image_repository }}@{{ observability_kuma.image_digests[ansible_facts['architecture']] }}"
+      register: _observability_kuma_image
+      changed_when: false
+      failed_when: _observability_kuma_image.rc not in [0, 1]
+      no_log: true
+
+    - name: Fetch pinned observer image without building on the observer
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/docker
+          - pull
+          - "{{ observability_kuma.image_repository }}@{{ observability_kuma.image_digests[ansible_facts['architecture']] }}"
+      when: _observability_kuma_image.rc == 1
+      changed_when: true
+
+    - name: Render observer private ingress candidate
+      ansible.builtin.template:
+        src: observability-kuma.conf.j2
+        dest: "/etc/observability-kuma/generations/{{ _observability_kuma_tls_generation }}/nginx.conf"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Install isolated nginx candidate validation configuration
+      ansible.builtin.copy:
+        content: >-
+          events {} http { include /etc/observability-kuma/generations/{{ _observability_kuma_tls_generation }}/nginx.conf; }
+        dest: "/etc/observability-kuma/generations/{{ _observability_kuma_tls_generation }}/validate.conf"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Validate candidate ingress before switching shared nginx
+      ansible.builtin.command:
+        argv:
+          - /usr/sbin/nginx
+          - -t
+          - -c
+          - "/etc/observability-kuma/generations/{{ _observability_kuma_tls_generation }}/validate.conf"
+      changed_when: false
+      no_log: true
+
+    - name: Inspect previous observer ingress link
+      ansible.builtin.stat:
+        path: /etc/nginx/conf.d/observability-kuma.conf
+        follow: false
+      register: _observability_kuma_previous_ingress
+
+    - name: Require absent or exactly role-owned ingress link
+      ansible.builtin.assert:
+        that:
+          - >-
+            not (_observability_kuma_previous_ingress.stat.exists or
+            _observability_kuma_previous_ingress.stat.islnk | default(false)) or
+            (_observability_kuma_previous_ingress.stat.islnk | default(false) and
+            _observability_kuma_previous_ingress.stat.lnk_source is
+            match('^/etc/observability-kuma/generations/[a-f0-9]{64}/nginx.conf$'))
+        fail_msg: Observer will not overwrite unrelated nginx configuration.
+
+    - name: Switch validated observer ingress with rollback on shared-config failure
+      block:
+        - name: Atomically activate complete ingress generation
+          ansible.builtin.file:
+            src: "/etc/observability-kuma/generations/{{ _observability_kuma_tls_generation }}/nginx.conf"
+            dest: /etc/nginx/conf.d/observability-kuma.conf
+            state: link
+            force: true
+          register: _observability_kuma_ingress
+
+        - name: Validate complete shared nginx configuration before loading
+          ansible.builtin.command:
+            argv: [/usr/sbin/nginx, -t]
+          changed_when: false
+          no_log: true
+
+        - name: Reload only validated shared nginx configuration # noqa no-handler
+          ansible.builtin.systemd_service:
+            name: nginx
+            state: reloaded
+          when: _observability_kuma_ingress.changed
+      rescue:
+        - name: Restore prior observer ingress link
+          ansible.builtin.file:
+            src: "{{ _observability_kuma_previous_ingress.stat.lnk_source }}"
+            dest: /etc/nginx/conf.d/observability-kuma.conf
+            state: link
+            force: true
+          when: _observability_kuma_previous_ingress.stat.exists or _observability_kuma_previous_ingress.stat.islnk | default(false)
+
+        - name: Remove failed first observer ingress activation
+          ansible.builtin.file:
+            path: /etc/nginx/conf.d/observability-kuma.conf
+            state: absent
+          when: not (_observability_kuma_previous_ingress.stat.exists or _observability_kuma_previous_ingress.stat.islnk | default(false))
+
+        - name: Refuse failed observer ingress activation
+          ansible.builtin.fail:
+            msg: Observer ingress failed shared nginx validation and its link was restored.
+
+    - name: Install observer systemd unit
+      ansible.builtin.template:
+        src: observability-kuma.service.j2
+        dest: /etc/systemd/system/observability-kuma.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: _observability_kuma_unit
+
+    - name: Validate observer systemd unit before activation
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/systemd-analyze
+          - verify
+          - /etc/systemd/system/observability-kuma.service
+      changed_when: false
+
+    - name: Install secret-safe backup and isolated restore helper
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "/usr/local/libexec/{{ item }}"
+        owner: root
+        group: root
+        mode: "0750"
+      loop:
+        - observability-kuma-backup.py
+        - observability-kuma-preflight.py
+
+    - name: Install private backup configuration
+      ansible.builtin.copy:
+        content: >-
+          {{ {'directory': observability_kuma.backup_directory,
+          'image': observability_kuma.image_repository ~ '@' ~
+          observability_kuma.image_digests[ansible_facts['architecture']]} | to_nice_json }}
+        dest: /etc/observability-kuma/backup.json
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Activate pinned observer container
+      ansible.builtin.systemd_service:
+        name: observability-kuma.service
+        enabled: true
+        state: "{{ 'restarted' if _observability_kuma_unit.changed else 'started' }}"
+        daemon_reload: true
+
+    - name: Install consistent backup units
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - observability-kuma-backup.service
+        - observability-kuma-backup.timer
+        - observability-kuma-restore@.service
+
+    - name: Validate backup units before activation
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/systemd-analyze
+          - verify
+          - /etc/systemd/system/observability-kuma-backup.service
+          - /etc/systemd/system/observability-kuma-backup.timer
+      changed_when: false
+
+    - name: Enable daily quiesced encrypted backup
+      ansible.builtin.systemd_service:
+        name: observability-kuma-backup.timer
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Verify loopback observer application responds
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ observability_kuma.admin_port }}/api/entry-page"
+        status_code: 200
+        return_content: true
+      register: _observability_kuma_ready
+      retries: 20
+      delay: 3
+      until:
+        - _observability_kuma_ready.status == 200
+        - _observability_kuma_ready.json.type | default('') == 'entryPage'

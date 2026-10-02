@@ -1,0 +1,36 @@
+[Unit]
+Description=Qualified server-control Kuma heartbeat
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=observability-push
+Group=observability-push
+Slice=observability-agent.slice
+LoadCredential=config:/etc/observability-push/server-control.json
+LoadCredential=push-token:/etc/observability-push/server-control.token
+LoadCredential=observer-ca:/etc/observability-push/observer-ca.crt
+
+LoadCredential=relay-auth-token:/etc/observability-control-plane/credentials/telegram-relay-auth-token
+
+ExecStart=/usr/bin/python3 /usr/local/libexec/observability-push.py server-control
+StateDirectory=observability-push
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/node_exporter/textfile
+TimeoutStartSec=55
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

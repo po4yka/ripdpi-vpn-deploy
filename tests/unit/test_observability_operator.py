@@ -32,71 +32,20 @@ def operator(tmp_path: Path) -> dict[str, object]:
     known_hosts = _write(
         tmp_path / "known_hosts", "fixture.invalid ssh-ed25519 AAAA\n", 0o644
     )
-    topology = base64.b64encode(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "credential_mode": "systemd",
-                "source_revision": "0" * 40,
-                "nodes": [
-                    {
-                        "node_id": "upcloud-staging",
-                        "provider": "upcloud",
-                        "environment": "staging",
-                        "host_class": "vpn",
-                        "failure_domain": "edge-a",
-                        "public_listeners": [
-                            {"name": "xray", "protocol": "tcp", "port": 443}
-                        ],
-                    },
-                    {
-                        "node_id": "hetzner-staging",
-                        "provider": "hetzner",
-                        "environment": "staging",
-                        "host_class": "control-plane",
-                        "failure_domain": "control-a",
-                        "public_listeners": [
-                            {
-                                "name": "observability-ingest",
-                                "protocol": "tcp",
-                                "port": 9443,
-                            }
-                        ],
-                    },
-                    {
-                        "node_id": "scaleway-staging",
-                        "provider": "scaleway",
-                        "environment": "staging",
-                        "host_class": "deadman",
-                        "failure_domain": "deadman-a",
-                        "public_listeners": [
-                            {
-                                "name": "observability-deadman-pulse",
-                                "protocol": "tcp",
-                                "port": 9444,
-                            }
-                        ],
-                    },
-                ],
-                "sentinels": [
-                    {
-                        "sentinel_id": "filtered-a",
-                        "path_signature": "fixed-egress-a",
-                        "failure_domain": "sentinel-a",
-                    },
-                    {
-                        "sentinel_id": "filtered-b",
-                        "path_signature": "fixed-egress-b",
-                        "failure_domain": "sentinel-b",
-                    },
-                ],
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    ).decode("ascii")
+    topology = base64.b64encode(json.dumps({
+        "schema_version": 2, "credential_mode": "systemd", "source_revision": "0" * 40,
+        "observer": {"kind": "uptime-kuma", "host_alias": "node-observer", "failure_domain": "observer-a"},
+        "nodes": [
+            {"node_id": "upcloud-staging", "provider": "upcloud", "environment": "staging",
+             "capabilities": ["vpn"], "failure_domain": "edge-a",
+             "public_listeners": [{"name": "xray", "protocol": "tcp", "port": 443}]},
+            {"node_id": "hetzner-staging", "provider": "hetzner", "environment": "staging",
+             "capabilities": ["vpn", "collector"], "failure_domain": "control-a",
+             "public_listeners": [{"name": "xray", "protocol": "tcp", "port": 443}]},
+        ]
+    }).encode()).decode()
     control_listeners = base64.b64encode(
-        b'[{"name":"observability-ingest","protocol":"tcp","port":9443,"port_range":null}]'
+        b'[{"name":"xray","protocol":"tcp","port":443,"port_range":null}]'
     ).decode("ascii")
     deadman_listeners = base64.b64encode(
         b'[{"name":"observability-deadman-pulse","protocol":"tcp","port":9444,"port_range":null}]'
@@ -104,18 +53,18 @@ def operator(tmp_path: Path) -> dict[str, object]:
     inventory = _write(
         tmp_path / "inventory.ini",
         """[vpn]
-node-agent ansible_host=agent.fixture.invalid ansible_user=deploy ansible_port=22 provider=upcloud env=staging observability_node_id=upcloud-staging observability_host_class=vpn observability_failure_domain=edge-a
+node-agent ansible_host=agent.fixture.invalid ansible_user=deploy ansible_port=22 provider=upcloud env=staging observability_node_id=upcloud-staging observability_capabilities='[\"vpn\"]' observability_failure_domain=edge-a
 
 [vpn-observability-control]
-node-a ansible_host=fixture.invalid ansible_user=deploy ansible_port=22 provider=hetzner env=staging allowed_ssh_cidrs='["203.0.113.7/32"]' terraform_public_listeners_b64={control_listeners} observability_node_id=hetzner-staging observability_host_class=control-plane observability_failure_domain=control-a
+node-a ansible_host=fixture.invalid ansible_user=deploy ansible_port=22 provider=hetzner env=staging allowed_ssh_cidrs='["203.0.113.7/32"]' terraform_public_listeners_b64={control_listeners} observability_node_id=hetzner-staging observability_capabilities='[\"vpn\",\"collector\"]' observability_failure_domain=control-a
 
-[vpn-observability-deadman]
-node-deadman ansible_host=deadman.fixture.invalid ansible_user=deploy ansible_port=22 provider=scaleway env=staging allowed_ssh_cidrs='["2001:db8::7/128"]' terraform_public_listeners_b64={deadman_listeners} observability_node_id=scaleway-staging observability_host_class=deadman observability_failure_domain=deadman-a
+[observability-kuma]
+node-observer ansible_host=observer.fixture.invalid ansible_user=deploy ansible_port=22 provider=scaleway env=staging allowed_ssh_cidrs='["2001:db8::7/128"]' terraform_public_listeners_b64={deadman_listeners} observability_node_id=scaleway-staging observability_observer_kind=uptime-kuma observability_failure_domain=observer-a
 
 [observability:children]
 vpn
 vpn-observability-control
-vpn-observability-deadman
+observability-kuma
 
 [vpn:vars]
 ansible_ssh_private_key_file={key}
@@ -188,7 +137,7 @@ if entry['program'] == 'ssh':
     elif '/api/v2/alerts' in payload:
         print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'receiver': 'telegram-primary', 'state': 'submitted'}}))
     else:
-        print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'state': 'healthy', 'units': {{'nginx.service': 'active', 'observability-prometheus.service': 'active', 'observability-alertmanager.service': 'active', 'observability-telegram-relay.service': 'active', 'observability-silence-gateway.service': 'active', 'observability-control-plane-adapter.timer': 'active', 'observability-protocol-liveness-adapter.timer': 'active', 'observability-deadman-pipeline.service': 'active', 'observability-deadman-pulse.timer': 'active', 'observability-primary-canary.timer': 'active'}}}}))
+        print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'state': 'healthy', 'units': {{'observability-ingress.service': 'active', 'observability-prometheus.service': 'active', 'observability-alertmanager.service': 'active', 'observability-telegram-relay.service': 'active', 'observability-silence-gateway.service': 'active', 'observability-control-plane-adapter.timer': 'active', 'observability-protocol-liveness-adapter.timer': 'active', 'observability-disk-guard.service': 'active', 'observability-push-pipeline.timer': 'active', 'observability-push-delivery.timer': 'active'}}}}))
 """
     for name in ("ansible-playbook", "ssh"):
         _write(binary / name, recorder, 0o700)
@@ -260,6 +209,38 @@ def _operator_module() -> object:
         sys.path.pop(0)
 
 
+@pytest.mark.parametrize("entry_type,expected", [("entryPage", "healthy"), ("setup-database", "degraded")])
+def test_kuma_status_requires_running_application_not_database_setup(monkeypatch, capsys, entry_type, expected):
+    from types import SimpleNamespace
+    import urllib.request
+
+    module = _operator_module()
+    monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout="active\n"))
+    monkeypatch.setattr(urllib.request, "build_opener", lambda *_: SimpleNamespace(
+        open=lambda *_args, **_kwargs: _DrillResponse(200, {"type": entry_type})
+    ))
+    exec(compile(module._status_program("kuma"), "status-program", "exec"), {})
+    assert json.loads(capsys.readouterr().out)["state"] == expected
+
+
+@pytest.mark.parametrize("ready_status,expected", [(200, "healthy"), (503, "degraded")])
+def test_agent_status_uses_vmagent_initialization_readiness(monkeypatch, capsys, ready_status, expected):
+    from types import SimpleNamespace
+    import urllib.request
+
+    module = _operator_module()
+    monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout="active\n"))
+
+    def open_readiness(url, timeout):
+        assert url == "http://127.0.0.1:19090/ready"
+        assert timeout == 3
+        return _DrillResponse(ready_status, {})
+
+    monkeypatch.setattr(urllib.request, "build_opener", lambda *_: SimpleNamespace(open=open_readiness))
+    exec(compile(module._status_program("agent"), "status-program", "exec"), {})
+    assert json.loads(capsys.readouterr().out)["state"] == expected
+
+
 def _calls(operator: dict[str, object]) -> list[dict[str, object]]:
     path = operator["log"]
     assert isinstance(path, Path)
@@ -282,12 +263,13 @@ def test_secret_consuming_commands_fail_before_execution_without_private_secrets
     assert _calls(operator) == []
 
 
-def test_render_is_one_role_check_mode_for_one_exact_host(
+def test_check_is_one_role_check_mode_for_one_exact_host(
     operator: dict[str, object],
 ) -> None:
     result = _run(
         operator,
-        "render",
+        "check",
+        "--confirm-host-access",
         "--secrets",
         str(operator["secrets"]),
         "--vars",
@@ -387,6 +369,28 @@ def test_validate_uses_syntax_check_without_contacting_the_host(
     assert "--check" not in call["argv"]
 
 
+def test_local_render_never_contacts_host_or_prints_rendered_secrets(operator):
+    variables = yaml.safe_load((ROOT / "ansible/roles/observability_control_plane/defaults/main.yml").read_text())
+    variables["observability_control_plane"]["enabled"] = True
+    variables["observability_control_plane"]["tls"]["server_key_pem"] = "fixture-secret-render-value"
+    Path(operator["vars"]).write_text(yaml.safe_dump(variables))
+    Path(operator["secrets"]).write_text("observability_secrets: {}\n")
+    result = _run(operator, "render", "--vars", str(operator["vars"]), "--secrets", str(operator["secrets"]))
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["state"] == "templates-rendered"
+    assert json.loads(result.stdout)["templates"] > 0
+    assert json.loads(result.stdout)["host_admission"] == "unverified"
+    assert "fixture-secret-render-value" not in result.stdout + result.stderr
+    assert _calls(operator) == []
+
+
+def test_check_requires_explicit_host_access_confirmation(operator):
+    result = _run(operator, "check")
+    assert result.returncode == 2
+    assert result.stderr == "observability-operator: --confirm-host-access required\n"
+    assert _calls(operator) == []
+
+
 def test_status_is_secretless_read_only_and_redacted(
     operator: dict[str, object],
 ) -> None:
@@ -404,16 +408,16 @@ def test_status_is_secretless_read_only_and_redacted(
         "schema_version": 1,
         "state": "healthy",
         "units": {
-            "nginx.service": "active",
+            "observability-ingress.service": "active",
             "observability-prometheus.service": "active",
             "observability-alertmanager.service": "active",
             "observability-telegram-relay.service": "active",
             "observability-silence-gateway.service": "active",
             "observability-control-plane-adapter.timer": "active",
             "observability-protocol-liveness-adapter.timer": "active",
-            "observability-deadman-pipeline.service": "active",
-            "observability-deadman-pulse.timer": "active",
-            "observability-primary-canary.timer": "active",
+            "observability-disk-guard.service": "active",
+            "observability-push-pipeline.timer": "active",
+            "observability-push-delivery.timer": "active",
         },
     }
     observed = _calls(operator)
@@ -615,175 +619,12 @@ def test_deploy_requires_confirmation_before_transport(
     assert _calls(operator) == []
 
 
-def test_host_bootstrap_requires_staging_non_vpn_scope_and_confirmation(
-    operator: dict[str, object],
-) -> None:
-    result = _run(operator, "bootstrap")
+@pytest.mark.parametrize("flag", ["--confirm", "--check"])
+def test_dedicated_bootstrap_is_retired_before_transport(operator, flag):
+    result = _run(operator, "bootstrap", flag)
     assert result.returncode == 2
-    assert result.stderr == "observability-operator: --confirm required\n"
+    assert result.stderr == "observability-operator: dedicated host bootstrap retired; use existing admitted hosts\n"
     assert _calls(operator) == []
-
-    common = operator["common"]
-    assert isinstance(common, list)
-    common[common.index("staging")] = "prod"
-    result = _run(operator, "bootstrap", "--confirm")
-    assert result.returncode == 2
-    assert result.stderr == "observability-operator: bootstrap requires staging\n"
-    assert _calls(operator) == []
-
-    common[common.index("prod")] = "staging"
-    common[common.index("control-plane")] = "agent"
-    common[common.index("node-a")] = "node-agent"
-    result = _run(operator, "bootstrap", "--confirm")
-    assert result.returncode == 2
-    assert result.stderr == "observability-operator: bootstrap host class rejected\n"
-    assert _calls(operator) == []
-
-
-def test_host_bootstrap_uses_fixed_exact_host_playbook_and_private_inventory(
-    operator: dict[str, object],
-) -> None:
-    result = _run(operator, "bootstrap", "--confirm")
-
-    assert result.returncode == 0, result.stderr
-    report = json.loads(result.stdout)
-    assert report["state"] == "bootstrapped"
-    call = _calls(operator)[0]
-    assert call["program"] == "ansible-playbook"
-    assert call["argv"][call["argv"].index("--limit") + 1] == "node-a"
-    assert "ansible/playbooks/observability-host-bootstrap.yml" in " ".join(
-        call["argv"]
-    )
-    assert "site.yml" not in " ".join(call["argv"])
-    assert "--check" not in call["argv"]
-    isolated = call["inventory"]
-    assert "provider=hetzner" in isolated
-    assert "env=staging" in isolated
-    assert "ansible_python_interpreter=/usr/bin/python3" in isolated
-    assert "observability_host_class=control-plane" in isolated
-    assert "observability_node_id=hetzner-staging" in isolated
-    assert "observability_failure_domain=control-a" in isolated
-    assert "allowed_ssh_cidrs='[\"203.0.113.7/32\"]'" in isolated
-    assert "terraform_public_listeners_b64=" in isolated
-    assert "observability_topology_b64" not in isolated
-    assert "VPN_SECRETS_FILE" not in call.get("environment", {})
-
-
-def test_host_bootstrap_check_mode_is_non_mutating_and_needs_no_confirmation(
-    operator: dict[str, object],
-) -> None:
-    result = _run(operator, "bootstrap", "--check")
-
-    assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout)["state"] == "bootstrap-check"
-    call = _calls(operator)[0]
-    assert "--check" in call["argv"]
-
-
-@pytest.mark.parametrize(
-    ("field", "replacement"),
-    [
-        (
-            "terraform_public_listeners_b64",
-            base64.b64encode(
-                b'[{"name":"observability-ingest","protocol":"tcp","port":9090,"port_range":null}]'
-            ).decode("ascii"),
-        ),
-        ("allowed_ssh_cidrs", "['0.0.0.0/0']"),
-        ("observability_failure_domain", "INVALID"),
-    ],
-)
-def test_host_bootstrap_rejects_unbound_host_policy_before_ansible(
-    operator: dict[str, object], field: str, replacement: str
-) -> None:
-    inventory = Path(operator["common"][1])
-    source = inventory.read_text(encoding="utf-8")
-    if field == "terraform_public_listeners_b64":
-        source = re.sub(
-            r"terraform_public_listeners_b64=[A-Za-z0-9+/=]+",
-            f"terraform_public_listeners_b64={replacement}",
-            source,
-            count=1,
-        )
-    elif field == "allowed_ssh_cidrs":
-        source = source.replace(
-            "allowed_ssh_cidrs='[\"203.0.113.7/32\"]'",
-            f'allowed_ssh_cidrs="{replacement}"',
-        )
-    else:
-        source = source.replace(
-            "observability_failure_domain=control-a",
-            f"observability_failure_domain={replacement}",
-        )
-    inventory.write_text(source, encoding="utf-8")
-
-    result = _run(operator, "bootstrap", "--confirm")
-
-    assert result.returncode == 2
-    assert result.stderr == "observability-operator: bootstrap inventory rejected\n"
-    assert _calls(operator) == []
-
-
-def test_host_bootstrap_refuses_topology_source_drift_before_ansible(
-    operator: dict[str, object],
-) -> None:
-    inventory = Path(operator["common"][1])
-    source = inventory.read_text(encoding="utf-8")
-    topology_match = re.search(r"observability_topology_b64=([A-Za-z0-9+/=]+)", source)
-    assert topology_match is not None
-    topology = json.loads(base64.b64decode(topology_match.group(1)))
-    topology["source_revision"] = "1" * 40
-    encoded = base64.b64encode(
-        json.dumps(topology, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).decode("ascii")
-    inventory.write_text(
-        source.replace(topology_match.group(1), encoded), encoding="utf-8"
-    )
-
-    result = _run(operator, "bootstrap", "--confirm")
-
-    assert result.returncode == 2
-    assert result.stderr == "observability-operator: bootstrap inventory rejected\n"
-    assert _calls(operator) == []
-
-
-def test_host_bootstrap_playbook_is_non_vpn_and_preflights_before_roles() -> None:
-    document = yaml.safe_load(
-        (ROOT / "ansible/playbooks/observability-host-bootstrap.yml").read_text(
-            encoding="utf-8"
-        )
-    )
-    play = document[0]
-    assert play["hosts"] == "observability-bootstrap-target"
-    assert play["serial"] == 1
-    assert play["any_errors_fatal"] is True
-    names = [task["name"] for task in play["pre_tasks"]]
-    assert "Validate observability bootstrap scope before host mutation" in names
-    assert "Require exact provider listener contract for host class" in names
-    assert "Require effective SSH listener ownership before host mutation" in names
-    assert "Refuse a host with existing VPN transport state" in names
-    roles = [task["ansible.builtin.include_role"]["name"] for task in play["tasks"]]
-    assert roles == [
-        "baseline",
-        "package_updates",
-        "firewall",
-        "monitoring",
-        "node_manifest",
-    ]
-    assert not {
-        "xray",
-        "nginx-xhttp",
-        "hysteria",
-        "amneziawg",
-        "observability_control_plane",
-        "observability_deadman",
-    } & set(roles)
-    assert play["vars"]["monitoring"]["node_exporter_listen"] == "127.0.0.1:9100"
-    assert not any(
-        enabled
-        for name, enabled in play["vars"]["vpn"].items()
-        if name.startswith("enable_") and name != "enable_monitoring"
-    )
 
 
 def test_deploy_is_initial_only_exact_host_role_convergence(
@@ -818,7 +659,7 @@ def test_deploy_is_initial_only_exact_host_role_convergence(
             "control-plane",
             "/etc/systemd/system/observability-prometheus.service",
         ),
-        ("deadman", "/etc/systemd/system/observability-deadman.service"),
+        ("kuma", "/etc/systemd/system/observability-kuma.service"),
     ],
 )
 def test_initial_playbook_refuses_existing_component_marker(
@@ -1049,6 +890,27 @@ def test_component_commands_reject_disabled_or_wrong_role_variables(
         assert _calls(operator) == []
 
 
+def test_kuma_check_keeps_observer_outside_vpn_inventory(operator):
+    _write(operator["vars"], "observability_kuma:\n  enabled: true\n  host_alias: node-observer\n  admission_approved: true\n")
+    result = _run(operator, "check", "--component", "kuma", "--host", "node-observer",
+                  "--confirm-host-access", "--secrets", str(operator["secrets"]),
+                  "--vars", str(operator["vars"]))
+    assert result.returncode == 0, result.stderr
+    call = _calls(operator)[0]
+    assert call["inventory"].startswith("[observability-kuma]\n")
+    assert "[vpn]" not in call["inventory"]
+
+
+def test_kuma_inventory_failure_domain_must_match_topology(operator):
+    module = _operator_module()
+    args = module._parser().parse_args(["status", *operator["common"],
+                                        "--component", "kuma", "--host", "node-observer"])
+    host = module._selected_host(args)
+    host["variables"]["observability_failure_domain"] = "different-domain"
+    with pytest.raises(module.OperatorError, match="inventory observer rejected"):
+        module._require_inventory_scope(args, host)
+
+
 def test_host_must_match_explicit_environment_and_component_class(
     operator: dict[str, object],
 ) -> None:
@@ -1061,7 +923,7 @@ def test_host_must_match_explicit_environment_and_component_class(
     assert _calls(operator) == []
 
     common[common.index("prod")] = "staging"
-    common[common.index("control-plane")] = "deadman"
+    common[common.index("control-plane")] = "kuma"
     result = _run(operator, "status")
     assert result.returncode == 2
     assert result.stderr == "observability-operator: exact inventory host rejected\n"
@@ -1073,7 +935,7 @@ def test_host_must_match_explicit_environment_and_component_class(
     [
         ("agent", "node-agent", "agent.fixture.invalid"),
         ("control-plane", "node-a", "fixture.invalid"),
-        ("deadman", "node-deadman", "deadman.fixture.invalid"),
+        ("kuma", "node-observer", "observer.fixture.invalid"),
     ],
 )
 def test_generated_style_inventory_selects_the_exact_component_section(
@@ -1092,9 +954,10 @@ def test_generated_style_inventory_selects_the_exact_component_section(
 
     assert selected["name"] == host
     assert selected["address"] == expected_address
-    assert selected["variables"]["observability_host_class"] == (
-        "vpn" if component == "agent" else component
-    )
+    if component == "kuma":
+        assert selected["variables"]["observability_observer_kind"] == "uptime-kuma"
+    else:
+        assert "vpn" in selected["variables"]["observability_capabilities"]
     assert "ControlMaster=no" in module.fleet_inspection.ssh_command(
         selected, Path(arguments[arguments.index("--known-hosts") + 1])
     )
@@ -1105,10 +968,10 @@ def test_generated_style_inventory_selects_the_exact_component_section(
     [
         (
             "[vpn-observability-control]\\n"
-            "node-a ansible_host=duplicate.fixture.invalid ansible_user=deploy ansible_port=22 env=staging observability_host_class=control-plane"
+            "node-a ansible_host=duplicate.fixture.invalid ansible_user=deploy ansible_port=22 env=staging observability_capabilities='[\"vpn\",\"collector\"]'"
         ),
         "ansible_ssh_common_args='-o ProxyCommand=unsafe'",
-        "env=staging observability_host_class=deadman",
+        "env=staging observability_observer_kind=uptime-kuma",
     ],
 )
 def test_component_inventory_rejects_duplicate_unsafe_or_wrong_class(
@@ -1223,6 +1086,43 @@ def test_make_deploy_forwards_exact_scope_and_private_inputs(
     call = _calls(operator)[0]
     assert call["program"] == "ansible-playbook"
     assert "Refuse replacing an existing observability deployment" in call["playbook"]
+
+
+@pytest.mark.parametrize("field", ["OBSERVABILITY_SECRETS_FILE", "OBSERVABILITY_VARS"])
+def test_make_check_never_executes_private_path_as_shell_syntax(operator, field):
+    values = dict(zip(operator["common"][::2], operator["common"][1::2]))
+    marker = operator["tmp"] / "must-not-execute"
+    arguments = {
+        "OBSERVABILITY_INVENTORY": values["--inventory"],
+        "OBSERVABILITY_HOST": values["--host"],
+        "OBSERVABILITY_ENVIRONMENT": values["--environment"],
+        "OBSERVABILITY_COMPONENT": values["--component"],
+        "OBSERVABILITY_KNOWN_HOSTS": values["--known-hosts"],
+        "OBSERVABILITY_SECRETS_FILE": operator["secrets"],
+        "OBSERVABILITY_VARS": operator["vars"],
+    }
+    arguments[field] = "/missing/$(touch " + str(marker) + ")"
+    result = subprocess.run(
+        ["make", "observability-check", *(f"{key}={value}" for key, value in arguments.items())],
+        cwd=ROOT, env=operator["env"], text=True, capture_output=True, timeout=20,
+    )
+    assert result.returncode != 0
+    assert not marker.exists()
+    assert _calls(operator) == []
+
+
+@pytest.mark.parametrize("field", ["OBSERVABILITY_PKI_CONFIG", "OBSERVABILITY_PKI_OUTPUT"])
+def test_make_pki_paths_are_literal_before_includes(operator, field):
+    marker = operator["tmp"] / "must-not-execute"
+    arguments = {"OBSERVABILITY_PKI_CONFIG": "/missing/config", "OBSERVABILITY_PKI_OUTPUT": "/missing/output"}
+    arguments[field] = "$(shell touch " + str(marker) + ")$(touch " + str(marker) + ")"
+    result = subprocess.run(
+        ["make", "observability-pki-prepare", *(f"{key}={value}" for key, value in arguments.items())],
+        cwd=ROOT, env=operator["env"], text=True, capture_output=True, timeout=20,
+    )
+    assert result.returncode != 0
+    assert not marker.exists()
+    assert _calls(operator) == []
 
 
 def test_make_never_inherits_prod_environment_for_operator_targets(

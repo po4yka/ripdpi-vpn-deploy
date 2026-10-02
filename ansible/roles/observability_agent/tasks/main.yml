@@ -3,14 +3,14 @@
   ansible.builtin.assert:
     that:
       - >-
-        (observability_agent.install_root | default('/opt/observability-agent'))
-        is match('^/opt/observability-agent(?:-[a-z0-9-]+)?$')
-      - >-
-        (observability_agent.promtool_install_root | default('/opt/observability-agent-promtool'))
-        is match('^/opt/observability-agent-promtool(?:-[a-z0-9-]+)?$')
+        (observability_agent.install_root | default('/opt/observability-vmagent'))
+        is match('^/opt/observability-vmagent(?:-[a-z0-9-]+)?$')
       - (observability_agent.config_dir | default('/etc/observability-agent')) == '/etc/observability-agent'
       - (observability_agent.credential_dir | default('/etc/observability-agent/credentials')) == '/etc/observability-agent/credentials'
-      - (observability_agent.wal_dir | default('/var/lib/observability-agent/wal')) == '/var/lib/observability-agent/wal'
+      - (observability_agent.queue_dir | default('/var/lib/observability-agent/queue')) == '/var/lib/observability-agent/queue'
+      - >-
+        observability_agent.keys() | intersect(['promtool_install_root', 'wal_dir', 'wal_max_time',
+        'queue_capacity', 'queue_max_samples_per_send', 'queue_batch_send_deadline']) | length == 0
       - >-
         observability_agent_watchdog_state_path == '/var/lib/vpn-watchdog/state'
       - >-
@@ -24,16 +24,31 @@
 - name: Disable observability agent when feature is disabled
   when: not (observability_agent.enabled | default(false) | bool)
   block:
-    - name: Stop and disable observability agent owned units
-      ansible.builtin.systemd_service:
-        name: "{{ item }}"
-        enabled: false
-        state: stopped
+    - name: Stop only the independently owned node heartbeat
+      ansible.builtin.include_role:
+        name: observability_kuma
+        tasks_from: producers-disable
+      vars:
+        observability_push_disable_kinds: [node]
+
+    - name: Inspect observability agent owned units before disable
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/{{ item }}"
       loop:
         - observability-agent.service
         - observability-agent-adapter.timer
         - observability-agent-health-adapter.timer
-      failed_when: false
+        - observability-agent-adapter.service
+        - observability-agent-health-adapter.service
+      register: _observability_agent_owned_units
+
+    - name: Stop and disable observability agent owned units
+      ansible.builtin.systemd_service:
+        name: "{{ item.item }}"
+        enabled: false
+        state: stopped
+      loop: "{{ _observability_agent_owned_units.results }}"
+      when: item.stat.exists
 
     - name: Remove observability agent owned runtime state
       ansible.builtin.file:
@@ -47,13 +62,8 @@
         - /etc/systemd/system/observability-agent-health-adapter.timer
         - /usr/local/libexec/observability-agent-adapter.py
         - /usr/local/libexec/observability-agent-health-adapter.py
-        - "{{ observability_agent.config_dir | default('/etc/observability-agent') }}"
-        - "{{ observability_agent.credential_dir | default('/etc/observability-agent/credentials') }}"
-        - "{{ observability_agent.wal_dir | default('/var/lib/observability-agent/wal') }}"
-        - "{{ observability_agent.install_root | default('/opt/observability-agent') }}"
-        - "{{ observability_agent.promtool_install_root | default('/opt/observability-agent-promtool') }}"
-        - /usr/local/bin/prometheus-observability-agent
-        - /usr/local/bin/promtool-observability-agent
+        - "{{ observability_agent.install_root | default('/opt/observability-vmagent') }}"
+        - /usr/local/bin/vmagent-observability-agent
         - "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/observability-agent.prom"
         - "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/observability-health.prom"
       notify: Reload observability agent systemd
@@ -61,43 +71,51 @@
 - name: Configure observability agent when feature is enabled
   when: observability_agent.enabled | default(false) | bool
   block:
+    - name: Require direct node heartbeat scope before mutation
+      ansible.builtin.assert:
+        that:
+          - observability_push is defined
+          - observability_push.kinds == ['node']
+          - observability_push.node_id == observability_agent.node_id
+        fail_msg: Enabled agent requires its own direct node heartbeat configuration.
+
+    - name: Validate direct node heartbeat credentials before mutation
+      ansible.builtin.include_role:
+        name: observability_kuma
+        tasks_from: producers-contract
+
     - name: Assert observability agent contract and exact runtime pins
       ansible.builtin.assert:
         that:
           - observability_contract.schema_version | default(0) | int == 1
           - observability_contract.credential_mode | default('') == 'systemd'
-          - observability_agent.version | default('') | length > 0
+          - observability_agent.version | default('') is match('^v[0-9]+[.][0-9]+[.][0-9]+$')
           - observability_agent.node_id | default('') is match('^[a-z][a-z0-9_-]{0,63}$')
           - observability_agent.environment | default('') is match('^[a-z][a-z0-9_-]{0,63}$')
           - >-
             observability_agent.receiver_origin | default('')
             is match('^https://[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(?::[1-9][0-9]{0,4})?$')
           - observability_agent.receiver_origin | urlsplit('port') | default(443, true) | int <= 65535
-          - observability_agent.receiver_sni | default('') is match('^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$')
+          - observability_agent.receiver_address | default('') is match('^[0-9.]+$')
+          - observability_agent.receiver_origin == 'https://' ~ observability_agent.receiver_address ~ ':9443'
           - observability_agent.release_urls.amd64 | default('') is match('^https://')
           - observability_agent.release_urls.arm64 | default('') is match('^https://')
           - observability_agent.linux_amd64_sha256 | default('') is match('^[0-9a-f]{64}$')
           - observability_agent.linux_arm64_sha256 | default('') is match('^[0-9a-f]{64}$')
-          - observability_agent.wal_max_time | default('') is match('^(?:(?:[1-9]|[1-5][0-9]|60)m|(?:[1-9]|1[0-9]|2[0-4])h)$')
+          - observability_agent.queue_max_disk_bytes | default(0) | int == 536870912
           - observability_agent.web_listen | default('') is match('^127\\.0\\.0\\.1:[1-9][0-9]{0,4}$')
           - observability_agent.web_listen.split(':')[-1] | int <= 65535
           - node_manifest_source_revision | default('') is match('^[0-9a-f]{40}$')
           - node_manifest_deployable_digest | default('') is match('^[0-9a-f]{64}$')
-          - observability_agent.scrape_sample_limit | default(0) | int >= 1
-          - observability_agent.scrape_sample_limit | default(0) | int <= 10000
+          - observability_agent.scrape_sample_limit | default(0) | int == 2000
           - observability_agent.scrape_label_limit | default(0) | int >= 1
           - observability_agent.scrape_label_limit | default(0) | int <= 64
-          - observability_agent.scrape_interval | default('') is match('^(?:[1-9]|[1-9][0-9]|[12][0-9]{2}|300)s$')
+          - observability_agent.scrape_interval | default('') == '60s'
           - observability_agent.scrape_label_name_length_limit | default(0) | int >= 1
           - observability_agent.scrape_label_name_length_limit | default(0) | int <= 128
           - observability_agent.scrape_label_value_length_limit | default(0) | int >= 1
           - observability_agent.scrape_label_value_length_limit | default(0) | int <= 256
-          - observability_agent.queue_capacity | default(0) | int >= 1
-          - observability_agent.queue_capacity | default(0) | int <= 10000
-          - observability_agent.queue_max_samples_per_send | default(0) | int >= 1
-          - observability_agent.queue_max_samples_per_send | default(0) | int <= 2000
-          - observability_agent.queue_batch_send_deadline | default('') is match('^(?:[1-9]|[12][0-9]|30)s$')
-          - observability_agent.memory_max | default('') == '512M'
+          - observability_agent.memory_max | default('') == '192M'
           - observability_agent.tasks_max | default(0) | int == 64
           - observability_agent.nofile_limit | default(0) | int == 65536
           - observability_agent_watchdog_max_age_seconds | int >= 60
@@ -112,15 +130,39 @@
             observability_alert_policy.required_systemd_units | unique | length ==
             observability_alert_policy.required_systemd_units | length
         fail_msg: >-
-          Observability agent requires schema-1 systemd credentials, exact Prometheus
-          archive pins, technical node identity, HTTPS receiver origin, separate SNI,
-          and a bounded WAL retention window.
+          Observability agent requires schema-1 systemd credentials, exact stable vmagent
+          archive pins, technical node identity, private IP HTTPS receiver origin,
+          and a 512 MiB persistent queue with no obsolete Prometheus sender options.
 
     - name: Validate each required systemd selector
       ansible.builtin.assert:
         that:
           - item is match('^[a-z0-9][a-z0-9@_-]{0,62}[.]service$')
       loop: "{{ observability_alert_policy.required_systemd_units }}"
+
+    - name: Verify the receiver is a literal private IPv4 address
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - >-
+            import ipaddress, sys;
+            a = ipaddress.ip_address(sys.argv[1]);
+            sys.exit(0 if any(a in ipaddress.ip_network(n) for n in
+            ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '100.64.0.0/10']) else 1)
+          - "{{ observability_agent.receiver_address }}"
+      changed_when: false
+      check_mode: false
+
+    - name: Refuse implicit retained queue migration before host mutation
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - "{{ lookup('ansible.builtin.file', role_path ~ '/files/observability-queue-boundary.py') }}"
+          - "{{ observability_agent.receiver_origin }}/remote-write/v1/nodes/{{ observability_agent.node_id }}"
+      changed_when: false
+      check_mode: false
 
     - name: Select exact node mTLS sender authority
       ansible.builtin.set_fact:
@@ -138,6 +180,9 @@
           - _observability_agent_senders[0].private_key_pem | default('') | length > 0
         fail_msg: Observability sender credentials must contain exactly one identity for this node.
       no_log: true
+
+    - name: Apply aggregate sender and producer boundary before runtime mutation
+      ansible.builtin.include_tasks: resource-boundary.yml
 
     - name: Create observability agent runtime account
       ansible.builtin.user:
@@ -161,10 +206,18 @@
           mode: "0711"
         - path: "{{ observability_agent.credential_dir }}/generations"
           mode: "0711"
-        - path: "{{ observability_agent.wal_dir }}"
+        - path: "{{ observability_agent.queue_dir }}"
           owner: observability-agent
           group: observability-agent
           mode: "0700"
+
+    - name: Bind the private retained queue to its one admitted receiver
+      ansible.builtin.copy:
+        content: "{{ observability_agent.receiver_origin }}/remote-write/v1/nodes/{{ observability_agent.node_id }}\n"
+        dest: "{{ observability_agent.config_dir }}/queue-receiver.url"
+        owner: root
+        group: root
+        mode: "0600"
 
     - name: Install pinned observability agent through runtime-release
       ansible.builtin.include_role:
@@ -172,8 +225,8 @@
       vars:
         runtime_release_version: "{{ observability_agent.version }}"
         runtime_release_install_root: "{{ observability_agent.install_root }}"
-        runtime_release_binary_name: prometheus
-        runtime_release_public_link: /usr/local/bin/prometheus-observability-agent
+        runtime_release_binary_name: vmagent-prod
+        runtime_release_public_link: /usr/local/bin/vmagent-observability-agent
         runtime_release_urls:
           amd64: "{{ observability_agent.release_urls.amd64 }}"
           arm64: "{{ observability_agent.release_urls.arm64 }}"
@@ -183,36 +236,12 @@
         runtime_release_arch_slugs:
           amd64: linux-amd64
           arm64: linux-arm64
-        runtime_release_artifact_filename: prometheus
+        runtime_release_artifact_filename: vmutils.tar.gz
         runtime_release_artifact_type: archive
-        runtime_release_archive_strip_components: 1
+        runtime_release_archive_strip_components: 0
         runtime_release_archive_members:
-          amd64: "prometheus-{{ observability_agent.version }}.linux-amd64/prometheus"
-          arm64: "prometheus-{{ observability_agent.version }}.linux-arm64/prometheus"
-
-    - name: Install matching pinned promtool through runtime-release
-      ansible.builtin.include_role:
-        name: runtime-release
-      vars:
-        runtime_release_version: "{{ observability_agent.version }}"
-        runtime_release_install_root: "{{ observability_agent.promtool_install_root }}"
-        runtime_release_binary_name: promtool
-        runtime_release_public_link: /usr/local/bin/promtool-observability-agent
-        runtime_release_urls:
-          amd64: "{{ observability_agent.release_urls.amd64 }}"
-          arm64: "{{ observability_agent.release_urls.arm64 }}"
-        runtime_release_sha256:
-          amd64: "{{ observability_agent.linux_amd64_sha256 }}"
-          arm64: "{{ observability_agent.linux_arm64_sha256 }}"
-        runtime_release_arch_slugs:
-          amd64: linux-amd64
-          arm64: linux-arm64
-        runtime_release_artifact_filename: promtool
-        runtime_release_artifact_type: archive
-        runtime_release_archive_strip_components: 1
-        runtime_release_archive_members:
-          amd64: "prometheus-{{ observability_agent.version }}.linux-amd64/promtool"
-          arm64: "prometheus-{{ observability_agent.version }}.linux-arm64/promtool"
+          amd64: vmagent-prod
+          arm64: vmagent-prod
 
     - name: Validate and publish observability credential bundle
       block:
@@ -333,12 +362,9 @@
         - name: Validate candidate observability configuration
           ansible.builtin.command:
             argv:
-              - /usr/local/bin/promtool-observability-agent
-              - check
-              - config
-              - --agent
-              - --syntax-only
-              - "{{ _observability_agent_credential_candidate.path }}/prometheus.yml"
+              - /usr/local/bin/vmagent-observability-agent
+              - -dryRun
+              - "-promscrape.config={{ _observability_agent_credential_candidate.path }}/prometheus.yml"
           changed_when: false
           no_log: true
 
@@ -348,7 +374,11 @@
               {{ {'ca': observability_secrets.receiver_ca_pem,
                   'certificate': _observability_agent_senders[0].certificate_pem,
                   'key': _observability_agent_senders[0].private_key_pem,
-                  'config': _observability_agent_rendered_config} | to_json | hash('sha256') }}
+                  'config': _observability_agent_rendered_config,
+                  'receiver': observability_agent.receiver_origin,
+                  'identity': observability_agent.node_id,
+                  'server_ip': observability_agent.receiver_address,
+                  'queue_bytes': observability_agent.queue_max_disk_bytes} | to_json | hash('sha256') }}
           no_log: true
 
         - name: Inspect observability configuration generation
@@ -498,11 +528,64 @@
         group: root
         mode: "0644"
 
+    - name: Recheck queue capacity after publication before touching active units
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - "{{ lookup('ansible.builtin.file', role_path ~ '/files/observability-queue-boundary.py') }}"
+          - "{{ observability_agent.receiver_origin }}/remote-write/v1/nodes/{{ observability_agent.node_id }}"
+      changed_when: false
+
     - name: Bind observability service to the candidate credential generation
       ansible.builtin.set_fact:
         _observability_agent_service_generation: >-
           {{ _observability_agent_credential_generation }}
       no_log: true
+
+    - name: Inspect prior sender unit before candidate publication
+      ansible.builtin.stat:
+        path: /etc/systemd/system/observability-agent.service
+        follow: false
+      register: _observability_agent_previous_unit
+
+    - name: Require prior sender unit to be a private-authority regular file
+      ansible.builtin.assert:
+        that:
+          - >-
+            not _observability_agent_previous_unit.stat.exists or
+            (_observability_agent_previous_unit.stat.isreg | default(false) and
+             _observability_agent_previous_unit.stat.uid | int == 0 and
+             _observability_agent_previous_unit.stat.mode == '0644' and
+             _observability_agent_previous_unit.stat.nlink | int == 1)
+        fail_msg: Prior sender unit is not a root-owned regular unit.
+
+    - name: Capture exact prior sender unit for transport rollback
+      ansible.builtin.slurp:
+        src: /etc/systemd/system/observability-agent.service
+      register: _observability_agent_previous_unit_bytes
+      when: _observability_agent_previous_unit.stat.exists
+      no_log: true
+
+    - name: Identify the exact captured runtime for rollback readiness only
+      ansible.builtin.set_fact:
+        _observability_agent_previous_runtimes: >-
+          {{ (_observability_agent_previous_unit_bytes.content | b64decode)
+          | regex_findall('(?m)^ExecStart=/usr/local/bin/(vmagent|prometheus)-observability-agent(?: |$)') }}
+        _observability_agent_previous_listeners: >-
+          {{ (_observability_agent_previous_unit_bytes.content | b64decode)
+          | regex_findall('(?m)(?:-httpListenAddr=|--web.listen-address=)(127[.]0[.]0[.]1:[0-9]{1,5})(?: |$)') }}
+      when: _observability_agent_previous_unit.stat.exists
+      no_log: true
+
+    - name: Refuse an unrecognized captured sender runtime
+      ansible.builtin.assert:
+        that:
+          - _observability_agent_previous_runtimes | length == 1
+          - _observability_agent_previous_listeners | length == 1
+          - 0 < (_observability_agent_previous_listeners[0].split(':')[1] | int) <= 65535
+        fail_msg: Previous sender unit has no recognized rollback runtime.
+      when: _observability_agent_previous_unit.stat.exists
 
     - name: Install observability agent units
       ansible.builtin.template:
@@ -571,6 +654,16 @@
       changed_when: false
       failed_when: false
 
+    - name: Require coherent previously active runtime for live rollback
+      ansible.builtin.set_fact:
+        _observability_agent_can_restore_runtime: >-
+          {{ _observability_agent_previous_generation.stat.islnk | default(false)
+          and _observability_agent_previous_unit.stat.exists
+          and _observability_agent_service_active.rc == 0 }}
+        _observability_agent_previous_ready_path: >-
+          {{ '/-/ready' if (_observability_agent_previous_runtimes | default([])) == ['prometheus']
+          else '/ready' }}
+
     - name: Activate and verify observability configuration generation
       block:
         - name: Switch current observability credential generation
@@ -596,13 +689,18 @@
             _observability_agent_service_active.rc != 0
 
         - name: Wait for observability agent local readiness
-          ansible.builtin.uri:
-            url: "http://{{ observability_agent.web_listen }}/-/ready"
-            status_code: 200
+          ansible.builtin.command:
+            argv:
+              - python3
+              - -c
+              - "{{ lookup('ansible.builtin.file', role_path ~ '/files/observability-agent-readiness.py') }}"
+              - "{{ observability_agent.web_listen }}"
+              - vmagent
+          changed_when: false
           register: _observability_agent_ready
           retries: 15
           delay: 1
-          until: _observability_agent_ready.status == 200
+          until: _observability_agent_ready.rc == 0
       rescue:
         - name: Restore previous observability generation
           ansible.builtin.file:
@@ -619,17 +717,18 @@
           ansible.builtin.set_fact:
             _observability_agent_service_generation: >-
               {{ _observability_agent_previous_generation_id }}
-          when: _observability_agent_previous_generation.stat.islnk | default(false)
+          when: _observability_agent_can_restore_runtime | bool
           no_log: true
 
         - name: Restore previous observability agent service unit
-          ansible.builtin.template:
-            src: observability-agent.service.j2
+          ansible.builtin.copy:
+            content: "{{ _observability_agent_previous_unit_bytes.content | b64decode }}"
             dest: /etc/systemd/system/observability-agent.service
             owner: root
             group: root
             mode: "0644"
-          when: _observability_agent_previous_generation.stat.islnk | default(false)
+          when: _observability_agent_previous_unit.stat.exists
+          no_log: true
 
         - name: Restore previous observability health adapter service unit
           ansible.builtin.template:
@@ -638,7 +737,7 @@
             owner: root
             group: root
             mode: "0644"
-          when: _observability_agent_previous_generation.stat.islnk | default(false)
+          when: _observability_agent_can_restore_runtime | bool
 
         - name: Stop and disable failed first observability agent activation
           ansible.builtin.systemd_service:
@@ -646,7 +745,7 @@
             enabled: false
             state: stopped
             daemon_reload: true
-          when: not (_observability_agent_previous_generation.stat.islnk | default(false))
+          when: not (_observability_agent_can_restore_runtime | bool)
 
         - name: Remove failed first observability generation activation
           ansible.builtin.file:
@@ -660,17 +759,22 @@
             name: observability-agent.service
             state: restarted
             daemon_reload: true
-          when: _observability_agent_previous_generation.stat.islnk | default(false)
+          when: _observability_agent_can_restore_runtime | bool
 
         - name: Verify restored observability generation readiness
-          ansible.builtin.uri:
-            url: "http://{{ observability_agent.web_listen }}/-/ready"
-            status_code: 200
+          ansible.builtin.command:
+            argv:
+              - python3
+              - -c
+              - "{{ lookup('ansible.builtin.file', role_path ~ '/files/observability-agent-readiness.py') }}"
+              - "{{ _observability_agent_previous_listeners[0] }}"
+              - "{{ _observability_agent_previous_runtimes[0] }}"
+          changed_when: false
           register: _observability_agent_restored_ready
           retries: 15
           delay: 1
-          until: _observability_agent_restored_ready.status == 200
-          when: _observability_agent_previous_generation.stat.islnk | default(false)
+          until: _observability_agent_restored_ready.rc == 0
+          when: _observability_agent_can_restore_runtime | bool
 
         - name: Inspect failed first observability agent activation state
           ansible.builtin.command:
@@ -682,14 +786,14 @@
               - --value
           register: _observability_agent_failed_first_state
           changed_when: false
-          when: not (_observability_agent_previous_generation.stat.islnk | default(false))
+          when: not (_observability_agent_can_restore_runtime | bool)
 
         - name: Assert failed first observability agent activation is inactive
           ansible.builtin.assert:
             that:
               - _observability_agent_failed_first_state.stdout | trim == 'inactive'
             fail_msg: Failed first observability agent activation did not stop cleanly.
-          when: not (_observability_agent_previous_generation.stat.islnk | default(false))
+          when: not (_observability_agent_can_restore_runtime | bool)
 
         - name: Refuse failed observability generation activation
           ansible.builtin.fail:
@@ -715,3 +819,8 @@
         enabled: true
         state: started
         daemon_reload: true
+
+    - name: Install explicitly scoped direct node heartbeat producer
+      ansible.builtin.include_role:
+        name: observability_kuma
+        tasks_from: producers

@@ -1,0 +1,33 @@
+[Unit]
+Description=Quiesced encrypted independent observer backup
+After=docker.service
+
+[Service]
+Type=oneshot
+# Host-management job stops/starts its own container and reads private data.
+User=root
+LoadCredential=backup-recipient:/etc/observability-kuma/backup-recipient
+ExecStart=/usr/bin/python3 /usr/local/libexec/observability-kuma-backup.py backup
+TimeoutStartSec=420
+MemoryMax=128M
+CPUQuota=25%
+IOWeight=10
+TasksMax=32
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+RuntimeDirectory=observability-kuma-lifecycle
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+ReadWritePaths=/srv/observer-backup /run/observability-kuma-lifecycle

@@ -9,23 +9,32 @@ data shaping are Python and use only stdlib + pinned `PyYAML`, `Jinja2`, or
 
 **One file per operator verb** — `bootstrap-secrets.sh`, `rotate-secrets.sh`,
 `fleet-rotate.sh`. The Makefile wraps these with `make <target>` shorthand.
-`observability-operator.py bootstrap` is the fixed staging-only exception for
-fresh control-plane and dead-man hosts: it validates the clean topology-bound
-host class, provider listener contract and source-restricted SSH CIDRs before
-running only `observability-host-bootstrap.yml` against one isolated host.
-It never accepts VPN-class hosts, production, arbitrary roles, or secrets.
-`observability-staging-acceptance.py` is the other staging-only exception: one
+`observability-operator.py` now selects co-hosted VPN capabilities and the
+independent typed Kuma observer; dedicated-host `bootstrap` refuses before
+host access. Local `render` and syntax `validate` do not admit a host; `check`
+requires explicit host-access confirmation. Private-IP PKI preparation produces
+an encrypted fragment without contacting a host or issuing Telegram credentials.
+The shared PKI helpers explicitly emit CA/leaf subject-key identifiers and leaf
+authority-key identifiers; strict verification must not rely on OpenSSL's
+implicit extension defaults.
+`observability-staging-acceptance.py` retains the historical dedicated-host
+staging contract, not acceptance for the current co-hosted topology: one
 invocation advances one repository-defined live row from a private canonical
 manifest, approval and journal. Keep the critical reminder at the real one-hour
 interval, require separate human-observation booleans, restore interrupted rows
 before later work, and emit only categorical private receipts. Never add a
 caller-supplied command, unit, endpoint, environment or arbitrary fault.
-The fixed sequence includes negative ingestion, bounded WAL recovery,
+The fixed sequence includes negative ingestion, bounded persistent-queue recovery,
 missing/stale evidence, grouping/inhibition, finite-silence, sender and
 Telegram old-material rejection, invalid-candidate refusal, valid activation,
 and exact control-plane rollback rows. Old sender proof uses the retained
 private generation only for a rejected TLS handshake; candidate generation and
 TSDB identities remain private controller evidence and never enter receipts.
+The retained `agent-wal` row identifier now exercises the current vmagent sender.
+Read transport from the fixed service's stable MainPID and bounded argv, not
+removed Prometheus remote-write YAML fields. Queue bytes, sent blocks and HTTP
+or persistent-queue drops have distinct units; no counter substitutes for a
+collector query proving the exact node's historical sample inside the outage.
 Keep the staleness mutation journaled on the canary and held until the control
 plane independently observes the firing alert; every exit restores the exact
 producer timestamp and prior watchdog-timer state before later checks. Finite

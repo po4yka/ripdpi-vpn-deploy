@@ -1,0 +1,23 @@
+---
+- name: Converge observer and scoped producer disable lifecycle
+  hosts: all
+  become: true
+  pre_tasks:
+    - name: Load complete role default contract for disabled fixture
+      ansible.builtin.include_vars:
+        file: ../../defaults/main.yml
+        name: kuma_fixture_defaults
+    - name: Bind fixture to its own exact host
+      ansible.builtin.set_fact:
+        observability_kuma: >-
+          {{ kuma_fixture_defaults.observability_kuma | combine({'host_alias': inventory_hostname,
+          'admission_approved': true, 'backup_directory': '/srv/observer-backup'}) }}
+  roles:
+    - role: observability_kuma
+  tasks:
+    - name: Disable only the scoped node producer
+      ansible.builtin.include_role:
+        name: observability_kuma
+        tasks_from: producers-disable
+      vars:
+        observability_push_disable_kinds: [node]

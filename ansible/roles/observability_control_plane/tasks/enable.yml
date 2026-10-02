@@ -2,6 +2,8 @@
 - name: Require a complete bounded control-plane contract
   ansible.builtin.assert:
     that:
+      - observability_control_plane.service_user == 'observability-prometheus'
+      - observability_control_plane.service_group == 'observability-prometheus'
       - observability_control_plane.ingress_port | int == 9443
       - observability_control_plane.prometheus_listen == '127.0.0.1:9090'
       - observability_control_plane.remote_write_path_prefix == '/remote-write/v1/nodes'
@@ -9,12 +11,16 @@
       - observability_control_plane.request_concurrency | int == 4
       - observability_control_plane.request_rate == '20r/s'
       - observability_control_plane.request_rate_burst | int == 40
-      - observability_control_plane.tsdb_retention_time == '30d'
-      - observability_control_plane.tsdb_retention_size == '20GB'
-      - observability_control_plane.tsdb_required_bytes | int >= 42949672960
-      - observability_control_plane.ingress_sni is match('^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$')
-      - observability_control_plane.control_plane_dns_san is match('^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$')
-      - observability_control_plane.ingress_sni != observability_control_plane.control_plane_dns_san
+      - observability_control_plane.tsdb_retention_time == '7d'
+      - observability_control_plane.tsdb_retention_size == '1GB'
+      - observability_control_plane.tsdb_required_bytes | int == 2147483648
+      - observability_control_plane.tsdb_high_water_bytes | int == 2147483648
+      - observability_control_plane.disk_reserve_bytes | int == 5368709120
+      - observability_control_plane.disk_reserve_percent | int == 20
+      - observability_control_plane.guard_interval_seconds | int == 5
+      - observability_control_plane.disk_guard_state_dir == '/var/lib/observability-disk-guard'
+      - observability_control_plane.data_dir == '/var/lib/observability-prometheus'
+      - observability_control_plane.ingress_address is match('^[0-9.]+$')
       - observability_control_plane.prometheus.version is match('^[A-Za-z0-9._+-]+$')
       - observability_control_plane.prometheus.urls.amd64 is match('^https://|^file://')
       - observability_control_plane.prometheus.urls.arm64 is match('^https://|^file://')
@@ -32,9 +38,91 @@
         list | unique | length == observability_control_plane.ingest_identities | length
     fail_msg: >-
       observability_control_plane requires exact bounded receiver settings,
-      a pinned Prometheus archive, separate ingress SNI/DNS SAN identities,
+      a pinned Prometheus archive, private ingress IP SAN identity,
       and complete mTLS/CRL material before it writes a host.
   no_log: true
+
+- name: Require independent collector and delivery producer scope before mutation
+  ansible.builtin.assert:
+    that:
+      - observability_push is defined
+      - observability_push.kinds | sort == ['delivery', 'pipeline']
+      - observability_control_plane.alerting.enabled | bool
+      - >-
+        observability_push.expected_nodes | sort ==
+        observability_control_plane.ingest_identities | map(attribute='node_id') | sort
+      - observability_push.node_id in observability_push.expected_nodes
+    fail_msg: >-
+      Enabled collector requires active primary alerting, independent pipeline and delivery pushes,
+      and exact enrolled-node coverage including its cohosted agent.
+
+- name: Validate independent collector producer credentials before mutation
+  ansible.builtin.include_role:
+    name: observability_kuma
+    tasks_from: producers-contract
+
+- name: Require measured capacity and private address before host mutation
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path ~ '/files/observability-disk-guard.py') }}"
+      - --preflight
+      - --data-dir
+      - "{{ observability_control_plane.data_dir }}"
+      - --ingress-address
+      - "{{ observability_control_plane.ingress_address }}"
+      - --headroom-bytes
+      - "{{ observability_control_plane.disk_write_headroom_bytes | string }}"
+      - --peak-bytes-per-second
+      - "{{ observability_control_plane.disk_measured_peak_bytes_per_second | string }}"
+      - --stop-seconds
+      - "{{ observability_control_plane.disk_measured_stop_seconds | string }}"
+  changed_when: false
+  check_mode: false
+
+- name: Inspect existing observability route ownership before mutation
+  ansible.builtin.service_facts:
+
+- name: Inspect historical shared ingress ownership without altering it
+  ansible.builtin.stat:
+    path: /etc/nginx/sites-enabled/observability-remote-write.conf
+    follow: false
+  register: _observability_legacy_ingress
+
+- name: Preserve historical ingress until explicit private cutover
+  ansible.builtin.assert:
+    that:
+      - not (_observability_legacy_ingress.stat.exists | default(false))
+      - not (_observability_legacy_ingress.stat.islnk | default(false))
+    fail_msg: A historical shared ingress exists; explicit private cutover is required before replacement.
+
+- name: Inspect historical alarm services and timers including active timer units
+  ansible.builtin.command:
+    argv: [systemctl, is-active, --quiet, "{{ item }}"]
+  loop:
+    - observability-deadman-pipeline.service
+    - observability-deadman-pulse.timer
+    - observability-primary-canary.timer
+  register: _observability_legacy_alarm_states
+  changed_when: false
+  failed_when: _observability_legacy_alarm_states.rc not in [0, 3, 4]
+  check_mode: false
+
+- name: Preserve any working historical alarm route until explicit cutover
+  ansible.builtin.assert:
+    that:
+      - item.rc != 0
+    fail_msg: A historical alarm route is active; explicit verified cutover is required before replacing it.
+  loop: "{{ _observability_legacy_alarm_states.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Reject obsolete dedicated observer runtime configuration
+  ansible.builtin.assert:
+    that:
+      - observability_control_plane.alerting.deadman is not defined
+    fail_msg: Dedicated deadman runtime is obsolete; use the private Kuma producer contract.
 
 - name: Require safe technical node identities
   ansible.builtin.assert:
@@ -120,19 +208,40 @@
       group: "{{ observability_control_plane.service_group }}"
       mode: '0750'
 
-- name: Read filesystem capacity reserved for Prometheus TSDB
-  ansible.builtin.command:
-    argv: [df, -PB1, "{{ observability_control_plane.data_dir }}"]
-  register: _observability_tsdb_capacity
-  changed_when: false
+- name: Create persistent disk guard latch directory
+  ansible.builtin.file:
+    path: "{{ observability_control_plane.disk_guard_state_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
 
-- name: Require TSDB capacity before activation
-  ansible.builtin.assert:
-    that:
-      - >-
-        (_observability_tsdb_capacity.stdout_lines[-1].split()[3] | int) >=
-        (observability_control_plane.tsdb_required_bytes | int)
-    fail_msg: Observability TSDB requires at least the configured 40 GiB capacity before activation.
+- name: Install monitoring disk guard
+  ansible.builtin.copy:
+    src: observability-disk-guard.py
+    dest: /usr/local/libexec/observability-disk-guard.py
+    owner: root
+    group: root
+    mode: '0755'
+  notify: Restart observability disk guard
+
+- name: Install aggregate collector resource boundary and reserve guard
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - observability-collector.slice
+    - observability-disk-guard.service
+  register: _observability_resource_units
+  notify:
+    - Reload observability resource boundary
+    - Restart observability disk guard
+
+- name: Reload aggregate collector resource units before dependent services
+  ansible.builtin.meta: flush_handlers
 
 - name: Materialize ingress TLS and revocation authority
   ansible.builtin.copy:
@@ -156,6 +265,7 @@
       mode: '0640'
   no_log: true
   diff: false
+  register: _observability_ingress_tls
 
 - name: Materialize identity certificates for preflight only
   ansible.builtin.copy:
@@ -168,7 +278,7 @@
   no_log: true
   diff: false
 
-- name: Verify server certificate contains separate ingress and management DNS SANs
+- name: Verify server certificate contains the private ingress IP SAN
   ansible.builtin.command:
     argv:
       - openssl
@@ -176,12 +286,18 @@
       - -in
       - "{{ observability_control_plane.config_root }}/tls/server.crt"
       - -noout
-      - -checkhost
-      - "{{ item }}"
-  loop:
-    - "{{ observability_control_plane.ingress_sni }}"
-    - "{{ observability_control_plane.control_plane_dns_san }}"
+      - -checkip
+      - "{{ observability_control_plane.ingress_address }}"
+  register: _observability_server_ip_san
   changed_when: false
+  no_log: true
+
+- name: Refuse a server certificate with a mismatched private IP SAN
+  ansible.builtin.assert:
+    that:
+      - "'does match certificate' in _observability_server_ip_san.stdout"
+      - "'does NOT match' not in _observability_server_ip_san.stdout"
+    fail_msg: The ingestion certificate must verify the exact private IP SAN.
   no_log: true
 
 - name: Verify each client certificate identity, EKU, CA and CRL
@@ -362,36 +478,45 @@
       ansible.builtin.fail:
         msg: Candidate control-plane generation did not become ready; previous ready generation was restored when available.
 
-- name: Render write-only mTLS ingress
+- name: Create unprivileged isolated ingress group
+  ansible.builtin.group:
+    name: observability-ingress
+    system: true
+
+- name: Create unprivileged isolated ingress account
+  ansible.builtin.user:
+    name: observability-ingress
+    group: observability-ingress
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+
+- name: Render isolated write-only mTLS ingress
   ansible.builtin.template:
-    src: observability-remote-write.conf.j2
-    dest: /etc/nginx/sites-available/observability-remote-write.conf
+    src: observability-nginx.conf.j2
+    dest: "{{ observability_control_plane.config_root }}/nginx.conf"
     owner: root
     group: root
     mode: '0644'
+  register: _observability_ingress_config
 
-- name: Enable write-only mTLS ingress
-  ansible.builtin.file:
-    src: /etc/nginx/sites-available/observability-remote-write.conf
-    dest: /etc/nginx/sites-enabled/observability-remote-write.conf
-    state: link
-    force: true
+- name: Install isolated ingress unit with pre-start config validation
+  ansible.builtin.template:
+    src: observability-ingress.service.j2
+    dest: /etc/systemd/system/observability-ingress.service
+    owner: root
+    group: root
+    mode: '0644'
+  register: _observability_ingress_unit
 
-- name: Remove the distribution default ingress site
-  ansible.builtin.file:
-    path: /etc/nginx/sites-enabled/default
-    state: absent
-
-- name: Validate ingress before reload
-  ansible.builtin.command:
-    argv: [nginx, -t]
-  changed_when: false
-
-- name: Enable and start validated control-plane ingress
+- name: Start isolated ingress without changing shared VPN nginx
   ansible.builtin.systemd_service:
-    name: nginx
+    name: observability-ingress
     enabled: true
-    state: started
+    daemon_reload: true
+    state: >-
+      {{ 'restarted' if (_observability_ingress_tls.changed or _observability_ingress_config.changed or
+      _observability_ingress_unit.changed) else 'started' }}
 
 - name: Require the opt-in protocol-liveness adapter contract
   ansible.builtin.assert:
@@ -447,3 +572,8 @@
 - name: Remove disabled protocol-liveness adapter artifacts
   ansible.builtin.include_tasks: protocol-liveness-disable.yml
   when: not (observability_control_plane.protocol_liveness.enabled | bool)
+
+- name: Install explicitly scoped independent collector and delivery producers
+  ansible.builtin.include_role:
+    name: observability_kuma
+    tasks_from: producers

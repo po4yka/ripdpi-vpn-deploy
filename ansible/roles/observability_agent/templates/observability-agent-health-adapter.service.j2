@@ -3,6 +3,7 @@ Description=RIPDPI watchdog, backup, and certificate health adapter
 After=vpn-watchdog.service vpn-backup.service vpn-backup-restore-drill.service
 
 [Service]
+Slice=observability-agent.slice
 Type=oneshot
 User=root
 Group={{ monitoring.node_exporter_textfile_group | default('node_exporter_textfile') }}

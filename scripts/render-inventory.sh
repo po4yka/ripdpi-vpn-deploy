@@ -20,13 +20,12 @@
 # bootstrap handoff path or '-' per HOSTS item. Terraform still owns service
 # addresses; the renderer accepts only the handoff's confirmed Tailscale address.
 #   HOSTS="upcloud:staging" TAILNET_HANDOFFS="/private/path/handoff.json" ./scripts/render-inventory.sh
-# Central observability topology is opt-in and requires all three variables.
-# HOST_CLASSES and FAILURE_DOMAINS have one entry per HOSTS item. Use `-` as
-# the COHORTS placeholder for non-VPN hosts. Sentinels are technical identities
-# and path signatures only; endpoints and credentials are forbidden.
-#   OBSERVABILITY_HOST_CLASSES="vpn,control-plane,deadman"
-#   OBSERVABILITY_FAILURE_DOMAINS="edge-a,control-a,deadman-a"
-#   OBSERVABILITY_SENTINELS_JSON='[{"sentinel_id":"filtered-a",...},...]'
+# Co-hosted observability requires one capability entry per VPN host.
+# Exactly one existing host also carries the collector capability.
+# Uptime Kuma credentials remain in SOPS, never in topology or environment.
+#   OBSERVABILITY_CAPABILITIES="vpn+collector,vpn,vpn"
+#   OBSERVABILITY_FAILURE_DOMAINS="node-a,node-b,node-c"
+#   OBSERVABILITY_OBSERVER_ALIAS="observer-a" OBSERVABILITY_OBSERVER_DOMAIN="observer-a"
 #
 # Required env: ANSIBLE_SSH_PRIVATE_KEY_FILE.
 set -euo pipefail
@@ -53,7 +52,7 @@ IFS=',' read -r -a host_pairs <<< "$HOST_LIST"
 IFS=',' read -r -a cohort_list <<< "${COHORTS:-}"
 IFS=',' read -r -a awg_evidence_mode_list <<< "${AWG_EVIDENCE_MODES:-}"
 IFS=',' read -r -a tailnet_handoff_list <<< "${TAILNET_HANDOFFS:-}"
-IFS=',' read -r -a observability_host_class_list <<< "${OBSERVABILITY_HOST_CLASSES:-}"
+IFS=',' read -r -a observability_capability_list <<< "${OBSERVABILITY_CAPABILITIES:-}"
 IFS=',' read -r -a observability_failure_domain_list <<< "${OBSERVABILITY_FAILURE_DOMAINS:-}"
 
 observability_enabled=false
@@ -69,29 +68,45 @@ observability_selector="$(python3 "${REPO_ROOT}/scripts/validate-secrets.py" --p
   echo "invalid tracked observability selector" >&2
   exit 1
 }
+if [[ -n "${OBSERVABILITY_HOST_CLASSES:-}${OBSERVABILITY_SENTINELS_JSON:-}" ]]; then
+  echo "obsolete dedicated topology; use OBSERVABILITY_CAPABILITIES and managed heartbeats" >&2
+  exit 1
+fi
 observability_inputs_present=false
-if [[ -n "${OBSERVABILITY_HOST_CLASSES:-}${OBSERVABILITY_FAILURE_DOMAINS:-}${OBSERVABILITY_SENTINELS_JSON:-}" ]]; then
+if [[ -n "${OBSERVABILITY_CAPABILITIES:-}${OBSERVABILITY_FAILURE_DOMAINS:-}${OBSERVABILITY_OBSERVER_ALIAS:-}${OBSERVABILITY_OBSERVER_DOMAIN:-}" ]]; then
   observability_inputs_present=true
 fi
 if [[ "$observability_selector" == true ]]; then
   observability_enabled=true
   command -v git >/dev/null 2>&1 || { echo "missing: git" >&2; exit 1; }
-  if [[ -z "${OBSERVABILITY_HOST_CLASSES:-}" || -z "${OBSERVABILITY_FAILURE_DOMAINS:-}" || -z "${OBSERVABILITY_SENTINELS_JSON:-}" ]]; then
-    echo "enabled observability requires host classes, failure domains, and sentinels" >&2
+  if [[ -z "${OBSERVABILITY_CAPABILITIES:-}" || -z "${OBSERVABILITY_FAILURE_DOMAINS:-}" || -z "${OBSERVABILITY_OBSERVER_ALIAS:-}" || -z "${OBSERVABILITY_OBSERVER_DOMAIN:-}" ]]; then
+    echo "enabled observability requires capabilities, failure domains, and observer identity" >&2
+    exit 1
+  fi
+  if [[ ! "$OBSERVABILITY_OBSERVER_ALIAS" =~ ^[a-z][a-z0-9_-]{0,63}$ || ! "$OBSERVABILITY_OBSERVER_DOMAIN" =~ ^[a-z][a-z0-9_-]{0,63}$ ]]; then
+    echo "invalid observability observer identity" >&2
     exit 1
   fi
   if [[ -z "${VPN_SECRETS_FILE:-}" ]]; then
     echo "enabled observability requires VPN_SECRETS_FILE" >&2
     exit 1
   fi
-  if [[ ${#observability_host_class_list[@]} -ne ${#host_pairs[@]} || ${#observability_failure_domain_list[@]} -ne ${#host_pairs[@]} ]]; then
-    echo "observability host-class and failure-domain counts must equal HOSTS count" >&2
+  if [[ ${#host_pairs[@]} -gt 10 || ${#observability_capability_list[@]} -ne ${#host_pairs[@]} || ${#observability_failure_domain_list[@]} -ne ${#host_pairs[@]} ]]; then
+    echo "observability capability and failure-domain counts must equal HOSTS count (at most ten)" >&2
     exit 1
   fi
-  jq -e 'type == "array"' <<< "${OBSERVABILITY_SENTINELS_JSON}" >/dev/null || {
-    echo "OBSERVABILITY_SENTINELS_JSON must be a JSON array" >&2
+  collector_count=0
+  for capability in "${observability_capability_list[@]}"; do
+    case "$capability" in
+      vpn) ;;
+      vpn+collector) collector_count=$((collector_count + 1)) ;;
+      *) echo "invalid observability capability" >&2; exit 1 ;;
+    esac
+  done
+  if [[ "$collector_count" -ne 1 ]]; then
+    echo "observability requires exactly one co-hosted collector" >&2
     exit 1
-  }
+  fi
   source_revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
   if [[ -n "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=normal)" ]]; then
     echo "observability topology source is not clean and stable" >&2
@@ -147,7 +162,6 @@ fi
 
 declare -a vpn_lines=()
 declare -a observability_control_lines=()
-declare -a observability_deadman_lines=()
 declare -a observability_nodes=()
 declare -A cohort_groups=()
 declare -A host_sources=()
@@ -395,23 +409,14 @@ for i in "${!host_pairs[@]}"; do
     echo "refusing unbound or unsafe confirmed Tailnet handoff for ${prov}:${env}" >&2
     exit 1
   fi
-  host_class="vpn"
+  capability="vpn"
   failure_domain=""
   if [[ "$observability_enabled" == true ]]; then
-    host_class="${observability_host_class_list[$i]}"
+    capability="${observability_capability_list[$i]}"
     failure_domain="${observability_failure_domain_list[$i]}"
-    case "$host_class" in vpn|control-plane|deadman) ;; *) echo "invalid observability host class" >&2; exit 1;; esac
     [[ "$failure_domain" =~ ^[a-z][a-z0-9_-]{0,63}$ ]] || { echo "invalid observability failure domain" >&2; exit 1; }
-    if [[ "$host_class" != vpn && -n "${cohort_list[$i]:-}" && "${cohort_list[$i]}" != "-" ]]; then
-      echo "non-VPN observability hosts cannot join a VPN cohort" >&2
-      exit 1
-    fi
   fi
-  if [[ "$host_class" == vpn ]]; then
-    vpn_line="${hostname} ansible_host=${transport_ip} vpn_service_address=${ip} ansible_user=${user} ansible_port=${ssh_port} provider=${prov} env=${env}"
-  else
-    vpn_line="${hostname} ansible_host=${transport_ip} ansible_user=${user} ansible_port=${ssh_port} provider=${prov} env=${env}"
-  fi
+  vpn_line="${hostname} ansible_host=${transport_ip} vpn_service_address=${ip} ansible_user=${user} ansible_port=${ssh_port} provider=${prov} env=${env}"
   # The INI inventory plugin tokenizes host vars with shlex before applying
   # Python literal parsing. Quote the complete JSON value so the inner string
   # quotes survive and Ansible receives a list instead of a malformed string.
@@ -419,13 +424,14 @@ for i in "${!host_pairs[@]}"; do
   vpn_line+=" terraform_public_listeners_b64=${public_listeners_b64}"
   if [[ "$observability_enabled" == true ]]; then
     node_id="${prov}-${env}"
-    vpn_line+=" observability_node_id=${node_id} observability_host_class=${host_class} observability_failure_domain=${failure_domain}"
+    capabilities="$(jq -nc --arg value "$capability" '$value | split("+") | sort')"
+    vpn_line+=" observability_node_id=${node_id} observability_capabilities='${capabilities}' observability_failure_domain=${failure_domain}"
     normalized_listeners="$(jq -c '[.[] | with_entries(select(.value != null))]' <<< "$public_listeners")"
     observability_nodes+=("$(jq -nc \
       --arg node_id "$node_id" --arg provider "$prov" --arg environment "$env" \
-      --arg host_class "$host_class" --arg failure_domain "$failure_domain" \
+      --argjson capabilities "$capabilities" --arg failure_domain "$failure_domain" \
       --argjson public_listeners "$normalized_listeners" \
-      '{node_id:$node_id,provider:$provider,environment:$environment,host_class:$host_class,failure_domain:$failure_domain,public_listeners:$public_listeners}')")
+      '{node_id:$node_id,provider:$provider,environment:$environment,capabilities:$capabilities,failure_domain:$failure_domain,public_listeners:$public_listeners}')")
   fi
   if [[ -n "${AWG_EVIDENCE_MODES:-}" ]]; then
     awg_evidence_mode="${awg_evidence_mode_list[$i]}"
@@ -449,11 +455,10 @@ for i in "${!host_pairs[@]}"; do
     fi
     vpn_line+=" honeypot_listen_addr=${honey_ip}"
   fi
-  case "$host_class" in
-    vpn) vpn_lines+=("$vpn_line") ;;
-    control-plane) observability_control_lines+=("$vpn_line") ;;
-    deadman) observability_deadman_lines+=("$vpn_line") ;;
-  esac
+  vpn_lines+=("$vpn_line")
+  if [[ "$capability" == vpn+collector ]]; then
+    observability_control_lines+=("$hostname")
+  fi
 
   if [[ -n "${cohort_list[$i]:-}" && "${cohort_list[$i]}" != "-" ]]; then
     cohort="${cohort_list[$i]}"
@@ -473,8 +478,8 @@ if [[ "$observability_enabled" == true ]]; then
   topology_temp="$(mktemp "${REPO_ROOT}/ansible/inventory/.observability-topology.XXXXXX")"
   trap 'rm -f -- "${topology_temp:-}"' EXIT
   jq -nc --arg source_revision "$source_revision" --argjson nodes "$topology_nodes" \
-    --argjson sentinels "$OBSERVABILITY_SENTINELS_JSON" \
-    '{schema_version:1,credential_mode:"systemd",source_revision:$source_revision,nodes:$nodes,sentinels:$sentinels}' \
+    --arg observer "$OBSERVABILITY_OBSERVER_ALIAS" --arg domain "$OBSERVABILITY_OBSERVER_DOMAIN" \
+    '{schema_version:2,credential_mode:"systemd",source_revision:$source_revision,nodes:$nodes,observer:{kind:"uptime-kuma",host_alias:$observer,failure_domain:$domain}}' \
     > "$topology_temp"
   chmod 0600 "$topology_temp"
   topology_json="$(python3 "${REPO_ROOT}/scripts/observability-contract.py" topology --document "$topology_temp")"
@@ -499,13 +504,9 @@ fi
     echo "[vpn-observability-control]"
     printf '%s\n' "${observability_control_lines[@]}"
     echo
-    echo "[vpn-observability-deadman]"
-    printf '%s\n' "${observability_deadman_lines[@]}"
-    echo
     echo "[observability:children]"
     echo "vpn"
     echo "vpn-observability-control"
-    echo "vpn-observability-deadman"
     echo
   fi
   for cohort in "${!cohort_groups[@]}"; do

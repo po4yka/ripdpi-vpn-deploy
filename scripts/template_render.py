@@ -72,6 +72,25 @@ def merge_render_vars() -> dict:
     )
     merged["_observability_agent_service_generation"] = "3" * 64
     merged["_observability_telegram_generation"] = "4" * 64
+    merged["_observability_kuma_tls_generation"] = "5" * 64
+    # Synthetic private endpoints make snapshots concrete without admitting a
+    # real host or changing the deliberately inert deployment defaults.
+    merged["observability_control_plane"]["ingress_address"] = "100.64.0.2"
+    merged["observability_agent"].update({
+        "node_id": "node-01",
+        "environment": "staging",
+        "receiver_origin": "https://100.64.0.2:9443",
+        "receiver_address": "100.64.0.2",
+    })
+    merged["observability_push"].update({
+        "node_id": "node-01",
+        "expected_nodes": ["node-01", "node-02"],
+    })
+    merged["observability_kuma"].update({
+        "bind_address": "100.64.0.8",
+        "allowed_sources": ["100.64.0.1/32"],
+        "backup_directory": "/srv/observer-backup",
+    })
     merged.setdefault(
         "watchdog_reality_probes",
         [

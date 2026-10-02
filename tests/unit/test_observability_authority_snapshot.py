@@ -40,31 +40,6 @@ SERVICES = {
         "active": True,
         "enabled": True,
     },
-    "observability-deadman-pipeline.service": {
-        "exists": True,
-        "active": True,
-        "enabled": True,
-    },
-    "observability-deadman-pulse.service": {
-        "exists": True,
-        "active": False,
-        "enabled": False,
-    },
-    "observability-primary-canary.service": {
-        "exists": True,
-        "active": False,
-        "enabled": False,
-    },
-    "observability-deadman-pulse.timer": {
-        "exists": True,
-        "active": True,
-        "enabled": True,
-    },
-    "observability-primary-canary.timer": {
-        "exists": True,
-        "active": True,
-        "enabled": True,
-    },
 }
 
 

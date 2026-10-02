@@ -23,6 +23,8 @@ security services, and credentialed deploy jobs remain CI-only or explicit.
 **Snapshots, not mocks, for templates** — `tests/snapshot/golden/` holds
 the expected output of every Jinja render against fixtures. Drift is
 visible in PR diffs.
+Role-render tests reuse `scripts/template_render.py` for named-template escaping
+and Ansible filters. Local HTTPS fixtures explicitly require TLS 1.2 or newer.
 
 **Client configs need an upstream parser gate** — CI installs a sha256-pinned
 official sing-box binary and checks the complete standard emitter output.
@@ -56,6 +58,20 @@ receipt and reject an obsolete version before mutation. Its registry fixture
 uses the installer's exact sorted JSON format.
 
 **Disposable observability acceptance is evidence-class strict** — focused
+schema-2 tests cover co-hosted VPN capabilities, one collector, independent
+Kuma placement, exact push-monitor bindings and rejection of old host classes.
+PKI tests exercise real OpenSSL IP-SAN verification, scoped revocation and SOPS
+encryption/decryption, including strict certificate-chain checks with explicit
+key identifiers. Refresh the encrypted synthetic fixture whenever its plaintext
+counterpart changes. Tests that isolate HOME need real SOPS on PATH, not a
+version-manager shim whose trust state depends on the original home directory.
+Real pinned Kuma runtime timing is separate from mocked
+push or Telegram tests; no synthetic receipt proves human notification.
+Sender replacement checks use the actual pinned vmagent parser and persistent
+queue behavior. Clean and abrupt restart evidence must query pre-restart sample
+timestamps at the collector; queue files, empty buffers and fresh samples alone
+cannot pass. Byte/block drop counters are not interchangeable with sample counts.
+Historical dedicated-host
 selector tests prove staging-only enablement, disabled production, required
 explicit secret scope, and mixed-scope refusal before Terraform or publication.
 The old global boolean must fail, not become an implicit compatibility path.

@@ -3,6 +3,7 @@ Description=Adapt canonical published protocol-liveness evidence
 After=network-online.target
 
 [Service]
+Slice=observability-collector.slice
 Type=oneshot
 User=root
 Group=root

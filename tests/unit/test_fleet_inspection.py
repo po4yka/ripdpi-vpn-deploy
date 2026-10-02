@@ -43,6 +43,26 @@ def test_inventory_requires_explicit_exact_subset(tmp_path):
             m.select_hosts(path, selected)
 
 
+def test_collector_membership_reuses_exact_vpn_host_without_redefinition(tmp_path):
+    m = module()
+    path = inventory(tmp_path)
+    path.write_text(path.read_text() + "[vpn-observability-control]\nnode-a\n")
+    vpn = m.select_hosts(path, ["node-a"])
+    collector = m.select_hosts(path, ["node-a"], primary_section="vpn-observability-control")
+    assert collector == vpn
+    path.write_text(path.read_text() + "node-a\n")
+    with pytest.raises(m.InspectionError, match="duplicate-or-invalid-host"):
+        m.select_hosts(path, ["node-a"])
+
+
+def test_collector_cannot_redefine_vpn_connection(tmp_path):
+    m = module()
+    path = inventory(tmp_path)
+    path.write_text(path.read_text() + "[vpn-observability-control]\nnode-a ansible_host=192.0.2.9\n")
+    with pytest.raises(m.InspectionError, match="duplicate-or-invalid-host"):
+        m.select_hosts(path, ["node-a"])
+
+
 def test_generated_inventory_fixture_is_supported(tmp_path):
     m = module()
     path = inventory(tmp_path)

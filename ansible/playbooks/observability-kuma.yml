@@ -1,0 +1,27 @@
+---
+- name: Converge one separately admitted existing observer host
+  hosts: observability-kuma
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
+  pre_tasks:
+    - name: Require one exact observer target outside the VPN fleet
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all | length == 1
+          - inventory_hostname == observability_kuma.host_alias
+          - inventory_hostname not in (groups['vpn'] | default([]))
+          - observability_kuma.admission_approved | bool
+        fail_msg: Observer playbook requires one independently admitted exact host.
+      tags: [always]
+    - name: Refuse known VPN host address reuse for the observer
+      ansible.builtin.assert:
+        that:
+          - (ansible_host | default(inventory_hostname)) != (hostvars[item].ansible_host | default(item))
+          - observability_kuma.bind_address != (hostvars[item].ansible_host | default(item))
+        fail_msg: Observer address must not identify a known VPN host.
+      loop: "{{ groups['vpn'] | default([]) }}"
+      tags: [always]
+      no_log: true
+  roles:
+    - role: observability_kuma

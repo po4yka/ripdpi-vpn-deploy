@@ -156,17 +156,15 @@
       ansible.builtin.copy:
         dest: /var/lib/observability-prometheus/molecule-retained
         content: retained
-        owner: prometheus
-        group: prometheus
+        owner: observability-prometheus
+        group: observability-prometheus
         mode: '0600'
 
-    - name: Opt out expected targets and alerting through the complete role contract
+    - name: Opt out expected targets while preserving mandatory alerting
       ansible.builtin.set_fact:
         observability_control_plane: >-
           {{ observability_control_plane | combine({
             'expected_targets': observability_control_plane.expected_targets |
-            combine({'enabled': false}),
-            'alerting': observability_control_plane.alerting |
             combine({'enabled': false})}, recursive=true) }}
       no_log: true
   roles:

@@ -1,0 +1,44 @@
+[Unit]
+Description=Private mTLS observability ingestion (isolated nginx master)
+After=network-online.target observability-disk-guard.service observability-prometheus.service
+Wants=network-online.target
+BindsTo=observability-disk-guard.service
+ConditionPathExists=!/var/lib/observability-disk-guard/latched
+
+[Service]
+Slice=observability-collector.slice
+User=observability-ingress
+Group=observability-ingress
+RuntimeDirectory=observability-ingress
+RuntimeDirectoryMode=0700
+LoadCredential=nginx.conf:/etc/observability-control-plane/nginx.conf
+LoadCredential=server.crt:/etc/observability-control-plane/tls/server.crt
+LoadCredential=server.key:/etc/observability-control-plane/tls/server.key
+LoadCredential=client-ca.crt:/etc/observability-control-plane/tls/client-ca.crt
+LoadCredential=client.crl:/etc/observability-control-plane/tls/client.crl
+ExecStartPre=/usr/sbin/nginx -t -c %d/nginx.conf
+ExecStart=/usr/sbin/nginx -c %d/nginx.conf
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET
+ReadWritePaths=/run/observability-ingress
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

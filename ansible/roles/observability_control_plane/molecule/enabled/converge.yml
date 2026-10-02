@@ -2,8 +2,29 @@
 - name: Converge enabled bounded control-plane receiver
   hosts: all
   become: true
+  module_defaults:
+    ansible.builtin.get_url:
+      timeout: 60
   pre_tasks:
     - name: Load complete enabled control-plane fixture contract
       ansible.builtin.include_tasks: tasks/fixture-contract.yml
   roles:
     - role: observability_control_plane
+  tasks:
+    - name: Require bounded producer slice before cohosted agent convergence
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import subprocess
+            for name, expected in [('MemoryMax', '201326592'), ('MemorySwapMax', '0'),
+                                   ('CPUQuotaPerSecUSec', '100ms'), ('IOWeight', '10')]:
+                actual = subprocess.check_output(['systemctl', 'show', 'observability-agent.slice',
+                                                  '-p', name, '--value'], text=True).strip()
+                assert actual == expected, name + '=' + actual
+            print('collector_first_producer_slice=192MiB_10percent_no_swap')
+      changed_when: false
+
+    - name: Converge the real cohosted agent and independent node producer
+      ansible.builtin.include_tasks: tasks/cohost-agent.yml

@@ -3,11 +3,12 @@ Description=RIPDPI schema-2 observability manifest adapter
 After=node-manifest.service
 
 [Service]
+Slice=observability-agent.slice
 Type=oneshot
 User=prometheus
 Group=prometheus
 SupplementaryGroups=node_exporter_textfile
-ExecStart=/usr/local/libexec/observability-agent-adapter.py --manifest /var/lib/ripdpi-vpn-deploy/manifest.json --output /var/lib/node_exporter/textfile/observability-agent.prom --node-id  --expected-source-revision 1111111111111111111111111111111111111111 --expected-deployable-digest 2222222222222222222222222222222222222222222222222222222222222222
+ExecStart=/usr/local/libexec/observability-agent-adapter.py --manifest /var/lib/ripdpi-vpn-deploy/manifest.json --output /var/lib/node_exporter/textfile/observability-agent.prom --node-id node-01 --expected-source-revision 1111111111111111111111111111111111111111 --expected-deployable-digest 2222222222222222222222222222222222222222222222222222222222222222
 NoNewPrivileges=true
 CapabilityBoundingSet=
 AmbientCapabilities=

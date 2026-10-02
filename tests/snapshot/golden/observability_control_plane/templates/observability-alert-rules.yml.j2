@@ -1,4 +1,131 @@
 groups:
+  - name: observability_pipeline_canary
+    interval: 30s
+    rules:
+      - alert: ObservabilityPipelineCanary
+        expr: vector(time())
+        for: 0s
+        keep_firing_for: 0s
+        labels:
+          severity: watchdog
+          environment: ""
+          node: collector
+          component: observability-pipeline
+        annotations:
+          evaluated_at: '{{ $value }}'
+          incident_family: observability-pipeline
+          source_generation: ""
+          summary: Synthetic rule-to-relay freshness receipt.
+          evidence_class: synthetic-pipeline
+          runbook: docs/RUNBOOK-incident.md
+
+
+
+      - alert: ObservabilityExternalCoverageUnavailable
+        expr: >-
+          max((observability_push_success{ environment="",node="node-01",kind="node" } == 0)
+          or (time() - observability_push_last_success_timestamp_seconds{ environment="",node="node-01",kind="node" } > 180)
+          or absent(observability_push_success{ environment="",node="node-01",kind="node" })
+          or absent(observability_push_last_success_timestamp_seconds{ environment="",node="node-01",kind="node" }))
+        for: 1m
+        keep_firing_for: 3m
+        labels:
+          severity: critical
+          component: observability-external-coverage
+          environment: ""
+          node: "node-01"
+          kind: "node"
+        annotations:
+          source_generation: ""
+          summary: Independent monitoring coverage is unavailable; VPN reachability is unknown.
+          incident_family: observability-external-coverage
+          evidence_class: external-coverage-unavailable
+          runbook: docs/RUNBOOK-incident.md
+
+
+      - alert: ObservabilityExternalCoverageUnavailable
+        expr: >-
+          max((observability_push_success{ environment="",node="node-02",kind="node" } == 0)
+          or (time() - observability_push_last_success_timestamp_seconds{ environment="",node="node-02",kind="node" } > 180)
+          or absent(observability_push_success{ environment="",node="node-02",kind="node" })
+          or absent(observability_push_last_success_timestamp_seconds{ environment="",node="node-02",kind="node" }))
+        for: 1m
+        keep_firing_for: 3m
+        labels:
+          severity: critical
+          component: observability-external-coverage
+          environment: ""
+          node: "node-02"
+          kind: "node"
+        annotations:
+          source_generation: ""
+          summary: Independent monitoring coverage is unavailable; VPN reachability is unknown.
+          incident_family: observability-external-coverage
+          evidence_class: external-coverage-unavailable
+          runbook: docs/RUNBOOK-incident.md
+
+
+
+
+      - alert: ObservabilityExternalCoverageUnavailable
+        expr: >-
+          max((observability_push_success{ environment="",node="node-01",kind="pipeline" } == 0)
+          or (time() - observability_push_last_success_timestamp_seconds{ environment="",node="node-01",kind="pipeline" } > 180)
+          or absent(observability_push_success{ environment="",node="node-01",kind="pipeline" })
+          or absent(observability_push_last_success_timestamp_seconds{ environment="",node="node-01",kind="pipeline" }))
+        for: 1m
+        keep_firing_for: 3m
+        labels:
+          severity: critical
+          component: observability-external-coverage
+          environment: ""
+          node: "node-01"
+          kind: "pipeline"
+        annotations:
+          source_generation: ""
+          summary: Independent monitoring coverage is unavailable; VPN reachability is unknown.
+          incident_family: observability-external-coverage
+          evidence_class: external-coverage-unavailable
+          runbook: docs/RUNBOOK-incident.md
+
+
+
+
+      - alert: ObservabilityExternalCoverageUnavailable
+        expr: >-
+          max((observability_push_success{ environment="",node="node-01",kind="delivery" } == 0)
+          or (time() - observability_push_last_success_timestamp_seconds{ environment="",node="node-01",kind="delivery" } > 660)
+          or absent(observability_push_success{ environment="",node="node-01",kind="delivery" })
+          or absent(observability_push_last_success_timestamp_seconds{ environment="",node="node-01",kind="delivery" }))
+        for: 1m
+        keep_firing_for: 3m
+        labels:
+          severity: critical
+          component: observability-external-coverage
+          environment: ""
+          node: "node-01"
+          kind: "delivery"
+        annotations:
+          source_generation: ""
+          summary: Independent monitoring coverage is unavailable; VPN reachability is unknown.
+          incident_family: observability-external-coverage
+          evidence_class: external-coverage-unavailable
+          runbook: docs/RUNBOOK-incident.md
+
+
+  - name: observability_agent_delivery
+    rules:
+      - alert: ObservabilityAgentDeliveryLoss
+        expr: >-
+          (max by (environment, node) (increase(vmagent_remotewrite_packets_dropped_total[5m]) > bool 0) > 0)
+          or (max by (environment, node) (increase(vmagent_remotewrite_samples_dropped_total[5m]) > bool 0) > 0)
+          or (max by (environment, node) (increase(vm_persistentqueue_bytes_dropped_total[5m]) > bool 0) > 0)
+          or (max by (environment, node) (increase(vm_persistentqueue_blocks_dropped_total[5m]) > bool 0) > 0)
+          or (max by (environment, node) (increase(vm_rows_ignored_total[5m]) > bool 0) > 0)
+        for: 0s
+        keep_firing_for: 3m
+        labels: {severity: "warning", component: observability-agent}
+        annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/RUNBOOK-incident.md}
   - name: observability_node_resource_service
     rules:
       - alert: ObservabilityNodeCpuPressure
@@ -60,8 +187,8 @@ groups:
         annotations: {incident_family: node-inodes, evidence_class: inode-available-critical, source_generation: "", summary: Root filesystem free inodes crossed the configured critical threshold., runbook: docs/RUNBOOK-incident.md}
       - alert: ObservabilityRequiredServiceNotActive
         expr: >-
-          min by (environment, node) (node_systemd_unit_state{name=~"^(caddy-naive[.]service|hysteria-server[.]service|nginx[.]service|observability-agent[.]service|observability-alertmanager[.]service|observability-deadman[.]service|observability-prometheus[.]service|xray[.]service)$",state="active"}) == 0
-          or max by (environment, node) (node_systemd_unit_state{name=~"^(caddy-naive[.]service|hysteria-server[.]service|nginx[.]service|observability-agent[.]service|observability-alertmanager[.]service|observability-deadman[.]service|observability-prometheus[.]service|xray[.]service)$",state="failed"}) == 1
+          min by (environment, node) (node_systemd_unit_state{name=~"^(caddy-naive[.]service|hysteria-server[.]service|nginx[.]service|observability-agent[.]service|observability-alertmanager[.]service|observability-disk-guard[.]service|observability-ingress[.]service|observability-prometheus[.]service|xray[.]service)$",state="active"}) == 0
+          or max by (environment, node) (node_systemd_unit_state{name=~"^(caddy-naive[.]service|hysteria-server[.]service|nginx[.]service|observability-agent[.]service|observability-alertmanager[.]service|observability-disk-guard[.]service|observability-ingress[.]service|observability-prometheus[.]service|xray[.]service)$",state="failed"}) == 1
         for: 3m
         keep_firing_for: 3m
         labels: {severity: "critical", component: service}

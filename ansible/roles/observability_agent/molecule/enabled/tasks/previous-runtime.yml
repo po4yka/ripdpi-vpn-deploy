@@ -1,0 +1,174 @@
+---
+- name: Install real previous Prometheus through its original release authority
+  ansible.builtin.include_role:
+    name: runtime-release
+  vars:
+    runtime_release_version: 3.14.0
+    runtime_release_install_root: /opt/observability-agent
+    runtime_release_binary_name: prometheus
+    runtime_release_public_link: /usr/local/bin/prometheus-observability-agent
+    runtime_release_urls:
+      amd64: https://github.com/prometheus/prometheus/releases/download/v3.14.0/prometheus-3.14.0.linux-amd64.tar.gz
+      arm64: https://github.com/prometheus/prometheus/releases/download/v3.14.0/prometheus-3.14.0.linux-arm64.tar.gz
+    runtime_release_sha256:
+      amd64: f665c6da19eb7ba399c915d30c7d9793c9b417bf8a749b504bc470678631478d
+      arm64: 077f3781ab7245dc04c9a3c9b78ba120fc8e41aa0dc97489b0af67247e50ba83
+    runtime_release_arch_slugs: {amd64: linux-amd64, arm64: linux-arm64}
+    runtime_release_artifact_filename: prometheus.tar.gz
+    runtime_release_artifact_type: archive
+    runtime_release_archive_strip_components: 1
+    runtime_release_archive_members:
+      amd64: prometheus-3.14.0.linux-amd64/prometheus
+      arm64: prometheus-3.14.0.linux-arm64/prometheus
+
+- name: Define the previous real Prometheus sender configuration
+  ansible.builtin.set_fact:
+    _previous_prometheus_config: |
+      global:
+        scrape_interval: 60s
+        external_labels: {node: node-fixture, environment: ci}
+      scrape_configs:
+        - job_name: node-exporter
+          sample_limit: 1800
+          static_configs:
+            - targets: ['127.0.0.1:9100']
+      remote_write:
+        - url: https://10.23.0.2:9443/remote-write/v1/nodes/node-fixture
+          tls_config:
+            ca_file: receiver-ca.crt
+            cert_file: client.crt
+            key_file: client.key
+            server_name: 10.23.0.2
+          queue_config: {min_shards: 1, max_shards: 1}
+
+- name: Inspect generated fixture authority digests without reading key values
+  ansible.builtin.stat:
+    path: '/var/lib/observability-fixture/{{ item }}'
+    checksum_algorithm: sha256
+  loop: [ca.crt, client.crt, client.key]
+  register: _previous_authority
+  no_log: true
+
+- name: Derive the previous immutable fixture generation from complete contents
+  ansible.builtin.set_fact:
+    _previous_generation: >-
+      {{ {'config': _previous_prometheus_config,
+          'tls': _previous_authority.results | map(attribute='stat.checksum') | list} | to_json | hash('sha256') }}
+  no_log: true
+
+- name: Create previous sender authority and retained WAL directories
+  ansible.builtin.file:
+    path: '{{ item.path }}'
+    state: directory
+    owner: '{{ item.owner | default("root") }}'
+    group: '{{ item.owner | default("root") }}'
+    mode: '{{ item.mode }}'
+  loop:
+    - {path: /etc/observability-agent, mode: '0755'}
+    - {path: /etc/observability-agent/credentials, mode: '0711'}
+    - {path: /etc/observability-agent/credentials/generations, mode: '0711'}
+    - {path: '/etc/observability-agent/credentials/generations/{{ _previous_generation }}', mode: '0711'}
+    - {path: /var/lib/observability-agent/wal, mode: '0700', owner: observability-agent}
+
+- name: Copy previous real credential bundle from generated fixture authority
+  ansible.builtin.copy:
+    src: '/var/lib/observability-fixture/{{ item.source }}'
+    dest: '/etc/observability-agent/credentials/generations/{{ _previous_generation }}/{{ item.target }}'
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+  loop:
+    - {source: ca.crt, target: receiver-ca.crt}
+    - {source: client.crt, target: client.crt}
+    - {source: client.key, target: client.key}
+  no_log: true
+
+- name: Publish previous non-secret Prometheus configuration
+  ansible.builtin.copy:
+    content: '{{ _previous_prometheus_config }}'
+    dest: '/etc/observability-agent/credentials/generations/{{ _previous_generation }}/prometheus.yml'
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Point previous authority at its ready credential generation
+  ansible.builtin.file:
+    src: 'generations/{{ _previous_generation }}'
+    dest: /etc/observability-agent/credentials/current
+    state: link
+
+- name: Establish the unchanged aggregate resource boundary
+  ansible.builtin.include_role:
+    name: observability_agent
+    tasks_from: resource-boundary
+
+- name: Install the previous pinned Prometheus agent unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/observability-agent.service
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Previous pinned Prometheus sender for real cutover acceptance
+      After=network-online.target
+      Wants=network-online.target
+      [Service]
+      Slice=observability-agent.slice
+      Type=simple
+      User=observability-agent
+      Group=observability-agent
+      LoadCredential=client.crt:/etc/observability-agent/credentials/generations/{{ _previous_generation }}/client.crt
+      LoadCredential=client.key:/etc/observability-agent/credentials/generations/{{ _previous_generation }}/client.key
+      LoadCredential=receiver-ca.crt:/etc/observability-agent/credentials/generations/{{ _previous_generation }}/receiver-ca.crt
+      LoadCredential=prometheus.yml:/etc/observability-agent/credentials/generations/{{ _previous_generation }}/prometheus.yml
+      WorkingDirectory=%d
+      ExecStart=/usr/local/bin/prometheus-observability-agent --agent --config.file=%d/prometheus.yml \
+        --web.listen-address=127.0.0.1:19090 --storage.agent.path=/var/lib/observability-agent/wal \
+        --storage.agent.wal-compression --storage.agent.retention.max-time=1h
+      Restart=on-failure
+      RestartSec=5s
+      NoNewPrivileges=true
+      CapabilityBoundingSet=
+      AmbientCapabilities=
+      PrivateDevices=true
+      PrivateTmp=true
+      ProtectSystem=strict
+      ProtectHome=true
+      ProtectKernelTunables=true
+      ProtectKernelModules=true
+      ProtectControlGroups=true
+      ProtectKernelLogs=true
+      ProtectClock=true
+      RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+      RestrictNamespaces=true
+      LockPersonality=true
+      RestrictRealtime=true
+      RestrictSUIDSGID=true
+      SystemCallArchitectures=native
+      SystemCallFilter=@system-service
+      MemoryMax=192M
+      TasksMax=64
+      LimitNOFILE=65536
+      ReadWritePaths=/var/lib/observability-agent/wal
+      UMask=0077
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Start the previous real sender before any cutover attempt
+  ansible.builtin.systemd_service:
+    name: observability-agent.service
+    state: restarted
+    enabled: true
+    daemon_reload: true
+
+- name: Require real previous Prometheus readiness
+  ansible.builtin.uri:
+    url: http://127.0.0.1:19090/-/ready
+    use_proxy: false
+    status_code: 200
+  register: _previous_ready
+  retries: 30
+  delay: 1
+  until: _previous_ready.status == 200

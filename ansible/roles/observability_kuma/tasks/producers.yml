@@ -1,0 +1,107 @@
+---
+- name: Validate qualified push inputs before any mutation
+  ansible.builtin.import_tasks: producers-contract.yml
+
+- name: Establish bounded slice before any heartbeat can start
+  ansible.builtin.include_role:
+    name: observability_agent
+    tasks_from: resource-boundary
+
+- name: Create dedicated heartbeat user
+  ansible.builtin.user:
+    name: observability-push
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+    groups: "{{ monitoring.node_exporter_textfile_group | default('node_exporter_textfile') }}"
+    append: true
+
+- name: Create heartbeat credentials directory
+  ansible.builtin.file:
+    path: /etc/observability-push
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Install credential-isolated heartbeat implementation
+  ansible.builtin.copy:
+    src: observability-push.py
+    dest: /usr/local/libexec/observability-push.py
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install observer trust anchor
+  ansible.builtin.copy:
+    content: "{{ observability_kuma_secrets.tls.ca_pem }}"
+    dest: /etc/observability-push/observer-ca.crt
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+
+- name: Install each monitor token separately
+  ansible.builtin.copy:
+    content: >-
+      {{ (observability_kuma_secrets.push_monitors | selectattr('node_id', 'equalto', observability_push.node_id)
+      | selectattr('kind', 'equalto', item) | first).token }}
+    dest: "/etc/observability-push/{{ item }}.token"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: "{{ observability_push.kinds }}"
+  no_log: true
+  diff: false
+
+- name: Install non-secret scoped condition configuration
+  ansible.builtin.copy:
+    content: >-
+      {{ {'kind': item, 'node_id': observability_push.node_id, 'origin': observability_push.origin,
+      'services': observability_push.services, 'expected_nodes': observability_push.expected_nodes,
+      'prometheus_origin': observability_push.prometheus_origin, 'relay_origin': observability_push.relay_origin,
+      'textfile_dir': observability_push.textfile_dir} | to_nice_json }}
+    dest: "/etc/observability-push/{{ item }}.json"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: "{{ observability_push.kinds }}"
+  no_log: true
+  diff: false
+
+- name: Install per-monitor heartbeat services
+  ansible.builtin.template:
+    src: observability-push.service.j2
+    dest: "/etc/systemd/system/observability-push-{{ item }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ observability_push.kinds }}"
+
+- name: Install per-monitor heartbeat timers
+  ansible.builtin.template:
+    src: observability-push.timer.j2
+    dest: "/etc/systemd/system/observability-push-{{ item }}.timer"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ observability_push.kinds }}"
+
+- name: Validate heartbeat systemd units before activation
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemd-analyze
+      - verify
+      - "/etc/systemd/system/observability-push-{{ item }}.service"
+      - "/etc/systemd/system/observability-push-{{ item }}.timer"
+  changed_when: false
+  loop: "{{ observability_push.kinds }}"
+
+- name: Start qualified heartbeat timers
+  ansible.builtin.systemd_service:
+    name: "observability-push-{{ item }}.timer"
+    state: started
+    enabled: true
+    daemon_reload: true
+  loop: "{{ observability_push.kinds }}"

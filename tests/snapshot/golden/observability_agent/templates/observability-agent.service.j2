@@ -4,6 +4,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+Slice=observability-agent.slice
 Type=simple
 User=observability-agent
 Group=observability-agent
@@ -12,9 +13,10 @@ LoadCredential=client.key:/etc/observability-agent/credentials/generations/33333
 LoadCredential=receiver-ca.crt:/etc/observability-agent/credentials/generations/3333333333333333333333333333333333333333333333333333333333333333/receiver-ca.crt
 LoadCredential=prometheus.yml:/etc/observability-agent/credentials/generations/3333333333333333333333333333333333333333333333333333333333333333/prometheus.yml
 WorkingDirectory=%d
-ExecStart=/usr/local/bin/prometheus-observability-agent --agent --config.file=%d/prometheus.yml --web.listen-address=127.0.0.1:19090 --storage.agent.path=/var/lib/observability-agent/wal --storage.agent.wal-compression --storage.agent.retention.max-time=1h
+ExecStart=/usr/local/bin/vmagent-observability-agent -promscrape.config=%d/prometheus.yml -remoteWrite.url=https://100.64.0.2:9443/remote-write/v1/nodes/node-01 -remoteWrite.tlsCAFile=%d/receiver-ca.crt -remoteWrite.tlsCertFile=%d/client.crt -remoteWrite.tlsKeyFile=%d/client.key -remoteWrite.tlsServerName=100.64.0.2 -remoteWrite.forcePromProto=true -remoteWrite.queues=1 -remoteWrite.inmemoryQueues=0 -remoteWrite.keepDanglingQueues=true -remoteWrite.tmpDataPath=/var/lib/observability-agent/queue -remoteWrite.maxDiskUsagePerURL=536870912 -remoteWrite.maxRowsPerBlock=1000 -remoteWrite.maxBlockSize=1048576 -remoteWrite.flushInterval=5s -memory.allowedBytes=67108864 -maxLabelsPerTimeseries=16 -maxLabelNameLen=64 -maxLabelValueLen=128 -httpListenAddr=127.0.0.1:19090
 Restart=on-failure
 RestartSec=5s
+TimeoutStopSec=30s
 NoNewPrivileges=true
 CapabilityBoundingSet=
 AmbientCapabilities=
@@ -34,10 +36,10 @@ RestrictRealtime=true
 RestrictSUIDSGID=true
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
-MemoryMax=512M
+MemoryMax=192M
 TasksMax=64
 LimitNOFILE=65536
-ReadWritePaths=/var/lib/observability-agent/wal
+ReadWritePaths=/var/lib/observability-agent/queue
 UMask=0077
 
 [Install]
