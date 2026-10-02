@@ -335,7 +335,8 @@ def test_prepared_executor_retirement_is_owned_and_idempotent(setup, prepared_ex
     assert (home / ".colima/default/keep.txt").read_text() == "unrelated"
     assert vm.context == "default"
     assert setup["paths"]["sops_file"].read_bytes() == before
-    assert remove() == {**result, "changed": False}
+    repeated = remove()
+    assert repeated == {**result, "changed": False}
     deleted = [call for call in vm.calls if call[:2] == ("colima", "delete")]
     assert deleted == [
         ("colima", "delete", "--profile", "vpn-liveness-unbound", "--force", "--data")
@@ -405,7 +406,8 @@ def test_prepared_executor_retirement_resumes_after_stop(setup, prepared_executo
         remove()
     assert vm.profile_status == "Stopped"
     assert not (setup["root"] / "executor-retired.json").exists()
-    assert remove()["status"] == "retired-prepared"
+    resumed = remove()
+    assert resumed["status"] == "retired-prepared"
     assert not (home / ".colima/vpn-liveness-unbound").exists()
 
 
@@ -427,7 +429,8 @@ def test_prepared_executor_retirement_resumes_after_delete(
     assert not (home / ".colima/vpn-liveness-unbound").exists()
     assert not (setup["root"] / "executor-retired.json").exists()
     monkeypatch.setattr(module, "_write_new", original)
-    assert remove()["status"] == "retired-prepared"
+    resumed = remove()
+    assert resumed["status"] == "retired-prepared"
 
 
 @pytest.mark.parametrize(

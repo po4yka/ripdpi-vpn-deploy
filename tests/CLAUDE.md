@@ -171,6 +171,8 @@ remain fatal; package signatures and the real schema validator stay enforced.
 - **Molecule needs Docker** — CI runners and operator workstations vary.
   Failing-to-find-docker is a setup error, not a test failure; the harness
   surfaces it explicitly.
+- **State-changing test calls precede assertions** — capture retirement or
+  retry results first, then assert them so optimized Python cannot omit the call.
 - **`validate-secrets.py` runs against the **schema**, not your real
   secrets** — by design. Strict mode (`--strict`) loads `VPN_SECRETS_FILE`
   and is operator-only.
