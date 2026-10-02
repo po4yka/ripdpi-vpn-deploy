@@ -278,6 +278,7 @@ def test_latch_is_persistent_exclusive_and_not_removed_by_recovery(tmp_path):
     module = guard()
     module.latch(tmp_path)
     assert (tmp_path / "latched").read_text() == "disk_guard_latched\n"
+    assert (tmp_path / "latched").stat().st_mode & 0o777 == 0o600
     with pytest.raises(FileExistsError):
         module.latch(tmp_path)
     assert (tmp_path / "latched").exists()

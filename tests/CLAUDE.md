@@ -23,6 +23,8 @@ security services, and credentialed deploy jobs remain CI-only or explicit.
 **Snapshots, not mocks, for templates** — `tests/snapshot/golden/` holds
 the expected output of every Jinja render against fixtures. Drift is
 visible in PR diffs.
+Role-render tests reuse `scripts/template_render.py` for named-template escaping
+and Ansible filters. Local HTTPS fixtures explicitly require TLS 1.2 or newer.
 
 **Client configs need an upstream parser gate** — CI installs a sha256-pinned
 official sing-box binary and checks the complete standard emitter output.

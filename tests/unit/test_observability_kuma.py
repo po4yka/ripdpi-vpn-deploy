@@ -7,9 +7,10 @@ from pathlib import Path
 import tarfile
 from types import SimpleNamespace
 
-from jinja2 import Environment, StrictUndefined
 import pytest
 import yaml
+
+from scripts.template_render import render_template
 
 ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / 'ansible/roles/observability_kuma'
@@ -26,7 +27,7 @@ def render(name, **overrides):
     values['observability_kuma'].update(bind_address='100.64.0.8', allowed_sources=['100.64.0.1/32'], backup_directory='/mnt/backup/kuma')
     values.update(ansible_facts={'architecture': 'aarch64'}, item='node', _observability_kuma_tls_generation='a' * 64)
     values.update(overrides)
-    return Environment(undefined=StrictUndefined).from_string((ROLE / 'templates' / name).read_text()).render(**values)
+    return render_template(ROLE / 'templates' / name, values)
 
 
 def test_container_exact_arch_pin_loopback_and_resource_bounds():
@@ -184,7 +185,7 @@ def admission(tmp_path, monkeypatch):
             return SimpleNamespace(st_mode=info.st_mode, st_uid=0, st_dev=info.st_dev + 1)
         return info
     monkeypatch.setattr(preflight.os, 'stat', inspect)
-    monkeypatch.setattr(preflight, 'private_directory', lambda path: Path(path))
+    monkeypatch.setattr(preflight, 'private_directory', Path)
     def run(command, **kwargs):
         return SimpleNamespace(stdout='ext4\n')
     return config, memory, run

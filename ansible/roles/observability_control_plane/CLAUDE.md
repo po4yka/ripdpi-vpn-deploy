@@ -24,6 +24,8 @@ scan. Headroom covers twice measured peak writes over watchdog plus enforced
 receiver stop timeout. Guard loss stops receiver and ingress via BindsTo;
 the durable latch survives disable and requires explicit operator inspection
 and recovery. Arithmetic tests are not actual-filesystem burst admission.
+The durable latch is owner-private (`0600`); ingress and systemd only test its
+existence and do not need read access to its contents.
 When explicitly enabled, expected targets are validated from a repository
 inventory and rendered as bounded contract metrics; source/deploy identity,
 TSDB capacity, and pipeline status use the existing bounded evidence families.

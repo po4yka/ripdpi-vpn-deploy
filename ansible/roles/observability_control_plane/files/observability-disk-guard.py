@@ -125,7 +125,7 @@ def latch(state_dir):
     descriptor = os.open(
         directory / "latched",
         os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-        0o644,
+        0o600,
     )
     try:
         os.write(descriptor, b"disk_guard_latched\n")
@@ -192,6 +192,7 @@ def main():
             try:
                 latch(args.state_dir)
             except FileExistsError:
+                # An existing durable latch already prevents receiver restart.
                 pass
             except (OSError, ValueError):
                 # Service exit also stops its BindsTo receiver on latch I/O failure.
