@@ -157,6 +157,20 @@ Add regression coverage for disabled-firewall creation, post-transition
 reissue, changed identity, unchanged deadlines, and pending destruction.
 Do not manually edit manifests or permit a general state-digest exception.
 
+Unbound retirement consumes the registered completed destruction, not an
+unchanged pre-destroy state. Hold the resource-journal lock before the existing
+nonblocking SOPS locks; require the registered manifest path/inode and its
+reserved verified-absence path. The retained manifest still binds pre-apply
+state. Freeze the current private empty state digest for the entire retirement
+transaction and revalidate all inputs under the SOPS locks. Copied authority,
+nonempty state, any onboarding output or another client generation refuses.
+Prepared-executor retirement is a separate explicit operation after that
+client receipt. It must verify the exact prepared manifest, VM marker,
+configuration and unchanged Docker context, reject onboarding assignments,
+serialize with binding, retain durable removal intent for interrupted retry,
+and verify absence before publishing a private categorical receipt. It may
+retire an expired prepared lease; it must never fabricate a binding.
+
 Both provider guards use one private resource journal under the trusted
 controller user's `~/.local/state/vpn-deploy/staging-cleanup/`. The key binds
 provider, authenticated account and server UUID, independent of checkout,

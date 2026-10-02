@@ -10,7 +10,9 @@ ordinary deployment and guarded deletion on authorized disposable staging.
 Primary owns the complete change serially. Controller/Make boundary, Tailnet
 domain and role, firewall foundation, deploy callers, cleanup sequencing, and
 their tests are the only implementation lanes. Shared task files and generated
-board writes remain serialized. No parallel task is consulted or modified.
+board writes remain serialized. No parallel task edits this change's files.
+Cleanup sequencing includes registered unbound-client retirement and guarded
+prepared-executor retirement after a failed bootstrap; both remain in step 6.
 
 ## Execution
 

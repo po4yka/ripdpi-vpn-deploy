@@ -72,21 +72,26 @@ class Runner:
                 }
             ).encode()
         if command[:3] == ("colima", "list", "--json"):
-            profile = next(
-                path.name for path in (self.home / ".colima").iterdir() if path.is_dir()
-            )
+            profiles = [
+                path.name
+                for path in (self.home / ".colima").iterdir()
+                if path.is_dir() and path.name != "default"
+            ]
             return (
                 '{"name":"default","status":"Running","runtime":"docker",'
                 '"arch":"aarch64"}\n'
-                + json.dumps(
-                    {
-                        "name": profile,
-                        "status": self.profile_status,
-                        "arch": "aarch64",
-                        "runtime": "docker",
-                    }
+                + "".join(
+                    json.dumps(
+                        {
+                            "name": profile,
+                            "status": self.profile_status,
+                            "arch": "aarch64",
+                            "runtime": "docker",
+                        }
+                    )
+                    + "\n"
+                    for profile in profiles
                 )
-                + "\n"
             ).encode()
         if command[:3] == ("colima", "ssh", "--profile"):
             if command[-1] == "mount":

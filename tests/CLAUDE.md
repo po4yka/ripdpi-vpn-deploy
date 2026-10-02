@@ -54,6 +54,12 @@ firewall promotion and reject a foreign server UUID before any local deletion.
 Disposable de-onboarding fixtures use the current UpCloud schema-3 absence
 receipt and reject an obsolete version before mutation. Its registry fixture
 uses the installer's exact sorted JSON format.
+Unbound-retirement fixtures must start with registered pre-destroy state and
+then write different empty state. Exercise copied/inode-replaced authority,
+unclaimed absence and post-destroy state replacement before SOPS publication.
+Prepared-executor tests require a completed real client retirement transaction,
+profile marker/configuration/context guards, assignment races and interrupted
+stop/delete retry; fixture success remains source evidence only.
 
 **Disposable observability acceptance is evidence-class strict** — focused
 selector tests prove staging-only enablement, disabled production, required

@@ -49,6 +49,10 @@ both dependencies before resources are created.
 - Establish the cleanup manifest before guest writes. Reissue it from the
   exact refreshed state after an authorized same-node firewall transition;
   stale manifests continue to refuse, with previous evidence retained.
+- Complete failed-bootstrap cleanup when the issued client and prepared
+  executor never acquired an onboarding binding: validate registered provider
+  absence against the retained manifest, freeze the genuinely changed empty
+  state, retire only that client, and remove only its verified prepared VM.
 - BREAKING: both provider cleanup guards register manifest generations and
   destruction reservations in one resource-bound controller journal. Reissue
   becomes an explicit operation using the registered previous manifest; copied

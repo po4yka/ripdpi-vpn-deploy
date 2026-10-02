@@ -166,6 +166,13 @@ provider receipt is schema 3; keep the provider and version check aligned
 before removing encrypted client state or the executor profile.
 The sentinel registry uses the installer's sorted JSON serialization, which
 the de-onboarding reader must preserve exactly during removal.
+Unbound recovery also requires the registered manifest inode and reserved
+verified-absence path; pre-destroy and genuinely empty post-destroy state
+hashes differ. Freeze the latter digest/inode throughout client retirement.
+The separate prepared-executor verb requires the completed client receipt and
+unchanged final ciphertext, serializes profile ownership against binding, and
+retains removal intent for stopped/absent retry. Never fabricate a binding to
+remove a prepared VM or reuse a retired one-shot profile name.
 
 **Xray migrations are changelog-driven** — `docs/XRAY-RELEASE-LINE.md` embeds the declarative guard registry consumed by `check-xray-breaking-changes.py`. Add version-aware rules there instead of hardcoding release cases in unrelated validators; render-sensitive rules use `template_render.py` so every fast check sees the same canonical Ansible context.
 
