@@ -12,12 +12,13 @@ import sys
 def environment() -> dict[str, str]:
     # Inherited Git overrides can redirect -C to a different checkout or index.
     return {**{key: value for key, value in os.environ.items() if not key.startswith("GIT_")},
-            "GIT_OPTIONAL_LOCKS": "0", "OPENSPEC_TELEMETRY": "0"}
+            "GIT_OPTIONAL_LOCKS": "0", "GIT_NO_LAZY_FETCH": "1", "OPENSPEC_TELEMETRY": "0"}
 
 
 def git(cwd: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["git", "-c", "core.fsmonitor=false", "-C", str(cwd), *args], capture_output=True, text=True,
+        ["git", "-c", "core.fsmonitor=false", "-c", "status.renameLimit=0", "-C", str(cwd), *args],
+        capture_output=True, text=True,
         encoding="utf-8", errors="surrogateescape",
         env=environment(), check=check, timeout=30,
     )

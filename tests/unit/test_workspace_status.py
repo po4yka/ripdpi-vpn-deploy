@@ -95,6 +95,57 @@ def test_status_handles_non_utf8_index_paths(repo):
     assert json.loads(result.stdout)["changes"] == {"staged": 1, "unstaged": 1, "untracked": 0}
 
 
+@pytest.mark.parametrize("limit_key", ["status.renameLimit", "diff.renameLimit"])
+def test_modified_renames_ignore_ambient_limits(repo, limit_key):
+    for index in range(3):
+        (repo / f"source-{index}.txt").write_text(f"content-{index}\n" * 100)
+    git(repo, "add", ".")
+    git(repo, "commit", "-m", "rename sources")
+    for index in range(3):
+        target = repo / f"target-{index}.txt"
+        git(repo, "mv", f"source-{index}.txt", target.name)
+        target.write_text(target.read_text() + "modified\n")
+    git(repo, "add", ".")
+    git(repo, "config", limit_key, "1")
+    result = run(repo, "--json")
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["changes"] == {"staged": 3, "unstaged": 0, "untracked": 0}
+
+
+def test_blobless_clone_does_not_fetch_for_rename_detection(repo, tmp_path, monkeypatch):
+    original = "".join(f"content-{index}\n" for index in range(100))
+    (repo / "tracked.txt").write_text(original)
+    git(repo, "add", ".")
+    git(repo, "commit", "-m", "partial clone source")
+    remote = tmp_path / "remote.git"
+    partial = tmp_path / "partial"
+    subprocess.run(["git", "clone", "--bare", str(repo), str(remote)], check=True, capture_output=True)
+    git(remote, "config", "uploadpack.allowFilter", "true")
+    subprocess.run(
+        ["git", "clone", "--filter=blob:none", "--no-checkout", remote.as_uri(), str(partial)],
+        check=True, capture_output=True,
+    )
+    git(partial, "read-tree", "HEAD")
+    target = partial / "target.txt"
+    target.write_text(original + "modified\n")
+    blob = git(partial, "hash-object", "-w", target.name)
+    git(partial, "update-index", "--force-remove", "tracked.txt")
+    git(partial, "update-index", "--add", "--cacheinfo", "100644", blob, target.name)
+    marker = tmp_path / "fetch-attempt"
+    upload = tmp_path / "upload-pack-hook.sh"
+    upload.write_text(f"#!/bin/sh\n: > {shlex.quote(str(marker))}\nexec git upload-pack \"$@\"\n")
+    upload.chmod(0o755)
+    git(partial, "config", "remote.origin.uploadpack", str(upload))
+    before = {path.name: path.read_bytes() for path in (partial / ".git/objects/pack").iterdir()}
+    monkeypatch.setenv("GIT_NO_LAZY_FETCH", "1")
+    result = run(partial, "--json")
+    assert not marker.exists(), "discovery must not invoke the promisor remote"
+    assert result.returncode == 2
+    assert not result.stdout
+    assert result.stderr == "workspace-status: checkout or selected task metadata unavailable\n"
+    assert {path.name: path.read_bytes() for path in (partial / ".git/objects/pack").iterdir()} == before
+
+
 def test_text_paths_cannot_inject_fields_or_terminal_controls(repo, tmp_path):
     unusual = tmp_path / "checkout\nHEAD: forged\x1b[2J"
     repo.rename(unusual)
@@ -190,7 +241,7 @@ def test_make_discovery_bypasses_fleet_configuration_and_provider_values(repo):
     (repo / ".fleet.mk").write_text("$(error operator configuration must not be parsed)\n")
     marker = repo / "unexpected-provider-effect"
     result = subprocess.run(
-        ["make", "workspace-status", f"PROVIDER=$(shell touch {marker})"], cwd=repo,
+        ["make", "workspace-status", f"PROVIDER=$(shell touch {shlex.quote(str(marker))})"], cwd=repo,
         capture_output=True, text=True, env={**os.environ, "PATH": os.environ["PATH"]},
     )
     assert result.returncode == 0, result.stderr

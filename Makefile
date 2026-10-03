@@ -1,6 +1,7 @@
 # Checkout discovery must run before operator configuration is parsed.
 # Clear inherited Make inputs before invocation, as documented in AGENTS.md.
 ifeq ($(MAKECMDGOALS),workspace-status)
+unexport PROVIDER
 .PHONY: workspace-status
 workspace-status:
 	@python3 scripts/workspace-status.py
