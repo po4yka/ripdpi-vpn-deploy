@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+For SSH recovery helper or unit changes, inspect the [bundle and controller consumers](../../../scripts/DESIGN-NOTES.md#ssh-recovery--install-sshd-recoverypy-make-install-ssh-recovery).
+
 **Sets ground state, not policy** — installs sysctl baseline, time sync
 (`systemd-timesyncd`), OpenSSH prerequisites, and IP-forwarding sysctl when
 AmneziaWG is in scope. The controller-owned second site play publishes SSH

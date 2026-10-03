@@ -30,6 +30,13 @@ phantom, missing or duplicate step IDs before deletion history is accepted.
 
 ## Deploy controller and inventory — `deploy-controller.py`, `deploy-source-identity.sh`, `bootstrap_readiness.py`, `render-inventory.sh`
 
+**Handoff ownership crosses the script boundary** — when changing bootstrap
+output or inventory transport selection, inspect both ends of this chain:
+
+| Contract owner | Consumer / coupling | Regression coverage |
+|---|---|---|
+| [bootstrap-tailnet.py](bootstrap-tailnet.py) publishes the confirmed handoff; [tailnet_management.py](tailnet_management.py) owns binding validation. | [render-inventory.sh](render-inventory.sh), `confirmed_tailnet_transport`, validates that handoff and selects `ansible_host`; Terraform still supplies `vpn_service_address`. [deploy-controller.py](deploy-controller.py) consumes the generated inventory. | [test_bootstrap_tailnet.py](../tests/unit/test_bootstrap_tailnet.py), [test_render_inventory.py](../tests/unit/test_render_inventory.py): publication, IPv6 proof, binding rejection and public service-address preservation. |
+
 **Deploy identity follows deployable content** — `deploy-source-identity.sh`
 hashes committed Git blob IDs and paths under `ansible/`, `scripts/`, and
 `requirements.yml`. Do not hash `git archive` bytes: commit timestamps would
@@ -257,6 +264,14 @@ readiness or convergence call.
 
 ## Tailnet — `tailnet-*`
 
+**Recovery wrappers reuse shared owners** — for a staging retry or error-type
+change, follow the shared implementation before adding wrapper logic:
+
+| Contract owner | Consumer / coupling | Regression coverage |
+|---|---|---|
+| [bootstrap-tailnet.py](bootstrap-tailnet.py) owns input validation, installation, enrollment and pinned `_remote` / `_sftp` calls. | [staging-tailnet-recovery.py](staging-tailnet-recovery.py) loads that module and reuses its `deploy` and `tailnet` modules for the two fixed recovery scenarios. | [test_staging_tailnet_recovery.py](../tests/unit/test_staging_tailnet_recovery.py), [test_staging_tailnet_recovery_make.py](../tests/unit/test_staging_tailnet_recovery_make.py). |
+| [bootstrap_readiness.py](bootstrap_readiness.py) owns bounded command/readiness execution and transport error types; [deploy-controller.py](deploy-controller.py) owns `require_recovery_foundation`. | Bootstrap and staging recovery consume both; transport failures and semantic refusals must retain their distinct types across these calls. | [test_bootstrap_readiness_io.py](../tests/unit/test_bootstrap_readiness_io.py), [test_staging_tailnet_recovery.py](../tests/unit/test_staging_tailnet_recovery.py): `_remote`, `_sftp`, foundation and reboot retry cases. |
+
 **Recovery waits for backend initialization, not merely daemon readiness** —
 the vendor service can notify readiness while its backend remains `NoState`.
 Only recovery polls `NoState`/`Starting`, with one 30-second monotonic budget
@@ -297,6 +312,17 @@ interface with a general fault selector or a new permanent guest capability.
 
 ## Observability — `observability-operator.py`
 
+**Sender and staging contracts have consumers outside their entrypoint** —
+inspect these dependencies when changing a sender runtime or acceptance row.
+The retained dedicated-staging harness consumes the runtime contract but does
+not accept the current topology; see [current contract and task history](../docs/OBSERVABILITY-OPERATIONS.md#current-contract-and-task-history).
+
+| Contract owner | Consumer / coupling | Regression coverage |
+|---|---|---|
+| [observability_agent defaults](../ansible/roles/observability_agent/defaults/main.yml) and [templates](../ansible/roles/observability_agent/templates) define sender release inputs, flags, unit and queue metrics. The collector has a separate release input contract in [observability_control_plane defaults](../ansible/roles/observability_control_plane/defaults/main.yml); concrete test-only pins live in [fixture-contract.yml](../ansible/roles/observability_control_plane/molecule/enabled/tasks/fixture-contract.yml). | [observability-operator.py](observability-operator.py) consumes readiness; [observability-staging-acceptance.py](observability-staging-acceptance.py) consumes transport arguments and native queue metrics. | [test_observability_operator.py](../tests/unit/test_observability_operator.py), [test_observability_staging_acceptance.py](../tests/unit/test_observability_staging_acceptance.py), [test_observability_agent_render.py](../tests/unit/test_observability_agent_render.py), [test_render_snapshots.py](../tests/unit/test_render_snapshots.py). |
+| The sender role also runs in the collector's co-hosted scenario. | [cohost-agent.yml](../ansible/roles/observability_control_plane/molecule/enabled/tasks/cohost-agent.yml) supplies its fixture inputs; [bounded-runtime.yml](../ansible/roles/observability_control_plane/molecule/enabled/tasks/bounded-runtime.yml) owns restart/backlog and resource-pressure proof. An agent-role-only run does not cover this consumer. | Control-plane enabled Molecule scenario; [test_observability_resource_bounds.py](../tests/unit/test_observability_resource_bounds.py). |
+| [prepare-observability-staging.py](prepare-observability-staging.py) produces the private staging manifest; [observability-staging-acceptance.py](observability-staging-acceptance.py) owns `ACCEPTANCE_CHECKS` and terminal journal publication. | [observability-staging-cleanup.py](observability-staging-cleanup.py) validates `completed_checks` against its `COMPLETED_CHECKS`. Row changes must reach the cleanup consumer as well as the acceptance controller. | [test_observability_staging_cleanup.py](../tests/unit/test_observability_staging_cleanup.py), `test_cleanup_contract_matches_acceptance_terminal_rows`; [test_prepare_observability_staging.py](../tests/unit/test_prepare_observability_staging.py). |
+
 **Observability lifecycle shares one exact-host controller** — its public Make
 verbs remain distinct, while one bounded Python controller centralizes private
 input validation, literal scope, strict SSH and one-role Ansible execution.
@@ -335,6 +361,14 @@ bounded mode-0600 sidecar with categorical state and hashed invocation identity
 may survive cleanup. This is container PID1 evidence, not a provider reboot.
 
 ## SSH recovery — `install-sshd-recovery.py` (`make install-ssh-recovery`)
+
+**Recovery bundle ownership starts in the baseline role** — use the canonical
+bundle and shared transaction controller when tracing an ownership change:
+
+| Contract owner | Consumer / coupling | Regression coverage |
+|---|---|---|
+| [baseline files](../ansible/roles/baseline/files) own `sshd_migrate.py`, `sshd_transaction.py` and `sshd_ownership.py`; its [templates](../ansible/roles/baseline/templates) own the recovery units. [sshd_bundle_source.py](sshd_bundle_source.py), `bundle_manifest`, binds their immutable generation. | [install-sshd-recovery.py](install-sshd-recovery.py), [deploy-controller.py](deploy-controller.py), bootstrap and staging recovery consume that generation. | [test_sshd_bundle.py](../tests/unit/test_sshd_bundle.py), [test_install_sshd_recovery.py](../tests/unit/test_install_sshd_recovery.py). |
+| [deploy-source-identity.sh](deploy-source-identity.sh) defines the source digest, exposed by [deploy-controller.py](deploy-controller.py), `source_identity`; [sshd-baseline-controller.py](sshd-baseline-controller.py) owns transaction RPC and rollback; [sshd_contexts.py](sshd_contexts.py) binds socket contexts. | [ssh-ownership.py](ssh-ownership.py) composes these owners, rechecking source before `apply` and `confirm` and proving both transports before confirmation. | [test_ssh_ownership_controller.py](../tests/unit/test_ssh_ownership_controller.py): source drift, dual-path proof and uncertain rollback; [test_sshd_baseline_controller.py](../tests/unit/test_sshd_baseline_controller.py). |
 
 **SSH recovery installation has an early privacy guard** — the dedicated
 controller rejects enabled Ansible debug before inventory processing, forwards
