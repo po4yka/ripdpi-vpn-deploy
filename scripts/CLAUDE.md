@@ -2,6 +2,24 @@
 
 ## Design decisions
 
+**Subsystem notes live in [DESIGN-NOTES.md](DESIGN-NOTES.md)** — before
+changing a listed subsystem, read its matching section:
+
+| Before changing | Read |
+|---|---|
+| Task lifecycle (`tasks/taskctl.py`) | [Task lifecycle](DESIGN-NOTES.md#task-lifecycle--taskstaskctlpy) |
+| Deploy controller and inventory rendering | [Deploy and inventory](DESIGN-NOTES.md#deploy-controller-and-inventory--deploy-controllerpy-deploy-source-identitysh-bootstrap_readinesspy-render-inventorysh) |
+| Provider checks, `destroy.sh` and staging cleanup | [Provider lifecycle](DESIGN-NOTES.md#provider-control-plane-destroy-and-staging-cleanup--destroysh-check-vultr-control-planepy-ci-staging-) |
+| Client emission (`emit-*.sh`) | [Client emission](DESIGN-NOTES.md#client-emission--emit-bundlesh-emit-singboxsh) |
+| Passive inspection (`fleet-inspect.py`) | [Fleet inspection](DESIGN-NOTES.md#fleet-inspection--fleet-inspectpy) |
+| Liveness sentinels, Snell refinement and real-VPS AWG evidence | [Liveness and retirement](DESIGN-NOTES.md#liveness-sentinels-disposable-staging-and-retirement) |
+| Probe scripts (`probe-*.sh`) | [Probe scripts](DESIGN-NOTES.md#probe-scripts-probe-sh) |
+| Probe matrix (`probe-matrix-driver.py`) | [Probe matrix](DESIGN-NOTES.md#probe-matrix--probe-matrix-driverpy) |
+| Tailnet (`tailnet-*`) | [Tailnet](DESIGN-NOTES.md#tailnet--tailnet-) |
+| Observability (`observability-operator.py`) | [Observability](DESIGN-NOTES.md#observability--observability-operatorpy) |
+| Cloud-init acceptance harnesses | [Cloud-init acceptance](DESIGN-NOTES.md#cloud-init-acceptance--schema-fallback-and-cloud-final-restart-harness) |
+| SSH recovery installation | [SSH recovery](DESIGN-NOTES.md#ssh-recovery--install-sshd-recoverypy-make-install-ssh-recovery) |
+
 **Checkout discovery precedes operator configuration** — `make workspace-status`
 reports local Git metadata without parsing `.fleet.mk` or reading runtime inputs.
 `scripts/workspace-status.py` describes the caller's checkout, including detached
@@ -204,13 +222,6 @@ Snell is optional in issuance and unbound retirement. An absent section has no
 client edges; configured variants must still contain exactly one issued client.
 
 **Xray migrations are changelog-driven** — `docs/XRAY-RELEASE-LINE.md` embeds the declarative guard registry consumed by `check-xray-breaking-changes.py`. Add version-aware rules there instead of hardcoding release cases in unrelated validators; render-sensitive rules use `template_render.py` so every fast check sees the same canonical Ansible context.
-
-**Subsystem notes live in `scripts/DESIGN-NOTES.md`** — read the matching
-section before changing: `tasks/taskctl.py`; the deploy controller and inventory
-rendering; `destroy.sh` and staging cleanup; `emit-*.sh`; `fleet-inspect.py`;
-liveness sentinels and probes (`*liveness*`, `probe-*`, `snell-refinement.py`,
-real-VPS AWG evidence); `tailnet-*`; `observability-operator.py`; cloud-init
-acceptance harnesses; SSH recovery installation.
 
 **Observability staging cleanup is an aggregate all-provider transaction** —
 `observability-staging-cleanup.py` is fixed to the exact `staging` UpCloud,
