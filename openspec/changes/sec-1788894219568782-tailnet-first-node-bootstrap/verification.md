@@ -3,13 +3,13 @@ task_id: SEC-1788894219568782
 change: sec-1788894219568782-tailnet-first-node-bootstrap
 commit_sha: null
 local: required
-local_evidence: "Periodic-worker readiness regression: all 106 installed-adapter tests passed, including same-invocation success and failure, contention, signal, timeout, and identity-change refusal; complete local gate remains required."
+local_evidence: "Cold-backend recovery regression reproduced tailnet-status-invalid before the fix; all 133 Tailnet domain tests passed afterward, including bounded startup/logout readiness and foreign/invalid-state refusal. Complete corrected-source local gate remains required."
 remote_ci: required
 remote_ci_evidence: "The corrected source requires fresh exact-revision hosted CI including native amd64 Molecule."
 dry_run: required
 dry_run_evidence: "Corrected-source ordinary staging dry-run remains unperformed."
 staging: required
-staging_evidence: "Protected-source recovery refused before enrollment when SSH readiness overlapped periodic worker execution. Corrected-source controller-loss, reboot, positive bootstrap and ordinary deployment remain required."
+staging_evidence: "Protected 6b29c727 controller-loss passed; its real reboot failed during tailscaled NoState before backend initialization and blocked the original SSH start job. Read-only console diagnostics restored ordinary access but do not satisfy reboot acceptance. Fresh corrected-source controller-loss, reboot, positive bootstrap and ordinary deployment remain required."
 live: blocked
 live_evidence: "No permanent-node rollout or serial live acceptance was performed."
 client: required
@@ -24,6 +24,23 @@ Fresh reboot acceptance failed on the later protected source; the task returned
 to doing with two execution steps reopened. Current verification above belongs
 to the cold-policy repair and does not inherit earlier staging acceptance.
 The prior protected-source observations below remain historical evidence.
+
+## Cold-backend reboot failure and repair — 2026-10-03
+
+Persistent guest logs from protected `6b29c727` show early firewall recovery
+succeeded at 10:02:00 UTC. Late recovery failed with `tailnet-status-invalid`
+at 10:02:01.222 while tailscaled was still `NoState`; backend transitions to
+`Starting` and `Running` followed at 10:02:01.350 and 10:02:01.599. The
+required late unit failed the original SSH start job. A periodic retry rolled
+back successfully at 10:02:07.487 but did not requeue that failed SSH job.
+
+Approved read-only console diagnostics verified the installed graph and
+restored ordinary init. Pinned SSH/SFTP and canonical idle checks then passed.
+That diagnostic boot retained a temporary kernel init argument and cannot
+replace the failed canonical reboot evidence. The repair bounds backend
+initialization without changing systemd dependencies or identity ownership.
+The original regression failed before repair and all 133 domain tests passed
+afterward. Exact corrected-source hosted and runtime acceptance remain open.
 
 ## Exact-source ordinary and separate recovery acceptance — 2026-09-29
 

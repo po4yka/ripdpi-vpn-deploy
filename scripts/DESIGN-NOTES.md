@@ -257,6 +257,14 @@ readiness or convergence call.
 
 ## Tailnet — `tailnet-*`
 
+**Recovery waits for backend initialization, not merely daemon readiness** —
+the vendor service can notify readiness while its backend remains `NoState`.
+Only recovery polls `NoState`/`Starting`, with one 30-second monotonic budget
+shared by the initial status and the post-owned-logout status. Every query is
+bounded by the remaining time, including rejection of a late terminal reply.
+Malformed, unknown and authorization states still refuse immediately;
+ownership validation, exact rollback and the SSH dependency remain unchanged.
+
 **Tailnet firewall fragments have one canonical grammar** —
 `tailnet-network-guest.py` validates and publishes the same schema-1 bytes as
 the firewall role. The validator supplies the approved-source fragment for an

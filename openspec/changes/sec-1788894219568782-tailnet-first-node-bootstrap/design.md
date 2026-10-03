@@ -59,8 +59,14 @@ restoring firewall files and effective policy ahead of nftables and
 network-pre.target. It must not call tailscaled or synchronously start/stop
 services whose jobs depend on the early worker. The late worker runs after
 tailscaled and completes owned-identity logout and service-state reconciliation
-before `ssh.service` can serve/authenticate ordinary SSH. The early worker
-also gates `ssh.socket`; the late worker must not depend on or precede that
+before `ssh.service` can serve/authenticate ordinary SSH. Late recovery
+must not treat tailscaled service readiness as backend initialization. It
+recovery polls only `NoState` and `Starting` within one fixed 30-second
+monotonic budget shared with its post-logout status check. Each query uses
+the remaining budget and late replies refuse. Unknown, malformed and
+authorization states refuse immediately; owned-identity verification remains
+mandatory before logout. Normal enrollment/status callers do not poll.
+The early worker also gates `ssh.socket`; the late worker must not depend on or precede that
 socket, because its `sockets.target` ordering precedes tailscaled through
 `basic.target`. The socket may listen after early recovery, but cannot activate
 sshd until late recovery succeeds. Both workers share the same lock, nonce, snapshot,
