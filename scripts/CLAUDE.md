@@ -2,6 +2,24 @@
 
 ## Design decisions
 
+**Checkout discovery precedes operator configuration** — `make workspace-status`
+reports local Git metadata without parsing `.fleet.mk` or reading runtime inputs.
+`scripts/workspace-status.py` describes the caller's checkout, including detached
+HEAD, dirty counts and the known local `origin/main`; it never fetches or refreshes
+the index. Git queries disable fsmonitor to prevent configured hooks or monitor
+startup. Active content filters and tracked submodules are rejected before
+status, because dirty detection can execute external commands there; disabling
+filters would invent differences against normalized index blobs. Configured but
+unused filters remain supported. Optional `--task` pointers come from the canonical
+`taskctl show` API; explicitly empty selections fail.
+The documented entry clears inherited Make inputs before Make starts; Git status
+uses explicit unlimited rename detection and lossless path decoding; lazy object
+fetching is disabled, so missing required blobs fail locally. Text paths are
+JSON-quoted to preserve field boundaries.
+Discovery accepts no Make command-line assignments. It identifies variables by
+origin and rejects them without expanding values, including recipe controls such
+as `SHELL` and `.SHELLFLAGS` that Make itself consumes.
+
 **Shell + Python, no compiled binaries** — every script must be readable on
 a fresh box without a build step. Most are bash; the rare ones with non-trivial
 data shaping are Python and use only stdlib + pinned `PyYAML`, `Jinja2`, or
