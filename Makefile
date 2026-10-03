@@ -1,3 +1,9 @@
+# Checkout discovery must run before operator configuration is parsed.
+ifeq ($(MAKECMDGOALS),workspace-status)
+.PHONY: workspace-status
+workspace-status:
+	@python3 scripts/workspace-status.py
+else
 PROVIDER ?= upcloud
 ENV      ?= prod
 
@@ -475,6 +481,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
 
 help:
 	@echo "vpn-deploy Makefile"
+	@echo "  workspace-status  Read-only local checkout provenance (no fetch or fleet configuration)"
 	@echo ""
 	@echo "Variables (override on command line):"
 	@echo "  PROVIDER  current: $(PROVIDER)  (upcloud | hetzner | vultr | scaleway)"
@@ -1620,3 +1627,4 @@ tf-policy:
 	  terraform -chdir=terraform/providers/$$p test || exit 1; \
 	done
 	conftest verify --rego-version v0 -p terraform/policy/
+endif

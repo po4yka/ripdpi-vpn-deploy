@@ -25,6 +25,8 @@ Layer ownership is strict; nothing crosses these boundaries except through docum
 
 The Makefile is the canonical operator surface.
 
+Before documentation discovery, and again after changing worktrees, run `make workspace-status`. Give subagents its output so they use the same checkout and known local `origin/main`. For a selected task or machine-readable handoff, use `python3 scripts/workspace-status.py --task <TASK-ID> --json`; this resolves execution/spec pointers through `taskctl` without fetching or loading fleet configuration.
+
 ## Hard rules
 
 - No secrets in git, Terraform state, TF vars/outputs, cloud-init `user_data`, Ansible debug output, or screenshots. Provider credentials live in env vars only. Do not read or print plaintext secret material (`.env`, `secrets/local/`, decrypted SOPS output, `*.tfstate`) into the session: transcripts and logs leave the operator machine.
