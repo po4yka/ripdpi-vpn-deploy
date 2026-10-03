@@ -79,6 +79,10 @@ and the installed recovery generation. Local tests are not staging acceptance.
 - **Activation must not invalidate its own recovery proof** — run one fresh
   recovery execution outside the transaction lock, then fence its result after
   reacquiring the lock. Cached success or busy status alone is never readiness.
+- **Readiness can overlap periodic recovery** — wait within the existing
+  30-second budget for the observed invocation to complete successfully.
+  Invocation, generation, and boot changes refuse; never start or restart
+  a worker to replace a failed result.
 - **Does not install `chrony` or `unattended-upgrades`** — time sync is
   `systemd-timesyncd` (distro default on Debian 13/Ubuntu 24.04). Unattended
   upgrades are not configured by this role; operators add them separately.

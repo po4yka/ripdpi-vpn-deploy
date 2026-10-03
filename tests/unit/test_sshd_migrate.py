@@ -142,6 +142,7 @@ def installed_properties(adapter):
         values[('show', unit, '--property=ActiveState', '--value')] = 'active'
         values[('show', unit, '--property=SubState', '--value')] = 'waiting'
         if unit.endswith('.service'):
+            values[('show', unit, '--property=InvocationID', '--value')] = 'a' * 32
             values[('show', unit, '--property=SubState', '--value')] = 'dead'
             values[('show', unit, '--property=MainPID', '--value')] = '0'
             values[('show', unit, '--property=ExecMainPID', '--value')] = '100'
@@ -426,7 +427,44 @@ def test_fresh_proof_survives_only_its_later_periodic_self_contention(adapter, m
     now['us'] = 1700000
     assert runtime.activation_fence(proof, acquired)
     assert calls.count(['start', 'vpn-sshd-recover.service']) == 1
+    monkeypatch.setattr(adapter.time, 'sleep', lambda seconds: now.update(us=now['us'] + 30000000))
     assert not runtime.recovery_ready()  # No fresh-call proof on this interface.
+
+
+@pytest.mark.parametrize('outcome', ['success', 'failure', 'busy', 'signal', 'new-invocation',
+                                   'generation', 'boot', 'boot-invocation', 'future', 'timeout'])
+def test_readiness_observes_only_the_current_periodic_execution(adapter, monkeypatch, outcome):
+    runtime, values, now, calls = activation_fixture(adapter, monkeypatch)
+    worker = 'vpn-sshd-recover.service'
+    worker_execution(values, status='0', started=500000, inflight=True)
+    values[('show', worker, '--property=InvocationID', '--value')] = 'b' * 32
+    generation = {'path': Path('/generation') / ('a' * 64)}
+    monkeypatch.setattr(adapter, '_validate_installation', lambda: generation['path'])
+    sleeps = []
+    def complete(seconds):
+        sleeps.append(seconds)
+        now['us'] += round(seconds * 1000000)
+        if outcome == 'timeout':
+            return
+        worker_execution(values, status={'failure': '1', 'busy': '75'}.get(outcome, '0'),
+                         started=500000, exited=now['us'])
+        if outcome == 'signal':
+            values[('show', worker, '--property=Result', '--value')] = 'signal'
+        elif outcome == 'new-invocation':
+            values[('show', worker, '--property=InvocationID', '--value')] = 'c' * 32
+        elif outcome == 'generation':
+            generation['path'] = Path('/generation') / ('b' * 64)
+        elif outcome == 'boot':
+            monkeypatch.setattr(runtime, 'boot_id', lambda: '00000000-0000-4000-8000-000000000002')
+        elif outcome == 'boot-invocation':
+            values[('show', 'vpn-sshd-boot-recover.service', '--property=InvocationID', '--value')] = 'c' * 32
+        elif outcome == 'future':
+            values[('show', worker, '--property=ExecMainExitTimestampMonotonic', '--value')] = str(now['us'] + 1)
+    monkeypatch.setattr(adapter.time, 'sleep', complete)
+    ready = runtime.recovery_ready()
+    assert ready is (outcome == 'success')
+    assert sleeps and sum(sleeps) <= 30.000001
+    assert not any(call[0] == 'start' for call in calls)
 
 
 @pytest.mark.parametrize('fault', ['no-proof', 'no-success-proof', 'expired-proof', 'old-execution',

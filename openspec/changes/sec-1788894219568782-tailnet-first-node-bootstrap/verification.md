@@ -3,13 +3,13 @@ task_id: SEC-1788894219568782
 change: sec-1788894219568782-tailnet-first-node-bootstrap
 commit_sha: null
 local: required
-local_evidence: "Cold-policy regression: 115 targeted tests and native Linux full-policy parity plus invalid-config refusal passed; complete local gate remains required."
+local_evidence: "Periodic-worker readiness regression: all 106 installed-adapter tests passed, including same-invocation success and failure, contention, signal, timeout, and identity-change refusal; complete local gate remains required."
 remote_ci: required
 remote_ci_evidence: "The corrected source requires fresh exact-revision hosted CI including native amd64 Molecule."
 dry_run: required
 dry_run_evidence: "Corrected-source ordinary staging dry-run remains unperformed."
 staging: required
-staging_evidence: "Fresh reboot recovery failed on the preceding source. Corrected-source controller-loss, reboot, positive bootstrap and ordinary deployment remain required."
+staging_evidence: "Protected-source recovery refused before enrollment when SSH readiness overlapped periodic worker execution. Corrected-source controller-loss, reboot, positive bootstrap and ordinary deployment remain required."
 live: blocked
 live_evidence: "No permanent-node rollout or serial live acceptance was performed."
 client: required
