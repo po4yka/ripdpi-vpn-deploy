@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Before changing the sender runtime contract, inspect its [cross-role and operator consumers](../../../scripts/DESIGN-NOTES.md#observability--observability-operatorpy).
+
 **The sender is a pinned vmagent runtime** — runtime-release verifies the exact stable community archive before activation. Empty version, URL, checksum, or architecture pin is a hard failure; this role never selects a latest release. Prometheus remains the collector; the sender forces the Prometheus remote-write wire protocol.
 
 **Different binaries have disjoint release authorities** — vmagent uses `/opt/observability-vmagent`; the historical Prometheus agent's `/opt/observability-agent` remains untouched. Reusing one `current` release symlink would invalidate the old binary's public link and make failed-cutover rollback impossible. Disable removes only the vmagent authority.

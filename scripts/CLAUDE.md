@@ -2,7 +2,7 @@
 
 ## Design decisions
 
-**Subsystem notes live in [DESIGN-NOTES.md](DESIGN-NOTES.md)** — before
+**Subsystem ownership and design notes live in [DESIGN-NOTES.md](DESIGN-NOTES.md)** — before
 changing a listed subsystem, read its matching section:
 
 | Before changing | Read |
