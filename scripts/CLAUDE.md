@@ -7,7 +7,11 @@ reports local Git metadata without parsing `.fleet.mk` or reading runtime inputs
 `scripts/workspace-status.py` describes the caller's checkout, including detached
 HEAD, dirty counts and the known local `origin/main`; it never fetches or refreshes
 the index. Git queries disable fsmonitor to prevent configured hooks or monitor
-startup. Optional `--task` pointers come from the canonical `taskctl show` API.
+startup. Active content filters and tracked submodules are rejected before
+status, because dirty detection can execute external commands there; disabling
+filters would invent differences against normalized index blobs. Configured but
+unused filters remain supported. Optional `--task` pointers come from the canonical
+`taskctl show` API; explicitly empty selections fail.
 The documented entry clears inherited Make inputs before Make starts; Git status
 uses explicit unlimited rename detection and lossless path decoding; lazy object
 fetching is disabled, so missing required blobs fail locally. Text paths are

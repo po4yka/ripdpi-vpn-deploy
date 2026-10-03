@@ -15,16 +15,37 @@ def environment() -> dict[str, str]:
             "GIT_OPTIONAL_LOCKS": "0", "GIT_NO_LAZY_FETCH": "1", "OPENSPEC_TELEMETRY": "0"}
 
 
-def git(cwd: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
+def git(cwd: Path, *args: str, check: bool = True, input: str | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["git", "-c", "core.fsmonitor=false", "-c", "status.renameLimit=0", "-C", str(cwd), *args],
         capture_output=True, text=True,
         encoding="utf-8", errors="surrogateescape",
-        env=environment(), check=check, timeout=30,
+        env=environment(), check=check, timeout=30, input=input,
     )
 
 
+def reject_content_filters(root: Path) -> None:
+    # Disabling active filters would compare raw files with normalized index
+    # blobs and could invent dirty changes. Refuse before any filter can run.
+    entries = git(root, "ls-files", "--stage", "-z").stdout.split("\0")
+    if any(entry.startswith("160000 ") for entry in entries):
+        raise ValueError("submodule status can execute child content filters")
+    configured = git(root, "config", "--null", "--name-only", "--get-regexp",
+                     r"^filter\..*\.(clean|process)$", check=False)
+    if configured.returncode == 1:
+        return
+    configured.check_returncode()
+    drivers = {key.removeprefix("filter.").rsplit(".", 1)[0]
+               for key in configured.stdout.split("\0") if key}
+    tracked = "".join(entry.partition("\t")[2] + "\0" for entry in entries if entry)
+    attributes = git(root, "check-attr", "--stdin", "-z", "filter", input=tracked).stdout.split("\0")
+    if drivers.intersection(attributes[2::3]):
+        raise ValueError("active content filter requires external execution")
+
+
 def summary(task_id: str | None) -> dict:
+    if task_id == "":
+        raise ValueError("empty selected task")
     cwd = Path.cwd()
     root = Path(git(cwd, "rev-parse", "--show-toplevel").stdout.removesuffix("\n"))
     head = git(root, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip()
@@ -37,6 +58,7 @@ def summary(task_id: str | None) -> dict:
     if base["revision"] and not shallow:
         ahead, behind = git(root, "rev-list", "--left-right", "--count", f"{head}...{base['revision']}").stdout.split()
         base.update(ahead=int(ahead), behind=int(behind))
+    reject_content_filters(root)
     changes = {"staged": 0, "unstaged": 0, "untracked": 0}
     entries = iter(git(root, "status", "--porcelain=v1", "-z", "--renames", "--untracked-files=all").stdout.split("\0"))
     for entry in entries:

@@ -95,6 +95,60 @@ def test_status_handles_non_utf8_index_paths(repo):
     assert json.loads(result.stdout)["changes"] == {"staged": 1, "unstaged": 1, "untracked": 0}
 
 
+@pytest.mark.parametrize("driver_type", ["clean", "process"])
+def test_active_content_filter_is_rejected_without_execution(repo, tmp_path, driver_type):
+    (repo / ".gitattributes").write_text("tracked.txt filter=recording\n")
+    git(repo, "add", ".gitattributes")
+    git(repo, "commit", "-m", "content filter attribute")
+    marker = tmp_path / "filter-effect"
+    hook = tmp_path / "filter.sh"
+    hook.write_text(f"#!/bin/sh\ntouch {shlex.quote(str(marker))}\ncat\n")
+    git(repo, "config", f"filter.recording.{driver_type}", f"sh {shlex.quote(str(hook))}")
+    tracked = repo / "tracked.txt"
+    stat = tracked.stat()
+    os.utime(tracked, (stat.st_atime, stat.st_mtime + 60))
+    subprocess.run(["git", "-C", str(repo), "status", "--porcelain"],
+                   capture_output=True, timeout=10)
+    assert marker.exists()  # Even a failing process filter runs during normal status.
+    marker.unlink()
+    os.utime(tracked, (stat.st_atime, stat.st_mtime + 120))
+    index = (repo / ".git/index").read_bytes()
+    result = run(repo, "--json")
+    assert result.returncode == 2
+    assert not result.stdout
+    assert result.stderr == "workspace-status: checkout or selected task metadata unavailable\n"
+    assert not marker.exists()
+    assert (repo / ".git/index").read_bytes() == index
+
+
+def test_unused_content_filter_does_not_block_discovery(repo):
+    git(repo, "config", "filter.unused.clean", "$(unused filter must not execute)")
+    result = run(repo, "--json")
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["changes"] == {"staged": 0, "unstaged": 0, "untracked": 0}
+
+
+def test_submodule_filter_cannot_execute_during_discovery(repo, tmp_path):
+    git(repo, "-c", "protocol.file.allow=always", "submodule", "add", str(repo), "child")
+    child = repo / "child"
+    (child / ".gitattributes").write_text("tracked.txt filter=recording\n")
+    marker = tmp_path / "child-filter-effect"
+    hook = tmp_path / "child-filter.sh"
+    hook.write_text(f"#!/bin/sh\ntouch {shlex.quote(str(marker))}\ncat\n")
+    git(child, "config", "filter.recording.clean", f"sh {shlex.quote(str(hook))}")
+    tracked = child / "tracked.txt"
+    stat = tracked.stat()
+    os.utime(tracked, (stat.st_atime, stat.st_mtime + 60))
+    git(repo, "status", "--porcelain")
+    assert marker.exists()
+    marker.unlink()
+    os.utime(tracked, (stat.st_atime, stat.st_mtime + 120))
+    result = run(repo, "--json")
+    assert result.returncode == 2
+    assert not result.stdout
+    assert not marker.exists()
+
+
 @pytest.mark.parametrize("limit_key", ["status.renameLimit", "diff.renameLimit"])
 def test_modified_renames_ignore_ambient_limits(repo, limit_key):
     for index in range(3):
@@ -299,8 +353,9 @@ def test_task_pointers_use_real_taskctl(monkeypatch, repo):
     }
 
 
-def test_bad_selected_task_fails_without_dumping_portfolio():
-    result = run(ROOT, "--task", "missing-task", "--json")
+@pytest.mark.parametrize("task_id", ["missing-task", ""])
+def test_bad_selected_task_fails_without_dumping_portfolio(task_id):
+    result = run(ROOT, "--task", task_id, "--json")
     assert result.returncode == 2
     assert not result.stdout
     assert result.stderr == "workspace-status: checkout or selected task metadata unavailable\n"
