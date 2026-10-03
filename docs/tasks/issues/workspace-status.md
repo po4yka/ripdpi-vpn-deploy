@@ -24,7 +24,8 @@ so branch/worktree drift is visible and subagent handoffs carry the selected sou
 
 ## Acceptance criteria
 
-- `make workspace-status` reports cwd, worktree, branch/detached HEAD, exact SHA,
+- The documented sanitized `make workspace-status` entry reports cwd, worktree,
+  branch/detached HEAD, exact SHA,
   ahead/behind known local `origin/main`, and staged/unstaged/untracked counts.
 - Discovery performs no fetch, index refresh, fleet configuration parsing,
   provider access, secret reads or workspace mutation; missing main is explicit.

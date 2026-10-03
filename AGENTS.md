@@ -25,7 +25,7 @@ Layer ownership is strict; nothing crosses these boundaries except through docum
 
 The Makefile is the canonical operator surface.
 
-Before documentation discovery, and again after changing worktrees, run `make workspace-status`. Give subagents its output so they use the same checkout and known local `origin/main`. For a selected task or machine-readable handoff, use `python3 scripts/workspace-status.py --task <TASK-ID> --json`; this resolves execution/spec pointers through `taskctl` without fetching or loading fleet configuration.
+Before documentation discovery, and again after changing worktrees, run `env -u MAKEFILES -u MAKEFLAGS -u GNUMAKEFLAGS -u MFLAGS make workspace-status`. Clearing inherited Make inputs prevents them from being parsed before the discovery target. Give subagents its output so they use the same checkout and known local `origin/main`. For a selected task or machine-readable handoff, use `python3 scripts/workspace-status.py --task <TASK-ID> --json`; this resolves execution/spec pointers through `taskctl` without fetching or loading fleet configuration.
 
 ## Hard rules
 

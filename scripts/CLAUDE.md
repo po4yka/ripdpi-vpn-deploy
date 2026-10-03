@@ -8,6 +8,9 @@ reports local Git metadata without parsing `.fleet.mk` or reading runtime inputs
 HEAD, dirty counts and the known local `origin/main`; it never fetches or refreshes
 the index. Git queries disable fsmonitor to prevent configured hooks or monitor
 startup. Optional `--task` pointers come from the canonical `taskctl show` API.
+The documented entry clears inherited Make inputs before Make starts; Git status
+uses explicit rename detection and lossless path decoding, and text paths are
+JSON-quoted to preserve field boundaries.
 
 **Shell + Python, no compiled binaries** — every script must be readable on
 a fresh box without a build step. Most are bash; the rare ones with non-trivial

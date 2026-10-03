@@ -18,6 +18,7 @@ def environment() -> dict[str, str]:
 def git(cwd: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["git", "-c", "core.fsmonitor=false", "-C", str(cwd), *args], capture_output=True, text=True,
+        encoding="utf-8", errors="surrogateescape",
         env=environment(), check=check, timeout=30,
     )
 
@@ -36,7 +37,7 @@ def summary(task_id: str | None) -> dict:
         ahead, behind = git(root, "rev-list", "--left-right", "--count", f"{head}...{base['revision']}").stdout.split()
         base.update(ahead=int(ahead), behind=int(behind))
     changes = {"staged": 0, "unstaged": 0, "untracked": 0}
-    entries = iter(git(root, "status", "--porcelain=v1", "-z", "--untracked-files=all").stdout.split("\0"))
+    entries = iter(git(root, "status", "--porcelain=v1", "-z", "--renames", "--untracked-files=all").stdout.split("\0"))
     for entry in entries:
         if not entry:
             continue
@@ -81,8 +82,9 @@ def main() -> int:
     if args.json:
         print(json.dumps(report, sort_keys=True))
     else:
-        print(f"cwd: {report['cwd']}\nworktree: {report['worktree']}")
-        print(f"branch: {report['branch'] or '(detached HEAD)'}\nHEAD: {report['head']}")
+        print(f"cwd: {json.dumps(report['cwd'])}\nworktree: {json.dumps(report['worktree'])}")
+        branch = json.dumps(report['branch']) if report['branch'] else '(detached HEAD)'
+        print(f"branch: {branch}\nHEAD: {report['head']}")
         base = report["known_main"]
         print(f"known main: {base['ref']} {base['revision'] or '(unavailable)'} (local; no fetch)")
         if report["shallow"]:

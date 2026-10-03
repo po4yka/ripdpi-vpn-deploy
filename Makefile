@@ -1,4 +1,5 @@
 # Checkout discovery must run before operator configuration is parsed.
+# Clear inherited Make inputs before invocation, as documented in AGENTS.md.
 ifeq ($(MAKECMDGOALS),workspace-status)
 .PHONY: workspace-status
 workspace-status:

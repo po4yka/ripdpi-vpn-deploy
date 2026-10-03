@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import shlex
 import subprocess
 import sys
 
@@ -69,7 +70,9 @@ def test_known_main_divergence(repo, relation, expected):
     assert hashlib.sha256((repo / ".git/index").read_bytes()).digest() == before
 
 
-def test_dirty_counts_handle_rename_and_do_not_print_private_paths_or_contents(repo):
+@pytest.mark.parametrize("rename_detection", ["true", "false"])
+def test_dirty_counts_handle_rename_and_do_not_print_private_paths_or_contents(repo, rename_detection):
+    git(repo, "config", "status.renames", rename_detection)
     git(repo, "mv", "tracked.txt", "renamed.txt")
     (repo / "renamed.txt").write_text("unstaged edit")
     (repo / "private\nname.txt").write_text("private content sentinel")
@@ -78,6 +81,30 @@ def test_dirty_counts_handle_rename_and_do_not_print_private_paths_or_contents(r
     assert json.loads(result.stdout)["changes"] == {"staged": 1, "unstaged": 1, "untracked": 1}
     assert "private content sentinel" not in result.stdout + result.stderr
     assert "name.txt" not in result.stdout + result.stderr
+
+
+def test_status_handles_non_utf8_index_paths(repo):
+    blob = git(repo, "hash-object", "tracked.txt").encode()
+    subprocess.run(
+        [b"git", b"-C", os.fsencode(repo), b"update-index", b"--add",
+         b"--cacheinfo", b"100644", blob, b"private-\xff"],
+        check=True, capture_output=True,
+    )
+    result = run(repo, "--json")
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["changes"] == {"staged": 1, "unstaged": 1, "untracked": 0}
+
+
+def test_text_paths_cannot_inject_fields_or_terminal_controls(repo, tmp_path):
+    unusual = tmp_path / "checkout\nHEAD: forged\x1b[2J"
+    repo.rename(unusual)
+    result = run(unusual)
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.splitlines()
+    assert lines[0] == "cwd: " + json.dumps(str(unusual.resolve()))
+    assert lines[1] == "worktree: " + json.dumps(str(unusual.resolve()))
+    assert len([line for line in lines if line.startswith("HEAD:")]) == 1
+    assert "\x1b" not in result.stdout
 
 
 def test_configured_fsmonitor_cannot_mutate_checkout(repo, tmp_path):
@@ -169,6 +196,29 @@ def test_make_discovery_bypasses_fleet_configuration_and_provider_values(repo):
     assert result.returncode == 0, result.stderr
     assert "known main: origin/main" in result.stdout
     assert "(local; no fetch)" in result.stdout
+    assert not marker.exists()
+
+
+def test_sanitized_make_entry_bypasses_inherited_makefiles_and_flags(repo, tmp_path):
+    shutil.copy(ROOT / "Makefile", repo / "Makefile")
+    (repo / "scripts").mkdir()
+    shutil.copy(SCRIPT, repo / "scripts/workspace-status.py")
+    inherited = tmp_path / "inherited.mk"
+    marker = tmp_path / "inherited-effect"
+    inherited.write_text(f"$(shell touch {shlex.quote(str(marker))})\n$(error inherited input parsed)\n")
+    env = {**os.environ, "MAKEFILES": str(inherited), "MAKEFLAGS": "-n",
+           "GNUMAKEFLAGS": "--silent", "MFLAGS": "-n"}
+    control = subprocess.run(["make", "workspace-status"], cwd=repo, env=env, capture_output=True)
+    assert control.returncode != 0
+    assert marker.exists()
+    marker.unlink()
+    result = subprocess.run(
+        ["env", "-u", "MAKEFILES", "-u", "MAKEFLAGS", "-u", "GNUMAKEFLAGS",
+         "-u", "MFLAGS", "make", "workspace-status"],
+        cwd=repo, env=env, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "HEAD: " + git(repo, "rev-parse", "HEAD") in result.stdout
     assert not marker.exists()
 
 
