@@ -294,6 +294,12 @@ Independent controller homes are not a supported shared-ownership mechanism.
   creates `/run/sshd` after recovery. Inspect the complete effective policy
   with syntax-validating `sshd -G`; `-T` also tests daemon runtime and can
   refuse a valid configuration before SSH starts. Keep full policy comparison.
+- **tailscaled readiness precedes backend readiness** — recovery alone waits
+  for `NoState`/`Starting` within one 30-second monotonic budget shared with
+  the identity query and post-logout status check. Poll every recovery status
+  observation and bound each query by the remaining budget;
+  malformed, unknown and authorization states refuse immediately. Never relax
+  identity ownership or the SSH recovery dependency to repair a cold boot.
 - **Shell-injection on operator-supplied input** — any script taking a host
   name, client name, or path uses `"$1"` quoting and `printf '%q'` when
   forwarding to nested shells. Never `eval`.
