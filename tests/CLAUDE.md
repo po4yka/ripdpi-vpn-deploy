@@ -16,7 +16,8 @@
 
 **Workspace discovery uses real Git histories** — `test_workspace_status.py`
 exercises linked/detached worktrees, divergent and missing main refs, rename and
-dirty counts, and an unchanged index. Make discovery must bypass even an invalid
+dirty counts, fsmonitor hook isolation and an unchanged index. Make discovery
+must bypass even an invalid
 `.fleet.mk`; task-pointer checks use the real `taskctl` portfolio API.
 
 **`ci-fast` is the portable pre-PR gate** — runs the credential-free required

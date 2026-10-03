@@ -17,7 +17,7 @@ def environment() -> dict[str, str]:
 
 def git(cwd: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["git", "-C", str(cwd), *args], capture_output=True, text=True,
+        ["git", "-c", "core.fsmonitor=false", "-C", str(cwd), *args], capture_output=True, text=True,
         env=environment(), check=check, timeout=30,
     )
 

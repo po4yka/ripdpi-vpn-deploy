@@ -80,6 +80,23 @@ def test_dirty_counts_handle_rename_and_do_not_print_private_paths_or_contents(r
     assert "name.txt" not in result.stdout + result.stderr
 
 
+def test_configured_fsmonitor_cannot_mutate_checkout(repo, tmp_path):
+    hook = tmp_path / "fsmonitor-hook.sh"
+    hook.write_text("#!/bin/sh\n: > \"$PWD/fsmonitor-side-effect\"\nprintf 'token\\0/\\0'\n")
+    hook.chmod(0o755)
+    git(repo, "config", "core.fsmonitor", str(hook))
+    marker = repo / "fsmonitor-side-effect"
+    git(repo, "status", "--porcelain=v1")
+    assert marker.exists(), "control query must exercise the configured hook"
+    marker.unlink()
+    before = hashlib.sha256((repo / ".git/index").read_bytes()).digest()
+    result = run(repo, "--json")
+    assert result.returncode == 0, result.stderr
+    assert not marker.exists()
+    assert json.loads(result.stdout)["changes"] == {"staged": 0, "unstaged": 0, "untracked": 0}
+    assert hashlib.sha256((repo / ".git/index").read_bytes()).digest() == before
+
+
 def test_detached_linked_worktree_and_nested_cwd(repo, tmp_path):
     linked = tmp_path / "linked checkout"
     git(repo, "worktree", "add", "--detach", str(linked), "HEAD")

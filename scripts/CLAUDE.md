@@ -6,7 +6,8 @@
 reports local Git metadata without parsing `.fleet.mk` or reading runtime inputs.
 `scripts/workspace-status.py` describes the caller's checkout, including detached
 HEAD, dirty counts and the known local `origin/main`; it never fetches or refreshes
-the index. Optional `--task` pointers come from the canonical `taskctl show` API.
+the index. Git queries disable fsmonitor to prevent configured hooks or monitor
+startup. Optional `--task` pointers come from the canonical `taskctl show` API.
 
 **Shell + Python, no compiled binaries** — every script must be readable on
 a fresh box without a build step. Most are bash; the rare ones with non-trivial
