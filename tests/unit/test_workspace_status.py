@@ -288,8 +288,8 @@ def test_non_checkout_fails_without_raw_git_diagnostics(tmp_path):
     assert result.stderr == "workspace-status: checkout or selected task metadata unavailable\n"
 
 
-@pytest.mark.parametrize("variable", ["PROVIDER", "ENV", "SECRETS_FILE", "UNUSED_DISCOVERY_INPUT"])
-def test_make_discovery_bypasses_fleet_configuration_and_command_line_values(repo, variable):
+@pytest.mark.parametrize("variable", ["PROVIDER", "ENV", "SECRETS_FILE", "UNUSED_DISCOVERY_INPUT", "SHELL", ".SHELLFLAGS"])
+def test_make_discovery_rejects_command_line_values_without_expanding_them(repo, variable):
     shutil.copy(ROOT / "Makefile", repo / "Makefile")
     (repo / "scripts").mkdir()
     shutil.copy(SCRIPT, repo / "scripts/workspace-status.py")
@@ -299,15 +299,20 @@ def test_make_discovery_bypasses_fleet_configuration_and_command_line_values(rep
         ["make", "workspace-status", f"{variable}=$(shell touch {shlex.quote(str(marker))})"], cwd=repo,
         capture_output=True, text=True, env={**os.environ, "PATH": os.environ["PATH"]},
     )
-    assert result.returncode == 0, result.stderr
-    assert "known main: origin/main" in result.stdout
-    assert "(local; no fetch)" in result.stdout
+    assert result.returncode == 2
+    assert "workspace-status does not accept command-line variables" in result.stderr
     assert not marker.exists()
     error = subprocess.run(
         ["make", "workspace-status", f"{variable}=$(error unused input expanded)"], cwd=repo,
         capture_output=True, text=True,
     )
-    assert error.returncode == 0, error.stderr
+    assert error.returncode == 2
+    assert "workspace-status does not accept command-line variables" in error.stderr
+    assert "unused input expanded" not in error.stderr
+    ordinary = subprocess.run(["make", "workspace-status"], cwd=repo, capture_output=True, text=True)
+    assert ordinary.returncode == 0, ordinary.stderr
+    assert "known main: origin/main" in ordinary.stdout
+    assert "(local; no fetch)" in ordinary.stdout
 
 
 def test_sanitized_make_entry_bypasses_inherited_makefiles_and_flags(repo, tmp_path):

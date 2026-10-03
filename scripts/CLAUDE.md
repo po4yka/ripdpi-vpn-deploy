@@ -16,9 +16,9 @@ The documented entry clears inherited Make inputs before Make starts; Git status
 uses explicit unlimited rename detection and lossless path decoding; lazy object
 fetching is disabled, so missing required blobs fail locally. Text paths are
 JSON-quoted to preserve field boundaries.
-The discovery recipe does not export command-line variables or propagate Make
-overrides, preventing unused operator expressions from running during environment
-construction. It identifies variables by origin without expanding their values.
+Discovery accepts no Make command-line assignments. It identifies variables by
+origin and rejects them without expanding values, including recipe controls such
+as `SHELL` and `.SHELLFLAGS` that Make itself consumes.
 
 **Shell + Python, no compiled binaries** — every script must be readable on
 a fresh box without a build step. Most are bash; the rare ones with non-trivial

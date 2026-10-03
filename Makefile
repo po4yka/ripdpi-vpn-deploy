@@ -1,9 +1,9 @@
 # Checkout discovery must run before operator configuration is parsed.
 # Clear inherited Make inputs before invocation, as documented in AGENTS.md.
 ifeq ($(MAKECMDGOALS),workspace-status)
-$(foreach variable,$(.VARIABLES),$(if $(filter command line,$(origin $(variable))),$(eval unexport $(variable))))
-unexport MAKEFLAGS MFLAGS
-MAKEOVERRIDES :=
+ifneq ($(strip $(foreach variable,$(.VARIABLES),$(if $(filter command line,$(origin $(variable))),$(variable)))),)
+$(error workspace-status does not accept command-line variables)
+endif
 .PHONY: workspace-status
 workspace-status:
 	@python3 scripts/workspace-status.py
