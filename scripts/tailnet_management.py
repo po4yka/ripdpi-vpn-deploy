@@ -586,13 +586,31 @@ def canonical_sources_fragment(sources: list[str]) -> str:
     )
 
 
-def _status(paths: CommandPaths, runner: Runner) -> str:
-    output = runner(
-        [paths.tailscale, "status", "--json"], timeout=COMMAND_TIMEOUT_SECONDS
-    ).stdout
-    value = _bounded_json(output, reason="tailnet-status-invalid")
+def _command_timeout(deadline: float | None) -> float:
+    remaining = COMMAND_TIMEOUT_SECONDS if deadline is None else deadline - time.monotonic()
+    if remaining <= 0:
+        raise Refusal("tailnet-status-not-ready")
+    return min(COMMAND_TIMEOUT_SECONDS, remaining)
+
+
+def _status_document(paths, runner, *, deadline=None, reason="tailnet-status-invalid"):
+    while True:
+        output = runner(
+            [paths.tailscale, "status", "--json"],
+            timeout=_command_timeout(deadline),
+        ).stdout
+        _command_timeout(deadline)
+        value = _bounded_json(output, reason=reason)
+        state = value.get("BackendState") if isinstance(value, dict) else None
+        if deadline is None or state not in ("NoState", "Starting"):
+            return value
+        time.sleep(max(0, min(0.1, deadline - time.monotonic())))
+
+
+def _status(paths: CommandPaths, runner: Runner, *, deadline: float | None = None) -> str:
+    value = _status_document(paths, runner, deadline=deadline)
     state = value.get("BackendState") if isinstance(value, dict) else None
-    if state not in {"Running", "NeedsLogin", "Stopped"}:
+    if not isinstance(state, str) or state not in {"Running", "NeedsLogin", "Stopped"}:
         raise Refusal("tailnet-status-invalid")
     return state
 
@@ -946,10 +964,10 @@ def _expired(transaction, clock):
             or now < lease["started_ms"] or now >= lease["deadline_ms"])
 
 
-def _owned_identity(paths, runner, transaction):
-    document = _bounded_json(runner(
-        [paths.tailscale, "status", "--json"], timeout=COMMAND_TIMEOUT_SECONDS,
-    ).stdout, reason="tailnet-identity-invalid")
+def _owned_identity(paths, runner, transaction, *, deadline=None):
+    document = _status_document(
+        paths, runner, deadline=deadline, reason="tailnet-identity-invalid",
+    )
     value = document.get("Self") if isinstance(document, dict) else None
     expected_hostname = "vpn-enroll-" + transaction["nonce"]
     if (not isinstance(value, dict) or document.get("BackendState") != "Running"
@@ -1025,17 +1043,20 @@ def _recover_locked(*, paths, runner, firewall, clock, force=False):
     if transaction["phase"] == "armed":
         _transition(paths, "rolling_back", allowed={"armed"})
         transaction, before = _read_transaction(paths)
-    state = _status(paths, runner)
+    # Vendor service readiness precedes backend initialization on a cold boot.
+    # Share one budget across startup and the transient state after owned logout.
+    deadline = time.monotonic() + COMMAND_TIMEOUT_SECONDS
+    state = _status(paths, runner, deadline=deadline)
     changed = False
     if state == "Running":
         # A random transaction hostname survives a crash immediately after login,
         # before the controller can record Self.ID. Never log out a foreign identity.
-        _owned_identity(paths, runner, transaction)
-        runner([paths.tailscale, "logout"], timeout=COMMAND_TIMEOUT_SECONDS)
+        _owned_identity(paths, runner, transaction, deadline=deadline)
+        runner([paths.tailscale, "logout"], timeout=_command_timeout(deadline))
         changed = True
     elif state != "NeedsLogin":
         raise Refusal("tailnet-rollback-uncertain")
-    if _status(paths, runner) != "NeedsLogin":
+    if _status(paths, runner, deadline=deadline) != "NeedsLogin":
         raise Refusal("tailnet-rollback-uncertain")
     _require_no_tailscale_firewall(paths, runner)
     firewall.restore(transaction["firewall"], transaction["binding"])

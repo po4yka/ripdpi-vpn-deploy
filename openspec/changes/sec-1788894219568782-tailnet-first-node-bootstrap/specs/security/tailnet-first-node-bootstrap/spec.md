@@ -82,6 +82,12 @@ network/firewall startup rather than permit an unconfirmed policy to load.
 - **WHEN** an armed transaction is found by the early boot worker
 - **THEN** firewall recovery runs without tailscaled, persists its progress, and the late worker completes logout before SSH without a dependency cycle.
 
+#### Scenario: Daemon readiness precedes backend initialization
+
+- **WHEN** late recovery sees `NoState` or `Starting` before owned logout or immediately after it
+- **THEN** it polls only those states within one fixed 30-second monotonic budget shared across both checks, bounds each query by the remaining time, and rejects a reply arriving at or after the deadline.
+- **AND** malformed, unknown and authorization states refuse immediately; timeout preserves the durable transaction, foreign identity is never logged out, and normal enrollment/status callers remain strict.
+
 #### Scenario: Recovery is interrupted between phases
 
 - **WHEN** firewall restoration or its durable progress write is interrupted

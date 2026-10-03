@@ -11,6 +11,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -692,6 +693,189 @@ def test_early_boot_restores_firewall_without_daemon_and_late_worker_finishes(tm
     assert result["status"] == "rolled_back"
     assert not runner.running
     assert not (tmp_path / "transaction.json").exists()
+
+
+@pytest.fixture
+def cold_recovery(tmp_path, monkeypatch):
+    controller = _load_controller()
+    (tmp_path / "resolv.conf").write_text("nameserver 192.0.2.53\n")
+    runner, firewall = FakeRunner(tmp_path), FirewallFixture(tmp_path)
+    paths = _paths(controller, tmp_path)
+    controller.enroll(paths=paths, runner=runner, firewall=firewall,
+        binding=_bootstrap_binding(), auth_key="tskey-auth-fixture_1234", clock=_clock)
+    controller.recover_firewall(paths=paths, firewall=firewall)
+    timer = SimpleNamespace(now=0.0)
+    def sleep(seconds):
+        timer.now += seconds
+    monkeypatch.setattr(controller, "time", SimpleNamespace(
+        monotonic=lambda: timer.now, sleep=sleep))
+    return controller, paths, runner, firewall, timer
+
+
+@pytest.mark.parametrize("initial,after_logout", [
+    (["NoState"], []), (["NoState", "Starting"], ["NoState"]),
+    (["Starting"], ["Starting", "NoState"]),
+])
+def test_boot_recovery_waits_for_daemon_initialization_before_owned_logout(
+    cold_recovery, tmp_path, initial, after_logout,
+):
+    controller, paths, runner, firewall, timer = cold_recovery
+    initializing = list(initial)
+
+    def cold_daemon(argv, **kwargs):
+        if argv == [paths.tailscale, "status", "--json"] and initializing:
+            return subprocess.CompletedProcess(argv, 0,
+                json.dumps({"BackendState": initializing.pop(0)}), "")
+        result = runner(argv, **kwargs)
+        if argv == [paths.tailscale, "logout"]:
+            initializing.extend(after_logout)
+        return result
+
+    result = controller.recover(paths=paths, runner=cold_daemon,
+        firewall=firewall, clock=_clock)
+    assert result == {"status": "rolled_back", "changed": True}
+    assert not runner.running
+    assert not (tmp_path / "transaction.json").exists()
+    assert not firewall.path.exists()
+    assert timer.now == pytest.approx(0.1 * (len(initial) + len(after_logout)))
+
+
+@pytest.mark.parametrize("state", ["NoState", "Starting"])
+def test_cold_recovery_timeout_preserves_transaction(cold_recovery, tmp_path, state):
+    controller, paths, runner, firewall, timer = cold_recovery
+    timeouts = []
+    def never_ready(argv, **kwargs):
+        timeouts.append(kwargs["timeout"])
+        return subprocess.CompletedProcess(argv, 0, json.dumps({"BackendState": state}), "")
+    with pytest.raises(controller.Refusal, match="tailnet-status-not-ready"):
+        controller.recover(paths=paths, runner=never_ready, firewall=firewall, clock=_clock)
+    assert timer.now == pytest.approx(controller.COMMAND_TIMEOUT_SECONDS)
+    assert all(0 < value <= controller.COMMAND_TIMEOUT_SECONDS for value in timeouts)
+    assert timeouts[-1] < timeouts[0]
+    assert json.loads((tmp_path / "transaction.json").read_text())["phase"] == "firewall_restored"
+    assert runner.running
+
+
+@pytest.mark.parametrize("reply", ['broken', '[]', '{}',
+    '{"BackendState":[]}', '{"BackendState":"Unknown"}',
+    '{"BackendState":"NeedsMachineAuth"}'])
+def test_cold_recovery_invalid_status_refuses_without_waiting(cold_recovery, tmp_path, reply):
+    controller, paths, runner, firewall, timer = cold_recovery
+    calls = []
+    def invalid(argv, **kwargs):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, reply, "")
+    with pytest.raises(controller.Refusal, match="tailnet-status-invalid"):
+        controller.recover(paths=paths, runner=invalid, firewall=firewall, clock=_clock)
+    assert len(calls) == 1
+    assert timer.now == 0
+    assert (tmp_path / "transaction.json").exists()
+    assert runner.running
+
+
+@pytest.mark.parametrize("late_reply", [False, True])
+def test_cold_recovery_budget_is_shared_with_logout(cold_recovery, tmp_path, late_reply):
+    controller, paths, runner, firewall, timer = cold_recovery
+    status_calls = 0
+    def slow(argv, **kwargs):
+        nonlocal status_calls
+        if argv == [paths.tailscale, "status", "--json"]:
+            status_calls += 1
+            if late_reply and status_calls == 1:
+                timer.now = controller.COMMAND_TIMEOUT_SECONDS
+            if not late_reply and not runner.running:
+                assert kwargs["timeout"] == pytest.approx(0.1)
+                timer.now += kwargs["timeout"]
+        result = runner(argv, **kwargs)
+        if argv == [paths.tailscale, "logout"]:
+            timer.now = controller.COMMAND_TIMEOUT_SECONDS - 0.1
+        return result
+    with pytest.raises(controller.Refusal, match="tailnet-status-not-ready"):
+        controller.recover(paths=paths, runner=slow, firewall=firewall, clock=_clock)
+    assert (tmp_path / "transaction.json").exists()
+    assert runner.running is late_reply
+
+
+def test_cold_recovery_never_logs_out_foreign_identity(cold_recovery, tmp_path):
+    controller, paths, runner, firewall, timer = cold_recovery
+    runner.hostname = "foreign-node"
+    first = True
+    def foreign(argv, **kwargs):
+        nonlocal first
+        if first:
+            first = False
+            return subprocess.CompletedProcess(argv, 0, '{"BackendState":"NoState"}', "")
+        return runner(argv, **kwargs)
+    with pytest.raises(controller.Refusal, match="tailnet-identity-mismatch"):
+        controller.recover(paths=paths, runner=foreign, firewall=firewall, clock=_clock)
+    assert [paths.tailscale, "logout"] not in runner.calls
+    assert runner.running
+    assert (tmp_path / "transaction.json").exists()
+
+
+@pytest.mark.parametrize("slow_stage", ["identity", "logout"])
+def test_cold_recovery_bounds_identity_and_logout(cold_recovery, tmp_path, slow_stage):
+    controller, paths, runner, firewall, timer = cold_recovery
+    status_calls = 0
+    def slow(argv, **kwargs):
+        nonlocal status_calls
+        if argv == [paths.tailscale, "status", "--json"]:
+            status_calls += 1
+            if status_calls == 1:
+                result = runner(argv, **kwargs)
+                timer.now = controller.COMMAND_TIMEOUT_SECONDS - 0.2
+                return result
+            if status_calls == 2:
+                assert kwargs["timeout"] == pytest.approx(0.2)
+                timer.now += 0.2 if slow_stage == "identity" else 0.1
+        if argv == [paths.tailscale, "logout"]:
+            assert kwargs["timeout"] == pytest.approx(0.1)
+            timer.now += kwargs["timeout"]
+        return runner(argv, **kwargs)
+    with pytest.raises(controller.Refusal, match="tailnet-status-not-ready"):
+        controller.recover(paths=paths, runner=slow, firewall=firewall, clock=_clock)
+    assert (tmp_path / "transaction.json").exists()
+    assert ([paths.tailscale, "logout"] in runner.calls) is (slow_stage == "logout")
+
+
+@pytest.mark.parametrize("state", ["NoState", "Starting"])
+@pytest.mark.parametrize("foreign", [False, True])
+def test_cold_recovery_polls_identity_observation_without_losing_ownership(
+    cold_recovery, tmp_path, state, foreign,
+):
+    controller, paths, runner, firewall, timer = cold_recovery
+    if foreign:
+        runner.hostname = "foreign-node"
+    status_calls = 0
+    def restarting(argv, **kwargs):
+        nonlocal status_calls
+        if argv == [paths.tailscale, "status", "--json"]:
+            status_calls += 1
+            if status_calls == 2:
+                return subprocess.CompletedProcess(argv, 0, json.dumps({"BackendState": state}), "")
+        return runner(argv, **kwargs)
+    if foreign:
+        with pytest.raises(controller.Refusal, match="tailnet-identity-mismatch"):
+            controller.recover(paths=paths, runner=restarting, firewall=firewall, clock=_clock)
+        assert [paths.tailscale, "logout"] not in runner.calls
+        assert runner.running
+        assert (tmp_path / "transaction.json").exists()
+    else:
+        result = controller.recover(paths=paths, runner=restarting, firewall=firewall, clock=_clock)
+        assert result == {"status": "rolled_back", "changed": True}
+        assert not runner.running
+        assert not (tmp_path / "transaction.json").exists()
+    assert timer.now == pytest.approx(0.1)
+
+
+@pytest.mark.parametrize("state", ["NoState", "Starting"])
+def test_normal_status_does_not_accept_initializing_backend(cold_recovery, state):
+    controller, paths, runner, firewall, timer = cold_recovery
+    def initializing(argv, **kwargs):
+        return subprocess.CompletedProcess(argv, 0, json.dumps({"BackendState": state}), "")
+    with pytest.raises(controller.Refusal, match="tailnet-status-invalid"):
+        controller._status(paths, initializing)
+    assert timer.now == 0
 
 
 @pytest.mark.parametrize("failure", ["restore", "progress_fsync"])
