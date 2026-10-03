@@ -178,7 +178,8 @@ remain fatal; package signatures and the real schema validator stay enforced.
   Waiting never starts a replacement worker or accepts cached success.
 - **Cold Tailnet recovery has one readiness budget** — cover `NoState` and
   `Starting` before owned logout and after it, exhaustion and late replies,
-  invalid status, foreign identity and strict non-recovery callers. A fake
+  invalid status, reinitialization during identity verification, foreign
+  identity and strict non-recovery callers. A fake
   monotonic clock proves bounds; the actual vendor cold boot remains staging
   acceptance, independent of these domain tests.
 - **`validate-secrets.py` runs against the **schema**, not your real

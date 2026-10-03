@@ -65,7 +65,8 @@ recovery polls only `NoState` and `Starting` within one fixed 30-second
 monotonic budget shared with its post-logout status check. Each query uses
 the remaining budget and late replies refuse. Unknown, malformed and
 authorization states refuse immediately; owned-identity verification remains
-mandatory before logout. Normal enrollment/status callers do not poll.
+mandatory before logout; its status observation uses the same polling helper.
+Normal enrollment/status callers do not poll.
 The early worker also gates `ssh.socket`; the late worker must not depend on or precede that
 socket, because its `sockets.target` ordering precedes tailscaled through
 `basic.target`. The socket may listen after early recovery, but cannot activate

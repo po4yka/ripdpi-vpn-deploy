@@ -839,6 +839,36 @@ def test_cold_recovery_bounds_identity_and_logout(cold_recovery, tmp_path, slow_
 
 
 @pytest.mark.parametrize("state", ["NoState", "Starting"])
+@pytest.mark.parametrize("foreign", [False, True])
+def test_cold_recovery_polls_identity_observation_without_losing_ownership(
+    cold_recovery, tmp_path, state, foreign,
+):
+    controller, paths, runner, firewall, timer = cold_recovery
+    if foreign:
+        runner.hostname = "foreign-node"
+    status_calls = 0
+    def restarting(argv, **kwargs):
+        nonlocal status_calls
+        if argv == [paths.tailscale, "status", "--json"]:
+            status_calls += 1
+            if status_calls == 2:
+                return subprocess.CompletedProcess(argv, 0, json.dumps({"BackendState": state}), "")
+        return runner(argv, **kwargs)
+    if foreign:
+        with pytest.raises(controller.Refusal, match="tailnet-identity-mismatch"):
+            controller.recover(paths=paths, runner=restarting, firewall=firewall, clock=_clock)
+        assert [paths.tailscale, "logout"] not in runner.calls
+        assert runner.running
+        assert (tmp_path / "transaction.json").exists()
+    else:
+        result = controller.recover(paths=paths, runner=restarting, firewall=firewall, clock=_clock)
+        assert result == {"status": "rolled_back", "changed": True}
+        assert not runner.running
+        assert not (tmp_path / "transaction.json").exists()
+    assert timer.now == pytest.approx(0.1)
+
+
+@pytest.mark.parametrize("state", ["NoState", "Starting"])
 def test_normal_status_does_not_accept_initializing_backend(cold_recovery, state):
     controller, paths, runner, firewall, timer = cold_recovery
     def initializing(argv, **kwargs):

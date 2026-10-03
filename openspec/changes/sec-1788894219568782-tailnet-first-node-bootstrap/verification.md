@@ -3,7 +3,7 @@ task_id: SEC-1788894219568782
 change: sec-1788894219568782-tailnet-first-node-bootstrap
 commit_sha: null
 local: required
-local_evidence: "Cold-backend recovery regression reproduced tailnet-status-invalid before the fix; all 133 Tailnet domain tests passed afterward, including bounded startup/logout readiness and foreign/invalid-state refusal. Complete corrected-source local gate remains required."
+local_evidence: "Cold-backend recovery regression reproduced tailnet-status-invalid before the fix; all 137 Tailnet domain tests passed afterward, including bounded startup/logout readiness and foreign/invalid-state refusal. Complete corrected-source local gate remains required."
 remote_ci: required
 remote_ci_evidence: "The corrected source requires fresh exact-revision hosted CI including native amd64 Molecule."
 dry_run: required
@@ -39,8 +39,12 @@ restored ordinary init. Pinned SSH/SFTP and canonical idle checks then passed.
 That diagnostic boot retained a temporary kernel init argument and cannot
 replace the failed canonical reboot evidence. The repair bounds backend
 initialization without changing systemd dependencies or identity ownership.
-The original regression failed before repair and all 133 domain tests passed
-afterward. Exact corrected-source hosted and runtime acceptance remain open.
+The original regression failed before repair and all 137 domain tests passed
+afterward. A review regression also reproduced reinitialization at the identity
+query; all pre-logout observations now share the same bounded poll and retain
+foreign-identity refusal. The earlier 5048-case full local gate and 75-job hosted
+gate passed on the preceding repair, but the final repair requires fresh gates.
+Exact corrected-source hosted and runtime acceptance remain open.
 
 ## Exact-source ordinary and separate recovery acceptance — 2026-09-29
 

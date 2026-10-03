@@ -282,7 +282,8 @@ Independent controller homes are not a supported shared-ownership mechanism.
   refuse a valid configuration before SSH starts. Keep full policy comparison.
 - **tailscaled readiness precedes backend readiness** — recovery alone waits
   for `NoState`/`Starting` within one 30-second monotonic budget shared with
-  the post-logout status check. Bound each query by the remaining budget;
+  the identity query and post-logout status check. Poll every recovery status
+  observation and bound each query by the remaining budget;
   malformed, unknown and authorization states refuse immediately. Never relax
   identity ownership or the SSH recovery dependency to repair a cold boot.
 - **Shell-injection on operator-supplied input** — any script taking a host

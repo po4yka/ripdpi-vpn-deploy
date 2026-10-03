@@ -593,22 +593,26 @@ def _command_timeout(deadline: float | None) -> float:
     return min(COMMAND_TIMEOUT_SECONDS, remaining)
 
 
-def _status(paths: CommandPaths, runner: Runner, *, deadline: float | None = None) -> str:
+def _status_document(paths, runner, *, deadline=None, reason="tailnet-status-invalid"):
     while True:
         output = runner(
             [paths.tailscale, "status", "--json"],
             timeout=_command_timeout(deadline),
         ).stdout
         _command_timeout(deadline)
-        value = _bounded_json(output, reason="tailnet-status-invalid")
+        value = _bounded_json(output, reason=reason)
         state = value.get("BackendState") if isinstance(value, dict) else None
-        if not isinstance(state, str):
-            raise Refusal("tailnet-status-invalid")
-        if state in {"Running", "NeedsLogin", "Stopped"}:
-            return state
-        if deadline is None or state not in {"NoState", "Starting"}:
-            raise Refusal("tailnet-status-invalid")
+        if deadline is None or state not in ("NoState", "Starting"):
+            return value
         time.sleep(max(0, min(0.1, deadline - time.monotonic())))
+
+
+def _status(paths: CommandPaths, runner: Runner, *, deadline: float | None = None) -> str:
+    value = _status_document(paths, runner, deadline=deadline)
+    state = value.get("BackendState") if isinstance(value, dict) else None
+    if not isinstance(state, str) or state not in {"Running", "NeedsLogin", "Stopped"}:
+        raise Refusal("tailnet-status-invalid")
+    return state
 
 
 def _preferences(paths: CommandPaths, runner: Runner) -> dict:
@@ -961,11 +965,9 @@ def _expired(transaction, clock):
 
 
 def _owned_identity(paths, runner, transaction, *, deadline=None):
-    output = runner(
-        [paths.tailscale, "status", "--json"], timeout=_command_timeout(deadline),
-    ).stdout
-    _command_timeout(deadline)
-    document = _bounded_json(output, reason="tailnet-identity-invalid")
+    document = _status_document(
+        paths, runner, deadline=deadline, reason="tailnet-identity-invalid",
+    )
     value = document.get("Self") if isinstance(document, dict) else None
     expected_hostname = "vpn-enroll-" + transaction["nonce"]
     if (not isinstance(value, dict) or document.get("BackendState") != "Running"
