@@ -20,6 +20,9 @@ related_tasks: []
 
 Deliver bounded metrics and actionable alerts using existing VPN capacity, with no dedicated monitoring VPS and Uptime Kuma on an independent existing observer host. This replaces the deployment intent of `docs/tasks/issues/staging-observability-telegram-acceptance.md` without claiming its outstanding acceptance checks passed.
 
+For the active contract, historical task boundaries and acceptance ownership,
+see the [current contract and task history](../../OBSERVABILITY-OPERATIONS.md#current-contract-and-task-history).
+
 ## Acceptance criteria
 
 - Co-hosted collector and agents run under enforced aggregate limits and pass measured VPN non-regression and storage-exhaustion tests on an approved existing host.

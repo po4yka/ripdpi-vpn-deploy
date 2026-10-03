@@ -2,6 +2,13 @@
 
 Task ID: `MON-1790650904289505`
 
+## Replacement contract
+
+This earlier dedicated-staging deployment intent is superseded by
+`MON-1790835036464962`; its outstanding acceptance checks have not passed by
+that replacement. Start at the [current contract and task history](../../../docs/OBSERVABILITY-OPERATIONS.md#current-contract-and-task-history)
+for active requirements and the retained dedicated-resource cleanup boundary.
+
 ## Why
 
 The repository already contains the observability agent, control-plane,

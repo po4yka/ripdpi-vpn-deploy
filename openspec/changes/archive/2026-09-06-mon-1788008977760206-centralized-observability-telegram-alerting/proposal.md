@@ -2,6 +2,14 @@
 
 Task ID: `MON-1788008977760206`
 
+## Current contract
+
+This archived proposal records the earlier observability foundation. Its
+dedicated control-plane/dead-man topology has been superseded by
+`MON-1790835036464962`. Start at the [current contract and task history](../../../../docs/OBSERVABILITY-OPERATIONS.md#current-contract-and-task-history)
+for the replacement requirements and acceptance owner. Historical verification
+does not establish live acceptance of the replacement topology.
+
 ## Why
 
 The fleet already produces useful loopback-only node, systemd, process, Xray,

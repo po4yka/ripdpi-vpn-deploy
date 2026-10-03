@@ -75,6 +75,8 @@ Toolchains are pinned in `mise.toml` (Python 3.12 with `requirements.txt`, Terra
 
 ## Source of truth
 
+For monitoring changes or historical `MON-`/fleet-observation task lookups, start at [the current contract and task history](docs/OBSERVABILITY-OPERATIONS.md#current-contract-and-task-history) before using an older proposal or acceptance receipt.
+
 | Artifact | Canonical location | Must stay in sync with |
 |---|---|---|
 | CLI flags / subcommands | `vpnd/src/cli.rs` | README, runbooks |

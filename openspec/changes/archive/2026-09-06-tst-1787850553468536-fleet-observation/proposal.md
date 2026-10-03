@@ -2,6 +2,13 @@
 
 Task ID: `TST-1787850553468536`
 
+## Current monitoring consumer
+
+For monitoring that consumes these inspection and authenticated probe results,
+start at the [current contract and task history](../../../../docs/OBSERVABILITY-OPERATIONS.md#current-contract-and-task-history).
+`MON-1790835036464962` replaces the monitoring topology while preserving the
+separate client-path evidence contract; host health does not prove VPN reachability.
+
 ## Why
 
 The fullstack sentinel installer requires an XHTTP outbound that the official

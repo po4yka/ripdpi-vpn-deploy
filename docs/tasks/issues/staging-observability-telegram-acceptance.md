@@ -25,6 +25,9 @@ canary telemetry, primary and independent Telegram alert lifecycles, controlled
 failure/recovery, credential rotation, last-known-good rollback, and approved
 provider cleanup.
 
+For the active contract, historical task boundaries and acceptance ownership,
+see the [current contract and task history](../../OBSERVABILITY-OPERATIONS.md#current-contract-and-task-history).
+
 ## Acceptance criteria
 
 - Fresh control-plane and dead-man hosts receive the tested repository baseline,
