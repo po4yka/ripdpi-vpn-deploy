@@ -198,6 +198,10 @@ the exact-source local/hosted and authorized staging gates.
 
 ## Contracts and ownership
 
+- SSH recovery readiness observes an executing periodic worker within its
+  existing 30-second budget and requires completed success from that exact
+  invocation. Invocation, generation, boot, or boot-worker changes refuse;
+  waiting never starts a worker or substitutes a cached result.
 - Primary owns all changes serially in this dedicated worktree. Shared writes
   to Makefile, task metadata, and board generation are serialized.
 - Controller: `scripts/bootstrap-tailnet.py` and a bounded domain helper only

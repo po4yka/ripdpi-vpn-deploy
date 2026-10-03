@@ -173,6 +173,9 @@ remain fatal; package signatures and the real schema validator stay enforced.
   surfaces it explicitly.
 - **State-changing test calls precede assertions** — capture retirement or
   retry results first, then assert them so optimized Python cannot omit the call.
+- **Recovery readiness observes periodic work** — exercise successful completion
+  of the same invocation, failure, contention, timeout, and identity changes.
+  Waiting never starts a replacement worker or accepts cached success.
 - **`validate-secrets.py` runs against the **schema**, not your real
   secrets** — by design. Strict mode (`--strict`) loads `VPN_SECRETS_FILE`
   and is operator-only.

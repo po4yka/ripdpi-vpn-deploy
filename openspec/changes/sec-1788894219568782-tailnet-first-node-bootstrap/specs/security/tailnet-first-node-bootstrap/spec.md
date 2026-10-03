@@ -25,6 +25,12 @@ keys MUST NOT appear in Make arguments, inventory, SOPS, logs, or receipts.
 - **WHEN** any required pin, ownership, selection, source, or recovery check fails
 - **THEN** no package, firewall, enrollment, provider, or ACL mutation occurs.
 
+#### Scenario: Readiness overlaps periodic SSH recovery
+
+- **WHEN** the verified periodic SSH recovery worker is executing
+- **THEN** readiness waits within its existing 30-second budget for that same invocation's completed success, without starting or restarting the service.
+- **AND** failure, contention, timeout, or a change of invocation, generation, boot, or boot-recovery execution refuses; cached success cannot replace the current execution.
+
 ### Requirement: REQ-TFB-BOUNDARY — Bootstrap changes only the access foundation
 
 Bootstrap MUST install the pinned Tailnet and recovery components through

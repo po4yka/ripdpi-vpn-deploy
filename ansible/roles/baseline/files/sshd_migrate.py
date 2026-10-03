@@ -164,7 +164,7 @@ class Runtime:
         directory = _validate_installation()
         units = {}
         common = ('LoadState', 'NeedDaemonReload', 'FragmentPath', 'DropInPaths', 'ActiveState', 'SubState')
-        execution = ('Result', 'MainPID', 'ExecMainPID', 'ExecMainCode', 'ExecMainStatus',
+        execution = ('InvocationID', 'Result', 'MainPID', 'ExecMainPID', 'ExecMainCode', 'ExecMainStatus',
                      'ExecMainStartTimestampMonotonic', 'ExecMainExitTimestampMonotonic')
         for unit in UNIT_HASHES:
             fields = common + (execution if unit.endswith('.service') else ('Requires', 'After'))
@@ -206,8 +206,33 @@ class Runtime:
 
     def recovery_ready(self):
         try:
-            snapshot = self._capability(self.activation_clock() + 30000000)
-            return self._completed(snapshot['units']['vpn-sshd-recover.service']) is not None
+            deadline = self.activation_clock() + 30000000
+            snapshot = self._capability(deadline)
+            initial = snapshot
+            invocation = None
+            while True:
+                worker = snapshot['units']['vpn-sshd-recover.service']
+                if invocation is not None and (
+                        worker['InvocationID'] != invocation
+                        or snapshot['generation'] != initial['generation']
+                        or snapshot['boot_id'] != initial['boot_id']
+                        or snapshot['units']['vpn-sshd-boot-recover.service'] != initial['units']['vpn-sshd-boot-recover.service']):
+                    return False
+                if self._completed(worker) is not None:
+                    return True
+                # Observe the timer's current execution; never start a worker
+                # or substitute its previous result for a completed success.
+                if (worker['ActiveState'] != 'activating' or worker['SubState'] != 'start'
+                        or worker['Result'] != 'success' or worker['ExecMainStatus'] != '0'
+                        or re.fullmatch('[0-9a-f]{32}', worker['InvocationID']) is None):
+                    return False
+                invocation = worker['InvocationID']
+                self._budget(deadline)
+                remaining = (deadline - self.activation_clock()) / 1000000
+                if remaining <= 0:
+                    return False
+                time.sleep(min(0.1, remaining))
+                snapshot = self._capability(deadline)
         except (TransactionError, OSError):
             return False
 
