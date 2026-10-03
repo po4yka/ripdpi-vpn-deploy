@@ -234,20 +234,26 @@ def test_non_checkout_fails_without_raw_git_diagnostics(tmp_path):
     assert result.stderr == "workspace-status: checkout or selected task metadata unavailable\n"
 
 
-def test_make_discovery_bypasses_fleet_configuration_and_provider_values(repo):
+@pytest.mark.parametrize("variable", ["PROVIDER", "ENV", "SECRETS_FILE", "UNUSED_DISCOVERY_INPUT"])
+def test_make_discovery_bypasses_fleet_configuration_and_command_line_values(repo, variable):
     shutil.copy(ROOT / "Makefile", repo / "Makefile")
     (repo / "scripts").mkdir()
     shutil.copy(SCRIPT, repo / "scripts/workspace-status.py")
     (repo / ".fleet.mk").write_text("$(error operator configuration must not be parsed)\n")
-    marker = repo / "unexpected-provider-effect"
+    marker = repo / "unexpected-command-line-effect"
     result = subprocess.run(
-        ["make", "workspace-status", f"PROVIDER=$(shell touch {shlex.quote(str(marker))})"], cwd=repo,
+        ["make", "workspace-status", f"{variable}=$(shell touch {shlex.quote(str(marker))})"], cwd=repo,
         capture_output=True, text=True, env={**os.environ, "PATH": os.environ["PATH"]},
     )
     assert result.returncode == 0, result.stderr
     assert "known main: origin/main" in result.stdout
     assert "(local; no fetch)" in result.stdout
     assert not marker.exists()
+    error = subprocess.run(
+        ["make", "workspace-status", f"{variable}=$(error unused input expanded)"], cwd=repo,
+        capture_output=True, text=True,
+    )
+    assert error.returncode == 0, error.stderr
 
 
 def test_sanitized_make_entry_bypasses_inherited_makefiles_and_flags(repo, tmp_path):
