@@ -14,6 +14,10 @@
 
 ## Design decisions
 
+**Coverage claims follow contracts** — `test_governance_counts.py` checks role
+and template inventories plus hosted scenarios. Suite sizes come from runner
+output for a specific revision; this test does not recollect the suite.
+
 **Workspace discovery uses real Git histories** — `test_workspace_status.py`
 exercises linked/detached worktrees, divergent and missing main refs, rename and
 dirty counts with disabled/limited ambient rename detection, non-UTF-8 index paths,
@@ -161,7 +165,7 @@ remain fatal; package signatures and the real schema validator stay enforced.
 ## Pitfalls
 
 - **Selected skips fail required pytest lanes** — portable tests use
-  `make test-unit` (both `tests/unit/` and `scripts/tests/`); four
+  `make test-unit` (both `tests/unit/` and `scripts/tests/`);
   `native_runtime` tests run separately with pinned
   Terraform/Alertmanager and UID/GID capabilities on a disposable Linux runner.
   Both use `--fail-on-skip`. Never run the full workstation suite as root.
