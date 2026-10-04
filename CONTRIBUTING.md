@@ -23,16 +23,45 @@ and tag releases.
 
 ## First-time setup
 
-After cloning, run this once to wire up the local pre-commit hooks:
+Run the following from the repository root after cloning. Install `mise`,
+Git, Make, and Node.js/npm first; the tasking runtime requirement is declared
+in [`tools/tasking/package.json`](tools/tasking/package.json), and CI's Node
+selection is in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+For the operator prerequisite check, also install workstation tools absent
+from `mise.toml`: `sops`, `age`, `jq`, OpenSSH and OpenSSL.
 
 ```bash
-make task-tools
-make install-hooks
+mise trust
+mise install
+mise exec -- make install-hooks
+mise exec -- make task-tools
+mise exec -- make check-prereqs
 ```
 
-This installs the pinned tasking tools, the commit-time quality hooks, and a
-commit-message hook that rejects `Co-Authored-By:` trailers. Conventional
-Commit subjects are not validated locally; follow the table below.
+[`mise.toml`](mise.toml) owns the exact runtime and standalone-tool pins.
+`install-hooks` uses that Python to install the hash-pinned
+[`requirements.txt`](requirements.txt) with `--require-hashes --no-deps`,
+then installs the pre-commit and commit-message hooks. `task-tools` runs
+`npm ci --prefix tools/tasking --ignore-scripts` against the repository lock.
+The commit-message hook rejects `Co-Authored-By:` trailers; Conventional
+Commit subjects are not validated locally, so follow the table above.
+
+`check-prereqs` checks command availability, the Terraform minimum and PyYAML
+import; it is not the complete CI parity gate. Extra local test tools and
+CI-only lanes are described in [docs/TESTING.md](docs/TESTING.md).
+
+Use `mise exec -- <command>` for subsequent checks and hook-running Git
+commands unless the shell already activates this checkout's mise tools.
+An ambient `python3` can otherwise miss
+Ansible or use a different dependency set. Do not install `requirements.in`
+as an alternative to the hash-pinned lock.
+
+For credential-free development, start without provider credentials or
+operator private inputs. Make reads an existing ignored `.fleet.mk` even for
+local setup and test targets. If operator configuration prevents a local
+check from starting, reproduce it in a clean checkout without `.fleet.mk`
+before attributing it to source; preserve the operator's file. A clean shell
+alone does not remove that Make include.
 
 ## Task and OpenSpec contract
 

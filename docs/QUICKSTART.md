@@ -6,21 +6,17 @@ target VPS by hand for routine setup.
 
 ## 0. Prerequisites
 
-```
-terraform >= 1.15
-ansible-core >= 2.19
-sops, age, gitleaks, jq, openssl, python3 with PyYAML
-ssh, terraform-cli, upctl (UpCloud CLI, optional but useful)
-A domain you control with DNS (for nginx-xhttp + Hysteria TLS)
-A public certificate for that domain (Let's Encrypt is fine; not bundled)
-```
+Complete the canonical [first-time workstation setup](../CONTRIBUTING.md#first-time-setup)
+before following this deployment guide. It installs the exact pins from
+`mise.toml`, the hash-pinned Python toolchain, task tools and local hooks,
+then checks operator prerequisites. Run the Make commands below through
+`mise exec --` unless your shell already activates those tools.
 
-Verify in one shot:
-
-```bash
-make check-prereqs
-make install-hooks      # one-time, installs pre-commit hooks for this repo
-```
+Deployment additionally needs a domain you control with DNS for nginx-XHTTP
+and Hysteria TLS, and a public certificate for it (not bundled).
+The UpCloud CLI `upctl` is optional. Provider credentials and deployment
+material are configured in the following steps; they are not needed for the
+credential-free local checks described in the setup guide.
 
 ## 1. Provider credentials
 
