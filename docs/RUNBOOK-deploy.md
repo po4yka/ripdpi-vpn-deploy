@@ -272,13 +272,15 @@ node lifetime; the cleanup and recovery guards require the `ci-staging-` prefix.
 Then:
 
 1. Follow the [Terraform change procedure](#re-deploy-after-a-terraform-change-instance-type-zone-firewall)
-   one command at a time. Review the plan before apply; stop on unexpected
-   replacements or drift.
+   only through the reviewed `plan` and `apply` steps, one command at a time.
+   Stop on unexpected replacements or drift; do not continue to its inventory,
+   recovery/bootstrap or deployment steps yet.
 2. For disposable staging, create the
    [UUID-bound cleanup manifest](CI-REAL-DEPLOY.md#uuid-bound-operator-staging-cleanup)
-   immediately after apply and before either guest installer. Complete the
+   immediately after apply and before either guest installer.
+3. Resume inventory generation and `wait`, then complete the
    recovery/bootstrap/ownership prerequisites above for the exact staging node.
-3. Prepare the staging alias, secrets and all three private mappings, then use
+   Prepare the staging alias, secrets and all three private mappings, then use
    the [ordinary re-deploy recipe](#ordinary-re-deploy-recipe). Review its
    successful preflight before its separate deploy block. Verify the relevant
    client paths with a real client from the intended network; local preflight
