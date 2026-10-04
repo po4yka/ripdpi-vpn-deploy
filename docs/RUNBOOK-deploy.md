@@ -175,7 +175,7 @@ remains visible. A dirty or changed source after waiting prevents deployment.
 
 `infra-v1.0.0` also has a known check-mode-only failure in firewall SSH-port
 discovery. Do not weaken or skip the gate. Confirm the failure matches the
-record in [DEPLOYMENT-STATUS.md](DEPLOYMENT-STATUS.md#current-operator-limitations)
+record in [DEPLOYMENT-STATUS.md](DEPLOYMENT-STATUS.md#snapshot-operator-limitations)
 and fix the source before treating `make dry-run` as green.
 
 ## Re-deploy after a Terraform change (instance type, zone, firewall)
