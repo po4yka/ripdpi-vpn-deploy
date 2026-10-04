@@ -13,6 +13,54 @@ This repository uses a two-level, Git-native workflow. Portfolio state lives in 
 
 Install the exact repository tools with `make task-tools`. Run `./taskctl --help` for the lifecycle CLI and `make task-check` for the complete contract gate. No global mdtask or OpenSpec installation is required. `taskctl` always disables OpenSpec telemetry.
 
+## Find active work or terminal history
+
+Start with the current portfolio and resolve the exact stable ID:
+
+```bash
+./taskctl list --json
+./taskctl show --json '<TASK-ID>'
+```
+
+`show` reads the current portfolio. A missing or ambiguous query does not prove
+that the task never existed: its terminal record may have been purged after a
+separate committed closure. Continue the read-only history lookup independently
+of that failed command:
+
+```bash
+task_id='MON-1788008977760206' # Replace with the exact ID being investigated.
+git log --all --format='%H %s' --name-status \
+  -G "^id: ${task_id}$" -- docs/tasks/issues/
+rg -l --hidden --glob '*.md' --glob '.taskctl-*.json' --fixed-strings \
+  -- "$task_id" openspec/changes/archive
+```
+
+The Git search identifies additions/removals of that ID and the portfolio path;
+the archive search identifies retained OpenSpec evidence and lifecycle receipts.
+For a purge commit, inspect its parent, where the committed terminal record must
+still exist. Use the exact SHA and path found above:
+
+```bash
+purge_revision='reviewed-purge-commit-sha'
+portfolio_path='docs/tasks/issues/task-slug.md'
+git show "${purge_revision}^:${portfolio_path}"
+```
+
+Read the terminal `status`, `closed_reason`, `evidence_summary`, and execution
+pointer together with its close/drop/archive receipts and verification record.
+For simple work, execution and close receipts remain in Git history under
+`docs/tasks/work/`; OpenSpec work retains them in its archive. `done` and
+`dropped` remain distinct: cancelled acceptance is not passed acceptance.
+Historical evidence applies only to its recorded source, requirements and
+environment; it does not accept a replacement contract. Follow an explicitly
+linked active successor for current work.
+
+These queries inspect task records without changing their lifecycle. Missing
+archives or incomplete shallow/local history leave the lookup unresolved;
+report that limitation rather than recreating a task or bypassing lifecycle
+validation. All transitions still
+go through `taskctl`.
+
 ## Portfolio schema
 
 ```yaml
