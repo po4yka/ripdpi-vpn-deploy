@@ -14,7 +14,8 @@ Review everything being handed off: the committed range (`git diff <base>...HEAD
 First inventory each source of changes with `--stat` and `--name-status`:
 
 ```bash
-review_base=$(git rev-parse --verify 'reviewed-base-ref^{commit}') # Replace the ref.
+# Replace the ref; stop if it cannot resolve to a commit.
+review_base=$(git rev-parse --verify 'reviewed-base-ref^{commit}') || exit 1
 git diff --stat "$review_base"...HEAD --
 git diff --name-status -z "$review_base"...HEAD --
 git diff --stat --cached --
@@ -30,6 +31,7 @@ of renames. For one selected path, read ordinary-context diffs separately:
 
 ```bash
 review_path='path/from/the/inventory'
+: "${review_base:?Resolve the reviewed base before reading selected diffs}"
 git --literal-pathspecs diff "$review_base"...HEAD -- "$review_path"
 git --literal-pathspecs diff --cached -- "$review_path"
 git --literal-pathspecs diff -- "$review_path"
