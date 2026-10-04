@@ -9,8 +9,9 @@ target VPS by hand for routine setup.
 Complete the canonical [first-time workstation setup](../CONTRIBUTING.md#first-time-setup)
 before following this deployment guide. It installs the exact pins from
 `mise.toml`, the hash-pinned Python toolchain, task tools and local hooks,
-then checks operator prerequisites. Run the Make commands below through
-`mise exec --` unless your shell already activates those tools.
+then checks operator prerequisites. Run the Make commands below in the pinned
+Bash session activated by that setup. In a new shell, restore its explicit tool
+selection first; a bare `mise exec --` can select different global tool versions.
 
 Deployment additionally needs a domain you control with DNS for nginx-XHTTP
 and Hysteria TLS, and a public certificate for it (not bundled).

@@ -5,6 +5,10 @@ config, role, and script is checked at multiple layers before it can hit a
 real VPS. This doc enumerates each layer and where coverage gaps exist
 (with explicit reasons).
 
+The [canonical first-time setup](../CONTRIBUTING.md#first-time-setup) lists the
+complete local-gate installation inputs and the supported Ubuntu reference
+recipe, including tools outside `mise.toml` and the Python/tasking locks.
+
 Bootstrap-wait regressions require GNU `timeout` on the local test PATH. They
 execute the real remote command under an isolated SSH transport fixture; the
 production target uses its existing coreutils `timeout`, and the controller
