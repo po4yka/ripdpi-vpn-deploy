@@ -3,6 +3,9 @@
 Two flows: **first-time deploy** (handled by `QUICKSTART.md`) and
 **re-deploy after editing configs** (this runbook).
 
+Run commands from the repository root in the pinned Bash session from the
+[canonical workstation setup](../CONTRIBUTING.md#first-time-setup).
+
 For the last verified release snapshot, provider-to-role mapping, recorded gate
 results, and unresolved operator limitations, start with
 [DEPLOYMENT-STATUS.md](DEPLOYMENT-STATUS.md).
@@ -14,6 +17,14 @@ want to push the change to an existing VPS, prepare the selected node's inputs
 before using the [ordinary re-deploy recipe](#ordinary-re-deploy-recipe).
 The file paths in that recipe refer to prepared private files, not files the
 controller creates for you.
+
+For this existing-node workflow, select and export its reviewed private key
+before any installer or inventory generation. For staging, use that workflow's
+key selection below instead; reusable blocks preserve the selected key.
+
+```bash
+export ANSIBLE_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/vpn_deploy" # Replace with this node's reviewed key.
+```
 
 | Artifact | Producer | When needed / input or output |
 |---|---|---|
@@ -158,7 +169,7 @@ reviewed source change first: `deploy` requires an immutable clean checkout.
 
 ```bash
 deploy_alias='vpn-p0-node-a' # Replace with the exact inventory alias.
-export ANSIBLE_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/vpn_deploy"
+: "${ANSIBLE_SSH_PRIVATE_KEY_FILE:?Select and export the reviewed key for this node first}"
 export DEPLOY_SSH_CONTEXTS_FILE="$HOME/.config/vpn-provision/ssh-contexts.json"
 export DEPLOY_PROMOTION_CONFIG_FILE="$HOME/.config/vpn-provision/promotion-configs.json"
 export DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE="$HOME/.config/vpn-provision/ssh-baseline-failure-receipts.json"
@@ -168,7 +179,7 @@ unset TAILSCALE_AUTH_KEY
 set -e
 make decrypt           # writes the configured SECRETS_FILE, mode 0600
 make validate          # gitleaks + lint must pass
-make dry-run ANSIBLE_LIMIT="$deploy_alias"
+make dry-run ANSIBLE_LIMIT="$deploy_alias" ANSIBLE_TAGS=
 )
 ```
 
@@ -178,7 +189,7 @@ reviewed every changed line. Stop and investigate unexpected changes.
 ```bash
 (
 set -e
-make deploy ANSIBLE_LIMIT="$deploy_alias"
+make deploy ANSIBLE_LIMIT="$deploy_alias" ANSIBLE_TAGS=
 make verify ANSIBLE_LIMIT="$deploy_alias"
 make source-drift ANSIBLE_LIMIT="$deploy_alias" # Also run by deploy/verify.
 make clean
@@ -191,6 +202,8 @@ Run `make clean` when finishing or abandoning the operation, including after
 a failed preflight.
 The exported mapping paths are consumed by both controller commands;
 `dry-run` uses only the contexts mapping and does not write failure receipts.
+The empty command-line `ANSIBLE_TAGS=` forces the full graph even if the shell
+or `.fleet.mk` selects tags; preserve it on both commands.
 
 Readiness, convergence and the automatic source-drift check use the same
 private inventory and transport snapshots. Canonical all/vpn/cohort variables
@@ -211,6 +224,8 @@ and fix the source before treating `make dry-run` as green.
 ## Re-deploy after a Terraform change (instance type, zone, firewall)
 
 ```bash
+: "${ANSIBLE_SSH_PRIVATE_KEY_FILE:?Select and export the reviewed key for this node first}"
+make init              # initialize/select the chosen PROVIDER + ENV workspace
 make plan              # READ THE PLAN
 # If it shows "destroy and recreate" on the server, STOP — that's
 # infrastructure rollback, not config rollback. See RUNBOOK-rollback.md
@@ -245,33 +260,38 @@ through a secure channel. Wipe it from your terminal scrollback.
 
 ## Selective deploy with tags
 
-Prepare the private inputs and review the preflight in the
-[ordinary re-deploy recipe](#ordinary-re-deploy-recipe) first. In that same shell,
-use the selected exact alias and exported mappings for each tagged deploy:
-
-```bash
-# Just push a config-only change to xray
-make deploy ANSIBLE_LIMIT="$deploy_alias" ANSIBLE_TAGS=xray
-
-# Just refresh nftables
-make deploy ANSIBLE_LIMIT="$deploy_alias" ANSIBLE_TAGS=firewall
-
-# Just re-render fallback transports
-make deploy ANSIBLE_LIMIT="$deploy_alias" ANSIBLE_TAGS=transport
-```
-
-The `tags:` field on each role in `playbooks/site.yml` enumerates what's
-selectable. `always` tags (`baseline`, `firewall`) run regardless.
+The controller currently forwards `ANSIBLE_TAGS` only for `deploy`; `dry-run`
+checks the full site playbook even when that variable is supplied. It cannot
+provide a matching tagged preflight. Use the
+[ordinary full re-deploy recipe](#ordinary-re-deploy-recipe) for the reviewed
+workflow, preserving its explicit empty `ANSIBLE_TAGS=` overrides. A filtered
+check-mode capability needs a separate controller change before this runbook
+can offer selective recipes.
+The role tags remain defined in `ansible/playbooks/site.yml`; baseline and
+firewall carry `always` tags and also run during a tagged deploy.
 
 ## Staging first
 
-For disposable operator staging, export the reviewed provider and environment
-in the shell used for all commands below. Replace both example selections
-before running Make, and prepare that provider's matching private tfvars:
+This disposable recipe uses **UpCloud only**: the linked UUID-bound cleanup
+instructions describe its exact resource set and initial manifest inputs.
+Read the [provider credentials and inputs](../terraform/providers/upcloud/README.md),
+the [staging tfvars example](../terraform/providers/upcloud/environments/staging.tfvars.example)
+and the [cleanup prerequisites](CI-REAL-DEPLOY.md#uuid-bound-operator-staging-cleanup)
+before planning. Prepare private `terraform/providers/upcloud/environments/<ENV>.tfvars`
+for the selected environment, with the reviewed SSH public key and narrow
+allowlist. Its `server_name` must match the exact hostname used by cleanup.
+Explicitly set `enable_backups=false`, `additional_public_ip=false`
+and initial `enable_provider_firewall=false`; the cleanup contract rejects
+resources outside its owned set. Provider credentials stay in environment
+variables, never tfvars.
+
+Export the selections in the shell used for all commands below. Replace the
+technical suffix and private-key path before running Make:
 
 ```bash
-export PROVIDER='upcloud' # Replace with the reviewed provider.
+export PROVIDER='upcloud'
 export ENV='ci-staging-<technical-id>' # Replace the technical suffix.
+export ANSIBLE_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/vpn_deploy_staging" # Reviewed key for this node.
 ```
 
 Keep this environment selected for the node lifetime; the cleanup and recovery
@@ -280,7 +300,9 @@ reach Make, which otherwise defaults to production.
 Then:
 
 1. Follow the [Terraform change procedure](#re-deploy-after-a-terraform-change-instance-type-zone-firewall)
-   only through the reviewed `plan` and `apply` steps, one command at a time.
+   from `make init` to create/select the new staging workspace, then only through
+   the reviewed `plan` and `apply` steps, one command at a time.
+   Keep the staging key exported above; its reusable steps preserve that selection.
    Stop on unexpected replacements or drift; do not continue to its inventory,
    recovery/bootstrap or deployment steps yet.
 2. For disposable staging, create the
@@ -300,6 +322,7 @@ shell that will run the new preflight:
 ```bash
 export PROVIDER='upcloud' # Replace with the reviewed production provider.
 export ENV='prod'
+export ANSIBLE_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/vpn_deploy" # Reviewed production key.
 ```
 
 Repeat the applicable Terraform and deployment prerequisites with the
