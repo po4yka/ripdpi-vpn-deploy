@@ -9,6 +9,38 @@ The adversary controls the network path, inspects traffic metadata, and actively
 
 Review everything being handed off: the committed range (`git diff <base>...HEAD`), staged and unstaged edits (`git diff HEAD`), and untracked files (`git status --short`). `...HEAD` alone misses uncommitted work, so do not issue a verdict until all three are covered. Run the gates below that apply, and report a verdict: **APPROVE**, **REQUEST CHANGES** (fixable finding), or **REJECT** (the change's direction violates a hard rule, e.g. a CDN baseline, a public admin panel, or a cross-layer shortcut). Give file:line evidence for each finding.
 
+## Read the complete change in bounded pieces
+
+First inventory each source of changes with `--stat` and `--name-status`:
+
+```bash
+review_base=$(git rev-parse --verify 'reviewed-base-ref^{commit}') # Replace the ref.
+git diff --stat "$review_base"...HEAD --
+git diff --name-status -z "$review_base"...HEAD --
+git diff --stat --cached --
+git diff --name-status -z --cached --
+git diff --stat --
+git diff --name-status -z --
+git ls-files --others --exclude-standard -z
+```
+
+Consume the NUL-delimited inventories without splitting filenames on spaces or
+newlines. Review every handed-off path in each inventory, including both sides
+of renames. For one selected path, read ordinary-context diffs separately:
+
+```bash
+review_path='path/from/the/inventory'
+git --literal-pathspecs diff "$review_base"...HEAD -- "$review_path"
+git --literal-pathspecs diff --cached -- "$review_path"
+git --literal-pathspecs diff -- "$review_path"
+```
+
+Read permitted untracked source files directly; keep the root secret-read
+prohibitions in force. Follow changed calls to the precise shared functions,
+schemas and consumers needed to assess their behavior. Use smaller path or hunk
+reads when output is truncated, until every changed hunk is reviewed. A compact
+read is a retrieval boundary, not permission to omit files, checks or findings.
+
 ## Checklist
 
 - **Secrets in Git or state.** No real credentials or deployment-specific identifiers (keys, tokens, live device UUIDs or shortIds, node addresses or hostnames) in tracked files. Clearly fake fixture values are expected: `tests/fixtures/secrets-sample.yml` uses placeholder UUIDs and shortIds, RFC 5737 addresses, and `example.com` hosts that the strict schema tests require. Only the example, schema, README, and `.sops.yaml.example` under `secrets/` are tracked. `make validate` runs gitleaks over history and the staged tree only, so review unstaged and untracked files yourself.
