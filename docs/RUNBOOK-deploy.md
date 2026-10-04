@@ -217,9 +217,9 @@ make plan              # READ THE PLAN
 # § "blue-green replacement".
 make apply             # only if the plan was non-destructive
 make inventory
+make wait              # cloud-init must finish before either guest installer
 # Re-establish the current recovery/bootstrap prerequisites above if the node
 # or inventory changed; do not copy management overrides from an old snapshot.
-make wait
 # Continue with the ordinary re-deploy recipe above, including its private inputs.
 ```
 
@@ -265,10 +265,18 @@ selectable. `always` tags (`baseline`, `firewall`) run regardless.
 
 ## Staging first
 
-For disposable operator staging, select a reviewed
-`ENV=ci-staging-<technical-id>` with its matching private tfvars for the
-provider-specific Terraform commands. Keep that environment selected for the
-node lifetime; the cleanup and recovery guards require the `ci-staging-` prefix.
+For disposable operator staging, export the reviewed provider and environment
+in the shell used for all commands below. Replace both example selections
+before running Make, and prepare that provider's matching private tfvars:
+
+```bash
+export PROVIDER='upcloud' # Replace with the reviewed provider.
+export ENV='ci-staging-<technical-id>' # Replace the technical suffix.
+```
+
+Keep this environment selected for the node lifetime; the cleanup and recovery
+guards require the `ci-staging-` prefix. An unexported shell assignment does not
+reach Make, which otherwise defaults to production.
 Then:
 
 1. Follow the [Terraform change procedure](#re-deploy-after-a-terraform-change-instance-type-zone-firewall)
@@ -286,8 +294,16 @@ Then:
    client paths with a real client from the intended network; local preflight
    and source/CI results do not establish that acceptance.
 
-For production, select `ENV=prod` and repeat the applicable Terraform and
-deployment prerequisites with the production alias, secrets, promotion inputs
+For production, explicitly export the reviewed production selections in the
+shell that will run the new preflight:
+
+```bash
+export PROVIDER='upcloud' # Replace with the reviewed production provider.
+export ENV='prod'
+```
+
+Repeat the applicable Terraform and deployment prerequisites with the
+production alias, secrets, promotion inputs
 and fresh failure-receipt sinks. Run and review a new production preflight
 before its deploy block. `ENV` selects the Terraform environment; it does not
 narrow Ansible inventory selection. Keep the explicit `ANSIBLE_LIMIT` and
