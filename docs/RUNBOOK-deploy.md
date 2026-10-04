@@ -3,32 +3,36 @@
 Two flows: **first-time deploy** (handled by `QUICKSTART.md`) and
 **re-deploy after editing configs** (this runbook).
 
-For the currently deployed release, provider-to-role mapping, observed gate
+For the last verified release snapshot, provider-to-role mapping, recorded gate
 results, and unresolved operator limitations, start with
 [DEPLOYMENT-STATUS.md](DEPLOYMENT-STATUS.md).
 
 ## Re-deploy after a config or secrets edit
 
 When you've edited a role template, group_vars, or the secrets file, and
-want to push the change to an existing VPS:
+want to push the change to an existing VPS, prepare the selected node's inputs
+before using the [ordinary re-deploy recipe](#ordinary-re-deploy-recipe).
+The file paths in that recipe refer to prepared private files, not files the
+controller creates for you.
 
-```bash
-export ANSIBLE_SSH_PRIVATE_KEY_FILE=~/.ssh/vpn_deploy
-make decrypt           # writes the configured $(SECRETS_FILE), mode 0600
-make validate          # gitleaks + lint must pass
-make dry-run           # ansible --check --diff — read every changed line
-make deploy
-make verify
-make source-drift      # normally repeated by deploy/verify; useful alone
-make clean
-```
+| Artifact | Producer | When needed / input or output |
+|---|---|---|
+| Exact inventory alias, SSH key and reviewed host-key pins | Operator selects the canonical generated inventory entry and verifies its transports | Inputs before recovery, bootstrap or ordinary deploy; an empty `ANSIBLE_LIMIT` selects all `vpn` hosts |
+| Disposable staging cleanup manifest | Operator follows [UUID-bound staging cleanup](CI-REAL-DEPLOY.md#uuid-bound-operator-staging-cleanup) | Input before either installer on disposable staging |
+| Installed recovery generation | `make install-ssh-recovery` for the exact alias | Guest output required before bootstrap and ordinary `dry-run` / `deploy`; reinstall only at the documented boundary below |
+| Tailnet bootstrap handoff | Successful [one-node bootstrap](TAILNET-MANAGEMENT.md#bootstrap-one-node) | Private output containing observed contexts; use it to render inventory with `TAILNET_HANDOFFS=<private-handoff-path> make inventory` before ordinary deploy |
+| `DEPLOY_SSH_CONTEXTS_FILE` | Operator assembles the exact-alias mapping from observed socket contexts | Private mode-`0600` input before SSH ownership migration, `dry-run` and `deploy`; never fabricate contexts |
+| `DEPLOY_PROMOTION_CONFIG_FILE` | Operator prepares the exact-alias mapping using [the promotion schema](PROTOCOL-LIVENESS.md#decision-and-promotion-behavior) | Private mode-`0600` input for `deploy`; the controller validates copies before SSH and obtains fresh exact-node proof after convergence |
+| `DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE` | Operator maps each exact alias to a distinct, absent absolute sink under a private mode-`0700` directory | Private mode-`0600` input for `deploy`; the mapping must exist, its receipt sinks must not |
+| SSH baseline failure receipt | Deploy controller handles an SSH baseline failure | Private diagnostic output only on that failure; absent after success and never an acceptance receipt |
+| Configured `SECRETS_FILE` | `make decrypt` from the selected SOPS source | Private mode-`0600` runtime input before ordinary `dry-run` / `deploy`; remove with `make clean` afterwards |
 
 On a fresh node, or whenever the reviewed recovery generation changes, install
 the recovery foundation for that one exact inventory alias before the first
 ordinary `dry-run` or `deploy`:
 
 ```bash
-make install-ssh-recovery ANSIBLE_LIMIT=<exact-inventory-alias> \
+make install-ssh-recovery ANSIBLE_LIMIT='<exact-inventory-alias>' \
   SSH_RECOVERY_EXCLUSIVE_WINDOW=1
 ```
 
@@ -59,15 +63,6 @@ effective SSH policy; the later baseline transaction applies desired hardening.
 Do not manufacture socket contexts to pass deployment readiness. On disposable staging,
 create the cleanup manifest before either installer. Unset the enrollment
 key before ordinary `dry-run`/`deploy`, which now reject it.
-
-```bash
-make dry-run ANSIBLE_LIMIT=<exact-inventory-alias> \
-  DEPLOY_SSH_CONTEXTS_FILE="$HOME/.config/vpn-provision/ssh-contexts.json"
-make deploy ANSIBLE_LIMIT=<exact-inventory-alias> \
-  DEPLOY_SSH_CONTEXTS_FILE="$HOME/.config/vpn-provision/ssh-contexts.json" \
-  DEPLOY_PROMOTION_CONFIG_FILE="$HOME/.config/vpn-provision/promotion-configs.json" \
-  DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE="$HOME/.config/vpn-provision/ssh-baseline-failure-receipts.json"
-```
 
 Run the installer serially in an exclusive maintenance window. Ordinary
 deployment never installs or repairs this capability implicitly. Before its
@@ -131,17 +126,7 @@ The controller writes private per-node copies and validates every copy locally
 before the first readiness or SSH operation; it then runs the exact-node proof
 only after that node's new SSH configuration is reachable over both public and
 management transports. A failed proof, stale receipt, or identity mismatch
-rolls back that node and stops the fleet. Example operator shape:
-
-```bash
-make dry-run ANSIBLE_LIMIT=vpn-p0-node-a \
-  DEPLOY_SSH_CONTEXTS_FILE="$HOME/.config/vpn-provision/ssh-contexts.json"
-
-make deploy ANSIBLE_LIMIT=vpn-p0-node-a \
-  DEPLOY_SSH_CONTEXTS_FILE="$HOME/.config/vpn-provision/ssh-contexts.json" \
-  DEPLOY_PROMOTION_CONFIG_FILE="$HOME/.config/vpn-provision/promotion-configs.json" \
-  DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE="$HOME/.config/vpn-provision/ssh-baseline-failure-receipts.json"
-```
+rolls back that node and stops the fleet.
 
 The final deploy-only input is a same-owner mode-`0600` JSON mapping with the
 same exact alias set. Each value is a distinct absolute path for a new private
@@ -161,6 +146,51 @@ nor writes this mapping.
 Do not put addresses, identities, probe receipts, or credentials on the command
 line. The private mapping files are operator inputs and must remain outside the
 repository. A successful local config preflight is not live VPN evidence.
+
+### Ordinary re-deploy recipe
+
+Use this only after the recovery/bootstrap/ownership prerequisites above are
+satisfied and all three private mappings have been prepared for exactly the
+selected alias. Review the promotion inputs and choose fresh failure-receipt
+sink paths before starting. Replace the example alias and paths with your
+reviewed inputs; do not create empty mappings to satisfy preflight. Commit the
+reviewed source change first: `deploy` requires an immutable clean checkout.
+
+```bash
+deploy_alias='vpn-p0-node-a' # Replace with the exact inventory alias.
+export ANSIBLE_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/vpn_deploy"
+export DEPLOY_SSH_CONTEXTS_FILE="$HOME/.config/vpn-provision/ssh-contexts.json"
+export DEPLOY_PROMOTION_CONFIG_FILE="$HOME/.config/vpn-provision/promotion-configs.json"
+export DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE="$HOME/.config/vpn-provision/ssh-baseline-failure-receipts.json"
+unset TAILSCALE_AUTH_KEY
+
+(
+set -e
+make decrypt           # writes the configured SECRETS_FILE, mode 0600
+make validate          # gitleaks + lint must pass
+make dry-run ANSIBLE_LIMIT="$deploy_alias"
+)
+```
+
+Continue in the same shell only after the preflight block succeeds and you have
+reviewed every changed line. Stop and investigate unexpected changes.
+
+```bash
+(
+set -e
+make deploy ANSIBLE_LIMIT="$deploy_alias"
+make verify ANSIBLE_LIMIT="$deploy_alias"
+make source-drift ANSIBLE_LIMIT="$deploy_alias" # Also run by deploy/verify.
+make clean
+)
+```
+
+Each subshell stops on a failed command. Do not run the deploy block after a
+failed preflight.
+Run `make clean` when finishing or abandoning the operation, including after
+a failed preflight.
+The exported mapping paths are consumed by both controller commands;
+`dry-run` uses only the contexts mapping and does not write failure receipts.
 
 Readiness, convergence and the automatic source-drift check use the same
 private inventory and transport snapshots. Canonical all/vpn/cohort variables
@@ -187,11 +217,10 @@ make plan              # READ THE PLAN
 # § "blue-green replacement".
 make apply             # only if the plan was non-destructive
 make inventory
-# Restore and verify the local Tailscale SSH HostName override described in
-# DEPLOYMENT-STATUS.md before the next Ansible command.
+# Re-establish the current recovery/bootstrap prerequisites above if the node
+# or inventory changed; do not copy management overrides from an old snapshot.
 make wait
-make deploy
-make verify
+# Continue with the ordinary re-deploy recipe above, including its private inputs.
 ```
 
 `prevent_destroy = true` on `upcloud_server` blocks accidental destruction
@@ -216,15 +245,19 @@ through a secure channel. Wipe it from your terminal scrollback.
 
 ## Selective deploy with tags
 
+Prepare the private inputs and review the preflight in the
+[ordinary re-deploy recipe](#ordinary-re-deploy-recipe) first. In that same shell,
+use the selected exact alias and exported mappings for each tagged deploy:
+
 ```bash
 # Just push a config-only change to xray
-make deploy ANSIBLE_TAGS=xray
+make deploy ANSIBLE_LIMIT="$deploy_alias" ANSIBLE_TAGS=xray
 
 # Just refresh nftables
-make deploy ANSIBLE_TAGS=firewall
+make deploy ANSIBLE_LIMIT="$deploy_alias" ANSIBLE_TAGS=firewall
 
 # Just re-render fallback transports
-make deploy ANSIBLE_TAGS=transport
+make deploy ANSIBLE_LIMIT="$deploy_alias" ANSIBLE_TAGS=transport
 ```
 
 The `tags:` field on each role in `playbooks/site.yml` enumerates what's
@@ -232,11 +265,31 @@ selectable. `always` tags (`baseline`, `firewall`) run regardless.
 
 ## Staging first
 
-```bash
-ENV=staging make plan apply inventory wait dry-run deploy verify
-# Test with a real client from a representative network
-ENV=prod    make plan apply inventory wait dry-run deploy verify
-```
+For disposable operator staging, select a reviewed
+`ENV=ci-staging-<technical-id>` with its matching private tfvars for the
+provider-specific Terraform commands. Keep that environment selected for the
+node lifetime; the cleanup and recovery guards require the `ci-staging-` prefix.
+Then:
+
+1. Follow the [Terraform change procedure](#re-deploy-after-a-terraform-change-instance-type-zone-firewall)
+   one command at a time. Review the plan before apply; stop on unexpected
+   replacements or drift.
+2. For disposable staging, create the
+   [UUID-bound cleanup manifest](CI-REAL-DEPLOY.md#uuid-bound-operator-staging-cleanup)
+   immediately after apply and before either guest installer. Complete the
+   recovery/bootstrap/ownership prerequisites above for the exact staging node.
+3. Prepare the staging alias, secrets and all three private mappings, then use
+   the [ordinary re-deploy recipe](#ordinary-re-deploy-recipe). Review its
+   successful preflight before its separate deploy block. Verify the relevant
+   client paths with a real client from the intended network; local preflight
+   and source/CI results do not establish that acceptance.
+
+For production, select `ENV=prod` and repeat the applicable Terraform and
+deployment prerequisites with the production alias, secrets, promotion inputs
+and fresh failure-receipt sinks. Run and review a new production preflight
+before its deploy block. `ENV` selects the Terraform environment; it does not
+narrow Ansible inventory selection. Keep the explicit `ANSIBLE_LIMIT` and
+matching private mappings from the ordinary recipe for each environment.
 
 Staging uses a different VPS, different REALITY keypair, different SNI
 target, and ideally a different operator SSH key. Don't ever test new
