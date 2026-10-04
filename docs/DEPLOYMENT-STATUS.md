@@ -1,11 +1,16 @@
-# Deployment status
+# Deployment status — last verified snapshot
 
-This document is the repository-safe record of the currently deployed
-infrastructure. It intentionally excludes public and private addresses,
+This document records the last verified deployment snapshot, observed on
+**2026-08-23** at source commit
+`0c22a24cff5733947900ad345da4b9fe830a528e`. It does not establish the current
+fleet, deployed revision, or service health as of a later date. Repository
+`main`, a green CI run, and this snapshot are separate evidence.
+
+The snapshot intentionally excludes public and private addresses,
 hostnames, client identifiers, credentials, certificates, Terraform state,
 and decrypted SOPS values. Those remain in git-ignored operator files.
 
-## Current release
+## Snapshot release
 
 | Field | Value |
 |---|---|
@@ -15,11 +20,11 @@ and decrypted SOPS values. Those remain in git-ignored operator files.
 | Source validation | PR #87 CI fully green, CodeQL and Scorecard passing on the deployed commit |
 | Release state | full-fleet recreation: every server was deliberately destroyed and rebuilt from git + secrets |
 
-Every server in the fleet was deliberately destroyed and rebuilt from git +
-secrets through the sanctioned disposable-node path; no prior-generation node
-survives.
+At verification, every server in the fleet had been deliberately destroyed
+and rebuilt from git + secrets through the sanctioned disposable-node path;
+no prior-generation node survived that recreation.
 
-## Active fleet
+## Fleet at verification
 
 | Provider | Terraform environment | Ansible cohort | Runtime purpose |
 |---|---|---|---|
@@ -33,6 +38,10 @@ override only `ansible_host` for Tailscale administration. Watchdog and other
 data-plane probes therefore continue to target the public service address.
 
 ## Observed convergence
+
+All results and operational notes in this section describe the 2026-08-23
+rollout. Follow the current runbooks linked below for a new operation; the
+historical command examples do not supply today's deployment prerequisites.
 
 ### Terraform
 
@@ -121,7 +130,7 @@ separate client-path checks.
 No `vpn-deploy-known-good-*` tag was created for this rollout. The release tag
 identifies source code; it is not a substitute for future live drift evidence.
 
-## Current operator limitations
+## Snapshot operator limitations
 
 The Vultr allowlist entry is intentionally tied to the exact operator address
 admitted on 2026-08-23 and must be updated in the provider console whenever
@@ -131,26 +140,20 @@ above until the first real convergence.
 
 ## Refresh procedure
 
-1. Confirm the checkout is at the intended reviewed commit, its required CI is
-   green, and the working tree is clean.
-2. Decrypt only into the configured git-ignored `SECRETS_FILE`.
-3. Run a provider-refreshed plan for every named environment. Stop on any
-   replacement or unexplained drift.
-4. Rebuild the inventory, restore the documented Tailscale SSH override, and
-   prove the SSH path before deployment.
-5. Run the deployment gates with the cohort limit and the decoy-origin
-   override required by DEPLOY-PROFILES.md ("Decoy site identity") — the
-   committed P1/P2 profiles carry only a placeholder origin and their identity
-   asserts fail without it:
-   `ANSIBLE_LIMIT="<all cohort hosts>" ANSIBLE_EXTRA_VARS_FILE=secrets/local/decoy-origin.yml make deploy`,
-   then the same prefix for `make verify` and `make security-verify`. When
-   package backlog or reboot markers are present, run `make os-maintenance`
-   with the same variables; it rolls one node at a time and repeats both
-   verification gates.
-6. Confirm `make source-drift` is green for every node; `deploy` and `verify`
-   run it automatically, but the standalone command is the fastest parity
-   check.
-7. Run the relevant outside-in client-path probes.
-8. Run `make clean` and remove plan artifacts.
-9. Update this file only from observed results; never copy live endpoints or
-   secret material into it.
+Refreshing the snapshot requires an explicitly authorized live operation;
+editing this document does not refresh the evidence.
+
+1. Confirm the intended reviewed source revision, clean checkout, and its
+   required CI using [TESTING.md](TESTING.md#ci-dependency-selection).
+2. Follow [RUNBOOK-deploy.md](RUNBOOK-deploy.md) for the current deployment
+   prerequisites and gate sequence, or [QUICKSTART.md](QUICKSTART.md) for
+   first provisioning. These own inventory selection, SSH recovery, Tailnet
+   bootstrap, private socket contexts, promotion inputs, and failure receipts.
+   Apply the required origin inputs from
+   [DEPLOY-PROFILES.md](DEPLOY-PROFILES.md#decoy-site-identity).
+3. Record the observed deployment date, exact deployed source revision,
+   selected fleet, convergence and source-drift gates, and any unresolved
+   client-path checks. Preserve the distinction between source/CI evidence
+   and live or client-path evidence.
+4. Complete the runbook cleanup. Update this snapshot only from those
+   observed results; never copy live endpoints or secret material into it.
