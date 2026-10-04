@@ -204,35 +204,39 @@ class Runtime:
         pid, started, exited = map(int, numbers)
         return (pid, started, exited) if started <= exited <= self.activation_clock() else None
 
+    def _observe_recovery(self, snapshot, deadline, *, accept_busy=False):
+        initial = snapshot
+        invocation = None
+        while True:
+            worker = snapshot['units']['vpn-sshd-recover.service']
+            if invocation is not None and (
+                    worker['InvocationID'] != invocation
+                    or snapshot['generation'] != initial['generation']
+                    or snapshot['boot_id'] != initial['boot_id']
+                    or snapshot['units']['vpn-sshd-boot-recover.service'] != initial['units']['vpn-sshd-boot-recover.service']):
+                raise TransactionError('recovery-execution-changed')
+            if (self._completed(worker) is not None
+                    or accept_busy and self._completed(worker, '75') is not None):
+                return snapshot
+            # Observe this execution to completion; never replace a failure
+            # or its identity by starting another worker while it is in flight.
+            if (worker['ActiveState'] != 'activating' or worker['SubState'] != 'start'
+                    or worker['Result'] != 'success' or worker['ExecMainStatus'] != '0'
+                    or re.fullmatch('[0-9a-f]{32}', worker['InvocationID']) is None):
+                raise TransactionError('recovery-previous-execution-invalid')
+            invocation = worker['InvocationID']
+            self._budget(deadline)
+            remaining = (deadline - self.activation_clock()) / 1000000
+            if remaining <= 0:
+                raise TransactionError('recovery-deadline')
+            time.sleep(min(0.1, remaining))
+            snapshot = self._capability(deadline)
+
     def recovery_ready(self):
         try:
             deadline = self.activation_clock() + 30000000
-            snapshot = self._capability(deadline)
-            initial = snapshot
-            invocation = None
-            while True:
-                worker = snapshot['units']['vpn-sshd-recover.service']
-                if invocation is not None and (
-                        worker['InvocationID'] != invocation
-                        or snapshot['generation'] != initial['generation']
-                        or snapshot['boot_id'] != initial['boot_id']
-                        or snapshot['units']['vpn-sshd-boot-recover.service'] != initial['units']['vpn-sshd-boot-recover.service']):
-                    return False
-                if self._completed(worker) is not None:
-                    return True
-                # Observe the timer's current execution; never start a worker
-                # or substitute its previous result for a completed success.
-                if (worker['ActiveState'] != 'activating' or worker['SubState'] != 'start'
-                        or worker['Result'] != 'success' or worker['ExecMainStatus'] != '0'
-                        or re.fullmatch('[0-9a-f]{32}', worker['InvocationID']) is None):
-                    return False
-                invocation = worker['InvocationID']
-                self._budget(deadline)
-                remaining = (deadline - self.activation_clock()) / 1000000
-                if remaining <= 0:
-                    return False
-                time.sleep(min(0.1, remaining))
-                snapshot = self._capability(deadline)
+            self._observe_recovery(self._capability(deadline), deadline)
+            return True
         except (TransactionError, OSError):
             return False
 
@@ -242,11 +246,7 @@ class Runtime:
             # Do not erase a real previous failure by starting the service.
             # Only completed success or known lock contention permits one new
             # execution; neither substitutes for that call's fresh exit-0 proof.
-            before = self._capability(deadline)
-            previous_worker = before['units']['vpn-sshd-recover.service']
-            if (self._completed(previous_worker) is None
-                    and self._completed(previous_worker, '75') is None):
-                raise TransactionError('recovery-previous-execution-invalid')
+            before = self._observe_recovery(self._capability(deadline), deadline, accept_busy=True)
             started_after = self.activation_clock()
             _command(['/usr/bin/systemctl', 'start', 'vpn-sshd-recover.service'],
                      deadline=deadline / 1000000)

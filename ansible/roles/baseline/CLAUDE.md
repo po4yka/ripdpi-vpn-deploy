@@ -85,6 +85,10 @@ and the installed recovery generation. Local tests are not staging acceptance.
   30-second budget for the observed invocation to complete successfully.
   Invocation, generation, and boot changes refuse; never start or restart
   a worker to replace a failed result.
+  Apply activation observes an in-flight worker before requesting its one
+  fresh execution. Waiting and fresh proof share the same deadline; only
+  completed success or the existing exit-75 contention category permits that
+  request, and the requested execution must still finish with exit zero.
 - **Does not install `chrony` or `unattended-upgrades`** — time sync is
   `systemd-timesyncd` (distro default on Debian 13/Ubuntu 24.04). Unattended
   upgrades are not configured by this role; operators add them separately.

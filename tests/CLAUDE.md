@@ -191,6 +191,9 @@ remain fatal; package signatures and the real schema validator stay enforced.
 - **Recovery readiness observes periodic work** — exercise successful completion
   of the same invocation, failure, contention, timeout, and identity changes.
   Waiting never starts a replacement worker or accepts cached success.
+  Exercise apply activation through the real baseline planner and adapter as
+  well: observing a current worker must precede the fresh proof, and both
+  phases consume one deadline. Fixtures are not native systemd acceptance.
 - **Cold Tailnet recovery has one readiness budget** — cover `NoState` and
   `Starting` before owned logout and after it, exhaustion and late replies,
   invalid status, reinitialization during identity verification, foreign
