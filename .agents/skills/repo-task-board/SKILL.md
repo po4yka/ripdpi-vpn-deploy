@@ -11,9 +11,11 @@ description: Contract for RIPDPI VPN deployment tracked work (portfolio tasks, b
 - specification-driven work: `openspec/changes/<change>/tasks.md`.
 
 For a missing active task query, follow `docs/tasks/README.md` section
-**Find active work or terminal history**. Resolve the exact ID through local Git
-and archive records; a purged `done` or `dropped` task is not absent history.
-Read its terminal outcome and evidence before following any active successor.
+**Find active work or terminal history**. Discover exact-ID candidates only in
+the pinned integrated history and archive
+revision, then validate the covered terminal transition and purge as documented.
+A candidate is not accepted terminal evidence; failed or incomplete validation
+leaves it unresolved. Resolve any linked successor through current `taskctl show`.
 
 Narrower skills own the individual steps: `mdtask-create` (new work), `mdtask-next` (pick and start), `sdd` (whether OpenSpec is required), `openspec-propose` / `openspec-apply-change` (plan and implement a change), `openspec-archive-change` (finalize), `mdtask` (execution checkboxes).
 

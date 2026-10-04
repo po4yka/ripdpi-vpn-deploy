@@ -27,39 +27,70 @@ that the task never existed: its terminal record may have been purged after a
 separate committed closure. Continue the read-only history lookup independently
 of that failed command:
 
+Pin the known local integrated history first. Stop if
+`origin/main` is missing, is not an ancestor of this checkout, or the repository
+is shallow. Do not search unrelated local branches or dirty archive files:
+
 ```bash
+history_ref=$(git rev-parse --verify 'origin/main^{commit}') || exit 1
+git merge-base --is-ancestor "$history_ref" HEAD || exit 1
+[ "$(git rev-parse --is-shallow-repository)" = false ] || exit 1
 task_id='MON-1788008977760206' # Replace with the exact ID being investigated.
-git log --all --format='%H %s' --name-status \
+git log "$history_ref" --format='%H %s' --name-status \
   -G "^id: ${task_id}$" -- docs/tasks/issues/
-rg -l --hidden --glob '*.md' --glob '.taskctl-*.json' --fixed-strings \
-  -- "$task_id" openspec/changes/archive
+git grep -l -F -e "$task_id" "$history_ref" -- openspec/changes/archive
 ```
 
-The Git search identifies additions/removals of that ID and the portfolio path;
-the archive search identifies retained OpenSpec evidence and lifecycle receipts.
-For a purge commit, inspect its parent, where the committed terminal record must
-still exist. Use the exact SHA and path found above:
+These are **candidate** paths and revisions, not accepted terminal outcomes.
+The Git search identifies additions/removals of that ID; the archive search
+reads only tracked files at the same pinned revision. For a candidate purge,
+verify its ancestry and inspect its first parent using the exact SHA and path:
 
 ```bash
 purge_revision='reviewed-purge-commit-sha'
 portfolio_path='docs/tasks/issues/task-slug.md'
-git show "${purge_revision}^:${portfolio_path}"
+git merge-base --is-ancestor "$purge_revision" "$history_ref" || exit 1
+git show "${purge_revision}^1:${portfolio_path}"
+git log "$history_ref" --format='%H %s' -- "$portfolio_path"
 ```
 
-Read the terminal `status`, `closed_reason`, `evidence_summary`, and execution
-pointer together with its close/drop/archive receipts and verification record.
-For simple work, execution and close receipts remain in Git history under
+Read `status`, `closed_reason`, `evidence_summary`, execution, and the matching
+close/drop/archive receipts and verification. Find the first committed
+transition into `done` or `dropped`; its parent must show the prior nonterminal
+state. Validate from **before that transition**, not merely the purge parent,
+which may already contain a terminal state trusted as the validation base:
+
+```bash
+terminal_revision='reviewed-first-terminal-transition-sha'
+git merge-base --is-ancestor "$terminal_revision" "$history_ref" || exit 1
+git merge-base --is-ancestor "$terminal_revision" "${purge_revision}^1" || exit 1
+history_base=$(git rev-parse --verify "${terminal_revision}^1") || exit 1
+mise exec -- ./taskctl validate --base "$history_base" --json || exit 1
+```
+
+The public validator checks current state and deleted history in `base..HEAD`,
+including integrated merge lanes. Its implementation is in
+[`scripts/tasks/taskctl.py`](../../scripts/tasks/taskctl.py):
+`validate_deleted_history` checks transitions and terminal receipts;
+`TerminalHistoryResolver` / `resolve_terminal_task` resolve historical references
+through the integrated first-parent history and merged lanes, rejecting invalid
+or ambiguous candidates. `show` has no standalone historical-ID query. A plain
+current-state validation, or one based at today's `origin/main`, does not certify
+an older candidate outside that checked history range.
+
+Accept a terminal outcome only after successful validation that covers this
+candidate's transition and purge, with matching exact-ID receipts. An absent
+record, ambiguous history, missing archive, failed validation or uncovered
+transition leaves the lookup unresolved; report the limitation. Never recreate
+a task or bypass validation to make a lookup pass.
+
+Simple execution and close receipts remain in Git history under
 `docs/tasks/work/`; OpenSpec work retains them in its archive. `done` and
 `dropped` remain distinct: cancelled acceptance is not passed acceptance.
-Historical evidence applies only to its recorded source, requirements and
-environment; it does not accept a replacement contract. Follow an explicitly
-linked active successor for current work.
-
-These queries inspect task records without changing their lifecycle. Missing
-archives or incomplete shallow/local history leave the lookup unresolved;
-report that limitation rather than recreating a task or bypassing lifecycle
-validation. All transitions still
-go through `taskctl`.
+Evidence applies only to its recorded source, requirements and environment;
+it does not accept a replacement contract. Follow an explicitly linked
+successor only after resolving its current record through `./taskctl show`.
+All lifecycle transitions still go through `taskctl`.
 
 ## Portfolio schema
 
