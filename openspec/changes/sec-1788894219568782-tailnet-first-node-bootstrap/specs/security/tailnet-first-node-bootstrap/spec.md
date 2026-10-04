@@ -197,6 +197,12 @@ migration implicitly.
 - **WHEN** a handled baseline pre-transaction validation, onboarding, prepare, apply, fresh transport proof, promotion proof, confirmation, or rollback operation refuses during ordinary deploy
 - **THEN** the deployment remains failed and a fresh private receipt records only the final allowlisted category, while Ansible output remains redacted and the receipt cannot satisfy deployment or VPN acceptance.
 
+#### Scenario: Apply overlaps periodic SSH recovery
+
+- **WHEN** SSH apply observes the verified periodic recovery worker executing
+- **THEN** it waits for that invocation within the existing activation deadline, refusing failure, timeout or identity changes; only completed success or known exit-75 contention permits requesting the one fresh execution.
+- **AND** that requested execution must finish with exit zero and pass the existing lock fence; observation and fresh proof share one 30-second budget.
+
 #### Scenario: Prepare arms state but returns a malformed receipt
 
 - **WHEN** the prepare RPC returns an invalid receipt after it may have armed durable guest state
