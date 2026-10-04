@@ -24,8 +24,9 @@ Start with the current portfolio and resolve the exact stable ID:
 
 `show` reads the current portfolio. A missing or ambiguous query does not prove
 that the task never existed: its terminal record may have been purged after a
-separate committed closure. Continue the read-only history lookup independently
-of that failed command:
+separate committed closure. Continue the Git history lookup independently of
+that failed command. This does not transition task state; the validation
+preparation below creates a temporary local checkout and installs dependencies.
 
 Pin the known local integrated history first. Stop if
 `origin/main` is missing, is not an ancestor of this checkout, or the repository
@@ -65,11 +66,67 @@ terminal_revision='reviewed-first-terminal-transition-sha'
 git merge-base --is-ancestor "$terminal_revision" "$history_ref" || exit 1
 git merge-base --is-ancestor "$terminal_revision" "${purge_revision}^1" || exit 1
 history_base=$(git rev-parse --verify "${terminal_revision}^1") || exit 1
-mise exec -- ./taskctl validate --base "$history_base" --json || exit 1
 ```
 
-The public validator checks current state and deleted history in `base..HEAD`,
-including integrated merge lanes. Its implementation is in
+Validate the fixed endpoint using that revision's own code, records and pinned
+tools. Running `validate` in the caller's feature checkout instead would inspect
+its `HEAD`, which may contain unrelated or unmerged changes. Start with Git,
+Make and mise available. The following installs only local dependencies: Python
+from the checkout's `mise.toml`, its hash-pinned `requirements.txt` into a private
+venv, and its lock-pinned task tools with CI's Node selector. It does not install
+Git hooks or modify shared Python packages. Review the pinned source first.
+
+```bash
+history_parent=$(mktemp -d "${TMPDIR:-/tmp}/task-history.XXXXXXXX") || exit 1
+history_checkout="$history_parent/checkout"
+git worktree add --detach "$history_checkout" "$history_ref" || exit 1
+history_validation_status=0
+bash -s -- "$history_checkout" "$history_ref" "$history_base" <<'BASH' || history_validation_status=$?
+set -euo pipefail
+cd "$1"
+[ "$(git rev-parse HEAD)" = "$2" ]
+history_worktree_status=$(git status --porcelain)
+[ -z "$history_worktree_status" ]
+mise trust
+mise install python
+history_python_root=$(mise where python)
+"$history_python_root/bin/python3" -m venv .venv
+.venv/bin/python -m pip install --only-binary=:all: --require-hashes --no-deps -r requirements.txt
+history_node=$(.venv/bin/python - <<'PY'
+from pathlib import Path
+import yaml
+jobs = yaml.safe_load(Path('.github/workflows/ci.yml').read_text())['jobs']
+print(next(step['with']['node-version'] for job in jobs.values()
+           for step in job.get('steps', [])
+           if 'node-version' in step.get('with', {})))
+PY
+)
+mise install "node@$history_node"
+history_node_root=$(mise where "node@$history_node")
+export PATH="$PWD/.venv/bin:$history_node_root/bin:$PATH"
+make task-tools
+./taskctl validate --base "$3" --json
+[ "$(git rev-parse HEAD)" = "$2" ]
+history_worktree_status=$(git status --porcelain)
+[ -z "$history_worktree_status" ]
+BASH
+```
+
+Keep the exit status; accept nothing unless it is zero. Remove only this newly
+created checkout and its private ignored dependencies, even after a failed
+validation. Do not use `--force`: if removal refuses because the checkout was
+modified, stop and inspect rather than discard that work.
+If a required wheel is unavailable, bootstrap fails and the lookup remains
+unresolved; do not silently compile a dependency outside the build gate.
+
+```bash
+git worktree remove "$history_checkout" || exit 1
+rmdir "$history_parent" || exit 1
+[ "$history_validation_status" -eq 0 ] || exit 1
+```
+
+The public validator checks the pinned endpoint and deleted history in
+`base..history_ref`, including integrated merge lanes. Its implementation is in
 [`scripts/tasks/taskctl.py`](../../scripts/tasks/taskctl.py):
 `validate_deleted_history` checks transitions and terminal receipts;
 `TerminalHistoryResolver` / `resolve_terminal_task` resolve historical references

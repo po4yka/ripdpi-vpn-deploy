@@ -12,8 +12,9 @@ description: Contract for RIPDPI VPN deployment tracked work (portfolio tasks, b
 
 For a missing active task query, follow `docs/tasks/README.md` section
 **Find active work or terminal history**. Discover exact-ID candidates only in
-the pinned integrated history and archive
-revision, then validate the covered terminal transition and purge as documented.
+the pinned integrated history and archive revision, then validate the covered
+terminal transition and purge in a clean detached checkout of that endpoint,
+using its own pinned tools as documented.
 A candidate is not accepted terminal evidence; failed or incomplete validation
 leaves it unresolved. Resolve any linked successor through current `taskctl show`.
 
