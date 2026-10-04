@@ -176,6 +176,59 @@ Only an explicitly unselected job may be skipped; failures, cancellations,
 unexpected skips and incomplete result maps fail. Keep the workflow jobs, plan
 and [branch protection](BRANCH-PROTECTION.md) consistent when adding a check.
 
+### Verify hosted CI for an exact source revision
+
+Use an authenticated `gh` from this repository root. For a merged source
+revision, this Bash recipe reads the full local `HEAD` SHA, lists only `ci.yml`
+push runs on `main` for it, and requires an explicitly selected run ID.
+Do not substitute the newest run or the branch badge. If no run is listed,
+the revision has no matching CI evidence in this bounded result; do not infer
+success. The subshell keeps a failed verification from exiting your shell.
+
+```bash
+(
+  ci_source_sha=$(git rev-parse --verify 'HEAD^{commit}') || exit 1
+  gh run list --workflow ci.yml --event push --branch main \
+    --commit "$ci_source_sha" --limit 50 \
+    --json databaseId,headSha,event,headBranch,status,conclusion,url \
+    --jq '.[] | {databaseId,headSha,event,headBranch,status,conclusion,url}' || exit 1
+  read -r -p 'Run ID from this list: ' ci_run_id || exit 1
+  case "$ci_run_id" in ''|*[!0-9]*) exit 2 ;; esac
+  ci_identity=$(gh run view "$ci_run_id" \
+    --json headSha,event,headBranch,workflowName \
+    --jq '[.headSha,.event,.headBranch,.workflowName] | join("|")') || exit 1
+  if [ "$ci_identity" != "$ci_source_sha|push|main|ci" ]; then
+    printf '%s\n' 'Run does not match the exact source SHA, event, branch and CI workflow.' >&2
+    exit 1
+  fi
+  gh run view "$ci_run_id" --json status,conclusion,jobs --jq \
+    '{status,conclusion,required:[.jobs[] | select(.name == "required checks") | {status,conclusion}],attention:[.jobs[] | select(.status != "completed" or (.conclusion != "success" and .conclusion != "skipped")) | {name,status,conclusion}]}' || exit 1
+  ci_outcome=$(gh run view "$ci_run_id" --json status,conclusion,jobs --jq \
+    '[.status,.conclusion,([.jobs[] | select(.name == "required checks")] | if length == 1 then .[0] | [.status,.conclusion] | join("/") else "missing-or-duplicate" end)] | join("|")') || exit 1
+  case "$ci_outcome" in
+    'completed|success|completed/success') exit 0 ;;
+    'completed|failure|'*|'completed|timed_out|'*)
+      gh run view "$ci_run_id" --log-failed
+      exit 1 ;;
+    *) printf '%s\n' 'CI success is not confirmed.' >&2; exit 1 ;;
+  esac
+)
+```
+
+Only `status: completed` with `conclusion: success` and a successful
+`required checks` job returns exit 0. Pending, queued,
+in-progress, cancelled, skipped, missing and other conclusions do not.
+The compact view omits successful jobs and intentionally unselected PR jobs;
+the required aggregator detects unexpected skips. Failed logs are requested
+only after a terminal failure or timeout; a pending run may not have logs yet.
+Separate security workflows and live acceptance retain their own boundaries.
+
+For a PR, use `gh pr view <number> --json headRefOid,headRefName` to identify
+its current source head, then `gh pr checks <number> --required` for the current
+required checks. PR checks can use dependency selection and test a merge
+checkout; they do not establish a full-graph `main` push result. After merge,
+repeat the recipe at the merged source SHA, which may differ from the PR head.
+
 | Operator step | Tests that protect it |
 |---|---|
 | `git commit` (local) | pre-commit hooks: gitleaks, terraform fmt, ansible-lint, yamllint, **shellcheck**, **secrets-coverage**, **templates-render**, **Xray release/PQ-REALITY guards**, **placeholder-scan** |
