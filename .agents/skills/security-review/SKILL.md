@@ -14,20 +14,30 @@ Review everything being handed off: the committed range (`git diff <base>...HEAD
 First inventory each source of changes with `--stat` and `--name-status`:
 
 ```bash
+set -euo pipefail
 # Replace the ref; stop if it cannot resolve to a commit.
 review_base=$(git rev-parse --verify 'reviewed-base-ref^{commit}') || exit 1
-git diff --stat "$review_base"...HEAD --
-git diff --name-status -z "$review_base"...HEAD --
-git diff --stat --cached --
-git diff --name-status -z --cached --
-git diff --stat --
-git diff --name-status -z --
-git ls-files --others --exclude-standard -z
+nul_inventory() {
+  python3 -c 'import json, os, sys
+items = sys.stdin.buffer.read().split(b"\0")
+print(json.dumps([os.fsdecode(item) for item in items if item], ensure_ascii=True, indent=2))'
+}
+git -c core.quotePath=true diff --stat "$review_base"...HEAD --
+git diff --name-status -z "$review_base"...HEAD -- | nul_inventory
+git -c core.quotePath=true diff --stat --cached --
+git diff --name-status -z --cached -- | nul_inventory
+git -c core.quotePath=true diff --stat --
+git diff --name-status -z -- | nul_inventory
+git ls-files --others --exclude-standard -z | nul_inventory
 ```
 
-Consume the NUL-delimited inventories without splitting filenames on spaces or
-newlines. Review every handed-off path in each inventory, including both sides
-of renames. For one selected path, read ordinary-context diffs separately:
+The consumer splits only on NUL and displays JSON-escaped fields in their
+original order; status, old path and new path remain present for renames.
+Never display the raw NUL stream: filenames can contain terminal controls.
+JSON escapes are display notation, not literal shell pathspecs; recover the
+exact pathname with a NUL-aware consumer before selecting it. Review every
+handed-off path in each inventory, including both sides of renames. For one
+selected path, read ordinary-context diffs separately in the same Bash session:
 
 ```bash
 review_path='path/from/the/inventory'
