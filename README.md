@@ -147,7 +147,7 @@ Agents and contributors: `AGENTS.md` and `CLAUDE.md` at the repo root carry
 the working rules (per-folder variants apply when working inside a subtree).
 Then:
 
-1. `docs/DEPLOYMENT-STATUS.md` — sanitized current release, fleet mapping,
+1. `docs/DEPLOYMENT-STATUS.md` — sanitized last verified deployment snapshot,
    observed live gates, and remaining verification boundaries.
 2. `docs/QUICKSTART.md` — zero-to-working in ~30 minutes.
 3. `docs/ARCHITECTURE.md` — how this repo maps to the P0–P3 stack.
