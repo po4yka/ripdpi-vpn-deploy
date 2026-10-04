@@ -433,7 +433,8 @@ def test_fresh_proof_survives_only_its_later_periodic_self_contention(adapter, m
 
 @pytest.mark.parametrize('outcome', ['success', 'failure', 'busy', 'signal', 'new-invocation',
                                    'generation', 'boot', 'boot-invocation', 'future', 'timeout'])
-def test_readiness_observes_only_the_current_periodic_execution(adapter, monkeypatch, outcome):
+@pytest.mark.parametrize('interface', ['readiness', 'activation'])
+def test_readiness_observes_only_the_current_periodic_execution(adapter, monkeypatch, outcome, interface):
     runtime, values, now, calls = activation_fixture(adapter, monkeypatch)
     worker = 'vpn-sshd-recover.service'
     worker_execution(values, status='0', started=500000, inflight=True)
@@ -461,10 +462,12 @@ def test_readiness_observes_only_the_current_periodic_execution(adapter, monkeyp
         elif outcome == 'future':
             values[('show', worker, '--property=ExecMainExitTimestampMonotonic', '--value')] = str(now['us'] + 1)
     monkeypatch.setattr(adapter.time, 'sleep', complete)
-    ready = runtime.recovery_ready()
-    assert ready is (outcome == 'success')
+    ready = (runtime.recovery_ready() if interface == 'readiness'
+             else runtime.activation_recovery() is not None)
+    expected = outcome == 'success' or interface == 'activation' and outcome == 'busy'
+    assert ready is expected
     assert sleeps and sum(sleeps) <= 30.000001
-    assert not any(call[0] == 'start' for call in calls)
+    assert calls.count(['start', worker]) == int(interface == 'activation' and expected)
 
 
 @pytest.mark.parametrize('fault', ['no-proof', 'no-success-proof', 'expired-proof', 'old-execution',
@@ -603,6 +606,67 @@ def test_real_planner_apply_survives_periodic_race_after_second_flock(adapter, c
         assert b'PasswordAuthentication' not in (config/'sshd_config.d/20-ansible-hardening.conf').read_bytes()
         assert reloads == ['reload']
         assert calls.count(['start','vpn-sshd-recover.service']) == 1
+
+
+def test_baseline_apply_waits_for_the_observed_periodic_worker_before_fresh_proof(
+        adapter, baseline_config, monkeypatch):
+    import os
+    import tempfile
+    runtime, values, now, calls = activation_fixture(adapter, monkeypatch)
+    monkeypatch.setattr(adapter.ownership, 'OWNER_UID', os.geteuid())
+    runtime.clock = lambda: 1000
+    runtime.monotonic = lambda: 1000
+    reloads = []
+    runtime.reload = lambda: reloads.append('reload')
+    worker = 'vpn-sshd-recover.service'
+    worker_execution(values, status='0', started=500000, inflight=True)
+    values[('show', worker, '--property=InvocationID', '--value')] = 'b' * 32
+    sleeps = []
+
+    def complete(seconds):
+        sleeps.append(seconds)
+        now['us'] += round(seconds * 1000000)
+        worker_execution(values, status='0', started=500000, exited=now['us'])
+
+    monkeypatch.setattr(adapter.time, 'sleep', complete)
+    with tempfile.TemporaryDirectory(prefix='.sshd-apply-state-', dir=baseline_config.parent) as state:
+        engine = adapter.transaction.Transaction(baseline_config, Path(state), runtime)
+        receipt = engine.prepare(intent='sshd-baseline', contexts=CONTEXTS,
+                                 timeout=120, hardening=BASELINE_HARDENING)
+        applied = engine.apply(receipt['generation'], receipt['nonce'])
+        assert applied['status'] == 'applied'
+        assert sleeps and sum(sleeps) <= 30
+        assert calls.count(['start', worker]) == 1
+        assert reloads == ['reload']
+
+
+def test_wait_and_fresh_activation_share_one_deadline(adapter, monkeypatch):
+    runtime, values, now, calls = activation_fixture(adapter, monkeypatch)
+    worker = 'vpn-sshd-recover.service'
+    worker_execution(values, status='0', started=500000, inflight=True)
+    values[('show', worker, '--property=InvocationID', '--value')] = 'b' * 32
+    original = adapter._command
+    start_deadlines = []
+
+    def complete(seconds):
+        now['us'] += round(seconds * 1000000)
+        if now['us'] >= 30900000:
+            worker_execution(values, status='0', started=500000, exited=now['us'])
+
+    def start(args, **kwargs):
+        if args[1:] == ['start', worker]:
+            start_deadlines.append(kwargs['deadline'])
+            started = now['us']
+            now['us'] += 200000
+            worker_execution(values, status='0', started=started, exited=now['us'])
+            values[('show', worker, '--property=InvocationID', '--value')] = 'c' * 32
+            return ''
+        return original(args, **kwargs)
+
+    monkeypatch.setattr(adapter.time, 'sleep', complete)
+    monkeypatch.setattr(adapter, '_command', start)
+    assert runtime.activation_recovery() is None
+    assert start_deadlines == [31.0]
 
 
 def test_activation_timestamp_uses_systemd_monotonic_clock(adapter, monkeypatch):

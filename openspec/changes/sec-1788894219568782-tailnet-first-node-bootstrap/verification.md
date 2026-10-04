@@ -3,27 +3,47 @@ task_id: SEC-1788894219568782
 change: sec-1788894219568782-tailnet-first-node-bootstrap
 commit_sha: null
 local: required
-local_evidence: "Cold-backend recovery regression reproduced tailnet-status-invalid before the fix; all 137 Tailnet domain tests passed afterward, including bounded startup/logout readiness and foreign/invalid-state refusal. Complete corrected-source local gate remains required."
+local_evidence: "Baseline apply reproduced recovery-not-ready while its periodic worker was executing. The observation repair passed 370 SSH adapter, transaction, controller and real-policy tests, including failure/identity refusal and one shared deadline. Complete corrected-source local gate remains required."
 remote_ci: required
 remote_ci_evidence: "The corrected source requires fresh exact-revision hosted CI including native amd64 Molecule."
 dry_run: required
 dry_run_evidence: "Corrected-source ordinary staging dry-run remains unperformed."
 staging: required
-staging_evidence: "Protected 6b29c727 controller-loss passed; its real reboot failed during tailscaled NoState before backend initialization and blocked the original SSH start job. Read-only console diagnostics restored ordinary access but do not satisfy reboot acceptance. Fresh corrected-source controller-loss, reboot, positive bootstrap and ordinary deployment remain required."
+staging_evidence: "Protected 1a733c0264854c9b096b35e2dad9328707dade5b passed separate controller-loss and reboot recovery, positive bootstrap and SSH ownership. Ordinary deployment then failed with apply-rpc-failed after sentinel onboarding. Fresh corrected-source recovery and ordinary deployment remain required; the old guest's internal apply cause is unconfirmed."
 live: blocked
 live_evidence: "No permanent-node rollout or serial live acceptance was performed."
 client: required
-client_evidence: "Corrected-source four-protocol traffic remains unproved."
+client_evidence: "Protected 1a733c0 sentinel onboarding committed after its first four-profile proof; the later SSH apply failed. Corrected-source traffic before and after provider firewall promotion remains unproved."
 artifact: required
-artifact_evidence: "Fresh failed-run diagnostics and exact-resource provider absence were observed; Owned temporary access, unbound client and prepared executor are retired; corrected-source runtime acceptance remains required."
+artifact_evidence: "The failed ordinary run retained its categorical receipt. Guarded server/root-storage absence was verified on 2026-10-03 at 17:31:52 UTC, within the approved resource deadline. Both canonical client/executor de-onboarding receipts passed; original Tailnet policy was restored. Temporary provider-token deletion and local plaintext retirement completed on 2026-10-04 after human confirmation. Corrected-source acceptance remains required."
 ---
 
 # Verification
 
-Fresh reboot acceptance failed on the later protected source; the task returned
-to doing with two execution steps reopened. Current verification above belongs
-to the cold-policy repair and does not inherit earlier staging acceptance.
+The corrected cold-backend source passed fresh recovery on disposable staging,
+but ordinary SSH apply failed. Two execution steps remain open. Current
+verification belongs to the apply observation repair and does not inherit
+earlier full staging acceptance.
 The prior protected-source observations below remain historical evidence.
+
+## Periodic-worker overlap at ordinary apply — 2026-10-04
+
+The preserved protected-source failure is `apply-rpc-failed`; its deleted
+guest has no retained internal apply log, so the precise guest cause cannot
+be asserted. A deterministic real baseline planner/transaction regression
+reproduced `recovery-not-ready` when the actual systemd adapter observed an
+in-flight periodic worker. Unlike readiness, activation previously rejected
+that state before asking for its fresh execution.
+
+The shared observation waits for the same invocation, generation, boot and
+boot-worker identity. A failed or ambiguous result refuses before restart;
+known exit-75 contention permits only the existing fresh execution request.
+Observation, fresh exit-zero proof and its capability check share the same
+30-second deadline; the transaction's later lock fence remains mandatory.
+The original regression failed before repair, then the four affected SSH
+modules passed 370 tests. Both independent read-only review axes approved.
+Native systemd, complete local/hosted gates and fresh corrected-source
+staging remain required. No execution step is closed by these fixtures.
 
 ## Cold-backend reboot failure and repair — 2026-10-03
 

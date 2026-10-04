@@ -209,6 +209,10 @@ the exact-source local/hosted and authorized staging gates.
   existing 30-second budget and requires completed success from that exact
   invocation. Invocation, generation, boot, or boot-worker changes refuse;
   waiting never starts a worker or substitutes a cached result.
+  Apply activation uses the same observation before requesting its one fresh
+  execution. Completed success or known exit-75 contention permits that
+  request; any other result refuses. Observation and fresh exit-zero proof
+  share one 30-second deadline, followed by the existing lock fence.
 - Primary owns all changes serially in this dedicated worktree. Shared writes
   to Makefile, task metadata, and board generation are serialized.
 - Controller: `scripts/bootstrap-tailnet.py` and a bounded domain helper only
