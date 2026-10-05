@@ -298,3 +298,49 @@ def test_native_console_witness_accepts_only_exact_inert_install_delta(planner, 
         replay = planner.parse_policy(base64.b64decode(after['base_text_b64']))
         assert replay == after['base_rules']
         assert not any(row.get('rule', {}).get('comment', '').startswith('vpn-console-lease:') for row in replay)
+
+
+@pytest.mark.native_runtime
+@pytest.mark.parametrize('entry', ['confirmed.json', 'transaction.lock', 'unknown.json'])
+def test_absent_bundle_never_adopts_orphaned_durable_state(planner, native_root, entry):
+    state = native_root/'var/lib/vpn-tailnet-management'
+    state.mkdir(parents=True, mode=0o700)
+    leftover = state/entry
+    leftover.write_text('untouched prior authority')
+    leftover.chmod(0o600)
+    expected = {'/usr/local/lib/vpn-tailnet/domain.py': 'a'*64}
+    with pytest.raises(planner.ProbeError, match='orphaned-state'):
+        planner.inspect_installed_bundle(expected, root=native_root)
+    assert leftover.read_text() == 'untouched prior authority'
+    assert not (native_root/'usr/local/lib/vpn-tailnet').exists()
+
+
+@pytest.mark.native_runtime
+def test_absent_bundle_accepts_only_absent_or_empty_safe_state(planner, native_root):
+    expected = {'/usr/local/lib/vpn-tailnet/domain.py': 'a'*64}
+    assert planner.inspect_installed_bundle(expected, root=native_root) == {'status': 'absent'}
+    state = native_root/'var/lib/vpn-tailnet-management'
+    state.mkdir(parents=True, mode=0o700)
+    assert planner.inspect_installed_bundle(expected, root=native_root) == {'status': 'absent'}
+
+
+@pytest.mark.native_runtime
+@pytest.mark.parametrize('entry,value', [('unknown.json', '{}'), ('confirmed.json', '{"schema_version":3,"generation":"tailnet-recovery-v3"}'), ('transaction.json', '{"schema_version":4,"generation":"tailnet-recovery-v4"}')])
+def test_current_bundle_refuses_unknown_old_or_invalid_records_readonly(planner, native_root, entry, value):
+    import hashlib
+    directory = native_root/'usr/local/lib/vpn-tailnet'
+    directory.mkdir(parents=True)
+    domain = directory/'tailnet_management.py'
+    content = (ROOT/'scripts/tailnet_management.py').read_bytes()
+    domain.write_bytes(content)
+    domain.chmod(0o644)
+    state = native_root/'var/lib/vpn-tailnet-management'
+    state.mkdir(parents=True, mode=0o700)
+    record = state/entry
+    record.write_text(value)
+    record.chmod(0o600)
+    expected = {'/usr/local/lib/vpn-tailnet/tailnet_management.py': hashlib.sha256(content).hexdigest()}
+    with pytest.raises(planner.ProbeError, match='installed-bundle-(unknown|old|state-invalid)'):
+        planner.inspect_installed_bundle(expected, root=native_root)
+    assert record.read_text() == value
+    assert {item.name for item in state.iterdir()} == {entry}

@@ -363,31 +363,10 @@ def _installed(inputs):
     manifest = {"/usr/local/lib/vpn-tailnet/" + name: hashlib.sha256((ROOT / "scripts" / name).read_bytes()).hexdigest() for name in names}
     for name in ("vpn-tailnet-firewall-recover.service", "vpn-tailnet-recover.service", "vpn-tailnet-recover.timer"):
         manifest["/etc/systemd/system/" + name] = hashlib.sha256((ROOT / "ansible/roles/tailnet-management/templates" / (name + ".j2")).read_bytes()).hexdigest()
-    source = '''import os,pathlib,stat,hashlib,json
-expected=json.loads(__MANIFEST__)
-for path in ['/usr/local/lib/vpn-tailnet','/var/lib/vpn-tailnet-management']:
- p=pathlib.Path(path)
- for parent in [p,*p.parents]:
-  if os.path.lexists(parent):
-   i=parent.lstat()
-   assert stat.S_ISDIR(i.st_mode) and i.st_uid==0 and not i.st_mode&0o022
-seen=0
-for path,digest in expected.items():
- if not os.path.lexists(path): continue
- fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
- with os.fdopen(fd,'rb') as f:
-  i=os.fstat(f.fileno())
-  assert stat.S_ISREG(i.st_mode) and i.st_uid==0 and not i.st_mode&0o022 and i.st_nlink==1
-  data=f.read(1048577)
- assert len(data)<=1048576 and hashlib.sha256(data).hexdigest()==digest
- seen+=1
-root=pathlib.Path('/usr/local/lib/vpn-tailnet')
-if root.exists():
- assert {p.name for p in root.iterdir()} <= {pathlib.Path(p).name for p in expected if p.startswith(str(root)+'/')}|{'__pycache__'}
-assert seen in (0,len(expected))
-print(json.dumps({'status':'ready' if seen else 'absent'}))
-'''.replace("__MANIFEST__", repr(json.dumps(manifest)))
-    return _remote(inputs, inputs.host, "sudo -n /usr/bin/python3 -I -B -S -", source.encode())["status"]
+    source = _source_bytes(inputs, ROOT/'scripts/tailnet_bootstrap_probe.py')
+    invocation = ('\nprint(json.dumps(inspect_installed_bundle('+repr(manifest)+')))\n').encode()
+    return _remote(inputs, inputs.host, "sudo -n /usr/bin/python3 -I -B -S -", _python_payload(source+invocation))["status"]
+
 
 
 def _require_source(inputs):

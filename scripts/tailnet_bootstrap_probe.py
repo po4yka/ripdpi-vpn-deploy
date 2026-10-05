@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import ipaddress
+import importlib.util
 import json
 import math
 import os
@@ -45,6 +46,63 @@ def command(argv, *, input_data=None):
         raise ProbeError("probe-command-failed")
     return result.stdout
 
+
+
+def inspect_installed_bundle(expected, *, root=Path('/')):
+    """Absent code cannot adopt a leftover durable authority directory."""
+    directory = root/'usr/local/lib/vpn-tailnet'
+    state = root/'var/lib/vpn-tailnet-management'
+    for path in (directory, state):
+        for parent in (path, *path.parents):
+            if os.path.lexists(parent):
+                info = parent.lstat()
+                if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+                    raise ProbeError('installed-bundle-directory-unsafe')
+    if state.exists() and stat.S_IMODE(state.lstat().st_mode) != 0o700:
+        raise ProbeError('installed-bundle-state-unsafe')
+    seen = 0
+    for name, digest in expected.items():
+        path = root/name.lstrip('/')
+        if not os.path.lexists(path):
+            continue
+        if path.lstat().st_nlink != 1 or hashlib.sha256(read(path, 1048576)).hexdigest() != digest:
+            raise ProbeError('installed-bundle-mismatch')
+        seen += 1
+    if directory.exists() and not {item.name for item in directory.iterdir()} <= {
+        Path(name).name for name in expected if name.startswith('/usr/local/lib/vpn-tailnet/')}|{'__pycache__'}:
+        raise ProbeError('installed-bundle-mismatch')
+    if seen not in (0, len(expected)):
+        raise ProbeError('installed-bundle-partial')
+    entries = {item.name for item in state.iterdir()} if state.exists() else set()
+    if seen == 0 and entries:
+        raise ProbeError('installed-bundle-orphaned-state')
+    if seen and entries:
+        if not entries <= {'transaction.json', 'confirmed.json', 'transaction.lock'}:
+            raise ProbeError('installed-bundle-unknown-state')
+        for name in entries:
+            path = state/name
+            info = path.lstat()
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1:
+                raise ProbeError('installed-bundle-state-unsafe')
+        records = entries & {'transaction.json', 'confirmed.json'}
+        for name in records:
+            value = json.loads(read(state/name, 1048576))
+            if (not isinstance(value, dict) or type(value.get('schema_version')) is not int
+                    or value['schema_version'] != 4 or value.get('generation') != 'tailnet-recovery-v4'):
+                raise ProbeError('installed-bundle-old-state')
+        if records:
+            # This exact-current module is already byte-pinned above. Its full
+            # durable parser performs no writes and owns schema validation.
+            spec = importlib.util.spec_from_file_location('installed_tailnet_domain', directory/'tailnet_management.py')
+            domain = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(domain)
+            paths = domain._production_paths()._replace(state_directory=state)
+            try:
+                for name in records:
+                    domain._read_transaction(paths, name=name)
+            except (domain.Refusal, OSError, ValueError, TypeError, KeyError) as error:
+                raise ProbeError('installed-bundle-state-invalid') from error
+    return {'status': 'ready' if seen else 'absent'}
 
 def validate_build_environment(expected):
     """Bind the canonical build label to the immutable cloud-init marker."""
