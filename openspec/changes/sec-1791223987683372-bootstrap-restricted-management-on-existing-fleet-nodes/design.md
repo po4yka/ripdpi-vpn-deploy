@@ -3,7 +3,7 @@
 The accepted bootstrap protects fresh disposable nodes and the current managed
 layout. Existing permanent nodes expose two uncovered inputs: a named Terraform
 workspace and an older managed firewall. Temporary console recovery established
-real pinned SSH and installed the existing recovery generation, but cannot be a
+real pinned SSH and installed the separate SSH recovery foundation, but cannot be a
 durable operator interface. See proposal.md and the capability requirements.
 
 ## Goals / Non-Goals

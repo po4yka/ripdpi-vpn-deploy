@@ -84,4 +84,5 @@ persistent timer. Revalidate their results under the transaction lock.
 
 - Recovery generation v4 accepts firewall snapshot schema 2. Legacy conversion
   is source-bound and explicitly approved; rollback always retires RAM console
-  ingress. Refuse older pending transactions before replacing their helpers.
+  ingress. Only absent or exact current-source bundles qualify. Older, unknown
+  and partial bundles, including idle ones, remain untouched and refuse.
