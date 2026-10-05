@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import stat
 import tempfile
+import zlib
 from contextlib import suppress
 from typing import NamedTuple
 
@@ -23,10 +24,10 @@ import tailnet_management as tailnet
 ROOT = Path(__file__).resolve().parents[1]
 INVENTORY = ROOT / "ansible/inventory/generated.ini"
 CONFIG_FIELDS = {
-    "schema_version", "environment", "provider", "inventory_alias",
+    "schema_version", "environment", "build_environment", "provider", "inventory_alias",
     "public_address", "ssh_port", "host_key_sha256", "public_sources",
     "approved_sources", "source_revision", "deployable_digest", "known_hosts",
-    "cleanup_manifest", "output",
+    "cleanup_manifest", "output", "policy_approval",
 }
 
 
@@ -124,12 +125,14 @@ def _pin(config, host, directory, environment):
 
 def _cleanup_fences(config, host):
     path = config["cleanup_manifest"]
-    if config["environment"] == "prod":
+    if not config["environment"].startswith("ci-staging-"):
         if path is not None:
             raise BootstrapError("unexpected-cleanup-manifest")
         return []
     if not isinstance(path, str) or not Path(path).is_absolute():
         raise BootstrapError("cleanup-manifest-required")
+    if config["provider"] == "scaleway":
+        raise BootstrapError("disposable-provider-unsupported")
     guard = module("staging-cleanup-guard" if config["provider"] == "upcloud" else "vultr-staging-cleanup-guard")
     try:
         manifest = guard.load_manifest(
@@ -175,15 +178,28 @@ def load_inputs(environment, directory):
             environment["TAILNET_BOOTSTRAP_CONFIG"], private=True, exact_mode=0o600,
         )
         config = inspection.decode_json(raw)
-        if set(config) != CONFIG_FIELDS or type(config["schema_version"]) is not int or config["schema_version"] != 1:
+        if set(config) != CONFIG_FIELDS or type(config["schema_version"]) is not int or config["schema_version"] != 2:
             raise BootstrapError("config-invalid")
-        if (config["inventory_alias"] != target or config["provider"] not in {"upcloud", "vultr"}
+        if (config["inventory_alias"] != target or config["provider"] not in {"upcloud", "vultr", "scaleway"}
                 or not isinstance(config["environment"], str)
-                or not re.fullmatch(r"prod|ci-staging-[A-Za-z0-9][A-Za-z0-9-]{0,47}", config["environment"])):
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,63}", config["environment"])):
             raise BootstrapError("target-invalid")
+        build_environment = config["build_environment"]
+        if (not isinstance(build_environment, str) or not 1 <= len(build_environment) <= 128
+                or any(char in build_environment for char in "\r\n\x00")
+                or config["environment"] == "staging"
+                or (not config["environment"].startswith("ci-staging-") and build_environment != "prod")):
+            raise BootstrapError("lifecycle-classification-invalid")
         for name, length in (("source_revision", 40), ("deployable_digest", 64), ("host_key_sha256", 64)):
             if not isinstance(config[name], str) or not re.fullmatch(r"[0-9a-f]{" + str(length) + "}", config[name]):
                 raise BootstrapError("binding-invalid")
+        approval = config['policy_approval']
+        if approval is not None and (not isinstance(approval, dict)
+                or set(approval) != {'schema_version', 'decision', 'plan_sha256'}
+                or type(approval['schema_version']) is not int or approval['schema_version'] != 1
+                or approval['decision'] != 'approve-managed-legacy-v1'
+                or not isinstance(approval['plan_sha256'], str) or not re.fullmatch('[0-9a-f]{64}', approval['plan_sha256'])):
+            raise BootstrapError('policy-approval-invalid')
         _addresses(config["public_sources"])
         _addresses(config["approved_sources"], tailnet_only=True)
         _addresses([config["public_address"]])
@@ -205,10 +221,14 @@ def load_inputs(environment, directory):
         frozen = deploy.private_file(directory / "inventory-source", inventory)
         host = inspection.select_hosts(frozen, [target], include_variables=True)[0]
         variables = host.pop("variables")
+        if (not config["environment"].startswith("ci-staging-")
+                and host["name"].startswith("vpn-ci-staging-")):
+            raise BootstrapError("lifecycle-classification-invalid")
         if (type(config["ssh_port"]) is not int or host["port"] != config["ssh_port"]
                 or host["address"] != config["public_address"]
                 or variables.get("provider") != config["provider"]
-                or variables.get("env") != config["environment"]):
+                or variables.get("env") != config["environment"]
+                or variables.get("vpn_build_environment") != build_environment):
             raise BootstrapError("inventory-target-mismatch")
         host["transport"] = host["address"]
         key, key_fence = deploy.read_fenced_input(host["key"], private=True, exact_mode=0o600)
@@ -230,7 +250,7 @@ def _binding(inputs):
     return tailnet.validate_binding({key: inputs.config[key] for key in fields})
 
 
-def _remote(inputs, host, command, payload=b"", *, timeout=45):
+def _remote(inputs, host, command, payload=b"", *, timeout=45, output_limit=32768):
     from bootstrap_readiness import CommandTimeout, SshTransportError, run_command
     argv = inspection.ssh_command(host, inputs.known_hosts)
     argv[1:1] = ["-o", "HostKeyAlgorithms=ssh-ed25519"]
@@ -243,7 +263,7 @@ def _remote(inputs, host, command, payload=b"", *, timeout=45):
     )
     try:
         status, raw = run_command(argv, timeout=timeout, environment=inputs.environment,
-                                  capture=True, input_data=payload)
+                                  capture=True, input_data=payload, output_limit=output_limit+1024)
     except CommandTimeout:
         raise SshTransportError("bootstrap remote session timeout") from None
     if status:
@@ -257,7 +277,7 @@ def _remote(inputs, host, command, payload=b"", *, timeout=45):
     except (UnicodeError, ValueError):
         raise BootstrapError("bootstrap-remote-refused") from None
     raw = b"\n".join(lines[:-1])
-    if remote_status or len(raw) > 32768:
+    if remote_status or len(raw) > output_limit:
         raise BootstrapError("bootstrap-remote-refused")
     result = json.loads(raw, object_pairs_hook=deploy.unique_object)
     if not isinstance(result, dict) or result.get("status") == "error":
@@ -265,13 +285,29 @@ def _remote(inputs, host, command, payload=b"", *, timeout=45):
     return result
 
 
+
+
+def _python_payload(source):
+    if len(source) > 262144:
+        raise BootstrapError('bootstrap-source-payload-oversized')
+    token = base64.b64encode(zlib.compress(source, 9))
+    return b'import base64,zlib;exec(zlib.decompress(base64.b64decode('+repr(token).encode()+b')))\n'
+
+def _source_bytes(inputs, path):
+    _require_source(inputs)
+    content, fence = deploy.read_fenced_input(path)
+    deploy.verify_input_fence(fence)
+    _require_source(inputs)
+    return content
+
 def _probe(inputs, host, *, preinstall=False):
-    source = (ROOT / "scripts/tailnet_bootstrap_probe.py").read_bytes()
+    _require_source(inputs)
+    source = _source_bytes(inputs, ROOT / "scripts/tailnet_bootstrap_probe.py")
     parser = b"fragment_parser = None\n"
     if preinstall:
         # Reuse the canonical fragment grammar without installing guest code
         # or duplicating its validator in the read-only preflight.
-        helper = (ROOT / "scripts/tailnet-network-guest.py").read_bytes()
+        helper = _source_bytes(inputs, ROOT / "scripts/tailnet-network-guest.py")
         parser = (b"shared = {'__name__': 'tailnet_preflight_fragment'}\nexec(" + repr(helper).encode()
                   + b", shared)\nfragment_parser = shared['canonical_fragment']\n")
     request = json.dumps([_binding(inputs), host["user"], host["transport"]]).encode()
@@ -284,10 +320,13 @@ def _probe(inputs, host, *, preinstall=False):
             raise BootstrapError("bootstrap-package-pin-invalid") from None
         if not isinstance(package_version, str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", package_version):
             raise BootstrapError("bootstrap-package-pin-invalid")
-    invocation = (b"\n" + parser + b"print(json.dumps(probe(*json.loads(" + repr(request).encode()
-                  + b"),fragment_parser=fragment_parser,preinstall=" + str(preinstall).encode()
+    invocation = (b"\n" + parser + b"validate_build_environment(" + repr(inputs.config["build_environment"]).encode()
+                  + b")\nprint(json.dumps(probe(*json.loads(" + repr(request).encode()
+                  + b"),fragment_parser=fragment_parser,policy_approval=" + repr(inputs.config["policy_approval"]).encode() + b",candidate_fragment=" + repr(tailnet.canonical_sources_fragment(inputs.config["approved_sources"]).encode()).encode() + b",preinstall=" + str(preinstall).encode()
                   + b",package_version=" + repr(package_version).encode() + b")))\n")
-    context = _remote(inputs, host, "sudo -n /usr/bin/python3 -I -B -S -", source + invocation)
+    _require_source(inputs)
+    context = _remote(inputs, host, "sudo -n /usr/bin/python3 -I -B -S -", _python_payload(source + invocation))
+    _require_source(inputs)
     expected = {"user", "host", "addr", "laddr", "lport"}
     sources = inputs.config["public_sources"] if host["transport"] == host["address"] else inputs.config["approved_sources"]
     if (set(context) != expected or context["user"] != host["user"] or context["host"] != context["addr"]
@@ -296,6 +335,27 @@ def _probe(inputs, host, *, preinstall=False):
         raise BootstrapError("bootstrap-socket-proof-invalid")
     return context
 
+
+
+def inspect_policy(inputs):
+    """Return only a source-bound read-only policy witness over pinned SSH."""
+    _verify_inputs(inputs)
+    _require_source(inputs)
+    source = _source_bytes(inputs, ROOT/'scripts/tailnet_bootstrap_probe.py')
+    binding = _binding(inputs)
+    fragment = tailnet.canonical_sources_fragment(inputs.config['approved_sources']).encode()
+    payload = source + ("\nvalidate_build_environment("+repr(inputs.config['build_environment'])+
+        ")\nprobe("+repr(binding)+','+repr(inputs.host['user'])+','+repr(inputs.host['transport'])+
+        ",fragment_parser=None)\nprint(json.dumps(inspect_legacy_policy("+repr(binding)+','+repr(fragment)+")))\n").encode()
+    plan = _remote(inputs, inputs.host, 'sudo -n /usr/bin/python3 -I -B -S -', payload, output_limit=tailnet.RECOVERY_STATE_MAX_BYTES)
+    digest = plan.get('plan_sha256')
+    planner = module('tailnet_bootstrap_probe')
+    if (plan.get('schema_version') != 1 or plan.get('binding_sha256') != hashlib.sha256(json.dumps(binding, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+            or digest != planner.review_digest(plan)):
+        raise BootstrapError('policy-plan-invalid')
+    _verify_inputs(inputs)
+    _require_source(inputs)
+    return plan
 
 def _installed(inputs):
     names = ["tailnet_management.py", "tailnet_firewall.py", "tailnet_bootstrap_probe.py", "tailnet-network-guest.py", "sshd_contexts.py",
@@ -353,7 +413,17 @@ def _install(inputs):
     extra = deploy.private_file(inputs.directory / "bootstrap-variables.json", json.dumps(variables).encode())
     command = ["ansible-playbook", "-i", str(path), str(ROOT / "ansible/playbooks/bootstrap-tailnet.yml"),
                "--limit", inputs.host["name"], "--extra-vars", "@" + str(extra)]
-    status, _ = run_command(command, timeout=900, environment=inputs.environment, cwd=inputs.directory)
+    timeout = 900
+    if inputs.config['policy_approval'] is not None:
+        import time
+        plan = inspect_policy(inputs)
+        if plan['plan_sha256'] != inputs.config['policy_approval']['plan_sha256']:
+            raise BootstrapError('policy-plan-changed')
+        if plan['console_lease'] is not None:
+            timeout = min(timeout, int(plan['console_lease']['request']['expires_at']-time.time()-360))
+            if timeout < 30:
+                raise BootstrapError('console-install-budget-insufficient')
+    status, _ = run_command(command, timeout=timeout, environment=inputs.environment, cwd=inputs.directory)
     if status or _installed(inputs) != "ready":
         raise BootstrapError("bootstrap-installation-failed")
 
@@ -472,6 +542,7 @@ def run(inputs, auth_key, *, pending_hook=None):
     wait_for_bootstrap(inputs.ssh[:-1], environment=inputs.environment)
     generation, _manifest = bundle_manifest()
     deploy.require_recovery_foundation(inputs.ssh, generation, inputs.environment)
+    _require_source(inputs)
     installed = _installed(inputs)
     existing = _rpc(inputs, "status", binding=binding) if installed == "ready" else {"status": "idle"}
     if existing["status"] == "configured":
@@ -497,7 +568,7 @@ def run(inputs, auth_key, *, pending_hook=None):
     pending = None
     try:
         try:
-            pending = _capability(inputs, _rpc(inputs, "enroll", binding=binding, auth_key=auth_key))
+            pending = _capability(inputs, _rpc(inputs, "enroll", binding=binding, auth_key=auth_key, policy_approval=inputs.config["policy_approval"]))
         except BootstrapError:
             pending = _capability(inputs, _rpc(inputs, "status", binding=binding))
         if pending_hook is not None:

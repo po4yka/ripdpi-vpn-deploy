@@ -257,6 +257,11 @@ Independent controller homes are not a supported shared-ownership mechanism.
 
 ## Pitfalls
 
+- Bootstrap lifecycle is bound to both the routed workspace and the canonical
+  `vpn_build_environment`, then checked against the root-owned cloud-init
+  marker. Named production workspaces retain their identity; disposable
+  workspaces always require cleanup authority even with a production label.
+
 - **Bootstrap transport is node-scoped, never global extra vars.** Ansible
   extra vars override `delegate_to: localhost` too, redirecting controller
   validation to the VPS. Keep pinned connection settings in the private
@@ -344,3 +349,8 @@ Independent controller homes are not a supported shared-ownership mechanism.
   reachability series and raises API-error plus incomplete-run gauges; a
   completed reachability failure keeps those gauges clear because it is a
   valid burn verdict, not a probe execution error.
+
+- Existing-node bootstrap has three operator verbs: console rendering, read-only
+  policy inspection, and enrollment. The RAM revoker and firewall replacement
+  share a coordination lock; durable rollback always uses bridge-free policy.
+  A reviewed legacy digest is not permission to adopt unexplained runtime drift.

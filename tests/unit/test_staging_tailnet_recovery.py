@@ -142,7 +142,7 @@ class ExecuteRuntime(ScenarioRuntime):
         yield SimpleNamespace(
             name=f"generation-{number}",
             config={
-                "environment": "ci-staging-fixture", "inventory_alias": inventory_alias,
+                "environment": "ci-staging-fixture", "build_environment": "ci-staging-fixture", "inventory_alias": inventory_alias,
                 "provider": "upcloud", "output": self.bootstrap_output,
                 "source_revision": "a" * 40, "deployable_digest": "b" * 64,
                 "public_address": "192.0.2.10", "ssh_port": 2222,
@@ -477,7 +477,7 @@ def test_production_wrapper_refuses_before_fault_or_evidence(controller, tmp_pat
         def open_inputs(self, environment, bootstrap_config, inventory_alias):
             self.events.append(("inputs", str(bootstrap_config), inventory_alias))
             yield SimpleNamespace(name="production", config={
-                "environment": "prod", "inventory_alias": inventory_alias,
+                "environment": "prod", "build_environment": "prod", "inventory_alias": inventory_alias,
             })
 
     bootstrap_config = tmp_path / "bootstrap.json"
@@ -1265,7 +1265,7 @@ def test_bootstrap_pending_notification_precedes_external_proofs(controller, mon
         "public_sources": ["198.51.100.10"],
         "approved_sources": ["100.64.0.10", "fd7a:115c:a1e0::10"],
         "host_key_sha256": "a" * 64, "source_revision": "b" * 40,
-        "deployable_digest": "c" * 64, "environment": "prod", "cleanup_manifest": None,
+        "deployable_digest": "c" * 64, "environment": "prod", "build_environment": "prod", "cleanup_manifest": None, "policy_approval": None,
     }
     inputs = SimpleNamespace(
         config=config, host={"name": "node-one"}, ssh=["ssh", "host"], environment={},

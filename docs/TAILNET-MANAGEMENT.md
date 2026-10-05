@@ -40,6 +40,12 @@ action-time approval.
 
 ## Bootstrap one node
 
+The required `build_environment` is distinct from the exact Terraform workspace.
+Inventory emits it as `vpn_build_environment` from `var.build_env`; the read-only
+guest probe checks the root-owned `/etc/vpn-build-id` before access writes.
+Named permanent workspaces retain their names. Every disposable workspace still
+requires its exact cleanup manifest, regardless of the build label.
+
 First enrollment uses `make bootstrap-tailnet`, not ordinary deploy. Before
 any guest writes on disposable staging, create the exact-state cleanup
 manifest described in [CI-REAL-DEPLOY.md](CI-REAL-DEPLOY.md#uuid-bound-operator-staging-cleanup).
@@ -52,8 +58,9 @@ exact fields are:
 
 | Field | Required value |
 |---|---|
-| `schema_version` | Integer `1` |
-| `environment`, `provider` | Selected `prod` or `ci-staging-*`; `upcloud` or `vultr` |
+| `schema_version` | Integer `2` |
+| `environment`, `provider` | Exact routed Terraform workspace, including named permanent workspaces; `upcloud`, `scaleway` or `vultr`. Disposable `ci-staging-*` workspaces always require their manifest; disposable Scaleway is unsupported. |
+| `build_environment` | Canonical `vpn_build_environment` emitted by inventory and matching `/etc/vpn-build-id`; named permanent workspaces require `prod` |
 | `inventory_alias`, `public_address`, `ssh_port` | One exact canonical inventory node and its current public SSH endpoint |
 | `host_key_sha256` | Lowercase hex SHA256 of the decoded pinned Ed25519 public-key blob |
 | `public_sources` | Exact observed controller public source IPs, not CIDRs |
@@ -61,6 +68,7 @@ exact fields are:
 | `source_revision`, `deployable_digest` | Clean source revision and deployable digest from `scripts/deploy-source-identity.sh --identity` |
 | `known_hosts` | Absolute path to the verified known-hosts file, keyed by the inventory host-key alias |
 | `cleanup_manifest` | Absolute current exact-state staging manifest path; JSON `null` for production |
+| `policy_approval` | JSON `null` for the canonical/empty layout; otherwise the reviewed legacy plan approval object below |
 | `output` | New absolute handoff path under an operator-owned mode-`0700` directory |
 
 Unknown fields, ambiguous nodes, unsafe files and missing pins refuse before
@@ -228,3 +236,47 @@ The package defaults pin Tailscale stable `1.102.3` and the official repository
 key digest. Updating either pin requires reviewing the official stable package
 repository, focused controller tests, the role's Molecule scenario, full CI and
 fresh staging proof before production use.
+
+
+## Existing managed firewall bootstrap
+
+The credential-free `make render-console-bootstrap` renders a private command;
+it never executes it or changes provider policy. Its mode-0600 request contains
+`schema_version: 1`, absolute `bootstrap_config`, exact `hostname`, verified
+`root_filesystem_uuid`, absolute UNIX `expires_at` no more than 900 seconds
+away, and a new absolute `output` under a mode-0700 directory. Console/GRUB
+execution requires separate emergency authorization. Shared systemd directories
+remain 0755; application state stays private in RAM. Ordinary reboot removes
+that state. Expiry validates all nonce rules before one atomic deletion and
+shares the RAM coordination lock with policy replacement.
+
+Use `make inspect-tailnet-bootstrap ANSIBLE_LIMIT=<exact-alias>
+TAILNET_BOOTSTRAP_CONFIG=<private-config>` to inspect the exact managed legacy
+policy through pinned public SSH. The config's new `output` receives the private
+plan instead of a handoff. Review the main-file hash, original rules, candidate
+rules and preserved VPN listeners. Set `policy_approval` in a fresh bootstrap
+config to `{"schema_version":1,"decision":"approve-managed-legacy-v1",
+"plan_sha256":"<reviewed-plan-digest>"}` and select a distinct handoff output.
+Only the pre-Tailnet managed layout is supported. Foreign objects, includes,
+arbitrary runtime drift and changed approval digests refuse.
+
+The existing durable enrollment transaction adopts that candidate; this is
+not a second firewall transaction. Recovery generation v4 and firewall snapshot
+schema 2 distinguish observed console ingress from the original durable policy.
+Rollback always retires console ingress and restores the original files, rules
+and service state. It does not replay an emergency rule even before expiry.
+Enrollment still requires real public and Tailnet SSH/SFTP proof. A console
+lease must retain the complete 300-second transaction budget plus 60 seconds;
+installation is separately bounded by the remaining lease. Provider firewall
+retirement stays in the invoking operator's Terraform lifecycle.
+
+The approval digest uses `review_digest()` projection version 1, not a raw
+JSON file hash: it binds every effective policy object, file hash and service
+state, while ignoring only the complete object-free daemon quartet and replacing
+replay text with its validated semantic policy digest. Package startup may add
+that quartet; a partial quartet or any object in it still refuses.
+
+Generation-v3 or unknown installed Tailnet bundles refuse before replacement.
+This bootstrap establishes first enrollment on nodes without a prior Tailnet
+identity; it does not overwrite a pending or confirmed older transaction. The
+existing SSH recovery foundation has an independent source digest.

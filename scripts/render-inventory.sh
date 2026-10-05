@@ -309,7 +309,7 @@ try:
             or set(confirmation) != {"status", "changed", "nonce", "generation", "binding_sha256", "lease", "node"}
             or confirmation["status"] != "configured" or confirmation["changed"] is not False
             or not re.fullmatch(r"[0-9a-f]{32}", confirmation["nonce"])
-            or confirmation["generation"] != "tailnet-recovery-v3"):
+            or confirmation["generation"] != "tailnet-recovery-v4"):
         reject()
     canonical = (json.dumps(binding, sort_keys=True, separators=(",", ":")) + "\n").encode()
     if confirmation["binding_sha256"] != hashlib.sha256(canonical).hexdigest():
@@ -390,6 +390,12 @@ for i in "${!host_pairs[@]}"; do
   public_listeners="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -json public_listeners | jq -c .)"
   public_listeners_b64="$(printf '%s' "$public_listeners" | base64 | tr -d '\n')"
   allowed_ssh_cidrs="$(terraform_json_var "$prov" "$env" "$tfvars_rel" "var.allowed_ssh_cidrs")"
+  build_environment_json="$(terraform_json_var "$prov" "$env" "$tfvars_rel" "var.build_env")"
+  if ! jq -e 'type == "string" and length > 0 and length <= 128' <<< "$build_environment_json" >/dev/null; then
+    echo "invalid canonical build environment for ${prov}:${env}" >&2
+    exit 1
+  fi
+  build_environment_ini="$(printf '%s' "$build_environment_json" | python3 -c 'import shlex,sys; print(shlex.quote(sys.stdin.read()))')"
   # Optional secondary public IP for the honeypot role. Surfaces as a
   # host var so the role binds the canary listener to a dedicated
   # address rather than 0.0.0.0. Null when additional_public_ip is
@@ -417,6 +423,7 @@ for i in "${!host_pairs[@]}"; do
     [[ "$failure_domain" =~ ^[a-z][a-z0-9_-]{0,63}$ ]] || { echo "invalid observability failure domain" >&2; exit 1; }
   fi
   vpn_line="${hostname} ansible_host=${transport_ip} vpn_service_address=${ip} ansible_user=${user} ansible_port=${ssh_port} provider=${prov} env=${env}"
+  vpn_line+=" vpn_build_environment=${build_environment_ini}"
   # The INI inventory plugin tokenizes host vars with shlex before applying
   # Python literal parsing. Quote the complete JSON value so the inner string
   # quotes survive and Ansible receives a list instead of a malformed string.

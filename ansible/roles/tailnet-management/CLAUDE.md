@@ -81,3 +81,7 @@ persistent timer. Revalidate their results under the transaction lock.
   snapshot or generation refuses without guessing or deleting evidence.
 - Local or Molecule success does not prove the Tailnet path, host identity or
   public emergency path on staging or production.
+
+- Recovery generation v4 accepts firewall snapshot schema 2. Legacy conversion
+  is source-bound and explicitly approved; rollback always retires RAM console
+  ingress. Refuse older pending transactions before replacing their helpers.

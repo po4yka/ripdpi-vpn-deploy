@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-10-05
+goal: SEC-1791223987683372 Bootstrap restricted management on existing fleet nodes

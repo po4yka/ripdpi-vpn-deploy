@@ -592,7 +592,7 @@ class FirewallFixture:
     def __init__(self, root):
         self.path = root / "firewall-state"
 
-    def snapshot(self, binding):
+    def snapshot(self, binding, policy_approval=None):
         return {"schema_version": 1, "original": self.path.read_text() if self.path.exists() else None}
 
     def validate_snapshot(self, snapshot):

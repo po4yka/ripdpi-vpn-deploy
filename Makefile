@@ -103,9 +103,24 @@ unexport OBSERVABILITY_STAGING_CLEANUP_RECEIPT MAKEFLAGS MFLAGS
 MAKEOVERRIDES :=
 endif
 
+ifneq ($(filter render-console-bootstrap,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error Console bootstrap rendering requires exactly one Make goal)
+endif
+_CONSOLE_RENDER_ALLOWED := CONSOLE_BOOTSTRAP_CONFIG
+_CONSOLE_RENDER_COMMAND := $(foreach variable,$(.VARIABLES),$(if $(filter command line override,$(origin $(variable))),$(variable)))
+ifneq ($(strip $(filter-out $(_CONSOLE_RENDER_ALLOWED),$(_CONSOLE_RENDER_COMMAND))),)
+$(error Console rendering accepts only CONSOLE_BOOTSTRAP_CONFIG)
+endif
+override CONSOLE_BOOTSTRAP_CONFIG := $(value CONSOLE_BOOTSTRAP_CONFIG)
+export CONSOLE_BOOTSTRAP_CONFIG
+unexport MAKEFLAGS MFLAGS TAILSCALE_AUTH_KEY
+MAKEOVERRIDES :=
+endif
+
 # Bootstrap accepts a literal one-node selector and private configuration.
 # Reject capability assignments before Make can expand exported expressions.
-ifneq ($(filter bootstrap-tailnet,$(MAKECMDGOALS)),)
+ifneq ($(filter bootstrap-tailnet inspect-tailnet-bootstrap,$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error Tailnet bootstrap requires exactly one Make goal)
 endif
@@ -127,7 +142,9 @@ override HOME := $(value HOME)
 override DEPLOY_SOURCE_REVISION :=
 override DEPLOYABLE_SOURCE_DIGEST :=
 export BOOTSTRAP_TARGET TAILNET_BOOTSTRAP_CONFIG
-ifeq ($(_TAILNET_BOOTSTRAP_KEY_ORIGIN),environment)
+ifeq ($(MAKECMDGOALS),inspect-tailnet-bootstrap)
+unexport TAILSCALE_AUTH_KEY
+else ifeq ($(_TAILNET_BOOTSTRAP_KEY_ORIGIN),environment)
 export TAILSCALE_AUTH_KEY
 else
 unexport TAILSCALE_AUTH_KEY
@@ -888,6 +905,13 @@ endif
 
 bootstrap-tailnet:
 	@python3 ./scripts/bootstrap-tailnet.py
+.PHONY: inspect-tailnet-bootstrap
+inspect-tailnet-bootstrap:
+	@python3 ./scripts/inspect-tailnet-bootstrap.py
+
+.PHONY: render-console-bootstrap
+render-console-bootstrap:
+	@python3 ./scripts/render-console-bootstrap.py
 staging-tailnet-controller-loss-test staging-tailnet-reboot-recovery-test:
 	@python3 ./scripts/staging-tailnet-recovery.py
 # The controller checks debug, exact inventory and clean source before Ansible.
