@@ -59,6 +59,13 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
         "test_actual_builtin_terraform_data_plan_can_be_saved_if_terraform_exists",
         "test_alertmanager_v0281_enforces_the_webhook_request_timeout",
         "test_adapter_accepts_shared_textfile_directory_and_publishes_collector_readable_output",
+        "test_native_nft_conversion_preserves_listener_policy",
+        "test_native_plan_approval_apply_and_bridge_free_restore",
+        "test_native_console_witness_accepts_only_exact_inert_install_delta",
+        "test_console_lease_real_pid1_expiry_and_private_runtime_paths",
+        "test_absent_bundle_never_adopts_orphaned_durable_state",
+        "test_absent_bundle_accepts_only_absent_or_empty_safe_state",
+        "test_current_bundle_refuses_unknown_old_or_invalid_records_readonly",
     }
 
 

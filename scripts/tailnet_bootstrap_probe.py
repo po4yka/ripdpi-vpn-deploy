@@ -96,7 +96,10 @@ def inspect_installed_bundle(expected, *, root=Path('/')):
             spec = importlib.util.spec_from_file_location('installed_tailnet_domain', directory/'tailnet_management.py')
             domain = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(domain)
-            paths = domain._production_paths()._replace(state_directory=state)
+            # Durable parsing needs paths, not executable discovery or daemon state.
+            paths = domain.CommandPaths('/usr/bin/tailscale', '/usr/sbin/sshd', '/usr/sbin/ip',
+                '/usr/sbin/nft', root/'etc/resolv.conf', root/'run/vpn-tailnet-management',
+                state, '/usr/bin/systemctl')
             try:
                 for name in records:
                     domain._read_transaction(paths, name=name)
