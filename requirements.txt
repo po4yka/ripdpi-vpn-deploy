@@ -584,7 +584,6 @@ platformdirs==4.9.6 \
     --hash=sha256:e61adb1d5e5cb3441b4b7710bea7e4c12250ca49439228cc1021c00dcfac0917
     # via
     #   black
-    #   python-discovery
     #   virtualenv
 pluggy==1.6.0 \
     --hash=sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3 \
@@ -616,9 +615,9 @@ pytest-split==0.11.0 \
     --hash=sha256:899d7c0f5730da91e2daf283860eb73b503259cb416851a65599368849c7f382 \
     --hash=sha256:8ebdb29cc72cc962e8eb1ec07db1eeb98ab25e215ed8e3216f6b9fc7ce0ec2b5
     # via -r requirements.in
-python-discovery==1.4.2 \
-    --hash=sha256:475803f53b7b2ed6e490e27373f9d8340f7d2eebf9acdaf645d7d714c97bb500 \
-    --hash=sha256:8f3746c4b4968d22afbb97d36e1a0e5b66e6c0f297290f2e95f05b9b8bf18690
+python-discovery==1.6.1 \
+    --hash=sha256:cf87d3627dfb4412437fdd5b13eae402607722998d21567993aedbc59b23c15e \
+    --hash=sha256:d43fcdef879fe795352bd13ccf8d185ba5a9f86f36cfcd00529f596e737442b3
     # via virtualenv
 pytokens==0.4.1 \
     --hash=sha256:0fc71786e629cef478cbf29d7ea1923299181d0699dbe7c3c0f4a583811d9fc1 \
@@ -918,9 +917,9 @@ urllib3==2.8.0 \
     # via
     #   docker
     #   requests
-virtualenv==21.5.0 \
-    --hash=sha256:8f7c38605023688c89789f566959006af6d61c99eeeb9e58342eb780c5761e5e \
-    --hash=sha256:98847aadf5e2037e0e4d2e19528eb3aca6f23906422e59a510bff231a6d32fce
+virtualenv==21.7.13 \
+    --hash=sha256:0355558b6f33619aab31347e43643b0ebc97f61ea3acf617b2b69e1f8a843d11 \
+    --hash=sha256:1bea5af7463f59c4719db48fe739579a2a4f569c96f26c086edda85c96da9f59
     # via pre-commit
 wcmatch==10.1 \
     --hash=sha256:5848ace7dbb0476e5e55ab63c6bbd529745089343427caa5537f230cc01beb8a \
