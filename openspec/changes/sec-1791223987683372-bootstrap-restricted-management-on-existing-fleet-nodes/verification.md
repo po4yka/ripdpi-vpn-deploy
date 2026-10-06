@@ -27,6 +27,17 @@ feature and parent remain open.
 
 ## Observed local checks
 
+- Acceptance correction on 2026-10-06: the workspace/caller step was reopened
+  after actual renderer output refused bootstrap input validation. Ansible
+  decoded the typed build label, but the custom parser retained its JSON quotes;
+  the earlier handwritten fixture did not exercise that producer boundary.
+  Enrollment did not run. The strengthened renderer-to-bootstrap regression
+  failed before the decoder correction; the focused bootstrap/renderer suite
+  then passed all 109 tests. Actual permanent-node inventory input freezing
+  passed from the clean corrected source, including its source and host-key
+  binding; the caller step was restored. Enrollment and rollout gates remain
+  required and are not implied by that local preflight.
+
 - Focused portable bootstrap, inventory, recovery and boundary checks passed.
   A combined run observed 353 passed before the final timer fixture changes;
   subsequent focused runs remain required for the final revision.

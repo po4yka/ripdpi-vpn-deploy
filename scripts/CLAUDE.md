@@ -261,6 +261,9 @@ Independent controller homes are not a supported shared-ownership mechanism.
   `vpn_build_environment`, then checked against the root-owned cloud-init
   marker. Named production workspaces retain their identity; disposable
   workspaces always require cleanup authority even with a production label.
+  The renderer emits that label as a shell-quoted JSON string for Ansible's
+  typed INI parser. `fleet_inspection` preserves the JSON text; bootstrap must
+  decode it once before comparison, rather than comparing its literal quotes.
 
 - **Bootstrap transport is node-scoped, never global extra vars.** Ansible
   extra vars override `delegate_to: localhost` too, redirecting controller

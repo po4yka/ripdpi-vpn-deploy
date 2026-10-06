@@ -40,7 +40,7 @@ def inputs(tmp_path):
     inventory = root / "inventory.ini"
     inventory.write_text(
         "[vpn]\nnode-one ansible_host=192.0.2.10 ansible_user=deploy ansible_port=2222"
-        " provider=upcloud env=prod vpn_build_environment=prod\n"
+        " provider=upcloud env=prod vpn_build_environment='\"prod\"'\n"
         f"[vpn:vars]\nansible_ssh_private_key_file={key}\n"
     )
     config = {
@@ -97,9 +97,35 @@ def test_fresh_node_inputs_freeze_public_transport_and_one_host_key(controller, 
 
 
 def test_named_permanent_workspace_keeps_identity(controller, inputs, monkeypatch):
-    inventory = inputs[1]
-    inventory.write_text(inventory.read_text().replace("env=prod", "env=p0-upcloud"))
-    selected = load(controller, inputs, monkeypatch, environment="p0-upcloud")
+    """Consume the real renderer's typed label through the bootstrap parser."""
+    spec = importlib.util.spec_from_file_location(
+        "inventory_test_helpers", ROOT / "tests/unit/test_render_inventory.py",
+    )
+    helpers = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helpers)
+    root, environment = helpers._isolated_inventory_repo(inputs[0] / "renderer")
+    tfvars = root / "terraform/providers/upcloud/environments/test.tfvars"
+    tfvars.rename(tfvars.with_name("p0-upcloud.tfvars"))
+    fixture = json.loads((ROOT / "tests/fixtures/tf-output-sample.json").read_text())
+    fixture["server_hostname"]["value"] = "node-one"
+    fixture["server_ipv4"]["value"] = "192.0.2.10"
+    fixture_path = inputs[0] / "terraform-output.json"
+    fixture_path.write_text(json.dumps(fixture))
+    helpers._build_terraform_stub(inputs[0] / "renderer/bin", fixture_path)
+    environment.update(
+        HOSTS="upcloud:p0-upcloud", ENV="p0-upcloud",
+        ANSIBLE_SSH_PRIVATE_KEY_FILE=str(inputs[0] / "identity"),
+    )
+    result = subprocess.run(
+        ["bash", str(root / "scripts/render-inventory.sh")],
+        env=environment, capture_output=True, text=True, timeout=20,
+    )
+    assert result.returncode == 0, result.stderr
+    rendered = root / "ansible/inventory/generated.ini"
+    selected = load(
+        controller, (inputs[0], rendered, inputs[2], inputs[3]), monkeypatch,
+        environment="p0-upcloud",
+    )
     assert selected.config["environment"] == "p0-upcloud"
     assert selected.config["build_environment"] == "prod"
     assert selected.config["cleanup_manifest"] is None
@@ -112,7 +138,7 @@ def test_named_workspace_cannot_infer_permanent_class(controller, inputs, monkey
 
 
 def test_inventory_build_environment_must_match(controller, inputs, monkeypatch):
-    inputs[1].write_text(inputs[1].read_text().replace("vpn_build_environment=prod", "vpn_build_environment=staging"))
+    inputs[1].write_text(inputs[1].read_text().replace("'\"prod\"'", "'\"staging\"'"))
     with pytest.raises(controller.BootstrapError):
         load(controller, inputs, monkeypatch)
 
