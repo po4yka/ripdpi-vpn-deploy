@@ -20,7 +20,7 @@ import secrets
 import time
 
 import tailnet_management as domain
-from tailnet_bootstrap_probe import ProbeError, firewall_service_state, split_inert_tables, stable_rules, validate_owned_rules, inspect_legacy_policy, policy_digest, lease_active, validate_console_receipt
+from tailnet_bootstrap_probe import ProbeError, firewall_service_state, split_inert_tables, stable_rules, validate_owned_rules, inspect_legacy_policy, lease_active, validate_console_receipt
 
 _spec = importlib.util.spec_from_file_location("tailnet_network_files", Path(__file__).with_name("tailnet-network-guest.py"))
 files = importlib.util.module_from_spec(_spec)
