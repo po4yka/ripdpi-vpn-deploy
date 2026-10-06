@@ -217,6 +217,42 @@ runpy.run_module('ansible.cli.playbook', run_name='__main__')
     controller._install(selected)
 
 
+def test_installer_failure_preserves_child_diagnostics_without_enrollment_key(
+    controller, inputs, monkeypatch, capfd,
+):
+    """Exercise real process output at the failed installer boundary."""
+    credential = "tskey-auth-fixture_never_log"
+    monkeypatch.setenv("TAILSCALE_AUTH_KEY", credential)
+    selected = load(controller, inputs, monkeypatch)
+    project = inputs[0] / "installer-project"
+    (project / "ansible/playbooks").mkdir(parents=True)
+    bin_dir = inputs[0] / "installer-bin"
+    bin_dir.mkdir()
+    executable = bin_dir / "ansible-playbook"
+    executable.write_text(f"""#!{sys.executable}
+import os
+import sys
+assert 'TAILSCALE_AUTH_KEY' not in os.environ
+print('fixture-copy-failure', flush=True)
+print('fixture-copy-context', file=sys.stderr, flush=True)
+raise SystemExit(2)
+""")
+    executable.chmod(0o700)
+    environment = {**selected.environment,
+                   "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"]}
+    selected = selected._replace(environment=environment)
+    monkeypatch.setattr(controller, "ROOT", project)
+
+    with pytest.raises(controller.BootstrapError, match="bootstrap-installation-failed"):
+        controller._install(selected)
+
+    output = capfd.readouterr()
+    assert output.out == ""
+    assert "fixture-copy-failure" in output.err
+    assert "fixture-copy-context" in output.err
+    assert credential not in output.out + output.err
+
+
 @pytest.mark.parametrize("changes", [
     {"inventory_alias": "other"}, {"public_address": "192.0.2.11"},
     {"ssh_port": True}, {"source_revision": "c" * 40},

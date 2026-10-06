@@ -22,6 +22,10 @@
   with synthetic Terraform output, then consumes its INI through bootstrap's
   custom parser. Handwritten unquoted labels cannot cover that codec boundary.
 
+**Bootstrap failure diagnostics exercise the real child process** — assert
+that failed installer output reaches stderr, structured stdout stays empty,
+and the ambient enrollment key never reaches the Ansible child or output.
+
 **Coverage claims follow contracts** — `test_governance_counts.py` checks role
 and template inventories plus hosted scenarios. Suite sizes come from runner
 output for a specific revision; this test does not recollect the suite.

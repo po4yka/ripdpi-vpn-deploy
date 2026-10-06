@@ -402,7 +402,18 @@ def _install(inputs):
             timeout = min(timeout, int(plan['console_lease']['request']['expires_at']-time.time()-360))
             if timeout < 30:
                 raise BootstrapError('console-install-budget-insufficient')
-    status, _ = run_command(command, timeout=timeout, environment=inputs.environment, cwd=inputs.directory)
+    # Preserve both child streams in the bounded stdout capture. The fixed
+    # shell forwards argv as separate arguments; it never evaluates path data.
+    command = ["/bin/sh", "-c", 'exec "$@" 2>&1', "bootstrap-installer", *command]
+    status, output = run_command(command, timeout=timeout, environment=inputs.environment,
+                                 cwd=inputs.directory, capture=True, output_limit=1_048_576)
+    if status:
+        # Ansible receives only public bootstrap inputs and keeps sensitive
+        # status tasks under no_log. Preserve its failure context on stderr
+        # without changing the controller's structured stdout contract.
+        import sys
+        sys.stderr.buffer.write(output)
+        sys.stderr.buffer.flush()
     if status or _installed(inputs) != "ready":
         raise BootstrapError("bootstrap-installation-failed")
 

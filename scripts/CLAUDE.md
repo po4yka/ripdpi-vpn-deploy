@@ -265,6 +265,11 @@ Independent controller homes are not a supported shared-ownership mechanism.
   typed INI parser. `fleet_inspection` preserves the JSON text; bootstrap must
   decode it once before comparison, rather than comparing its literal quotes.
 
+- **Bootstrap installer failures retain bounded Ansible diagnostics.** The
+  sanitized child receives no enrollment key and retains no_log on sensitive
+  status tasks. Capture at most 1 MiB and publish failed-play context only on
+  stderr; keep structured controller stdout unchanged.
+
 - **Bootstrap transport is node-scoped, never global extra vars.** Ansible
   extra vars override `delegate_to: localhost` too, redirecting controller
   validation to the VPS. Keep pinned connection settings in the private
