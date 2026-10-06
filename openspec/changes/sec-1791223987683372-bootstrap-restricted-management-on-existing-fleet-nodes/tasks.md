@@ -16,7 +16,7 @@ No source result substitutes for protected-source staging or live evidence.
 
 ## Execution
 
-- [ ] SEC-1791224948871987 Separate Terraform workspace selection from bootstrap lifecycle classification and update every caller #feature !crit @item:SEC-1791223987683372
+- [x] SEC-1791224948871987 Separate Terraform workspace selection from bootstrap lifecycle classification and update every caller #feature !crit @item:SEC-1791223987683372
 - [ ] SEC-1791224949334227 Render a source-bound expiring console SSH ingress lease with safe shared runtime directories #feature !crit @item:SEC-1791223987683372
 - [ ] SEC-1791224949790667 Adopt reviewed managed firewall policy through the durable bootstrap transaction #feature !crit @item:SEC-1791223987683372
 - [ ] SEC-1791224950240563 Prove rollback refusal reboot controller loss and real public Tailnet paths in native tests #feature !crit @item:SEC-1791223987683372
