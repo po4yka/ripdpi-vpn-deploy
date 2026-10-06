@@ -123,7 +123,7 @@ def test_named_permanent_workspace_keeps_identity(controller, inputs, monkeypatc
     assert result.returncode == 0, result.stderr
     rendered = root / "ansible/inventory/generated.ini"
     selected = load(
-        controller, (inputs[0], rendered, *inputs[2:]), monkeypatch,
+        controller, (inputs[0], rendered, inputs[2], inputs[3]), monkeypatch,
         environment="p0-upcloud",
     )
     assert selected.config["environment"] == "p0-upcloud"
