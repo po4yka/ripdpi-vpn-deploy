@@ -228,7 +228,7 @@ def load_inputs(environment, directory):
                 or host["address"] != config["public_address"]
                 or variables.get("provider") != config["provider"]
                 or variables.get("env") != config["environment"]
-                or variables.get("vpn_build_environment") != build_environment):
+                or json.loads(variables.get("vpn_build_environment", "")) != build_environment):
             raise BootstrapError("inventory-target-mismatch")
         host["transport"] = host["address"]
         key, key_fence = deploy.read_fenced_input(host["key"], private=True, exact_mode=0o600)

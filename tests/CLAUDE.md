@@ -18,6 +18,9 @@
   carries the Terraform build label separately from workspace identity.
   Regressions exercise named production selection, contradictory inventory,
   duplicate or missing guest markers, and the emitted private request contract.
+  The permanent-workspace bootstrap regression runs the real inventory renderer
+  with synthetic Terraform output, then consumes its INI through bootstrap's
+  custom parser. Handwritten unquoted labels cannot cover that codec boundary.
 
 **Coverage claims follow contracts** — `test_governance_counts.py` checks role
 and template inventories plus hosted scenarios. Suite sizes come from runner
