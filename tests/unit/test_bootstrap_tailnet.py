@@ -40,12 +40,14 @@ def inputs(tmp_path):
     inventory = root / "inventory.ini"
     inventory.write_text(
         "[vpn]\nnode-one ansible_host=192.0.2.10 ansible_user=deploy ansible_port=2222"
-        " provider=upcloud env=prod\n"
+        " provider=upcloud env=prod vpn_build_environment=prod\n"
         f"[vpn:vars]\nansible_ssh_private_key_file={key}\n"
     )
     config = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "policy_approval": None,
         "environment": "prod",
+        "build_environment": "prod",
         "provider": "upcloud",
         "inventory_alias": "node-one",
         "public_address": "192.0.2.10",
@@ -92,6 +94,48 @@ def test_fresh_node_inputs_freeze_public_transport_and_one_host_key(controller, 
     assert "198.51.100.10" not in " ".join(command)
     assert selected.config["approved_sources"] == inputs[3]["approved_sources"]
     assert not Path(selected.config["output"]).exists()
+
+
+def test_named_permanent_workspace_keeps_identity(controller, inputs, monkeypatch):
+    inventory = inputs[1]
+    inventory.write_text(inventory.read_text().replace("env=prod", "env=p0-upcloud"))
+    selected = load(controller, inputs, monkeypatch, environment="p0-upcloud")
+    assert selected.config["environment"] == "p0-upcloud"
+    assert selected.config["build_environment"] == "prod"
+    assert selected.config["cleanup_manifest"] is None
+
+
+@pytest.mark.parametrize("build_environment", ["staging", "", "prod\n", "prod\x00"])
+def test_named_workspace_cannot_infer_permanent_class(controller, inputs, monkeypatch, build_environment):
+    with pytest.raises(controller.BootstrapError):
+        load(controller, inputs, monkeypatch, build_environment=build_environment)
+
+
+def test_inventory_build_environment_must_match(controller, inputs, monkeypatch):
+    inputs[1].write_text(inputs[1].read_text().replace("vpn_build_environment=prod", "vpn_build_environment=staging"))
+    with pytest.raises(controller.BootstrapError):
+        load(controller, inputs, monkeypatch)
+
+
+@pytest.mark.parametrize(("document", "accepted"), [
+    (b"provisioned_by=cloud-init\nnext_stage=ansible\nbuild_env=prod\n", True),
+    (b"build_env=staging\n", False),
+    (b"build_env=prod\nbuild_env=prod\n", False),
+    (b"next_stage=ansible\n", False),
+])
+def test_guest_build_marker_has_one_matching_value(controller, monkeypatch, document, accepted):
+    probe = controller.module("tailnet_bootstrap_probe")
+    paths = []
+    def read_marker(path, limit):
+        paths.append((path, limit))
+        return document
+    monkeypatch.setattr(probe, "read", read_marker)
+    if accepted:
+        probe.validate_build_environment("prod")
+    else:
+        with pytest.raises(probe.ProbeError, match="build-environment-mismatch"):
+            probe.validate_build_environment("prod")
+    assert paths == [(Path("/etc/vpn-build-id"), 4096)]
 
 
 def test_installer_real_ansible_preserves_local_delegation(controller, inputs, monkeypatch):
@@ -397,10 +441,19 @@ def test_preinstall_payload_loads_shared_parser_without_guest_install(controller
     import sys
     selected = load(controller, inputs, monkeypatch)
     def remote(_inputs, _host, _command, payload):
+        import zlib
+        wrapper = ast.parse(payload)
+        token = ast.literal_eval(wrapper.body[1].value.args[0].args[0].args[0])
+        assert len(payload) < 65536
+        payload = zlib.decompress(base64.b64decode(token))
         assert b"package_version='1.102.3'" in payload
         program = ast.parse(payload)
         # Inspect the source payload without invoking the remote host probe.
         program.body.pop()
+        marker_check = program.body.pop()
+        assert isinstance(marker_check, ast.Expr)
+        assert marker_check.value.func.id == "validate_build_environment"
+        assert ast.literal_eval(marker_check.value.args[0]) == "prod"
         prefix = ast.unparse(program).encode()
         fragment = controller.tailnet.canonical_sources_fragment(["100.64.0.10"]).encode()
         result = subprocess.run([sys.executable, "-I", "-B", "-S", "-"],
@@ -574,3 +627,72 @@ def test_source_change_during_proofs_refuses_commit_and_handoff(controller, inpu
     assert "confirm" not in actions
     assert ("rollback" in actions) is (not already_configured)
     assert not Path(selected.config["output"]).exists()
+
+
+@pytest.mark.parametrize('limit,accepted', [(32768, False), (1_048_576, True)])
+def test_inspect_has_an_explicit_large_output_boundary(controller, inputs, monkeypatch, limit, accepted):
+    import bootstrap_readiness
+    selected = load(controller, inputs, monkeypatch)
+    def command(argv, **kwargs):
+        import re
+        marker = re.search('__VPN_REMOTE_STATUS_[0-9a-f]+__=', argv[-1])[0]
+        assert kwargs['output_limit'] == limit+1024
+        return 0, json.dumps({'policy': 'x'*40000}).encode()+b'\n'+marker.encode()+b'0\n'
+    monkeypatch.setattr(bootstrap_readiness, 'run_command', command)
+    operation = lambda: controller._remote(selected, selected.host, 'read-only', output_limit=limit)
+    if accepted:
+        assert len(operation()['policy']) == 40000
+    else:
+        with pytest.raises(controller.BootstrapError):
+            operation()
+
+
+def test_source_payload_roundtrips_and_respects_stdin_budget(controller):
+    import ast
+    import zlib
+    source = b'# source-only payload\n'+b'x=1\n'*20000
+    payload = controller._python_payload(source)
+    assert len(payload) < 65536
+    token = ast.literal_eval(ast.parse(payload).body[1].value.args[0].args[0].args[0])
+    assert zlib.decompress(base64.b64decode(token)) == source
+
+
+
+def test_permanent_scaleway_is_distinct_from_disposable_cleanup(controller, inputs, monkeypatch):
+    inputs[1].write_text(inputs[1].read_text().replace('provider=upcloud env=prod', 'provider=scaleway env=p1-scaleway'))
+    selected = load(controller, inputs, monkeypatch, provider='scaleway', environment='p1-scaleway')
+    assert selected.config['provider'] == 'scaleway'
+    assert selected.config['cleanup_manifest'] is None
+
+
+def test_console_renderer_publishes_only_bound_public_capability(controller, inputs, monkeypatch):
+    import ast
+    import shlex
+    import stat
+    import time
+    import zlib
+    selected = load(controller, inputs, monkeypatch)
+    renderer = controller.module('render-console-bootstrap')
+    monkeypatch.setattr(renderer, 'bootstrap_module', lambda: controller)
+    monkeypatch.setattr(controller, 'load_inputs', lambda *_: selected)
+    root, _, bootstrap_path, _ = inputs
+    output = root/'console-command'
+    request = root/'console-request.json'
+    request.write_text(json.dumps({'schema_version': 1, 'bootstrap_config': str(bootstrap_path),
+        'hostname': selected.host['name'], 'root_filesystem_uuid': '00000000-0000-0000-0000-000000000001',
+        'expires_at': int(time.time())+600, 'output': str(output)}))
+    request.chmod(0o600)
+    result = renderer.render({'CONSOLE_BOOTSTRAP_CONFIG': str(request)})
+    assert result == {'status': 'rendered', 'execution': 'not-performed', 'network_changes': 'not-performed'}
+    assert stat.S_IMODE(output.stat().st_mode) == 0o600
+    expression = ast.parse(shlex.split(output.read_text())[-1]).body[-1].value.args[0].args[0].args[0]
+    token = ast.literal_eval(expression)
+    package = zlib.decompress(base64.b64decode(token))
+    tree = ast.parse(package)
+    bound = ast.literal_eval(tree.body[-1].value.args[0])
+    assert bound['public_sources'] == selected.config['public_sources']
+    assert bound['host_key_sha256'] == selected.config['host_key_sha256']
+    assert bound['source_revision'] == selected.config['source_revision']
+    assert len(bound['nonce']) == 32
+    assert Path(selected.host['key']).read_bytes() not in package
+    assert len(output.read_bytes()) < 65536

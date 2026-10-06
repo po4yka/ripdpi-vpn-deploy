@@ -32,7 +32,7 @@ EXPECTED_PREFS = {
     "shields-up": False,
     "ssh": False,
 }
-RECOVERY_GENERATION = "tailnet-recovery-v3"
+RECOVERY_GENERATION = "tailnet-recovery-v4"
 LEASE_SECONDS = 300
 CONFIRMED_NAME = "confirmed.json"
 TRANSACTION_NAME = "transaction.json"
@@ -301,7 +301,7 @@ def _write_transaction(
     if str(UUID(boot)) != boot or type(monotonic) is not int or monotonic < 0:
         raise Refusal("tailnet-boot-identity-invalid")
     value = {
-        "schema_version": 3, "generation": RECOVERY_GENERATION,
+        "schema_version": 4, "generation": RECOVERY_GENERATION,
         "nonce": secrets.token_hex(16), "phase": "armed",
         "original_backend_state": backend_state, "auth_file": auth_file,
         "snapshot": _snapshot_document(snapshot), "binding": binding,
@@ -362,7 +362,7 @@ def _read_transaction(paths: CommandPaths, *, name=TRANSACTION_NAME) -> tuple[di
             "auth_file",
             "snapshot", "binding", "firewall", "lease", "node",
         }
-        or value["schema_version"] != 3
+        or value["schema_version"] != 4
         or value["generation"] != RECOVERY_GENERATION
         or not isinstance(value["nonce"], str)
         or re.fullmatch(r"[0-9a-f]{32}", value["nonce"]) is None
@@ -1099,7 +1099,7 @@ def recover_firewall(*, paths: CommandPaths, firewall):
 
 
 def enroll(*, paths: CommandPaths, firewall, binding: dict, auth_key: str,
-           runner: Runner = _run, clock=_lease_clock):
+           policy_approval=None, runner: Runner = _run, clock=_lease_clock):
     """Arm access, enroll, and return an unconfirmed capability for external proof."""
     validate_binding(binding)
     _require_recovery_ready(paths, runner)
@@ -1123,7 +1123,7 @@ def enroll(*, paths: CommandPaths, firewall, binding: dict, auth_key: str,
         if (paths.state_directory / CONFIRMED_NAME).exists():
             raise Refusal("tailnet-confirmed-identity-missing")
         _validate_auth_key(auth_key)
-        firewall_snapshot = firewall.snapshot(binding)
+        firewall_snapshot = firewall.snapshot(binding, policy_approval=policy_approval)
         firewall.validate_snapshot(firewall_snapshot)
         auth_name = f"{AUTH_FILE_PREFIX}{secrets.token_hex(16)}"
         try:

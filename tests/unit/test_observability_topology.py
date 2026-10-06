@@ -277,7 +277,13 @@ done
 while [ "${1:-}" != "" ]; do
   case "$1" in -chdir=*) shift;; *) break;; esac
 done
-if [ "${1:-}" = console ]; then printf '"[\\"203.0.113.0/24\\"]"\n'; exit 0; fi
+if [ "${1:-}" = console ]; then
+  expression="$(cat)"
+  case "$expression" in
+    *var.build_env*) printf '%s\n' '"\"prod\""'; exit 0 ;;
+  esac
+  printf '"[\\"203.0.113.0/24\\"]"\n'; exit 0
+fi
 if [ "${1:-}" != output ]; then exit 0; fi
 shift
 mode="$1"; key="${2:-}"

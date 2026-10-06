@@ -83,6 +83,10 @@ case "${{1:-}}" in
     exit 0
     ;;
   console)
+    expression="$(cat)"
+    case "$expression" in
+      *var.build_env*) printf '"\\\\"prod\\\\""\\n'; exit 0 ;;
+    esac
     # Return a JSON-encoded JSON array for allowed_ssh_cidrs.
     # jq -r . decodes the outer quotes → ["203.0.113.0/24"]
     # jq -c . compacts it  → ["203.0.113.0/24"]
@@ -601,7 +605,7 @@ def _tailnet_handoff(tmp_path, *, alias="vpn-test.example.com",
             "status": "configured",
             "changed": False,
             "nonce": nonce,
-            "generation": "tailnet-recovery-v3",
+            "generation": "tailnet-recovery-v4",
             "binding_sha256": hashlib.sha256(canonical).hexdigest(),
             "lease": {
                 "boot_id": "12345678-1234-4234-9234-123456789abc",

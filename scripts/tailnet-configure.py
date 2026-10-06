@@ -14,7 +14,7 @@ def main():
         raise domain.Refusal("tailnet-input-invalid")
     action = request.get("action")
     fields = {
-        "enroll": {"action", "binding", "auth_key"},
+        "enroll": {"action", "binding", "auth_key", "policy_approval"},
         "confirm": {"action", "capability", "contexts"},
         "rollback": {"action", "capability"},
         "status": {"action", "binding"},
@@ -23,7 +23,7 @@ def main():
         raise domain.Refusal("tailnet-input-invalid")
     options = {"paths": domain._production_paths(), "firewall": Firewall()}
     if action == "enroll":
-        return domain.enroll(**options, binding=request["binding"], auth_key=request["auth_key"])
+        return domain.enroll(**options, binding=request["binding"], auth_key=request["auth_key"], policy_approval=request["policy_approval"])
     if action == "confirm":
         return domain.confirm(**options, capability=request["capability"], contexts=request["contexts"])
     if action == "rollback":

@@ -528,6 +528,11 @@ jobs:
           echo "${ALERTMANAGER_SHA256}  ${archive}" | sha256sum -c -
           tar -xzf "$archive" -C "$RUNNER_TEMP" \
             alertmanager-0.28.1.linux-amd64/alertmanager alertmanager-0.28.1.linux-amd64/amtool
+      - name: Install native nftables parser
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1
       - name: Execute native tests with UID and GID capabilities
         run: |
           sudo env "PATH=$PATH" \

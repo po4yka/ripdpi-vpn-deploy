@@ -56,7 +56,7 @@ def cancellation():
 
 
 def run_command(command, *, timeout, environment=None, cwd=None, capture=False, stream=False,
-                input_data=None, defer_cancellation=False):
+                input_data=None, defer_cancellation=False, output_limit=65536):
     """Bound the owned process group, including spawn-window cancellation.
 
     Bootstrap discards output. Small local metadata queries use bounded capture.
@@ -64,6 +64,8 @@ def run_command(command, *, timeout, environment=None, cwd=None, capture=False, 
     """
     if not defer_cancellation:
         check_cancelled()
+    if type(output_limit) is not int or not 1 <= output_limit <= 1_049_600:
+        raise ReadinessError("command output limit invalid")
     if input_data is not None and (type(input_data) is not bytes or len(input_data) > 65536):
         raise ReadinessError("command input invalid")
     output = bytearray()
@@ -102,7 +104,7 @@ def run_command(command, *, timeout, environment=None, cwd=None, capture=False, 
                         if not data:
                             selector.unregister(key.fileobj)
                         total += len(data)
-                        if total > 65536:
+                        if total > output_limit:
                             raise ReadinessError("command output limit")
                         if key.fileobj is child.stdout:
                             output.extend(data)

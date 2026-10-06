@@ -14,6 +14,11 @@
 
 ## Design decisions
 
+**Bootstrap classification follows real producer boundaries** — inventory
+  carries the Terraform build label separately from workspace identity.
+  Regressions exercise named production selection, contradictory inventory,
+  duplicate or missing guest markers, and the emitted private request contract.
+
 **Coverage claims follow contracts** — `test_governance_counts.py` checks role
 and template inventories plus hosted scenarios. Suite sizes come from runner
 output for a specific revision; this test does not recollect the suite.
@@ -205,3 +210,7 @@ remain fatal; package signatures and the real schema validator stay enforced.
   and is operator-only.
 - **Don't snapshot the diff of binaries** — QR PNGs, restic repos, etc.
   Snapshot the inputs, render the binary fresh, hash-assert if needed.
+
+- Legacy bootstrap kernel tests use a disposable root-owned directory under
+  `/var/lib` and a private network namespace. Their service fixture does not
+  establish PID1, identity, Tailnet, or live client acceptance.

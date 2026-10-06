@@ -44,3 +44,24 @@ def test_input_size_and_type_are_rejected_before_spawn():
     for payload in ("not-bytes", b"x" * 65537):
         with pytest.raises(readiness.ReadinessError, match="command input invalid"):
             readiness.run_command([sys.executable, "-c", "pass"], timeout=5, input_data=payload)
+
+
+@pytest.mark.parametrize('limit,accepted', [(65536, False), (1_049_600, True)])
+def test_large_inspection_output_remains_bounded(limit, accepted):
+    readiness = module()
+    operation = lambda: readiness.run_command(
+        [sys.executable, '-c', 'import sys;sys.stdout.write("x"*100000)'],
+        timeout=5, capture=True, output_limit=limit)
+    if accepted:
+        status, output = operation()
+        assert status == 0 and len(output) == 100000
+    else:
+        with pytest.raises(readiness.ReadinessError, match='command output limit'):
+            operation()
+
+
+@pytest.mark.parametrize('limit', [True, 0, -1, 1_049_601])
+def test_invalid_output_budget_refuses_before_spawn(limit):
+    readiness = module()
+    with pytest.raises(readiness.ReadinessError, match='output limit invalid'):
+        readiness.run_command(['missing-command'], timeout=5, output_limit=limit)
