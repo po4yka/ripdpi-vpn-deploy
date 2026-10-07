@@ -298,8 +298,25 @@
       _firewall_tailnet_recovery_units.changed or
       _firewall_tailnet_boot_required_by.changed
 
-- name: Inspect existing Tailnet recovery services in check mode
-  ansible.builtin.service_facts:
+- name: Inspect existing Tailnet recovery units in check mode
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - show
+      - "{{ item }}"
+      - --property=LoadState
+      - --value
+  register: _firewall_tailnet_existing_units
+  changed_when: false
+  check_mode: false
+  failed_when: >-
+    _firewall_tailnet_existing_units.stdout not in ['loaded', 'not-found'] or
+    _firewall_tailnet_existing_units.rc not in [0, 1] or
+    (_firewall_tailnet_existing_units.rc == 1 and
+     _firewall_tailnet_existing_units.stdout != 'not-found')
+  loop:
+    - vpn-tailnet-network-boot-recover.service
+    - vpn-tailnet-network-recover.timer
   when:
     - ansible_facts.get('virtualization_type', '') != 'docker'
     - _firewall_effective_check_mode | bool
@@ -318,7 +335,10 @@
   when:
     - ansible_facts.get('virtualization_type', '') != 'docker'
     - _firewall_effective_check_mode | bool
-    - item.name not in ansible_facts.services
+    - >-
+      (_firewall_tailnet_existing_units.results |
+       selectattr('item', 'equalto', item.name) |
+       map(attribute='stdout') | first) == 'not-found'
 
 - name: Enable persistent Tailnet firewall recovery
   ansible.builtin.systemd_service:
@@ -330,7 +350,11 @@
     - {name: vpn-tailnet-network-recover.timer, state: started}
   when:
     - ansible_facts.get('virtualization_type', '') != 'docker'
-    - not (_firewall_effective_check_mode | bool) or item.name in ansible_facts.services
+    - >-
+      not (_firewall_effective_check_mode | bool) or
+      (_firewall_tailnet_existing_units.results |
+       selectattr('item', 'equalto', item.name) |
+       map(attribute='stdout') | first) == 'loaded'
 
 - name: Validate bundled empty Tailnet SSH sets fragment for clean check mode
   ansible.builtin.assert:

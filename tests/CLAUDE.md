@@ -26,6 +26,11 @@
 that failed installer output reaches stderr, structured stdout stays empty,
 and the ambient enrollment key never reaches the Ansible child or output.
 
+**Recovery check mode covers services and timers separately** — evaluate the
+role's guards with loaded units absent from service facts, planned and unplanned
+missing units, and failed load-state discovery. These unit inputs supplement
+real systemd and post-convergence staging checks.
+
 **Coverage claims follow contracts** — `test_governance_counts.py` checks role
 and template inventories plus hosted scenarios. Suite sizes come from runner
 output for a specific revision; this test does not recollect the suite.

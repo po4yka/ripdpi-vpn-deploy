@@ -95,6 +95,11 @@ preserve baseline bytes. The rule-bearing render is no_log with diff disabled.
   is simulated before systemd can discover it. Require the exact unit's copy
   task to plan a change, then defer only its service activation; real deploy
   still enables both units.
+- **Timers require systemd load-state discovery** — `service_facts` does not
+  enumerate timer units. Check mode queries each recovery unit's `LoadState`
+  without mutation; loaded units retain activation checks, while `not-found`
+  still requires the exact copy task to plan installation. Failed or unknown
+  discovery refuses rather than treating the unit as absent.
 - **Do not left-trim before nft rule blocks** — `{%- if` can join the first
   conditional rule to the preceding terminal statement under Ansible's Jinja
   whitespace policy. Preserve a real newline before every emitted rule.

@@ -31,6 +31,8 @@ No source result substitutes for protected-source staging or live evidence.
 - Remote CI: terminal required checks on the exact protected source.
 - Dry-run/staging: canonical preflight, guarded isolated existing-policy
   enrollment, both real management paths and provider-confirmed cleanup.
+  Repeat check mode after convergence with the recovery timer already loaded;
+  missing service facts must not classify an installed timer as absent.
 - Live/client: exact existing-node bootstrap and preserved VPN listeners;
   ordinary deployment and authenticated client proof remain parent gates.
 - Artifact: exact identity/source/approval/lease/confirmation and retirement
