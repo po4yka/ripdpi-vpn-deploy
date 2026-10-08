@@ -1,7 +1,7 @@
 ---
 task_id: MON-1790650904289505
 change: staging-observability-telegram-acceptance
-commit_sha: null
+commit_sha: 9d7113b52958c4b50c69158873bbe4cd482f3fa6
 local: not_applicable
 local_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
 remote_ci: not_applicable

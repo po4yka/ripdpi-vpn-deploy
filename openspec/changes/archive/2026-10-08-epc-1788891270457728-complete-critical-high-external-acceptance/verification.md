@@ -1,7 +1,7 @@
 ---
 task_id: EPC-1788891270457728
 change: epc-1788891270457728-complete-critical-high-external-acceptance
-commit_sha: null
+commit_sha: 9d7113b52958c4b50c69158873bbe4cd482f3fa6
 local: not_applicable
 local_evidence: "Task dropped: Owner cancelled external acceptance and requested removal of its resources"
 remote_ci: not_applicable

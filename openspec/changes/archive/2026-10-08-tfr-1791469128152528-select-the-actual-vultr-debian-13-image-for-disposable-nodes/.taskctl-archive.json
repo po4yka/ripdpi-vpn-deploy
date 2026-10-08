@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-10-08T15:30:15Z",
+  "change": "tfr-1791469128152528-select-the-actual-vultr-debian-13-image-for-disposable-nodes",
+  "commit_sha": "9d7113b52958c4b50c69158873bbe4cd482f3fa6",
+  "outcome": "dropped",
+  "schema": 1,
+  "task_id": "TFR-1791469128152528"
+}
