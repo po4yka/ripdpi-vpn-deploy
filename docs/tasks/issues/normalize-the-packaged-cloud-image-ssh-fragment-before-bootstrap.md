@@ -2,7 +2,7 @@
 id: SEC-1791451917662060
 title: Normalize the packaged cloud image SSH fragment before bootstrap
 kind: bug
-status: doing
+status: review
 area: security
 priority: critical
 risk: high
@@ -14,6 +14,7 @@ openspec_change: sec-1791451917662060-normalize-the-packaged-cloud-image-ssh-fra
 created: 2026-10-08
 updated: 2026-10-08
 related_tasks: []
+status_detail: Exact helper source passed full local gate, hosted CI and actual clean first boot; failed-stage retry explicitly excluded.
 ---
 
 ## Goal
@@ -27,7 +28,7 @@ password-disabled SSH fragment, preserving strict refusal and rollback.
   unchanged; noncanonical content and unsafe files refuse before writes.
 - Ordinary failures restore the original fragment; interruption can safely
   restart. Focused tests and the required local and hosted gates pass.
-- The fresh node completes cloud-init through its real failed-stage rerun,
+- The fresh replacement completes its actual clean cloud-init first boot,
   publishes the marker and proves strict pinned SSH policy and readiness.
 - Refusal-only, synthetic markers and missing positive live evidence do not
   complete this work or the fleet acceptance.

@@ -35,8 +35,12 @@ before writes, leaving cloud-init incomplete and effective root SSH enabled.
 ## Migration Plan
 
 Run focused unit coverage and the full required local gate, commit and obtain
-hosted validation before live use. On the already-created candidate, converge
-the reviewed helper through Ansible and rerun only the failed cloud-final stage;
-do not regenerate host keys or synthesize the completion marker. Observe strict
-SSH policy, marker and readiness before continuing deployment. Ordinary helper
-failures restore original files. The original working fleet remains available.
+hosted validation before live use. Create a clean replacement from this validated
+source and observe its actual first boot; do not regenerate host keys or
+synthesize the completion marker.
+The attempted final-stage retry on the failed candidate was not acceptance:
+this image retained the per-instance scripts-user semaphore and skipped the
+script. Retire that failed candidate after the clean replacement is ready.
+Observe strict SSH policy, marker and readiness before continuing deployment.
+Ordinary helper failures restore original files. The original working fleet
+remains available.

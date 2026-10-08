@@ -13,7 +13,7 @@ updates and live mutations are serialized.
 ## Execution
 
 - [x] SEC-1791452040981214 Normalize the exact packaged fragment with rollback and refusal coverage #bug !crit @item:SEC-1791451917662060
-- [ ] SEC-1791452041489847 Observe local and hosted validation and strict live bootstrap completion #bug !crit @item:SEC-1791451917662060
+- [x] SEC-1791452041489847 Observe local and hosted validation and strict live bootstrap completion #bug !crit @item:SEC-1791451917662060
 
 ## Verification
 
