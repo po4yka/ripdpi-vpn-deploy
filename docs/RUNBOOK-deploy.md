@@ -1,7 +1,8 @@
 # Runbook — deploy
 
-Two flows: **first-time deploy** (handled by `QUICKSTART.md`) and
-**re-deploy after editing configs** (this runbook).
+Fresh or recreated nodes need provisioning and first enrollment before deployment;
+start with `QUICKSTART.md` or the [disposable staging recipe](#staging-first).
+An already managed node uses the [ordinary re-deploy recipe](#ordinary-re-deploy-recipe).
 
 Run commands from the repository root in the pinned Bash session from the
 [canonical workstation setup](../CONTRIBUTING.md#first-time-setup).
@@ -9,6 +10,40 @@ Run commands from the repository root in the pinned Bash session from the
 For the last verified release snapshot, provider-to-role mapping, recorded gate
 results, and unresolved operator limitations, start with
 [DEPLOYMENT-STATUS.md](DEPLOYMENT-STATUS.md).
+
+## Acceptance scope and completion
+
+Agree the exact nodes, changed layer, required protocols and resource/cost limits
+before a live run. Existing authorization covers the named steps and bounded
+retries and replacement nodes within those limits; obtain a new decision only
+when the target, policy, cost or destructive scope exceeds the approved bounds.
+Each attempt still revalidates its current source, exact resource identity,
+host-key pins and private authority inputs.
+
+- A documentation-only change uses local documentation/contract checks and its
+  selected hosted CI checks;
+  it does not require deploying unchanged runtime merely to advance a source SHA.
+- An authorized runtime rollout requires the affected local gates and live evidence
+  at the changed layer. Report the tested source revision and deployable digest
+  separately from reused runtime evidence; unchanged digest does not make an old receipt current.
+  Exact source parity remains a separate gate with its existing strict contract.
+- Full P0/P1/P2 acceptance requires REALITY, XHTTP, Hysteria2 and AmneziaWG all
+  returning `ok` against their assigned deployed nodes, with authenticated traffic
+  and tunnel DNS; AWG also needs a fresh handshake. An all-four-profile disposable
+  staging result proves that staging target, not the production fleet.
+  Service/listener checks or `throttled` alone do not complete it.
+- For a fresh Tailnet-managed node, complete the recovery foundation, positive Tailnet
+  bootstrap, ownership migration and fresh dual-path SSH checks before ordinary
+  deploy. Existing nodes reuse valid installed state; they do not reenroll per run.
+- Recovery fault injection, quorum/OTP exercises, physical-device tests, every
+  personal client and backup/restore drills gate a change only when that capability
+  or acceptance scope requires them. State untested environments explicitly.
+- If one account, network or runtime is unavailable, keep results from the other
+  available validation lanes and identify the blocked claim. A failed full gate or
+  required live check remains incomplete; another lane does not turn it into a pass.
+- Keep per-device credentials private. Finish the applicable rollback and exact
+  resource cleanup, retaining truthful evidence and naming any residual resources
+  or credentials. A failed acceptance can finish cleanup without being called passed.
 
 ## Re-deploy after a config or secrets edit
 
@@ -50,11 +85,10 @@ make install-ssh-recovery ANSIBLE_LIMIT='<exact-inventory-alias>' \
 For a fresh Tailnet node, stop after the recovery installer and run the
 [one-node Tailnet bootstrap](TAILNET-MANAGEMENT.md#bootstrap-one-node) before
 `dry-run`. Bootstrap obtains the real management address and socket contexts.
-On disposable staging, first run both fixed
-[autonomous recovery exercises](TAILNET-MANAGEMENT.md#disposable-staging-recovery-exercises)
-with separate one-use keys. They deliberately leave enrollment unconfirmed and
-must publish their redacted private evidence before the later positive
-bootstrap; do not substitute `SIGTERM` or an ordinary bootstrap failure.
+The [autonomous recovery exercises](TAILNET-MANAGEMENT.md#disposable-staging-recovery-exercises)
+are separate fault-injection tests when recovery behavior is in scope, rather
+than prerequisites for every disposable acceptance run. When selected, use
+separate one-use keys before positive bootstrap and retain their evidence.
 On a fresh Debian node, run the separate policy-preserving SSH ownership
 migration after bootstrap and before ordinary `dry-run`:
 
@@ -89,8 +123,10 @@ staging, reboot, disconnect, VPN-path or production acceptance.
 If `dry-run` shows changes you didn't expect, **stop**. Investigate.
 `deploy` refuses a dirty checkout so the live manifest can name an immutable
 source revision. The parity gate compares both that exact revision and the
-deployable-path digest. Even a documentation-only commit requires a reviewed
-deploy before live source parity can pass; do not rewrite manifests by hand.
+deployable-path digest. A documentation-only commit can leave exact live source
+parity stale even when runtime bytes are unchanged; report that separately from
+[documentation acceptance](#acceptance-scope-and-completion). Do not redeploy merely
+to close documentation work or rewrite manifests by hand.
 Don't push. The most common cause is a forgotten edit on a different
 branch, or a role that's accidentally redownloading the binary because
 the version pin moved.
@@ -277,7 +313,11 @@ instructions describe its exact resource set and initial manifest inputs.
 Read the [provider credentials and inputs](../terraform/providers/upcloud/README.md),
 the [staging tfvars example](../terraform/providers/upcloud/environments/staging.tfvars.example)
 and the [cleanup prerequisites](CI-REAL-DEPLOY.md#uuid-bound-operator-staging-cleanup)
-before planning. Prepare private `terraform/providers/upcloud/environments/<ENV>.tfvars`
+before planning. Record the run's owner, maximum concurrent VPS/executors,
+reviewed provider plan/storage, monetary ceiling, retry count and cleanup deadline
+before creation. Stop at the first owner limit and allow time for guarded cleanup
+before capability expiry; expiry does not cancel provider billing.
+Prepare private `terraform/providers/upcloud/environments/<ENV>.tfvars`
 for the selected environment, with the reviewed SSH public key and narrow
 allowlist. Its `server_name` must match the exact hostname used by cleanup.
 Explicitly set `enable_backups=false`, `additional_public_ip=false`
@@ -310,11 +350,16 @@ Then:
    immediately after apply and before either guest installer.
 3. Resume inventory generation and `wait`, then complete the
    recovery/bootstrap/ownership prerequisites above for the exact staging node.
-   Prepare the staging alias, secrets and all three private mappings, then use
-   the [ordinary re-deploy recipe](#ordinary-re-deploy-recipe). Review its
-   successful preflight before its separate deploy block. Verify the relevant
-   client paths with a real client from the intended network; local preflight
-   and source/CI results do not establish that acceptance.
+   Prepare the staging alias, dedicated secrets and all three private mappings.
+   For the first data-plane deployment, use the supported
+   [disposable staging intent](PROTOCOL-LIVENESS.md#first-onboarding-during-a-disposable-staging-deployment)
+   in the promotion mapping; prepare its executor with `make prepare-disposable-liveness`.
+   It produces the sentinel binding and promotion config during `make deploy`.
+   Then use the [ordinary recipe's](#ordinary-re-deploy-recipe) preflight and deploy
+   blocks. For subsequent deploys, prepare promotion inputs for the current
+   target/source identity from the produced config and use fresh failure-receipt
+   sinks. Complete [four-protocol acceptance](#acceptance-scope-and-completion)
+   and guarded cleanup; report the actual client vantage and any untested environment.
 
 For production, explicitly export the reviewed production selections in the
 shell that will run the new preflight:

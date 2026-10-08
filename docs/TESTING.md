@@ -251,7 +251,7 @@ repeat the recipe at the merged source SHA, which may differ from the PR head.
 | `make security-verify` | post-deploy host-hardening gates for SSH, sysctl, firewall egress policy, package updates, Fail2Ban, and manifest presence |
 | `make security-audit` | operator-run, non-blocking audit report collection; intentionally not part of deploy or verify gates by default |
 | `make drift-since-tag` | weekly: diff fleet against the last known-good tag (terraform plan + ansible --check). The CI scheduled variant uses `--repo-only` and runs without SOPS access — see `.github/workflows/drift.yml`. |
-| `make source-drift` | fast fail-closed comparison of the clean checkout's deployable digest with every live node manifest; also runs automatically after `make deploy` and `make verify`. |
+| `make source-drift` | fail-closed comparison of both the clean checkout's exact source revision and deployable digest with each selected live node manifest; also runs automatically after `make deploy` and `make verify`. Equal digests with different revisions fail. |
 | scheduled Monday 08:00 UTC | **cargo-mutants** (`.github/workflows/mutants.yml`) — full baseline and configured mutations; surviving mutants create a tracking issue, technical failures fail the workflow |
 
 The repository-safe record of the last observed production deployment is

@@ -205,7 +205,9 @@ is available.
 ## CI gates
 
 `.github/workflows/ci.yml` owns the required PR workflow. Its `required checks`
-aggregator fails unless every current required dependency succeeds.
+aggregator requires every selected dependency to succeed and every unselected
+dependency to be explicitly planned as skipped. Missing jobs and unexpected
+skips fail the gate.
 
 `docs/TESTING.md` is the canonical human-readable coverage matrix, including
 default Molecule roles, non-default failure scenarios, CI-only services, and
@@ -228,10 +230,14 @@ versions:
 ## Reviews and merge
 
 - `CODEOWNERS` enumerates reviewers (currently single-operator).
-- Branch protection requires every CI gate to pass before merge — see
+- Branch protection requires all configured required statuses to pass before
+  merge; the CI aggregate enforces the dependency selector's plan — see
   `docs/BRANCH-PROTECTION.md` for the required-status-checks list and how
   the operator applies it.
 - Squash-merge is preferred for clean release-please history.
+  Task lifecycle PRs that contain a terminal record followed by archival or purge
+  must preserve those separate commits; use the allowed linear rebase merge so
+  terminal-history validation can find the preceding committed state.
 
 ## Versioning
 
