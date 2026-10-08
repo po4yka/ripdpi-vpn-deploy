@@ -14,7 +14,7 @@ import urllib.error
 
 import pytest
 import yaml
-from jinja2 import Environment
+from template_render import render_template
 
 from ci_tailnet_api import Enrollment, EnrollmentError, NoRedirect
 from disposable_promotion import validate_intent
@@ -48,10 +48,7 @@ def test_each_ci_profile_has_an_actual_canonical_promotion_intent(tmp_path, prof
 def test_ci_provider_contract_matches_actual_role_listener_template(profile):
     variables = yaml.safe_load((ROOT / "ansible/group_vars/all.yml").read_text())
     variables.update(yaml.safe_load((ROOT / f"ansible/group_vars/vpn-ci-{profile}.yml").read_text()))
-    environment = Environment()
-    environment.filters["to_json"] = json.dumps
-    environment.filters["bool"] = bool
-    actual = json.loads(environment.from_string((ROOT / "ansible/templates/listener-manifest.json.j2").read_text()).render(**variables))
+    actual = json.loads(render_template(ROOT / "ansible/templates/listener-manifest.json.j2", variables))
     spec = importlib.util.spec_from_file_location("contract", ROOT / "scripts/check-listener-contract.py")
     checker = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(checker)
@@ -264,6 +261,7 @@ def test_ci_generator_real_crypto_passes_secret_schema(tmp_path):
                              cwd=ROOT, env=environment, capture_output=True, timeout=30)
     assert checked.returncode == 0, "generated CI credentials violate schema"
     value = yaml.safe_load(output.read_bytes())
+    assert value["hysteria"]["masquerade_url"] == environment["WATCHDOG_CANARY_URL"]
     registry = value["client_registry"]["ci-test"]
     assert registry["hosts"] == ["upcloud:ci-staging-generator"]
     assert registry["cohorts"] == ["ci-p0p1p2"]

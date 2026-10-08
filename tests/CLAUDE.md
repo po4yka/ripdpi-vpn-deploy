@@ -172,6 +172,8 @@ hash-pinned requirements, even on a pip cache hit. Galaxy consumers set the same
 absolute `ANSIBLE_COLLECTIONS_PATH` as the action's isolated collection cache.
 OS, architecture, Python and both requirements files determine its exact key.
 The `python validators` job preserves seven checks behind one required context.
+The native lane consumes this setup through `setup-disposable-ci`; cache
+coverage follows that composite and includes its required Galaxy installation.
 
 **CI selection follows complete consumers** — common Python/static checks always
 run; costly PR lanes follow the selector's path graph. Docs are compiled into

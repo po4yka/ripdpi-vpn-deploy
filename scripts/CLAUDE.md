@@ -13,6 +13,10 @@
   the ordinary pinned Linux SSH sentinel at `ci-liveness` with actual activation
   metadata; the existing Colima executor retains its separate bound contract.
   Stop owned loopback/Tailnet units in every exit path on the ephemeral runner.
+- The CI SSH sentinel creates OpenSSH's privilege-separation runtime before
+  validation and retains PAM account/session checks with public-key-only
+  authentication. Tighten an owned `.ssh` directory before publishing config;
+  reject writable or foreign directories and report categorical stage errors.
 
 
 **Blue-green authenticates before first contact** — verify the green public key through an authenticated channel and confirm its standard known_hosts entry before inventory rendering. Vultr secondary-IP discovery uses strict host-key checking; it never enrolls a new key. Then establish Tailnet/recovery ownership, render the confirmed handoff, and let the canonical controller perform pinned readiness. Blue and green aliases must be exact VPN inventory members before verification or deployment.

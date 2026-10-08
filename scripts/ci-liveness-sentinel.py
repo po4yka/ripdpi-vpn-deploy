@@ -21,11 +21,11 @@ class SentinelError(ValueError):
     """Categorical failure only; subprocess output stays private."""
 
 
-def run(argv, *, timeout=30):
+def run(argv, *, timeout=30, reason='sentinel-command-failed'):
     result = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, timeout=timeout, check=False)
     if result.returncode:
-        raise SentinelError('sentinel-command-failed')
+        raise SentinelError(reason)
     return result.stdout
 
 
@@ -56,15 +56,26 @@ def prepare(root):
         raise SentinelError('sentinel-user-invalid')
     ssh = Path.home() / '.ssh'
     ssh.mkdir(mode=0o700, exist_ok=True)
-    private_root(ssh)
     config_path = ssh / 'config'
     # This helper owns a disposable runner. Do not alter an operator SSH config.
     if os.path.lexists(config_path) or any(root.iterdir()):
         raise SentinelError('fresh-runner-inputs-required')
-    run(['sudo', '-n', 'true'])
+    # Hosted images can precreate an owner-controlled .ssh with mode 0755.
+    # Tighten it before writing private configuration, without following links.
+    fd = os.open(ssh, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(fd)
+        if info.st_uid != os.getuid() or info.st_mode & 0o022:
+            raise SentinelError('sentinel-ssh-directory-invalid')
+        os.fchmod(fd, 0o700)
+    finally:
+        os.close(fd)
+    private_root(ssh)
+    run(['sudo', '-n', 'true'], reason='sentinel-sudo-unavailable')
     key, hostkey = root / 'identity', root / 'host-key'
     for path in (key, hostkey):
-        run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', str(path)])
+        run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', str(path)],
+            reason='sentinel-key-generation-failed')
     with socket.socket() as listener:
         listener.bind(('127.0.0.1', 0))
         port = listener.getsockname()[1]
@@ -81,7 +92,7 @@ PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitEmptyPasswords no
 PermitRootLogin no
-UsePAM no
+UsePAM yes
 StrictModes yes
 AllowTcpForwarding no
 AllowAgentForwarding no
@@ -114,10 +125,16 @@ Subsystem sftp internal-sftp
     # Publish exact cleanup ownership before starting the unit.
     write(root / 'owner.json', json.dumps(manifest, sort_keys=True).encode())
     write(config_path, config)
-    run(['sudo', '-n', '/usr/sbin/sshd', '-t', '-f', str(server_config)])
+    # The package can be installed with its ordinary service disabled. OpenSSH
+    # still requires this root-owned privilege-separation directory for -t.
+    run(['sudo', '-n', 'install', '-d', '-m', '0755', '/run/sshd'],
+        reason='sentinel-runtime-directory-failed')
+    run(['sudo', '-n', '/usr/sbin/sshd', '-t', '-f', str(server_config)],
+        reason='sentinel-sshd-config-invalid')
     run(['sudo', '-n', 'systemd-run', '--quiet', '--unit=' + unit,
          '--property=KillMode=control-group', '--property=Restart=no',
-         '/usr/sbin/sshd', '-D', '-e', '-f', str(server_config)])
+         '/usr/sbin/sshd', '-D', '-e', '-f', str(server_config)],
+        reason='sentinel-service-start-failed')
     for _ in range(20):
         try:
             if run(['ssh', 'ci-liveness', 'id', '-un'], timeout=5).decode().strip() == user:
@@ -151,9 +168,10 @@ def stop(root):
             or hashlib.sha256(config.read_bytes()).hexdigest() != value['ssh_config_sha256']):
         raise SentinelError('sentinel-config-changed')
     # Unit name is a private per-run random capability; never stop generic sshd.
-    state = run(['sudo', '-n', 'systemctl', 'show', value['unit'], '--property=LoadState', '--value']).strip()
+    state = run(['sudo', '-n', 'systemctl', 'show', value['unit'], '--property=LoadState', '--value'],
+                reason='sentinel-service-state-failed').strip()
     if state != b'not-found':
-        run(['sudo', '-n', 'systemctl', 'stop', value['unit']])
+        run(['sudo', '-n', 'systemctl', 'stop', value['unit']], reason='sentinel-service-stop-failed')
     config.unlink(missing_ok=True)
 
 
@@ -165,6 +183,9 @@ def main():
     try:
         (prepare if args.verb == 'prepare' else stop)(args.root)
         print(json.dumps({'status': 'ready' if args.verb == 'prepare' else 'stopped'}))
+    except SentinelError as exc:
+        print(json.dumps({'status': 'error', 'reason': str(exc)}))
+        return 1
     except (OSError, ValueError, subprocess.SubprocessError):
         print(json.dumps({'status': 'error', 'reason': 'ci-sentinel-operation-failed'}))
         return 1

@@ -141,6 +141,7 @@ class Runtime:
                 try:
                     os.killpg(process.pid, signal.SIGKILL)
                 except ProcessLookupError:
+                    # The owned process group already exited before cancellation.
                     pass
                 process.wait(timeout=10)
 
@@ -237,6 +238,14 @@ def bootstrap(runtime, config, enrollment, seed, identity, alias, address, sourc
         "-o", "UserKnownHostsFile=" + str(pin), "-o", "HostKeyAlias=" + address,
         "-o", "IdentitiesOnly=yes", "-o", "IdentityAgent=none",
     ])
+
+
+def recovery_member(info):
+    # Root-owned transient daemon credentials are unnecessary for provider recovery
+    # and cannot be read by the CI user.
+    if info.name in {"private/tailscale.state", "private/tailscale.sock"}:
+        return None
+    return info
 
 
 @contextmanager
@@ -349,6 +358,8 @@ def execute(config, args, work, artifact, *, runtime_factory=Runtime, enrollment
                         try:
                             runtime.make("staging-cleanup-manifest")
                         except DeploymentError:
+                            # The exact detached-seed path below handles partial state;
+                            # it still reports provisioning as unconfirmed.
                             pass
                     if (work / "cleanup.json").exists():
                         runtime.make("staging-destroy")
@@ -396,13 +407,7 @@ def execute(config, args, work, artifact, *, runtime_factory=Runtime, enrollment
                 # Retain private diagnostics/state only in operator-decryptable ciphertext.
                 archive = work.parent / (work.name + ".tar.gz")
                 with tarfile.open(archive, "w:gz") as bundle:
-                    def include(info):
-                        # Root-owned transient daemon credentials are not needed for
-                        # provider recovery and cannot be read by the CI user.
-                        if info.name in {"private/tailscale.state", "private/tailscale.sock"}:
-                            return None
-                        return info
-                    bundle.add(work, arcname="private", recursive=True, filter=include)
+                    bundle.add(work, arcname="private", recursive=True, filter=recovery_member)
                     if state.exists():
                         bundle.add(state, arcname="terraform.tfstate")
                     if tfvars.exists():

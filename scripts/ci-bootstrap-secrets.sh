@@ -204,6 +204,7 @@ $(echo "$cert_pem")
 $(echo "$key_pem")
   bandwidth_up: "100 mbps"
   bandwidth_down: "200 mbps"
+  masquerade_url: "${WATCHDOG_CANARY_URL}"
   salamander_enabled: false
   salamander_password: ""
   clients:

@@ -53,6 +53,7 @@ def install(source: Path, destination: Path, expected: str) -> None:
             if stat.S_IMODE(target_info.st_mode) == 0o600 and matches(target, expected):
                 return
         except (ValueError, subprocess.SubprocessError):
+            # Replace an invalid preexisting image key with the verified seed key.
             pass
     private = key.read_bytes()
     if len(private) > 4096:

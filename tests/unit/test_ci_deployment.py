@@ -2,6 +2,7 @@
 import base64
 import copy
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,64 @@ from ci_deployment import confirmed_sources
 import tailnet_management as tailnet
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.fixture
+def sentinel_module():
+    spec = importlib.util.spec_from_file_location('ci_sentinel', ROOT / 'scripts/ci-liveness-sentinel.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_sentinel_tightens_owned_precreated_ssh_directory(tmp_path, monkeypatch, sentinel_module):
+    home = tmp_path.resolve()
+    ssh = home / '.ssh'
+    ssh.mkdir(mode=0o755)
+    root = home / 'sentinel'
+    root.mkdir(mode=0o700)
+    monkeypatch.setattr(sentinel_module.sys, 'platform', 'linux')
+    monkeypatch.setattr(sentinel_module.Path, 'home', lambda: home)
+    def stop_before_privilege(argv, **kwargs):
+        assert argv == ['sudo', '-n', 'true']
+        raise sentinel_module.SentinelError(kwargs['reason'])
+    monkeypatch.setattr(sentinel_module, 'run', stop_before_privilege)
+    with pytest.raises(sentinel_module.SentinelError, match='sentinel-sudo-unavailable'):
+        sentinel_module.prepare(root)
+    assert ssh.stat().st_mode & 0o777 == 0o700
+    assert not (ssh / 'config').exists()
+
+
+def test_sentinel_refuses_foreign_writable_ssh_directory(tmp_path, monkeypatch, sentinel_module):
+    home = tmp_path.resolve()
+    ssh = home / '.ssh'
+    ssh.mkdir()
+    ssh.chmod(0o777)
+    root = home / 'sentinel'
+    root.mkdir(mode=0o700)
+    monkeypatch.setattr(sentinel_module.sys, 'platform', 'linux')
+    monkeypatch.setattr(sentinel_module.Path, 'home', lambda: home)
+    with pytest.raises(sentinel_module.SentinelError, match='sentinel-ssh-directory-invalid'):
+        sentinel_module.prepare(root)
+    assert ssh.stat().st_mode & 0o777 == 0o777
+    assert not (ssh / 'config').exists()
+
+
+def test_sentinel_command_failure_has_safe_specific_reason(sentinel_module):
+    with pytest.raises(sentinel_module.SentinelError) as error:
+        sentinel_module.run([sys.executable, '-c', 'import sys; print("private-marker"); sys.exit(1)'],
+                            reason='sentinel-sshd-config-invalid')
+    assert str(error.value) == 'sentinel-sshd-config-invalid'
+
+
+def test_sentinel_cli_retains_safe_failure_category(tmp_path):
+    root = tmp_path / 'public-root'
+    root.mkdir(mode=0o755)
+    result = subprocess.run([sys.executable, str(ROOT / 'scripts/ci-liveness-sentinel.py'),
+                             'stop', '--root', str(root)], capture_output=True, text=True, timeout=10)
+    assert result.returncode == 1
+    assert json.loads(result.stdout) == {'status': 'error', 'reason': 'sentinel-root-invalid'}
+    assert result.stderr == ''
 
 
 @pytest.fixture
@@ -82,6 +141,7 @@ def test_ci_sentinel_real_loopback_sshd_pinned_key_and_owned_stop():
     try:
         result = subprocess.run([*command, 'prepare', '--root', str(root)], capture_output=True, text=True, timeout=45)
         assert result.returncode == 0, result.stdout + result.stderr
+        assert (Path(account.pw_dir) / '.ssh').stat().st_mode & 0o777 == 0o700
         owner = json.loads((root / 'owner.json').read_bytes())
         probe = subprocess.run(['sudo', '-u', user, 'ssh', 'ci-liveness', 'printf', 'native-ssh-ok'],
                                capture_output=True, timeout=10)
