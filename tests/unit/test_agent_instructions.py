@@ -7,6 +7,7 @@ CLAUDE.md is canonical and AGENTS.md is a symlink to it. Skills live in
 """
 
 import posixpath
+import json
 import re
 import subprocess
 from pathlib import Path, PurePosixPath
@@ -94,7 +95,7 @@ def test_agent_instructions_reference_existing_paths() -> None:
     tracked = set(_tracked())
     tracked_dirs = {str(parent) for path in tracked for parent in PurePosixPath(path).parents if str(parent) != "."}
     top_level = {path.split("/")[0] for path in tracked if "/" in path}
-    documents = _tracked("AGENTS.md", "*CLAUDE.md", ".agents/skills/*/SKILL.md", "scripts/DESIGN-NOTES.md")
+    documents = _tracked("AGENTS.md", "*CLAUDE.md", ".agents/skills/**/*.md", "scripts/DESIGN-NOTES.md")
     stale = []
     for document in documents:
         folder = PurePosixPath(document).parent
@@ -130,3 +131,17 @@ def test_agent_instructions_reference_existing_paths() -> None:
             ):
                 stale.append(f"{document}: {reference}")
     assert not stale, "stale path references:\n" + "\n".join(stale)
+
+
+def test_skill_evaluation_cases_are_usable_and_reference_available_skills() -> None:
+    """Dataset integrity only; independent evaluation observes actual decisions."""
+    cases = json.loads((ROOT / "tests/fixtures/skill-evaluation-cases.json").read_text())
+    names = {skill.name for skill in _skill_dirs()}
+    identifiers = [case["id"] for case in cases]
+    assert len(identifiers) == len(set(identifiers)) and identifiers
+    for case in cases:
+        assert set(case) == {"id", "skills", "request", "facts", "assessment"}
+        assert case["request"].strip()
+        assert case["skills"] and set(case["skills"]) <= names
+        for field in ("facts", "assessment"):
+            assert case[field] and all(isinstance(item, str) and item.strip() for item in case[field])

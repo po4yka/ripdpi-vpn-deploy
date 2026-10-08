@@ -9,7 +9,7 @@ Operators run these scripts on both macOS and Linux workstations, and several ha
 
 ## Conventions
 
-- `#!/usr/bin/env bash` and `set -euo pipefail` (58 of 59 scripts). The one exception, `scripts/restore.sh`, is deliberately POSIX `#!/bin/sh` with `set -eu` and says why in its header; follow that pattern only when bash is genuinely unavailable.
+- `#!/usr/bin/env bash` and `set -euo pipefail`. `scripts/restore.sh` is deliberately POSIX `#!/bin/sh` with `set -eu` and says why in its header; follow that pattern only when bash is genuinely unavailable.
 - Resolve the repo root the way existing scripts do: `REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"`. Most scripts take their inputs from environment variables set by the Makefile (`PROVIDER`, `ENV`, `HOSTS`, `SOPS_FILE`, ...) rather than flags.
 - Quote every expansion, never `eval` operator input, and use `printf '%q'` when forwarding values into a nested shell.
 - `shellcheck -s bash -S warning` must pass (`make shellcheck`, pre-commit, and CI run it on `scripts/*.sh` and `terraform/exception/cascade-ingress/*.sh`). A `# shellcheck disable=` needs a one-line justification above it. Role `*.sh.j2` templates are Jinja and are not shellchecked, so review them by hand.

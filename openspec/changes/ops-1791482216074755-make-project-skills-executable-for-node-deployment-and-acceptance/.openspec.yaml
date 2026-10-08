@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-08
+goal: OPS-1791482216074755 Make project skills executable for node deployment
+  and acceptance
