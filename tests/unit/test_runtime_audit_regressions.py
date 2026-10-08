@@ -309,7 +309,8 @@ def test_maintenance_selects_effective_services_and_every_awg_instance(tmp_path,
         'awg_results.results | map(attribute="item") | list == expected_instances',
     ]}}], {
         'vpn': {'enable_monitoring': monitoring, 'enable_amneziawg': True,
-                'enable_xray_reality': True, 'enable_nginx_xhttp': False},
+                'enable_xray_reality': True, 'enable_nginx_xhttp': False,
+                'enable_hysteria': False},
         '_awg_instances': [{'name': name} for name in instances],
         'expected_services': expected, 'expected_instances': instances,
     })
@@ -511,3 +512,52 @@ def test_realm_role_defaults_preserve_standalone_tls_without_p2(tmp_path, base_e
         assert destination.exists() != share
         if not share:
             assert destination.read_text() == expected
+
+
+def test_split_hop_molecule_verifies_the_production_forwarding_file(tmp_path):
+    directory = tmp_path / 'sysctl.d'
+    directory.mkdir()
+    (directory / '60-split-hop-egress.conf').write_text('legacy forwarding\n')
+    produce = tasks('roles/baseline/tasks/forwarding.yml')[:-1]
+    verify = tasks('roles/split-hop-egress/molecule/default/verify.yml')[0]['tasks']
+    names = {
+        'Canonical forwarding drop-in exists',
+        'Superseded forwarding drop-in is absent',
+        'Read canonical forwarding policy',
+        'Assert IPv4-only forwarding policy for the split-hop workload',
+    }
+    selected = [task for task in verify if task['name'] in names]
+    assert len(selected) == len(names)
+    result = run_play(tmp_path, relocate(produce + selected, {
+        '/etc/sysctl.d/': str(directory) + '/',
+    }), {'vpn': {'enable_split_hop_egress': True, 'enable_amneziawg': False}})
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize('activation_failure', [True, False])
+def test_agent_molecule_distinguishes_activation_from_preflight_through_outer_rescue(
+    tmp_path, activation_failure,
+):
+    outer = named(tasks('roles/observability_agent/tasks/main.yml'),
+                  'Configure observability agent when feature is enabled')
+    activation = named(outer['block'], 'Activate and verify observability configuration generation')
+    inner_refusal = named(activation['rescue'], 'Refuse failed observability generation activation')
+    # Only exercise exception propagation here; native systemd restoration stays
+    # in Molecule. Stale readiness facts must never make preflight count as it.
+    outer['block'] = [inner_refusal if activation_failure else {
+        'name': 'Refuse invalid candidate before activation',
+        'ansible.builtin.fail': {'msg': 'synthetic preflight refusal'},
+    }]
+    outer.pop('when', None)
+    fixture = tasks('roles/observability_agent/molecule/enabled/tasks/failed-activation.yml')
+    exercise = named(fixture, 'Exercise actual activation failure and exact runtime restoration')
+    submission = named(exercise['block'], 'Submit the native-valid but unstartable generation')
+    acceptance = named(submission['rescue'], 'Require the actual activation rescue rather than preflight refusal')
+    result = run_play(tmp_path, [{'block': [outer], 'rescue': [acceptance]}], {
+        'observability_agent': {'install_root': str(tmp_path / 'runtime')},
+        '_observability_agent_runtime_ready': False,
+        '_observability_agent_failed_task_name': inner_refusal['name'],
+        '_observability_agent_can_restore_runtime': True,
+        '_observability_agent_restored_ready': {'rc': 0},
+    })
+    assert (result.returncode == 0) == activation_failure, result.stdout + result.stderr

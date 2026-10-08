@@ -72,8 +72,11 @@
         - name: Require the actual activation rescue rather than preflight refusal
           ansible.builtin.assert:
             that:
-              - ansible_failed_task.name == 'Refuse failed observability generation activation'
-              - ansible_failed_result.msg == 'Observability agent generation failed readiness and was rolled back.'
+              - ansible_failed_task.name == 'Refuse incomplete observability agent convergence'
+              - >-
+                ansible_failed_result.msg ==
+                'Observability agent convergence failed; an unaccepted binary activation was reverted.'
+              - _observability_agent_failed_task_name == 'Refuse failed observability generation activation'
               - _observability_agent_can_restore_runtime | bool
               - _observability_agent_restored_ready.rc == 0
 

@@ -2,7 +2,7 @@
 
 ## Design decisions
 
-**Baseline owns effective forwarding** — this role calls baseline `ansible/roles/baseline/tasks/forwarding.yml` for standalone and site convergence, rather than writing a lower-priority sysctl that the hardening floor would overwrite.
+**Baseline owns effective forwarding** — this role calls baseline `ansible/roles/baseline/tasks/forwarding.yml` for standalone and site convergence, rather than writing a lower-priority sysctl that the hardening floor would overwrite. Molecule verifies the canonical `91-vpn-forward.conf`, absence of the retired fragment, and actual guest IPv4 forwarding.
 
 **Node B initiates the WireGuard tunnel** — `PersistentKeepalive` is set on
 the `[Peer]` block, the `[Interface]` block omits `ListenPort`, and the

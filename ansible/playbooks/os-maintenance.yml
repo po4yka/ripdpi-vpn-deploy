@@ -77,12 +77,12 @@
           + (['xray'] if (not (vpn_subscription_only | default(false)) and
                          ((vpn.enable_xray_reality | default(true)) or
                           (vpn.enable_nginx_xhttp | default(true)))) else [])
-          + (['nginx'] if ((vpn.enable_nginx_xhttp | default(false)) or
+          + (['nginx'] if ((vpn.enable_nginx_xhttp | default(true)) or
                           (vpn.enable_cdn_front | default(false)) or
                           (vpn.enable_reality_self_steal | default(false)) or
                           (vpn.enable_subscription_host | default(false)) or
                           (vpn_subscription_only | default(false))) else [])
-          + (['hysteria-server'] if (vpn.enable_hysteria | default(false)) and
+          + (['hysteria-server'] if (vpn.enable_hysteria | default(true)) and
               not (vpn_subscription_only | default(false)) else [])
           + (['caddy-naive'] if (vpn.enable_naive | default(false)) and
               not (vpn_subscription_only | default(false)) else [])

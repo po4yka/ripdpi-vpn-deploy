@@ -5,7 +5,7 @@ commit_sha: null
 local: required
 local_evidence: Targeted regressions, 104 Terraform native mock tests, 52 Rego tests and 148 template snapshots passed; full make check remains pending.
 remote_ci: required
-remote_ci_evidence: null
+remote_ci_evidence: PR 278 initial source run exposed profile/fixture regressions; fixes are covered locally and await an exact-head hosted rerun.
 dry_run: not_applicable
 dry_run_evidence: Source PR only; controller positive and failure orchestration is exercised locally with synthetic inputs, without live inventory or SSH.
 staging: not_applicable
@@ -15,7 +15,7 @@ live_evidence: Production rollout is outside this source remediation PR.
 client: not_applicable
 client_evidence: No client traffic acceptance is claimed by source remediation.
 artifact: required
-artifact_evidence: null
+artifact_evidence: https://github.com/po4yka/ripdpi-vpn-deploy/pull/278 (draft; bootstrap integration unfinished)
 ---
 
 # Verification
@@ -51,11 +51,13 @@ artifact_evidence: null
 - `make validate` passed Terraform initialization/validation, secret scanning,
   Ansible production lint and playbook syntax. A subsequent `make check` exposed
   missing coverage declarations for computed honeypot variables; those explicit
-  declarations were added and the coverage check passed. Full check rerun is
-  pending the machine-wide build slot.
-- Honeypot Molecule remains unverified: the pinned image is amd64-only and the
-  local test VM is arm64. An explicit amd64 image pull and emulated rerun are
-  pending; they cannot be described as native amd64 execution.
+  declarations were added and the coverage check passed. Full runs remain incomplete: one exposed a collection-time expiry test defect
+  and local Ansible timeouts; the expiry test is fixed and focused reruns passed.
+  A later run was stopped after 536 passes while hosted failures were being fixed.
+  No complete local make check pass is claimed.
+- Native hosted honeypot, baseline and full-stack Molecule passed on the initial
+  PR head. The local amd64-on-arm64 Molecule attempt was superseded by that
+  native evidence. Current-head hosted validation remains required.
 
 ## Unfinished deployment integration
 
@@ -70,3 +72,18 @@ stub satisfies the required positive deployment behavior.
 Independent source review found and triggered follow-up fixes for zero-host
 blue preflight, first-contact ordering and shared nginx/subscription ownership.
 Final review and exact-head hosted checks remain required.
+
+## Hosted regression follow-up
+
+The first hosted Python shards exposed effective-default mismatches in maintenance,
+standalone TLS fallback lookup and old isolated Xray fixture assumptions. These are
+corrected with 165 profile/service/Tailnet tests and 25 Xray tests passing locally.
+The Xray tests execute the production validation helper and now reject malformed
+rotation candidates instead of replacing validation with a copy-only command.
+
+Native split-hop verification now checks the shared forwarding file and actual
+kernel forwarding. Observability failure tests retain their original activation
+phase through the outer rescue and still verify restored runtime readiness.
+The related runtime suite passed 91 tests; affected-role lint passed 49 files.
+All hosted failures must pass on the updated PR head before source verification
+can be accepted.

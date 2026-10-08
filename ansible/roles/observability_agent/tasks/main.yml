@@ -854,6 +854,11 @@
         name: observability_kuma
         tasks_from: producers
   rescue:
+    - name: Preserve the originating convergence failure boundary
+      ansible.builtin.set_fact:
+        _observability_agent_failed_task_name: "{{ ansible_failed_task.name }}"
+      no_log: true
+
     - name: Restore sender binary after pre-activation validation failure
       ansible.builtin.file:
         src: "{{ _observability_agent_previous_release.stat.lnk_source }}"

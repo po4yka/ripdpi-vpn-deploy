@@ -30,6 +30,8 @@ Before changing the sender runtime contract, inspect its [cross-role and operato
 
 ## Pitfalls
 
+- The outer failure boundary preserves the originating task name without exposing module output. Failure-injection acceptance requires the inner activation-refusal boundary plus successful restored-runtime readiness, so a preflight failure cannot impersonate a tested rollback.
+
 - Runtime activation remains uncommitted until readiness passes. The outer rescue restores the old binary link (or removes a failed first link) even when candidate validation fails before the service transaction; collector rollback also restores exact prior unit bytes before restart.
 
 - Restart acceptance must recover exact historical samples after both clean stop and SIGKILL once persistence is observed. Retaining files, a queue-depth decrease, or fresh samples after restart cannot establish recovery. Host power-loss/fsync durability is not implied by a process-kill test.

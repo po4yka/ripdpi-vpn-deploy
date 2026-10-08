@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Explicit TLS-sharing overrides remain valid in standalone role use without a `vpn` mapping; fallback lookup normalizes the absent mapping before reading its Hysteria toggle.
+
 **Native config validation precedes publication** — the template uses the
 pinned `sing-box-realm check -c` command, so malformed candidates never replace
 the active config or queue a restart.

@@ -48,7 +48,7 @@ def test_ordinary_playbook_toggle_defaults_match_declared_surface():
     failures = []
     # The backup-configure assertion is a fail-closed prerequisite, not a
     # transport selector. Its missing-input rejection must not be relaxed.
-    for name in ("site", "verify", "smoke-test", "os-maintenance", "rotate-credentials"):
+    for name in ("site", "verify", "smoke-test", "os-maintenance", "rotate-credentials", "diff-secrets"):
         source = yaml.safe_load((REPO_ROOT / f"ansible/playbooks/{name}.yml").read_text())
         matches = [match for text in scalars(source) for match in pattern.finditer(text)]
         assert matches, name
@@ -81,6 +81,7 @@ def test_live_family_profile_list_includes_explicit_profiles():
         "group_vars/vpn-p0-self-steal.yml",
         "group_vars/vpn-family-standard.yml",
         "group_vars/vpn-device-full.yml",
+        "group_vars/vpn-device-full-tailnet.yml",
         "group_vars/vpn-p1-web.yml",
         "group_vars/vpn-p2-udp.yml",
         "group_vars/vpn-p0.yml",

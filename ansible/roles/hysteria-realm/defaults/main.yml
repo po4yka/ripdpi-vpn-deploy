@@ -38,7 +38,7 @@ hysteria_realm:
   # realm profiles instead publish their own copy from the supplied PEMs,
   # without requiring the hysteria account or configuration directory.
   # An explicit value overrides this profile-derived default.
-  share_hysteria_tls: "{{ vpn.enable_hysteria | default(false) | bool }}"
+  share_hysteria_tls: "{{ (vpn | default({})).enable_hysteria | default(false) | bool }}"
   tls_cert_path: "{{ hysteria_realm.config_dir }}/server.fullchain.pem"
   tls_key_path: "{{ hysteria_realm.config_dir }}/server.key"
 
