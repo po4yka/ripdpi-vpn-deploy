@@ -28,11 +28,11 @@ variable "os_id" {
   description = "Vultr OS id, e.g. Debian or Ubuntu image id from `vultr-cli os list`."
 
   validation {
-    # Known Vultr OS IDs for approved base images: 1743 Debian 11,
-    # 2136 Debian 12, 2284 Debian 13, 1869 Ubuntu 24.04.
+    # Approved x64 images: 1743 Ubuntu 22.04, 2136 Debian 12,
+    # 2284 Ubuntu 24.04, 2625 Debian 13. ID 1869 is unsupported Rocky Linux 9.
     # Run `vultr-cli os list` to obtain IDs for new releases; add here and update error_message.
-    condition     = contains([1743, 2136, 2284, 1869], var.os_id)
-    error_message = "os_id must be an approved Vultr OS ID: 1743 (Debian 11), 2136 (Debian 12), 2284 (Debian 13), 1869 (Ubuntu 24.04)."
+    condition     = contains([1743, 2136, 2284, 2625], var.os_id)
+    error_message = "os_id must be an approved Vultr OS ID: 1743 (Ubuntu 22.04), 2136 (Debian 12), 2284 (Ubuntu 24.04), 2625 (Debian 13)."
   }
 }
 

@@ -96,6 +96,52 @@ run "server_no_secondary_public_ip_by_default" {
   }
 }
 
+run "server_selects_debian13_image" {
+  command = plan
+
+  variables {
+    os_id = 2625
+  }
+
+  assert {
+    condition     = vultr_instance.vpn.os_id == 2625
+    error_message = "Debian 13 x64 must select Vultr OS 2625, not Ubuntu 24.04 OS 2284"
+  }
+}
+
+run "server_selects_ubuntu2404_image" {
+  command = plan
+
+  variables {
+    os_id = 2284
+  }
+
+  assert {
+    condition     = vultr_instance.vpn.os_id == 2284
+    error_message = "Ubuntu 24.04 x64 must remain explicitly selectable as Vultr OS 2284"
+  }
+}
+
+run "server_rejects_mislabeled_rocky9_image" {
+  command = plan
+
+  variables {
+    os_id = 1869
+  }
+
+  expect_failures = [var.os_id]
+}
+
+run "server_rejects_unapproved_image" {
+  command = plan
+
+  variables {
+    os_id = 999999
+  }
+
+  expect_failures = [var.os_id]
+}
+
 run "server_secondary_public_ip_when_honeypot_enabled" {
   command = plan
 

@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-08
+goal: TFR-1791469128152528 Select the actual Vultr Debian 13 image for
+  disposable nodes
