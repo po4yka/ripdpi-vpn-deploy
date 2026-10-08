@@ -65,6 +65,19 @@ def test_publishes_valid_private_intent_and_exact_alias_mapping_without_key_read
     assert all(not Path(p).exists() for p in data["outputs"].values())
 
 
+@pytest.mark.parametrize("name", ["PROMOTION_SOPS_FILE", "PROMOTION_AGE_KEY_FILE", "PROMOTION_AWG_KEY_FILE",
+                                  "PROMOTION_EXECUTOR_MANIFEST", "PROMOTION_CLEANUP_MANIFEST"])
+def test_configuration_alias_is_refused_before_any_input_read(setup, monkeypatch, name):
+    helper, values, config = setup
+    values[name + "_LITERAL"] = str(config)
+    def unexpected_read(_path):
+        pytest.fail("aliased input was opened")
+    monkeypatch.setattr(helper, "_configuration", unexpected_read)
+    with pytest.raises(helper.PreparationError, match="^intent-input-alias-refused$"):
+        helper.prepare(values)
+    assert list(Path(values["PROMOTION_OUTPUT_DIR_LITERAL"]).iterdir()) == []
+
+
 @pytest.mark.parametrize("case", ["prod", "epoch", "profile", "config-mode", "parent-mode",
                                   "symlink-config", "symlink-parent", "output-exists",
                                   "input-alias", "missing", "duplicate", "oversized", "nan", "deep",

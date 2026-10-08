@@ -118,10 +118,12 @@ def prepare(environment):
 
         config_path = _path(field("PROMOTION_LIVENESS_CONFIG"))
         output = _path(field("PROMOTION_OUTPUT_DIR"))
+        inputs = {key: str(_path(field(name))) for key, name in INPUT_ENV.items()}
+        if str(config_path) in inputs.values():
+            raise PreparationError("intent-input-alias-refused")
         config = _configuration(config_path)
         target = config["sentinels"][0]["target"]
         awg = config["sentinels"][0]["awg_target"]
-        inputs = {key: str(_path(field(name))) for key, name in INPUT_ENV.items()}
         outputs = {key: str(output / (key + ".json")) for key in OUTPUTS}
         intent_path = output / "intent.json"
         mapping_path = output / "deployment-inputs.json"
