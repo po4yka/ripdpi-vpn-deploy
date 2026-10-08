@@ -11,7 +11,7 @@ Own scripts/install_liveness_sentinel.py, tests/unit/test_install_liveness_senti
 ## Execution
 
 - [x] SCR-1791467227702182 Select required canonical emitter formats and cover standalone mixed and required-error cases #bug !high @item:SCR-1791467099957833
-- [ ] SCR-1791467228251004 Verify source gates and real standalone P1 onboarding with authenticated XHTTP #bug !high @item:SCR-1791467099957833
+- SCR-1791467228251004 DROPPED: Verify source gates and real standalone P1 onboarding with authenticated XHTTP #bug !high @item:SCR-1791467099957833
 
 ## Verification
 

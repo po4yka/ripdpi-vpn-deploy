@@ -2,20 +2,20 @@
 task_id: MON-1790650904289505
 change: staging-observability-telegram-acceptance
 commit_sha: null
-local: required
-local_evidence: null
-remote_ci: required
-remote_ci_evidence: null
-dry_run: required
-dry_run_evidence: null
-staging: required
-staging_evidence: null
-live: required
-live_evidence: null
+local: not_applicable
+local_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
+dry_run: not_applicable
+dry_run_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
+staging: not_applicable
+staging_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
+live: not_applicable
+live_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
 client: not_applicable
-client_evidence: "Two-vantage authenticated VPN-profile proof is an explicit non-goal; the canary is telemetry source evidence, not client-path acceptance."
-artifact: required
-artifact_evidence: null
+client_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
+artifact: not_applicable
+artifact_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
 ---
 
 # Verification
@@ -31,21 +31,21 @@ Archive is forbidden while any required category or mapped requirement remains
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-STG-OBS-ENABLEMENT | MON-1790793779569506 | Staging positive inventory and strict secrets; disabled production; malformed and mixed-scope refusal before provider access | required |
-| REQ-STG-OBS-TOPOLOGY | MON-1790651217409733 | Reviewed UpCloud/Hetzner/Scaleway plans; three exact host classes and failure domains; cross-provider dead-man; topology/listener contracts; no public admin | required |
-| REQ-STG-OBS-BOOTSTRAP | MON-1790652096462210 | Focused bootstrap/firewall tests and exact-host baseline, updates, guest firewall, loopback monitoring, and source-manifest convergence before component deployment | required |
-| REQ-STG-OBS-PRIVATE-INPUTS | MON-1790651216954415 | Descriptor-bound private-root preparation and materialization; generated SSH, age, PKI and SOPS authorities; private-chat topic sentinel; non-sticky ancestor, symlink and path-substitution refusal | required |
-| REQ-STG-OBS-AUTHORIZATION | MON-1790651216954415 | Private per-action approvals bind exact target, action, restore, deadline, cancellation, window, BotFather revocation, and post-evidence destructive-data authority | required |
-| REQ-STG-OBS-OPERATOR | MON-1790652096934376 | Focused fail-before-mutation, staging-only, timeout/interruption, restore, receipt, redaction, central-query, critical-drill, fault, canary, and revocation-negative tests | required |
-| REQ-STG-OBS-SOURCE | MON-1790651217861152 | Installed control-plane, dead-man, and canary source/generation digests matched to `commit_sha` | required |
-| REQ-STG-OBS-CLEANUP | MON-1790652346357417 | UpCloud/Hetzner/Scaleway immutable account/state manifests covering every Terraform address and addressable provider identity, exact complete-set delete-only plan tests, provider-specific absence, and capability retirement | required |
-| REQ-STG-OBS-METRICS | MON-1790651218327983 | Two advancing canary collection/write intervals; valid write accepted; wrong identity, path, method, plaintext, query, and admin requests rejected | required |
-| REQ-STG-OBS-PRIMARY | MON-1790651218798773 | Categorical relay/API receipts plus owner-observed primary firing/reminder/resolved; `MON-1790652098418969` separately proves secondary detection and fresh-canary recovery of primary authority loss | required |
-| REQ-STG-OBS-DEADMAN | MON-1790651219261781 | Secondary firing/reminder, replay/future/expired/invalid refusal, and fresh-pulse recovery; `MON-1790652097417200` separately proves control service and provider host/network loss | required |
-| REQ-STG-OBS-FAILURE | MON-1790652097417200 | Separate control service and host/network rows meet bounds; `MON-1790652097923534` proves dead-man service loss and `MON-1790652098418969` proves primary authority loss; all restore baseline | required |
-| REQ-STG-OBS-ROTATION | MON-1790651219743990 | Candidates work before revocation; authorized BotFather revocation; old-token checker records rejection; `still-valid` exits non-success, retains recovery material, and blocks rotation/cleanup | required |
-| REQ-STG-OBS-ROLLBACK | MON-1790651220194212 | Invalid candidate pre-mutation refusal; digest-bound private manifest; exact prior control-plane generation, authority state, schedules, and retained storage restored | required |
-| REQ-STG-OBS-EVIDENCE | MON-1790651221104630 | Redacted exact-SHA reconciliation; TSDB-preserving removal; rollback-window closure; exact destructive-data approval; guarded destroy/provider absence; local/hosted gates; explicit full-matrix/fleet/client/cutover exclusions | required |
+| REQ-STG-OBS-ENABLEMENT | MON-1790793779569506 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-STG-OBS-TOPOLOGY | MON-1790651217409733 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-STG-OBS-BOOTSTRAP | MON-1790652096462210 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-STG-OBS-PRIVATE-INPUTS | MON-1790651216954415 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-STG-OBS-AUTHORIZATION | MON-1790651216954415 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-STG-OBS-OPERATOR | MON-1790652096934376 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-STG-OBS-SOURCE | MON-1790651217861152 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-STG-OBS-CLEANUP | MON-1790652346357417 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-STG-OBS-METRICS | MON-1790651218327983 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-STG-OBS-PRIMARY | MON-1790651218798773 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-STG-OBS-DEADMAN | MON-1790651219261781 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-STG-OBS-FAILURE | MON-1790652097417200 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-STG-OBS-ROTATION | MON-1790651219743990 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-STG-OBS-ROLLBACK | MON-1790651220194212 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-STG-OBS-EVIDENCE | MON-1790651221104630 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
 
 ## Evidence capture contract
 

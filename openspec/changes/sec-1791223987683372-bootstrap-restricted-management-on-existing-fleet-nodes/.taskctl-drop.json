@@ -1,0 +1,14 @@
+{
+  "change": "sec-1791223987683372-bootstrap-restricted-management-on-existing-fleet-nodes",
+  "dropped_step_ids": [
+    "SEC-1791224949334227",
+    "SEC-1791224949790667",
+    "SEC-1791224950240563",
+    "SEC-1791224950691731"
+  ],
+  "outcome": "dropped",
+  "prepared_at": "2026-10-08T15:25:23Z",
+  "reason": "Owner cancelled acceptance and requested removal of all acceptance resources",
+  "schema": 1,
+  "task_id": "SEC-1791223987683372"
+}

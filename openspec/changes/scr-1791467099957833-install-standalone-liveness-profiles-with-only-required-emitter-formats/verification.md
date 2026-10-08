@@ -2,20 +2,20 @@
 task_id: SCR-1791467099957833
 change: scr-1791467099957833-install-standalone-liveness-profiles-with-only-required-emitter-formats
 commit_sha: null
-local: required
-local_evidence: null
-remote_ci: required
-remote_ci_evidence: null
+local: not_applicable
+local_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
 dry_run: not_applicable
-dry_run_evidence: This local installer has no dry-run verb; required error paths are exercised before remote writes.
+dry_run_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
 staging: not_applicable
-staging_evidence: Authorized fresh permanent P1 supplies the standalone live case without another disposable provider resource.
-live: required
-live_evidence: null
-client: required
-client_evidence: null
-artifact: required
-artifact_evidence: null
+staging_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
+live: not_applicable
+live_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
+client: not_applicable
+client_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
+artifact: not_applicable
+artifact_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
 ---
 
 # Verification
@@ -24,6 +24,6 @@ artifact_evidence: null
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-LIVENESS-REQUIRED-FORMATS | SCR-1791467227702182 | Standalone and mixed installer selection tests | Required |
-| REQ-LIVENESS-EMITTER-REFUSAL | SCR-1791467227702182 | Required emitter failure before remote writes | Required |
-| REQ-LIVENESS-REQUIRED-FORMATS | SCR-1791467228251004 | Real P1 onboarding and authenticated XHTTP | Required |
+| REQ-LIVENESS-REQUIRED-FORMATS | SCR-1791467227702182 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-LIVENESS-EMITTER-REFUSAL | SCR-1791467227702182 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-LIVENESS-REQUIRED-FORMATS | SCR-1791467228251004 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |

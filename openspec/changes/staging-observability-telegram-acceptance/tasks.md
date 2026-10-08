@@ -43,19 +43,19 @@ fleet-wide monitoring, full staging-matrix acceptance, or production cutover.
 - [x] MON-1790652096462210 Implement and test exact-host observability baseline and host-class firewall bootstrap #feature !high @item:MON-1790650904289505
 - [x] MON-1790652096934376 Implement and test bounded staging acceptance actions and redacted receipts #feature !high @item:MON-1790650904289505
 - [x] MON-1790652346357417 Implement and test identity-bound guarded UpCloud Hetzner and Scaleway cleanup and absence proof #feature !high @item:MON-1790650904289505
-- [ ] MON-1790651216954415 Preflight provider, SSH, SOPS, Telegram, cleanup, and exact protected-main execution authority #feature !high @item:MON-1790650904289505
-- [ ] MON-1790651217409733 Provision or reconcile the disposable three-host staging topology and render validated private inventory #feature !high @item:MON-1790650904289505
-- [ ] MON-1790651217861152 Deploy independent dead-man, control plane, and canary agent from one exact source revision #feature !high @item:MON-1790650904289505
-- [ ] MON-1790651218327983 Prove fresh authenticated canary telemetry and the bounded ingestion, WAL, staleness, grouping, and silence matrix #feature !high @item:MON-1790650904289505
-- [ ] MON-1790651218798773 Prove the human-observed primary Telegram firing, reminder, delivery-failure, and resolved lifecycle #feature !high @item:MON-1790650904289505
-- [ ] MON-1790651219261781 Prove the independent dead-man control-plane-loss, reminder, refusal, and stable-recovery lifecycle #feature !high @item:MON-1790650904289505
-- [ ] MON-1790652097417200 Prove separate control-plane service and provider host-network loss with bounded dead-man recovery #feature !high @item:MON-1790650904289505
-- [ ] MON-1790652097923534 Prove dead-man service loss through the primary route with bounded restoration #feature !high @item:MON-1790650904289505
-- [ ] MON-1790652098418969 Prove primary Telegram authority loss through the secondary dead-man and fresh-canary recovery #feature !high @item:MON-1790650904289505
-- [ ] MON-1790651219743990 Rotate the canary sender and primary and secondary notification authorities with old-material rejection #feature !high @item:MON-1790650904289505
-- [ ] MON-1790651220194212 Prove invalid candidate refusal and exact control-plane last-known-good rollback #feature !high @item:MON-1790650904289505
-- [ ] MON-1790651220644401 Remove observability components, destroy disposable resources, and verify provider absence #feature !high @item:MON-1790650904289505
-- [ ] MON-1790651221104630 Reconcile redacted acceptance evidence with local and hosted gates without claiming fleet or production cutover #feature !high @item:MON-1790650904289505
+- MON-1790651216954415 DROPPED: Preflight provider, SSH, SOPS, Telegram, cleanup, and exact protected-main execution authority #feature !high @item:MON-1790650904289505
+- MON-1790651217409733 DROPPED: Provision or reconcile the disposable three-host staging topology and render validated private inventory #feature !high @item:MON-1790650904289505
+- MON-1790651217861152 DROPPED: Deploy independent dead-man, control plane, and canary agent from one exact source revision #feature !high @item:MON-1790650904289505
+- MON-1790651218327983 DROPPED: Prove fresh authenticated canary telemetry and the bounded ingestion, WAL, staleness, grouping, and silence matrix #feature !high @item:MON-1790650904289505
+- MON-1790651218798773 DROPPED: Prove the human-observed primary Telegram firing, reminder, delivery-failure, and resolved lifecycle #feature !high @item:MON-1790650904289505
+- MON-1790651219261781 DROPPED: Prove the independent dead-man control-plane-loss, reminder, refusal, and stable-recovery lifecycle #feature !high @item:MON-1790650904289505
+- MON-1790652097417200 DROPPED: Prove separate control-plane service and provider host-network loss with bounded dead-man recovery #feature !high @item:MON-1790650904289505
+- MON-1790652097923534 DROPPED: Prove dead-man service loss through the primary route with bounded restoration #feature !high @item:MON-1790650904289505
+- MON-1790652098418969 DROPPED: Prove primary Telegram authority loss through the secondary dead-man and fresh-canary recovery #feature !high @item:MON-1790650904289505
+- MON-1790651219743990 DROPPED: Rotate the canary sender and primary and secondary notification authorities with old-material rejection #feature !high @item:MON-1790650904289505
+- MON-1790651220194212 DROPPED: Prove invalid candidate refusal and exact control-plane last-known-good rollback #feature !high @item:MON-1790650904289505
+- MON-1790651220644401 DROPPED: Remove observability components, destroy disposable resources, and verify provider absence #feature !high @item:MON-1790650904289505
+- MON-1790651221104630 DROPPED: Reconcile redacted acceptance evidence with local and hosted gates without claiming fleet or production cutover #feature !high @item:MON-1790650904289505
 
 ## Verification
 

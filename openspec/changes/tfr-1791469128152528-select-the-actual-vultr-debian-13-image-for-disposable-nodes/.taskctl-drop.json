@@ -1,0 +1,11 @@
+{
+  "change": "tfr-1791469128152528-select-the-actual-vultr-debian-13-image-for-disposable-nodes",
+  "dropped_step_ids": [
+    "TFR-1791469302916838"
+  ],
+  "outcome": "dropped",
+  "prepared_at": "2026-10-08T15:25:23Z",
+  "reason": "Owner cancelled acceptance and requested removal of all acceptance resources",
+  "schema": 1,
+  "task_id": "TFR-1791469128152528"
+}

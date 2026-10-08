@@ -1,0 +1,11 @@
+{
+  "change": "scr-1791467099957833-install-standalone-liveness-profiles-with-only-required-emitter-formats",
+  "evidence_summary": "Live acceptance is cancelled, not completed. Already merged implementation is preserved; temporary provider and local acceptance resources are being retired.",
+  "execution_sha256": "3b6a0bceda08dc4ce8863f8571e034959fb1e16c34db6d0231d2e60a9a4bb9cd",
+  "issue_sha256": "ca064a0fb0bee37ce0810650de3c87d839234c94a21b2d018e2547c98c95099b",
+  "outcome": "dropped",
+  "prepared_at": "2026-10-08T15:25:23Z",
+  "reason": "Owner cancelled acceptance and requested removal of all acceptance resources",
+  "schema": 1,
+  "task_id": "SCR-1791467099957833"
+}

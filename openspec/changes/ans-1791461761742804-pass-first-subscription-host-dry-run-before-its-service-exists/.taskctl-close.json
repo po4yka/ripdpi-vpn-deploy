@@ -1,0 +1,11 @@
+{
+  "change": "ans-1791461761742804-pass-first-subscription-host-dry-run-before-its-service-exists",
+  "evidence_summary": "Live acceptance is cancelled, not completed. Already merged implementation is preserved; temporary provider and local acceptance resources are being retired.",
+  "execution_sha256": "adba0d08340a2f29d10cdda23b9673839217fdc49ccd9ce6ae27d421b5d65f54",
+  "issue_sha256": "2297617d94b8a978b7aa04bca04fc167c4c1db140bb1ecdc0ea4fa4307ebaf65",
+  "outcome": "dropped",
+  "prepared_at": "2026-10-08T15:25:23Z",
+  "reason": "Owner cancelled acceptance and requested removal of all acceptance resources",
+  "schema": 1,
+  "task_id": "ANS-1791461761742804"
+}

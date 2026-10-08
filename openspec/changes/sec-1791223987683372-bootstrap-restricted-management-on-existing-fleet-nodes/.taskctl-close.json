@@ -1,0 +1,11 @@
+{
+  "change": "sec-1791223987683372-bootstrap-restricted-management-on-existing-fleet-nodes",
+  "evidence_summary": "Live acceptance is cancelled, not completed. Already merged implementation is preserved; temporary provider and local acceptance resources are being retired.",
+  "execution_sha256": "dff7346108dd5a7b0fade333632e181626f4871138a9b842e99d0837d5059156",
+  "issue_sha256": "daa038843e303adfb00a05f6ba7fb806a352e7b72e961c5753d529cf99e246e0",
+  "outcome": "dropped",
+  "prepared_at": "2026-10-08T15:25:23Z",
+  "reason": "Owner cancelled acceptance and requested removal of all acceptance resources",
+  "schema": 1,
+  "task_id": "SEC-1791223987683372"
+}

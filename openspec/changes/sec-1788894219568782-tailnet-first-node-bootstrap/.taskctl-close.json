@@ -1,0 +1,11 @@
+{
+  "change": "sec-1788894219568782-tailnet-first-node-bootstrap",
+  "evidence_summary": "Live acceptance is cancelled, not completed. Already merged implementation is preserved; temporary provider and local acceptance resources are being retired.",
+  "execution_sha256": "44bd7c054642e2827770ca70212717a9c7766a76731ec8f4989164c02fb000ee",
+  "issue_sha256": "8d98af4976327406fb87d651e8d08bf6fa378f726feb532f8f98d41f6f7ff8b3",
+  "outcome": "dropped",
+  "prepared_at": "2026-10-08T15:25:23Z",
+  "reason": "Owner cancelled acceptance and requested removal of all acceptance resources",
+  "schema": 1,
+  "task_id": "SEC-1788894219568782"
+}
