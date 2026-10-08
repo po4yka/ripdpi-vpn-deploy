@@ -235,3 +235,8 @@ remain fatal; package signatures and the real schema validator stay enforced.
 - Legacy bootstrap kernel tests use a disposable root-owned directory under
   `/var/lib` and a private network namespace. Their service fixture does not
   establish PID1, identity, Tailnet, or live client acceptance.
+
+- Sentinel onboarding tests cover standalone XHTTP, REALITY, Hysteria2, AWG-only
+  and mixed format selection. An unsupported unused emitter refuses in the
+  fixture; required emitter failures must precede remote writes. These tests
+  are orchestration evidence, not live authentication.

@@ -158,6 +158,10 @@ accepts require an explicit type match; a protocol-only accept is broad.
 identity and `ansible_host` as the transport; a distinct Tailnet transport
 must retain the public host-key alias for dual-path SSH proof.
 
+**Liveness formats are selected by required profiles** — standalone XHTTP uses
+RIPDPI emission and Xray; REALITY and Hysteria2 use sing-box emission. See the
+liveness section of [DESIGN-NOTES.md](DESIGN-NOTES.md#liveness-sentinels-disposable-staging-and-retirement).
+
 **AWG liveness DNS follows the role profile** — the private sentinel runtime
 includes the role's validated IPv4 DNS servers. The runner writes a private
 `/etc/netns/<generated-name>/resolv.conf` before the real hostname probe and

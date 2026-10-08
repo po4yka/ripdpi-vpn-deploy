@@ -163,6 +163,58 @@ def test_four_profiles_use_one_decrypt_and_receipt_before_assignment(setup):
     assert not any("scp" == Path(c[0][0]).name for c in calls)
 
 
+@pytest.mark.parametrize(("required", "formats", "engines"), [
+    (["p1-xhttp"], ["ripdpi"], {"xray"}),
+    (["p0-reality"], ["sing-box"], {"sing_box"}),
+    (["p2-hysteria2"], ["sing-box"], {"sing_box"}),
+    (["p2-amneziawg"], [], {"amneziawg"}),
+    (["p0-reality", "p2-hysteria2"], ["sing-box"], {"sing_box"}),
+    (["p1-xhttp", "p2-amneziawg"], ["ripdpi"], {"xray", "amneziawg"}),
+    (["p1-xhttp", "p2-hysteria2"], ["sing-box", "ripdpi"], {"xray", "sing_box"}),
+])
+def test_standalone_and_mixed_profiles_request_only_required_formats(setup, monkeypatch, required, formats, engines):
+    s = setup
+    s["config"]["policies"][0]["required_profiles"] = required
+    original = s["module"]._run
+
+    def selected_run(command, **kwargs):
+        if Path(command[0]).name == "emit-singbox.sh" and command[-1] not in formats:
+            raise s["module"].InstallError("unused-format-has-no-enabled-outbounds")
+        return original(command, **kwargs)
+
+    monkeypatch.setattr(s["module"], "_run", selected_run)
+    assert s["install"]()["status"] == "committed"
+    assert [c[0][-1] for c in s["calls"] if Path(c[0][0]).name == "emit-singbox.sh"] == formats
+    runtime = json.loads(base64.b64decode(s["bundles"][0]["files"]["config.json"]))
+    assert {key for key in ("xray", "sing_box", "amneziawg") if key in runtime} == engines
+    assert not any(path.exists() for path in s["plaintexts"])
+
+
+@pytest.mark.parametrize(("required", "failed_format"), [
+    (["p1-xhttp"], "ripdpi"),
+    (["p0-reality"], "sing-box"),
+    (["p2-hysteria2"], "sing-box"),
+    (["p0-reality", "p1-xhttp"], "ripdpi"),
+])
+def test_required_emitter_failure_refuses_before_remote_writes(setup, monkeypatch, required, failed_format):
+    s = setup
+    s["config"]["policies"][0]["required_profiles"] = required
+    original = s["module"]._run
+
+    def failing_run(command, **kwargs):
+        if Path(command[0]).name == "emit-singbox.sh" and command[-1] == failed_format:
+            raise s["module"].InstallError("required-emitter-failed")
+        return original(command, **kwargs)
+
+    monkeypatch.setattr(s["module"], "_run", failing_run)
+    with pytest.raises(s["module"].InstallError, match="required-emitter-failed"):
+        s["install"]()
+    assert not s["bundles"]
+    assert not any(c[0][0] == "ssh" for c in s["calls"])
+    assert not s["registry"].exists()
+    assert not any(path.exists() for path in s["plaintexts"])
+
+
 def test_awg_context_resolves_canonical_listener_default(monkeypatch):
     module = load(ROOT / "scripts/install_liveness_sentinel.py", "installer_awg_context")
     monkeypatch.setattr(module, "_run", lambda *_args, **_kwargs: b"192.0.2.3\n")
