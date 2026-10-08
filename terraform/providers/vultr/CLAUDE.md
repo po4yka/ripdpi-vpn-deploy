@@ -23,6 +23,12 @@ default and enabled only in the production Vultr workspace.
 
 ## Pitfalls
 
+- **OS IDs identify actual provider images** — Debian 13 x64 is 2625;
+  2284 is Ubuntu 24.04, 1743 is Ubuntu 22.04, and 2136 is Debian 12.
+  ID 1869 selects Rocky Linux 9 and is rejected by the Debian/Ubuntu contract.
+  Check the provider OS catalog and the created node's actual OS before live acceptance;
+  mock-provider plans cannot prove the provider image contents.
+
 - **Example listener completeness** — the explicit staging/prod contracts include
   HTTP/80 for the nginx public-site redirect; deploy fails closed without it.
 - **Vultr API rate limit is tight** — bulk `terraform apply` across many hosts
