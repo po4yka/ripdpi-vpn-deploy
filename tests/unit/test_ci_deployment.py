@@ -31,6 +31,7 @@ def test_sentinel_tightens_owned_precreated_ssh_directory(tmp_path, monkeypatch,
     home = tmp_path.resolve()
     ssh = home / '.ssh'
     ssh.mkdir(mode=0o755)
+    ssh.chmod(0o755)
     root = home / 'sentinel'
     root.mkdir(mode=0o700)
     monkeypatch.setattr(sentinel_module.sys, 'platform', 'linux')
@@ -70,6 +71,7 @@ def test_sentinel_command_failure_has_safe_specific_reason(sentinel_module):
 def test_sentinel_cli_retains_safe_failure_category(tmp_path):
     root = tmp_path / 'public-root'
     root.mkdir(mode=0o755)
+    root.chmod(0o755)
     result = subprocess.run([sys.executable, str(ROOT / 'scripts/ci-liveness-sentinel.py'),
                              'stop', '--root', str(root)], capture_output=True, text=True, timeout=10)
     assert result.returncode == 1
