@@ -2,7 +2,7 @@
 id: OPS-1791482216074755
 title: Make project skills executable for node deployment and acceptance
 kind: feature
-status: doing
+status: review
 area: operations
 priority: high
 risk: standard
@@ -12,8 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: ops-1791482216074755-make-project-skills-executable-for-node-deployment-and-acceptance
 created: 2026-10-08
-updated: 2026-10-08
+updated: 2026-10-09
 related_tasks: []
+status_detail: Local gate and exact-source PR checks passed; implementation awaits PR review and integration.
 ---
 
 ## Goal

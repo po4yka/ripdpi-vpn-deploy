@@ -16,7 +16,7 @@ Deliver concise lifecycle/role skills and a validated local promotion-intent pre
 - [x] OPS-1791482488877561 Specify skill workflows and private intent preparation contract #feature !high @item:OPS-1791482216074755
 - [x] OPS-1791482490840434 Deliver concise operator and Ansible skills with supported workflow transitions #feature !high @item:OPS-1791482216074755
 - [x] OPS-1791482495146337 Implement canonical private promotion intent preparation and failure tests #feature !high @item:OPS-1791482216074755
-- [ ] OPS-1791482498372510 Validate skills with independent scenarios and exact-head PR checks #feature !high @item:OPS-1791482216074755
+- [x] OPS-1791482498372510 Validate skills with independent scenarios and exact-head PR checks #feature !high @item:OPS-1791482216074755
 
 ## Verification
 
