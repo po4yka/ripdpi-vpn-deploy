@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-08
+goal: SEC-1791451917662060 Normalize the packaged cloud image SSH fragment
+  before bootstrap

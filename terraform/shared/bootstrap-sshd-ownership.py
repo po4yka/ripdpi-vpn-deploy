@@ -29,12 +29,14 @@ SSHD = "/usr/sbin/sshd"
 BOOT = "10-cloud-init-hardening.conf"
 MANAGED = "20-ansible-hardening.conf"
 CLOUD = "50-cloud-init.conf"
-TARGETS = (BOOT, MANAGED, CLOUD)
+IMAGE = "60-cloudimg-settings.conf"
+IMAGE_CONTENT = b"PasswordAuthentication no\n"
+TARGETS = (BOOT, MANAGED, CLOUD, IMAGE)
 MANAGED_CONTENT = b"# first-boot runtime owner\nX11Forwarding no\n"
 CANONICAL_INCLUDE = b"Include /etc/ssh/sshd_config.d/*.conf"
 RESIDUE = re.compile(
     rb"\.bootstrap-sshd-(10-cloud-init-hardening\.conf|20-ansible-hardening\.conf|"
-    rb"50-cloud-init\.conf)\.[0-9a-f]{24}"
+    rb"50-cloud-init\.conf|60-cloudimg-settings\.conf)\.[0-9a-f]{24}"
 )
 
 
@@ -434,16 +436,21 @@ def normalize(config_dir: Path | str, ssh_port: object) -> bool:
         boot = _boot_content(port)
         _validate_existing(snapshots[BOOT], boot)
         _validate_existing(snapshots[MANAGED], MANAGED_CONTENT)
+        _validate_existing(snapshots[IMAGE], IMAGE_CONTENT)
         cloud = _cloud_candidate(snapshots[CLOUD])
         residues = _residues(fragments_fd)
-        candidates = {BOOT: boot, MANAGED: MANAGED_CONTENT, CLOUD: cloud}
+        candidates = {BOOT: boot, MANAGED: MANAGED_CONTENT, CLOUD: cloud, IMAGE: None}
         changed = [
             name
             for name in TARGETS
-            if candidates[name] is not None
-            and (
-                not snapshots[name]["exists"]
-                or snapshots[name]["data"] != candidates[name]
+            if (
+                candidates[name] is None and snapshots[name]["exists"]
+            ) or (
+                candidates[name] is not None
+                and (
+                    not snapshots[name]["exists"]
+                    or snapshots[name]["data"] != candidates[name]
+                )
             )
         ]
         residue_changed = _cleanup_residues(fragments_fd, residues)
@@ -456,6 +463,12 @@ def normalize(config_dir: Path | str, ssh_port: object) -> bool:
                 gid = snapshot["gid"] if snapshot["exists"] else OWNER_GID
                 assert isinstance(mode, int) and isinstance(gid, int)
                 candidate = candidates[name]
+                if candidate is None:
+                    _unlink_if_present(fragments_fd, name)
+                    PUBLISH_BOUNDARY_HOOK("unlink", name)
+                    os.fsync(fragments_fd)
+                    PUBLISH_BOUNDARY_HOOK("directory-fsync", name)
+                    continue
                 assert isinstance(candidate, bytes)
                 _write_atomic(fragments_fd, name, candidate, mode=mode, gid=gid)
             _assert_effective(root, port)

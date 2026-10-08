@@ -14,6 +14,11 @@
 
 ## Design decisions
 
+**Packaged SSH ownership has positive and interruption coverage** — cloud-init
+tests consume the exact password-disabled image fragment, verify idempotence,
+reject altered content and unsafe files, restore it after validation failure,
+and repeat after process death at its removal boundary.
+
 **Bootstrap classification follows real producer boundaries** — inventory
   carries the Terraform build label separately from workspace identity.
   Regressions exercise named production selection, contradictory inventory,
