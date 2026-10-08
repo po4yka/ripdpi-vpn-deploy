@@ -2,7 +2,7 @@
 id: SEC-1791471757439452
 title: Repair deployment audit security and lifecycle defects
 kind: bug
-status: doing
+status: review
 area: security
 priority: high
 risk: high

@@ -14,9 +14,9 @@ Restore secure positive deployment, policy, drift and runtime lifecycle behavior
 ## Execution
 
 - [x] SEC-1791471911428987 Repair runtime security and lifecycle behavior with regressions #bug !high @item:SEC-1791471757439452
-- [ ] SEC-1791471912312773 Repair provider policy and secret validation with regressions #bug !high @item:SEC-1791471757439452
-- [ ] SEC-1791471912998245 Repair operator controller integration drift and initialization with regressions #bug !high @item:SEC-1791471757439452
-- [ ] SEC-1791471913677997 Integrate independent review and exact source validation for the pull request #bug !high @item:SEC-1791471757439452
+- [x] SEC-1791471912312773 Repair provider policy and secret validation with regressions #bug !high @item:SEC-1791471757439452
+- [x] SEC-1791471912998245 Repair operator controller integration drift and initialization with regressions #bug !high @item:SEC-1791471757439452
+- [x] SEC-1791471913677997 Integrate independent review and exact source validation for the pull request #bug !high @item:SEC-1791471757439452
 
 ## Verification
 
