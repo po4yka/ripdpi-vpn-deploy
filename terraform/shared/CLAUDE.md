@@ -14,6 +14,12 @@ and exits. The Ansible run handles the rest. Anything secret stays in SOPS.
 
 **Bootstrap SSH ownership is explicit** — `10-cloud-init-hardening.conf` starts with a managed ownership header and contains only the listener port plus the four first-boot authentication primitives. Runtime SSH policy belongs to the later controller transaction.
 
+**Packaged image ownership is bounded** — bootstrap consumes the root-owned
+mode-0644 `60-cloudimg-settings.conf` only with exact bytes
+`PasswordAuthentication no\n`. Its removal shares the canonical publication
+rollback and fsync boundaries. Modified content or metadata refuses before
+writes; successful bootstrap leaves the canonical 10/20/50 layout.
+
 ## What's done well
 
 - **Marker-based wait** — `scripts/wait-cloud-init.sh` treats the marker file as authoritative after cloud-init reaches a terminal state. This tolerates provider-image recoverable warnings while still failing when SSH validation or reload did not publish the marker.

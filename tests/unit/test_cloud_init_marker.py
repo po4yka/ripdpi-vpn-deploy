@@ -27,6 +27,7 @@ MARKER = "/var/lib/cloud-init-vpn-bootstrap.done"
 BOOT = "10-cloud-init-hardening.conf"
 MANAGED = "20-ansible-hardening.conf"
 CLOUD = "50-cloud-init.conf"
+IMAGE = "60-cloudimg-settings.conf"
 
 
 def test_bootstrap_owner_marks_the_bounded_first_boot_policy() -> None:
@@ -177,6 +178,83 @@ def test_existing_exact_owner_with_noncanonical_mode_refuses_before_writes(
         bootstrap_owner.normalize(ssh_config, "22")
 
     assert _records(ssh_config) == before
+
+
+def test_packaged_image_owner_is_consumed_and_canonical_repeat_is_unchanged(
+    bootstrap_owner, ssh_config: Path,
+) -> None:
+    fragments = ssh_config / "sshd_config.d"
+    (fragments / IMAGE).write_bytes(b"PasswordAuthentication no\n")
+    (fragments / IMAGE).chmod(0o644)
+    (fragments / CLOUD).write_bytes(b"PasswordAuthentication no\n")
+
+    assert bootstrap_owner.normalize(ssh_config, "22") is True
+    assert not (fragments / IMAGE).exists()
+    assert (fragments / BOOT).read_bytes() == bootstrap_owner._boot_content("22")
+    assert (fragments / CLOUD).read_bytes() == b""
+    after = _records(ssh_config)
+    assert bootstrap_owner.normalize(ssh_config, "22") is False
+    assert _records(ssh_config) == after
+
+
+@pytest.mark.parametrize("content", [
+    b"PasswordAuthentication yes\n",
+    b"PasswordAuthentication no\nPermitRootLogin yes\n",
+    b"PasswordAuthentication no\nPasswordAuthentication no\n",
+    b"# packaged\nPasswordAuthentication no\n",
+    b"PasswordAuthentication no",
+])
+def test_changed_image_owner_refuses_before_writes(
+    bootstrap_owner, ssh_config: Path, content: bytes,
+) -> None:
+    image = ssh_config / "sshd_config.d" / IMAGE
+    image.write_bytes(content)
+    image.chmod(0o644)
+    before = _records(ssh_config)
+
+    with pytest.raises(bootstrap_owner.BootstrapOwnershipError, match="unsupported-existing-owner"):
+        bootstrap_owner.normalize(ssh_config, "22")
+    assert _records(ssh_config) == before
+
+
+@pytest.mark.parametrize("unsafe", ["symlink", "hardlink", "mode"])
+def test_unsafe_image_owner_refuses_before_writes(
+    bootstrap_owner, ssh_config: Path, unsafe: str,
+) -> None:
+    fragments = ssh_config / "sshd_config.d"
+    image = fragments / IMAGE
+    if unsafe == "symlink":
+        original = fragments / "packaged-input"
+        original.write_bytes(b"PasswordAuthentication no\n")
+        image.symlink_to(original)
+    else:
+        image.write_bytes(b"PasswordAuthentication no\n")
+        image.chmod(0o600 if unsafe == "mode" else 0o644)
+        if unsafe == "hardlink":
+            os.link(image, fragments / "packaged-input")
+    before = _records(ssh_config)
+
+    with pytest.raises(bootstrap_owner.BootstrapOwnershipError, match="unsafe-"):
+        bootstrap_owner.normalize(ssh_config, "22")
+    assert _records(ssh_config) == before
+
+
+def test_image_owner_is_restored_after_effective_validation_failure(
+    bootstrap_owner, ssh_config: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    image = ssh_config / "sshd_config.d" / IMAGE
+    image.write_bytes(b"PasswordAuthentication no\n")
+    image.chmod(0o644)
+    before = _rollback_records(ssh_config)
+
+    def fail_after_removal(*_args):
+        assert not image.exists()
+        raise bootstrap_owner.BootstrapOwnershipError("effective-policy-mismatch")
+
+    monkeypatch.setattr(bootstrap_owner, "_assert_effective", fail_after_removal)
+    with pytest.raises(bootstrap_owner.BootstrapOwnershipError, match="effective-policy-mismatch"):
+        bootstrap_owner.normalize(ssh_config, "22")
+    assert _rollback_records(ssh_config) == before
 
 
 @pytest.mark.parametrize(
@@ -783,6 +861,47 @@ def test_process_death_at_every_publish_boundary_is_nonweakening_and_converges(
     assert managed.read_bytes() == bootstrap_owner.MANAGED_CONTENT
     assert cloud.read_bytes() == b"# cloud\n"
     assert not tuple(fragments.glob(".bootstrap-sshd-*"))
+
+
+@pytest.mark.parametrize("boundary", ["unlink", "directory-fsync"])
+def test_process_death_after_image_removal_preserves_policy_and_repeats(
+    bootstrap_owner, ssh_config: Path, boundary: str,
+) -> None:
+    fragments = ssh_config / "sshd_config.d"
+    image = fragments / IMAGE
+    image.write_bytes(b"PasswordAuthentication no\n")
+    image.chmod(0o644)
+    status = _publish_boundary_child_status(
+        bootstrap_owner, ssh_config, boundary=boundary, target=IMAGE, port="22",
+    )
+    assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGKILL
+    assert not image.exists()
+    assert (fragments / BOOT).read_bytes() == bootstrap_owner._boot_content("22")
+    assert bootstrap_owner.normalize(ssh_config, "22") is False
+
+
+@pytest.mark.parametrize("boundary", ["file-fsync", "replace", "directory-fsync"])
+def test_process_death_restoring_image_owner_can_safely_repeat(
+    bootstrap_owner, ssh_config: Path, monkeypatch: pytest.MonkeyPatch, boundary: str,
+) -> None:
+    image = ssh_config / "sshd_config.d" / IMAGE
+    image.write_bytes(b"PasswordAuthentication no\n")
+    image.chmod(0o644)
+
+    def fail_validation(*_args):
+        raise bootstrap_owner.BootstrapOwnershipError("effective-policy-mismatch")
+
+    with monkeypatch.context() as failing:
+        failing.setattr(bootstrap_owner, "_assert_effective", fail_validation)
+        status = _publish_boundary_child_status(
+            bootstrap_owner, ssh_config, boundary=boundary, target=IMAGE, port="22",
+        )
+    assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGKILL
+    assert (image.parent / BOOT).read_bytes() == bootstrap_owner._boot_content("22")
+    bootstrap_owner.normalize(ssh_config, "22")
+    assert not image.exists()
+    assert not tuple(image.parent.glob(".bootstrap-sshd-*"))
+    assert bootstrap_owner.normalize(ssh_config, "22") is False
 
 
 @pytest.mark.parametrize("ssh_port", ["", "0", "65536", "022", "22 ", 22])
