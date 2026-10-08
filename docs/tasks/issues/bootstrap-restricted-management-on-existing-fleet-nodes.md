@@ -2,7 +2,7 @@
 id: SEC-1791223987683372
 title: Bootstrap restricted management on existing fleet nodes
 kind: feature
-status: doing
+status: dropped
 area: security
 priority: critical
 risk: high
@@ -12,8 +12,11 @@ blocked_by: []
 spec_mode: required
 openspec_change: sec-1791223987683372-bootstrap-restricted-management-on-existing-fleet-nodes
 created: 2026-10-05
-updated: 2026-10-05
+updated: 2026-10-08
 related_tasks: []
+closed_at: "2026-10-08T15:25:23Z"
+closed_reason: Owner cancelled acceptance and requested removal of all acceptance resources
+evidence_summary: Live acceptance is cancelled, not completed. Already merged implementation is preserved; temporary provider and local acceptance resources are being retired.
 ---
 
 ## Goal

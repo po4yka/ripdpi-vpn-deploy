@@ -1,0 +1,11 @@
+{
+  "change": "staging-observability-telegram-acceptance",
+  "evidence_summary": "Live acceptance is cancelled, not completed. Already merged implementation is preserved; temporary provider and local acceptance resources are being retired.",
+  "execution_sha256": "809f49f3f3563681606eb3412025f0b4bac7301f22c9e4ec0c5e521af3beabe0",
+  "issue_sha256": "4fbbd2c035b3350cea204c4e4c0fc97a08de9a3d046521b842e1ebbc81024258",
+  "outcome": "dropped",
+  "prepared_at": "2026-10-08T15:25:23Z",
+  "reason": "Owner cancelled acceptance and requested removal of all acceptance resources",
+  "schema": 1,
+  "task_id": "MON-1790650904289505"
+}

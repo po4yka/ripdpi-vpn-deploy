@@ -2,7 +2,7 @@
 id: SCR-1791467099957833
 title: Install standalone liveness profiles with only required emitter formats
 kind: bug
-status: doing
+status: dropped
 area: scripts
 priority: high
 risk: standard
@@ -14,6 +14,9 @@ openspec_change: scr-1791467099957833-install-standalone-liveness-profiles-with-
 created: 2026-10-08
 updated: 2026-10-08
 related_tasks: []
+closed_at: "2026-10-08T15:25:23Z"
+closed_reason: Owner cancelled acceptance and requested removal of all acceptance resources
+evidence_summary: Live acceptance is cancelled, not completed. Already merged implementation is preserved; temporary provider and local acceptance resources are being retired.
 ---
 
 ## Goal

@@ -1,0 +1,11 @@
+{
+  "change": "scr-1791467099957833-install-standalone-liveness-profiles-with-only-required-emitter-formats",
+  "dropped_step_ids": [
+    "SCR-1791467228251004"
+  ],
+  "outcome": "dropped",
+  "prepared_at": "2026-10-08T15:25:23Z",
+  "reason": "Owner cancelled acceptance and requested removal of all acceptance resources",
+  "schema": 1,
+  "task_id": "SCR-1791467099957833"
+}

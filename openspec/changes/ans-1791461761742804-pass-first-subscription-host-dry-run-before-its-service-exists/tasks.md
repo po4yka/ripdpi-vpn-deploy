@@ -11,7 +11,7 @@ Primary writer owns ansible/roles/subscription-host/tasks/main.yml, handlers/mai
 ## Execution
 
 - [x] ANS-1791461940464917 Defer only planned absent subscription service activation during first check mode #bug !high @item:ANS-1791461761742804
-- [ ] ANS-1791461941073032 Verify fresh and loaded service guards then complete real P1 dry-run and deployment #bug !high @item:ANS-1791461761742804
+- ANS-1791461941073032 DROPPED: Verify fresh and loaded service guards then complete real P1 dry-run and deployment #bug !high @item:ANS-1791461761742804
 
 ## Verification
 

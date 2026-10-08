@@ -2,7 +2,7 @@
 id: MON-1790650904289505
 title: Deploy and accept staging observability and Telegram alerting
 kind: feature
-status: doing
+status: dropped
 area: monitoring
 priority: high
 risk: high
@@ -12,8 +12,11 @@ blocked_by: []
 spec_mode: required
 openspec_change: staging-observability-telegram-acceptance
 created: 2026-09-29
-updated: 2026-09-29
+updated: 2026-10-08
 related_tasks: []
+closed_at: "2026-10-08T15:25:23Z"
+closed_reason: Owner cancelled acceptance and requested removal of all acceptance resources
+evidence_summary: Live acceptance is cancelled, not completed. Already merged implementation is preserved; temporary provider and local acceptance resources are being retired.
 ---
 
 ## Goal

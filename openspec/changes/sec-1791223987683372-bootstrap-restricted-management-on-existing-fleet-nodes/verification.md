@@ -2,20 +2,20 @@
 task_id: SEC-1791223987683372
 change: sec-1791223987683372-bootstrap-restricted-management-on-existing-fleet-nodes
 commit_sha: null
-local: required
-local_evidence: null
-remote_ci: required
-remote_ci_evidence: null
-dry_run: required
-dry_run_evidence: null
-staging: required
-staging_evidence: null
-live: required
-live_evidence: null
-client: required
-client_evidence: null
-artifact: required
-artifact_evidence: null
+local: not_applicable
+local_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
+dry_run: not_applicable
+dry_run_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
+staging: not_applicable
+staging_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
+live: not_applicable
+live_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
+client: not_applicable
+client_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
+artifact: not_applicable
+artifact_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
 ---
 
 # Verification
@@ -57,9 +57,9 @@ feature and parent remain open.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-SEC-1791223987683372-001 | SEC-1791224948871987 | Named permanent/disposable classification and binding regression | required |
-| REQ-SEC-1791223987683372-006 | SEC-1791224948871987 | Updated producer/inventory/guest build-marker binding | required |
-| REQ-SEC-1791223987683372-002 | SEC-1791224949334227 | Real Linux startup permissions and lease expiry/identity tests | required |
-| REQ-SEC-1791223987683372-003 | SEC-1791224949790667 | Managed-policy conversion, preserved listeners and refusal tests | required |
-| REQ-SEC-1791223987683372-004 | SEC-1791224950240563 | Native interruption/reboot/original-policy rollback plus real SSH/SFTP | required |
-| REQ-SEC-1791223987683372-005 | SEC-1791224950691731 | Exact protected CI, guarded staging, existing-node positive proof and cleanup | required |
+| REQ-SEC-1791223987683372-001 | SEC-1791224948871987 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-SEC-1791223987683372-006 | SEC-1791224948871987 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-SEC-1791223987683372-002 | SEC-1791224949334227 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-SEC-1791223987683372-003 | SEC-1791224949790667 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-SEC-1791223987683372-004 | SEC-1791224950240563 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-SEC-1791223987683372-005 | SEC-1791224950691731 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |

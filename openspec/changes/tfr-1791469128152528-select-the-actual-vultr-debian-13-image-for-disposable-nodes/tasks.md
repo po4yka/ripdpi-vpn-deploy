@@ -12,7 +12,7 @@ this task's issue, generated board and OpenSpec artifacts. One serialized writer
 ## Execution
 
 - [x] TFR-1791469302312711 Correct approved image identities and exercise accepted and refused Vultr plans #bug !high @item:TFR-1791469128152528
-- [ ] TFR-1791469302916838 Verify accepted source and actual disposable Debian 13 SSH foundation #bug !high @item:TFR-1791469128152528
+- TFR-1791469302916838 DROPPED: Verify accepted source and actual disposable Debian 13 SSH foundation #bug !high @item:TFR-1791469128152528
 
 ## Verification
 

@@ -1,0 +1,23 @@
+{
+  "change": "staging-observability-telegram-acceptance",
+  "dropped_step_ids": [
+    "MON-1790651216954415",
+    "MON-1790651217409733",
+    "MON-1790651217861152",
+    "MON-1790651218327983",
+    "MON-1790651218798773",
+    "MON-1790651219261781",
+    "MON-1790651219743990",
+    "MON-1790651220194212",
+    "MON-1790651220644401",
+    "MON-1790651221104630",
+    "MON-1790652097417200",
+    "MON-1790652097923534",
+    "MON-1790652098418969"
+  ],
+  "outcome": "dropped",
+  "prepared_at": "2026-10-08T15:25:23Z",
+  "reason": "Owner cancelled acceptance and requested removal of all acceptance resources",
+  "schema": 1,
+  "task_id": "MON-1790650904289505"
+}

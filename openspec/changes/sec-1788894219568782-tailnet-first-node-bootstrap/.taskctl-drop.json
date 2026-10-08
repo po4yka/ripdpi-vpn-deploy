@@ -1,0 +1,12 @@
+{
+  "change": "sec-1788894219568782-tailnet-first-node-bootstrap",
+  "dropped_step_ids": [
+    "SEC-1788894502776578",
+    "SEC-1788894504951632"
+  ],
+  "outcome": "dropped",
+  "prepared_at": "2026-10-08T15:25:23Z",
+  "reason": "Owner cancelled acceptance and requested removal of all acceptance resources",
+  "schema": 1,
+  "task_id": "SEC-1788894219568782"
+}
