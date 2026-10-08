@@ -1,21 +1,21 @@
 ---
 task_id: SEC-1788894219568782
 change: sec-1788894219568782-tailnet-first-node-bootstrap
-commit_sha: null
-local: required
-local_evidence: "Baseline apply reproduced recovery-not-ready while its periodic worker was executing. The observation repair passed 370 SSH adapter, transaction, controller and real-policy tests, including failure/identity refusal and one shared deadline. Complete corrected-source local gate remains required."
-remote_ci: required
-remote_ci_evidence: "The corrected source requires fresh exact-revision hosted CI including native amd64 Molecule."
-dry_run: required
-dry_run_evidence: "Corrected-source ordinary staging dry-run remains unperformed."
-staging: required
-staging_evidence: "Protected 1a733c0264854c9b096b35e2dad9328707dade5b passed separate controller-loss and reboot recovery, positive bootstrap and SSH ownership. Ordinary deployment then failed with apply-rpc-failed after sentinel onboarding. Fresh corrected-source recovery and ordinary deployment remain required; the old guest's internal apply cause is unconfirmed."
-live: blocked
-live_evidence: "No permanent-node rollout or serial live acceptance was performed."
-client: required
-client_evidence: "Protected 1a733c0 sentinel onboarding committed after its first four-profile proof; the later SSH apply failed. Corrected-source traffic before and after provider firewall promotion remains unproved."
-artifact: required
-artifact_evidence: "The failed ordinary run retained its categorical receipt. Guarded server/root-storage absence was verified on 2026-10-03 at 17:31:52 UTC, within the approved resource deadline. Both canonical client/executor de-onboarding receipts passed; original Tailnet policy was restored. Temporary provider-token deletion and local plaintext retirement completed on 2026-10-04 after human confirmation. Corrected-source acceptance remains required."
+commit_sha: 9d7113b52958c4b50c69158873bbe4cd482f3fa6
+local: not_applicable
+local_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
+dry_run: not_applicable
+dry_run_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
+staging: not_applicable
+staging_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
+live: not_applicable
+live_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
+client: not_applicable
+client_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
+artifact: not_applicable
+artifact_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
 ---
 
 # Verification
@@ -153,13 +153,13 @@ is marked complete by extrapolation from staging.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-TFB-INPUT | SEC-1788894502237285 | Exact-source controller regressions, pinned public bootstrap and zero-write refusal cases | Passed on 8ab19efc |
-| REQ-TFB-BOUNDARY | SEC-1788894503320732 | Native/Molecule firewall checks and positive minimal-foundation staging | Passed on 8ab19efc |
-| REQ-TFB-RECOVERY | SEC-1788894502776578 | Fault regressions, native graph and separate real enrolled controller-loss/reboot recovery | Passed on 8ab19efc |
-| REQ-TFB-PROOF | SEC-1788894503869488 | Fresh real public/Tailnet SSH/SFTP and observed-context handoff | Passed on 8ab19efc |
-| REQ-TFB-DEPLOY | SEC-1788894503869488 | Receipt/refusal regressions, SSH ownership, ordinary dry-run/reconvergence and real protocol proof | Passed on 8ab19efc |
-| REQ-UPF-STAGING | SEC-1788894504408980 | Guard regressions, pre-write manifests, same-identity state-bound reissue and guarded absence | Passed on 8ab19efc |
-| REQ-TFB-ACCEPTANCE | SEC-1788894504951632 | Exact-source local/hosted/native gates, distinct staging scenarios, protocol proof and cleanup | Passed on 8ab19efc; required live category still blocks task closure |
+| REQ-TFB-INPUT | SEC-1788894502237285 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-TFB-BOUNDARY | SEC-1788894503320732 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-TFB-RECOVERY | SEC-1788894502776578 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-TFB-PROOF | SEC-1788894503869488 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-TFB-DEPLOY | SEC-1788894503869488 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-UPF-STAGING | SEC-1788894504408980 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-TFB-ACCEPTANCE | SEC-1788894504951632 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
 
 ## Required evidence scopes
 

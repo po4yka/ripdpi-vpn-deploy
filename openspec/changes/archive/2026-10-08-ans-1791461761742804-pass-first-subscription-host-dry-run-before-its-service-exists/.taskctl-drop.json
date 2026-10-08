@@ -1,0 +1,11 @@
+{
+  "change": "ans-1791461761742804-pass-first-subscription-host-dry-run-before-its-service-exists",
+  "dropped_step_ids": [
+    "ANS-1791461941073032"
+  ],
+  "outcome": "dropped",
+  "prepared_at": "2026-10-08T15:25:23Z",
+  "reason": "Owner cancelled acceptance and requested removal of all acceptance resources",
+  "schema": 1,
+  "task_id": "ANS-1791461761742804"
+}

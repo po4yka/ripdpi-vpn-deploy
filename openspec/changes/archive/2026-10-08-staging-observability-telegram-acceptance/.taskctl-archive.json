@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-10-08T15:30:14Z",
+  "change": "staging-observability-telegram-acceptance",
+  "commit_sha": "9d7113b52958c4b50c69158873bbe4cd482f3fa6",
+  "outcome": "dropped",
+  "schema": 1,
+  "task_id": "MON-1790650904289505"
+}

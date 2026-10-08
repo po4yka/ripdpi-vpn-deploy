@@ -2,7 +2,7 @@
 id: EPC-1788891270457728
 title: Complete Critical and High external acceptance gates
 kind: epic
-status: blocked
+status: dropped
 area: epic
 priority: critical
 risk: high
@@ -12,9 +12,12 @@ blocked_by: []
 spec_mode: required
 openspec_change: epc-1788891270457728-complete-critical-high-external-acceptance
 created: 2026-09-08
-updated: 2026-09-29
+updated: 2026-10-08
 related_tasks: []
 status_detail: Owner scope excludes Android, alert drills and offsite restore. Exact protected source 8ab19efc passed full SSH/2222 staging, four protocols, fresh AWG repeat, controller-loss/reboot and guarded cleanup. Permanent SSH remains unavailable; working console and owner VNC rotation are required before serial fleet convergence, fleet traffic and final reconciliation.
+closed_at: "2026-10-08T15:24:42Z"
+closed_reason: Owner cancelled external acceptance and requested removal of its resources
+evidence_summary: Acceptance cancelled by owner; no fleet acceptance success claimed. Original production nodes and merged implementation remain.
 ---
 
 ## Goal

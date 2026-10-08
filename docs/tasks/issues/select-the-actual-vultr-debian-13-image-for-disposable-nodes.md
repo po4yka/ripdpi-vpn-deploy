@@ -2,7 +2,7 @@
 id: TFR-1791469128152528
 title: Select the actual Vultr Debian 13 image for disposable nodes
 kind: bug
-status: doing
+status: dropped
 area: terraform
 priority: high
 risk: standard
@@ -14,6 +14,9 @@ openspec_change: tfr-1791469128152528-select-the-actual-vultr-debian-13-image-fo
 created: 2026-10-08
 updated: 2026-10-08
 related_tasks: []
+closed_at: "2026-10-08T15:25:23Z"
+closed_reason: Owner cancelled acceptance and requested removal of all acceptance resources
+evidence_summary: Live acceptance is cancelled, not completed. Already merged implementation is preserved; temporary provider and local acceptance resources are being retired.
 ---
 
 ## Goal

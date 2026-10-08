@@ -2,7 +2,7 @@
 id: SEC-1788894219568782
 title: Bootstrap restricted Tailnet access before dual-path deployment
 kind: feature
-status: doing
+status: dropped
 area: security
 priority: high
 risk: high
@@ -12,9 +12,12 @@ blocked_by: []
 spec_mode: required
 openspec_change: sec-1788894219568782-tailnet-first-node-bootstrap
 created: 2026-09-08
-updated: 2026-10-02
+updated: 2026-10-08
 related_tasks: []
 status_detail: Fresh protected-source reboot acceptance fails before public SSH returns; reproduce effective-policy inspection without the volatile OpenSSH runtime directory and repair recovery before repeating live acceptance.
+closed_at: "2026-10-08T15:25:23Z"
+closed_reason: Owner cancelled acceptance and requested removal of all acceptance resources
+evidence_summary: Live acceptance is cancelled, not completed. Already merged implementation is preserved; temporary provider and local acceptance resources are being retired.
 ---
 
 ## Goal

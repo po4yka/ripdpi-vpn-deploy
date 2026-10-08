@@ -1,0 +1,11 @@
+{
+  "change": "epc-1788891270457728-complete-critical-high-external-acceptance",
+  "evidence_summary": "Acceptance cancelled by owner; no fleet acceptance success claimed. Original production nodes and merged implementation remain.",
+  "execution_sha256": "7a1bf79abdf67ff9eb77ae3066a31c678d5c5422acaaba296abff3fd7f20c308",
+  "issue_sha256": "f26ffc9ab920deada10d0009edae53afb2d988e7f690deee3a3018eb4daae912",
+  "outcome": "dropped",
+  "prepared_at": "2026-10-08T15:24:42Z",
+  "reason": "Owner cancelled external acceptance and requested removal of its resources",
+  "schema": 1,
+  "task_id": "EPC-1788891270457728"
+}

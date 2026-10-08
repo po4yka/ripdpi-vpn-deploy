@@ -2,7 +2,7 @@
 id: ANS-1791461761742804
 title: Pass first subscription host dry-run before its service exists
 kind: bug
-status: doing
+status: dropped
 area: ansible
 priority: high
 risk: standard
@@ -14,6 +14,9 @@ openspec_change: ans-1791461761742804-pass-first-subscription-host-dry-run-befor
 created: 2026-10-08
 updated: 2026-10-08
 related_tasks: []
+closed_at: "2026-10-08T15:25:23Z"
+closed_reason: Owner cancelled acceptance and requested removal of all acceptance resources
+evidence_summary: Live acceptance is cancelled, not completed. Already merged implementation is preserved; temporary provider and local acceptance resources are being retired.
 ---
 
 ## Goal
