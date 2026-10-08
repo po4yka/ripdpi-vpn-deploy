@@ -219,6 +219,16 @@
         group: root
         mode: "0600"
 
+    - name: Begin sender runtime activation transaction
+      ansible.builtin.set_fact:
+        _observability_agent_runtime_ready: false
+
+    - name: Capture the sender release before binary activation
+      ansible.builtin.stat:
+        path: "{{ observability_agent.install_root }}/current"
+        follow: false
+      register: _observability_agent_previous_release
+
     - name: Install pinned observability agent through runtime-release
       ansible.builtin.include_role:
         name: runtime-release
@@ -242,6 +252,10 @@
         runtime_release_archive_members:
           amd64: vmagent-prod
           arm64: vmagent-prod
+
+    - name: Preserve the sender binary activation result
+      ansible.builtin.set_fact:
+        _observability_agent_runtime_changed: "{{ runtime_release_changed | bool }}"
 
     - name: Validate and publish observability credential bundle
       block:
@@ -587,24 +601,6 @@
         fail_msg: Previous sender unit has no recognized rollback runtime.
       when: _observability_agent_previous_unit.stat.exists
 
-    - name: Install observability agent units
-      ansible.builtin.template:
-        src: "{{ item }}"
-        dest: "/etc/systemd/system/{{ item | regex_replace('\\.j2$', '') }}"
-        owner: root
-        group: root
-        mode: "0644"
-      loop:
-        - observability-agent.service.j2
-        - observability-agent-adapter.service.j2
-        - observability-agent-adapter.timer.j2
-        - observability-agent-health-adapter.service.j2
-        - observability-agent-health-adapter.timer.j2
-      register: _observability_agent_units
-      notify:
-        - Reload observability agent systemd
-        - Restart observability agent adapter timer
-
     - name: Inspect active observability configuration generation
       ansible.builtin.stat:
         path: "{{ observability_agent.credential_dir }}/current"
@@ -666,6 +662,24 @@
 
     - name: Activate and verify observability configuration generation
       block:
+        - name: Install observability agent units
+          ansible.builtin.template:
+            src: "{{ item }}"
+            dest: "/etc/systemd/system/{{ item | regex_replace('\\.j2$', '') }}"
+            owner: root
+            group: root
+            mode: "0644"
+          loop:
+            - observability-agent.service.j2
+            - observability-agent-adapter.service.j2
+            - observability-agent-adapter.timer.j2
+            - observability-agent-health-adapter.service.j2
+            - observability-agent-health-adapter.timer.j2
+          register: _observability_agent_units
+          notify:
+            - Reload observability agent systemd
+            - Restart observability agent adapter timer
+
         - name: Switch current observability credential generation
           ansible.builtin.file:
             src: "generations/{{ _observability_agent_credential_generation }}"
@@ -686,6 +700,7 @@
           when: >-
             _observability_agent_generation_switch.changed or
             _observability_agent_units.changed or
+            _observability_agent_runtime_changed or
             _observability_agent_service_active.rc != 0
 
         - name: Wait for observability agent local readiness
@@ -702,6 +717,16 @@
           delay: 1
           until: _observability_agent_ready.rc == 0
       rescue:
+        - name: Restore the previous sender binary after failed activation
+          ansible.builtin.file:
+            src: "{{ _observability_agent_previous_release.stat.lnk_source }}"
+            dest: "{{ observability_agent.install_root }}/current"
+            state: link
+            force: true
+          when:
+            - _observability_agent_runtime_changed | bool
+            - _observability_agent_previous_release.stat.islnk | default(false)
+
         - name: Restore previous observability generation
           ansible.builtin.file:
             src: "generations/{{ _observability_agent_previous_generation_id }}"
@@ -799,6 +824,10 @@
           ansible.builtin.fail:
             msg: Observability agent generation failed readiness and was rolled back.
 
+    - name: Commit ready sender runtime activation
+      ansible.builtin.set_fact:
+        _observability_agent_runtime_ready: true
+
     - name: Enable and start observability agent sender
       ansible.builtin.systemd_service:
         name: observability-agent.service
@@ -824,3 +853,26 @@
       ansible.builtin.include_role:
         name: observability_kuma
         tasks_from: producers
+  rescue:
+    - name: Restore sender binary after pre-activation validation failure
+      ansible.builtin.file:
+        src: "{{ _observability_agent_previous_release.stat.lnk_source }}"
+        dest: "{{ observability_agent.install_root }}/current"
+        state: link
+        force: true
+      when:
+        - not (_observability_agent_runtime_ready | default(false) | bool)
+        - _observability_agent_previous_release.stat.islnk | default(false)
+
+    - name: Remove an unaccepted first sender binary activation
+      ansible.builtin.file:
+        path: "{{ observability_agent.install_root }}/current"
+        state: absent
+      when:
+        - not (_observability_agent_runtime_ready | default(false) | bool)
+        - _observability_agent_previous_release is defined
+        - not (_observability_agent_previous_release.stat.exists | default(false))
+
+    - name: Refuse incomplete observability agent convergence
+      ansible.builtin.fail:
+        msg: Observability agent convergence failed; an unaccepted binary activation was reverted.

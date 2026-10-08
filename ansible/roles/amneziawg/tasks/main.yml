@@ -244,4 +244,5 @@
   loop: "{{ _awg_instances }}"
   loop_control:
     label: "{{ item.name }}"
+  no_log: true
   when: not ansible_check_mode or _awg_unit_before.stat.exists | default(false)

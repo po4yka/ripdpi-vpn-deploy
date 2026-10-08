@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+**Drift inspection is read-only** — `diff-secrets.yml` compares full parsed Xray configuration using the canonical role template and defaults with selected inventory/secrets, then checks enabled services and binary pins. Secret comparisons use `no_log` and never print configuration diffs. The `vpn-ci-*` profiles use typed complete toggle maps with explicit research allowlists; they retain normal SSH ownership requirements.
+
+**Operational validation follows runtime state** — Xray rotation, verify and rollback use the shared validator with the installed service asset authority; rollback candidates validate before publication and failed activation restores original bytes. OS maintenance loads the effective secret contract before upgrades and verifies selected services plus every configured AWG instance.
+
 **One playbook per intent** — `site.yml` (deploy), `os-maintenance.yml` (serial OS upgrades/reboots), `verify.yml`, `security-verify.yml`, `smoke-test.yml`, `rollback-config.yml`, `rollback-xray.yml`, `rotate-credentials.yml`. No mega-playbook with conditional flags; new intent = new playbook.
 `observability-host-bootstrap.yml` retains only the historical dedicated-host
 contract; the current operator refuses that bootstrap. Current observability
@@ -31,7 +35,9 @@ aliases for existing inventories and must stay guarded by `role-tiers.yml`.
 Tailnet management but disables monitoring, watchdog and backup for a scoped
 recovery rehearsal. It inherits the reviewed exact Tailnet sources from all.yml;
 its complete `vpn` map follows the controller's replacement semantics. This
-profile does not establish monitoring or backup acceptance.
+profile does not establish monitoring or backup acceptance. `vpn-device-full-tailnet`
+retains the complete device-full service set with Tailnet management enabled for
+blue-green replacements; it still requires exact approved controller sources.
 
 **Per-role `roles/<role>/defaults/main.yml`** — every variable a role consumes has a
 default. `group_vars` only overrides. Reading a role's defaults file tells

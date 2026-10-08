@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+**Binary changes activate immediately** — capture the runtime-release result before configuration work, include it in restart selection, and restore the captured release link before restarting the old generation after failed acceptance. `site.yml` always enters this lifecycle so enabled-to-disabled transitions reach cleanup.
+
 Before changing the sender runtime contract, inspect its [cross-role and operator consumers](../../../scripts/DESIGN-NOTES.md#observability--observability-operatorpy).
 
 **The sender is a pinned vmagent runtime** — runtime-release verifies the exact stable community archive before activation. Empty version, URL, checksum, or architecture pin is a hard failure; this role never selects a latest release. Prometheus remains the collector; the sender forces the Prometheus remote-write wire protocol.
@@ -27,6 +29,8 @@ Before changing the sender runtime contract, inspect its [cross-role and operato
 - Disable inspects exact owned unit files and stops timers and in-flight adapter services before removing binaries; a stop failure aborts removal.
 
 ## Pitfalls
+
+- Runtime activation remains uncommitted until readiness passes. The outer rescue restores the old binary link (or removes a failed first link) even when candidate validation fails before the service transaction; collector rollback also restores exact prior unit bytes before restart.
 
 - Restart acceptance must recover exact historical samples after both clean stop and SIGKILL once persistence is observed. Retaining files, a queue-depth decrease, or fresh samples after restart cannot establish recovery. Host power-loss/fsync durability is not implied by a process-kill test.
 - This role needs the monitoring and node_manifest producers to have converged before it runs; site ordering is intentionally owned by a separate change.

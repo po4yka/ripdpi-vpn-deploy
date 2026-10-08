@@ -14,6 +14,8 @@
 
 ## Design decisions
 
+**Audit regressions use executable boundaries** — localhost Ansible tests exercise synthetic-key redaction, DNS and forwarding transitions, canonical Xray drift, and rollback validation/activation failures. Saved-plan tests replace the original after inspection and verify apply still uses the inspected private snapshot. These prove local behavior, not provider or guest acceptance.
+
 **Subscription first check mode covers planned service boundaries** — evaluate
 loaded, absent, unplanned and failed systemd discovery plus restart handlers.
 Real role convergence and first-host dry-run remain separate acceptance gates.

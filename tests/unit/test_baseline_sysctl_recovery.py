@@ -9,6 +9,8 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_baseline_reconciles_sysctls_without_change_notifications():
     tasks = (ROOT / "ansible/roles/baseline/tasks/main.yml").read_text()
     handlers = (ROOT / "ansible/roles/baseline/handlers/main.yml").read_text()
+    assert "ansible.builtin.import_tasks: forwarding.yml" in tasks
+    tasks = (ROOT / "ansible/roles/baseline/tasks/forwarding.yml").read_text()
 
     assert "name: Reconcile effective sysctl values on every converge" in tasks
     assert "cmd: sysctl -e --system" in tasks

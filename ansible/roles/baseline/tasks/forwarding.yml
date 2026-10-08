@@ -1,0 +1,35 @@
+---
+- name: Remove the superseded split-hop forwarding fragment
+  ansible.builtin.file:
+    path: /etc/sysctl.d/60-split-hop-egress.conf
+    state: absent
+
+- name: Enable forwarding for the effective routing workloads
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/91-vpn-forward.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      net.ipv4.ip_forward = 1
+      net.ipv6.conf.all.forwarding = {{ 1 if (vpn.enable_amneziawg | default(false) | bool) else 0 }}
+  when: >-
+    (vpn.enable_amneziawg | default(false) | bool) or
+    (vpn.enable_split_hop_egress | default(false) | bool)
+
+- name: Remove forwarding override when no routing workload is enabled
+  ansible.builtin.file:
+    path: /etc/sysctl.d/91-vpn-forward.conf
+    state: absent
+  when: >-
+    not (vpn.enable_amneziawg | default(false) | bool) and
+    not (vpn.enable_split_hop_egress | default(false) | bool)
+
+- name: Reconcile effective sysctl values on every converge
+  ansible.builtin.command:
+    cmd: sysctl -e --system
+  register: baseline_sysctl_apply
+  changed_when: false
+  failed_when: >-
+    baseline_sysctl_apply.rc != 0 and
+    'net.ipv4.tcp_congestion_control' not in baseline_sysctl_apply.stderr

@@ -1,0 +1,25 @@
+[Unit]
+Description=Dedicated honeypot guest IPv4
+After=network-online.target
+Wants=network-online.target
+Before=honeypot.service
+PartOf=honeypot.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/ip address replace 198.51.100.20/32 dev eth0
+ExecStop=/usr/sbin/ip address del 198.51.100.20/32 dev eth0
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native

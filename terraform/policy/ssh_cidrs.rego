@@ -1,5 +1,7 @@
 package terraform.policy.ssh_cidrs
 
+import data.terraform.policy.firewall
+
 # firewall_rules_pin_ssh_to_documented_cidrs
 #
 # SSH allow rules must reference a CIDR that appears in var.allowed_ssh_cidrs.
@@ -40,10 +42,10 @@ deny[msg] {
   rule.action == "accept"
   rule.direction == "in"
   rule.protocol == "tcp"
-  rule.destination_port_start == ssh_port
+  firewall.upcloud_port_contains(rule, ssh_port)
 
-  source := rule.source_address_start
-  not upcloud_source_allowed(source)
+  source := object.get(rule, "source_address_start", "")
+  not upcloud_source_allowed(rule)
 
   msg := sprintf(
     "resource %q: SSH allow rule source %q is not in var.allowed_ssh_cidrs",
@@ -51,13 +53,16 @@ deny[msg] {
   )
 }
 
-upcloud_source_allowed(source) {
-  allowed_cidrs[source]
-}
-
-upcloud_source_allowed(source) {
+upcloud_source_allowed(rule) {
   cidr := allowed_cidrs[_]
+  source := rule.source_address_start
+  end := object.get(rule, "source_address_end", source)
+  source != ""
+  source != null
+  end != ""
+  end != null
   net.cidr_contains(cidr, source)
+  net.cidr_contains(cidr, end)
 }
 
 # scaleway: each SSH inbound rule must use a documented CIDR.
@@ -67,7 +72,7 @@ deny[msg] {
   rule := rc.change.after.inbound_rule[_]
   rule.action == "accept"
   rule.protocol == "TCP"
-  sprintf("%v", [rule.port]) == ssh_port
+  firewall.scaleway_port_contains(rule, ssh_port)
   not allowed_cidrs[rule.ip_range]
 
   msg := sprintf(
@@ -83,7 +88,7 @@ deny[msg] {
   rule := rc.change.after.rule[_]
   rule.direction == "in"
   rule.protocol == "tcp"
-  rule.port == ssh_port
+  firewall.port_contains(rule.port, ssh_port)
   source_ip := rule.source_ips[_]
   not allowed_cidrs[source_ip]
 
@@ -99,7 +104,7 @@ deny[msg] {
   rc := input.resource_changes[_]
   rc.type == "vultr_firewall_rule"
   rc.change.after.protocol == "tcp"
-  rc.change.after.port == ssh_port
+  firewall.port_contains(rc.change.after.port, ssh_port)
   after := rc.change.after
   cidr := sprintf("%s/%d", [after.subnet, after.subnet_size])
   not allowed_cidrs[cidr]

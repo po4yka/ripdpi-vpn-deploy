@@ -668,7 +668,9 @@ init:
 validate:
 	@for provider in upcloud hetzner vultr scaleway; do \
 	  terraform -chdir=terraform/providers/$$provider fmt -check -recursive || exit 1; \
-	  terraform -chdir=terraform/providers/$$provider validate || exit 1; \
+	  data_dir="$(CURDIR)/terraform/providers/$$provider/.terraform-env/.validation"; \
+	  TF_DATA_DIR="$$data_dir" TF_WORKSPACE=default terraform -chdir=terraform/providers/$$provider init -backend=false -input=false -lockfile=readonly >/dev/null || exit 1; \
+	  TF_DATA_DIR="$$data_dir" TF_WORKSPACE=default terraform -chdir=terraform/providers/$$provider validate || exit 1; \
 	done
 	gitleaks git --redact --no-banner .
 	gitleaks git --staged --redact --no-banner .
@@ -683,9 +685,10 @@ plan:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) $(TF_ENV) plan \
 	  -var-file=environments/$(ENV).tfvars \
 	  -out=$(ENV).tfplan
+	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/policy-plan.sh check
 
 apply:
-	PROVIDER=$(PROVIDER) ENV=$(ENV) $(TF_ENV) apply $(ENV).tfplan
+	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/policy-plan.sh apply
 
 inventory:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" ./scripts/render-inventory.sh
@@ -793,6 +796,7 @@ deploy-canary:
 	$(MAKE) ENV=canary deploy
 
 os-maintenance: require-clean-source require-inventory validate-ansible-extra-vars pre-deploy-check
+	VPN_SECRETS_FILE="$(SECRETS_FILE)" \
 	ansible-playbook $(ANSIBLE_DIR)/playbooks/os-maintenance.yml \
 	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \
 	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)")
@@ -1195,7 +1199,8 @@ molecule-full-stack:
 smoke-test:
 	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run 'make decrypt'"; exit 1; }
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
-	ansible-playbook $(ANSIBLE_DIR)/playbooks/smoke-test.yml
+	ansible-playbook $(ANSIBLE_DIR)/playbooks/smoke-test.yml \
+	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)")
 
 validate-target:
 	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run 'make decrypt'"; exit 1; }

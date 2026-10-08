@@ -1,8 +1,4 @@
-{% if hysteria_port_range %}
-listen: ":{{ hysteria_port }},{{ hysteria_port_range }}"
-{% else %}
 listen: ":{{ hysteria_port }}"
-{% endif %}
 
 tls:
   cert: {{ (hysteria_config_dir ~ '/server.fullchain.pem') | to_json }}

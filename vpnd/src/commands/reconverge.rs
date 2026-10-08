@@ -54,7 +54,7 @@ pub async fn run(ctx: &Context, args: ReconvergeArgs) -> Result<()> {
         ctx.secure_secrets_file()?;
         make::target(ctx, "init")?.run(ctx.explain).await?;
         make::target(ctx, "plan")?.run(ctx.explain).await?;
-        let dry_run = ansible::dry_run(ctx).arg("--limit").arg(&limit);
+        let dry_run = make::target(ctx, "dry-run")?.env("ANSIBLE_LIMIT", &limit);
         dry_run.run(ctx.explain).await?;
 
         if args.dry_run {
@@ -62,9 +62,9 @@ pub async fn run(ctx: &Context, args: ReconvergeArgs) -> Result<()> {
             return Ok(());
         }
 
-        let deploy = ansible::site(ctx).arg("--limit").arg(&limit);
+        let deploy = make::target(ctx, "deploy")?.env("ANSIBLE_LIMIT", &limit);
         deploy.run(ctx.explain).await?;
-        let verify = ansible::verify(ctx).arg("--limit").arg(&limit);
+        let verify = make::target(ctx, "verify")?.env("ANSIBLE_LIMIT", &limit);
         verify.run(ctx.explain).await?;
         Ok(())
     }

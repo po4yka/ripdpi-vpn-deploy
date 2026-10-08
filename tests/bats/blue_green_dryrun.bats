@@ -89,16 +89,20 @@ _run_dry() {
   cat > "${fake_bin}/make" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-if ! file_mode="$(stat -c '%a' "$VPN_SECRETS_FILE" 2>/dev/null)"; then
-  file_mode="$(stat -f '%Lp' "$VPN_SECRETS_FILE")"
+if ! file_mode="$(stat -c '%a' "$SECRETS_FILE" 2>/dev/null)"; then
+  file_mode="$(stat -f '%Lp' "$SECRETS_FILE")"
 fi
-if ! dir_mode="$(stat -c '%a' "$(dirname "$VPN_SECRETS_FILE")" 2>/dev/null)"; then
-  dir_mode="$(stat -f '%Lp' "$(dirname "$VPN_SECRETS_FILE")")"
+if ! dir_mode="$(stat -c '%a' "$(dirname "$SECRETS_FILE")" 2>/dev/null)"; then
+  dir_mode="$(stat -f '%Lp' "$(dirname "$SECRETS_FILE")")"
 fi
-printf '%s\n%s\n%s\n' "$VPN_SECRETS_FILE" "$file_mode" "$dir_mode" > "$TEST_CAPTURE"
+printf '%s\n%s\n%s\n' "$SECRETS_FILE" "$file_mode" "$dir_mode" > "$TEST_CAPTURE"
 exit 23
 EOF
-  chmod 0700 "${fake_bin}/make"
+  cat > "${fake_bin}/ansible-inventory" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' '{"vpn":{"hosts":["vpn-test.example.com"]}}'
+EOF
+  chmod 0700 "${fake_bin}/make" "${fake_bin}/ansible-inventory"
 
   run env \
     PATH="${fake_bin}:${PATH}" \
@@ -144,4 +148,24 @@ EOF
 
   assert_failure 42
   [[ ! -e "$(cat "$dir_capture")" ]]
+}
+
+@test "missing blue VPN alias refuses before verification or provisioning" {
+  local fake_bin="${BATS_TEST_TMPDIR}/absent-bin"
+  local called="${BATS_TEST_TMPDIR}/unexpected-make"
+  mkdir -p "$fake_bin"
+  cat > "${fake_bin}/ansible-inventory" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' '{"vpn":{"hosts":["another-node"]}}'
+EOF
+  cat > "${fake_bin}/make" <<'EOF'
+#!/usr/bin/env bash
+: > "$UNEXPECTED_MAKE"
+exit 0
+EOF
+  chmod 0700 "${fake_bin}/ansible-inventory" "${fake_bin}/make"
+  run env PATH="${fake_bin}:${PATH}" UNEXPECTED_MAKE="$called" bash "$SCRIPT"
+  assert_failure
+  assert_output --partial "blue-green target is absent or ambiguous"
+  [[ ! -e "$called" ]]
 }

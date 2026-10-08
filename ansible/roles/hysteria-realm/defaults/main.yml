@@ -34,11 +34,11 @@ hysteria_realm:
   listen_addr: "::"
 
   # TLS material for the rendezvous channel. With `share_hysteria_tls:
-  # true` (default) the role reuses the hysteria role's cert/key —
-  # both tiers ride the same domain. Set false to point the listener
-  # at a separate cert/key the operator pre-stages at
-  # `tls_cert_path` / `tls_key_path` before the role runs.
-  share_hysteria_tls: true
+  # true` the role reuses the enabled hysteria role's cert/key. Standalone
+  # realm profiles instead publish their own copy from the supplied PEMs,
+  # without requiring the hysteria account or configuration directory.
+  # An explicit value overrides this profile-derived default.
+  share_hysteria_tls: "{{ vpn.enable_hysteria | default(false) | bool }}"
   tls_cert_path: "{{ hysteria_realm.config_dir }}/server.fullchain.pem"
   tls_key_path: "{{ hysteria_realm.config_dir }}/server.key"
 

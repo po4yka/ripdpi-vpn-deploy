@@ -199,7 +199,7 @@ confirm_vultr_guest_ipv4() {
 
   for ((attempt = 1; attempt <= attempts; attempt++)); do
     if ssh -o BatchMode=yes \
-           -o StrictHostKeyChecking=accept-new \
+           -o StrictHostKeyChecking=yes \
            -o ConnectTimeout=5 \
            -p "$ssh_port" \
            -i "$ANSIBLE_SSH_PRIVATE_KEY_FILE" \

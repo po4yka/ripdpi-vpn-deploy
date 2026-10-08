@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -40,7 +41,10 @@ def _run_watchdog(
 
     _executable(
         bin_dir / "systemctl",
-        'printf \'%s\\n\' "$*" >> "${SYSTEMCTL_LOG}"\n' "exit 0\n",
+        'printf \'%s\\n\' "$*" >> "${SYSTEMCTL_LOG}"\n'
+        'if [[ "$*" == *"--property=Environment"* ]]; then\n'
+        '  printf \'%s\\n\' \'XRAY_LOCATION_ASSET=/tmp/watchdog-test-assets\'\n'
+        'fi\nexit 0\n',
     )
     _executable(bin_dir / "timeout", "exit 0\n")
     _executable(
@@ -77,6 +81,11 @@ def _run_watchdog(
         "while :; do read -r -t 1 _ || true; done\n",
     )
 
+    _executable(
+        bin_dir / "xray-validate",
+        f'exec "{sys.executable}" "{REPO_ROOT / "ansible/roles/xray/files/xray_validate.py"}" "$@"\n',
+    )
+
     env = os.environ.copy()
     env.update(
         {
@@ -86,6 +95,7 @@ def _run_watchdog(
             "ENABLE_HYSTERIA": "false",
             "ENABLE_AMNEZIAWG": "false",
             "XRAY_BIN": str(bin_dir / "xray"),
+            "XRAY_VALIDATE_BIN": str(bin_dir / "xray-validate"),
             "XRAY_PORT": "443",
             "XRAY_REALITY_CONFIG": str(config_file),
             "XRAY_REALITY_PROBES": "443:31082",

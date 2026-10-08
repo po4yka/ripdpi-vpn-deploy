@@ -24,16 +24,10 @@
     update_cache: true
     cache_valid_time: 3600
 
-- name: Enable IP forwarding for the WG interface
-  ansible.builtin.copy:
-    dest: /etc/sysctl.d/60-split-hop-egress.conf
-    owner: root
-    group: root
-    mode: "0644"
-    content: |
-      # Managed by Ansible role `split-hop-egress`. Hand edits will be overwritten.
-      net.ipv4.ip_forward = 1
-  notify: Reload sysctl
+- name: Reconcile the baseline-owned forwarding policy
+  ansible.builtin.include_role:
+    name: baseline
+    tasks_from: forwarding
 
 - name: Render validated split-hop egress policy
   ansible.builtin.template:

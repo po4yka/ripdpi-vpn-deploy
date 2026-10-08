@@ -10,6 +10,9 @@
 #   ANSIBLE_SSH_PRIVATE_KEY_FILE
 #
 # Optional:
+#   BLUE_COHORT existing profile (default: fullstack)
+#   GREEN_COHORT replacement profile (default: device-full-tailnet)
+#   GREEN_TAILNET_HANDOFF, DEPLOY_SSH_CONTEXTS_FILE: private paths to populate before convergence
 #   GREEN_ZONE  override zone for the green node (default: same as blue)
 #   DRY_RUN     set to 1 (or pass --dry-run) to print plan without mutating
 set -euo pipefail
@@ -37,6 +40,8 @@ PROVIDER="${PROVIDER:-upcloud}"
 BLUE_ENV="${BLUE_ENV:?BLUE_ENV required (env var or --blue-env)}"
 GREEN_ENV="${GREEN_ENV:?GREEN_ENV required (env var or --green-env)}"
 GREEN_ZONE="${GREEN_ZONE:-}"
+BLUE_COHORT="${BLUE_COHORT:-fullstack}"
+GREEN_COHORT="${GREEN_COHORT:-device-full-tailnet}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
 SOPS_FILE="${SOPS_FILE:-${HOME}/.config/vpn-provision/${BLUE_ENV}.secrets.sops.yaml}"
@@ -56,9 +61,8 @@ if (( DRY_RUN )); then
   1/8  Verify blue health  (sops --decrypt, make verify) — read-only
   2/8  Bootstrap green tfvars if missing  (scripts/new-cohort.sh)
   3/8  terraform plan via workspace wrapper: PROVIDER=${PROVIDER} ENV=${GREEN_ENV} scripts/terraform-env.sh plan -var-file=environments/${GREEN_ENV}.tfvars
-  4/8  ansible-playbook ansible/playbooks/site.yml --check -l '*${GREEN_ENV}*'
-  5/8  ansible-playbook ansible/playbooks/verify.yml --check -l '*${GREEN_ENV}*'
-       ansible-playbook ansible/playbooks/smoke-test.yml --check -l '*${GREEN_ENV}*'
+  4/8  Establish pinned SSH + Tailnet ownership, then make dry-run (--check) and deploy for the exact green alias
+  5/8  make verify and smoke-test for the exact green alias
   6/8  Operator pivot (traffic swing) — manual step
   7/8  Drain blue — no automation
   8/8  Promote green tfvars — manual step
@@ -74,6 +78,32 @@ if [[ -z "${ANSIBLE_SSH_PRIVATE_KEY_FILE:-}" ]]; then
 fi
 
 step() { echo; echo "==> $*"; }
+
+require_vpn_alias() {
+  local alias="$1"
+  [[ "$alias" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || {
+    echo 'blue-green requires an exact inventory alias' >&2
+    return 1
+  }
+  ANSIBLE_CONFIG="$REPO_ROOT/ansible/ansible.cfg" \
+    ansible-inventory --inventory "$REPO_ROOT/ansible/inventory/generated.ini" --list | python3 -c '
+import json, sys
+inventory = json.load(sys.stdin)
+seen = set()
+def members(group):
+    if group in seen:
+        return set()
+    seen.add(group)
+    entry = inventory.get(group, {})
+    hosts = set(entry.get("hosts", []))
+    for child in entry.get("children", []):
+        hosts.update(members(child))
+    return hosts
+alias = sys.argv[1]
+if alias in inventory or alias not in members("vpn"):
+    sys.exit("blue-green target is absent or ambiguous in the VPN inventory")
+' "$alias"
+}
 
 confirm() {
   local prompt="$1"
@@ -102,7 +132,9 @@ cleanup_secrets() {
 trap cleanup_secrets EXIT
 sops --decrypt "$SOPS_FILE" > "$SECRETS_FILE"
 
-VPN_SECRETS_FILE="$SECRETS_FILE" \
+BLUE_ALIAS="$(PROVIDER="$PROVIDER" ENV="$BLUE_ENV" "$REPO_ROOT/scripts/terraform-env.sh" output -raw server_hostname)"
+require_vpn_alias "$BLUE_ALIAS"
+SECRETS_FILE="$SECRETS_FILE" ANSIBLE_LIMIT="$BLUE_ALIAS" \
   ENV="${BLUE_ENV}" PROVIDER="${PROVIDER}" \
   make -C "$REPO_ROOT" verify
 
@@ -123,32 +155,72 @@ fi
 # 3. Provision green
 # ---------------------------------------------------------------------------
 step "3/8  Provision green (ENV=${GREEN_ENV})"
+: "${GREEN_TAILNET_HANDOFF:?set the private GREEN_TAILNET_HANDOFF output path before provisioning}"
+: "${DEPLOY_SSH_CONTEXTS_FILE:?set the private DEPLOY_SSH_CONTEXTS_FILE path before provisioning}"
 ENV="$GREEN_ENV" PROVIDER="$PROVIDER" make -C "$REPO_ROOT" init plan apply
 
 # ---------------------------------------------------------------------------
 # 4. Render multi-host inventory and deploy green
 # ---------------------------------------------------------------------------
-step "4/8  Render multi-host inventory and deploy green"
+step "4/8  Establish authenticated green ownership, then render and deploy"
+
+GREEN_ALIAS="$(PROVIDER="$PROVIDER" ENV="$GREEN_ENV" "$REPO_ROOT/scripts/terraform-env.sh" output -raw server_hostname)"
+[[ "$GREEN_ALIAS" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || exit 1
+cat <<'EOF'
+Before any green SSH contact, obtain its public host key through the provider's
+authenticated console or another authenticated channel and verify its identity.
+Pin the verified public endpoint in standard OpenSSH known_hosts, and prepare
+the private pinned known-hosts file required by the bootstrap controller.
+Do not treat ssh-keyscan output as identity proof.
+EOF
+read -r -p "Press Enter after the public SSH identity has been authenticated and pinned: " _
+GREEN_PUBLIC_IP="$(PROVIDER="$PROVIDER" ENV="$GREEN_ENV" "$REPO_ROOT/scripts/terraform-env.sh" output -raw server_ipv4)"
+GREEN_SSH_PORT="$(PROVIDER="$PROVIDER" ENV="$GREEN_ENV" "$REPO_ROOT/scripts/terraform-env.sh" output -raw ssh_port)"
+[[ "$GREEN_SSH_PORT" =~ ^[1-9][0-9]*$ ]] && (( GREEN_SSH_PORT <= 65535 )) || exit 1
+GREEN_HOST_KEY_ALIAS="$GREEN_PUBLIC_IP"
+if [[ "$GREEN_SSH_PORT" != 22 ]]; then
+  GREEN_HOST_KEY_ALIAS="[${GREEN_PUBLIC_IP}]:${GREEN_SSH_PORT}"
+fi
+ssh-keygen -F "$GREEN_HOST_KEY_ALIAS" -f "${HOME}/.ssh/known_hosts" >/dev/null || {
+  echo 'verified green public SSH pin is missing from standard known_hosts' >&2
+  exit 1
+}
 HOSTS="${PROVIDER}:${BLUE_ENV},${PROVIDER}:${GREEN_ENV}" \
-COHORTS="fullstack,fullstack" \
-  "${REPO_ROOT}/scripts/render-inventory.sh"
-
-ENV="$GREEN_ENV" PROVIDER="$PROVIDER" make -C "$REPO_ROOT" wait
-
-VPN_SECRETS_FILE="$SECRETS_FILE" \
-  ansible-playbook \
-    -l "*${GREEN_ENV}*" \
-    "${REPO_ROOT}/ansible/playbooks/site.yml"
+COHORTS="${BLUE_COHORT},${GREEN_COHORT}" \
+TAILNET_HANDOFFS="${BLUE_TAILNET_HANDOFF:--},-" \
+  "$REPO_ROOT/scripts/render-inventory.sh"
+require_vpn_alias "$GREEN_ALIAS"
+cat <<'EOF'
+Before convergence, prepare the new node's pinned public and Tailnet SSH paths:
+  make install-ssh-recovery
+  make bootstrap-tailnet
+  make migrate-ssh-ownership
+Use the exact green alias and the private inputs documented in docs/TAILNET-MANAGEMENT.md.
+Set GREEN_TAILNET_HANDOFF to the confirmed handoff path and
+DEPLOY_SSH_CONTEXTS_FILE to the prepared socket-context file before starting
+this script. Those paths may be populated during this pause.
+Before rendering any Vultr secondary-IP guest, also pin its public SSH endpoint
+in the operator's standard OpenSSH known_hosts using an authenticated source.
+Inventory validation refuses unknown or changed keys; never use ssh-keyscan as
+identity proof. The deployment controller performs readiness over pinned SSH.
+EOF
+read -r -p "Press Enter after green SSH ownership is established: " _
+: "${GREEN_TAILNET_HANDOFF:?GREEN_TAILNET_HANDOFF required}"
+: "${DEPLOY_SSH_CONTEXTS_FILE:?DEPLOY_SSH_CONTEXTS_FILE required}"
+HOSTS="${PROVIDER}:${BLUE_ENV},${PROVIDER}:${GREEN_ENV}" \
+COHORTS="${BLUE_COHORT},${GREEN_COHORT}" \
+TAILNET_HANDOFFS="${BLUE_TAILNET_HANDOFF:--},${GREEN_TAILNET_HANDOFF}" \
+  "$REPO_ROOT/scripts/render-inventory.sh"
+require_vpn_alias "$GREEN_ALIAS"
+SECRETS_FILE="$SECRETS_FILE" ANSIBLE_LIMIT="$GREEN_ALIAS" \
+  ENV="$GREEN_ENV" PROVIDER="$PROVIDER" make -C "$REPO_ROOT" dry-run deploy
 
 # ---------------------------------------------------------------------------
 # 5. Verify + smoke test green
 # ---------------------------------------------------------------------------
 step "5/8  Verify + smoke-test green"
-VPN_SECRETS_FILE="$SECRETS_FILE" \
-  ansible-playbook -l "*${GREEN_ENV}*" "${REPO_ROOT}/ansible/playbooks/verify.yml"
-
-VPN_SECRETS_FILE="$SECRETS_FILE" \
-  ansible-playbook -l "*${GREEN_ENV}*" "${REPO_ROOT}/ansible/playbooks/smoke-test.yml"
+SECRETS_FILE="$SECRETS_FILE" ANSIBLE_LIMIT="$GREEN_ALIAS" \
+  ENV="$GREEN_ENV" PROVIDER="$PROVIDER" make -C "$REPO_ROOT" verify smoke-test
 
 # ---------------------------------------------------------------------------
 # 6. Operator pivot — flip clients / DNS / floating IP

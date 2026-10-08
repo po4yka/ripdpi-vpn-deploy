@@ -246,6 +246,9 @@ def test_vultr_inventory_waits_for_secondary_ipv4_guest_convergence(tmp_path):
         )
         assert not_converged.returncode != 0
         assert "secondary IPv4 is not configured in the guest" in not_converged.stderr
+        ssh_calls = Path(env["STUB_LOG"]).read_text()
+        assert "StrictHostKeyChecking=yes" in ssh_calls
+        assert "StrictHostKeyChecking=accept-new" not in ssh_calls
 
         env["SSH_GUEST_HAS_IP"] = "0"
         converged = subprocess.run(

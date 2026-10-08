@@ -62,18 +62,20 @@ else
     env PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" plan \
       -refresh-only \
       -var-file="environments/${ENV}.tfvars" \
-      -no-color 2>&1 | sed 's/^/  /' || echo "  (terraform plan failed — inspect manually)"
+      -no-color 2>&1 | sed 's/^/  /'
   else
     echo "  (no terraform dir for provider=$PROVIDER)"
+    exit 1
   fi
 
   echo
   echo "[3/3] Ansible --check --diff against inventory:"
   if [[ -z "${VPN_SECRETS_FILE:-}" || ! -f "$VPN_SECRETS_FILE" ]]; then
     echo "  VPN_SECRETS_FILE missing — run 'make decrypt' first to enable this section"
+    exit 1
   else
-    ansible-playbook "${REPO_ROOT}/ansible/playbooks/site.yml" \
-      --check --diff 2>&1 | sed 's/^/  /' || echo "  (ansible --check failed — inspect manually)"
+    SECRETS_FILE="$VPN_SECRETS_FILE" PROVIDER="$PROVIDER" ENV="$ENV" \
+      make -C "$REPO_ROOT" dry-run 2>&1 | sed 's/^/  /'
   fi
 fi
 

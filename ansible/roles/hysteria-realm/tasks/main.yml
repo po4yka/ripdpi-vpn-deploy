@@ -38,8 +38,8 @@
     shell: /usr/sbin/nologin
     home: "{{ hysteria_realm.install_root }}"
     create_home: false
-    groups: "{{ ['hysteria'] if (hysteria_realm.share_hysteria_tls | default(true)) else omit }}"
-    append: "{{ hysteria_realm.share_hysteria_tls | default(true) }}"
+    groups: "{{ ['hysteria'] if (hysteria_realm.share_hysteria_tls | default(vpn.enable_hysteria | default(false)) | bool) else omit }}"
+    append: "{{ hysteria_realm.share_hysteria_tls | default(vpn.enable_hysteria | default(false)) | bool }}"
 
 - name: Ensure directories
   ansible.builtin.file:
@@ -107,7 +107,7 @@
   no_log: true
   diff: false
   when:
-    - not (hysteria_realm.share_hysteria_tls | default(true))
+    - not (hysteria_realm.share_hysteria_tls | default(vpn.enable_hysteria | default(false)) | bool)
     - (hysteria.cert_pem | default('') | length) > 0
 
 - name: Stage shared TLS material from hysteria config dir
@@ -121,7 +121,7 @@
       dest: "{{ hysteria_realm.tls_cert_path }}"
     - src: "{{ hysteria_config_dir }}/server.key"
       dest: "{{ hysteria_realm.tls_key_path }}"
-  when: hysteria_realm.share_hysteria_tls | default(true)
+  when: hysteria_realm.share_hysteria_tls | default(vpn.enable_hysteria | default(false)) | bool
 
 - name: Render sing-box realm config
   ansible.builtin.template:

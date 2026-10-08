@@ -189,6 +189,7 @@
           Description=Test Xray liveness stub
           [Service]
           Type=simple
+          Environment=XRAY_LOCATION_ASSET=/usr/local/share/xray
           ExecStart=/usr/local/bin/xray run -config /etc/xray/config.json
           Restart=on-failure
 

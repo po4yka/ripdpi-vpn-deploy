@@ -221,7 +221,7 @@ nginx_xhttp_fallback_port: 2083
 hysteria_port: 443
 # Optional Hysteria2 port-hopping. When set to a "low-high" string
 # (e.g. "20000-40000") the role opens that UDP range in nftables, the
-# server listens on it, and emit-singbox.sh writes server_ports +
+# firewall redirects it to the fixed server port, and emit-singbox.sh writes server_ports +
 # hop_interval into client configs. Empty = no port-hopping.
 hysteria_port_range: ""
 hysteria_hop_interval: "30s"

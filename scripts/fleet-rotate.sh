@@ -153,7 +153,7 @@ for idx in $(seq "$start_idx" $((total - 1))); do
   fi
 
   PROVIDER="$prov" BLUE_ENV="$blue_env" GREEN_ENV="$green_env" \
-    ${green_zone:+GREEN_ZONE="$green_zone"} \
+    GREEN_ZONE="$green_zone" \
     "${REPO_ROOT}/scripts/blue-green.sh"
 
   ENV="$blue_env" PROVIDER="$prov" \

@@ -982,7 +982,11 @@ def test_site_uses_the_role_contract_as_the_single_enablement_flag() -> None:
     site = (ROOT / "ansible" / "playbooks" / "site.yml").read_text()
     group_vars = (ROOT / "ansible" / "group_vars" / "all.yml").read_text()
 
-    assert "when: observability_agent.enabled | default(false)" in site
+    selected = next(role for role in yaml.safe_load(site)[0]["roles"] if role["role"] == "observability_agent")
+    assert "when" not in selected
+    lifecycle = (ROLE / "tasks/main.yml").read_text()
+    assert "when: not (observability_agent.enabled | default(false) | bool)" in lifecycle
+    assert "when: observability_agent.enabled | default(false) | bool" in lifecycle
     assert "enable_observability_agent" not in group_vars
 
 

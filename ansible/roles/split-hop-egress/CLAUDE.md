@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+**Baseline owns effective forwarding** — this role calls baseline `ansible/roles/baseline/tasks/forwarding.yml` for standalone and site convergence, rather than writing a lower-priority sysctl that the hardening floor would overwrite.
+
 **Node B initiates the WireGuard tunnel** — `PersistentKeepalive` is set on
 the `[Peer]` block, the `[Interface]` block omits `ListenPort`, and the
 `Endpoint = <Node A>:port` line is on the [Peer] (not on A's side). That

@@ -2,11 +2,14 @@
 
 ## Design decisions
 
+**Resolver transitions preserve DNS first** — ordinary profiles retain the resolved stub. DNS-Morph migrates only known stub symlinks to a verified upstream resolver before disabling the stub; custom stub files or absent upstreams fail before mutation. The restart happens before dependent listeners converge.
+
+**Forwarding has one owner** — `tasks/forwarding.yml` removes the retired split-hop fragment and publishes priority-91 IPv4 forwarding for AWG or split-hop egress, with IPv6 only for AWG. Direct split-hop convergence reuses this entry point.
+
 For SSH recovery helper or unit changes, inspect the [bundle and controller consumers](../../../scripts/DESIGN-NOTES.md#ssh-recovery--install-sshd-recoverypy-make-install-ssh-recovery).
 
 **Sets ground state, not policy** — installs sysctl baseline, time sync
-(`systemd-timesyncd`), OpenSSH prerequisites, and IP-forwarding sysctl when
-AmneziaWG is in scope. The controller-owned second site play publishes SSH
+(`systemd-timesyncd`), OpenSSH prerequisites, and IP-forwarding sysctl for enabled AWG and split-hop egress workloads. The controller-owned second site play publishes SSH
 policy only after the VPN stack converges. Doesn't open ports or install
 Xray/nginx; other roles layer on top.
 
@@ -52,7 +55,7 @@ and the installed recovery generation. Local tests are not staging acceptance.
   Loaded at priority 90 so cloud-init defaults can't override.
 - **Forwarding is isolated from hardening** — `90-vpn.conf` keeps forwarding
   disabled; `91-vpn-forward.conf` is the only place that enables IPv4/IPv6
-  forwarding, and only when AmneziaWG is enabled.
+  forwarding for AWG and IPv4 forwarding for split-hop egress.
 - **Time sync via `systemd-timesyncd`** — installed and enabled. REALITY breaks
   if clocks drift > 90 s; `verify.yml` asserts sync state.
 - **SSH hardening via a recoverable transaction** —
@@ -68,8 +71,7 @@ and the installed recovery generation. Local tests are not staging acceptance.
 - **Moduli pruning is optional and idempotent** — when
   `security_controls.ssh_prune_moduli` is true, `/etc/ssh/moduli` is pruned to
   groups with field 5 >= 3071, with `/etc/ssh/moduli.prev` as local backup.
-- **IP forwarding is conditional** — enabled only when `vpn.enable_amneziawg`
-  is true; removed when disabled. Avoids forwarding on P0-only nodes.
+- **IP forwarding is conditional** — enabled for AWG or split-hop egress; the override is removed when both are disabled. Avoids forwarding on P0-only nodes.
 
 ## Pitfalls
 
@@ -92,9 +94,7 @@ and the installed recovery generation. Local tests are not staging acceptance.
 - **Does not install `chrony` or `unattended-upgrades`** — time sync is
   `systemd-timesyncd` (distro default on Debian 13/Ubuntu 24.04). Unattended
   upgrades are not configured by this role; operators add them separately.
-- **`systemd-resolved` stub listener is disabled** — the role drops
-  `/etc/systemd/resolved.conf.d/no-stub.conf` (`DNSStubListener=no`) so
-  port 53 is free for the dns-morph-bridge role when enabled.
+- **DNS-Morph needs port 53** — only this optional workload disables the resolved stub after its resolver migration has passed; ordinary hosts retain the stub.
 - **Fresh Debian check mode has no timesync unit yet** — apt plans its
   installation, but cannot create the unit during a dry run. Require that
   package change before deferring service activation; real convergence always

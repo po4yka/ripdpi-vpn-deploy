@@ -47,8 +47,9 @@
 
     - name: Xray config valid
       ansible.builtin.command:
-        cmd: /usr/local/bin/xray run -test -config /etc/xray/config.json
+        cmd: /usr/local/libexec/vpn-xray-validate --config /etc/xray/config.json
       changed_when: false
+      no_log: true
       when: >-
         not (vpn_subscription_only | default(false)) and
         ((vpn.enable_xray_reality | default(true)) or

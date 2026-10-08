@@ -46,6 +46,7 @@ for pair in "$@"; do
 done
 printf 'make %s\n' "$target" >> "$FIXTURE_ROOT/calls"
 case "$target" in
+  dry-run|deploy|verify) test "$ANSIBLE_LIMIT" = fixture-node ;;
   decrypt)
     if [ -n "${SCRIPT_DECRYPT:-}" ]; then
       SECRETS_FILE="$secret" SOPS_FILE="$SOPS_FIXTURE" bash "$SCRIPT_DECRYPT"
@@ -139,8 +140,8 @@ fn reconverge_dry_run_cleans_plaintext_and_uses_scoped_inventory_name() {
         assert_success(&fixture.command(&host_args).output().unwrap());
         assert!(!fixture.secrets().exists());
         let calls = fixture.calls();
-        assert_eq!(calls.matches("playbook ").count(), 1);
-        assert!(calls.contains("--limit fixture-node"));
+        assert_eq!(calls.matches("playbook ").count(), 0);
+        assert!(calls.contains("make dry-run\n"));
         assert!(calls.ends_with("make clean\n"));
     }
 }

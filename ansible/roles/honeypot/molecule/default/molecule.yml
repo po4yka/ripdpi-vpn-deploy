@@ -27,6 +27,9 @@ provisioner:
       vpn-honeypot-debian13:
         ansible_user: root
         server_ipv6: "2001:db8::10"
+        provider: hetzner
+        honeypot_listen_addr: "198.51.100.20"
+        honeypot_secondary_interface: lo
   config_options:
     defaults:
       callback_result_format: yaml

@@ -21,6 +21,8 @@ it or letting one producer replace another producer's metrics.
 
 **Listener families follow rendered inventory** — IPv4 always binds to `honeypot.listen_addr`; when inventory contains `server_ipv6`, startup also binds `[::]` with `IPV6_V6ONLY=1`. Both sockets are created before either accept loop starts, so a missing promised family fails the service rather than degrading silently.
 
+**Hetzner floating IPv4 needs guest ownership** — Terraform assigns the address at the provider edge; this role adds its `/32` to the gathered default IPv4 interface before binding. A root oneshot unit with only `CAP_NET_ADMIN` is required by the listener, so boot and restart restore the address. Converge compares the actual guest address before starting the unit and restarts it if an external change removed its address. Unit names include the address and interface: reconfiguration stops and removes only obsolete role-owned units, whose `ExecStop` removes their exact previous address. Other providers retain their existing guest convergence path.
+
 ## What's done well
 
 - **Banner-free** — every honeypot port closes silently after TCP accept.
@@ -28,6 +30,8 @@ it or letting one producer replace another producer's metrics.
 - **Rotated log files** — same retention as `monitoring`.
 
 ## Pitfalls
+
+- **Do not publish a primary IPv4 as the dedicated address** — the role refuses that assignment before networking changes. A nondefault routed interface must be selected explicitly through `honeypot_secondary_interface` and already exist.
 
 - **Don't expose a honeypot port that legit ops uses** — e.g., if you SSH on
   2222 yourself, do not honeypot 2222. The firewall role fails convergence

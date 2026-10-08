@@ -1,0 +1,101 @@
+---
+- name: Resolve dedicated Hetzner address ownership
+  ansible.builtin.set_fact:
+    _honeypot_secondary_required: >-
+      {{ provider | default('') == 'hetzner' and
+         honeypot_listen_addr | default('') not in ['', '0.0.0.0'] }}
+    _honeypot_secondary_address: "{{ honeypot_listen_addr | default('') }}"
+    _honeypot_secondary_interface: >-
+      {{ honeypot_secondary_interface or ansible_facts.get('default_ipv4', {}).get('interface', '') }}
+
+- name: Validate secondary address and existing guest interface
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import ipaddress, re, socket, sys
+        address = ipaddress.IPv4Address(sys.argv[1])
+        assert not (address.is_unspecified or address.is_multicast or address.is_loopback)
+        assert re.fullmatch(r'[A-Za-z0-9_.:-]{1,15}', sys.argv[2])
+        socket.if_nametoindex(sys.argv[2])
+        assert str(address) != sys.argv[3], 'secondary address cannot be the primary IPv4'
+      - "{{ _honeypot_secondary_address }}"
+      - "{{ _honeypot_secondary_interface }}"
+      - "{{ ansible_facts.get('default_ipv4', {}).get('address', '') }}"
+  changed_when: false
+  check_mode: false
+  when: _honeypot_secondary_required
+
+- name: Resolve exact address unit name
+  ansible.builtin.set_fact:
+    _honeypot_secondary_unit: >-
+      {{ 'vpn-honeypot-address-' ~ _honeypot_secondary_address ~ '-' ~
+         _honeypot_secondary_interface ~ '.service' if _honeypot_secondary_required else '' }}
+
+- name: Discover previously owned secondary address units
+  ansible.builtin.find:
+    paths: /etc/systemd/system
+    patterns: vpn-honeypot-address-*.service
+    file_type: file
+  register: _honeypot_address_units
+
+- name: Stop obsolete address ownership before removing its unit
+  ansible.builtin.systemd_service:
+    name: "{{ item.path | basename }}"
+    state: stopped
+  loop: "{{ _honeypot_address_units.files }}"
+  when: item.path | basename != _honeypot_secondary_unit
+
+- name: Remove obsolete owned address units
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ _honeypot_address_units.files }}"
+  when: item.path | basename != _honeypot_secondary_unit
+  notify: Restart honeypot
+
+- name: Install persistent dedicated address unit
+  ansible.builtin.template:
+    src: secondary-address.service.j2
+    dest: "/etc/systemd/system/{{ _honeypot_secondary_unit }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: _honeypot_secondary_required
+  notify: Restart honeypot
+
+- name: Inspect secondary address drift before service reconciliation
+  ansible.builtin.command:
+    argv: [ip, -j, -4, address, show, dev, "{{ _honeypot_secondary_interface }}"]
+  changed_when: false
+  register: _honeypot_guest_addresses_before
+  when: _honeypot_secondary_required and not ansible_check_mode
+
+- name: Configure secondary IPv4 before the listener can bind
+  ansible.builtin.systemd_service:
+    name: "{{ _honeypot_secondary_unit }}"
+    state: >-
+      {{ 'restarted' if not ansible_check_mode and
+         (_honeypot_guest_addresses_before.stdout | from_json | map(attribute='addr_info') | flatten
+          | selectattr('local', 'equalto', _honeypot_secondary_address)
+          | selectattr('prefixlen', 'equalto', 32) | list | length) != 1 else 'started' }}
+    daemon_reload: true
+  when: _honeypot_secondary_required
+
+- name: Inspect the actual secondary guest address
+  ansible.builtin.command:
+    argv: [ip, -j, -4, address, show, dev, "{{ _honeypot_secondary_interface }}"]
+  changed_when: false
+  register: _honeypot_guest_addresses
+  when: _honeypot_secondary_required and not ansible_check_mode
+
+- name: Require the provider address to exist in the guest
+  ansible.builtin.assert:
+    that:
+      - >-
+        (_honeypot_guest_addresses.stdout | from_json | map(attribute='addr_info') | flatten
+         | selectattr('local', 'equalto', _honeypot_secondary_address)
+         | selectattr('prefixlen', 'equalto', 32) | list | length) == 1
+    fail_msg: Dedicated honeypot IPv4 did not converge inside the guest
+  when: _honeypot_secondary_required and not ansible_check_mode
