@@ -22,8 +22,13 @@ vpn-deploy/secrets/local/                # optional, git-ignored operator layout
 The external directory is the default. The `secrets/local/` layout is an
 explicitly supported convenience for this checkout and is excluded by
 `.gitignore`; it is still sensitive local state, not repository content.
-Real secrets never enter Git, Terraform state, Terraform outputs, cloud-init
-`user_data`, or any debug log.
+Keep VPN secrets out of Git, Terraform variables/outputs, cloud-init `user_data`,
+and debug logs; provider credentials come only from environment variables.
+Terraform state and saved plans remain sensitive: providers can persist generated
+secrets, such as Vultr's computed `default_password`, even when VPN secrets and
+provider credentials stay outside Terraform. Use mode `0600` for these files and
+`0700` for their private directories, encrypt state backups with `make backup-state`,
+and never print raw state or plan contents into session logs.
 
 ## age recipients
 

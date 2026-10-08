@@ -12,6 +12,9 @@ AmneziaWG, persistent backups and monitoring are outside this disposable profile
 A passed run establishes the selected profile's checks, not full production
 or filtered-path acceptance. The direct runner baseline in matrix reports is
 separate from the authenticated protocol probes used by promotion.
+The synthetic lane skips production certificate and upstream prechecks; schema
+validation and role checks remain required. It does not test production traffic,
+long-running address reputation, or the full production role surface.
 
 ## Triggers and approval
 

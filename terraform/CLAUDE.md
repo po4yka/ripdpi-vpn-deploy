@@ -60,9 +60,15 @@ never compose each other as modules.
 
 - **Evaluate every policy family on the exact saved plan** — `scripts/check-tf-plan.sh` requires all policy namespaces and a nonempty complete result. Management-port checks include port intervals and unrestricted provider defaults. UpCloud's default public IPv6 interface is not a secondary-IPv4 opt-in.
 
+- **State and saved plans are sensitive** — providers may persist generated
+  secrets; Vultr's computed `default_password` is one example. Keep VPN secrets
+  out of Terraform inputs/outputs and provider credentials in environment
+  variables. Protect state and plans as private artifacts, age-encrypt state
+  backups, and never print their contents into session logs.
 - **TF state contains the SSH public key fingerprint**, but never the
-  private key. If a state file leaks, the recovery is to rotate the SSH
-  key, not just delete state.
+  operator's private key. If state leaks, assess all exposed fields and retire
+  or rotate affected credentials, including provider-generated secrets; deleting
+  the state alone does not revoke access. Public key fingerprints also identify devices.
 - **Cloud-init `user_data` is plaintext in state** — never put secrets
   there. Even with state encryption, this is operator-readable.
 - **`terraform destroy` does not remove backups** — the `backup` role's

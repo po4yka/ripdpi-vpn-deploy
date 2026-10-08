@@ -272,8 +272,11 @@ under a canary-named directory. Supply both `SECRETS_FILE` with basename
 
 ## Hard rules
 
-- No secrets in git, in Terraform state, in Terraform variables/outputs, in
-  cloud-init `user_data`, in Ansible debug output, or in screenshots.
+- Keep VPN secrets out of Git, Terraform variables/outputs, cloud-init
+  `user_data`, Ansible debug output, and screenshots. Provider credentials live
+  in environment variables only. Treat Terraform state and saved plans as
+  sensitive: providers may persist generated secrets. Keep them private, encrypt
+  state backups with age, and never print their contents into session logs.
 - No public admin panel. No remote installer piped into a root shell.
 - One UUID / one shortId / one peer key **per device**, never shared.
 - Pinned versions. Pre-release versions go through staging only.

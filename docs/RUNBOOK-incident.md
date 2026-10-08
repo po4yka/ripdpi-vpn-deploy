@@ -33,21 +33,32 @@ symptom; cross-reference the linked runbook for the recovery procedure.
 
 ## Lost SSH access
 
-You don't have the private key matching `admin_ssh_public_key` on the VPS.
+First distinguish a lost private key from an unreachable controller network,
+provider firewall, wrong listener port or unfinished bootstrap. Use read-only
+checks of the current address, approved image and provider state before choosing
+a recovery action. Recreating nodes cannot repair the controller's network;
+avoid consuming repeated VPS and keys while that path is unavailable.
 
-UpCloud:
+For a disposable node, prefer exact-resource cleanup and fresh provisioning
+with a reviewed `admin_ssh_public_key`. Use `make staging-destroy` and its current
+manifest for owned disposable staging; permanent-node destruction/replacement
+must follow the authorized Terraform lifecycle and rollback runbook. Preserve
+state and evidence, verify provider absence and establish the recreated node's
+host-key identity independently. Do not bypass `prevent_destroy` or accept a
+changed SSH key merely because recreation was expected.
 
-1. Console → server → Open Web Console → log in as `deploy` (with the
-   password you don't have) → impossible.
-2. Console → server → Power off → Boot from rescue ISO → mount root disk →
-   edit `/home/deploy/.ssh/authorized_keys` → add a new public key.
-3. Boot back to disk; SSH in with the new key.
-4. Once in, `make rotate-credentials` (technically just push the new key
-   via tfvars + ansible playbook) and never use the rescue key again.
+Rebuild through [fresh staging deployment](RUNBOOK-deploy.md#staging-first) or
+`QUICKSTART.md`: inventory/wait, recovery foundation, positive Tailnet bootstrap,
+SSH ownership migration and private deploy mappings precede ordinary deployment.
+Then verify the required protocols and [complete cleanup](RUNBOOK-deploy.md#acceptance-scope-and-completion).
+Existing authorization covers bounded retries and replacement nodes within the
+approved resource/cost limits; ask again only when that scope is exceeded.
 
-If you cannot use rescue, the only path is destroy and recreate the VPS
-with a new tfvars `admin_ssh_public_key`. Secrets and Terraform state are
-unaffected — `make plan apply inventory wait deploy verify` rebuilds.
+If retaining the existing node is required, explicitly choose provider rescue
+or console recovery within its emergency authorization. Install a reviewed SSH
+public key through that provider's recovery procedure, retire temporary access,
+and prove a fresh strictly pinned connection. `make rotate-credentials` only
+rerenders per-device VPN configs; it does not rotate the administrator SSH key.
 
 ## Lost age key
 

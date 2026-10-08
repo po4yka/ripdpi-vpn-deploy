@@ -165,45 +165,84 @@ limitations without publishing endpoints or secrets. It does not establish
 today's fleet or deployed revision.
 
 ```bash
-make init
-make validate          # must pass before continuing
-make decrypt           # writes the configured SECRETS_FILE, mode 0600
-make validate-target   # pre-deploy probe of REALITY target
-make plan
+(
+  set -e
+  trap 'make clean || exit $?' EXIT
+  make init
+  make validate          # must pass before continuing
+  make decrypt           # configured SECRETS_FILE, mode 0600
+  make validate-target   # pre-deploy REALITY target probe
+  make plan
+)
+```
+
+Review that plan against the authorized environment, resource identities and
+cost limits. Stop on unexpected updates or replacement of an existing server.
+Apply only the reviewed plan, then create the staging cleanup manifest when
+applicable and generate inventory:
+
+```bash
 make apply
-make inventory
-make wait              # 30–120 s, waits for cloud-init
-# Before ordinary deploy: install exact-node SSH recovery, then establish
-# Tailnet with make bootstrap-tailnet; see TAILNET-MANAGEMENT.md.
-# Supply observed DEPLOY_SSH_CONTEXTS_FILE, the reviewed promotion config, and
-# a deploy-only DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE mapping to fresh
-# private paths; see RUNBOOK-deploy.md.
-make dry-run           # ansible --check --diff; review what will change
-make deploy            # real run
-make verify            # post-deploy gates
-make smoke-test        # end-to-end real-traffic test through each profile
-make clean             # shred the configured plaintext SECRETS_FILE
 ```
 
 For disposable `ci-staging-*` nodes, create the UUID-bound cleanup manifest
 from the private exact state immediately after `apply`, before any guest
 installer or bootstrap write. Follow
 [the staging sequence](CI-REAL-DEPLOY.md#uuid-bound-operator-staging-cleanup).
-A staging acceptance run exercises the fixed
+Use `make inventory` after that manifest step; for a permanent node, generate
+inventory after the reviewed apply.
+When recovery behavior is in the agreed acceptance scope, exercise the fixed
 [controller-loss and reboot recovery verbs](TAILNET-MANAGEMENT.md#disposable-staging-recovery-exercises)
 with separate one-use enrollment keys after SSH recovery installation and
 before positive bootstrap. A normal bootstrap interruption is not equivalent.
-A fresh node has no management path until the explicit
-[Tailnet bootstrap](TAILNET-MANAGEMENT.md#bootstrap-one-node) succeeds;
-ordinary deployment cannot enroll it and rejects enrollment keys.
+These fault-injection exercises are not prerequisites for every protocol run.
+
+Independently verify the exact node's SSH fingerprint before accepting or replacing
+its pin, then use `make wait` to check cloud-init. Complete the
+[exact-node prerequisites](RUNBOOK-deploy.md#re-deploy-after-a-config-or-secrets-edit):
+install SSH recovery, perform the explicit [Tailnet bootstrap](TAILNET-MANAGEMENT.md#bootstrap-one-node),
+render inventory again with its confirmed `TAILNET_HANDOFFS`, and perform the
+documented SSH ownership migration when required. Ordinary deploy cannot enroll
+a fresh node or migrate its ownership and rejects enrollment keys.
+
+Prepare the observed `DEPLOY_SSH_CONTEXTS_FILE`, promotion mapping and fresh
+`DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE` sinks before the following block.
+First disposable staging deployment uses the
+[staging intent](PROTOCOL-LIVENESS.md#first-onboarding-during-a-disposable-staging-deployment);
+that path is restricted to its staging provider/cohort and does not bootstrap a
+permanent fleet implicitly.
+
+```bash
+(
+  set -e
+  trap 'make clean || exit $?' EXIT
+  make decrypt
+  make dry-run ANSIBLE_TAGS= # full --check --diff; review changes
+)
+```
 
 If `dry-run` shows changes you didn't expect, stop and investigate. Don't
 proceed to `deploy`.
+Run the following block only after a successful reviewed dry-run and all
+prerequisites pass. Cleanup runs on exit even after failure; a cleanup failure
+also leaves the block unsuccessful:
 
-At `infra-v1.0.0`, check mode has a documented false failure in firewall SSH
-port discovery. Do not bypass it or commit a diagnostic workaround; see
-[the deployment snapshot](DEPLOYMENT-STATUS.md#snapshot-operator-limitations)
-for the exact boundary and the observed live gates.
+```bash
+(
+  set -e
+  trap 'make clean || exit $?' EXIT
+  make decrypt
+  make deploy ANSIBLE_TAGS= # full real run after review
+  make verify            # post-deploy gates
+  make security-verify   # host-hardening checks
+  make smoke-test        # real-traffic test through each profile
+)
+```
+
+[The deployment snapshot](DEPLOYMENT-STATUS.md#snapshot-operator-limitations)
+records historical check-mode failures. Diagnose current `dry-run` errors against
+current source and node state; a recorded limitation does not authorize bypassing
+a failed prerequisite.
 
 ## 7. Generate a client config
 
