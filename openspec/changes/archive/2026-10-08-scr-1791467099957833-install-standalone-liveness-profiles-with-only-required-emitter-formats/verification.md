@@ -1,7 +1,7 @@
 ---
-task_id: ANS-1791461761742804
-change: ans-1791461761742804-pass-first-subscription-host-dry-run-before-its-service-exists
-commit_sha: null
+task_id: SCR-1791467099957833
+change: scr-1791467099957833-install-standalone-liveness-profiles-with-only-required-emitter-formats
+commit_sha: 9d7113b52958c4b50c69158873bbe4cd482f3fa6
 local: not_applicable
 local_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
 remote_ci: not_applicable
@@ -24,6 +24,6 @@ artifact_evidence: "Task dropped: Owner cancelled acceptance and requested remov
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-SUB-PLANNED-UNIT | ANS-1791461940464917 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
-| REQ-SUB-ACTIVATION | ANS-1791461941073032 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
-| REQ-SUB-DISCOVERY | ANS-1791461940464917 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-LIVENESS-REQUIRED-FORMATS | SCR-1791467227702182 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-LIVENESS-EMITTER-REFUSAL | SCR-1791467227702182 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-LIVENESS-REQUIRED-FORMATS | SCR-1791467228251004 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |

@@ -1,7 +1,7 @@
 ---
-task_id: SCR-1791467099957833
-change: scr-1791467099957833-install-standalone-liveness-profiles-with-only-required-emitter-formats
-commit_sha: null
+task_id: TFR-1791469128152528
+change: tfr-1791469128152528-select-the-actual-vultr-debian-13-image-for-disposable-nodes
+commit_sha: 9d7113b52958c4b50c69158873bbe4cd482f3fa6
 local: not_applicable
 local_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
 remote_ci: not_applicable
@@ -24,6 +24,5 @@ artifact_evidence: "Task dropped: Owner cancelled acceptance and requested remov
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-LIVENESS-REQUIRED-FORMATS | SCR-1791467227702182 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
-| REQ-LIVENESS-EMITTER-REFUSAL | SCR-1791467227702182 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
-| REQ-LIVENESS-REQUIRED-FORMATS | SCR-1791467228251004 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-VULTR-DEBIAN13-ID | TFR-1791469302312711 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-VULTR-IMAGE-CHANGE-ISOLATION | TFR-1791469302916838 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |

@@ -1,7 +1,7 @@
 ---
-task_id: TFR-1791469128152528
-change: tfr-1791469128152528-select-the-actual-vultr-debian-13-image-for-disposable-nodes
-commit_sha: null
+task_id: ANS-1791461761742804
+change: ans-1791461761742804-pass-first-subscription-host-dry-run-before-its-service-exists
+commit_sha: 9d7113b52958c4b50c69158873bbe4cd482f3fa6
 local: not_applicable
 local_evidence: "Task dropped: Owner cancelled acceptance and requested removal of all acceptance resources"
 remote_ci: not_applicable
@@ -24,5 +24,6 @@ artifact_evidence: "Task dropped: Owner cancelled acceptance and requested remov
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-VULTR-DEBIAN13-ID | TFR-1791469302312711 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
-| REQ-VULTR-IMAGE-CHANGE-ISOLATION | TFR-1791469302916838 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-SUB-PLANNED-UNIT | ANS-1791461940464917 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-SUB-ACTIVATION | ANS-1791461941073032 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |
+| REQ-SUB-DISCOVERY | ANS-1791461940464917 | Dropped: Owner cancelled acceptance and requested removal of all acceptance resources | not_applicable |

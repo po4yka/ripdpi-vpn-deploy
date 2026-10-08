@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-10-08T15:30:15Z",
+  "change": "scr-1791467099957833-install-standalone-liveness-profiles-with-only-required-emitter-formats",
+  "commit_sha": "9d7113b52958c4b50c69158873bbe4cd482f3fa6",
+  "outcome": "dropped",
+  "schema": 1,
+  "task_id": "SCR-1791467099957833"
+}
