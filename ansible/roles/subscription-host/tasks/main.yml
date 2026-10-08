@@ -121,7 +121,29 @@
     owner: root
     group: root
     mode: "0644"
+  register: _subscription_unit_plan
   notify: Restart vpn-bootstrap
+
+- name: Inspect subscription unit load state in check mode
+  ansible.builtin.command:
+    argv: [systemctl, show, vpn-bootstrap.service, '--property=LoadState', --value]
+  register: _subscription_unit_existing
+  changed_when: false
+  check_mode: false
+  failed_when: >-
+    _subscription_unit_existing.stdout not in ['loaded', 'not-found'] or
+    _subscription_unit_existing.rc not in [0, 1] or
+    (_subscription_unit_existing.rc == 1 and
+     _subscription_unit_existing.stdout != 'not-found')
+  when: ansible_check_mode
+
+- name: Require planned subscription unit on a fresh check-mode host
+  ansible.builtin.assert:
+    that: _subscription_unit_plan.changed
+    fail_msg: Check mode found no subscription unit and no planned installation.
+  when:
+    - ansible_check_mode
+    - _subscription_unit_existing.stdout == 'not-found'
 
 - name: Enable + start service
   ansible.builtin.systemd_service:
@@ -129,6 +151,7 @@
     enabled: true
     state: started
     daemon_reload: true
+  when: not ansible_check_mode or _subscription_unit_existing.stdout == 'loaded'
 
 # ---------------------------------------------------------------------------
 # Share-bundle ingest — operator-uploaded recipient pages at /share/<token>/

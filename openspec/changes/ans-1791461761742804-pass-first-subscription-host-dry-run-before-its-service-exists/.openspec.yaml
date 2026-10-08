@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-08
+goal: ANS-1791461761742804 Pass first subscription host dry-run before its
+  service exists

@@ -14,6 +14,10 @@
 
 ## Design decisions
 
+**Subscription first check mode covers planned service boundaries** — evaluate
+loaded, absent, unplanned and failed systemd discovery plus restart handlers.
+Real role convergence and first-host dry-run remain separate acceptance gates.
+
 **Packaged SSH ownership has positive and interruption coverage** — cloud-init
 tests consume the exact password-disabled image fragment, verify idempotence,
 reject altered content and unsafe files, restore it after validation failure,
