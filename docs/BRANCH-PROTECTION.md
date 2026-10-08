@@ -1,7 +1,9 @@
 # Branch protection
 
-`main` requires every CI gate to pass before merge, plus a pull request,
-linear history, conversation resolution, and admin enforcement. Approving
+`main` requires all configured required statuses to pass before merge. The CI
+aggregate requires selected jobs to succeed and permits only explicitly planned
+skips for unselected jobs. Protection also requires a pull request, linear
+history, conversation resolution, and admin enforcement. Approving
 reviews are not required while this is a single-maintainer repository because
 GitHub does not allow an author to approve their own pull request. The default
 `GITHUB_TOKEN` does **not** carry `Administration: write`, so the

@@ -116,11 +116,13 @@ Disabled roles in CI (via `ANSIBLE_EXTRA_VARS`):
 
 ## Cleanup invariants
 
-The `destroy` step runs in `always()` so a half-built VPS never
-outlives the job. The `cleanup CI tfvars file` step deletes the
-per-run tfvars even if `destroy` failed, so the next run starts
-from a clean slate. Operators verifying after a failed run should
-re-check UpCloud billing once a quarter.
+The combined destroy/tfvars step runs in `always()` and attempts cleanup even
+when deployment fails. This does not guarantee provider resource absence. Its
+`set -e` stops before tfvars deletion if `make destroy` fails. Preserve the exact
+state and inputs after failure, resolve the owned resources and verify provider
+absence and billing before calling cleanup complete; a subsequent job is not
+proof that the previous node was removed.
+See [acceptance scope and completion](RUNBOOK-deploy.md#acceptance-scope-and-completion).
 
 ### UUID-bound operator staging cleanup
 
@@ -144,18 +146,26 @@ never emits the authorization value. This binds the
 exact API principal used for creation and deletion, not a parent billing
 account, and does not claim that provider usernames are immutable identifiers.
 
-Before positive Tailnet bootstrap, run both fixed recovery exercises from
+Recovery fault-injection is a separate scope from ordinary four-protocol
+acceptance. When testing recovery behavior, use the fixed exercises in
 [TAILNET-MANAGEMENT.md](TAILNET-MANAGEMENT.md#disposable-staging-recovery-exercises)
-with separate one-use enrollment keys. An ordinary bootstrap interruption is
-not controller-loss evidence because its cancellation handler requests
-rollback. Retain both redacted mode-`0600` recovery artifacts alongside the
-cleanup generations and require the controller-loss artifact before the reboot
-artifact. Neither artifact is VPN, provider-firewall or client-path acceptance.
+with separate one-use keys before positive bootstrap; retain their private
+artifacts. Bootstrap does not consume these artifacts or enforce their order.
+An ordinary cancellation requests rollback and does not prove controller loss.
+
+Set per-run owner limits for resource count, provider cost, retries and completion
+and cleanup times before creation. The staging example selects 1 CPU/1 GiB RAM
+and 20 GiB storage; verify the actual private tfvars and pricing for this run.
+The local executor uses 2 CPUs/2 GiB RAM/10 GiB disk with a six-hour capability.
+Provider 36/44/47-hour deadlines are cleanup authority boundaries, not a scheduler
+or a billing cap. Begin guarded destruction before expiry; an expired manifest
+cannot authorize a new destruction. Escalate unresolved cleanup before the owner
+limit or guard deadline, rather than extending it by reissuing artifacts.
 
 After creating the initial manifest, promote the UpCloud provider firewall in
 two phases. The private tfvars starts with `enable_provider_firewall=false`; apply,
-create the cleanup manifest, wait for cloud-init, install SSH recovery and
-exercise both autonomous recovery paths, bootstrap Tailnet, then deploy the
+create the cleanup manifest, wait for cloud-init, install SSH recovery,
+bootstrap Tailnet and migrate SSH ownership, then deploy the
 guest stateful firewall and verify strict SSH,
 DNS, outbound TCP/UDP and every required public listener. Confirm the live
 kernel ephemeral range equals `provider_return_ephemeral_ports` (the repository
@@ -280,7 +290,9 @@ plan is never republished after apply. The categorical
 resources are absent. It does not rewrite, reverse or predict cumulative invoice
 entries. Retain manifest and evidence in encrypted operator storage until the
 account billing view has been reviewed, then remove the temporary state and
-credentials through their separately approved cleanup path.
+credentials through their scoped cleanup path. Existing authorization for this
+run's exact cleanup covers those steps; new authority is needed only when the
+resource, credential or destructive scope extends beyond it.
 
 ## What this does NOT test
 

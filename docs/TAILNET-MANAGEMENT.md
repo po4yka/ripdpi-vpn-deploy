@@ -35,8 +35,10 @@ serial live acceptance.
 
 Review the complete Tailnet ACL or grants document separately. An additive
 narrow rule does not neutralize an existing broad grant. Applying that policy
-is an external authorization change and requires its own fresh diff and
-action-time approval.
+is an external authorization change: review a fresh complete diff at action time.
+Existing explicit authorization can cover that exact policy change; obtain a new
+decision if it falls outside the approved scope. Preserve the policy digest and
+exact-source checks regardless of conversational authorization.
 
 ## Bootstrap one node
 
@@ -132,8 +134,10 @@ may remain after rollback, but the access-changing runtime policy is restored.
 Do not approximate controller loss by interrupting `make bootstrap-tailnet`:
 its normal cancellation path requests an explicit rollback. After the cleanup
 manifest and SSH recovery foundation exist, exercise the two autonomous paths
-through their fixed staging-only verbs. Each run consumes a different one-use
-enrollment key and MUST complete before positive bootstrap:
+through their fixed staging-only verbs when recovery behavior is being tested.
+These are optional fault-injection exercises for ordinary protocol acceptance;
+bootstrap does not require their evidence. Each selected exercise consumes a
+different one-use enrollment key and runs before positive bootstrap:
 
 ```bash
 IFS= read -r -s TAILSCALE_AUTH_KEY </dev/tty
@@ -199,7 +203,9 @@ it never installs or enrolls implicitly. Before convergence, it requires a
 confirmed guest receipt matching the inventory alias, public address, SSH port,
 approved controller sources and current Tailnet node identity. A missing or
 mismatched receipt refuses without host writes. Previously enrolled nodes
-without this receipt require a separately approved bootstrap decision.
+without this receipt require an explicit bootstrap decision within the authorized
+scope; ordinary deployment cannot manufacture or bypass it. Do not repeat an
+approval already covering that exact node and bootstrap action.
 
 ## Fail-closed postconditions
 
@@ -222,9 +228,11 @@ Molecule exercises configuration, credential cleanup, exact flags and
 idempotence with a synthetic CLI and nftables fixture. It does not prove the
 Tailnet control plane, ACL enforcement, a fresh pinned SSH connection, stable
 host identity, direct emergency access, resolver/routing behavior on a VPS, or
-unchanged VPN paths. Those require the authorized isolated staging sequence and
-then a separately approved serial fleet window. Do not remove public recovery
-access on the strength of source or container tests.
+unchanged VPN paths. Validate the relevant live claims in the authorized isolated
+staging run and, for a fleet rollout, its authorized serial window. Use
+[acceptance scope and completion](RUNBOOK-deploy.md#acceptance-scope-and-completion)
+to distinguish baseline protocol proof from additional drills. Do not remove
+public recovery access on the strength of source or container tests.
 
 An offline boot inspection on the pre-rollout P0 node found no Tailscale
 binary, service, recovery unit or state. That is a clean missing-foundation
@@ -239,6 +247,11 @@ fresh staging proof before production use.
 
 
 ## Existing managed firewall bootstrap
+
+For an inaccessible disposable node, prefer guarded cleanup and fresh provisioning
+with positive bootstrap. Console/GRUB recovery is an explicitly selected emergency
+exception when preserving that node is required, with its own exact authorization;
+it is not a prerequisite for ordinary acceptance.
 
 The credential-free `make render-console-bootstrap` renders a private command;
 it never executes it or changes provider policy. Its mode-0600 request contains

@@ -17,7 +17,8 @@ inventories.
 **Deploy provenance is deterministic** — the manifest records the clean Git
 revision used by the operator and a digest of deployable repository paths.
 Documentation-only commits may change the revision without changing the
-digest; live parity is decided by the digest.
+digest; `source-drift.yml` requires both the exact source revision and digest
+to match the clean checkout. Equal digests alone do not pass that gate.
 
 ## What's done well
 

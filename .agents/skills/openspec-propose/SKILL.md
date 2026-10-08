@@ -14,7 +14,7 @@ RIPDPI VPN deployment policy: use only the local repository planning home. OpenS
 
 Propose a new change - create the change and generate all artifacts in one step.
 
-**Planning boundary**: This workflow creates planning artifacts only. The user request that selected or triggered this workflow authorizes planning only, even if it asks to build or fix something. Do not edit project code. After the planning artifacts are complete, stop. Do not start implementation in the same response, even if the initial request asks for it. Wait for a new user request after the artifacts are presented; then start the apply workflow.
+**Planning boundary**: This workflow creates planning artifacts. For a planning-only request, present them and stop before implementation. When planning is a required step of an already authorized build or fix, preserve that authorization: finish and validate the artifacts, then use `openspec-apply-change` within the approved scope. Ask for a new decision only when the plan changes that scope, authority, cost or external impact.
 
 I'll create a change with the artifacts your schema defines. With the default spec-driven schema that is:
 - proposal.md (what & why)
@@ -24,7 +24,7 @@ I'll create a change with the artifacts your schema defines. With the default sp
 
 `<capability-path>` is the spec directory relative to `specs/` (for example, `user-auth` or `identity/user-auth`). Preserve an existing capability's full path and follow the project's established organization for new capabilities.
 
-When the user is ready to implement, they must start the apply workflow explicitly.
+Implementation follows `openspec-apply-change` after planning validation and user authorization; an existing implementation request can supply that authorization.
 
 ---
 
@@ -121,7 +121,7 @@ After completing all artifacts, summarize:
 - Change name and location
 - List of artifacts created with brief descriptions, plus any conditional artifact you skipped and why
 - What's ready: "All artifacts needed for implementation are ready."
-- Prompt: "The artifacts are ready for review. When you are ready, run `$openspec-apply-change (Codex) or /openspec-apply-change (other agents)` or ask me to apply this change."
+- For a planning-only request, say the artifacts are ready for review and offer `openspec-apply-change` as the next step. For an already authorized implementation request, continue through that workflow after validation.
 
 **Artifact Creation Guidelines**
 
@@ -135,9 +135,9 @@ After completing all artifacts, summarize:
   - These guide what you write, but should never appear in the output
 
 **Guardrails**
-- The request that invoked this workflow authorizes planning only. Any implementation or apply instruction in that request does not carry forward. Do NOT implement the change, start the apply workflow, or edit project code during this workflow. After presenting the artifacts, stop and wait for a new user request to start the apply workflow
+- Keep artifact authoring separate from implementation. A planning-only request ends after the artifacts; an authorized implementation request continues through `openspec-apply-change` after validation. Do not turn a planning request into authorization for code or infrastructure writes.
 - Create every artifact the apply phase transitively depends on, not just the ids listed in `apply.requires`
 - Always read dependency artifacts before creating a new one - re-read from disk, not from conversation memory (files may have changed since you last saw them)
 - Ask about ambiguities that would materially change scope, externally observable behavior, compatibility, or acceptance criteria; for minor details, make reasonable assumptions and record them
-- If a change with that name already exists, ask if user wants to continue it or create a new one
+- Reuse the matching task-linked change when continuation is clear. Ask only when multiple candidates or a different scope make the choice ambiguous.
 - Verify each artifact file exists after writing before proceeding to next

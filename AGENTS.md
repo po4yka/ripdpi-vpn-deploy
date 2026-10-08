@@ -29,7 +29,7 @@ Before documentation discovery, and again after changing worktrees, run `env -u 
 
 ## Hard rules
 
-- No secrets in git, Terraform state, TF vars/outputs, cloud-init `user_data`, Ansible debug output, or screenshots. Provider credentials live in env vars only. Do not read or print plaintext secret material (`.env`, `secrets/local/`, decrypted SOPS output, `*.tfstate`) into the session: transcripts and logs leave the operator machine.
+- Keep operator credentials and VPN secrets out of Git, Terraform inputs/outputs, cloud-init `user_data`, Ansible output, and screenshots. Provider credentials live in env vars only. Providers can record generated credentials in Terraform state and saved plans; protect those files as sensitive data and use encrypted state backups. Do not load or print plaintext secret material (`.env`, `secrets/local/`, decrypted SOPS output, state or saved plan JSON) into the session: transcripts and logs leave the operator machine.
 - Never bypass safety gates (`--no-verify`, `--no-gpg-sign`, skipping gitleaks, pre-commit, or ansible-lint) unless the user explicitly asks. When a hook fails, fix the cause.
 - One UUID, REALITY shortId, and AmneziaWG peer key per device. Never share or copy them between devices: shared material links devices and makes per-device revocation impossible.
 - No public admin panel. No remote installer piped into a root shell.
@@ -42,11 +42,25 @@ Before documentation discovery, and again after changing worktrees, run `env -u 
 
 Repository-local, reversible work needs no confirmation: editing files, running tests, linters, formatters, Molecule, `make check`/`ci-fast`/`validate`, refreshing snapshots you have reviewed, and committing your own changes locally.
 
-Run these only when the user explicitly asks, because they touch real infrastructure, credentials, or shared history:
+The following actions require user authorization because they touch real infrastructure, credentials, or shared history. An explicit deploy, recreation, cleanup or PR request can authorize its necessary steps without naming each command:
 
 - Make targets or scripts that use cloud credentials, inventory, SSH, or decrypted secrets, including `plan`, `apply`, `destroy`, `staging-destroy`, `dry-run`, `deploy*`, `verify`, `security-verify`, `smoke-test`, `fleet-*`, `rotate-*`, `rollback-*`, `promote-spare`, `blue-green`, `decrypt`, `bootstrap-secrets`, `issue-*`, `install-*` (except the local `install-hooks`), `backup-state`, and the `observability-*` lifecycle verbs other than `render`/`validate`.
 - Direct `terraform`, `ansible-playbook`, `sops --decrypt`, or SSH against real providers or hosts.
 - Pushing, force-pushing, opening or merging PRs, tagging, `git reset --hard`, deleting branches, or discarding changes you did not make.
+
+Apply existing authorization within its resource, action, cost and time bounds;
+recheck the current account, target, IP, plan and private inputs at action time.
+Ask again when those bounds change, authorization expires, or an action is not
+covered. A reviewable plan is still required before mutation. A request to open
+a PR does not authorize merging it. Special platform requirements for bypassing
+authentication or destructive actions still apply.
+Force-push, history rewrites, destructive reset and discarding others' work
+require authorization for that specific operation; a general deploy or PR
+request does not supply it.
+
+For deployment acceptance, use [the scoped completion checklist](docs/RUNBOOK-deploy.md#acceptance-scope-and-completion).
+Choose recreation for a disposable node with unavailable management access;
+use rescue/GRUB only when the owner explicitly chooses that emergency path.
 
 ## Build and verify
 

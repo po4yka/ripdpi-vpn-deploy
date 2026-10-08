@@ -342,6 +342,18 @@ uses the normal schema-2 policy with exactly one sentinel, one policy requiring
 all four profiles, the matching UpCloud AWG target, and **no `applied_at`**.
 There is no caller-provided binding timestamp or command/hook field.
 
+The supported entry point is `make deploy` with this intent as the selected
+alias's value in the private `DEPLOY_PROMOTION_CONFIG_FILE`. There is no standalone
+Make goal that creates the intent. Prepare it locally against the exact
+[validator](../scripts/disposable_promotion.py) and
+[liveness schema](../contract/protocol-liveness.schema.json): one dedicated client
+already present in the selected encrypted staging secrets, one all-four-profile
+policy/sentinel, exact inventory/source/address identity, the current registered
+cleanup manifest and an executor manifest from `make prepare-disposable-liveness`.
+The normal `dry-run` checks deployment contexts but does not validate or execute
+onboarding capabilities; `deploy` validates and snapshots the intent before host
+writes. Do not substitute an already-installed promotion config on the first run.
+
 `inputs` names absolute private paths for `sops_file`, `age_key_file`,
 `awg_key_file`, `executor_manifest` and `cleanup_manifest`. The deploy controller
 snapshots these before readiness or host writes, checks the exact cleanup
@@ -384,4 +396,20 @@ Configure the managed cron block with `LIVENESS_CONFIG=~/.config/vpn-provision/l
 
 ## Staging acceptance
 
-First prove all four required profiles return `ok` or `throttled` from at least two sentinels. Then use staging-only endpoint overrides to verify that one blocked profile produces `degraded`, one fully blocked sentinel remains below quorum, quorum failure for three evaluations issues one OTP without promotion, and restoring any required profile invalidates that OTP. Never simulate this by changing production routes or firewall rules.
+For baseline staging acceptance, prove `p0-reality`, `p1-xhttp`,
+`p2-hysteria2` and `p2-amneziawg` all return `ok` on that exact staging target and
+current source/runtime identity, with authenticated traffic and tunnel DNS and a
+fresh AWG handshake. Fleet acceptance separately probes those profiles on their
+assigned P0/P1/P2 nodes. `throttled` does not satisfy deployment promotion. The supported
+one-shot disposable executor supplies one consumer-uplink observation; it does
+not require two sentinels and does not prove a second physical vantage or Android
+behavior. Follow [acceptance scope and completion](RUNBOOK-deploy.md#acceptance-scope-and-completion)
+and retain guarded destroy/de-onboarding evidence.
+
+When monitoring/quorum/promotion behavior is in scope, use at least two sentinels
+and staging-only endpoint overrides to verify that one blocked profile produces
+`degraded`, one fully blocked sentinel remains below quorum, quorum failure for
+three evaluations issues one OTP without promotion, and restoring any required
+profile invalidates that OTP. These are additional fault-injection tests, not a
+prerequisite for every ordinary acceptance run. Never change production routes
+or firewall rules to simulate them.

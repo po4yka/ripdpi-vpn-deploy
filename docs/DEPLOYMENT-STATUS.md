@@ -90,14 +90,14 @@ Outside-in probes after convergence: P0 REALITY TCP/443 reachable, P1 site
 answers HTTPS 200 with the correct SNI identity, P2 exposes exactly its
 listener contract (Hysteria2 UDP/443, AmneziaWG UDP/51820).
 
-SSH host keys were regenerated on every node by design. On nodes with new
-addresses the first connection simply pins the new key. The P1 IPv4 is
-unchanged, so a client holding the previous P1 key gets a host-key-change
-failure instead: `StrictHostKeyChecking=accept-new` (used by
-`scripts/wait-cloud-init.sh` and `make wait`) rejects changed keys until the
-stale entry is removed. Clear it first with `ssh-keygen -R <p1-host>` (repeat
-for the Tailscale name if that path was pinned), then reconnect to accept the
-new key. All public endpoints changed except the P1 IPv4 — client devices must
+SSH host keys were regenerated on every node by design. Before accepting a new
+key or replacing an existing pin, independently verify the fingerprint and exact
+node identity through an authenticated provider console. Preserve the old pin
+until that verification succeeds, then update only the verified host/port entry
+and any verified Tailnet alias. Terraform's first-boot adapter (`make wait`)
+uses `StrictHostKeyChecking=accept-new` and rejects changed keys; ordinary
+deployment requires reviewed pins with strict checking. All public endpoints
+changed except the P1 IPv4 — client devices must
 re-fetch the subscription or update endpoints manually. Static `/sub/`
 payloads rendered by `scripts/issue-sub-token.sh` are stored once as hashed
 files and are not regenerated on fetch; before telling any device to re-fetch,
