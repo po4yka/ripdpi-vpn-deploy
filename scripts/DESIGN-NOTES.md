@@ -164,6 +164,12 @@ watchdog, readiness, Ansible or provider calls to fill absent evidence.
 
 ## Liveness sentinels, disposable staging, and retirement
 
+**Sentinel formats follow required profiles** — request the canonical sing-box
+emitter only for REALITY or Hysteria2 and RIPDPI only for XHTTP. AWG-only
+resolves its existing AWG inputs without JSON emission. Unused documents are
+absent; a required emitter failure still refuses before remote writes, with
+native parsers, exact target identity and receipt reconciliation intact.
+
 **Sentinel activation is generation-bound** — `liveness_generation.py` owns the
 shared probe budget, fixed launcher, lock, rollback snapshot and committed receipt.
 Onboarding publishes its local assignment only after exact receipt reconciliation;

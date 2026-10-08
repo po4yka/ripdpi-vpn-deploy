@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-08
+goal: SCR-1791467099957833 Install standalone liveness profiles with only
+  required emitter formats

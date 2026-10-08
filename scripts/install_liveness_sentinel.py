@@ -682,11 +682,17 @@ def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, st
             _run([str(REPO / "scripts/decrypt-secrets.sh")], environment={**env, "SECRETS_FILE": str(secrets_path)}, timeout=60)
             secrets = _yaml(secrets_path, private=True)
             emit_env = {**env, "VPN_SECRETS_FILE": str(secrets_path)}
-            emitted = [_json(_run([str(REPO / "scripts/emit-singbox.sh"), client, "--profile-format", fmt], environment=emit_env, timeout=120)) for fmt in ("sing-box", "ripdpi")]
+            emitted = {}
+            for fmt, profiles_for_format in (("sing-box", {"p0-reality", "p2-hysteria2"}),
+                                             ("ripdpi", {"p1-xhttp"})):
+                if set(required) & profiles_for_format:
+                    emitted[fmt] = _json(_run([str(REPO / "scripts/emit-singbox.sh"), client, "--profile-format", fmt],
+                                             environment=emit_env, timeout=120))
             defaults, cohort, endpoint = {}, {}, None
             if "p2-amneziawg" in required:
                 defaults, cohort, endpoint = _awg_context(secrets, sentinel, mapping, env)
-            profiles = build_profiles(*emitted, secrets, client, required, sentinel.get("awg_target"), endpoint, private,
+            profiles = build_profiles(emitted.get("sing-box"), emitted.get("ripdpi"), secrets, client, required,
+                                      sentinel.get("awg_target"), endpoint, private,
                                       lambda key: _derive(key, env), f"/etc/vpn-liveness/generations/{generation}/profiles",
                                       awg_defaults=defaults, awg_cohort=cohort)
             profile_servers = {item.get("server") for item in profiles["public_profiles"]
