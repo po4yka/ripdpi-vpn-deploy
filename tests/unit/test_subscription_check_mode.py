@@ -16,7 +16,7 @@ PROBE = BY_NAME["Inspect subscription unit load state in check mode"]
 ACTIVATE = BY_NAME["Enable + start service"]
 HANDLER = next(task for task in yaml.safe_load((ROLE / "handlers/main.yml").read_text())
                if task["name"] == "Restart vpn-bootstrap")
-ENVIRONMENT = Environment(undefined=StrictUndefined)
+ENVIRONMENT = Environment(undefined=StrictUndefined, autoescape=True)
 
 
 def evaluate(expression, variables):
