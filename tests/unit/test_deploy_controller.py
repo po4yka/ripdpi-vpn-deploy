@@ -39,7 +39,7 @@ def workspace(tmp_path):
     for name in ("fleet_inspection.py", "deploy-source-identity.sh", "sshd_bundle_source.py", "sshd_contexts.py",
                  "sshd_transaction_limits.py",
                  "validate-ansible-extra-vars.py", "deploy-controller.py", "bootstrap_readiness.py",
-                 "network-exposure-gate.py"):
+                 "network-exposure-gate.py", "ci_deployment.py", "tailnet_management.py"):
         source = ROOT / "scripts" / name
         if source.exists():
             target = root / "scripts" / name
@@ -1417,3 +1417,60 @@ os.execv({actual_ansible!r}, [{actual_ansible!r}, *sys.argv[1:], '--syntax-check
     result = invoke(workspace)
     assert result.returncode == 0, result.stderr + result.stdout
     assert "playbook:" in result.stdout
+
+
+@pytest.mark.parametrize('fault', [None, 'source', 'transport', 'cohort', 'pin'])
+def test_ci_handoff_is_bound_before_transport_and_supplies_only_approved_sources(workspace, fault):
+    import base64
+    from uuid import uuid4
+    root = workspace['root']
+    profile = root / 'ansible/group_vars/vpn-ci-p0.yml'
+    profile.write_text('vpn: {enable_xray_reality: true, enable_tailnet_management: true}\n')
+    subprocess.run(['git', 'add', str(profile)], cwd=root, env=workspace['env'], capture_output=True, check=True)
+    subprocess.run(['git', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'test: CI profile'],
+                   cwd=root, env=workspace['env'], capture_output=True, check=True)
+    identity = subprocess.run([str(root / 'scripts/deploy-source-identity.sh')], cwd=root,
+                              env=workspace['env'], text=True, capture_output=True, check=True).stdout.split()
+    workspace['source_digest'] = identity[1]
+    workspace['inventory'].write_text(workspace['inventory'].read_text().replace('env=prod', 'env=ci-staging-one')
+                                      .replace('[vpn-p0]', '[vpn-ci-p0]'))
+    key = b'synthetic-ed25519-public-pin'
+    workspace['known_hosts'].write_text('[192.0.2.1]:2222 ssh-ed25519 ' + base64.b64encode(key).decode() + '\n')
+    binding = dict(inventory_alias='node-one', public_address='192.0.2.1', ssh_port=2222,
+                   public_sources=['198.51.100.44'], approved_sources=['100.64.0.44'],
+                   host_key_sha256=hashlib.sha256(key).hexdigest(), source_revision=identity[0], deployable_digest=identity[1])
+    nonce = 'a' * 32
+    for context in workspace['context_pairs']['node-one']:
+        context['host'] = context['addr']
+    handoff = dict(schema_version=1, status='configured', binding=binding, contexts=workspace['context_pairs']['node-one'],
+                   confirmation=dict(status='configured', changed=False, nonce=nonce, generation='tailnet-recovery-v4',
+                       binding_sha256=hashlib.sha256((json.dumps(binding, sort_keys=True, separators=(',', ':')) + '\n').encode()).hexdigest(),
+                       lease=dict(boot_id=str(uuid4()), started_ms=10, deadline_ms=300010),
+                       node=dict(id='node-one', hostname='vpn-enroll-' + nonce, ipv4='100.64.0.1', ipv6='fd7a:115c:a1e0::1')))
+    if fault == 'source': binding['source_revision'] = 'f' * 40
+    elif fault == 'transport':
+        workspace['inventory'].write_text(workspace['inventory'].read_text().replace('inspection_transport_host=100.64.0.1',
+                                                                                 'inspection_transport_host=100.64.0.99'))
+    elif fault == 'cohort':
+        workspace['inventory'].write_text(workspace['inventory'].read_text().replace('[vpn-ci-p0]', '[vpn-p0]'))
+    elif fault == 'pin': workspace['known_hosts'].write_text('[192.0.2.1]:2222 ssh-ed25519 Zm9yZWlnbg==\n')
+    path = write(root.parent / 'handoff.json', json.dumps(handoff))
+    workspace['env']['DEPLOY_CI_TAILNET_HANDOFF'] = str(path)
+    record = root.parent / 'ci-transaction.json'
+    executable = Path(workspace['env']['PATH'].split(os.pathsep)[0]) / 'ansible-playbook'
+    write(executable, f'''#!{sys.executable}
+import json,pathlib,sys
+play=json.loads(pathlib.Path(sys.argv[1]).read_text())
+files=play[0]['vars']['deployment_input_files']['node-one']
+transaction=json.loads(pathlib.Path(next(p for p in files if p.endswith('-ssh-transaction.json'))).read_text())
+pathlib.Path({str(record)!r}).write_text(json.dumps(transaction))
+''', 0o700)
+    result = invoke(workspace, limit='node-one')
+    if fault:
+        assert result.returncode != 0
+        expected = 'SSH contexts invalid' if fault == 'transport' else 'CI Tailnet handoff refused'
+        assert expected in result.stderr
+        assert not calls(workspace)
+    else:
+        assert result.returncode == 0, result.stderr
+        assert json.loads(record.read_text())['tailnet_management'] == {'approved_sources': ['100.64.0.44']}

@@ -1,131 +1,150 @@
-# Real-VPS CI deploy gate
+# Disposable real-VPS CI deployment
 
-The `real-vps-deploy` workflow is a **partial-fidelity** production-deploy
-approximation in GitHub Actions: provision an ephemeral UpCloud VPS, run the
-full playbook plus `verify.yml` against it, then destroy it. Docker molecule
-scenarios catch most regressions; this gate catches the ones that depend on the
-real cloud environment (template behaviour, cloud-init quirks, provider firewall
-ordering, real systemd unit startup, etc.). It does not currently run
-`make smoke-test`; that remains an operator-driven live-traffic check.
+`real-vps-deploy` provisions one fresh UpCloud node per selected distribution,
+executes the canonical recovery, Tailnet bootstrap, SSH ownership and deployment
+controllers, verifies real protocol promotion, and destroys its owned resources.
+`transport-reachability-matrix` runs the same lifecycle on a separate fresh node
+for each selected profile. Both call `ci-disposable-deploy.yml`; its job uses the
+protected `ci-real-deploy` environment with a required reviewer.
 
-Partial-fidelity is intentional, not a production-equivalence claim. The job
-uses synthetic secrets, skips the strict pre-deploy secret/certificate checks,
-and disables roles that require real upstreams, persistent state, or platform
-features that CI cannot reproduce safely. A green run means "the real VPS deploy
-skeleton converges and verifies under CI constraints", not "the full production
-surface is healthy".
+The default deployment profile is `p0p1p2` (REALITY, direct XHTTP and Hysteria2).
+AmneziaWG, persistent backups and monitoring are outside this disposable profile.
+A passed run establishes the selected profile's checks, not full production
+or filtered-path acceptance. The direct runner baseline in matrix reports is
+separate from the authenticated protocol probes used by promotion.
 
-## When it runs
+## Triggers and approval
 
-The workflow is intentionally NOT triggered on every push — it burns
-provider credit and takes ~15-20 minutes per run. Three triggers:
+- Manual `workflow_dispatch` selects the zone; matrix dispatch also selects a
+  comma-separated profile list: `p0`, `p0p1`, `p0p1p2`, `p0p4`, `p0p5`.
+- The `ci-real-deploy` PR label requests both workflows. Fork PRs are rejected
+  before credentials or provisioning, including in the shared workflow.
+- Real-VPS deployment also runs weekly. Missing configuration fails before
+  provisioning; a selected profile never becomes a successful skipped job.
+- Debian 13 is mandatory. Repository variable `CI_REAL_DEPLOY_UBUNTU24=true`
+  adds a separate Ubuntu 24.04 deployment. Every selected template is required.
 
-  * **workflow_dispatch** — manual: Actions → "real-vps-deploy" →
-    Run workflow. Optional `zone` input.
-  * **pull_request labeled `ci-real-deploy`** — a maintainer
-    consciously adds the label when a PR touches provisioning,
-    role ordering, or cloud-init.
-  * **schedule** — Mondays at 06:00 UTC. Missing required configuration fails
-    this run too; remove the schedule trigger to disable recurring deployment.
+`make check-ci-deploy-gate` verifies the hosted environment still has a required
+reviewer. No helper changes environment protections or Tailnet ACLs. Profile jobs
+are serialized within the matrix; runs targeting the same profile/distribution
+share a concurrency group. A workflow can run for up to 120 minutes because it
+executes two destructive recovery exercises before the positive deployment.
 
-Every trigger waits for a required reviewer to approve the deployment on the
-protected `ci-real-deploy` GitHub Environment before any job step runs. A PR
-label alone is insufficient. The same gate applies to
-`transport-reachability-matrix`. Before trusting a credentialed run, execute
-`make check-ci-deploy-gate`: this read-only check fails if the environment is
-missing, has no required reviewer, or cannot be verified through the GitHub API.
-The local workflow contract tests cannot inspect hosted repository settings.
+## Protected environment configuration
 
-Workflow authors remain trusted: a job is protected only while it references
-the protected environment. Keep deployment credentials as environment secrets;
-repository-level secrets are also available to workflows that omit that gate.
-
-The job refuses to start on a fork PR (secrets aren't exposed there)
-and uses per-distro concurrency groups so two runs for the same distro
-never race against the UpCloud account.
-
-## Required GitHub secrets
+Store these four secrets on the `ci-real-deploy` environment, not at repository
+scope. GitHub Actions cannot read back their values after setup.
 
 | Secret | Purpose |
 |---|---|
-| `UPCLOUD_USERNAME` | UpCloud sub-account with VPS create + destroy |
-| `UPCLOUD_PASSWORD` | sub-account password — use a tightly scoped sub-account, NOT the master account |
-| `CI_SOPS_AGE_KEY` | age private key staged onto the runner so any later step needing SOPS works; CI does not commit an encrypted blob |
-| `CI_SSH_PRIVATE_KEY` | SSH key the ephemeral VPS authorises; not reused outside CI |
-| `CI_REALITY_TARGET` | Operator-owned REALITY target in `host:port` form; kept out of the repository |
-| `CI_REALITY_SERVER_NAME` | TLS server name accepted by the owned REALITY target |
-| `CI_WATCHDOG_CANARY_URL` | Operator-owned HTTPS endpoint that returns exactly `204` |
-| `CI_UPCLOUD_TEMPLATE_UUID` | **Debian 13** minimal cloud-image template UUID. List candidates via `upctl storage list --public --template`. |
-| `CI_UPCLOUD_TEMPLATE_UUID_UBUNTU24` | **Ubuntu 24.04** minimal cloud-image template UUID. Required when the repository variable `CI_REAL_DEPLOY_UBUNTU24` is `true`. |
+| `UPCLOUD_TOKEN` | Dedicated account token authorized for disposable servers, encrypted storage import and exact cleanup |
+| `CI_TAILSCALE_OAUTH_CLIENT_ID` | Scoped CI enrollment OAuth client |
+| `CI_TAILSCALE_OAUTH_CLIENT_SECRET` | Its client secret; requires auth-key create/revoke capability for the configured tag |
+| `CI_DEPLOY_CONFIG` | JSON configuration described below |
 
-## Matrix fan-out across distros
+`CI_DEPLOY_CONFIG` has exactly these fields:
 
-Debian 13 is always selected. To also run Ubuntu 24.04, set the **repository
-variable** `CI_REAL_DEPLOY_UBUNTU24=true` and configure its template secret.
-The variable must be repository-scoped because the matrix is expanded before
-the protected environment is entered. Setting the Ubuntu secret alone no
-longer enables that distro. Without the variable, no Ubuntu job is created;
-there is no successful placeholder deployment.
+```json
+{
+  "tailnet": "example.test",
+  "tag": "tag:ci-deploy",
+  "templates": {
+    "debian13": "00112233-4455-4677-8899-aabbccddeeff",
+    "ubuntu2404": "00112233-4455-4677-8899-aabbccddee00"
+  },
+  "reality_target": "target.example.test:443",
+  "reality_server_name": "target.example.test",
+  "probe_url": "https://probe.example.test/204",
+  "recovery_age_recipient": "<operator-age-public-recipient>",
+  "research": {}
+}
+```
 
-Every selected distro fails before tooling or provisioning if its template
-secret is missing. This applies equally to manual, labelled and scheduled runs.
-Other required secrets are checked next. Each selected entry gets its own
-concurrency group and distro-suffixed tfvars, keeping parallel provisions apart.
-A selected job can succeed only after the Deploy step (including verify) and
-Destroy complete successfully. A skipped workflow or an absent Ubuntu job is
-not deployment evidence.
+Use real minimal cloud templates, an owned REALITY endpoint that accepts the
+configured TLS name, and an owned HTTPS probe returning status 204. The recovery
+recipient is an operator-held age public key; its private key never enters CI.
+The Tailnet policy must already allow ordinary OpenSSH from the CI controller's
+tag to the guest's tag. The OAuth client's tag ownership must permit issuing
+that tag and preauthorizing ephemeral devices. Neither CI nor the bootstrap
+controller edits ACLs, approves arbitrary devices or uses Tailscale SSH.
 
-Cost note: enabling Ubuntu doubles the run minutes + UpCloud credit per
-PR-labeled run. Use the label sparingly.
+P4 requires `research.dns_morph_bridge` with a real HTTPS `binary_url` and its
+reviewed `binary_sha256`; there is no public upstream daemon release. P5 requires
+`research.hysteria_realm` with reviewed `linux_amd64_sha256` and
+`linux_arm64_sha256` for the role's pinned release. These prerequisites are
+checked before provision. Both still prove P0 through the canonical sentinel;
+their additional service checks are not P4/P5 client-path acceptance.
 
-## CI secrets generated at runtime
+The old template, SSH-key and age-key workflow secrets are no longer consumed.
+Each job generates its own admin SSH key, age key and per-device transport
+credentials. It encrypts the CI secrets for canonical sentinel onboarding and
+adds only that run's generated TLS certificate to the disposable runner's
+trust store. TLS verification remains enabled for XHTTP and Hysteria clients.
 
-The workflow does **not** carry a `secrets/ci.secrets.sops.yaml` blob.
-`scripts/ci-bootstrap-secrets.sh` runs in the workflow and writes a
-complete synthetic secrets YAML to
-`/tmp/vpn-${CI_ENV}.secrets.yaml`:
+## Authenticated first contact and deployment
 
-  * fresh REALITY keypair (from `ghcr.io/xtls/xray-core:<version>`
-    `x25519`)
-  * fresh recipient and dedicated watchdog UUIDs + shortIds, fresh Hysteria
-    password, fresh AmneziaWG keypair + random H1..H4
-  * self-signed certificate covering the CI server hostname
-  * Xray + Hysteria release-asset sha256 computed live by curl +
-    sha256sum from the upstream URLs
+1. Generate a unique SSH host key and private ext4 seed image. The pinned
+   provider imports that image over authenticated HTTPS into encrypted storage
+   and attaches it before guest startup. Terraform records only the local path,
+   image digest and public identity metadata; no private key or signed upload
+   URL is supplied through Terraform variables or cloud-init.
+2. Cloud-init mounts the exact seed read-only, checks the host-key digest and
+   installs the key before completing SSH bootstrap. The controller trusts
+   that generated key before the first public SSH session. Provider console
+   trust-on-first-use is not involved.
+3. Record exact cleanup ownership, install recovery, and execute controller-loss
+   and reboot recovery exercises with separate single-use enrollment keys.
+4. Complete positive Tailnet enrollment and collect observed public/Tailnet SSH
+   contexts. The deployment controller accepts dynamic approved sources only
+   from the matching confirmed handoff, current source identity, exact node,
+   pinned host key and typed CI cohort.
+5. Migrate SSH ownership, run canonical check mode, then deploy. A dedicated
+   loopback SSH sentinel on the runner uses the real pinned sing-box/Xray
+   clients and observed activation metadata. Empty promotion mappings and
+   invented success receipts cannot satisfy deployment.
+6. Run verify and smoke checks. Matrix mode additionally records its direct
+   runner and SNI baseline. Destroy the server, root and seed disks through
+   the exact-state staging cleanup guard, and stop owned local services and
+   revoke this run's enrollment keys.
 
-The certificate is self-signed and the geodata URLs are placeholders,
-so the `pre-deploy-check` chain would reject the secrets. CI runs
-with `SKIP_PRECHECK=1`; ansible's per-role validate-before-restart
-still gates a broken render.
+Provider firewall activation remains a separate controlled lifecycle. CI starts
+it disabled, then exercises the guest firewall; its Terraform listener contract
+still must match every enabled runtime listener. The initial SSH CIDR is the
+controller's observed public address, never a world-open management allowlist.
 
-`verify.yml` runs the deployed watchdog immediately and requires an
-authenticated REALITY round trip through the ephemeral node to
-`CI_WATCHDOG_CANARY_URL`. This is the load-bearing successful-handshake test;
-it remains an on-node, unfiltered-vantage check and does not replace
-`make smoke-test` or the managed sentinel quorum.
+## Failure recovery and evidence
 
-Disabled roles in CI (via `ANSIBLE_EXTRA_VARS`):
+Only the categorical result, explicit matrix reports and an encrypted failure
+archive are uploaded. Raw Terraform, Ansible, private keys, state, enrollment
+material and subprocess logs are never uploaded in plaintext. Tool output is
+captured locally with restrictive permissions, and Terraform debugging is not
+inherited.
 
-  * `enable_amneziawg=false` — kernel module + NAT not portable
-  * `enable_geodata=false`   — placeholder URLs would 404
-  * `enable_backup=false`    — restic-against-localhost adds noise
-  * `enable_monitoring=false` — node_exporter not interesting here
-  * `enable_warp_outbound=false` / `enable_honeypot=false` /
-    `enable_policy_ratelimit=false` — defensive roles tested in
-    their own molecule scenarios
+A normal cleanup must prove server, root storage and seed storage absent. A
+partial apply with only a state-recorded detached seed can delete exactly that
+seed; this does not prove that an unrecorded provider operation left no resource.
+Ambiguous provisioning or failed cleanup remains a failed run with retained
+recovery evidence. Cleanup defers repeated soft termination signals; a hard
+runner termination can still interrupt cleanup and requires provider inspection. It never falls back to an unbounded destroy or removes state
+on the assumption that deletion succeeded.
 
-## Cleanup invariants
+Decrypt `recovery.tar.gz.age` locally with the operator's age key, inspect the
+private result/state and use the canonical cleanup guard. Keep decrypted material
+outside Git. A workflow success requires deployment and cleanup; source tests,
+mock-provider tests and native loopback/mount tests do not establish a live
+provider deployment. Hosted credential setup and a protected live run are
+separate acceptance evidence.
 
-The `destroy` step runs in `always()` so a half-built VPS never
-outlives the job. The `cleanup CI tfvars file` step deletes the
-per-run tfvars even if `destroy` failed, so the next run starts
-from a clean slate. Operators verifying after a failed run should
-re-check UpCloud billing once a quarter.
+## Operator staging and cleanup
+
+Use [acceptance scope and completion](RUNBOOK-deploy.md#acceptance-scope-and-completion)
+to select the required deployment evidence and owner limits. The recurring CI
+recovery exercises are not prerequisites for every ordinary deployment.
 
 ### UUID-bound operator staging cleanup
 
-Authorized operator staging uses an environment named `ci-staging-*` and is
-stricter than the recurring CI workflow. Use a dedicated worktree so its local
+Authorized operator staging and the recurring CI workflow use the same
+`ci-staging-*` exact-resource cleanup guard. Use a dedicated worktree so its local
 Terraform workspace state is isolated. Keep the state file mode `0600` under a
 same-owner directory that is not group/other writable. Keep the cleanup
 manifest and post-destroy evidence in one operator-owned `0700` directory;
@@ -144,18 +163,26 @@ never emits the authorization value. This binds the
 exact API principal used for creation and deletion, not a parent billing
 account, and does not claim that provider usernames are immutable identifiers.
 
-Before positive Tailnet bootstrap, run both fixed recovery exercises from
+Recovery fault-injection is a separate scope from ordinary four-protocol
+acceptance. When testing recovery behavior, use the fixed exercises in
 [TAILNET-MANAGEMENT.md](TAILNET-MANAGEMENT.md#disposable-staging-recovery-exercises)
-with separate one-use enrollment keys. An ordinary bootstrap interruption is
-not controller-loss evidence because its cancellation handler requests
-rollback. Retain both redacted mode-`0600` recovery artifacts alongside the
-cleanup generations and require the controller-loss artifact before the reboot
-artifact. Neither artifact is VPN, provider-firewall or client-path acceptance.
+with separate one-use keys before positive bootstrap; retain their private
+artifacts. Bootstrap does not consume these artifacts or enforce their order.
+An ordinary cancellation requests rollback and does not prove controller loss.
+
+Set per-run owner limits for resource count, provider cost, retries and completion
+and cleanup times before creation. The staging example selects 1 CPU/1 GiB RAM
+and 20 GiB storage; verify the actual private tfvars and pricing for this run.
+The local executor uses 2 CPUs/2 GiB RAM/10 GiB disk with a six-hour capability.
+Provider 36/44/47-hour deadlines are cleanup authority boundaries, not a scheduler
+or a billing cap. Begin guarded destruction before expiry; an expired manifest
+cannot authorize a new destruction. Escalate unresolved cleanup before the owner
+limit or guard deadline, rather than extending it by reissuing artifacts.
 
 After creating the initial manifest, promote the UpCloud provider firewall in
 two phases. The private tfvars starts with `enable_provider_firewall=false`; apply,
-create the cleanup manifest, wait for cloud-init, install SSH recovery and
-exercise both autonomous recovery paths, bootstrap Tailnet, then deploy the
+create the cleanup manifest, wait for cloud-init, install SSH recovery,
+bootstrap Tailnet and migrate SSH ownership, then deploy the
 guest stateful firewall and verify strict SSH,
 DNS, outbound TCP/UDP and every required public listener. Confirm the live
 kernel ephemeral range equals `provider_return_ephemeral_ports` (the repository
@@ -215,8 +242,9 @@ make staging-cleanup-manifest
 ```
 
 The exact state must contain only `upcloud_server.vpn`, its
-`upcloud_firewall_rules.vpn` resource and `terraform_data.ssh_port`. The guard
-extracts both owned UUIDs and calculates the state digest from those same state
+`upcloud_firewall_rules.vpn` resource, `terraform_data.ssh_port`, and optionally
+the single `upcloud_storage.ci_ssh_seed[0]` resource. A seed must match its
+filesystem UUID and image digest. The guard extracts the owned UUIDs and calculates the state digest from those same state
 bytes; an operator does not type either UUID or account identity into the
 manifest. Every path ancestor is opened without following symlinks, and final
 files are accessed relative to a held parent directory descriptor.
@@ -237,7 +265,7 @@ validation requires that exact reservation. Immediately before apply, the
 controller rechecks the account, reservation, state and exclusive hard
 deadline, then durably changes the same evidence inode to `apply_started`.
 Only exact deletes of the manifest-bound
-server, root storage, server firewall resource and local SSH-port identity are
+server, root storage, optional seed storage, server firewall resource and local SSH-port identity are
 accepted. Create, update, replacement, foreign deletion, changed state or an
 expired deadline refuses before apply. The post-destroy evidence path is
 reserved as a new `0600` inode before the lifecycle override or Terraform plan
@@ -268,7 +296,7 @@ make staging-destroy
 After apply, the command verifies the authenticated account username matches
 the private manifest before any resource GET, then performs bounded read-only
 UpCloud GETs and replaces the reservation content in the same inode.
-Success requires the exact server and root storage to return their typed
+Success requires the exact server, root storage and optional seed storage to return their typed
 not-found responses; authentication failure, forbidden resources, an existing
 resource or an ambiguous response keeps cleanup failed and preserves the
 reservation and Terraform state for diagnosis. The staging path preserves the
@@ -280,21 +308,6 @@ plan is never republished after apply. The categorical
 resources are absent. It does not rewrite, reverse or predict cumulative invoice
 entries. Retain manifest and evidence in encrypted operator storage until the
 account billing view has been reviewed, then remove the temporary state and
-credentials through their separately approved cleanup path.
-
-## What this does NOT test
-
-  * Strict pre-deploy secret hygiene (`validate-secrets --strict`,
-    `spot-check-secrets`, `check-certs`) because the CI secrets are
-    intentionally synthetic.
-  * The full production role surface; several roles are disabled via
-    `ANSIBLE_EXTRA_VARS` as listed above.
-  * Production traffic patterns (no real users dial the ephemeral
-    REALITY endpoint).
-  * Burn-check (the ephemeral IP isn't on RKN's radar long enough
-    to provoke a block).
-  * Long-running ASN / IP-reputation drift.
-
-Those stay in operator-driven cadence (`make pre-deploy-check`,
-`make smoke-test`, `make burn-check`, `make asn-drift`,
-`make check-ip-reputation`).
+credentials through their scoped cleanup path. Existing authorization for this
+run's exact cleanup covers those steps; new authority is needed only when the
+resource, credential or destructive scope extends beyond it.

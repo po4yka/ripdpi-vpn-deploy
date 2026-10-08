@@ -6,9 +6,9 @@ Restore secure positive deployment, policy, drift and runtime lifecycle behavior
 
 ## Ownership
 
-- Runtime worker: ansible roles/playbooks except honeypot, role CLAUDE notes and dedicated runtime regression tests.
-- Infrastructure worker: terraform/policy, scripts/validate-secrets.py, scripts/tf-policy-test.sh, scripts/check-tf-plan.sh, ansible/roles/honeypot, dedicated policy/secrets/honeypot tests and subtree notes; automated trusted bootstrap helper, real-VPS and matrix CI workflows, dedicated CI tests and CI-REAL-DEPLOY.md.
-- Primary: Makefile, remaining operator scripts, vpnd, tf-policy workflow, shared tests/snapshot files, root/shared docs and scripts/CLAUDE.md; all task/spec lifecycle and commits.
+- Runtime worker: ansible roles/playbooks except honeypot, role CLAUDE notes and dedicated runtime regression tests; confirmed CI Tailnet-source binding in deploy-controller, disposable promotion and Linux sentinel integration, and dedicated tests.
+- Infrastructure worker: terraform/policy, scripts/validate-secrets.py, scripts/tf-policy-test.sh, scripts/check-tf-plan.sh, ansible/roles/honeypot, dedicated policy/secrets/honeypot tests and subtree notes; per-run private SSH seed helper, UpCloud seed storage/import and cloud-init key installation, cleanup-manifest support, dedicated tests and affected subtree notes.
+- Primary: Makefile, remaining operator scripts, vpnd, tf-policy workflow, shared tests/snapshot files, root/shared docs and scripts/CLAUDE.md; unattended CI orchestrator, real-VPS and matrix workflows, workflow tests and CI runbook; all task/spec lifecycle and commits.
 - Shared-file changes are requested from the primary before editing. Workers preserve each other's changes and do not stage or commit.
 
 ## Execution

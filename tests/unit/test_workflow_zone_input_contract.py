@@ -12,6 +12,7 @@ def test_dispatch_zone_is_never_expanded_inside_shell_source():
     for name in WORKFLOWS:
         source = (WORKFLOW_DIR / name).read_text()
 
-        assert "TF_VAR_zone: ${{ github.event.inputs.zone || 'fi-hel1' }}" in source
+        assert "zone: ${{ github.event.inputs.zone || 'fi-hel1' }}" in source
         assert 'zone                 = "${{ github.event.inputs.zone' not in source
-        assert source.count("TF_VAR_zone:") == 1
+        assert source.count("zone: ${{") == 1
+        assert "run: |\n          zone=${{" not in source

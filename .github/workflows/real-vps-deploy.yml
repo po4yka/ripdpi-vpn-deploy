@@ -1,235 +1,34 @@
 ---
 name: real-vps-deploy
-
-# Ephemeral end-to-end deploy gate. Provisions a fresh UpCloud VPS,
-# runs site.yml + verify against it, then destroys
-# everything. Approximates a production deploy as closely as the CI
-# environment allows — closer than the docker-only molecule scenarios
-# can.
-#
-# Triggered manually (workflow_dispatch) or by adding the
-# `ci-real-deploy` label to a pull request. Not on every push: this
-# burns provider credit and runs ~15-20 minutes.
-#
-# Required secrets:
-#   UPCLOUD_USERNAME             sub-account with VPS create + destroy
-#   UPCLOUD_PASSWORD             …
-#   CI_SOPS_AGE_KEY              age private key for the synthetic
-#                                CI secrets file (separate from any
-#                                operator key)
-#   CI_SSH_PRIVATE_KEY           SSH key for the ephemeral VPS
-#   CI_REALITY_TARGET            owned REALITY target as host:port
-#   CI_REALITY_SERVER_NAME       TLS name accepted by that target
-#   CI_WATCHDOG_CANARY_URL       owned HTTPS endpoint returning 204
-#
-# A single concurrency group ensures only one real-VPS-deploy runs at
-# a time across the repo, so we never race two provisions against the
-# UpCloud account.
-
+# One fresh guest per selected distro; all credentialed steps live behind the
+# protected environment in ci-disposable-deploy.yml.
 on:
   workflow_dispatch:
     inputs:
       zone:
-        description: "UpCloud zone (e.g. fi-hel1, de-fra1)"
+        description: UpCloud zone
         required: false
-        default: "fi-hel1"
+        default: fi-hel1
   pull_request:
     types: [labeled]
-  # Weekly scheduled rebuild — catches Terraform/cloud-init/Ansible/SOPS
-  # interface breaks before a real incident does. Missing required
-  # configuration fails before provisioning, including on schedules.
-  # To disable, delete this `schedule:` block — the manual
-  # (workflow_dispatch) and PR-label triggers are unaffected.
   schedule:
-    - cron: "0 6 * * 1"  # Mondays 06:00 UTC
-
+    - cron: "0 6 * * 1"
 permissions:
   contents: read
-
 jobs:
   deploy:
-    # Manually-triggered, or PR labeled `ci-real-deploy`.
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'schedule' ||
-      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci-real-deploy'))
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-
-    # Required-reviewer approval gate: a `ci-real-deploy` label alone must
-    # never reach the provider credentials and CI age key — an approved
-    # deployment on the ci-real-deploy environment is the second factor.
-    environment: ci-real-deploy
-
-    # Debian is mandatory. Opt into Ubuntu with the repository variable
-    # CI_REAL_DEPLOY_UBUNTU24=true; an unselected distro creates no job.
-    # Every selected entry requires its template secret and must deploy.
+      github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       contains(github.event.pull_request.labels.*.name, 'ci-real-deploy'))
     strategy:
       fail-fast: false
       matrix:
         distro: ${{ fromJSON(vars.CI_REAL_DEPLOY_UBUNTU24 == 'true' && '["debian13","ubuntu2404"]' || '["debian13"]') }}
-
-    name: real-vps-deploy (${{ matrix.distro }})
-    # Distinct group per distro so a Debian fan-out can run alongside an
-    # Ubuntu one. Within a distro, serialise — we still don't want two
-    # parallel provisions for the same template against UpCloud.
-    concurrency:
-      group: real-vps-deploy-${{ matrix.distro }}
-      cancel-in-progress: false
-
-    env:
-      UPCLOUD_USERNAME: ${{ secrets.UPCLOUD_USERNAME }}
-      UPCLOUD_PASSWORD: ${{ secrets.UPCLOUD_PASSWORD }}
-      TF_VAR_zone: ${{ github.event.inputs.zone || 'fi-hel1' }}
-      ANSIBLE_HOST_KEY_CHECKING: "False"
-      MATRIX_DISTRO: ${{ matrix.distro }}
-      CI_UPCLOUD_TEMPLATE_UUID_DEBIAN13: ${{ secrets.CI_UPCLOUD_TEMPLATE_UUID }}
-      CI_UPCLOUD_TEMPLATE_UUID_UBUNTU24: ${{ secrets.CI_UPCLOUD_TEMPLATE_UUID_UBUNTU24 }}
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Refuse to run on a fork PR
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
-        run: |
-          echo "::error::real-vps-deploy will not run on a fork PR — secrets are not exposed to forks."
-          exit 1
-
-      - name: Require the selected distro template UUID
-        id: gate
-        run: |
-          case "${MATRIX_DISTRO}" in
-            debian13)
-              MATRIX_TEMPLATE_UUID="${CI_UPCLOUD_TEMPLATE_UUID_DEBIAN13}"
-              template_secret_name="CI_UPCLOUD_TEMPLATE_UUID"
-              ;;
-            ubuntu2404)
-              MATRIX_TEMPLATE_UUID="${CI_UPCLOUD_TEMPLATE_UUID_UBUNTU24}"
-              template_secret_name="CI_UPCLOUD_TEMPLATE_UUID_UBUNTU24"
-              ;;
-            *)
-              echo "::error::Unknown matrix distro: ${MATRIX_DISTRO}"
-              exit 1
-              ;;
-          esac
-          if [ -z "${MATRIX_TEMPLATE_UUID:-}" ]; then
-            echo "::error::${MATRIX_DISTRO} requires secret ${template_secret_name}; configure it in the ci-real-deploy environment."
-            exit 1
-          fi
-          echo "MATRIX_TEMPLATE_UUID=${MATRIX_TEMPLATE_UUID}" >> "$GITHUB_ENV"
-
-      - name: Verify required secrets are present
-        run: |
-          required_vars=(
-            UPCLOUD_USERNAME UPCLOUD_PASSWORD CI_SOPS_AGE_KEY
-            CI_SSH_PRIVATE_KEY CI_REALITY_TARGET CI_REALITY_SERVER_NAME
-            CI_WATCHDOG_CANARY_URL MATRIX_TEMPLATE_UUID
-          )
-          for v in "${required_vars[@]}"; do
-            if [ -z "${!v:-}" ] && [ -z "$(printenv "$v" || true)" ]; then
-              echo "::error::Secret $v is unset — configure it in repo settings."
-              exit 1
-            fi
-          done
-        env:
-          CI_SOPS_AGE_KEY: ${{ secrets.CI_SOPS_AGE_KEY }}
-          CI_SSH_PRIVATE_KEY: ${{ secrets.CI_SSH_PRIVATE_KEY }}
-          CI_REALITY_TARGET: ${{ secrets.CI_REALITY_TARGET }}
-          CI_REALITY_SERVER_NAME: ${{ secrets.CI_REALITY_SERVER_NAME }}
-          CI_WATCHDOG_CANARY_URL: ${{ secrets.CI_WATCHDOG_CANARY_URL }}
-
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4
-        with:
-          # Keep in sync with ci.yml and terraform/providers/*/versions.tf.
-          terraform_version: "1.15.2"
-
-      - name: Set up tooling
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-pip jq age
-          curl -fsSL "https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64" -o /tmp/sops
-          echo "0d65660fbe785647ff4f1764d7f69edf598f79d6d79ebbef4a501909b6ff6b82  /tmp/sops" | sha256sum -c -
-          sudo install -m 0755 /tmp/sops /usr/local/bin/sops
-          pip3 install --user --require-hashes --no-deps -r requirements.txt
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Stage SSH key + age key + CI tfvars
-        env:
-          CI_SSH_PRIVATE_KEY: ${{ secrets.CI_SSH_PRIVATE_KEY }}
-          CI_SOPS_AGE_KEY: ${{ secrets.CI_SOPS_AGE_KEY }}
-        run: |
-          set -euo pipefail
-          mkdir -p ~/.ssh ~/.config/vpn-provision
-          chmod 0700 ~/.ssh ~/.config/vpn-provision
-          printf '%s\n' "$CI_SSH_PRIVATE_KEY" > ~/.ssh/vpn_deploy
-          chmod 0600 ~/.ssh/vpn_deploy
-          ssh-keygen -y -f ~/.ssh/vpn_deploy > ~/.ssh/vpn_deploy.pub
-          printf '%s\n' "$CI_SOPS_AGE_KEY" > ~/.config/vpn-provision/age.key
-          chmod 0600 ~/.config/vpn-provision/age.key
-          # CI tfvars: short-lived ephemeral env name. Distro suffix
-          # keeps the matrix entries' state files / hostnames apart so
-          # we never confuse two parallel provisions.
-          ts="$(date -u +%Y%m%d-%H%M%S)"
-          ci_env="ci-${{ github.run_id }}-${MATRIX_DISTRO}-${ts}"
-          server_name="vpn-${ci_env}.ci.test"
-          echo "CI_ENV=${ci_env}" >> "$GITHUB_ENV"
-          echo "CI_SERVER_NAME=${server_name}" >> "$GITHUB_ENV"
-          cat > "terraform/providers/upcloud/environments/${ci_env}.tfvars" <<TFVARS
-          server_name          = "${server_name}"
-          plan                 = "1xCPU-2GB"
-          storage_template     = "${MATRIX_TEMPLATE_UUID}"
-          admin_ssh_public_key = file("~/.ssh/vpn_deploy.pub")
-          allowed_ssh_cidrs    = ["0.0.0.0/0"]
-          build_env            = "${ci_env}"
-          TFVARS
-
-      - name: Generate synthetic CI secrets
-        run: |
-          set -euo pipefail
-          export SECRETS_FILE="/tmp/vpn-${CI_ENV}.secrets.yaml"
-          OUT="$SECRETS_FILE" SERVER_NAME="$CI_SERVER_NAME" CLIENT_NAME="ci-test" \
-            REALITY_TARGET="${CI_REALITY_TARGET}" \
-            REALITY_SERVER_NAME="${CI_REALITY_SERVER_NAME}" \
-            WATCHDOG_CANARY_URL="${CI_WATCHDOG_CANARY_URL}" \
-            ./scripts/ci-bootstrap-secrets.sh
-          echo "SECRETS_FILE=$SECRETS_FILE" >> "$GITHUB_ENV"
-        env:
-          CI_REALITY_TARGET: ${{ secrets.CI_REALITY_TARGET }}
-          CI_REALITY_SERVER_NAME: ${{ secrets.CI_REALITY_SERVER_NAME }}
-          CI_WATCHDOG_CANARY_URL: ${{ secrets.CI_WATCHDOG_CANARY_URL }}
-
-      - name: Deploy
-        run: |
-          set -euo pipefail
-          export ENV="$CI_ENV"
-          export PROVIDER=upcloud
-          export ANSIBLE_CONFIG=ansible/ansible.cfg
-          export ANSIBLE_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/vpn_deploy"
-          # Self-signed cert + placeholder geodata URLs trip
-          # spot-check-secrets and check-certs; CI deploys with the
-          # pre-deploy-check chain skipped. The deploy still runs
-          # ansible's per-role validate-before-restart, so a broken
-          # render still fails the job.
-          export SKIP_PRECHECK=1
-          # Disable roles whose runtime needs a real upstream or
-          # platform feature CI can't reproduce.
-          export ANSIBLE_EXTRA_VARS="vpn.enable_amneziawg=false vpn.enable_geodata=false vpn.enable_backup=false"
-          ANSIBLE_EXTRA_VARS="${ANSIBLE_EXTRA_VARS} vpn.enable_monitoring=false vpn.enable_warp_outbound=false"
-          ANSIBLE_EXTRA_VARS="${ANSIBLE_EXTRA_VARS} vpn.enable_honeypot=false vpn.enable_policy_ratelimit=false"
-          make init plan apply inventory wait
-          VPN_SECRETS_FILE=$SECRETS_FILE \
-            ansible-playbook ansible/playbooks/site.yml --extra-vars "$ANSIBLE_EXTRA_VARS"
-          VPN_SECRETS_FILE=$SECRETS_FILE \
-            ansible-playbook ansible/playbooks/verify.yml --extra-vars "$ANSIBLE_EXTRA_VARS"
-
-      - name: Destroy ephemeral VPS and remove its tfvars
-        if: always() && env.CI_ENV != ''
-        run: |
-          set -euo pipefail
-          export ENV="$CI_ENV"
-          export PROVIDER=upcloud
-          make destroy DESTROY_ARGS=--non-interactive
-          rm -f "terraform/providers/upcloud/environments/${CI_ENV}.tfvars"
+    uses: ./.github/workflows/ci-disposable-deploy.yml
+    with:
+      distro: ${{ matrix.distro }}
+      profile: p0p1p2
+      mode: deploy
+      zone: ${{ github.event.inputs.zone || 'fi-hel1' }}

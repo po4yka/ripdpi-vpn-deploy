@@ -32,6 +32,7 @@
 #   OUT          path to write the YAML (e.g. /tmp/vpn-ci.secrets.yaml)
 #   SERVER_NAME  hostname the cert covers (e.g. vpn-ci.example.test)
 #   CLIENT_NAME  test client name (default: ci-test)
+#   PROVIDER, ENV, COHORTS  exact disposable host and profile registry bindings
 #   REALITY_TARGET       owned REALITY target as host:port
 #   REALITY_SERVER_NAME  TLS server name for REALITY
 #   WATCHDOG_CANARY_URL  owned HTTPS endpoint returning exactly 204; optional
@@ -66,6 +67,8 @@ else
   xray_source_fields=""
 fi
 
+: "${PROVIDER:?PROVIDER is required}" "${ENV:?ENV is required}" "${COHORTS:?COHORTS is required}"
+
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 EXAMPLE="${REPO_ROOT}/secrets/prod.secrets.example.yaml"
 [[ -f "$EXAMPLE" ]] || { echo "missing $EXAMPLE" >&2; exit 2; }
@@ -95,35 +98,18 @@ hys_url="https://github.com/apernet/hysteria/releases/download/app/${hys_version
 echo "ci-bootstrap: fetching sha256 for ${xray_version} + ${hys_version}" >&2
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
-curl -fsSL --connect-timeout 5 --max-time 30 -o "$tmpdir/xray.zip" "$xray_url"
-curl -fsSL --connect-timeout 5 --max-time 30 -o "$tmpdir/hysteria"  "$hys_url"
+curl -fsSL --connect-timeout 10 --max-time 120 -o "$tmpdir/xray.zip" "$xray_url"
+curl -fsSL --connect-timeout 10 --max-time 120 -o "$tmpdir/hysteria"  "$hys_url"
 xray_sha="$(sha256sum "$tmpdir/xray.zip"  | awk '{print $1}')"
 hys_sha="$( sha256sum "$tmpdir/hysteria" | awk '{print $1}')"
 
 # ---------------------------------------------------------------------------
-# REALITY keypair. Use Xray docker image so we don't need a local xray.
-# Note: ghcr.io/xtls/xray-core:<version> is a floating tag; a digest pin is
-# preferred for supply-chain safety but cannot be resolved offline. Capture
-# the actual image digest after pull so it is logged and auditable.
+# REALITY keypair from the already checksum-verified pinned CI runtime.
 # ---------------------------------------------------------------------------
-reality_raw="$(docker run --rm "ghcr.io/xtls/xray-core:${xray_version}" x25519 2>/dev/null || true)"
-# Log the resolved image digest for audit purposes.
-xray_image_digest="$(docker inspect --format '{{.Id}}' "ghcr.io/xtls/xray-core:${xray_version}" 2>/dev/null || true)"
-if [[ -n "$xray_image_digest" ]]; then
-  echo "ci-bootstrap: xray image digest: ${xray_image_digest}" >&2
-else
-  echo "ci-bootstrap: warning: could not resolve xray image digest (image may not be locally cached)" >&2
-fi
-if [[ -z "$reality_raw" ]]; then
-  # Fall back to a local xray binary if available (post-deploy reruns
-  # on the operator workstation).
-  if command -v xray >/dev/null 2>&1; then
-    reality_raw="$(xray x25519)"
-  else
-    echo "ci-bootstrap: cannot generate REALITY keypair (no docker, no local xray)" >&2
-    exit 2
-  fi
-fi
+command -v xray >/dev/null 2>&1 || { echo 'ci-bootstrap: verified xray required' >&2; exit 2; }
+xray version | head -1 | grep -F "Xray ${xray_version#v} " >/dev/null || {
+  echo 'ci-bootstrap: xray version mismatch' >&2; exit 2; }
+reality_raw="$(xray x25519)"
 reality_priv="$(echo "$reality_raw" | awk -F': ' '/Private/{print $2}' | tr -d '\r\n ')"
 reality_pub="$( echo "$reality_raw" | awk -F': ' '/Public/ {print $2}' | tr -d '\r\n ')"
 
@@ -279,6 +265,19 @@ watchdog_secrets:
   ntfy_topic: "${ntfy_topic}"
   reality_probe_url: "${WATCHDOG_CANARY_URL}"
   reality_probe_expected_status: 204
+
+client_registry:
+  ${CLIENT_NAME}:
+    status: issued
+    issued_at: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    formats: []
+    hosts: ["${PROVIDER:?}:${ENV:?}"]
+    cohorts: ["${COHORTS:?}"]
+    token_hash_prefix: ""
+    token_expires: ""
+    awg_public_key_fingerprint: "sha256:$(printf '%s' "$peer_pub" | sha256sum | cut -c1-16)"
+    awg_private_key: "${peer_priv}"
+    last_payload_identity: {source: "", outputs: ""}
 YAML
 chmod 0600 "$OUT"
 echo "ci-bootstrap: wrote ${OUT} (xray=${xray_version} hysteria=${hys_version})"

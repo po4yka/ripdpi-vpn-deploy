@@ -1,0 +1,58 @@
+---
+name: Set up disposable deployment tools
+description: Install pinned clients and seed tooling for the protected deployment job
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/setup-ci-python
+      with:
+        galaxy: "true"
+    - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.0
+      with:
+        terraform_version: "1.15.2"
+        terraform_wrapper: false
+    - name: Install system dependencies
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          age jq wireguard-tools uuid-runtime e2fsprogs openssh-server unzip
+        test "$(mke2fs -V 2>&1 | head -1 | awk '{print $2}')" = 1.47.0
+    - uses: ./.github/actions/install-xray
+    - name: Install verified deployment clients
+      shell: bash
+      env:
+        SING_BOX_VERSION: "1.13.16"
+        SING_BOX_SHA256: e37c312859dfa84cba148f41072ff6369f08361ae91d622dc1fd3aab49611a8d
+        TAILSCALE_VERSION: "1.102.3"
+        TAILSCALE_SHA256: 36ddd9b51be57ffc2990cf76323cfa13643bfbb1b8a969f6183fa164741cdef5
+        CONFTEST_VERSION: "0.57.0"
+        CONFTEST_SHA256: db1018a7e301cada4d4bd8a70880a13314daae27b3f4d409c7ffba1847718392
+        SOPS_VERSION: "3.9.0"
+        SOPS_SHA256: 0d65660fbe785647ff4f1764d7f69edf598f79d6d79ebbef4a501909b6ff6b82
+      run: |
+        set -euo pipefail
+        work="$(mktemp -d "$RUNNER_TEMP/deploy-tools.XXXXXXXX")"
+        curl -fsSL --connect-timeout 10 --max-time 120 \
+          "https://github.com/SagerNet/sing-box/releases/download/v${SING_BOX_VERSION}/sing-box-${SING_BOX_VERSION}-linux-amd64.tar.gz" \
+          -o "$work/sing-box.tar.gz"
+        echo "${SING_BOX_SHA256}  $work/sing-box.tar.gz" | sha256sum -c -
+        tar -xzf "$work/sing-box.tar.gz" -C "$work"
+        sudo install -m 0755 "$work/sing-box-${SING_BOX_VERSION}-linux-amd64/sing-box" /usr/local/bin/sing-box
+        curl -fsSL --connect-timeout 10 --max-time 120 \
+          "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_amd64.tgz" -o "$work/tailscale.tgz"
+        echo "${TAILSCALE_SHA256}  $work/tailscale.tgz" | sha256sum -c -
+        tar -xzf "$work/tailscale.tgz" -C "$work"
+        sudo install -m 0755 "$work/tailscale_${TAILSCALE_VERSION}_amd64/tailscale" /usr/local/bin/tailscale
+        sudo install -m 0755 "$work/tailscale_${TAILSCALE_VERSION}_amd64/tailscaled" /usr/local/bin/tailscaled
+        conftest_url="https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}"
+        curl -fsSL --connect-timeout 10 --max-time 120 \
+          "$conftest_url/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" \
+          -o "$work/conftest.tar.gz"
+        echo "${CONFTEST_SHA256}  $work/conftest.tar.gz" | sha256sum -c -
+        tar -xzf "$work/conftest.tar.gz" -C "$work" conftest
+        sudo install -m 0755 "$work/conftest" /usr/local/bin/conftest
+        curl -fsSL --connect-timeout 10 --max-time 120 \
+          "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.amd64" -o "$work/sops"
+        echo "${SOPS_SHA256}  $work/sops" | sha256sum -c -
+        sudo install -m 0755 "$work/sops" /usr/local/bin/sops

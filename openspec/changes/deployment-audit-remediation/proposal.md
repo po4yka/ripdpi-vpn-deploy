@@ -31,6 +31,6 @@ that preserve the existing controller and least-privilege boundaries.
 ## Impact
 
 Terraform policies; Ansible roles and maintenance/rollback playbooks; operator scripts,
-Make, vpnd and credentialed CI orchestration. No production dependencies are added.
+Make, vpnd and credentialed CI orchestration. Bootstrap adds private seed-image preparation using pinned CI tooling.
 The PR changes source behavior only; infrastructure rollout remains separately authorized.
 Broken direct-playbook callers migrate to the existing controller contract without a bypass.

@@ -36,7 +36,9 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
         assert "continue-on-error" not in job
         assert any(f"make {target}" in step.get("run", "") for step in job["steps"])
     native = jobs["native-runtime"]["steps"]
-    terraform = next(s for s in native if "setup-terraform@" in s.get("uses", ""))
+    assert any(s.get("uses") == "./.github/actions/setup-disposable-ci" for s in native)
+    setup = yaml.safe_load((ROOT / ".github/actions/setup-disposable-ci/action.yml").read_text())
+    terraform = next(s for s in setup["runs"]["steps"] if "setup-terraform@" in s.get("uses", ""))
     assert terraform["with"]["terraform_wrapper"] is False
     assert 'sudo env "PATH=$PATH"' in native[-1]["run"]
     assert "ALERTMANAGER_BIN=" in native[-1]["run"]
@@ -63,6 +65,9 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
         "test_native_plan_approval_apply_and_bridge_free_restore",
         "test_native_console_witness_accepts_only_exact_inert_install_delta",
         "test_console_lease_real_pid1_expiry_and_private_runtime_paths",
+        "test_ci_sentinel_real_loopback_sshd_pinned_key_and_owned_stop",
+        "test_ci_seed_real_guest_mount_digest_binding_and_unmount",
+        "test_ci_generator_real_crypto_passes_secret_schema",
         "test_absent_bundle_never_adopts_orphaned_durable_state",
         "test_absent_bundle_accepts_only_absent_or_empty_safe_state",
         "test_current_bundle_refuses_unknown_old_or_invalid_records_readonly",

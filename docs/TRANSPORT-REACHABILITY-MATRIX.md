@@ -50,8 +50,12 @@ scripts/transport-reachability-matrix.sh --profile p0 \
 smoke-test`, then both probes. Missing tools, failed probes and absent/malformed
 reports fail the run. The schema-2 index is written only after those checks.
 The workflow retains artifacts and destroys its exact disposable resources even
-when a deployment or probe fails. Automated initial SSH trust setup is a separate
-required input; an IP address or unauthenticated key scan is not that proof.
+when a deployment or probe fails. Both workflows use the protected reusable
+`ci-disposable-deploy.yml` job and the configuration documented in
+`docs/CI-REAL-DEPLOY.md`. Each run creates an SSH host key on an encrypted provider
+seed disk, checks its import hash, and installs it before first SSH. The controller
+uses that exact pin for bootstrap and recovery. Research profiles additionally
+require their reviewed artifact hashes in `CI_DEPLOY_CONFIG`.
 
 ## Operator vantage half (manual)
 

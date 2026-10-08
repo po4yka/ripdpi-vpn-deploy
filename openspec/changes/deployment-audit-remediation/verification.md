@@ -5,7 +5,7 @@ commit_sha: null
 local: required
 local_evidence: Targeted regressions, 104 Terraform native mock tests, 52 Rego tests and 148 template snapshots passed; full make check remains pending.
 remote_ci: required
-remote_ci_evidence: PR 278 initial source run exposed profile/fixture regressions; fixes are covered locally and await an exact-head hosted rerun.
+remote_ci_evidence: PR 278 head ad474c842afc7a2a29d9ffac1391bf7b4dd21ec4 completed 80 successful checks and one neutral scan; the fresh-node CI integration awaits a new exact-head run.
 dry_run: not_applicable
 dry_run_evidence: Source PR only; controller positive and failure orchestration is exercised locally with synthetic inputs, without live inventory or SSH.
 staging: not_applicable
@@ -15,7 +15,7 @@ live_evidence: Production rollout is outside this source remediation PR.
 client: not_applicable
 client_evidence: No client traffic acceptance is claimed by source remediation.
 artifact: required
-artifact_evidence: https://github.com/po4yka/ripdpi-vpn-deploy/pull/278 (draft; bootstrap integration unfinished)
+artifact_evidence: https://github.com/po4yka/ripdpi-vpn-deploy/pull/278 (draft; final source validation in progress)
 ---
 
 # Verification
@@ -59,19 +59,25 @@ artifact_evidence: https://github.com/po4yka/ripdpi-vpn-deploy/pull/278 (draft; 
   PR head. The local amd64-on-arm64 Molecule attempt was superseded by that
   native evidence. Current-head hosted validation remains required.
 
-## Unfinished deployment integration
+## Fresh-node deployment integration
 
-The requested unattended fresh-node CI bootstrap requires an authenticated SSH
-host-key source. No source contract is selected yet. The real-VPS and transport
-matrix workflows therefore remain unfinished; the latter still uses the old
-multi-profile script invocation. Do not merge or mark this change complete until
-both workflows use the trusted bootstrap and current single-profile contract,
-and their source regressions pass. No permissive host-key fallback or refusal-only
-stub satisfies the required positive deployment behavior.
+Both credentialed workflows now call the same protected fresh-node lifecycle.
+It imports a per-run private SSH host-key seed through the pinned provider,
+checks its digest before SSH bootstrap, executes recovery exercises and the
+canonical Tailnet/ownership controllers, then deploys with actual protocol
+promotion and exact-resource teardown. Each matrix profile owns a new guest.
 
-Independent source review found and triggered follow-up fixes for zero-host
-blue preflight, first-contact ordering and shared nginx/subscription ownership.
-Final review and exact-head hosted checks remain required.
+The protected environment currently lacks the four required CI secrets. No live
+provider run is claimed. The positive capability is implemented and receives
+portable orchestration, native loopback SSH/seed mount, real credential-generator,
+Terraform mock and workflow coverage. Native and exact-head hosted checks remain
+required before this source PR is marked ready.
+
+Independent infrastructure and runtime reviews triggered fixes for shell
+precedence after failed seed installation, duplicate seed state records,
+structural SNI YAML parsing and repeated soft cancellation during cleanup.
+The final reviewed source has no outstanding confirmed findings. A hard runner
+termination can still prevent cleanup; the runbook requires provider inspection.
 
 ## Hosted regression follow-up
 

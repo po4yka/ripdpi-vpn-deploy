@@ -16,6 +16,8 @@ and verify it instead of reintroducing the earlier shared-nginx implementation.
 - Keep Hysteria unprivileged; nftables owns port redirection. Baseline owns the effective forwarding decision and safe resolver transition.
 - Service lifecycle uses explicit binary/config/credential change results and existing rollback boundaries. Candidate Xray configurations validate with the same asset directory as the service before publication.
 - Fresh-node CI must acquire SSH identity through an authenticated trust channel, complete canonical Tailnet bootstrap and SSH recovery/ownership, and retain explicit CI input setup. Trust-on-first-use and secrets in Terraform/cloud-init are prohibited. Source regression evidence is separate from live CI acceptance.
+- Fresh-node SSH trust uses a unique local host key on a private encrypted seed disk imported by the pinned UpCloud Terraform provider. Only the public key digest and private local image path/hash enter provisioning metadata; secret bytes and signed upload URLs never enter state, logs or artifacts. The guest installs and verifies that key before enabling SSH; guarded teardown includes the seed disk.
+- CI derives its dynamic Tailnet source policy from the confirmed, source-bound bootstrap handoff. Protocol promotion must execute real per-profile clients through a pinned Linux sentinel; there is no empty proof or fabricated recovery receipt.
 - Drift compares canonical rendered configuration with normalized remote data; unavailable data fails and secret values never enter diagnostics.
 - Regressions exercise actual task execution, renderers, policy evaluation and isolated orchestration. Mocks establish local orchestration only, never live acceptance.
 

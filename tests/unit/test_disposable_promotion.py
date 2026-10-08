@@ -1008,3 +1008,102 @@ def test_plaintext_cleanup_failure_refuses_without_private_exception_context(
     assert all(
         not Path(path).exists() for path in capabilities["intent"]["outputs"].values()
     )
+
+
+def ci_intent(value, cohort='ci-p0p1p2'):
+    """Convert the existing private lifecycle fixture to a typed CI profile."""
+    from ci_deployment import CI_PROFILES
+    value = copy.deepcopy(value)
+    value['cohort'] = cohort
+    value['inputs'] = {k: v for k, v in value['inputs'].items()
+                       if k not in {'awg_key_file', 'executor_manifest'}}
+    value['outputs'] = {k: v for k, v in value['outputs'].items()
+                        if k not in {'binding', 'executor_manifest'}}
+    value['liveness']['policies'][0]['required_profiles'] = CI_PROFILES[cohort]
+    sentinel = value['liveness']['sentinels'][0]
+    sentinel['ssh_target'] = 'ci-liveness'
+    for key in ('ssh_transport_host', 'ssh_host_key_alias', 'awg_target'):
+        sentinel.pop(key, None)
+    return value
+
+
+@pytest.mark.parametrize('cohort', ['ci-p0', 'ci-p0p1', 'ci-p0p1p2', 'ci-p0p4', 'ci-p0p5'])
+def test_ci_intent_exact_profile_without_awg_or_fake_epoch(intent, cohort):
+    value = ci_intent(intent, cohort)
+    assert module().validate_intent(value) == value
+    assert 'applied_at' not in value['target_identity']
+
+
+@pytest.mark.parametrize('case', ['profile', 'sentinel', 'transport', 'vantage', 'extra-awg', 'epoch'])
+def test_ci_intent_refuses_unbound_or_partial_proof(intent, case):
+    value = ci_intent(intent)
+    sentinel = value['liveness']['sentinels'][0]
+    if case == 'profile':
+        value['liveness']['policies'][0]['required_profiles'] = ['p0-reality']
+    elif case == 'sentinel':
+        sentinel['ssh_target'] = 'other-host'
+    elif case == 'transport':
+        sentinel.update(ssh_transport_host='192.0.2.123', ssh_host_key_alias='ci-liveness')
+    elif case == 'vantage':
+        sentinel['vantage'] = 'filtered'
+    elif case == 'extra-awg':
+        value['inputs']['awg_key_file'] = '/private/extra-key'
+    else:
+        sentinel['target']['applied_at'] = 1234
+    helper = module()
+    with pytest.raises(helper.OnboardingError):
+        helper.validate_intent(value)
+
+
+def test_ci_capability_snapshot_keeps_real_ciphertext_and_cleanup_binding(capabilities, monkeypatch):
+    helper = module()
+    capabilities['intent'] = ci_intent(capabilities['intent'])
+    capabilities['memberships'] = ['vpn-ci-p0p1p2']
+    def decrypt(sops, age, output, environment):
+        output.write_bytes(capabilities['deployed_secrets'])
+        output.chmod(0o600)
+    monkeypatch.setattr(helper, '_decrypt', decrypt)
+    prepared = helper.prepare_intent(**capabilities)
+    assert set(prepared['inputs']) == helper.CI_INPUTS | {'sops_source_file'}
+    assert prepared['inputs']['cleanup_manifest'] == capabilities['intent']['inputs']['cleanup_manifest']
+    assert prepared['sops_source_identity']['sha256'] == __import__('hashlib').sha256(
+        Path(prepared['inputs']['sops_file']).read_bytes()).hexdigest()
+
+
+def test_ci_finalizer_uses_native_ssh_installer_and_exact_receipt_on_retry(finalization, monkeypatch):
+    import hashlib
+    import install_liveness_sentinel as installer
+    import disposable_liveness_executor as executor
+    helper, original, state = finalization
+    value = ci_intent(original)
+    calls = []
+    receipt = {}
+    def install(config, sid, client, registry, **kwargs):
+        assert set(kwargs) == {'environment'}
+        assert kwargs['environment']['COHORTS'] == value['cohort']
+        calls.append('native-ssh-installer')
+        target = json.loads(config.read_bytes())['sentinels'][0]['target']
+        provenance = {'controller_revision': 'c' * 40, 'runner_sha256': hashlib.sha256(b'runner').hexdigest(),
+                      'client_generation_id': '00000000-0000-4000-8000-000000000001',
+                      'public_profile_digest': 'e' * 64, 'vantage': 'external'}
+        target.update(required_profiles=['p0-reality', 'p1-xhttp', 'p2-hysteria2'], source_revision='c' * 40,
+                      runner_sha256=provenance['runner_sha256'], public_profile_digest='e' * 64)
+        sentinel = value['liveness']['sentinels'][0]
+        entry = {'client': client, 'ssh_target': sentinel['ssh_target'], 'policy': sentinel['policy'],
+                 'vantage': 'external', 'generation_id': provenance['client_generation_id'], 'provenance': provenance,
+                 'required_profiles': target['required_profiles'], 'target_identity': target}
+        executor._write_new(registry, {'schema_version': 2, 'sentinels': {sid: entry}})
+        receipt.update(generation_id=entry['generation_id'], status='committed', runner_sha256=target['runner_sha256'],
+                       provenance=provenance, target_identity=target)
+        return receipt
+    monkeypatch.setattr(installer, 'install', install)
+    monkeypatch.setattr(installer, '_receipt', lambda *a, **kw: dict(receipt))
+    output = helper.finalize(value, {}, clock=lambda: 1_800_000_001)
+    proof = json.loads(output.read_bytes())
+    assert 'executor' not in proof
+    assert proof['target_identity']['applied_at'] == 1_800_000_001
+    assert helper.finalize(value, {}, clock=lambda: 1_800_000_002) == output
+    assert calls == ['native-ssh-installer']
+    receipt['generation_id'] = '00000000-0000-4000-8000-000000000002'
+    with pytest.raises(helper.OnboardingError):
+        helper.finalize(value, {}, clock=lambda: 1_800_000_003)
