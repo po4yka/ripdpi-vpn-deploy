@@ -26,6 +26,10 @@ Decryptable only with the audit-log key. See `scripts/sub-reads.sh`.
 
 ## Pitfalls
 
+- **Fresh check mode plans units without installing them** — read the actual
+  systemd load state and require the exact template's planned change before
+  deferring an absent bootstrap service's activation and restart. Loaded units
+  retain normal service checks; unknown or failed discovery refuses.
 - **Reverse proxy in front breaks rate-limit** — if you put a CDN between
   the recipient and the subscription host, the rate-limit keys on the wrong
   IP. Either disable rate-limit or set `set_real_ip_from` correctly.
