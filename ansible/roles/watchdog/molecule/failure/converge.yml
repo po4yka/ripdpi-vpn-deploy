@@ -165,20 +165,34 @@
           import os
           import sys
 
+          def report_error(stage, error):
+              if isinstance(error, OSError) and isinstance(error.errno, int):
+                  detail = 'errno=' + str(error.errno)
+              else:
+                  allowed = {'OSError', 'KeyError', 'AttributeError', 'TypeError', 'ValueError',
+                             'NotImplementedError', 'OverflowError', 'Exception'}
+                  name = type(error).__name__
+                  detail = 'error=' + (name if name in allowed else 'Exception')
+              print('watchdog-credential-metadata stage=' + stage + ' ' + detail, flush=True)
+
           try:
               directory = os.environ['CREDENTIALS_DIRECTORY']
               if not directory:
                   raise KeyError('directory')
               path = directory + '/notifications.json'
               metadata = os.stat(path, follow_symlinks=False)
+          except Exception as error:
+              report_error('file-stat', error)
+          else:
+              readonly = 'unknown'
+              try:
+                  readonly = str(int(bool(os.statvfs(path).f_flag & os.ST_RDONLY)))
+              except Exception as error:
+                  report_error('mount-stat', error)
               print('watchdog-credential-metadata mode=' + oct(metadata.st_mode)
                     + ' uid=' + str(metadata.st_uid) + ' gid=' + str(metadata.st_gid)
                     + ' nlink=' + str(metadata.st_nlink) + ' size=' + str(metadata.st_size)
-                    + ' readonly=' + str(int(bool(os.statvfs(path).f_flag & os.ST_RDONLY))), flush=True)
-          except KeyError:
-              print('watchdog-credential-metadata error=missing-directory', flush=True)
-          except Exception:
-              print('watchdog-credential-metadata error=stat-unavailable', flush=True)
+                    + ' readonly=' + readonly, flush=True)
           sender = '/usr/local/libexec/vpn-watchdog-notify.py'
           try:
               os.execv(sender, [sender, *sys.argv[1:]])

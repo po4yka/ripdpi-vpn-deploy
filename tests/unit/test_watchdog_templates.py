@@ -220,9 +220,11 @@ def test_reality_probe_requires_the_explicit_service_address() -> None:
         render_template(TEMPLATES / "reality-probe.json.j2", variables)
 
 
-@pytest.mark.parametrize("authority", [True, False])
+@pytest.mark.parametrize(
+    "authority,mount_failure", [(True, False), (False, False), (True, True)]
+)
 def test_failure_sender_wrapper_preserves_delegate_inputs_and_result(
-    tmp_path, authority
+    tmp_path, authority, mount_failure
 ):
     import os
     import re
@@ -245,6 +247,14 @@ def test_failure_sender_wrapper_preserves_delegate_inputs_and_result(
         in dropin
     )
     source = copies["/usr/local/sbin/watchdog-notify-diagnostic.py"]
+    if mount_failure:
+        source = source.replace(
+            "import sys\n",
+            "import sys\n"
+            "def failed_mount(path):\n"
+            "    raise OSError(95, 'SYNTHETIC_PRIVATE_MOUNT_ERROR')\n"
+            "os.statvfs = failed_mount\n",
+        )
     captured = tmp_path / "delegated.json"
     delegate = tmp_path / "sender.py"
     delegate.write_text(
@@ -295,12 +305,20 @@ def test_failure_sender_wrapper_preserves_delegate_inputs_and_result(
         "marker": "SYNTHETIC_PRIVATE_ENVIRONMENT",
     }
     if authority:
+        metadata_output = result.stdout
+        if mount_failure:
+            assert result.stdout.startswith(
+                "watchdog-credential-metadata stage=mount-stat errno=95\n"
+            )
+            metadata_output = result.stdout.splitlines(keepends=True)[1]
         assert re.fullmatch(
-            r"watchdog-credential-metadata mode=0o100400 uid=[0-9]+ gid=[0-9]+ nlink=1 size=[0-9]+ readonly=0\n",
-            result.stdout,
+            r"watchdog-credential-metadata mode=0o100400 uid=[0-9]+ gid=[0-9]+ nlink=1 size=[0-9]+ readonly="
+            + ("unknown" if mount_failure else "0")
+            + r"\n",
+            metadata_output,
         )
     else:
-        assert result.stdout == "watchdog-credential-metadata error=stat-unavailable\n"
+        assert result.stdout == "watchdog-credential-metadata stage=file-stat errno=2\n"
     assert "SYNTHETIC_PRIVATE" not in result.stdout
     assert str(tmp_path) not in result.stdout
 
@@ -344,14 +362,21 @@ def test_failure_journal_diagnostics_filter_private_messages_and_preserve_hard_f
             json.dumps({"MESSAGE": message}) for message in messages
         ),
     }
+    outputs["systemctl"] += "\nLoadCredential=notifications.json:" + private
     for name, output in outputs.items():
         executable = tmp_path / name
         code = "print(" + repr(output) + ")\n"
         if name == "journalctl":
-            metadata = json.dumps(
-                {
-                    "MESSAGE": "watchdog-credential-metadata mode=0o100400 uid=0 gid=0 nlink=0 size=144 readonly=1"
-                }
+            metadata = (
+                json.dumps(
+                    {
+                        "MESSAGE": "watchdog-credential-metadata mode=0o100400 uid=0 gid=0 nlink=0 size=144 readonly=1"
+                    }
+                )
+                + "\n"
+                + json.dumps(
+                    {"MESSAGE": "watchdog-credential-metadata stage=file-stat errno=2"}
+                )
             )
             code = (
                 "import sys\nif '--grep=^watchdog-credential-metadata ' in sys.argv:\n"
@@ -370,6 +395,7 @@ def test_failure_journal_diagnostics_filter_private_messages_and_preserve_hard_f
     report = json.loads(result.stdout)
     assert report["unit"] == {"Result": "exit-code", "ExecMainStatus": "1"}
     assert report["pre_start"] == [{"code": "exited", "status": 0}]
+    assert report["configured_required_credential_count"] == 1
     assert "unit startup step=NAMESPACE" in report["journal_signals"]
     assert "watchdog counters=1,2,1" in report["journal_signals"]
     assert "watchdog notification failed" in report["journal_signals"]

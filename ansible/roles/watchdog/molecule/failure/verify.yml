@@ -29,6 +29,7 @@
               - |
                 import json
                 import re
+                import shlex
                 import subprocess
 
                 def collect(argv):
@@ -39,13 +40,20 @@
 
                 properties = {'Result', 'ExecMainCode', 'ExecMainStatus', 'ActiveState', 'SubState'}
                 status = collect(['systemctl', 'show', 'vpn-watchdog.service',
-                                  '--property=' + ','.join(sorted(properties | {'ExecStartPre'}))])
+                                  '--property=' + ','.join(sorted(properties | {'ExecStartPre', 'LoadCredential'}))])
                 report = {'unit': {}, 'pre_start': [], 'journal_signals': []}
+                credential_count = None
                 if status is not None:
                     for line in status.stdout.splitlines():
                         key, _, value = line.partition('=')
                         if key in properties and re.fullmatch(r'[A-Za-z0-9_-]{1,64}', value):
                             report['unit'][key] = value
+                        elif key == 'LoadCredential':
+                            try:
+                                credential_count = sum(item.split(':', 1)[0] == 'notifications.json'
+                                                       for item in shlex.split(value))
+                            except ValueError:
+                                pass
                         elif key == 'ExecStartPre':
                             for result in re.finditer(
                                 r'; code=([a-z]+|\(null\)) ; status=([0-9]+)(?:/[A-Z0-9]+)? }', value
@@ -73,11 +81,11 @@
                             continue
                         metadata = re.fullmatch(
                             r'watchdog-credential-metadata mode=0o[0-7]+ uid=[0-9]+ '
-                            r'gid=[0-9]+ nlink=[0-9]+ size=[0-9]+ readonly=[01]', message)
-                        metadata_error = message in {
-                            'watchdog-credential-metadata error=missing-directory',
-                            'watchdog-credential-metadata error=stat-unavailable',
-                        }
+                            r'gid=[0-9]+ nlink=[0-9]+ size=[0-9]+ readonly=(?:[01]|unknown)', message)
+                        metadata_error = re.fullmatch(
+                            r'watchdog-credential-metadata stage=(?:file-stat|mount-stat) '
+                            r'(?:errno=[0-9]+|error=(?:OSError|KeyError|AttributeError|TypeError|ValueError|'
+                            r'NotImplementedError|OverflowError|Exception))', message)
                         if (metadata or metadata_error) and message not in report['journal_signals']:
                             report['journal_signals'].append(message)
                         elif message in {
@@ -96,6 +104,8 @@
                                 'NAMESPACE', 'CREDENTIALS', 'EXEC', 'USER', 'GROUP', 'STDIN', 'STDOUT', 'STDERR'
                             }:
                                 report['journal_signals'].append('unit startup step=' + step.group(1))
+                if 'watchdog-credential-metadata stage=file-stat errno=2' in report['journal_signals']:
+                    report['configured_required_credential_count'] = credential_count
                 print(json.dumps(report, sort_keys=True))
           changed_when: false
           register: watchdog_failure_diagnostics
