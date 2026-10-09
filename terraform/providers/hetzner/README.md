@@ -41,10 +41,10 @@ No modules.
 | Name | Type |
 | ---- | ---- |
 | [hcloud_firewall.vpn](https://registry.terraform.io/providers/hetznercloud/hcloud/latest/docs/resources/firewall) | resource |
-| [hcloud_firewall_attachment.vpn](https://registry.terraform.io/providers/hetznercloud/hcloud/latest/docs/resources/firewall_attachment) | resource |
 | [hcloud_floating_ip.honeypot_ipv4](https://registry.terraform.io/providers/hetznercloud/hcloud/latest/docs/resources/floating_ip) | resource |
 | [hcloud_server.vpn](https://registry.terraform.io/providers/hetznercloud/hcloud/latest/docs/resources/server) | resource |
 | [hcloud_ssh_key.admin](https://registry.terraform.io/providers/hetznercloud/hcloud/latest/docs/resources/ssh_key) | resource |
+| [terraform_data.admin_user](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
 | [terraform_data.ssh_port](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
 
 ## Inputs
@@ -65,7 +65,7 @@ No modules.
 | <a name="input_nginx_xhttp_public_port"></a> [nginx\_xhttp\_public\_port](#input\_nginx\_xhttp\_public\_port) | Public TCP port for nginx-xhttp. Keep this in sync with Ansible nginx\_xhttp\_public\_port. | `number` | `8443` | no |
 | <a name="input_public_listeners"></a> [public\_listeners](#input\_public\_listeners) | Public TCP/UDP listeners allowed at the provider edge. Specify exactly one of port or port\_range for each entry. | <pre>list(object({<br/>    name       = string<br/>    protocol   = string<br/>    port       = optional(number)<br/>    port_range = optional(string)<br/>  }))</pre> | `[]` | no |
 | <a name="input_server_name"></a> [server\_name](#input\_server\_name) | Hostname / Terraform name of the VPS. | `string` | n/a | yes |
-| <a name="input_server_type"></a> [server\_type](#input\_server\_type) | Hetzner server type, e.g. cpx21, cpx31, cx22, cx32. | `string` | n/a | yes |
+| <a name="input_server_type"></a> [server\_type](#input\_server\_type) | Hetzner server type, e.g. cpx22, cpx32, cx23, cx33. | `string` | n/a | yes |
 | <a name="input_ssh_port"></a> [ssh\_port](#input\_ssh\_port) | Effective SSH listener port configured by cloud-init and opened at the provider edge. | `number` | `22` | no |
 | <a name="input_use_legacy_public_listeners"></a> [use\_legacy\_public\_listeners](#input\_use\_legacy\_public\_listeners) | Opt-in to the historical implicit listener set when public\_listeners is empty. New environments must define public\_listeners explicitly; an empty effective contract fails the plan. | `bool` | `false` | no |
 

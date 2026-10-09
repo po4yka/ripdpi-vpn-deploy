@@ -263,6 +263,13 @@ Independent controller homes are not a supported shared-ownership mechanism.
 
 ## Pitfalls
 
+- **Saved-plan policy precedes operator apply** — `apply-terraform-plan.sh`
+  privately copies the regular environment plan, uses the canonical workspace
+  router for show/apply, and evaluates that same copy through
+  `terraform-plan-policy.py`. Temporary binary/JSON files are private and cleaned
+  on exit. Evaluator failures, malformed results and zero policy checks refuse
+  apply; diagnostics identify policy namespaces without printing plan content.
+
 - Bootstrap lifecycle is bound to both the routed workspace and the canonical
   `vpn_build_environment`, then checked against the root-owned cloud-init
   marker. Named production workspaces retain their identity; disposable

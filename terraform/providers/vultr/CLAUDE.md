@@ -23,6 +23,11 @@ default and enabled only in the production Vultr workspace.
 
 ## Pitfalls
 
+- **Administrator identity is creation-time state** — username/key edits hit
+  replacement guards and `prevent_destroy`. First adoption compares retained
+  cloud-init identity, so mismatched inputs fail during planning. Helper and
+  build-label updates remain ignored; these checks do not observe guest drift.
+
 - **OS IDs identify actual provider images** — Debian 13 x64 is 2625;
   2284 is Ubuntu 24.04, 1743 is Ubuntu 22.04, and 2136 is Debian 12.
   ID 1869 selects Rocky Linux 9 and is rejected by the Debian/Ubuntu contract.

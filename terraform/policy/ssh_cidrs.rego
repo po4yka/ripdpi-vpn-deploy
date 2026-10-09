@@ -39,11 +39,11 @@ deny[msg] {
   rule := rc.change.after.firewall_rule[_]
   rule.action == "accept"
   rule.direction == "in"
-  rule.protocol == "tcp"
-  rule.destination_port_start == ssh_port
+  data.terraform.policy.ports.tcp_protocol(object.get(rule, "protocol", null))
+  data.terraform.policy.ports.interval_covers(object.get(rule, "destination_port_start", ""), object.get(rule, "destination_port_end", object.get(rule, "destination_port_start", "")), ssh_port)
 
-  source := rule.source_address_start
-  not upcloud_source_allowed(source)
+  source := object.get(rule, "source_address_start", "")
+  not upcloud_interval_allowed(rule)
 
   msg := sprintf(
     "resource %q: SSH allow rule source %q is not in var.allowed_ssh_cidrs",
@@ -66,9 +66,9 @@ deny[msg] {
   rc.type == "scaleway_instance_security_group"
   rule := rc.change.after.inbound_rule[_]
   rule.action == "accept"
-  rule.protocol == "TCP"
-  sprintf("%v", [rule.port]) == ssh_port
-  not allowed_cidrs[rule.ip_range]
+  data.terraform.policy.ports.tcp_protocol(object.get(rule, "protocol", null))
+  data.terraform.policy.ports.scaleway_covers(rule, ssh_port)
+  not upcloud_source_allowed(object.get(rule, "ip_range", ""))
 
   msg := sprintf(
     "resource %q: Scaleway SSH rule source CIDR %q is not in var.allowed_ssh_cidrs",
@@ -82,10 +82,10 @@ deny[msg] {
   rc.type == "hcloud_firewall"
   rule := rc.change.after.rule[_]
   rule.direction == "in"
-  rule.protocol == "tcp"
-  rule.port == ssh_port
+  data.terraform.policy.ports.tcp_protocol(object.get(rule, "protocol", null))
+  data.terraform.policy.ports.covers(object.get(rule, "port", null), ssh_port)
   source_ip := rule.source_ips[_]
-  not allowed_cidrs[source_ip]
+  not upcloud_source_allowed(source_ip)
 
   msg := sprintf(
     "resource %q: hcloud SSH rule source IP %q is not in var.allowed_ssh_cidrs",
@@ -98,14 +98,23 @@ deny[msg] {
 deny[msg] {
   rc := input.resource_changes[_]
   rc.type == "vultr_firewall_rule"
-  rc.change.after.protocol == "tcp"
-  rc.change.after.port == ssh_port
+  data.terraform.policy.ports.tcp_protocol(object.get(rc.change.after, "protocol", null))
+  data.terraform.policy.ports.covers(object.get(rc.change.after, "port", null), ssh_port)
   after := rc.change.after
   cidr := sprintf("%s/%d", [after.subnet, after.subnet_size])
-  not allowed_cidrs[cidr]
+  not upcloud_source_allowed(cidr)
 
   msg := sprintf(
     "resource %q: vultr SSH rule source CIDR %q is not in var.allowed_ssh_cidrs",
     [rc.address, cidr],
   )
+}
+
+
+upcloud_interval_allowed(rule) {
+  start := object.get(rule, "source_address_start", "")
+  end := object.get(rule, "source_address_end", start)
+  cidr := allowed_cidrs[_]
+  net.cidr_contains(cidr, start)
+  net.cidr_contains(cidr, end)
 }

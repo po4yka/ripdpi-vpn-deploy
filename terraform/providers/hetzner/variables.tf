@@ -15,11 +15,11 @@ variable "location" {
 
 variable "server_type" {
   type        = string
-  description = "Hetzner server type, e.g. cpx21, cpx31, cx22, cx32."
+  description = "Hetzner server type, e.g. cpx22, cpx32, cx23, cx33."
 
   validation {
-    condition     = contains(["cx22", "cx32", "cpx21", "cpx31"], var.server_type)
-    error_message = "server_type must be one of: cx22, cx32, cpx21, cpx31."
+    condition     = contains(["cx23", "cx33", "cpx22", "cpx32"], var.server_type)
+    error_message = "server_type must be one of: cx23, cx33, cpx22, cpx32."
   }
 }
 
@@ -59,6 +59,11 @@ variable "allowed_ssh_cidrs" {
     condition     = alltrue([for cidr in var.allowed_ssh_cidrs : can(cidrhost(cidr, 0))])
     error_message = "allowed_ssh_cidrs entries must be valid IPv4 or IPv6 CIDRs in prefix notation, e.g. 203.0.113.42/32."
   }
+
+  validation {
+    condition     = alltrue([for cidr in var.allowed_ssh_cidrs : try(tonumber(split("/", cidr)[1]) != 0, true)])
+    error_message = "allowed_ssh_cidrs must not contain a zero-prefix network, including noncanonical IPv4 or IPv6 world networks."
+  }
 }
 
 variable "ssh_port" {
@@ -69,6 +74,20 @@ variable "ssh_port" {
   validation {
     condition     = var.ssh_port >= 1 && var.ssh_port <= 65535
     error_message = "ssh_port must be a valid TCP port."
+  }
+
+  validation {
+    condition = alltrue([
+      for listener in local.effective_public_listeners :
+      listener.protocol != "tcp" || try(
+        listener.port != null ? listener.port != var.ssh_port : !(
+          tonumber(split("-", listener.port_range)[0]) <= var.ssh_port &&
+          var.ssh_port <= tonumber(split("-", listener.port_range)[1])
+        ),
+        true
+      )
+    ])
+    error_message = "ssh_port must not overlap any effective public TCP singleton or inclusive port range, including legacy listeners."
   }
 }
 

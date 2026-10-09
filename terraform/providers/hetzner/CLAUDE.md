@@ -11,12 +11,24 @@ shared template as UpCloud (`terraform/shared/cloud-init.yaml.tftpl`).
 
 ## What's done well
 
-- **Server type validation** — only the curated set (`cx22`, `cx32`, `cpx21`,
-  `cpx31`) is accepted. The unrestricted list is a footgun.
+- **Server type validation** — only the curated set (`cx23`, `cx33`, `cpx22`,
+  `cpx32`) is accepted. The unrestricted list is a footgun.
 - **Region restriction** — datacenter is constrained to fsn1/nbg1/hel1.
   Hetzner US regions are off-limits for our threat model.
 
+**Firewall membership belongs to the server** — `firewall_ids` protects first
+boot. The removed standalone attachment uses `destroy = false`; forgetting its
+state must not invoke provider detach.
+
 ## Pitfalls
+
+- **Bootstrap names are immutable** — changes to the combined SSH-key name,
+  including administrator or server-name edits, trigger protected replacement.
+  The provider stores only a user-data hash, so retained key naming protects
+  first adoption. Review private inputs before adopting the guards.
+- **Retired type inputs now fail** — update private inputs through the reviewed
+  disposable-node workflow. A type change can perform a disruptive in-place
+  resize; `prevent_destroy` does not protect an ordinary resize operation.
 
 - **Example listener completeness** — the explicit staging/prod contracts include
   HTTP/80 for the nginx public-site redirect; deploy fails closed without it.

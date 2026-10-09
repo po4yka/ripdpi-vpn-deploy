@@ -6,6 +6,7 @@
 # Requires the same provider credentials as `make plan` for PROVIDER/ENV.
 set -euo pipefail
 IFS=$'\n\t'
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
@@ -67,4 +68,4 @@ PROVIDER="$provider" ENV="$env_name" "${REPO_ROOT}/scripts/terraform-env.sh" pla
 PROVIDER="$provider" ENV="$env_name" "${REPO_ROOT}/scripts/terraform-env.sh" show \
 	-json "$PLAN_BIN" >"$PLAN_JSON"
 
-conftest test --rego-version v0 -p "${REPO_ROOT}/terraform/policy" "$PLAN_JSON"
+python3 "${REPO_ROOT}/scripts/terraform-plan-policy.py" "$PLAN_JSON"

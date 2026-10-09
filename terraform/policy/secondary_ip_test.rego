@@ -9,8 +9,8 @@ test_deny_upcloud_two_public_ifaces_no_opt_in {
       "address": "upcloud_server.vpn",
       "type": "upcloud_server",
       "change": {"after": {"network_interface": [
-        {"type": "public"},
-        {"type": "public"},
+        {"type": "public", "ip_address_family": "IPv4"},
+        {"type": "public", "ip_address_family": "IPv4"},
         {"type": "utility"},
       ]}},
     }],
@@ -75,8 +75,8 @@ test_allow_upcloud_two_public_ifaces_with_opt_in {
       "address": "upcloud_server.vpn",
       "type": "upcloud_server",
       "change": {"after": {"network_interface": [
-        {"type": "public"},
-        {"type": "public"},
+        {"type": "public", "ip_address_family": "IPv4"},
+        {"type": "public", "ip_address_family": "IPv4"},
         {"type": "utility"},
       ]}},
     }],
@@ -91,7 +91,24 @@ test_allow_single_public_iface_no_opt_in {
       "address": "upcloud_server.vpn",
       "type": "upcloud_server",
       "change": {"after": {"network_interface": [
-        {"type": "public"},
+        {"type": "public", "ip_address_family": "IPv4"},
+        {"type": "utility"},
+      ]}},
+    }],
+  }
+  count(result) == 0
+}
+
+
+test_allow_upcloud_primary_dual_stack_without_secondary_opt_in {
+  result := deny with input as {
+    "variables": {"additional_public_ip": {"value": false}},
+    "resource_changes": [{
+      "address": "upcloud_server.vpn",
+      "type": "upcloud_server",
+      "change": {"after": {"network_interface": [
+        {"type": "public", "ip_address_family": "IPv4"},
+        {"type": "public", "ip_address_family": "IPv6"},
         {"type": "utility"},
       ]}},
     }],

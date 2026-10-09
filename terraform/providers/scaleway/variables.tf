@@ -64,6 +64,11 @@ variable "allowed_ssh_cidrs" {
     condition     = alltrue([for cidr in var.allowed_ssh_cidrs : can(cidrhost(cidr, 0))])
     error_message = "allowed_ssh_cidrs entries must be valid IPv4 or IPv6 CIDRs in prefix notation, e.g. 203.0.113.42/32."
   }
+
+  validation {
+    condition     = alltrue([for cidr in var.allowed_ssh_cidrs : try(tonumber(split("/", cidr)[1]) != 0, true)])
+    error_message = "allowed_ssh_cidrs must not contain a zero-prefix network, including noncanonical IPv4 or IPv6 world networks."
+  }
 }
 
 variable "ssh_port" {
@@ -74,6 +79,20 @@ variable "ssh_port" {
   validation {
     condition     = var.ssh_port >= 1 && var.ssh_port <= 65535
     error_message = "ssh_port must be a valid TCP port."
+  }
+
+  validation {
+    condition = alltrue([
+      for listener in local.effective_public_listeners :
+      listener.protocol != "tcp" || try(
+        listener.port != null ? listener.port != var.ssh_port : !(
+          tonumber(split("-", listener.port_range)[0]) <= var.ssh_port &&
+          var.ssh_port <= tonumber(split("-", listener.port_range)[1])
+        ),
+        true
+      )
+    ])
+    error_message = "ssh_port must not overlap any effective public TCP singleton or inclusive port range, including legacy listeners."
   }
 }
 

@@ -52,6 +52,8 @@ No modules.
 
 | Name | Type |
 | ---- | ---- |
+| [terraform_data.admin_ssh_public_key](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
+| [terraform_data.admin_user](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
 | [terraform_data.ssh_port](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
 | [vultr_dns_record.public_ipv6_endpoint](https://registry.terraform.io/providers/vultr/vultr/latest/docs/resources/dns_record) | resource |
 | [vultr_firewall_group.vpn](https://registry.terraform.io/providers/vultr/vultr/latest/docs/resources/firewall_group) | resource |

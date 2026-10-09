@@ -15,7 +15,7 @@ mock_provider "hcloud" {}
 variables {
   server_name          = "vpn-test"
   location             = "hel1"
-  server_type          = "cpx21"
+  server_type          = "cpx22"
   image                = "debian-12"
   admin_ssh_public_key = "ssh-ed25519 AAAATESTKEY test@harness"
   allowed_ssh_cidrs    = ["203.0.113.42/32"]

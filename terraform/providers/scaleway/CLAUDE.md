@@ -21,6 +21,11 @@ requirement may add one.
 
 ## Pitfalls
 
+- **Administrator identity is creation-time state** — username/key edits hit
+  replacement guards and `prevent_destroy`. First adoption compares retained
+  cloud-init identity, so mismatched inputs fail during planning. Helper and
+  build-label updates remain ignored; these checks do not observe guest drift.
+
 - **Example listener completeness** — the explicit staging/prod contracts include
   HTTP/80 for the nginx public-site redirect; deploy fails closed without it.
 - Scaleway IPv6 address resources expose a prefix; read the full attached address from `scaleway_instance_server.public_ips`, as `server_ipv6` does.

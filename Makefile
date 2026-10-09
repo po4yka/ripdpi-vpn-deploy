@@ -710,7 +710,7 @@ plan:
 	  -out=$(ENV).tfplan
 
 apply:
-	PROVIDER=$(PROVIDER) ENV=$(ENV) $(TF_ENV) apply $(ENV).tfplan
+	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/apply-terraform-plan.sh "$(ENV).tfplan"
 
 inventory:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" ./scripts/render-inventory.sh
@@ -1120,6 +1120,7 @@ tf-test:
 	  terraform -chdir=terraform/providers/$$provider init -backend=false >/dev/null && \
 	  terraform -chdir=terraform/providers/$$provider test || exit 1; \
 	done
+	python3 -m pytest -q tests/unit/test_provider_bootstrap_lifecycle.py -m native_runtime --fail-on-skip
 
 tf-policy-verify:
 	@command -v conftest >/dev/null 2>&1 || { echo "missing: conftest (see mise.toml)" >&2; exit 1; }

@@ -68,7 +68,7 @@ jobs:
               printf '%s\n' \
                 'server_name = "ci-policy"' \
                 'location = "hel1"' \
-                'server_type = "cx22"' \
+                'server_type = "cx23"' \
                 'admin_ssh_public_key = "ssh-ed25519 AAAACI ci@invalid"' \
                 'allowed_ssh_cidrs = ["192.0.2.33/32"]' \
                 'public_listeners = [' \
@@ -101,5 +101,4 @@ jobs:
           terraform plan -input=false -refresh=false -lock=false \
             -var-file=environments/ci-policy.tfvars -out=ci-policy.tfplan
           terraform show -json ci-policy.tfplan > ci-policy.json
-          conftest test --rego-version v0 --all-namespaces \
-            -p ../../policy ci-policy.json
+          python3 ../../../scripts/terraform-plan-policy.py ci-policy.json

@@ -176,6 +176,13 @@ remain fatal; package signatures and the real schema validator stay enforced.
 
 ## What's done well
 
+- **Provider identity tests retain real mock state** — native lifecycle tests
+  include positive unchanged plans; the subprocess harness shares legacy/current
+  state, asserts safe attachment forgetting and exact identity refusal, including
+  first adoption. `make tf-test` runs that harness explicitly; no synthetic
+  provider result is live resource or guest proof. Policy tests execute real
+  Conftest, while operator gate tests cover private snapshot reuse and cleanup.
+
 - **Skill decisions have held-out scenarios** — `tests/fixtures/skill-evaluation-cases.json` contains requests, observed-input facts and separate assessment criteria. Independent evaluation receives only requests/facts and the skills; integrity tests do not stand in for observed behavior or live evidence. Private intent preparation tests execute real local publication and Make expression boundaries using synthetic inputs, without opening credentials or contacting providers.
 
 - **Provider example parity is checked** — every explicit staging/prod listener

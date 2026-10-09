@@ -2,7 +2,7 @@ package terraform.policy.secondary_ip
 
 # no_secondary_public_ip_without_opt_in
 #
-# Deny a server resource that will have more than one public network interface
+# Deny a server resource that will have more than one public IPv4 interface
 # unless the plan's variables include additional_public_ip = true.
 #
 # Provider mappings:
@@ -16,7 +16,7 @@ package terraform.policy.secondary_ip
 
 opt_in := input.variables.additional_public_ip.value == true
 
-# upcloud_server: count public network_interface blocks
+# upcloud_server: IPv6 is the primary dual-stack companion, not secondary IPv4.
 deny[msg] {
   not opt_in
   rc := input.resource_changes[_]
@@ -26,11 +26,12 @@ deny[msg] {
   public_ifaces := [ni |
     ni := after.network_interface[_]
     ni.type == "public"
+    ni.ip_address_family == "IPv4"
   ]
   count(public_ifaces) > 1
 
   msg := sprintf(
-    "resource %q: has %d public network interfaces; set additional_public_ip = true to allow a secondary public IP",
+    "resource %q: has %d public IPv4 interfaces; set additional_public_ip = true to allow a secondary public IP",
     [rc.address, count(public_ifaces)],
   )
 }
