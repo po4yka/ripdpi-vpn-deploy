@@ -5,7 +5,7 @@ commit_sha: 4434a6086a876cb10dfbe92505110e7819f777b1
 local: blocked
 local_evidence: Targeted and remaining gates passed; complete make check hit one timeout flake, reproduced as passing unchanged on this branch and clean main. A single uninterrupted green make check remains unobserved.
 remote_ci: required
-remote_ci_evidence: PR 281 exact integrated source head 4434a6086a876cb10dfbe92505110e7819f777b1; hosted checks running, no terminal success claimed.
+remote_ci_evidence: PR 281 head e32f95ab9a5b30e44155b91c24135917841407b3 passed provider and policy jobs but pytest shard 3 failed on the unchanged bundle-emitter fixture closing stdin early (SIGPIPE). The fixture now consumes piped input; final-head CI remains required, no terminal success claimed.
 dry_run: not_applicable
 dry_run_evidence: No provider access authorized for this source PR.
 staging: not_applicable
@@ -53,3 +53,10 @@ review, an exact committed head, a scoped PR and reported hosted status.
   warnings denied and the complete release Cargo test suite (no ignored tests).
 - All commit hooks passed with pinned native ShellCheck execution. The task stays
   in review; aggregate local-gate and infrastructure acceptance remain explicit.
+- The hosted bundle-emitter failure was traced to a wg stub that exited without
+  consuming its piped input. The production script and fixture were byte-identical
+  to integrated main before correction. The fixture correction preserves all
+  assertions and consumes stdin before emitting output, as the real command does.
+  Both existing parametrizations passed (2 tests). A forced delayed-producer probe
+  returned pipeline statuses [141, 0] before and [0, 0] after using the exact stub;
+  the ordinary full test did not reproduce the scheduling race locally.
