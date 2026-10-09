@@ -197,6 +197,21 @@ def _validator():
     return jsonschema.Draft202012Validator(json.loads(SCHEMA.read_text()))
 
 
+def test_malformed_yaml_diagnostic_never_discloses_source(tmp_path):
+    secret = "SYNTHETIC_PRIVATE_PARSE_SENTINEL"
+    path = tmp_path / "malformed.yml"
+    path.write_text(f"xray: {{token: {secret}\n", encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(VALIDATOR), str(path), "--strict", "--environment", "prod"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 1
+    assert "YAML parse error at line" in result.stderr
+    assert secret not in result.stdout + result.stderr
+    assert "xray:" not in result.stdout + result.stderr
+    assert "Traceback" not in result.stderr
+
+
 # ---------------------------------------------------------------------------
 # Lenient pass on example, strict fail on example
 # ---------------------------------------------------------------------------

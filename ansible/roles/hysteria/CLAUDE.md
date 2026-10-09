@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+**Port hopping keeps one unprivileged socket** — the config always binds `hysteria_port`; firewall-owned NAT redirects `hysteria_port_range` onto it. Do not pass a port union to Hysteria or grant it `CAP_NET_ADMIN`.
+
 **Config validation is role-specific** — Hysteria exposes no safe
 validation-only server command. The shared validator rejects malformed or
 duplicate-key YAML and validates the required nested types and values before

@@ -17,6 +17,8 @@ import re
 
 import jsonschema
 
+from ci_deployment import CI_PROFILES
+
 ROOT = Path(__file__).resolve().parents[1]
 KIND = "disposable-staging-intent"
 PROFILES = {"p0-reality", "p1-xhttp", "p2-hysteria2", "p2-amneziawg"}
@@ -27,6 +29,7 @@ INPUTS = {
     "executor_manifest",
     "cleanup_manifest",
 }
+CI_INPUTS = {"sops_file", "age_key_file", "cleanup_manifest"}
 PREPARED_INPUTS = INPUTS | {"sops_source_file"}
 SOURCE_IDENTITY = {"path", "device", "inode", "sha256"}
 OUTPUTS = {
@@ -37,6 +40,7 @@ OUTPUTS = {
     "authority",
     "executor_manifest",
 }
+CI_OUTPUTS = OUTPUTS - {"binding", "executor_manifest"}
 TARGET = {"inventory_alias", "public_service_address_sha256", "deployable_digest"}
 
 
@@ -81,7 +85,11 @@ def _validate_intent(value, input_fields):
         "inputs",
         "outputs",
     }
-    if input_fields == PREPARED_INPUTS:
+    ci = (isinstance(value, dict) and isinstance(value.get("cohort"), str)
+          and value["cohort"] in CI_PROFILES)
+    if ci:
+        input_fields = CI_INPUTS | ({"sops_source_file"} if "sops_source_file" in input_fields else set())
+    if "sops_source_file" in input_fields:
         fields.add("sops_source_identity")
     try:
         if (
@@ -90,7 +98,7 @@ def _validate_intent(value, input_fields):
             or type(value["schema_version"]) is not int
             or value["schema_version"] != 1
             or value["kind"] != KIND
-            or value["cohort"] != "device-full-staging"
+            or (not ci and value["cohort"] != "device-full-staging")
             or not isinstance(value["host"], str)
             or re.fullmatch(
                 r"upcloud:ci-staging-[a-z0-9][a-z0-9-]{0,51}", value["host"]
@@ -103,7 +111,7 @@ def _validate_intent(value, input_fields):
         if len(json.dumps(value).encode()) > 32768:
             raise ValueError
         _paths(value["inputs"], input_fields)
-        _paths(value["outputs"], OUTPUTS)
+        _paths(value["outputs"], CI_OUTPUTS if ci else OUTPUTS)
         sops_source = value["inputs"].get(
             "sops_source_file", value["inputs"]["sops_file"]
         )
@@ -131,16 +139,21 @@ def _validate_intent(value, input_fields):
         if (
             len(config["sentinels"]) != 1
             or len(config["policies"]) != 1
-            or set(config["policies"][0]["required_profiles"]) != PROFILES
+            or set(config["policies"][0]["required_profiles"]) != (set(CI_PROFILES[value["cohort"]]) if ci else PROFILES)
             or value["target_identity"] != config["sentinels"][0]["target"]
             or set(value["target_identity"]) != TARGET
         ):
             raise ValueError
         provider, environment = value["host"].split(":")
         awg = config["sentinels"][0].get("awg_target", {})
+        if ci:
+            sentinel = config["sentinels"][0]
+            if (sentinel.get("ssh_target") != "ci-liveness" or sentinel.get("vantage") != "external"
+                    or any(k in sentinel for k in ("ssh_transport_host", "ssh_host_key_alias", "awg_target"))):
+                raise ValueError
         if (
-            awg.get("provider") != provider
-            or awg.get("environment") != environment
+            (not ci and (awg.get("provider") != provider
+            or awg.get("environment") != environment))
             or _module("protocol-liveness").semantic_errors(config)
         ):
             raise ValueError
@@ -152,7 +165,7 @@ def _validate_intent(value, input_fields):
 def validate_intent(value):
     """Validate an operator or controller-prepared intent without file I/O."""
     if isinstance(value, dict) and isinstance(value.get("inputs"), dict):
-        if set(value["inputs"]) == PREPARED_INPUTS:
+        if set(value["inputs"]) in (PREPARED_INPUTS, CI_INPUTS | {"sops_source_file"}):
             return _validate_prepared_intent(value)
     return _validate_intent(value, INPUTS)
 
@@ -247,7 +260,7 @@ def prepare_intent(intent, host, memberships, directory, deployed_secrets, envir
     plaintext = directory / "onboarding-secrets.yaml"
     try:
         if (
-            memberships != ["vpn-device-full-staging"]
+            memberships != ["vpn-" + value["cohort"]]
             or host["name"] != value["target_identity"]["inventory_alias"]
             or hashlib.sha256(host["address"].encode()).hexdigest()
             != value["target_identity"]["public_service_address_sha256"]
@@ -295,10 +308,9 @@ def prepare_intent(intent, host, memberships, directory, deployed_secrets, envir
         import disposable_liveness_executor as executor
         import time
 
-        executor_manifest, _ = executor._read_private(
-            Path(value["inputs"]["executor_manifest"])
-        )
-        executor._validate_manifest(executor_manifest, int(time.time()))
+        if "executor_manifest" in value["inputs"]:
+            executor_manifest, _ = executor._read_private(Path(value["inputs"]["executor_manifest"]))
+            executor._validate_manifest(executor_manifest, int(time.time()))
         _decrypt(
             Path(value["inputs"]["sops_file"]),
             Path(value["inputs"]["age_key_file"]),
@@ -311,18 +323,14 @@ def prepare_intent(intent, host, memberships, directory, deployed_secrets, envir
         if not isinstance(secrets, dict) or secrets != yaml.safe_load(deployed_secrets):
             raise ValueError
         enrollment = secrets.get("client_registry", {}).get(value["client"], {})
-        private = guard._private_read(
-            Path(value["inputs"]["awg_key_file"]), "onboarding input", max_bytes=128
-        )
-        if (
-            enrollment.get("status") not in ("issued", "delivered", "active")
-            or not isinstance(enrollment.get("awg_private_key"), str)
-            or re.fullmatch(rb"[A-Za-z0-9+/]{43}=\n?", private) is None
-            or not hmac.compare_digest(
-                private.rstrip(b"\n"), enrollment["awg_private_key"].encode()
-            )
-        ):
+        if enrollment.get("status") not in ("issued", "delivered", "active"):
             raise ValueError
+        if "awg_key_file" in value["inputs"]:
+            private = guard._private_read(Path(value["inputs"]["awg_key_file"]), "onboarding input", max_bytes=128)
+            if (not isinstance(enrollment.get("awg_private_key"), str)
+                    or re.fullmatch(rb"[A-Za-z0-9+/]{43}=\n?", private) is None
+                    or not hmac.compare_digest(private.rstrip(b"\n"), enrollment["awg_private_key"].encode())):
+                raise ValueError
         return value
     except (ValueError, TypeError, KeyError, OSError, yaml.YAMLError):
         raise OnboardingError("onboarding-capability-refused") from None
@@ -412,7 +420,7 @@ def finalize(intent, environment, *, clock=None):
         scope = {key: value[key] for key in value if key != "inputs"}
         raw_inputs = {
             key: guard._private_read(inputs[key], "onboarding input", max_bytes=262144)
-            for key in ("sops_file", "executor_manifest", "cleanup_manifest")
+            for key in ("sops_file", "executor_manifest", "cleanup_manifest") if key in inputs
         }
         source_sops, observed_source_identity = guard._private_snapshot(
             source_path, "onboarding input", max_bytes=262144
@@ -485,10 +493,12 @@ def finalize(intent, environment, *, clock=None):
             config["sentinels"][0]["target"]["applied_at"] = authority["applied_at"]
             _module("protocol-liveness").validate_config(config)
             _ensure_document(outputs["liveness_config"], config)
-            manifest = guard._json_object(raw_inputs["executor_manifest"], "executor")
-            if guard.canonical_json(manifest) != raw_inputs["executor_manifest"]:
-                raise ValueError
-            _ensure_document(outputs["executor_manifest"], manifest)
+            ci = value["cohort"] in CI_PROFILES
+            if not ci:
+                manifest = guard._json_object(raw_inputs["executor_manifest"], "executor")
+                if guard.canonical_json(manifest) != raw_inputs["executor_manifest"]:
+                    raise ValueError
+                _ensure_document(outputs["executor_manifest"], manifest)
             sid = sentinel["id"]
             with installer.registry_lock(outputs["registry"]):
                 registry = installer._state(outputs["registry"], "sentinels")
@@ -505,7 +515,7 @@ def finalize(intent, environment, *, clock=None):
                 entry = registry["sentinels"].get(sid)
                 if entry is not None and pending["pending"]:
                     raise ValueError
-                if entry is not None:
+                if entry is not None and not ci:
                     binding = executor.load_bound_executor(
                         outputs["binding"],
                         outputs["executor_manifest"],
@@ -560,25 +570,34 @@ def finalize(intent, environment, *, clock=None):
                     }
                     if receipt != expected_receipt:
                         raise ValueError
+                if entry is not None and ci:
+                    revision, source, _engine = installer._source_identity(ROOT)
+                    expected = {**config["sentinels"][0]["target"],
+                                "required_profiles": sorted(CI_PROFILES[value["cohort"]]),
+                                "source_revision": revision, "runner_sha256": hashlib.sha256(source).hexdigest(),
+                                "public_profile_digest": entry["provenance"]["public_profile_digest"]}
+                    if (entry.get("client") != value["client"] or entry["target_identity"] != expected
+                            or any(entry.get(k) != sentinel.get(k) for k in
+                                   ("ssh_target", "ssh_transport_host", "ssh_host_key_alias", "policy", "vantage"))):
+                        raise ValueError
+                    receipt = installer._receipt(sentinel, entry, env)
+                    if receipt != {"generation_id": entry["generation_id"], "status": "committed",
+                                   "runner_sha256": expected["runner_sha256"],
+                                   "provenance": entry["provenance"], "target_identity": expected}:
+                        raise ValueError
             if entry is None:
-                # A single fenced private read supplies only the installer's
-                # stdin; no key appears in JSON, argv or environment values.
-                key = guard._private_read(
-                    inputs["awg_key_file"], "onboarding input", max_bytes=128
-                )
-                with io.StringIO(key.decode("ascii")) as stream:
-                    receipt = installer.install(
-                        outputs["liveness_config"],
-                        sid,
-                        value["client"],
-                        outputs["registry"],
-                        read_awg_stdin=True,
-                        stdin=stream,
-                        environment=env,
-                        executor_manifest=outputs["executor_manifest"],
-                        executor_binding=outputs["binding"],
-                        cleanup_manifest=inputs["cleanup_manifest"],
-                    )
+                if ci:
+                    receipt = installer.install(outputs["liveness_config"], sid, value["client"],
+                                                outputs["registry"], environment=env)
+                else:
+                    # A private read supplies only the installer's stdin.
+                    key = guard._private_read(inputs["awg_key_file"], "onboarding input", max_bytes=128)
+                    with io.StringIO(key.decode("ascii")) as stream:
+                        receipt = installer.install(
+                            outputs["liveness_config"], sid, value["client"], outputs["registry"],
+                            read_awg_stdin=True, stdin=stream, environment=env,
+                            executor_manifest=outputs["executor_manifest"], executor_binding=outputs["binding"],
+                            cleanup_manifest=inputs["cleanup_manifest"])
                 if (
                     not isinstance(receipt, dict)
                     or receipt.get("status") != "committed"
@@ -589,10 +608,8 @@ def finalize(intent, environment, *, clock=None):
                 "liveness_config": str(outputs["liveness_config"]),
                 "expected_sentinels": [sid],
                 "target_identity": receipt["target_identity"],
-                "executor": {
-                    "manifest": str(outputs["executor_manifest"]),
-                    "binding": str(outputs["binding"]),
-                },
+                **({"executor": {"manifest": str(outputs["executor_manifest"]),
+                                   "binding": str(outputs["binding"])}} if not ci else {}),
             }
             _ensure_document(outputs["promotion_config"], proof)
             return outputs["promotion_config"]

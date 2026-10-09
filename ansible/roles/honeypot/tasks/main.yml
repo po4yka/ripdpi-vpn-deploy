@@ -1,6 +1,9 @@
 ---
 # Active-probing canary. See defaults/main.yml for rationale.
 
+- name: Converge provider-assigned secondary guest address
+  ansible.builtin.import_tasks: secondary-address.yml
+
 - name: Ensure node_exporter textfile writer group
   ansible.builtin.group:
     name: "{{ honeypot.textfile_group }}"

@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import shlex
 import copy
 from pathlib import Path
 import shutil
@@ -335,25 +336,85 @@ def test_p1_hostname_self_resolution_is_managed_and_verified() -> None:
     assert "server_ipv6" in ipv6_probe["failed_when"]
 
 
+def _validation_binary(path: Path, trace: Path) -> None:
+    """A local config parser exercises helper arguments/assets, not Xray semantics."""
+    path.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys\nfrom pathlib import Path\n"
+        "assert sys.argv[1:4] == ['run', '-test', '-config']\n"
+        "assert len(sys.argv) == 5\n"
+        "assets = Path(os.environ['XRAY_LOCATION_ASSET'])\n"
+        "assert (assets / 'fixture.dat').read_text() == 'validation asset'\n"
+        f"Path({str(trace)!r}).write_text(json.dumps({{'argv': sys.argv[1:], 'assets': str(assets)}}))\n"
+        "config = json.loads(Path(sys.argv[4]).read_text())\n"
+        "assert config['credential'] in {'outgoing', 'incoming'}\n"
+    )
+    path.chmod(0o755)
+
+
 def _run_xray_tasks(
-    tmp_path: Path, play: dict, *, check: bool = False
+    tmp_path: Path, play: dict, *, check: bool = False,
+    validation_binary: Path | None = None,
 ) -> subprocess.CompletedProcess:
     """Execute source tasks locally; only paths and service effects are sandboxed."""
     executable = shutil.which("ansible-playbook")
     assert executable, "real Ansible is required for restore-point regressions"
+    # Retain the production include_role and helper installation tasks, but give
+    # the isolated role only temporary destinations and the real helper source.
+    role = tmp_path / "roles/xray"
+    (role / "tasks").mkdir(parents=True)
+    (role / "files").mkdir()
+    helper_source = REPO_ROOT / "ansible/roles/xray/files/xray_validate.py"
+    shutil.copyfile(helper_source, role / "files/xray_validate.py")
+    libexec = tmp_path / "libexec"
+    libexec.mkdir()
+    helper = libexec / "vpn-xray-validate"
+    # Check-mode rollback runs on an already-deployed host: provision its
+    # existing helper before the play, then let the real role reconcile it.
+    shutil.copyfile(helper_source, helper)
+    helper.chmod(0o755)
+    helper_tasks = yaml.safe_load(
+        (REPO_ROOT / "ansible/roles/xray/tasks/validation-helper.yml").read_text()
+    )
+    for task in helper_tasks:
+        module = task.get("ansible.builtin.file", task.get("ansible.builtin.copy"))
+        module.update(owner=str(os.getuid()), group=str(os.getgid()))
+        for key in ("path", "dest"):
+            if key in module:
+                module[key] = module[key].replace("/usr/local/libexec", str(libexec))
+    (role / "tasks/validation-helper.yml").write_text(yaml.safe_dump(helper_tasks))
+    helper_command = str(helper)
+    if validation_binary is not None:
+        helper_command += " --binary " + shlex.quote(str(validation_binary))
+    play = yaml.safe_load(yaml.safe_dump(play).replace(
+        "/usr/local/libexec/vpn-xray-validate", helper_command
+    ))
+    assets = tmp_path / "runtime assets"
+    assets.mkdir()
+    (assets / "fixture.dat").write_text("validation asset")
+    commands = tmp_path / "commands"
+    commands.mkdir()
+    systemctl = commands / "systemctl"
+    systemctl.write_text(
+        f"#!{sys.executable}\nimport sys\n"
+        "assert sys.argv[1:] == ['show', 'xray.service', '--property=Environment', '--value']\n"
+        f"print({('XRAY_LOCATION_ASSET=' + shlex.quote(str(assets)))!r})\n"
+    )
+    systemctl.chmod(0o755)
     play.update(hosts="localhost", become=False, gather_facts=False)
     play.setdefault("vars", {})["ansible_python_interpreter"] = sys.executable
     path = tmp_path / "play.yml"
     path.write_text(yaml.safe_dump([play], sort_keys=False))
     config = tmp_path / "ansible.cfg"
-    config.write_text("[defaults]\nretry_files_enabled = False\n")
+    config.write_text(f"[defaults]\nretry_files_enabled = False\nroles_path = {tmp_path / 'roles'}\n")
     env = {
         key: value
         for key, value in os.environ.items()
         if not key.startswith("ANSIBLE_")
     }
     env.update(
-        ANSIBLE_CONFIG=str(config), ANSIBLE_LOCAL_TEMP=str(tmp_path / "ansible-local")
+        ANSIBLE_CONFIG=str(config), ANSIBLE_LOCAL_TEMP=str(tmp_path / "ansible-local"),
+        PATH=str(commands) + os.pathsep + os.environ["PATH"],
     )
     return subprocess.run(
         [
@@ -396,10 +457,11 @@ def test_rollback_validates_before_runtime_change(
     (runtime / "v0.9.0").symlink_to(candidate)
     trace = tmp_path / "validated"
     rejects = scenario in {"reject-config", "check-reject"}
-    for directory, code in ((current_release, 0), (candidate, 1 if rejects else 0)):
-        binary = directory / "xray"
-        binary.write_text(f"#!/bin/sh\nprintf checked > '{trace}'\nexit {code}\n")
-        binary.chmod(0o755)
+    for directory in (current_release, candidate):
+        _validation_binary(directory / "xray", trace)
+    (tmp_path / "config.json").write_text(
+        "{invalid candidate" if rejects else '{"credential":"outgoing"}\n'
+    )
     if scenario == "non-executable":
         (candidate / "xray").chmod(0o644)
     if scenario == "symlink-binary":
@@ -438,11 +500,15 @@ def test_rollback_validates_before_runtime_change(
         assert link.resolve() == current_release
         assert not restart.exists()
         assert trace.exists() == rejects
+    if trace.exists():
+        validation = json.loads(trace.read_text())
+        assert validation["assets"] == str(tmp_path / "runtime assets")
+        assert validation["argv"] == ["run", "-test", "-config", str(tmp_path / "config.json")]
 
 
 @pytest.mark.parametrize(
     "scenario",
-    ["changed", "unchanged", "first-config", "check", "disabled", "xhttp-only"],
+    ["changed", "unchanged", "first-config", "check", "disabled", "xhttp-only", "reject-config"],
 )
 def test_rotation_preserves_immediate_restore_point(
     tmp_path: Path, scenario: str
@@ -458,8 +524,13 @@ def test_rotation_preserves_immediate_restore_point(
     previous.write_text("older restore point\n")
     previous.chmod(0o640)
     desired = old_bytes if scenario == "unchanged" else '{"credential":"incoming"}\n'
+    if scenario == "reject-config":
+        desired = "{invalid candidate"
     template = tmp_path / "candidate.j2"
     template.write_text(desired)
+    trace = tmp_path / "validated"
+    binary = tmp_path / "xray"
+    _validation_binary(binary, trace)
     for task in tasks:
         task.pop("notify", None)
         module = task.get("ansible.builtin.template", task.get("ansible.builtin.copy"))
@@ -467,7 +538,6 @@ def test_rotation_preserves_immediate_restore_point(
             module.update(owner=str(os.getuid()), group=str(os.getgid()))
         if "ansible.builtin.template" in task:
             module["src"] = str(template)
-            module["validate"] = "/bin/cat %s"
     tasks = yaml.safe_load(yaml.safe_dump(tasks).replace("/etc/xray", str(tmp_path)))
     play = {
         "tasks": tasks,
@@ -478,12 +548,17 @@ def test_rotation_preserves_immediate_restore_point(
             }
         },
     }
-    result = _run_xray_tasks(tmp_path, play, check=scenario == "check")
-    assert result.returncode == 0, result.stdout + result.stderr
+    result = _run_xray_tasks(
+        tmp_path, play, check=scenario == "check", validation_binary=binary
+    )
+    assert (result.returncode != 0) == (scenario == "reject-config"), result.stdout + result.stderr
+    assert trace.exists() == (scenario in {"changed", "first-config", "xhttp-only", "reject-config"})
+    if trace.exists():
+        assert json.loads(trace.read_text())["assets"] == str(tmp_path / "runtime assets")
     assert current.read_text() == (
-        old_bytes if scenario in {"check", "disabled"} else desired
+        old_bytes if scenario in {"check", "disabled", "reject-config"} else desired
     )
     assert previous.read_text() == (
-        old_bytes if scenario in {"changed", "xhttp-only"} else "older restore point\n"
+        old_bytes if scenario in {"changed", "xhttp-only", "reject-config"} else "older restore point\n"
     )
     assert previous.stat().st_mode & 0o777 == 0o640

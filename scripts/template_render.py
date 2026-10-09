@@ -20,6 +20,8 @@ SHARED_TEMPLATES_DIR = REPO_ROOT / "ansible" / "templates"
 _EXACT_VARIABLE_REFERENCE = re.compile(r"^\s*{{\s*([A-Za-z_][A-Za-z0-9_]*)\s*}}\s*$")
 
 SYNTHETIC_FACTS = {
+    "_honeypot_secondary_address": "198.51.100.20",
+    "_honeypot_secondary_interface": "eth0",
     "ansible_user": "deploy",
     "ansible_host": "198.51.100.10",
     "vpn_service_address": "198.51.100.10",

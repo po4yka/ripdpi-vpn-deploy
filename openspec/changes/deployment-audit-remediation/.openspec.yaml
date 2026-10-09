@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-10-08
+goal: SEC-1791471757439452 Repair deployment audit security and lifecycle defects

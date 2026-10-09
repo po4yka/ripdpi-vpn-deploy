@@ -18,11 +18,11 @@
       changed_when: false
       failed_when: fwupd_package.rc == 0
 
-    - name: systemd-resolved drop-in present when service exists
+    - name: ordinary resolved stub remains enabled when service exists
       ansible.builtin.stat:
         path: /etc/systemd/resolved.conf.d/no-stub.conf
       register: resolved_dropin
-      failed_when: not resolved_dropin.stat.exists or not resolved_dropin.stat.isreg
+      failed_when: resolved_dropin.stat.exists
       when: "'systemd-resolved.service' in ansible_facts.services"
 
     - name: sysctl tuning installed

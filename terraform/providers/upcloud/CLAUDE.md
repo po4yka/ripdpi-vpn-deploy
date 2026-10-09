@@ -25,6 +25,14 @@ server-level firewall flag defaults off until guest nftables and strict SSH are
 verified. Promotion is an explicit in-place update with dual-stack TCP/UDP
 return rules limited to the host ephemeral range.
 
+**Disposable CI host-key trust** — optional `ci_ssh_seed` imports one private
+ext4 image through the pinned provider's native `direct_upload` storage import.
+The seed and root disk are encrypted, backups are disabled, and the guest binds
+the installed key to its public digest before SSH bootstrap can complete. Only
+public metadata and the private image path/hash enter Terraform. Keep apply
+output private: provider errors may contain a temporary uploader capability.
+Destroy authorization includes the exact seed storage UUID and its absence.
+
 ## What's done well
 
 - **Inputs are typed** — every variable has a `type` and `validation` block

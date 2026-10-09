@@ -436,7 +436,8 @@ def test_prometheus_restart_is_conditional_on_published_runtime_changes() -> Non
     ]
     assert service["state"] == (
         "{{ 'restarted' if (_observability_prometheus_unit.changed or "
-        "_observability_prometheus_activation.changed) else 'started' }}"
+        "_observability_prometheus_activation.changed or "
+        "_observability_prometheus_runtime_changed) else 'started' }}"
     )
 
 

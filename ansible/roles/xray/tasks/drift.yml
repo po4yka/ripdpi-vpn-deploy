@@ -1,0 +1,34 @@
+---
+- name: Resolve the effective P0 REALITY shape for comparison
+  ansible.builtin.set_fact:
+    p0_reality_effective_flow_mode: "{{ vpn.xray_flow_mode | default(p0_reality_flow_mode) }}"
+
+- name: Read deployed Xray configuration
+  ansible.builtin.slurp:
+    src: "{{ xray_etc_dir }}/config.json"
+  register: _xray_drift_remote
+  no_log: true
+
+- name: Compare complete deployed and canonical Xray configuration
+  ansible.builtin.assert:
+    that:
+      - >-
+        (_xray_drift_remote.content | b64decode | from_json) ==
+        (lookup('ansible.builtin.template', role_path ~ '/templates/config.json.j2') | from_json)
+    quiet: true
+  vars:
+    p0_reality_shape_template: "{{ role_path }}/../../templates/p0-reality-shape.json.j2"
+  no_log: true
+
+- name: Read Xray binary version
+  ansible.builtin.command: /usr/local/bin/xray version
+  register: _xray_drift_version
+  changed_when: false
+  no_log: true
+
+- name: Compare Xray binary version with its pin
+  ansible.builtin.assert:
+    that:
+      - (_xray_drift_version.stdout_lines | first).split()[1] == (xray.version | regex_replace('^v', ''))
+    quiet: true
+  no_log: true

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 from jinja2 import Environment, StrictUndefined
+from ansible.plugins.filter.core import to_bool
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -94,6 +95,7 @@ def test_realm_user_group_arguments_match_the_tls_ownership_mode(shared_tls) -> 
     )
     task = next(task for task in tasks if task.get("name") == "Ensure system user")
     environment = Environment(autoescape=True, undefined=StrictUndefined)
+    environment.filters["bool"] = to_bool
     omitted = object()
     values = {}
     for name in ("groups", "append"):

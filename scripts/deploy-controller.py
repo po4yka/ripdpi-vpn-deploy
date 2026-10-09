@@ -669,6 +669,22 @@ def controller(mode):
         transactions = transaction_inputs("deploy" if mode == "deploy" else "check",
                                           hosts, identity, directory, root, environment,
                                           memberships=memberships, deployed_secrets=secret_data)
+        if os.environ.get("DEPLOY_CI_TAILNET_HANDOFF"):
+            from ci_deployment import confirmed_sources
+            from tailnet_management import Refusal
+            try:
+                if len(hosts) != 1:
+                    raise ValueError
+                handoff_raw, handoff_fence = read_fenced_input(
+                    os.environ["DEPLOY_CI_TAILNET_HANDOFF"], private=True, exact_mode=0o600, limit=65536)
+                host = hosts[0]
+                transactions[host["name"]]["tailnet_management"] = confirmed_sources(
+                    json.loads(handoff_raw, object_pairs_hook=unique_object), host,
+                    metadata[host["name"]], memberships[host["name"]], identity,
+                    known_hosts.read_bytes(), transactions[host["name"]]["ssh_transaction_contexts"])
+                input_fences.append(handoff_fence)
+            except (ValueError, KeyError, TypeError, UnicodeError, Refusal):
+                raise DeployError("CI Tailnet handoff refused") from None
         tailnet_hosts = tailnet_enabled_for_selection(
             root, hosts, memberships, metadata, override_values)
         site_environment = tailnet_site_environment(

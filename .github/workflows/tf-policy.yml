@@ -101,5 +101,4 @@ jobs:
           terraform plan -input=false -refresh=false -lock=false \
             -var-file=environments/ci-policy.tfvars -out=ci-policy.tfplan
           terraform show -json ci-policy.tfplan > ci-policy.json
-          conftest test --rego-version v0 --all-namespaces \
-            -p ../../policy ci-policy.json
+          ../../../scripts/check-tf-plan.sh ci-policy.json

@@ -1,11 +1,22 @@
 locals {
-  user_data = templatefile("${path.module}/../../shared/cloud-init.yaml.tftpl", {
+  base_user_data = templatefile("${path.module}/../../shared/cloud-init.yaml.tftpl", {
     admin_user                  = var.admin_user
     admin_ssh_public_key        = var.admin_ssh_public_key
     ssh_port                    = var.ssh_port
     build_env                   = var.build_env
     bootstrap_ssh_ownership_b64 = filebase64("${path.module}/../../shared/bootstrap-sshd-ownership.py")
   })
+  base_cloud_config = yamldecode(local.base_user_data)
+  user_data = var.ci_ssh_seed == null ? local.base_user_data : "#cloud-config\n${yamlencode(merge(local.base_cloud_config, {
+    write_files = concat(local.base_cloud_config.write_files, [{
+      path        = "/usr/local/libexec/vpn-bootstrap-ssh-seed.py"
+      owner       = "root:root"
+      permissions = "0700"
+      encoding    = "b64"
+      content     = filebase64("${path.module}/../../shared/bootstrap-ssh-seed.py")
+    }])
+    runcmd = [["sh", "-c", "/usr/bin/python3 -I -B /usr/local/libexec/vpn-bootstrap-ssh-seed.py --filesystem-uuid ${var.ci_ssh_seed.filesystem_uuid} --public-key-sha256 ${var.ci_ssh_seed.host_public_key_sha256} && { ${local.base_cloud_config.runcmd[0][2]}; }"]]
+  }))}"
 
   # Labels are intentionally minimal to limit provider-side fingerprinting.
   # role and provisioner are omitted — they identify the workload type to
@@ -38,6 +49,7 @@ resource "upcloud_server" "vpn" {
   user_data = local.user_data
 
   template {
+    encrypt = var.ci_ssh_seed == null ? null : true
     storage = var.storage_template
     size    = var.storage_size_gb
     title   = "${var.server_name}-root"
@@ -49,6 +61,16 @@ resource "upcloud_server" "vpn" {
         time      = "0300"
         retention = 7
       }
+    }
+  }
+
+  dynamic "storage_devices" {
+    for_each = upcloud_storage.ci_ssh_seed
+    content {
+      storage          = storage_devices.value.id
+      address          = "virtio"
+      address_position = "1"
+      type             = "disk"
     }
   }
 

@@ -553,7 +553,10 @@ def main() -> int:
     try:
         doc = yaml.safe_load(target.read_text()) or {}
     except yaml.YAMLError as exc:
-        print(f"validate-secrets: YAML parse error: {exc}", file=sys.stderr)
+        # PyYAML's exception text includes source excerpts from decrypted input.
+        mark = getattr(exc, "problem_mark", None)
+        location = f" at line {mark.line + 1}, column {mark.column + 1}" if mark else ""
+        print(f"validate-secrets: YAML parse error{location}", file=sys.stderr)
         return 1
 
     validator = jsonschema.Draft202012Validator(schema)

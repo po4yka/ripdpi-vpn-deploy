@@ -10,6 +10,7 @@ set -euo pipefail
 : "${ALERTS_PER_HOUR_MAX:=4}"
 : "${KICKS_PER_HOUR_MAX:=3}"
 : "${XRAY_BIN:=/usr/local/bin/xray}"
+: "${XRAY_VALIDATE_BIN:=/usr/local/libexec/vpn-xray-validate}"
 : "${XRAY_API_SERVER:=127.0.0.1:10086}"
 : "${XRAY_REALITY_CONFIG:=/etc/vpn-watchdog-reality.json}"
 : "${XRAY_REALITY_PROBES:=}"
@@ -150,7 +151,7 @@ if [[ "${ENABLE_XRAY:-true}" == "true" ]]; then
   probe_unit "xray.service" "xray TCP/${XRAY_PORT} listening" \
     bash -c "ss -lnt | awk '{print \$4}' | grep -q ':${XRAY_PORT}\$'"
   probe_unit "xray.service" "xray config valid" \
-    "$XRAY_BIN" run -test -config /etc/xray/config.json
+    "$XRAY_VALIDATE_BIN" --binary "$XRAY_BIN" --config /etc/xray/config.json
   probe_unit "xray.service" "xray StatsService query" \
     "$XRAY_BIN" api statsquery "--server=${XRAY_API_SERVER}"
   probe_reality_listeners

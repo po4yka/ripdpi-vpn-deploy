@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+**Private instance records stay out of callbacks** — normalization and every service/handler loop over complete instances use `no_log`, including credential rotation. Verbose callback regressions use synthetic keys and PSKs.
+
 **Userspace AWG, not kernel WireGuard** — AmneziaWG 2.0 in userspace is the
 only path that supports the cohort obfuscation params (jc/jmin/jmax/s1/s2 and
 2.0 finalmask/headers). Kernel WG doesn't.

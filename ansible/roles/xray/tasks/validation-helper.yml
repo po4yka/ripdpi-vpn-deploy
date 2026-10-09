@@ -1,0 +1,16 @@
+---
+- name: Ensure local validation helper directory
+  ansible.builtin.file:
+    path: /usr/local/libexec
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install Xray runtime-aware configuration validator
+  ansible.builtin.copy:
+    src: xray_validate.py
+    dest: /usr/local/libexec/vpn-xray-validate
+    owner: root
+    group: root
+    mode: "0755"

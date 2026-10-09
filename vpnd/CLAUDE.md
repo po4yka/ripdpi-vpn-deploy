@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+**Reconverge shares the deployment controller** — scoped exact inventory aliases pass through `make dry-run`, `make deploy` and `make verify`, retaining proof gates and cleanup. `make validate` initializes isolated backend-free Terraform validation data for every root, so a fresh checkout does not depend on deployment workspace caches.
+
 **Convenience layer, not replacement** — every subcommand maps to a documented
 `make <target>` invocation. `--explain` prints the underlying shell calls and
 exits. The Makefile and `scripts/` are the canonical surface; `vpnd` is the

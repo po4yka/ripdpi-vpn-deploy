@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+**Binary upgrades participate in readiness** — preserve the Prometheus activation result before installing other runtimes. A binary-only upgrade restarts the collector; failed acceptance restores its previous release link before the previous configuration is restarted. Ingress changes retain their independent certificate/config/unit restart predicate.
+
 Prometheus binds only `127.0.0.1:9090`; an isolated unprivileged nginx master
 accepts only private-IP mTLS `POST /remote-write/v1/nodes/<node_id>` on 9443.
 The existing nginx binary runs with its own configuration, pid and temporary
@@ -79,6 +81,8 @@ retention bounds before writes. It disables only its units and runtime
 configuration while retaining TSDB, latch, relay receipts and credentials.
 
 ## Pitfalls
+
+- Runtime activation remains uncommitted until readiness passes. The outer rescue restores the old binary link (or removes a failed first link) even when candidate validation fails before the service transaction; collector rollback also restores exact prior unit bytes before restart.
 
 - The disk guard reserves the remaining 2 GiB physical sender-queue allowance on a shared filesystem, including before that queue exists. This reserve stays protected after collector stop so a queued sender cannot consume the host reserve. Separate filesystems are accounted independently; an over-budget or unsafe queue fails closed.
 

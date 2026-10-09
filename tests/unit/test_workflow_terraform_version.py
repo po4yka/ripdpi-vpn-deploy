@@ -14,6 +14,11 @@ WORKFLOWS = ("ci.yml", "real-vps-deploy.yml", "transport-reachability-matrix.yml
 
 def terraform_version(workflow: str) -> str:
     content = (WORKFLOW_DIR / workflow).read_text()
+    if SETUP_TERRAFORM not in content:
+        assert "./.github/workflows/ci-disposable-deploy.yml" in content
+        shared = (WORKFLOW_DIR / "ci-disposable-deploy.yml").read_text()
+        assert "./.github/actions/setup-disposable-ci" in shared
+        content = (REPO_ROOT / ".github/actions/setup-disposable-ci/action.yml").read_text()
     assert SETUP_TERRAFORM in content
     match = re.search(r'terraform_version:\s*"([^"]+)"', content)
     assert match, f"{workflow} must declare terraform_version"

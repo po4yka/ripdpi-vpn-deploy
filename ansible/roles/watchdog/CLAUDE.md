@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+**Server validation uses the installed runtime environment** — the shared Xray validator resolves `XRAY_LOCATION_ASSET` from the loaded Xray unit before testing its server configuration, including bundled-asset profiles. Canary client invocation remains separate.
+
 **Two-level supervision** — systemd is layer 1 (Restart=on-failure). The
 watchdog role adds layer 2: a timer that records unit, listener, and
 configuration diagnostics and performs an authenticated VLESS+REALITY request

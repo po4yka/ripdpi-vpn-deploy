@@ -8,7 +8,7 @@ Every provider plan must satisfy all rules before merge.
 | File | Rule | Deny condition |
 |---|---|---|
 | `server_metadata.rego` | `every_server_has_metadata_enabled` | Any supported server resource has `metadata = false` in the post-apply state. |
-| `secondary_ip.rego` | `no_secondary_public_ip_without_opt_in` | A server plan adds more than one public address without `var.additional_public_ip = true`. |
+| `secondary_ip.rego` | `no_secondary_public_ip_without_opt_in` | A server plan adds a secondary public IPv4 without `var.additional_public_ip = true`; ordinary dual-stack IPv6 is permitted. |
 | `admin_port.rego` | `no_admin_port_exposed_to_world` | Any firewall resource allows the effective `var.ssh_port` or TCP/3389 from `0.0.0.0/0` or `::/0`. panel_port rules removed — no admin panel is deployed. |
 | `ssh_cidrs.rego` | `firewall_rules_pin_ssh_to_documented_cidrs` | An SSH allow rule on `var.ssh_port` references a source CIDR not present in `var.allowed_ssh_cidrs`. |
 | `no_secrets_in_user_data.rego` | `cloud_init_user_data_contains_no_secrets` | A server resource's `user_data` contains a line-anchored plaintext assignment matching `(password\|token\|api_key\|secret)\s*[:=]\s*[^\s]{6,}`. The bare word `key` is excluded to avoid false-positives on SSH authorized_keys lines. |
@@ -38,6 +38,10 @@ make PROVIDER=<p> ENV=<e> tf-conftest # plan the environment and evaluate these 
 `tf-conftest` plans through `scripts/terraform-env.sh` (requires the
 environment tfvars and provider credentials) and runs conftest with
 `--all-namespaces` against the rendered plan JSON.
+The shared `scripts/check-tf-plan.sh <plan.json>` gate requires a nonempty
+evaluation of every policy family. It rejects malformed reports as well as
+policy violations. Management-port checks include containing port intervals
+and provider defaults for unrestricted source addresses.
 
 ## Validation
 

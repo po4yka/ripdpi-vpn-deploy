@@ -58,6 +58,8 @@ never compose each other as modules.
 
 ## Pitfalls
 
+- **Evaluate every policy family on the exact saved plan** — `scripts/check-tf-plan.sh` requires all policy namespaces and a nonempty complete result. Management-port checks include port intervals and unrestricted provider defaults. UpCloud's default public IPv6 interface is not a secondary-IPv4 opt-in.
+
 - **State and saved plans are sensitive** — providers may persist generated
   secrets; Vultr's computed `default_password` is one example. Keep VPN secrets
   out of Terraform inputs/outputs and provider credentials in environment

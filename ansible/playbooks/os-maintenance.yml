@@ -6,7 +6,29 @@
   serial: 1
   any_errors_fatal: true
 
+  vars:
+    vpn_secrets_file: >-
+      {{ lookup('env', 'VPN_SECRETS_FILE')
+         | default(playbook_dir ~ '/../../secrets/prod.secrets.example.yaml', true) }}
+
+  vars_files:
+    - "{{ vpn_secrets_file }}"
+
   tasks:
+    - name: Require the effective secrets contract before maintenance
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'VPN_SECRETS_FILE') | length > 0
+        fail_msg: VPN_SECRETS_FILE is required to verify every configured transport instance.
+
+    - name: Compute effective AmneziaWG instances before maintenance
+      ansible.builtin.include_role:
+        name: amneziawg
+        tasks_from: instances
+      when:
+        - vpn.enable_amneziawg | default(true)
+        - not (vpn_subscription_only | default(false))
+
     - name: Require a supported Debian-family host
       ansible.builtin.assert:
         that:
@@ -50,11 +72,26 @@
       changed_when: false
       loop: >-
         {{
-          ['nftables', 'prometheus-node-exporter']
-          + (['xray'] if ((vpn.enable_xray_reality | default(true)) or
-                          (vpn.enable_nginx_xhttp | default(true))) else [])
-          + (['nginx'] if (vpn.enable_nginx_xhttp | default(true)) else [])
-          + (['hysteria-server'] if (vpn.enable_hysteria | default(true)) else [])
+          ['nftables']
+          + (['prometheus-node-exporter'] if (vpn.enable_monitoring | default(true)) else [])
+          + (['xray'] if (not (vpn_subscription_only | default(false)) and
+                         ((vpn.enable_xray_reality | default(true)) or
+                          (vpn.enable_nginx_xhttp | default(true)))) else [])
+          + (['nginx'] if ((vpn.enable_nginx_xhttp | default(true)) or
+                          (vpn.enable_cdn_front | default(false)) or
+                          (vpn.enable_reality_self_steal | default(false)) or
+                          (vpn.enable_subscription_host | default(false)) or
+                          (vpn_subscription_only | default(false))) else [])
+          + (['hysteria-server'] if (vpn.enable_hysteria | default(true)) and
+              not (vpn_subscription_only | default(false)) else [])
+          + (['caddy-naive'] if (vpn.enable_naive | default(false)) and
+              not (vpn_subscription_only | default(false)) else [])
+          + (['snell'] if (vpn.enable_snell | default(false)) and
+              not (vpn_subscription_only | default(false)) else [])
+          + (['dns-morph-bridge', 'unbound'] if (vpn.enable_dns_morph_bridge | default(false)) and
+              not (vpn_subscription_only | default(false)) else [])
+          + (['hysteria-realm'] if (vpn.enable_hysteria_realm | default(false)) and
+              not (vpn_subscription_only | default(false)) else [])
         }}
       loop_control:
         label: "{{ item }}"
@@ -62,11 +99,13 @@
 
     - name: Verify AmneziaWG after maintenance
       ansible.builtin.command:
-        cmd: awg show awg0
+        argv: [awg, show, "{{ item }}"]
       changed_when: false
+      loop: "{{ _awg_instances | default([]) | map(attribute='name') | list }}"
       when:
         - not ansible_check_mode
         - vpn.enable_amneziawg | default(true)
+        - not (vpn_subscription_only | default(false))
 
     - name: Simulate another full upgrade
       ansible.builtin.command:

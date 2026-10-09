@@ -506,16 +506,12 @@ jobs:
     if: ${{ fromJSON(needs.selection.outputs.checks)['native-runtime'] }}
     name: native runtime integration
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-ci-python
-      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.0
-        with:
-          terraform_version: "1.15.2"
-          terraform_wrapper: false
+      - uses: ./.github/actions/setup-disposable-ci
       - name: Install checksum-verified Alertmanager and amtool
         env:
           ALERTMANAGER_SHA256: 5ac7ab5e4b8ee5ce4d8fb0988f9cb275efcc3f181b4b408179fafee121693311
@@ -532,7 +528,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1
+            nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 openssh-server e2fsprogs util-linux mount
       - name: Execute native tests with UID and GID capabilities
         run: |
           sudo env "PATH=$PATH" \

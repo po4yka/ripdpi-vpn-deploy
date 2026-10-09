@@ -39,25 +39,8 @@
 - name: Collect service facts
   ansible.builtin.service_facts:
 
-- name: Ensure systemd-resolved drop-in directory
-  ansible.builtin.file:
-    path: /etc/systemd/resolved.conf.d
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-  when: "'systemd-resolved.service' in ansible_facts.services"
-
-- name: Disable systemd-resolved listening on 53 (we'll let resolvconf manage)
-  ansible.builtin.copy:
-    dest: /etc/systemd/resolved.conf.d/no-stub.conf
-    owner: root
-    group: root
-    mode: "0644"
-    content: |
-      [Resolve]
-      DNSStubListener=no
-  notify: Restart systemd-resolved
+- name: Reconcile the host resolver before any transport claims DNS ports
+  ansible.builtin.import_tasks: resolver.yml
   when: "'systemd-resolved.service' in ansible_facts.services"
 
 - name: Require planned timesync installation when check mode lacks the unit
@@ -114,28 +97,5 @@
     group: root
     mode: "0644"
 
-- name: Enable IP forwarding only when AmneziaWG is in scope
-  ansible.builtin.copy:
-    dest: /etc/sysctl.d/91-vpn-forward.conf
-    owner: root
-    group: root
-    mode: "0644"
-    content: |
-      net.ipv4.ip_forward = 1
-      net.ipv6.conf.all.forwarding = 1
-  when: vpn.enable_amneziawg | default(false)
-
-- name: Remove forwarding sysctl when AmneziaWG is disabled
-  ansible.builtin.file:
-    path: /etc/sysctl.d/91-vpn-forward.conf
-    state: absent
-  when: not (vpn.enable_amneziawg | default(false))
-
-- name: Reconcile effective sysctl values on every converge
-  ansible.builtin.command:
-    cmd: sysctl -e --system
-  register: baseline_sysctl_apply
-  changed_when: false
-  failed_when: >-
-    baseline_sysctl_apply.rc != 0 and
-    'net.ipv4.tcp_congestion_control' not in baseline_sysctl_apply.stderr
+- name: Reconcile forwarding for every enabled routing workload
+  ansible.builtin.import_tasks: forwarding.yml

@@ -1,46 +1,84 @@
 ---
-# TODO(ws5): A standalone molecule scenario for this playbook was evaluated
-# and skipped. Reason: the playbook requires /etc/xray/config.json.prev,
-# /usr/local/bin/xray, and a live systemd xray.service — all artifacts that
-# only exist after the xray role converges. A converge.yml that pre-creates
-# these would duplicate the xray role's setup, creating a drift-prone
-# maintenance surface. Coverage path: run rollback-config.yml inside the
-# full-stack molecule scenario (ansible/molecule/full-stack/) after xray
-# converges. See ansible/CLAUDE.md for the one-playbook-per-intent decision.
 - name: Rollback Xray config to the previous version (.prev)
   hosts: vpn
   become: true
   gather_facts: false
 
   tasks:
-    - name: /etc/xray/config.json.prev exists
+    - name: Install the shared Xray validation entry point
+      ansible.builtin.include_role:
+        name: xray
+        tasks_from: validation-helper
+
+    - name: Inspect the previous Xray config before rollback
       ansible.builtin.stat:
         path: /etc/xray/config.json.prev
+        follow: false
       register: prev
-      failed_when: not prev.stat.exists
+      failed_when: not (prev.stat.isreg | default(false))
 
-    - name: Restore previous Xray config
-      ansible.builtin.copy:
-        src: /etc/xray/config.json.prev
-        dest: /etc/xray/config.json
-        remote_src: true
-        owner: root
-        group: xray
-        mode: "0640"
-
-    - name: Validate restored config
+    - name: Validate the rollback candidate before publication
       ansible.builtin.command:
-        cmd: /usr/local/bin/xray run -test -config /etc/xray/config.json
+        cmd: /usr/local/libexec/vpn-xray-validate --config /etc/xray/config.json.prev
       changed_when: false
+      check_mode: false
+      no_log: true
 
-    - name: Restart Xray
-      ansible.builtin.systemd_service:
-        name: xray
-        state: restarted
+    - name: Preserve current Xray configuration for activation recovery
+      ansible.builtin.slurp:
+        src: /etc/xray/config.json
+      register: rollback_xray_current_config
+      no_log: true
 
-    - name: Verify Xray active
-      ansible.builtin.command:
-        cmd: systemctl is-active xray
-      register: active
-      changed_when: false
-      failed_when: active.stdout != "active"
+    - name: Publish and verify the validated rollback configuration
+      block:
+        - name: Restore previous Xray config
+          ansible.builtin.copy:
+            src: /etc/xray/config.json.prev
+            dest: /etc/xray/config.json
+            remote_src: true
+            owner: root
+            group: xray
+            mode: "0640"
+          no_log: true
+          diff: false
+
+        - name: Restart Xray
+          ansible.builtin.systemd_service:
+            name: xray
+            state: restarted
+
+        - name: Verify Xray active
+          ansible.builtin.command:
+            cmd: systemctl is-active xray
+          register: active
+          changed_when: false
+          failed_when: active.stdout != "active"
+          when: not ansible_check_mode
+      rescue:
+        - name: Restore the original config after rollback activation failure
+          ansible.builtin.copy:
+            content: "{{ rollback_xray_current_config.content | b64decode }}"
+            dest: /etc/xray/config.json
+            owner: root
+            group: xray
+            mode: "0640"
+          no_log: true
+          diff: false
+
+        - name: Restart Xray with the original config
+          ansible.builtin.systemd_service:
+            name: xray
+            state: restarted
+
+        - name: Verify the restored Xray service
+          ansible.builtin.command:
+            cmd: systemctl is-active xray
+          register: rollback_xray_restored
+          changed_when: false
+          failed_when: rollback_xray_restored.stdout != "active"
+          when: not ansible_check_mode
+
+        - name: Report rollback activation failure after recovery
+          ansible.builtin.fail:
+            msg: The rollback candidate failed activation; the original configuration was restored.

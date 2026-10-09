@@ -1495,3 +1495,17 @@ def test_make_target_rejects_unknown_command_variable_before_recipe():
     )
     assert result.returncode != 0
     assert "only its documented command-line fields" in result.stderr
+
+
+@pytest.mark.parametrize("altered", [False, True])
+def test_retirement_absence_binds_optional_ssh_seed(setup, altered):
+    manifest = dict(setup["manifest"])
+    manifest["ssh_seed"] = {"uuid": "11223344-5566-4788-99aa-bbccddeeff00", "filesystem_uuid": "22334455-6677-4899-aabb-ccddeeff0011", "image_sha256": "a" * 64}
+    raw = _canonical(manifest)
+    absence = dict(setup["absence"], ssh_seed=dict(manifest["ssh_seed"]), manifest_sha256=hashlib.sha256(raw).hexdigest())
+    if altered:
+        absence["ssh_seed"]["uuid"] = "33445566-7788-49aa-bbcc-ddeeff001122"
+        with pytest.raises(_load().RetirementError, match="retirement-absence"):
+            _load()._validate_absence(absence, manifest, raw)
+    else:
+        _load()._validate_absence(absence, manifest, raw)

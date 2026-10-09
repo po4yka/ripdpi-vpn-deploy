@@ -61,6 +61,7 @@ No modules.
 | [terraform_data.ssh_port](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
 | [upcloud_firewall_rules.vpn](https://registry.terraform.io/providers/UpCloudLtd/upcloud/latest/docs/resources/firewall_rules) | resource |
 | [upcloud_server.vpn](https://registry.terraform.io/providers/UpCloudLtd/upcloud/latest/docs/resources/server) | resource |
+| [upcloud_storage.ci_ssh_seed](https://registry.terraform.io/providers/UpCloudLtd/upcloud/latest/docs/resources/storage) | resource |
 
 ## Inputs
 
@@ -71,6 +72,7 @@ No modules.
 | <a name="input_admin_user"></a> [admin\_user](#input\_admin\_user) | Non-root user created by cloud-init for SSH and Ansible access. | `string` | `"deploy"` | no |
 | <a name="input_allowed_ssh_cidrs"></a> [allowed\_ssh\_cidrs](#input\_allowed\_ssh\_cidrs) | Source CIDRs allowed to reach ssh\_port/tcp. | `list(string)` | n/a | yes |
 | <a name="input_build_env"></a> [build\_env](#input\_build\_env) | Free-form label baked into /etc/vpn-build-id by cloud-init. | `string` | `"prod"` | no |
+| <a name="input_ci_ssh_seed"></a> [ci\_ssh\_seed](#input\_ci\_ssh\_seed) | The provider reads the private image locally; only its path and digests enter state. | <pre>object({<br/>    image_path             = string<br/>    image_sha256           = string<br/>    filesystem_uuid        = string<br/>    host_public_key_sha256 = string<br/>  })</pre> | `null` | no |
 | <a name="input_enable_backups"></a> [enable\_backups](#input\_enable\_backups) | Enable provider-side server backups (daily, 7-day retention). | `bool` | `true` | no |
 | <a name="input_enable_hysteria"></a> [enable\_hysteria](#input\_enable\_hysteria) | Include the Hysteria2 UDP/443 listener in the legacy default set. Explicit public\_listeners ignore this toggle; add hysteria there directly. | `bool` | `true` | no |
 | <a name="input_enable_ipv6"></a> [enable\_ipv6](#input\_enable\_ipv6) | Allocate and expose a public IPv6 address. | `bool` | `true` | no |

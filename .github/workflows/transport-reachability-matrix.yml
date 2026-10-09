@@ -1,209 +1,58 @@
 ---
 name: transport-reachability-matrix
-
-# Per-transport-profile reachability sweep. Provisions one ephemeral
-# UpCloud VPS, then iterates through a configured list of transport
-# profile sets — reconfiguring the VPS between iterations — and runs
-# the `rkn-block-checker` four-layer baseline from the GitHub runner
-# against the exit IP after each profile applies. The runner has no
-# filtered-network vantage; that half is operator-driven and stitched
-# in offline (see docs/TRANSPORT-REACHABILITY-MATRIX.md).
-#
-# Cost: one ~30 min VPS lifetime per workflow run plus the time taken
-# by each profile's deploy + probe sweep.
-#
-# Triggered manually (workflow_dispatch) or by adding the
-# `ci-real-deploy` label to a PR — same gating as
-# real-vps-deploy.yml. Will refuse to run from a fork PR.
-#
-# Required secrets (same set as real-vps-deploy):
-#   UPCLOUD_USERNAME, UPCLOUD_PASSWORD, CI_SOPS_AGE_KEY,
-#   CI_SSH_PRIVATE_KEY, CI_UPCLOUD_TEMPLATE_UUID, CI_REALITY_TARGET,
-#   CI_REALITY_SERVER_NAME
-
+# Independent fresh guest per profile. Runner baseline reports remain distinct
+# from the canonical authenticated protocol promotion probes.
 on:
   workflow_dispatch:
     inputs:
       profiles:
-        description: >-
-          Comma-separated transport-profile sets. Each entry is a
-          shorthand for an ansible extra-vars block (see
-          docs/TRANSPORT-REACHABILITY-MATRIX.md). Default exercises
-          P0 alone, P0+P1, P0+P1+P2.
+        description: Comma-separated profiles, each provisioned on a fresh guest
         required: false
-        default: "p0,p0p1,p0p1p2"
+        default: p0,p0p1,p0p1p2
       zone:
-        description: "UpCloud zone (e.g. fi-hel1, de-fra1)"
+        description: UpCloud zone
         required: false
-        default: "fi-hel1"
+        default: fi-hel1
   pull_request:
     types: [labeled]
-
 permissions:
   contents: read
-
 jobs:
-  matrix:
+  selection:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci-real-deploy'))
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       contains(github.event.pull_request.labels.*.name, 'ci-real-deploy'))
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
-
-    # Required-reviewer approval gate — same rationale as real-vps-deploy:
-    # the label trigger must not reach provider credentials without an
-    # approved deployment on the ci-real-deploy environment.
-    environment: ci-real-deploy
-
-    concurrency:
-      group: transport-reachability-matrix
-      cancel-in-progress: false
-
-    env:
-      UPCLOUD_USERNAME: ${{ secrets.UPCLOUD_USERNAME }}
-      UPCLOUD_PASSWORD: ${{ secrets.UPCLOUD_PASSWORD }}
-      TF_VAR_zone: ${{ github.event.inputs.zone || 'fi-hel1' }}
-      ANSIBLE_HOST_KEY_CHECKING: "False"
-      CI_UPCLOUD_TEMPLATE_UUID: ${{ secrets.CI_UPCLOUD_TEMPLATE_UUID }}
-      PROFILES_INPUT: ${{ github.event.inputs.profiles || 'p0,p0p1,p0p1p2' }}
-
+    timeout-minutes: 5
+    outputs:
+      profiles: ${{ steps.profiles.outputs.profiles }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Refuse to run on a fork PR
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
-        run: |
-          echo "::error::transport-reachability-matrix will not run on a fork PR — secrets are not exposed to forks."
-          exit 1
-
-      - name: Short-circuit when template UUID is unset
-        id: gate
-        run: |
-          if [ -z "${CI_UPCLOUD_TEMPLATE_UUID:-}" ]; then
-            echo "::notice::CI_UPCLOUD_TEMPLATE_UUID is empty — skipping."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Verify required secrets are present
-        if: steps.gate.outputs.skip != 'true'
-        run: |
-          required_vars=(
-            UPCLOUD_USERNAME UPCLOUD_PASSWORD CI_SOPS_AGE_KEY
-            CI_SSH_PRIVATE_KEY CI_UPCLOUD_TEMPLATE_UUID CI_REALITY_TARGET
-            CI_REALITY_SERVER_NAME
-          )
-          for v in "${required_vars[@]}"; do
-            if [ -z "${!v:-}" ] && [ -z "$(printenv "$v" || true)" ]; then
-              echo "::error::Secret $v is unset — configure it in repo settings."
-              exit 1
-            fi
-          done
+      - name: Validate selected profiles
+        id: profiles
         env:
-          CI_SOPS_AGE_KEY: ${{ secrets.CI_SOPS_AGE_KEY }}
-          CI_SSH_PRIVATE_KEY: ${{ secrets.CI_SSH_PRIVATE_KEY }}
-          CI_REALITY_TARGET: ${{ secrets.CI_REALITY_TARGET }}
-          CI_REALITY_SERVER_NAME: ${{ secrets.CI_REALITY_SERVER_NAME }}
-
-      - name: Set up Terraform
-        if: steps.gate.outputs.skip != 'true'
-        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4
-        with:
-          # Keep in sync with ci.yml and terraform/providers/*/versions.tf.
-          terraform_version: "1.15.2"
-
-      - name: Set up tooling
-        if: steps.gate.outputs.skip != 'true'
+          PROFILES_INPUT: ${{ github.event.inputs.profiles || 'p0,p0p1,p0p1p2' }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y python3-pip jq age
-          curl -fsSL "https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64" -o /tmp/sops
-          echo "0d65660fbe785647ff4f1764d7f69edf598f79d6d79ebbef4a501909b6ff6b82  /tmp/sops" | sha256sum -c -
-          sudo install -m 0755 /tmp/sops /usr/local/bin/sops
-          pip3 install --user --require-hashes --no-deps -r requirements.txt
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Stage SSH key + age key + CI tfvars
-        if: steps.gate.outputs.skip != 'true'
-        env:
-          CI_SSH_PRIVATE_KEY: ${{ secrets.CI_SSH_PRIVATE_KEY }}
-          CI_SOPS_AGE_KEY: ${{ secrets.CI_SOPS_AGE_KEY }}
-        run: |
-          set -euo pipefail
-          mkdir -p ~/.ssh ~/.config/vpn-provision
-          chmod 0700 ~/.ssh ~/.config/vpn-provision
-          printf '%s\n' "$CI_SSH_PRIVATE_KEY" > ~/.ssh/vpn_deploy
-          chmod 0600 ~/.ssh/vpn_deploy
-          ssh-keygen -y -f ~/.ssh/vpn_deploy > ~/.ssh/vpn_deploy.pub
-          printf '%s\n' "$CI_SOPS_AGE_KEY" > ~/.config/vpn-provision/age.key
-          chmod 0600 ~/.config/vpn-provision/age.key
-          ts="$(date -u +%Y%m%d-%H%M%S)"
-          ci_env="ci-${{ github.run_id }}-trm-${ts}"
-          server_name="vpn-${ci_env}.ci.test"
-          echo "CI_ENV=${ci_env}" >> "$GITHUB_ENV"
-          echo "CI_SERVER_NAME=${server_name}" >> "$GITHUB_ENV"
-          cat > "terraform/providers/upcloud/environments/${ci_env}.tfvars" <<TFVARS
-          server_name          = "${server_name}"
-          plan                 = "1xCPU-2GB"
-          storage_template     = "${CI_UPCLOUD_TEMPLATE_UUID}"
-          admin_ssh_public_key = file("~/.ssh/vpn_deploy.pub")
-          allowed_ssh_cidrs    = ["0.0.0.0/0"]
-          build_env            = "${ci_env}"
-          TFVARS
-
-      - name: Generate synthetic CI secrets
-        if: steps.gate.outputs.skip != 'true'
-        run: |
-          set -euo pipefail
-          export SECRETS_FILE="/tmp/vpn-${CI_ENV}.secrets.yaml"
-          OUT="$SECRETS_FILE" SERVER_NAME="$CI_SERVER_NAME" CLIENT_NAME="ci-test" \
-            REALITY_TARGET="${CI_REALITY_TARGET}" \
-            REALITY_SERVER_NAME="${CI_REALITY_SERVER_NAME}" \
-            ./scripts/ci-bootstrap-secrets.sh
-          echo "SECRETS_FILE=$SECRETS_FILE" >> "$GITHUB_ENV"
-        env:
-          CI_REALITY_TARGET: ${{ secrets.CI_REALITY_TARGET }}
-          CI_REALITY_SERVER_NAME: ${{ secrets.CI_REALITY_SERVER_NAME }}
-
-      - name: Provision VPS
-        if: steps.gate.outputs.skip != 'true'
-        run: |
-          set -euo pipefail
-          export ENV="$CI_ENV"
-          export PROVIDER=upcloud
-          make init plan apply inventory wait
-
-      - name: Sweep transport-profile matrix
-        if: steps.gate.outputs.skip != 'true'
-        env:
-          ANSIBLE_SSH_PRIVATE_KEY_FILE: /home/runner/.ssh/vpn_deploy
-          SKIP_PRECHECK: "1"
-        run: |
-          set -euo pipefail
-          export ENV="$CI_ENV"
-          export PROVIDER=upcloud
-          ./scripts/transport-reachability-matrix.sh \
-            --profiles "$PROFILES_INPUT" \
-            --secrets "$SECRETS_FILE" \
-            --output-dir "${GITHUB_WORKSPACE}/.transport-reachability"
-
-      - name: Upload reachability matrix artifact
-        if: always() && steps.gate.outputs.skip != 'true' && env.CI_ENV != ''
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
-        with:
-          name: transport-reachability-matrix-${{ github.run_id }}
-          path: .transport-reachability/
-          if-no-files-found: warn
-          retention-days: 90
-
-      - name: Destroy ephemeral VPS and remove its tfvars
-        if: always() && steps.gate.outputs.skip != 'true'
-        run: |
-          set -euo pipefail
-          export ENV="$CI_ENV"
-          export PROVIDER=upcloud
-          make destroy DESTROY_ARGS=--non-interactive
-          rm -f "terraform/providers/upcloud/environments/${CI_ENV}.tfvars"
+          python3 - <<'PY'
+          import json, os
+          profiles = os.environ['PROFILES_INPUT'].split(',')
+          allowed = {'p0', 'p0p1', 'p0p1p2', 'p0p4', 'p0p5'}
+          if not profiles or len(set(profiles)) != len(profiles) or set(profiles) - allowed:
+              raise SystemExit('invalid profile selection')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('profiles=' + json.dumps(profiles) + '\n')
+          PY
+  matrix:
+    needs: selection
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        profile: ${{ fromJSON(needs.selection.outputs.profiles) }}
+    uses: ./.github/workflows/ci-disposable-deploy.yml
+    with:
+      distro: debian13
+      profile: ${{ matrix.profile }}
+      mode: matrix
+      zone: ${{ github.event.inputs.zone || 'fi-hel1' }}

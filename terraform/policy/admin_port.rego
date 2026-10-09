@@ -1,5 +1,7 @@
 package terraform.policy.admin_port
 
+import data.terraform.policy.firewall
+
 # no_admin_port_exposed_to_world
 #
 # Deny any firewall rule that allows the effective SSH port (var.ssh_port)
@@ -35,17 +37,6 @@ world_cidrs := {"0.0.0.0/0", "::/0"}
 # deny rules referencing it silently never fired — removing them keeps the
 # policy honest.
 
-# Helper: is this a "world" source for upcloud (address range covers all IPs)?
-upcloud_is_world(rule) {
-  rule.source_address_start == "0.0.0.0"
-  rule.source_address_end == "255.255.255.255"
-}
-
-upcloud_is_world(rule) {
-  rule.source_address_start == "::"
-  rule.source_address_end == "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
-}
-
 # upcloud_firewall_rules — deny world-open TCP/22 or TCP/3389
 deny[msg] {
   rc := input.resource_changes[_]
@@ -54,12 +45,13 @@ deny[msg] {
   rule.action == "accept"
   rule.direction == "in"
   rule.protocol == "tcp"
-  upcloud_is_world(rule)
-  admin_ports[rule.destination_port_start]
+  firewall.upcloud_is_world(rule)
+  port := admin_ports[_]
+  firewall.upcloud_port_contains(rule, port)
 
   msg := sprintf(
     "resource %q: firewall rule allows TCP/%s from world; SSH must be restricted to allowed_ssh_cidrs",
-    [rc.address, rule.destination_port_start],
+    [rc.address, port],
   )
 }
 
@@ -71,8 +63,8 @@ deny[msg] {
   rule.action == "accept"
   rule.protocol == "TCP"
   world_cidrs[rule.ip_range]
-  port := sprintf("%v", [rule.port])
-  admin_ports[port]
+  port := admin_ports[_]
+  firewall.scaleway_port_contains(rule, port)
 
   msg := sprintf(
     "resource %q: Scaleway security-group rule allows TCP/%s from world; SSH must be restricted to allowed_ssh_cidrs",
@@ -88,11 +80,12 @@ deny[msg] {
   rule.direction == "in"
   rule.protocol == "tcp"
   world_cidrs[rule.source_ips[_]]
-  admin_ports[rule.port]
+  port := admin_ports[_]
+  firewall.port_contains(rule.port, port)
 
   msg := sprintf(
     "resource %q: hcloud firewall rule allows TCP/%s from world; SSH must be restricted to allowed_ssh_cidrs",
-    [rc.address, rule.port],
+    [rc.address, port],
   )
 }
 
@@ -107,10 +100,11 @@ deny[msg] {
   rc.type == "vultr_firewall_rule"
   rc.change.after.protocol == "tcp"
   vultr_is_world(rc)
-  admin_ports[rc.change.after.port]
+  port := admin_ports[_]
+  firewall.port_contains(rc.change.after.port, port)
 
   msg := sprintf(
     "resource %q: vultr firewall rule allows TCP/%s from world; SSH must be restricted to allowed_ssh_cidrs",
-    [rc.address, rc.change.after.port],
+    [rc.address, port],
   )
 }

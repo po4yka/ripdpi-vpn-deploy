@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+**Hysteria hopping belongs to nftables** — the role redirects the admitted UDP range to the fixed Hysteria listener in the owned inet NAT table. The daemon receives no network-administration capability. Removing the range removes the redirect without affecting AWG postrouting.
+
+**Strict proxy egress includes XHTTP and Snell** — standalone enabled proxy profiles have the same arbitrary upstream allowance as REALITY, Hysteria and Naive; host-only profiles keep their narrow infrastructure allowance.
+
 **nftables, not ufw/iptables** — single rendered file at `/etc/nftables.conf`,
 managed by `templates/nftables.conf.j2`. ufw is too coarse-grained for the
 multi-profile stack; raw iptables is too easy to leak state.

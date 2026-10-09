@@ -1,0 +1,91 @@
+---
+- name: Inspect the resolver before releasing the DNS stub port
+  ansible.builtin.stat:
+    path: /etc/resolv.conf
+    follow: false
+  register: baseline_resolver
+  when: vpn.enable_dns_morph_bridge | default(false) | bool
+
+- name: Read the effective resolver before releasing the DNS stub port
+  ansible.builtin.slurp:
+    src: /etc/resolv.conf
+  register: baseline_resolver_content
+  no_log: true
+  when: vpn.enable_dns_morph_bridge | default(false) | bool
+
+- name: Refuse an unmanaged resolver that still needs the DNS stub
+  ansible.builtin.assert:
+    that:
+      - >-
+        (baseline_resolver.stat.islnk | default(false) and
+         baseline_resolver.stat.lnk_source in
+         ['/run/systemd/resolve/stub-resolv.conf', '/usr/lib/systemd/resolv.conf']) or
+        not ((baseline_resolver_content.content | b64decode)
+             is search('(?m)^\s*nameserver\s+127\.0\.0\.(53|54)(?:\s|$)'))
+    fail_msg: DNS-Morph requires a working non-stub resolver; custom stub resolver files must be migrated explicitly.
+  no_log: true
+  when: vpn.enable_dns_morph_bridge | default(false) | bool
+
+- name: Validate the upstream resolver before migrating its stub symlink
+  when:
+    - vpn.enable_dns_morph_bridge | default(false) | bool
+    - baseline_resolver.stat.islnk | default(false)
+    - baseline_resolver.stat.lnk_source in ['/run/systemd/resolve/stub-resolv.conf', '/usr/lib/systemd/resolv.conf']
+  block:
+    - name: Read systemd-resolved upstream resolver
+      ansible.builtin.slurp:
+        src: /run/systemd/resolve/resolv.conf
+      register: baseline_upstream_resolver
+      no_log: true
+
+    - name: Require an upstream nameserver independent of the stub
+      ansible.builtin.assert:
+        that:
+          - (baseline_upstream_resolver.content | b64decode) is search('(?m)^\s*nameserver\s+\S+')
+          - >-
+            not ((baseline_upstream_resolver.content | b64decode)
+                 is search('(?m)^\s*nameserver\s+127\.0\.0\.(53|54)(?:\s|$)'))
+        fail_msg: systemd-resolved has no usable upstream resolver; keep the DNS stub active.
+      no_log: true
+
+    - name: Point the managed stub resolver symlink at the verified upstream resolver
+      ansible.builtin.file:
+        src: /run/systemd/resolve/resolv.conf
+        dest: /etc/resolv.conf
+        state: link
+        force: true
+
+- name: Ensure systemd-resolved drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/resolved.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Release the DNS stub port only for DNS-Morph
+  ansible.builtin.copy:
+    dest: /etc/systemd/resolved.conf.d/no-stub.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Resolve]
+      DNSStubListener=no
+  register: baseline_stub_disabled
+  when: vpn.enable_dns_morph_bridge | default(false) | bool
+
+- name: Restore the ordinary host DNS stub when DNS-Morph is disabled
+  ansible.builtin.file:
+    path: /etc/systemd/resolved.conf.d/no-stub.conf
+    state: absent
+  register: baseline_stub_restored
+  when: not (vpn.enable_dns_morph_bridge | default(false) | bool)
+
+- name: Apply the resolver transition before dependent roles run
+  ansible.builtin.systemd_service:
+    name: systemd-resolved
+    state: restarted
+  when:
+    - not ansible_check_mode
+    - baseline_stub_disabled.changed or baseline_stub_restored.changed

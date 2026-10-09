@@ -340,6 +340,8 @@ def _validate_absence(
         "root_storage_status",
         "billing_status",
     }
+    if "ssh_seed" in manifest:
+        fields.add("ssh_seed")
     guard = _guard()
     try:
         created = guard._parse_time(manifest.get("created_at"), "created_at")
@@ -363,6 +365,7 @@ def _validate_absence(
         or absence.get("expiry_at") != manifest.get("expiry_at")
         or absence.get("server_uuid") != manifest.get("server_uuid")
         or absence.get("root_storage_uuid") != manifest.get("root_storage_uuid")
+        or absence.get("ssh_seed") != manifest.get("ssh_seed")
         or absence.get("server_status") != "absent"
         or absence.get("root_storage_status") != "absent"
         or absence.get("billing_status") != "no-active-owned-resources"

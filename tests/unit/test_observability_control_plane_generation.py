@@ -30,13 +30,32 @@ def test_enable_preserves_previous_generation_before_current_activation() -> Non
     activation = tasks[
         "Activate complete validated Prometheus generation with rollback"
     ]
-    activate = activation["block"][0]["ansible.builtin.file"]
+    activation_tasks = {task["name"]: task for task in activation["block"]}
+    activation_order = list(activation_tasks)
+    assert (
+        activation_order.index("Install Prometheus service unit")
+        < activation_order.index("Point current configuration at candidate generation")
+        < activation_order.index("Start or restart Prometheus for the published generation")
+        < activation_order.index("Require loopback-only Prometheus candidate readiness")
+    )
+    assert ordered.index("Capture previous Prometheus unit") < ordered.index(
+        "Activate complete validated Prometheus generation with rollback"
+    )
+    activate = activation_tasks["Point current configuration at candidate generation"][
+        "ansible.builtin.file"
+    ]
     assert activate["dest"].endswith("/current.yml")
     assert activate["state"] == "link"
     assert activate["force"] is True
     rescue_names = [task["name"] for task in activation["rescue"]]
     assert "Restore previous ready configuration after failed candidate" in rescue_names
     assert "Fail closed when no previous ready generation exists" in rescue_names
+    assert (
+        rescue_names.index("Restore the previous collector binary after failed activation")
+        < rescue_names.index("Restore previous ready configuration after failed candidate")
+        < rescue_names.index("Restore previous Prometheus unit after failed activation")
+        < rescue_names.index("Restore previous ready Prometheus service")
+    )
 
 
 def test_disable_removes_only_owned_runtime_and_keeps_tsdb() -> None:

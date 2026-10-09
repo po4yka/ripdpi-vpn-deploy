@@ -8,6 +8,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 SETUP = "./.github/actions/setup-ci-python"
+DISPOSABLE_SETUP = "./.github/actions/setup-disposable-ci"
 GALAXY_JOBS = {"ansible", "molecule", "molecule-failure-scenarios", "molecule-full-stack"}
 PYTHON_JOBS = GALAXY_JOBS | {"python-validators", "unit-tests", "native-runtime"}
 VALIDATORS = {
@@ -27,21 +28,30 @@ OLD_CONTEXTS = {
 
 def test_all_ci_python_consumers_share_the_pinned_cached_install():
     jobs = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
-    consumers = {
-        name: [step for step in job.get("steps", []) if step.get("uses") == SETUP]
+    disposable_steps = yaml.safe_load(
+        (ROOT / ".github/actions/setup-disposable-ci/action.yml").read_text()
+    )["runs"]["steps"]
+    expanded_steps = {
+        name: [child for step in job.get("steps", []) for child in (
+            disposable_steps if step.get("uses") == DISPOSABLE_SETUP else [step]
+        )]
         for name, job in jobs.items()
+    }
+    consumers = {
+        name: [step for step in steps if step.get("uses") == SETUP]
+        for name, steps in expanded_steps.items()
     }
     assert {name for name, steps in consumers.items() if steps} == PYTHON_JOBS
     for name in PYTHON_JOBS:
         assert len(consumers[name]) == 1
         assert consumers[name][0].get("with", {}).get("galaxy", "false") == (
-            "true" if name in GALAXY_JOBS else "false"
+            "true" if name in GALAXY_JOBS | {"native-runtime"} else "false"
         )
         if name in GALAXY_JOBS:
             assert jobs[name]["env"]["ANSIBLE_COLLECTIONS_PATH"] == "${{ github.workspace }}/.ansible/collections"
     assert not any(
         "pip install" in step.get("run", "")
-        for job in jobs.values() for step in job.get("steps", [])
+        for steps in expanded_steps.values() for step in steps
     )
 
 
