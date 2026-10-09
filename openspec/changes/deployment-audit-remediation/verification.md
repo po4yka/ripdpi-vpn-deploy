@@ -1,11 +1,11 @@
 ---
 task_id: SEC-1791471757439452
 change: deployment-audit-remediation
-commit_sha: 2ac0fd9515c43f9aba0c48bf004fbae4b2489a91
-local: required
-local_evidence: Full build-gated make check passed with the pinned mise toolchain and installed SOPS/age binaries; 5416 Python tests, 56 Bats tests, 205 Rust release tests, 108 Terraform mock tests, 52 policy tests and 148 snapshots passed.
-remote_ci: required
-remote_ci_evidence: Exact source revision 2ac0fd9515c43f9aba0c48bf004fbae4b2489a91 completed 79 successful checks and one neutral Trivy comparison; run 37826927938 includes 21 native Linux tests and all runtime scenarios.
+commit_sha: bc3d11afbf91e036f910e3c8245a6d06de2d0327
+local: passed
+local_evidence: Full build-gated make check passed with the pinned mise toolchain and installed SOPS/age binaries; 5475 Python tests, 56 Bats tests, 205 Rust release tests, 108 Terraform mock tests, 52 policy tests and 148 snapshots passed.
+remote_ci: passed
+remote_ci_evidence: Exact source revision bc3d11afbf91e036f910e3c8245a6d06de2d0327 completed 79 successful checks and one neutral Trivy comparison; run 37884851139 includes 21 native Linux tests and all runtime scenarios.
 dry_run: not_applicable
 dry_run_evidence: Source PR only; isolated controller orchestration exercises positive and failure paths without live inventory or SSH. No remote dry-run acceptance is claimed.
 staging: not_applicable
@@ -14,15 +14,15 @@ live: not_applicable
 live_evidence: Production rollout is outside this source remediation PR.
 client: not_applicable
 client_evidence: No client traffic acceptance is claimed by source remediation.
-artifact: required
-artifact_evidence: Source revision 2ac0fd9515c43f9aba0c48bf004fbae4b2489a91 records the prior reviewed implementation; review corrections require fresh source validation.
+artifact: passed
+artifact_evidence: Source revision bc3d11afbf91e036f910e3c8245a6d06de2d0327 contains all six review corrections and integrates main without conflicts; full local and hosted source gates passed.
 ---
 
 # Verification
 
-The observations below apply to the recorded prior source revision. Six review
-corrections and integration with current main are in progress; fresh local,
-hosted and artifact evidence is required before returning to review.
+The observations below apply to the recorded source revision, including all six
+review corrections and integration of main revision
+67aab6ed33f8e0b0de8709ea604bcb6f219a5162.
 
 ## Requirement evidence
 
@@ -44,14 +44,14 @@ hosted and artifact evidence is required before returning to review.
   two Cargo jobs and serial Make. The pinned mise tools remained active; SOPS
   and age resolved to installed binaries rather than inactive mise shims in
   tests that intentionally isolate HOME.
-- Python: 5,416 passed, 20 subtests passed, 21 native tests excluded from the
+- Python: 5,475 passed, 22 subtests passed, 21 native tests excluded from the
   portable lane. Hosted native Linux: all 21 passed. No silent skips were used.
 - Shell: all 56 Bats tests passed. Rust: release Clippy with warnings denied and
   all 205 release tests passed, plus the MSRV and dependency-policy checks.
 - Terraform: 108 mock tests passed across four provider roots. Rego: 52 passed.
   All 148 templates rendered and matched reviewed snapshots. These checks do
   not claim provider or deployed firewall acceptance.
-- Hosted source revision `2ac0fd9515c43f9aba0c48bf004fbae4b2489a91`: 79 checks
+- Hosted source revision `bc3d11afbf91e036f910e3c8245a6d06de2d0327`: 79 checks
   succeeded; all required checks and runtime scenarios completed successfully.
   Trivy was neutral because six baseline scan configurations were missing,
   preventing GitHub from calculating the PR alert delta. A complete comparative
@@ -85,3 +85,14 @@ failure propagation, exact disk cleanup, structural SNI parsing, cancellation
 handling and the SSH sentinel's native startup prerequisites. The final narrow
 security review found no actionable issues. Hard runner termination can still
 interrupt cleanup and requires the documented provider inspection.
+
+The review follow-up made address cleanup idempotent for an absent owned /32,
+kept standalone split-hop forwarding active, streamed the canonical read-only
+Xray validator without requiring an installed helper, restored bootstrap waiting
+before recovery installation, and published categorical CI startup failures
+without replacing detailed executor results. Repository evidence is self-contained.
+Executable regressions cover each behavior and independent review found no
+remaining actionable defects. Hosted honeypot and split-hop Molecule scenarios
+passed on this revision. The local arm64 Molecule attempt could not create the
+pinned image because its manifest lacks that architecture; no local role-runtime
+pass is claimed.

@@ -2,7 +2,7 @@
 id: SEC-1791471757439452
 title: Repair deployment audit security and lifecycle defects
 kind: bug
-status: doing
+status: review
 area: security
 priority: high
 risk: high
@@ -14,7 +14,7 @@ openspec_change: deployment-audit-remediation
 created: 2026-10-08
 updated: 2026-10-09
 related_tasks: []
-status_detail: Reopen for six PR review corrections and integration with current main
+status_detail: Six review corrections verified by full local and exact-source hosted gates; main conflicts resolved
 ---
 
 ## Goal
