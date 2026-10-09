@@ -416,3 +416,92 @@ def test_failure_journal_diagnostics_filter_private_messages_and_preserve_hard_f
         in report["journal_signals"]
     )
     assert private not in result.stdout
+
+
+@pytest.mark.parametrize("scenario", ["default", "failure"])
+@pytest.mark.parametrize("initial", ["private", "shared"])
+def test_owned_molecule_runtime_propagation_is_prepared_only_when_needed(
+    tmp_path, scenario, initial
+):
+    import os
+    import subprocess
+    import sys
+    import yaml
+
+    fixture = yaml.safe_load(
+        (
+            REPO_ROOT / "ansible/roles/watchdog/molecule" / scenario / "converge.yml"
+        ).read_text()
+    )[0]
+    tasks = fixture["pre_tasks"][:4]
+    assert tasks[0]["ansible.builtin.command"]["argv"] == [
+        "findmnt",
+        "--mountpoint",
+        "/run",
+        "--output",
+        "PROPAGATION",
+        "--noheadings",
+    ]
+    assert tasks[1]["ansible.builtin.command"]["argv"] == [
+        "mount",
+        "--make-rshared",
+        "/run",
+    ]
+    assert "ansible.builtin.assert" in tasks[-1]
+    state = tmp_path / "propagation"
+    state.write_text(initial)
+    calls = tmp_path / "calls"
+    for name in ("findmnt", "mount"):
+        executable = tmp_path / name
+        operation = (
+            "print(state.read_text())"
+            if name == "findmnt"
+            else "state.write_text('shared'); calls.write_text(' '.join(sys.argv[1:]))"
+        )
+        executable.write_text(
+            "#!"
+            + sys.executable
+            + "\nimport sys\nfrom pathlib import Path\n"
+            + "state=Path("
+            + repr(str(state))
+            + ")\ncalls=Path("
+            + repr(str(calls))
+            + ")\n"
+            + operation
+            + "\n"
+        )
+        executable.chmod(0o755)
+    playbook = tmp_path / "play.yml"
+    playbook.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "hosts": "localhost",
+                    "connection": "local",
+                    "gather_facts": False,
+                    "become": False,
+                    "vars": {
+                        "ansible_python_interpreter": sys.executable,
+                        "ansible_become": False,
+                    },
+                    "environment": {
+                        "PATH": str(tmp_path) + os.pathsep + os.environ["PATH"]
+                    },
+                    "tasks": tasks,
+                }
+            ]
+        )
+    )
+    result = subprocess.run(
+        ["ansible-playbook", "-i", "localhost,", str(playbook)],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "ANSIBLE_CONFIG": str(REPO_ROOT / "ansible/ansible.cfg")},
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert state.read_text() == "shared"
+    if initial == "private":
+        assert calls.read_text() == "--make-rshared /run"
+    else:
+        assert not calls.exists()

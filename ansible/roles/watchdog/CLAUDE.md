@@ -57,6 +57,12 @@ the finite oneshot deadline prevent a notification stall from disabling probes.
 - **Direct script runs require loaded notification credentials** — use the
   service unit to exercise delivery. The environment file contains runtime
   settings only, and sender failures never log credential or destination values.
+- **Owned Molecule containers need shared runtime propagation** — inspect `/run`
+  as an existing mountpoint and prepare it as recursively shared before either
+  watchdog scenario converges. Assert shared propagation afterward; a private
+  runtime mount prevents the credential helper namespace from publishing its
+  read-only credential filesystem to the main service. Production units and
+  credential ownership/link/mode checks remain unchanged.
 - **Failure fixtures must provision the real unit's sandbox paths** — the
   synthetic Xray service does not create `/var/log/xray`. Prepare that mandatory
   `ReadWritePaths` directory as root:xray 0750 before enabling the watchdog timer;
