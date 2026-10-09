@@ -220,10 +220,12 @@ def test_reality_probe_requires_the_explicit_service_address() -> None:
         render_template(TEMPLATES / "reality-probe.json.j2", variables)
 
 
-def test_failure_credential_diagnostic_reports_stat_without_secret_content(tmp_path):
+@pytest.mark.parametrize("authority", [True, False])
+def test_failure_sender_wrapper_preserves_delegate_inputs_and_result(
+    tmp_path, authority
+):
     import os
     import re
-    import shlex
     import subprocess
     import sys
     import yaml
@@ -231,36 +233,74 @@ def test_failure_credential_diagnostic_reports_stat_without_secret_content(tmp_p
     scenario = yaml.safe_load(
         (REPO_ROOT / "ansible/roles/watchdog/molecule/failure/converge.yml").read_text()
     )[0]
-    diagnostic = next(
-        task["ansible.builtin.copy"]["content"]
+    copies = {
+        task["ansible.builtin.copy"]["dest"]: task["ansible.builtin.copy"]["content"]
         for task in scenario["pre_tasks"]
-        if task.get("ansible.builtin.copy", {})
-        .get("dest", "")
-        .endswith("/diagnostics.conf")
+        if "content" in task.get("ansible.builtin.copy", {})
+    }
+    dropin = copies["/etc/systemd/system/vpn-watchdog.service.d/diagnostics.conf"]
+    assert "ExecStartPre" not in dropin
+    assert (
+        "Environment=WATCHDOG_NOTIFY_BIN=/usr/local/sbin/watchdog-notify-diagnostic.py"
+        in dropin
     )
-    command = shlex.split(
-        next(
-            line
-            for line in diagnostic.replace("\\\n", " ").splitlines()
-            if line.startswith("ExecStartPre=")
-        ).split("=", 1)[1]
+    source = copies["/usr/local/sbin/watchdog-notify-diagnostic.py"]
+    captured = tmp_path / "delegated.json"
+    delegate = tmp_path / "sender.py"
+    delegate.write_text(
+        "#!"
+        + sys.executable
+        + "\nimport json,os,sys\n"
+        + "with open("
+        + repr(str(captured))
+        + ", 'w') as output:\n"
+        + "    json.dump({'argv':sys.argv[1:], 'stdin':sys.stdin.read(), "
+        + "'directory':os.environ['CREDENTIALS_DIRECTORY'], 'marker':os.environ['TEST_MARKER']}, output)\n"
+        + "raise SystemExit(23)\n"
     )
-    assert command[0] == "-/usr/bin/python3"
-    authority = tmp_path / "notifications.json"
-    authority.write_text('{"token":"SYNTHETIC_PRIVATE_NOTIFICATION_AUTHORITY"}')
-    authority.chmod(0o400)
+    delegate.chmod(0o755)
+    if authority:
+        credential = tmp_path / "notifications.json"
+        credential.write_text('{"token":"SYNTHETIC_PRIVATE_NOTIFICATION_AUTHORITY"}')
+        credential.chmod(0o400)
+    wrapper = tmp_path / "wrapper.py"
+    wrapper.write_text(
+        source.replace("/usr/local/libexec/vpn-watchdog-notify.py", str(delegate))
+    )
+    arguments = [
+        "--title",
+        "synthetic-title",
+        "--tags",
+        "warning,vpn",
+        "--timeout",
+        "10",
+    ]
     result = subprocess.run(
-        [sys.executable, *command[1:]],
+        [sys.executable, str(wrapper), *arguments],
+        input="SYNTHETIC_PRIVATE_BODY",
         capture_output=True,
         text=True,
-        env={**os.environ, "CREDENTIALS_DIRECTORY": str(tmp_path)},
+        env={
+            **os.environ,
+            "CREDENTIALS_DIRECTORY": str(tmp_path),
+            "TEST_MARKER": "SYNTHETIC_PRIVATE_ENVIRONMENT",
+        },
         timeout=3,
     )
-    assert result.returncode == 0 and not result.stderr
-    assert re.fullmatch(
-        r"watchdog-credential-metadata mode=0o100400 uid=[0-9]+ gid=[0-9]+ nlink=1 size=[0-9]+ readonly=0\n",
-        result.stdout,
-    )
+    assert result.returncode == 23 and not result.stderr
+    assert json.loads(captured.read_text()) == {
+        "argv": arguments,
+        "stdin": "SYNTHETIC_PRIVATE_BODY",
+        "directory": str(tmp_path),
+        "marker": "SYNTHETIC_PRIVATE_ENVIRONMENT",
+    }
+    if authority:
+        assert re.fullmatch(
+            r"watchdog-credential-metadata mode=0o100400 uid=[0-9]+ gid=[0-9]+ nlink=1 size=[0-9]+ readonly=0\n",
+            result.stdout,
+        )
+    else:
+        assert result.stdout == "watchdog-credential-metadata error=stat-unavailable\n"
     assert "SYNTHETIC_PRIVATE" not in result.stdout
     assert str(tmp_path) not in result.stdout
 

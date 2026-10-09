@@ -61,9 +61,10 @@ the finite oneshot deadline prevent a notification stall from disabling probes.
   synthetic Xray service does not create `/var/log/xray`. Prepare that mandatory
   `ReadWritePaths` directory as root:xray 0750 before enabling the watchdog timer;
   an absent path can reject unit namespace setup before any probe or delivery.
-  Failure-only diagnostics report loaded credential stat metadata and selected
-  categorical unit/journal signals; they never read credential contents and
-  always retain the required invocation and actual-notification failure.
+  A failure-only sender wrapper reports loaded credential stat metadata in the
+  main service child, then execs the actual sender with its original arguments,
+  stdin and environment. Diagnostics never read credential contents and retain
+  the required invocation and actual-notification failure.
 - **The canary is part of the contract** — it must be operator-owned, have valid public TLS, and return `watchdog_secrets.reality_probe_expected_status` (default `204`). A normal public site root can use `200` without exposing a dedicated health endpoint. Canary failure correctly makes the
   protocol signal red.
 - **On-node is not outside-in** — self-dialing the public listener validates

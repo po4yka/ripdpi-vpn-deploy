@@ -74,9 +74,16 @@
                         metadata = re.fullmatch(
                             r'watchdog-credential-metadata mode=0o[0-7]+ uid=[0-9]+ '
                             r'gid=[0-9]+ nlink=[0-9]+ size=[0-9]+ readonly=[01]', message)
-                        if metadata and message not in report['journal_signals']:
+                        metadata_error = message in {
+                            'watchdog-credential-metadata error=missing-directory',
+                            'watchdog-credential-metadata error=stat-unavailable',
+                        }
+                        if (metadata or metadata_error) and message not in report['journal_signals']:
                             report['journal_signals'].append(message)
-                        elif message in {'watchdog notification failed', 'watchdog: notification delivery failed'}:
+                        elif message in {
+                            'watchdog notification failed', 'watchdog: notification delivery failed',
+                            'watchdog-notify-wrapper error=delegate-unavailable',
+                        }:
                             report['journal_signals'].append(message)
                         else:
                             counters = re.match(
