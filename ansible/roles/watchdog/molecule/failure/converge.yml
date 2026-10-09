@@ -180,6 +180,11 @@
               if not directory:
                   raise KeyError('directory')
               path = directory + '/notifications.json'
+              print('watchdog-credential-metadata location directory_exists=' + str(int(os.path.isdir(directory)))
+                    + ' service_directory_matches=' + str(int(directory == '/run/credentials/vpn-watchdog.service'))
+                    + ' canonical_file_exists=' + str(int(os.path.isfile(
+                        '/run/credentials/vpn-watchdog.service/notifications.json')))
+                    + ' source_file_exists=' + str(int(os.path.isfile('/etc/vpn-watchdog-notifications.json'))), flush=True)
               metadata = os.stat(path, follow_symlinks=False)
           except Exception as error:
               report_error('file-stat', error)

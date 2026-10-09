@@ -29,7 +29,6 @@
               - |
                 import json
                 import re
-                import shlex
                 import subprocess
 
                 def collect(argv):
@@ -40,20 +39,14 @@
 
                 properties = {'Result', 'ExecMainCode', 'ExecMainStatus', 'ActiveState', 'SubState'}
                 status = collect(['systemctl', 'show', 'vpn-watchdog.service',
-                                  '--property=' + ','.join(sorted(properties | {'ExecStartPre', 'LoadCredential'}))])
+                                  '--property=' + ','.join(sorted(properties | {'ExecStartPre'}))])
                 report = {'unit': {}, 'pre_start': [], 'journal_signals': []}
-                credential_count = None
+                configured_credential = None
                 if status is not None:
                     for line in status.stdout.splitlines():
                         key, _, value = line.partition('=')
                         if key in properties and re.fullmatch(r'[A-Za-z0-9_-]{1,64}', value):
                             report['unit'][key] = value
-                        elif key == 'LoadCredential':
-                            try:
-                                credential_count = sum(item.split(':', 1)[0] == 'notifications.json'
-                                                       for item in shlex.split(value))
-                            except ValueError:
-                                pass
                         elif key == 'ExecStartPre':
                             for result in re.finditer(
                                 r'; code=([a-z]+|\(null\)) ; status=([0-9]+)(?:/[A-Z0-9]+)? }', value
@@ -64,6 +57,21 @@
                                         'code': 'not-run' if code == '(null)' else code,
                                         'status': int(exit_status),
                                     })
+                unit = collect(['systemctl', 'cat', 'vpn-watchdog.service'])
+                if unit is not None and unit.returncode == 0:
+                    identifiers = set()
+                    section = None
+                    for line in unit.stdout.splitlines():
+                        line = line.strip()
+                        if line.startswith('[') and line.endswith(']'):
+                            section = line
+                        elif section == '[Service]' and line.startswith('LoadCredential='):
+                            value = line.split('=', 1)[1].strip()
+                            if not value:
+                                identifiers.clear()
+                            else:
+                                identifiers.add(value.split(':', 1)[0].strip('"'))
+                    configured_credential = 'notifications.json' in identifiers
                 journal = collect(['journalctl', '--unit=vpn-watchdog.service',
                                    '--lines=30', '--no-pager', '--output=json'])
                 metadata_journal = collect(['journalctl', '--unit=vpn-watchdog.service',
@@ -86,7 +94,10 @@
                             r'watchdog-credential-metadata stage=(?:file-stat|mount-stat) '
                             r'(?:errno=[0-9]+|error=(?:OSError|KeyError|AttributeError|TypeError|ValueError|'
                             r'NotImplementedError|OverflowError|Exception))', message)
-                        if (metadata or metadata_error) and message not in report['journal_signals']:
+                        location = re.fullmatch(
+                            r'watchdog-credential-metadata location directory_exists=[01] '
+                            r'service_directory_matches=[01] canonical_file_exists=[01] source_file_exists=[01]', message)
+                        if (metadata or metadata_error or location) and message not in report['journal_signals']:
                             report['journal_signals'].append(message)
                         elif message in {
                             'watchdog notification failed', 'watchdog: notification delivery failed',
@@ -105,7 +116,7 @@
                             }:
                                 report['journal_signals'].append('unit startup step=' + step.group(1))
                 if 'watchdog-credential-metadata stage=file-stat errno=2' in report['journal_signals']:
-                    report['configured_required_credential_count'] = credential_count
+                    report['effective_unit_required_credential'] = configured_credential
                 print(json.dumps(report, sort_keys=True))
           changed_when: false
           register: watchdog_failure_diagnostics

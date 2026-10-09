@@ -305,12 +305,13 @@ def test_failure_sender_wrapper_preserves_delegate_inputs_and_result(
         "marker": "SYNTHETIC_PRIVATE_ENVIRONMENT",
     }
     if authority:
-        metadata_output = result.stdout
+        metadata_output = result.stdout.splitlines(keepends=True)[1]
         if mount_failure:
-            assert result.stdout.startswith(
-                "watchdog-credential-metadata stage=mount-stat errno=95\n"
+            assert (
+                result.stdout.splitlines()[1]
+                == "watchdog-credential-metadata stage=mount-stat errno=95"
             )
-            metadata_output = result.stdout.splitlines(keepends=True)[1]
+            metadata_output = result.stdout.splitlines(keepends=True)[2]
         assert re.fullmatch(
             r"watchdog-credential-metadata mode=0o100400 uid=[0-9]+ gid=[0-9]+ nlink=1 size=[0-9]+ readonly="
             + ("unknown" if mount_failure else "0")
@@ -318,7 +319,10 @@ def test_failure_sender_wrapper_preserves_delegate_inputs_and_result(
             metadata_output,
         )
     else:
-        assert result.stdout == "watchdog-credential-metadata stage=file-stat errno=2\n"
+        assert (
+            result.stdout.splitlines()[-1]
+            == "watchdog-credential-metadata stage=file-stat errno=2"
+        )
     assert "SYNTHETIC_PRIVATE" not in result.stdout
     assert str(tmp_path) not in result.stdout
 
@@ -362,10 +366,18 @@ def test_failure_journal_diagnostics_filter_private_messages_and_preserve_hard_f
             json.dumps({"MESSAGE": message}) for message in messages
         ),
     }
-    outputs["systemctl"] += "\nLoadCredential=notifications.json:" + private
+    outputs["systemctl"] += "\nLoadCredential=[unprintable]"
     for name, output in outputs.items():
         executable = tmp_path / name
         code = "print(" + repr(output) + ")\n"
+        if name == "systemctl":
+            unit = "[Service]\nLoadCredential=notifications.json:" + private
+            code = (
+                "import sys\nif 'cat' in sys.argv:\n    print("
+                + repr(unit)
+                + ")\nelse:\n    "
+                + code
+            )
         if name == "journalctl":
             metadata = (
                 json.dumps(
@@ -395,7 +407,7 @@ def test_failure_journal_diagnostics_filter_private_messages_and_preserve_hard_f
     report = json.loads(result.stdout)
     assert report["unit"] == {"Result": "exit-code", "ExecMainStatus": "1"}
     assert report["pre_start"] == [{"code": "exited", "status": 0}]
-    assert report["configured_required_credential_count"] == 1
+    assert report["effective_unit_required_credential"] is True
     assert "unit startup step=NAMESPACE" in report["journal_signals"]
     assert "watchdog counters=1,2,1" in report["journal_signals"]
     assert "watchdog notification failed" in report["journal_signals"]
