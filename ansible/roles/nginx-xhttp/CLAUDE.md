@@ -49,10 +49,12 @@ Permissions/Referrer/nosniff set at server scope in both public vhosts.
 `proxy_read_timeout` and `proxy_send_timeout`; the public root vhost uses
 defaults. Don't mix these — XHTTP needs long-lived streams.
 
+**Both XHTTP locations suppress access logging** — primary and fallback transport paths keep request/session identifiers out of public-site logs; ordinary site requests retain their access logs.
+
 ## What's done well
 
 - **SOPS-delivered public certificate** — the role writes `nginx_xhttp.cert_pem` and `key_pem` to the nginx TLS directory with restricted key permissions. Certificate issuance and renewal remain operator-owned; `check-certs.sh` verifies SAN, expiry, and key match before deploy.
-- **Validate before activation** — the role enables the rendered site, runs `nginx -t`, then flushes its reload handler immediately so a recovery converge cannot leave nginx serving the previous listener set until the end of a long full-stack play.
+- **Complete candidate before publication** — `tasks/transaction.yml` accepts an exact owned write set, roots, validator argv and target unit. It stages full roots, validates at actual absolute paths in a private mount namespace, then publishes under a per-unit lock. Ordinary activation failure restores prior bytes, runtime and exact boot enablement; failed compensation retains a private pending snapshot and refuses reuse. Ordinary candidate-preparation failure removes only this invocation’s pending snapshot while preserving live bytes, so correcting an unrelated FIFO permits a valid retry. Once publication or activation may occur, failed compensation retains recovery authority. Credential roots are bound to the exact unit credential paths only inside validation namespace. Check mode predicts changes without creating state or activating runtime.
 - **Fresh-host check mode plans nginx without activating it** — the role checks for the distro unit and requires a planned package installation when it is absent. Reload and start remain runtime actions on a real converge; check mode does not claim a nonexistent service is active.
 - **No public admin path** — there is no admin/status/management endpoint on
   this vhost. The only non-XHTTP public path is the opt-in, secret-token Snell

@@ -309,7 +309,13 @@ def test_all_runtime_units_share_fixed_aggregate_slices_and_receiver_requires_gu
 
 
 def test_capacity_preflight_precedes_all_mutations_and_disable_retains_data_and_latch():
-    tasks = yaml.safe_load((ROLE / "tasks/enable.yml").read_text())
+    def task_tree(items):
+        for task in items:
+            yield task
+            for section in ("block", "rescue", "always"):
+                yield from task_tree(task.get(section, []))
+
+    tasks = list(task_tree(yaml.safe_load((ROLE / "tasks/enable.yml").read_text())))
     names = [task["name"] for task in tasks]
     assert names.index(
         "Require measured capacity and private address before host mutation"

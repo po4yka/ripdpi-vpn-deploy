@@ -404,3 +404,12 @@ Independent controller homes are not a supported shared-ownership mechanism.
   policy inspection, and enrollment. The RAM revoker and firewall replacement
   share a coordination lock; durable rollback always uses bridge-free policy.
   A reviewed legacy digest is not permission to adopt unexplained runtime drift.
+
+- Tailnet firewall foundations flush rules atomically while preserving dynamic
+  timed enforcement sets. Only the two exact static SSH source sets are replaced
+  before the transaction-owned include, so removed approvals cannot survive.
+
+`build-native-naive-test.sh` supplies the exact composite used by native tests,
+with repository-pinned Go and a separate scoped GOBIN/GOPATH/cache. It never
+substitutes stock Caddy. Local compilation uses the machine build gate; CI
+keeps compilation at two workers and passes the verified output explicitly.

@@ -116,7 +116,10 @@ def _repo_errors(repo_root: Path = REPO_ROOT) -> list[str]:
                 )
 
     role_tasks = repo_root / "ansible" / "roles" / "amneziawg" / "tasks"
-    role = (role_tasks / "main.yml").read_text(encoding="utf-8") + (
+    enabled_tasks = role_tasks / (
+        "enable.yml" if (role_tasks / "enable.yml").exists() else "main.yml"
+    )
+    role = enabled_tasks.read_text(encoding="utf-8") + (
         role_tasks / "guard-s34.yml"
     ).read_text(encoding="utf-8")
     required_role_fragments = (
@@ -132,14 +135,14 @@ def _repo_errors(repo_root: Path = REPO_ROOT) -> list[str]:
                 f"AmneziaWG role guard no longer covers required source: {fragment}"
             )
 
-    main_tasks = _yaml_tasks(role_tasks / "main.yml")
+    main_tasks = _yaml_tasks(enabled_tasks)
     imports = [
         task
         for task in main_tasks
         if task.get("ansible.builtin.import_tasks") == "guard-s34.yml"
     ]
     if len(imports) != 1:
-        errors.append("main.yml must import guard-s34.yml exactly once")
+        errors.append("enabled role tasks must import guard-s34.yml exactly once")
     else:
         errors.extend(
             _task_shape_errors(

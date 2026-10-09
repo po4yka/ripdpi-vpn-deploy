@@ -16,12 +16,27 @@ ROOT = Path(__file__).resolve().parents[2]
 ANSIBLE = ROOT / "ansible"
 
 
+def _enabled_tasks(role):
+    directory = ANSIBLE / "roles" / role / "tasks"
+    rows = yaml.safe_load((directory / "enable.yml").read_text())
+    result = []
+    for row in rows:
+        imported = row.get("ansible.builtin.import_tasks")
+        if imported == "historical-state.yml":
+            result.extend(yaml.safe_load((directory / imported).read_text()))
+        else:
+            result.append(row)
+    return result
+
+
 def test_roles_have_required_scaffold_and_distinct_namespaces() -> None:
     for role in ("cascade-ingress", "cascade-egress"):
         root = ANSIBLE / "roles" / role
         for relative in (
             "CLAUDE.md",
             "tasks/main.yml",
+            "tasks/enable.yml",
+            "tasks/disable.yml",
             "defaults/main.yml",
             "handlers/main.yml",
         ):
@@ -40,7 +55,7 @@ def test_roles_have_required_scaffold_and_distinct_namespaces() -> None:
 
 
 def test_ingress_preflights_dataset_before_serving_configuration() -> None:
-    tasks = (ANSIBLE / "roles/cascade-ingress/tasks/main.yml").read_text()
+    tasks = (ANSIBLE / "roles/cascade-ingress/tasks/enable.yml").read_text()
 
     assert tasks.index("Preflight classifier dataset") < tasks.index(
         "Render disabled classifier integration contract"
@@ -72,9 +87,7 @@ def test_installed_ansible_refuses_historical_cascade_state_before_writes(
     executable = shutil.which("ansible-playbook")
     assert executable, "ansible-playbook is required for cascade preflight proof"
 
-    tasks = yaml.safe_load(
-        (ANSIBLE / "roles/cascade-ingress/tasks/main.yml").read_text(encoding="utf-8")
-    )
+    tasks = _enabled_tasks("cascade-ingress")
     names = [task["name"] for task in tasks]
     selected = copy.deepcopy(
         tasks[
@@ -199,9 +212,7 @@ def test_installed_ansible_allows_clean_cascade_preflight_before_later_write(
     executable = shutil.which("ansible-playbook")
     assert executable, "ansible-playbook is required for cascade preflight proof"
 
-    tasks = yaml.safe_load(
-        (ANSIBLE / "roles/cascade-ingress/tasks/main.yml").read_text(encoding="utf-8")
-    )
+    tasks = _enabled_tasks("cascade-ingress")
     names = [task["name"] for task in tasks]
     selected = copy.deepcopy(
         tasks[
@@ -285,15 +296,13 @@ def test_installed_ansible_allows_only_the_kernel_empty_route_table_reply(
     executable = shutil.which("ansible-playbook")
     assert executable, "ansible-playbook is required for cascade preflight proof"
 
-    tasks = yaml.safe_load(
-        (ANSIBLE / "roles/cascade-ingress/tasks/main.yml").read_text(encoding="utf-8")
-    )
+    tasks = _enabled_tasks("cascade-ingress")
     names = [task["name"] for task in tasks]
     selected = copy.deepcopy(
         tasks[
-            names.index("Inspect historical cascade WireGuard service state") : names.index(
-                "Install cascade ingress packages"
-            )
+            names.index(
+                "Inspect historical cascade WireGuard service state"
+            ) : names.index("Install cascade ingress packages")
         ]
     )
     marker = tmp_path / "later-role-write"
@@ -350,7 +359,9 @@ esac
     config = tmp_path / "ansible.cfg"
     config.write_text("[defaults]\nretry_files_enabled = False\n", encoding="utf-8")
     environment = {
-        key: value for key, value in os.environ.items() if not key.startswith("ANSIBLE_")
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("ANSIBLE_")
     }
     environment.update(
         {
@@ -386,14 +397,14 @@ def test_ingress_default_route_is_inert_and_documents_scoped_mark_routing() -> N
     assert "masquerade" not in policy
     assert "forward" not in policy
 
-    contract = str(yaml.safe_load((role / "tasks/main.yml").read_text())[1])
+    contract = str(yaml.safe_load((role / "tasks/enable.yml").read_text())[1])
     assert "cascade_ingress.routing_table | int > 0" in contract
     assert "cascade_ingress.fwmark | int > 0" in contract
 
 
 def test_ingress_installs_concrete_proxy_but_unit_is_repository_disabled() -> None:
     role = ANSIBLE / "roles/cascade-ingress"
-    tasks = (role / "tasks/main.yml").read_text()
+    tasks = (role / "tasks/enable.yml").read_text()
     unit = (role / "templates/cascade-classifier-proxy.service.j2").read_text()
 
     assert "cascade-classifier-proxy.py" in tasks
@@ -406,7 +417,7 @@ def test_ingress_installs_concrete_proxy_but_unit_is_repository_disabled() -> No
 
 def test_ingress_installs_probe_machinery_but_cannot_schedule_it() -> None:
     role = ANSIBLE / "roles/cascade-ingress"
-    tasks = (role / "tasks/main.yml").read_text()
+    tasks = (role / "tasks/enable.yml").read_text()
     service = (role / "templates/cascade-leg-probe.service.j2").read_text()
     timer = (role / "templates/cascade-leg-probe.timer.j2").read_text()
 
@@ -424,13 +435,13 @@ def test_neither_role_has_an_operator_service_activation_switch() -> None:
         content = "\n".join(path.read_text() for path in root.rglob("*.yml"))
 
         assert "manage_service" not in content
-        assert "systemd_service" not in (root / "tasks/main.yml").read_text()
+        assert "systemd_service" not in (root / "tasks/enable.yml").read_text()
 
 
 def test_each_role_starts_with_direct_execution_colocation_guard() -> None:
     for role in ("cascade-ingress", "cascade-egress"):
         tasks = yaml.safe_load(
-            (ANSIBLE / "roles" / role / "tasks/main.yml").read_text()
+            (ANSIBLE / "roles" / role / "tasks/enable.yml").read_text()
         )
         assert (
             tasks[0]["name"]
@@ -452,7 +463,7 @@ def test_direct_role_guard_covers_every_cross_family_pairing(
     cascade_role: str, split_toggle: str
 ) -> None:
     first = yaml.safe_load(
-        (ANSIBLE / "roles" / cascade_role / "tasks/main.yml").read_text()
+        (ANSIBLE / "roles" / cascade_role / "tasks/enable.yml").read_text()
     )[0]
     guard = str(first)
 
@@ -526,10 +537,13 @@ def test_cascade_molecule_prepares_deterministic_nft_preflight_fixture() -> None
     """Molecule must not confuse an unavailable netlink socket with host state."""
     for scenario in ("forced-empty", "populated"):
         prepare = yaml.safe_load(
-            (ANSIBLE / f"roles/cascade-ingress/molecule/{scenario}/prepare.yml").read_text()
+            (
+                ANSIBLE / f"roles/cascade-ingress/molecule/{scenario}/prepare.yml"
+            ).read_text()
         )[0]
         task = next(
-            item for item in prepare["tasks"]
+            item
+            for item in prepare["tasks"]
             if item["name"] == "Install deterministic nftables preflight fixture"
         )
         copy_task = task["ansible.builtin.copy"]

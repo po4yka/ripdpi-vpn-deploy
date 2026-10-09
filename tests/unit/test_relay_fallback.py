@@ -14,6 +14,7 @@ Tests:
   CDN_ON  — cdn-front.conf.j2 MUST contain the real-IP include directive and
              proxy_set_header CF-* handling.
 """
+
 from __future__ import annotations
 
 import json
@@ -33,7 +34,7 @@ EXAMPLE_FILE = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
 NGINX_XHTTP_TEMPLATE = ROLES_DIR / "nginx-xhttp" / "templates" / "site.conf.j2"
 CDN_FRONT_TEMPLATE = ROLES_DIR / "cdn-front" / "templates" / "cdn-front.conf.j2"
 NGINX_XHTTP_HANDLERS = ROLES_DIR / "nginx-xhttp" / "handlers" / "main.yml"
-NGINX_XHTTP_TASKS = ROLES_DIR / "nginx-xhttp" / "tasks" / "main.yml"
+NGINX_XHTTP_TASKS = ROLES_DIR / "nginx-xhttp" / "tasks" / "enable.yml"
 
 
 def _load_role_defaults() -> dict:
@@ -105,6 +106,7 @@ def _render(template_path: Path, extra_vars: dict | None = None) -> str:
 # CDN OFF — nginx-xhttp direct vhost (RU baseline)
 # ---------------------------------------------------------------------------
 
+
 class TestCdnOff:
     """The direct/fallback nginx vhost must carry no CDN real-IP directives."""
 
@@ -124,9 +126,9 @@ class TestCdnOff:
         """CF-Connecting-IP is only meaningful behind Cloudflare; a direct
         vhost must not reference it."""
         rendered = self._rendered()
-        assert "CF-Connecting-IP" not in rendered, (
-            "Direct nginx vhost must not handle CF-Connecting-IP header."
-        )
+        assert (
+            "CF-Connecting-IP" not in rendered
+        ), "Direct nginx vhost must not handle CF-Connecting-IP header."
 
     def test_no_cloudflare_origin_ca(self):
         """ssl_client_certificate + ssl_verify_client appears only in the
@@ -172,6 +174,7 @@ class TestCdnOff:
 # CDN ON — cdn-front vhost
 # ---------------------------------------------------------------------------
 
+
 class TestCdnOn:
     """The CDN-fronted vhost must carry real-IP restoration directives."""
 
@@ -183,9 +186,9 @@ class TestCdnOn:
     def test_cf_prefix_include_present(self):
         """The CDN vhost must include the Cloudflare prefix real-IP file."""
         rendered = self._rendered()
-        assert "cloudflare.real_ip" in rendered, (
-            "cdn-front vhost must include the Cloudflare prefix real-IP file."
-        )
+        assert (
+            "cloudflare.real_ip" in rendered
+        ), "cdn-front vhost must include the Cloudflare prefix real-IP file."
 
     def test_proxy_set_header_x_real_ip(self):
         """The CDN vhost sets X-Real-IP from the CF-restored remote_addr."""

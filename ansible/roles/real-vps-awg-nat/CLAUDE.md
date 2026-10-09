@@ -2,6 +2,9 @@
 
 ## Design decisions
 
+**SSH admission precedes server provisioning** — publish the explicit evidence account using the canonical recoverable baseline transaction and both public/management context proofs first. Server-local tasks only read sshd effective account admission and forwarding/PTY/rc restrictions before provisioning state; they never write SSH policy or manufacture controller confirmation. The dedicated key remains constrained to its fixed command. Admission conservatively rejects nonempty DenyUsers/AllowGroups/DenyGroups, additional authentication factors and any server ForceCommand: the future account’s group membership cannot be inferred, and server command policy can supersede the forced key. Canonical any/publickey authentication remains supported.
+
+
 **Three trust boundaries, one role** — `echo`, `server`, and `sentinel` modes
 are applied by separate serialized plays. The echo host never receives AWG or
 SSH keys; the AWG host never receives a client private key; the sentinel owns

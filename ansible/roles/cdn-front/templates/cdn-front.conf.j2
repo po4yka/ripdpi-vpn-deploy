@@ -2,10 +2,10 @@
 # docs/CDN-DECISION.md for the threat-model boundary on when CDN is
 # worth running.
 
-# CF prefix files refreshed by /usr/local/sbin/cdn-front-refresh-cf-prefixes
-include {{ cdn_front.cf_prefix_dir }}/cloudflare.real_ip;
-
 server {
+    # Trust applies only to this CDN-facing listener.
+    include {{ cdn_front.cf_prefix_dir }}/cloudflare.real_ip;
+
     listen {{ cdn_front.port }} ssl http2;
     listen [::]:{{ cdn_front.port }} ssl http2;
 

@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-09
+goal: ANS-1791562764586678 Repair P2 Ansible role lifecycle and configuration
+  audit defects

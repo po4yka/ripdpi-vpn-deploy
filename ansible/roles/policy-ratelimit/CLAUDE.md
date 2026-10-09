@@ -52,3 +52,14 @@ carrier-NAT pool takes out legitimate clients first.
   `tests/unit/test_policy_ratelimit.py` after any Xray pin bump; if the
   access-log line shape changed, the dead-contract gauge will also rise on
   live nodes.
+
+- Idle input still publishes a heartbeat; unavailable input has a separate gauge.
+  Source windows expire and have a fixed capacity with an overflow counter.
+- Textfile publication uses directory descriptors and random exclusive temporary
+  files; reject symlink outputs and preserve prior bytes when publication fails.
+
+- Ordinary site convergence always invokes lifecycle reconciliation. The
+  `policy_ratelimit_role_enabled` input selects enable or owned runtime retirement before
+  secret/package guards. Disable stops units and removes only declared authority;
+  shared packages, immutable runtime receipts, historical logs and recovery data
+  remain available for a later explicit recovery.

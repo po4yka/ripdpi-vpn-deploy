@@ -4,12 +4,12 @@
     level INFO
   }
   servers {
-    protocols h1 h2 h3
+    protocols h1 h2
   }
   auto_https off
 }
 
-:{{ naive.bind_port }}, {{ naive_secrets.server_name }} {
+:{{ naive.bind_port }}, {{ naive_secrets.server_name }}:{{ naive.bind_port }} {
   tls {{ naive.config_dir }}/server.fullchain.pem {{ naive.config_dir }}/server.key
 
   # Compression response headers a real Chrome browser triggers. Required

@@ -1,0 +1,49 @@
+---
+- name: Inspect exact owned units before retirement
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - show
+      - '{{ item }}'
+      - --property=LoadState
+      - --value
+  loop:
+    - vpn-geodata-refresh.timer
+    - vpn-geodata-refresh.service
+  register: _owned_disabled_units
+  changed_when: false
+  check_mode: false
+  failed_when: _owned_disabled_units.rc not in [0, 1] or _owned_disabled_units.stdout not in ['loaded', 'masked', 'not-found']
+- name: Stop owned runtime before retiring its configuration
+  ansible.builtin.systemd_service:
+    name: '{{ item.item }}'
+    state: stopped
+    enabled: false
+  loop: '{{ _owned_disabled_units.results }}'
+  when: item.stdout == 'loaded'
+- name: Stop masked owned runtime while retaining its administrative mask
+  ansible.builtin.systemd_service:
+    name: '{{ item.item }}'
+    state: stopped
+  loop: '{{ _owned_disabled_units.results }}'
+  when: item.stdout == 'masked'
+- name: Preserve exact administratively masked unit entries
+  ansible.builtin.set_fact:
+    _owned_preserved_masks: '{{ _owned_disabled_units.results | selectattr(''stdout'', ''equalto'', ''masked'') | map(attribute=''item'')
+      | list }}'
+- name: Remove only exact owned runtime files
+  ansible.builtin.file:
+    path: '{{ item }}'
+    state: absent
+  loop:
+    - /etc/systemd/system/vpn-geodata-refresh.timer
+    - /etc/systemd/system/vpn-geodata-refresh.service
+    - /usr/local/sbin/vpn-geodata-publish
+    - /usr/local/sbin/vpn-geodata-refresh.sh
+    - /usr/local/sbin/vpn-xray-geodata-activate.sh
+  when: (item | basename) not in _owned_preserved_masks
+  register: _owned_retired_files
+- name: Reload the retired owned unit graph
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: not ansible_check_mode and _owned_retired_files.changed

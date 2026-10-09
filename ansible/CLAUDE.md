@@ -131,3 +131,8 @@ count in `docs/TESTING.md`.
   later roles depend on the restart having happened.
 
 - **Smoke cleanup requires ownership** — atomically claim the private workdir, use unique per-run unit names, and stop only clients whose start returned success; failed claims or starts never authorize cleaning another invocation, and an unconfirmed start/stop retains the private claim to block unsafe retries.
+
+- Site roles use a unique `<role>_role_enabled` scalar for lifecycle dispatch
+  instead of skipping disabled roles. Preserve each prior enable predicate and
+  tags; security policy roles always reconcile their explicit false policies.
+  Tailnet management retirement requires separately recovered SSH authority.

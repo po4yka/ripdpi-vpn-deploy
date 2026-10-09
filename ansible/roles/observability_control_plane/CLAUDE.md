@@ -94,6 +94,9 @@ add a second target-discovery path, endpoint labels, notification routes, or
 liveness quorum logic here; protocol verdict adaptation remains external.
 Do not turn a stale, future, malformed, or unknown published verdict into a
 healthy, blocked, or rotation conclusion.
+Validate scalar evidence values before set membership or deduplication. Nested
+container inputs must publish the redacted malformed state over last-good
+metrics rather than escaping through a Python hash/type exception.
 Do not put Telegram tokens in Alertmanager YAML, argv, environment, metrics, or
 logs. Alertmanager holds only the relay authentication credential. A missing
 or reused relay credential is a pre-mutation refusal. The relay never follows an
@@ -127,3 +130,19 @@ the existing rollback generation. This is not a legacy direct-backend route.
 Check mode inspects existing namespace entries without creating a snapshot,
 permits absent fresh namespace, and uses native file/template change predictions.
 It never activates services, performs readiness HTTP calls, or runs rollback cleanup.
+
+- Check mode runs read-only contract and capacity probes before predicting
+  publication. It never creates a private credential candidate, activates units,
+  or consumes stdout from commands skipped by Ansible check mode. Native candidate
+  validation and readiness still run in ordinary convergence before acceptance.
+
+An unchanged Prometheus generation never advances `previous.yml`. The shared
+authority helper has a separate fixed retained-receiver scope; its files and
+services do not overlap collector authority or durable replay state.
+
+Ingress config, its unit and all TLS/CRL inputs form one nginx publication
+transaction. Candidate validation binds staged TLS at the real systemd
+credential namespace inside a private mount namespace; failed validation or
+activation restores the complete prior ingress authority and service state.
+Read-only TLS preflight uses unnamed in-memory descriptors for chain, EKU,
+identity, key-pair and enrolled-client CRL checks, including fresh check mode.

@@ -64,6 +64,7 @@
         - /usr/local/libexec/observability-agent-health-adapter.py
         - "{{ observability_agent.install_root | default('/opt/observability-vmagent') }}"
         - /usr/local/bin/vmagent-observability-agent
+        - "{{ observability_agent.credential_dir }}"
         - "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/observability-agent.prom"
         - "{{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/observability-health.prom"
       notify: Reload observability agent systemd
@@ -181,678 +182,707 @@
         fail_msg: Observability sender credentials must contain exactly one identity for this node.
       no_log: true
 
-    - name: Apply aggregate sender and producer boundary before runtime mutation
-      ansible.builtin.include_tasks: resource-boundary.yml
-
-    - name: Create observability agent runtime account
-      ansible.builtin.user:
-        name: observability-agent
-        system: true
-        shell: /usr/sbin/nologin
-        home: /var/lib/observability-agent
-        create_home: false
-
-    - name: Create observability agent private directories
-      ansible.builtin.file:
-        path: "{{ item.path }}"
-        state: directory
-        owner: "{{ item.owner | default('root') }}"
-        group: "{{ item.group | default('root') }}"
-        mode: "{{ item.mode }}"
-      loop:
-        - path: "{{ observability_agent.config_dir }}"
-          mode: "0755"
-        - path: "{{ observability_agent.credential_dir }}"
-          mode: "0711"
-        - path: "{{ observability_agent.credential_dir }}/generations"
-          mode: "0711"
-        - path: "{{ observability_agent.queue_dir }}"
-          owner: observability-agent
-          group: observability-agent
-          mode: "0700"
-
-    - name: Bind the private retained queue to its one admitted receiver
-      ansible.builtin.copy:
-        content: "{{ observability_agent.receiver_origin }}/remote-write/v1/nodes/{{ observability_agent.node_id }}\n"
-        dest: "{{ observability_agent.config_dir }}/queue-receiver.url"
-        owner: root
-        group: root
-        mode: "0600"
-
-    - name: Begin sender runtime activation transaction
-      ansible.builtin.set_fact:
-        _observability_agent_runtime_ready: false
-
-    - name: Capture the sender release before binary activation
-      ansible.builtin.stat:
-        path: "{{ observability_agent.install_root }}/current"
-        follow: false
-      register: _observability_agent_previous_release
-
-    - name: Install pinned observability agent through runtime-release
-      ansible.builtin.include_role:
-        name: runtime-release
-      vars:
-        runtime_release_version: "{{ observability_agent.version }}"
-        runtime_release_install_root: "{{ observability_agent.install_root }}"
-        runtime_release_binary_name: vmagent-prod
-        runtime_release_public_link: /usr/local/bin/vmagent-observability-agent
-        runtime_release_urls:
-          amd64: "{{ observability_agent.release_urls.amd64 }}"
-          arm64: "{{ observability_agent.release_urls.arm64 }}"
-        runtime_release_sha256:
-          amd64: "{{ observability_agent.linux_amd64_sha256 }}"
-          arm64: "{{ observability_agent.linux_arm64_sha256 }}"
-        runtime_release_arch_slugs:
-          amd64: linux-amd64
-          arm64: linux-arm64
-        runtime_release_artifact_filename: vmutils.tar.gz
-        runtime_release_artifact_type: archive
-        runtime_release_archive_strip_components: 0
-        runtime_release_archive_members:
-          amd64: vmagent-prod
-          arm64: vmagent-prod
-
-    - name: Preserve the sender binary activation result
-      ansible.builtin.set_fact:
-        _observability_agent_runtime_changed: "{{ runtime_release_changed | bool }}"
-
-    - name: Validate and publish observability credential bundle
-      block:
-        - name: Create private observability credential candidate
-          ansible.builtin.tempfile:
-            path: "{{ observability_agent.credential_dir }}/generations"
-            prefix: .candidate.
-            state: directory
-          register: _observability_agent_credential_candidate
-          changed_when: false
-          no_log: true
-
-        - name: Restrict private observability credential candidate
-          ansible.builtin.file:
-            path: "{{ _observability_agent_credential_candidate.path }}"
-            owner: root
-            group: root
-            mode: "0711"
-            state: directory
-          changed_when: false
-          no_log: true
-
-        - name: Write candidate observability credential bundle
-          ansible.builtin.copy:
-            content: "{{ item.content }}"
-            dest: "{{ _observability_agent_credential_candidate.path }}/{{ item.name }}"
-            owner: root
-            group: root
-            mode: "0600"
-          loop:
-            - name: receiver-ca.crt
-              content: "{{ observability_secrets.receiver_ca_pem }}"
-            - name: client.crt
-              content: "{{ _observability_agent_senders[0].certificate_pem }}"
-            - name: client.key
-              content: "{{ _observability_agent_senders[0].private_key_pem }}"
-          no_log: true
-          diff: false
-          changed_when: false
-
-        - name: Verify candidate sender certificate authority
-          ansible.builtin.command:
-            argv:
-              - /usr/bin/openssl
-              - verify
-              - -purpose
-              - sslclient
-              - -CAfile
-              - "{{ _observability_agent_credential_candidate.path }}/receiver-ca.crt"
-              - "{{ _observability_agent_credential_candidate.path }}/client.crt"
-          changed_when: false
-          no_log: true
-
-        - name: Read candidate sender certificate subject
-          ansible.builtin.command:
-            argv:
-              - /usr/bin/openssl
-              - x509
-              - -noout
-              - -subject
-              - -nameopt
-              - RFC2253
-              - -in
-              - "{{ _observability_agent_credential_candidate.path }}/client.crt"
-          register: _observability_agent_client_subject
-          changed_when: false
-          no_log: true
-
-        - name: Read candidate sender certificate public key
-          ansible.builtin.command:
-            argv:
-              - /usr/bin/openssl
-              - x509
-              - -pubkey
-              - -noout
-              - -in
-              - "{{ _observability_agent_credential_candidate.path }}/client.crt"
-          register: _observability_agent_certificate_public_key
-          changed_when: false
-          no_log: true
-
-        - name: Verify candidate sender private key
-          ansible.builtin.command:
-            argv:
-              - /usr/bin/openssl
-              - pkey
-              - -pubout
-              - -in
-              - "{{ _observability_agent_credential_candidate.path }}/client.key"
-          register: _observability_agent_private_public_key
-          changed_when: false
-          no_log: true
-
-        - name: Require candidate identity and key to match the node authority
-          ansible.builtin.assert:
-            that:
-              - _observability_agent_client_subject.stdout | trim == 'subject=CN=' ~ observability_agent.node_id
-              - _observability_agent_certificate_public_key.stdout | trim == _observability_agent_private_public_key.stdout | trim
-            fail_msg: Observability sender certificate identity or private key does not match.
-          no_log: true
-
-        - name: Render bounded observability agent configuration candidate
-          ansible.builtin.set_fact:
-            _observability_agent_rendered_config: "{{ lookup('template', 'prometheus.yml.j2') }}"
-          no_log: true
-
-        - name: Write candidate observability configuration
-          ansible.builtin.copy:
-            content: "{{ _observability_agent_rendered_config }}"
-            dest: "{{ _observability_agent_credential_candidate.path }}/prometheus.yml"
-            owner: root
-            group: root
-            mode: "0644"
-          no_log: true
-          diff: false
-          changed_when: false
-
-        - name: Validate candidate observability configuration
-          ansible.builtin.command:
-            argv:
-              - /usr/local/bin/vmagent-observability-agent
-              - -dryRun
-              - "-promscrape.config={{ _observability_agent_credential_candidate.path }}/prometheus.yml"
-          changed_when: false
-          no_log: true
-
-        - name: Derive private observability configuration generation
-          ansible.builtin.set_fact:
-            _observability_agent_credential_generation: >-
-              {{ {'ca': observability_secrets.receiver_ca_pem,
-                  'certificate': _observability_agent_senders[0].certificate_pem,
-                  'key': _observability_agent_senders[0].private_key_pem,
-                  'config': _observability_agent_rendered_config,
-                  'receiver': observability_agent.receiver_origin,
-                  'identity': observability_agent.node_id,
-                  'server_ip': observability_agent.receiver_address,
-                  'queue_bytes': observability_agent.queue_max_disk_bytes} | to_json | hash('sha256') }}
-          no_log: true
-
-        - name: Inspect observability configuration generation
-          ansible.builtin.stat:
-            path: >-
-              {{ observability_agent.credential_dir }}/generations/{{
-                 _observability_agent_credential_generation }}
-            follow: false
-          register: _observability_agent_generation
-          no_log: true
-
-        - name: Atomically publish validated observability generation
-          ansible.builtin.command:
-            argv:
-              - /usr/bin/python3
-              - -c
-              - |
-                import errno
-                import os
-                import sys
-
-                candidate, generation = sys.argv[1:3]
-                try:
-                    os.rename(candidate, generation)
-                except OSError as exc:
-                    if exc.errno in (errno.EEXIST, errno.ENOTEMPTY):
-                        raise SystemExit(75) from None
-                    raise
-                parent_fd = os.open(os.path.dirname(generation), os.O_RDONLY | os.O_DIRECTORY)
-                try:
-                    os.fsync(parent_fd)
-                finally:
-                    os.close(parent_fd)
-              - "{{ _observability_agent_credential_candidate.path }}"
-              - >-
-                {{ observability_agent.credential_dir }}/generations/{{
-                   _observability_agent_credential_generation }}
-          register: _observability_agent_generation_publish
-          when: not _observability_agent_generation.stat.exists
-          changed_when: _observability_agent_generation_publish.rc == 0
-          failed_when: _observability_agent_generation_publish.rc not in [0, 75]
-          no_log: true
-
-        - name: Reinspect complete observability configuration generation
-          ansible.builtin.stat:
-            path: >-
-              {{ observability_agent.credential_dir }}/generations/{{
-                 _observability_agent_credential_generation }}
-            follow: false
-          register: _observability_agent_generation
-          no_log: true
-
-        - name: Assert observability generation directory is immutable and private
-          ansible.builtin.assert:
-            that:
-              - _observability_agent_generation.stat.exists
-              - _observability_agent_generation.stat.isdir | default(false)
-              - not (_observability_agent_generation.stat.islnk | default(false))
-              - _observability_agent_generation.stat.uid | int == 0
-              - _observability_agent_generation.stat.gr_name == 'root'
-              - _observability_agent_generation.stat.mode == '0711'
-            fail_msg: Existing observability generation is unsafe.
-          no_log: true
-
-        - name: Inspect observability generation files
-          ansible.builtin.stat:
-            path: >-
-              {{ observability_agent.credential_dir }}/generations/{{
-                 _observability_agent_credential_generation }}/{{ item }}
-            follow: false
-          loop:
-            - receiver-ca.crt
-            - client.crt
-            - client.key
-            - prometheus.yml
-          register: _observability_agent_generation_files
-          no_log: true
-
-        - name: Assert observability generation files are exact private regular files
-          ansible.builtin.assert:
-            that:
-              - item.stat.isreg | default(false)
-              - not (item.stat.islnk | default(false))
-              - item.stat.uid | int == 0
-              - item.stat.nlink | int == 1
-              - item.stat.mode == ('0644' if item.item == 'prometheus.yml' else '0600')
-              - item.stat.gr_name == 'root'
-            fail_msg: Existing observability generation file is unsafe.
-          loop: "{{ _observability_agent_generation_files.results }}"
-          no_log: true
-
-        - name: Read existing observability generation
-          ansible.builtin.slurp:
-            src: >-
-              {{ observability_agent.credential_dir }}/generations/{{
-                 _observability_agent_credential_generation }}/{{ item }}
-          loop:
-            - receiver-ca.crt
-            - client.crt
-            - client.key
-            - prometheus.yml
-          register: _observability_agent_existing_generation
-          no_log: true
-
-        - name: Require existing observability generation to match exact candidate
-          ansible.builtin.assert:
-            that:
-              - (_observability_agent_existing_generation.results[0].content | b64decode) == observability_secrets.receiver_ca_pem
-              - (_observability_agent_existing_generation.results[1].content | b64decode) == _observability_agent_senders[0].certificate_pem
-              - (_observability_agent_existing_generation.results[2].content | b64decode) == _observability_agent_senders[0].private_key_pem
-              - (_observability_agent_existing_generation.results[3].content | b64decode) == _observability_agent_rendered_config
-            fail_msg: Existing observability generation conflicts with its content identity.
-          no_log: true
-
-      always:
-        - name: Remove private observability credential candidate
-          ansible.builtin.file:
-            path: "{{ _observability_agent_credential_candidate.path }}"
-            state: absent
-          when: _observability_agent_credential_candidate.path is defined
-          changed_when: false
-          no_log: true
-
-    - name: Install schema-2 manifest adapter
-      ansible.builtin.copy:
-        src: observability-agent-adapter.py
-        dest: /usr/local/libexec/observability-agent-adapter.py
-        owner: root
-        group: root
-        mode: "0755"
-      notify: Restart observability agent adapter timer
-
-    - name: Install watchdog and backup health adapter
-      ansible.builtin.copy:
-        src: observability-agent-health-adapter.py
-        dest: /usr/local/libexec/observability-agent-health-adapter.py
-        owner: root
-        group: root
-        mode: "0755"
-      notify: Restart observability agent health adapter timer
-
-    - name: Install canonical observability metric manifest
-      ansible.builtin.copy:
-        src: "{{ role_path }}/../../../contract/observability-metric-manifest.example.json"
-        dest: "{{ observability_agent.config_dir }}/metric-manifest.json"
-        owner: root
-        group: root
-        mode: "0644"
-
-    - name: Recheck queue capacity after publication before touching active units
+    - name: Validate sender TLS authority without filesystem candidates
       ansible.builtin.command:
         argv:
           - python3
           - -c
-          - "{{ lookup('ansible.builtin.file', role_path ~ '/files/observability-queue-boundary.py') }}"
-          - "{{ observability_agent.receiver_origin }}/remote-write/v1/nodes/{{ observability_agent.node_id }}"
+          - "{{ lookup('ansible.builtin.file', role_path ~ '/../observability_control_plane/files/observability-tls-preflight.py') }}"
+        stdin: >-
+          {{ {'certificate': _observability_agent_senders[0].certificate_pem,
+              'private_key': _observability_agent_senders[0].private_key_pem,
+              'ca': observability_secrets.receiver_ca_pem,
+              'purpose': 'sslclient', 'identity': observability_agent.node_id} | to_json }}
       changed_when: false
-
-    - name: Bind observability service to the candidate credential generation
-      ansible.builtin.set_fact:
-        _observability_agent_service_generation: >-
-          {{ _observability_agent_credential_generation }}
+      check_mode: false
       no_log: true
+      diff: false
 
-    - name: Inspect prior sender unit before candidate publication
-      ansible.builtin.stat:
-        path: /etc/systemd/system/observability-agent.service
-        follow: false
-      register: _observability_agent_previous_unit
-
-    - name: Require prior sender unit to be a private-authority regular file
-      ansible.builtin.assert:
-        that:
-          - >-
-            not _observability_agent_previous_unit.stat.exists or
-            (_observability_agent_previous_unit.stat.isreg | default(false) and
-             _observability_agent_previous_unit.stat.uid | int == 0 and
-             _observability_agent_previous_unit.stat.mode == '0644' and
-             _observability_agent_previous_unit.stat.nlink | int == 1)
-        fail_msg: Prior sender unit is not a root-owned regular unit.
-
-    - name: Capture exact prior sender unit for transport rollback
-      ansible.builtin.slurp:
-        src: /etc/systemd/system/observability-agent.service
-      register: _observability_agent_previous_unit_bytes
-      when: _observability_agent_previous_unit.stat.exists
-      no_log: true
-
-    - name: Identify the exact captured runtime for rollback readiness only
-      ansible.builtin.set_fact:
-        _observability_agent_previous_runtimes: >-
-          {{ (_observability_agent_previous_unit_bytes.content | b64decode)
-          | regex_findall('(?m)^ExecStart=/usr/local/bin/(vmagent|prometheus)-observability-agent(?: |$)') }}
-        _observability_agent_previous_listeners: >-
-          {{ (_observability_agent_previous_unit_bytes.content | b64decode)
-          | regex_findall('(?m)(?:-httpListenAddr=|--web.listen-address=)(127[.]0[.]0[.]1:[0-9]{1,5})(?: |$)') }}
-      when: _observability_agent_previous_unit.stat.exists
-      no_log: true
-
-    - name: Refuse an unrecognized captured sender runtime
-      ansible.builtin.assert:
-        that:
-          - _observability_agent_previous_runtimes | length == 1
-          - _observability_agent_previous_listeners | length == 1
-          - 0 < (_observability_agent_previous_listeners[0].split(':')[1] | int) <= 65535
-        fail_msg: Previous sender unit has no recognized rollback runtime.
-      when: _observability_agent_previous_unit.stat.exists
-
-    - name: Inspect active observability configuration generation
-      ansible.builtin.stat:
-        path: "{{ observability_agent.credential_dir }}/current"
-        follow: false
-      register: _observability_agent_previous_generation
-      no_log: true
-
-    - name: Assert active observability generation is absent or a managed symlink
-      ansible.builtin.assert:
-        that:
-          - >-
-            not (_observability_agent_previous_generation.stat.exists | default(false)) or
-            (_observability_agent_previous_generation.stat.islnk | default(false))
-        fail_msg: Active observability generation is not a managed symlink.
-
-    - name: Assert active observability generation target is role-owned
-      ansible.builtin.assert:
-        that:
-          - >-
-            not (_observability_agent_previous_generation.stat.islnk | default(false)) or
-            (((_observability_agent_previous_generation.stat.lnk_target | default(''))
-              is match('^generations/[a-f0-9]{64}$')) or
-             (((_observability_agent_previous_generation.stat.lnk_target | default(''))
-               | basename) is match('^[a-f0-9]{64}$') and
-              (_observability_agent_previous_generation.stat.lnk_target | default('')) ==
-              (observability_agent.credential_dir ~ '/generations/' ~
-               ((_observability_agent_previous_generation.stat.lnk_target | default(''))
-                | basename))))
-        fail_msg: Active observability generation link has an unsafe target.
-      no_log: true
-
-    - name: Normalize active observability credential generation
-      ansible.builtin.set_fact:
-        _observability_agent_previous_generation_id: >-
-          {{ _observability_agent_previous_generation.stat.lnk_target | basename }}
-      when: _observability_agent_previous_generation.stat.islnk | default(false)
-      no_log: true
-
-    - name: Inspect observability agent service activity
-      ansible.builtin.command:
-        argv:
-          - /usr/bin/systemctl
-          - is-active
-          - --quiet
-          - observability-agent.service
-      register: _observability_agent_service_active
+    - name: Predict validated sender publication without creating credential candidates
+      ansible.builtin.debug:
+        msg: Sender inputs passed read-only preflight; candidate publication requires ordinary convergence.
       changed_when: false
-      failed_when: false
+      when: ansible_check_mode
 
-    - name: Require coherent previously active runtime for live rollback
-      ansible.builtin.set_fact:
-        _observability_agent_can_restore_runtime: >-
-          {{ _observability_agent_previous_generation.stat.islnk | default(false)
-          and _observability_agent_previous_unit.stat.exists
-          and _observability_agent_service_active.rc == 0 }}
-        _observability_agent_previous_ready_path: >-
-          {{ '/-/ready' if (_observability_agent_previous_runtimes | default([])) == ['prometheus']
-          else '/ready' }}
-
-    - name: Activate and verify observability configuration generation
+    - name: Publish validated sender runtime outside check mode
+      when: not ansible_check_mode
       block:
-        - name: Install observability agent units
-          ansible.builtin.template:
-            src: "{{ item }}"
-            dest: "/etc/systemd/system/{{ item | regex_replace('\\.j2$', '') }}"
+        - name: Apply aggregate sender and producer boundary before runtime mutation
+          ansible.builtin.include_tasks: resource-boundary.yml
+
+        - name: Create observability agent runtime account
+          ansible.builtin.user:
+            name: observability-agent
+            system: true
+            shell: /usr/sbin/nologin
+            home: /var/lib/observability-agent
+            create_home: false
+
+        - name: Create observability agent private directories
+          ansible.builtin.file:
+            path: "{{ item.path }}"
+            state: directory
+            owner: "{{ item.owner | default('root') }}"
+            group: "{{ item.group | default('root') }}"
+            mode: "{{ item.mode }}"
+          loop:
+            - path: "{{ observability_agent.config_dir }}"
+              mode: "0755"
+            - path: "{{ observability_agent.credential_dir }}"
+              mode: "0711"
+            - path: "{{ observability_agent.credential_dir }}/generations"
+              mode: "0711"
+            - path: "{{ observability_agent.queue_dir }}"
+              owner: observability-agent
+              group: observability-agent
+              mode: "0700"
+
+        - name: Bind the private retained queue to its one admitted receiver
+          ansible.builtin.copy:
+            content: "{{ observability_agent.receiver_origin }}/remote-write/v1/nodes/{{ observability_agent.node_id }}\n"
+            dest: "{{ observability_agent.config_dir }}/queue-receiver.url"
+            owner: root
+            group: root
+            mode: "0600"
+
+        - name: Begin sender runtime activation transaction
+          ansible.builtin.set_fact:
+            _observability_agent_runtime_ready: false
+
+        - name: Capture the sender release before binary activation
+          ansible.builtin.stat:
+            path: "{{ observability_agent.install_root }}/current"
+            follow: false
+          register: _observability_agent_previous_release
+
+        - name: Install pinned observability agent through runtime-release
+          ansible.builtin.include_role:
+            name: runtime-release
+          vars:
+            runtime_release_version: "{{ observability_agent.version }}"
+            runtime_release_install_root: "{{ observability_agent.install_root }}"
+            runtime_release_binary_name: vmagent-prod
+            runtime_release_public_link: /usr/local/bin/vmagent-observability-agent
+            runtime_release_urls:
+              amd64: "{{ observability_agent.release_urls.amd64 }}"
+              arm64: "{{ observability_agent.release_urls.arm64 }}"
+            runtime_release_sha256:
+              amd64: "{{ observability_agent.linux_amd64_sha256 }}"
+              arm64: "{{ observability_agent.linux_arm64_sha256 }}"
+            runtime_release_arch_slugs:
+              amd64: linux-amd64
+              arm64: linux-arm64
+            runtime_release_artifact_filename: vmutils.tar.gz
+            runtime_release_artifact_type: archive
+            runtime_release_archive_strip_components: 0
+            runtime_release_archive_members:
+              amd64: vmagent-prod
+              arm64: vmagent-prod
+
+        - name: Preserve the sender binary activation result
+          ansible.builtin.set_fact:
+            _observability_agent_runtime_changed: "{{ runtime_release_changed | bool }}"
+
+        - name: Validate and publish observability credential bundle
+          block:
+            - name: Create private observability credential candidate
+              ansible.builtin.tempfile:
+                path: "{{ observability_agent.credential_dir }}/generations"
+                prefix: .candidate.
+                state: directory
+              register: _observability_agent_credential_candidate
+              changed_when: false
+              no_log: true
+
+            - name: Restrict private observability credential candidate
+              ansible.builtin.file:
+                path: "{{ _observability_agent_credential_candidate.path }}"
+                owner: root
+                group: root
+                mode: "0711"
+                state: directory
+              changed_when: false
+              no_log: true
+
+            - name: Write candidate observability credential bundle
+              ansible.builtin.copy:
+                content: "{{ item.content }}"
+                dest: "{{ _observability_agent_credential_candidate.path }}/{{ item.name }}"
+                owner: root
+                group: root
+                mode: "0600"
+              loop:
+                - name: receiver-ca.crt
+                  content: "{{ observability_secrets.receiver_ca_pem }}"
+                - name: client.crt
+                  content: "{{ _observability_agent_senders[0].certificate_pem }}"
+                - name: client.key
+                  content: "{{ _observability_agent_senders[0].private_key_pem }}"
+              no_log: true
+              diff: false
+              changed_when: false
+
+            - name: Verify candidate sender certificate authority
+              ansible.builtin.command:
+                argv:
+                  - /usr/bin/openssl
+                  - verify
+                  - -purpose
+                  - sslclient
+                  - -CAfile
+                  - "{{ _observability_agent_credential_candidate.path }}/receiver-ca.crt"
+                  - "{{ _observability_agent_credential_candidate.path }}/client.crt"
+              changed_when: false
+              no_log: true
+
+            - name: Read candidate sender certificate subject
+              ansible.builtin.command:
+                argv:
+                  - /usr/bin/openssl
+                  - x509
+                  - -noout
+                  - -subject
+                  - -nameopt
+                  - RFC2253
+                  - -in
+                  - "{{ _observability_agent_credential_candidate.path }}/client.crt"
+              register: _observability_agent_client_subject
+              changed_when: false
+              no_log: true
+
+            - name: Read candidate sender certificate public key
+              ansible.builtin.command:
+                argv:
+                  - /usr/bin/openssl
+                  - x509
+                  - -pubkey
+                  - -noout
+                  - -in
+                  - "{{ _observability_agent_credential_candidate.path }}/client.crt"
+              register: _observability_agent_certificate_public_key
+              changed_when: false
+              no_log: true
+
+            - name: Verify candidate sender private key
+              ansible.builtin.command:
+                argv:
+                  - /usr/bin/openssl
+                  - pkey
+                  - -pubout
+                  - -in
+                  - "{{ _observability_agent_credential_candidate.path }}/client.key"
+              register: _observability_agent_private_public_key
+              changed_when: false
+              no_log: true
+
+            - name: Require candidate identity and key to match the node authority
+              ansible.builtin.assert:
+                that:
+                  - _observability_agent_client_subject.stdout | trim == 'subject=CN=' ~ observability_agent.node_id
+                  - _observability_agent_certificate_public_key.stdout | trim == _observability_agent_private_public_key.stdout | trim
+                fail_msg: Observability sender certificate identity or private key does not match.
+              no_log: true
+
+            - name: Render bounded observability agent configuration candidate
+              ansible.builtin.set_fact:
+                _observability_agent_rendered_config: "{{ lookup('template', 'prometheus.yml.j2') }}"
+              no_log: true
+
+            - name: Write candidate observability configuration
+              ansible.builtin.copy:
+                content: "{{ _observability_agent_rendered_config }}"
+                dest: "{{ _observability_agent_credential_candidate.path }}/prometheus.yml"
+                owner: root
+                group: root
+                mode: "0644"
+              no_log: true
+              diff: false
+              changed_when: false
+
+            - name: Validate candidate observability configuration
+              ansible.builtin.command:
+                argv:
+                  - /usr/local/bin/vmagent-observability-agent
+                  - -dryRun
+                  - "-promscrape.config={{ _observability_agent_credential_candidate.path }}/prometheus.yml"
+              changed_when: false
+              no_log: true
+
+            - name: Derive private observability configuration generation
+              ansible.builtin.set_fact:
+                _observability_agent_credential_generation: >-
+                  {{ {'ca': observability_secrets.receiver_ca_pem,
+                      'certificate': _observability_agent_senders[0].certificate_pem,
+                      'key': _observability_agent_senders[0].private_key_pem,
+                      'config': _observability_agent_rendered_config,
+                      'receiver': observability_agent.receiver_origin,
+                      'identity': observability_agent.node_id,
+                      'server_ip': observability_agent.receiver_address,
+                      'queue_bytes': observability_agent.queue_max_disk_bytes} | to_json | hash('sha256') }}
+              no_log: true
+
+            - name: Inspect observability configuration generation
+              ansible.builtin.stat:
+                path: >-
+                  {{ observability_agent.credential_dir }}/generations/{{
+                     _observability_agent_credential_generation }}
+                follow: false
+              register: _observability_agent_generation
+              no_log: true
+
+            - name: Atomically publish validated observability generation
+              ansible.builtin.command:
+                argv:
+                  - /usr/bin/python3
+                  - -c
+                  - |
+                    import errno
+                    import os
+                    import sys
+
+                    candidate, generation = sys.argv[1:3]
+                    try:
+                        os.rename(candidate, generation)
+                    except OSError as exc:
+                        if exc.errno in (errno.EEXIST, errno.ENOTEMPTY):
+                            raise SystemExit(75) from None
+                        raise
+                    parent_fd = os.open(os.path.dirname(generation), os.O_RDONLY | os.O_DIRECTORY)
+                    try:
+                        os.fsync(parent_fd)
+                    finally:
+                        os.close(parent_fd)
+                  - "{{ _observability_agent_credential_candidate.path }}"
+                  - >-
+                    {{ observability_agent.credential_dir }}/generations/{{
+                       _observability_agent_credential_generation }}
+              register: _observability_agent_generation_publish
+              when: not _observability_agent_generation.stat.exists
+              changed_when: _observability_agent_generation_publish.rc == 0
+              failed_when: _observability_agent_generation_publish.rc not in [0, 75]
+              no_log: true
+
+            - name: Reinspect complete observability configuration generation
+              ansible.builtin.stat:
+                path: >-
+                  {{ observability_agent.credential_dir }}/generations/{{
+                     _observability_agent_credential_generation }}
+                follow: false
+              register: _observability_agent_generation
+              no_log: true
+
+            - name: Assert observability generation directory is immutable and private
+              ansible.builtin.assert:
+                that:
+                  - _observability_agent_generation.stat.exists
+                  - _observability_agent_generation.stat.isdir | default(false)
+                  - not (_observability_agent_generation.stat.islnk | default(false))
+                  - _observability_agent_generation.stat.uid | int == 0
+                  - _observability_agent_generation.stat.gr_name == 'root'
+                  - _observability_agent_generation.stat.mode == '0711'
+                fail_msg: Existing observability generation is unsafe.
+              no_log: true
+
+            - name: Inspect observability generation files
+              ansible.builtin.stat:
+                path: >-
+                  {{ observability_agent.credential_dir }}/generations/{{
+                     _observability_agent_credential_generation }}/{{ item }}
+                follow: false
+              loop:
+                - receiver-ca.crt
+                - client.crt
+                - client.key
+                - prometheus.yml
+              register: _observability_agent_generation_files
+              no_log: true
+
+            - name: Assert observability generation files are exact private regular files
+              ansible.builtin.assert:
+                that:
+                  - item.stat.isreg | default(false)
+                  - not (item.stat.islnk | default(false))
+                  - item.stat.uid | int == 0
+                  - item.stat.nlink | int == 1
+                  - item.stat.mode == ('0644' if item.item == 'prometheus.yml' else '0600')
+                  - item.stat.gr_name == 'root'
+                fail_msg: Existing observability generation file is unsafe.
+              loop: "{{ _observability_agent_generation_files.results }}"
+              no_log: true
+
+            - name: Read existing observability generation
+              ansible.builtin.slurp:
+                src: >-
+                  {{ observability_agent.credential_dir }}/generations/{{
+                     _observability_agent_credential_generation }}/{{ item }}
+              loop:
+                - receiver-ca.crt
+                - client.crt
+                - client.key
+                - prometheus.yml
+              register: _observability_agent_existing_generation
+              no_log: true
+
+            - name: Require existing observability generation to match exact candidate
+              ansible.builtin.assert:
+                that:
+                  - (_observability_agent_existing_generation.results[0].content | b64decode) == observability_secrets.receiver_ca_pem
+                  - >-
+                    (_observability_agent_existing_generation.results[1].content | b64decode) ==
+                    _observability_agent_senders[0].certificate_pem
+                  - >-
+                    (_observability_agent_existing_generation.results[2].content | b64decode) ==
+                    _observability_agent_senders[0].private_key_pem
+                  - (_observability_agent_existing_generation.results[3].content | b64decode) == _observability_agent_rendered_config
+                fail_msg: Existing observability generation conflicts with its content identity.
+              no_log: true
+
+          always:
+            - name: Remove private observability credential candidate
+              ansible.builtin.file:
+                path: "{{ _observability_agent_credential_candidate.path }}"
+                state: absent
+              when: _observability_agent_credential_candidate.path is defined
+              changed_when: false
+              no_log: true
+
+        - name: Install schema-2 manifest adapter
+          ansible.builtin.copy:
+            src: observability-agent-adapter.py
+            dest: /usr/local/libexec/observability-agent-adapter.py
+            owner: root
+            group: root
+            mode: "0755"
+          notify: Restart observability agent adapter timer
+
+        - name: Install watchdog and backup health adapter
+          ansible.builtin.copy:
+            src: observability-agent-health-adapter.py
+            dest: /usr/local/libexec/observability-agent-health-adapter.py
+            owner: root
+            group: root
+            mode: "0755"
+          notify: Restart observability agent health adapter timer
+
+        - name: Install canonical observability metric manifest
+          ansible.builtin.copy:
+            src: "{{ role_path }}/../../../contract/observability-metric-manifest.example.json"
+            dest: "{{ observability_agent.config_dir }}/metric-manifest.json"
             owner: root
             group: root
             mode: "0644"
-          loop:
-            - observability-agent.service.j2
-            - observability-agent-adapter.service.j2
-            - observability-agent-adapter.timer.j2
-            - observability-agent-health-adapter.service.j2
-            - observability-agent-health-adapter.timer.j2
-          register: _observability_agent_units
-          notify:
-            - Reload observability agent systemd
-            - Restart observability agent adapter timer
 
-        - name: Switch current observability credential generation
-          ansible.builtin.file:
-            src: "generations/{{ _observability_agent_credential_generation }}"
-            dest: "{{ observability_agent.credential_dir }}/current"
-            owner: root
-            group: root
-            state: link
-            force: true
-          register: _observability_agent_generation_switch
-          no_log: true
-
-        - name: Restart observability agent on the complete generation
-          ansible.builtin.systemd_service:
-            name: observability-agent.service
-            enabled: true
-            state: restarted
-            daemon_reload: true
-          when: >-
-            _observability_agent_generation_switch.changed or
-            _observability_agent_units.changed or
-            _observability_agent_runtime_changed or
-            _observability_agent_service_active.rc != 0
-
-        - name: Wait for observability agent local readiness
+        - name: Recheck queue capacity after publication before touching active units
           ansible.builtin.command:
             argv:
               - python3
               - -c
-              - "{{ lookup('ansible.builtin.file', role_path ~ '/files/observability-agent-readiness.py') }}"
-              - "{{ observability_agent.web_listen }}"
-              - vmagent
+              - "{{ lookup('ansible.builtin.file', role_path ~ '/files/observability-queue-boundary.py') }}"
+              - "{{ observability_agent.receiver_origin }}/remote-write/v1/nodes/{{ observability_agent.node_id }}"
           changed_when: false
-          register: _observability_agent_ready
-          retries: 15
-          delay: 1
-          until: _observability_agent_ready.rc == 0
-      rescue:
-        - name: Restore the previous sender binary after failed activation
-          ansible.builtin.file:
-            src: "{{ _observability_agent_previous_release.stat.lnk_source }}"
-            dest: "{{ observability_agent.install_root }}/current"
-            state: link
-            force: true
-          when:
-            - _observability_agent_runtime_changed | bool
-            - _observability_agent_previous_release.stat.islnk | default(false)
 
-        - name: Restore previous observability generation
-          ansible.builtin.file:
-            src: "generations/{{ _observability_agent_previous_generation_id }}"
-            dest: "{{ observability_agent.credential_dir }}/current"
-            owner: root
-            group: root
-            state: link
-            force: true
-          when: _observability_agent_previous_generation.stat.islnk | default(false)
-          no_log: true
-
-        - name: Bind restored service to the previous credential generation
+        - name: Bind observability service to the candidate credential generation
           ansible.builtin.set_fact:
             _observability_agent_service_generation: >-
-              {{ _observability_agent_previous_generation_id }}
-          when: _observability_agent_can_restore_runtime | bool
+              {{ _observability_agent_credential_generation }}
           no_log: true
 
-        - name: Restore previous observability agent service unit
-          ansible.builtin.copy:
-            content: "{{ _observability_agent_previous_unit_bytes.content | b64decode }}"
-            dest: /etc/systemd/system/observability-agent.service
-            owner: root
-            group: root
-            mode: "0644"
+        - name: Inspect prior sender unit before candidate publication
+          ansible.builtin.stat:
+            path: /etc/systemd/system/observability-agent.service
+            follow: false
+          register: _observability_agent_previous_unit
+
+        - name: Require prior sender unit to be a private-authority regular file
+          ansible.builtin.assert:
+            that:
+              - >-
+                not _observability_agent_previous_unit.stat.exists or
+                (_observability_agent_previous_unit.stat.isreg | default(false) and
+                 _observability_agent_previous_unit.stat.uid | int == 0 and
+                 _observability_agent_previous_unit.stat.mode == '0644' and
+                 _observability_agent_previous_unit.stat.nlink | int == 1)
+            fail_msg: Prior sender unit is not a root-owned regular unit.
+
+        - name: Capture exact prior sender unit for transport rollback
+          ansible.builtin.slurp:
+            src: /etc/systemd/system/observability-agent.service
+          register: _observability_agent_previous_unit_bytes
           when: _observability_agent_previous_unit.stat.exists
           no_log: true
 
-        - name: Restore previous observability health adapter service unit
-          ansible.builtin.template:
-            src: observability-agent-health-adapter.service.j2
-            dest: /etc/systemd/system/observability-agent-health-adapter.service
-            owner: root
-            group: root
-            mode: "0644"
-          when: _observability_agent_can_restore_runtime | bool
-
-        - name: Stop and disable failed first observability agent activation
-          ansible.builtin.systemd_service:
-            name: observability-agent.service
-            enabled: false
-            state: stopped
-            daemon_reload: true
-          when: not (_observability_agent_can_restore_runtime | bool)
-
-        - name: Remove failed first observability generation activation
-          ansible.builtin.file:
-            path: "{{ observability_agent.credential_dir }}/current"
-            state: absent
-          when: not (_observability_agent_previous_generation.stat.islnk | default(false))
+        - name: Identify the exact captured runtime for rollback readiness only
+          ansible.builtin.set_fact:
+            _observability_agent_previous_runtimes: >-
+              {{ (_observability_agent_previous_unit_bytes.content | b64decode)
+              | regex_findall('(?m)^ExecStart=/usr/local/bin/(vmagent|prometheus)-observability-agent(?: |$)') }}
+            _observability_agent_previous_listeners: >-
+              {{ (_observability_agent_previous_unit_bytes.content | b64decode)
+              | regex_findall('(?m)(?:-httpListenAddr=|--web.listen-address=)(127[.]0[.]0[.]1:[0-9]{1,5})(?: |$)') }}
+          when: _observability_agent_previous_unit.stat.exists
           no_log: true
 
-        - name: Restart restored observability generation
-          ansible.builtin.systemd_service:
-            name: observability-agent.service
-            state: restarted
-            daemon_reload: true
-          when: _observability_agent_can_restore_runtime | bool
+        - name: Refuse an unrecognized captured sender runtime
+          ansible.builtin.assert:
+            that:
+              - _observability_agent_previous_runtimes | length == 1
+              - _observability_agent_previous_listeners | length == 1
+              - 0 < (_observability_agent_previous_listeners[0].split(':')[1] | int) <= 65535
+            fail_msg: Previous sender unit has no recognized rollback runtime.
+          when: _observability_agent_previous_unit.stat.exists
 
-        - name: Verify restored observability generation readiness
-          ansible.builtin.command:
-            argv:
-              - python3
-              - -c
-              - "{{ lookup('ansible.builtin.file', role_path ~ '/files/observability-agent-readiness.py') }}"
-              - "{{ _observability_agent_previous_listeners[0] }}"
-              - "{{ _observability_agent_previous_runtimes[0] }}"
-          changed_when: false
-          register: _observability_agent_restored_ready
-          retries: 15
-          delay: 1
-          until: _observability_agent_restored_ready.rc == 0
-          when: _observability_agent_can_restore_runtime | bool
+        - name: Inspect active observability configuration generation
+          ansible.builtin.stat:
+            path: "{{ observability_agent.credential_dir }}/current"
+            follow: false
+          register: _observability_agent_previous_generation
+          no_log: true
 
-        - name: Inspect failed first observability agent activation state
+        - name: Assert active observability generation is absent or a managed symlink
+          ansible.builtin.assert:
+            that:
+              - >-
+                not (_observability_agent_previous_generation.stat.exists | default(false)) or
+                (_observability_agent_previous_generation.stat.islnk | default(false))
+            fail_msg: Active observability generation is not a managed symlink.
+
+        - name: Assert active observability generation target is role-owned
+          ansible.builtin.assert:
+            that:
+              - >-
+                not (_observability_agent_previous_generation.stat.islnk | default(false)) or
+                (((_observability_agent_previous_generation.stat.lnk_target | default(''))
+                  is match('^generations/[a-f0-9]{64}$')) or
+                 (((_observability_agent_previous_generation.stat.lnk_target | default(''))
+                   | basename) is match('^[a-f0-9]{64}$') and
+                  (_observability_agent_previous_generation.stat.lnk_target | default('')) ==
+                  (observability_agent.credential_dir ~ '/generations/' ~
+                   ((_observability_agent_previous_generation.stat.lnk_target | default(''))
+                    | basename))))
+            fail_msg: Active observability generation link has an unsafe target.
+          no_log: true
+
+        - name: Normalize active observability credential generation
+          ansible.builtin.set_fact:
+            _observability_agent_previous_generation_id: >-
+              {{ _observability_agent_previous_generation.stat.lnk_target | basename }}
+          when: _observability_agent_previous_generation.stat.islnk | default(false)
+          no_log: true
+
+        - name: Inspect observability agent service activity
           ansible.builtin.command:
             argv:
               - /usr/bin/systemctl
-              - show
+              - is-active
+              - --quiet
               - observability-agent.service
-              - --property=ActiveState
-              - --value
-          register: _observability_agent_failed_first_state
+          register: _observability_agent_service_active
           changed_when: false
-          when: not (_observability_agent_can_restore_runtime | bool)
+          failed_when: false
 
-        - name: Assert failed first observability agent activation is inactive
-          ansible.builtin.assert:
-            that:
-              - _observability_agent_failed_first_state.stdout | trim == 'inactive'
-            fail_msg: Failed first observability agent activation did not stop cleanly.
-          when: not (_observability_agent_can_restore_runtime | bool)
+        - name: Require coherent previously active runtime for live rollback
+          ansible.builtin.set_fact:
+            _observability_agent_can_restore_runtime: >-
+              {{ _observability_agent_previous_generation.stat.islnk | default(false)
+              and _observability_agent_previous_unit.stat.exists
+              and _observability_agent_service_active.rc == 0 }}
+            _observability_agent_previous_ready_path: >-
+              {{ '/-/ready' if (_observability_agent_previous_runtimes | default([])) == ['prometheus']
+              else '/ready' }}
 
-        - name: Refuse failed observability generation activation
-          ansible.builtin.fail:
-            msg: Observability agent generation failed readiness and was rolled back.
+        - name: Activate and verify observability configuration generation
+          block:
+            - name: Install observability agent units
+              ansible.builtin.template:
+                src: "{{ item }}"
+                dest: "/etc/systemd/system/{{ item | regex_replace('\\.j2$', '') }}"
+                owner: root
+                group: root
+                mode: "0644"
+              loop:
+                - observability-agent.service.j2
+                - observability-agent-adapter.service.j2
+                - observability-agent-adapter.timer.j2
+                - observability-agent-health-adapter.service.j2
+                - observability-agent-health-adapter.timer.j2
+              register: _observability_agent_units
+              notify:
+                - Reload observability agent systemd
+                - Restart observability agent adapter timer
 
-    - name: Commit ready sender runtime activation
-      ansible.builtin.set_fact:
-        _observability_agent_runtime_ready: true
+            - name: Switch current observability credential generation
+              ansible.builtin.file:
+                src: "generations/{{ _observability_agent_credential_generation }}"
+                dest: "{{ observability_agent.credential_dir }}/current"
+                owner: root
+                group: root
+                state: link
+                force: true
+              register: _observability_agent_generation_switch
+              no_log: true
 
-    - name: Enable and start observability agent sender
-      ansible.builtin.systemd_service:
-        name: observability-agent.service
-        enabled: true
-        state: started
-        daemon_reload: true
+            - name: Restart observability agent on the complete generation
+              ansible.builtin.systemd_service:
+                name: observability-agent.service
+                enabled: true
+                state: restarted
+                daemon_reload: true
+              when: >-
+                _observability_agent_generation_switch.changed or
+                _observability_agent_units.changed or
+                _observability_agent_runtime_changed or
+                _observability_agent_service_active.rc != 0
 
-    - name: Enable and start observability agent adapter timer
-      ansible.builtin.systemd_service:
-        name: observability-agent-adapter.timer
-        enabled: true
-        state: started
-        daemon_reload: true
+            - name: Wait for observability agent local readiness
+              ansible.builtin.command:
+                argv:
+                  - python3
+                  - -c
+                  - "{{ lookup('ansible.builtin.file', role_path ~ '/files/observability-agent-readiness.py') }}"
+                  - "{{ observability_agent.web_listen }}"
+                  - vmagent
+              changed_when: false
+              register: _observability_agent_ready
+              retries: 15
+              delay: 1
+              until: _observability_agent_ready.rc == 0
+          rescue:
+            - name: Restore the previous sender binary after failed activation
+              ansible.builtin.file:
+                src: "{{ _observability_agent_previous_release.stat.lnk_source }}"
+                dest: "{{ observability_agent.install_root }}/current"
+                state: link
+                force: true
+              when:
+                - _observability_agent_runtime_changed | bool
+                - _observability_agent_previous_release.stat.islnk | default(false)
 
-    - name: Enable and start observability agent health adapter timer
-      ansible.builtin.systemd_service:
-        name: observability-agent-health-adapter.timer
-        enabled: true
-        state: started
-        daemon_reload: true
+            - name: Restore previous observability generation
+              ansible.builtin.file:
+                src: "generations/{{ _observability_agent_previous_generation_id }}"
+                dest: "{{ observability_agent.credential_dir }}/current"
+                owner: root
+                group: root
+                state: link
+                force: true
+              when: _observability_agent_previous_generation.stat.islnk | default(false)
+              no_log: true
 
-    - name: Install explicitly scoped direct node heartbeat producer
-      ansible.builtin.include_role:
-        name: observability_kuma
-        tasks_from: producers
+            - name: Bind restored service to the previous credential generation
+              ansible.builtin.set_fact:
+                _observability_agent_service_generation: >-
+                  {{ _observability_agent_previous_generation_id }}
+              when: _observability_agent_can_restore_runtime | bool
+              no_log: true
+
+            - name: Restore previous observability agent service unit
+              ansible.builtin.copy:
+                content: "{{ _observability_agent_previous_unit_bytes.content | b64decode }}"
+                dest: /etc/systemd/system/observability-agent.service
+                owner: root
+                group: root
+                mode: "0644"
+              when: _observability_agent_previous_unit.stat.exists
+              no_log: true
+
+            - name: Restore previous observability health adapter service unit
+              ansible.builtin.template:
+                src: observability-agent-health-adapter.service.j2
+                dest: /etc/systemd/system/observability-agent-health-adapter.service
+                owner: root
+                group: root
+                mode: "0644"
+              when: _observability_agent_can_restore_runtime | bool
+
+            - name: Stop and disable failed first observability agent activation
+              ansible.builtin.systemd_service:
+                name: observability-agent.service
+                enabled: false
+                state: stopped
+                daemon_reload: true
+              when: not (_observability_agent_can_restore_runtime | bool)
+
+            - name: Remove failed first observability generation activation
+              ansible.builtin.file:
+                path: "{{ observability_agent.credential_dir }}/current"
+                state: absent
+              when: not (_observability_agent_previous_generation.stat.islnk | default(false))
+              no_log: true
+
+            - name: Restart restored observability generation
+              ansible.builtin.systemd_service:
+                name: observability-agent.service
+                state: restarted
+                daemon_reload: true
+              when: _observability_agent_can_restore_runtime | bool
+
+            - name: Verify restored observability generation readiness
+              ansible.builtin.command:
+                argv:
+                  - python3
+                  - -c
+                  - "{{ lookup('ansible.builtin.file', role_path ~ '/files/observability-agent-readiness.py') }}"
+                  - "{{ _observability_agent_previous_listeners[0] }}"
+                  - "{{ _observability_agent_previous_runtimes[0] }}"
+              changed_when: false
+              register: _observability_agent_restored_ready
+              retries: 15
+              delay: 1
+              until: _observability_agent_restored_ready.rc == 0
+              when: _observability_agent_can_restore_runtime | bool
+
+            - name: Inspect failed first observability agent activation state
+              ansible.builtin.command:
+                argv:
+                  - /usr/bin/systemctl
+                  - show
+                  - observability-agent.service
+                  - --property=ActiveState
+                  - --value
+              register: _observability_agent_failed_first_state
+              changed_when: false
+              when: not (_observability_agent_can_restore_runtime | bool)
+
+            - name: Assert failed first observability agent activation is inactive
+              ansible.builtin.assert:
+                that:
+                  - _observability_agent_failed_first_state.stdout | trim == 'inactive'
+                fail_msg: Failed first observability agent activation did not stop cleanly.
+              when: not (_observability_agent_can_restore_runtime | bool)
+
+            - name: Refuse failed observability generation activation
+              ansible.builtin.fail:
+                msg: Observability agent generation failed readiness and was rolled back.
+
+        - name: Commit ready sender runtime activation
+          ansible.builtin.set_fact:
+            _observability_agent_runtime_ready: true
+
+        - name: Enable and start observability agent sender
+          ansible.builtin.systemd_service:
+            name: observability-agent.service
+            enabled: true
+            state: started
+            daemon_reload: true
+
+        - name: Enable and start observability agent adapter timer
+          ansible.builtin.systemd_service:
+            name: observability-agent-adapter.timer
+            enabled: true
+            state: started
+            daemon_reload: true
+
+        - name: Enable and start observability agent health adapter timer
+          ansible.builtin.systemd_service:
+            name: observability-agent-health-adapter.timer
+            enabled: true
+            state: started
+            daemon_reload: true
+
+        - name: Install explicitly scoped direct node heartbeat producer
+          ansible.builtin.include_role:
+            name: observability_kuma
+            tasks_from: producers
   rescue:
     - name: Preserve the originating convergence failure boundary
       ansible.builtin.set_fact:

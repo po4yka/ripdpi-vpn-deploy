@@ -66,6 +66,9 @@ FIXED = (
     + PIPELINE_STATE
 )
 LINKS = {CONFIG + "/alertmanager-current.yml", CONFIG + "/alertmanager-previous.yml"}
+LINK_PATTERN = r"/alertmanager-[a-f0-9]{64}\.yml"
+PROFILE = "collector"
+
 ALIAS = re.compile(r"[a-z][a-z0-9_-]{0,63}\Z")
 SAFE_FAILURE_CATEGORIES = {
     "root": "root",
@@ -215,8 +218,7 @@ class Snapshot:
         if relative in LINKS and stat.S_ISLNK(info.st_mode):
             target = os.readlink(path)
             if not re.fullmatch(
-                re.escape(str(self.root / CONFIG / "generations"))
-                + r"/alertmanager-[a-f0-9]{64}\.yml",
+                re.escape(str(self.root / CONFIG / "generations")) + LINK_PATTERN,
                 target,
             ):
                 raise ValueError("unsafe-link")
@@ -290,6 +292,53 @@ class Snapshot:
     def prepare(self, request, *, inspect_only=False):
         if os.path.lexists(self.directory):
             raise ValueError("manual-recovery-required")
+        if PROFILE == "deadman":
+            services = request["services"]
+            if (
+                set(request) != {"services"}
+                or not isinstance(services, dict)
+                or set(services) != set(SERVICES)
+                or any(
+                    not isinstance(row, dict)
+                    or set(row) != {"exists", "active", "enabled", "unit_file_state"}
+                    or any(
+                        type(row[field]) is not bool
+                        for field in ("exists", "active", "enabled")
+                    )
+                    or not isinstance(row["unit_file_state"], str)
+                    or row["unit_file_state"]
+                    not in {
+                        "enabled",
+                        "enabled-runtime",
+                        "disabled",
+                        "static",
+                        "indirect",
+                        "not-found",
+                    }
+                    or row["enabled"]
+                    != (row["unit_file_state"] in {"enabled", "enabled-runtime"})
+                    for row in services.values()
+                )
+            ):
+                raise ValueError("service-state")
+            state = {
+                "id": None if inspect_only else uuid.uuid4().hex,
+                "phase": "prepared",
+                "owners": [],
+                "previous_owners": [],
+                "services": services,
+                "files": {
+                    path: self.read(path, allow_missing=True, prepare_capture=True)
+                    for path in FIXED
+                },
+            }
+            if len(json.dumps(state, sort_keys=True).encode()) > 8388608:
+                raise ValueError("snapshot-size")
+            if not inspect_only:
+                self.parent(self.directory, failure_category="config-parent")
+                self.directory.mkdir(mode=0o700)
+                self.save(state, failure_category="config-parent")
+            return {key: state[key] for key in ("id", "previous_owners", "services")}
         candidate = owners(request["owners"])
         old_auth = self.read(
             CREDENTIALS + "silence-auth.json",
@@ -395,6 +444,37 @@ class Snapshot:
 
 
 def main():
+    global CONFIG, CREDENTIALS, FIXED, LINKS, SERVICES, PIPELINE_STATE, PROFILE, LINK_PATTERN
+    if len(sys.argv) > 1 and sys.argv[1] == "deadman":
+        sys.argv.pop(1)
+        PROFILE = "deadman"
+        CONFIG = "etc/observability-deadman"
+        CREDENTIALS = CONFIG + "/credentials/"
+        PIPELINE_STATE = []  # Replay and incident state must never roll backward.
+        SERVICES = ["observability-deadman.service", "observability-deadman-tick.timer"]
+        LINKS = {CONFIG + "/deadman-current.json"}
+        LINK_PATTERN = r"/deadman-[a-f0-9]{64}\.json"
+        FIXED = (
+            [
+                CREDENTIALS + name
+                for name in (
+                    "pulse-token",
+                    "telegram-bot-token",
+                    "pulse-server.crt",
+                    "pulse-server.key",
+                    "reverse-health-ca.pem",
+                    "reverse-health-client.crt",
+                    "reverse-health-client.key",
+                )
+            ]
+            + list(LINKS)
+            + [
+                "usr/local/libexec/observability-deadman.py",
+                "etc/systemd/system/observability-deadman.service",
+                "etc/systemd/system/observability-deadman-tick.service",
+                "etc/systemd/system/observability-deadman-tick.timer",
+            ]
+        )
     action, root, *identifiers = sys.argv[1:]
     snapshot = Snapshot(root)
     if action in ("prepare", "inspect"):

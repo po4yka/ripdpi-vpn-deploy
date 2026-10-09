@@ -31,6 +31,8 @@ acceptance for this bootstrap change remain in progress; see
 boot firewall unit is enabled and succeeds, as well as the late worker and
 persistent timer. Revalidate their results under the transaction lock.
 
+**Bootstrap probes are predictive inputs** — source admission, status, preferences, package ownership/version and daemon state execute read-only in check mode. Installation, enrollment and service mutation keep their normal predictive behavior.
+
 ## What's done well
 
 - Exact stable package and repository key pins fail closed.

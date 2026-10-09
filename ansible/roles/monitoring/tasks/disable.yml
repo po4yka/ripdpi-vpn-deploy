@@ -1,0 +1,32 @@
+---
+- name: Inspect monitoring node exporter ownership before retirement
+  ansible.builtin.stat:
+    path: /var/lib/ripdpi-vpn-deploy/monitoring-owned
+    follow: false
+  register: _monitoring_runtime_owner
+
+- name: Refuse unsafe monitoring ownership marker
+  ansible.builtin.assert:
+    that:
+      - >-
+        not _monitoring_runtime_owner.stat.exists or
+        (_monitoring_runtime_owner.stat.isreg | default(false) and
+         _monitoring_runtime_owner.stat.uid | int == 0 and
+         _monitoring_runtime_owner.stat.mode == '0600' and
+         _monitoring_runtime_owner.stat.nlink | int == 1)
+    fail_msg: Monitoring retirement requires its private role ownership marker.
+
+- name: Retire monitoring runtime authority
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: retire
+  vars:
+    runtime_retire_units: >-
+      {{ ['xray-stats-exporter.timer', 'xray-stats-exporter.service'] +
+         (['prometheus-node-exporter.service'] if _monitoring_runtime_owner.stat.exists else []) }}
+    runtime_retire_paths:
+      - /etc/systemd/system/xray-stats-exporter.timer
+      - /etc/systemd/system/xray-stats-exporter.service
+      - /var/lib/ripdpi-vpn-deploy/monitoring-owned
+      - /usr/local/sbin/xray-stats-exporter
+      - '{{ monitoring.node_exporter_textfile_dir }}/vpn_xray.prom'

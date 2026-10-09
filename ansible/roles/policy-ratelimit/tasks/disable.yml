@@ -1,0 +1,12 @@
+---
+- name: Retire policy-ratelimit runtime authority
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: retire
+  vars:
+    runtime_retire_units:
+      - policy-ratelimit.service
+    runtime_retire_paths:
+      - /etc/systemd/system/policy-ratelimit.service
+      - /usr/local/bin/policy-ratelimit.py
+      - '{{ policy_ratelimit.textfile_dir }}/vpn_policy_ratelimit.prom'

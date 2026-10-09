@@ -7,16 +7,16 @@
   ansible.builtin.systemd_service:
     name: probe-matrix-xray
     state: restarted
-  when: probe_matrix_target.manage_services | bool
+  when: probe_matrix_target_role_enabled | bool and probe_matrix_target.manage_services | bool
 
 - name: Restart probe matrix mtg
   ansible.builtin.systemd_service:
     name: probe-matrix-mtg
     state: restarted
-  when: probe_matrix_target.manage_services | bool
+  when: probe_matrix_target_role_enabled | bool and probe_matrix_target.manage_services | bool
 
 - name: Reload nginx
   ansible.builtin.systemd_service:
     name: nginx
     state: reloaded
-  when: probe_matrix_target.manage_services | bool
+  when: probe_matrix_target_role_enabled | bool and probe_matrix_target.manage_services | bool

@@ -524,15 +524,22 @@ jobs:
           echo "${ALERTMANAGER_SHA256}  ${archive}" | sha256sum -c -
           tar -xzf "$archive" -C "$RUNNER_TEMP" \
             alertmanager-0.28.1.linux-amd64/alertmanager alertmanager-0.28.1.linux-amd64/amtool
-      - name: Install native nftables parser
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.1"
+          cache: false
+      - name: Build exact native Naive composite
+        run: make native-naive-build
+      - name: Install native parser and protocol fixtures
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 openssh-server e2fsprogs util-linux mount
+            nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 openssh-server e2fsprogs util-linux mount nginx openssl wireguard-tools unbound
       - name: Execute native tests with UID and GID capabilities
         run: |
           sudo env "PATH=$PATH" \
             "ALERTMANAGER_BIN=$RUNNER_TEMP/alertmanager-0.28.1.linux-amd64/alertmanager" \
+            "NAIVE_NATIVE_BINARY=$GITHUB_WORKSPACE/.cache/p2-native-caddy/caddy" \
             make test-native-runtime
 
   go-helper:
@@ -669,6 +676,8 @@ jobs:
             scenario: forced-empty
           - role: hysteria-realm
             scenario: shared-tls
+          - role: cdn-front
+            scenario: cdn-on
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:

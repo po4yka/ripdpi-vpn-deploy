@@ -141,511 +141,482 @@
   ansible.builtin.include_tasks: alerting-contract.yml
   when: observability_control_plane.alerting.enabled | bool
 
-- name: Create dedicated control-plane account
-  ansible.builtin.group:
-    name: "{{ observability_control_plane.service_group }}"
-    system: true
-
-- name: Create dedicated control-plane account
-  ansible.builtin.user:
-    name: "{{ observability_control_plane.service_user }}"
-    group: "{{ observability_control_plane.service_group }}"
-    system: true
-    shell: /usr/sbin/nologin
-    home: "{{ observability_control_plane.data_dir }}"
-    create_home: false
-
-- name: Install hardened ingress package
-  ansible.builtin.apt:
-    name: nginx
-    state: present
-    update_cache: true
-    cache_valid_time: 3600
-    policy_rc_d: 101
-
-- name: Begin collector runtime activation transaction
-  ansible.builtin.set_fact:
-    _observability_prometheus_runtime_ready: false
-
-- name: Capture the collector release before binary activation
-  ansible.builtin.stat:
-    path: "{{ observability_control_plane.install_root }}/current"
-    follow: false
-  register: _observability_prometheus_previous_release
-
-- name: Install pinned Prometheus through runtime-release
-  ansible.builtin.include_role:
-    name: runtime-release
-  vars:
-    runtime_release_version: "{{ observability_control_plane.prometheus.version }}"
-    runtime_release_install_root: "{{ observability_control_plane.install_root }}"
-    runtime_release_binary_name: prometheus
-    runtime_release_public_link: "{{ observability_control_plane.binary_link }}"
-    runtime_release_urls: "{{ observability_control_plane.prometheus.urls }}"
-    runtime_release_sha256: "{{ observability_control_plane.prometheus.sha256 }}"
-    runtime_release_arch_slugs: {amd64: amd64, arm64: arm64}
-    runtime_release_artifact_filename: prometheus.tar.gz
-    runtime_release_artifact_type: archive
-    runtime_release_archive_members: "{{ observability_control_plane.prometheus.archive_members }}"
-    runtime_release_archive_strip_components: 1
-
-- name: Preserve the collector binary activation result
-  ansible.builtin.set_fact:
-    _observability_prometheus_runtime_changed: "{{ runtime_release_changed | bool }}"
-
-- name: Create private control-plane directories
-  ansible.builtin.file:
-    path: "{{ item.path }}"
-    state: directory
-    owner: "{{ item.owner }}"
-    group: "{{ item.group }}"
-    mode: "{{ item.mode }}"
-  loop:
-    - path: "{{ observability_control_plane.config_root }}"
-      owner: root
-      group: "{{ observability_control_plane.service_group }}"
-      mode: '0750'
-    - path: "{{ observability_control_plane.config_root }}/generations"
-      owner: root
-      group: root
-      mode: '0755'
-    - path: "{{ observability_control_plane.config_root }}/tls"
-      owner: root
-      group: "{{ observability_control_plane.service_group }}"
-      mode: '0750'
-    - path: "{{ observability_control_plane.config_root }}/clients"
-      owner: root
-      group: root
-      mode: '0750'
-    - path: "{{ observability_control_plane.data_dir }}"
-      owner: "{{ observability_control_plane.service_user }}"
-      group: "{{ observability_control_plane.service_group }}"
-      mode: '0750'
-
-- name: Create persistent disk guard latch directory
-  ansible.builtin.file:
-    path: "{{ observability_control_plane.disk_guard_state_dir }}"
-    state: directory
-    owner: root
-    group: root
-    mode: '0755'
-
-- name: Install monitoring disk guard
-  ansible.builtin.copy:
-    src: observability-disk-guard.py
-    dest: /usr/local/libexec/observability-disk-guard.py
-    owner: root
-    group: root
-    mode: '0755'
-  notify: Restart observability disk guard
-
-- name: Install aggregate collector resource boundary and reserve guard
-  ansible.builtin.template:
-    src: "{{ item }}.j2"
-    dest: "/etc/systemd/system/{{ item }}"
-    owner: root
-    group: root
-    mode: '0644'
-  loop:
-    - observability-collector.slice
-    - observability-disk-guard.service
-  register: _observability_resource_units
-  notify:
-    - Reload observability resource boundary
-    - Restart observability disk guard
-
-- name: Reload aggregate collector resource units before dependent services
-  ansible.builtin.meta: flush_handlers
-
-- name: Materialize ingress TLS and revocation authority
-  ansible.builtin.copy:
-    content: "{{ item.content }}"
-    dest: "{{ item.dest }}"
-    owner: root
-    group: "{{ observability_control_plane.service_group }}"
-    mode: "{{ item.mode }}"
-  loop:
-    - content: "{{ observability_control_plane.tls.server_cert_pem }}"
-      dest: "{{ observability_control_plane.config_root }}/tls/server.crt"
-      mode: '0640'
-    - content: "{{ observability_control_plane.tls.server_key_pem }}"
-      dest: "{{ observability_control_plane.config_root }}/tls/server.key"
-      mode: '0640'
-    - content: "{{ observability_control_plane.tls.client_ca_pem }}"
-      dest: "{{ observability_control_plane.config_root }}/tls/client-ca.crt"
-      mode: '0640'
-    - content: "{{ observability_control_plane.tls.client_crl_pem }}"
-      dest: "{{ observability_control_plane.config_root }}/tls/client.crl"
-      mode: '0640'
-  no_log: true
-  diff: false
-  register: _observability_ingress_tls
-
-- name: Materialize identity certificates for preflight only
-  ansible.builtin.copy:
-    content: "{{ item.client_cert_pem }}"
-    dest: "{{ observability_control_plane.config_root }}/clients/{{ item.node_id }}.crt"
-    owner: root
-    group: root
-    mode: '0600'
-  loop: "{{ observability_control_plane.ingest_identities }}"
+- name: Validate collector TLS authority without filesystem candidates
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path ~ '/files/observability-tls-preflight.py') }}"
+    stdin: >-
+      {{ {'certificate': observability_control_plane.tls.server_cert_pem,
+          'private_key': observability_control_plane.tls.server_key_pem,
+          'ca': observability_control_plane.tls.client_ca_pem,
+          'purpose': 'sslserver', 'identity': observability_control_plane.ingress_address} | to_json }}
+  changed_when: false
+  check_mode: false
   no_log: true
   diff: false
 
-- name: Verify server certificate contains the private ingress IP SAN
+- name: Validate every enrolled client identity and revocation before publication
   ansible.builtin.command:
     argv:
-      - openssl
-      - x509
-      - -in
-      - "{{ observability_control_plane.config_root }}/tls/server.crt"
-      - -noout
-      - -checkip
-      - "{{ observability_control_plane.ingress_address }}"
-  register: _observability_server_ip_san
-  changed_when: false
-  no_log: true
-
-- name: Refuse a server certificate with a mismatched private IP SAN
-  ansible.builtin.assert:
-    that:
-      - "'does match certificate' in _observability_server_ip_san.stdout"
-      - "'does NOT match' not in _observability_server_ip_san.stdout"
-    fail_msg: The ingestion certificate must verify the exact private IP SAN.
-  no_log: true
-
-- name: Verify each client certificate identity, EKU, CA and CRL
-  ansible.builtin.command:
-    argv:
-      - openssl
-      - verify
-      - -purpose
-      - sslclient
-      - -crl_check_all
-      - -CAfile
-      - "{{ observability_control_plane.config_root }}/tls/client-ca.crt"
-      - -CRLfile
-      - "{{ observability_control_plane.config_root }}/tls/client.crl"
-      - "{{ observability_control_plane.config_root }}/clients/{{ item.node_id }}.crt"
+      - python3
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path ~ '/files/observability-tls-preflight.py') }}"
+    stdin: >-
+      {{ {'certificate': item.client_cert_pem, 'private_key': '',
+          'ca': observability_control_plane.tls.client_ca_pem,
+          'crl': observability_control_plane.tls.client_crl_pem,
+          'purpose': 'sslclient_public', 'identity': item.node_id} | to_json }}
   loop: "{{ observability_control_plane.ingest_identities }}"
   changed_when: false
-  no_log: true
-
-- name: Verify each client certificate subject equals its technical node identity
-  ansible.builtin.command:
-    argv:
-      - openssl
-      - x509
-      - -in
-      - "{{ observability_control_plane.config_root }}/clients/{{ item.node_id }}.crt"
-      - -noout
-      - -subject
-      - -nameopt
-      - RFC2253
-  loop: "{{ observability_control_plane.ingest_identities }}"
-  register: _observability_client_subjects
-  changed_when: false
-  no_log: true
-
-- name: Refuse client certificate subject/path mismatches
-  ansible.builtin.assert:
-    that: item.stdout == 'subject=CN=' ~ item.item.node_id
-    fail_msg: Client certificate CN must exactly equal its assigned node_id.
-  loop: "{{ _observability_client_subjects.results }}"
-  no_log: true
-
-- name: Configure expected-target observation artifacts
-  ansible.builtin.include_tasks: expected-targets.yml
-  when: >-
-    (observability_control_plane.expected_targets | default({'enabled': false}, true)).enabled | default(false) | bool
-
-- name: Remove disabled expected-target observation artifacts
-  ansible.builtin.include_tasks: expected-targets-disable.yml
-  when: >-
-    not ((observability_control_plane.expected_targets |
-    default({'enabled': false}, true)).enabled | default(false) | bool)
-
-- name: Configure bounded alerting and Telegram routing
-  ansible.builtin.include_tasks: alerting.yml
-  when: observability_control_plane.alerting.enabled | bool
-
-- name: Remove disabled alerting artifacts
-  ansible.builtin.include_tasks: alerting-disable.yml
-  when: not (observability_control_plane.alerting.enabled | bool)
-
-- name: Derive the immutable Prometheus generation from candidate content
-  ansible.builtin.set_fact:
-    _observability_generation: "{{ lookup('ansible.builtin.template', 'prometheus.yml.j2') | hash('sha256') }}"
-  no_log: true
-
-- name: Inspect immutable Prometheus generation before publication
-  ansible.builtin.stat:
-    path: "{{ observability_control_plane.config_root }}/generations/{{ _observability_generation }}.yml"
-    checksum_algorithm: sha256
-  register: _observability_candidate_generation
-  changed_when: false
-
-- name: Refuse a conflicting immutable Prometheus generation
-  ansible.builtin.assert:
-    that: >-
-      not (_observability_candidate_generation.stat.exists | default(false)) or
-      _observability_candidate_generation.stat.checksum == _observability_generation
-    fail_msg: A different configuration already occupies the derived immutable generation.
-  no_log: true
-
-- name: Publish isolated immutable Prometheus generation
-  ansible.builtin.copy:
-    content: "{{ lookup('ansible.builtin.template', 'prometheus.yml.j2') }}"
-    dest: "{{ observability_control_plane.config_root }}/generations/{{ _observability_generation }}.yml"
-    owner: root
-    group: "{{ observability_control_plane.service_group }}"
-    mode: '0640'
-    force: false
+  check_mode: false
   no_log: true
   diff: false
 
-- name: Inspect previous Prometheus unit
-  ansible.builtin.stat:
-    path: /etc/systemd/system/observability-prometheus.service
-    follow: false
-  register: _observability_prometheus_previous_unit
-
-- name: Capture previous Prometheus unit
-  ansible.builtin.slurp:
-    src: /etc/systemd/system/observability-prometheus.service
-  register: _observability_prometheus_previous_unit_bytes
-  when: _observability_prometheus_previous_unit.stat.exists
-  no_log: true
-
-- name: Inspect current generation before activation
-  ansible.builtin.stat:
-    path: "{{ observability_control_plane.config_root }}/current.yml"
-    follow: false
-  register: _observability_current
-
-- name: Refuse an unsafe existing control-plane generation link
-  ansible.builtin.assert:
-    that:
-      - >-
-        not (_observability_current.stat.exists | default(false)) or
-        (_observability_current.stat.islnk | default(false))
-      - >-
-        not (_observability_current.stat.exists | default(false)) or
-        _observability_current.stat.lnk_source is match(
-          '^' ~ observability_control_plane.config_root ~
-          '/generations/[a-f0-9]{64}[.]yml$')
-    fail_msg: Existing control-plane current.yml must be an owned generation link.
-
-- name: Preserve ready control-plane generation before activation
-  ansible.builtin.file:
-    src: "{{ _observability_current.stat.lnk_source }}"
-    dest: "{{ observability_control_plane.config_root }}/previous.yml"
-    state: link
-    force: true
-    owner: root
-    group: "{{ observability_control_plane.service_group }}"
-  when: _observability_current.stat.exists | default(false)
+- name: Predict validated collector publication without activating candidate state
+  ansible.builtin.debug:
+    msg: Collector inputs passed read-only preflight; runtime publication requires ordinary convergence.
   changed_when: false
+  when: ansible_check_mode
 
-- name: Activate complete validated Prometheus generation with rollback
+- name: Publish validated collector runtime outside check mode
+  when: not ansible_check_mode
   block:
-    - name: Install Prometheus service unit
-      ansible.builtin.template:
-        src: observability-prometheus.service.j2
-        dest: /etc/systemd/system/observability-prometheus.service
+    - name: Create dedicated control-plane account
+      ansible.builtin.group:
+        name: "{{ observability_control_plane.service_group }}"
+        system: true
+
+    - name: Create dedicated control-plane account
+      ansible.builtin.user:
+        name: "{{ observability_control_plane.service_user }}"
+        group: "{{ observability_control_plane.service_group }}"
+        system: true
+        shell: /usr/sbin/nologin
+        home: "{{ observability_control_plane.data_dir }}"
+        create_home: false
+
+    - name: Install hardened ingress package
+      ansible.builtin.apt:
+        name: nginx
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+        policy_rc_d: 101
+
+    - name: Begin collector runtime activation transaction
+      ansible.builtin.set_fact:
+        _observability_prometheus_runtime_ready: false
+
+    - name: Capture the collector release before binary activation
+      ansible.builtin.stat:
+        path: "{{ observability_control_plane.install_root }}/current"
+        follow: false
+      register: _observability_prometheus_previous_release
+
+    - name: Install pinned Prometheus through runtime-release
+      ansible.builtin.include_role:
+        name: runtime-release
+      vars:
+        runtime_release_version: "{{ observability_control_plane.prometheus.version }}"
+        runtime_release_install_root: "{{ observability_control_plane.install_root }}"
+        runtime_release_binary_name: prometheus
+        runtime_release_public_link: "{{ observability_control_plane.binary_link }}"
+        runtime_release_urls: "{{ observability_control_plane.prometheus.urls }}"
+        runtime_release_sha256: "{{ observability_control_plane.prometheus.sha256 }}"
+        runtime_release_arch_slugs: {amd64: amd64, arm64: arm64}
+        runtime_release_artifact_filename: prometheus.tar.gz
+        runtime_release_artifact_type: archive
+        runtime_release_archive_members: "{{ observability_control_plane.prometheus.archive_members }}"
+        runtime_release_archive_strip_components: 1
+
+    - name: Preserve the collector binary activation result
+      ansible.builtin.set_fact:
+        _observability_prometheus_runtime_changed: "{{ runtime_release_changed | bool }}"
+
+    - name: Create private control-plane directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner }}"
+        group: "{{ item.group }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - path: "{{ observability_control_plane.config_root }}"
+          owner: root
+          group: "{{ observability_control_plane.service_group }}"
+          mode: '0750'
+        - path: "{{ observability_control_plane.config_root }}/generations"
+          owner: root
+          group: root
+          mode: '0755'
+        - path: "{{ observability_control_plane.config_root }}/tls"
+          owner: root
+          group: "{{ observability_control_plane.service_group }}"
+          mode: '0750'
+        - path: "{{ observability_control_plane.config_root }}/clients"
+          owner: root
+          group: root
+          mode: '0750'
+        - path: "{{ observability_control_plane.data_dir }}"
+          owner: "{{ observability_control_plane.service_user }}"
+          group: "{{ observability_control_plane.service_group }}"
+          mode: '0750'
+
+    - name: Create persistent disk guard latch directory
+      ansible.builtin.file:
+        path: "{{ observability_control_plane.disk_guard_state_dir }}"
+        state: directory
         owner: root
         group: root
-        mode: '0644'
-      register: _observability_prometheus_unit
+        mode: '0755'
 
-    - name: Point current configuration at candidate generation
-      ansible.builtin.file:
-        src: "{{ observability_control_plane.config_root }}/generations/{{ _observability_generation }}.yml"
-        dest: "{{ observability_control_plane.config_root }}/current.yml"
-        state: link
-        force: true
-      register: _observability_prometheus_activation
-
-    - name: Start or restart Prometheus for the published generation
-      ansible.builtin.systemd_service:
-        name: observability-prometheus
-        daemon_reload: "{{ _observability_prometheus_unit.changed }}"
-        enabled: true
-        state: >-
-          {{ 'restarted' if (_observability_prometheus_unit.changed or
-          _observability_prometheus_activation.changed or
-          _observability_prometheus_runtime_changed) else 'started' }}
-
-    - name: Require loopback-only Prometheus candidate readiness
-      ansible.builtin.uri:
-        url: http://127.0.0.1:9090/-/ready
-        status_code: 200
-        return_content: false
-      register: _observability_ready
-      retries: 5
-      delay: 2
-      until: _observability_ready.status == 200
-      no_log: true
-  rescue:
-    - name: Restore the previous collector binary after failed activation
-      ansible.builtin.file:
-        src: "{{ _observability_prometheus_previous_release.stat.lnk_source }}"
-        dest: "{{ observability_control_plane.install_root }}/current"
-        state: link
-        force: true
-      when:
-        - _observability_prometheus_runtime_changed | bool
-        - _observability_prometheus_previous_release.stat.islnk | default(false)
-
-    - name: Restore previous ready configuration after failed candidate
-      ansible.builtin.file:
-        src: "{{ _observability_current.stat.lnk_source }}"
-        dest: "{{ observability_control_plane.config_root }}/current.yml"
-        state: link
-        force: true
-      when: _observability_current.stat.exists | default(false)
-
-    - name: Restore previous Prometheus unit after failed activation
+    - name: Install monitoring disk guard
       ansible.builtin.copy:
-        content: "{{ _observability_prometheus_previous_unit_bytes.content | b64decode }}"
-        dest: /etc/systemd/system/observability-prometheus.service
+        src: observability-disk-guard.py
+        dest: /usr/local/libexec/observability-disk-guard.py
+        owner: root
+        group: root
+        mode: '0755'
+      notify: Restart observability disk guard
+
+    - name: Install aggregate collector resource boundary and reserve guard
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
         owner: root
         group: root
         mode: '0644'
+      loop:
+        - observability-collector.slice
+        - observability-disk-guard.service
+      register: _observability_resource_units
+      notify:
+        - Reload observability resource boundary
+        - Restart observability disk guard
+
+    - name: Reload aggregate collector resource units before dependent services
+      ansible.builtin.meta: flush_handlers
+
+    - name: Configure expected-target observation artifacts
+      ansible.builtin.include_tasks: expected-targets.yml
+      when: >-
+        (observability_control_plane.expected_targets | default({'enabled': false}, true)).enabled | default(false) | bool
+
+    - name: Remove disabled expected-target observation artifacts
+      ansible.builtin.include_tasks: expected-targets-disable.yml
+      when: >-
+        not ((observability_control_plane.expected_targets |
+        default({'enabled': false}, true)).enabled | default(false) | bool)
+
+    - name: Configure bounded alerting and Telegram routing
+      ansible.builtin.include_tasks: alerting.yml
+      when: observability_control_plane.alerting.enabled | bool
+
+    - name: Remove disabled alerting artifacts
+      ansible.builtin.include_tasks: alerting-disable.yml
+      when: not (observability_control_plane.alerting.enabled | bool)
+
+    - name: Derive the immutable Prometheus generation from candidate content
+      ansible.builtin.set_fact:
+        _observability_generation: "{{ lookup('ansible.builtin.template', 'prometheus.yml.j2') | hash('sha256') }}"
+      no_log: true
+
+    - name: Inspect immutable Prometheus generation before publication
+      ansible.builtin.stat:
+        path: "{{ observability_control_plane.config_root }}/generations/{{ _observability_generation }}.yml"
+        checksum_algorithm: sha256
+      register: _observability_candidate_generation
+      changed_when: false
+
+    - name: Refuse a conflicting immutable Prometheus generation
+      ansible.builtin.assert:
+        that: >-
+          not (_observability_candidate_generation.stat.exists | default(false)) or
+          _observability_candidate_generation.stat.checksum == _observability_generation
+        fail_msg: A different configuration already occupies the derived immutable generation.
+      no_log: true
+
+    - name: Publish isolated immutable Prometheus generation
+      ansible.builtin.copy:
+        content: "{{ lookup('ansible.builtin.template', 'prometheus.yml.j2') }}"
+        dest: "{{ observability_control_plane.config_root }}/generations/{{ _observability_generation }}.yml"
+        owner: root
+        group: "{{ observability_control_plane.service_group }}"
+        mode: '0640'
+        force: false
+      no_log: true
+      diff: false
+
+    - name: Inspect previous Prometheus unit
+      ansible.builtin.stat:
+        path: /etc/systemd/system/observability-prometheus.service
+        follow: false
+      register: _observability_prometheus_previous_unit
+
+    - name: Capture previous Prometheus unit
+      ansible.builtin.slurp:
+        src: /etc/systemd/system/observability-prometheus.service
+      register: _observability_prometheus_previous_unit_bytes
       when: _observability_prometheus_previous_unit.stat.exists
       no_log: true
 
-    - name: Stop an unaccepted first Prometheus service activation
-      ansible.builtin.systemd_service:
-        name: observability-prometheus
-        state: stopped
-        enabled: false
-        daemon_reload: true
-      when: not (_observability_current.stat.exists | default(false))
-
-    - name: Remove an unaccepted first Prometheus configuration activation
-      ansible.builtin.file:
+    - name: Inspect current generation before activation
+      ansible.builtin.stat:
         path: "{{ observability_control_plane.config_root }}/current.yml"
-        state: absent
-      when: not (_observability_current.stat.exists | default(false))
+        follow: false
+      register: _observability_current
 
-    - name: Remove the unaccepted first Prometheus service unit
+    - name: Refuse an unsafe existing control-plane generation link
+      ansible.builtin.assert:
+        that:
+          - >-
+            not (_observability_current.stat.exists | default(false)) or
+            (_observability_current.stat.islnk | default(false))
+          - >-
+            not (_observability_current.stat.exists | default(false)) or
+            _observability_current.stat.lnk_source is match(
+              '^' ~ observability_control_plane.config_root ~
+              '/generations/[a-f0-9]{64}[.]yml$')
+        fail_msg: Existing control-plane current.yml must be an owned generation link.
+
+    - name: Preserve ready control-plane generation before activation
       ansible.builtin.file:
-        path: /etc/systemd/system/observability-prometheus.service
-        state: absent
-      when: not (_observability_prometheus_previous_unit.stat.exists | default(false))
+        src: "{{ _observability_current.stat.lnk_source }}"
+        dest: "{{ observability_control_plane.config_root }}/previous.yml"
+        state: link
+        force: true
+        owner: root
+        group: "{{ observability_control_plane.service_group }}"
+      when:
+        - _observability_current.stat.exists | default(false)
+        - >-
+          _observability_current.stat.lnk_source !=
+          observability_control_plane.config_root ~ '/generations/' ~ _observability_generation ~ '.yml'
 
-    - name: Restore previous ready Prometheus service
+
+    - name: Activate complete validated Prometheus generation with rollback
+      block:
+        - name: Install Prometheus service unit
+          ansible.builtin.template:
+            src: observability-prometheus.service.j2
+            dest: /etc/systemd/system/observability-prometheus.service
+            owner: root
+            group: root
+            mode: '0644'
+          register: _observability_prometheus_unit
+
+        - name: Point current configuration at candidate generation
+          ansible.builtin.file:
+            src: "{{ observability_control_plane.config_root }}/generations/{{ _observability_generation }}.yml"
+            dest: "{{ observability_control_plane.config_root }}/current.yml"
+            state: link
+            force: true
+          register: _observability_prometheus_activation
+
+        - name: Start or restart Prometheus for the published generation
+          ansible.builtin.systemd_service:
+            name: observability-prometheus
+            daemon_reload: "{{ _observability_prometheus_unit.changed }}"
+            enabled: true
+            state: >-
+              {{ 'restarted' if (_observability_prometheus_unit.changed or
+              _observability_prometheus_activation.changed or
+              _observability_prometheus_runtime_changed) else 'started' }}
+
+        - name: Require loopback-only Prometheus candidate readiness
+          ansible.builtin.uri:
+            url: http://127.0.0.1:9090/-/ready
+            status_code: 200
+            return_content: false
+          register: _observability_ready
+          retries: 5
+          delay: 2
+          until: _observability_ready.status == 200
+          no_log: true
+      rescue:
+        - name: Restore the previous collector binary after failed activation
+          ansible.builtin.file:
+            src: "{{ _observability_prometheus_previous_release.stat.lnk_source }}"
+            dest: "{{ observability_control_plane.install_root }}/current"
+            state: link
+            force: true
+          when:
+            - _observability_prometheus_runtime_changed | bool
+            - _observability_prometheus_previous_release.stat.islnk | default(false)
+
+        - name: Restore previous ready configuration after failed candidate
+          ansible.builtin.file:
+            src: "{{ _observability_current.stat.lnk_source }}"
+            dest: "{{ observability_control_plane.config_root }}/current.yml"
+            state: link
+            force: true
+          when: _observability_current.stat.exists | default(false)
+
+        - name: Restore previous Prometheus unit after failed activation
+          ansible.builtin.copy:
+            content: "{{ _observability_prometheus_previous_unit_bytes.content | b64decode }}"
+            dest: /etc/systemd/system/observability-prometheus.service
+            owner: root
+            group: root
+            mode: '0644'
+          when: _observability_prometheus_previous_unit.stat.exists
+          no_log: true
+
+        - name: Stop an unaccepted first Prometheus service activation
+          ansible.builtin.systemd_service:
+            name: observability-prometheus
+            state: stopped
+            enabled: false
+            daemon_reload: true
+          when: not (_observability_current.stat.exists | default(false))
+
+        - name: Remove an unaccepted first Prometheus configuration activation
+          ansible.builtin.file:
+            path: "{{ observability_control_plane.config_root }}/current.yml"
+            state: absent
+          when: not (_observability_current.stat.exists | default(false))
+
+        - name: Remove the unaccepted first Prometheus service unit
+          ansible.builtin.file:
+            path: /etc/systemd/system/observability-prometheus.service
+            state: absent
+          when: not (_observability_prometheus_previous_unit.stat.exists | default(false))
+
+        - name: Restore previous ready Prometheus service
+          ansible.builtin.systemd_service:
+            name: observability-prometheus
+            daemon_reload: true
+            state: restarted
+          when: _observability_current.stat.exists | default(false)
+
+        - name: Fail closed when no previous ready generation exists
+          ansible.builtin.fail:
+            msg: Candidate control-plane generation did not become ready; previous ready generation was restored when available.
+
+    - name: Commit ready collector runtime activation
+      ansible.builtin.set_fact:
+        _observability_prometheus_runtime_ready: true
+
+    - name: Create unprivileged isolated ingress group
+      ansible.builtin.group:
+        name: observability-ingress
+        system: true
+
+    - name: Create unprivileged isolated ingress account
+      ansible.builtin.user:
+        name: observability-ingress
+        group: observability-ingress
+        system: true
+        shell: /usr/sbin/nologin
+        create_home: false
+
+    - name: Build the exact isolated ingress authority write set
+      ansible.builtin.set_fact:
+        _observability_ingress_files:
+          - path: "{{ observability_control_plane.config_root }}/nginx.conf"
+            kind: file
+            content_b64: "{{ lookup('ansible.builtin.template', 'observability-nginx.conf.j2') | b64encode }}"
+            mode: '0644'
+            uid: root
+            gid: root
+          - path: /etc/systemd/system/observability-ingress.service
+            kind: file
+            content_b64: "{{ lookup('ansible.builtin.template', 'observability-ingress.service.j2') | b64encode }}"
+            mode: '0644'
+            uid: root
+            gid: root
+      no_log: true
+
+    - name: Append exact isolated ingress TLS authority
+      ansible.builtin.set_fact:
+        _observability_ingress_files: >-
+          {{ _observability_ingress_files + [{'path': observability_control_plane.config_root ~ '/tls/' ~ item.name,
+              'kind': 'file', 'content_b64': item.content | b64encode,
+              'mode': '0640', 'uid': 'root', 'gid': observability_control_plane.service_group}] }}
+      loop:
+        - {name: server.crt, content: "{{ observability_control_plane.tls.server_cert_pem }}"}
+        - {name: server.key, content: "{{ observability_control_plane.tls.server_key_pem }}"}
+        - {name: client-ca.crt, content: "{{ observability_control_plane.tls.client_ca_pem }}"}
+        - {name: client.crl, content: "{{ observability_control_plane.tls.client_crl_pem }}"}
+      no_log: true
+
+    - name: Publish complete isolated mTLS ingress candidate with compensation
+      ansible.builtin.include_role:
+        name: nginx-xhttp
+        tasks_from: transaction
+      vars:
+        nginx_transaction_owner: observability-ingress
+        nginx_transaction_roots: ["{{ observability_control_plane.config_root }}"]
+        nginx_transaction_files: "{{ _observability_ingress_files }}"
+        nginx_transaction_validate_argv:
+          - /usr/sbin/nginx
+          - -t
+          - -c
+          - "{{ observability_control_plane.config_root }}/nginx.conf"
+        nginx_transaction_unit: observability-ingress.service
+        nginx_transaction_activation: restart
+        nginx_transaction_desired_enabled: true
+        nginx_transaction_credential_root: "{{ observability_control_plane.config_root }}/tls"
+        nginx_transaction_runtime_directories: [/run/observability-ingress]
+
+    - name: Require the opt-in protocol-liveness adapter contract
+      ansible.builtin.assert:
+        that:
+          - observability_control_plane.protocol_liveness.evidence_directory == '/var/lib/vpn-protocol-liveness'
+          - >-
+            observability_control_plane.protocol_liveness.evidence_path ==
+            observability_control_plane.protocol_liveness.evidence_directory ~ '/last-evidence.json'
+          - observability_control_plane.protocol_liveness.output_directory == '/var/lib/node_exporter/textfile'
+          - >-
+            observability_control_plane.protocol_liveness.output_path ==
+            observability_control_plane.protocol_liveness.output_directory ~ '/protocol-liveness.prom'
+          - observability_control_plane.protocol_liveness.stale_after_seconds | int >= 60
+          - observability_control_plane.protocol_liveness.stale_after_seconds | int <= 3600
+          - observability_control_plane.protocol_liveness.max_future_seconds | int >= 0
+          - observability_control_plane.protocol_liveness.max_future_seconds | int <= 300
+        fail_msg: >-
+          Protocol-liveness adaptation requires the canonical publisher path, the
+          existing node_exporter textfile path, and bounded freshness limits.
+      when: observability_control_plane.protocol_liveness.enabled | bool
+
+    - name: Install protocol-liveness adapter
+      ansible.builtin.copy:
+        src: observability-protocol-liveness-adapter.py
+        dest: /usr/local/libexec/observability-protocol-liveness-adapter.py
+        owner: root
+        group: root
+        mode: '0755'
+      when: observability_control_plane.protocol_liveness.enabled | bool
+
+    - name: Install protocol-liveness adapter systemd units
+      ansible.builtin.template:
+        src: "{{ item }}.j2"
+        dest: "/etc/systemd/system/{{ item }}"
+        owner: root
+        group: root
+        mode: '0644'
+      loop:
+        - observability-protocol-liveness-adapter.service
+        - observability-protocol-liveness-adapter.timer
+      when: observability_control_plane.protocol_liveness.enabled | bool
+
+    - name: Enable protocol-liveness adapter timer
       ansible.builtin.systemd_service:
-        name: observability-prometheus
+        name: observability-protocol-liveness-adapter.timer
         daemon_reload: true
-        state: restarted
-      when: _observability_current.stat.exists | default(false)
+        enabled: true
+        state: started
+      when:
+        - not ansible_check_mode
+        - observability_control_plane.protocol_liveness.enabled | bool
 
-    - name: Fail closed when no previous ready generation exists
-      ansible.builtin.fail:
-        msg: Candidate control-plane generation did not become ready; previous ready generation was restored when available.
+    - name: Remove disabled protocol-liveness adapter artifacts
+      ansible.builtin.include_tasks: protocol-liveness-disable.yml
+      when: not (observability_control_plane.protocol_liveness.enabled | bool)
 
-- name: Commit ready collector runtime activation
-  ansible.builtin.set_fact:
-    _observability_prometheus_runtime_ready: true
-
-- name: Create unprivileged isolated ingress group
-  ansible.builtin.group:
-    name: observability-ingress
-    system: true
-
-- name: Create unprivileged isolated ingress account
-  ansible.builtin.user:
-    name: observability-ingress
-    group: observability-ingress
-    system: true
-    shell: /usr/sbin/nologin
-    create_home: false
-
-- name: Render isolated write-only mTLS ingress
-  ansible.builtin.template:
-    src: observability-nginx.conf.j2
-    dest: "{{ observability_control_plane.config_root }}/nginx.conf"
-    owner: root
-    group: root
-    mode: '0644'
-  register: _observability_ingress_config
-
-- name: Install isolated ingress unit with pre-start config validation
-  ansible.builtin.template:
-    src: observability-ingress.service.j2
-    dest: /etc/systemd/system/observability-ingress.service
-    owner: root
-    group: root
-    mode: '0644'
-  register: _observability_ingress_unit
-
-- name: Start isolated ingress without changing shared VPN nginx
-  ansible.builtin.systemd_service:
-    name: observability-ingress
-    enabled: true
-    daemon_reload: true
-    state: >-
-      {{ 'restarted' if (_observability_ingress_tls.changed or _observability_ingress_config.changed or
-      _observability_ingress_unit.changed) else 'started' }}
-
-- name: Require the opt-in protocol-liveness adapter contract
-  ansible.builtin.assert:
-    that:
-      - observability_control_plane.protocol_liveness.evidence_directory == '/var/lib/vpn-protocol-liveness'
-      - >-
-        observability_control_plane.protocol_liveness.evidence_path ==
-        observability_control_plane.protocol_liveness.evidence_directory ~ '/last-evidence.json'
-      - observability_control_plane.protocol_liveness.output_directory == '/var/lib/node_exporter/textfile'
-      - >-
-        observability_control_plane.protocol_liveness.output_path ==
-        observability_control_plane.protocol_liveness.output_directory ~ '/protocol-liveness.prom'
-      - observability_control_plane.protocol_liveness.stale_after_seconds | int >= 60
-      - observability_control_plane.protocol_liveness.stale_after_seconds | int <= 3600
-      - observability_control_plane.protocol_liveness.max_future_seconds | int >= 0
-      - observability_control_plane.protocol_liveness.max_future_seconds | int <= 300
-    fail_msg: >-
-      Protocol-liveness adaptation requires the canonical publisher path, the
-      existing node_exporter textfile path, and bounded freshness limits.
-  when: observability_control_plane.protocol_liveness.enabled | bool
-
-- name: Install protocol-liveness adapter
-  ansible.builtin.copy:
-    src: observability-protocol-liveness-adapter.py
-    dest: /usr/local/libexec/observability-protocol-liveness-adapter.py
-    owner: root
-    group: root
-    mode: '0755'
-  when: observability_control_plane.protocol_liveness.enabled | bool
-
-- name: Install protocol-liveness adapter systemd units
-  ansible.builtin.template:
-    src: "{{ item }}.j2"
-    dest: "/etc/systemd/system/{{ item }}"
-    owner: root
-    group: root
-    mode: '0644'
-  loop:
-    - observability-protocol-liveness-adapter.service
-    - observability-protocol-liveness-adapter.timer
-  when: observability_control_plane.protocol_liveness.enabled | bool
-
-- name: Enable protocol-liveness adapter timer
-  ansible.builtin.systemd_service:
-    name: observability-protocol-liveness-adapter.timer
-    daemon_reload: true
-    enabled: true
-    state: started
-  when:
-    - not ansible_check_mode
-    - observability_control_plane.protocol_liveness.enabled | bool
-
-- name: Remove disabled protocol-liveness adapter artifacts
-  ansible.builtin.include_tasks: protocol-liveness-disable.yml
-  when: not (observability_control_plane.protocol_liveness.enabled | bool)
-
-- name: Install explicitly scoped independent collector and delivery producers
-  ansible.builtin.include_role:
-    name: observability_kuma
-    tasks_from: producers
+    - name: Install explicitly scoped independent collector and delivery producers
+      ansible.builtin.include_role:
+        name: observability_kuma
+        tasks_from: producers

@@ -19,6 +19,13 @@ patching mechanism.
 security-only. `playbooks/os-maintenance.yml` owns full upgrades and any
 required operator-controlled reboot, one host at a time.
 
+**Both policy states are rendered** — disabling the internal enabled flag still publishes explicit APT periodic zeros; package installation and native dry-run validation remain enabled-only. Repeated disable does not leave stale enabled policy.
+
+**Origin policy replaces inherited lists** — both Origins-Pattern and the
+legacy Allowed-Origins list are cleared before publishing the selected policy.
+An earlier distro/provider broad origin must not accumulate into security-only
+selection. Native APT merge regressions verify the effective lists.
+
 ## What's done well
 
 - **Validation before trust** — tasks run `unattended-upgrade -d --dry-run`

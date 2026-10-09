@@ -7,22 +7,28 @@ from pathlib import Path
 import pytest
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def _tasks(role: str) -> list[dict]:
-    return yaml.safe_load(
-        (ROOT / "ansible" / "roles" / role / "tasks" / "main.yml").read_text(
-            encoding="utf-8"
-        )
+    directory = ROOT / "ansible" / "roles" / role / "tasks"
+    source = directory / (
+        "enable.yml" if (directory / "enable.yml").exists() else "main.yml"
     )
+
+    def flatten(rows):
+        for row in rows:
+            yield row
+            for key in ("block", "rescue", "always"):
+                yield from flatten(row.get(key, []))
+
+    return list(flatten(yaml.safe_load(source.read_text(encoding="utf-8"))))
 
 
 def _runtime_task(role: str, name: str | None = None) -> dict:
     matches = []
     for task in _tasks(role):
-        candidates = [task, *task.get("block", [])]
+        candidates = [task]
         matches.extend(
             candidate
             for candidate in candidates
@@ -93,9 +99,9 @@ def test_binary_consumers_delegate_publication_to_runtime_release(
     assert set(contract["runtime_release_sha256"]) == {"amd64", "arm64"}
     assert set(contract["runtime_release_arch_slugs"]) == {"amd64", "arm64"}
 
-    source = (
-        ROOT / "ansible" / "roles" / role / "tasks" / "main.yml"
-    ).read_text(encoding="utf-8")
+    source = (ROOT / "ansible" / "roles" / role / "tasks" / "enable.yml").read_text(
+        encoding="utf-8"
+    )
     assert "ansible.builtin.get_url:" not in source
     assert "ansible.builtin.unarchive:" not in source
 
@@ -164,7 +170,7 @@ def test_xray_prebuilt_path_delegates_archive_activation_only() -> None:
     contract = task["vars"]
 
     assert task["when"] == "not xray_runtime_build_from_source | bool"
-    assert contract["runtime_release_version"] == "{{ xray.version }}"
+    assert contract["runtime_release_version"] == "{{ _xray_runtime_release_identity }}"
     assert contract["runtime_release_install_root"] == "{{ xray_install_dir }}"
     assert contract["runtime_release_binary_name"] == "xray"
     assert contract["runtime_release_public_link"] == "/usr/local/bin/xray"
@@ -230,14 +236,13 @@ def test_xray_publishes_required_geoip_as_a_pinned_read_only_runtime_asset() -> 
     assert caller["vars"]["xray_runtime_publish_geoip"] == (
         "{{ not (vpn.enable_geodata | default(false) | bool) }}"
     )
-    assert caller["vars"]["xray_runtime_asset_public_dir"] == (
-        "{{ xray_asset_dir }}"
-    )
+    assert caller["vars"]["xray_runtime_asset_public_dir"] == ("{{ xray_asset_dir }}")
 
     validation_commands = [
         task["ansible.builtin.template"]["validate"]
         for task in _tasks("xray")
-        if task.get("name") in {
+        if task.get("name")
+        in {
             "Detect Xray config change before preserving rollback state",
             "Render and validate Xray config",
         }
@@ -247,9 +252,9 @@ def test_xray_publishes_required_geoip_as_a_pinned_read_only_runtime_asset() -> 
         "--asset-dir {{ xray_asset_dir | quote }} --config %s"
     )
     assert validation_commands == [expected, expected]
-    service = (
-        ROOT / "ansible/roles/xray/templates/xray.service.j2"
-    ).read_text(encoding="utf-8")
+    service = (ROOT / "ansible/roles/xray/templates/xray.service.j2").read_text(
+        encoding="utf-8"
+    )
     assert "Environment=XRAY_LOCATION_ASSET={{ xray_asset_dir }}" in service
 
     handlers = yaml.safe_load(
@@ -319,10 +324,16 @@ def test_dns_morph_bridge_migrates_only_verified_legacy_regular_binary() -> None
     tasks = _tasks("dns-morph-bridge")
     names = [task["name"] for task in tasks]
     inspect = _task("dns-morph-bridge", "Inspect legacy DNS-Morph public binary")
-    verify = _task("dns-morph-bridge", "Verify legacy DNS-Morph binary before migration")
+    verify = _task(
+        "dns-morph-bridge", "Verify legacy DNS-Morph binary before migration"
+    )
     backup = _task("dns-morph-bridge", "Save verified legacy DNS-Morph binary")
-    interrupted = _task("dns-morph-bridge", "Verify interrupted DNS-Morph migration backup identity")
-    saved = _task("dns-morph-bridge", "Assert saved DNS-Morph migration backup identity")
+    interrupted = _task(
+        "dns-morph-bridge", "Verify interrupted DNS-Morph migration backup identity"
+    )
+    saved = _task(
+        "dns-morph-bridge", "Assert saved DNS-Morph migration backup identity"
+    )
     resume = _task("dns-morph-bridge", "Classify resumable DNS-Morph legacy migration")
     remove = _task("dns-morph-bridge", "Remove verified legacy DNS-Morph public binary")
     runtime = _runtime_task("dns-morph-bridge")
@@ -334,18 +345,40 @@ def test_dns_morph_bridge_migrates_only_verified_legacy_regular_binary() -> None
     assert any("_dns_morph_legacy_binary.stat.checksum" in item for item in assertions)
     assert backup["ansible.builtin.copy"]["remote_src"] is True
     assert backup["ansible.builtin.copy"]["mode"] == "0700"
-    assert "not (_dns_morph_legacy_backup.stat.exists | default(false))" in backup["when"]
-    assert any("_dns_morph_legacy_backup.stat.checksum" in item for item in interrupted["ansible.builtin.assert"]["that"])
-    assert any("_dns_morph_legacy_saved_backup.stat.checksum" in item for item in saved["ansible.builtin.assert"]["that"])
-    assert "_dns_morph_legacy_backup.stat.exists" in resume["ansible.builtin.set_fact"]["_dns_morph_legacy_migration_active"]
-    assert remove["ansible.builtin.file"]["state"] == "absent"
-    assert names.index(backup["name"]) < names.index(remove["name"]) < names.index(
-        "Install pinned DNS-Morph bridge through runtime-release"
+    assert (
+        "not (_dns_morph_legacy_backup.stat.exists | default(false))" in backup["when"]
     )
-    assert "_dns_morph_legacy_backup_url" in runtime["vars"]["runtime_release_urls"]["amd64"]
-    assert "_dns_morph_legacy_migration_active" in runtime["vars"]["runtime_release_urls"]["amd64"]
+    assert any(
+        "_dns_morph_legacy_backup.stat.checksum" in item
+        for item in interrupted["ansible.builtin.assert"]["that"]
+    )
+    assert any(
+        "_dns_morph_legacy_saved_backup.stat.checksum" in item
+        for item in saved["ansible.builtin.assert"]["that"]
+    )
+    assert (
+        "_dns_morph_legacy_backup.stat.exists"
+        in resume["ansible.builtin.set_fact"]["_dns_morph_legacy_migration_active"]
+    )
+    assert remove["ansible.builtin.file"]["state"] == "absent"
+    assert (
+        names.index(backup["name"])
+        < names.index(remove["name"])
+        < names.index("Install pinned DNS-Morph bridge through runtime-release")
+    )
+    assert (
+        "_dns_morph_legacy_backup_url"
+        in runtime["vars"]["runtime_release_urls"]["amd64"]
+    )
+    assert (
+        "_dns_morph_legacy_migration_active"
+        in runtime["vars"]["runtime_release_urls"]["amd64"]
+    )
     classifier = _task("dns-morph-bridge", "Classify legacy DNS-Morph public binary")
     facts = classifier["ansible.builtin.set_fact"]
     assert "legacy- " not in facts["_dns_morph_legacy_backup_path"]
     assert "legacy- " not in facts["_dns_morph_legacy_backup_url"]
-    assert "rescue:" in (ROOT / "ansible/roles/dns-morph-bridge/tasks/main.yml").read_text()
+    assert (
+        "rescue:"
+        in (ROOT / "ansible/roles/dns-morph-bridge/tasks/enable.yml").read_text()
+    )

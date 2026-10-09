@@ -86,3 +86,9 @@ helper exit, preserving the helper's original failure result.
   the binary is hash-pinned via the release-line tracker.
 - **10085 belongs to XHTTP** — keep StatsService on 10086 or another validated
   loopback port; the pre-flight guard rejects public binds and collisions.
+
+- Ordinary site convergence always invokes lifecycle reconciliation. The
+  `xray_role_enabled` input selects enable or owned runtime retirement before
+  secret/package guards. Disable stops units and removes only declared authority;
+  shared packages, immutable runtime receipts, historical logs and recovery data
+  remain available for a later explicit recovery.

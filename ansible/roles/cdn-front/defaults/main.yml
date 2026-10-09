@@ -33,3 +33,6 @@ cdn_front:
   # Cloudflare's AOP cert. Distribute the cert via secrets — do not
   # commit. Empty path → AOP disabled.
   aop_cert_path: ""
+
+# Direct calls enable the role; site dispatch supplies its exact predicate.
+cdn_front_role_enabled: true

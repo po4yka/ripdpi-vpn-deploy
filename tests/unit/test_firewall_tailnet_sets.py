@@ -11,7 +11,6 @@ import yaml
 
 from template_render import merge_render_vars, render_template
 
-
 ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / "ansible" / "roles" / "firewall"
 TEMPLATE = ROLE / "templates" / "nftables.conf.j2"
@@ -59,8 +58,14 @@ def test_empty_tailnet_fragment_is_inert_and_declares_only_typed_sets() -> None:
     fragment = EMPTY_FRAGMENT.read_text()
 
     assert f'include "{FRAGMENT_PATH}"' in rendered
-    assert 'iifname "tailscale0" tcp dport 22022 ip saddr @vpn_tailnet_ssh_v4 accept' in rendered
-    assert 'iifname "tailscale0" tcp dport 22022 ip6 saddr @vpn_tailnet_ssh_v6 accept' in rendered
+    assert (
+        'iifname "tailscale0" tcp dport 22022 ip saddr @vpn_tailnet_ssh_v4 accept'
+        in rendered
+    )
+    assert (
+        'iifname "tailscale0" tcp dport 22022 ip6 saddr @vpn_tailnet_ssh_v6 accept'
+        in rendered
+    )
     assert "tailnet_management.approved_sources" not in rendered
     assert fragment == (
         "# vpn-tailnet-ssh-sets schema=1\n"
@@ -99,20 +104,36 @@ set vpn_tailnet_ssh_v6 {
 
     assert "100.64.10.20/32, 100.64.10.21/32" in committed_fragment
     assert "fd7a:115c:a1e0::1234/128" in committed_fragment
-    assert "\n{% if vpn.enable_tailnet_management | default(false) %}\n" in template_source
-    assert "\n{%- if vpn.enable_tailnet_management | default(false) %}\n" not in template_source
-    assert "    meta l4proto ipv6-icmp icmpv6 type echo-request accept" in rendered_lines
+    assert (
+        "\n{% if vpn.enable_tailnet_management | default(false) %}\n" in template_source
+    )
+    assert (
+        "\n{%- if vpn.enable_tailnet_management | default(false) %}\n"
+        not in template_source
+    )
+    assert (
+        "    meta l4proto ipv6-icmp icmpv6 type echo-request accept" in rendered_lines
+    )
     assert (
         '    iifname "tailscale0" tcp dport 22022 ip saddr @vpn_tailnet_ssh_v4 accept'
         in rendered_lines
     )
-    assert "    meta l4proto ipv6-icmp icmpv6 type echo-request accept" in ansible_rendered_lines
+    assert (
+        "    meta l4proto ipv6-icmp icmpv6 type echo-request accept"
+        in ansible_rendered_lines
+    )
     assert (
         '    iifname "tailscale0" tcp dport 22022 ip saddr @vpn_tailnet_ssh_v4 accept'
         in ansible_rendered_lines
     )
-    assert 'iifname "tailscale0" tcp dport 22022 ip saddr @vpn_tailnet_ssh_v4 accept' in rendered
-    assert 'iifname "tailscale0" tcp dport 22022 ip6 saddr @vpn_tailnet_ssh_v6 accept' in rendered
+    assert (
+        'iifname "tailscale0" tcp dport 22022 ip saddr @vpn_tailnet_ssh_v4 accept'
+        in rendered
+    )
+    assert (
+        'iifname "tailscale0" tcp dport 22022 ip6 saddr @vpn_tailnet_ssh_v6 accept'
+        in rendered
+    )
     assert 'iifname "tailscale0" tcp dport 22022 accept' not in rendered
     assert 'iifname "tailscale0" accept' not in rendered
 
@@ -121,13 +142,27 @@ def test_tailnet_ssh_accepts_are_absent_when_management_is_disabled() -> None:
     enabled = _render_with_toggle(True)
     disabled = _render_with_toggle(False)
 
-    assert 'iifname "tailscale0" tcp dport 22022 ip saddr @vpn_tailnet_ssh_v4 accept' in enabled
-    assert 'iifname "tailscale0" tcp dport 22022 ip6 saddr @vpn_tailnet_ssh_v6 accept' in enabled
-    assert 'iifname "tailscale0" tcp dport 22022 ip saddr @vpn_tailnet_ssh_v4 accept' not in disabled
-    assert 'iifname "tailscale0" tcp dport 22022 ip6 saddr @vpn_tailnet_ssh_v6 accept' not in disabled
+    assert (
+        'iifname "tailscale0" tcp dport 22022 ip saddr @vpn_tailnet_ssh_v4 accept'
+        in enabled
+    )
+    assert (
+        'iifname "tailscale0" tcp dport 22022 ip6 saddr @vpn_tailnet_ssh_v6 accept'
+        in enabled
+    )
+    assert (
+        'iifname "tailscale0" tcp dport 22022 ip saddr @vpn_tailnet_ssh_v4 accept'
+        not in disabled
+    )
+    assert (
+        'iifname "tailscale0" tcp dport 22022 ip6 saddr @vpn_tailnet_ssh_v6 accept'
+        not in disabled
+    )
 
 
-def test_clean_check_mode_uses_validated_approved_sets_without_creating_fragment() -> None:
+def test_clean_check_mode_uses_validated_approved_sets_without_creating_fragment() -> (
+    None
+):
     variables = merge_render_vars()
     variables["ansible_check_mode"] = False
     variables["_firewall_effective_check_mode"] = True
@@ -187,10 +222,14 @@ def test_source_validator_emits_the_exact_canonical_initial_fragment() -> None:
     )
 
 
-def test_fragment_validator_accepts_canonical_hosts_and_refuses_noncanonical_input() -> None:
+def test_fragment_validator_accepts_canonical_hosts_and_refuses_noncanonical_input() -> (
+    None
+):
     tasks = yaml.safe_load(TASKS.read_text())
     validator_task = next(
-        task for task in tasks if task["name"] == "Refuse unsafe or foreign Tailnet SSH sets fragment"
+        task
+        for task in tasks
+        if task["name"] == "Refuse unsafe or foreign Tailnet SSH sets fragment"
     )
     validator = validator_task["ansible.builtin.command"]["argv"][2]
     accepted = """# vpn-tailnet-ssh-sets schema=1
@@ -211,22 +250,73 @@ set vpn_tailnet_ssh_v6 {
     )
     rejected_foreign = accepted + "chain bypass { tcp dport 22022 accept }\n"
 
-    assert subprocess.run(["python3", "-c", validator], input=EMPTY_FRAGMENT.read_text(), text=True).returncode == 0
-    assert subprocess.run(["python3", "-c", validator], input=accepted, text=True).returncode == 0
-    assert subprocess.run(["python3", "-c", validator], input=rejected_duplicate, text=True).returncode != 0
-    assert subprocess.run(["python3", "-c", validator], input=rejected_foreign, text=True).returncode != 0
+    assert (
+        subprocess.run(
+            ["python3", "-c", validator], input=EMPTY_FRAGMENT.read_text(), text=True
+        ).returncode
+        == 0
+    )
+    assert (
+        subprocess.run(
+            ["python3", "-c", validator], input=accepted, text=True
+        ).returncode
+        == 0
+    )
+    assert (
+        subprocess.run(
+            ["python3", "-c", validator], input=rejected_duplicate, text=True
+        ).returncode
+        != 0
+    )
+    assert (
+        subprocess.run(
+            ["python3", "-c", validator], input=rejected_foreign, text=True
+        ).returncode
+        != 0
+    )
 
 
-def test_existing_tailnet_fragment_is_preserved_only_when_safe_and_schema_valid() -> None:
+def test_existing_tailnet_fragment_is_preserved_only_when_safe_and_schema_valid() -> (
+    None
+):
     tasks_text = TASKS.read_text()
     tasks = yaml.safe_load(tasks_text)
-    copy_task = next(task for task in tasks if task["name"] == "Install approved Tailnet SSH sets fragment when absent")
-    stat_task = next(task for task in tasks if task["name"] == "Inspect Tailnet SSH sets fragment before firewall mutation")
-    directory_task = next(task for task in tasks if task["name"] == "Refuse unsafe Tailnet SSH sets include directory")
-    final_stat_task = next(task for task in tasks if task["name"] == "Reinspect Tailnet SSH sets fragment immediately before nftables render")
-    final_metadata_task = next(task for task in tasks if task["name"] == "Refuse unsafe final Tailnet SSH sets fragment metadata")
-    metadata_task = next(task for task in tasks if task["name"] == "Refuse unsafe Tailnet SSH sets fragment metadata")
-    assert_task = next(task for task in tasks if task["name"] == "Refuse unsafe or foreign Tailnet SSH sets fragment")
+    copy_task = next(
+        task
+        for task in tasks
+        if task["name"] == "Install approved Tailnet SSH sets fragment when absent"
+    )
+    stat_task = next(
+        task
+        for task in tasks
+        if task["name"] == "Inspect Tailnet SSH sets fragment before firewall mutation"
+    )
+    directory_task = next(
+        task
+        for task in tasks
+        if task["name"] == "Refuse unsafe Tailnet SSH sets include directory"
+    )
+    final_stat_task = next(
+        task
+        for task in tasks
+        if task["name"]
+        == "Reinspect Tailnet SSH sets fragment immediately before nftables render"
+    )
+    final_metadata_task = next(
+        task
+        for task in tasks
+        if task["name"] == "Refuse unsafe final Tailnet SSH sets fragment metadata"
+    )
+    metadata_task = next(
+        task
+        for task in tasks
+        if task["name"] == "Refuse unsafe Tailnet SSH sets fragment metadata"
+    )
+    assert_task = next(
+        task
+        for task in tasks
+        if task["name"] == "Refuse unsafe or foreign Tailnet SSH sets fragment"
+    )
 
     assert stat_task["ansible.builtin.stat"]["follow"] is False
     source_validator = next(
@@ -237,12 +327,17 @@ def test_existing_tailnet_fragment_is_preserved_only_when_safe_and_schema_valid(
     assert source_validator["check_mode"] is False
     assert final_stat_task["ansible.builtin.stat"]["follow"] is False
     assert copy_task["ansible.builtin.copy"]["force"] is False
-    assert "_firewall_tailnet_initial_fragment" in copy_task["ansible.builtin.copy"]["content"]
+    assert (
+        "_firewall_tailnet_initial_fragment"
+        in copy_task["ansible.builtin.copy"]["content"]
+    )
     assert copy_task["ansible.builtin.copy"]["owner"] == "root"
     assert copy_task["ansible.builtin.copy"]["mode"] == "0644"
     metadata_assertions = "\n".join(metadata_task["ansible.builtin.assert"]["that"])
     directory_assertions = "\n".join(directory_task["ansible.builtin.assert"]["that"])
-    final_metadata_assertions = "\n".join(final_metadata_task["ansible.builtin.assert"]["that"])
+    final_metadata_assertions = "\n".join(
+        final_metadata_task["ansible.builtin.assert"]["that"]
+    )
     assert "isreg" in metadata_assertions
     assert "islnk" in metadata_assertions
     assert ".uid == 0" in metadata_assertions
@@ -257,7 +352,11 @@ def test_existing_tailnet_fragment_is_preserved_only_when_safe_and_schema_valid(
     assert "vpn_tailnet_ssh_v6" in tasks_text
     assert "ansible.builtin.command" in assert_task
     assert assert_task["ansible.builtin.command"]["stdin_add_newline"] is False
-    boot_link = next(task for task in tasks if task["name"] == "Install exact nftables boot recovery requirement")
+    boot_link = next(
+        task
+        for task in tasks
+        if task["name"] == "Install exact nftables boot recovery requirement"
+    )
     assert (
         boot_link["ansible.builtin.file"]["force"]
         == "{{ _firewall_effective_check_mode | bool }}"
@@ -265,9 +364,13 @@ def test_existing_tailnet_fragment_is_preserved_only_when_safe_and_schema_valid(
     assert "ipaddress.ip_network" in tasks_text
     assert "fragment bytes are not canonical" in tasks_text
     task_names = [task["name"] for task in tasks]
-    assert task_names.index("Install approved Tailnet SSH sets fragment when absent") < task_names.index(
-        "Reinspect Tailnet SSH sets fragment immediately before nftables render"
-    ) < task_names.index("Render nftables config")
+    assert (
+        task_names.index("Install approved Tailnet SSH sets fragment when absent")
+        < task_names.index(
+            "Reinspect Tailnet SSH sets fragment immediately before nftables render"
+        )
+        < task_names.index("Render nftables config")
+    )
     assert "nft -c -f %s" in tasks_text
 
 
@@ -276,14 +379,19 @@ def test_molecule_task_level_check_mode_sets_the_explicit_role_contract() -> Non
     check_block = next(
         task
         for task in converge[0]["pre_tasks"]
-        if task["name"] == "Exercise clean firewall check mode before Tailnet fragment exists"
+        if task["name"]
+        == "Exercise clean firewall check mode before Tailnet fragment exists"
     )
     include = check_block["block"][0]
 
     assert check_block["check_mode"] is True
     assert include["vars"]["_firewall_task_check_mode"] is True
     tasks = yaml.safe_load(TASKS.read_text())
-    resolver = next(task for task in tasks if task["name"] == "Resolve effective firewall check-mode context")
+    resolver = next(
+        task
+        for task in tasks
+        if task["name"] == "Resolve effective firewall check-mode context"
+    )
     expression = resolver["ansible.builtin.set_fact"]["_firewall_effective_check_mode"]
     assert "ansible_check_mode" in expression
     assert "_firewall_task_check_mode" in expression
@@ -300,7 +408,9 @@ def test_molecule_tailnet_converge_binds_sources_to_the_installed_fragment() -> 
         if task["name"] == "Converge the real Tailnet-enabled firewall branch"
     )
     check_block = next(
-        task for task in post_tasks if task["name"] == "Repeat the role in check mode with UFW preinstalled"
+        task
+        for task in post_tasks
+        if task["name"] == "Repeat the role in check mode with UFW preinstalled"
     )
     check_include = check_block["block"][0]
     expected = {"approved_sources": ["100.64.10.20", "fd7a:115c:a1e0::1234"]}
@@ -331,4 +441,6 @@ def test_tailnet_include_cannot_create_a_separate_table_bypass() -> None:
     input_index = rendered.index("  chain input {")
     assert include_index < input_index
     assert rendered.count("table inet filter {") == 1
-    assert "destroy table inet filter" in rendered
+    assert "add table inet filter" in rendered
+    assert "flush table inet filter" in rendered
+    assert "destroy table inet filter" not in rendered

@@ -180,6 +180,36 @@ def test_adapter_replaces_prior_verdict_with_malformed_evidence_state(
     assert "stale success" not in output.read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize(
+    "field", ["decision", "candidate", "control", "profile", "variant"]
+)
+@pytest.mark.parametrize(
+    "nested", [{"private": "synthetic-private-marker"}, ["synthetic-private-marker"]]
+)
+def test_nested_non_scalar_evidence_replaces_last_good_metrics(tmp_path, field, nested):
+    assert _run(tmp_path, _evidence()).returncode == 0
+    output = tmp_path / "protocol-liveness.prom"
+    assert "liveness-decision-healthy" in output.read_text()
+    invalid = _evidence()
+    if field == "decision":
+        invalid["decision"] = nested
+    elif field == "candidate":
+        invalid["candidate_policies"] = [nested]
+    elif field == "control":
+        invalid["evidence"][0]["control"] = nested
+    elif field == "profile":
+        invalid["evidence"][0]["profiles"]["p0-reality"] = nested
+    else:
+        invalid["evidence"][0]["endpoint_variants"]["p0-reality"][0]["verdict"] = nested
+    result = _run(tmp_path, invalid)
+    assert result.returncode == 2
+    metrics = output.read_text()
+    assert 'liveness-published-evidence",state="malformed"' in metrics
+    assert "liveness-decision-healthy" not in metrics
+    assert "synthetic-private-marker" not in metrics + result.stdout + result.stderr
+    assert "Traceback" not in result.stderr
+
+
 def test_adapter_refuses_symlinked_published_evidence(tmp_path: Path) -> None:
     target = tmp_path / "published.json"
     target.write_text(json.dumps(_evidence()), encoding="utf-8")
@@ -345,7 +375,13 @@ def test_role_wires_the_adapter_only_when_the_explicit_opt_in_is_enabled() -> No
         == protocol["output_directory"] + "/protocol-liveness.prom"
     )
 
-    enable = yaml.safe_load((ROLE / "tasks/enable.yml").read_text())
+    def task_tree(items):
+        for task in items:
+            yield task
+            for section in ("block", "rescue", "always"):
+                yield from task_tree(task.get(section, []))
+
+    enable = list(task_tree(yaml.safe_load((ROLE / "tasks/enable.yml").read_text())))
     install = next(
         task for task in enable if task["name"] == "Install protocol-liveness adapter"
     )

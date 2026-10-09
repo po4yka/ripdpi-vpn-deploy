@@ -131,6 +131,7 @@
             name: warp-outbound
           vars:
             warp_outbound:
+              package_version: "2026.8.2100.0"
               install_warp_cli: false
               mode: proxy
               socks_port: 40000

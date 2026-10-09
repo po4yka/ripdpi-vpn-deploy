@@ -68,7 +68,25 @@
             -keyout /etc/nginx/tls/sub.example.test.key
             -out /etc/nginx/tls/sub.example.test.fullchain.pem
             -subj /CN=sub.example.test
+            -addext subjectAltName=DNS:sub.example.test
             -days 1
         creates: /etc/nginx/tls/sub.example.test.fullchain.pem
+    - name: Read synthetic independent subscription certificate
+      ansible.builtin.slurp:
+        src: /etc/nginx/tls/sub.example.test.fullchain.pem
+      register: _subscription_fixture_certificate
+      no_log: true
+    - name: Read synthetic independent subscription private key
+      ansible.builtin.slurp:
+        src: /etc/nginx/tls/sub.example.test.key
+      register: _subscription_fixture_key
+      no_log: true
+    - name: Supply the independent delivery fixture authority
+      ansible.builtin.set_fact:
+        subscription: >-
+          {{ subscription | combine({'cert_pem': _subscription_fixture_certificate.content | b64decode,
+                                     'key_pem': _subscription_fixture_key.content | b64decode}) }}
+      no_log: true
+      diff: false
   roles:
     - role: subscription-host

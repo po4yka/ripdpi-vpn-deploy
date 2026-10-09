@@ -1,21 +1,6 @@
 #!/usr/bin/env bash
-# Refresh Xray geodata. Downloads to a tmpfile, atomically renames into
-# place, then activates it through the version-aware Xray helper.
+# Verify the complete pinned pair before ordinary-failure publication.
 set -euo pipefail
-
-INSTALL_DIR='/usr/local/share/xray'
-
-download() {
-  local url="$1" dest="$2" sha="$3"
-  local tmp="${dest}.new"
-  curl -fsSL --max-time 120 -o "$tmp" "$url"
-  if [[ -n "$sha" ]]; then
-    echo "${sha}  ${tmp}" | sha256sum -c -
-  fi
-  mv -f "$tmp" "$dest"
-}
-
-download "REPLACE_WITH_PINNED_GEOSITE_RELEASE_URL" "${INSTALL_DIR}/geosite.dat" "REPLACE_WITH_RELEASE_SHA256"
-download "REPLACE_WITH_PINNED_GEOIP_RELEASE_URL"   "${INSTALL_DIR}/geoip.dat"   "REPLACE_WITH_RELEASE_SHA256"
-
-/usr/local/sbin/vpn-xray-geodata-activate.sh
+exec /usr/local/sbin/vpn-geodata-publish <<'JSON'
+{"install_dir": "/usr/local/share/xray", "sources": {"geosite.dat": {"url": "REPLACE_WITH_PINNED_GEOSITE_RELEASE_URL", "sha256": "REPLACE_WITH_RELEASE_SHA256"}, "geoip.dat": {"url": "REPLACE_WITH_PINNED_GEOIP_RELEASE_URL", "sha256": "REPLACE_WITH_RELEASE_SHA256"}}}
+JSON

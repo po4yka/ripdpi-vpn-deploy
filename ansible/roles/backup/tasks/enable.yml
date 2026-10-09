@@ -1,0 +1,129 @@
+---
+# Local-first restic repository, with optional remote sync via rclone.
+# Remote sync is gated by `backup.remote.enabled`; when off, this role
+# only writes a local repository under `restic_repo_dir`.
+
+- name: Install restic
+  ansible.builtin.apt:
+    name:
+      - restic
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install the optional remote dependency
+  ansible.builtin.import_tasks: install-rclone.yml
+
+- name: Ensure restic repo directory
+  ansible.builtin.file:
+    path: "{{ restic_repo_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Ensure /etc/restic directory
+  ansible.builtin.file:
+    path: /etc/restic
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Drop restic password file
+  ansible.builtin.copy:
+    content: "{{ backup.restic_password | default('') }}"
+    dest: /etc/restic/password
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+
+- name: Initialize restic repo if missing
+  ansible.builtin.command:
+    cmd: restic -r {{ restic_repo_dir }} --password-file /etc/restic/password init
+    creates: "{{ restic_repo_dir }}/config"
+  register: restic_init
+  changed_when: >-
+    'created restic repository' in (restic_init.stderr | default('')) or
+    'created restic repository' in (restic_init.stdout | default(''))
+
+- name: Render backup configuration
+  ansible.builtin.import_tasks: configuration.yml
+
+- name: Inspect existing backup restore drill timer
+  ansible.builtin.stat:
+    path: /etc/systemd/system/vpn-backup-restore-drill.timer
+  register: _backup_restore_drill_timer_preexisting
+
+- name: Drop backup restore drill systemd service
+  ansible.builtin.template:
+    src: vpn-backup-restore-drill.service.j2
+    dest: /etc/systemd/system/vpn-backup-restore-drill.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Drop backup restore drill systemd timer
+  ansible.builtin.template:
+    src: vpn-backup-restore-drill.timer.j2
+    dest: /etc/systemd/system/vpn-backup-restore-drill.timer
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart backup restore drill timer
+
+- name: Install backup systemd service unit
+  # Template carries the root-oneshot hardening floor (NoNewPrivileges,
+  # ProtectSystem=strict, PrivateTmp and peers) with writes confined to
+  # the restic repo and the unit's own state directory.
+  ansible.builtin.template:
+    src: vpn-backup.service.j2
+    dest: /etc/systemd/system/vpn-backup.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Inspect existing backup timer
+  ansible.builtin.stat:
+    path: /etc/systemd/system/vpn-backup.timer
+  register: _backup_timer_preexisting
+
+- name: Drop backup systemd timer
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/vpn-backup.timer
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Run VPN config backup daily
+
+      [Timer]
+      OnCalendar=*-*-* 03:30:00
+      RandomizedDelaySec=15m
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+  notify: Reload systemd
+
+- name: Enable backup timer
+  ansible.builtin.systemd_service:
+    name: vpn-backup.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode or _backup_timer_preexisting.stat.exists
+
+- name: Apply backup restore drill timer state
+  ansible.builtin.systemd_service:
+    name: vpn-backup-restore-drill.timer
+    enabled: "{{ backup_restore_drill_enabled | bool }}"
+    state: "{{ 'started' if (backup_restore_drill_enabled | bool) else 'stopped' }}"
+    daemon_reload: true
+  when: not ansible_check_mode or _backup_restore_drill_timer_preexisting.stat.exists

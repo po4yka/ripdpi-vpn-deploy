@@ -1,0 +1,118 @@
+---
+- name: Ensure nginx is present
+  ansible.builtin.apt:
+    name:
+      - nginx
+      - curl
+      - util-linux
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    # Activate only after the packaged default site is removed and nginx -t passes.
+    policy_rc_d: 101
+
+- name: Ensure prefix-list directory
+  ansible.builtin.file:
+    path: "{{ cdn_front.cf_prefix_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install refresh script
+  ansible.builtin.template:
+    src: refresh-cf-prefixes.sh.j2
+    dest: /usr/local/sbin/cdn-front-refresh-cf-prefixes
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Remove legacy cron.daily scheduling entry
+  # Scheduling moved to cdn-front-prefix-refresh.timer; leaving this file
+  # behind would double-schedule the refresh.
+  ansible.builtin.file:
+    dest: /etc/cron.daily/cdn-front-refresh-cf-prefixes
+    state: absent
+
+- name: Install prefix-refresh service unit
+  ansible.builtin.template:
+    src: cdn-front-prefix-refresh.service.j2
+    dest: /etc/systemd/system/cdn-front-prefix-refresh.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install prefix-refresh timer unit
+  ansible.builtin.template:
+    src: cdn-front-prefix-refresh.timer.j2
+    dest: /etc/systemd/system/cdn-front-prefix-refresh.timer
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Inspect nginx state before selecting the initial seed mode
+  ansible.builtin.command: systemctl is-active --quiet nginx
+  register: _cdn_nginx_active
+  changed_when: false
+  check_mode: false
+  failed_when: _cdn_nginx_active.rc not in [0, 3]
+
+- name: Seed CF prefix list (first run)
+  ansible.builtin.command:
+    argv: >-
+      {{ ['/usr/local/sbin/cdn-front-refresh-cf-prefixes']
+         + ([] if _cdn_nginx_active.rc == 0 else ['--seed-only']) }}
+  register: _cf_seed
+  changed_when: false
+  # Tolerate transient network failures on first-deploy (rc != 0 and empty
+  # output is expected when the VPS has no internet egress at provision time).
+  # Surface failures that indicate a genuine misconfiguration: a non-zero
+  # exit with non-empty stderr that is NOT a network/curl/wget error.
+  failed_when:
+    - _cf_seed.rc != 0
+    - >-
+      not (
+        'Could not resolve' in (_cf_seed.stderr | default('')) or
+        'Connection refused' in (_cf_seed.stderr | default('')) or
+        'Network is unreachable' in (_cf_seed.stderr | default('')) or
+        'curl' in (_cf_seed.stderr | default('')) or
+        'wget' in (_cf_seed.stderr | default(''))
+      )
+
+- name: Stage CDN vhost authority without touching the current nginx tree
+  ansible.builtin.set_fact:
+    nginx_transaction_files:
+      - path: /etc/nginx/sites-available/cdn-front.conf
+        kind: file
+        content_b64: "{{ lookup('ansible.builtin.template', 'cdn-front.conf.j2') | b64encode }}"
+        mode: "0644"
+        uid: 0
+        gid: 0
+      - path: /etc/nginx/sites-enabled/cdn-front.conf
+        kind: link
+        target: /etc/nginx/sites-available/cdn-front.conf
+        mode: "0777"
+        uid: 0
+        gid: 0
+      - {path: /etc/nginx/sites-enabled/default, kind: absent}
+  no_log: true
+  diff: false
+
+- name: Validate publish and activate the complete CDN vhost candidate
+  ansible.builtin.include_role:
+    name: nginx-xhttp
+    tasks_from: transaction
+  vars:
+    nginx_transaction_owner: cdn-front
+    nginx_transaction_roots: [/etc/nginx]
+    nginx_transaction_validate_argv: [/usr/sbin/nginx, -t]
+    nginx_transaction_unit: nginx.service
+    nginx_transaction_activation: reload
+    nginx_transaction_desired_enabled: true
+
+- name: Enable prefix-refresh timer after the initial prefix seed and validation
+  ansible.builtin.systemd_service:
+    name: cdn-front-prefix-refresh.timer
+    enabled: true
+    state: started
+    daemon_reload: true

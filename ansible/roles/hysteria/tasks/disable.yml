@@ -1,0 +1,14 @@
+---
+- name: Retire hysteria runtime authority
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: retire
+  vars:
+    runtime_retire_units:
+      - hysteria-server.service
+    runtime_retire_paths:
+      - /etc/systemd/system/hysteria-server.service
+      - '{{ hysteria_config_dir }}/config.yaml'
+      - '{{ hysteria_config_dir }}/config.yaml.prev'
+      - '{{ hysteria_config_dir }}/server.fullchain.pem'
+      - '{{ hysteria_config_dir }}/server.key'

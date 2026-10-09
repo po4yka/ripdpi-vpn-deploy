@@ -2,7 +2,7 @@
 # DNS-Morph bridge — opt-in bootstrap-channel transport listening on
 # UDP/53. The bridge interprets handshake-shaped queries as DNS-Morph
 # fragments and forwards every other query to a localhost recursor so
-# the listener answers like a normal DNS server for active probes.
+# ordinary queries receive only local authoritative answers or REFUSED.
 #
 # Off by default (vpn.enable_dns_morph_bridge in group_vars/all.yml).
 # Companion to the client-side bootstrap path; both must ship together.
@@ -28,7 +28,7 @@ dns_morph_bridge:
   listen_addr: "0.0.0.0"
   listen_port: "{{ dns_morph_bridge_listen_port }}"
 
-  # Localhost recursor used for the active-probing-defense forwarder.
+  # Localhost authoritative-only responder used for ordinary forwarded queries.
   # Unbound binds 127.0.0.1:5353 so it does not collide with the bridge.
   recursor_addr: "127.0.0.1"
   recursor_port: 5353
@@ -58,3 +58,5 @@ dns_morph_bridge_secrets:
   signing_key: ""
   binary_url: ""
   binary_sha256: ""
+
+dns_morph_bridge_role_enabled: true

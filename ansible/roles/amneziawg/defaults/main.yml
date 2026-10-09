@@ -25,3 +25,5 @@ amneziawg:
 # the role falls back to either amneziawg_secrets.* (explicit per-deploy
 # overrides) or the hard-coded broad defaults below.
 amneziawg_cohort: {}
+
+amneziawg_role_enabled: true

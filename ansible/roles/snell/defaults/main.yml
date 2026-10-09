@@ -29,3 +29,5 @@ snell_release_urls:
     https://github.com/SagerNet/sing-box/releases/download/{{ snell.version
     }}/sing-box-{{ snell.version | regex_replace('^v', '')
     }}-linux-arm64.tar.gz
+
+snell_role_enabled: true

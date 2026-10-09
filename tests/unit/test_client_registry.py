@@ -264,7 +264,7 @@ def test_issuer_revoke_hint_names_the_key_the_role_consumes() -> None:
     token stayed valid after a by-the-book revocation.
     """
     role_tasks = (
-        REPO_ROOT / "ansible/roles/subscription-host/tasks/main.yml"
+        REPO_ROOT / "ansible/roles/subscription-host/tasks/enable.yml"
     ).read_text()
     iterated = set(re.findall(r"for \w+ in subscription\.(\w+)", role_tasks))
     assert iterated == {"revoked_tokens"}

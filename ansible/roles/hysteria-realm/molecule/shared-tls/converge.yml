@@ -9,6 +9,7 @@
   hosts: all
   become: true
   vars:
+    env: staging
     vpn:
       enable_hysteria_realm: true
 
@@ -25,7 +26,7 @@
       tls_cert_path: /etc/hysteria-realm/server.fullchain.pem
       tls_key_path: /etc/hysteria-realm/server.key
       sni: vpn.example.test
-      events_per_minute_max: 600
+      max_realms: 16
 
     hysteria_realm_secrets:
       linux_amd64_sha256: "0000000000000000000000000000000000000000000000000000000000000000"

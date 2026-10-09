@@ -46,3 +46,5 @@ honeypot:
   # below picks up so the canary binds to the dedicated address.
   # The template also binds [::] when inventory supplies server_ipv6.
   listen_addr: "{{ honeypot_listen_addr | default('0.0.0.0') }}"
+
+honeypot_role_enabled: true

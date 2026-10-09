@@ -1,0 +1,30 @@
+---
+- name: Resolve recorded AmneziaWG ownership before disable
+  ansible.builtin.import_tasks: ownership.yml
+- name: Refuse shared target stop propagation into unrecorded active members
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path ~ '/files/verify_target_ownership.py') }}"
+    stdin: "{{ _awg_previous.instances | to_json }}"
+  changed_when: false
+  check_mode: false
+
+- name: Select all recorded AmneziaWG instances for retirement
+  ansible.builtin.set_fact:
+    _awg_obsolete: '{{ _awg_previous.instances }}'
+    _awg_instances: []
+  no_log: true
+- name: Retire recorded AmneziaWG interfaces before removing their unit
+  ansible.builtin.import_tasks: retire-instances.yml
+- name: Retire AmneziaWG shared runtime authority
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: retire
+  vars:
+    runtime_retire_units: [awg-quick.target]
+    runtime_retire_paths:
+      - /etc/systemd/system/awg-quick@.service
+      - /etc/systemd/system/awg-quick.target
+      - /var/lib/ripdpi/amneziawg/instances.json

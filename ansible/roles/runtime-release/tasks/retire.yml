@@ -1,0 +1,72 @@
+---
+# Consumers pass literal role-owned unit names and paths; shared packages,
+# runtime releases, replay/recovery budgets and retained backup data stay owned.
+- name: Inspect every declared runtime unit including timers
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path ~ '/files/systemd-unit-state.py') }}"
+    stdin: "{{ runtime_retire_units | to_json }}"
+  register: _runtime_retire_unit_capture
+  changed_when: false
+  check_mode: false
+
+- name: Retain typed declared runtime unit state
+  ansible.builtin.set_fact:
+    _runtime_retire_unit_state: "{{ _runtime_retire_unit_capture.stdout | from_json }}"
+
+- name: Inspect role-owned runtime authority before retirement
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    follow: false
+  loop: "{{ runtime_retire_paths }}"
+  register: _runtime_retire_authority
+
+- name: Refuse foreign runtime authority before retirement
+  ansible.builtin.assert:
+    that:
+      - not item.stat.exists or item.stat.uid | int == 0
+    fail_msg: Runtime retirement encountered a foreign owner in its declared authority set.
+  loop: "{{ _runtime_retire_authority.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Validate complete declared runtime authority before stopping units
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path ~ '/files/validate_retirement.py') }}"
+    stdin: "{{ runtime_retire_paths | to_json }}"
+  register: _runtime_retire_preflight
+  changed_when: false
+  check_mode: false
+
+- name: Preserve administrative masks while selecting validated authority
+  ansible.builtin.set_fact:
+    _runtime_retire_effective_paths: "{{ (_runtime_retire_preflight.stdout | from_json).paths }}"
+
+- name: Stop and disable every declared owned runtime unit including runtime-enabled timers
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path ~ '/files/systemd-unit-state.py') }}"
+      - retire
+    stdin: "{{ runtime_retire_units | to_json }}"
+  register: _runtime_retire_lifecycle
+  changed_when: _runtime_retire_lifecycle.rc == 0 and (_runtime_retire_lifecycle.stdout | from_json).changed
+  when: not ansible_check_mode
+
+- name: Remove only declared runtime authority
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ _runtime_retire_effective_paths }}"
+  register: _runtime_retire_removed
+
+- name: Reload systemd after runtime authority retirement
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: _runtime_retire_removed.changed and not ansible_check_mode

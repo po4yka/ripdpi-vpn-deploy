@@ -1,0 +1,184 @@
+---
+# P2 transport: Hysteria2 over QUIC/HTTP3 on UDP/443. Pinned release activation
+# is delegated to runtime-release so current/public/previous links and receipts
+# share one serialized transaction.
+
+- name: Pre-flight — hysteria version must be pinned
+  ansible.builtin.assert:
+    that:
+      - hysteria.version | default('') | length > 0
+    fail_msg: >-
+      hysteria.version is empty. Set hysteria.version (and the matching
+      linux_amd64_sha256 / linux_arm64_sha256) in your secrets file or
+      group_vars before running this role.
+
+- name: Pre-flight — masquerade must use an owned HTTPS origin
+  ansible.builtin.assert:
+    that:
+      - hysteria.masquerade_url | default('') is match('^https://[^/]+(?:/.*)?$')
+      - hysteria.masquerade_url == public_site_canonical_url
+    fail_msg: Set hysteria.masquerade_url to public_site_canonical_url so probes see the owned public site.
+
+- name: Install Hysteria configuration validation dependency
+  ansible.builtin.apt:
+    name: python3-yaml
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install shared YAML mapping validator
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../runtime-release/files/validate_yaml_mapping.py"
+    dest: /usr/local/libexec/ripdpi-validate-yaml-mapping
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create hysteria system user
+  ansible.builtin.user:
+    name: hysteria
+    system: true
+    shell: /usr/sbin/nologin
+    home: /var/lib/hysteria
+    create_home: true
+
+- name: Ensure hysteria directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default('root') }}"
+    group: "{{ item.group | default('root') }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ hysteria_config_dir }}"
+      mode: "0750"
+      owner: root
+      group: hysteria
+    - path: "{{ hysteria_log_dir }}"
+      mode: "0750"
+      owner: hysteria
+      group: hysteria
+
+- name: Install pinned Hysteria release through runtime-release
+  ansible.builtin.include_role:
+    name: runtime-release
+  vars:
+    runtime_release_version: "{{ hysteria.version }}"
+    runtime_release_install_root: "{{ hysteria_install_root }}"
+    runtime_release_binary_name: hysteria
+    runtime_release_public_link: /usr/local/bin/hysteria
+    runtime_release_urls:
+      amd64: "{{ hysteria_release_urls.amd64 }}"
+      arm64: "{{ hysteria_release_urls.arm64 }}"
+    runtime_release_sha256:
+      amd64: "{{ hysteria.linux_amd64_sha256 | default('') }}"
+      arm64: "{{ hysteria.linux_arm64_sha256 | default('') }}"
+    runtime_release_arch_slugs:
+      amd64: amd64
+      arm64: arm64
+    runtime_release_artifact_filename: hysteria
+    runtime_release_artifact_type: binary
+
+- name: Notify Hysteria restart after runtime release activation
+  ansible.builtin.debug:
+    msg: Hysteria runtime release activation changed={{ runtime_release_changed | bool }}
+  changed_when: runtime_release_changed | bool
+  notify: Restart hysteria
+  when: not ansible_check_mode
+
+- name: Drop TLS material
+  ansible.builtin.copy:
+    content: "{{ item.content }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: hysteria
+    mode: "0640"
+  loop:
+    - content: "{{ hysteria.cert_pem }}"
+      dest: "{{ hysteria_config_dir }}/server.fullchain.pem"
+    - content: "{{ hysteria.key_pem }}"
+      dest: "{{ hysteria_config_dir }}/server.key"
+  no_log: true
+  diff: false
+  notify: Restart hysteria
+
+- name: Check if previous Hysteria config exists
+  ansible.builtin.stat:
+    path: "{{ hysteria_config_dir }}/config.yaml"
+  register: _hysteria_config_stat
+
+- name: Detect Hysteria config change before preserving rollback state
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: "{{ hysteria_config_dir }}/config.yaml"
+    owner: root
+    group: hysteria
+    mode: "0640"
+  check_mode: true
+  register: _hysteria_config_change
+  no_log: true
+  diff: false
+
+- name: Backup previous Hysteria config if exists
+  ansible.builtin.copy:
+    src: "{{ hysteria_config_dir }}/config.yaml"
+    dest: "{{ hysteria_config_dir }}/config.yaml.prev"
+    remote_src: true
+    owner: root
+    group: hysteria
+    mode: "0640"
+  when:
+    - _hysteria_config_stat.stat.exists
+    - _hysteria_config_change.changed
+  changed_when: false
+
+- name: Render Hysteria config
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: "{{ hysteria_config_dir }}/config.yaml"
+    owner: root
+    group: hysteria
+    mode: "0640"
+    validate: >-
+      /usr/local/libexec/ripdpi-validate-yaml-mapping
+      --profile hysteria %s
+  no_log: true
+  diff: false
+  notify: Restart hysteria
+
+- name: Install hysteria-server systemd unit
+  ansible.builtin.template:
+    src: hysteria-server.service.j2
+    dest: /etc/systemd/system/hysteria-server.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: _hysteria_unit_plan
+  notify:
+    - Reload systemd
+    - Restart hysteria
+
+- name: Inspect Hysteria unit before check-mode activation
+  ansible.builtin.stat:
+    path: /etc/systemd/system/hysteria-server.service
+    follow: false
+  register: _hysteria_unit_before
+  changed_when: false
+  when: ansible_check_mode
+
+- name: Require planned Hysteria unit on a fresh check-mode host
+  ansible.builtin.assert:
+    that:
+      - _hysteria_unit_plan.changed
+    fail_msg: Check mode found no Hysteria unit and no planned installation.
+  when:
+    - ansible_check_mode
+    - not (_hysteria_unit_before.stat.exists | default(false))
+
+- name: Ensure hysteria-server is enabled and started
+  ansible.builtin.systemd_service:
+    name: hysteria-server
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode or _hysteria_unit_before.stat.exists | default(false)

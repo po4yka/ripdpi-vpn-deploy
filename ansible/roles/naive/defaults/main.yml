@@ -25,3 +25,5 @@ naive:
   #   sha256sum /usr/local/bin/caddy-naive
   # Set this from a trusted reproducible build before enabling the role.
   xcaddy_sha256: ""
+
+naive_role_enabled: true

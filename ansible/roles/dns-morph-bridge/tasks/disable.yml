@@ -1,0 +1,107 @@
+---
+- name: Inspect owned DNS-Morph Unbound fragment
+  ansible.builtin.stat:
+    path: /etc/unbound/unbound.conf.d/dns-morph-bridge-fwd.conf
+    follow: false
+  register: _dns_morph_retire_fragment
+
+- name: Require bounded owned regular Unbound fragment for compensation
+  ansible.builtin.assert:
+    that:
+      - >-
+        not _dns_morph_retire_fragment.stat.exists or
+        (_dns_morph_retire_fragment.stat.isreg | default(false) and
+         not _dns_morph_retire_fragment.stat.islnk | default(false) and
+         _dns_morph_retire_fragment.stat.uid == 0 and
+         _dns_morph_retire_fragment.stat.nlink == 1 and
+         _dns_morph_retire_fragment.stat.size <= 65536)
+    fail_msg: Unbound fragment retirement requires its bounded regular owned authority.
+
+- name: Validate fragment and ancestor authority before compensation snapshot
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - >-
+        {{ lookup('ansible.builtin.file', role_path ~
+          '/../runtime-release/files/validate_retirement.py') }}
+    stdin: "{{ ['/etc/unbound/unbound.conf.d/dns-morph-bridge-fwd.conf'] | to_json }}"
+  changed_when: false
+  check_mode: false
+
+- name: Capture prior owned Unbound fragment for exact compensation
+  ansible.builtin.slurp:
+    src: /etc/unbound/unbound.conf.d/dns-morph-bridge-fwd.conf
+  register: _dns_morph_retire_fragment_bytes
+  when: _dns_morph_retire_fragment.stat.exists
+  no_log: true
+
+- name: Inspect shared Unbound service before retiring its bridge fragment
+  ansible.builtin.service_facts:
+
+- name: Preserve the prior shared Unbound activation intent
+  ansible.builtin.set_fact:
+    _dns_morph_unbound_was_running: >-
+      {{ ansible_facts.services.get('unbound.service', {}).get('state', '') == 'running' }}
+
+- name: Validate existing shared Unbound configuration before retirement
+  ansible.builtin.command:
+    argv: [unbound-checkconf, /etc/unbound/unbound.conf]
+  check_mode: false
+  changed_when: false
+  when: _dns_morph_retire_fragment.stat.exists
+
+- name: Retire dns-morph-bridge owned runtime authority
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: retire
+  vars:
+    runtime_retire_units:
+      - dns-morph-bridge.service
+    runtime_retire_paths:
+      - /etc/systemd/system/dns-morph-bridge.service
+      - '{{ dns_morph_bridge.config_dir }}/dns-morph-bridge.yaml'
+
+- name: Retire owned Unbound fragment with shared-runtime compensation
+  when: _dns_morph_retire_fragment.stat.exists and not ansible_check_mode
+  block:
+    - name: Remove only the owned DNS-Morph Unbound fragment
+      ansible.builtin.file:
+        path: /etc/unbound/unbound.conf.d/dns-morph-bridge-fwd.conf
+        state: absent
+
+    - name: Validate shared Unbound configuration after owned fragment retirement
+      ansible.builtin.command:
+        argv: [unbound-checkconf, /etc/unbound/unbound.conf]
+      changed_when: false
+
+    - name: Apply fragment retirement only to previously running shared Unbound
+      ansible.builtin.systemd_service:
+        name: unbound.service
+        state: restarted
+      when: _dns_morph_unbound_was_running | bool
+  rescue:
+    - name: Restore exact prior owned Unbound fragment after failed retirement
+      ansible.builtin.copy:
+        content: "{{ _dns_morph_retire_fragment_bytes.content | b64decode }}"
+        dest: /etc/unbound/unbound.conf.d/dns-morph-bridge-fwd.conf
+        owner: "{{ _dns_morph_retire_fragment.stat.uid }}"
+        group: "{{ _dns_morph_retire_fragment.stat.gid }}"
+        mode: "{{ _dns_morph_retire_fragment.stat.mode }}"
+      no_log: true
+      diff: false
+
+    - name: Validate restored shared Unbound configuration
+      ansible.builtin.command:
+        argv: [unbound-checkconf, /etc/unbound/unbound.conf]
+      changed_when: false
+
+    - name: Restore previously running shared Unbound after failed retirement
+      ansible.builtin.systemd_service:
+        name: unbound.service
+        state: restarted
+      when: _dns_morph_unbound_was_running | bool
+
+    - name: Refuse failed DNS-Morph fragment retirement after compensation
+      ansible.builtin.fail:
+        msg: DNS-Morph fragment retirement failed; prior shared Unbound authority was restored.

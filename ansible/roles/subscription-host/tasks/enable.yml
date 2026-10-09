@@ -1,0 +1,214 @@
+---
+# Subscription delivery host. nginx fronts TLS + rate-limit; the local
+# vpn-bootstrap Python service handles both /sub/<token> (long-lived)
+# and /bootstrap/<token> (single-use), with hashed-on-disk storage,
+# per-token expiry, revocation, and an audit log of every read.
+
+- name: Require independent subscription TLS inputs
+  ansible.builtin.assert:
+    that:
+      - subscription.cert_pem | default('') | length > 0
+      - subscription.key_pem | default('') | length > 0
+    fail_msg: Subscription delivery requires its independent certificate and private key.
+  no_log: true
+
+- name: Ensure nginx is present without premature default-site activation
+  ansible.builtin.apt:
+    name: [nginx, openssl, util-linux]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    policy_rc_d: 101
+  register: _subscription_nginx_install_plan
+
+- name: Inspect available TLS validator on a check-mode host
+  ansible.builtin.stat:
+    path: /usr/bin/openssl
+  register: _subscription_tls_validator
+  changed_when: false
+  when: ansible_check_mode
+
+- name: Require the TLS validator installation plan when it is absent
+  ansible.builtin.assert:
+    that: _subscription_nginx_install_plan.changed
+  when:
+    - ansible_check_mode
+    - not (_subscription_tls_validator.stat.executable | default(false))
+
+- name: Validate independent subscription key certificate and effective hostname in memory
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path ~ '/files/subscription_tls.py') }}"
+    stdin: >-
+      {{ {'certificate': subscription.cert_pem,
+          'private_key': subscription.key_pem,
+          'hostname': subscription.server_name | default(nginx_xhttp.server_name)} | to_json }}
+  no_log: true
+  diff: false
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode or (_subscription_tls_validator.stat.executable | default(false))
+
+- name: Stage independent delivery TLS and complete nginx authority
+  ansible.builtin.set_fact:
+    nginx_transaction_files:
+      - path: /etc/nginx/tls/subscription-host/server.fullchain.pem
+        kind: file
+        content_b64: "{{ subscription.cert_pem | b64encode }}"
+        mode: "0644"
+        uid: 0
+        gid: 0
+      - path: /etc/nginx/tls/subscription-host/server.key
+        kind: file
+        content_b64: "{{ subscription.key_pem | b64encode }}"
+        mode: "0600"
+        uid: 0
+        gid: 0
+      - path: /etc/nginx/conf.d/vpn-sub-ratelimit.conf
+        kind: file
+        content_b64: "{{ lookup('ansible.builtin.template', 'rate-limit.conf.j2') | b64encode }}"
+        mode: "0644"
+        uid: 0
+        gid: 0
+      - path: /etc/nginx/sites-available/vpn-sub.conf
+        kind: file
+        content_b64: "{{ lookup('ansible.builtin.template', 'subscription.conf.j2') | b64encode }}"
+        mode: "0644"
+        uid: 0
+        gid: 0
+      - path: /etc/nginx/sites-enabled/vpn-sub.conf
+        kind: link
+        target: /etc/nginx/sites-available/vpn-sub.conf
+        mode: "0777"
+        uid: 0
+        gid: 0
+      - {path: /etc/nginx/conf.d/vpn-sub-revoked.conf, kind: absent}
+      - {path: /etc/nginx/sites-enabled/default, kind: absent}
+  no_log: true
+  diff: false
+
+- name: Validate publish and activate independent delivery HTTPS
+  ansible.builtin.include_role:
+    name: nginx-xhttp
+    tasks_from: transaction
+  vars:
+    nginx_transaction_owner: subscription-host
+    nginx_transaction_roots: [/etc/nginx]
+    nginx_transaction_validate_argv: [/usr/sbin/nginx, -t]
+    nginx_transaction_unit: nginx.service
+    nginx_transaction_activation: reload
+    nginx_transaction_desired_enabled: true
+
+# ---------------------------------------------------------------------------
+# vpn-bootstrap Python service — always installed when this role runs.
+# Handles /sub/ AND /bootstrap/ behind hashed-on-disk storage.
+# ---------------------------------------------------------------------------
+
+- name: Ensure system user
+  ansible.builtin.user:
+    name: vpn-bootstrap
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ subscription.subscription_dir | default('/var/lib/vpn-subscription') }}"
+    create_home: false
+
+- name: Ensure subscription dir, routes, and durable bootstrap consumption state
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: vpn-bootstrap
+    group: vpn-bootstrap
+    mode: "0700"
+  loop:
+    - "{{ subscription.subscription_dir | default('/var/lib/vpn-subscription') }}"
+    - "{{ subscription.subscription_dir | default('/var/lib/vpn-subscription') }}/sub"
+    - "{{ subscription.subscription_dir | default('/var/lib/vpn-subscription') }}/bootstrap"
+    - "{{ subscription.subscription_dir | default('/var/lib/vpn-subscription') }}/.vpn-bootstrap-consumed"
+
+- name: Ensure reads-log directory
+  ansible.builtin.file:
+    path: "{{ subscription.reads_log | default('/var/log/vpn-subscription/reads.log') | dirname }}"
+    state: directory
+    owner: vpn-bootstrap
+    group: vpn-bootstrap
+    mode: "0750"
+
+- name: Render revoked-hashes file
+  ansible.builtin.copy:
+    dest: "{{ subscription.revoked_file | default('/var/lib/vpn-subscription/revoked') }}"
+    owner: vpn-bootstrap
+    group: vpn-bootstrap
+    mode: "0600"
+    content: |
+      # Managed by Ansible role subscription-host. One sha256 hex per line.
+      # The Python service re-reads this file on every request.
+      {% for h in subscription.revoked_tokens | default([]) %}
+      {{ h | trim | lower }}
+      {% endfor %}
+  no_log: true
+  diff: false
+
+- name: Install service script
+  ansible.builtin.template:
+    src: vpn-bootstrap.py.j2
+    dest: /usr/local/bin/vpn-bootstrap.py
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart vpn-bootstrap
+
+- name: Install systemd unit
+  ansible.builtin.template:
+    src: vpn-bootstrap.service.j2
+    dest: /etc/systemd/system/vpn-bootstrap.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: _subscription_unit_plan
+  notify: Restart vpn-bootstrap
+
+- name: Inspect subscription unit load state in check mode
+  ansible.builtin.command:
+    argv: [systemctl, show, vpn-bootstrap.service, '--property=LoadState', --value]
+  register: _subscription_unit_existing
+  changed_when: false
+  check_mode: false
+  failed_when: >-
+    _subscription_unit_existing.stdout not in ['loaded', 'not-found'] or
+    _subscription_unit_existing.rc not in [0, 1] or
+    (_subscription_unit_existing.rc == 1 and
+     _subscription_unit_existing.stdout != 'not-found')
+  when: ansible_check_mode
+
+- name: Require planned subscription unit on a fresh check-mode host
+  ansible.builtin.assert:
+    that: _subscription_unit_plan.changed
+    fail_msg: Check mode found no subscription unit and no planned installation.
+  when:
+    - ansible_check_mode
+    - _subscription_unit_existing.stdout == 'not-found'
+
+- name: Enable + start service
+  ansible.builtin.systemd_service:
+    name: vpn-bootstrap.service
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode or _subscription_unit_existing.stdout == 'loaded'
+
+# ---------------------------------------------------------------------------
+# Share-bundle ingest — operator-uploaded recipient pages at /share/<token>/
+# ---------------------------------------------------------------------------
+
+- name: Ingest share bundles
+  ansible.builtin.import_tasks: share-bundles.yml
+
+# ---------------------------------------------------------------------------
+# Continuous payload mirror — opt-in pull from a build worker.
+# ---------------------------------------------------------------------------
+
+- name: Install continuous payload mirror
+  ansible.builtin.import_tasks: mirror.yml
+  when: subscription.mirror.enabled | default(false)

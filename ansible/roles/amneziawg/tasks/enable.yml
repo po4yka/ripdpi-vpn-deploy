@@ -1,0 +1,310 @@
+---
+# P2 device-VPN transport: AmneziaWG userspace install on Debian 13 / Ubuntu 24.04.
+#
+# Userspace path is preferred for portability across kernels. The kernel module
+# variant ships separately and is not assumed here.
+
+- name: Pre-flight - AmneziaWG source refs and commits are pinned
+  ansible.builtin.assert:
+    that:
+      - amneziawg_go_version | length > 0
+      - amneziawg_tools_version | length > 0
+      - amneziawg_go_commit | length > 0
+      - amneziawg_tools_commit | length > 0
+      - (amneziawg_go_version | lower) not in ['main', 'master', 'head']
+      - (amneziawg_tools_version | lower) not in ['main', 'master', 'head']
+      - amneziawg_go_commit is match('^[0-9a-fA-F]{40,64}$')
+      - amneziawg_tools_commit is match('^[0-9a-fA-F]{40,64}$')
+    fail_msg: |
+      Set amneziawg_go_version and amneziawg_tools_version to pinned upstream
+      tags or commit SHAs, and set amneziawg_go_commit / amneziawg_tools_commit
+      to the exact resolved commit SHAs expected after checkout. The role does
+      not clone moving branches such as main, master, or HEAD, and it no longer
+      accepts tag-only pinning for family deploys.
+
+- name: Resolve recorded AmneziaWG ownership
+  ansible.builtin.import_tasks: ownership.yml
+
+- name: Install build dependencies for AmneziaWG userspace
+  ansible.builtin.apt:
+    name:
+      - golang
+      - git
+      - make
+      - gcc
+      - libc6-dev
+      - libmnl-dev
+      - resolvconf
+      - iproute2
+      - iptables
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Clone amneziawg-go
+  ansible.builtin.git:
+    repo: https://github.com/amnezia-vpn/amneziawg-go
+    dest: "/opt/src/amneziawg-go-{{ amneziawg_go_commit }}"
+    version: "{{ amneziawg_go_version }}"
+    update: false
+  when: not ansible_check_mode
+
+- name: Resolve the amneziawg-go checked-out commit
+  ansible.builtin.command:
+    cmd: git rev-parse HEAD
+    chdir: "/opt/src/amneziawg-go-{{ amneziawg_go_commit }}"
+  register: _awg_go_head
+  check_mode: false
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Verify amneziawg-go resolved to the pinned commit
+  ansible.builtin.assert:
+    that:
+      - _awg_go_head.stdout | trim == amneziawg_go_commit
+    fail_msg: >-
+      amneziawg-go is at {{ _awg_go_head.stdout | trim }} but
+      amneziawg_go_commit pins {{ amneziawg_go_commit }}. Tag
+      {{ amneziawg_go_version }} appears to have moved upstream — refusing
+      to build unverified source.
+  when: not ansible_check_mode
+
+- name: Clone amneziawg-tools
+  ansible.builtin.git:
+    repo: https://github.com/amnezia-vpn/amneziawg-tools
+    dest: "/opt/src/amneziawg-tools-{{ amneziawg_tools_commit }}"
+    version: "{{ amneziawg_tools_version }}"
+    update: false
+  when: not ansible_check_mode
+
+- name: Resolve the amneziawg-tools checked-out commit
+  ansible.builtin.command:
+    cmd: git rev-parse HEAD
+    chdir: "/opt/src/amneziawg-tools-{{ amneziawg_tools_commit }}"
+  register: _awg_tools_head
+  check_mode: false
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Verify amneziawg-tools resolved to the pinned commit
+  ansible.builtin.assert:
+    that:
+      - _awg_tools_head.stdout | trim == amneziawg_tools_commit
+    fail_msg: >-
+      amneziawg-tools is at {{ _awg_tools_head.stdout | trim }} but
+      amneziawg_tools_commit pins {{ amneziawg_tools_commit }}. Tag
+      {{ amneziawg_tools_version }} appears to have moved upstream — refusing
+      to build unverified source.
+  when: not ansible_check_mode
+
+- name: Define pinned AmneziaWG source-build descriptors
+  ansible.builtin.set_fact:
+    _amneziawg_build_descriptors:
+      - schema_version: 1
+        name: amneziawg-go
+        source:
+          repository: https://github.com/amnezia-vpn/amneziawg-go
+          ref: "{{ amneziawg_go_version }}"
+          commit: "{{ amneziawg_go_commit }}"
+        steps:
+          - argv: [/usr/bin/make]
+            chdir: "/opt/src/amneziawg-go-{{ amneziawg_go_commit }}"
+            environment: {}
+            timeout_seconds: 1800
+          - argv:
+              - /usr/bin/install
+              - -m
+              - "0755"
+              - "/opt/src/amneziawg-go-{{ amneziawg_go_commit }}/amneziawg-go"
+              - /var/lib/ripdpi/runtime-build-staging/amneziawg-go/amneziawg-go
+            chdir: "/opt/src/amneziawg-go-{{ amneziawg_go_commit }}"
+            environment: {}
+            timeout_seconds: 60
+        outputs:
+          - name: installed
+            staged_path: /var/lib/ripdpi/runtime-build-staging/amneziawg-go/amneziawg-go
+            path: /usr/local/bin/amneziawg-go
+      - schema_version: 1
+        name: amneziawg-tools
+        source:
+          repository: https://github.com/amnezia-vpn/amneziawg-tools
+          ref: "{{ amneziawg_tools_version }}"
+          commit: "{{ amneziawg_tools_commit }}"
+        steps:
+          - argv: [/usr/bin/make]
+            chdir: "/opt/src/amneziawg-tools-{{ amneziawg_tools_commit }}/src"
+            environment: {}
+            timeout_seconds: 1800
+          - argv:
+              - /usr/bin/make
+              - install
+              - DESTDIR=/var/lib/ripdpi/runtime-build-staging/amneziawg-tools/root
+              - WITH_WGQUICK=yes
+            chdir: "/opt/src/amneziawg-tools-{{ amneziawg_tools_commit }}/src"
+            environment: {}
+            timeout_seconds: 300
+        outputs:
+          - name: awg
+            staged_path: /var/lib/ripdpi/runtime-build-staging/amneziawg-tools/root/usr/bin/awg
+            path: /usr/bin/awg
+          - name: awg-quick
+            staged_path: /var/lib/ripdpi/runtime-build-staging/amneziawg-tools/root/usr/bin/awg-quick
+            path: /usr/bin/awg-quick
+
+- name: Converge pinned AmneziaWG source builds
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: source-build
+    defaults_from: source-build
+  loop: "{{ _amneziawg_build_descriptors }}"
+  loop_control:
+    label: "{{ item.name }}"
+  vars:
+    runtime_build_descriptor: "{{ item }}"
+
+- name: Apply changed AmneziaWG runtimes to current instances
+  ansible.builtin.debug:
+    msg: Pinned AmneziaWG runtime publication changed.
+  changed_when: >-
+    (runtime_build_results | default({})).get('amneziawg-go', {}).get('changed', false) | bool
+    or (runtime_build_results | default({})).get('amneziawg-tools', {}).get('changed', false) | bool
+  notify: Restart amneziawg
+
+- name: Ensure AmneziaWG config directory
+  ansible.builtin.file:
+    path: "{{ amneziawg_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Compute effective AmneziaWG instances
+  ansible.builtin.import_tasks: instances.yml
+
+- name: Validate current AmneziaWG instance names before reconciliation
+  ansible.builtin.assert:
+    that:
+      - item.name is string
+      - item.name is match('^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$')
+  loop: "{{ _awg_instances }}"
+  no_log: true
+
+
+- name: Enforce AmneziaWG arm64 S3/S4 version floor
+  ansible.builtin.import_tasks: guard-s34.yml
+
+- name: Require unique bounded current AmneziaWG members
+  ansible.builtin.assert:
+    that:
+      - _awg_instances | map(attribute='name') | unique | length == _awg_instances | length
+      - _awg_instances | length <= 32
+  no_log: true
+
+- name: Select obsolete recorded AmneziaWG instances
+  ansible.builtin.set_fact:
+    _awg_obsolete: >-
+      {{ _awg_previous.instances if _awg_previous.config_dir != amneziawg_config_dir
+         else (_awg_previous.instances | difference(_awg_instances | map(attribute='name') | list)) }}
+  no_log: true
+
+- name: Retire obsolete AmneziaWG interfaces before activating current members
+  ansible.builtin.import_tasks: retire-instances.yml
+
+# Forward guard: the role does not emit S3/S4 today, but a future cohort or
+# instance author might add them. Non-zero S3/S4 trigger an H4 transport-header
+# byte misalignment in awg-go on arm64 Android (amneziawg-go#110) that SILENTLY
+# drops transport packets. The machine-readable version-floor policy has no
+# verified safe floor, so fail closed instead of trusting an issue transition or
+# release-note claim and shipping a tunnel that carries no data.
+
+- name: Install awg-quick systemd unit (shared across instances)
+  ansible.builtin.template:
+    src: awg-quick@.service.j2
+    dest: /etc/systemd/system/awg-quick@.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: _awg_unit_plan
+  notify:
+    - Reload systemd
+    - Restart amneziawg
+
+- name: Install awg-quick target (resolves PartOf= dependency)
+  # awg-quick@.service declares PartOf=awg-quick.target; without this
+  # unit every daemon-reload carries an unresolvable dependency and
+  # `systemctl start awg-quick.target` has no handle to bring the whole
+  # converged instance set up at once.
+  ansible.builtin.template:
+    src: awg-quick.target.j2
+    dest: /etc/systemd/system/awg-quick.target
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart amneziawg
+
+- name: Render AmneziaWG interface configs
+  ansible.builtin.template:
+    src: awg0.conf.j2
+    dest: "{{ amneziawg_config_dir }}/{{ item.name }}.conf"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false
+  loop: "{{ _awg_instances }}"
+  loop_control:
+    label: "{{ item.name }}"
+  vars:
+    _inst: "{{ item }}"
+  notify: Restart amneziawg
+
+- name: Inspect AmneziaWG unit before check-mode activation
+  ansible.builtin.stat:
+    path: /etc/systemd/system/awg-quick@.service
+    follow: false
+  register: _awg_unit_before
+  changed_when: false
+  when: ansible_check_mode
+
+- name: Require planned AmneziaWG unit on a fresh check-mode host
+  ansible.builtin.assert:
+    that:
+      - _awg_unit_plan.changed
+    fail_msg: Check mode found no AmneziaWG unit and no planned installation.
+  when:
+    - ansible_check_mode
+    - not (_awg_unit_before.stat.exists | default(false))
+
+- name: Enable and start awg-quick@<iface> for every instance
+  ansible.builtin.systemd_service:
+    name: "awg-quick@{{ item.name }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+  loop: "{{ _awg_instances }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+  when: not ansible_check_mode or _awg_unit_before.stat.exists | default(false)
+
+- name: Apply queued AmneziaWG activation before committing ownership
+  ansible.builtin.meta: flush_handlers
+
+- name: Publish private AmneziaWG ownership directory
+  ansible.builtin.file:
+    path: /var/lib/ripdpi/amneziawg
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Record the converged AmneziaWG instance ownership set
+  ansible.builtin.copy:
+    dest: /var/lib/ripdpi/amneziawg/instances.json
+    content: "{{ {'schema': 1, 'config_dir': amneziawg_config_dir, 'instances': _awg_instances | map(attribute='name') | list} | to_json }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true

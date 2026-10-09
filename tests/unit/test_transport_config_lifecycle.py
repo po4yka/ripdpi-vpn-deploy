@@ -14,7 +14,7 @@ VALIDATOR = ANSIBLE / "roles/runtime-release/files/validate_yaml_mapping.py"
 
 
 def _tasks(role: str) -> list[dict]:
-    return yaml.safe_load((ANSIBLE / f"roles/{role}/tasks/main.yml").read_text())
+    return yaml.safe_load((ANSIBLE / f"roles/{role}/tasks/enable.yml").read_text())
 
 
 def _handlers(role: str) -> list[dict]:
@@ -179,7 +179,10 @@ def test_restart_only_handlers_wait_for_service_liveness() -> None:
         assert wait["retries"] == 5
         assert wait["delay"] == 2
         assert wait["changed_when"] is False
-        assert wait["when"] == "not ansible_check_mode"
+        assert (
+            wait["when"]
+            == f"{role.replace('-', '_')}_role_enabled | bool and not ansible_check_mode"
+        )
 
 
 def test_hysteria_tls_rotation_uses_the_liveness_restart_topic() -> None:

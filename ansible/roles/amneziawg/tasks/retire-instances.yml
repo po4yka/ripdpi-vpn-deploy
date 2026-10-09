@@ -1,0 +1,13 @@
+---
+- name: Retire only recorded obsolete AmneziaWG instances
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: retire
+  vars:
+    runtime_retire_units: >-
+      {{ _awg_obsolete | map('regex_replace', '^', 'awg-quick@')
+         | map('regex_replace', '$', '.service') | list }}
+    runtime_retire_paths: >-
+      {{ _awg_obsolete | map('regex_replace', '^', _awg_previous.config_dir ~ '/')
+         | map('regex_replace', '$', '.conf') | list }}
+  when: _awg_obsolete | length > 0

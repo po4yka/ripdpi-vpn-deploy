@@ -518,7 +518,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         observability-remove observability-silence-create observability-silence-delete observability-staging-prepare observability-staging-materialize observability-staging-acceptance \
         observability-staging-cleanup-preflight observability-staging-cleanup-snapshot observability-staging-cleanup-seal observability-staging-cleanup-validate observability-staging-cleanup \
         awg-evidence-provision \
-        test-native-runtime test-probe-matrix-mtproto test-unit test-unit-profile test-unit-shard snapshot-check snapshot-update validate-secrets \
+        native-naive-build test-native-runtime test-probe-matrix-mtproto test-unit test-unit-profile test-unit-shard snapshot-check snapshot-update validate-secrets \
         actionlint-check zizmor-check zizmor-test cloud-init-schema tf-test yamllint-check shellcheck \
         ci-fast bats-test vpnd-test vpnd-clippy vpnd-deny vpnd-msrv vpnd-mutants tf-policy tf-policy-verify \
         task-tools task-check task-list task-ready task-graph task-federation \
@@ -1039,6 +1039,10 @@ install-hooks:
 	python3 -m pip install --require-hashes --no-deps -r requirements.txt
 	pre-commit install
 	pre-commit install --hook-type commit-msg
+
+# Exact Caddy/forwardproxy composite; native tests never accept stock Caddy.
+native-naive-build:
+	./scripts/build-native-naive-test.sh
 
 # Explicit Linux-only lane; run as root in a disposable runner/container.
 test-native-runtime:

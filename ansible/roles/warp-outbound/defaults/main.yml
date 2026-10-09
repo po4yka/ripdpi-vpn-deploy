@@ -14,6 +14,9 @@ warp_outbound:
   # Debian/Ubuntu. Set to false to skip install on systems that already
   # have warp-cli or wgcf provisioned out of band.
   install_warp_cli: true
+  # Exact stable dpkg identity; example approved main-channel pin: 2026.8.2100.0.
+  # The enabled role refuses an omitted pin rather than selecting a repository candidate.
+  package_version: ""
 
   # SHA-256 of Cloudflare's WARP apt signing key
   # (https://pkg.cloudflareclient.com/pubkey.gpg), pinned at role level
@@ -34,3 +37,5 @@ warp_outbound:
   # Tag the WARP outbound under this name when xray builds routing
   # rules. Operators can match on this tag in custom routing.
   routing_tag: warp-out
+
+warp_outbound_role_enabled: true

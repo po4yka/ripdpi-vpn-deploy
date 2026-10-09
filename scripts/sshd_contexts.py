@@ -4,7 +4,6 @@ import ipaddress
 import json
 import re
 
-
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
 
 
@@ -17,9 +16,18 @@ def validate_contexts(value):
         raise ContextError("invalid-contexts")
     seen = set()
     for context in value:
-        if not isinstance(context, dict) or set(context) != {"user", "host", "addr", "laddr", "lport"}:
+        if not isinstance(context, dict) or set(context) != {
+            "user",
+            "host",
+            "addr",
+            "laddr",
+            "lport",
+        }:
             raise ContextError("invalid-contexts")
-        if not isinstance(context["user"], str) or NAME.fullmatch(context["user"]) is None:
+        if (
+            not isinstance(context["user"], str)
+            or NAME.fullmatch(context["user"]) is None
+        ):
             raise ContextError("invalid-contexts")
         host = context["host"]
         if not isinstance(host, str):
@@ -59,9 +67,42 @@ def bind_contexts(value, public_address, management_address, port):
     if any(context["lport"] != port for context in value):
         raise ContextError("invalid-context-binding")
     try:
-        local_addresses = {str(ipaddress.ip_address(context["laddr"])) for context in value}
+        local_addresses = {
+            str(ipaddress.ip_address(context["laddr"])) for context in value
+        }
     except ValueError:
         raise ContextError("invalid-context-binding") from None
     if local_addresses != {public, management}:
         raise ContextError("invalid-context-binding")
+    return value
+
+
+def validate_restricted_user_contexts(value, users, primary_user):
+    """Require explicit restricted accounts to have both exact transport contexts.
+
+    Contexts are evidence inputs, never an implicit authority allowlist.
+    """
+    validate_contexts(value)
+    if (
+        not isinstance(primary_user, str)
+        or NAME.fullmatch(primary_user) is None
+        or not isinstance(users, list)
+        or len(users) > 3
+        or any(
+            not isinstance(user, str)
+            or NAME.fullmatch(user) is None
+            or user in {"root", primary_user}
+            for user in users
+        )
+        or len(set(users)) != len(users)
+    ):
+        raise ContextError("invalid-restricted-users")
+    addresses = {context["laddr"] for context in value}
+    if len(addresses) != 2:
+        raise ContextError("invalid-restricted-user-contexts")
+    for user in users:
+        if {
+            context["laddr"] for context in value if context["user"] == user
+        } != addresses:
+            raise ContextError("missing-restricted-user-contexts")
     return value

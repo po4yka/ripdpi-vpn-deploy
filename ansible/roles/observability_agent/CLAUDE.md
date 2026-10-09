@@ -40,3 +40,12 @@ Before changing the sender runtime contract, inspect its [cross-role and operato
 - The strict native scrape parser does not support Prometheus label-name/value-length YAML keys. Apply the same bounds through native `maxLabelNameLen`, `maxLabelValueLen` and `maxLabelsPerTimeseries` flags; rejected series increment the bounded `vm_rows_ignored_total{reason}` self metric. Never disable strict parsing.
 - Watchdog recovery is inferred only from its canonical consecutive-failure and hourly kick counters; it is local recovery evidence, never outside-in client-path recovery.
 - `LoadCredential` source files are root-only input to systemd; do not replace it with an EnvironmentFile or put PEM content into the Prometheus template.
+
+- Check mode runs read-only contract and capacity probes before predicting
+  publication. It never creates a private credential candidate, activates units,
+  or consumes stdout from commands skipped by Ansible check mode. Native candidate
+  validation and readiness still run in ordinary convergence before acceptance.
+
+Disable retires the sender's credential generations after stopping its units.
+The persistent queue and its root-private receiver binding are retained together
+so a later enable cannot silently reroute retained samples to another receiver.

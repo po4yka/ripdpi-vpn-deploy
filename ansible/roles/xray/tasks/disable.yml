@@ -1,0 +1,12 @@
+---
+- name: Retire xray runtime authority
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: retire
+  vars:
+    runtime_retire_units:
+      - xray.service
+    runtime_retire_paths:
+      - /etc/systemd/system/xray.service
+      - '{{ xray_etc_dir }}/config.json'
+      - '{{ xray_etc_dir }}/config.json.prev'

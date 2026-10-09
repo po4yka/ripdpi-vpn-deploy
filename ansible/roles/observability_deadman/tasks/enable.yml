@@ -75,6 +75,7 @@
     stdin_add_newline: false
   register: _observability_deadman_pulse_tls_certificate
   changed_when: false
+  check_mode: false
   no_log: true
 
 - name: Read dedicated pulse TLS CA constraints before host mutation
@@ -89,6 +90,7 @@
     stdin_add_newline: false
   register: _observability_deadman_pulse_tls_ca_constraints
   changed_when: false
+  check_mode: false
   no_log: true
 
 - name: Refuse pulse TLS CA without an explicit CA constraint
@@ -111,6 +113,7 @@
     stdin_add_newline: false
   register: _observability_deadman_pulse_tls_purpose
   changed_when: false
+  check_mode: false
   no_log: true
 
 - name: Read pulse TLS server certificate public material before host mutation
@@ -124,6 +127,7 @@
     stdin_add_newline: false
   register: _observability_deadman_pulse_tls_certificate_public
   changed_when: false
+  check_mode: false
   no_log: true
 
 - name: Read pulse TLS server private-key public material before host mutation
@@ -136,6 +140,7 @@
     stdin_add_newline: false
   register: _observability_deadman_pulse_tls_key
   changed_when: false
+  check_mode: false
   no_log: true
 
 - name: Verify pulse TLS server certificate against the dedicated CA
@@ -190,6 +195,7 @@
     stdin_add_newline: false
   register: _observability_deadman_reverse_client_certificate
   changed_when: false
+  check_mode: false
   no_log: true
 
 - name: Read pinned reverse-health client CA fingerprint before host mutation
@@ -204,6 +210,7 @@
     stdin_add_newline: false
   register: _observability_deadman_reverse_ca_certificate
   changed_when: false
+  check_mode: false
   no_log: true
 
 - name: Refuse a reverse-heartbeat certificate that differs from the controller identity
@@ -225,222 +232,314 @@
     fail_msg: Reverse heartbeat requires the exact controller ingest client certificate and CA pins.
   no_log: true
 
-- name: Create dedicated dead-man group
-  ansible.builtin.group:
-    name: "{{ observability_deadman.service_group }}"
-    system: true
-
-- name: Create dedicated dead-man account
-  ansible.builtin.user:
-    name: "{{ observability_deadman.service_user }}"
-    group: "{{ observability_deadman.service_group }}"
-    system: true
-    shell: /usr/sbin/nologin
-    home: "{{ observability_deadman.state_dir }}"
-    create_home: false
-
-- name: Create dead-man private directories
-  ansible.builtin.file:
-    path: "{{ item.path }}"
-    state: directory
-    owner: "{{ item.owner }}"
-    group: "{{ item.group }}"
-    mode: "{{ item.mode }}"
-  loop:
-    - {path: "{{ observability_deadman.config_root }}", owner: root, group: root, mode: '0755'}
-    - {path: "{{ observability_deadman.config_root }}/generations", owner: root, group: root, mode: '0755'}
-    - {path: "{{ observability_deadman.pulse_credential_path | dirname }}", owner: root, group: root, mode: '0700'}
-    - path: "{{ observability_deadman.state_dir }}"
-      owner: "{{ observability_deadman.service_user }}"
-      group: "{{ observability_deadman.service_group }}"
-      mode: '0700'
-
-- name: Install root-owned systemd credential inputs
-  ansible.builtin.copy:
-    content: "{{ item.content }}"
-    dest: "{{ item.path }}"
-    owner: root
-    group: root
-    mode: '0600'
-  loop:
-    - {content: "{{ observability_deadman_secrets.pulse_token }}", path: "{{ observability_deadman.pulse_credential_path }}"}
-    - {content: "{{ observability_deadman_secrets.telegram.bot_token }}", path: "{{ observability_deadman.telegram_credential_path }}"}
-    - content: "{{ observability_deadman_secrets.pulse_tls.server_cert_pem }}"
-      path: "{{ observability_deadman.config_root }}/credentials/pulse-server.crt"
-    - content: "{{ observability_deadman_secrets.pulse_tls.server_key_pem }}"
-      path: "{{ observability_deadman.config_root }}/credentials/pulse-server.key"
-    - content: "{{ observability_deadman.reverse_health_tls.ca_pem }}"
-      path: "{{ observability_deadman.config_root }}/credentials/reverse-health-ca.pem"
-    - content: "{{ observability_deadman.reverse_health_tls.client_cert_pem }}"
-      path: "{{ observability_deadman.config_root }}/credentials/reverse-health-client.crt"
-    - content: "{{ observability_deadman.reverse_health_tls.client_key_pem }}"
-      path: "{{ observability_deadman.config_root }}/credentials/reverse-health-client.key"
-  no_log: true
-  diff: false
-  register: _observability_deadman_credentials
-
-- name: Install dead-man verifier and immutable candidate configuration
-  ansible.builtin.copy:
-    src: "{{ item.src }}"
-    dest: "{{ item.dest }}"
-    owner: root
-    group: root
-    mode: "{{ item.mode }}"
-  loop:
-    - {src: observability-deadman.py, dest: /usr/local/libexec/observability-deadman.py, mode: '0755'}
-  register: _observability_deadman_verifier
-
-- name: Derive dead-man immutable configuration generation
-  ansible.builtin.set_fact:
-    _observability_deadman_content: "{{ lookup('ansible.builtin.template', 'observability-deadman.json.j2') }}"
-    _observability_deadman_generation: "{{ lookup('ansible.builtin.template', 'observability-deadman.json.j2') | hash('sha256') }}"
-  no_log: true
-
-- name: Publish immutable dead-man candidate
-  ansible.builtin.copy:
-    content: "{{ _observability_deadman_content }}"
-    dest: "{{ observability_deadman.config_root }}/generations/deadman-{{ _observability_deadman_generation }}.json"
-    owner: root
-    group: "{{ observability_deadman.service_group }}"
-    mode: '0640'
-    force: false
-  no_log: true
-  diff: false
-
-- name: Validate immutable dead-man candidate before activation
-  ansible.builtin.command:
-    argv:
-      - /usr/local/libexec/observability-deadman.py
-      - validate-config
-      - --config
-      - "{{ observability_deadman.config_root }}/generations/deadman-{{ _observability_deadman_generation }}.json"
-  changed_when: false
-  no_log: true
-
-- name: Inspect previous dead-man generation link
-  ansible.builtin.stat:
-    path: "{{ observability_deadman.config_root }}/deadman-current.json"
-    follow: false
-  register: _observability_deadman_previous
-  changed_when: false
-
-- name: Refuse an unsafe existing dead-man generation link
+- name: Require the retained receiver fixed authority namespace
   ansible.builtin.assert:
     that:
-      - >-
-        not (_observability_deadman_previous.stat.exists | default(false)) or
-        (_observability_deadman_previous.stat.islnk | default(false))
-      - >-
-        not (_observability_deadman_previous.stat.exists | default(false)) or
-        _observability_deadman_previous.stat.lnk_source is match(
-        '^' ~ observability_deadman.config_root ~
-        '/generations/deadman-[a-f0-9]{64}[.]json$')
-    fail_msg: Existing dead-man configuration must be an owned immutable generation link.
+      - observability_deadman.config_root == '/etc/observability-deadman'
+      - observability_deadman.pulse_credential_path == '/etc/observability-deadman/credentials/pulse-token'
+      - observability_deadman.telegram_credential_path == '/etc/observability-deadman/credentials/telegram-bot-token'
+    fail_msg: Retained receiver authority must use its fixed role-owned namespace.
 
-- name: Activate dead-man candidate with last-known-good rollback
+- name: Predict validated retained receiver publication without credential writes
+  ansible.builtin.debug:
+    msg: Retained receiver inputs passed read-only preflight; candidate publication requires ordinary convergence.
+  changed_when: false
+  when: ansible_check_mode
+
+- name: Publish validated retained receiver outside check mode
+  when: not ansible_check_mode
   block:
-    - name: Point dead-man at validated generation
+    - name: Create dedicated dead-man group
+      ansible.builtin.group:
+        name: "{{ observability_deadman.service_group }}"
+        system: true
+
+    - name: Create dedicated dead-man account
+      ansible.builtin.user:
+        name: "{{ observability_deadman.service_user }}"
+        group: "{{ observability_deadman.service_group }}"
+        system: true
+        shell: /usr/sbin/nologin
+        home: "{{ observability_deadman.state_dir }}"
+        create_home: false
+
+    - name: Create dead-man private directories
       ansible.builtin.file:
-        src: "{{ observability_deadman.config_root }}/generations/deadman-{{ _observability_deadman_generation }}.json"
-        dest: "{{ observability_deadman.config_root }}/deadman-current.json"
-        state: link
-        force: true
-      register: _observability_deadman_current_link
-
-    - name: Install hardened dead-man service and timer units
-      ansible.builtin.template:
-        src: "{{ item }}"
-        dest: "/etc/systemd/system/{{ item | regex_replace('[.]j2$', '') }}"
-        owner: root
-        group: root
-        mode: '0644'
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner }}"
+        group: "{{ item.group }}"
+        mode: "{{ item.mode }}"
       loop:
-        - observability-deadman.service.j2
-        - observability-deadman-tick.service.j2
-        - observability-deadman-tick.timer.j2
-      register: _observability_deadman_units
+        - {path: "{{ observability_deadman.config_root }}", owner: root, group: root, mode: '0755'}
+        - {path: "{{ observability_deadman.config_root }}/generations", owner: root, group: root, mode: '0755'}
+        - {path: "{{ observability_deadman.pulse_credential_path | dirname }}", owner: root, group: root, mode: '0700'}
+        - path: "{{ observability_deadman.state_dir }}"
+          owner: "{{ observability_deadman.service_user }}"
+          group: "{{ observability_deadman.service_group }}"
+          mode: '0700'
 
-    - name: Enable bounded dead-man lifecycle
-      ansible.builtin.systemd_service:
-        name: "{{ item }}"
-        enabled: true
-        state: "{{ 'started' if item == 'observability-deadman.service' else 'started' }}"
-        daemon_reload: true
-      loop:
-        - observability-deadman.service
-        - observability-deadman-tick.timer
-      when: not ansible_check_mode
-
-    - name: Restart changed dead-man receiver before acceptance
-      ansible.builtin.systemd_service:
-        name: observability-deadman.service
-        enabled: true
-        state: restarted
-      when:
-        - not ansible_check_mode
-        - >-
-          _observability_deadman_credentials.changed or
-          _observability_deadman_verifier.changed or
-          _observability_deadman_current_link.changed or
-          _observability_deadman_units.changed
-
-    - name: Require activated dead-man private status readiness
-      ansible.builtin.uri:
-        url: http://127.0.0.1:19094/v1/status
-        status_code: 200
-        return_content: false
-        timeout: 5
-        use_proxy: false
-        follow_redirects: none
-      register: _observability_deadman_status
-      retries: 5
-      delay: 1
-      until: _observability_deadman_status.status == 200
+    - name: Capture retained receiver service and timer activation directly
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - "{{ lookup('ansible.builtin.file', role_path ~ '/../runtime-release/files/systemd-unit-state.py') }}"
+        stdin: "{{ ['observability-deadman.service', 'observability-deadman-tick.timer'] | to_json }}"
+      register: _deadman_unit_capture
       changed_when: false
-      when: not ansible_check_mode
-  rescue:
-    - name: Gather candidate dead-man unit facts before rollback
-      ansible.builtin.service_facts:
 
-    - name: Stop candidate dead-man units before rollback
-      ansible.builtin.systemd_service:
-        name: "{{ item }}"
-        enabled: false
-        state: stopped
-      loop:
-        - observability-deadman-tick.timer
-        - observability-deadman.service
-      when:
-        - not ansible_check_mode
-        - item in ansible_facts.services
+    - name: Retain exact receiver service and timer state
+      ansible.builtin.set_fact:
+        _deadman_authority_services: "{{ _deadman_unit_capture.stdout | from_json }}"
 
-    - name: Restore previous dead-man generation link
-      ansible.builtin.file:
-        src: "{{ _observability_deadman_previous.stat.lnk_source }}"
-        dest: "{{ observability_deadman.config_root }}/deadman-current.json"
-        state: link
-        force: true
-      when: _observability_deadman_previous.stat.exists | default(false)
+    - name: Capture fixed retained receiver authority before publication
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - "{{ lookup('ansible.builtin.file', role_path ~ '/../observability_control_plane/files/observability-authority-snapshot.py') }}"
+          - deadman
+          - prepare
+          - /
+        stdin: "{{ {'services': _deadman_authority_services} | to_json }}"
+      register: _deadman_authority_capture
+      changed_when: false
+      no_log: true
+      diff: false
 
-    - name: Restart restored dead-man generation
-      ansible.builtin.systemd_service:
-        name: "{{ item }}"
-        daemon_reload: true
-        enabled: true
-        state: "{{ 'restarted' if item == 'observability-deadman.service' else 'started' }}"
-      loop:
-        - observability-deadman.service
-        - observability-deadman-tick.timer
-      when:
-        - not ansible_check_mode
-        - _observability_deadman_previous.stat.exists | default(false)
+    - name: Retain private receiver rollback identity
+      ansible.builtin.set_fact:
+        _deadman_authority: "{{ _deadman_authority_capture.stdout | from_json }}"
+      no_log: true
 
-    - name: Remove failed first dead-man generation link
-      ansible.builtin.file:
-        path: "{{ observability_deadman.config_root }}/deadman-current.json"
-        state: absent
-      when: not (_observability_deadman_previous.stat.exists | default(false))
+    - name: Activate dead-man candidate with last-known-good rollback
+      block:
+        - name: Install root-owned systemd credential inputs
+          ansible.builtin.copy:
+            content: "{{ item.content }}"
+            dest: "{{ item.path }}"
+            owner: root
+            group: root
+            mode: '0600'
+          loop:
+            - {content: "{{ observability_deadman_secrets.pulse_token }}", path: "{{ observability_deadman.pulse_credential_path }}"}
+            - content: "{{ observability_deadman_secrets.telegram.bot_token }}"
+              path: "{{ observability_deadman.telegram_credential_path }}"
+            - content: "{{ observability_deadman_secrets.pulse_tls.server_cert_pem }}"
+              path: "{{ observability_deadman.config_root }}/credentials/pulse-server.crt"
+            - content: "{{ observability_deadman_secrets.pulse_tls.server_key_pem }}"
+              path: "{{ observability_deadman.config_root }}/credentials/pulse-server.key"
+            - content: "{{ observability_deadman.reverse_health_tls.ca_pem }}"
+              path: "{{ observability_deadman.config_root }}/credentials/reverse-health-ca.pem"
+            - content: "{{ observability_deadman.reverse_health_tls.client_cert_pem }}"
+              path: "{{ observability_deadman.config_root }}/credentials/reverse-health-client.crt"
+            - content: "{{ observability_deadman.reverse_health_tls.client_key_pem }}"
+              path: "{{ observability_deadman.config_root }}/credentials/reverse-health-client.key"
+          no_log: true
+          diff: false
+          register: _observability_deadman_credentials
 
-    - name: Fail closed after dead-man candidate activation failure
-      ansible.builtin.fail:
-        msg: Dead-man candidate did not activate; the prior generation was restored when available.
+        - name: Install dead-man verifier and immutable candidate configuration
+          ansible.builtin.copy:
+            src: "{{ item.src }}"
+            dest: "{{ item.dest }}"
+            owner: root
+            group: root
+            mode: "{{ item.mode }}"
+          loop:
+            - {src: observability-deadman.py, dest: /usr/local/libexec/observability-deadman.py, mode: '0755'}
+          register: _observability_deadman_verifier
+
+        - name: Derive dead-man immutable configuration generation
+          ansible.builtin.set_fact:
+            _observability_deadman_content: "{{ lookup('ansible.builtin.template', 'observability-deadman.json.j2') }}"
+            _observability_deadman_generation: "{{ lookup('ansible.builtin.template', 'observability-deadman.json.j2') | hash('sha256') }}"
+          no_log: true
+
+        - name: Publish immutable dead-man candidate
+          ansible.builtin.copy:
+            content: "{{ _observability_deadman_content }}"
+            dest: "{{ observability_deadman.config_root }}/generations/deadman-{{ _observability_deadman_generation }}.json"
+            owner: root
+            group: "{{ observability_deadman.service_group }}"
+            mode: '0640'
+            force: false
+          no_log: true
+          diff: false
+
+        - name: Validate immutable dead-man candidate before activation
+          ansible.builtin.command:
+            argv:
+              - /usr/local/libexec/observability-deadman.py
+              - validate-config
+              - --config
+              - "{{ observability_deadman.config_root }}/generations/deadman-{{ _observability_deadman_generation }}.json"
+          changed_when: false
+          check_mode: false
+          no_log: true
+
+        - name: Inspect previous dead-man generation link
+          ansible.builtin.stat:
+            path: "{{ observability_deadman.config_root }}/deadman-current.json"
+            follow: false
+          register: _observability_deadman_previous
+          changed_when: false
+
+        - name: Refuse an unsafe existing dead-man generation link
+          ansible.builtin.assert:
+            that:
+              - >-
+                not (_observability_deadman_previous.stat.exists | default(false)) or
+                (_observability_deadman_previous.stat.islnk | default(false))
+              - >-
+                not (_observability_deadman_previous.stat.exists | default(false)) or
+                _observability_deadman_previous.stat.lnk_source is match(
+                '^' ~ observability_deadman.config_root ~
+                '/generations/deadman-[a-f0-9]{64}[.]json$')
+            fail_msg: Existing dead-man configuration must be an owned immutable generation link.
+
+        - name: Point dead-man at validated generation
+          ansible.builtin.file:
+            src: "{{ observability_deadman.config_root }}/generations/deadman-{{ _observability_deadman_generation }}.json"
+            dest: "{{ observability_deadman.config_root }}/deadman-current.json"
+            state: link
+            force: true
+          register: _observability_deadman_current_link
+
+        - name: Install hardened dead-man service and timer units
+          ansible.builtin.template:
+            src: "{{ item }}"
+            dest: "/etc/systemd/system/{{ item | regex_replace('[.]j2$', '') }}"
+            owner: root
+            group: root
+            mode: '0644'
+          loop:
+            - observability-deadman.service.j2
+            - observability-deadman-tick.service.j2
+            - observability-deadman-tick.timer.j2
+          register: _observability_deadman_units
+
+        - name: Enable bounded dead-man lifecycle
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            enabled: true
+            state: "{{ 'started' if item == 'observability-deadman.service' else 'started' }}"
+            daemon_reload: true
+          loop:
+            - observability-deadman.service
+            - observability-deadman-tick.timer
+          when: not ansible_check_mode
+
+        - name: Restart changed dead-man receiver before acceptance
+          ansible.builtin.systemd_service:
+            name: observability-deadman.service
+            enabled: true
+            state: restarted
+          when:
+            - not ansible_check_mode
+            - >-
+              _observability_deadman_credentials.changed or
+              _observability_deadman_verifier.changed or
+              _observability_deadman_current_link.changed or
+              _observability_deadman_units.changed
+
+        - name: Require activated dead-man private status readiness
+          ansible.builtin.uri:
+            url: http://127.0.0.1:19094/v1/status
+            status_code: 200
+            return_content: false
+            timeout: 5
+            use_proxy: false
+            follow_redirects: none
+          register: _observability_deadman_status
+          retries: 5
+          delay: 1
+          until: _observability_deadman_status.status == 200
+          changed_when: false
+          when: not ansible_check_mode
+        - name: Finish accepted retained receiver authority transaction
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/python3
+              - -c
+              - >-
+                {{ lookup('ansible.builtin.file', role_path ~
+                  '/../observability_control_plane/files/observability-authority-snapshot.py') }}
+              - deadman
+              - finish
+              - /
+              - "{{ _deadman_authority.id }}"
+          changed_when: false
+          no_log: true
+      rescue:
+        - name: Gather candidate dead-man unit facts before rollback
+          ansible.builtin.command:
+            argv:
+              - python3
+              - -c
+              - >-
+                {{ lookup('ansible.builtin.file', role_path ~
+                  '/../runtime-release/files/systemd-unit-state.py') }}
+            stdin: "{{ ['observability-deadman.service', 'observability-deadman-tick.timer'] | to_json }}"
+          register: _deadman_candidate_units
+          changed_when: false
+
+        - name: Stop candidate dead-man units before rollback
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            enabled: false
+            state: stopped
+          loop:
+            - observability-deadman-tick.timer
+            - observability-deadman.service
+          when:
+            - not ansible_check_mode
+            - (_deadman_candidate_units.stdout | from_json)[item].exists
+
+        - name: Restore complete retained receiver authority snapshot
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/python3
+              - -c
+              - >-
+                {{ lookup('ansible.builtin.file', role_path ~
+                  '/../observability_control_plane/files/observability-authority-snapshot.py') }}
+              - deadman
+              - restore
+              - /
+              - "{{ _deadman_authority.id }}"
+          changed_when: false
+          no_log: true
+
+        - name: Restore exact retained receiver service and timer states
+          ansible.builtin.command:
+            argv:
+              - python3
+              - -c
+              - >-
+                {{ lookup('ansible.builtin.file', role_path ~
+                  '/../runtime-release/files/systemd-unit-state.py') }}
+              - restore
+            stdin: "{{ _deadman_authority.services | to_json }}"
+          changed_when: false
+          no_log: true
+
+        - name: Finish compensated retained receiver authority transaction
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/python3
+              - -c
+              - >-
+                {{ lookup('ansible.builtin.file', role_path ~
+                  '/../observability_control_plane/files/observability-authority-snapshot.py') }}
+              - deadman
+              - finish
+              - /
+              - "{{ _deadman_authority.id }}"
+          changed_when: false
+          no_log: true
+
+        - name: Refuse unaccepted retained receiver activation
+          ansible.builtin.fail:
+            msg: Receiver activation failed; prior credentials, verifier, units and generation were restored.

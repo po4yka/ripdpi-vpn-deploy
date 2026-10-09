@@ -25,3 +25,5 @@ probe_matrix_target_secrets:
   mtg_linux_arm64_url: ""
   mtg_linux_amd64_sha256: ""
   mtg_linux_arm64_sha256: ""
+
+probe_matrix_target_role_enabled: true

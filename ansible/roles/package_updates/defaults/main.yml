@@ -12,3 +12,5 @@ package_updates:
   # apticron is intentionally opt-in: on some distros it pulls mail tooling and
   # overlaps unattended-upgrades reporting.
   install_apticron: false
+
+package_updates_role_enabled: true

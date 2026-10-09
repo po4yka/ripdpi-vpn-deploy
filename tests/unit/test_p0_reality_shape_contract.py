@@ -177,9 +177,7 @@ def test_installed_ansible_rotation_uses_shared_shape_from_playbook_context(
     assert executable, "ansible-playbook is required for the shared P0 contract"
     rotation = yaml.safe_load(ROTATE.read_text(encoding="utf-8"))[0]
     task = next(
-        task
-        for task in rotation["tasks"]
-        if task["name"] == "Re-render Xray config"
+        task for task in rotation["tasks"] if task["name"] == "Re-render Xray config"
     )
     task = deepcopy(task)
     destination = tmp_path / "xray-config.json"
@@ -326,7 +324,7 @@ def test_consumers_do_not_reimplement_the_shape_table() -> None:
         assert "p0_reality_shapes[" not in source
         assert "p0_reality_shape_template" in source
 
-    watchdog_tasks = (ROOT / "ansible/roles/watchdog/tasks/main.yml").read_text(
+    watchdog_tasks = (ROOT / "ansible/roles/watchdog/tasks/enable.yml").read_text(
         encoding="utf-8"
     )
     assert "p0_reality_shape_input" in watchdog_tasks

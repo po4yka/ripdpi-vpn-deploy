@@ -16,7 +16,7 @@ from scripts.template_render import merge_render_vars, render_template
 REPO_ROOT = Path(__file__).resolve().parents[2]
 XRAY_TEMPLATE = REPO_ROOT / "ansible/roles/xray/templates/config.json.j2"
 EXPORTER = REPO_ROOT / "ansible/roles/monitoring/files/xray-stats-exporter.py"
-MONITORING_TASKS = REPO_ROOT / "ansible/roles/monitoring/tasks/main.yml"
+MONITORING_TASKS = REPO_ROOT / "ansible/roles/monitoring/tasks/enable.yml"
 MONITORING_HANDLERS = REPO_ROOT / "ansible/roles/monitoring/handlers/main.yml"
 
 spec = importlib.util.spec_from_file_location("xray_stats_exporter", EXPORTER)
@@ -189,4 +189,7 @@ def test_new_timer_handler_is_safe_during_check_mode() -> None:
         item for item in handlers if item["name"] == "Restart Xray stats exporter timer"
     )
 
-    assert handler["when"] == "not ansible_check_mode"
+    assert (
+        handler["when"]
+        == "monitoring_role_enabled | default(true) | bool and not ansible_check_mode"
+    )

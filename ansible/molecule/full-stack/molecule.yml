@@ -53,6 +53,8 @@ provisioner:
     # does not auto-load that file.
     group_vars:
       all:
+        # This disposable inventory is staging; research prereleases remain forbidden elsewhere.
+        env: staging
         xray_port: 443
         nginx_xhttp_public_port: 8443
         nginx_xhttp_port: 10085

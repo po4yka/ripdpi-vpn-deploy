@@ -11,7 +11,7 @@
   ansible.builtin.systemd_service:
     name: hysteria-server
     state: restarted
-  when: not ansible_check_mode
+  when: not ansible_check_mode and hysteria_role_enabled | default(true) | bool
   listen: Restart hysteria
 
 - name: Wait for hysteria-server to become active
@@ -22,5 +22,5 @@
   delay: 2
   until: hy_active.stdout == "active"
   changed_when: false
-  when: not ansible_check_mode
+  when: not ansible_check_mode and hysteria_role_enabled | default(true) | bool
   listen: Restart hysteria

@@ -1,0 +1,20 @@
+---
+- name: Require role-local TLS authority before Realm retirement
+  ansible.builtin.assert:
+    that:
+      - hysteria_realm.tls_cert_path | dirname == hysteria_realm.config_dir
+      - hysteria_realm.tls_key_path | dirname == hysteria_realm.config_dir
+    fail_msg: Realm retirement requires its TLS destinations inside its owned config directory.
+
+- name: Retire hysteria-realm owned runtime authority
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: retire
+  vars:
+    runtime_retire_units:
+      - hysteria-realm.service
+    runtime_retire_paths:
+      - /etc/systemd/system/hysteria-realm.service
+      - '{{ hysteria_realm.config_dir }}/config.json'
+      - '{{ hysteria_realm.tls_cert_path }}'
+      - '{{ hysteria_realm.tls_key_path }}'

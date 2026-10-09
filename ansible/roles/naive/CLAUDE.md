@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+Disabled role intent stops only declared owned services and removes exact runtime
+configuration; shared packages, immutable release receipts and unrelated state
+remain. The unique `naive_role_enabled` selector defaults true for direct calls.
+
 **Native validation and liveness are one lifecycle** — Caddyfile publication
 uses the pinned caddy-naive `validate` command and the restart handler waits for
 the service to become active before convergence may succeed.
@@ -14,11 +18,18 @@ preamble change (see `docs/CLIENT-NOTES.md`) burned an upgrade cycle.
 listener manifest guard rejects the pair before any role runs. The role
 runs caddy-naive standalone with its own cert (from SOPS) on port 443 —
 there is no shared listener.
+The service enables HTTP/1.1 and HTTP/2 only. HTTP/3 is disabled, so Caddy
+cannot acquire an undeclared UDP listener or collide with an enabled UDP
+transport. This deliberately keeps the transport's contract TCP-only.
 
 **Source identity is compound** — xcaddy, Caddy, and the forwardproxy module
 pin form one shared runtime-build receipt. The receipt also binds the expected
 installed binary SHA256; changing one pin rebuilds in a private project stage
 and publishes only after the expected digest passes.
+
+Both Caddy site addresses carry the explicit configured port. A bare hostname
+would silently add TCP/443 when a non-default port is selected, bypassing the
+listener manifest. Native exact-composite adaptation checks the sole listener.
 
 ## What's done well
 

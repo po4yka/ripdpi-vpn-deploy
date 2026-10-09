@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tomllib
 
+import pytest
 import yaml
 
 from scripts.template_render import render_template
@@ -123,6 +124,31 @@ def test_renderer_excludes_disabled_target_from_missing_target_series(
     metrics = (tmp_path / "expected.prom").read_text(encoding="utf-8")
     assert 'node="vpn-p2"' not in metrics
     assert 'node="vpn-p0"' in metrics
+
+
+@pytest.mark.parametrize("field", ["lifecycle", "labels", "families"])
+@pytest.mark.parametrize(
+    "nested", [{"private": "synthetic-private-marker"}, ["synthetic-private-marker"]]
+)
+def test_nested_inventory_values_fail_as_redacted_validation_error(
+    tmp_path, field, nested
+):
+    assert _run_renderer(tmp_path, _inventory()).returncode == 0
+    output = tmp_path / "expected.prom"
+    previous = output.read_bytes()
+    invalid = _inventory()
+    target = invalid["targets"][0]
+    if field == "lifecycle":
+        target["lifecycle"] = nested
+    elif field == "labels":
+        target["label_values"]["node"] = [nested]
+    else:
+        target["required_families"] = [nested]
+    result = _run_renderer(tmp_path, invalid)
+    assert result.returncode == 2
+    assert "Traceback" not in result.stderr
+    assert "synthetic-private-marker" not in result.stdout + result.stderr
+    assert output.read_bytes() == previous
 
 
 def test_renderer_accepts_shared_textfile_directory_and_publishes_collector_readable_output(

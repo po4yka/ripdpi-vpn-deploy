@@ -21,3 +21,5 @@ hysteria:
 hysteria_release_urls:
   amd64: "https://github.com/apernet/hysteria/releases/download/app/{{ hysteria.version }}/hysteria-linux-amd64"
   arm64: "https://github.com/apernet/hysteria/releases/download/app/{{ hysteria.version }}/hysteria-linux-arm64"
+
+hysteria_role_enabled: true

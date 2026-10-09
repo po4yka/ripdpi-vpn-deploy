@@ -1,0 +1,77 @@
+---
+- name: Inspect exact owned units before retirement
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - show
+      - '{{ item }}'
+      - --property=LoadState
+      - --value
+  loop:
+    - vpn-sub-mirror.timer
+    - vpn-sub-mirror.service
+    - vpn-bootstrap.service
+  register: _owned_disabled_units
+  changed_when: false
+  check_mode: false
+  failed_when: _owned_disabled_units.rc not in [0, 1] or _owned_disabled_units.stdout not in ['loaded', 'masked', 'not-found']
+- name: Stop owned runtime before retiring its configuration
+  ansible.builtin.systemd_service:
+    name: '{{ item.item }}'
+    state: stopped
+    enabled: false
+  loop: '{{ _owned_disabled_units.results }}'
+  when: item.stdout == 'loaded'
+- name: Stop masked owned runtime while retaining its administrative mask
+  ansible.builtin.systemd_service:
+    name: '{{ item.item }}'
+    state: stopped
+  loop: '{{ _owned_disabled_units.results }}'
+  when: item.stdout == 'masked'
+- name: Preserve exact administratively masked unit entries
+  ansible.builtin.set_fact:
+    _owned_preserved_masks: '{{ _owned_disabled_units.results | selectattr(''stdout'', ''equalto'', ''masked'') | map(attribute=''item'')
+      | list }}'
+- name: Remove only exact owned runtime files
+  ansible.builtin.file:
+    path: '{{ item }}'
+    state: absent
+  loop:
+    - /etc/systemd/system/vpn-sub-mirror.timer
+    - /etc/systemd/system/vpn-sub-mirror.service
+    - /etc/systemd/system/vpn-bootstrap.service
+    - /usr/local/bin/vpn-bootstrap.py
+    - /usr/local/sbin/vpn-sub-mirror.sh
+    - /usr/local/sbin/vpn-sub-mirror.py
+  when: (item | basename) not in _owned_preserved_masks
+  register: _owned_retired_files
+- name: Reload the retired owned unit graph
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: not ansible_check_mode and _owned_retired_files.changed
+- name: Stage removal of only the owned nginx surface
+  ansible.builtin.set_fact:
+    nginx_transaction_files:
+      - path: /etc/nginx/sites-enabled/vpn-sub.conf
+        kind: absent
+      - path: /etc/nginx/sites-available/vpn-sub.conf
+        kind: absent
+      - path: /etc/nginx/conf.d/vpn-sub-ratelimit.conf
+        kind: absent
+      - path: /etc/nginx/conf.d/vpn-sub-revoked.conf
+        kind: absent
+- name: Reconcile nginx absence while preserving other web owners
+  ansible.builtin.include_role:
+    name: nginx-xhttp
+    tasks_from: transaction
+  vars:
+    nginx_transaction_owner: subscription-host
+    nginx_transaction_roots:
+      - /etc/nginx
+    nginx_transaction_validate_argv:
+      - /usr/sbin/nginx
+      - -t
+    nginx_transaction_unit: nginx.service
+    nginx_transaction_activation: reload
+    nginx_transaction_activate_inactive: false
+    nginx_transaction_desired_enabled: null

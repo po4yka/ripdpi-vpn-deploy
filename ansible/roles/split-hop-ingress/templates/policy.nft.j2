@@ -2,7 +2,12 @@ destroy table inet split_hop_ingress
 table inet split_hop_ingress {
   chain output {
     type route hook output priority mangle; policy accept;
-    ct state new ct direction original meta skuid { {{ probe_matrix_runtime_users.xray_uid }}, {{ probe_matrix_runtime_users.mtg_uid }} } ct mark set {{ split_hop_ingress.fwmark }}
+    meta nfproto ipv6 ct direction original meta skuid { {{ probe_matrix_runtime_users.xray_uid }}, {{ probe_matrix_runtime_users.mtg_uid }} } reject with icmpv6 type admin-prohibited
+    meta nfproto ipv4 ct state new ct direction original meta skuid { {{ probe_matrix_runtime_users.xray_uid }}, {{ probe_matrix_runtime_users.mtg_uid }} } ct mark set {{ split_hop_ingress.fwmark }}
     ct mark {{ split_hop_ingress.fwmark }} meta mark set ct mark
+  }
+  chain postrouting {
+    type nat hook postrouting priority srcnat; policy accept;
+    meta nfproto ipv4 ct direction original ct mark {{ split_hop_ingress.fwmark }} oifname "{{ split_hop_ingress.wg_interface }}" snat ip to {{ split_hop_ingress.node_a_address.split('/')[0] }}
   }
 }

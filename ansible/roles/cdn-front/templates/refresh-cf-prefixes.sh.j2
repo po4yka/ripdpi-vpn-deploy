@@ -151,7 +151,10 @@ pid $WORK/nginx.pid;
 error_log stderr;
 events {}
 http {
-  include $WORK/cloudflare.real_ip.new;
+  server {
+    listen 127.0.0.1:8080;
+    include $WORK/cloudflare.real_ip.new;
+  }
 }
 EOF
 nginx -t -q -c "$WORK/nginx-candidate.conf"

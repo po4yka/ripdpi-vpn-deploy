@@ -1,0 +1,41 @@
+---
+- name: Ensure shared nginx publication helper directory
+  ansible.builtin.file:
+    path: /usr/local/libexec
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: not ansible_check_mode
+
+- name: Install shared complete-candidate nginx publication helper
+  ansible.builtin.copy:
+    src: nginx_transaction.py
+    dest: /usr/local/libexec/vpn-nginx-transaction
+    owner: root
+    group: root
+    mode: "0750"
+  when: not ansible_check_mode
+
+- name: Inspect or publish the complete nginx candidate
+  ansible.builtin.command:
+    argv: >-
+      {{ ['python3', '-c', lookup('ansible.builtin.file', role_path ~ '/files/nginx_transaction.py')]
+         if ansible_check_mode else ['python3', '/usr/local/libexec/vpn-nginx-transaction'] }}
+    stdin: >-
+      {{ {'owner': nginx_transaction_owner,
+          'roots': nginx_transaction_roots,
+          'files': nginx_transaction_files,
+          'validate_argv': nginx_transaction_validate_argv,
+          'unit': nginx_transaction_unit,
+          'activation': nginx_transaction_activation,
+          'credential_root': nginx_transaction_credential_root | default(''),
+          'runtime_directories': nginx_transaction_runtime_directories | default([]),
+          'activate_inactive': nginx_transaction_activate_inactive | default(true),
+          'desired_enabled': nginx_transaction_desired_enabled | default(none),
+          'check': ansible_check_mode} | to_json }}
+  register: nginx_transaction_result
+  changed_when: nginx_transaction_result.rc == 0 and (nginx_transaction_result.stdout | from_json).changed
+  check_mode: false
+  no_log: true
+  diff: false

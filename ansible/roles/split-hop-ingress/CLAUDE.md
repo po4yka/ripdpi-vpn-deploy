@@ -2,7 +2,17 @@
 
 ## Design decisions
 
+Disabled role intent stops only declared owned services and removes exact runtime
+configuration; shared packages, immutable release receipts and unrelated state
+remain. The unique `split_hop_ingress_role_enabled` selector defaults true for direct calls.
+
 Node A accepts the WireGuard flow initiated by Node B and never configures a peer endpoint or keepalive. Conntrack marks route only new original-direction sockets from the probe Xray and mtg users through the tunnel; replies on accepted client flows keep the public ingress route.
+
+The supported split-hop egress family is IPv4. Node A refuses original-direction
+IPv6 packets from the two owned runtime UIDs before marking. Accepted-client
+replies and other host users retain their IPv6 behavior. Marked originals leaving
+the WireGuard interface are source-translated to A's exact tunnel IPv4, so B's
+narrow A/32 peer ACL accepts them and replies traverse the tunnel.
 
 ## What's done well
 

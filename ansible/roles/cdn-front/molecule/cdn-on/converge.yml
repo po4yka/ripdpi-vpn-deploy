@@ -1,6 +1,6 @@
 ---
 # cdn-on converge: exercises cdn-front with vpn.enable_cdn_front: true,
-# AOP cert stubbed so cert generation does not need network access, and
+# AOP uses an ephemeral local CA/client pair without network access, and
 # Cloudflare prefix fetcher replaced with a fixture stub.
 
 - name: Converge cdn-front cdn-on scenario
@@ -27,8 +27,7 @@
       xhttp_path: "/app-sync"
       cf_prefix_dir: /etc/cdn-front
       origin_firewall: true
-      # AOP cert is stubbed — a real Cloudflare Origin CA cert is not needed
-      # for the structural assertions verify.yml makes.
+      # Ephemeral client CA is exclusive to this disposable scenario.
       aop_cert_path: /etc/nginx/tls/cloudflare-aop.pem
 
   pre_tasks:
@@ -64,22 +63,26 @@
           -days 1
         creates: /etc/nginx/tls/cdn.example.test.fullchain.pem
 
-    - name: Stub Cloudflare AOP cert (idempotent — skips if already present)
-      ansible.builtin.copy:
-        dest: /etc/nginx/tls/cloudflare-aop.pem
-        owner: root
-        group: root
-        mode: "0644"
-        content: |
-          -----BEGIN CERTIFICATE-----
-          MIIBpDCCAQmgAwIBAgIUMoleculeAOPStub00000000000000001MA0GCSqGSIb3
-          DQEBDQUAMB4xHDAaBgNVBAMME0Nsb3VkZmxhcmUgQU9QIFN0dWIwHhcNMjYwMTAx
-          MDAwMDAwWhcNMjcwMTAxMDAwMDAwWjAeMRwwGgYDVQQDDBNDbG91ZGZsYXJlIEFP
-          UCBTdHViMCowBQYDK2VwAyEAMoleculeStubKeyData000000000000000000000000
-          0000000000000000oxIwEDAOBgNVHQ8BAf8EBAMCAQYwDQYJKoZIhvcNAQENBQAD
-          gYEAMoleculeStubSignature0000000000000000000000000000000000000000000=
-          -----END CERTIFICATE-----
-        force: false
+    - name: Generate the disposable AOP CA authorized client and rejected client
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          umask 077
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -keyout /etc/nginx/tls/aop-ca.key -out /etc/nginx/tls/cloudflare-aop.pem \
+            -subj /CN=fixture-aop-ca -addext basicConstraints=critical,CA:TRUE
+          openssl req -new -newkey rsa:2048 -nodes \
+            -keyout /etc/nginx/tls/aop-client.key -out /etc/nginx/tls/aop-client.csr \
+            -subj /CN=fixture-aop-client -addext extendedKeyUsage=clientAuth
+          openssl x509 -req -days 1 -in /etc/nginx/tls/aop-client.csr \
+            -CA /etc/nginx/tls/cloudflare-aop.pem -CAkey /etc/nginx/tls/aop-ca.key \
+            -set_serial 2 -copy_extensions copy -out /etc/nginx/tls/aop-client.crt
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -keyout /etc/nginx/tls/aop-rejected.key -out /etc/nginx/tls/aop-rejected.crt \
+            -subj /CN=fixture-untrusted-client -addext extendedKeyUsage=clientAuth
+        executable: /bin/bash
+        creates: /etc/nginx/tls/aop-client.crt
+      no_log: true
 
     - name: Install fixture Cloudflare prefix fetcher stub
       ansible.builtin.copy:

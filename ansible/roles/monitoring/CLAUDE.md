@@ -63,3 +63,14 @@ This briefly interrupts existing connections while restoring writable logs.
   `install-operator-crons` on a workstation, not on the server.
 - **Counters reset with Xray** — graph rates or increases. They are diagnostic
   evidence, not a durable usage or billing ledger.
+
+- Ordinary site convergence always invokes lifecycle reconciliation. The
+  `monitoring_role_enabled` input selects enable or owned runtime retirement before
+  secret/package guards. Disable stops units and removes only declared authority;
+  shared packages, immutable runtime receipts, historical logs and recovery data
+  remain available for a later explicit recovery.
+
+Disable stops the packaged node exporter only after this role's private
+ownership marker records accepted convergence. A fresh disabled role leaves an
+unrelated installed exporter running; unique Xray exporter units and metrics
+still retire. Shared textfile writers and log-retention policy remain intact.

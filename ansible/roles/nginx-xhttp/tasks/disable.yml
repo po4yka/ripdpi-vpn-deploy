@@ -1,0 +1,23 @@
+---
+- name: Stage removal of only the owned nginx surface
+  ansible.builtin.set_fact:
+    nginx_transaction_files:
+      - path: /etc/nginx/sites-enabled/vpn-xhttp.conf
+        kind: absent
+      - path: /etc/nginx/sites-available/vpn-xhttp.conf
+        kind: absent
+- name: Reconcile nginx absence while preserving other web owners
+  ansible.builtin.include_role:
+    name: nginx-xhttp
+    tasks_from: transaction
+  vars:
+    nginx_transaction_owner: nginx-xhttp
+    nginx_transaction_roots:
+      - /etc/nginx
+    nginx_transaction_validate_argv:
+      - /usr/sbin/nginx
+      - -t
+    nginx_transaction_unit: nginx.service
+    nginx_transaction_activation: reload
+    nginx_transaction_activate_inactive: false
+    nginx_transaction_desired_enabled: null

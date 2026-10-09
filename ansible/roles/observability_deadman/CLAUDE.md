@@ -44,3 +44,18 @@ Unbound schema-1 state fails closed without migration or deletion. Its owner
 must explicitly authorize offline retirement of the private state before a
 fresh schema-2 state can be created; do not infer a generation or weaken replay
 counters. Generation transitions preserve incident and delivery reservations.
+
+- Check mode runs read-only contract and capacity probes before predicting
+  publication. It never creates a private credential candidate, activates units,
+  or consumes stdout from commands skipped by Ansible check mode. Native candidate
+  validation and readiness still run in ordinary convergence before acceptance.
+
+The fixed deadman scope of the shared authority snapshot helper captures
+credential bytes, verifier, unit files, generation link and service states before
+the first publication. Rollback restores the complete authority and the exact
+prior active/enabled states; replay and incident counters are never rewound.
+A failed compensation retains its private recovery snapshot and blocks reuse.
+
+Capture the tick timer with the same direct named-unit query as its service.
+Service-only enumeration must never turn a previously active timer into a
+false absent snapshot or skip stopping a candidate timer during compensation.

@@ -93,3 +93,38 @@
       register: verify_sysctl_value
       changed_when: false
       failed_when: verify_sysctl_value.stdout != item.value
+
+    - name: Stage a per-setting optional sysctl failure
+      ansible.builtin.copy:
+        dest: /run/vpn-sysctl-failure-regression.conf
+        content: "-net.ipv4.tcp_congestion_control = invalid-regression-controller\n"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Native sysctl tolerates only the marked optional setting
+      ansible.builtin.command:
+        cmd: /usr/local/libexec/vpn-baseline-sysctl /run/vpn-sysctl-failure-regression.conf
+      changed_when: false
+
+    - name: Stage optional and mandatory sysctl failures together
+      ansible.builtin.copy:
+        dest: /run/vpn-sysctl-failure-regression.conf
+        content: |
+          -net.ipv4.tcp_congestion_control = invalid-regression-controller
+          net.ipv4.tcp_syncookies = invalid-regression-value
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Native sysctl retains the mandatory failure result
+      ansible.builtin.command:
+        cmd: /usr/local/libexec/vpn-baseline-sysctl /run/vpn-sysctl-failure-regression.conf
+      register: mandatory_sysctl_failure
+      changed_when: false
+      failed_when: mandatory_sysctl_failure.rc == 0
+
+    - name: Remove native sysctl failure fixture
+      ansible.builtin.file:
+        path: /run/vpn-sysctl-failure-regression.conf
+        state: absent

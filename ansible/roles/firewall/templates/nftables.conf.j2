@@ -4,7 +4,26 @@
 # Replace only tables owned by this role. Other components (for example the
 # split-hop egress NAT table) install independent nftables tables that must
 # survive a firewall reload. `destroy` is idempotent on a fresh host.
-destroy table inet filter
+# Flush rules in one native transaction while retaining named timed sets.
+# This preserves both current membership and the kernel's remaining expiry.
+add table inet filter
+flush table inet filter
+# Tailnet set elements are declared by the transaction-owned include below;
+# replace those declarations so removed approved sources cannot survive.
+destroy set inet filter vpn_tailnet_ssh_v4
+destroy set inet filter vpn_tailnet_ssh_v6
+{% if not ((security_controls | default({})).fail2ban | default(false)) %}
+destroy set inet filter f2b_sshd4
+destroy set inet filter f2b_sshd6
+{% endif %}
+{% if not (vpn.enable_policy_ratelimit | default(false)) %}
+destroy set inet filter policy_offenders
+destroy set inet filter policy_offenders6
+{% endif %}
+{% if not ((vpn.enable_cdn_front | default(false)) and (cdn_front.origin_firewall | default(true))) %}
+destroy set inet filter cdn_front_origins
+destroy set inet filter cdn_front_origins_v6
+{% endif %}
 destroy table inet nat
 {% set ssh_cidrs = [allowed_ssh_cidrs] if allowed_ssh_cidrs is string else (allowed_ssh_cidrs | default([])) %}
 {% set ssh_v4_cidrs = ssh_cidrs | select('match', '^(?!.*:).*') | list %}
@@ -205,8 +224,8 @@ table inet filter {
 
     # Enabled proxy transports need arbitrary upstream egress for client data.
     # Keep strict opt-in: hosts without these profiles remain narrow.
-    tcp accept
-    udp accept
+    meta l4proto tcp accept
+    meta l4proto udp accept
 {% endif %}
 
     counter drop

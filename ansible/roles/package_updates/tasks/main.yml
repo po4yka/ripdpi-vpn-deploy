@@ -2,6 +2,10 @@
 # Configure safe unattended security updates for Debian-family hosts. This role
 # does not reboot hosts and does not touch application package pins.
 
+- name: Resolve effective unattended update policy selection
+  ansible.builtin.set_fact:
+    _package_updates_effective_enabled: "{{ package_updates_role_enabled and (package_updates.enabled | default(true)) }}"
+
 - name: Package updates role supports Debian-family hosts only
   ansible.builtin.assert:
     that:
@@ -18,7 +22,7 @@
     cache_valid_time: 3600
     install_recommends: false
   register: package_updates_packages
-  when: package_updates.enabled | default(true)
+  when: _package_updates_effective_enabled
 
 - name: Check whether apticron is available
   ansible.builtin.command:
@@ -27,7 +31,7 @@
   changed_when: false
   failed_when: false
   when:
-    - package_updates.enabled | default(true)
+    - _package_updates_effective_enabled
     - package_updates.install_apticron | default(false)
 
 - name: Install apticron when explicitly enabled and available
@@ -39,7 +43,7 @@
     cache_valid_time: 3600
     install_recommends: false
   when:
-    - package_updates.enabled | default(true)
+    - _package_updates_effective_enabled
     - package_updates.install_apticron | default(false)
     - "'Candidate: (none)' not in (package_updates_apticron_policy.stdout | default('Candidate: (none)'))"
 
@@ -56,7 +60,7 @@
       confirm=false
       save_seen=/var/lib/apt/listchanges.db
       which=both
-  when: package_updates.enabled | default(true)
+  when: _package_updates_effective_enabled
 
 - name: Configure unattended security updates
   ansible.builtin.template:
@@ -65,12 +69,11 @@
     owner: root
     group: root
     mode: "0644"
-  when: package_updates.enabled | default(true)
 
 - name: Validate unattended-upgrades configuration
   ansible.builtin.command:
     cmd: unattended-upgrade -d --dry-run
   changed_when: false
   when:
-    - package_updates.enabled | default(true)
+    - _package_updates_effective_enabled
     - not ansible_check_mode or not (package_updates_packages.changed | default(false))

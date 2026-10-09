@@ -27,6 +27,14 @@ PROMTOOL_VERSION = "3.14.0"
 REQUIRED_SYSTEMD_UNITS = ["nginx.service", "xray.service"]
 
 
+def _task_tree(tasks):
+    """Read real publication blocks without losing their execution order."""
+    for task in tasks:
+        yield task
+        for section in ("block", "rescue", "always"):
+            yield from _task_tree(task.get(section, []))
+
+
 def render_template(path: Path, values: dict) -> str:
     return _render_template(
         path,
@@ -1132,7 +1140,7 @@ def test_alertmanager_restart_condition_uses_one_ansible_expression(
 
 def test_alerting_contract_precedes_first_control_plane_host_mutation() -> None:
     tasks = yaml.safe_load((ROLE / "tasks/enable.yml").read_text())
-    names = [task["name"] for task in tasks]
+    names = [task["name"] for task in _task_tree(tasks)]
     assert names.index("Require the opt-in alerting contract before host mutation") < (
         names.index("Create dedicated control-plane account")
     )
@@ -1162,7 +1170,7 @@ def test_gateway_uses_private_systemd_credentials_without_cwd_dependency() -> No
 
     directories = next(
         task
-        for task in enable
+        for task in _task_tree(enable)
         if task["name"] == "Create private control-plane directories"
     )["loop"]
     assert directories[0]["path"] == "{{ observability_control_plane.config_root }}"

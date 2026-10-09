@@ -99,7 +99,11 @@ def _validate(
         raise AdapterError("invalid evidence")
     evaluated_at = document["evaluated_at"]
     decision = document["decision"]
-    if not _integer(evaluated_at) or decision not in DECISIONS:
+    if (
+        not _integer(evaluated_at)
+        or not isinstance(decision, str)
+        or decision not in DECISIONS
+    ):
         raise AdapterError("invalid evidence")
     candidates = document["candidate_policies"]
     failures = document["failed_vantages"]
@@ -107,8 +111,8 @@ def _validate(
     if (
         not isinstance(candidates, list)
         or len(candidates) > MAX_EVIDENCE
-        or len(candidates) != len(set(candidates))
         or not all(_alias(value) for value in candidates)
+        or len(candidates) != len(set(candidates))
         or not isinstance(failures, dict)
         or len(failures) > MAX_EVIDENCE
         or not all(
@@ -137,12 +141,13 @@ def _validate(
         if (
             not _alias(sentinel)
             or not _alias(policy)
+            or not isinstance(control, str)
             or control not in VERDICTS
             or not _integer(item["observed_at"])
             or not isinstance(profiles, dict)
             or not 1 <= len(profiles) <= 4
             or not all(
-                _alias(name) and verdict in VERDICTS
+                _alias(name) and isinstance(verdict, str) and verdict in VERDICTS
                 for name, verdict in profiles.items()
             )
         ):
@@ -169,6 +174,7 @@ def _validate(
                     or not _integer(row["variant"], maximum=MAX_VARIANTS)
                     or row["variant"] < 1
                     or row["variant"] in seen_variants
+                    or not isinstance(row["verdict"], str)
                     or row["verdict"] not in VERDICTS
                 ):
                     raise AdapterError("invalid evidence")

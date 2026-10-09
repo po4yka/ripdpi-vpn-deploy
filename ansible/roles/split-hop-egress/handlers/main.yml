@@ -4,3 +4,4 @@
     name: "wg-quick@{{ split_hop_egress.wg_interface }}.service"
     state: restarted
     daemon_reload: true
+  when: split_hop_egress_role_enabled | bool and not ansible_check_mode

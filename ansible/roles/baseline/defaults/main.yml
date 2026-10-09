@@ -1,0 +1,3 @@
+---
+# Additional accounts are admitted only through the recoverable SSH controller.
+baseline_ssh_extra_allowed_users: []

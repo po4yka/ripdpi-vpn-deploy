@@ -11,6 +11,7 @@
     vpn:
       enable_warp_outbound: true
     warp_outbound:
+      package_version: "2026.8.2100.0"
       install_warp_cli: false   # stub is placed in pre_tasks instead
       mode: proxy
       socks_port: 40000
@@ -122,6 +123,32 @@
         name: warp-svc.service
         enabled: true
         state: started
+
+    - name: Create synthetic exact WARP package control directory
+      ansible.builtin.file:
+        path: /var/tmp/molecule-warp-package/DEBIAN
+        state: directory
+        mode: "0755"
+
+    - name: Declare synthetic exact WARP package identity
+      ansible.builtin.copy:
+        dest: /var/tmp/molecule-warp-package/DEBIAN/control
+        mode: "0644"
+        content: |
+          Package: cloudflare-warp
+          Version: 2026.8.2100.0
+          Architecture: all
+          Maintainer: Fixture <fixture@example.test>
+          Description: Synthetic local WARP role-control fixture
+
+    - name: Build synthetic exact WARP package
+      ansible.builtin.command:
+        argv: [dpkg-deb, --build, /var/tmp/molecule-warp-package, /var/tmp/molecule-warp.deb]
+        creates: /var/tmp/molecule-warp.deb
+
+    - name: Install synthetic exact WARP package identity
+      ansible.builtin.apt:
+        deb: /var/tmp/molecule-warp.deb
 
   roles:
     - role: warp-outbound

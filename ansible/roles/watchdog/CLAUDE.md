@@ -88,3 +88,15 @@ the finite oneshot deadline prevent a notification stall from disabling probes.
 - **Inventory must preserve both addresses** — `make inventory` emits
   `vpn_service_address` beside `ansible_host`. Local SSH overrides may replace
   only the latter.
+
+- Listener diagnostics and loopback wedge checks use the same configured REALITY
+  probe manifest, including cohorts that omit the base port.
+- Recovery budgets are validated before actions and atomically replaced with
+  synced private temporary files. A corrupt existing budget fails closed rather
+  than resetting hourly recovery and notification limits.
+
+- Ordinary site convergence always invokes lifecycle reconciliation. The
+  `watchdog_role_enabled` input selects enable or owned runtime retirement before
+  secret/package guards. Disable stops units and removes only declared authority;
+  shared packages, immutable runtime receipts, historical logs and recovery data
+  remain available for a later explicit recovery.

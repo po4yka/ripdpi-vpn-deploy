@@ -15,3 +15,5 @@ intrusion_prevention:
   # this role without a separate design review.
   crowdsec:
     enabled: false
+
+intrusion_prevention_role_enabled: true

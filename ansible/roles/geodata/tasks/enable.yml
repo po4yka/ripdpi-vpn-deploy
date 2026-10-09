@@ -1,0 +1,157 @@
+---
+# Pinned paired geodata refresher with controlled active Xray restart.
+
+- name: Pre-flight - geodata sources are pinned
+  ansible.builtin.assert:
+    that:
+      - geodata.geosite_url | length > 0
+      - geodata.geoip_url | length > 0
+      - "'/latest/' not in geodata.geosite_url"
+      - "'/latest/' not in geodata.geoip_url"
+      - geodata.geosite_sha256 is match('^[0-9a-fA-F]{64}$')
+      - geodata.geoip_sha256 is match('^[0-9a-fA-F]{64}$')
+    fail_msg: |
+      geodata requires pinned release URLs and SHA256 checksums. Set
+      geodata.geosite_url, geodata.geosite_sha256, geodata.geoip_url, and
+      geodata.geoip_sha256 to concrete release artifacts before enabling
+      vpn.enable_geodata.
+
+- name: Install the scheduled refresher download dependency
+  ansible.builtin.apt:
+    name: curl
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Inspect geodata directory before check-mode publication
+  ansible.builtin.stat:
+    path: "{{ geodata.install_dir }}"
+    follow: false
+  register: _geodata_directory_before
+  changed_when: false
+  when: ansible_check_mode
+
+- name: Ensure geodata install directory
+  ansible.builtin.file:
+    path: "{{ geodata.install_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  register: _geodata_directory_plan
+
+- name: Require a planned geodata directory on a fresh check-mode host
+  ansible.builtin.assert:
+    that:
+      - _geodata_directory_plan.changed
+    fail_msg: Check mode found no geodata directory and no planned creation.
+  when:
+    - ansible_check_mode
+    - not (_geodata_directory_before.stat.isdir | default(false))
+
+- name: Check pinned geodata URLs without writing on a fresh check-mode host
+  ansible.builtin.uri:
+    url: "{{ item }}"
+    method: HEAD
+    follow_redirects: all
+    status_code: 200
+    timeout: 30
+  loop:
+    - "{{ geodata.geosite_url }}"
+    - "{{ geodata.geoip_url }}"
+  check_mode: false
+  changed_when: false
+  when:
+    - ansible_check_mode
+    - not (_geodata_directory_before.stat.isdir | default(false))
+
+- name: Drop controlled Xray geodata activation helper
+  ansible.builtin.template:
+    src: vpn-xray-geodata-activate.sh.j2
+    dest: /usr/local/sbin/vpn-xray-geodata-activate.sh
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Install paired geodata publication helper
+  ansible.builtin.copy:
+    src: geodata_publish.py
+    dest: /usr/local/sbin/vpn-geodata-publish
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Publish only a complete verified geodata pair
+  ansible.builtin.command:
+    argv: [python3, /usr/local/sbin/vpn-geodata-publish]
+    stdin: >-
+      {{ {'install_dir': geodata.install_dir,
+          'sources': {'geosite.dat': {'url': geodata.geosite_url, 'sha256': geodata.geosite_sha256},
+                      'geoip.dat': {'url': geodata.geoip_url, 'sha256': geodata.geoip_sha256}}} | to_json }}
+  register: _geodata_pair
+  changed_when: _geodata_pair.rc == 0 and (_geodata_pair.stdout | from_json).changed
+  when: not ansible_check_mode
+
+- name: Drop refresh script
+  ansible.builtin.template:
+    src: vpn-geodata-refresh.sh.j2
+    dest: /usr/local/sbin/vpn-geodata-refresh.sh
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Install geodata refresh systemd service unit
+  # Template carries the root-oneshot hardening floor (NoNewPrivileges,
+  # ProtectSystem=strict, PrivateTmp and peers) with the only writable
+  # surface being the geodata install directory.
+  ansible.builtin.template:
+    src: vpn-geodata-refresh.service.j2
+    dest: /etc/systemd/system/vpn-geodata-refresh.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Inspect existing geodata timer before check-mode publication
+  ansible.builtin.stat:
+    path: /etc/systemd/system/vpn-geodata-refresh.timer
+    follow: false
+  register: _geodata_timer_before
+  changed_when: false
+  when: ansible_check_mode
+
+- name: Drop refresh systemd timer
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/vpn-geodata-refresh.timer
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Refresh Xray geodata daily
+
+      [Timer]
+      OnCalendar=*-*-* 04:00:00
+      RandomizedDelaySec=30m
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+  notify: Reload systemd
+  register: _geodata_timer_plan
+
+- name: Require a planned geodata timer on a fresh check-mode host
+  ansible.builtin.assert:
+    that:
+      - _geodata_timer_plan.changed
+    fail_msg: Check mode found no geodata timer and no planned installation.
+  when:
+    - ansible_check_mode
+    - not (_geodata_timer_before.stat.exists | default(false))
+
+- name: Enable refresh timer
+  ansible.builtin.systemd_service:
+    name: vpn-geodata-refresh.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  when: not ansible_check_mode or (_geodata_timer_before.stat.exists | default(false))

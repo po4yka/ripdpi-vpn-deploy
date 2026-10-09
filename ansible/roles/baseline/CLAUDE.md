@@ -2,6 +2,9 @@
 
 ## Design decisions
 
+**Explicit restricted account admission** — `baseline_ssh_extra_allowed_users` adds reviewed accounts to AllowUsers through the recoverable controller. The intent has only the exact six-option Match User restriction grammar. The guest planner places this suffix at the end of sshd_config, leaving the include fragment global-only; OpenSSH Match all does not restore global directive context. Native context output must prove all restrictions. Arbitrary Match blocks remain rejected.
+
+
 **Resolver transitions preserve DNS first** — ordinary profiles retain the resolved stub. DNS-Morph migrates only known stub symlinks to a verified upstream resolver before disabling the stub; custom stub files or absent upstreams fail before mutation. The restart happens before dependent listeners converge.
 
 **Forwarding has one owner** — `tasks/forwarding.yml` removes the retired split-hop fragment and publishes priority-91 IPv4 forwarding for AWG or split-hop egress, with IPv6 only for AWG. Direct split-hop convergence reuses this entry point and explicitly passes `baseline_forwarding_split_hop_egress_active`; an active role requires forwarding even when the site-selection toggle is false. Without an active caller or enabled routing profile, baseline removes the override.
@@ -45,6 +48,13 @@ ownership-only migration. On a fresh Debian node, run the explicit
 `migrate-ssh-ownership` controller after dual-path bootstrap and before the
 first ordinary dry-run. It requires strict public and Tailnet SSH/SFTP proof
 and the installed recovery generation. Local tests are not staging acceptance.
+
+**Optional BBR cannot mask mandatory hardening failures** — only the congestion
+control key uses the per-setting optional prefix. The ordered helper retains
+the standard directory/file precedence and applies marked optional settings
+separately because the supported procps release still returns a failing status
+for them. Every mandatory segment retains its normal nonzero failure, including
+when optional BBR and a mandatory setting fail together.
 
 ## What's done well
 

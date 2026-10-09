@@ -43,3 +43,9 @@ rollback links to `runtime-release`.
 - **No JSON API surface** — Hysteria's optional traffic API would be a
   fingerprint vector if exposed; it's disabled.
 - **Do not point masquerade at an unrelated public site** — keep `hysteria.masquerade_url` equal to `public_site_canonical_url`; the pre-flight assert rejects anything else.
+
+- Ordinary site convergence always invokes lifecycle reconciliation. The
+  `hysteria_role_enabled` input selects enable or owned runtime retirement before
+  secret/package guards. Disable stops units and removes only declared authority;
+  shared packages, immutable runtime receipts, historical logs and recovery data
+  remain available for a later explicit recovery.

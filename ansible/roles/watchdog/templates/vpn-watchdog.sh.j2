@@ -17,6 +17,7 @@ set -euo pipefail
 : "${XRAY_REALITY_PROBE_URL:=}"
 : "${XRAY_REALITY_PROBE_EXPECTED_STATUS:=204}"
 : "${XRAY_REALITY_PROBE_TIMEOUT:=15}"
+: "${WATCHDOG_STATE_BIN:=/usr/local/libexec/vpn-watchdog-state.py}"
 : "${WATCHDOG_NOTIFY_BIN:=/usr/local/libexec/vpn-watchdog-notify.py}"
 HOSTNAME="${HOSTNAME:-$(hostname -f 2>/dev/null || hostname)}"
 
@@ -30,11 +31,11 @@ mkdir -p "$(dirname "$STATE_FILE")"
 #   kicks_this_hour=<n>
 #   kicks_hour_started=<unix>
 declare -A STATE
-if [[ -f "$STATE_FILE" ]]; then
-  while IFS='=' read -r k v; do
-    [[ -n "$k" ]] && STATE["$k"]="$v"
-  done < "$STATE_FILE"
-fi
+# Validate the complete prior budget before any recovery or notification action.
+budget="$("$WATCHDOG_STATE_BIN" read "$STATE_FILE")"
+while IFS='=' read -r k v; do
+  [[ -n "$k" ]] && STATE["$k"]="$v"
+done <<< "$budget"
 STATE[consecutive_fails]="${STATE[consecutive_fails]:-0}"
 STATE[last_alert_epoch]="${STATE[last_alert_epoch]:-0}"
 STATE[alerts_this_hour]="${STATE[alerts_this_hour]:-0}"
@@ -149,8 +150,12 @@ probe_reality_listeners() {
 
 if [[ "${ENABLE_XRAY:-true}" == "true" ]]; then
   probe_unit "xray.service" "xray.service active" systemctl is-active --quiet xray
-  probe_unit "xray.service" "xray TCP/${XRAY_PORT} listening" \
-    bash -c "ss -lnt | awk '{print \$4}' | grep -q ':${XRAY_PORT}\$'"
+  IFS=',' read -r -a reality_listeners <<< "$XRAY_REALITY_PROBES"
+  for listener in "${reality_listeners[@]}"; do
+    server_port="${listener%%:*}"
+    probe_unit "xray.service" "xray TCP/${server_port} listening" \
+      bash -c "ss -lnt | awk '{print \$4}' | grep -q ':${server_port}\$'"
+  done
   probe_unit "xray.service" "xray config valid" \
     "$XRAY_VALIDATE_BIN" --binary "$XRAY_BIN" --config /etc/xray/config.json
   probe_unit "xray.service" "xray StatsService query" \
@@ -206,9 +211,12 @@ if [[ "${ENABLE_NGINX_XHTTP:-true}" == "true" && -r "$nginx_access" ]]; then
 fi
 
 if [[ "${ENABLE_XRAY:-true}" == "true" ]]; then
-  if ! timeout 2 bash -c "</dev/tcp/127.0.0.1/${XRAY_PORT}" 2>/dev/null; then
-    classes[tcp_listen_wedge]="cannot open loopback TCP to xray :${XRAY_PORT}"
-  fi
+  for listener in "${reality_listeners[@]}"; do
+    server_port="${listener%%:*}"
+    if ! timeout 2 bash -c "</dev/tcp/127.0.0.1/${server_port}" 2>/dev/null; then
+      classes[tcp_listen_wedge]="cannot open configured xray TCP listener"
+    fi
+  done
 fi
 
 now=$(date +%s)
@@ -296,8 +304,7 @@ fi
   for k in consecutive_fails last_alert_epoch alerts_this_hour alerts_hour_started kicks_this_hour kicks_hour_started; do
     echo "${k}=${STATE[$k]}"
   done
-} > "$STATE_FILE"
-chmod 0640 "$STATE_FILE"
+} | "$WATCHDOG_STATE_BIN" write "$STATE_FILE"
 
 # Always log to journal so `journalctl -u vpn-watchdog.service` shows status
 echo "watchdog: consecutive_fails=${STATE[consecutive_fails]} alerts_this_hour=${STATE[alerts_this_hour]} kicks_this_hour=${STATE[kicks_this_hour]} classes=${class_summary:-none}"

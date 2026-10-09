@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+Disabled role intent stops only declared owned services and removes exact runtime
+configuration; shared packages, immutable release receipts and unrelated state
+remain. The unique `hysteria_realm_role_enabled` selector defaults true for direct calls.
+
 Explicit TLS-sharing overrides remain valid in standalone role use without a `vpn` mapping; fallback lookup normalizes the absent mapping before reading its Hysteria toggle.
 
 **Native config validation precedes publication** — the template uses the
@@ -11,9 +15,9 @@ the active config or queue a restart.
 **Rendezvous, not data plane** — the realm service mediates the endpoint
 exchange between two sing-box peers and then drops out. The VPN data plane
 never traverses this VPS; only the small TLS-wrapped handshake does.
-Operationally that means `hysteria_realm.events_per_minute_max` can be set
-low (default 600/min) — a high handshake rate is itself anomalous and
-should fail closed rather than absorb a flood.
+The exact pinned service exposes a concurrent realm quota, `max_realms`
+(default 16), for its technical control user; it does not expose the former
+invented per-minute event field.
 
 **Sing-box on both sides** — sing-box upstream does not (as of the pinned
 tag) support asymmetric deployment against mainline `apernet/hysteria`.
@@ -33,6 +37,9 @@ accounts. An explicit override is still respected. Supplementary
 `hysteria` membership and `append` are enabled together only for shared TLS;
 Ansible rejects `append: true` without a `groups` argument.
 
+TLS destinations stay inside the role's config directory. Retirement removes
+those configured copies or links and preserves shared Hysteria source material.
+
 ## What's done well
 
 - **Shared runtime publication** — `runtime-release` verifies the pinned
@@ -45,9 +52,14 @@ Ansible rejects `append: true` without a `groups` argument.
 ## Pitfalls
 
 - **Sing-box realm-service schema is alpha and may change** — the rendered
-  `config.json` follows the upstream inbound shape at the pinned tag. A
+  `config.json` uses the top-level services registry and hysteria-realm type
+  with name/token/max_realms users at the exact pinned tag. A
   schema rename upstream means the role will emit a config sing-box
-  refuses. Bump in staging only and run the molecule scenario.
+  refuses. Prereleases require inventory env=staging before any host mutation; omitted
+  or production environment refuses. Verify the exact native parser and
+  authenticated rendezvous protocol, not JSON syntax alone. The currently
+  supported exact version is v1.14.0-alpha.22; a future pin requires a reviewed
+  source/parser/protocol contract update before installation is allowed.
 - **Auth token rotation invalidates every peer** — `hysteria_realm_
   secrets.auth_token` is presented by every peer during handshake. Treat
   it as long-lived; rotate only on compromise and re-ship every peer

@@ -60,14 +60,21 @@ def test_echo_flood_drop_precedes_established_accept_for_both_families() -> None
 
 def test_neighbor_discovery_preserves_dad_and_global_sources_on_the_link() -> None:
     rendered = _render()
-    neighbor_rule = next(line for line in rendered.splitlines() if "icmpv6 type { nd-neighbor-solicit" in line)
+    neighbor_rule = next(
+        line
+        for line in rendered.splitlines()
+        if "icmpv6 type { nd-neighbor-solicit" in line
+    )
     assert "nd-neighbor-advert" in neighbor_rule
     assert "ip6 hoplimit 255 accept" in neighbor_rule
     # RFC 4861 NS uses :: for DAD and may use a global address otherwise.
     # Restricting either NS or NA to fe80::/10 would break those packets.
     assert "saddr" not in neighbor_rule
     assert "meta l4proto ipv6-icmp" in neighbor_rule
-    assert "icmpv6 type nd-router-advert ip6 saddr fe80::/10 ip6 hoplimit 255 accept" in rendered
+    assert (
+        "icmpv6 type nd-router-advert ip6 saddr fe80::/10 ip6 hoplimit 255 accept"
+        in rendered
+    )
 
 
 def test_firewall_discovers_ssh_port_before_rendering() -> None:
@@ -140,15 +147,15 @@ def test_strict_drops_by_default_and_allows_baseline_infra():
     assert "tcp dport 53 accept" in chain
     assert "udp dport 123 accept" in chain
     assert "tcp dport { 80, 443 } accept" in chain
-    assert "\n    tcp accept\n" not in chain
-    assert "\n    udp accept\n" not in chain
+    assert "\n    meta l4proto tcp accept\n" not in chain
+    assert "\n    meta l4proto udp accept\n" not in chain
 
 
 def test_strict_keeps_transport_egress_when_proxy_profiles_are_enabled():
     chain = _output_chain(_render("strict", vpn={"enable_xray_reality": True}))
     assert "policy drop;" in chain
-    assert "\n    tcp accept\n" in chain
-    assert "\n    udp accept\n" in chain
+    assert "\n    meta l4proto tcp accept\n" in chain
+    assert "\n    meta l4proto udp accept\n" in chain
 
 
 def test_strict_allows_warp_control_ports_when_warp_is_enabled():
@@ -178,7 +185,9 @@ def test_firewall_replaces_only_its_owned_tables():
     rendered = _render()
 
     assert "flush ruleset" not in rendered
-    assert "destroy table inet filter" in rendered
+    assert "add table inet filter" in rendered
+    assert "flush table inet filter" in rendered
+    assert "destroy table inet filter" not in rendered
     assert "destroy table inet nat" in rendered
     assert "destroy table inet split_hop_egress" not in rendered
 
@@ -362,5 +371,5 @@ def test_strict_preserves_xhttp_only_and_snell_only_proxy_egress():
             transport: True,
         }
         chain = _output_chain(_render("strict", vpn=vpn))
-        assert "\n    tcp accept\n" in chain
-        assert "\n    udp accept\n" in chain
+        assert "\n    meta l4proto tcp accept\n" in chain
+        assert "\n    meta l4proto udp accept\n" in chain

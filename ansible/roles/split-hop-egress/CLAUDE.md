@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+Disabled role intent stops only declared owned services and removes exact runtime
+configuration; shared packages, immutable release receipts and unrelated state
+remain. The unique `split_hop_egress_role_enabled` selector defaults true for direct calls.
+
 **Baseline owns effective forwarding** — this role calls baseline `ansible/roles/baseline/tasks/forwarding.yml` for standalone and site convergence, explicitly declaring its active workload independently of the site's role-selection toggle. It does not write a lower-priority sysctl that the hardening floor would overwrite. Standalone Molecule leaves that toggle disabled and verifies the canonical `91-vpn-forward.conf`, absence of the retired fragment, and actual guest IPv4 forwarding.
 
 **Node B initiates the WireGuard tunnel** — `PersistentKeepalive` is set on
@@ -23,6 +27,12 @@ replaces only that table, independently from wg-quick lifecycle. This does not
 preempt the `firewall` role's owned tables; the tables compose. The firewall
 role still owns its input filter and NAT tables; this role only adds
 postrouting NAT for forwarded traffic.
+
+The supported split-hop egress family is IPv4. Node A refuses original-direction
+IPv6 packets from the two owned runtime UIDs before marking. Accepted-client
+replies and other host users retain their IPv6 behavior. Marked originals leaving
+the WireGuard interface are source-translated to A's exact tunnel IPv4, so B's
+narrow A/32 peer ACL accepts them and replies traverse the tunnel.
 
 ## What's done well
 

@@ -50,6 +50,9 @@ from __future__ import annotations
 import collections
 import ipaddress
 import logging
+import os
+import secrets
+import stat
 import pathlib
 import re
 import subprocess
@@ -65,6 +68,8 @@ TEXTFILE_DIR = pathlib.Path("/var/lib/node_exporter/textfile")
 # dead-contract gauge so a broken token/sink contract is observable
 # instead of looking like "the cohort is quiet".
 DEAD_CONTRACT_MIN_LINES = 5000
+
+MAX_SOURCES = 4096
 
 IP_RE = re.compile(r"(?:\bfrom\s+)?(?:tcp|udp):([0-9A-Fa-f:.]+):\d+")
 # A connection routed to the blackhole outbound: "[<inbound> <sep> block]".
@@ -116,22 +121,31 @@ class RateLimiter:
     """
 
     def __init__(self, rejects_per_window: int, window_seconds: int,
-                 ban_seconds: int) -> None:
+                 ban_seconds: int, max_sources: int = MAX_SOURCES) -> None:
         self.rejects_per_window = rejects_per_window
         self.window_seconds = window_seconds
         self.ban_seconds = ban_seconds
-        self.history: dict[str, collections.deque[float]] = (
-            collections.defaultdict(
-                lambda: collections.deque(maxlen=max(rejects_per_window * 4, 4)))
-        )
+        self.max_sources = max_sources
+        self.history: collections.OrderedDict[str, collections.deque[float]] = collections.OrderedDict()
+        self.capacity_drops = 0
+        self.input_healthy = True
         self.lines = 0
         self.events = 0
         self.bans = 0
         self.errors = 0
         self.reported_errors = 0
 
+    def expire(self, now: float) -> None:
+        # Ordered by last observation, so idle expiry is bounded by expired sources.
+        while self.history:
+            ip, events = next(iter(self.history.items()))
+            if events and now - events[-1] <= self.window_seconds:
+                break
+            del self.history[ip]
+
     def observe(self, line: str, now: float) -> str | None:
         """Process one line at logical time `now`. Returns IP to ban or None."""
+        self.expire(now)
         self.lines += 1
         if classify_line(line) is None:
             return None
@@ -146,12 +160,19 @@ class RateLimiter:
         if is_exempt_ip(ip):
             return None
         self.events += 1
+        if ip not in self.history:
+            if len(self.history) >= self.max_sources:
+                self.capacity_drops += 1
+                self.errors += 1
+                return None
+            self.history[ip] = collections.deque(maxlen=max(self.rejects_per_window * 4, 4))
         dq = self.history[ip]
+        self.history.move_to_end(ip)
         dq.append(now)
         while dq and now - dq[0] > self.window_seconds:
             dq.popleft()
         if len(dq) >= self.rejects_per_window:
-            dq.clear()  # avoid re-banning every event during a ban
+            del self.history[ip]  # do not retain empty source keys
             self.bans += 1
             return ip
         return None
@@ -172,23 +193,62 @@ def add_offender(ip: str, ban_seconds: int) -> bool:
         "nft", "add", "element", "inet", "filter", family_set,
         "{", f"{ip} timeout {ban_seconds}s", "}",
     ]
-    rc = subprocess.run(cmd, capture_output=True).returncode
+    try:
+        rc = subprocess.run(cmd, capture_output=True, timeout=5).returncode
+    except (OSError, subprocess.TimeoutExpired):
+        logging.warning("nft enforcement unavailable")
+        return False
     if rc == 0:
-        logging.info("banned %s for %ds", ip, ban_seconds)
+        logging.info("policy ban applied for %ds", ban_seconds)
         return True
     else:
-        logging.warning("nft add element failed for %s (rc=%d)", ip, rc)
+        logging.warning("nft enforcement failed (rc=%d)", rc)
         return False
+
+
+def publish_metrics(content: str) -> None:
+    """Replace our output without following shared-directory symlinks."""
+    TEXTFILE_DIR.mkdir(parents=True, exist_ok=True)
+    directory = os.open(TEXTFILE_DIR, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    temporary = ".policy-ratelimit-" + secrets.token_hex(16)
+    descriptor = None
+    try:
+        metadata = os.fstat(directory)
+        if metadata.st_uid not in (0, os.geteuid()) or (metadata.st_mode & 0o022 and not metadata.st_mode & stat.S_ISVTX):
+            raise PermissionError("unsafe metric directory")
+        try:
+            target = os.stat("vpn_policy_ratelimit.prom", dir_fd=directory, follow_symlinks=False)
+        except FileNotFoundError:
+            target = None
+        if target is not None and (not stat.S_ISREG(target.st_mode) or target.st_nlink != 1 or target.st_uid != os.geteuid()):
+            raise PermissionError("unsafe metric output")
+        descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o640, dir_fd=directory)
+        os.fchmod(descriptor, 0o640)
+        with os.fdopen(descriptor, "w") as output:
+            descriptor = None
+            output.write(content)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, "vpn_policy_ratelimit.prom", src_dir_fd=directory, dst_dir_fd=directory)
+        os.fsync(directory)
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        try:
+            os.unlink(temporary, dir_fd=directory)
+        except FileNotFoundError:
+            pass
+        os.close(directory)
 
 
 def flush_textfile(limiter: RateLimiter) -> None:
     try:
-        TEXTFILE_DIR.mkdir(parents=True, exist_ok=True)
-        out = TEXTFILE_DIR / "vpn_policy_ratelimit.prom"
-        tmp = out.with_suffix(".prom.tmp")
         dead = 1 if limiter.dead_contract(DEAD_CONTRACT_MIN_LINES) else 0
-        error_state = "error" if limiter.errors > limiter.reported_errors else "ok"
-        tmp.write_text(
+        error_state = "error" if not limiter.input_healthy or limiter.errors > limiter.reported_errors else "ok"
+        publish_metrics(
+            f"vpn_policy_ratelimit_input_available {int(limiter.input_healthy)}\n"
+            f"vpn_policy_ratelimit_tracked_sources {len(limiter.history)}\n"
+            f"vpn_policy_ratelimit_capacity_drops_total {limiter.capacity_drops}\n"
             "# HELP vpn_policy_ratelimit_collection_success Whether the latest detector publication completed\n"
             "# TYPE vpn_policy_ratelimit_collection_success gauge\n"
             "vpn_policy_ratelimit_collection_success 1\n"
@@ -217,45 +277,60 @@ def flush_textfile(limiter: RateLimiter) -> None:
             "# TYPE vpn_policy_ratelimit_dead_contract gauge\n"
             f"vpn_policy_ratelimit_dead_contract {dead}\n"
         )
-        tmp.replace(out)
         limiter.reported_errors = limiter.errors
     except OSError as exc:
-        logging.debug("textfile flush skipped: %s", exc)
+        limiter.errors += 1
+        logging.warning("metric publication failed (%s)", type(exc).__name__)
 
 
 def tail(path: pathlib.Path):
-    while not path.is_file():
-        logging.info("waiting for %s to appear…", path)
-        time.sleep(5)
-    fh = path.open("r", errors="replace")
-    fh.seek(0, 2)  # to EOF
-    inode = path.stat().st_ino
-    while True:
-        line = fh.readline()
-        if line:
-            yield line
-            continue
-        time.sleep(0.5)
-        try:
-            new_inode = path.stat().st_ino
-        except FileNotFoundError:
-            continue
-        if new_inode != inode:
+    """Yield idle ticks as well as lines; distinguish unavailable input."""
+    fh = None
+    identity = None
+    first_open = True
+    try:
+        while True:
+            try:
+                metadata = path.stat()
+                new_identity = (metadata.st_dev, metadata.st_ino)
+                if fh is None or identity != new_identity:
+                    if fh is not None:
+                        fh.close()
+                    fh = path.open("r", errors="replace")
+                    identity = new_identity
+                    if first_open:
+                        fh.seek(0, 2)
+                        first_open = False
+                elif metadata.st_size < fh.tell():
+                    fh.seek(0)  # copytruncate rotation
+                line = fh.readline()
+                yield line or None, True
+                if not line:
+                    time.sleep(0.5)
+            except OSError:
+                if fh is not None:
+                    fh.close()
+                fh = None
+                identity = None
+                yield None, False
+                time.sleep(0.5)
+    finally:
+        if fh is not None:
             fh.close()
-            fh = path.open("r", errors="replace")
-            inode = new_inode
 
 
 def main() -> None:
     limiter = RateLimiter(REJECTS_PER_WINDOW, WINDOW_SECONDS, BAN_SECONDS)
-    last_flush = 0.0
-    for line in tail(XRAY_LOG):
+    last_flush = None
+    for line, input_healthy in tail(XRAY_LOG):
         now = time.time()
-        ip = limiter.observe(line, now)
-        if ip is not None:
-            if not add_offender(ip, BAN_SECONDS):
+        limiter.input_healthy = input_healthy
+        limiter.expire(now)
+        if line is not None:
+            ip = limiter.observe(line, now)
+            if ip is not None and not add_offender(ip, BAN_SECONDS):
                 limiter.errors += 1
-        if now - last_flush > 15:
+        if last_flush is None or now - last_flush >= 15:
             flush_textfile(limiter)
             last_flush = now
 

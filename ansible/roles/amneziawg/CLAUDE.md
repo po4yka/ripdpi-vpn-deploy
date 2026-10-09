@@ -2,6 +2,13 @@
 
 ## Design decisions
 
+A private bounded instance record owns retirement. Convergence stops and disables
+only recorded obsolete interfaces before removing their exact configuration;
+unrelated WireGuard/AWG instances stay untouched. Missing historical records
+do not authorize a directory scan or deletion of unrecorded private config.
+The unique amneziawg_role_enabled selector dispatches disable before build or
+secret guards; immutable source receipts remain retained.
+
 **Private instance records stay out of callbacks** — normalization and every service/handler loop over complete instances use `no_log`, including credential rotation. Verbose callback regressions use synthetic keys and PSKs.
 
 **Userspace AWG, not kernel WireGuard** — AmneziaWG 2.0 in userspace is the
@@ -42,6 +49,11 @@ ownership and idempotence, not upstream builds or tunnel traffic.
 
 **arm64 S3/S4 floor is a cross-repo policy** — `contract/amneziawg-arm64-version-floor.json` records known-broken versions, tracked upstream issue states, and candidate/verified floors. A release claim only opens a revalidation issue; the role and client remain fail-closed until physical arm64 evidence establishes a safe floor.
 
+An existing role-local shared unit without a bounded membership record refuses
+reconciliation before retirement. Its owner must explicitly adopt exact members
+or retire the historical authority; the role does not scan or delete unclaimed
+interfaces. Fresh absence and recorded enable/disable transitions stay idempotent.
+
 ## What's done well
 
 - **Cohort selection is explicit** — `vpn.awg_cohort` names a file under
@@ -73,8 +85,16 @@ ownership and idempotence, not upstream builds or tunnel traffic.
   cannot apply address/route changes and aborts on inactive instances.
   Expect a seconds-long tunnel interruption on every peer/config change;
   schedule AWG config waves accordingly.
+  Verified runtime publication and shared service/target unit changes use the
+  same restart path, so unchanged private configuration cannot retain an older
+  process binary or sandbox. Daemon reload precedes instance restart.
 - **The tools build output is `src/wg`, not `src/awg`** — `/usr/bin/awg` is
   created by `make install`. Using the installed name as the source artifact
   makes every check-mode run report false drift.
 - **Fresh hosts need a C toolchain for tools** — `amneziawg-tools/src/Makefile`
   invokes `cc`; install `gcc` and `libc6-dev` before the source-build helper.
+
+Before retiring the shared target, query its actual inverse PartOf membership.
+An active unrecorded member prevents any retirement; stopping the target must
+never propagate into a foreign service even when its unit has a different name.
+Fully owned target retirement removes both active state and boot enablement.

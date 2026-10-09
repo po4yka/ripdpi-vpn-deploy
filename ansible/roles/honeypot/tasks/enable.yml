@@ -1,0 +1,101 @@
+---
+# Active-probing canary. See defaults/main.yml for rationale.
+
+- name: Converge provider-assigned secondary guest address
+  ansible.builtin.import_tasks: secondary-address.yml
+
+- name: Ensure node_exporter textfile writer group
+  ansible.builtin.group:
+    name: "{{ honeypot.textfile_group }}"
+    system: true
+
+- name: Ensure system user
+  ansible.builtin.user:
+    name: honeypot
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ honeypot.log_dir }}"
+    create_home: false
+    groups: "{{ honeypot.textfile_group }}"
+    append: true
+  notify: Restart honeypot
+
+- name: Ensure honeypot log directory
+  ansible.builtin.file:
+    path: "{{ honeypot.log_dir }}"
+    state: directory
+    owner: honeypot
+    group: honeypot
+    mode: "0750"
+
+- name: Install logrotate
+  ansible.builtin.apt:
+    name:
+      - logrotate
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure shared node_exporter textfile directory
+  ansible.builtin.file:
+    path: "{{ honeypot.textfile_dir }}"
+    state: directory
+    owner: root
+    group: "{{ honeypot.textfile_group }}"
+    mode: "3775"
+
+- name: Install honeypot listener
+  ansible.builtin.template:
+    src: honeypot.py.j2
+    dest: /usr/local/bin/honeypot.py
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart honeypot
+
+- name: Install systemd unit
+  ansible.builtin.template:
+    src: honeypot.service.j2
+    dest: /etc/systemd/system/honeypot.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart honeypot
+
+- name: Install honeypot logrotate policy
+  ansible.builtin.template:
+    src: logrotate-honeypot.j2
+    dest: /etc/honeypot-logrotate.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install honeypot logrotate service
+  ansible.builtin.template:
+    src: honeypot-logrotate.service.j2
+    dest: /etc/systemd/system/honeypot-logrotate.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install honeypot logrotate timer
+  ansible.builtin.template:
+    src: honeypot-logrotate.timer.j2
+    dest: /etc/systemd/system/honeypot-logrotate.timer
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Enable + start honeypot logrotate timer
+  ansible.builtin.systemd_service:
+    name: honeypot-logrotate.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Enable + start honeypot
+  ansible.builtin.systemd_service:
+    name: honeypot.service
+    enabled: true
+    state: started
+    daemon_reload: true

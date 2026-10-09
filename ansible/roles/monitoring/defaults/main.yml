@@ -6,3 +6,5 @@ monitoring:
   node_exporter_textfile_dir: /var/lib/node_exporter/textfile
   node_exporter_textfile_group: node_exporter_textfile
   xray_stats_interval: 60s
+
+monitoring_role_enabled: true

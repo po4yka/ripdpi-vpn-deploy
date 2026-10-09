@@ -5,6 +5,8 @@ APT::Periodic::Download-Upgradeable-Packages "1";
 APT::Periodic::Unattended-Upgrade "1";
 APT::Periodic::AutocleanInterval "7";
 
+#clear Unattended-Upgrade::Origins-Pattern;
+#clear Unattended-Upgrade::Allowed-Origins;
 Unattended-Upgrade::Origins-Pattern {
 
   "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";

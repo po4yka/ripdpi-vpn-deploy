@@ -12,7 +12,11 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def _tasks(role: str) -> list[dict]:
-    return yaml.safe_load((ROOT / f"ansible/roles/{role}/tasks/main.yml").read_text())
+    directory = ROOT / "ansible/roles" / role / "tasks"
+    source = directory / (
+        "enable.yml" if (directory / "enable.yml").exists() else "main.yml"
+    )
+    return yaml.safe_load(source.read_text())
 
 
 def _task(role: str, name: str) -> dict:
@@ -44,7 +48,7 @@ def test_naive_build_uses_compound_identity_and_pinned_output_receipt() -> None:
         }
     ]
 
-    source = (ROOT / "ansible/roles/naive/tasks/main.yml").read_text()
+    source = (ROOT / "ansible/roles/naive/tasks/enable.yml").read_text()
     assert "Check whether caddy-naive binary already exists" not in source
     assert "Verify caddy-naive binary sha256" not in source
     assert "_caddy_naive_stat.stat.checksum" not in source
@@ -87,7 +91,7 @@ def test_xray_source_build_uses_resolved_commit_and_shared_receipt() -> None:
         {
             "name": "installed",
             "staged_path": "/var/lib/ripdpi/runtime-build-staging/xray-core/xray",
-            "path": "{{ xray_install_dir }}/releases/{{ xray.version }}/xray",
+            "path": "{{ xray_install_dir }}/releases/{{ _xray_runtime_release_identity }}/xray",
             "expected_sha256": "{{ xray_runtime_source_sha256 }}",
         }
     ]

@@ -1,0 +1,250 @@
+---
+# P1 transport: nginx fronts a configurable public TCP port and proxies a path to the Xray XHTTP
+# inbound on 127.0.0.1:{{ nginx_xhttp_port }}. RU baseline = direct foreign
+# VPS, no CDN. See docs/CDN-DECISION.md.
+
+- name: Pre-flight — nginx public listener must not collide with REALITY
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (
+          (vpn.enable_xray_reality | default(true) | bool)
+          and ((nginx_xhttp_public_port | int) == (xray_port | int))
+        )
+    fail_msg: |
+      nginx_xhttp_public_port={{ nginx_xhttp_public_port }} collides with
+      xray_port={{ xray_port }} while REALITY is enabled. Keep REALITY
+      on TCP/443 for full-stack hosts and move nginx-xhttp to another public port,
+      or disable REALITY for a direct-only cohort before using 443.
+
+- name: Pre-flight — public site hostname matches the canonical URL
+  ansible.builtin.assert:
+    that:
+      - public_site_canonical_url == 'https://' ~ nginx_xhttp.server_name
+    fail_msg: public_site_canonical_url must equal the HTTPS URL for nginx_xhttp.server_name.
+
+- name: Pre-flight — public service address is available for self-resolution
+  ansible.builtin.assert:
+    that:
+      - vpn_service_address is defined
+      - vpn_service_address | length > 0
+      - vpn_service_address is match('^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$')
+    fail_msg: vpn_service_address must contain the provider-assigned public IPv4 address.
+
+- name: Pin public hostname for node-local resolution
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: "# {mark} RIPDPI nginx self-resolution"
+    block: "{{ vpn_service_address }} {{ nginx_xhttp.server_name }}"
+    owner: root
+    group: root
+    mode: "0644"
+    unsafe_writes: true
+  no_log: true
+  diff: false
+  register: _nginx_self_resolution_plan
+
+- name: Verify node-local public hostname resolution
+  ansible.builtin.command:
+    argv:
+      - getent
+      - ahostsv4
+      - "{{ nginx_xhttp.server_name }}"
+  register: nginx_xhttp_self_resolution
+  check_mode: false
+  when: not ansible_check_mode or not _nginx_self_resolution_plan.changed
+  changed_when: false
+  failed_when: >-
+    nginx_xhttp_self_resolution.rc != 0 or
+    not (
+      nginx_xhttp_self_resolution.stdout is search(
+        '(?m)^' ~ (vpn_service_address | regex_escape) ~ '\\s'
+      )
+    )
+  no_log: true
+
+- name: Pre-flight — fallback frontend port must not collide with other listeners
+  ansible.builtin.assert:
+    that:
+      - >-
+        not (
+          (nginx_xhttp.fallback_enabled | default(false) | bool)
+          and (
+            (nginx_xhttp_fallback_port | int) in [
+              xray_port | int,
+              xray_fallback_port | int,
+              nginx_xhttp_public_port | int,
+              cdn_front.port | default(cdn_front_port) | int,
+            ]
+          )
+        )
+    fail_msg: |
+      nginx_xhttp_fallback_port={{ nginx_xhttp_fallback_port }} collides
+      with an existing public listener (xray_port={{ xray_port }},
+      xray_fallback_port={{ xray_fallback_port }},
+      nginx_xhttp_public_port={{ nginx_xhttp_public_port }},
+      cdn_front.port={{ cdn_front.port | default(cdn_front_port) }}). Pick a free port for the
+      direct (non-CDN) XHTTP fallback frontend.
+
+- name: Install nginx
+  ansible.builtin.apt:
+    name:
+      - nginx
+      - openssl
+      - util-linux
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    policy_rc_d: 101
+  register: _nginx_xhttp_install_plan
+
+- name: Ensure TLS material directory
+  ansible.builtin.file:
+    path: /etc/nginx/tls
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Publish static site content
+  ansible.builtin.copy:
+    src: public-site/
+    dest: /var/www/public-site/
+    owner: root
+    group: root
+    mode: "u=rwX,go=rX"
+  notify: Reload nginx-xhttp
+
+- name: Ensure the public notes directory exists
+  ansible.builtin.file:
+    path: /var/www/public-site/notes
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Render public site pages
+  ansible.builtin.template:
+    src: "public-site/{{ item.src }}"
+    dest: "/var/www/public-site/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - src: index.html.j2
+      dest: index.html
+    - src: about.html.j2
+      dest: about.html
+    - src: methodology.html.j2
+      dest: methodology.html
+    - src: updates.html.j2
+      dest: updates.html
+    - src: reading-benchmark-results.html.j2
+      dest: notes/reading-benchmark-results.html
+    - src: latency-throughput-context.html.j2
+      dest: notes/latency-throughput-context.html
+    - src: repeatable-model-comparisons.html.j2
+      dest: notes/repeatable-model-comparisons.html
+  notify: Reload nginx-xhttp
+
+- name: Remove the retired security contact file
+  ansible.builtin.file:
+    path: /var/www/public-site/.well-known/security.txt
+    state: absent
+
+- name: Render hostname-bound site discovery files
+  ansible.builtin.template:
+    src: "public-site/{{ item.src }}"
+    dest: "/var/www/public-site/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - src: feed.xml.j2
+      dest: feed.xml
+    - src: robots.txt.j2
+      dest: robots.txt
+    - src: sitemap.xml.j2
+      dest: sitemap.xml
+  notify: Reload nginx-xhttp
+
+- name: Stage complete XHTTP TLS and vhost authority
+  ansible.builtin.set_fact:
+    nginx_transaction_files:
+      - path: "/etc/nginx/tls/{{ nginx_xhttp.server_name }}.fullchain.pem"
+        kind: file
+        content_b64: "{{ nginx_xhttp.cert_pem | b64encode }}"
+        mode: "0644"
+        uid: 0
+        gid: 0
+      - path: "/etc/nginx/tls/{{ nginx_xhttp.server_name }}.key"
+        kind: file
+        content_b64: "{{ nginx_xhttp.key_pem | b64encode }}"
+        mode: "0600"
+        uid: 0
+        gid: 0
+      - path: /etc/nginx/sites-available/vpn-xhttp.conf
+        kind: file
+        content_b64: "{{ lookup('ansible.builtin.template', 'site.conf.j2') | b64encode }}"
+        mode: "0640"
+        uid: 0
+        gid: 0
+      - path: /etc/nginx/sites-enabled/vpn-xhttp.conf
+        kind: link
+        target: /etc/nginx/sites-available/vpn-xhttp.conf
+        mode: "0777"
+        uid: 0
+        gid: 0
+      - {path: /etc/nginx/sites-enabled/default, kind: absent}
+  no_log: true
+  diff: false
+
+- name: Stage distinct fallback TLS authority
+  ansible.builtin.set_fact:
+    nginx_transaction_files: >-
+      {{ nginx_transaction_files + [
+        {'path': '/etc/nginx/tls/' ~ nginx_xhttp.fallback_server_name ~ '.fullchain.pem',
+         'kind': 'file', 'content_b64': nginx_xhttp.fallback_cert_pem | b64encode, 'mode': '0644', 'uid': 0, 'gid': 0},
+        {'path': '/etc/nginx/tls/' ~ nginx_xhttp.fallback_server_name ~ '.key',
+         'kind': 'file', 'content_b64': nginx_xhttp.fallback_key_pem | b64encode, 'mode': '0600', 'uid': 0, 'gid': 0}] }}
+  when:
+    - nginx_xhttp.fallback_enabled | default(false)
+    - (nginx_xhttp.fallback_server_name | default(nginx_xhttp.server_name)) != nginx_xhttp.server_name
+  no_log: true
+  diff: false
+
+- name: Validate publish and activate complete XHTTP authority
+  ansible.builtin.include_role:
+    name: nginx-xhttp
+    tasks_from: transaction
+  vars:
+    nginx_transaction_owner: nginx-xhttp
+    nginx_transaction_roots: [/etc/nginx]
+    nginx_transaction_validate_argv: [/usr/sbin/nginx, -t]
+    nginx_transaction_unit: nginx.service
+    nginx_transaction_activation: reload
+    nginx_transaction_desired_enabled: true
+
+- name: Inspect nginx unit before check-mode activation
+  ansible.builtin.stat:
+    path: /lib/systemd/system/nginx.service
+    follow: false
+  register: _nginx_xhttp_unit_before
+  changed_when: false
+  when: ansible_check_mode
+
+- name: Require planned nginx installation on a fresh check-mode host
+  ansible.builtin.assert:
+    that:
+      - _nginx_xhttp_install_plan.changed
+    fail_msg: Check mode found no nginx unit and no planned installation.
+  when:
+    - ansible_check_mode
+    - not (_nginx_xhttp_unit_before.stat.exists | default(false))
+
+- name: Ensure nginx is enabled and started
+  ansible.builtin.systemd_service:
+    name: nginx
+    enabled: true
+    state: started
+  when: not ansible_check_mode or _nginx_xhttp_unit_before.stat.exists | default(false)

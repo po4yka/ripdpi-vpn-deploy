@@ -4,12 +4,12 @@
     level INFO
   }
   servers {
-    protocols h1 h2 h3
+    protocols h1 h2
   }
   auto_https off
 }
 
-:443, vpn.example.com {
+:443, vpn.example.com:443 {
   tls /etc/naive/server.fullchain.pem /etc/naive/server.key
 
   # Compression response headers a real Chrome browser triggers. Required

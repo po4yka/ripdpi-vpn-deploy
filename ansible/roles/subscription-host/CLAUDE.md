@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+**Independent TLS ownership** — `subscription.cert_pem` and `subscription.key_pem` are required independently of XHTTP. The memory-only preflight proves key match, current validity and the effective delivery hostname before complete nginx transaction publication under `/etc/nginx/tls/subscription-host/`. An existing check-mode host performs the same preflight; a fresh missing validator requires its package installation plan.
+
+**Bearer failures retain only categorical diagnostics** — bearer locations suppress URI-bearing nginx error records and use an explicit format containing only HTTP status, upstream status and limit outcome. No URI, header, address or token field enters this log; native stopped-upstream and rate-limit tests check every nginx log.
+
+
 **v1 = nginx vhost with static payloads** — `/sub/<token>` returns the
 client's sing-box JSON; `/bootstrap/<token>` is a one-time provisioning URL.
 Revocation + rate-limit (v1.2) is a thin Lua module on top.

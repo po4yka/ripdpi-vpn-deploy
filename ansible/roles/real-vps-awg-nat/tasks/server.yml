@@ -12,6 +12,22 @@
       - real_vps_awg_nat_server_uplink_interface is match('^[A-Za-z0-9_.-]{1,15}$')
   no_log: true
 
+- name: Prove the reviewed restricted SSH admission before provisioning server state
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path ~ '/files/verify_ssh_admission.py') }}"
+    stdin: >-
+      {{ {'user': real_vps_awg_nat_server_ssh_user,
+          'local': real_vps_awg_nat_expected_placement.server.ansible_host,
+          'sources': [real_vps_awg_nat_sentinel_public_ipv4, real_vps_awg_nat_sentinel_public_ipv6]
+                     | reject('equalto', '') | list} | to_json }}
+  changed_when: false
+  check_mode: false
+  no_log: true
+  diff: false
+
 - name: Inspect existing P2 AWG server toolchain
   ansible.builtin.command:
     argv: [/usr/bin/test, -x, "{{ item }}"]

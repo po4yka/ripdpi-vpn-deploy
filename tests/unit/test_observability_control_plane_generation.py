@@ -9,9 +9,15 @@ ROLE = ROOT / "ansible/roles/observability_control_plane"
 
 
 def _tasks(name: str) -> dict[str, dict]:
+    def flatten(rows):
+        for row in rows:
+            yield row
+            for key in ("block", "rescue", "always"):
+                yield from flatten(row.get(key, []))
+
     return {
         task["name"]: task
-        for task in yaml.safe_load((ROLE / "tasks" / name).read_text())
+        for task in flatten(yaml.safe_load((ROLE / "tasks" / name).read_text()))
     }
 
 
@@ -35,7 +41,9 @@ def test_enable_preserves_previous_generation_before_current_activation() -> Non
     assert (
         activation_order.index("Install Prometheus service unit")
         < activation_order.index("Point current configuration at candidate generation")
-        < activation_order.index("Start or restart Prometheus for the published generation")
+        < activation_order.index(
+            "Start or restart Prometheus for the published generation"
+        )
         < activation_order.index("Require loopback-only Prometheus candidate readiness")
     )
     assert ordered.index("Capture previous Prometheus unit") < ordered.index(
@@ -51,8 +59,12 @@ def test_enable_preserves_previous_generation_before_current_activation() -> Non
     assert "Restore previous ready configuration after failed candidate" in rescue_names
     assert "Fail closed when no previous ready generation exists" in rescue_names
     assert (
-        rescue_names.index("Restore the previous collector binary after failed activation")
-        < rescue_names.index("Restore previous ready configuration after failed candidate")
+        rescue_names.index(
+            "Restore the previous collector binary after failed activation"
+        )
+        < rescue_names.index(
+            "Restore previous ready configuration after failed candidate"
+        )
         < rescue_names.index("Restore previous Prometheus unit after failed activation")
         < rescue_names.index("Restore previous ready Prometheus service")
     )
@@ -132,14 +144,18 @@ def test_enable_preserves_shared_nginx_and_starts_only_isolated_ingress() -> Non
     ordered = list(tasks)
 
     assert "Remove the distribution default ingress site" not in tasks
-    assert ordered.index("Render isolated write-only mTLS ingress") < ordered.index(
-        "Start isolated ingress without changing shared VPN nginx"
+    assert ordered.index(
+        "Build the exact isolated ingress authority write set"
+    ) < ordered.index(
+        "Publish complete isolated mTLS ingress candidate with compensation"
     )
-    nginx = tasks["Start isolated ingress without changing shared VPN nginx"][
-        "ansible.builtin.systemd_service"
-    ]
-    assert nginx["name"] == "observability-ingress"
-    assert nginx["enabled"] is True
+    nginx = tasks["Publish complete isolated mTLS ingress candidate with compensation"]
+    assert nginx["ansible.builtin.include_role"] == {
+        "name": "nginx-xhttp",
+        "tasks_from": "transaction",
+    }
+    assert nginx["vars"]["nginx_transaction_unit"] == "observability-ingress.service"
+    assert nginx["vars"]["nginx_transaction_activation"] == "restart"
     assert (
         tasks["Install hardened ingress package"]["ansible.builtin.apt"]["policy_rc_d"]
         == 101

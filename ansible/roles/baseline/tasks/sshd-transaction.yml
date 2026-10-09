@@ -15,6 +15,31 @@
   no_log: true
   tags: [always, baseline]
 
+- name: Require both exact transports for explicitly admitted restricted accounts
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - -c
+      - |
+        import json, sys
+        source = {{ lookup('ansible.builtin.file', playbook_dir ~ '/../../scripts/sshd_contexts.py') | to_json }}
+        namespace = {'__name__': 'restricted_contexts'}
+        exec(compile(source, 'restricted_contexts', 'exec'), namespace)
+        request = json.load(sys.stdin)
+        namespace['validate_restricted_user_contexts'](
+            request['contexts'], request['users'], request['primary_user'])
+    stdin: >-
+      {{ {'contexts': ssh_transaction_contexts,
+          'users': baseline_ssh_extra_allowed_users | default([]),
+          'primary_user': ansible_user} | to_json }}
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+  no_log: true
+  diff: false
+  tags: [always, baseline]
+
 - name: Run the exact-node recoverable SSH baseline transaction
   ansible.builtin.command:
     argv:

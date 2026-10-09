@@ -73,3 +73,6 @@ subscription:
     restic_snapshot_path: ""
     # Also kept outside subscription_dir — see ssh_key_path rationale above.
     restic_password_file: "/etc/vpn-subscription/mirror_restic_password"
+
+# Direct calls enable the role; site dispatch supplies its exact predicate.
+subscription_host_role_enabled: true

@@ -60,6 +60,13 @@ revalidates signed controller artifacts for direct role calls as well as site
 deploys. Only an explicitly promoted plan adds directional rules; empty plans
 preserve baseline bytes. The rule-bearing render is no_log with diff disabled.
 
+**Rule reloads preserve active enforcement** — the inet filter table is added
+idempotently and flushed in the same batch before rules are reimported. Named
+Fail2Ban and policy sets retain their kernel membership and remaining expiry;
+there is no userspace snapshot race or timeout restart. Disabled sets retire
+explicitly. Tailnet source sets are replaced from their owned authority fragment,
+and active CDN origin sets retain the prefix refresher's current authority.
+
 ## What's done well
 
 - **Cleanup limited to known ports** — when toggling features (disabling

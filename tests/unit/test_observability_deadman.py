@@ -822,7 +822,8 @@ def test_enable_rolls_back_and_restarts_previous_but_disable_never_cleans_after_
     disable = (ROLE / "tasks/disable.yml").read_text()
     assert "Stop candidate dead-man units before rollback" in enable
     assert "Gather candidate dead-man unit facts before rollback" in enable
-    assert "Restart restored dead-man generation" in enable
+    assert "Restore exact retained receiver service and timer states" in enable
+    assert "Restore complete retained receiver authority snapshot" in enable
     assert "observability-deadman-tick.timer" in enable
     assert "failed_when: false" not in enable
     assert "Probe dead-man owned unit manager state" in disable
@@ -1465,7 +1466,13 @@ def test_enabled_molecule_pulse_ca_is_strict_server_trust_material() -> None:
 
 
 def test_activation_restarts_changed_receiver_inputs_inside_rollback_block() -> None:
-    tasks = yaml.safe_load((ROLE / "tasks/enable.yml").read_text())
+    def flatten(rows):
+        for row in rows:
+            yield row
+            for key in ("block", "rescue", "always"):
+                yield from flatten(row.get(key, []))
+
+    tasks = list(flatten(yaml.safe_load((ROLE / "tasks/enable.yml").read_text())))
     handlers = (ROLE / "handlers/main.yml").read_text()
     credentials = next(
         task

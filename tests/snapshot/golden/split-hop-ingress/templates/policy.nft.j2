@@ -2,7 +2,12 @@ destroy table inet split_hop_ingress
 table inet split_hop_ingress {
   chain output {
     type route hook output priority mangle; policy accept;
-    ct state new ct direction original meta skuid { 971, 972 } ct mark set 1
+    meta nfproto ipv6 ct direction original meta skuid { 971, 972 } reject with icmpv6 type admin-prohibited
+    meta nfproto ipv4 ct state new ct direction original meta skuid { 971, 972 } ct mark set 1
     ct mark 1 meta mark set ct mark
+  }
+  chain postrouting {
+    type nat hook postrouting priority srcnat; policy accept;
+    meta nfproto ipv4 ct direction original ct mark 1 oifname "shop0" snat ip to 10.200.0.1
   }
 }

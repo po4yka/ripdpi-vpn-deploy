@@ -310,7 +310,7 @@ def test_sender_is_fail_closed_and_uses_runtime_release() -> None:
     assert "Validate candidate observability configuration" in tasks
     assert (
         "not ansible_check_mode"
-        not in tasks.split("Install pinned observability agent", 1)[0]
+        not in tasks.split("Assert exactly one node mTLS identity exists", 1)[0]
     )
     assert "Assert observability agent owned path boundary" in tasks
     assert "'promtool_install_root', 'wal_dir', 'wal_max_time'" in tasks
@@ -581,8 +581,8 @@ def test_credentials_are_validated_as_a_bundle_before_atomic_generation_switch()
         "dest: /etc/systemd/system/observability-agent-health-adapter.service"
         in health_rollback
     )
-    assert "- -purpose\n              - sslclient" in tasks
-    assert "- x509\n              - x509" not in tasks
+    assert "- -purpose\n                  - sslclient" in tasks
+    assert "- x509\n                  - x509" not in tasks
     assert "prometheus.yml" in tasks[publish:switch]
     assert 'mode: "0711"' in tasks
     assert "'0644' if item.item == 'prometheus.yml' else '0600'" in tasks
@@ -982,10 +982,16 @@ def test_site_uses_the_role_contract_as_the_single_enablement_flag() -> None:
     site = (ROOT / "ansible" / "playbooks" / "site.yml").read_text()
     group_vars = (ROOT / "ansible" / "group_vars" / "all.yml").read_text()
 
-    selected = next(role for role in yaml.safe_load(site)[0]["roles"] if role["role"] == "observability_agent")
+    selected = next(
+        role
+        for role in yaml.safe_load(site)[0]["roles"]
+        if role["role"] == "observability_agent"
+    )
     assert "when" not in selected
     lifecycle = (ROLE / "tasks/main.yml").read_text()
-    assert "when: not (observability_agent.enabled | default(false) | bool)" in lifecycle
+    assert (
+        "when: not (observability_agent.enabled | default(false) | bool)" in lifecycle
+    )
     assert "when: observability_agent.enabled | default(false) | bool" in lifecycle
     assert "enable_observability_agent" not in group_vars
 

@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def test_commit_resolution_is_normal_mode_attestation_only():
     tasks = yaml.safe_load(
-        (ROOT / "ansible/roles/amneziawg/tasks/main.yml").read_text()
+        (ROOT / "ansible/roles/amneziawg/tasks/enable.yml").read_text()
     )
     resolve_tasks = [
         task for task in tasks if task["name"].startswith("Resolve the amneziawg-")
@@ -23,7 +23,7 @@ def test_commit_resolution_is_normal_mode_attestation_only():
 
 def test_pinned_source_bumps_use_distinct_immutable_checkouts_before_attestation():
     tasks = yaml.safe_load(
-        (ROOT / "ansible/roles/amneziawg/tasks/main.yml").read_text()
+        (ROOT / "ansible/roles/amneziawg/tasks/enable.yml").read_text()
     )
     clones = [task for task in tasks if task["name"].startswith("Clone amneziawg-")]
 
@@ -40,7 +40,7 @@ def test_pinned_source_bumps_use_distinct_immutable_checkouts_before_attestation
 
 def test_build_receipts_make_check_mode_commit_aware_without_building():
     tasks = yaml.safe_load(
-        (ROOT / "ansible/roles/amneziawg/tasks/main.yml").read_text()
+        (ROOT / "ansible/roles/amneziawg/tasks/enable.yml").read_text()
     )
     by_name = {task["name"]: task for task in tasks}
 
@@ -82,7 +82,7 @@ def test_build_receipts_make_check_mode_commit_aware_without_building():
     assert converge["loop"] == "{{ _amneziawg_build_descriptors }}"
     assert converge["vars"] == {"runtime_build_descriptor": "{{ item }}"}
 
-    source = (ROOT / "ansible/roles/amneziawg/tasks/main.yml").read_text()
+    source = (ROOT / "ansible/roles/amneziawg/tasks/enable.yml").read_text()
     assert ".ripdpi-built-commit" not in source
     assert "_awg_go_rebuild_required" not in source
     assert "_awg_tools_rebuild_required" not in source

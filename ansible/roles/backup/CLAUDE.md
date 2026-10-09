@@ -75,3 +75,9 @@ required, so an otherwise populated directory cannot conceal missing authority.
 - **AmneziaWG backup and restore share `amneziawg_config_dir`** — never derive
   a shorter parent path or assume configs live directly under `/etc/amnezia`;
   the drill must validate the same nested directory that the role renders.
+
+- Ordinary site convergence always invokes lifecycle reconciliation. The
+  `backup_role_enabled` input selects enable or owned runtime retirement before
+  secret/package guards. Disable stops units and removes only declared authority;
+  shared packages, immutable runtime receipts, historical logs and recovery data
+  remain available for a later explicit recovery.

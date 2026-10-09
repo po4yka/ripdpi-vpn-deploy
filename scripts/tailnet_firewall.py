@@ -4,6 +4,7 @@ The caller holds the access transaction lock. This adapter never acquires that
 lock, creates another journal, or confirms enrollment. Early boot uses only
 files and netlink; all systemctl operations belong to the online phase.
 """
+
 from __future__ import annotations
 
 import base64
@@ -20,14 +21,25 @@ import secrets
 import time
 
 import tailnet_management as domain
-from tailnet_bootstrap_probe import ProbeError, firewall_service_state, split_inert_tables, stable_rules, validate_owned_rules, inspect_legacy_policy, lease_active, validate_console_receipt
+from tailnet_bootstrap_probe import (
+    ProbeError,
+    firewall_service_state,
+    split_inert_tables,
+    stable_rules,
+    validate_owned_rules,
+    inspect_legacy_policy,
+    lease_active,
+    validate_console_receipt,
+)
 
-_spec = importlib.util.spec_from_file_location("tailnet_network_files", Path(__file__).with_name("tailnet-network-guest.py"))
+_spec = importlib.util.spec_from_file_location(
+    "tailnet_network_files", Path(__file__).with_name("tailnet-network-guest.py")
+)
 files = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(files)
 
 INCLUDE = 'include "/etc/nftables.d/vpn-tailnet-ssh-sets.nft"'
-HEADER = '# Managed by Ansible role `firewall`.'
+HEADER = "# Managed by Ansible role `firewall`."
 
 
 def foundation(binding):
@@ -37,9 +49,12 @@ def foundation(binding):
         f'    {"ip6" if ":" in address else "ip"} saddr {address} tcp dport {port} accept'
         for address in binding["public_sources"]
     )
-    return f'''#!/usr/sbin/nft -f
+    return f"""#!/usr/sbin/nft -f
 {HEADER} Bootstrap access foundation; ordinary deploy replaces it.
-destroy table inet filter
+add table inet filter
+flush table inet filter
+destroy set inet filter vpn_tailnet_ssh_v4
+destroy set inet filter vpn_tailnet_ssh_v6
 table inet filter {{
   {INCLUDE}
   chain input {{
@@ -60,7 +75,7 @@ table inet filter {{
   chain forward {{ type filter hook forward priority 0; policy drop; }}
   chain output {{ type filter hook output priority 0; policy accept; }}
 }}
-'''.encode()
+""".encode()
 
 
 def _stable(document):
@@ -72,8 +87,13 @@ def _stable(document):
 
 
 def _record(data, *, mode=0o644):
-    return {"data_b64": base64.b64encode(data).decode(), "sha256": hashlib.sha256(data).hexdigest(),
-            "uid": os.geteuid(), "gid": os.getegid(), "mode": mode}
+    return {
+        "data_b64": base64.b64encode(data).decode(),
+        "sha256": hashlib.sha256(data).hexdigest(),
+        "uid": os.geteuid(),
+        "gid": os.getegid(),
+        "mode": mode,
+    }
 
 
 class Firewall:
@@ -88,7 +108,14 @@ class Firewall:
     def _errors(self):
         try:
             yield
-        except (files.Refusal, OSError, ValueError, KeyError, TypeError, UnicodeError) as error:
+        except (
+            files.Refusal,
+            OSError,
+            ValueError,
+            KeyError,
+            TypeError,
+            UnicodeError,
+        ) as error:
             raise domain.Refusal("bootstrap-firewall-refused") from error
 
     def _read(self, path):
@@ -101,11 +128,17 @@ class Firewall:
             path.unlink(missing_ok=True)
             files._sync(path.parent)
         else:
-            files._atomic(path, files._record_bytes(record), record["mode"], record["uid"], record["gid"])
+            files._atomic(
+                path,
+                files._record_bytes(record),
+                record["mode"],
+                record["uid"],
+                record["gid"],
+            )
 
     def _expanded(self, main, fragment):
         content = files._record_bytes(main)
-        includes = re.findall(rb'\binclude\b[^\n]*', content)
+        includes = re.findall(rb"\binclude\b[^\n]*", content)
         if not includes:
             return content
         if includes != [INCLUDE.encode()] or fragment is None:
@@ -134,22 +167,43 @@ class Firewall:
             "subprocess.run(['/usr/sbin/nft','-j','list','ruleset'],check=True)"
         )
         with self._candidate(content) as path:
-            raw = self.command(["unshare", "--net", "/usr/bin/python3", "-c", program, str(path)])
+            raw = self.command(
+                ["unshare", "--net", "/usr/bin/python3", "-c", program, str(path)]
+            )
         return _stable(json.loads(raw))
 
     def _rules(self):
         return _stable(json.loads(self.command(["nft", "-j", "list", "ruleset"])))
 
     def _service(self):
-        raw = self.command(["systemctl", "show", "nftables.service", "--property=ActiveState", "--property=UnitFileState", "--no-pager"])
+        raw = self.command(
+            [
+                "systemctl",
+                "show",
+                "nftables.service",
+                "--property=ActiveState",
+                "--property=UnitFileState",
+                "--no-pager",
+            ]
+        )
         try:
             return firewall_service_state(raw)
         except ProbeError as error:
             raise domain.Refusal("bootstrap-firewall-service-unsupported") from error
 
     def _preflight(self):
-        for unit in ("ufw.service", "firewalld.service", "netfilter-persistent.service"):
-            state = self.command(["systemctl", "show", unit, "--property=ActiveState", "--value"]).decode().strip()
+        for unit in (
+            "ufw.service",
+            "firewalld.service",
+            "netfilter-persistent.service",
+        ):
+            state = (
+                self.command(
+                    ["systemctl", "show", unit, "--property=ActiveState", "--value"]
+                )
+                .decode()
+                .strip()
+            )
             if state not in {"inactive", ""}:
                 raise domain.Refusal("bootstrap-foreign-firewall")
         # Do not race an independently owned network transaction. Existing
@@ -176,10 +230,26 @@ class Firewall:
             if not owned:
                 # Installation is inert and may leave the distribution's
                 # original package conffile. Never adopt a hand-edited file.
-                conffiles = self.command(["dpkg-query", "-W", "-f=${Conffiles}", "nftables"]).decode().splitlines()
-                expected = [line.split()[1] for line in conffiles if line.split() and line.split()[0] == "/etc/nftables.conf" and len(line.split()) == 2]
-                if (len(expected) != 1 or hashlib.md5(content, usedforsecurity=False).hexdigest() != expected[0]
-                        or fragment is not None or service != {"ActiveState": "inactive", "UnitFileState": "disabled"}):
+                conffiles = (
+                    self.command(["dpkg-query", "-W", "-f=${Conffiles}", "nftables"])
+                    .decode()
+                    .splitlines()
+                )
+                expected = [
+                    line.split()[1]
+                    for line in conffiles
+                    if line.split()
+                    and line.split()[0] == "/etc/nftables.conf"
+                    and len(line.split()) == 2
+                ]
+                if (
+                    len(expected) != 1
+                    or hashlib.md5(content, usedforsecurity=False).hexdigest()
+                    != expected[0]
+                    or fragment is not None
+                    or service
+                    != {"ActiveState": "inactive", "UnitFileState": "disabled"}
+                ):
                     raise domain.Refusal("bootstrap-empty-firewall-unowned")
                 candidate_main = _record(foundation(binding))
             else:
@@ -187,88 +257,170 @@ class Firewall:
                     validate_owned_rules(original)
                 except ProbeError as error:
                     raise domain.Refusal("bootstrap-foreign-firewall") from error
-                if HEADER.encode() not in content.splitlines() and not content.startswith(b"#!/usr/sbin/nft -f\n" + HEADER.encode()):
+                if (
+                    HEADER.encode() not in content.splitlines()
+                    and not content.startswith(
+                        b"#!/usr/sbin/nft -f\n" + HEADER.encode()
+                    )
+                ):
                     raise domain.Refusal("bootstrap-firewall-unowned")
                 if fragment is None or content.count(INCLUDE.encode()) != 1:
                     raise domain.Refusal("bootstrap-firewall-layout-unsupported")
                 if self._parse(self._expanded(main, fragment) + seed) != original:
                     raise domain.Refusal("bootstrap-firewall-runtime-drift")
                 port = binding["ssh_port"]
-                lines = [f'iifname "tailscale0" tcp dport {port} ip saddr @vpn_tailnet_ssh_v4 accept',
-                         f'iifname "tailscale0" tcp dport {port} ip6 saddr @vpn_tailnet_ssh_v6 accept',
-                         f'iifname "tailscale0" tcp dport {port} drop']
+                lines = [
+                    f'iifname "tailscale0" tcp dport {port} ip saddr @vpn_tailnet_ssh_v4 accept',
+                    f'iifname "tailscale0" tcp dport {port} ip6 saddr @vpn_tailnet_ssh_v6 accept',
+                    f'iifname "tailscale0" tcp dport {port} drop',
+                ]
                 offsets = [content.index(line.encode()) for line in lines]
                 if offsets != sorted(offsets):
                     raise domain.Refusal("bootstrap-firewall-source-order")
                 candidate_main = main
-            candidate_fragment = _record(domain.canonical_sources_fragment(binding["approved_sources"]).encode())
+            candidate_fragment = _record(
+                domain.canonical_sources_fragment(binding["approved_sources"]).encode()
+            )
             before_text = self.command(["nft", "-s", "list", "ruleset"])
             # Prove replay roundtrips the exact effective policy before arming.
             if self._parse(before_text) != original:
                 raise domain.Refusal("bootstrap-firewall-snapshot-drift")
-            result = {"schema_version": 2, "console_lease": None, "base_rules": original, "base_rules_text": _record(before_text), "main": main, "fragment": fragment,
-                      "fragment_directory_existed": self.fragment.parent.exists(),
-                      "candidate_main": candidate_main, "candidate_fragment": candidate_fragment,
-                      "service": service, "before_rules": original,
-                      "boot_rules": self._parse(self._expanded(main, fragment)),
-                      "after_rules": self._parse(self._expanded(candidate_main, candidate_fragment) + seed)}
+            result = {
+                "schema_version": 2,
+                "console_lease": None,
+                "base_rules": original,
+                "base_rules_text": _record(before_text),
+                "main": main,
+                "fragment": fragment,
+                "fragment_directory_existed": self.fragment.parent.exists(),
+                "candidate_main": candidate_main,
+                "candidate_fragment": candidate_fragment,
+                "service": service,
+                "before_rules": original,
+                "boot_rules": self._parse(self._expanded(main, fragment)),
+                "after_rules": self._parse(
+                    self._expanded(candidate_main, candidate_fragment) + seed
+                ),
+            }
             result["sha256"] = hashlib.sha256(files._json(result)).hexdigest()
             self.validate_snapshot(result)
             return result
 
     def _legacy_snapshot(self, binding, approval):
-        if (not isinstance(approval, dict) or set(approval) != {'schema_version', 'decision', 'plan_sha256'}
-                or approval['schema_version'] != 1 or type(approval['schema_version']) is not int
-                or approval['decision'] != 'approve-managed-legacy-v1'
-                or not isinstance(approval['plan_sha256'], str) or not re.fullmatch('[0-9a-f]{64}', approval['plan_sha256'])):
-            raise domain.Refusal('bootstrap-policy-approval-invalid')
-        fragment_bytes = domain.canonical_sources_fragment(binding['approved_sources']).encode()
-        plan = inspect_legacy_policy(binding, fragment_bytes, root=self.root, parser=self._parse)
-        if plan['plan_sha256'] != approval['plan_sha256']:
-            raise domain.Refusal('bootstrap-policy-approval-mismatch')
-        observed_text = self.command(['nft', '-s', 'list', 'ruleset'])
-        if self._parse(observed_text) != plan['observed_rules']:
-            raise domain.Refusal('bootstrap-policy-runtime-drift')
-        result = {'schema_version': 2, 'main': self._read(self.main), 'fragment': None,
-                  'fragment_directory_existed': self.fragment.parent.exists(),
-                  'candidate_main': _record(base64.b64decode(plan['candidate_main_b64'], validate=True)),
-                  'candidate_fragment': _record(fragment_bytes), 'service': plan['service'],
-                  'before_rules': plan['observed_rules'], 'base_rules': plan['base_rules'],
-                  'base_rules_text': _record(base64.b64decode(plan['base_text_b64'], validate=True)),
-                  'boot_rules': self._parse(files._record_bytes(self._read(self.main))),
-                  'after_rules': plan['candidate_rules'], 'console_lease': plan['console_lease']}
-        result['sha256'] = hashlib.sha256(files._json(result)).hexdigest()
+        if (
+            not isinstance(approval, dict)
+            or set(approval) != {"schema_version", "decision", "plan_sha256"}
+            or approval["schema_version"] != 1
+            or type(approval["schema_version"]) is not int
+            or approval["decision"] != "approve-managed-legacy-v1"
+            or not isinstance(approval["plan_sha256"], str)
+            or not re.fullmatch("[0-9a-f]{64}", approval["plan_sha256"])
+        ):
+            raise domain.Refusal("bootstrap-policy-approval-invalid")
+        fragment_bytes = domain.canonical_sources_fragment(
+            binding["approved_sources"]
+        ).encode()
+        plan = inspect_legacy_policy(
+            binding, fragment_bytes, root=self.root, parser=self._parse
+        )
+        if plan["plan_sha256"] != approval["plan_sha256"]:
+            raise domain.Refusal("bootstrap-policy-approval-mismatch")
+        observed_text = self.command(["nft", "-s", "list", "ruleset"])
+        if self._parse(observed_text) != plan["observed_rules"]:
+            raise domain.Refusal("bootstrap-policy-runtime-drift")
+        result = {
+            "schema_version": 2,
+            "main": self._read(self.main),
+            "fragment": None,
+            "fragment_directory_existed": self.fragment.parent.exists(),
+            "candidate_main": _record(
+                base64.b64decode(plan["candidate_main_b64"], validate=True)
+            ),
+            "candidate_fragment": _record(fragment_bytes),
+            "service": plan["service"],
+            "before_rules": plan["observed_rules"],
+            "base_rules": plan["base_rules"],
+            "base_rules_text": _record(
+                base64.b64decode(plan["base_text_b64"], validate=True)
+            ),
+            "boot_rules": self._parse(files._record_bytes(self._read(self.main))),
+            "after_rules": plan["candidate_rules"],
+            "console_lease": plan["console_lease"],
+        }
+        result["sha256"] = hashlib.sha256(files._json(result)).hexdigest()
         self.validate_snapshot(result)
         return result
 
     def validate_snapshot(self, snapshot):
         with self._errors():
-            fields = {"schema_version", "console_lease", "base_rules", "base_rules_text", "main", "fragment", "fragment_directory_existed", "candidate_main", "candidate_fragment", "service", "before_rules", "boot_rules", "after_rules", "sha256"}
-            if set(snapshot) != fields or type(snapshot["schema_version"]) is not int or snapshot["schema_version"] != 2:
+            fields = {
+                "schema_version",
+                "console_lease",
+                "base_rules",
+                "base_rules_text",
+                "main",
+                "fragment",
+                "fragment_directory_existed",
+                "candidate_main",
+                "candidate_fragment",
+                "service",
+                "before_rules",
+                "boot_rules",
+                "after_rules",
+                "sha256",
+            }
+            if (
+                set(snapshot) != fields
+                or type(snapshot["schema_version"]) is not int
+                or snapshot["schema_version"] != 2
+            ):
                 raise domain.Refusal("bootstrap-firewall-snapshot-invalid")
-            if hashlib.sha256(files._json({k: v for k, v in snapshot.items() if k != "sha256"})).hexdigest() != snapshot["sha256"]:
+            if (
+                hashlib.sha256(
+                    files._json({k: v for k, v in snapshot.items() if k != "sha256"})
+                ).hexdigest()
+                != snapshot["sha256"]
+            ):
                 raise domain.Refusal("bootstrap-firewall-snapshot-invalid")
-            for name in ("main", "candidate_main", "candidate_fragment", "base_rules_text"):
+            for name in (
+                "main",
+                "candidate_main",
+                "candidate_fragment",
+                "base_rules_text",
+            ):
                 files._record_bytes(snapshot[name])
             if snapshot["fragment"] is not None:
                 files._record_bytes(snapshot["fragment"])
-            if (type(snapshot["fragment_directory_existed"]) is not bool
-                    or snapshot["service"] not in [{"ActiveState": active, "UnitFileState": enabled} for active in ("active", "inactive") for enabled in ("enabled", "disabled")]
-                    or any(not isinstance(snapshot[k], list) for k in ("before_rules", "base_rules", "boot_rules", "after_rules"))):
+            if (
+                type(snapshot["fragment_directory_existed"]) is not bool
+                or snapshot["service"]
+                not in [
+                    {"ActiveState": active, "UnitFileState": enabled}
+                    for active in ("active", "inactive")
+                    for enabled in ("enabled", "disabled")
+                ]
+                or any(
+                    not isinstance(snapshot[k], list)
+                    for k in ("before_rules", "base_rules", "boot_rules", "after_rules")
+                )
+            ):
                 raise domain.Refusal("bootstrap-firewall-snapshot-invalid")
-            if snapshot['console_lease'] is not None:
-                validate_console_receipt(snapshot['console_lease'])
-            for key in ('before_rules', 'base_rules', 'boot_rules', 'after_rules'):
+            if snapshot["console_lease"] is not None:
+                validate_console_receipt(snapshot["console_lease"])
+            for key in ("before_rules", "base_rules", "boot_rules", "after_rules"):
                 validate_owned_rules(snapshot[key])
             self._expanded(snapshot["main"], snapshot["fragment"])
             self._expanded(snapshot["candidate_main"], snapshot["candidate_fragment"])
 
     def _inert_seed(self, entries):
         inert, _ = split_inert_tables(entries)
-        return ("\n" + "".join(
-            f"table {item['table']['family']} {item['table']['name']} {{}}\n"
-            for item in inert
-        )).encode()
+        return (
+            "\n"
+            + "".join(
+                f"table {item['table']['family']} {item['table']['name']} {{}}\n"
+                for item in inert
+            )
+        ).encode()
 
     def _boot_with_inert(self, snapshot):
         inert, _ = split_inert_tables(snapshot["before_rules"])
@@ -278,25 +430,48 @@ class Firewall:
     def _graph(self, snapshot):
         if self._read(self.main) not in (snapshot["main"], snapshot["candidate_main"]):
             raise domain.Refusal("bootstrap-firewall-file-drift")
-        if self._read(self.fragment) not in (snapshot["fragment"], snapshot["candidate_fragment"]):
+        if self._read(self.fragment) not in (
+            snapshot["fragment"],
+            snapshot["candidate_fragment"],
+        ):
             raise domain.Refusal("bootstrap-firewall-file-drift")
-        if self._rules() not in (snapshot["before_rules"], snapshot["base_rules"], snapshot["boot_rules"], self._boot_with_inert(snapshot), snapshot["after_rules"], []):
+        if self._rules() not in (
+            snapshot["before_rules"],
+            snapshot["base_rules"],
+            snapshot["boot_rules"],
+            self._boot_with_inert(snapshot),
+            snapshot["after_rules"],
+            [],
+        ):
             raise domain.Refusal("bootstrap-firewall-runtime-drift")
 
     @contextmanager
     def _console_lock(self, snapshot, *, early_boot=False):
-        if snapshot['console_lease'] is None or early_boot or not (self.root/'run/vpn-console-bootstrap').exists():
+        if (
+            snapshot["console_lease"] is None
+            or early_boot
+            or not (self.root / "run/vpn-console-bootstrap").exists()
+        ):
             yield
             return
-        path = self.root/'run/vpn-console-bootstrap/coordination.lock'
+        path = self.root / "run/vpn-console-bootstrap/coordination.lock"
         parent = path.parent.lstat()
-        if not stat.S_ISDIR(parent.st_mode) or parent.st_uid != 0 or stat.S_IMODE(parent.st_mode) != 0o700:
-            raise domain.Refusal('bootstrap-console-lock-invalid')
+        if (
+            not stat.S_ISDIR(parent.st_mode)
+            or parent.st_uid != 0
+            or stat.S_IMODE(parent.st_mode) != 0o700
+        ):
+            raise domain.Refusal("bootstrap-console-lock-invalid")
         fd = os.open(path, os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK)
         try:
             info = os.fstat(fd)
-            if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1:
-                raise domain.Refusal('bootstrap-console-lock-invalid')
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_uid != 0
+                or stat.S_IMODE(info.st_mode) != 0o600
+                or info.st_nlink != 1
+            ):
+                raise domain.Refusal("bootstrap-console-lock-invalid")
             fcntl.flock(fd, fcntl.LOCK_EX)
             yield
         finally:
@@ -311,17 +486,30 @@ class Firewall:
         with self._errors(), self._console_lock(snapshot):
             self.validate_snapshot(snapshot)
             self._graph(snapshot)
-            if snapshot['console_lease'] is not None:
-                boot = (self.root/'proc/sys/kernel/random/boot_id').read_text().strip()
-                if not lease_active(snapshot['console_lease'], boot_id=boot, wall=time.time(), monotonic=time.monotonic(), margin=360):
-                    raise domain.Refusal('bootstrap-console-lease-insufficient')
-            if self._rules() != snapshot["before_rules"] or self._service() != snapshot["service"]:
+            if snapshot["console_lease"] is not None:
+                boot = (
+                    (self.root / "proc/sys/kernel/random/boot_id").read_text().strip()
+                )
+                if not lease_active(
+                    snapshot["console_lease"],
+                    boot_id=boot,
+                    wall=time.time(),
+                    monotonic=time.monotonic(),
+                    margin=360,
+                ):
+                    raise domain.Refusal("bootstrap-console-lease-insufficient")
+            if (
+                self._rules() != snapshot["before_rules"]
+                or self._service() != snapshot["service"]
+            ):
                 raise domain.Refusal("bootstrap-firewall-preapply-drift")
             self.fragment.parent.mkdir(mode=0o755, exist_ok=True)
             files._directory(self.fragment.parent)
             self._write(self.fragment, snapshot["candidate_fragment"])
             self._write(self.main, snapshot["candidate_main"])
-            candidate = self._expanded(snapshot["candidate_main"], snapshot["candidate_fragment"])
+            candidate = self._expanded(
+                snapshot["candidate_main"], snapshot["candidate_fragment"]
+            )
             complete = candidate + self._inert_seed(snapshot["before_rules"])
             self._load(complete)
             self.command(["systemctl", "enable", "nftables.service"])
@@ -338,8 +526,13 @@ class Firewall:
     def verify(self, snapshot, binding):
         with self._errors():
             self.validate_snapshot(snapshot)
-            if (self._read(self.main) != snapshot["candidate_main"] or self._read(self.fragment) != snapshot["candidate_fragment"]
-                    or self._rules() != snapshot["after_rules"] or self._service() != {"ActiveState": "active", "UnitFileState": "enabled"}):
+            if (
+                self._read(self.main) != snapshot["candidate_main"]
+                or self._read(self.fragment) != snapshot["candidate_fragment"]
+                or self._rules() != snapshot["after_rules"]
+                or self._service()
+                != {"ActiveState": "active", "UnitFileState": "enabled"}
+            ):
                 raise domain.Refusal("bootstrap-firewall-verification-failed")
 
     def restore(self, snapshot, binding, *, early_boot=False):
@@ -356,14 +549,24 @@ class Firewall:
             # atomic replay. No individual chain flushing or best-effort edits.
             # Rollback always retires the emergency bridge. Replaying a RAM
             # grant is unnecessary and would add another expiry authority.
-            target = snapshot['base_rules']
-            content = b"flush ruleset\n" + files._record_bytes(snapshot['base_rules_text'])
+            target = snapshot["base_rules"]
+            content = b"flush ruleset\n" + files._record_bytes(
+                snapshot["base_rules_text"]
+            )
             self._load(content)
             if not early_boot:
                 enabled = snapshot["service"]["UnitFileState"] == "enabled"
                 active = snapshot["service"]["ActiveState"] == "active"
-                self.command(["systemctl", "enable" if enabled else "disable", "nftables.service"])
-                self.command(["systemctl", "start" if active else "stop", "nftables.service"])
+                self.command(
+                    [
+                        "systemctl",
+                        "enable" if enabled else "disable",
+                        "nftables.service",
+                    ]
+                )
+                self.command(
+                    ["systemctl", "start" if active else "stop", "nftables.service"]
+                )
                 # Stopping nftables flushes owned tables; starting it may load
                 # package defaults. Restore the original effective snapshot last.
                 self._load(content)

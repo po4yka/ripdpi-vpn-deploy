@@ -20,6 +20,8 @@ policy_ratelimit:
   # trigger a ban
   rejects_per_window: 5
   window_seconds: 60
+  # Bound source cardinality; overflow is observable without evicting active windows.
+  max_sources: 4096
   # how long the IP stays in the offenders set (nftables timeout)
   ban_seconds: 300
   # textfile output for graphing
@@ -28,3 +30,5 @@ policy_ratelimit:
   # the vpn_policy_ratelimit_dead_contract gauge to 1 (investigate: broken
   # sink/token, or a genuinely quiet cohort)
   dead_contract_min_lines: 5000
+
+policy_ratelimit_role_enabled: true

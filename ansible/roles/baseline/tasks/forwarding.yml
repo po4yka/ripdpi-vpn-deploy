@@ -27,11 +27,24 @@
     not (vpn.enable_split_hop_egress | default(false) | bool) and
     not (baseline_forwarding_split_hop_egress_active | default(false) | bool)
 
+- name: Ensure baseline policy helper directory
+  ansible.builtin.file:
+    path: /usr/local/libexec
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install ordered mandatory sysctl policy helper
+  ansible.builtin.copy:
+    src: baseline_sysctl.py
+    dest: /usr/local/libexec/vpn-baseline-sysctl
+    owner: root
+    group: root
+    mode: "0750"
+
 - name: Reconcile effective sysctl values on every converge
   ansible.builtin.command:
-    cmd: sysctl -e --system
+    cmd: /usr/local/libexec/vpn-baseline-sysctl
   register: baseline_sysctl_apply
   changed_when: false
-  failed_when: >-
-    baseline_sysctl_apply.rc != 0 and
-    'net.ipv4.tcp_congestion_control' not in baseline_sysctl_apply.stderr

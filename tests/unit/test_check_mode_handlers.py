@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 import yaml
+from ansible.plugins.filter.core import FilterModule
+from jinja2 import Environment, StrictUndefined
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -52,5 +54,31 @@ def test_restart_handlers_skip_runtime_checks_in_check_mode(
     handlers = yaml.safe_load(handlers_path.read_text())
 
     by_name = {handler["name"]: handler for handler in handlers}
+    environment = Environment(undefined=StrictUndefined)
+    environment.filters["bool"] = FilterModule().filters()["bool"]
+    selector = role.replace("-", "_") + "_role_enabled"
     for name in handler_names:
-        assert by_name[name]["when"] == "not ansible_check_mode"
+        conditions = by_name[name]["when"]
+        if isinstance(conditions, str):
+            conditions = [conditions]
+
+        def selected(*, check: bool, enabled: bool) -> bool:
+            values = {"ansible_check_mode": check, selector: enabled}
+            return all(
+                environment.compile_expression(condition)(**values)
+                for condition in conditions
+            )
+
+        assert not selected(
+            check=True, enabled=True
+        ), f"{role}:{name} runs in check mode"
+        assert not selected(
+            check=True, enabled=False
+        ), f"{role}:{name} runs in disabled check mode"
+        assert selected(
+            check=False, enabled=True
+        ), f"{role}:{name} lost ordinary positive activation"
+        if role not in {"geodata", "nginx-xhttp"}:
+            assert not selected(
+                check=False, enabled=False
+            ), f"{role}:{name} can revive retired authority"

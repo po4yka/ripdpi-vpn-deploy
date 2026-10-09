@@ -1,0 +1,74 @@
+---
+- name: Inspect private AmneziaWG instance ownership
+  ansible.builtin.stat:
+    path: /var/lib/ripdpi/amneziawg/instances.json
+    follow: false
+  register: _awg_owned_stat
+
+- name: Require safe bounded AmneziaWG instance ownership
+  ansible.builtin.assert:
+    that:
+      - not (_awg_owned_stat.stat.islnk | default(false))
+      - not _awg_owned_stat.stat.exists or _awg_owned_stat.stat.isreg
+      - not _awg_owned_stat.stat.exists or _awg_owned_stat.stat.uid == 0
+      - not _awg_owned_stat.stat.exists or _awg_owned_stat.stat.nlink == 1
+      - not _awg_owned_stat.stat.exists or _awg_owned_stat.stat.mode == '0600'
+      - not _awg_owned_stat.stat.exists or _awg_owned_stat.stat.size <= 4096
+    fail_msg: AmneziaWG instance ownership is unsafe; no runtime retirement is permitted.
+
+- name: Read private AmneziaWG instance ownership
+  ansible.builtin.slurp:
+    src: /var/lib/ripdpi/amneziawg/instances.json
+  register: _awg_owned_bytes
+  when: _awg_owned_stat.stat.exists
+  no_log: true
+
+- name: Resolve recorded AmneziaWG ownership
+  ansible.builtin.set_fact:
+    _awg_previous: >-
+      {{ (_awg_owned_bytes.content | b64decode | from_json) if _awg_owned_stat.stat.exists
+         else {'schema': 1, 'config_dir': amneziawg_config_dir, 'instances': []} }}
+  no_log: true
+
+- name: Require exact AmneziaWG ownership shape
+  ansible.builtin.assert:
+    that:
+      - _awg_previous is mapping
+      - _awg_previous.keys() | list | sort == ['config_dir', 'instances', 'schema']
+      - _awg_previous.schema | type_debug == 'int'
+      - _awg_previous.schema == 1
+      - _awg_previous.config_dir is string
+      - _awg_previous.config_dir is match('^/[^/].*')
+      - "'..' not in _awg_previous.config_dir.split('/')"
+      - _awg_previous.instances | type_debug == 'list'
+    fail_msg: AmneziaWG ownership does not match its exact role contract.
+  no_log: true
+
+- name: Require safe recorded AmneziaWG interface names
+  ansible.builtin.assert:
+    that:
+      - item is string
+      - item is match('^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$')
+  loop: "{{ _awg_previous.instances }}"
+  no_log: true
+
+- name: Require unique recorded AmneziaWG instance names
+  ansible.builtin.assert:
+    that:
+      - _awg_previous.instances | unique | length == _awg_previous.instances | length
+      - _awg_previous.instances | length <= 32
+  no_log: true
+
+- name: Inspect historical AmneziaWG shared unit authority
+  ansible.builtin.stat:
+    path: /etc/systemd/system/awg-quick@.service
+    follow: false
+  register: _awg_historical_unit
+
+- name: Refuse unrecorded historical AmneziaWG authority before retirement
+  ansible.builtin.assert:
+    that:
+      - _awg_owned_stat.stat.exists or not _awg_historical_unit.stat.exists
+    fail_msg: >-
+      Historical AmneziaWG authority has no instance ownership record. The owner
+      must explicitly adopt its exact membership or retire it before reconciliation.

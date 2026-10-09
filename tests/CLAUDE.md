@@ -272,3 +272,16 @@ remain fatal; package signatures and the real schema validator stay enforced.
   and mixed format selection. An unsupported unused emitter refuses in the
   fixture; required emitter failures must precede remote writes. These tests
   are orchestration evidence, not live authentication.
+
+Native P2 check-mode coverage executes the complete enabled agent role against
+valid generated TLS authority in fresh and retained namespaces. It compares the
+owned filesystem before/after and performs no runtime download or activation;
+ordinary Molecule/native runtime acceptance remains separate. The private
+receiver snapshot CLI regression restores every mutable authority file and the
+prior service-state record without rewinding replay or incident state.
+
+Release-publication fixtures must explicitly chmod directories to the tested
+contract after mkdir: the shared build gate uses a restrictive umask, so
+mkdir's requested 0755 alone cannot establish the helper's ownership boundary.
+Task-source readers follow enabled task files and recursively inspect real
+publication blocks; dispatcher files cannot prove mutation or activation order.
