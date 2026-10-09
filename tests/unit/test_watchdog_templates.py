@@ -218,3 +218,108 @@ def test_reality_probe_requires_the_explicit_service_address() -> None:
 
     with pytest.raises(UndefinedError, match="vpn_service_address"):
         render_template(TEMPLATES / "reality-probe.json.j2", variables)
+
+
+def test_failure_credential_diagnostic_reports_stat_without_secret_content(tmp_path):
+    import os
+    import re
+    import shlex
+    import subprocess
+    import sys
+    import yaml
+
+    scenario = yaml.safe_load(
+        (REPO_ROOT / "ansible/roles/watchdog/molecule/failure/converge.yml").read_text()
+    )[0]
+    diagnostic = next(
+        task["ansible.builtin.copy"]["content"]
+        for task in scenario["pre_tasks"]
+        if task.get("ansible.builtin.copy", {})
+        .get("dest", "")
+        .endswith("/diagnostics.conf")
+    )
+    command = shlex.split(
+        next(
+            line
+            for line in diagnostic.replace("\\\n", " ").splitlines()
+            if line.startswith("ExecStartPre=")
+        ).split("=", 1)[1]
+    )
+    assert command[0] == "-/usr/bin/python3"
+    authority = tmp_path / "notifications.json"
+    authority.write_text('{"token":"SYNTHETIC_PRIVATE_NOTIFICATION_AUTHORITY"}')
+    authority.chmod(0o400)
+    result = subprocess.run(
+        [sys.executable, *command[1:]],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "CREDENTIALS_DIRECTORY": str(tmp_path)},
+        timeout=3,
+    )
+    assert result.returncode == 0 and not result.stderr
+    assert re.fullmatch(
+        r"watchdog-credential-metadata mode=0o100400 uid=[0-9]+ gid=[0-9]+ nlink=1 size=[0-9]+ readonly=0\n",
+        result.stdout,
+    )
+    assert "SYNTHETIC_PRIVATE" not in result.stdout
+    assert str(tmp_path) not in result.stdout
+
+
+def test_failure_journal_diagnostics_filter_private_messages_and_preserve_hard_failure(
+    tmp_path,
+):
+    import os
+    import re
+    import subprocess
+    import sys
+    import yaml
+
+    scenario = yaml.safe_load(
+        (REPO_ROOT / "ansible/roles/watchdog/molecule/failure/verify.yml").read_text()
+    )[0]
+    boundary = scenario["tasks"][0]
+    invocation, capture = [task for task in boundary["block"] if "name" in task]
+    assert invocation["failed_when"] == "watchdog_run.rc != 1"
+    assert capture["ansible.builtin.wait_for"]["timeout"] == 10
+    assert re.fullmatch(capture["ansible.builtin.wait_for"]["search_regex"], '"title":')
+    assert "ansible.builtin.fail" in boundary["rescue"][-1]
+    program = boundary["rescue"][0]["ansible.builtin.command"]["argv"][-1]
+    private = "SYNTHETIC_PRIVATE_NOTIFICATION_AUTHORITY"
+    messages = [
+        private,
+        "watchdog notification failed",
+        "watchdog: notification delivery failed",
+        "Failed at step NAMESPACE spawning executable",
+        "Failed at step " + private,
+        "watchdog-credential-metadata mode=0o100400 uid=0 gid=0 nlink=0 size=144 readonly=1",
+        "watchdog: consecutive_fails=1 alerts_this_hour=2 kicks_this_hour=1 classes="
+        + private,
+    ]
+    outputs = {
+        "systemctl": "Result=exit-code\nExecMainStatus=1\nEnvironment=" + private,
+        "journalctl": "\n".join(
+            json.dumps({"MESSAGE": message}) for message in messages
+        ),
+    }
+    for name, output in outputs.items():
+        executable = tmp_path / name
+        executable.write_text("#!" + sys.executable + "\nprint(" + repr(output) + ")\n")
+        executable.chmod(0o755)
+    result = subprocess.run(
+        [sys.executable, "-c", program],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PATH": str(tmp_path) + os.pathsep + os.environ["PATH"]},
+        timeout=8,
+    )
+    assert result.returncode == 0 and not result.stderr
+    report = json.loads(result.stdout)
+    assert report["unit"] == {"Result": "exit-code", "ExecMainStatus": "1"}
+    assert "unit startup step=NAMESPACE" in report["journal_signals"]
+    assert "watchdog counters=1,2,1" in report["journal_signals"]
+    assert "watchdog notification failed" in report["journal_signals"]
+    assert (
+        "watchdog-credential-metadata mode=0o100400 uid=0 gid=0 nlink=0 size=144 readonly=1"
+        in report["journal_signals"]
+    )
+    assert private not in result.stdout

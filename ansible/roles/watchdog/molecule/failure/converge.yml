@@ -146,6 +146,29 @@
         group: xray
         mode: "0750"
 
+    - name: Create failure-only watchdog diagnostic drop-in directory
+      ansible.builtin.file:
+        path: /etc/systemd/system/vpn-watchdog.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Report loaded credential metadata without reading its contents
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/vpn-watchdog.service.d/diagnostics.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Service]
+          # Diagnostics must not replace the canonical invocation's failure.
+          ExecStartPre=-/usr/bin/python3 -c "import os; \
+          p=os.environ['CREDENTIALS_DIRECTORY']+'/notifications.json'; s=os.stat(p,follow_symlinks=False); \
+          print('watchdog-credential-metadata mode='+oct(s.st_mode)+' uid='+str(s.st_uid)+' gid='+str(s.st_gid)+ \
+          ' nlink='+str(s.st_nlink)+' size='+str(s.st_size)+ \
+          ' readonly='+str(int(bool(os.statvfs(p).f_flag & os.ST_RDONLY))))"
+
     - name: Drop fake Xray server config
       ansible.builtin.copy:
         dest: /etc/xray/config.json
