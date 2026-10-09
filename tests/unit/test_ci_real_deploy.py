@@ -64,6 +64,74 @@ def test_selected_template_is_mandatory_before_provisioning(distro):
         MODULE.validate_config(selected, distro, "p0")
 
 
+@pytest.mark.parametrize("failure,category", [
+    ("json", "ci-configuration-json-invalid"),
+    ("template", "ci-template-configuration-invalid"),
+    ("template-type", "ci-template-configuration-invalid"),
+    ("credential", "missing-UPCLOUD_TOKEN"),
+])
+def test_configuration_failure_publishes_safe_result_before_any_deployment(
+        tmp_path, monkeypatch, capsys, failure, category):
+    value = config()
+    if failure == "template":
+        value["templates"].pop("debian13")
+    elif failure == "template-type":
+        value["templates"]["debian13"] = {"private-input-marker": True}
+    for name in ("UPCLOUD_TOKEN", "CI_TAILSCALE_OAUTH_CLIENT_ID", "CI_TAILSCALE_OAUTH_CLIENT_SECRET"):
+        monkeypatch.setenv(name, "private-credential-marker")
+    if failure == "credential":
+        monkeypatch.delenv("UPCLOUD_TOKEN")
+    monkeypatch.setenv("CI_DEPLOY_CONFIG", "{private-input-marker" if failure == "json" else json.dumps(value))
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setattr(sys, "platform", "linux")
+    work, artifact = tmp_path / "private", tmp_path / "public"
+    monkeypatch.setattr(sys, "argv", ["ci-real-deploy", "--profile", "p0", "--distro", "debian13",
+        "--mode", "deploy", "--work-dir", str(work), "--artifact-dir", str(artifact)])
+    monkeypatch.setattr(MODULE, "execute", lambda *_: pytest.fail("configuration failure started deployment"))
+    assert MODULE.main() == 1
+    result = json.loads((artifact / "result.json").read_text())
+    assert result == {"schema_version": 1, "profile": "p0", "distro": "debian13",
+        "source_revision": None, "status": "failed", "phases": [], "error": category, "cleanup_errors": []}
+    assert not work.exists()
+    assert (artifact / "result.json").stat().st_mode & 0o777 == 0o600
+    captured = capsys.readouterr()
+    assert "private-input-marker" not in captured.out + captured.err + json.dumps(result)
+    assert "private-credential-marker" not in captured.out + captured.err + json.dumps(result)
+
+
+@pytest.mark.parametrize("completed_result", [False, True])
+def test_executor_startup_failure_has_result_without_overwriting_owned_report(tmp_path, monkeypatch, completed_result):
+    value = config()
+    value["tag"] = "invalid-tag"
+    for name in ("UPCLOUD_TOKEN", "CI_TAILSCALE_OAUTH_CLIENT_ID", "CI_TAILSCALE_OAUTH_CLIENT_SECRET"):
+        monkeypatch.setenv(name, "synthetic-private-marker")
+    monkeypatch.setenv("CI_DEPLOY_CONFIG", json.dumps(value))
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setattr(sys, "platform", "linux")
+    work, artifact = tmp_path / "private", tmp_path / "public"
+    monkeypatch.setattr(sys, "argv", ["ci-real-deploy", "--profile", "p0", "--distro", "debian13",
+        "--mode", "deploy", "--work-dir", str(work), "--artifact-dir", str(artifact)])
+    if completed_result:
+        def failed_after_report(_config, _args, _work, output):
+            MODULE.document(output / "result.json", {"status": "failed", "phases": ["owned-phase"]})
+            raise MODULE.DeploymentError("ci-deployment-or-cleanup-failed")
+        monkeypatch.setattr(MODULE, "execute", failed_after_report)
+    # The actual Enrollment constructor rejects the tag before any API call.
+    old_umask, old_handler = os.umask(0o077), signal.getsignal(signal.SIGTERM)
+    try:
+        assert MODULE.main() == 1
+    finally:
+        os.umask(old_umask)
+        signal.signal(signal.SIGTERM, old_handler)
+    result = json.loads((artifact / "result.json").read_text())
+    if completed_result:
+        assert result == {"status": "failed", "phases": ["owned-phase"]}
+    else:
+        assert result["error"] == "tailnet-configuration-invalid"
+        assert result["status"] == "failed"
+    assert "synthetic-private-marker" not in json.dumps(result)
+
+
 @pytest.mark.parametrize("profile,field", [("p0p4", "dns_morph_bridge"), ("p0p5", "hysteria_realm")])
 def test_research_profiles_require_real_artifact_pins(profile, field):
     selected = config()

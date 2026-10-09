@@ -190,6 +190,8 @@ COHORTS="${BLUE_COHORT},${GREEN_COHORT}" \
 TAILNET_HANDOFFS="${BLUE_TAILNET_HANDOFF:--},-" \
   "$REPO_ROOT/scripts/render-inventory.sh"
 require_vpn_alias "$GREEN_ALIAS"
+ANSIBLE_LIMIT="$GREEN_ALIAS" ENV="$GREEN_ENV" PROVIDER="$PROVIDER" \
+  make -C "$REPO_ROOT" wait
 cat <<'EOF'
 Before convergence, prepare the new node's pinned public and Tailnet SSH paths:
   make install-ssh-recovery

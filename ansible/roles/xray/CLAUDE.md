@@ -2,7 +2,7 @@
 
 ## Design decisions
 
-**Configuration validation shares one executable contract** — `files/xray_validate.py` is installed as `/usr/local/libexec/vpn-xray-validate`. Candidate convergence supplies the planned asset directory explicitly; verify, rotation, rollback and watchdog derive the exact asset directory from the loaded Xray unit. Missing or ambiguous authority fails closed without printing environment values.
+**Configuration validation shares one executable contract** — `files/xray_validate.py` is installed as `/usr/local/libexec/vpn-xray-validate`. Read-only verify always streams that same repository source into remote Python, so checking an existing node never requires installing or updating the helper first. Candidate convergence supplies the planned asset directory explicitly; verify, rotation, rollback and watchdog derive the exact asset directory from the loaded Xray unit. Missing or ambiguous authority fails closed without printing environment values.
 
 **Drift is a read-only role entry point** — `tasks/drift.yml` compares the inventory-and-secrets render with the complete normalized deployed configuration under `no_log`; diagnostics never print config values.
 

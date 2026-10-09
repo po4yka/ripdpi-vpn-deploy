@@ -14,6 +14,10 @@
 
 ## Design decisions
 
+**Review regressions preserve first-use boundaries** — invalid CI configuration
+publishes categorical results before deployment; blue-green waits for bootstrap
+after pinning and refuses before recovery instructions when readiness fails.
+
 **Disposable trust tests exercise real boundaries** — build and inspect a real
 private ext4 seed and verify its SSH identity; the native lane mounts its loop
 block device in a private mount namespace and runs the guest installer. The

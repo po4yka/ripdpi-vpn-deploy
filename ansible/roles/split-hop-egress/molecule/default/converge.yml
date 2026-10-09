@@ -9,8 +9,6 @@
   hosts: all
   become: true
   vars:
-    vpn:
-      enable_split_hop_egress: true
     split_hop_egress:
       wg_interface: shop0
       peer_listen_port: 51821

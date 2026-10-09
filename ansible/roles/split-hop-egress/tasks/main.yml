@@ -28,6 +28,8 @@
   ansible.builtin.include_role:
     name: baseline
     tasks_from: forwarding
+  vars:
+    baseline_forwarding_split_hop_egress_active: true
 
 - name: Render validated split-hop egress policy
   ansible.builtin.template:

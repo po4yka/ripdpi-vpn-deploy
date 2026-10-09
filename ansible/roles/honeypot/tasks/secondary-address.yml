@@ -40,6 +40,24 @@
     file_type: file
   register: _honeypot_address_units
 
+- name: Ensure address lifecycle helper directory
+  ansible.builtin.file:
+    path: /usr/local/libexec
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: _honeypot_secondary_required or _honeypot_address_units.files | length > 0
+
+- name: Install exact secondary address cleanup helper
+  ansible.builtin.copy:
+    src: remove-secondary-address.py
+    dest: /usr/local/libexec/vpn-honeypot-remove-address.py
+    owner: root
+    group: root
+    mode: "0755"
+  when: _honeypot_secondary_required or _honeypot_address_units.files | length > 0
+
 - name: Stop obsolete address ownership before removing its unit
   ansible.builtin.systemd_service:
     name: "{{ item.path | basename }}"

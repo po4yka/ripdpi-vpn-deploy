@@ -16,7 +16,15 @@ Restore secure positive deployment, policy, drift and runtime lifecycle behavior
 - [x] SEC-1791471911428987 Repair runtime security and lifecycle behavior with regressions #bug !high @item:SEC-1791471757439452
 - [x] SEC-1791471912312773 Repair provider policy and secret validation with regressions #bug !high @item:SEC-1791471757439452
 - [x] SEC-1791471912998245 Repair operator controller integration drift and initialization with regressions #bug !high @item:SEC-1791471757439452
-- [x] SEC-1791471913677997 Integrate independent review and exact source validation for the pull request #bug !high @item:SEC-1791471757439452
+- [ ] SEC-1791471913677997 Integrate independent review and exact source validation for the pull request #bug !high @item:SEC-1791471757439452
+
+## Review follow-up
+
+Resolve the six review findings: self-contained evidence, idempotent secondary
+address stop, CI configuration failure artifacts, read-only Xray verification
+without a preinstalled helper, bootstrap readiness before recovery installation,
+and explicit forwarding for standalone split-hop role execution. Integrate main
+and observe fresh local and hosted gates before completing the review step.
 
 ## Verification
 

@@ -4,6 +4,9 @@
 
 - SNI secrets are parsed structurally through PyYAML; only `xray.server_names` becomes probe targets, and malformed private input produces categorical diagnostics.
 
+- Disposable CI creates its no-clobber public result directory before validating
+  configuration. Invalid JSON, template selection and absent credentials produce
+  categorical results without private inputs or starting provider operations.
 - Disposable CI uses one private controller run per guest. A provider-imported,
   digest-bound SSH seed establishes first-contact trust; its private image and
   provider upload diagnostics never enter plaintext artifacts. Exact cleanup
@@ -19,7 +22,7 @@
   reject writable or foreign directories and report categorical stage errors.
 
 
-**Blue-green authenticates before first contact** — verify the green public key through an authenticated channel and confirm its standard known_hosts entry before inventory rendering. Vultr secondary-IP discovery uses strict host-key checking; it never enrolls a new key. Then establish Tailnet/recovery ownership, render the confirmed handoff, and let the canonical controller perform pinned readiness. Blue and green aliases must be exact VPN inventory members before verification or deployment.
+**Blue-green authenticates before first contact** — verify the green public key through an authenticated channel and confirm its standard known_hosts entry before inventory rendering. Vultr secondary-IP discovery uses strict host-key checking; it never enrolls a new key. Wait for cloud-init through the pinned public path before presenting recovery-installation steps. Then establish Tailnet/recovery ownership, render the confirmed handoff, and let the canonical controller perform pinned readiness. Blue and green aliases must be exact VPN inventory members before verification or deployment.
 
 **Audit operator boundaries** — saved Terraform plans pass `check-tf-plan.sh` across all required policy namespaces; `policy-plan.sh` snapshots once, checks and applies that exact private file. Never replace it with a second plan. Reconverge, replacement and drift check-mode call the Make deployment controller. `diff-secrets.sh` uses the inventory transport and read-only Ansible comparison against the canonical Xray template; it never prints remote configuration or treats rendering failure as clean drift.
 

@@ -2,9 +2,9 @@
 task_id: SEC-1791471757439452
 change: deployment-audit-remediation
 commit_sha: 2ac0fd9515c43f9aba0c48bf004fbae4b2489a91
-local: passed
+local: required
 local_evidence: Full build-gated make check passed with the pinned mise toolchain and installed SOPS/age binaries; 5416 Python tests, 56 Bats tests, 205 Rust release tests, 108 Terraform mock tests, 52 policy tests and 148 snapshots passed.
-remote_ci: passed
+remote_ci: required
 remote_ci_evidence: Exact source revision 2ac0fd9515c43f9aba0c48bf004fbae4b2489a91 completed 79 successful checks and one neutral Trivy comparison; run 37826927938 includes 21 native Linux tests and all runtime scenarios.
 dry_run: not_applicable
 dry_run_evidence: Source PR only; isolated controller orchestration exercises positive and failure paths without live inventory or SSH. No remote dry-run acceptance is claimed.
@@ -14,11 +14,15 @@ live: not_applicable
 live_evidence: Production rollout is outside this source remediation PR.
 client: not_applicable
 client_evidence: No client traffic acceptance is claimed by source remediation.
-artifact: passed
-artifact_evidence: https://github.com/po4yka/ripdpi-vpn-deploy/pull/278 contains the reviewed source changes and explicit operational acceptance gaps.
+artifact: required
+artifact_evidence: Source revision 2ac0fd9515c43f9aba0c48bf004fbae4b2489a91 records the prior reviewed implementation; review corrections require fresh source validation.
 ---
 
 # Verification
+
+The observations below apply to the recorded prior source revision. Six review
+corrections and integration with current main are in progress; fresh local,
+hosted and artifact evidence is required before returning to review.
 
 ## Requirement evidence
 

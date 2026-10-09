@@ -148,11 +148,12 @@ def test_binary_version_pins_compare_complete_versions(tmp_path, version, succes
     assert (result.returncode==0) == success, result.stdout + result.stderr
 
 
-@pytest.mark.parametrize('deploy_failure, blue_present, green_present, pinned', [
-    (False, True, True, True), (True, True, True, True),
-    (False, False, True, True), (False, True, False, True), (False, True, True, False),
+@pytest.mark.parametrize('deploy_failure, blue_present, green_present, pinned, wait_failure', [
+    (False, True, True, True, False), (True, True, True, True, False),
+    (False, False, True, True, False), (False, True, False, True, False),
+    (False, True, True, False, False), (False, True, True, True, True),
 ])
-def test_blue_green_uses_exact_alias_and_one_secret_file_through_make(tmp_path, deploy_failure, blue_present, green_present, pinned):
+def test_blue_green_uses_exact_alias_and_one_secret_file_through_make(tmp_path, deploy_failure, blue_present, green_present, pinned, wait_failure):
     scripts = tmp_path / 'scripts'
     scripts.mkdir()
     shutil.copy(ROOT / 'scripts/blue-green.sh', scripts)
@@ -174,7 +175,11 @@ import json, os, sys
 args=sys.argv[1:]
 with open(os.environ['CALLS'], 'a') as f:
     f.write(json.dumps({'args':args, 'limit':os.environ.get('ANSIBLE_LIMIT'),
-                       'secrets':os.environ.get('SECRETS_FILE')})+'\\n')
+                       'secrets':os.environ.get('SECRETS_FILE'), 'environment':os.environ.get('ENV'),
+                       'provider':os.environ.get('PROVIDER')})+'\\n')
+if 'wait' in args:
+    print('bootstrap-readiness-observed')
+    if os.environ['WAIT_FAILURE']=='1': sys.exit(24)
 if 'deploy' in args and os.environ['DEPLOY_FAILURE']=='1': sys.exit(23)
 ''')
     executable(tmp_path / 'bin/ansible-inventory', '#!/bin/sh\necho \'{"vpn":{"hosts":' + json.dumps((['node-green'] if green_present else []) + (['node-prod'] if blue_present else [])) + '}}\'\n')
@@ -184,7 +189,8 @@ if 'deploy' in args and os.environ['DEPLOY_FAILURE']=='1': sys.exit(23)
     log = tmp_path / 'calls'
     result = subprocess.run(['bash',str(scripts / 'blue-green.sh')], input='\n\nyes\n',
         capture_output=True,text=True,env={**os.environ, 'PATH':str(tmp_path / 'bin')+os.pathsep+os.environ['PATH'],
-        'CALLS':str(log),'RENDER_CALLS':str(tmp_path / 'rendered'),'DEPLOY_FAILURE':str(int(deploy_failure)), 'BLUE_ENV':'prod','GREEN_ENV':'green',
+        'CALLS':str(log),'RENDER_CALLS':str(tmp_path / 'rendered'),'DEPLOY_FAILURE':str(int(deploy_failure)),
+        'WAIT_FAILURE':str(int(wait_failure)), 'BLUE_ENV':'prod','GREEN_ENV':'green',
         'PROVIDER':'upcloud','SOPS_FILE':str(sops),'ANSIBLE_SSH_PRIVATE_KEY_FILE':str(tmp_path / 'key'),
         'GREEN_TAILNET_HANDOFF':str(tmp_path / 'handoff'),'DEPLOY_SSH_CONTEXTS_FILE':str(tmp_path / 'contexts')})
     if not blue_present:
@@ -197,10 +203,23 @@ if 'deploy' in args and os.environ['DEPLOY_FAILURE']=='1': sys.exit(23)
             assert not (tmp_path / 'rendered').exists()
         calls = [json.loads(line) for line in log.read_text().splitlines()]
         assert not any('deploy' in c['args'] for c in calls)
+        assert not any('wait' in c['args'] for c in calls)
         return
+    calls = [json.loads(line) for line in log.read_text().splitlines()]
+    wait = next(c for c in calls if 'wait' in c['args'])
+    assert wait['limit'] == 'node-green'
+    assert wait['environment'] == 'green'
+    assert wait['provider'] == 'upcloud'
+    if wait_failure:
+        assert result.returncode == 24
+        assert 'make install-ssh-recovery' not in result.stdout
+        assert not any('deploy' in c['args'] for c in calls)
+        return
+    assert result.stdout.index('bootstrap-readiness-observed') < result.stdout.index('make install-ssh-recovery')
     assert result.returncode == (23 if deploy_failure else 0), result.stdout + result.stderr
     calls = [json.loads(line) for line in log.read_text().splitlines()]
     deploy = next(c for c in calls if 'deploy' in c['args'])
+    assert calls.index(wait) < calls.index(deploy)
     assert deploy['limit']=='node-green'
     assert 'dry-run' in deploy['args']
     assert calls[0]['limit']=='node-prod'

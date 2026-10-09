@@ -50,6 +50,7 @@ def validate_config(value, distro, profile):
             or distro not in {"debian13", "ubuntu2404"} or profile not in PROFILES):
         raise DeploymentError("ci-configuration-invalid")
     if (not isinstance(value["templates"], dict) or distro not in value["templates"]
+            or not isinstance(value["templates"][distro], str)
             or not re.fullmatch(r"[0-9a-f-]{36}", value["templates"][distro])
             or not isinstance(value["research"], dict)):
         raise DeploymentError("ci-template-configuration-invalid")
@@ -64,13 +65,13 @@ def validate_config(value, distro, profile):
         raise DeploymentError("ci-endpoint-configuration-invalid")
     if profile == "p0p4":
         entry = value["research"].get("dns_morph_bridge", {})
-        if (set(entry) != {"binary_url", "binary_sha256"}
+        if (not isinstance(entry, dict) or set(entry) != {"binary_url", "binary_sha256"}
                 or not str(entry["binary_url"]).startswith("https://")
                 or not re.fullmatch(r"[0-9a-f]{64}", str(entry["binary_sha256"]))):
             raise DeploymentError("ci-bridge-artifact-required")
     if profile == "p0p5":
         entry = value["research"].get("hysteria_realm", {})
-        if (set(entry) != {"linux_amd64_sha256", "linux_arm64_sha256"}
+        if (not isinstance(entry, dict) or set(entry) != {"linux_amd64_sha256", "linux_arm64_sha256"}
                 or any(not re.fullmatch(r"[0-9a-f]{64}", str(v)) for v in entry.values())):
             raise DeploymentError("ci-realm-artifact-required")
     return value
@@ -429,25 +430,44 @@ def main():
     parser.add_argument("--work-dir", type=Path, required=True)
     parser.add_argument("--artifact-dir", type=Path, required=True)
     args = parser.parse_args()
+    artifact = None
     try:
+        work, output = args.work_dir.resolve(), args.artifact_dir.resolve()
+        if work == output or work in output.parents or output in work.parents:
+            raise DeploymentError("private-and-public-output-overlap")
+        output.mkdir(mode=0o700, parents=False)
+        artifact = output
         if (sys.platform != "linux" or os.environ.get("GITHUB_ACTIONS") != "true"
                 or not re.fullmatch(r"[a-z]{2}-[a-z]{3}[0-9]+", args.zone)):
             raise DeploymentError("isolated-linux-ci-runner-required")
         for name in ("UPCLOUD_TOKEN", "CI_TAILSCALE_OAUTH_CLIENT_ID", "CI_TAILSCALE_OAUTH_CLIENT_SECRET", "CI_DEPLOY_CONFIG"):
             if not os.environ.get(name):
                 raise DeploymentError("missing-" + name)
-        config = validate_config(json.loads(os.environ["CI_DEPLOY_CONFIG"]), args.distro, args.profile)
-        work, artifact = args.work_dir.absolute(), args.artifact_dir.absolute()
-        if work == artifact or work in artifact.parents or artifact in work.parents:
-            raise DeploymentError("private-and-public-output-overlap")
+        try:
+            value = json.loads(os.environ["CI_DEPLOY_CONFIG"])
+        except ValueError:
+            raise DeploymentError("ci-configuration-json-invalid") from None
+        config = validate_config(value, args.distro, args.profile)
         work.mkdir(mode=0o700, parents=False)
-        artifact.mkdir(mode=0o700, parents=False)
         os.umask(0o077)
         signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
         result = execute(config, args, work, artifact)
         print(json.dumps(result))
         return 0
-    except (DeploymentError, EnrollmentError, OSError, ValueError, KeyError):
+    except (DeploymentError, EnrollmentError, OSError, ValueError, KeyError) as error:
+        if artifact is not None:
+            category = str(error) if isinstance(error, (DeploymentError, EnrollmentError)) else "ci-preparation-failed"
+            try:
+                document(artifact / "result.json", {
+                    "schema_version": 1, "profile": args.profile, "distro": args.distro,
+                    "source_revision": None, "status": "failed",
+                    "phases": [], "error": category, "cleanup_errors": [],
+                })
+            except FileExistsError:
+                # Preserve the executor's more complete result without overwriting it.
+                pass
+            except OSError:
+                print("ci-real-deploy: categorical result publication failed", file=sys.stderr)
         print("ci-real-deploy: failed; inspect categorical result or encrypted recovery artifact", file=sys.stderr)
         return 1
 

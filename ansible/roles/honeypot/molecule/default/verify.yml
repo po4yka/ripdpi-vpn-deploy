@@ -142,6 +142,17 @@
             assert '127.0.0.1' in addresses
       changed_when: false
 
+    - name: Confirm repeated exact address cleanup accepts absence
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -I
+          - -B
+          - /usr/local/libexec/vpn-honeypot-remove-address.py
+          - "198.51.100.20"
+          - lo
+      changed_when: false
+
     - name: Start listener to restore the address through its dependency
       ansible.builtin.systemd_service:
         name: honeypot.service
@@ -173,6 +184,18 @@
         host: "198.51.100.20"
         port: 4443
         timeout: 10
+
+    - name: Confirm address ownership restart completed without ignored errors
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - show
+          - vpn-honeypot-address-198.51.100.20-lo.service
+          - --property=Result
+          - --value
+      register: honeypot_address_result
+      changed_when: false
+      failed_when: honeypot_address_result.stdout != 'success'
 
     - name: Reconfigure the dedicated address
       ansible.builtin.include_role:

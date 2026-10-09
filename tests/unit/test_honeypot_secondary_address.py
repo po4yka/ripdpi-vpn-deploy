@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 import socket
 import subprocess
@@ -54,7 +55,7 @@ def test_address_unit_is_a_least_privilege_dependency_of_the_listener():
     address = renderer.render_template(ROLE / "templates/secondary-address.service.j2", variables)
     listener = renderer.render_template(ROLE / "templates/honeypot.service.j2", variables)
     assert "ExecStart=/usr/sbin/ip address replace 198.51.100.20/32 dev eth0" in address
-    assert "ExecStop=/usr/sbin/ip address del 198.51.100.20/32 dev eth0" in address
+    assert "ExecStop=/usr/bin/python3 -I -B /usr/local/libexec/vpn-honeypot-remove-address.py 198.51.100.20 eth0" in address
     assert "CapabilityBoundingSet=CAP_NET_ADMIN" in address
     assert "RemainAfterExit=yes" in address
     assert "PartOf=honeypot.service" in address
@@ -63,3 +64,59 @@ def test_address_unit_is_a_least_privilege_dependency_of_the_listener():
     assert "CAP_NET_ADMIN" not in listener
     variables["_honeypot_secondary_required"] = False
     assert "vpn-honeypot-address-" not in renderer.render_template(ROLE / "templates/honeypot.service.j2", variables)
+
+
+def cleanup_module():
+    spec = importlib.util.spec_from_file_location("honeypot_address_cleanup", ROLE / "files/remove-secondary-address.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("addresses,deleted", [
+    ([{"local": "198.51.100.20", "prefixlen": 32}], True),
+    ([], False),
+    ([{"local": "192.0.2.10", "prefixlen": 32}], False),
+    ([{"local": "198.51.100.20", "prefixlen": 24}], False),
+])
+def test_stop_removes_only_the_owned_prefix_and_accepts_absence(monkeypatch, addresses, deleted):
+    module = cleanup_module()
+    calls = []
+    def run(argv, **kwargs):
+        calls.append(argv)
+        assert kwargs == {"capture_output": True, "text": True, "check": True, "timeout": 15}
+        return subprocess.CompletedProcess(argv, 0, json.dumps([{"ifname": "eth0", "addr_info": addresses}]), "")
+    monkeypatch.setattr(module.subprocess, "run", run)
+    module.remove("198.51.100.20", "eth0")
+    assert calls[0] == ["/usr/sbin/ip", "-j", "-4", "address", "show", "dev", "eth0"]
+    assert calls[1:] == ([["/usr/sbin/ip", "address", "del", "198.51.100.20/32", "dev", "eth0"]] if deleted else [])
+
+
+@pytest.mark.parametrize("phase", ["inspect", "delete"])
+def test_stop_preserves_inspection_and_deletion_errors(monkeypatch, phase):
+    module = cleanup_module()
+    calls = []
+    failure = subprocess.CalledProcessError(2, ["ip"], stderr="Operation not permitted")
+    def run(argv, **kwargs):
+        calls.append(argv)
+        if phase == "inspect" or len(calls) == 2:
+            raise failure
+        return subprocess.CompletedProcess(argv, 0, json.dumps([{"ifname": "eth0", "addr_info": [{"local": "198.51.100.20", "prefixlen": 32}]}]), "")
+    monkeypatch.setattr(module.subprocess, "run", run)
+    with pytest.raises(subprocess.CalledProcessError) as caught:
+        module.remove("198.51.100.20", "eth0")
+    assert caught.value is failure
+    assert len(calls) == (1 if phase == "inspect" else 2)
+
+
+@pytest.mark.parametrize("reply", ["invalid-json", "[]", "{}", '[{"ifname":"other","addr_info":[]}]', '[{"ifname":"eth0","addr_info":[{}]}]'])
+def test_stop_rejects_malformed_or_wrong_interface_inspection(monkeypatch, reply):
+    module = cleanup_module()
+    calls = []
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, reply, "")
+    monkeypatch.setattr(module.subprocess, "run", run)
+    with pytest.raises(ValueError):
+        module.remove("198.51.100.20", "eth0")
+    assert len(calls) == 1
