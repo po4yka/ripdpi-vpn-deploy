@@ -2,7 +2,7 @@
 id: TFR-1791523370274374
 title: Fix provider management isolation and provisioning blockers
 kind: bug
-status: doing
+status: review
 area: terraform
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: provider-management-isolation
 created: 2026-10-09
 updated: 2026-10-09
 related_tasks: []
+status_detail: All six P1 source repairs and positive/refusal regressions complete; independent review approves; PR 281 published. Full local make check timeout gap and exact-head hosted CI pending are explicitly recorded; no infrastructure acceptance claimed.
 ---
 
 ## Goal

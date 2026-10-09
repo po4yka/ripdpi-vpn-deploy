@@ -35,7 +35,7 @@ coverage and a scoped PR; retain explicit gaps for infrastructure acceptance.
 - [x] TFR-1791523579427434 Reject unsafe management CIDRs and effective TCP listener collisions with positive native coverage #bug !high @item:TFR-1791523370274374
 - [x] TFR-1791523580174419 Restore Hetzner provisioning and guard immutable bootstrap identity with migration and transition coverage #bug !high @item:TFR-1791523370274374
 - [x] TFR-1791523580836950 Enforce exact saved-plan policy evaluation and range-aware management rules with positive and refusal coverage #bug !high @item:TFR-1791523370274374
-- [ ] TFR-1791523581450706 Run complete local gate and independent security review, then publish the scoped PR #bug !high @item:TFR-1791523370274374
+- [x] TFR-1791523581450706 Run complete local gate and independent security review, then publish the scoped PR #bug !high @item:TFR-1791523370274374
 
 ## Verification
 
