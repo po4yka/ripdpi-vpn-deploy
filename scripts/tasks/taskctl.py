@@ -44,6 +44,8 @@ GENERATED_ASSET_PATHS = frozenset(
     (
         ".agents/skills/.openspec-target",
         *(f".agents/skills/{name}/SKILL.md" for name in GENERATED_SKILL_NAMES),
+        ".agents/skills/openspec-explore/references/exploration-examples.md",
+        ".agents/skills/openspec-sync-specs/references/spec-merge-examples.md",
     )
 )
 # Codex reads .agents/skills directly; these roots expose the same skills to

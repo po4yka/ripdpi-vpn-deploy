@@ -538,6 +538,21 @@ class TaskctlContractTest(TaskctlFixture):
         with self.assertRaisesRegex(taskctl.ContractError, "wrong canonical set"):
             taskctl.validate_generated_assets(self.root)
 
+    def test_generated_reference_drift_is_rejected(self) -> None:
+        for relative in (
+            ".agents/skills/openspec-explore/references/exploration-examples.md",
+            ".agents/skills/openspec-sync-specs/references/spec-merge-examples.md",
+        ):
+            with self.subTest(path=relative):
+                path = self.root / relative
+                original = path.read_bytes()
+                path.write_bytes(original + b"changed example\n")
+                try:
+                    with self.assertRaisesRegex(taskctl.ContractError, "generated asset drift"):
+                        taskctl.validate_generated_assets(self.root)
+                finally:
+                    path.write_bytes(original)
+
     def test_generated_skill_alias_cannot_be_retargeted(self) -> None:
         alias = self.root / ".claude/skills/repo-task-board"
         alias.unlink()
@@ -561,8 +576,10 @@ class TaskctlContractTest(TaskctlFixture):
             ".agents/skills/openspec-apply-change/SKILL.md",
             ".agents/skills/openspec-archive-change/SKILL.md",
             ".agents/skills/openspec-explore/SKILL.md",
+            ".agents/skills/openspec-explore/references/exploration-examples.md",
             ".agents/skills/openspec-propose/SKILL.md",
             ".agents/skills/openspec-sync-specs/SKILL.md",
+            ".agents/skills/openspec-sync-specs/references/spec-merge-examples.md",
             ".agents/skills/openspec-update-change/SKILL.md",
             ".agents/skills/sdd/SKILL.md",
         }

@@ -259,6 +259,8 @@ environment, URL, address, or command runner.
 
 ## What's done well
 
+- **Promotion-intent preparation is local** — `prepare-disposable-promotion-intent.py` consumes literal environment inputs through an isolated Make target, reads one private JSON configuration and uses the existing disposable validator. It publishes a no-clobber private intent plus exact-alias mapping, keeps credentials unopened and reports no remote success. Retained partial output is not a completed mapping; runtime readiness and authority remain controller checks.
+
 Staging cleanup has one private controller journal per provider/account/server
 UUID. Keep publication/reissue and receipt operations under its shared lock;
 `destroy.sh` inherits that lock through Terraform. Alternative artifact paths

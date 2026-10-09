@@ -343,9 +343,9 @@ all four profiles, the matching UpCloud AWG target, and **no `applied_at`**.
 There is no caller-provided binding timestamp or command/hook field.
 
 The supported entry point is `make deploy` with this intent as the selected
-alias's value in the private `DEPLOY_PROMOTION_CONFIG_FILE`. There is no standalone
-Make goal that creates the intent. Prepare it locally against the exact
-[validator](../scripts/disposable_promotion.py) and
+alias's value in the private `DEPLOY_PROMOTION_CONFIG_FILE`. Prepare the intent
+with the local `make prepare-disposable-promotion-intent` command, which reuses
+the exact [validator](../scripts/disposable_promotion.py) and
 [liveness schema](../contract/protocol-liveness.schema.json): one dedicated client
 already present in the selected encrypted staging secrets, one all-four-profile
 policy/sentinel, exact inventory/source/address identity, the current registered
@@ -353,6 +353,38 @@ cleanup manifest and an executor manifest from `make prepare-disposable-liveness
 The normal `dry-run` checks deployment contexts but does not validate or execute
 onboarding capabilities; `deploy` validates and snapshots the intent before host
 writes. Do not substitute an already-installed promotion config on the first run.
+
+The preparer accepts a private **JSON** predeployment liveness configuration
+(the schema-2 document above, without `applied_at`) and explicit path references.
+Use canonical absolute paths, a mode-0600 configuration under a mode-0700
+directory, and an existing empty mode-0700 output directory.
+Symlinked or insecure ancestry and nonempty destinations refuse. Export only
+the selected run's inputs, then invoke one goal without command-line assignments:
+
+```bash
+export PROMOTION_LIVENESS_CONFIG=/absolute/private/predeployment.json
+export PROMOTION_CLIENT=staging-client
+export PROMOTION_SOPS_FILE=/absolute/private/staging.enc.yaml
+export PROMOTION_AGE_KEY_FILE=/absolute/private/age-key.txt
+export PROMOTION_AWG_KEY_FILE=/absolute/private/awg-key.txt
+export PROMOTION_EXECUTOR_MANIFEST=/absolute/private/prepared-executor.json
+export PROMOTION_CLEANUP_MANIFEST=/absolute/private/cleanup-manifest.json
+export PROMOTION_OUTPUT_DIR=/absolute/private/new-intent
+env -u MAKEFILES -u MAKEFLAGS -u GNUMAKEFLAGS -u MFLAGS \
+  mise exec -- make prepare-disposable-promotion-intent
+```
+
+Create the selected empty output directory with mode 0700 before invoking the
+helper; it never creates directories or changes their permissions.
+Success publishes only private `intent.json` and `deployment-inputs.json`; use
+the latter as `DEPLOY_PROMOTION_CONFIG_FILE`. The command reads the configuration,
+leaves credential files unopened and performs no network or enrollment action.
+It derives the host from the configured AWG target and validates the supported
+staging policy; it does not verify current provider identity, source parity or
+readiness, and creates no epoch or acceptance receipt. Those checks remain in
+deployment. A publication failure retains a private partial directory and returns
+failure. Inspect that exact directory before removing or replacing local drafts;
+retained partial files are never silently reused or overwritten.
 
 `inputs` names absolute private paths for `sops_file`, `age_key_file`,
 `awg_key_file`, `executor_manifest` and `cleanup_manifest`. The deploy controller

@@ -7,6 +7,30 @@ endif
 .PHONY: workspace-status
 workspace-status:
 	@python3 scripts/workspace-status.py
+else ifneq ($(filter prepare-disposable-promotion-intent,$(MAKECMDGOALS)),)
+ifneq ($(MAKECMDGOALS),prepare-disposable-promotion-intent)
+$(error promotion intent preparation requires exactly one make goal)
+endif
+ifneq ($(strip $(foreach variable,$(.VARIABLES),$(if $(filter command line override,$(origin $(variable))),$(variable)))),)
+$(error promotion intent preparation accepts environment inputs only)
+endif
+override PROMOTION_LIVENESS_CONFIG_LITERAL := $(value PROMOTION_LIVENESS_CONFIG)
+override PROMOTION_CLIENT_LITERAL := $(value PROMOTION_CLIENT)
+override PROMOTION_SOPS_FILE_LITERAL := $(value PROMOTION_SOPS_FILE)
+override PROMOTION_AGE_KEY_FILE_LITERAL := $(value PROMOTION_AGE_KEY_FILE)
+override PROMOTION_AWG_KEY_FILE_LITERAL := $(value PROMOTION_AWG_KEY_FILE)
+override PROMOTION_EXECUTOR_MANIFEST_LITERAL := $(value PROMOTION_EXECUTOR_MANIFEST)
+override PROMOTION_CLEANUP_MANIFEST_LITERAL := $(value PROMOTION_CLEANUP_MANIFEST)
+override PROMOTION_OUTPUT_DIR_LITERAL := $(value PROMOTION_OUTPUT_DIR)
+export PROMOTION_LIVENESS_CONFIG_LITERAL PROMOTION_CLIENT_LITERAL PROMOTION_SOPS_FILE_LITERAL
+export PROMOTION_AGE_KEY_FILE_LITERAL PROMOTION_AWG_KEY_FILE_LITERAL PROMOTION_EXECUTOR_MANIFEST_LITERAL
+export PROMOTION_CLEANUP_MANIFEST_LITERAL PROMOTION_OUTPUT_DIR_LITERAL
+unexport PROMOTION_LIVENESS_CONFIG PROMOTION_CLIENT PROMOTION_SOPS_FILE PROMOTION_AGE_KEY_FILE
+unexport PROMOTION_AWG_KEY_FILE PROMOTION_EXECUTOR_MANIFEST PROMOTION_CLEANUP_MANIFEST PROMOTION_OUTPUT_DIR
+unexport MAKEFLAGS MFLAGS
+.PHONY: prepare-disposable-promotion-intent
+prepare-disposable-promotion-intent:
+	@python3 scripts/prepare-disposable-promotion-intent.py
 else
 PROVIDER ?= upcloud
 ENV      ?= prod
@@ -571,6 +595,7 @@ help:
 	@echo "  monitor-protocol-liveness LIVENESS_CONFIG=…  Persist and alert on protocol-liveness transitions"
 	@echo "  install-liveness-sentinel LIVENESS_CONFIG=… SENTINEL=… CLIENT=…  Secure sentinel onboarding"
 	@echo "  prepare-disposable-liveness EXECUTOR_PROFILE=… EXECUTOR_MANIFEST=…  Create one no-mount executor"
+	@echo "  prepare-disposable-promotion-intent  Assemble private intent/mapping locally from PROMOTION_* environment inputs"
 	@echo "  install-disposable-liveness-sentinel …  Bind and onboard one disposable sentinel from stdin"
 	@echo "  protocol-liveness-disposable …  Evaluate one exact executor-bound report"
 	@echo "  deonboard-disposable-liveness …  Remove the exact assignment after guarded provider absence"
