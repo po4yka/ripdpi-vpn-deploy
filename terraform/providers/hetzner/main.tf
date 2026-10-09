@@ -21,6 +21,10 @@ resource "terraform_data" "ssh_port" {
   input = var.ssh_port
 }
 
+resource "terraform_data" "admin_user" {
+  input = var.admin_user
+}
+
 resource "hcloud_ssh_key" "admin" {
   name       = "${var.server_name}-${var.admin_user}"
   public_key = var.admin_ssh_public_key
@@ -32,6 +36,8 @@ resource "hcloud_server" "vpn" {
   location    = var.location
   server_type = var.server_type
   image       = var.image
+
+  firewall_ids = [hcloud_firewall.vpn.id]
 
   backups   = var.enable_backups
   ssh_keys  = [hcloud_ssh_key.admin.id]
@@ -47,6 +53,9 @@ resource "hcloud_server" "vpn" {
     prevent_destroy = true
     replace_triggered_by = [
       terraform_data.ssh_port,
+      terraform_data.admin_user,
+      hcloud_ssh_key.admin.name,
+      hcloud_ssh_key.admin.public_key,
     ]
     ignore_changes = [
       user_data,

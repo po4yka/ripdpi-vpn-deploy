@@ -28,6 +28,26 @@ Blue-green moves follow the disposable-node path instead.
 
 **Typed listener contract crosses the cloud/runtime boundary** — `public_listeners` in tfvars is the provider-edge allowlist. Its resolved Terraform output is rendered into inventory, verified against Ansible's enabled listener manifest before deploy, and used by nftables and security verification. An empty contract fails the plan; the historical implicit default set survives only behind the explicit `use_legacy_public_listeners = true` opt-in.
 
+**Management isolation is validated before planning** — SSH CIDRs cannot have a
+zero prefix, SSH ports must be integers, and the effective explicit or legacy TCP selectors cannot contain
+`ssh_port`. UpCloud also keeps SSH outside its stateless return range. UDP may
+use the same port number. `make apply` evaluates all policy namespaces against
+the same private saved-plan snapshot it applies; a failed or empty evaluation
+refuses mutation. `tf-conftest` uses the same evaluator.
+
+**Bootstrap identity changes use replacement** — administrator changes on
+Hetzner, Vultr and Scaleway, and key changes on Vultr and Scaleway, are protected
+by replacement guards. Vultr and Scaleway also compare retained cloud-init
+identity during first adoption. Hetzner's provider hashes user-data in state,
+so the existing key-name attribute guards first adoption; its combined name
+makes server-name changes creation-time edits too. Unchanged nodes migrate
+without replacement, while `prevent_destroy` blocks identity edits.
+
+**Provider adapters preserve canonical listeners** — integer singleton and
+legacy XHTTP ports are validated in every root. Vultr converts hyphen ranges to
+colon ranges only in its resource port input, keeping output values and resource
+keys stable. Its optional provider backups use a daily 03:00 UTC schedule.
+
 **New providers follow one recipe** — create `providers/<name>/` exporting
 the same outputs so `render-inventory.sh` keeps its generic path (add provider
 code there only for incompatible keys or a guest-convergence check such as

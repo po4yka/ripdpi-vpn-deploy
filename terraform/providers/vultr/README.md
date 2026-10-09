@@ -52,6 +52,8 @@ No modules.
 
 | Name | Type |
 | ---- | ---- |
+| [terraform_data.admin_ssh_public_key](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
+| [terraform_data.admin_user](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
 | [terraform_data.ssh_port](https://registry.terraform.io/providers/hashicorp/terraform/latest/docs/resources/data) | resource |
 | [vultr_dns_record.public_ipv6_endpoint](https://registry.terraform.io/providers/vultr/vultr/latest/docs/resources/dns_record) | resource |
 | [vultr_firewall_group.vpn](https://registry.terraform.io/providers/vultr/vultr/latest/docs/resources/firewall_group) | resource |
@@ -71,7 +73,7 @@ No modules.
 | <a name="input_admin_user"></a> [admin\_user](#input\_admin\_user) | Non-root user created by cloud-init for SSH and Ansible access. | `string` | `"deploy"` | no |
 | <a name="input_allowed_ssh_cidrs"></a> [allowed\_ssh\_cidrs](#input\_allowed\_ssh\_cidrs) | Source CIDRs allowed to reach ssh\_port/tcp. | `list(string)` | n/a | yes |
 | <a name="input_build_env"></a> [build\_env](#input\_build\_env) | Free-form label baked into /etc/vpn-build-id by cloud-init. | `string` | `"prod"` | no |
-| <a name="input_enable_backups"></a> [enable\_backups](#input\_enable\_backups) | Enable provider-side server backups. Off by default: Vultr snapshots are unencrypted and bypass the restic+age backup chain. | `bool` | `false` | no |
+| <a name="input_enable_backups"></a> [enable\_backups](#input\_enable\_backups) | Enable provider-side server backups with a daily 03:00 UTC schedule. Off by default: Vultr snapshots are unencrypted and bypass the restic+age backup chain. | `bool` | `false` | no |
 | <a name="input_enable_hysteria"></a> [enable\_hysteria](#input\_enable\_hysteria) | Include the Hysteria2 UDP/443 listener in the legacy default set. Explicit public\_listeners ignore this toggle; add hysteria there directly. | `bool` | `true` | no |
 | <a name="input_enable_ipv6"></a> [enable\_ipv6](#input\_enable\_ipv6) | Allocate and expose a public IPv6 address. | `bool` | `true` | no |
 | <a name="input_labels"></a> [labels](#input\_labels) | Provider-specific resource tags/labels. | `map(string)` | `{}` | no |

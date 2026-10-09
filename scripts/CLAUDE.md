@@ -287,6 +287,18 @@ Independent controller homes are not a supported shared-ownership mechanism.
 
 ## Pitfalls
 
+- **Cloud-init CI bindings are fixed** — render-cloud-init-ci.py encodes the
+  shared template's scalar expressions for synthetic fixtures and refuses unknown
+  expressions. Real Terraform serialization tests prove parsed parity; keep both
+  renderers aligned when changing template expressions.
+
+- **Saved-plan policy precedes operator apply** — `policy-plan.sh`
+  privately copies the regular environment plan, uses the canonical workspace
+  router for show/apply, and evaluates that same copy through
+  `check-tf-plan.sh` and its single `terraform-plan-policy.py` evaluator. Temporary binary/JSON files are private and cleaned
+  on exit. Evaluator failures, malformed results and zero policy checks refuse
+  apply; diagnostics identify policy namespaces without printing plan content.
+
 - Bootstrap lifecycle is bound to both the routed workspace and the canonical
   `vpn_build_environment`, then checked against the root-owned cloud-init
   marker. Named production workspaces retain their identity; disposable

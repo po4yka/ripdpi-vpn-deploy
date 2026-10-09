@@ -29,8 +29,6 @@ ssh_port := sprintf("%v", [input.variables.ssh_port.value])
 
 admin_ports := {ssh_port, "3389"}
 
-world_cidrs := {"0.0.0.0/0", "::/0"}
-
 # panel_port rules removed: no admin panel is deployed in this stack (see
 # docs/CDN-DECISION.md and the hard rules in the root AGENTS.md). The
 # input.variables.panel_port path does not exist in any provider root, so
@@ -44,7 +42,7 @@ deny[msg] {
   rule := rc.change.after.firewall_rule[_]
   rule.action == "accept"
   rule.direction == "in"
-  rule.protocol == "tcp"
+  firewall.tcp_protocol(object.get(rule, "protocol", null))
   firewall.upcloud_is_world(rule)
   port := admin_ports[_]
   firewall.upcloud_port_contains(rule, port)
@@ -61,8 +59,8 @@ deny[msg] {
   rc.type == "scaleway_instance_security_group"
   rule := rc.change.after.inbound_rule[_]
   rule.action == "accept"
-  rule.protocol == "TCP"
-  world_cidrs[rule.ip_range]
+  firewall.tcp_protocol(object.get(rule, "protocol", null))
+  firewall.world_cidr(object.get(rule, "ip_range", null))
   port := admin_ports[_]
   firewall.scaleway_port_contains(rule, port)
 
@@ -78,10 +76,10 @@ deny[msg] {
   rc.type == "hcloud_firewall"
   rule := rc.change.after.rule[_]
   rule.direction == "in"
-  rule.protocol == "tcp"
-  world_cidrs[rule.source_ips[_]]
+  firewall.tcp_protocol(object.get(rule, "protocol", null))
+  firewall.hcloud_is_world(rule)
   port := admin_ports[_]
-  firewall.port_contains(rule.port, port)
+  firewall.port_contains(object.get(rule, "port", null), port)
 
   msg := sprintf(
     "resource %q: hcloud firewall rule allows TCP/%s from world; SSH must be restricted to allowed_ssh_cidrs",
@@ -98,10 +96,10 @@ vultr_is_world(rc) {
 deny[msg] {
   rc := input.resource_changes[_]
   rc.type == "vultr_firewall_rule"
-  rc.change.after.protocol == "tcp"
+  firewall.tcp_protocol(object.get(rc.change.after, "protocol", null))
   vultr_is_world(rc)
   port := admin_ports[_]
-  firewall.port_contains(rc.change.after.port, port)
+  firewall.port_contains(object.get(rc.change.after, "port", null), port)
 
   msg := sprintf(
     "resource %q: vultr firewall rule allows TCP/%s from world; SSH must be restricted to allowed_ssh_cidrs",

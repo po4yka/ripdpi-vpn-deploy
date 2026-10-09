@@ -29,6 +29,23 @@ allowed_cidrs := {cidr | cidr := input.variables.allowed_ssh_cidrs.value[_]}
 
 ssh_port := sprintf("%v", [input.variables.ssh_port.value])
 
+valid_ssh_port {
+  port := input.variables.ssh_port.value
+  is_number(port)
+  port == floor(port)
+  port >= 1
+  port <= 65535
+}
+
+# Saved plans can predate root validation. Unknown/fractional management inputs
+# cannot reliably identify the actual guest listener and must refuse evaluation.
+deny[msg] {
+  rc := input.resource_changes[_]
+  {"upcloud_firewall_rules", "hcloud_firewall", "vultr_firewall_rule", "scaleway_instance_security_group"}[rc.type]
+  not valid_ssh_port
+  msg := "SSH plan port must be a known integer within 1..65535"
+}
+
 # upcloud: each SSH accept rule source must be within an allowed CIDR.
 # Evaluation is structural — the comment is not trusted: a missing or
 # reworded comment must not bypass the gate, because conftest is the only
@@ -41,11 +58,11 @@ deny[msg] {
   rule := rc.change.after.firewall_rule[_]
   rule.action == "accept"
   rule.direction == "in"
-  rule.protocol == "tcp"
+  firewall.tcp_protocol(object.get(rule, "protocol", null))
   firewall.upcloud_port_contains(rule, ssh_port)
 
   source := object.get(rule, "source_address_start", "")
-  not upcloud_source_allowed(rule)
+  not upcloud_interval_allowed(rule)
 
   msg := sprintf(
     "resource %q: SSH allow rule source %q is not in var.allowed_ssh_cidrs",
@@ -53,16 +70,15 @@ deny[msg] {
   )
 }
 
-upcloud_source_allowed(rule) {
-  cidr := allowed_cidrs[_]
-  source := rule.source_address_start
-  end := object.get(rule, "source_address_end", source)
+source_allowed(source) {
+  allowed_cidrs[source]
+}
+
+source_allowed(source) {
   source != ""
   source != null
-  end != ""
-  end != null
+  cidr := allowed_cidrs[_]
   net.cidr_contains(cidr, source)
-  net.cidr_contains(cidr, end)
 }
 
 # scaleway: each SSH inbound rule must use a documented CIDR.
@@ -71,9 +87,9 @@ deny[msg] {
   rc.type == "scaleway_instance_security_group"
   rule := rc.change.after.inbound_rule[_]
   rule.action == "accept"
-  rule.protocol == "TCP"
+  firewall.tcp_protocol(object.get(rule, "protocol", null))
   firewall.scaleway_port_contains(rule, ssh_port)
-  not allowed_cidrs[rule.ip_range]
+  not source_allowed(object.get(rule, "ip_range", ""))
 
   msg := sprintf(
     "resource %q: Scaleway SSH rule source CIDR %q is not in var.allowed_ssh_cidrs",
@@ -87,10 +103,10 @@ deny[msg] {
   rc.type == "hcloud_firewall"
   rule := rc.change.after.rule[_]
   rule.direction == "in"
-  rule.protocol == "tcp"
-  firewall.port_contains(rule.port, ssh_port)
+  firewall.tcp_protocol(object.get(rule, "protocol", null))
+  firewall.port_contains(object.get(rule, "port", null), ssh_port)
   source_ip := rule.source_ips[_]
-  not allowed_cidrs[source_ip]
+  not source_allowed(source_ip)
 
   msg := sprintf(
     "resource %q: hcloud SSH rule source IP %q is not in var.allowed_ssh_cidrs",
@@ -103,14 +119,27 @@ deny[msg] {
 deny[msg] {
   rc := input.resource_changes[_]
   rc.type == "vultr_firewall_rule"
-  rc.change.after.protocol == "tcp"
-  firewall.port_contains(rc.change.after.port, ssh_port)
+  firewall.tcp_protocol(object.get(rc.change.after, "protocol", null))
+  firewall.port_contains(object.get(rc.change.after, "port", null), ssh_port)
   after := rc.change.after
   cidr := sprintf("%s/%d", [after.subnet, after.subnet_size])
-  not allowed_cidrs[cidr]
+  not source_allowed(cidr)
 
   msg := sprintf(
     "resource %q: vultr SSH rule source CIDR %q is not in var.allowed_ssh_cidrs",
     [rc.address, cidr],
   )
+}
+
+
+upcloud_interval_allowed(rule) {
+  start := object.get(rule, "source_address_start", "")
+  end := object.get(rule, "source_address_end", start)
+  start != ""
+  start != null
+  end != ""
+  end != null
+  cidr := allowed_cidrs[_]
+  net.cidr_contains(cidr, start)
+  net.cidr_contains(cidr, end)
 }

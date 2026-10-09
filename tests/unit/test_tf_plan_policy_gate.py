@@ -66,7 +66,8 @@ def test_reported_violation_fails_even_if_tool_exit_is_zero(tmp_path, key):
     reports[0][key] = [{"msg": "management port opened"}]
     result, _, _ = run_gate(tmp_path, reports)
     assert result.returncode != 0
-    assert "management port opened" in result.stderr
+    assert "terraform.policy.admin_port" in result.stderr
+    assert "management port opened" not in result.stderr
 
 
 def test_tool_failure_cannot_succeed_with_a_success_shaped_report(tmp_path):

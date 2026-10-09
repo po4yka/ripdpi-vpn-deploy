@@ -104,7 +104,7 @@ def test_bundle_uses_feature_host_and_emits_ingress_topology(
     fake_bin.mkdir()
     (fake_bin / "sops").write_text("#!/bin/sh\ncat \"$SOPS_FILE\"\n")
     (fake_bin / "terraform").write_text("#!/bin/sh\nexit 0\n")
-    (fake_bin / "wg").write_text("#!/bin/sh\nprintf 'server-public-fixture'\n")
+    (fake_bin / "wg").write_text("#!/bin/sh\ncat >/dev/null\nprintf 'server-public-fixture'\n")
     for stub in fake_bin.iterdir():
         stub.chmod(0o700)
 

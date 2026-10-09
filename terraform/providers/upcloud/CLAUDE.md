@@ -43,6 +43,14 @@ Destroy authorization includes the exact seed storage UUID and its absence.
 
 ## Pitfalls
 
+- **Port inputs are integers** — singleton and legacy XHTTP ports reject
+  fractions before provider calls. Legacy collision tests clear explicit listeners
+  so they exercise the effective legacy contract.
+
+- **SSH stays outside stateless return ports** — `ssh_port` cannot be inside
+  `provider_return_ephemeral_ports`, even with provider filtering disabled.
+  Otherwise promotion would admit management traffic through the return rules.
+
 - **Example listener completeness** — the explicit staging/prod contracts include
   HTTP/80 for the nginx public-site redirect. Deploy compares the provider
   contract with the runtime manifest and fails closed when this port is absent.

@@ -21,6 +21,14 @@ resource "terraform_data" "ssh_port" {
   input = var.ssh_port
 }
 
+resource "terraform_data" "admin_user" {
+  input = var.admin_user
+}
+
+resource "terraform_data" "admin_ssh_public_key" {
+  input = sha256(trimspace(var.admin_ssh_public_key))
+}
+
 resource "vultr_ssh_key" "admin" {
   name    = "${var.server_name}-${var.admin_user}"
   ssh_key = var.admin_ssh_public_key
@@ -51,14 +59,34 @@ resource "vultr_instance" "vpn" {
   backups           = var.enable_backups ? "enabled" : "disabled"
   tags              = local.base_tags
 
+  dynamic "backups_schedule" {
+    for_each = var.enable_backups ? [true] : []
+    content {
+      type = "daily"
+      hour = 3
+    }
+  }
+
   lifecycle {
     prevent_destroy = true
     replace_triggered_by = [
       terraform_data.ssh_port,
+      terraform_data.admin_user,
+      terraform_data.admin_ssh_public_key,
     ]
     ignore_changes = [
       user_data,
     ]
+    # Existing nodes predate the digest guards. Check their retained bootstrap
+    # identity before recording new guard inputs, without comparing helper data.
+    postcondition {
+      condition = try(
+        yamldecode(self.user_data).users[1].name == var.admin_user
+        && [for key in tolist(yamldecode(self.user_data).users[1].ssh_authorized_keys) : trimspace(key)] == [trimspace(var.admin_ssh_public_key)],
+        false,
+      )
+      error_message = "Bootstrap administrator identity differs from the requested username or key; provision a replacement node instead of adopting divergent identity."
+    }
   }
 }
 

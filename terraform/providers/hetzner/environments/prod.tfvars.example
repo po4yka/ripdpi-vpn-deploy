@@ -2,7 +2,7 @@
 
 server_name = "vpn-prod-hel1"
 location    = "hel1"
-server_type = "cpx21"
+server_type = "cpx22"
 image       = "debian-12"
 
 admin_user           = "deploy"

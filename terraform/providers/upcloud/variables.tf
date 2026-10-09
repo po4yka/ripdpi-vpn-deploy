@@ -67,6 +67,11 @@ variable "allowed_ssh_cidrs" {
     condition     = alltrue([for cidr in var.allowed_ssh_cidrs : can(cidrhost(cidr, 0))])
     error_message = "allowed_ssh_cidrs entries must be valid IPv4 or IPv6 CIDRs in prefix notation, e.g. 203.0.113.42/32."
   }
+
+  validation {
+    condition     = alltrue([for cidr in var.allowed_ssh_cidrs : try(tonumber(split("/", cidr)[1]) != 0, true)])
+    error_message = "allowed_ssh_cidrs must not contain a zero-prefix network, including noncanonical IPv4 or IPv6 world networks."
+  }
 }
 
 variable "ssh_port" {
@@ -75,8 +80,30 @@ variable "ssh_port" {
   description = "Effective SSH listener port configured by cloud-init and opened at the provider edge."
 
   validation {
-    condition     = var.ssh_port >= 1 && var.ssh_port <= 65535
-    error_message = "ssh_port must be a valid TCP port."
+    condition     = floor(var.ssh_port) == var.ssh_port && var.ssh_port >= 1 && var.ssh_port <= 65535
+    error_message = "ssh_port must be an integer TCP port within 1..65535."
+  }
+
+  validation {
+    condition = alltrue([
+      for listener in local.effective_public_listeners :
+      listener.protocol != "tcp" || try(
+        listener.port != null ? listener.port != var.ssh_port : !(
+          tonumber(split("-", listener.port_range)[0]) <= var.ssh_port &&
+          var.ssh_port <= tonumber(split("-", listener.port_range)[1])
+        ),
+        true
+      )
+    ])
+    error_message = "ssh_port must not overlap any effective public TCP singleton or inclusive port range, including legacy listeners."
+  }
+
+  validation {
+    condition = (
+      var.ssh_port < var.provider_return_ephemeral_ports.start ||
+      var.ssh_port > var.provider_return_ephemeral_ports.end
+    )
+    error_message = "ssh_port must remain outside provider_return_ephemeral_ports regardless of provider firewall activation."
   }
 }
 
@@ -92,8 +119,8 @@ variable "nginx_xhttp_public_port" {
   description = "Public TCP port for nginx-xhttp. Keep this in sync with Ansible nginx_xhttp_public_port."
 
   validation {
-    condition     = var.nginx_xhttp_public_port >= 1 && var.nginx_xhttp_public_port <= 65535
-    error_message = "nginx_xhttp_public_port must be a valid TCP port."
+    condition     = floor(var.nginx_xhttp_public_port) == var.nginx_xhttp_public_port && var.nginx_xhttp_public_port >= 1 && var.nginx_xhttp_public_port <= 65535
+    error_message = "nginx_xhttp_public_port must be an integer TCP port between 1 and 65535."
   }
 }
 
@@ -116,7 +143,7 @@ variable "public_listeners" {
       trimspace(listener.name) != "" &&
       contains(["tcp", "udp"], listener.protocol) &&
       ((try(listener.port, null) != null) != (try(listener.port_range, null) != null)) &&
-      (try(listener.port, null) == null || (listener.port >= 1 && listener.port <= 65535)) &&
+      (try(listener.port, null) == null ? true : (floor(listener.port) == listener.port && listener.port >= 1 && listener.port <= 65535)) &&
       (try(listener.port_range, null) == null || (can(regex("^[1-9][0-9]*-[1-9][0-9]*$", listener.port_range)) ? (tonumber(split("-", listener.port_range)[0]) <= tonumber(split("-", listener.port_range)[1]) && tonumber(split("-", listener.port_range)[1]) <= 65535) : false))
     ])
     error_message = "Each public listener must use tcp or udp and exactly one valid port or port_range."

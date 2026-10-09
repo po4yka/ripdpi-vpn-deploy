@@ -142,7 +142,9 @@ run "firewall_emits_xhttp_port_when_distinct_from_443" {
   command = plan
 
   variables {
-    nginx_xhttp_public_port = 8443
+    public_listeners            = []
+    use_legacy_public_listeners = true
+    nginx_xhttp_public_port     = 8443
   }
 
   assert {
@@ -160,7 +162,9 @@ run "firewall_skips_xhttp_port_when_equal_to_443" {
   command = plan
 
   variables {
-    nginx_xhttp_public_port = 443
+    public_listeners            = []
+    use_legacy_public_listeners = true
+    nginx_xhttp_public_port     = 443
   }
 
   assert {
@@ -172,6 +176,22 @@ run "firewall_skips_xhttp_port_when_equal_to_443" {
       r if r.notes == "TCP/443 nginx-xhttp"
     ]) == 0
     error_message = "When XHTTP shares :443, no duplicate TCP/443 nginx-xhttp rule is added"
+  }
+
+  assert {
+    condition = length([
+      for r in values(vultr_firewall_rule.tcp_public) :
+      r if r.protocol == "tcp" && r.port == "8443"
+    ]) == 0
+    error_message = "Legacy XHTTP sharing TCP/443 must not retain the old TCP/8443 listener."
+  }
+
+  assert {
+    condition = length([
+      for r in values(vultr_firewall_rule.tcp_public) :
+      r if r.protocol == "udp" && r.port == "443"
+    ]) == 2
+    error_message = "Legacy TCP/443 deduplication must preserve the dual-stack UDP/443 listener."
   }
 }
 

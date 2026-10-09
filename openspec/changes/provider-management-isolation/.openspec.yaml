@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-09
+goal: TFR-1791523370274374 Fix provider management isolation and provisioning
+  blockers

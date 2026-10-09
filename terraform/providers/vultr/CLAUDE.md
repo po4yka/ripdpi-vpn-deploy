@@ -16,12 +16,26 @@ to AMS / FRA / LHR for low-latency RU paths.
 from another fleet root without coupling server lifecycles. It is disabled by
 default and enabled only in the production Vultr workspace.
 
+**Port syntax changes only at the adapter** — canonical ranges and listener
+keys use hyphens; Vultr resources receive colons. Singleton and legacy XHTTP
+ports must be integers. Legacy regression tests clear explicit listeners first.
+
+**Provider backup opt-in is complete** — enable_backups schedules daily provider
+backups at 03:00 UTC; disabled backups have no schedule block. The default remains
+off under the restic+age backup contract.
+
 ## What's done well
 
 - **`enable_backups = false`** — Vultr's built-in backups can store unencrypted
   snapshots. The `backup` role owns this via restic+age instead.
 
 ## Pitfalls
+
+- **Administrator identity is creation-time state** — username/key edits hit
+  replacement guards and `prevent_destroy`. First adoption compares retained
+  cloud-init identity, normalizing surrounding key whitespace while checking the
+  complete key list, so mismatched inputs fail during planning. Helper and
+  build-label updates remain ignored; these checks do not observe guest drift.
 
 - **OS IDs identify actual provider images** — Debian 13 x64 is 2625;
   2284 is Ubuntu 24.04, 1743 is Ubuntu 22.04, and 2136 is Debian 12.

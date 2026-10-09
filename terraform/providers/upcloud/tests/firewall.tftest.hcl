@@ -154,7 +154,9 @@ run "firewall_emits_xhttp_port_when_distinct_from_443" {
   command = plan
 
   variables {
-    nginx_xhttp_public_port = 8443
+    public_listeners            = []
+    use_legacy_public_listeners = true
+    nginx_xhttp_public_port     = 8443
   }
 
   assert {
@@ -170,7 +172,9 @@ run "firewall_skips_xhttp_port_when_equal_to_443" {
   command = plan
 
   variables {
-    nginx_xhttp_public_port = 443
+    public_listeners            = []
+    use_legacy_public_listeners = true
+    nginx_xhttp_public_port     = 443
   }
 
   # REALITY already opens 443; the dynamic block must NOT duplicate it
@@ -184,6 +188,22 @@ run "firewall_skips_xhttp_port_when_equal_to_443" {
       r if r.comment == "TCP/443 nginx-xhttp"
     ]) == 0
     error_message = "When XHTTP shares :443, no duplicate :443 TCP rule is added"
+  }
+
+  assert {
+    condition = length([
+      for r in upcloud_firewall_rules.vpn.firewall_rule :
+      r if startswith(r.comment, "TCP/") ? (r.protocol == "tcp" && r.destination_port_start == "8443") : false
+    ]) == 0
+    error_message = "Legacy XHTTP sharing TCP/443 must not retain the old TCP/8443 listener."
+  }
+
+  assert {
+    condition = length([
+      for r in upcloud_firewall_rules.vpn.firewall_rule :
+      r if r.comment == "UDP/443 Hysteria2"
+    ]) == 2
+    error_message = "Legacy TCP/443 deduplication must preserve the dual-stack UDP/443 listener."
   }
 }
 

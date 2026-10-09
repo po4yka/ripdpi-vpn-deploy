@@ -47,7 +47,12 @@ resource "hcloud_firewall" "vpn" {
   }
 }
 
-resource "hcloud_firewall_attachment" "vpn" {
-  firewall_id = hcloud_firewall.vpn.id
-  server_ids  = [hcloud_server.vpn.id]
+# The server owns membership from creation. Forget the former standalone
+# attachment without invoking its delete operation, which detaches the firewall.
+removed {
+  from = hcloud_firewall_attachment.vpn
+
+  lifecycle {
+    destroy = false
+  }
 }

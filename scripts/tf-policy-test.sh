@@ -6,6 +6,7 @@
 # Requires the same provider credentials as `make plan` for PROVIDER/ENV.
 set -euo pipefail
 IFS=$'\n\t'
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
