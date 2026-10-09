@@ -22,7 +22,7 @@ preserve P1 safety and add positively tested source to existing PR 282.
 - [x] ANS-1791563233830915 Repair predictive observability and complete retained authority and rollback generation boundaries #bug !high @item:ANS-1791562764586678
 - [x] ANS-1791563234416737 Publish bounded idle policy health and durable cohort-aware watchdog and malformed-evidence state #bug !high @item:ANS-1791562764586678
 - [x] ANS-1791563234994294 Resolve bounded P2 packet DNS and release-identity investigations with native positive evidence #bug !high @item:ANS-1791562764586678
-- [ ] ANS-1791563235717247 Preserve P1 regressions and complete independent review snapshots local gates and exact-source PR checks #bug !high @item:ANS-1791562764586678
+- [x] ANS-1791563235717247 Preserve P1 regressions and complete independent review snapshots local gates and exact-source PR checks #bug !high @item:ANS-1791562764586678
 
 ## Verification
 

@@ -1,11 +1,11 @@
 ---
 task_id: ANS-1791562764586678
 change: ansible-role-p2-remediation
-commit_sha: 50fdff3f4f182783893155918dfd26f2b911b089
+commit_sha: cec0e7629061b6d638cd070a4699bbc06c9b9109
 local: passed
 local_evidence: Complete build-gated make check passed; 5703 portable tests, 22 subtests, 56 shell tests and 205 Rust tests passed; production lint, schema, policy and 150 snapshots pass. Scoped native runtime checks also pass.
-remote_ci: required
-remote_ci_evidence: Source c4459d56 proves canonical AOP, DNS, WARP and both dedicated policy scenarios. Bounded evidence identifies unavailable optional qdisc, candidate shared-temp chown and runner 0777 ancestry; corrected source requires final hosted revalidation.
+remote_ci: passed
+remote_ci_evidence: Exact source cec0e762 CI run 37998193161 completed success with all 78 jobs; four auxiliary jobs across CodeQL, markdown links and role notes also pass. All 82 selected hosted checks are terminal success.
 dry_run: not_applicable
 dry_run_evidence: Source-only remediation; no real inventory or SSH controller transaction.
 staging: not_applicable
@@ -34,7 +34,7 @@ artifact_evidence: Independent host and transport reviewers approve the P2 sourc
 | REQ-P2-EVIDENCE | ANS-1791563234416737 | 45 focused policy/state/context tests; 49 adapter/expected-target tests; native real policy idle heartbeat and retirement plus fresh/retained sender check mode (8 passed); cohort-only watchdog regression | passed locally |
 | REQ-P2-TRANSPORT | ANS-1791563234994294 | Bounded I01-I04 native packet/DNS/release-identity evidence and qualification | passed locally |
 | REQ-P2-PUBLICATION | ANS-1791563234994294 | Bounded I05/I06 effective update and bearer-log evidence and qualification | passed locally |
-| REQ-P2-ACCEPTANCE | ANS-1791563235717247 | Per-ID current-source coverage, preserved P1, independent review and complete local gate pass; exact-source hosted checks remain required | hosted gate pending |
+| REQ-P2-ACCEPTANCE | ANS-1791563235717247 | Per-ID current-source coverage, preserved P1, independent review and complete local gate and all 82 exact-source hosted checks pass | passed source/CI |
 
 ## Audit coverage
 
@@ -55,7 +55,7 @@ All 32 confirmed findings F11-F42 have current source coverage. Existing P1 fixe
 | F21 | Verified paired geodata publication with compensation | Real file downloads, lock and failure tests |
 | F22 | Complete nginx unit/config/credential transaction and rollback | Native HTTPS bad-key/unit compensation tests |
 | F23 | Optional FQ/BBR isolated from mandatory sysctl failures | Native sysctl helper tests |
-| F24 | Valid synthetic AOP chain and actual client assertions; CI scenario selected | Native trusted/untrusted/no-client tests; canonical Molecule pending |
+| F24 | Valid synthetic AOP chain and actual client assertions; CI scenario selected | Native trusted/untrusted/no-client tests; canonical Molecule passed |
 | F25 | Exact supported Realm service and authenticated users schema | Exact pinned sing-box register/heartbeat/SSE/quota tests |
 | F26 | AWG runtime and unit change restart intent | Controller notification proof; native tests cover membership/target retirement, not warm pin-only or unit-only adoption. |
 | F27 | Recorded AWG membership retirement, unknown authority refusal | Native 2-to-1/rename/empty/foreign PartOf tests |
@@ -121,8 +121,8 @@ which refused Debian metadata signatures in the emulated amd64 container on
 the arm64 test VM. Signature verification was preserved. Actual native AOP
 client acceptance and the canonical hosted cdn-on scenario pass. Dedicated
 package_updates and intrusion_prevention scenarios are now selected as well.
-Baseline sysctl, CDN refresh and one policy authority context need bounded
-hosted diagnostics; their production failure boundaries remain unchanged.
+Baseline sysctl, CDN refresh and policy authority corrections now pass their
+canonical hosted scenarios; production failure boundaries remain intact.
 
 ## Hosted-context corrections
 
@@ -140,4 +140,17 @@ CDN sandbox regression (2 passed), and a real daemon lifecycle proof with
 original 0777 restored (1 passed) confirm these corrections. The complete corrected build-gated make check passed again: 5,703 portable
 tests, 22 subtests, 56 shell tests and 205 Rust tests; all source guards, lint,
 schemas and 150 snapshots pass. Both independent follow-up reviews approve.
-Fresh exact-source hosted acceptance remains required.
+Exact-source hosted acceptance is complete: all 78 CI jobs and four auxiliary
+jobs passed on cec0e762. This includes native integration, both full-stack
+scenarios, canonical AOP, policy transitions and failure compensation.
+
+## Delivery scope
+
+The remediation is published in existing PR 282. All 32 confirmed P2 paths
+are covered; six candidates retain the qualifications above. The portfolio
+item moves to review, without OpenSpec archival or feature closure. These
+source/native/CI receipts do not establish a fleet rollout, external client
+acceptance, full morphology artifact behavior or vendor registration.
+
+The subsequent evidence commit changes only task/verification documentation;
+cec0e762 remains the tested runtime source revision.

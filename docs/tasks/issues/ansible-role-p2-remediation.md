@@ -2,7 +2,7 @@
 id: ANS-1791562764586678
 title: Repair P2 Ansible role lifecycle and configuration audit defects
 kind: bug
-status: doing
+status: review
 area: ansible
 priority: high
 risk: high
@@ -12,8 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: ansible-role-p2-remediation
 created: 2026-10-09
-updated: 2026-10-09
+updated: 2026-10-10
 related_tasks: []
+status_detail: All 32 confirmed P2 paths covered in existing PR282; both independent reviews approve; local full gate and all82 exact-source hosted checks pass. Source-only scope; no rollout or archival.
 ---
 
 ## Goal
