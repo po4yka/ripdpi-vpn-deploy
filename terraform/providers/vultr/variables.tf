@@ -105,8 +105,8 @@ variable "nginx_xhttp_public_port" {
   description = "Public TCP port for nginx-xhttp. Keep this in sync with Ansible nginx_xhttp_public_port."
 
   validation {
-    condition     = var.nginx_xhttp_public_port >= 1 && var.nginx_xhttp_public_port <= 65535
-    error_message = "nginx_xhttp_public_port must be a valid TCP port."
+    condition     = floor(var.nginx_xhttp_public_port) == var.nginx_xhttp_public_port && var.nginx_xhttp_public_port >= 1 && var.nginx_xhttp_public_port <= 65535
+    error_message = "nginx_xhttp_public_port must be an integer TCP port between 1 and 65535."
   }
 }
 
@@ -126,7 +126,7 @@ variable "public_listeners" {
       trimspace(listener.name) != "" &&
       contains(["tcp", "udp"], listener.protocol) &&
       ((try(listener.port, null) != null) != (try(listener.port_range, null) != null)) &&
-      (try(listener.port, null) == null || (listener.port >= 1 && listener.port <= 65535)) &&
+      (try(listener.port, null) == null ? true : (floor(listener.port) == listener.port && listener.port >= 1 && listener.port <= 65535)) &&
       (try(listener.port_range, null) == null || (can(regex("^[1-9][0-9]*-[1-9][0-9]*$", listener.port_range)) ? (tonumber(split("-", listener.port_range)[0]) <= tonumber(split("-", listener.port_range)[1]) && tonumber(split("-", listener.port_range)[1]) <= 65535) : false))
     ])
     error_message = "Each public listener must use tcp or udp and exactly one valid port or port_range."
@@ -229,7 +229,7 @@ variable "enable_backups" {
   type    = bool
   default = false
   # Vultr snapshots are unencrypted; backups owned by the restic+age backup role.
-  description = "Enable provider-side server backups. Off by default: Vultr snapshots are unencrypted and bypass the restic+age backup chain."
+  description = "Enable provider-side server backups with a daily 03:00 UTC schedule. Off by default: Vultr snapshots are unencrypted and bypass the restic+age backup chain."
 }
 
 variable "additional_public_ip" {

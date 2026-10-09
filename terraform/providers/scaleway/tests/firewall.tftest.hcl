@@ -148,7 +148,9 @@ run "firewall_emits_xhttp_port_when_distinct_from_443" {
   command = plan
 
   variables {
-    nginx_xhttp_public_port = 8443
+    public_listeners            = []
+    use_legacy_public_listeners = true
+    nginx_xhttp_public_port     = 8443
   }
 
   assert {
@@ -166,7 +168,9 @@ run "firewall_skips_xhttp_port_when_equal_to_443" {
   command = plan
 
   variables {
-    nginx_xhttp_public_port = 443
+    public_listeners            = []
+    use_legacy_public_listeners = true
+    nginx_xhttp_public_port     = 443
   }
 
   assert {
@@ -175,6 +179,22 @@ run "firewall_skips_xhttp_port_when_equal_to_443" {
       if rule.protocol == "TCP" && rule.port == 443
     ]) == 2
     error_message = "When XHTTP shares TCP/443, the provider edge must emit only one dual-stack rule pair"
+  }
+
+  assert {
+    condition = length([
+      for rule in scaleway_instance_security_group.vpn.inbound_rule :
+      rule if rule.protocol == "TCP" && rule.port == 8443
+    ]) == 0
+    error_message = "Legacy XHTTP sharing TCP/443 must not retain the old TCP/8443 listener."
+  }
+
+  assert {
+    condition = length([
+      for rule in scaleway_instance_security_group.vpn.inbound_rule :
+      rule if rule.protocol == "UDP" && rule.port == 443
+    ]) == 2
+    error_message = "Legacy TCP/443 deduplication must preserve the dual-stack UDP/443 listener."
   }
 }
 

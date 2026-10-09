@@ -24,6 +24,10 @@ state must not invoke provider detach.
 
 ## Pitfalls
 
+- **Port inputs are integers** — singleton and legacy XHTTP ports reject
+  fractions before provider calls. Legacy collision tests clear explicit listeners
+  so they exercise the effective legacy contract.
+
 - **Bootstrap names are immutable** — changes to the combined SSH-key name,
   including administrator or server-name edits, trigger protected replacement.
   The provider stores only a user-data hash, so retained key naming protects

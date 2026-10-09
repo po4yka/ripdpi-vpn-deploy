@@ -57,6 +57,8 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
         names.extend(node.name for node in module.body if isinstance(node, ast.FunctionDef)
                      and any(ast.unparse(d) == "pytest.mark.native_runtime" for d in node.decorator_list))
     assert set(names) == {
+        "test_actual_terraform_render_matches_ci_scalar_document",
+        "test_actual_terraform_render_refuses_null_bootstrap_scalars",
         "test_adapter_command_uses_reviewed_terraform_fd_and_snapshot",
         "test_actual_builtin_terraform_data_plan_can_be_saved_if_terraform_exists",
         "test_alertmanager_v0281_enforces_the_webhook_request_timeout",

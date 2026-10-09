@@ -6,6 +6,14 @@
 provider root with identical inputs. Behavior is consistent across providers
 by construction.
 
+**Scalar inputs are YAML data** — Terraform jsonencode quotes administrator and
+public-key strings and the complete metadata content. Punctuation or newlines
+cannot create cloud-config fields. Normal metadata bytes keep their original
+format and trailing newline. The fixed synthetic CI renderer uses equivalent
+encoding and refuses unknown expressions; real Terraform tests prove parsed parity.
+String formatting before encoding retains the original refusal of null bootstrap
+values; JSON null must not become a cloud-config username or authorized key.
+
 **No secrets in here** — cloud-init creates the admin user, hardens sshd,
 installs `python3`, drops a marker file at `/var/lib/cloud-init-vpn-bootstrap.done`,
 and exits. The Ansible run handles the rest. Anything secret stays in SOPS.

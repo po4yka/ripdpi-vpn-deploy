@@ -1,8 +1,8 @@
 ---
 id: TFR-1791523370274374
-title: Fix provider management isolation and provisioning blockers
+title: Fix provider P1 and P2 audit defects
 kind: bug
-status: review
+status: doing
 area: terraform
 priority: high
 risk: high
@@ -14,13 +14,13 @@ openspec_change: provider-management-isolation
 created: 2026-10-09
 updated: 2026-10-09
 related_tasks: []
-status_detail: All six P1 source repairs and positive/refusal regressions complete; independent review approves; PR 281 published. Full local make check timeout gap and exact-head hosted CI pending are explicitly recorded; no infrastructure acceptance claimed.
+status_detail: "Authorized P2 audit follow-up on PR 281: Vultr range/backups, fractional listener ports, faithful legacy tests and cloud-init serialization; preserve reviewed P1 repairs."
 ---
 
 ## Goal
 
-Restore provider provisioning and management isolation for all six P1 findings
-in the provider audit, with an enforced saved-plan policy gate and a reviewable PR.
+Restore provider provisioning, bootstrap serialization and management isolation
+for the actionable P1 and P2 provider audit findings in the same reviewable PR.
 
 ## Acceptance criteria
 
@@ -39,3 +39,11 @@ in the provider audit, with an enforced saved-plan policy gate and a reviewable 
   security review are recorded. Hosted PR checks are reported for the exact head.
 - Infrastructure, guest and client acceptance remain unclaimed; unrelated work
   is preserved. The task stays in review until integration and acceptance.
+- Vultr adapters encode canonical hyphen ranges as provider colon ranges and
+  enabled backups include a valid daily schedule; disabled backups have no schedule.
+- Every root rejects fractional singleton and legacy XHTTP ports. Legacy tests
+  exercise the effective legacy contract and prove old XHTTP ports disappear.
+- Shared cloud-init preserves scalar strings and metadata content, including
+  punctuation and multiline boundaries, without altering the YAML structure.
+- Previously repaired P2 groups are revalidated and the incorrect OS-ID finding
+  is withdrawn; no unrelated DNS/image/default-backup changes are included.

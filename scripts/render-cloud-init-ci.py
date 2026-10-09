@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import re
 from pathlib import Path
 
@@ -20,10 +21,27 @@ VALUES = {
 }
 
 
-def main() -> None:
+def render(values: dict[str, str] = VALUES) -> str:
+    # Fixed CI bindings, not a Terraform expression interpreter. Unknown
+    # expressions fail so template changes cannot silently escape schema checks.
+    if not all(isinstance(values[name], str) for name in (
+        "admin_user", "admin_ssh_public_key", "build_env",
+    )):
+        raise TypeError("cloud-init scalar inputs must be strings")
+    bindings = dict(values)
+    for name in ("admin_user", "admin_ssh_public_key"):
+        bindings[f'jsonencode(format("%s", {name}))'] = json.dumps(values[name])
+    bindings[
+        'jsonencode(format("provisioned_by=cloud-init\\nnext_stage=ansible\\nbuild_env=%s\\n", build_env))'
+    ] = json.dumps(
+        f"provisioned_by=cloud-init\nnext_stage=ansible\nbuild_env={values['build_env']}\n"
+    )
     template = TEMPLATE.read_text(encoding="utf-8")
-    rendered = re.sub(r"\$\{(\w+)\}", lambda match: VALUES[match.group(1)], template)
-    print(rendered, end="")
+    return re.sub(r"\$\{([^{}]+)\}", lambda match: bindings[match.group(1)], template)
+
+
+def main() -> None:
+    print(render(), end="")
 
 
 if __name__ == "__main__":

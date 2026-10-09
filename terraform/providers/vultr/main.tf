@@ -59,6 +59,14 @@ resource "vultr_instance" "vpn" {
   backups           = var.enable_backups ? "enabled" : "disabled"
   tags              = local.base_tags
 
+  dynamic "backups_schedule" {
+    for_each = var.enable_backups ? [true] : []
+    content {
+      type = "daily"
+      hour = 3
+    }
+  }
+
   lifecycle {
     prevent_destroy = true
     replace_triggered_by = [
@@ -74,7 +82,7 @@ resource "vultr_instance" "vpn" {
     postcondition {
       condition = try(
         yamldecode(self.user_data).users[1].name == var.admin_user
-        && yamldecode(self.user_data).users[1].ssh_authorized_keys == [trimspace(var.admin_ssh_public_key)],
+        && [for key in tolist(yamldecode(self.user_data).users[1].ssh_authorized_keys) : trimspace(key)] == [trimspace(var.admin_ssh_public_key)],
         false,
       )
       error_message = "Bootstrap administrator identity differs from the requested username or key; provision a replacement node instead of adopting divergent identity."

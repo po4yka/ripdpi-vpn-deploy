@@ -43,6 +43,11 @@ so the existing key-name attribute guards first adoption; its combined name
 makes server-name changes creation-time edits too. Unchanged nodes migrate
 without replacement, while `prevent_destroy` blocks identity edits.
 
+**Provider adapters preserve canonical listeners** — integer singleton and
+legacy XHTTP ports are validated in every root. Vultr converts hyphen ranges to
+colon ranges only in its resource port input, keeping output values and resource
+keys stable. Its optional provider backups use a daily 03:00 UTC schedule.
+
 **New providers follow one recipe** — create `providers/<name>/` exporting
 the same outputs so `render-inventory.sh` keeps its generic path (add provider
 code there only for incompatible keys or a guest-convergence check such as

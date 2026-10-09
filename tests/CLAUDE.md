@@ -192,6 +192,13 @@ remain fatal; package signatures and the real schema validator stay enforced.
 
 ## What's done well
 
+- **Cloud-init encoding crosses the real Terraform boundary** — scalar tests
+  run Terraform templatefile and YAML parsing for ordinary, punctuation, multiline
+  and Unicode inputs, then compare the fixed CI renderer's parsed result. Legacy
+  XHTTP tests select legacy mode explicitly and verify the previous port disappears.
+  Null bootstrap strings remain refused. Native serialization functions are
+  explicitly registered in the exact executable-coverage assertion.
+
 - **Provider identity tests retain real mock state** — native lifecycle tests
   include positive unchanged plans; the subprocess harness shares legacy/current
   state, asserts safe attachment forgetting and exact identity refusal, including

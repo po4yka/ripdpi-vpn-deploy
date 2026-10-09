@@ -2,8 +2,8 @@
 
 ## Objective
 
-Deliver all six P1 provider audit repairs with safe positive behavior, regression
-coverage and a scoped PR; retain explicit gaps for infrastructure acceptance.
+Deliver all actionable P1 and P2 provider audit repairs with safe positive
+behavior and regression coverage in PR 281; retain infrastructure evidence gaps.
 
 ## Ownership
 
@@ -43,3 +43,20 @@ coverage and a scoped PR; retain explicit gaps for infrastructure acceptance.
   build-gate -- mise exec -- make check, followed by independent security review.
 - Remote CI and artifact: exact committed PR head and hosted checks.
 - Dry-run, staging, live and client checks: outside the authorized PR scope.
+
+## P2 ownership and execution
+
+- Lifecycle worker: Vultr main.tf, firewall.tf and new provider-adapter.tftest.hcl.
+- Port worker: all four variables.tf, firewall.tftest.hcl and new
+  port-validation.tftest.hcl files.
+- Primary: shared cloud-init, render-cloud-init-ci.py, serialization tests,
+  test_executable_coverage.py native-test registration,
+  generated READMEs, subtree guidance, all planning, integration and commits.
+  The encoded-scalar integration also requires primary's narrow Scaleway main.tf
+  retained-key normalization; lifecycle worker owns the Vultr equivalent.
+- Workers are not alone in this worktree; preserve peer edits and do not commit.
+
+- [x] TFR-1791537004741307 Repair Vultr range encoding and enable-backups schedule with positive adapter plans #bug @item:TFR-1791523370274374
+- [x] TFR-1791537005304551 Reject fractional listener ports and exercise actual legacy XHTTP deduplication in all roots #bug @item:TFR-1791523370274374
+- [x] TFR-1791537005854827 Encode shared cloud-init scalar inputs and preserve literal metadata across renderers #bug @item:TFR-1791523370274374
+- [ ] TFR-1791537006373613 Validate P2 integration and independent review and publish exact-head evidence on PR 281 #bug @item:TFR-1791523370274374

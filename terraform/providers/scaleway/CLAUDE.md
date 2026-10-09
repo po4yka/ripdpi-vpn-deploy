@@ -13,6 +13,10 @@ names, including `ssh_port`, so `render-inventory.sh` needs no provider branch;
 only a provider with different output keys or a live guest-convergence
 requirement may add one.
 
+**Port inputs are integers** — singleton listeners and legacy XHTTP ports reject
+fractions before provider calls. Legacy collision tests clear explicit listeners
+so they exercise the effective legacy contract.
+
 ## What's done well
 
 - The output schema matches every existing provider root, including `public_listeners`, `zone`, and nullable `honeypot_ipv4`.
@@ -23,7 +27,8 @@ requirement may add one.
 
 - **Administrator identity is creation-time state** — username/key edits hit
   replacement guards and `prevent_destroy`. First adoption compares retained
-  cloud-init identity, so mismatched inputs fail during planning. Helper and
+  cloud-init identity, normalizing surrounding key whitespace while checking the
+  complete key list, so mismatched inputs fail during planning. Helper and
   build-label updates remain ignored; these checks do not observe guest drift.
 
 - **Example listener completeness** — the explicit staging/prod contracts include

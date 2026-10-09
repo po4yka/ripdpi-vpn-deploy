@@ -80,7 +80,7 @@ resource "scaleway_instance_server" "vpn" {
     postcondition {
       condition = try(
         yamldecode(self.user_data["cloud-init"]).users[1].name == var.admin_user
-        && yamldecode(self.user_data["cloud-init"]).users[1].ssh_authorized_keys == [trimspace(var.admin_ssh_public_key)],
+        && [for key in tolist(yamldecode(self.user_data["cloud-init"]).users[1].ssh_authorized_keys) : trimspace(key)] == [trimspace(var.admin_ssh_public_key)],
         false,
       )
       error_message = "Bootstrap administrator identity differs from the requested username or key; provision a replacement node instead of adopting divergent identity."

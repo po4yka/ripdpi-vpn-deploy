@@ -6,8 +6,10 @@ independent and the Makefile remains the canonical operator entry point.
 
 ## Goals / Non-Goals
 
-- Goal: implement all six groups with positive and failure-path regression proof.
-- Non-goal: unrelated P2 findings, live resource changes or fleet acceptance.
+- Goal: implement all six P1 groups and remaining actionable P2 groups with
+  positive and failure-path regression proof in PR 281.
+- Non-goal: optional DNS/image/default-backup refactors, live resource changes
+  or fleet acceptance.
 
 ## Decisions
 
@@ -74,3 +76,35 @@ rollback requires an independently reviewed plan and explicit authorization.
 Run targeted native/policy/subprocess regressions, then build-gate -- mise exec --
 make check. Obtain independent diff and security review before commit/push/PR.
 Record exact-head hosted checks separately from local and live evidence.
+
+## P2 follow-up decisions and ownership
+
+- Lifecycle worker owns Vultr main.tf and firewall.tf plus new
+  tests/provider-adapter.tftest.hcl. Canonical listener values and resource keys
+  stay hyphen-based; only Vultr resource.port converts hyphens to colons.
+  enable_backups keeps its positive behavior with a conditional daily schedule
+  at 03:00 UTC, and disabled backups produce no schedule block.
+- Port worker owns all four variables.tf files, existing firewall.tftest.hcl
+  files and new port-validation.tftest.hcl files. Preserve null/exactly-one
+  selector rules and existing bounds, add integer checks, and select legacy
+  mode explicitly when testing its distinct-port and collision behavior.
+- Primary owns shared cloud-init, its CI renderer, serialization tests,
+  executable-coverage native registration,
+  generated READMEs, all subtree guidance, planning and PR integration.
+  Primary also owns the narrow Scaleway retained-key whitespace normalization;
+  the lifecycle worker applies the equivalent Vultr change in its owned main.tf.
+  Encode username/key scalar values and the complete metadata string with
+  Terraform jsonencode. CI uses equivalent encoding for its fixed synthetic
+  values; tests execute real Terraform template rendering and YAML parsing.
+- Input encoding does not add administrator/key policy restrictions. It
+  preserves the supplied scalar as data, including punctuation and newlines.
+  Format strings before JSON encoding so the previous null-input refusal remains;
+  the fixed CI renderer also rejects null scalar fixtures rather than encoding null.
+  Numeric SSH interpolation remains guarded by the existing integer input.
+  Retained authorized-key comparisons normalize surrounding whitespace on the
+  complete typed list, preserving refusal of extra keys or malformed structures.
+- Already repaired P2 findings: ordinary UpCloud dual-stack policy, Hetzner
+  guest floating-IP convergence from current main and fractional SSH ports.
+  The original Debian 11 finding is withdrawn: Vultr OS 1743 is Ubuntu 22.04.
+- Shared guidance and metadata remain serialized through primary. Workers
+  share the dedicated PR worktree, do not commit and preserve each other's edits.
