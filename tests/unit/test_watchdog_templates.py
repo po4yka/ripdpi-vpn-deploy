@@ -291,19 +291,33 @@ def test_failure_journal_diagnostics_filter_private_messages_and_preserve_hard_f
         "watchdog: notification delivery failed",
         "Failed at step NAMESPACE spawning executable",
         "Failed at step " + private,
-        "watchdog-credential-metadata mode=0o100400 uid=0 gid=0 nlink=0 size=144 readonly=1",
         "watchdog: consecutive_fails=1 alerts_this_hour=2 kicks_this_hour=1 classes="
         + private,
     ]
     outputs = {
-        "systemctl": "Result=exit-code\nExecMainStatus=1\nEnvironment=" + private,
+        "systemctl": "Result=exit-code\nExecMainStatus=1\nEnvironment="
+        + private
+        + "\nExecStartPre={ path=/usr/bin/python3 ; argv[]="
+        + private
+        + " ; ignore_errors=yes ; code=exited ; status=0 }",
         "journalctl": "\n".join(
             json.dumps({"MESSAGE": message}) for message in messages
         ),
     }
     for name, output in outputs.items():
         executable = tmp_path / name
-        executable.write_text("#!" + sys.executable + "\nprint(" + repr(output) + ")\n")
+        code = "print(" + repr(output) + ")\n"
+        if name == "journalctl":
+            metadata = json.dumps(
+                {
+                    "MESSAGE": "watchdog-credential-metadata mode=0o100400 uid=0 gid=0 nlink=0 size=144 readonly=1"
+                }
+            )
+            code = (
+                "import sys\nif '--grep=^watchdog-credential-metadata ' in sys.argv:\n"
+                "    print(" + repr(metadata) + ")\nelse:\n    " + code
+            )
+        executable.write_text("#!" + sys.executable + "\n" + code)
         executable.chmod(0o755)
     result = subprocess.run(
         [sys.executable, "-c", program],
@@ -315,6 +329,7 @@ def test_failure_journal_diagnostics_filter_private_messages_and_preserve_hard_f
     assert result.returncode == 0 and not result.stderr
     report = json.loads(result.stdout)
     assert report["unit"] == {"Result": "exit-code", "ExecMainStatus": "1"}
+    assert report["pre_start"] == [{"code": "exited", "status": 0}]
     assert "unit startup step=NAMESPACE" in report["journal_signals"]
     assert "watchdog counters=1,2,1" in report["journal_signals"]
     assert "watchdog notification failed" in report["journal_signals"]

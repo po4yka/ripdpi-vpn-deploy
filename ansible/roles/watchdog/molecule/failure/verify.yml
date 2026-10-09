@@ -39,17 +39,32 @@
 
                 properties = {'Result', 'ExecMainCode', 'ExecMainStatus', 'ActiveState', 'SubState'}
                 status = collect(['systemctl', 'show', 'vpn-watchdog.service',
-                                  '--property=' + ','.join(sorted(properties))])
-                report = {'unit': {}, 'journal_signals': []}
+                                  '--property=' + ','.join(sorted(properties | {'ExecStartPre'}))])
+                report = {'unit': {}, 'pre_start': [], 'journal_signals': []}
                 if status is not None:
                     for line in status.stdout.splitlines():
                         key, _, value = line.partition('=')
                         if key in properties and re.fullmatch(r'[A-Za-z0-9_-]{1,64}', value):
                             report['unit'][key] = value
+                        elif key == 'ExecStartPre':
+                            for result in re.finditer(
+                                r'; code=([a-z]+|\(null\)) ; status=([0-9]+)(?:/[A-Z0-9]+)? }', value
+                            ):
+                                code, exit_status = result.groups()
+                                if code in {'exited', 'killed', 'dumped', 'trapped', 'stopped', 'continued', '(null)'}:
+                                    report['pre_start'].append({
+                                        'code': 'not-run' if code == '(null)' else code,
+                                        'status': int(exit_status),
+                                    })
                 journal = collect(['journalctl', '--unit=vpn-watchdog.service',
                                    '--lines=30', '--no-pager', '--output=json'])
-                if journal is not None:
-                    for line in journal.stdout.splitlines():
+                metadata_journal = collect(['journalctl', '--unit=vpn-watchdog.service',
+                                            '--grep=^watchdog-credential-metadata ',
+                                            '--lines=4', '--no-pager', '--output=json'])
+                for captured in (journal, metadata_journal):
+                    if captured is None:
+                        continue
+                    for line in captured.stdout.splitlines():
                         try:
                             message = json.loads(line).get('MESSAGE', '')
                         except (ValueError, AttributeError):
@@ -59,7 +74,7 @@
                         metadata = re.fullmatch(
                             r'watchdog-credential-metadata mode=0o[0-7]+ uid=[0-9]+ '
                             r'gid=[0-9]+ nlink=[0-9]+ size=[0-9]+ readonly=[01]', message)
-                        if metadata:
+                        if metadata and message not in report['journal_signals']:
                             report['journal_signals'].append(message)
                         elif message in {'watchdog notification failed', 'watchdog: notification delivery failed'}:
                             report['journal_signals'].append(message)
