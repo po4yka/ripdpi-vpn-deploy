@@ -19,7 +19,7 @@ Usage: ${0##*/} -p <provider> -e <environment>
 
 Plans terraform/providers/<provider> for <environment> via
 scripts/terraform-env.sh, converts the plan to JSON, and runs
-conftest test against terraform/policy/.
+the shared fail-closed gate against terraform/policy/.
 EOF
 }
 
@@ -68,4 +68,4 @@ PROVIDER="$provider" ENV="$env_name" "${REPO_ROOT}/scripts/terraform-env.sh" pla
 PROVIDER="$provider" ENV="$env_name" "${REPO_ROOT}/scripts/terraform-env.sh" show \
 	-json "$PLAN_BIN" >"$PLAN_JSON"
 
-python3 "${REPO_ROOT}/scripts/terraform-plan-policy.py" "$PLAN_JSON"
+"${REPO_ROOT}/scripts/check-tf-plan.sh" "$PLAN_JSON"

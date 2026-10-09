@@ -243,8 +243,8 @@ def test_xray_publishes_required_geoip_as_a_pinned_read_only_runtime_asset() -> 
         }
     ]
     expected = (
-        "/usr/bin/env XRAY_LOCATION_ASSET={{ xray_asset_dir }} "
-        "/usr/local/bin/xray run -test -config %s"
+        "/usr/local/libexec/vpn-xray-validate "
+        "--asset-dir {{ xray_asset_dir | quote }} --config %s"
     )
     assert validation_commands == [expected, expected]
     service = (

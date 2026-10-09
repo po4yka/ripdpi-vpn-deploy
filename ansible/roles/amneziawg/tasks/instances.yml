@@ -32,3 +32,4 @@
            'h4': amneziawg_secrets.h4 | default(amneziawg_cohort.h4),
            'peers': amneziawg_secrets.peers,
          }] }}
+  no_log: true

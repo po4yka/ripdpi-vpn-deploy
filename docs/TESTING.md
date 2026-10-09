@@ -101,7 +101,7 @@ matrix records coverage and commands rather than manually maintained totals.
 | **Container image scanning (Trivy)** | `.github/workflows/image-scan.yml` when selected; always on main/manual CI | n/a | n/a | When the image consumer group is selected, scans the complete deduplicated set of digest-pinned images from all Molecule scenarios; selection never narrows the image inventory. Uploads HIGH/CRITICAL SARIF to the Security tab under a digest-free per-image category, so a clean scan of a repinned digest closes the previous digest's alerts. Escalate only with rationale + expiry + owner in `.trivyignore`. |
 | **Repo drift (weekly)** | `.github/workflows/drift.yml` | `scripts/drift-since-tag.sh --repo-only` | n/a | Scheduled Monday 12:00 UTC. Diffs the repository against the last known-good tag. Updates a single rolling issue labelled `automation:drift` when drift is detected; silent when clean. Operator-side cron (against live servers) is unchanged and uses the script without `--repo-only`. |
 | **Task and OpenSpec contract** | `make task-check` + required `task-contract` CI job | strict portfolio, mdtask, OpenSpec, generated-asset, board, and deletion-history validation | peer checkout in CI | Federation resolves qualified RIPDPI task references, terminal Git history, and cross-repository cycles. |
-| **Jinja2 snapshot diff (147 templates)** | `scripts/render-snapshots.py` | golden-file diff | n/a | Fails on any unintended render change. Run `make snapshot-update` after intentional template edits. |
+| **Jinja2 snapshot diff (148 templates)** | `scripts/render-snapshots.py` | golden-file diff | n/a | Fails on any unintended render change. Run `make snapshot-update` after intentional template edits. |
 
 ## Test fixtures and stubs
 

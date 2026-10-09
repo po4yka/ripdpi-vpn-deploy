@@ -20,6 +20,16 @@ mode-0644 `60-cloudimg-settings.conf` only with exact bytes
 rollback and fsync boundaries. Modified content or metadata refuses before
 writes; successful bootstrap leaves the canonical 10/20/50 layout.
 
+**Disposable CI identity arrives on a separate disk** — UpCloud adds the public
+`bootstrap-ssh-seed.py` installer to its cloud config only when a CI seed is set.
+It mounts the UUID-bound disk read-only, validates the private key against its
+public digest, and atomically installs it before the existing fail-closed SSH
+bootstrap chain. Private key bytes never enter cloud-init or command arguments.
+Image creation pins e2fsprogs 1.47.0 on Linux (1.47.4 for native macOS tests), uses
+rootless `mke2fs -d`, and disables `orphan_file` for the supported guest kernels.
+The filesystem utilities use the upstream GPL-2.0 license; no runtime Python
+dependency or custom guest image is introduced.
+
 ## What's done well
 
 - **Marker-based wait** — `scripts/wait-cloud-init.sh` treats the marker file as authoritative after cloud-init reaches a terminal state. This tolerates provider-image recoverable warnings while still failing when SSH validation or reload did not publish the marker.

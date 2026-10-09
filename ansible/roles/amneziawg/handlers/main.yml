@@ -15,5 +15,6 @@
   loop: "{{ _awg_instances | default([{'name': amneziawg.interface}]) }}"
   loop_control:
     label: "{{ item.name }}"
+  no_log: true
   changed_when: true
   when: not ansible_check_mode

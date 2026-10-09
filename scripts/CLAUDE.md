@@ -2,6 +2,30 @@
 
 ## Design decisions
 
+- SNI secrets are parsed structurally through PyYAML; only `xray.server_names` becomes probe targets, and malformed private input produces categorical diagnostics.
+
+- Disposable CI creates its no-clobber public result directory before validating
+  configuration. Invalid JSON, template selection and absent credentials produce
+  categorical results without private inputs or starting provider operations.
+- Disposable CI uses one private controller run per guest. A provider-imported,
+  digest-bound SSH seed establishes first-contact trust; its private image and
+  provider upload diagnostics never enter plaintext artifacts. Exact cleanup
+  includes the seed, and seed-only cleanup never proves whole-provider absence.
+- CI Tailnet policy is derived only from a confirmed handoff matching source,
+  node, host-key pin and observed contexts in a typed CI cohort. Promotion uses
+  the ordinary pinned Linux SSH sentinel at `ci-liveness` with actual activation
+  metadata; the existing Colima executor retains its separate bound contract.
+  Stop owned loopback/Tailnet units in every exit path on the ephemeral runner.
+- The CI SSH sentinel creates OpenSSH's privilege-separation runtime before
+  validation and retains PAM account/session checks with public-key-only
+  authentication. Tighten an owned `.ssh` directory before publishing config;
+  reject writable or foreign directories and report categorical stage errors.
+
+
+**Blue-green authenticates before first contact** — verify the green public key through an authenticated channel and confirm its standard known_hosts entry before inventory rendering. Vultr secondary-IP discovery uses strict host-key checking; it never enrolls a new key. Wait for cloud-init through the pinned public path before presenting recovery-installation steps. Then establish Tailnet/recovery ownership, render the confirmed handoff, and let the canonical controller perform pinned readiness. Blue and green aliases must be exact VPN inventory members before verification or deployment.
+
+**Audit operator boundaries** — saved Terraform plans pass `check-tf-plan.sh` across all required policy namespaces; `policy-plan.sh` snapshots once, checks and applies that exact private file. Never replace it with a second plan. Reconverge, replacement and drift check-mode call the Make deployment controller. `diff-secrets.sh` uses the inventory transport and read-only Ansible comparison against the canonical Xray template; it never prints remote configuration or treats rendering failure as clean drift.
+
 **Subsystem ownership and design notes live in [DESIGN-NOTES.md](DESIGN-NOTES.md)** — before
 changing a listed subsystem, read its matching section:
 
@@ -263,10 +287,10 @@ Independent controller homes are not a supported shared-ownership mechanism.
 
 ## Pitfalls
 
-- **Saved-plan policy precedes operator apply** — `apply-terraform-plan.sh`
+- **Saved-plan policy precedes operator apply** — `policy-plan.sh`
   privately copies the regular environment plan, uses the canonical workspace
   router for show/apply, and evaluates that same copy through
-  `terraform-plan-policy.py`. Temporary binary/JSON files are private and cleaned
+  `check-tf-plan.sh` and its single `terraform-plan-policy.py` evaluator. Temporary binary/JSON files are private and cleaned
   on exit. Evaluator failures, malformed results and zero policy checks refuse
   apply; diagnostics identify policy namespaces without printing plan content.
 

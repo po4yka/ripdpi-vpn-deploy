@@ -70,6 +70,10 @@ NON_SECRET_TOPLEVEL = {
     "geodata",
     "naive",
     # Role-internal compute (set_fact)
+    # Validated provider address and interface from honeypot secondary-address tasks.
+    "_honeypot_secondary_address",
+    "_honeypot_secondary_interface",
+    "_honeypot_secondary_unit",
     "xray_arch",
     "xray_sha256",
     "hysteria_arch",

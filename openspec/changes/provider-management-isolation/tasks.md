@@ -13,11 +13,22 @@ coverage and a scoped PR; retain explicit gaps for infrastructure acceptance.
   firewall.tf, new provider lifecycle/migration native fixtures and
   tests/unit/test_provider_bootstrap_lifecycle.py.
 - Primary owns Makefile, .pre-commit-config.yaml, .github/workflows/tf-policy.yml, terraform/policy/*, scripts/tf-policy-test.sh,
-  scripts/terraform-plan-policy.py, scripts/apply-terraform-plan.sh,
+  scripts/terraform-plan-policy.py, scripts/policy-plan.sh, scripts/check-tf-plan.sh,
   tests/unit/test_terraform_plan_policy.py, tests/unit/test_terraform_apply_policy.py,
   provider README generation, subtree CLAUDE.md updates and all task/spec metadata.
 - Workers share this dedicated worktree. Only primary writes shared guidance,
   metadata, integration changes and commits. Heavy checks use build-gate once.
+
+### Integration ownership
+
+- Policy worker resolves terraform/policy/{admin_port,ssh_cidrs,secondary_ip,
+  secondary_ip_test}.rego and consolidates port semantics into the incoming
+  canonical firewall.rego/firewall_test.rego helper API.
+- Primary resolves Makefile, scripts/tf-policy-test.sh and tf-policy.yml,
+  consolidates operator gates into check-tf-plan.sh/policy-plan.sh, owns evaluator
+  and gate-test updates, guidance, metadata and merge commit.
+- Lifecycle worker validates provider lifecycle/native tests against incoming
+  bootstrap-seed changes; reports integration gaps without editing shared lanes.
 
 ## Execution
 

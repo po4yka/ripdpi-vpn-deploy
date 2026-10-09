@@ -693,7 +693,9 @@ init:
 validate:
 	@for provider in upcloud hetzner vultr scaleway; do \
 	  terraform -chdir=terraform/providers/$$provider fmt -check -recursive || exit 1; \
-	  terraform -chdir=terraform/providers/$$provider validate || exit 1; \
+	  data_dir="$(CURDIR)/terraform/providers/$$provider/.terraform-env/.validation"; \
+	  TF_DATA_DIR="$$data_dir" TF_WORKSPACE=default terraform -chdir=terraform/providers/$$provider init -backend=false -input=false -lockfile=readonly >/dev/null || exit 1; \
+	  TF_DATA_DIR="$$data_dir" TF_WORKSPACE=default terraform -chdir=terraform/providers/$$provider validate || exit 1; \
 	done
 	gitleaks git --redact --no-banner .
 	gitleaks git --staged --redact --no-banner .
@@ -708,9 +710,10 @@ plan:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) $(TF_ENV) plan \
 	  -var-file=environments/$(ENV).tfvars \
 	  -out=$(ENV).tfplan
+	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/policy-plan.sh check
 
 apply:
-	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/apply-terraform-plan.sh "$(ENV).tfplan"
+	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/policy-plan.sh apply
 
 inventory:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" ./scripts/render-inventory.sh
@@ -762,6 +765,7 @@ override SECRETS_FILE := $(if $(filter file default undefined,$(origin SECRETS_F
 override ANSIBLE_EXTRA_VARS_FILE := $(if $(filter file default undefined,$(origin ANSIBLE_EXTRA_VARS_FILE)),$(ANSIBLE_EXTRA_VARS_FILE),$(value ANSIBLE_EXTRA_VARS_FILE))
 override INSPECT_KNOWN_HOSTS := $(if $(filter file default undefined,$(origin INSPECT_KNOWN_HOSTS)),$(INSPECT_KNOWN_HOSTS),$(value INSPECT_KNOWN_HOSTS))
 override DEPLOY_SSH_CONTEXTS_FILE := $(value DEPLOY_SSH_CONTEXTS_FILE)
+override DEPLOY_CI_TAILNET_HANDOFF := $(value DEPLOY_CI_TAILNET_HANDOFF)
 override DEPLOY_PROMOTION_CONFIG_FILE := $(value DEPLOY_PROMOTION_CONFIG_FILE)
 override DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE := $(value DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE)
 override TAILNET_NETWORK_CONFIG := $(value TAILNET_NETWORK_CONFIG)
@@ -775,6 +779,7 @@ deploy dry-run: export DEPLOY_SECRETS_FILE = $(SECRETS_FILE)
 deploy dry-run: export DEPLOY_EXTRA_VARS_FILE = $(ANSIBLE_EXTRA_VARS_FILE)
 deploy dry-run: export DEPLOY_KNOWN_HOSTS = $(INSPECT_KNOWN_HOSTS)
 deploy dry-run: export DEPLOY_SSH_CONTEXTS_FILE := $(DEPLOY_SSH_CONTEXTS_FILE)
+deploy dry-run: export DEPLOY_CI_TAILNET_HANDOFF := $(DEPLOY_CI_TAILNET_HANDOFF)
 deploy dry-run: export DEPLOY_PROMOTION_CONFIG_FILE := $(DEPLOY_PROMOTION_CONFIG_FILE)
 deploy dry-run: export DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE := $(DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE)
 deploy dry-run: export DEPLOY_ENV = $(ENV)
@@ -818,6 +823,7 @@ deploy-canary:
 	$(MAKE) ENV=canary deploy
 
 os-maintenance: require-clean-source require-inventory validate-ansible-extra-vars pre-deploy-check
+	VPN_SECRETS_FILE="$(SECRETS_FILE)" \
 	ansible-playbook $(ANSIBLE_DIR)/playbooks/os-maintenance.yml \
 	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \
 	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)")
@@ -1221,7 +1227,8 @@ molecule-full-stack:
 smoke-test:
 	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run 'make decrypt'"; exit 1; }
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
-	ansible-playbook $(ANSIBLE_DIR)/playbooks/smoke-test.yml
+	ansible-playbook $(ANSIBLE_DIR)/playbooks/smoke-test.yml \
+	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)")
 
 validate-target:
 	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run 'make decrypt'"; exit 1; }

@@ -14,6 +14,20 @@
 
 ## Design decisions
 
+**Review regressions preserve first-use boundaries** — invalid CI configuration
+publishes categorical results before deployment; blue-green waits for bootstrap
+after pinning and refuses before recovery instructions when readiness fails.
+
+**Disposable trust tests exercise real boundaries** — build and inspect a real
+private ext4 seed and verify its SSH identity; the native lane mounts its loop
+block device in a private mount namespace and runs the guest installer. The
+native sentinel test starts a real pinned loopback SSH daemon, rejects an altered
+pin and stops only its owned unit. These tests supplement orchestration and
+mock-provider checks; they do not claim a provider deployment.
+
+
+**Audit regressions use executable boundaries** — localhost Ansible tests exercise synthetic-key redaction, DNS and forwarding transitions, canonical Xray drift, and rollback validation/activation failures. Saved-plan tests replace the original after inspection and verify apply still uses the inspected private snapshot. These prove local behavior, not provider or guest acceptance. Construct time-sensitive lease inputs at test execution, so a long collection-to-execution delay cannot turn an overlong lease into a valid one.
+
 **Subscription first check mode covers planned service boundaries** — evaluate
 loaded, absent, unplanned and failed systemd discovery plus restart handlers.
 Real role convergence and first-host dry-run remain separate acceptance gates.
@@ -162,6 +176,8 @@ hash-pinned requirements, even on a pip cache hit. Galaxy consumers set the same
 absolute `ANSIBLE_COLLECTIONS_PATH` as the action's isolated collection cache.
 OS, architecture, Python and both requirements files determine its exact key.
 The `python validators` job preserves seven checks behind one required context.
+The native lane consumes this setup through `setup-disposable-ci`; cache
+coverage follows that composite and includes its required Galaxy installation.
 
 **CI selection follows complete consumers** — common Python/static checks always
 run; costly PR lanes follow the selector's path graph. Docs are compiled into

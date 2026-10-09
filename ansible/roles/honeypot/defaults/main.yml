@@ -14,6 +14,10 @@
 # explicitly and pick a port that doesn't collide with REALITY/XHTTP/
 # Hysteria.
 
+# Empty selects the gathered default IPv4 interface. Override only for a
+# separately routed provider interface; never infer it from an SSH address.
+honeypot_secondary_interface: ""
+
 honeypot:
   port: "{{ honeypot_port }}"
   log_dir: /var/log/honeypot

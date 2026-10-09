@@ -2,6 +2,15 @@
 # Local watchdog: probes every enabled transport on a 5-minute timer and
 # pushes an alert via ntfy.sh / Pushover after N consecutive failures.
 
+- name: Install the shared Xray validation entry point for watchdog probes
+  ansible.builtin.include_role:
+    name: xray
+    tasks_from: validation-helper
+  when: >-
+    not (vpn_subscription_only | default(false)) and
+    ((vpn.enable_xray_reality | default(true)) or
+     (vpn.enable_nginx_xhttp | default(true)))
+
 - name: Ensure watchdog state directory
   ansible.builtin.file:
     path: /var/lib/vpn-watchdog

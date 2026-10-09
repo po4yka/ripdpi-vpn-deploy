@@ -40,7 +40,7 @@ def test_exact_source_bounded_lease(guest, request_data):
 
 
 @pytest.mark.parametrize('change', [
-    {'expires_at': 1}, {'expires_at': int(time.time())+1200},
+    {'expires_at': 1},
     {'ssh_port': True}, {'ssh_port': 0}, {'public_sources': ['0.0.0.0']},
     {'public_sources': ['198.51.100.10/32']}, {'public_sources': ['198.51.100.10']*2},
     {'source_revision': 'wrong'}, {'nonce': 'wrong'}, {'schema_version': True},
@@ -48,6 +48,13 @@ def test_exact_source_bounded_lease(guest, request_data):
 def test_invalid_authority_refuses(guest, request_data, change):
     with pytest.raises((guest.Refusal, ValueError)):
         guest.validate({**request_data, **change})
+
+
+def test_invalid_authority_refuses_overlong_lease(guest, request_data):
+    # Compute at execution: collection may precede this test by over five minutes.
+    request_data['expires_at'] = int(time.time()) + 1200
+    with pytest.raises((guest.Refusal, ValueError)):
+        guest.validate(request_data)
 
 
 def test_normalization_preserves_quota_and_expressions(guest):

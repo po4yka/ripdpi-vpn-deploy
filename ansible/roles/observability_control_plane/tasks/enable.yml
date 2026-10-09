@@ -163,6 +163,16 @@
     cache_valid_time: 3600
     policy_rc_d: 101
 
+- name: Begin collector runtime activation transaction
+  ansible.builtin.set_fact:
+    _observability_prometheus_runtime_ready: false
+
+- name: Capture the collector release before binary activation
+  ansible.builtin.stat:
+    path: "{{ observability_control_plane.install_root }}/current"
+    follow: false
+  register: _observability_prometheus_previous_release
+
 - name: Install pinned Prometheus through runtime-release
   ansible.builtin.include_role:
     name: runtime-release
@@ -178,6 +188,10 @@
     runtime_release_artifact_type: archive
     runtime_release_archive_members: "{{ observability_control_plane.prometheus.archive_members }}"
     runtime_release_archive_strip_components: 1
+
+- name: Preserve the collector binary activation result
+  ansible.builtin.set_fact:
+    _observability_prometheus_runtime_changed: "{{ runtime_release_changed | bool }}"
 
 - name: Create private control-plane directories
   ansible.builtin.file:
@@ -390,14 +404,18 @@
   no_log: true
   diff: false
 
-- name: Install Prometheus service unit
-  ansible.builtin.template:
-    src: observability-prometheus.service.j2
-    dest: /etc/systemd/system/observability-prometheus.service
-    owner: root
-    group: root
-    mode: '0644'
-  register: _observability_prometheus_unit
+- name: Inspect previous Prometheus unit
+  ansible.builtin.stat:
+    path: /etc/systemd/system/observability-prometheus.service
+    follow: false
+  register: _observability_prometheus_previous_unit
+
+- name: Capture previous Prometheus unit
+  ansible.builtin.slurp:
+    src: /etc/systemd/system/observability-prometheus.service
+  register: _observability_prometheus_previous_unit_bytes
+  when: _observability_prometheus_previous_unit.stat.exists
+  no_log: true
 
 - name: Inspect current generation before activation
   ansible.builtin.stat:
@@ -431,6 +449,15 @@
 
 - name: Activate complete validated Prometheus generation with rollback
   block:
+    - name: Install Prometheus service unit
+      ansible.builtin.template:
+        src: observability-prometheus.service.j2
+        dest: /etc/systemd/system/observability-prometheus.service
+        owner: root
+        group: root
+        mode: '0644'
+      register: _observability_prometheus_unit
+
     - name: Point current configuration at candidate generation
       ansible.builtin.file:
         src: "{{ observability_control_plane.config_root }}/generations/{{ _observability_generation }}.yml"
@@ -446,7 +473,8 @@
         enabled: true
         state: >-
           {{ 'restarted' if (_observability_prometheus_unit.changed or
-          _observability_prometheus_activation.changed) else 'started' }}
+          _observability_prometheus_activation.changed or
+          _observability_prometheus_runtime_changed) else 'started' }}
 
     - name: Require loopback-only Prometheus candidate readiness
       ansible.builtin.uri:
@@ -459,6 +487,16 @@
       until: _observability_ready.status == 200
       no_log: true
   rescue:
+    - name: Restore the previous collector binary after failed activation
+      ansible.builtin.file:
+        src: "{{ _observability_prometheus_previous_release.stat.lnk_source }}"
+        dest: "{{ observability_control_plane.install_root }}/current"
+        state: link
+        force: true
+      when:
+        - _observability_prometheus_runtime_changed | bool
+        - _observability_prometheus_previous_release.stat.islnk | default(false)
+
     - name: Restore previous ready configuration after failed candidate
       ansible.builtin.file:
         src: "{{ _observability_current.stat.lnk_source }}"
@@ -466,6 +504,36 @@
         state: link
         force: true
       when: _observability_current.stat.exists | default(false)
+
+    - name: Restore previous Prometheus unit after failed activation
+      ansible.builtin.copy:
+        content: "{{ _observability_prometheus_previous_unit_bytes.content | b64decode }}"
+        dest: /etc/systemd/system/observability-prometheus.service
+        owner: root
+        group: root
+        mode: '0644'
+      when: _observability_prometheus_previous_unit.stat.exists
+      no_log: true
+
+    - name: Stop an unaccepted first Prometheus service activation
+      ansible.builtin.systemd_service:
+        name: observability-prometheus
+        state: stopped
+        enabled: false
+        daemon_reload: true
+      when: not (_observability_current.stat.exists | default(false))
+
+    - name: Remove an unaccepted first Prometheus configuration activation
+      ansible.builtin.file:
+        path: "{{ observability_control_plane.config_root }}/current.yml"
+        state: absent
+      when: not (_observability_current.stat.exists | default(false))
+
+    - name: Remove the unaccepted first Prometheus service unit
+      ansible.builtin.file:
+        path: /etc/systemd/system/observability-prometheus.service
+        state: absent
+      when: not (_observability_prometheus_previous_unit.stat.exists | default(false))
 
     - name: Restore previous ready Prometheus service
       ansible.builtin.systemd_service:
@@ -477,6 +545,10 @@
     - name: Fail closed when no previous ready generation exists
       ansible.builtin.fail:
         msg: Candidate control-plane generation did not become ready; previous ready generation was restored when available.
+
+- name: Commit ready collector runtime activation
+  ansible.builtin.set_fact:
+    _observability_prometheus_runtime_ready: true
 
 - name: Create unprivileged isolated ingress group
   ansible.builtin.group:

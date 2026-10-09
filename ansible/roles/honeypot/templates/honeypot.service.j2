@@ -3,6 +3,10 @@ Description=VPN active-probing honeypot listener
 Documentation=https://github.com/po4yka/ripdpi-vpn-deploy/blob/main/ansible/roles/honeypot/defaults/main.yml
 After=network-online.target
 Wants=network-online.target
+{% if _honeypot_secondary_required | default(false) %}
+Requires={{ _honeypot_secondary_unit }}
+After={{ _honeypot_secondary_unit }}
+{% endif %}
 
 [Service]
 Type=simple

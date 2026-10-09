@@ -100,7 +100,7 @@ test_allow_single_public_iface_no_opt_in {
 }
 
 
-test_allow_upcloud_primary_dual_stack_without_secondary_opt_in {
+test_allow_upcloud_default_dual_stack {
   result := deny with input as {
     "variables": {"additional_public_ip": {"value": false}},
     "resource_changes": [{
@@ -109,7 +109,7 @@ test_allow_upcloud_primary_dual_stack_without_secondary_opt_in {
       "change": {"after": {"network_interface": [
         {"type": "public", "ip_address_family": "IPv4"},
         {"type": "public", "ip_address_family": "IPv6"},
-        {"type": "utility"},
+        {"type": "utility", "ip_address_family": "IPv4"},
       ]}},
     }],
   }

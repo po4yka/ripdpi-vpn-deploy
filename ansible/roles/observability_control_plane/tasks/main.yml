@@ -1,3 +1,28 @@
 ---
-- name: Select observability control-plane lifecycle
-  ansible.builtin.include_tasks: "{{ 'enable.yml' if observability_control_plane.enabled | bool else 'disable.yml' }}"
+- name: Reconcile control-plane lifecycle with runtime rollback
+  block:
+    - name: Select observability control-plane lifecycle
+      ansible.builtin.include_tasks: "{{ 'enable.yml' if observability_control_plane.enabled | bool else 'disable.yml' }}"
+  rescue:
+    - name: Restore collector binary after pre-activation validation failure
+      ansible.builtin.file:
+        src: "{{ _observability_prometheus_previous_release.stat.lnk_source }}"
+        dest: "{{ observability_control_plane.install_root }}/current"
+        state: link
+        force: true
+      when:
+        - not (_observability_prometheus_runtime_ready | default(false) | bool)
+        - _observability_prometheus_previous_release.stat.islnk | default(false)
+
+    - name: Remove an unaccepted first collector binary activation
+      ansible.builtin.file:
+        path: "{{ observability_control_plane.install_root }}/current"
+        state: absent
+      when:
+        - not (_observability_prometheus_runtime_ready | default(false) | bool)
+        - _observability_prometheus_previous_release is defined
+        - not (_observability_prometheus_previous_release.stat.exists | default(false))
+
+    - name: Refuse incomplete observability collector convergence
+      ansible.builtin.fail:
+        msg: Observability collector convergence failed; an unaccepted binary activation was reverted.

@@ -125,6 +125,8 @@ def test_strict_drops_by_default_and_allows_baseline_infra():
             "strict",
             vpn={
                 "enable_xray_reality": False,
+                "enable_nginx_xhttp": False,
+                "enable_snell": False,
                 "enable_hysteria": False,
                 "enable_naive": False,
                 "enable_warp_outbound": False,
@@ -347,3 +349,18 @@ def test_echo_public_address_validator_fails_closed():
         result = _validate_public_addresses(payload)
         assert result.returncode != 0
         assert "public address contract:" in result.stderr
+
+
+def test_strict_preserves_xhttp_only_and_snell_only_proxy_egress():
+    for transport in ("enable_nginx_xhttp", "enable_snell"):
+        vpn = {
+            "enable_xray_reality": False,
+            "enable_nginx_xhttp": False,
+            "enable_snell": False,
+            "enable_hysteria": False,
+            "enable_naive": False,
+            transport: True,
+        }
+        chain = _output_chain(_render("strict", vpn=vpn))
+        assert "\n    tcp accept\n" in chain
+        assert "\n    udp accept\n" in chain

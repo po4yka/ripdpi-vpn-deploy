@@ -84,7 +84,7 @@ def test_restricted_and_adjacent_ranges_and_udp_pass(tmp_path: Path, selector: s
         "source_ips": [source],
     }]}))
     assert result.returncode == 0, result.stderr
-    assert "PASS" in result.stdout
+    assert "evaluations passed" in result.stdout
 
 
 def test_primary_dual_stack_passes_without_secondary_opt_in(tmp_path: Path) -> None:

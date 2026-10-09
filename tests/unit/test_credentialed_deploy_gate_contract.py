@@ -12,7 +12,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW_DIR = ROOT / ".github/workflows"
-WORKFLOWS = ("real-vps-deploy.yml", "transport-reachability-matrix.yml")
+WORKFLOWS = ("real-vps-deploy.yml", "transport-reachability-matrix.yml", "ci-disposable-deploy.yml")
 GATE_ENVIRONMENT = "ci-real-deploy"
 
 
@@ -28,7 +28,11 @@ def test_credentialed_jobs_reference_the_protected_environment():
             job for job in jobs.values()
             if re.search(r"\$\{\{\s*secrets[.\[]", json.dumps(job))
         ]
-        assert credentialed, f"{name} has no credential-bearing job to gate"
+        if name != "ci-disposable-deploy.yml":
+            calls = [job for job in jobs.values() if "uses" in job]
+            assert calls and all(job["uses"] == "./.github/workflows/ci-disposable-deploy.yml" for job in calls)
+        else:
+            assert credentialed, f"{name} has no credential-bearing job to gate"
         for job in credentialed:
             assert job.get("environment") == GATE_ENVIRONMENT
 
@@ -36,7 +40,8 @@ def test_credentialed_jobs_reference_the_protected_environment():
 def test_no_secret_is_expanded_inside_run_blocks():
     for name, document in _workflow_documents():
         steps = [step for job in document["jobs"].values() for step in job.get("steps", [])]
-        assert steps, f"{name} declares no steps"
+        assert steps or any(job.get("uses") == "./.github/workflows/ci-disposable-deploy.yml"
+                            for job in document["jobs"].values())
         for index, step in enumerate(steps):
             run = step.get("run")
             if run is None:
@@ -49,14 +54,13 @@ def test_no_secret_is_expanded_inside_run_blocks():
 
 def test_fork_short_circuit_is_retained():
     for name, document in _workflow_documents():
-        for job in document["jobs"].values():
-            guard = next(step for step in job["steps"]
-                         if step.get("name") == "Refuse to run on a fork PR")
-            assert guard["if"] == (
-                "github.event_name == 'pull_request' && "
-                "github.event.pull_request.head.repo.full_name != github.repository"
-            ), f"{name} must reject forks without rejecting dispatch/schedule events"
-            assert "exit 1" in guard["run"]
+        if name == "ci-disposable-deploy.yml":
+            guard = document["jobs"]["deploy"]["steps"][1]
+            assert "github.event.pull_request.head.repo.full_name != github.repository" in guard["env"]["FORK"]
+            assert 'test "$FORK" != true' in guard["run"]
+        else:
+            first = document["jobs"]["selection" if name.startswith("transport") else "deploy"]
+            assert "github.event.pull_request.head.repo.full_name == github.repository" in first["if"]
 
 
 @pytest.mark.parametrize("rules,expected", [

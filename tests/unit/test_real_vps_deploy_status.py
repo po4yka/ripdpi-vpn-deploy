@@ -16,34 +16,21 @@ def _job():
     return yaml.safe_load(WORKFLOW.read_text())["jobs"]["deploy"]
 
 
-@pytest.mark.parametrize("distro,template,secret_name", [
-    ("debian13", "", "CI_UPCLOUD_TEMPLATE_UUID"),
-    ("ubuntu2404", "", "CI_UPCLOUD_TEMPLATE_UUID_UBUNTU24"),
-    ("debian13", "template-test-value", "CI_UPCLOUD_TEMPLATE_UUID"),
-    ("ubuntu2404", "template-test-value", "CI_UPCLOUD_TEMPLATE_UUID_UBUNTU24"),
-    ("unknown", "", None),
+@pytest.mark.parametrize("fork,missing,success", [
+    ("true", None, False), ("false", "UPCLOUD_TOKEN", False),
+    ("false", "CI_TAILSCALE_OAUTH_CLIENT_SECRET", False), ("false", None, True),
 ])
-def test_template_preflight_fails_closed(tmp_path, distro, template, secret_name):
-    gate = next(step for step in _job()["steps"] if step.get("id") == "gate")
-    environment_file = tmp_path / "env"
-    result = subprocess.run(
-        ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", gate["run"]],
-        env={**os.environ, "MATRIX_DISTRO": distro,
-             "CI_UPCLOUD_TEMPLATE_UUID_DEBIAN13": template if distro == "debian13" else "",
-             "CI_UPCLOUD_TEMPLATE_UUID_UBUNTU24": template if distro == "ubuntu2404" else "",
-             "GITHUB_ENV": str(environment_file), "GITHUB_OUTPUT": str(tmp_path / "output")},
-        cwd=tmp_path, capture_output=True, text=True, timeout=10,
-    )
-    if template:
-        assert result.returncode == 0, result.stderr
-        assert environment_file.read_text() == f"MATRIX_TEMPLATE_UUID={template}\n"
-        assert template not in result.stdout + result.stderr
-    else:
-        assert result.returncode != 0, result.stdout
-        assert "::error::" in result.stdout
-        if secret_name:
-            assert secret_name in result.stdout
-        assert not environment_file.exists()
+def test_protected_preflight_fails_before_tools(tmp_path, fork, missing, success):
+    job = yaml.safe_load((ROOT / ".github/workflows/ci-disposable-deploy.yml").read_text())["jobs"]["deploy"]
+    guard = job["steps"][1]
+    environment = {**os.environ, "FORK": fork}
+    for name in guard["env"]:
+        if name != "FORK":
+            environment[name] = "synthetic-value" if name != missing else ""
+    result = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", guard["run"]],
+                            env=environment, cwd=tmp_path, capture_output=True, text=True, timeout=10)
+    assert (result.returncode == 0) is success
+    assert "synthetic-value" not in result.stdout + result.stderr
 
 
 def test_optional_ubuntu_is_selected_before_jobs_start():
@@ -58,14 +45,13 @@ def test_selected_deploy_cannot_be_short_circuited_into_success():
     job = _job()
     assert "continue-on-error" not in job
     assert "github.event_name == 'schedule'" in job["if"]
-    steps = job["steps"]
-    preflight = next(i for i, step in enumerate(steps) if step.get("id") == "gate")
-    deploy = next(i for i, step in enumerate(steps) if step.get("name") == "Deploy")
-    assert preflight < deploy
-    for step in steps[preflight:]:
+    assert job["uses"] == "./.github/workflows/ci-disposable-deploy.yml"
+    shared = yaml.safe_load((ROOT / ".github/workflows/ci-disposable-deploy.yml").read_text())["jobs"]["deploy"]
+    steps = shared["steps"]
+    deploy = next(step for step in steps if "scripts/ci-real-deploy.py" in step.get("run", ""))
+    assert "if" not in deploy
+    for step in steps:
         assert "continue-on-error" not in step
         assert "outputs.skip" not in step.get("if", "")
-    assert "if" not in steps[deploy]
-    destroy = steps[-1]
-    assert destroy["if"] == "always() && env.CI_ENV != ''"
-    assert "make destroy DESTROY_ARGS=--non-interactive" in destroy["run"]
+    assert steps[-1]["if"] == "always()"
+    assert steps[-1]["with"]["if-no-files-found"] == "error"

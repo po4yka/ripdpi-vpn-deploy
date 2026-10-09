@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Explicit TLS-sharing overrides remain valid in standalone role use without a `vpn` mapping; fallback lookup normalizes the absent mapping before reading its Hysteria toggle.
+
 **Native config validation precedes publication** — the template uses the
 pinned `sing-box-realm check -c` command, so malformed candidates never replace
 the active config or queue a restart.
@@ -24,10 +26,10 @@ the version + sha256 from `hysteria_realm_secrets.linux_*_sha256` so a
 version bump touches only the secrets file. Treat every minor bump as a
 breaking change until upstream cuts a stable line.
 
-**Shared cert with the P2 hysteria role** — `share_hysteria_tls: true`
-(default) symlinks the hysteria role's cert/key into this role's config
-dir. One renewal path covers both tiers. Set to `false` to point at a
-separately-managed cert when the operator splits hostnames. Supplementary
+**TLS ownership follows the enabled profile** — `share_hysteria_tls` defaults
+to `vpn.enable_hysteria`. Co-hosted P2/P5 reuse the hysteria role's cert/key;
+standalone P5 publishes its own PEM copies without requiring P2 files or
+accounts. An explicit override is still respected. Supplementary
 `hysteria` membership and `append` are enabled together only for shared TLS;
 Ansible rejects `append: true` without a `groups` argument.
 

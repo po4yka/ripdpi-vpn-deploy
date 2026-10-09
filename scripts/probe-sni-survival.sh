@@ -89,25 +89,25 @@ fi
 # server_names resolution: explicit > env > secrets file.
 if [[ -z "$SERVER_NAMES" ]]; then
   if [[ -n "$SECRETS" && -f "$SECRETS" ]]; then
-    if command -v jq >/dev/null 2>&1 && jq -e . "$SECRETS" >/dev/null 2>&1; then
-      SERVER_NAMES="$(jq -r '.xray.server_names | join(" ")' "$SECRETS")"
-    else
-      # YAML fallback via python (stdlib has no YAML; do a narrow grep parse
-      # of the `server_names:` list to avoid a PyYAML dependency).
-      SERVER_NAMES="$(python3 - "$SECRETS" <<'PY'
-import sys, re
-text = open(sys.argv[1], encoding="utf-8").read()
-m = re.search(r'(?ms)^\s*server_names\s*:\s*(.*?)(?:^\S|\Z)', text)
-names = []
-if m:
-    for line in m.group(1).splitlines():
-        line = line.strip()
-        if line.startswith("-"):
-            names.append(line[1:].strip().strip('"\''))
-print(" ".join(n for n in names if n))
+    SERVER_NAMES="$(python3 - "$SECRETS" <<'PY'
+import re
+import sys
+import yaml
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as source:
+        names = yaml.safe_load(source)["xray"]["server_names"]
+    if not isinstance(names, list) or not names or any(
+        not isinstance(name, str)
+        or re.fullmatch(r"[A-Za-z0-9.-]{1,253}", name) is None
+        for name in names
+    ):
+        raise ValueError
+except (OSError, UnicodeError, yaml.YAMLError, TypeError, KeyError, ValueError):
+    sys.exit("invalid xray.server_names in secrets")
+print(" ".join(names))
 PY
 )"
-    fi
   fi
 fi
 

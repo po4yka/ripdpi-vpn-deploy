@@ -62,11 +62,19 @@ def test_live_fleet_profiles_enable_only_reviewed_tailnet_management_sources() -
         "vpn-p1-web.yml",
         "vpn-p2-udp.yml",
         "vpn-device-full-staging.yml",
+        "vpn-device-full-tailnet.yml",
+        "vpn-ci-p0.yml",
+        "vpn-ci-p0p1.yml",
+        "vpn-ci-p0p1p2.yml",
+        "vpn-ci-p0p4.yml",
+        "vpn-ci-p0p5.yml",
     }
     for path in sorted(group_vars.glob("vpn-*.yml")):
         document = yaml.safe_load(path.read_text()) or {}
         enabled = document.get("vpn", {}).get("enable_tailnet_management", False)
         assert enabled is (path.name in enabled_profiles), path.name
+        if enabled:
+            assert document.get("tailnet_management", {}).get("approved_sources", approved_sources) == approved_sources
 
 
 def test_staging_profile_preserves_transports_and_limits_rehearsal_services(

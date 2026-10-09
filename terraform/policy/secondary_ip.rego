@@ -16,7 +16,7 @@ package terraform.policy.secondary_ip
 
 opt_in := input.variables.additional_public_ip.value == true
 
-# upcloud_server: IPv6 is the primary dual-stack companion, not secondary IPv4.
+# upcloud_server: IPv6 is part of ordinary dual-stack, not the honeypot opt-in.
 deny[msg] {
   not opt_in
   rc := input.resource_changes[_]

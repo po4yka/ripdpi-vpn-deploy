@@ -8,6 +8,11 @@
     rollback_xray_version: "{{ lookup('env', 'ROLLBACK_XRAY_VERSION') }}"
 
   tasks:
+    - name: Install the shared Xray validation entry point
+      ansible.builtin.include_role:
+        name: xray
+        tasks_from: validation-helper
+
     - name: ROLLBACK_XRAY_VERSION names a pinned release
       ansible.builtin.assert:
         that:
@@ -40,10 +45,10 @@
     - name: Validate current config with rollback binary
       ansible.builtin.command:
         argv:
+          - /usr/local/libexec/vpn-xray-validate
+          - --binary
           - "/opt/xray/releases/{{ rollback_xray_version }}/xray"
-          - run
-          - -test
-          - -config
+          - --config
           - /etc/xray/config.json
       check_mode: false
       changed_when: false

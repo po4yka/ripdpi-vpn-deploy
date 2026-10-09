@@ -1,0 +1,26 @@
+---
+# Profile: full device transports with ordinary OpenSSH over Tailnet.
+# Public listeners: family-standard plus AmneziaWG UDP. This preserves the
+# historical all.yml / vpn-fullstack surface where AmneziaWG is part of the
+# default device-VPN contract.
+
+vpn:
+  enable_tailnet_management: true
+  enable_xray_reality: true
+  enable_nginx_xhttp: true
+  enable_naive: false
+  enable_hysteria: true
+  enable_amneziawg: true
+  enable_geodata: true
+  enable_monitoring: true
+  enable_watchdog: true
+  enable_backup: true
+  enable_subscription_host: false
+  enable_policy_ratelimit: false
+  enable_cdn_front: false
+  enable_honeypot: false
+  enable_warp_outbound: false
+  enable_dns_morph_bridge: false
+  enable_hysteria_realm: false
+  enable_split_hop_egress: false
+  enable_snell: false

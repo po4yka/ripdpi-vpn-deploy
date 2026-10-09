@@ -99,5 +99,5 @@ Next steps:
          COHORTS="fullstack,p0" \\
          ANSIBLE_SSH_PRIVATE_KEY_FILE=~/.ssh/vpn_deploy \\
          ./scripts/render-inventory.sh
-         ansible-playbook ansible/playbooks/site.yml
+         make PROVIDER=${PROVIDER} ENV=${NEW_ENV} dry-run deploy verify
 EOF

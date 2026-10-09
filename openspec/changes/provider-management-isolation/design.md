@@ -54,6 +54,15 @@ independent and the Makefile remains the canonical operator entry point.
 - Added identity guards and attachment ownership must preserve unchanged existing
   nodes; migration tests are required before delivery.
 
+## Integration with current main
+
+The deployment-security change adds the canonical check-tf-plan.sh and
+policy-plan.sh operator surfaces plus firewall.rego normalization. This change
+uses those surfaces and one Python evaluator, retains complete policy-family
+coverage and readonly snapshot custody, and extends conservative selector and
+integer-port checks. Duplicate apply and port-helper paths are removed. Incoming
+bootstrap seed, deployment and runtime fixes are preserved without deployment.
+
 ## Migration Plan
 
 Review private Terraform inputs before an authorized deployment. Apply uses a

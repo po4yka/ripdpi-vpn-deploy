@@ -1,0 +1,69 @@
+---
+name: ci-disposable-deploy
+on:
+  workflow_call:
+    inputs:
+      distro:
+        type: string
+        required: true
+      profile:
+        type: string
+        required: true
+      zone:
+        type: string
+        default: fi-hel1
+      mode:
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    environment: ci-real-deploy
+    concurrency:
+      group: disposable-${{ inputs.distro }}-${{ inputs.profile }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Require a trusted repository and complete configuration
+        env:
+          FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+          UPCLOUD_TOKEN: ${{ secrets.UPCLOUD_TOKEN }}
+          CI_TAILSCALE_OAUTH_CLIENT_ID: ${{ secrets.CI_TAILSCALE_OAUTH_CLIENT_ID }}
+          CI_TAILSCALE_OAUTH_CLIENT_SECRET: ${{ secrets.CI_TAILSCALE_OAUTH_CLIENT_SECRET }}
+          CI_DEPLOY_CONFIG: ${{ secrets.CI_DEPLOY_CONFIG }}
+        run: |
+          set -euo pipefail
+          test "$FORK" != true
+          for name in UPCLOUD_TOKEN CI_TAILSCALE_OAUTH_CLIENT_ID CI_TAILSCALE_OAUTH_CLIENT_SECRET CI_DEPLOY_CONFIG; do
+            test -n "${!name}" || { echo "::error::Missing protected environment secret $name"; exit 1; }
+          done
+      - uses: ./.github/actions/setup-disposable-ci
+      - name: Bootstrap, deploy, prove and destroy one owned node
+        env:
+          UPCLOUD_TOKEN: ${{ secrets.UPCLOUD_TOKEN }}
+          CI_TAILSCALE_OAUTH_CLIENT_ID: ${{ secrets.CI_TAILSCALE_OAUTH_CLIENT_ID }}
+          CI_TAILSCALE_OAUTH_CLIENT_SECRET: ${{ secrets.CI_TAILSCALE_OAUTH_CLIENT_SECRET }}
+          CI_DEPLOY_CONFIG: ${{ secrets.CI_DEPLOY_CONFIG }}
+          SELECTED_DISTRO: ${{ inputs.distro }}
+          SELECTED_PROFILE: ${{ inputs.profile }}
+          SELECTED_ZONE: ${{ inputs.zone }}
+          SELECTED_MODE: ${{ inputs.mode }}
+        run: |
+          python3 scripts/ci-real-deploy.py \
+            --distro "$SELECTED_DISTRO" --profile "$SELECTED_PROFILE" \
+            --zone "$SELECTED_ZONE" --mode "$SELECTED_MODE" \
+            --work-dir "$RUNNER_TEMP/deployment-private" \
+            --artifact-dir "$RUNNER_TEMP/deployment-artifact"
+      - name: Upload categorical result and encrypted failure recovery
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: disposable-${{ inputs.distro }}-${{ inputs.profile }}-${{ inputs.mode }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/deployment-artifact/
+          if-no-files-found: error
+          retention-days: 7

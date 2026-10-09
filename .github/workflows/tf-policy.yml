@@ -101,4 +101,4 @@ jobs:
           terraform plan -input=false -refresh=false -lock=false \
             -var-file=environments/ci-policy.tfvars -out=ci-policy.tfplan
           terraform show -json ci-policy.tfplan > ci-policy.json
-          python3 ../../../scripts/terraform-plan-policy.py ci-policy.json
+          ../../../scripts/check-tf-plan.sh ci-policy.json

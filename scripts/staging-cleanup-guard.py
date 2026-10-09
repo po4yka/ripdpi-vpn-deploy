@@ -65,6 +65,9 @@ ALLOWED_DESTROY_ADDRESSES = {
 }
 
 
+SEED_ADDRESS = "upcloud_storage.ci_ssh_seed[0]"
+
+
 JsonRequest = Callable[[str], tuple[int, dict[str, Any]]]
 
 
@@ -383,20 +386,23 @@ def _state_resources(state_value: dict[str, Any]) -> dict[str, dict[str, Any]]:
         if not isinstance(resource_type, str) or not isinstance(resource_name, str):
             raise GuardError("state contains an invalid resource address")
         address = f"{resource_type}.{resource_name}"
+        seed_instance = address == "upcloud_storage.ci_ssh_seed"
+        if seed_instance:
+            address += "[0]"
         instances = resource.get("instances")
         if (
             address in indexed
             or not isinstance(instances, list)
             or len(instances) != 1
             or not isinstance(instances[0], dict)
-            or "index_key" in instances[0]
+            or (type(instances[0].get("index_key")) is not int or instances[0]["index_key"] != 0 if seed_instance else "index_key" in instances[0])
         ):
             raise GuardError("state contains an ambiguous resource instance")
         attributes = instances[0].get("attributes")
         if not isinstance(attributes, dict):
             raise GuardError("state resource attributes are invalid")
         indexed[address] = attributes
-    if set(indexed) != ALLOWED_DESTROY_ADDRESSES:
+    if set(indexed) not in (ALLOWED_DESTROY_ADDRESSES, ALLOWED_DESTROY_ADDRESSES | {SEED_ADDRESS}):
         raise GuardError("state contains a foreign resource")
     return indexed
 
@@ -463,6 +469,31 @@ def _extract_state_identity(
         raise GuardError("state firewall ID belongs to a foreign server")
     return server_uuid, storage_uuid
 
+
+
+def _seed_identity(resources: dict[str, dict[str, Any]], hostname: str, environment: str) -> dict[str, str] | None:
+    seed = resources.get(SEED_ADDRESS)
+    devices = resources["upcloud_server.vpn"].get("storage_devices") or []
+    if seed is None:
+        if devices:
+            raise GuardError("server has foreign attached storage")
+        return None
+    identifier = _uuid(seed.get("id"), "seed storage UUID")
+    labels = seed.get("labels")
+    imports = seed.get("import")
+    if (seed.get("encrypt") is not True or seed.get("title") != hostname + "-ssh-seed"
+            or not isinstance(labels, dict) or labels.get("env") != environment
+            or labels.get("managed_by") != "terraform"
+            or not isinstance(imports, list) or len(imports) != 1 or not isinstance(imports[0], dict)
+            or imports[0].get("source") != "direct_upload"
+            or not isinstance(imports[0].get("source_hash"), str)
+            or not SHA256_RE.fullmatch(imports[0]["source_hash"])):
+        raise GuardError("seed storage binding is invalid")
+    filesystem_uuid = _uuid(labels.get("seed_id"), "seed filesystem UUID")
+    if not isinstance(devices, list) or len(devices) != 1 or not isinstance(devices[0], dict) or devices[0].get("storage") != identifier:
+        raise GuardError("server seed attachment is invalid")
+    return {"uuid": identifier, "filesystem_uuid": filesystem_uuid,
+            "image_sha256": imports[0]["source_hash"]}
 
 def _authenticated_account_username(request_json: JsonRequest) -> str:
     status, payload = request_json("/1.3/account")
@@ -537,6 +568,7 @@ def create_manifest(
     )
     state_value = _json_object(state_bytes, "state")
     server_uuid, storage_uuid = _extract_state_identity(state_value, hostname)
+    seed = _seed_identity(_state_resources(state_value), hostname, environment)
     provider_account_username = _authenticated_account_username(request_json)
     created = _authenticated_server_created(
         request_json,
@@ -575,6 +607,8 @@ def create_manifest(
         "escalation_at": _format_time(escalation),
         "expiry_at": _format_time(expiry),
     }
+    if seed is not None:
+        manifest["ssh_seed"] = seed
     lifecycle.publish(manifest, output_path, previous_manifest_path)
     return manifest
 
@@ -597,6 +631,15 @@ def _validate_manifest_shape(
         "escalation_at",
         "expiry_at",
     }
+    if "ssh_seed" in manifest:
+        expected.add("ssh_seed")
+        seed = manifest["ssh_seed"]
+        if not isinstance(seed, dict) or set(seed) != {"uuid", "filesystem_uuid", "image_sha256"}:
+            raise GuardError("manifest seed binding is invalid")
+        _uuid(seed.get("uuid"), "manifest seed UUID")
+        _uuid(seed.get("filesystem_uuid"), "manifest seed filesystem UUID")
+        if not isinstance(seed.get("image_sha256"), str) or not SHA256_RE.fullmatch(seed["image_sha256"]):
+            raise GuardError("manifest seed digest is invalid")
     if set(manifest) != expected or manifest.get("schema_version") != SCHEMA_VERSION:
         raise GuardError("manifest schema is invalid")
     if manifest.get("provider") != "upcloud":
@@ -717,8 +760,14 @@ def validate_destroy_plan(
         ):
             raise GuardError("destroy plan is not delete-only")
         indexed[address] = change
-    if set(indexed) != ALLOWED_DESTROY_ADDRESSES:
+    allowed = ALLOWED_DESTROY_ADDRESSES | ({SEED_ADDRESS} if "ssh_seed" in manifest else set())
+    if set(indexed) != allowed:
         raise GuardError("destroy plan contains a foreign resource")
+    before = {address: change.get("before") for address, change in indexed.items()}
+    if any(not isinstance(value, dict) for value in before.values()):
+        raise GuardError("destroy plan prior resource is invalid")
+    if _seed_identity(before, manifest["hostname"], manifest["environment"]) != manifest.get("ssh_seed"):
+        raise GuardError("destroy plan seed does not match manifest")
     server = indexed["upcloud_server.vpn"].get("before")
     if not isinstance(server, dict) or server.get("id") != manifest["server_uuid"]:
         raise GuardError("destroy plan server UUID does not match manifest")
@@ -751,6 +800,7 @@ def validate_destroy_plan(
     return {
         "deleted_addresses": sorted(indexed),
         "root_storage_uuid": manifest["root_storage_uuid"],
+        **({"ssh_seed": manifest["ssh_seed"]} if "ssh_seed" in manifest else {}),
         "server_uuid": manifest["server_uuid"],
     }
 
@@ -770,6 +820,7 @@ def _reserved_evidence(manifest: dict[str, Any]) -> dict[str, Any]:
         "manifest_sha256": hashlib.sha256(canonical_json(manifest)).hexdigest(),
         "server_uuid": manifest["server_uuid"],
         "root_storage_uuid": manifest["root_storage_uuid"],
+        **({"ssh_seed": manifest["ssh_seed"]} if "ssh_seed" in manifest else {}),
     }
 
 
@@ -1075,6 +1126,7 @@ def recover_reserved_evidence(
         "observed_at": _format_time(observed),
         "server_uuid": manifest["server_uuid"],
         "root_storage_uuid": manifest["root_storage_uuid"],
+        **({"ssh_seed": manifest["ssh_seed"]} if "ssh_seed" in manifest else {}),
         "server_status": "absent",
         "root_storage_status": "absent",
         "billing_status": "no-active-owned-resources",
@@ -1308,6 +1360,10 @@ def verify_upcloud_absence(
         raise GuardError("storage still exists")
     if storage_status != 404 or _error_code(storage) != "STORAGE_NOT_FOUND":
         raise GuardError("storage absence is ambiguous")
+    if "ssh_seed" in manifest:
+        seed_status, seed_body = request_json(f"/1.3/storage/{manifest['ssh_seed']['uuid']}")
+        if seed_status != 404 or _error_code(seed_body) != "STORAGE_NOT_FOUND":
+            raise GuardError("seed storage absence is ambiguous")
     observed = _parse_time(
         (
             clock()
@@ -1333,6 +1389,7 @@ def verify_upcloud_absence(
         "observed_at": _format_time(observed),
         "server_uuid": manifest["server_uuid"],
         "root_storage_uuid": manifest["root_storage_uuid"],
+        **({"ssh_seed": manifest["ssh_seed"]} if "ssh_seed" in manifest else {}),
         "server_status": "absent",
         "root_storage_status": "absent",
         "billing_status": "no-active-owned-resources",
@@ -1355,13 +1412,15 @@ def _upcloud_request(authorization: str, *, timeout: float = 15.0) -> JsonReques
         NoRedirect(),
     )
 
-    def request(path: str) -> tuple[int, dict[str, Any]]:
+    def request(path: str, *, method: str = "GET") -> tuple[int, dict[str, Any]]:
         if not path.startswith("/1.3/") or "?" in path or "#" in path:
             raise GuardError("provider request path is invalid")
+        if method not in {"GET", "DELETE"} or (method == "DELETE" and not re.fullmatch(r"/1\.3/storage/[a-f0-9-]{36}", path)):
+            raise GuardError("provider request method is invalid")
         req = urllib.request.Request(
             API_ROOT + path,
             headers={"Authorization": authorization, "Accept": "application/json"},
-            method="GET",
+            method=method,
         )
         try:
             response = opener.open(req, timeout=timeout)
@@ -1376,7 +1435,7 @@ def _upcloud_request(authorization: str, *, timeout: float = 15.0) -> JsonReques
             response.close()
         if len(body) > MAX_API_BYTES:
             raise GuardError("provider response exceeds size limit")
-        return status, _json_object(body, "provider response")
+        return status, _json_object(body, "provider response") if body else {}
 
     return request
 

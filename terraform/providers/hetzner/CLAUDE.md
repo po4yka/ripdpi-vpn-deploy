@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+**Floating IP assignment and guest configuration are separate** — Terraform allocates and routes optional honeypot IPv4; the honeypot role installs its persistent guest `/32` and validates it before binding. No service should treat the provider's assigned address as proof that it exists on a guest interface.
+
 **Mirrors UpCloud's output schema** — `server_ipv4`, `server_ipv6`,
 `admin_user`, `ssh_port`, `server_hostname`. So `render-inventory.sh` stays
 provider-neutral.

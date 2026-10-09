@@ -17,7 +17,7 @@ def _setup(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     repo = tmp_path / "repo"
     scripts = repo / "scripts"
     scripts.mkdir(parents=True)
-    for name in ("apply-terraform-plan.sh", "terraform-env.sh", "terraform-plan-policy.py"):
+    for name in ("policy-plan.sh", "check-tf-plan.sh", "terraform-env.sh", "terraform-plan-policy.py"):
         shutil.copy2(ROOT / "scripts" / name, scripts / name)
     shutil.copytree(ROOT / "terraform/policy", repo / "terraform/policy")
     provider = repo / "terraform/providers/upcloud"
@@ -59,7 +59,7 @@ if args[0]=='apply': sys.exit(int(os.environ.get('APPLY_EXIT','0')))
 
 
 def _run(repo: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["bash", str(repo / "scripts/apply-terraform-plan.sh"), "prod.tfplan"],
+    return subprocess.run(["bash", str(repo / "scripts/policy-plan.sh"), "apply"],
                           env=env, cwd=repo, text=True, capture_output=True)
 
 
@@ -77,7 +77,7 @@ def test_safe_plan_applies_same_private_snapshot_and_cleans_up(tmp_path: Path) -
     assert [call["command"] for call in calls] == ["show", "apply"]
     assert calls[0]["path"] == calls[1]["path"]
     assert calls[1]["content"] == "original saved plan"
-    assert all(call["mode"] == 0o600 and call["parent_mode"] == 0o700 for call in calls)
+    assert all(call["mode"] == 0o400 and call["parent_mode"] == 0o700 for call in calls)
     assert list(Path(env["TMPDIR"]).iterdir()) == []
 
 
@@ -129,11 +129,11 @@ def test_missing_or_symlink_plan_is_refused_before_terraform(tmp_path: Path) -> 
 def test_make_apply_uses_the_policy_gate() -> None:
     source = (ROOT / "Makefile").read_text()
     target = source.split("\napply:\n", 1)[1].split("\n\n", 1)[0]
-    assert './scripts/apply-terraform-plan.sh "$(ENV).tfplan"' in target
+    assert './scripts/policy-plan.sh apply' in target
 
 
 def test_standalone_and_ci_policy_paths_share_evaluator() -> None:
     standalone = (ROOT / "scripts/tf-policy-test.sh").read_text()
     workflow = (ROOT / ".github/workflows/tf-policy.yml").read_text()
-    assert 'python3 "${REPO_ROOT}/scripts/terraform-plan-policy.py" "$PLAN_JSON"' in standalone
-    assert "python3 ../../../scripts/terraform-plan-policy.py ci-policy.json" in workflow
+    assert '"${REPO_ROOT}/scripts/check-tf-plan.sh" "$PLAN_JSON"' in standalone
+    assert "../../../scripts/check-tf-plan.sh ci-policy.json" in workflow

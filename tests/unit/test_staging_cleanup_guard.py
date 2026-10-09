@@ -2118,3 +2118,64 @@ def test_legacy_upcloud_manifest_cannot_enter_registered_lifecycle(
     copied = _private_file(path.with_name("legacy.json"), guard.canonical_json(legacy))
     with pytest.raises(guard.GuardError, match="schema"):
         guard.load_manifest(copied, now=CREATED)
+
+
+@pytest.mark.parametrize("failure", [None, "foreign-plan-seed", "seed-still-present"])
+def test_seed_storage_is_bound_through_manifest_plan_and_absence(tmp_path: Path, failure) -> None:
+    seed_uuid = "11223344-5566-4788-99aa-bbccddeeff00"
+    filesystem_uuid = "22334455-6677-4899-aabb-ccddeeff0011"
+    state = _state_view()
+    seed_attrs = {
+        "id": seed_uuid, "encrypt": True, "title": HOSTNAME + "-ssh-seed",
+        "labels": {"env": "ci-staging-20260829", "managed_by": "terraform", "seed_id": filesystem_uuid},
+        "import": [{"source": "direct_upload", "source_hash": "a" * 64}],
+    }
+    state["resources"].append({"mode": "managed", "type": "upcloud_storage", "name": "ci_ssh_seed", "instances": [{"index_key": 0, "attributes": seed_attrs}]})
+    state["resources"][1]["instances"][0]["attributes"]["storage_devices"] = [{"storage": seed_uuid}]
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    state_path = _private_file(private / "state.json", guard.canonical_json(state))
+    manifest_path = private / "manifest.json"
+    manifest = guard.create_manifest(output_path=manifest_path, provider="upcloud", environment="ci-staging-20260829", workspace="ci-staging-20260829", state_path=state_path, hostname=HOSTNAME, request_json=_creation_get, now=CREATED)
+    assert manifest["ssh_seed"] == {"uuid": seed_uuid, "filesystem_uuid": filesystem_uuid, "image_sha256": "a" * 64}
+    evidence = _reserved_evidence_path(manifest_path)
+    plan = _destroy_plan()
+    plan["resource_changes"][1]["change"]["before"]["storage_devices"] = [{"storage": seed_uuid}]
+    plan_seed = dict(seed_attrs)
+    if failure == "foreign-plan-seed": plan_seed["id"] = STORAGE_UUID
+    plan["resource_changes"].append({"address": guard.SEED_ADDRESS, "change": {"actions": ["delete"], "before": plan_seed, "after": None}})
+    plan_path = _private_file(private / "plan.json", guard.canonical_json(plan))
+    if failure == "foreign-plan-seed":
+        with pytest.raises(guard.GuardError, match="seed"):
+            guard.validate_destroy_plan(manifest_path, plan_path, evidence, now=CREATED)
+        return
+    checked = guard.validate_destroy_plan(manifest_path, plan_path, evidence, now=CREATED)
+    assert guard.SEED_ADDRESS in checked["deleted_addresses"]
+    _mark_started(manifest_path, evidence)
+    seen = []
+    def request(path):
+        seen.append(path)
+        if path == "/1.3/account": return 200, {"account": {"username": ACCOUNT_USERNAME}}
+        if path.endswith(seed_uuid) and failure == "seed-still-present": return 200, {"storage": {"uuid": seed_uuid}}
+        return 404, {"error": {"error_code": "SERVER_NOT_FOUND" if "/server/" in path else "STORAGE_NOT_FOUND"}}
+    if failure:
+        with pytest.raises(guard.GuardError, match="seed storage absence"):
+            guard.verify_upcloud_absence(manifest_path, evidence, request_json=request, now=CREATED, observed_at=CREATED)
+    else:
+        result = guard.verify_upcloud_absence(manifest_path, evidence, request_json=request, now=CREATED, observed_at=CREATED)
+        assert result["ssh_seed"]["uuid"] == seed_uuid
+        assert guard.recover_reserved_evidence(manifest_path, evidence, now=CREATED) == "verified"
+    assert "/1.3/storage/" + seed_uuid in seen
+
+
+@pytest.mark.parametrize("fault", ["duplicate", "boolean-index"])
+def test_seed_state_rejects_ambiguous_counted_instance(fault):
+    state = _state_view()
+    seed = {"mode": "managed", "type": "upcloud_storage", "name": "ci_ssh_seed",
+            "instances": [{"index_key": False if fault == "boolean-index" else 0,
+                           "attributes": {"id": "11223344-5566-4788-99aa-bbccddeeff00"}}]}
+    state["resources"].append(seed)
+    if fault == "duplicate":
+        state["resources"].append(seed)
+    with pytest.raises(guard.GuardError, match="ambiguous resource instance"):
+        guard._state_resources(state)

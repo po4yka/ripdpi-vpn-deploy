@@ -25,7 +25,7 @@ destroy table inet nat
 {% set _awg_inst = (amneziawg_secrets.instances | default([])) if amneziawg_secrets is defined else [] %}
 {% set awg_uplink_interface = firewall_awg_uplink_interface | default(ansible_facts.get('default_ipv4', {}).get('interface', 'eth0')) %}
 {% set egress_policy = firewall_egress_policy | default('permissive') -%}
-{% set transport_needs_open_egress = (vpn.enable_xray_reality | default(true)) or (vpn.enable_hysteria | default(false)) or (vpn.enable_naive | default(false)) -%}
+{% set transport_needs_open_egress = (vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(false)) or (vpn.enable_hysteria | default(false)) or (vpn.enable_naive | default(false)) or (vpn.enable_snell | default(false)) -%}
 
 table inet filter {
   # This transaction-owned fragment may declare only the two typed SSH source
@@ -222,8 +222,16 @@ table inet filter {
   }
 }
 
-{% if vpn.enable_amneziawg | default(false) %}
+{% set hysteria_hopping = (vpn.enable_hysteria | default(false)) and (hysteria_port_range | default('') | length > 0) %}
+{% if (vpn.enable_amneziawg | default(false)) or hysteria_hopping %}
 table inet nat {
+{% if hysteria_hopping %}
+  chain prerouting {
+    type nat hook prerouting priority dstnat;
+    udp dport {{ hysteria_port_range }} counter redirect to :{{ hysteria_port }} comment "hysteria-port-hopping"
+  }
+{% endif %}
+{% if vpn.enable_amneziawg | default(false) %}
   chain postrouting {
     type nat hook postrouting priority 100;
 {% if _awg_inst | length > 0 %}
@@ -234,5 +242,6 @@ table inet nat {
     iifname "awg0" oifname != "awg0" counter masquerade comment "awg-nat-awg0"
 {% endif %}
   }
+{% endif %}
 }
 {% endif -%}
