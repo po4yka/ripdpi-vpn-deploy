@@ -2,7 +2,7 @@
 id: TFR-1791523370274374
 title: Fix provider P1 and P2 audit defects
 kind: bug
-status: doing
+status: review
 area: terraform
 priority: high
 risk: high
@@ -14,7 +14,7 @@ openspec_change: provider-management-isolation
 created: 2026-10-09
 updated: 2026-10-09
 related_tasks: []
-status_detail: "Authorized P2 audit follow-up on PR 281: Vultr range/backups, fractional listener ports, faithful legacy tests and cloud-init serialization; preserve reviewed P1 repairs."
+status_detail: All actionable P1/P2 source findings addressed; complete make check passed and independent review approves. P2 source 4c600d43536c2c1b1ab09b09fc9af4d5fafa1743 is published on PR 281; final-head hosted results are pending. No live acceptance or closure claimed.
 ---
 
 ## Goal

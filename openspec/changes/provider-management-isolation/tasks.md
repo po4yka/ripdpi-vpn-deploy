@@ -59,4 +59,4 @@ behavior and regression coverage in PR 281; retain infrastructure evidence gaps.
 - [x] TFR-1791537004741307 Repair Vultr range encoding and enable-backups schedule with positive adapter plans #bug @item:TFR-1791523370274374
 - [x] TFR-1791537005304551 Reject fractional listener ports and exercise actual legacy XHTTP deduplication in all roots #bug @item:TFR-1791523370274374
 - [x] TFR-1791537005854827 Encode shared cloud-init scalar inputs and preserve literal metadata across renderers #bug @item:TFR-1791523370274374
-- [ ] TFR-1791537006373613 Validate P2 integration and independent review and publish exact-head evidence on PR 281 #bug @item:TFR-1791523370274374
+- [x] TFR-1791537006373613 Validate P2 integration and independent review and publish exact-head evidence on PR 281 #bug @item:TFR-1791523370274374

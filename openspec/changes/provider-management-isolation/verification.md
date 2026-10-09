@@ -1,11 +1,11 @@
 ---
 task_id: TFR-1791523370274374
 change: provider-management-isolation
-commit_sha: null
+commit_sha: 4c600d43536c2c1b1ab09b09fc9af4d5fafa1743
 local: passed
 local_evidence: Complete build-gated make check passed with pinned cached providers and enforced lock checksums; 5535 portable tests, 56 Bats tests, release Clippy and complete release Cargo tests passed. Native and targeted P2 suites also passed.
 remote_ci: required
-remote_ci_evidence: P1 head 0068c68f55908533209995030217743c1b561ff2 completed all 81 hosted checks (80 success, one neutral). The P2 follow-up requires fresh exact-head hosted evidence.
+remote_ci_evidence: PR 281 P2 source head 4c600d43536c2c1b1ab09b09fc9af4d5fafa1743 is published; hosted checks running with no failures observed at recording time. Final metadata head requires terminal hosted results, reported on the PR. Historical P1 head completed 81 checks.
 dry_run: not_applicable
 dry_run_evidence: No provider access authorized for this source PR.
 staging: not_applicable
@@ -15,7 +15,7 @@ live_evidence: Source PR only; fleet behavior remains unverified.
 client: not_applicable
 client_evidence: Source PR only; client-path acceptance remains unverified.
 artifact: passed
-artifact_evidence: PR 281 on codex/terraform-provider-p1-fixes is the existing delivery artifact; P2 commits and updated evidence are pending.
+artifact_evidence: PR 281 now includes the P2 source commit 4c600d43536c2c1b1ab09b09fc9af4d5fafa1743 and combined P1/P2 description, local gate and independent-review evidence. It remains draft pending final hosted results.
 ---
 
 # Verification
@@ -28,10 +28,10 @@ artifact_evidence: PR 281 on codex/terraform-provider-p1-fixes is the existing d
 | REQ-PMI-IDENTITY | TFR-1791523580174419 | Mock state transitions, unchanged plans and exact prevent_destroy diagnostics | passed; aggregate local-gate gap below |
 | REQ-PMI-HETZNER | TFR-1791523580174419 | Current-type plans and non-destructive attachment ownership migration | passed; aggregate local-gate gap below |
 | REQ-PMI-POLICY | TFR-1791523580836950 | Real Conftest positive/negative/empty evaluation and saved-plan subprocess tests | passed; aggregate local-gate gap below |
-| REQ-PMI-ADAPTER | TFR-1791537004741307 | Native Vultr range/singleton and enabled/disabled backup plans | required P2 follow-up |
-| REQ-PMI-LISTENERS | TFR-1791537005304551 | Four-root fractional refusal, integer boundaries and effective legacy collision tests | required P2 follow-up |
-| REQ-PMI-SCALARS | TFR-1791537005854827 | Actual Terraform rendering, YAML parsing and CI-renderer parity | required P2 follow-up |
-| REQ-PMI-P2-DELIVERY | TFR-1791537006373613 | Integrated local checks, independent review and exact-head PR 281 checks | required P2 follow-up |
+| REQ-PMI-ADAPTER | TFR-1791537004741307 | Native Vultr range/singleton and enabled/disabled backup plans | passed; no live provider proof |
+| REQ-PMI-LISTENERS | TFR-1791537005304551 | Four-root fractional refusal, integer boundaries and effective legacy collision tests | passed |
+| REQ-PMI-SCALARS | TFR-1791537005854827 | Actual Terraform rendering, YAML parsing, null refusal and CI-renderer parity | passed |
+| REQ-PMI-P2-DELIVERY | TFR-1791537006373613 | Full local gate passed, independent review APPROVE and P2 source published on PR 281 | source published; terminal hosted results required |
 
 ## Delivery gates
 
