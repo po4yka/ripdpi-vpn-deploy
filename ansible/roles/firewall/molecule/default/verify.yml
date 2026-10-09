@@ -115,9 +115,11 @@
           def nft(*args):
               return subprocess.run(['nft', *args], check=True, capture_output=True, text=True).stdout
           def expiry(name, address):
-              payload = json.loads(nft('-j', 'get', 'element', 'inet', 'filter', name, '{', address, '}'))
+              payload = json.loads(nft('-j', 'list', 'set', 'inet', 'filter', name))
               current = next(row['set'] for row in payload['nftables'] if 'set' in row)
-              entry = current['elem'][0]['elem']
+              assert (current['family'], current['table'], current['name']) == ('inet', 'filter', name)
+              entry = next(row['elem'] for row in current['elem']
+                           if ipaddress.ip_address(row['elem']['val']) == ipaddress.ip_address(address))
               assert ipaddress.ip_address(entry['val']) == ipaddress.ip_address(address)
               assert type(entry['expires']) is int and entry['expires'] > 0
               return entry['expires']

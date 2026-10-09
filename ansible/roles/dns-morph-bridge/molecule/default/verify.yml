@@ -71,5 +71,5 @@
       ansible.builtin.assert:
         that:
           - unbound_cfg_text is search('access-control:\s*0\.0\.0\.0/0\s+refuse')
-          - unbound_cfg_text is search('access-control:\s*127\.0\.0\.0/8\s+allow')
+          - unbound_cfg_text is search('access-control:\s*127\.0\.0\.0/8\s+refuse_non_local(?:\s|$)')
         fail_msg: "Unbound is not configured to refuse public recursion"

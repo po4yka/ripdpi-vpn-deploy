@@ -22,5 +22,25 @@
         shell: /bin/bash
         create_home: true
         state: present
-  roles:
-    - role: baseline
+  tasks:
+    - name: Exercise the actual baseline role with bounded fixture failure evidence
+      block:
+        - name: Converge the production baseline role
+          ansible.builtin.include_role:
+            name: baseline
+      rescue:
+        - name: Diagnose rejected mandatory sysctl keys without setting values
+          ansible.builtin.command:
+            argv: [python3, '-']
+            stdin: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/diagnose-sysctl.py') }}"
+          register: _baseline_fixture_diagnostics
+          changed_when: false
+          failed_when: false
+
+        - name: Show sanitized baseline fixture failure evidence
+          ansible.builtin.debug:
+            msg: "{{ _baseline_fixture_diagnostics.stdout | default('fixture diagnostic unavailable') }}"
+
+        - name: Preserve the original baseline convergence failure
+          ansible.builtin.fail:
+            msg: Baseline convergence failed; fixture diagnostics do not accept or suppress mandatory failures.

@@ -427,7 +427,28 @@ def test_real_policy_daemon_idle_heartbeat_and_enabled_disabled_idempotence(tmp_
             time.sleep(0.2)
         assert latest > first
         _run(["systemctl", "is-active", "--quiet", "policy-ratelimit.service"])
-        converge(False)
+        try:
+            converge(False)
+        except AssertionError as error:
+            # Diagnose fixture ownership without exposing runtime input bytes.
+            paths = {unit, script, metrics}
+            for path in tuple(paths):
+                paths.update(path.parents)
+            metadata = {}
+            for path in sorted(paths):
+                try:
+                    info = path.lstat()
+                    metadata[str(path)] = {
+                        "uid": info.st_uid,
+                        "gid": info.st_gid,
+                        "mode": oct(info.st_mode),
+                        "links": info.st_nlink,
+                    }
+                except FileNotFoundError:
+                    metadata[str(path)] = "absent"
+            raise AssertionError(
+                f"policy fixture authority metadata: {metadata}"
+            ) from error
         assert all(not path.exists() for path in (unit, script, metrics))
         assert (
             subprocess.run(

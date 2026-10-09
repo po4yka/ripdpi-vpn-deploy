@@ -282,8 +282,10 @@ jobs:
       matrix:
         role:
           - baseline
+          - package_updates
           - network-exposure-gate
           - firewall
+          - intrusion_prevention
           - xray
           - hysteria
           - nginx-xhttp

@@ -1,11 +1,11 @@
 ---
 task_id: ANS-1791562764586678
 change: ansible-role-p2-remediation
-commit_sha: null
+commit_sha: 50fdff3f4f182783893155918dfd26f2b911b089
 local: passed
 local_evidence: Complete build-gated make check passed; 5702 portable tests, 22 subtests, 56 shell tests and 205 Rust tests passed; production lint, schema, policy and 150 snapshots pass. Scoped native runtime checks also pass.
 remote_ci: required
-remote_ci_evidence: Pending exact-source P2 extension checks on existing PR 282.
+remote_ci_evidence: Source 50fdff3f canonical AOP and transport jobs pass; native 82 of 83 pass. Corrected DNS/WARP/firewall fixtures and bounded baseline/CDN/authority diagnostics require a fresh hosted run.
 dry_run: not_applicable
 dry_run_evidence: Source-only remediation; no real inventory or SSH controller transaction.
 staging: not_applicable
@@ -14,8 +14,8 @@ live: not_applicable
 live_evidence: Production convergence and private-state retirement require separate scope.
 client: not_applicable
 client_evidence: Native local namespace and protocol fixtures are not external client acceptance.
-artifact: required
-artifact_evidence: Independent host and transport reviewers approve the P2 source; existing PR 282 publication is pending.
+artifact: passed
+artifact_evidence: Independent host and transport reviewers approve the P2 source; existing PR 282 contains the published extension and scoped evidence.
 ---
 
 # Verification
@@ -119,5 +119,7 @@ required parent mode under the machine gate's restrictive umask.
 Local canonical CDN AOP Molecule creation/gathering reached its package step,
 which refused Debian metadata signatures in the emulated amd64 container on
 the arm64 test VM. Signature verification was preserved. Actual native AOP
-client acceptance passes; the canonical scenario is explicitly selected in
-hosted CI and its result remains required.
+client acceptance and the canonical hosted cdn-on scenario pass. Dedicated
+package_updates and intrusion_prevention scenarios are now selected as well.
+Baseline sysctl, CDN refresh and one policy authority context need bounded
+hosted diagnostics; their production failure boundaries remain unchanged.

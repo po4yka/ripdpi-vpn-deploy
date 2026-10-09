@@ -37,3 +37,31 @@
       ansible.builtin.command:
         cmd: unattended-upgrade -d --dry-run
       changed_when: false
+
+    - name: Retire periodic updates through the internal disable selector
+      ansible.builtin.include_role:
+        name: package_updates
+      vars:
+        package_updates:
+          enabled: false
+
+    - name: Read effective periodic upgrade policy after retirement
+      ansible.builtin.command:
+        argv: [apt-config, shell, UPGRADE, "APT::Periodic::Unattended-Upgrade"]
+      register: retired_periodic_upgrade
+      changed_when: false
+      failed_when: retired_periodic_upgrade.stdout != "UPGRADE='0'"
+
+    - name: Repeat internal update retirement
+      ansible.builtin.include_role:
+        name: package_updates
+      vars:
+        package_updates:
+          enabled: false
+
+    - name: Require repeated retirement to keep periodic upgrades disabled
+      ansible.builtin.command:
+        argv: [apt-config, shell, UPGRADE, "APT::Periodic::Unattended-Upgrade"]
+      register: repeated_periodic_upgrade
+      changed_when: false
+      failed_when: repeated_periodic_upgrade.stdout != "UPGRADE='0'"
