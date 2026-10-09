@@ -3,9 +3,9 @@ task_id: ANS-1791562764586678
 change: ansible-role-p2-remediation
 commit_sha: 50fdff3f4f182783893155918dfd26f2b911b089
 local: passed
-local_evidence: Complete build-gated make check passed; 5702 portable tests, 22 subtests, 56 shell tests and 205 Rust tests passed; production lint, schema, policy and 150 snapshots pass. Scoped native runtime checks also pass.
+local_evidence: Complete build-gated make check passed; 5703 portable tests, 22 subtests, 56 shell tests and 205 Rust tests passed; production lint, schema, policy and 150 snapshots pass. Scoped native runtime checks also pass.
 remote_ci: required
-remote_ci_evidence: Source 50fdff3f canonical AOP and transport jobs pass; native 82 of 83 pass. Corrected DNS/WARP/firewall fixtures and bounded baseline/CDN/authority diagnostics require a fresh hosted run.
+remote_ci_evidence: Source c4459d56 proves canonical AOP, DNS, WARP and both dedicated policy scenarios. Bounded evidence identifies unavailable optional qdisc, candidate shared-temp chown and runner 0777 ancestry; corrected source requires final hosted revalidation.
 dry_run: not_applicable
 dry_run_evidence: Source-only remediation; no real inventory or SSH controller transaction.
 staging: not_applicable
@@ -54,7 +54,7 @@ All 32 confirmed findings F11-F42 have current source coverage. Existing P1 fixe
 | F20 | Proxy trust scoped to CDN vhost | Native nginx candidate/context tests |
 | F21 | Verified paired geodata publication with compensation | Real file downloads, lock and failure tests |
 | F22 | Complete nginx unit/config/credential transaction and rollback | Native HTTPS bad-key/unit compensation tests |
-| F23 | Optional BBR isolated from mandatory sysctl failures | Native sysctl helper tests |
+| F23 | Optional FQ/BBR isolated from mandatory sysctl failures | Native sysctl helper tests |
 | F24 | Valid synthetic AOP chain and actual client assertions; CI scenario selected | Native trusted/untrusted/no-client tests; canonical Molecule pending |
 | F25 | Exact supported Realm service and authenticated users schema | Exact pinned sing-box register/heartbeat/SSE/quota tests |
 | F26 | AWG runtime and unit change restart intent | Controller notification proof; native tests cover membership/target retirement, not warm pin-only or unit-only adoption. |
@@ -106,8 +106,8 @@ The older audit snapshot is not current runtime or production incident proof.
 
 ## Final local gate
 
-The complete corrected build-gated `make check` passed. All 5,702 portable
-tests and 22 subtests passed without skipped portable cases; 83 Linux-native
+The complete corrected build-gated `make check` passed. All 5,703 portable
+tests and 22 subtests passed without skipped portable cases; 84 Linux-native
 cases belong to the separately required native lane. All 56 shell tests, Rust
 release tests and clippy passed. Source lint/syntax, policies, guards, schema
 and all 150 template snapshots passed. All applicable pre-commit hooks pass.
@@ -123,3 +123,21 @@ client acceptance and the canonical hosted cdn-on scenario pass. Dedicated
 package_updates and intrusion_prevention scenarios are now selected as well.
 Baseline sysctl, CDN refresh and one policy authority context need bounded
 hosted diagnostics; their production failure boundaries remain unchanged.
+
+## Hosted-context corrections
+
+The c4459d56 diagnostics identify optional qdisc absence in both Molecule
+images, candidate validation attempting to chown read-only shared nginx temps,
+and a pre-existing 0777 executable parent on the hosted native runner. Only
+FQ and BBR are optional performance tuning; hardening settings remain fatal.
+All candidate HTTP temp paths use the private work directory; the unit floor
+and writable allowlist are unchanged. The disposable native policy fixture
+saves, establishes and restores its root-owned directory mode; production
+retirement still rejects unsafe ancestry.
+
+Scoped portable checks (28 passed), native optional/mandatory and deterministic
+CDN sandbox regression (2 passed), and a real daemon lifecycle proof with
+original 0777 restored (1 passed) confirm these corrections. The complete corrected build-gated make check passed again: 5,703 portable
+tests, 22 subtests, 56 shell tests and 205 Rust tests; all source guards, lint,
+schemas and 150 snapshots pass. Both independent follow-up reviews approve.
+Fresh exact-source hosted acceptance remains required.

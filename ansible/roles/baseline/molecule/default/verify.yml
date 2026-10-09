@@ -97,7 +97,7 @@
     - name: Stage a per-setting optional sysctl failure
       ansible.builtin.copy:
         dest: /run/vpn-sysctl-failure-regression.conf
-        content: "-net.ipv4.tcp_congestion_control = invalid-regression-controller\n"
+        content: "-net.core.default_qdisc = fq\n-net.ipv4.tcp_congestion_control = invalid-regression-controller\n"
         owner: root
         group: root
         mode: "0600"
@@ -111,6 +111,7 @@
       ansible.builtin.copy:
         dest: /run/vpn-sysctl-failure-regression.conf
         content: |
+          -net.core.default_qdisc = fq
           -net.ipv4.tcp_congestion_control = invalid-regression-controller
           net.ipv4.tcp_syncookies = invalid-regression-value
         owner: root

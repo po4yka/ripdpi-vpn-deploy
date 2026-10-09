@@ -31,6 +31,8 @@ must reload successfully; they retain transactional rollback on failure.
 
 ## Pitfalls
 
+- **Candidate HTTP temp paths stay private** — every standalone Nginx validation HTTP temp directory is beneath the refresh workspace. Omitting them lets Nginx’s default worker identity chown shared distro temp directories under the strict sandbox. Full deployed-config validation remains required; the unit floor and writable paths are unchanged.
+
 - **Do not enable this for the RU baseline** — re-read the ADR. Use it only
   when the failure shape is "TLS handshake never completes from this network,
   completes from elsewhere" and a non-RU CDN PoP is reachable.

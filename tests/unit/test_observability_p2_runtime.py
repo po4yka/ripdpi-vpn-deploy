@@ -412,6 +412,15 @@ def test_real_policy_daemon_idle_heartbeat_and_enabled_disabled_idempotence(tmp_
             ).group(1)
         )
 
+    # The disposable runner may supply a world-writable executable directory.
+    # Establish the fixture's declared root-only ancestry and restore its mode.
+    import stat
+
+    parent_before = script.parent.lstat()
+    assert stat.S_ISDIR(parent_before.st_mode)
+    assert parent_before.st_uid == 0 and parent_before.st_gid == 0
+    parent_mode = stat.S_IMODE(parent_before.st_mode)
+    script.parent.chmod(parent_mode & ~0o022)
     try:
         converge(True)
         first = None
@@ -459,17 +468,21 @@ def test_real_policy_daemon_idle_heartbeat_and_enabled_disabled_idempotence(tmp_
         repeated = converge(False)
         assert "changed=0" in repeated.stdout
     finally:
-        if unit.exists():
-            subprocess.run(
-                ["systemctl", "stop", "policy-ratelimit.service"], capture_output=True
-            )
-            subprocess.run(
-                ["systemctl", "disable", "policy-ratelimit.service"],
-                capture_output=True,
-            )
-        for path in (unit, script, metrics, log):
-            path.unlink(missing_ok=True)
-        subprocess.run(["systemctl", "daemon-reload"], check=True)
+        try:
+            if unit.exists():
+                subprocess.run(
+                    ["systemctl", "stop", "policy-ratelimit.service"],
+                    capture_output=True,
+                )
+                subprocess.run(
+                    ["systemctl", "disable", "policy-ratelimit.service"],
+                    capture_output=True,
+                )
+            for path in (unit, script, metrics, log):
+                path.unlink(missing_ok=True)
+            subprocess.run(["systemctl", "daemon-reload"], check=True)
+        finally:
+            script.parent.chmod(parent_mode)
 
 
 @pytest.mark.native_runtime

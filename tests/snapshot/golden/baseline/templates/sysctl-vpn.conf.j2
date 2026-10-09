@@ -3,8 +3,8 @@ net.ipv4.tcp_fastopen = 3
 net.ipv4.tcp_syncookies = 1
 net.ipv4.tcp_mtu_probing = 1
 
-# BBR availability is optional; every other tuning failure remains fatal.
-net.core.default_qdisc = fq
+# Queue discipline and BBR availability are optional; hardening remains mandatory.
+-net.core.default_qdisc = fq
 -net.ipv4.tcp_congestion_control = bbr
 
 # Spoof protection

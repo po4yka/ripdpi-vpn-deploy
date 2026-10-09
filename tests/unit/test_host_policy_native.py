@@ -60,37 +60,41 @@ def test_security_only_policy_replaces_broader_effective_apt_origin_lists():
             )
 
 
-def test_procps_bbr_only_failure_is_optional_but_later_mandatory_failure_is_fatal():
+def test_procps_optional_congestion_keys_do_not_hide_mandatory_failure():
     assert os.geteuid() == 0
     source = ROOT / "ansible/roles/baseline/files/baseline_sysctl.py"
-    with tempfile.TemporaryDirectory(prefix="vpn-p2-sysctl-") as directory:
-        root = Path(directory)
-        policy = root / "policy.conf"
-        # Unsupported algorithm is deliberately synthetic. No kernel value changes.
-        policy.write_text("-net.ipv4.tcp_congestion_control = vpn-test-unavailable\n")
-        native = subprocess.run(
-            ["/usr/sbin/sysctl", "-p", str(policy)], capture_output=True
-        )
-        assert (
-            native.returncode != 0
-        ), "supported procps returns failure even for a marked optional algorithm"
-        optional = subprocess.run(
-            ["/usr/bin/python3", str(source), str(policy)],
-            capture_output=True,
-            text=True,
-        )
-        assert (
-            optional.returncode == 0
-            and optional.stderr == "optional sysctl setting unavailable\n"
-        )
-        policy.write_text(
-            policy.read_text() + "net.ipv4.vpn_test_missing_mandatory = 1\n"
-        )
-        mixed = subprocess.run(
-            ["/usr/bin/python3", str(source), str(policy)],
-            capture_output=True,
-            text=True,
-        )
-        assert (
-            mixed.returncode == 1 and mixed.stderr == "mandatory sysctl policy failed\n"
-        )
+    template = (
+        ROOT / "ansible/roles/baseline/templates/sysctl-vpn.conf.j2"
+    ).read_text()
+    optional = (
+        "\n".join(line for line in template.splitlines() if line.startswith("-")) + "\n"
+    )
+    # All kernel writes stay within a disposable network namespace. Use the
+    # actual role's optional statements alongside a real mandatory setting.
+    code = r"""
+import json,pathlib,subprocess,sys,tempfile
+source,optional=sys.argv[1:]
+def run(*argv):return subprocess.run(argv,stdin=subprocess.DEVNULL,capture_output=True,text=True)
+current=run('/usr/sbin/sysctl','-n','net.ipv4.ip_forward');assert current.returncode==0
+with tempfile.TemporaryDirectory(prefix='vpn-p2-congestion-') as directory:
+ policy=pathlib.Path(directory)/'policy.conf'
+ mandatory='net.ipv4.ip_forward = '+current.stdout.strip()+'\n'
+ policy.write_text(mandatory+optional)
+ positive=run('/usr/bin/python3',source,str(policy));assert positive.returncode==0,positive.stderr
+ assert run('/usr/sbin/sysctl','-n','net.ipv4.ip_forward').stdout==current.stdout
+ unavailable=optional.replace(' = bbr',' = vpn-test-unavailable')
+ policy.write_text(mandatory+unavailable)
+ failed_optional=run('/usr/bin/python3',source,str(policy))
+ assert failed_optional.returncode==0 and failed_optional.stderr=='optional sysctl setting unavailable\n'
+ policy.write_text(mandatory+unavailable+'net.ipv4.vpn_test_missing_mandatory = 1\n')
+ mixed=run('/usr/bin/python3',source,str(policy))
+ assert mixed.returncode==1 and mixed.stderr=='mandatory sysctl policy failed\n'
+ print(json.dumps({'actual_optional_policy_positive':True,'optional_failure_preserves_mandatory':True,'mixed_mandatory_failure_remains_fatal':True}))
+"""
+    result = subprocess.run(
+        ["unshare", "--net", "/usr/bin/python3", "-c", code, str(source), optional],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

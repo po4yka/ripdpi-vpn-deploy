@@ -49,12 +49,13 @@ ownership-only migration. On a fresh Debian node, run the explicit
 first ordinary dry-run. It requires strict public and Tailnet SSH/SFTP proof
 and the installed recovery generation. Local tests are not staging acceptance.
 
-**Optional BBR cannot mask mandatory hardening failures** — only the congestion
-control key uses the per-setting optional prefix. The ordered helper retains
+**Optional FQ/BBR cannot mask mandatory hardening failures** — only queue
+discipline and congestion-control keys use the per-setting optional prefix.
+The ordered helper retains
 the standard directory/file precedence and applies marked optional settings
 separately because the supported procps release still returns a failing status
 for them. Every mandatory segment retains its normal nonzero failure, including
-when optional BBR and a mandatory setting fail together.
+when optional congestion tuning and a mandatory setting fail together.
 
 ## What's done well
 
@@ -84,6 +85,8 @@ when optional BBR and a mandatory setting fail together.
 - **IP forwarding is conditional** — enabled for AWG or split-hop egress; the override is removed when both are disabled. Avoids forwarding on P0-only nodes.
 
 ## Pitfalls
+
+- **Congestion tuning is optional, hardening is mandatory** — only `net.core.default_qdisc` and `net.ipv4.tcp_congestion_control` are marked optional in the role policy. Network namespaces may omit the global qdisc setting; unsupported FQ/BBR cannot conceal any later mandatory security-setting failure. Supported settings still apply in policy order.
 
 - **Shadowed root-login declarations need policy proof** — ownership migration
   may comment one main `PermitRootLogin yes` after the canonical Include only

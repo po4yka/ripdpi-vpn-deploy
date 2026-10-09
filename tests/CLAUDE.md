@@ -285,3 +285,8 @@ contract after mkdir: the shared build gate uses a restrictive umask, so
 mkdir's requested 0755 alone cannot establish the helper's ownership boundary.
 Task-source readers follow enabled task files and recursively inspect real
 publication blocks; dispatcher files cannot prove mutation or activation order.
+
+The native policy lifecycle fixture requires a root-owned executable parent
+without group/world write permissions. A disposable runner may start with
+0777, so the fixture saves the mode, establishes trusted ancestry and restores
+it in cleanup. Production retirement validation keeps rejecting unsafe ancestry.

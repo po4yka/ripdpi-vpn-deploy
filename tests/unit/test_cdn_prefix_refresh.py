@@ -100,6 +100,13 @@ count="$(cat "$NGINX_STATE")"
 count=$((count + 1))
 printf '%s\n' "$count" > "$NGINX_STATE"
 printf 'nginx %s\n' "$*" >> "$CALL_LOG"
+previous=""
+for value in "$@"; do
+  if [[ "$previous" == "-c" ]]; then
+    cat "$value" >> "$CALL_LOG"
+  fi
+  previous="$value"
+done
 if [[ "$count" == "${FAIL_NGINX_CALL:-0}" ]]; then
   exit 43
 fi
@@ -356,3 +363,27 @@ def test_role_starts_nginx_only_after_the_desired_site_is_validated():
     assert "nginx_transaction_desired_enabled: true" in tasks
     assert "nginx_transaction_activation: reload" in tasks
     assert "path: /etc/nginx/sites-enabled/default, kind: absent" in tasks
+
+
+def test_candidate_http_temp_paths_are_private_and_full_deployment_validation_remains(
+    tmp_path,
+):
+    result, _, calls = _run_refresh(tmp_path)
+    assert result.returncode == 0, result.stderr
+    for directive in (
+        "client_body_temp_path",
+        "proxy_temp_path",
+        "fastcgi_temp_path",
+        "uwsgi_temp_path",
+        "scgi_temp_path",
+    ):
+        line = next(
+            line
+            for line in calls.splitlines()
+            if line.strip().startswith(directive + " ")
+        )
+        path = line.strip().split()[1].removesuffix(";")
+        assert "/cdn-prefixes." in path and "/var/lib/nginx" not in path
+    assert "nginx -t -q -c " in calls
+    assert calls.count("nginx -t -q\n") == 2
+    assert "systemctl reload nginx" in calls
