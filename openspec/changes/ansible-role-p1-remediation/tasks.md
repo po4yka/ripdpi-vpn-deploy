@@ -27,7 +27,7 @@ positive local behavior, independent review and exact-source CI evidence.
 - [x] SEC-1791545814693187 Harden retained dead-man TLS acceptance and generation-bound replay #bug !crit @item:SEC-1791545689674403
 - [x] SEC-1791545815210908 Bound watchdog notification duration and protect sender credentials #bug !crit @item:SEC-1791545689674403
 - [x] SEC-1791545815774612 Verify existing DNS and collector revocation repairs and all role regressions #bug !crit @item:SEC-1791545689674403
-- [ ] SEC-1791545816326788 Complete independent security review, full checks and exact-source PR evidence #bug !crit @item:SEC-1791545689674403
+- [x] SEC-1791545816326788 Complete independent security review, full checks and exact-source PR evidence #bug !crit @item:SEC-1791545689674403
 
 ## Verification
 
