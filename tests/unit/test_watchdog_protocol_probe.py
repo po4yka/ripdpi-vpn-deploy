@@ -31,6 +31,8 @@ def _run_watchdog(
     socks_ready: bool = True,
     xray_client_exits: bool = False,
     stats_service_ready: bool = True,
+    notification_sender: Path | None = None,
+    credential_directory: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -43,10 +45,18 @@ def _run_watchdog(
         bin_dir / "systemctl",
         'printf \'%s\\n\' "$*" >> "${SYSTEMCTL_LOG}"\n'
         'if [[ "$*" == *"--property=Environment"* ]]; then\n'
-        '  printf \'%s\\n\' \'XRAY_LOCATION_ASSET=/tmp/watchdog-test-assets\'\n'
-        'fi\nexit 0\n',
+        "  printf '%s\\n' 'XRAY_LOCATION_ASSET=/tmp/watchdog-test-assets'\n"
+        "fi\nexit 0\n",
     )
     _executable(bin_dir / "timeout", "exit 0\n")
+    _executable(
+        bin_dir / "watchdog-notify",
+        (
+            f'exec "{sys.executable}" "{notification_sender}" "$@"\n'
+            if notification_sender
+            else "cat >/dev/null\nexit 0\n"
+        ),
+    )
     _executable(
         bin_dir / "ss",
         "printf '%s\\n' 'LISTEN 0 4096 0.0.0.0:443 0.0.0.0:*'\n"
@@ -108,11 +118,11 @@ def _run_watchdog(
             "FAIL_THRESHOLD": "1",
             "KICKS_PER_HOUR_MAX": "1",
             "SYSTEMCTL_LOG": str(tmp_path / "systemctl.log"),
-            "WATCHDOG_PROVIDER": "ntfy",
-            "NTFY_URL": "https://notify.example.test",
-            "NTFY_TOPIC": "test-topic",
+            "WATCHDOG_NOTIFY_BIN": str(bin_dir / "watchdog-notify"),
         }
     )
+    if credential_directory is not None:
+        env["CREDENTIALS_DIRECTORY"] = str(credential_directory)
     return subprocess.run(
         ["bash", str(SCRIPT)],
         capture_output=True,

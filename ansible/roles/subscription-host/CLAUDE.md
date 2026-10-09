@@ -13,6 +13,13 @@ from the proxy host. See `docs/SUBSCRIPTION-HOST-SEPARATION.md`.
 **Audit log** — every read is recorded (route, ts, token-hash, source ASN).
 Decryptable only with the audit-log key. See `scripts/sub-reads.sh`.
 
+**Revocation is provisioned authority** — startup never creates a missing deny
+list. Startup and each request require a readable regular single-link 0600 file
+owned by the service account, reject symlinks and malformed entries, and fail
+closed if authority is lost. Convergence owns initial authority publication.
+Token-bearing share directory and bundle operations set both `no_log` and
+`diff: false`, including loops and verbose callbacks.
+
 ## What's done well
 
 - **Token store is local-only** — never leaves the host. Bootstrap tokens

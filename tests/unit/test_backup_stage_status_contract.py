@@ -6,6 +6,8 @@ import importlib.util
 import json
 import os
 import stat
+import shlex
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -24,6 +26,7 @@ renderer_spec.loader.exec_module(renderer)
 
 def _render(*, remote_enabled: bool) -> str:
     variables = renderer.merge_render_vars()
+    variables["xray_etc_dir"] = variables["xray_config_dir"]
     variables.update(
         {
             "restic_repo_dir": "/var/backups/vpn-restic",
@@ -46,7 +49,17 @@ def _environment(
     tmp_path: Path, *, fail_at: str | None = None, remote_enabled: bool = False
 ) -> tuple[Path, dict[str, str], Path]:
     script = tmp_path / "vpn-backup.sh"
-    script.write_text(_render(remote_enabled=remote_enabled))
+    rendered = _render(remote_enabled=remote_enabled).replace('/etc/', str(tmp_path / 'etc') + '/').replace('/var/lib/vpn-subscription', str(tmp_path / 'subscription'))
+    for block in ('INCLUDES', 'REQUIRED_FILES'):
+        entries = shlex.split(re.search(rf'{block}=\((.*?)\)', rendered, re.S)[1])
+        for entry in entries:
+            path = Path(entry)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if block == 'REQUIRED_FILES' or path.name == 'nftables.conf' or path.name.startswith('vpn-watchdog') or path.name == 'revoked':
+                path.write_text('synthetic input\n')
+            else:
+                path.mkdir(exist_ok=True)
+    script.write_text(rendered)
     script.chmod(0o700)
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(mode=0o700)

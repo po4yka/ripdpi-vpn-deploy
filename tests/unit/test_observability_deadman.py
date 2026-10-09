@@ -99,7 +99,7 @@ def pulse(*, sequence: int = 1, issued: int = NOW - 1, expiry: int = NOW + 20) -
 
 
 def state() -> dict[str, object]:
-    return deadman._empty_state()
+    return deadman._empty_state("a" * 40)
 
 
 def _reverse_health_tls() -> dict[str, str]:
@@ -311,52 +311,50 @@ def test_state_is_atomic_private_and_reloads(tmp_path: Path) -> None:
         deadman._state(path)
 
 
-def test_schema_one_legacy_state_upgrades_before_next_atomic_save(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {
+            "schema",
+            "last_sequence",
+            "last_expiry",
+            "last_pulse",
+            "incident",
+            "last_delivery",
+        },
+        {
+            "schema",
+            "last_sequence",
+            "last_expiry",
+            "last_pulse",
+            "incident",
+            "last_delivery",
+            "last_delivery_at",
+            "last_canary",
+        },
+        set(state()) - {"source_generation", "last_reverse_sequence"},
+        set(state()) - {"source_generation"},
+    ],
+)
+def test_unbound_legacy_state_fails_closed_without_automatic_migration(
+    tmp_path: Path, fields: set[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / "state.json"
-    legacy = {
-        "schema": 1,
-        "last_sequence": 4,
-        "last_expiry": NOW + 10,
-        "last_pulse": NOW,
-        "incident": False,
-        "last_delivery": "recovery",
-    }
+    legacy = {name: value for name, value in state().items() if name in fields}
+    legacy.update(schema=1, last_sequence=4, last_expiry=NOW + 10, last_pulse=NOW)
     path.write_text(json.dumps(legacy))
     path.chmod(0o600)
-    migrated = deadman._state(path)
-    assert migrated["last_delivery_at"] == 0
-    assert migrated["last_canary"] == 0
-    assert migrated["last_canary_delivery"] == "never"
-    deadman._save_state(path, migrated)
-    assert deadman._state(path) == migrated
-
-
-def test_prior_schema_one_state_migrates_through_tick_and_atomic_save(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    path = tmp_path / "state.json"
-    prior = {
-        "schema": 1,
-        "last_sequence": 4,
-        "last_expiry": NOW + 10,
-        "last_pulse": NOW - 300,
-        "incident": False,
-        "last_delivery": "never",
-        "last_delivery_at": 0,
-        "last_canary": NOW,
-    }
-    path.write_text(json.dumps(prior))
-    path.chmod(0o600)
-    monkeypatch.setattr(deadman, "_telegram", lambda *_args: True)
-    monkeypatch.setattr(deadman, "_reverse_health", lambda *_args: True)
-
-    migrated = deadman.tick(path, config(), TOKEN, TOKEN, NOW)
-    assert migrated["last_delivery"] == "firing"
-    persisted = deadman._state(path)
-    assert set(persisted) == set(deadman._empty_state())
-    assert persisted["pending_event"] == "none"
+    original = path.read_bytes()
+    monkeypatch.setattr(
+        deadman, "_telegram", lambda *_args: pytest.fail("legacy delivery")
+    )
+    with pytest.raises(deadman.DeadmanError, match="unsafe state"):
+        deadman._state(path)
+    with pytest.raises(deadman.DeadmanError, match="unsafe state"):
+        deadman.accept_and_save(path, pulse(sequence=5), TOKEN, config(), NOW)
+    with pytest.raises(deadman.DeadmanError, match="unsafe state"):
+        deadman.tick(path, config(), TOKEN, TOKEN, NOW)
+    assert path.read_bytes() == original
 
 
 def test_state_write_retries_until_the_full_record_is_durable(
@@ -837,7 +835,7 @@ def test_http_server_has_bounded_queue_concurrency_and_read_timeout() -> None:
     assert deadman.BoundedPulseServer.request_queue_size == 4
     assert deadman.BoundedPulseServer.daemon_threads is True
     assert "BoundedSemaphore(4)" in SOURCE.read_text()
-    assert "settimeout(5)" in SOURCE.read_text()
+    assert deadman.BoundedPulseServer.request_budget_seconds == 5
 
 
 def test_receiver_does_not_advertise_status_before_tls_listener_is_ready(
@@ -865,10 +863,8 @@ def test_receiver_does_not_advertise_status_before_tls_listener_is_ready(
             events.append(f"{self.kind}-closed")
 
     class Context:
-        def wrap_socket(self, socket, *, server_side):  # type: ignore[no-untyped-def]
-            assert server_side is True
+        def __init__(self) -> None:
             events.append("pulse-tls-ready")
-            return socket
 
     class Thread:
         def __init__(self, *, target, daemon):  # type: ignore[no-untyped-def]
@@ -917,8 +913,7 @@ def test_receiver_closes_unadvertised_servers_when_tls_setup_fails(
             self.closed = True
 
     class Context:
-        def wrap_socket(self, _socket, *, server_side):  # type: ignore[no-untyped-def]
-            assert server_side is True
+        def __init__(self) -> None:
             raise deadman.DeadmanError("credential unavailable")
 
     class Thread:

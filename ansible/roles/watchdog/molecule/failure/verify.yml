@@ -4,14 +4,9 @@
   become: true
   tasks:
     # Trigger a probe immediately instead of waiting on the 5-min timer.
-    - name: Run vpn-watchdog.sh once with the env file loaded
-      ansible.builtin.shell:
-        cmd: |
-          set -a
-          . /etc/vpn-watchdog.env
-          set +a
-          /usr/local/sbin/vpn-watchdog.sh
-        executable: /bin/bash
+    - name: Run the failed probe through the credential-bearing unit
+      ansible.builtin.command:
+        argv: [systemctl, start, vpn-watchdog.service]
       changed_when: false
       register: watchdog_run
       failed_when: watchdog_run.rc != 1
@@ -72,11 +67,6 @@
             | grep -q 'consecutive_fails='
         executable: /bin/bash
       changed_when: false
-      # The probe ran above directly from the verify (not via the timer),
-      # so the journal entry may not include it. Mark the task as a soft
-      # signal — its absence isn't a fail on its own; the title-shape
-      # assertion above is the load-bearing check.
-      failed_when: false
 
     - name: vpn-watchdog journal contains no probe credentials or canary URL
       ansible.builtin.shell:

@@ -22,6 +22,11 @@ runs as node_exporter's own account (`prometheus` by default,
 `monitoring.node_exporter_user`) so its atomic textfile can remain 0600
 instead of granting group or world read access.
 
+**Xray rotation uses active-service restart** — the pinned runtime has no
+supported HUP log-reopen contract. Rotation restarts only an active Xray and
+requires active state afterward; restart failure propagates from logrotate.
+This briefly interrupts existing connections while restoring writable logs.
+
 ## What's done well
 
 - **Logrotate with retention** — monitoring owns one package-wide Nginx policy

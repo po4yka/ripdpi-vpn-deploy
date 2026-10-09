@@ -68,23 +68,33 @@ def _hash(token: str) -> str:
     return hashlib.sha256(token.encode("ascii")).hexdigest()
 
 
+def _open_revocation():
+    descriptor = os.open(REVOKED_FILE, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(descriptor)
+        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                or info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o600):
+            raise OSError("unsafe revocation authority")
+        return os.fdopen(descriptor, "r", encoding="ascii")
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
 def _is_revoked(token_hash: str) -> bool | None:
     try:
-        # Re-read every call — the revoked list is small (line count grows
-        # with operator-side rotation cadence, not with client count) and
-        # the read is amortised by the per-IP nginx rate limit.
-        with REVOKED_FILE.open("r", encoding="ascii") as fh:
+        # Re-open safely on every request so replacement cannot bypass authority.
+        with _open_revocation() as fh:
             for line in fh:
                 entry = line.strip().lower()
                 if not entry or entry.startswith("#"):
                     continue
+                if not re.fullmatch(r"[0-9a-f]{64}", entry):
+                    raise ValueError("invalid revocation authority")
                 if entry == token_hash.strip().lower():
                     return True
-    except FileNotFoundError as exc:
-        logging.error("revocation state is missing: %s", exc)
-        return None
-    except OSError as exc:
-        logging.error("revocation read failed: %s", exc)
+    except (OSError, UnicodeError, ValueError):
+        logging.error("revocation authority unavailable or unsafe")
         return None
     return False
 
@@ -431,14 +441,15 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    # Only convergence may provision revocation authority. Restart cannot
+    # invent an empty deny list after loss of durable state.
+    if _is_revoked("") is None:
+        raise RuntimeError("revocation authority is not safely provisioned")
     for sub in ("bootstrap", "sub"):
         (SUBSCRIPTION_DIR / sub).mkdir(parents=True, exist_ok=True)
     if not _trusted_consumption_directory():
         raise RuntimeError("bootstrap consumption state is not safely provisioned")
     READS_LOG.parent.mkdir(parents=True, exist_ok=True)
-    REVOKED_FILE.parent.mkdir(parents=True, exist_ok=True)
-    if not REVOKED_FILE.exists():
-        REVOKED_FILE.touch(mode=0o600)
     server = ThreadingHTTPServer((LISTEN_ADDR, LISTEN_PORT), Handler)
     logging.info("listening on http://%s:%d/  dir=%s",
                  LISTEN_ADDR, LISTEN_PORT, SUBSCRIPTION_DIR)

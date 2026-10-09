@@ -7,6 +7,8 @@
     create 0640 {{ xray_runtime_user | default('xray') }} {{ xray_runtime_group | default('xray') }}
     sharedscripts
     postrotate
-        systemctl kill -s HUP xray.service 2>/dev/null || true
+        if systemctl is-active --quiet xray.service; then
+            systemctl restart xray.service && systemctl is-active --quiet xray.service
+        fi
     endscript
 }

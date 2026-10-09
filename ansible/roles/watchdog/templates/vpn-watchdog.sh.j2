@@ -17,6 +17,7 @@ set -euo pipefail
 : "${XRAY_REALITY_PROBE_URL:=}"
 : "${XRAY_REALITY_PROBE_EXPECTED_STATUS:=204}"
 : "${XRAY_REALITY_PROBE_TIMEOUT:=15}"
+: "${WATCHDOG_NOTIFY_BIN:=/usr/local/libexec/vpn-watchdog-notify.py}"
 HOSTNAME="${HOSTNAME:-$(hostname -f 2>/dev/null || hostname)}"
 
 mkdir -p "$(dirname "$STATE_FILE")"
@@ -281,29 +282,10 @@ if (( should_alert )); then
   body="consecutive_fails=${STATE[consecutive_fails]}
 ${class_lines}${result_text}"
 
-  case "${WATCHDOG_PROVIDER:-ntfy}" in
-    ntfy)
-      auth_args=()
-      if [[ -n "${NTFY_TOKEN:-}" ]]; then
-        auth_args=(-H "Authorization: Bearer ${NTFY_TOKEN}")
-      fi
-      curl -fsS -X POST \
-        -H "Title: ${title}" \
-        -H "Priority: high" \
-        -H "Tags: warning,vpn,${HOSTNAME}${class_tags}" \
-        "${auth_args[@]}" \
-        --data "${body}" \
-        "${NTFY_URL%/}/${NTFY_TOPIC}" >/dev/null || true
-      ;;
-    pushover)
-      curl -fsS -X POST https://api.pushover.net/1/messages.json \
-        -d token="${PUSHOVER_TOKEN}" \
-        -d user="${PUSHOVER_USER}" \
-        -d title="${title}" \
-        -d message="${body}" \
-        -d priority=1 >/dev/null || true
-      ;;
-  esac
+  if ! printf '%s' "$body" | "$WATCHDOG_NOTIFY_BIN" \
+    --title "$title" --tags "warning,vpn,${HOSTNAME}${class_tags}" --timeout 10; then
+    echo "watchdog: notification delivery failed" >&2
+  fi
 
   STATE[last_alert_epoch]=$now
   STATE[alerts_this_hour]=$(( STATE[alerts_this_hour] + 1 ))

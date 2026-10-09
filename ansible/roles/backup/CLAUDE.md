@@ -24,6 +24,16 @@ remote stages. It contains only bounded stage results and timestamps; timer
 state, snapshot identifiers, restic output, and remote configuration are not
 evidence.
 
+**Snapshot inputs follow the effective profile** — baseline host configuration
+is always included; primary transports, nginx, subscription authority and watchdog
+inputs are selected by effective toggles and subscription-only mode. Missing
+selected inputs or empty required transport configuration fails the local stage
+before snapshot retention, integrity or replication. Disabled transports require
+no placeholder trees. XHTTP-only nodes include their Xray configuration too.
+Realm includes both configured TLS entries and resolved symlink targets;
+selected topology interface configs and DNS bridge forwarding config are
+required, so an otherwise populated directory cannot conceal missing authority.
+
 ## What's done well
 
 - **Daily by default; manual trigger via `scripts/`** — no surprise weekend

@@ -36,6 +36,12 @@ for redacted diagnostics, but the gRPC API binds only to
 `xray_api_listen=127.0.0.1:10086`. The monitoring role owns export and
 retention; this role owns only the Xray-side counter contract.
 
+**Log directory entries belong to root** — convergence opens every path
+component without following links, claims the log directory as root:xray 0750,
+and validates regular single-link logs before descriptor-backed metadata writes.
+Xray owns only the 0640 log files; startup has no privileged pathname repair.
+Rotation creates fresh runtime-writable files and restarts the active service.
+
 ## What's done well
 
 - **Idempotent inbound rebuild** — handler `restart xray` only fires when the

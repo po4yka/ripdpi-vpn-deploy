@@ -61,6 +61,9 @@ def merge_render_vars() -> dict:
     if EXAMPLE_FILE.exists():
         merged.update(yaml.safe_load(EXAMPLE_FILE.read_text()) or {})
     _resolve_exact_variable_references(merged)
+    # Concrete role path authority for templates consuming the effective
+    # configuration location rather than a hard-coded runtime path.
+    merged["xray_etc_dir"] = merged.get("xray_config_dir", "/etc/xray")
     merged.update(SYNTHETIC_FACTS)
     merged.setdefault("xray_arch", "64")
     merged.setdefault("xray_sha256", "0" * 64)

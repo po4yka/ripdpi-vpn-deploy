@@ -146,14 +146,34 @@
         - vpn.enable_nginx_xhttp | default(true)
         - nginx_xhttp.fallback_enabled | default(false)
 
-    - name: Run authenticated watchdog REALITY round trips
-      ansible.builtin.shell:
-        cmd: |
-          set -a
-          . /etc/vpn-watchdog.env
-          set +a
-          /usr/local/sbin/vpn-watchdog.sh
-        executable: /bin/bash
+    - name: Capture the journal boundary before the credential-bearing probe
+      ansible.builtin.command:
+        argv: [journalctl, --lines=1, --no-pager, --output=json]
+      register: watchdog_journal_boundary
+      changed_when: false
+      no_log: true
+      when:
+        - vpn.enable_watchdog | default(true)
+        - vpn.enable_xray_reality | default(true)
+        - not (vpn_subscription_only | default(false))
+
+    - name: Run authenticated watchdog through its bounded credential-bearing unit
+      ansible.builtin.command:
+        argv: [systemctl, start, vpn-watchdog.service]
+      changed_when: false
+      when:
+        - vpn.enable_watchdog | default(true)
+        - vpn.enable_xray_reality | default(true)
+        - not (vpn_subscription_only | default(false))
+
+    - name: Verify authenticated round trips from the new watchdog journal records
+      ansible.builtin.command:
+        argv:
+          - journalctl
+          - "--after-cursor={{ (watchdog_journal_boundary.stdout | from_json)['__CURSOR'] }}"
+          - --unit=vpn-watchdog.service
+          - --no-pager
+          - --output=cat
       register: watchdog_reality_verify
       changed_when: false
       failed_when: >-

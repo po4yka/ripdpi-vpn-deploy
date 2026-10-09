@@ -6,7 +6,9 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 EnvironmentFile=/etc/vpn-watchdog.env
+LoadCredential=notifications.json:/etc/vpn-watchdog-notifications.json
 ExecStart=/usr/local/sbin/vpn-watchdog.sh
+TimeoutStartSec=345s
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7

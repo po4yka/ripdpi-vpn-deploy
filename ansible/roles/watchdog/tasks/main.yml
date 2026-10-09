@@ -185,6 +185,40 @@
     group: root
     mode: "0750"
 
+- name: Validate watchdog notification provider
+  ansible.builtin.assert:
+    that:
+      - watchdog.provider in ['ntfy', 'pushover']
+    fail_msg: Watchdog notification provider must be ntfy or pushover.
+
+- name: Install credential-aware watchdog notification sender
+  ansible.builtin.file:
+    path: /usr/local/libexec
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install credential-aware watchdog notification executable
+  ansible.builtin.copy:
+    src: vpn-watchdog-notify.py
+    dest: /usr/local/libexec/vpn-watchdog-notify.py
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Drop private watchdog notification credential
+  ansible.builtin.template:
+    src: vpn-watchdog-notifications.json.j2
+    dest: /etc/vpn-watchdog-notifications.json
+    owner: root
+    group: root
+    mode: "0600"
+    validate: "python3 -m json.tool %s"
+  no_log: true
+  diff: false
+  notify: Restart watchdog timer
+
 - name: Drop watchdog environment file
   ansible.builtin.template:
     src: vpn-watchdog.env.j2

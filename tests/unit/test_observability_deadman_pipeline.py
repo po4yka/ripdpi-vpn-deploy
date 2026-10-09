@@ -1024,7 +1024,7 @@ def test_deadman_reverse_summary_contains_every_bounded_health_axis(
         return True
 
     monkeypatch.setattr(deadman, "_post_reverse", post)
-    current = deadman._empty_state()
+    current = deadman._empty_state(GENERATION)
     current.update(last_sequence=4, last_pulse=NOW, last_delivery="recovery")
 
     assert deadman._reverse_health({}, TOKEN, current, NOW) is True

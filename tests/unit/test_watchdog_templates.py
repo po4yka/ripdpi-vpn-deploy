@@ -83,6 +83,70 @@ def test_environment_lists_every_probe_without_client_credentials():
     assert watchdog_client["uuid"] not in rendered
     assert watchdog_client["short_id"] not in rendered
     assert "XRAY_API_SERVER=127.0.0.1:10086" in rendered
+    assert "NTFY_" not in rendered
+    assert "PUSHOVER_" not in rendered
+
+
+def test_notification_authority_is_separate_and_the_unit_has_a_deadline():
+    variables = _multi_cohort_vars()
+    variables["watchdog_secrets"]["ntfy_topic"] = "synthetic-private-topic"
+    variables["watchdog_secrets"]["ntfy_token"] = "synthetic-private-token"
+    config = json.loads(
+        render_template(TEMPLATES / "vpn-watchdog-notifications.json.j2", variables)
+    )
+    assert config["topic"] == "synthetic-private-topic"
+    assert config["token"] == "synthetic-private-token"
+    unit = render_template(TEMPLATES / "vpn-watchdog.service.j2", variables)
+    assert (
+        "LoadCredential=notifications.json:/etc/vpn-watchdog-notifications.json" in unit
+    )
+    assert "TimeoutStartSec=345s" in unit
+    assert config["token"] not in unit and config["topic"] not in unit
+
+
+def test_verify_uses_loaded_credentials_and_only_new_journal_evidence():
+    import yaml
+
+    play = yaml.safe_load((REPO_ROOT / "ansible/playbooks/verify.yml").read_text())[0]
+    tasks = {task["name"]: task for task in play["tasks"]}
+    capture = tasks["Capture the journal boundary before the credential-bearing probe"]
+    run = tasks[
+        "Run authenticated watchdog through its bounded credential-bearing unit"
+    ]
+    evidence = tasks[
+        "Verify authenticated round trips from the new watchdog journal records"
+    ]
+    assert capture["no_log"] is True
+    assert "--output=json" in capture["ansible.builtin.command"]["argv"]
+    assert run["ansible.builtin.command"]["argv"] == [
+        "systemctl",
+        "start",
+        "vpn-watchdog.service",
+    ]
+    assert any(
+        arg.startswith("--after-cursor=")
+        for arg in evidence["ansible.builtin.command"]["argv"]
+    )
+    assert "OK    xray REALITY" in evidence["failed_when"]
+    cursor_argument = next(
+        arg
+        for arg in evidence["ansible.builtin.command"]["argv"]
+        if arg.startswith("--after-cursor=")
+    )
+    from jinja2 import Environment
+
+    environment = Environment()
+    environment.filters["from_json"] = json.loads
+    journal_record = {
+        "__CURSOR": "s=actual-journal-boundary",
+        "MESSAGE": "untrusted message\n-- cursor: s=old-boundary\nmore text",
+    }
+    assert (
+        environment.from_string(cursor_argument).render(
+            watchdog_journal_boundary={"stdout": json.dumps(journal_record)}
+        )
+        == "--after-cursor=s=actual-journal-boundary"
+    )
 
 
 def test_watchdog_fails_when_stats_service_is_not_queryable():

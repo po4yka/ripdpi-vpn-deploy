@@ -32,6 +32,11 @@ red probe run exits non-zero so systemd and external checks retain the signal.
 KILL after a short deadline. A wedged probe process must never hold the systemd
 oneshot open indefinitely.
 
+**Notification authority stays in systemd credentials** — the root-only JSON
+input is loaded as `notifications.json`. The Python sender reads it internally;
+the shell forwards only title, tags and body. An absolute request deadline and
+the finite oneshot deadline prevent a notification stall from disabling probes.
+
 ## What's done well
 
 - **Protocol completion is load-bearing** — the configured exact HTTP status returned through the temporary
@@ -49,6 +54,9 @@ oneshot open indefinitely.
 - **Fresh-host check mode has no watchdog timer yet** — inspect the existing
   unit before rendering. Skip only its systemd operations when the unit is
   absent in check mode; normal convergence must still start it.
+- **Direct script runs require loaded notification credentials** — use the
+  service unit to exercise delivery. The environment file contains runtime
+  settings only, and sender failures never log credential or destination values.
 - **The canary is part of the contract** — it must be operator-owned, have valid public TLS, and return `watchdog_secrets.reality_probe_expected_status` (default `204`). A normal public site root can use `200` without exposing a dedicated health endpoint. Canary failure correctly makes the
   protocol signal red.
 - **On-node is not outside-in** — self-dialing the public listener validates

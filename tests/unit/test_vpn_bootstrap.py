@@ -507,3 +507,33 @@ class TestRevokeLifecycle:
         # The audit outcome for a revoked bootstrap token
         rec = service.reads()[-1]
         assert rec["outcome"] == "revoked"
+
+
+@pytest.mark.parametrize("kind", ["missing", "symlink", "hardlink", "mode", "invalid"])
+def test_restart_refuses_lost_or_unsafe_revocation_authority(service, tmp_path, kind):
+    token = "restartrevoked123456"
+    service.place("sub", token, b"private payload")
+    service.revoke(token)
+    original = service.revoked_file.read_bytes()
+    target = tmp_path / "authority-target"
+    target.write_bytes(original)
+    target.chmod(0o600)
+    if kind == "missing":
+        service.revoked_file.unlink()
+    elif kind == "symlink":
+        service.revoked_file.unlink()
+        service.revoked_file.symlink_to(target)
+    elif kind == "hardlink":
+        import os
+        service.revoked_file.unlink()
+        os.link(target, service.revoked_file)
+    elif kind == "mode":
+        service.revoked_file.chmod(0o644)
+    else:
+        service.revoked_file.write_text("invalid-deny-list\n")
+    with pytest.raises(RuntimeError, match="revocation authority"):
+        service.module.main()
+    assert service.get(f"/sub/{token}").code == 503
+    assert target.read_bytes() == original
+    if kind == "missing":
+        assert not service.revoked_file.exists()

@@ -19,6 +19,7 @@ import json
 import os
 from pathlib import Path
 import re
+import socket
 import ssl
 import stat
 import subprocess
@@ -68,6 +69,82 @@ class BoundedPulseServer(ThreadingHTTPServer):
 
     request_queue_size = 4
     daemon_threads = True
+    request_budget_seconds = 5
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self.requests = threading.BoundedSemaphore(4)
+        self.tls_context: ssl.SSLContext | None = None
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, connection: Any, address: Any) -> None:
+        # Admission precedes thread creation, TLS negotiation and HTTP input.
+        if not self.requests.acquire(blocking=False):
+            self.shutdown_request(connection)
+            return
+        try:
+            super().process_request(connection, address)
+        except BaseException:
+            self.requests.release()
+            raise
+
+    def process_request_thread(self, connection: Any, address: Any) -> None:
+        deadline = None
+        try:
+            connection.settimeout(self.request_budget_seconds)
+            if self.tls_context is not None:
+                connection = self.tls_context.wrap_socket(
+                    connection, server_side=True, do_handshake_on_connect=False
+                )
+
+            def expire() -> None:
+                try:
+                    connection.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+
+            # A socket timeout alone is renewed by slow-drip headers/body.
+            deadline = threading.Timer(self.request_budget_seconds, expire)
+            deadline.daemon = True
+            deadline.start()
+            if self.tls_context is not None:
+                connection.do_handshake()
+            self.finish_request(connection, address)
+        except (OSError, ValueError, DeadmanError):
+            # Never log input, credentials or exception request contents.
+            pass
+        finally:
+            if deadline is not None:
+                deadline.cancel()
+                deadline.join()
+            self.shutdown_request(connection)
+            self.requests.release()
+
+
+class BoundedRequestReader:
+    """Bound aggregate request headers and body, including unknown methods."""
+
+    def __init__(self, stream: Any, maximum: int) -> None:
+        self.stream = stream
+        self.remaining = maximum
+
+    def _read(self, method: str, length: int) -> bytes:
+        requested = (
+            self.remaining + 1 if length < 0 else min(length, self.remaining + 1)
+        )
+        body = getattr(self.stream, method)(requested)
+        self.remaining -= len(body)
+        if self.remaining < 0:
+            raise DeadmanError("invalid pulse")
+        return body
+
+    def readline(self, length: int = -1) -> bytes:
+        return self._read("readline", length)
+
+    def read(self, length: int = -1) -> bytes:
+        return self._read("read", length)
+
+    def close(self) -> None:
+        self.stream.close()
 
 
 def _pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -236,9 +313,10 @@ def _load_config(path: Path) -> dict[str, Any]:
     return data
 
 
-def _empty_state() -> dict[str, Any]:
+def _empty_state(source_generation: str) -> dict[str, Any]:
     return {
-        "schema": 1,
+        "schema": 2,
+        "source_generation": source_generation,
         "last_sequence": 0,
         "last_reverse_sequence": 0,
         "last_expiry": 0,
@@ -254,9 +332,11 @@ def _empty_state() -> dict[str, Any]:
     }
 
 
-def _state(path: Path) -> dict[str, Any]:
+def _state(path: Path, source_generation: str | None = None) -> dict[str, Any]:
     if not path.exists():
-        return _empty_state()
+        if source_generation is None or not GENERATION.fullmatch(source_generation):
+            raise DeadmanError("unsafe state")
+        return _empty_state(source_generation)
     try:
         metadata = path.stat()
         if (
@@ -268,32 +348,18 @@ def _state(path: Path) -> dict[str, Any]:
         data = json.loads(path.read_text("utf-8"), object_pairs_hook=_pairs)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, DeadmanError) as exc:
         raise DeadmanError("unsafe state") from exc
-    oldest_fields = {
-        "schema",
-        "last_sequence",
-        "last_expiry",
-        "last_pulse",
-        "incident",
-        "last_delivery",
-    }
-    prior_fields = oldest_fields | {"last_delivery_at", "last_canary"}
-    current_fields = set(_empty_state())
-    legacy_current_fields = current_fields - {"last_reverse_sequence"}
+    current_fields = set(_empty_state("a" * 40))
     if not isinstance(data, dict):
         raise DeadmanError("unsafe state")
-    observed_fields = frozenset(data)
-    if observed_fields in {
-        frozenset(oldest_fields),
-        frozenset(prior_fields),
-        frozenset(legacy_current_fields),
-    }:
-        data = {**_empty_state(), **data}
     if set(data) != current_fields:
         raise DeadmanError("unsafe state")
     if (
-        data["schema"] != 1
+        type(data["schema"]) is not int
+        or data["schema"] != 2
+        or not isinstance(data["source_generation"], str)
+        or not GENERATION.fullmatch(data["source_generation"])
         or not all(
-            isinstance(data[key], int) and data[key] >= 0
+            type(data[key]) is int and 0 <= data[key] <= 2**63 - 1
             for key in (
                 "last_sequence",
                 "last_reverse_sequence",
@@ -391,20 +457,29 @@ def accept_pulse(
         "health",
         "signature",
     }
-    if not isinstance(pulse, dict) or set(pulse) != expected or pulse["schema"] != 1:
-        raise DeadmanError("invalid pulse")
-    if not isinstance(pulse["generation"], str) or not GENERATION.fullmatch(
-        pulse["generation"]
+    if (
+        not isinstance(pulse, dict)
+        or set(pulse) != expected
+        or type(pulse["schema"]) is not int
+        or pulse["schema"] != 1
     ):
         raise DeadmanError("invalid pulse")
     if (
-        not isinstance(pulse["sequence"], int)
-        or pulse["sequence"] <= state["last_sequence"]
+        not isinstance(pulse["generation"], str)
+        or not GENERATION.fullmatch(pulse["generation"])
+        or pulse["generation"] != config["source_generation"]
+    ):
+        raise DeadmanError("invalid pulse")
+    same_generation = state["source_generation"] == config["source_generation"]
+    if (
+        type(pulse["sequence"]) is not int
+        or pulse["sequence"] <= (state["last_sequence"] if same_generation else 0)
         or pulse["sequence"] > 2**63 - 1
     ):
         raise DeadmanError("invalid pulse")
     issued = _instant(pulse["issued_at"], now, future=config["max_future_seconds"])
     expiry = _instant(pulse["expires_at"], now, future=config["max_future_seconds"])
+    # Expiry remains monotonic across authority changes, including rollback.
     if issued > expiry or expiry <= now or expiry <= state["last_expiry"]:
         raise DeadmanError("invalid pulse")
     health = pulse["health"]
@@ -422,7 +497,12 @@ def accept_pulse(
         raise DeadmanError("invalid pulse")
     if not all(health.values()):
         raise DeadmanError("unhealthy pulse")
-    state.update(last_sequence=pulse["sequence"], last_expiry=expiry, last_pulse=now)
+    state.update(
+        source_generation=config["source_generation"],
+        last_sequence=pulse["sequence"],
+        last_expiry=expiry,
+        last_pulse=now,
+    )
     return state
 
 
@@ -430,7 +510,9 @@ def accept_and_save(
     path: Path, raw: bytes, token: bytes, config: dict[str, Any], now: int
 ) -> dict[str, Any]:
     with _state_lock(path):
-        accepted = accept_pulse(raw, token, _state(path), config, now)
+        accepted = accept_pulse(
+            raw, token, _state(path, config["source_generation"]), config, now
+        )
         _save_state(path, accepted)
         return accepted
 
@@ -599,7 +681,7 @@ def _host_health(
         health["unit"] = "ok" if units.returncode == 0 else "error"
     except (OSError, subprocess.TimeoutExpired):
         health["unit"] = "error"
-    health["collector"] = "ok" if state.get("schema") == 1 else "error"
+    health["collector"] = "ok" if state.get("schema") == 2 else "error"
     health["source"] = (
         "ok"
         if GENERATION.fullmatch(str(config.get("source_generation", "")))
@@ -721,7 +803,7 @@ def _reserve_delivery(
     now: int,
 ) -> tuple[dict[str, Any], tuple[str, int] | None]:
     with _state_lock(path):
-        state = _state(path)
+        state = _state(path, config["source_generation"])
         if (
             state["pending_event"] != "none"
             and now - state["pending_at"]
@@ -739,7 +821,8 @@ def _reserve_delivery(
         if state["pending_event"] != "none":
             return dict(state), None
         overdue = (
-            state["last_pulse"] == 0
+            state["source_generation"] != config["source_generation"]
+            or state["last_pulse"] == 0
             or now - state["last_pulse"]
             >= config["pulse_interval_seconds"] * config["missed_pulse_limit"]
         )
@@ -842,22 +925,27 @@ def _serve(arguments: argparse.Namespace) -> int:
     state_path = Path(arguments.state)
     host, port = arguments.listen.rsplit(":", 1)
     status_host, status_port = arguments.status_listen.rsplit(":", 1)
-    requests = threading.BoundedSemaphore(4)
 
     class Handler(BaseHTTPRequestHandler):
         def setup(self) -> None:
             super().setup()
-            self.connection.settimeout(5)
+            self.rfile = BoundedRequestReader(
+                self.rfile, 8192 + config["max_pulse_bytes"]
+            )
 
         def do_POST(self) -> None:  # noqa: N802
             if self.path != config["pulse_path"]:
                 self.send_error(404)
                 return
-            if not requests.acquire(blocking=False):
-                self.send_error(503)
-                return
             try:
-                length = int(self.headers.get("Content-Length", "-1"))
+                lengths = self.headers.get_all("Content-Length", [])
+                if (
+                    len(lengths) != 1
+                    or re.fullmatch(r"[0-9]{1,4}", lengths[0]) is None
+                    or self.headers.get("Transfer-Encoding") is not None
+                ):
+                    raise DeadmanError("invalid pulse")
+                length = int(lengths[0])
                 accept_and_save(
                     state_path,
                     _read_pulse_body(self.rfile, length, config["max_pulse_bytes"]),
@@ -868,8 +956,6 @@ def _serve(arguments: argparse.Namespace) -> int:
             except (DeadmanError, OSError, ValueError):
                 self.send_error(400)
                 return
-            finally:
-                requests.release()
             self.send_response(204)
             self.end_headers()
 
@@ -877,12 +963,16 @@ def _serve(arguments: argparse.Namespace) -> int:
             return
 
     class StatusHandler(BaseHTTPRequestHandler):
+        def setup(self) -> None:
+            super().setup()
+            self.rfile = BoundedRequestReader(self.rfile, 8192)
+
         def do_GET(self) -> None:  # noqa: N802
             if self.path != "/v1/status":
                 self.send_error(404)
                 return
             try:
-                current = _state(state_path)
+                current = _state(state_path, config["source_generation"])
             except DeadmanError:
                 self.send_error(503)
                 return
@@ -915,9 +1005,7 @@ def _serve(arguments: argparse.Namespace) -> int:
         startup.callback(status_server.server_close)
         pulse_server = PulseServer((host, int(port)), Handler)
         startup.callback(pulse_server.server_close)
-        pulse_server.socket = _pulse_context(config).wrap_socket(
-            pulse_server.socket, server_side=True
-        )
+        pulse_server.tls_context = _pulse_context(config)
         pulse_server.serve_forever()
     return 0
 
