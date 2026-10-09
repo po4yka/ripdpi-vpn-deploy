@@ -10,282 +10,82 @@ metadata:
   generatedBy: "1.8.0"
 ---
 
-RIPDPI VPN deployment policy: use only the local repository planning home. OpenSpec stores, global configuration changes, direct archive, and telemetry are out of scope; `./taskctl` enforces the pinned tool and disables telemetry.
+Explore ideas, investigate the codebase and clarify requirements without implementing.
+There is no required artifact or fixed sequence; ground the discussion in current
+code, constraints and unresolved risks. Use diagrams or comparisons when useful.
+For entry-point examples, read [references/exploration-examples.md](references/exploration-examples.md)
+when the user brings a vague idea, a concrete failure, an implementation obstacle
+or a choice between approaches.
 
-Enter explore mode. Think deeply. Visualize freely. Follow the conversation wherever it goes.
+## Planning and implementation boundary
 
-**IMPORTANT: Explore mode is for thinking, not implementing.** You may read files, search code, and investigate the codebase, but you must NEVER write code or implement features. If the user asks you to implement something, remind them to exit explore mode first and create a change proposal. You MAY create OpenSpec artifacts (proposals, designs, specs) if the user asks—that's capturing thinking, not implementing. For a new change, scaffold it first as described below.
+A planning-only request permits inspection and discussion, not code changes.
+Capture planning artifacts only when requested; otherwise offer to record decisions.
+A later explicit build or fix request authorizes the implementation handoff within
+its existing bounds: complete the linked proposal, validate it with
+`./taskctl openspec cli validate "<name>" --strict --no-interactive`, then use
+`$openspec-apply-change`. Do not require a ceremonial exit from exploration or a
+separate user invocation. Ask only when a missing decision materially changes
+scope, authority, cost or external impact. Planning does not grant infrastructure
+or credential authority.
 
-**This is a stance, not a workflow.** There are no fixed steps, no required sequence, no mandatory outputs. You're a thinking partner helping the user explore.
+## Repository context
 
-**Repository root:** Work only in the current RIPDPI VPN deployment checkout. Do not select or register OpenSpec stores. Run every CLI lookup through `./taskctl openspec cli` from the repository root.
+Work in the current RIPDPI VPN deployment checkout. Run every OpenSpec CLI lookup
+from its root through `./taskctl openspec cli`; the wrapper pins the tool and
+turns telemetry off. Use the local planning home only. OpenSpec stores, global
+configuration changes and direct upstream archival are outside this workflow.
 
-**Explore the problem space**
-- Ask clarifying questions that emerge from what they said
-- Challenge assumptions
-- Reframe the problem
-- Find analogies
+Start with:
 
-**Investigate the codebase**
-- Map existing architecture relevant to the discussion
-- Find integration points
-- Identify patterns already in use
-- Surface hidden complexity
-
-**Compare options**
-- Brainstorm multiple approaches
-- Build comparison tables
-- Sketch tradeoffs
-- Recommend a path (if asked)
-
-**Visualize**
-```
-┌─────────────────────────────────────────┐
-│     Use ASCII diagrams liberally        │
-├─────────────────────────────────────────┤
-│                                         │
-│      ┌────────┐         ┌────────┐      │
-│      │ State  │────────▶│ State  │      │
-│      │   A    │         │   B    │      │
-│      └────────┘         └────────┘      │
-│                                         │
-│   System diagrams, state machines,      │
-│   data flows, architecture sketches,    │
-│   dependency graphs, comparison tables  │
-│                                         │
-└─────────────────────────────────────────┘
-```
-
-**Surface risks and unknowns**
-- Identify what could go wrong
-- Find gaps in understanding
-- Suggest spikes or investigations
-
----
-
-## OpenSpec Awareness
-
-You have full context of the OpenSpec system. Use it naturally, don't force it.
-
-### Check for context
-
-At the start, quickly check what exists:
 ```bash
 ./taskctl openspec cli list --json
 ```
 
-This tells you:
-- If there are active changes
-- Their names, schemas, and status
-- What the user might be working on
+Read project context from `<root.path>/openspec/config.yaml` or `config.yml`, using
+`root.path` from that JSON; skip it if neither file exists. `context` supplies
+project constraints. Artifact-keyed `rules` apply only when writing that artifact.
+Use them as constraints without copying them into conversation or artifacts.
 
-Then read the project's own context from the resolved root - `<root.path>/openspec/config.yaml` (or `config.yml`). Use the `root.path` returned above, and skip this if neither file exists:
-- `context`: project background - tech stack, conventions, constraints
-- `rules`: keyed by artifact id - the entries for an artifact apply only when you write that artifact
+For a relevant existing change, resolve its current files:
 
-Ground your thinking in these. They are constraints for you to follow, not content to reproduce: do NOT copy them into the conversation or into any artifact you create.
-
-### When no change exists
-
-Think freely. When insights crystallize, you might offer:
-
-- "This feels solid enough to start a change. Want me to create a proposal?"
-- Or keep exploring - no pressure to formalize
-
-If the user asks you to capture the exploration as a new change, hand off into the requested capture rather than scaffolding it here yourself:
-
-1. Create the linked portfolio task with `$mdtask-create` (`./taskctl new --title "<title>" --kind <kind> --area <area> --priority <priority> --risk <risk> --spec-mode required`). This itself scaffolds the linked OpenSpec change - it runs `openspec new change` for you. Never create a new change directory under `openspec/changes/` by hand.
-2. Continue with `$openspec-propose`, using the new task's `openspec_change` field (`./taskctl show <task-id> --json`) as `<name>`, to generate the requested artifacts grounded in what you explored together.
-
-Capture the artifact(s) the user requested without making them separately invoke `$mdtask-create` or `$openspec-propose` themselves - drive the handoff yourself. If they asked only to start a change, stop after scaffolding and show its status.
-
-### When a change exists
-
-If the user mentions a change or you detect one is relevant:
-
-1. **Resolve and read existing artifacts for context**
-   - Run `./taskctl openspec cli status --change "<name>" --json`.
-   - Use `changeRoot`, `artifactPaths`, and `actionContext` from the status JSON.
-   - Read existing files from `artifactPaths.<artifact>.existingOutputPaths`.
-
-2. **Reference them naturally in conversation**
-   - "Your design mentions using Redis, but we just realized SQLite fits better..."
-   - "The proposal scopes this to premium users, but we're now thinking everyone..."
-
-3. **Offer to capture when decisions are made**
-
-   `<capability-path>` is the spec directory relative to `specs/` (for example, `user-auth` or `identity/user-auth`). Preserve an existing capability's full path and follow the project's established organization for new capabilities.
-
-    | Insight Type               | Where to Capture                    |
-    |----------------------------|-------------------------------------|
-    | New requirement discovered | `specs/<capability-path>/spec.md` |
-    | Requirement changed        | `specs/<capability-path>/spec.md` |
-    | Design decision made       | `design.md`                       |
-    | Scope changed              | `proposal.md`                     |
-    | New work identified        | `tasks.md`                        |
-    | Assumption invalidated     | Relevant artifact                   |
-
-   Example offers:
-   - "That's a design decision. Capture it in design.md?"
-   - "This is a new requirement. Add it to specs?"
-   - "This changes scope. Update the proposal?"
-
-4. **The user decides** - Offer and move on. Don't pressure. Don't auto-capture.
-
----
-
-## What You Don't Have To Do
-
-- Follow a script
-- Ask the same questions every time
-- Produce a specific artifact
-- Reach a conclusion
-- Stay on topic if a tangent is valuable
-- Be brief (this is thinking time)
-
----
-
-## Handling Different Entry Points
-
-**User brings a vague idea:**
-```
-User: I'm thinking about adding real-time collaboration
-
-You: Real-time collab is a big space. Let me think about this...
-
-      COLLABORATION SPECTRUM
-      ════════════════════════════════════════════
-
-      Awareness          Coordination         Sync
-          │                   │                 │
-          ▼                   ▼                 ▼
-      ┌────────┐         ┌────────┐        ┌────────┐
-      │Presence│         │Cursors │        │  CRDT  │
-      │  "3    │         │ Multi  │        │Conflict│
-      │online" │         │ select │        │  free  │
-      └────────┘         └────────┘        └────────┘
-          │                   │                 │
-       trivial            moderate           complex
-
-      Where's your head at?
+```bash
+./taskctl openspec cli status --change "<name>" --json
 ```
 
-**User brings a specific problem:**
-```
-User: The auth system is a mess
+Use `changeRoot`, `artifactPaths` and `actionContext` from the response. Read
+existing files from `artifactPaths.<artifact>.existingOutputPaths`, rather than
+assuming artifact names or locations. Clarify a materially ambiguous change
+selection before writing.
 
-You: [reads codebase]
+## Capture or hand off
 
-     ┌─────────────────────────────────────────────┐
-     │              CURRENT AUTH FLOW              │
-     └─────────────────────────────────────────────┘
-                        │
-          ┌─────────────┼─────────────┐
-          ▼             ▼             ▼
-     ┌─────────┐  ┌─────────┐  ┌─────────┐
-     │ Google  │  │  GitHub │  │  Email  │
-     │  OAuth  │  │  OAuth  │  │  Magic  │
-     └────┬────┘  └────┬────┘  └────┬────┘
-          │             │             │
-          └─────────────┼─────────────┘
-                        ▼
-                  ┌───────────┐
-                  │  Session  │
-                  └─────┬─────┘
-                        │
-                        ▼
-                  ┌───────────┐
-                  │   Perms   │
-                  └───────────┘
+For a requested new change, use `$sdd` for the repository's specification policy
+and `$mdtask-create` to create the linked portfolio task and scaffold together:
 
-     I see three tangles. Which one's burning?
+```bash
+./taskctl new --title "<title>" --kind <kind> --area <area> --priority <priority> --risk <risk> --spec-mode required
+./taskctl show <task-id> --json
 ```
 
-**User is stuck mid-implementation:**
-```
-User: $openspec-explore (Codex) or /openspec-explore (other agents) add-auth-system
-      The OAuth integration is more complex than expected
+Use the returned `openspec_change` with `$openspec-propose`. Never manually create
+a change directory under `openspec/changes/` or create an unlinked upstream change.
+Drive the requested handoff yourself; if only scaffolding was requested, stop
+there and report its status.
 
-You: [reads change artifacts]
+For requested updates to an existing change, use `$openspec-update-change` to keep
+its artifacts coherent. Preserve each capability's full path relative to `specs/`,
+including nested paths such as `identity/user-auth`, and follow the existing
+organization for new capabilities:
 
-     You're on task 4: "Implement OAuth flow"
+| Decision | Artifact |
+|---|---|
+| Requirement or scenario | `specs/<capability-path>/spec.md` |
+| Design choice | `design.md` |
+| Scope | `proposal.md` |
+| Work identified | `tasks.md` through `./taskctl steps` |
+| Invalidated assumption | Affected artifacts |
 
-     Let me trace what's involved...
-
-     [draws diagram, explores options, suggests paths]
-
-     Want to update the design to reflect this?
-     Or add a spike task to investigate?
-```
-
-**User wants to compare options:**
-```
-User: Should we use Postgres or SQLite?
-
-You: Generic answer is boring. What's the context?
-
-User: A CLI tool that tracks local dev environments
-
-You: That changes everything.
-
-     ┌─────────────────────────────────────────────────┐
-     │          CLI TOOL DATA STORAGE                  │
-     └─────────────────────────────────────────────────┘
-
-     Key constraints:
-     • No daemon running
-     • Must work offline
-     • Single user
-
-                  SQLite          Postgres
-     Deployment   embedded ✓      needs server ✗
-     Offline      yes ✓           no ✗
-     Single file  yes ✓           no ✗
-
-     SQLite. Not even close.
-
-     Unless... is there a sync component?
-```
-
----
-
-## Ending Discovery
-
-There's no required ending. Discovery might:
-
-- **Flow into a proposal**: "Ready to start? I can create a change proposal."
-- **Result in artifact updates**: "Updated design.md with these decisions"
-- **Just provide clarity**: User has what they need, moves on
-- **Continue later**: "We can pick this up anytime"
-
-When it feels like things are crystallizing, you might summarize:
-
-```
-## What We Figured Out
-
-**The problem**: [crystallized understanding]
-
-**The approach**: [if one emerged]
-
-**Open questions**: [if any remain]
-
-**Next steps** (if ready):
-- Create a change proposal
-- Keep exploring: just keep talking
-```
-
-But this summary is optional. Sometimes the thinking IS the value.
-
----
-
-## Guardrails
-
-- **Don't implement** - Never write code or implement features. Creating OpenSpec artifacts is fine, writing application code is not.
-- **Don't fake understanding** - If something is unclear, dig deeper
-- **Don't rush** - Discovery is thinking time, not task time
-- **Don't force structure** - Let patterns emerge naturally
-- **Don't auto-capture** - Offer to save insights, don't just do it
-- **Don't manually scaffold changes** - Never create a new change directory under `openspec/changes/` by hand. Use `$mdtask-create` (`./taskctl new --spec-mode required`) to create the linked portfolio task and scaffold the change together, then `$openspec-propose` to write its artifacts.
-- **Do visualize** - A good diagram is worth many paragraphs
-- **Do explore the codebase** - Ground discussions in reality
-- **Do question assumptions** - Including the user's and your own
+End when the user's question or requested capture is handled. Report material
+unknowns and the next action if useful. Continue to validated proposal/apply only
+when implementation is explicitly authorized.

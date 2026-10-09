@@ -176,6 +176,8 @@ remain fatal; package signatures and the real schema validator stay enforced.
 
 ## What's done well
 
+- **Skill decisions have held-out scenarios** — `tests/fixtures/skill-evaluation-cases.json` contains requests, observed-input facts and separate assessment criteria. Independent evaluation receives only requests/facts and the skills; integrity tests do not stand in for observed behavior or live evidence. Private intent preparation tests execute real local publication and Make expression boundaries using synthetic inputs, without opening credentials or contacting providers.
+
 - **Provider example parity is checked** — every explicit staging/prod listener
   example includes the default nginx HTTP redirect, so a copied environment
   reaches the same fail-closed runtime contract as the provider roots.

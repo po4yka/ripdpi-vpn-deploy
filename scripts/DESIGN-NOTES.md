@@ -164,6 +164,15 @@ watchdog, readiness, Ansible or provider calls to fill absent evidence.
 
 ## Liveness sentinels, disposable staging, and retirement
 
+**Intent preparation is an offline assembly step** —
+`prepare-disposable-promotion-intent.py` reads a private predeployment JSON
+configuration and invokes `disposable_promotion.validate_intent`. The isolated
+Make goal accepts literal environment inputs before operator configuration is
+parsed. Descriptor-based directory/file checks, exclusive publication and
+private modes protect the draft and alias mapping. It opens no credential
+input, creates no epoch/receipt and grants no deployment or cleanup authority.
+Existing controller validation remains authoritative at deployment time.
+
 **Sentinel formats follow required profiles** — request the canonical sing-box
 emitter only for REALITY or Hysteria2 and RIPDPI only for XHTTP. AWG-only
 resolves its existing AWG inputs without JSON emission. Unused documents are

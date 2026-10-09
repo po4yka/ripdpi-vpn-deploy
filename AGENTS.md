@@ -86,6 +86,7 @@ Toolchains are pinned in `mise.toml` (Python 3.12 with `requirements.txt`, Terra
 - Folder notes use three sections: **Design decisions** (why), **What's done well** (preserve), **Pitfalls**. Update the folder's `CLAUDE.md` in the same change that alters its behaviour (`claude-md-touch.yml` warns in CI). When the user says "remember", record it there, not in an external memory system.
 - Change recipes live next to the code they change: new Ansible role in `ansible/CLAUDE.md`, new Terraform provider in `terraform/CLAUDE.md`, new `vpnd` subcommand in `vpnd/CLAUDE.md`, new AmneziaWG cohort in `ansible/roles/amneziawg/CLAUDE.md`.
 - **Skills** live in `.agents/skills/<name>/SKILL.md`; `.claude/skills/<name>` (and `.github/skills/` for the tasking skills) are symlinks to them. The tasking skills are generated assets pinned by `tools/tasking/generated-assets.lock.json`, so refresh their hash when you edit one.
+- **Execution skills** route fresh-node prerequisites through `vpn-bootstrap`, existing-node rollout through `vpn-deploy`, scoped evidence through `vpn-acceptance`, and temporary-resource retirement through `vpn-cleanup`. Role implementation uses `ansible-role` with the relevant `systemd`, `bash-scripting` and security guidance. Load only the workflow needed for the request; preparation of a PR does not authorize its live recipes.
 
 ## Source of truth
 
