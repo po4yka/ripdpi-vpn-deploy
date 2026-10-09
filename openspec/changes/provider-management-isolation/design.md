@@ -12,7 +12,7 @@ independent and the Makefile remains the canonical operator entry point.
 ## Decisions
 
 - Reject numeric zero-prefix management networks, including noncanonical host bits.
-- Validate ssh_port against effective explicit or legacy TCP selectors. Require
+- Require integer ssh_port inputs and validate them against effective explicit or legacy TCP selectors. Require
   UpCloud SSH outside the stateless return range in both activation phases.
 - Preserve terraform_data.ssh_port addresses. Add separate username and public-key
   digest guards where provider-native identity replacement is missing; retain

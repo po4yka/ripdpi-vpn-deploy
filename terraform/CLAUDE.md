@@ -29,7 +29,7 @@ Blue-green moves follow the disposable-node path instead.
 **Typed listener contract crosses the cloud/runtime boundary** — `public_listeners` in tfvars is the provider-edge allowlist. Its resolved Terraform output is rendered into inventory, verified against Ansible's enabled listener manifest before deploy, and used by nftables and security verification. An empty contract fails the plan; the historical implicit default set survives only behind the explicit `use_legacy_public_listeners = true` opt-in.
 
 **Management isolation is validated before planning** — SSH CIDRs cannot have a
-zero prefix, and the effective explicit or legacy TCP selectors cannot contain
+zero prefix, SSH ports must be integers, and the effective explicit or legacy TCP selectors cannot contain
 `ssh_port`. UpCloud also keeps SSH outside its stateless return range. UDP may
 use the same port number. `make apply` evaluates all policy namespaces against
 the same private saved-plan snapshot it applies; a failed or empty evaluation

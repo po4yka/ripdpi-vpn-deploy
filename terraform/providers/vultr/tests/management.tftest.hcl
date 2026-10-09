@@ -64,6 +64,17 @@ run "reject_ipv6_host_bits_world" {
   expect_failures = [var.allowed_ssh_cidrs]
 }
 
+run "reject_fractional_ssh_port" {
+  command = plan
+
+  variables {
+    ssh_port         = 22.5
+    public_listeners = [{ name = "unsafe-default-ssh", protocol = "tcp", port = 22 }]
+  }
+
+  expect_failures = [var.ssh_port]
+}
+
 run "reject_tcp_singleton" {
   command = plan
 

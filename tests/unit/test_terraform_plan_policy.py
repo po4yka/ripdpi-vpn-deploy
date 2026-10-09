@@ -157,6 +157,18 @@ def test_upcloud_entire_source_interval_must_be_allowed(tmp_path: Path, end: str
     assert result.returncode == expected, result.stderr
 
 
+@pytest.mark.parametrize("port", [22.5, None, "22", 0, 65536])
+def test_stale_plan_with_invalid_management_port_refuses(tmp_path: Path, port: object) -> None:
+    doc = _plan("hcloud_firewall", {"rule": [{
+        "direction": "in", "protocol": "tcp", "port": "22",
+        "source_ips": ["0.0.0.0/0"],
+    }]})
+    doc["variables"]["ssh_port"]["value"] = port
+    result = _run(tmp_path, doc)
+    assert result.returncode == 1
+    assert "terraform.policy.ssh_cidrs" in result.stderr
+
+
 @pytest.mark.parametrize("stdout,code", [
     ("[]", 0), ("not-json", 0), ("{}", 0),
     ('[{"namespace":"terraform.policy.test","successes":0}]', 0),

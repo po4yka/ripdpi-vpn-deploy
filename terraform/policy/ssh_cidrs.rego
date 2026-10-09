@@ -27,6 +27,23 @@ allowed_cidrs := {cidr | cidr := input.variables.allowed_ssh_cidrs.value[_]}
 
 ssh_port := sprintf("%v", [input.variables.ssh_port.value])
 
+valid_ssh_port {
+  port := input.variables.ssh_port.value
+  is_number(port)
+  port == floor(port)
+  port >= 1
+  port <= 65535
+}
+
+# Saved plans can predate root validation. Unknown/fractional management inputs
+# cannot reliably identify the actual guest listener and must refuse evaluation.
+deny[msg] {
+  rc := input.resource_changes[_]
+  {"upcloud_firewall_rules", "hcloud_firewall", "vultr_firewall_rule", "scaleway_instance_security_group"}[rc.type]
+  not valid_ssh_port
+  msg := "SSH plan port must be a known integer within 1..65535"
+}
+
 # upcloud: each SSH accept rule source must be within an allowed CIDR.
 # Evaluation is structural — the comment is not trusted: a missing or
 # reworded comment must not bypass the gate, because conftest is the only

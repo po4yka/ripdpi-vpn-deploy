@@ -31,7 +31,7 @@ secondary-IPv4 opt-in policy.
 
 ### Requirement: REQ-PMI-SSH — Management exposure remains scoped
 
-Every root MUST reject zero-prefix management networks and any effective public
+Every root MUST require a known integer SSH port within 1..65535 and reject zero-prefix management networks and any effective public
 TCP singleton or inclusive range containing ssh_port, including legacy listener
 resolution. Policy MUST recognize management ports contained in TCP ranges.
 UpCloud MUST reject SSH ports inside its stateless return range before either

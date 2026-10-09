@@ -72,8 +72,8 @@ variable "ssh_port" {
   description = "Effective SSH listener port configured by cloud-init and opened at the provider edge."
 
   validation {
-    condition     = var.ssh_port >= 1 && var.ssh_port <= 65535
-    error_message = "ssh_port must be a valid TCP port."
+    condition     = floor(var.ssh_port) == var.ssh_port && var.ssh_port >= 1 && var.ssh_port <= 65535
+    error_message = "ssh_port must be an integer TCP port within 1..65535."
   }
 
   validation {
