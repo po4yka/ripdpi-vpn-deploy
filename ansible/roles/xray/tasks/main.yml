@@ -102,19 +102,13 @@
       mode: "0755"
 - name: Provision xray log directory and files without following links
   ansible.builtin.command:
-    argv:
-      - python3
-      - '-'
-      - --directory
-      - "{{ xray_log_path }}"
-      - --user
-      - "{{ xray_runtime_user }}"
-      - --group
-      - "{{ xray_runtime_group }}"
-      - "{{ '--check' if ansible_check_mode else '--' }}"
+    argv: >-
+      {{ ['python3', '-', '--directory', xray_log_path, '--user',
+          xray_runtime_user, '--group', xray_runtime_group]
+         + (['--check'] if ansible_check_mode else []) }}
     stdin: "{{ lookup('ansible.builtin.file', role_path ~ '/files/xray_log_setup.py') }}"
   register: _xray_logs
-  changed_when: (_xray_logs.stdout | from_json).changed
+  changed_when: _xray_logs.rc == 0 and (_xray_logs.stdout | from_json).changed
   check_mode: false
 
 - name: Install xray systemd unit

@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location(
@@ -38,6 +39,16 @@ def _private_directory(path: Path) -> Path:
     return path
 
 
+@pytest.fixture
+def umask_022():
+    """Exercise authority publication under the normal Linux process umask."""
+    previous = os.umask(0o022)
+    try:
+        yield
+    finally:
+        os.umask(previous)
+
+
 def _render_helper(tmp_path: Path, dest: Path, **mirror: str) -> Path:
     variables = renderer.merge_render_vars()
     variables["subscription"].update(
@@ -63,6 +74,8 @@ def _render_bootstrap(tmp_path: Path, dest: Path) -> dict[str, object]:
         }
     )
     (tmp_path / "revoked").write_text("", encoding="ascii")
+    # Match the role's explicit vpn-bootstrap-owned 0600 publication.
+    (tmp_path / "revoked").chmod(0o600)
     bootstrap = tmp_path / "vpn-bootstrap.py"
     bootstrap.write_text(renderer.render_template(BOOTSTRAP_HELPER, variables))
     return runpy.run_path(str(bootstrap))
@@ -189,8 +202,24 @@ def test_crash_after_pointer_switch_keeps_complete_generation_and_next_run_recon
     assert second.is_dir()
 
 
+
+def test_molecule_revocation_authority_is_accepted_under_umask_022(tmp_path, umask_022):
+    """The real parser must admit the same authority that Molecule converges."""
+    converge = yaml.safe_load((MOLECULE_VERIFY.parent / 'converge.yml').read_text())[0]
+    entries = converge['vars']['subscription']['revoked_tokens']
+    dest = _private_directory(tmp_path / 'destination')
+    namespace = _render_bootstrap(tmp_path, dest)
+    authority = tmp_path / 'revoked'
+    authority.write_text('\n'.join(entries) + '\n', encoding='ascii')
+    metadata = authority.stat()
+    assert metadata.st_uid == os.geteuid()
+    assert metadata.st_nlink == 1
+    assert metadata.st_mode & 0o777 == 0o600
+    assert namespace['_is_revoked']('') is False
+    assert all(namespace['_is_revoked'](entry) is True for entry in entries)
+
 def test_bootstrap_consumption_tombstone_survives_later_mirror_generation(
-    tmp_path: Path,
+    tmp_path: Path, umask_022,
 ) -> None:
     """A restored bootstrap payload must never resurrect a consumed token."""
     token = "a" * 24

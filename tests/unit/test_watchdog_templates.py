@@ -149,6 +149,34 @@ def test_verify_uses_loaded_credentials_and_only_new_journal_evidence():
     )
 
 
+def test_failure_fixture_provisions_xray_sandbox_path_before_canonical_unit():
+    import shlex
+    import yaml
+
+    scenario = yaml.safe_load(
+        (REPO_ROOT / "ansible/roles/watchdog/molecule/failure/converge.yml").read_text()
+    )[0]
+    variables = _multi_cohort_vars()
+    variables.update(scenario["vars"])
+    unit = render_template(TEMPLATES / "vpn-watchdog.service.j2", variables)
+    writable = shlex.split(
+        next(
+            line for line in unit.splitlines() if line.startswith("ReadWritePaths=")
+        ).split("=", 1)[1]
+    )
+    log_directory = scenario["vars"]["xray_log_dir"]
+    assert log_directory in writable
+    provisioned = {
+        task["ansible.builtin.file"]["path"]: task["ansible.builtin.file"]
+        for task in scenario["pre_tasks"]
+        if task.get("ansible.builtin.file", {}).get("state") == "directory"
+    }
+    assert log_directory in provisioned
+    assert provisioned[log_directory]["owner"] == "root"
+    assert provisioned[log_directory]["group"] == "xray"
+    assert provisioned[log_directory]["mode"] == "0750"
+
+
 def test_watchdog_fails_when_stats_service_is_not_queryable():
     rendered = render_template(TEMPLATES / "vpn-watchdog.sh.j2", _multi_cohort_vars())
 

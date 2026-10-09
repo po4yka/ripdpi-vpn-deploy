@@ -11,7 +11,7 @@
       rate_burst: 3
       enable_bootstrap: true
       revoked_tokens:
-        - "deadbeefdeadbeefdeadbeef"
+        - "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
       # Exercise the continuous payload mirror. rsync with a colon-free
       # local source path performs a local copy (the -e ssh shell is
       # ignored), so the timer-driven pull works self-contained in the

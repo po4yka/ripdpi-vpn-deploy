@@ -133,6 +133,19 @@
         group: root
         mode: "0755"
 
+    - name: Create Xray log group for the canonical watchdog sandbox
+      ansible.builtin.group:
+        name: xray
+        system: true
+
+    - name: Provision Xray log directory before the credential-bearing watchdog unit
+      ansible.builtin.file:
+        path: /var/log/xray
+        state: directory
+        owner: root
+        group: xray
+        mode: "0750"
+
     - name: Drop fake Xray server config
       ansible.builtin.copy:
         dest: /etc/xray/config.json

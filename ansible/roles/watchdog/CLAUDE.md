@@ -57,6 +57,10 @@ the finite oneshot deadline prevent a notification stall from disabling probes.
 - **Direct script runs require loaded notification credentials** — use the
   service unit to exercise delivery. The environment file contains runtime
   settings only, and sender failures never log credential or destination values.
+- **Failure fixtures must provision the real unit's sandbox paths** — the
+  synthetic Xray service does not create `/var/log/xray`. Prepare that mandatory
+  `ReadWritePaths` directory as root:xray 0750 before enabling the watchdog timer;
+  an absent path can reject unit namespace setup before any probe or delivery.
 - **The canary is part of the contract** — it must be operator-owned, have valid public TLS, and return `watchdog_secrets.reality_probe_expected_status` (default `204`). A normal public site root can use `200` without exposing a dedicated health endpoint. Canary failure correctly makes the
   protocol signal red.
 - **On-node is not outside-in** — self-dialing the public listener validates

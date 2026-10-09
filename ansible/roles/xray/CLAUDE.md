@@ -41,6 +41,9 @@ component without following links, claims the log directory as root:xray 0750,
 and validates regular single-link logs before descriptor-backed metadata writes.
 Xray owns only the 0640 log files; startup has no privileged pathname repair.
 Rotation creates fresh runtime-writable files and restarts the active service.
+The command appends `--check` only in check mode; normal convergence sends no
+placeholder argument. JSON change reporting is evaluated only after a successful
+helper exit, preserving the helper's original failure result.
 
 ## What's done well
 
