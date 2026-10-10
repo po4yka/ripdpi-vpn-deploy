@@ -14,14 +14,15 @@ async def execute(args):
         result = module.run(args)
         if hasattr(result, "__await__"):
             return await result
-        return
+        return None
     if args.command == "update" and args.explain:
         print(
             "# vpnd update would query:\n  GET https://api.github.com/repos/po4yka/ripdpi-vpn-deploy/releases/latest"
         )
-        return
+        return None
     ctx = Context.discover(args)
     await module.run(ctx, args)
+    return None
 
 
 async def dispatch(args):
