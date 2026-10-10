@@ -8,7 +8,7 @@ import sys
 import pytest
 
 from artifact_helpers import context, executable, scaffold
-from vpnd.runner import ansible
+from vpnd.runner import ansible, make
 from vpnd.state import Host
 
 
@@ -96,3 +96,16 @@ def test_inventory_scope_explain_does_not_spawn_inventory_program(tmp_path, monk
     selected = asyncio.run(ansible.scoped_limit(ctx))
     assert selected == "<validated inventory host keys>"
     assert not marker.exists()
+
+
+def test_make_secret_path_rejects_all_c0_and_c1_controls_without_disclosing_value():
+    for code in [*range(32), *range(127, 160)]:
+        value = "/tmp/fixture-private-" + chr(code) + ".yaml"
+        with pytest.raises(ValueError) as failure:
+            make.validate_kv("SECRETS_FILE", value)
+        assert "fixture-private-" not in str(failure.value)
+
+
+def test_make_identifier_allowlist_accepts_uppercase_ascii():
+    for key, value in [("ENV", "StageA"), ("PRESET", "TCPA-1"), ("TAG", "READY_tag")]:
+        make.validate_kv(key, value)
