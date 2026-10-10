@@ -2,7 +2,7 @@
 id: VPD-1791615284178957
 title: Replace vpnd with Python while preserving commands and security
 kind: feature
-status: doing
+status: review
 area: vpnd
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: replace-vpnd-with-python
 created: 2026-10-10
 updated: 2026-10-10
 related_tasks: []
+status_detail: Python CLI, all 206 baseline test transfers, 297 source cases, four native artifact lanes, complete hermetic mutation and exact-SHA Rust-free source/CI gates passed; ready for PR review.
 ---
 
 ## Goal
