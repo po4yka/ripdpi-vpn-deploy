@@ -4,7 +4,6 @@ from pathlib import Path
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[2]
 TASKS = ROOT / "ansible" / "roles" / "package_updates" / "tasks" / "main.yml"
 
@@ -22,6 +21,6 @@ def test_fresh_host_check_mode_defers_binary_validation_until_install() -> None:
 
     assert install["register"] == "package_updates_packages"
     assert validate["when"] == [
-        "package_updates.enabled | default(true)",
+        "_package_updates_effective_enabled",
         "not ansible_check_mode or not (package_updates_packages.changed | default(false))",
     ]

@@ -40,6 +40,34 @@
       ntfy_topic: "molecule-stub-topic"
       reality_probe_url: "https://canary.example.test/healthz"
   pre_tasks:
+    - name: Inspect owned container runtime mount propagation
+      ansible.builtin.command:
+        argv: [findmnt, --mountpoint, /run, --output, PROPAGATION, --noheadings]
+      register: _watchdog_molecule_run_propagation
+      changed_when: false
+      failed_when: >-
+        _watchdog_molecule_run_propagation.rc != 0 or
+        (_watchdog_molecule_run_propagation.stdout | trim) not in
+        ['private', 'shared', 'slave', 'shared,slave', 'unbindable']
+
+    - name: Prepare owned container runtime propagation for systemd credentials
+      ansible.builtin.command:
+        argv: [mount, --make-rshared, /run]
+      when: "'shared' not in (_watchdog_molecule_run_propagation.stdout | trim).split(',')"
+      changed_when: true
+
+    - name: Inspect prepared runtime mount propagation
+      ansible.builtin.command:
+        argv: [findmnt, --mountpoint, /run, --output, PROPAGATION, --noheadings]
+      register: _watchdog_molecule_run_ready
+      changed_when: false
+
+    - name: Require shared owned runtime propagation before watchdog convergence
+      ansible.builtin.assert:
+        that:
+          - "'shared' in (_watchdog_molecule_run_ready.stdout | trim).split(',')"
+        fail_msg: The owned container runtime must publish systemd credential mounts.
+
     - name: Install jq for structured REALITY probe verification
       ansible.builtin.apt:
         name: jq

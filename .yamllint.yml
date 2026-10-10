@@ -23,6 +23,7 @@ rules:
     indent-sequences: true
 
 ignore: |
+  .cache/
   .ansible/
   .terraform/
   .venv/

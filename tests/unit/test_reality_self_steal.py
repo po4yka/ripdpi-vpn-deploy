@@ -1,4 +1,5 @@
 """P0 REALITY self-steal behavior at the Ansible role boundary."""
+
 import importlib.util
 import json
 import os
@@ -6,7 +7,6 @@ from pathlib import Path
 import subprocess
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[2]
 ANSIBLE = ROOT / "ansible"
@@ -90,8 +90,7 @@ def test_xray_public_reality_inbound_targets_the_owned_loopback_site() -> None:
     inbound = next(
         item
         for item in rendered["inbounds"]
-        if item["port"] == 443
-        and item["streamSettings"].get("security") == "reality"
+        if item["port"] == 443 and item["streamSettings"].get("security") == "reality"
     )
     reality = inbound["streamSettings"]["realitySettings"]
 
@@ -104,8 +103,7 @@ def test_xray_public_reality_inbound_targets_the_owned_loopback_site() -> None:
 
 def test_enabled_role_rejects_a_non_loopback_xray_target(tmp_path: Path) -> None:
     playbook = tmp_path / "self-steal-invalid.yml"
-    playbook.write_text(
-        """---
+    playbook.write_text("""---
 - hosts: localhost
   connection: local
   gather_facts: false
@@ -123,8 +121,7 @@ def test_enabled_role_rejects_a_non_loopback_xray_target(tmp_path: Path) -> None
       key_pem: placeholder
   roles:
     - reality-self-steal
-"""
-    )
+""")
     env = {**os.environ, "ANSIBLE_ROLES_PATH": str(ANSIBLE / "roles")}
 
     result = subprocess.run(
@@ -142,8 +139,7 @@ def test_enabled_role_rejects_a_non_loopback_xray_target(tmp_path: Path) -> None
 
 def test_enabled_role_rejects_missing_self_steal_secrets(tmp_path: Path) -> None:
     playbook = tmp_path / "self-steal-missing-secrets.yml"
-    playbook.write_text(
-        """---
+    playbook.write_text("""---
 - hosts: localhost
   connection: local
   gather_facts: false
@@ -157,8 +153,7 @@ def test_enabled_role_rejects_missing_self_steal_secrets(tmp_path: Path) -> None
       server_names: [edge.example.test]
   roles:
     - reality-self-steal
-"""
-    )
+""")
     env = {**os.environ, "ANSIBLE_ROLES_PATH": str(ANSIBLE / "roles")}
 
     result = subprocess.run(
@@ -175,7 +170,9 @@ def test_enabled_role_rejects_missing_self_steal_secrets(tmp_path: Path) -> None
 
 
 def test_self_steal_has_a_dedicated_certificate_secret_contract() -> None:
-    example = yaml.safe_load((ROOT / "secrets" / "prod.secrets.example.yaml").read_text())
+    example = yaml.safe_load(
+        (ROOT / "secrets" / "prod.secrets.example.yaml").read_text()
+    )
     schema = yaml.safe_load((ROOT / "secrets" / "schema.json").read_text())
 
     assert set(example["reality_self_steal"]) == {"server_name", "cert_pem", "key_pem"}
@@ -192,13 +189,14 @@ def test_secret_bootstraps_seed_self_steal_from_the_owned_tls_identity() -> None
     assert "server_name: ${SERVER_NAME_YAML}" in operator
     assert "reality_self_steal:" in ci
     assert 'server_name: "${REALITY_SERVER_NAME}"' in ci
-    assert "$(echo \"$self_steal_cert_pem\")" in ci
+    assert '$(echo "$self_steal_cert_pem")' in ci
 
 
-def test_enabled_role_rejects_server_names_not_bound_to_owned_identity(tmp_path: Path) -> None:
+def test_enabled_role_rejects_server_names_not_bound_to_owned_identity(
+    tmp_path: Path,
+) -> None:
     playbook = tmp_path / "self-steal-sni-mismatch.yml"
-    playbook.write_text(
-        """---
+    playbook.write_text("""---
 - hosts: localhost
   connection: local
   gather_facts: false
@@ -216,8 +214,7 @@ def test_enabled_role_rejects_server_names_not_bound_to_owned_identity(tmp_path:
       key_pem: placeholder
   roles:
     - reality-self-steal
-"""
-    )
+""")
     env = {**os.environ, "ANSIBLE_ROLES_PATH": str(ANSIBLE / "roles")}
 
     result = subprocess.run(
@@ -235,8 +232,7 @@ def test_enabled_role_rejects_server_names_not_bound_to_owned_identity(tmp_path:
 
 def test_enabled_role_rejects_a_public_listener_port_collision(tmp_path: Path) -> None:
     playbook = tmp_path / "self-steal-public-port-collision.yml"
-    playbook.write_text(
-        """---
+    playbook.write_text("""---
 - hosts: localhost
   connection: local
   gather_facts: false
@@ -259,8 +255,7 @@ def test_enabled_role_rejects_a_public_listener_port_collision(tmp_path: Path) -
       - {name: nginx-xhttp, protocol: tcp, port: 8443, enabled: true}
   roles:
     - reality-self-steal
-"""
-    )
+""")
     env = {**os.environ, "ANSIBLE_ROLES_PATH": str(ANSIBLE / "roles")}
 
     result = subprocess.run(
@@ -277,9 +272,11 @@ def test_enabled_role_rejects_a_public_listener_port_collision(tmp_path: Path) -
 
 
 def test_collision_guard_ignores_disabled_public_manifest_entries() -> None:
-    configure = (
-        ANSIBLE / "roles" / "reality-self-steal" / "tasks" / "configure.yml"
-    ).read_text()
+    configure = yaml.safe_load(
+        (
+            ANSIBLE / "roles" / "reality-self-steal" / "tasks" / "configure.yml"
+        ).read_text()
+    )[0]["vars"]["reality_self_steal_public_tcp_ports"]
 
     assert "selectattr('enabled', 'equalto', true)" in configure
     assert "public_listener_manifest | default([])" in configure
@@ -291,20 +288,25 @@ def test_first_install_check_mode_skips_the_absent_nginx_service() -> None:
             ANSIBLE / "roles" / "reality-self-steal" / "tasks" / "configure.yml"
         ).read_text()
     )
-    ensure_nginx = next(
-        task for task in tasks if task["name"] == "Ensure nginx is enabled and started"
+    transaction = next(task for task in tasks if "shared nginx lock" in task["name"])
+    assert transaction["ansible.builtin.include_role"] == {
+        "name": "nginx-xhttp",
+        "tasks_from": "transaction",
+    }
+    assert transaction["vars"]["nginx_transaction_unit"] == "nginx.service"
+    assert transaction["vars"]["nginx_transaction_desired_enabled"] is True
+    memory = next(task for task in tasks if "seven-day" in task["name"])
+    assert memory["check_mode"] is False
+    assert (
+        memory["when"]
+        == "not ansible_check_mode or (_self_steal_tls_validator.stat.executable | default(false))"
     )
-    condition = " ".join(ensure_nginx["when"])
-
-    assert "not ansible_check_mode" in condition
-    assert "'nginx.service' in" in condition
-    assert "ansible_facts.services | default({})" in condition
+    assert not any("systemd_service" in key for task in tasks for key in task)
 
 
 def test_enabled_role_rejects_an_unsafe_server_name(tmp_path: Path) -> None:
     playbook = tmp_path / "self-steal-unsafe-server-name.yml"
-    playbook.write_text(
-        """---
+    playbook.write_text("""---
 - hosts: localhost
   connection: local
   gather_facts: false
@@ -319,8 +321,7 @@ def test_enabled_role_rejects_an_unsafe_server_name(tmp_path: Path) -> None:
       key_pem: placeholder
   roles:
     - reality-self-steal
-"""
-    )
+""")
     env = {**os.environ, "ANSIBLE_ROLES_PATH": str(ANSIBLE / "roles")}
 
     result = subprocess.run(
@@ -338,12 +339,7 @@ def test_enabled_role_rejects_an_unsafe_server_name(tmp_path: Path) -> None:
 
 def test_molecule_verifies_live_tls_site_and_private_binding() -> None:
     verify_path = (
-        ANSIBLE
-        / "roles"
-        / "reality-self-steal"
-        / "molecule"
-        / "default"
-        / "verify.yml"
+        ANSIBLE / "roles" / "reality-self-steal" / "molecule" / "default" / "verify.yml"
     )
     verify = verify_path.read_text()
     tasks = yaml.safe_load(verify)[0]["tasks"]
@@ -353,8 +349,7 @@ def test_molecule_verifies_live_tls_site_and_private_binding() -> None:
         if task["name"] == "HTTPS root returns the ordinary landing site"
     )
     root_probe_lines = {
-        line.strip()
-        for line in root_probe["ansible.builtin.shell"]["cmd"].splitlines()
+        line.strip() for line in root_probe["ansible.builtin.shell"]["cmd"].splitlines()
     }
 
     assert "nginx -t" in verify

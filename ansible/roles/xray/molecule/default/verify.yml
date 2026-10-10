@@ -108,3 +108,15 @@
           - (xray_short_ids.stdout_lines | length) == 0 or
             (xray_short_ids.stdout_lines | map('length') | select('odd') | list | length) == 0
         fail_msg: "REALITY shortIds must all have even length. Got: {{ xray_short_ids.stdout_lines }}"
+
+    - name: Xray runtime can append logs but cannot replace directory entries
+      ansible.builtin.shell:
+        cmd: |
+          set -eu
+          test "$(stat -c '%U:%G:%a' /var/log/xray)" = 'root:xray:750'
+          runuser -u xray -- test -w /var/log/xray/access.log
+          runuser -u xray -- test -w /var/log/xray/error.log
+          if runuser -u xray -- test -w /var/log/xray; then exit 1; fi
+          runuser -u xray -- sh -c 'printf "synthetic log\n" >> /var/log/xray/access.log'
+        executable: /bin/bash
+      changed_when: false

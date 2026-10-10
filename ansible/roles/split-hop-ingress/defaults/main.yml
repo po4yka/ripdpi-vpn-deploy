@@ -13,3 +13,5 @@ split_hop_ingress_secrets:
   node_a_private_key: ""
   node_b_public_key: ""
   preshared_key: ""
+
+split_hop_ingress_role_enabled: true

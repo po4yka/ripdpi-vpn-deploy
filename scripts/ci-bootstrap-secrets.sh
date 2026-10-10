@@ -213,8 +213,10 @@ $(echo "$key_pem")
 
 naive_secrets:
   server_name: "${SERVER_NAME}"
-  username: "ci-user"
-  password: "${naive_pw}"
+  clients:
+    - name: ${CLIENT_NAME}
+      username: "ci-user"
+      password: "${naive_pw}"
   probe_resistance_secret: "${naive_probe}"
   cert_pem: |
 $(echo "$cert_pem")

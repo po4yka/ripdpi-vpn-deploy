@@ -94,11 +94,11 @@ require_file "etc/nftables.conf"
 require_file "etc/ssh/sshd_config.d/20-ansible-hardening.conf"
 require_file "etc/sysctl.d/90-vpn.conf"
 require_nonempty_directory "etc/systemd/system"
-{% if vpn.enable_xray_reality | default(true) %}
-require_file "etc/xray/config.json"
-python3 -m json.tool "$restore_target/etc/xray/config.json" >/dev/null
+{% if not (vpn_subscription_only | default(false)) and ((vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true))) %}
+require_file "{{ xray_etc_dir | default(xray_config_dir | default('/etc/xray')) | regex_replace('^/', '') }}/config.json"
+python3 -m json.tool "$restore_target/{{ xray_etc_dir | default(xray_config_dir | default('/etc/xray')) | regex_replace('^/', '') }}/config.json" >/dev/null
 {% endif %}
-{% if vpn.enable_nginx_xhttp | default(true) %}
+{% if not (vpn_subscription_only | default(false)) and (vpn.enable_nginx_xhttp | default(true)) %}
 require_file "etc/nginx/sites-available/vpn-xhttp.conf"
 require_file "etc/nginx/tls/{{ nginx_xhttp.server_name }}.fullchain.pem"
 require_file "etc/nginx/tls/{{ nginx_xhttp.server_name }}.key"
@@ -108,16 +108,16 @@ require_file "etc/nginx/tls/{{ nginx_xhttp.fallback_server_name }}.fullchain.pem
 require_file "etc/nginx/tls/{{ nginx_xhttp.fallback_server_name }}.key"
 {% endif %}
 {% endif %}
-{% if vpn.enable_hysteria | default(false) %}
-require_file "etc/hysteria/config.yaml"
-require_file "etc/hysteria/server.fullchain.pem"
-require_file "etc/hysteria/server.key"
+{% if not (vpn_subscription_only | default(false)) and (vpn.enable_hysteria | default(false)) %}
+require_file "{{ hysteria_config_dir | default('/etc/hysteria') | regex_replace('^/', '') }}/config.yaml"
+require_file "{{ hysteria_config_dir | default('/etc/hysteria') | regex_replace('^/', '') }}/server.fullchain.pem"
+require_file "{{ hysteria_config_dir | default('/etc/hysteria') | regex_replace('^/', '') }}/server.key"
 {% endif %}
-{% if vpn.enable_snell | default(false) %}
+{% if not (vpn_subscription_only | default(false)) and (vpn.enable_snell | default(false)) %}
 require_file "etc/snell/config.json"
 python3 -m json.tool "$restore_target/etc/snell/config.json" >/dev/null
 {% endif %}
-{% if vpn.enable_amneziawg | default(false) %}
+{% if not (vpn_subscription_only | default(false)) and (vpn.enable_amneziawg | default(false)) %}
 {% if amneziawg_secrets.instances | default([]) | length > 0 %}
 {% for instance in amneziawg_secrets.instances %}
 require_file "{{ amneziawg_config_dir | regex_replace('^/', '') }}/{{ instance.name }}.conf"

@@ -20,3 +20,5 @@ backup_restore_drill_enabled: true
 backup_restore_drill_on_calendar: monthly
 backup_restore_drill_randomized_delay: 2h
 backup_snapshot_max_age_hours: 36
+
+backup_role_enabled: true

@@ -6,11 +6,10 @@ import importlib.util
 import sys
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RENDERER = REPO_ROOT / "scripts" / "check-templates-render.py"
 ROLE = REPO_ROOT / "ansible" / "roles" / "honeypot"
-TASKS = ROLE / "tasks" / "main.yml"
+TASKS = ROLE / "tasks" / "enable.yml"
 LOGROTATE_TEMPLATE = ROLE / "templates" / "logrotate-honeypot.j2"
 SERVICE_TEMPLATE = ROLE / "templates" / "honeypot-logrotate.service.j2"
 TIMER_TEMPLATE = ROLE / "templates" / "honeypot-logrotate.timer.j2"

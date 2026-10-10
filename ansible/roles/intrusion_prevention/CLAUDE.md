@@ -8,6 +8,13 @@
 
 **Allowed SSH CIDRs are never bannable** — `allowed_ssh_cidrs` is merged into Fail2Ban `ignoreip` with `intrusion_prevention.ignore_cidrs`.
 
+**The sshd jail reconciles both states** — the owned jail is rendered with enabled=false when the internal switch turns off, and the changed policy restarts Fail2Ban after validation. Other jail files are preserved.
+
+**Enforcement errors remain errors** — the action helper accepts a failed add
+or delete only when a subsequent bounded typed-set observation proves the
+requested membership is already true. Missing sets, permissions and malformed
+observations fail categorically; stderr never includes offender addresses.
+
 ## What's done well
 
 - **Default-off at site level** — `site.yml` runs the role only behind `security_controls.fail2ban`.

@@ -2,6 +2,14 @@
 
 ## Design decisions
 
+The root policy unit bounds capabilities to NET_ADMIN, so root UID alone cannot
+read a dedicated Xray user's logs. Its sole extra reader grant is membership in
+the configured Xray log group; validated 0640 logs admit that reader while
+other identities remain denied. No DAC bypass capability is added.
+The role ensures the named reader group without changing an existing GID, so
+an independently enabled detector can still run and report unavailable input
+when Xray is disabled or its log has not appeared.
+
 **Bans blackhole/rejected abuse, NOT external probes** — the historical
 `probe-ratelimit` name implied it throttles REALITY active-probing. It
 cannot: on failed auth `xtls/reality`'s `func Server` proxies the prober to
@@ -23,6 +31,12 @@ owns it) for an early drop.
 **Threshold is conservative** — defaults 5 events / 60s / IP. The source IP
 on a blackhole line is the *client's* real IP, so a strict limit on a
 carrier-NAT pool takes out legitimate clients first.
+
+Same-inode truncation resets the existing read offset when file size shrinks;
+inode replacement reopens from the beginning. Permanent regressions exercise
+both kernel file identities, subsequent input and absence of double counting.
+The correct reader is preserved; bytes overwritten between polls are not an
+input-recovery guarantee.
 
 ## What's done well
 
@@ -52,3 +66,14 @@ carrier-NAT pool takes out legitimate clients first.
   `tests/unit/test_policy_ratelimit.py` after any Xray pin bump; if the
   access-log line shape changed, the dead-contract gauge will also rise on
   live nodes.
+
+- Idle input still publishes a heartbeat; unavailable input has a separate gauge.
+  Source windows expire and have a fixed capacity with an overflow counter.
+- Textfile publication uses directory descriptors and random exclusive temporary
+  files; reject symlink outputs and preserve prior bytes when publication fails.
+
+- Ordinary site convergence always invokes lifecycle reconciliation. The
+  `policy_ratelimit_role_enabled` input selects enable or owned runtime retirement before
+  secret/package guards. Disable stops units and removes only declared authority;
+  shared packages, immutable runtime receipts, historical logs and recovery data
+  remain available for a later explicit recovery.

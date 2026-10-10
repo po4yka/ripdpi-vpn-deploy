@@ -48,3 +48,32 @@
       register: fail2ban_service
       changed_when: false
       failed_when: fail2ban_service.stdout != "active"
+
+    - name: Retire enabled sshd enforcement through its internal disable selector
+      ansible.builtin.include_role:
+        name: intrusion_prevention
+      vars:
+        intrusion_prevention:
+          sshd:
+            enabled: false
+
+    - name: Require the retired sshd jail configuration to be absent
+      ansible.builtin.stat:
+        path: /etc/fail2ban/jail.d/ripdpi-sshd.local
+      register: retired_sshd_jail
+      failed_when: retired_sshd_jail.stat.exists
+
+    - name: Require the otherwise unused enforcement daemon to be stopped
+      ansible.builtin.command:
+        argv: [systemctl, is-active, fail2ban.service]
+      register: retired_fail2ban
+      changed_when: false
+      failed_when: retired_fail2ban.rc != 3 or retired_fail2ban.stdout != 'inactive'
+
+    - name: Repeat internal retirement without reinstalling enabled policy
+      ansible.builtin.include_role:
+        name: intrusion_prevention
+      vars:
+        intrusion_prevention:
+          sshd:
+            enabled: false

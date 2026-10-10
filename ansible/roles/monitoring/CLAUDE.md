@@ -2,6 +2,12 @@
 
 ## Design decisions
 
+Xray rotation preserves the explicit 0640 writer/log-reader group contract.
+The capability-bounded policy service joins that group; logs have no other
+reader grant. Naive logs and watchdog budgets have no group reader and stay 0600.
+
+**Private endpoint admission precedes mutation** — `files/private_endpoint.py` normalizes a literal host:port before handler flush, packages or config writes. Loopback is allowed; a Tailnet address requires both exact `node_exporter_approved_tailnet_addresses` approval and gathered local identity. Wildcards, public/private-LAN addresses, hostnames and argument injection are rejected. `monitoring_node_exporter_endpoint` is the normalized contract shared with independent sender and verification calls.
+
 **No external telemetry** — Prometheus node_exporter listens on 127.0.0.1
 only. `scripts/probing-summary.sh` pulls metrics via SSH on demand. Nothing
 egresses unless the operator runs it.
@@ -21,6 +27,11 @@ seconds and exports only repository-owned technical inbound/outbound tags. It
 runs as node_exporter's own account (`prometheus` by default,
 `monitoring.node_exporter_user`) so its atomic textfile can remain 0600
 instead of granting group or world read access.
+
+**Xray rotation uses active-service restart** — the pinned runtime has no
+supported HUP log-reopen contract. Rotation restarts only an active Xray and
+requires active state afterward; restart failure propagates from logrotate.
+This briefly interrupts existing connections while restoring writable logs.
 
 ## What's done well
 
@@ -58,3 +69,14 @@ instead of granting group or world read access.
   `install-operator-crons` on a workstation, not on the server.
 - **Counters reset with Xray** — graph rates or increases. They are diagnostic
   evidence, not a durable usage or billing ledger.
+
+- Ordinary site convergence always invokes lifecycle reconciliation. The
+  `monitoring_role_enabled` input selects enable or owned runtime retirement before
+  secret/package guards. Disable stops units and removes only declared authority;
+  shared packages, immutable runtime receipts, historical logs and recovery data
+  remain available for a later explicit recovery.
+
+Disable stops the packaged node exporter only after this role's private
+ownership marker records accepted convergence. A fresh disabled role leaves an
+unrelated installed exporter running; unique Xray exporter units and metrics
+still retire. Shared textfile writers and log-retention policy remain intact.

@@ -310,7 +310,7 @@ def test_sender_is_fail_closed_and_uses_runtime_release() -> None:
     assert "Validate candidate observability configuration" in tasks
     assert (
         "not ansible_check_mode"
-        not in tasks.split("Install pinned observability agent", 1)[0]
+        not in tasks.split("Assert exactly one node mTLS identity exists", 1)[0]
     )
     assert "Assert observability agent owned path boundary" in tasks
     assert "'promtool_install_root', 'wal_dir', 'wal_max_time'" in tasks
@@ -333,12 +333,16 @@ def test_sender_constructs_exact_node_bound_write_path_and_sni() -> None:
     assert "{{ observability_agent.web_listen }}" in template
 
 
-def test_sender_template_renders_node_path_without_credential_values() -> None:
+@pytest.mark.parametrize(
+    "endpoint", ["127.0.0.1:19100", "[::1]:19100", "100.64.0.8:19100"]
+)
+def test_sender_template_renders_node_path_without_credential_values(endpoint) -> None:
     template = (ROLE / "templates" / "prometheus.yml.j2").read_text(encoding="utf-8")
     rendered = (
         Environment(undefined=StrictUndefined, autoescape=True)
         .from_string(template)
         .render(
+            monitoring_node_exporter_endpoint=endpoint,
             observability_alert_policy={
                 "required_systemd_units": ["nginx.service", "xray.service"]
             },
@@ -363,6 +367,9 @@ def test_sender_template_renders_node_path_without_credential_values() -> None:
         "node": "edge-prod",
     }
     assert set(document) == {"global", "scrape_configs"}
+    assert [
+        job["static_configs"][0]["targets"] for job in document["scrape_configs"][:2]
+    ] == [[endpoint], [endpoint]]
     assert "remote_write" not in document
     assert "BEGIN" not in rendered
 
@@ -581,8 +588,8 @@ def test_credentials_are_validated_as_a_bundle_before_atomic_generation_switch()
         "dest: /etc/systemd/system/observability-agent-health-adapter.service"
         in health_rollback
     )
-    assert "- -purpose\n              - sslclient" in tasks
-    assert "- x509\n              - x509" not in tasks
+    assert "- -purpose\n                  - sslclient" in tasks
+    assert "- x509\n                  - x509" not in tasks
     assert "prometheus.yml" in tasks[publish:switch]
     assert 'mode: "0711"' in tasks
     assert "'0644' if item.item == 'prometheus.yml' else '0600'" in tasks
@@ -982,10 +989,16 @@ def test_site_uses_the_role_contract_as_the_single_enablement_flag() -> None:
     site = (ROOT / "ansible" / "playbooks" / "site.yml").read_text()
     group_vars = (ROOT / "ansible" / "group_vars" / "all.yml").read_text()
 
-    selected = next(role for role in yaml.safe_load(site)[0]["roles"] if role["role"] == "observability_agent")
+    selected = next(
+        role
+        for role in yaml.safe_load(site)[0]["roles"]
+        if role["role"] == "observability_agent"
+    )
     assert "when" not in selected
     lifecycle = (ROLE / "tasks/main.yml").read_text()
-    assert "when: not (observability_agent.enabled | default(false) | bool)" in lifecycle
+    assert (
+        "when: not (observability_agent.enabled | default(false) | bool)" in lifecycle
+    )
     assert "when: observability_agent.enabled | default(false) | bool" in lifecycle
     assert "enable_observability_agent" not in group_vars
 

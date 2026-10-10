@@ -143,20 +143,150 @@ local_attempted_at="$(timestamp)"
 active_stage="local"
 publish_outcome
 
+{% set primary = not (vpn_subscription_only | default(false)) %}
+{% set xray_enabled = primary and ((vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true))) %}
+{% set nginx_enabled = (primary and ((vpn.enable_nginx_xhttp | default(true)) or (vpn.enable_cdn_front | default(false)) or (vpn.enable_probe_matrix_target | default(false)))) or (vpn.enable_subscription_host | default(false)) or (vpn_subscription_only | default(false)) %}
 INCLUDES=(
-  /etc/xray
-  /etc/hysteria
-  /etc/snell
-{% if vpn.enable_amneziawg | default(false) %}
-  "{{ amneziawg_config_dir }}"
-{% endif %}
-  /etc/nginx
   /etc/nftables.conf
   /etc/ssh
   /etc/sysctl.d
   /etc/systemd/system
+{% if xray_enabled %}
+  "{{ xray_etc_dir | default(xray_config_dir | default('/etc/xray')) }}"
+{% endif %}
+{% if primary and vpn.enable_hysteria | default(true) %}
+  "{{ hysteria_config_dir | default('/etc/hysteria') }}"
+{% endif %}
+{% if primary and vpn.enable_snell | default(false) %}
+  /etc/snell
+{% endif %}
+{% if primary and vpn.enable_amneziawg | default(true) %}
+  "{{ amneziawg_config_dir | default('/etc/amnezia/amneziawg') }}"
+{% endif %}
+{% if nginx_enabled %}
+  /etc/nginx
+{% endif %}
+{% if primary and vpn.enable_naive | default(false) %}
+  "{{ (naive | default({})).config_dir | default('/etc/naive') }}"
+{% endif %}
+{% if primary and vpn.enable_hysteria_realm | default(false) %}
+  "{{ (hysteria_realm | default({})).config_dir | default('/etc/hysteria-realm') }}"
+{% endif %}
+{% if primary and vpn.enable_dns_morph_bridge | default(false) %}
+  "{{ (dns_morph_bridge | default({})).config_dir | default('/etc/dns-morph-bridge') }}"
+  /etc/unbound
+{% endif %}
+{% if primary and ((vpn.enable_cascade_ingress | default(false)) or (vpn.enable_cascade_egress | default(false)) or (vpn.enable_split_hop_ingress | default(false)) or (vpn.enable_split_hop_egress | default(false))) %}
+  /etc/wireguard
+{% endif %}
+{% if primary and vpn.enable_cascade_ingress | default(false) %}
+  /etc/cascade
+{% endif %}
+{% if primary and vpn.enable_probe_matrix_target | default(false) %}
+  /etc/probe-matrix
+{% endif %}
+{% if (vpn.enable_subscription_host | default(false)) or (vpn_subscription_only | default(false)) %}
+  "{{ (subscription | default({})).subscription_dir | default('/var/lib/vpn-subscription') }}"
+  "{{ (subscription | default({})).revoked_file | default('/var/lib/vpn-subscription/revoked') }}"
+{% endif %}
+{% if vpn.enable_watchdog | default(true) %}
   /etc/vpn-watchdog.env
+  /etc/vpn-watchdog-notifications.json
+{% if primary and vpn.enable_xray_reality | default(true) %}
+  /etc/vpn-watchdog-reality.json
+{% endif %}
+{% endif %}
 )
+
+# Realm may store its TLS authority outside its configuration tree or link to
+# Hysteria's files. Archive both configured entries and their actual targets;
+# restic preserves symlinks rather than following them into backup content.
+{% if primary and vpn.enable_hysteria_realm | default(false) %}
+REALM_TLS_INPUTS=(
+  "{{ (hysteria_realm | default({})).tls_cert_path | default(((hysteria_realm | default({})).config_dir | default('/etc/hysteria-realm')) ~ '/server.fullchain.pem') }}"
+  "{{ (hysteria_realm | default({})).tls_key_path | default(((hysteria_realm | default({})).config_dir | default('/etc/hysteria-realm')) ~ '/server.key') }}"
+)
+for input in "${REALM_TLS_INPUTS[@]}"; do
+  if ! target="$(python3 -c 'import pathlib, sys; print(pathlib.Path(sys.argv[1]).resolve(strict=True))' "$input" 2>/dev/null)"; then
+    printf '%s\n' 'backup: required enabled TLS authority is absent' >&2
+    exit 1
+  fi
+  INCLUDES+=("$input")
+  if [[ "$target" != "$input" ]]; then INCLUDES+=("$target"); fi
+done
+{% endif %}
+
+# restic may tolerate a partially unreadable tree. Required selected inputs
+# must exist before snapshot/retention/integrity can publish success.
+for input in "${INCLUDES[@]}"; do
+  if [[ ! -e "$input" ]]; then
+    printf '%s\n' 'backup: required enabled input is absent' >&2
+    exit 1
+  fi
+done
+
+REQUIRED_FILES=(
+  /etc/nftables.conf
+  /etc/ssh/sshd_config.d/20-ansible-hardening.conf
+  /etc/sysctl.d/90-vpn.conf
+{% if xray_enabled %}
+  "{{ xray_etc_dir | default(xray_config_dir | default('/etc/xray')) }}/config.json"
+{% endif %}
+{% if primary and vpn.enable_hysteria | default(true) %}
+  "{{ hysteria_config_dir | default('/etc/hysteria') }}/config.yaml"
+  "{{ hysteria_config_dir | default('/etc/hysteria') }}/server.fullchain.pem"
+  "{{ hysteria_config_dir | default('/etc/hysteria') }}/server.key"
+{% endif %}
+{% if primary and vpn.enable_snell | default(false) %}
+  /etc/snell/config.json
+{% endif %}
+{% if primary and vpn.enable_amneziawg | default(true) %}
+{% if (amneziawg_secrets | default({})).instances | default([]) | length > 0 %}
+{% for instance in amneziawg_secrets.instances %}
+  "{{ amneziawg_config_dir | default('/etc/amnezia/amneziawg') }}/{{ instance.name }}.conf"
+{% endfor %}
+{% else %}
+  "{{ amneziawg_config_dir | default('/etc/amnezia/amneziawg') }}/{{ (amneziawg | default({})).interface | default('awg0') }}.conf"
+{% endif %}
+{% endif %}
+{% if primary and vpn.enable_nginx_xhttp | default(true) %}
+  /etc/nginx/sites-available/vpn-xhttp.conf
+  /etc/nginx/tls/{{ nginx_xhttp.server_name }}.fullchain.pem
+  /etc/nginx/tls/{{ nginx_xhttp.server_name }}.key
+{% if nginx_xhttp.fallback_enabled | default(false) and (nginx_xhttp.fallback_server_name | default(nginx_xhttp.server_name)) != nginx_xhttp.server_name %}
+  /etc/nginx/tls/{{ nginx_xhttp.fallback_server_name }}.fullchain.pem
+  /etc/nginx/tls/{{ nginx_xhttp.fallback_server_name }}.key
+{% endif %}
+{% endif %}
+{% if primary and vpn.enable_naive | default(false) %}
+  "{{ (naive | default({})).config_dir | default('/etc/naive') }}/Caddyfile"
+  "{{ (naive | default({})).config_dir | default('/etc/naive') }}/server.fullchain.pem"
+  "{{ (naive | default({})).config_dir | default('/etc/naive') }}/server.key"
+{% endif %}
+{% if primary and vpn.enable_hysteria_realm | default(false) %}
+  "{{ (hysteria_realm | default({})).config_dir | default('/etc/hysteria-realm') }}/config.json"
+  "${REALM_TLS_INPUTS[@]}"
+{% endif %}
+{% if primary and vpn.enable_dns_morph_bridge | default(false) %}
+  "{{ (dns_morph_bridge | default({})).config_dir | default('/etc/dns-morph-bridge') }}/dns-morph-bridge.yaml"
+  /etc/unbound/unbound.conf.d/dns-morph-bridge-fwd.conf
+{% endif %}
+{% for flag, settings in [
+    ('cascade_ingress', cascade_ingress | default({})),
+    ('cascade_egress', cascade_egress | default({})),
+    ('split_hop_ingress', split_hop_ingress | default({})),
+    ('split_hop_egress', split_hop_egress | default({}))] %}
+{% if primary and vpn['enable_' ~ flag] | default(false) %}
+  "/etc/wireguard/{{ settings.wg_interface | default({'cascade_ingress': 'csi0', 'cascade_egress': 'cse0', 'split_hop_ingress': 'shop0', 'split_hop_egress': 'shop0'}[flag]) }}.conf"
+{% endif %}
+{% endfor %}
+)
+for input in "${REQUIRED_FILES[@]}"; do
+  if [[ ! -f "$input" || ! -s "$input" ]]; then
+    printf '%s\n' 'backup: required enabled configuration is absent or empty' >&2
+    exit 1
+  fi
+done
 
 restic -r "$REPO" backup \
   --tag "vpn-stack" \

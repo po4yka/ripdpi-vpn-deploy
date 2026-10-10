@@ -31,7 +31,7 @@
       ansible.builtin.stat:
         path: "{{ item }}"
       loop:
-        - /opt/xray/releases/vtest/.runtime-release.json
+        - /opt/xray/releases/vtest-archive/.runtime-release.json
         - /opt/probe-matrix/mtg/releases/v2.2.8/.runtime-release.json
       register: runtime_release_receipts
     - name: Assert shared runtime releases were committed

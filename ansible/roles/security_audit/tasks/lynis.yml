@@ -8,43 +8,47 @@
   register: security_audit_lynis_install
   failed_when: false
 
-- name: Check Lynis availability
-  ansible.builtin.command:
-    cmd: lynis --version
-  register: security_audit_lynis_path
-  changed_when: false
-  failed_when: false
+- name: Allocate a unique private Lynis report directory
+  ansible.builtin.tempfile:
+    state: directory
+    path: "{{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit') }}/{{ security_audit_run_id }}"
+    prefix: lynis-
+  register: _security_audit_lynis_directory
+  when: not ansible_check_mode
 
-- name: Run Lynis quick system audit
+- name: Collect and validate the fresh Lynis machine report
   ansible.builtin.command:
-    cmd: lynis audit system --quick --no-colors
-  register: security_audit_lynis
+    argv: [python3, -c, "{{ lookup('ansible.builtin.file', role_path ~ '/files/lynis_collect.py') }}"]
+    stdin: "{{ {'directory': _security_audit_lynis_directory.path} | to_json }}"
+  register: _security_audit_lynis_collection
   changed_when: false
-  failed_when: false
-  when: security_audit_lynis_path.rc == 0
+  when: not ansible_check_mode
 
-- name: Write Lynis audit output
+- name: Retain categorical Lynis collection result
+  ansible.builtin.set_fact:
+    security_audit_lynis_receipt: "{{ _security_audit_lynis_collection.stdout | from_json }}"
+  when: not ansible_check_mode
+
+- name: Persist categorical scanner success or unavailable evidence
   ansible.builtin.copy:
-    dest: "{{ security_audit.report_root | default('/var/log/ripdpi-vpn-deploy/security-audit') }}/{{ security_audit_run_id }}/lynis.txt"
+    dest: '{{ _security_audit_lynis_directory.path }}/collection.json'
+    content: '{{ security_audit_lynis_receipt | to_nice_json }}'
     owner: root
     group: root
-    mode: "0640"
-    content: |
-      install_rc={{ security_audit_lynis_install.rc | default('n/a') }}
-      lynis_path_rc={{ security_audit_lynis_path.rc | default('n/a') }}
-      audit_rc={{ (security_audit_lynis | default({})).rc | default('not-run') }}
+    mode: '0600'
+  when: not ansible_check_mode
 
-      # stdout
-      {{ (security_audit_lynis | default({})).stdout | default('Lynis unavailable; install failed or binary not on PATH.') }}
+- name: Distinguish check-mode prediction from actual audit evidence
+  ansible.builtin.debug:
+    msg: Check mode plans Lynis installation and collection; no scan acceptance receipt exists.
+  when: ansible_check_mode
 
-      # stderr
-      {{ (security_audit_lynis | default({})).stderr | default('') }}
-
-- name: Fail on Lynis high findings when explicitly requested
+- name: Require actual successful clean Lynis collection when explicitly requested
   ansible.builtin.assert:
     that:
-      - "'[WARNING]' not in (security_audit_lynis.stdout | default(''))"
-    fail_msg: "Lynis reported warnings and security_audit.fail_on_high_findings=true."
+      - security_audit_lynis_receipt.collection_success | default(false)
+      - security_audit_lynis_receipt.warnings | default(-1) == 0
+    fail_msg: Opt-in audit acceptance requires successful fresh collection without warning records.
   when:
     - security_audit.fail_on_high_findings | default(false)
-    - security_audit_lynis is defined
+    - not ansible_check_mode

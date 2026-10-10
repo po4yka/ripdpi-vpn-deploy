@@ -3,6 +3,45 @@
   hosts: all
   become: true
   pre_tasks:
+    - name: Ensure synthetic TLS fixture tooling
+      ansible.builtin.apt:
+        name: openssl
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+    - name: Generate local synthetic probe matrix TLS fixture
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - req
+          - -x509
+          - -newkey
+          - rsa:2048
+          - -nodes
+          - -keyout
+          - /tmp/probe-matrix-fixture.key
+          - -out
+          - /tmp/probe-matrix-fixture.crt
+          - -subj
+          - /CN=probe.invalid
+          - -days
+          - "1"
+        creates: /tmp/probe-matrix-fixture.crt
+      changed_when: false
+      no_log: true
+    - name: Read local synthetic probe matrix TLS fixture
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop: [/tmp/probe-matrix-fixture.crt, /tmp/probe-matrix-fixture.key]
+      register: _probe_matrix_tls_fixture
+      no_log: true
+    - name: Bind synthetic local TLS to probe target
+      ansible.builtin.set_fact:
+        probe_matrix_target_secrets: >-
+          {{ probe_matrix_target_secrets | combine({
+             'cert_pem': _probe_matrix_tls_fixture.results[0].content | b64decode,
+             'key_pem': _probe_matrix_tls_fixture.results[1].content | b64decode}) }}
+      no_log: true
     - name: Inspect pinned Xray archive fixture
       ansible.builtin.stat:
         path: /var/tmp/probe-matrix-xray.zip
@@ -35,8 +74,6 @@
       vless_uuid: 00000000-0000-4000-8000-000000000001
       xhttp_trojan_password: bbbbbbbbbbbbbbbbbbbbbbbb
       tcp_trojan_password: cccccccccccccccccccccccc
-      cert_pem: "-----BEGIN CERTIFICATE-----\nMOLECULE-NOT-REAL\n-----END CERTIFICATE-----"
-      key_pem: "-----BEGIN PRIVATE KEY-----\nMOLECULE-NOT-REAL\n-----END PRIVATE KEY-----"
       mtg_version: v2.2.8
       mtg_linux_amd64_url: file:///tmp/mtg-stub
       mtg_linux_arm64_url: file:///tmp/mtg-stub

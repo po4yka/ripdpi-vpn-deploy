@@ -1,0 +1,5 @@
+# Per-IP delivery rate limit and bounded categorical diagnostics.
+limit_req_zone $binary_remote_addr zone=vpn_sub_per_ip:10m rate={{ subscription.rate_limit | default('5r/m') }};
+
+# Never include URI, headers, addresses, or token-bearing fields here.
+log_format vpn_sub_category 'status=$status upstream_status=$upstream_status limit=$limit_req_status';

@@ -80,6 +80,11 @@ the expected output of every Jinja render against fixtures. Drift is
 visible in PR diffs.
 Role-render tests reuse `scripts/template_render.py` for named-template escaping
 and Ansible filters. Local HTTPS fixtures explicitly require TLS 1.2 or newer.
+HTML/XML names include their compound `.html.j2`/`.xml.j2` suffixes; markup
+values escape, while embedded JSON remains parseable and script-safe. JSON,
+shell, unit, nginx and explicitly named text fragments retain artifact quoting
+and exact credential characters. Recovery conditions use the same environment
+policy even though expression evaluation does not produce markup.
 
 **Client configs need an upstream parser gate** — CI installs a sha256-pinned
 official sing-box binary and checks the complete standard emitter output.
@@ -272,3 +277,21 @@ remain fatal; package signatures and the real schema validator stay enforced.
   and mixed format selection. An unsupported unused emitter refuses in the
   fixture; required emitter failures must precede remote writes. These tests
   are orchestration evidence, not live authentication.
+
+Native P2 check-mode coverage executes the complete enabled agent role against
+valid generated TLS authority in fresh and retained namespaces. It compares the
+owned filesystem before/after and performs no runtime download or activation;
+ordinary Molecule/native runtime acceptance remains separate. The private
+receiver snapshot CLI regression restores every mutable authority file and the
+prior service-state record without rewinding replay or incident state.
+
+Release-publication fixtures must explicitly chmod directories to the tested
+contract after mkdir: the shared build gate uses a restrictive umask, so
+mkdir's requested 0755 alone cannot establish the helper's ownership boundary.
+Task-source readers follow enabled task files and recursively inspect real
+publication blocks; dispatcher files cannot prove mutation or activation order.
+
+The native policy lifecycle fixture requires a root-owned executable parent
+without group/world write permissions. A disposable runner may start with
+0777, so the fixture saves the mode, establishes trusted ancestry and restores
+it in cleanup. Production retirement validation keeps rejecting unsafe ancestry.

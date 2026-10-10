@@ -261,3 +261,136 @@ def test_detector_health_metrics_report_success_input_progress_and_error_state(
     daemon["flush_textfile"](limiter)
     metrics = (tmp_path / "vpn_policy_ratelimit.prom").read_text()
     assert 'vpn_policy_ratelimit_error_state{state="ok"} 1' in metrics
+
+
+def _event(ip):
+    return f"from tcp:{ip}:40001 rejected tcp:1.2.3.4:443"
+
+
+def test_idle_expiry_and_capacity_preserve_active_windows(daemon):
+    limiter = daemon["RateLimiter"](3, 60, 300, max_sources=2)
+    limiter.observe(_event("203.0.113.1"), 0)
+    limiter.observe(_event("203.0.113.2"), 0)
+    assert limiter.observe(_event("203.0.113.3"), 1) is None
+    assert len(limiter.history) == 2
+    assert limiter.capacity_drops == 1
+    assert limiter.errors == 1
+    assert limiter.observe(_event("203.0.113.1"), 2) is None
+    assert limiter.observe(_event("203.0.113.1"), 3) == "203.0.113.1"
+    limiter.expire(61)
+    assert not limiter.history
+    limiter.observe(_event("203.0.113.3"), 62)
+    assert len(limiter.history) == 1
+
+
+def test_metric_publication_ignores_legacy_temporary_symlink(
+    daemon, tmp_path, monkeypatch
+):
+    victim = tmp_path / "victim"
+    victim.write_text("must survive")
+    (tmp_path / "vpn_policy_ratelimit.prom.tmp").symlink_to(victim)
+    monkeypatch.setitem(daemon, "TEXTFILE_DIR", tmp_path)
+    daemon["flush_textfile"](daemon["RateLimiter"](5, 60, 300))
+    assert victim.read_text() == "must survive"
+    output = tmp_path / "vpn_policy_ratelimit.prom"
+    assert output.is_file() and output.stat().st_mode & 0o777 == 0o640
+
+
+def test_metric_output_symlink_is_rejected(daemon, tmp_path, monkeypatch):
+    victim = tmp_path / "victim"
+    victim.write_text("must survive")
+    output = tmp_path / "vpn_policy_ratelimit.prom"
+    output.symlink_to(victim)
+    limiter = daemon["RateLimiter"](5, 60, 300)
+    monkeypatch.setitem(daemon, "TEXTFILE_DIR", tmp_path)
+    daemon["flush_textfile"](limiter)
+    assert victim.read_text() == "must survive"
+    assert output.is_symlink()
+    assert limiter.errors == 1
+
+
+def test_idle_and_missing_input_ticks_are_distinct(daemon, tmp_path, monkeypatch):
+    monkeypatch.setattr(daemon["time"], "sleep", lambda _: None)
+    path = tmp_path / "access.log"
+    follower = daemon["tail"](path)
+    assert next(follower) == (None, False)
+    path.write_text("")
+    assert next(follower) == (None, True)
+    with path.open("a") as stream:
+        stream.write("new input\n")
+    assert next(follower) == ("new input\n", True)
+    follower.close()
+
+
+def test_main_publishes_startup_and_idle_health(daemon, tmp_path, monkeypatch):
+    times = iter([1000, 1000, 1016, 1016, 1032, 1032])
+    monkeypatch.setattr(daemon["time"], "time", lambda: next(times, 1032))
+    monkeypatch.setitem(daemon, "TEXTFILE_DIR", tmp_path)
+    monkeypatch.setitem(
+        daemon, "tail", lambda _: iter([(None, True), (None, True), (None, False)])
+    )
+    publications = []
+    real_publish = daemon["publish_metrics"]
+    monkeypatch.setitem(
+        daemon,
+        "publish_metrics",
+        lambda value: (publications.append(value), real_publish(value)),
+    )
+    daemon["main"]()
+    assert len(publications) == 3
+    assert all(
+        "vpn_policy_ratelimit_input_progress_total 0" in value for value in publications
+    )
+    assert "vpn_policy_ratelimit_input_available 0" in publications[-1]
+    assert 'vpn_policy_ratelimit_error_state{state="error"} 1' in publications[-1]
+
+
+def test_failed_atomic_publication_preserves_previous_complete_metrics(
+    daemon, tmp_path, monkeypatch
+):
+    limiter = daemon["RateLimiter"](5, 60, 300)
+    monkeypatch.setitem(daemon, "TEXTFILE_DIR", tmp_path)
+    daemon["flush_textfile"](limiter)
+    before = (tmp_path / "vpn_policy_ratelimit.prom").read_bytes()
+
+    def reject_replace(*args, **kwargs):
+        raise PermissionError("injected publication failure")
+
+    monkeypatch.setattr(daemon["os"], "replace", reject_replace)
+    limiter.observe("new line", NOW)
+    daemon["flush_textfile"](limiter)
+    assert (tmp_path / "vpn_policy_ratelimit.prom").read_bytes() == before
+    assert limiter.errors == 1
+    assert not list(tmp_path.glob(".policy-ratelimit-*"))
+
+
+@pytest.mark.parametrize("rotation", ["truncate", "replace"])
+def test_actual_tail_recovers_rotation_without_recounting_retained_input(
+    daemon, tmp_path, monkeypatch, rotation
+):
+    monkeypatch.setattr(daemon["time"], "sleep", lambda _seconds: None)
+    path = tmp_path / "access.log"
+    path.write_text("retained history\n" * 20)
+    follower = daemon["tail"](path)
+    assert next(follower) == (None, True), "startup must not recount retained history"
+    with path.open("a") as stream:
+        stream.write("observed before rotation\n")
+    assert next(follower) == ("observed before rotation\n", True)
+    previous_inode = path.stat().st_ino
+    if rotation == "truncate":
+        path.write_text("observed after rotation\n")
+        assert path.stat().st_ino == previous_inode
+    else:
+        replacement = tmp_path / "replacement.log"
+        replacement.write_text("observed after rotation\n")
+        replacement.replace(path)
+        assert path.stat().st_ino != previous_inode
+    assert next(follower) == ("observed after rotation\n", True)
+    assert next(follower) == (
+        None,
+        True,
+    ), "rotation must not count the new record twice"
+    with path.open("a") as stream:
+        stream.write("subsequent input\n")
+    assert next(follower) == ("subsequent input\n", True)
+    follower.close()

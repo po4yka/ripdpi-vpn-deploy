@@ -7,6 +7,7 @@
   delegate_to: localhost
   become: false
   changed_when: false
+  check_mode: false
 
 - name: Validate pinned Tailscale package inputs
   ansible.builtin.assert:
@@ -72,6 +73,7 @@
       - --json
   register: _tailnet_existing_status
   changed_when: false
+  check_mode: false
   failed_when: false
   when: _tailnet_existing_cli_candidates | length == 1
   no_log: true
@@ -101,6 +103,7 @@
     argv: [dpkg-query, -S, /usr/bin/tailscale]
   register: _tailnet_inactive_package_owner
   changed_when: false
+  check_mode: false
   failed_when: false
   when: _tailnet_verify_existing_package | bool
   no_log: true
@@ -110,6 +113,7 @@
     argv: [dpkg-query, -W, '-f=${Version}', tailscale]
   register: _tailnet_inactive_package_version
   changed_when: false
+  check_mode: false
   failed_when: false
   when: _tailnet_verify_existing_package | bool
   no_log: true
@@ -143,6 +147,7 @@
     argv: [systemctl, show, --value, -p, ActiveState, tailscaled.service]
   register: _tailnet_inactive_daemon
   changed_when: false
+  check_mode: false
   failed_when: false
   when:
     - _tailnet_existing_cli_candidates | length == 1
@@ -198,6 +203,7 @@
       - all
   register: _tailnet_existing_preferences
   changed_when: false
+  check_mode: false
   when:
     - _tailnet_existing_cli_candidates | length == 1
     - _tailnet_existing_status.rc == 0

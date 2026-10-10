@@ -1,0 +1,8 @@
+{
+  "provider": {{ watchdog.provider | to_json }}{% if watchdog.provider == 'ntfy' %},
+  "url": {{ watchdog.ntfy_url | default('https://ntfy.sh') | to_json }},
+  "topic": {{ watchdog_secrets.ntfy_topic | to_json }},
+  "token": {{ watchdog_secrets.ntfy_token | default('') | to_json }}{% elif watchdog.provider == 'pushover' %},
+  "token": {{ watchdog_secrets.pushover_token | to_json }},
+  "user": {{ watchdog_secrets.pushover_user | to_json }}{% endif %}
+}

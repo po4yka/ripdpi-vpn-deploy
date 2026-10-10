@@ -14,7 +14,7 @@ VALIDATOR = ANSIBLE / "roles/runtime-release/files/validate_yaml_mapping.py"
 
 
 def _tasks(role: str) -> list[dict]:
-    return yaml.safe_load((ANSIBLE / f"roles/{role}/tasks/main.yml").read_text())
+    return yaml.safe_load((ANSIBLE / f"roles/{role}/tasks/enable.yml").read_text())
 
 
 def _handlers(role: str) -> list[dict]:
@@ -147,16 +147,14 @@ def test_transport_templates_use_format_specific_validation() -> None:
     realm = _named(_tasks("hysteria-realm"), "Render sing-box realm config")[
         "ansible.builtin.template"
     ]
-    naive = _named(_tasks("naive"), "Render Caddyfile")["ansible.builtin.template"]
+    naive = _named(_tasks("naive"), "Render authoritative native Caddy JSON")["ansible.builtin.template"]
     dns = _named(_tasks("dns-morph-bridge"), "Render bridge config")[
         "ansible.builtin.template"
     ]
 
     assert hysteria["validate"].endswith("--profile hysteria %s")
     assert realm["validate"] == "/usr/local/bin/sing-box-realm check -c %s"
-    assert naive["validate"] == (
-        "/usr/local/bin/caddy-naive validate --config %s --adapter caddyfile"
-    )
+    assert naive["validate"] == "/usr/local/bin/caddy-naive validate --config %s"
     assert dns["validate"].endswith("--profile dns-morph %s")
 
 
@@ -179,7 +177,10 @@ def test_restart_only_handlers_wait_for_service_liveness() -> None:
         assert wait["retries"] == 5
         assert wait["delay"] == 2
         assert wait["changed_when"] is False
-        assert wait["when"] == "not ansible_check_mode"
+        assert (
+            wait["when"]
+            == f"{role.replace('-', '_')}_role_enabled | bool and not ansible_check_mode"
+        )
 
 
 def test_hysteria_tls_rotation_uses_the_liveness_restart_topic() -> None:

@@ -26,9 +26,27 @@
       failed_when: not cdn_site.stat.exists or not cdn_site.stat.islnk
 
     - name: Run prefix refresh through the real systemd sandbox
-      ansible.builtin.command:
-        cmd: systemctl start cdn-front-prefix-refresh.service
-      changed_when: false
+      block:
+        - name: Start the actual sandboxed prefix refresh
+          ansible.builtin.command:
+            cmd: systemctl start cdn-front-prefix-refresh.service
+          changed_when: false
+      rescue:
+        - name: Capture bounded fixture refresh unit and journal failure evidence
+          ansible.builtin.command:
+            argv: [python3, '-']
+            stdin: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/diagnose-refresh.py') }}"
+          register: _cdn_fixture_diagnostics
+          changed_when: false
+          failed_when: false
+
+        - name: Show sanitized CDN fixture failure evidence
+          ansible.builtin.debug:
+            msg: "{{ _cdn_fixture_diagnostics.stdout | default('fixture diagnostic unavailable') }}"
+
+        - name: Preserve the original sandboxed prefix refresh failure
+          ansible.builtin.fail:
+            msg: Sandboxed prefix refresh failed; fixture diagnostics do not accept or suppress the failure.
 
     - name: Sandboxed refresh completed successfully
       ansible.builtin.command:

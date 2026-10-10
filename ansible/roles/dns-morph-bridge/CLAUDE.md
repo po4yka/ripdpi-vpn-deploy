@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+Disabled role intent stops only declared owned services and removes exact runtime
+configuration; shared packages, immutable release receipts and unrelated state
+remain. The unique `dns_morph_bridge_role_enabled` selector defaults true for direct calls.
+
 **Config validation is role-specific** — the unpublished bridge binary has no
 stable validation CLI. The shared bounded YAML validator rejects malformed or
 duplicate-key candidates and invalid nested listener, forwarder, morph, limit,
@@ -18,7 +22,7 @@ upstream data-plane endpoint (`dns_morph_bridge.upstream_endpoint`).
 must be reachable for the bridge to receive client handshakes, but the same
 port attracts indiscriminate scanner traffic. The role co-installs unbound on
 127.0.0.1:5353 and the bridge forwards every non-handshake query verbatim so
-an active probe sees a normal recursive resolver, not silence.
+an active probe receives a DNS response without access to recursive resolution.
 
 **No default binary URL** — the reference daemon has no released artifact
 the role can fetch. Operators publish a self-built binary to a trusted
@@ -29,7 +33,17 @@ missing.
 **Co-residency with the full stack** — UDP/53 does not collide with any
 other transport's port. The role can be enabled alongside P0/P1/P2 on the
 same VPS; the only constraint is `events_per_minute_max` being set high
-enough to absorb the scanner volume that comes with a public resolver.
+enough to absorb scanner volume on the public listener.
+
+The loopback Unbound boundary uses `refuse_non_local`: forwarding must not turn
+an unauthenticated public query into admitted recursion merely by changing its
+source to loopback. Local authoritative answers remain supported. The upstream
+DNS-Morph release artifact is unavailable in this source acceptance lane, so
+authenticated morphology and end-to-end bridge forwarding remain unverified.
+
+Retiring the owned Unbound fragment captures its exact bounded bytes and
+metadata. Failed post-removal validation or restart restores that fragment and
+the prior running shared service; unrelated global Unbound inputs are untouched.
 
 ## What's done well
 
@@ -49,16 +63,11 @@ enough to absorb the scanner volume that comes with a public resolver.
   on 127.0.0.53:53, unbound on 127.0.0.1:5353 is fine, but if the operator
   has already moved systemd-resolved to 5353 the bind fails. Verify
   `ss -lnu` before enabling.
-- **RU "trusted DNS" routing** — RU client devices increasingly route DNS
-  through carrier-provided resolvers, which may never see the bridge. The
-  bootstrap channel only works when the client app uses the bridge's IP as
-  its resolver directly, not the system resolver. Document this in the
-  linked client task.
-- **UDP/53 reflection-attack risk** — a public recursor is an amplification
-  vector. The role configures unbound with `access-control: 0.0.0.0/0
-  refuse` so external clients cannot recurse through it; only the bridge's
-  active-probing-defense path forwards to the recursor. Do not relax this
-  setting "for testing".
+- **Client resolver path** — the bootstrap channel requires the client app to
+  address the bridge directly; system resolver selection may route elsewhere.
+- **UDP/53 reflection boundary** — both external and forwarded loopback queries
+  lack recursive authority. Keep `refuse_non_local` for loopback and `refuse` for
+  other sources; a proxy's loopback source is not client authentication.
 - **Bridge signing-key rotation invalidates every client** — clients pin
   the bridge's public key in their bootstrap config. Rotating the key
   requires re-shipping every client config; treat the key as long-lived

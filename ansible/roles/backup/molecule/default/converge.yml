@@ -8,6 +8,7 @@
       enable_nginx_xhttp: false
       enable_hysteria: false
       enable_amneziawg: false
+      enable_watchdog: false
   pre_tasks:
     - name: Ensure backup input directories exist
       ansible.builtin.file:
@@ -19,9 +20,6 @@
       loop:
         - /etc/restic
         - /etc/xray
-        - /etc/hysteria
-        - /etc/amnezia
-        - /etc/nginx
         - /etc/ssh/sshd_config.d
         - /etc/sysctl.d
 
@@ -35,12 +33,6 @@
       loop:
         - path: /etc/xray/config.json
           content: "{}\n"
-        - path: /etc/hysteria/.backup-placeholder
-          content: "hysteria placeholder\n"
-        - path: /etc/amnezia/.backup-placeholder
-          content: "amnezia placeholder\n"
-        - path: /etc/nginx/.backup-placeholder
-          content: "nginx placeholder\n"
         - path: /etc/nftables.conf
           content: "table inet filter {}\n"
         - path: /etc/ssh/sshd_config.d/20-ansible-hardening.conf
@@ -49,7 +41,5 @@
           content: "net.ipv4.ip_forward = 1\n"
         - path: /etc/systemd/system/vpn-drill-sentinel.service
           content: "[Service]\nType=oneshot\nExecStart=/bin/true\n"
-        - path: /etc/vpn-watchdog.env
-          content: "DRILL_SENTINEL=unchanged\n"
   roles:
     - role: backup

@@ -39,6 +39,7 @@ def _validator_repo(tmp_path: Path) -> Path:
     files = (
         "secrets/schema.json",
         "ansible/roles/amneziawg/tasks/main.yml",
+        "ansible/roles/amneziawg/tasks/enable.yml",
         "ansible/roles/amneziawg/tasks/guard-s34.yml",
         "ansible/roles/amneziawg/templates/awg0.conf.j2",
         "scripts/emit-awg.sh",
@@ -126,7 +127,8 @@ def test_policy_validator_rejects_guard_and_emitter_bypasses(tmp_path, mutation)
     repo = _validator_repo(tmp_path)
     assert validator._repo_errors(repo) == []
     if mutation == "conditional_import":
-        path = repo / "ansible/roles/amneziawg/tasks/main.yml"
+        path = repo / "ansible/roles/amneziawg/tasks/enable.yml"
+        assert path.read_text().count("  ansible.builtin.import_tasks: guard-s34.yml") == 1
         path.write_text(
             path.read_text().replace(
                 "  ansible.builtin.import_tasks: guard-s34.yml",
@@ -134,7 +136,8 @@ def test_policy_validator_rejects_guard_and_emitter_bypasses(tmp_path, mutation)
             )
         )
     elif mutation == "run_once_import":
-        path = repo / "ansible/roles/amneziawg/tasks/main.yml"
+        path = repo / "ansible/roles/amneziawg/tasks/enable.yml"
+        assert path.read_text().count("  ansible.builtin.import_tasks: guard-s34.yml") == 1
         path.write_text(
             path.read_text().replace(
                 "  ansible.builtin.import_tasks: guard-s34.yml",

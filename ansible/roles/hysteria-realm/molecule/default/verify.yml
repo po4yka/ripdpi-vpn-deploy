@@ -55,27 +55,27 @@
         cfg_text: "{{ cfg_raw.content | b64decode }}"
         cfg_json: "{{ cfg_raw.content | b64decode | from_json }}"
 
-    - name: Inbound binds realm-service on the configured port
+    - name: Service binds pinned hysteria-realm on the configured port
       ansible.builtin.assert:
         that:
-          - cfg_json.inbounds[0].type == "realm-service"
-          - cfg_json.inbounds[0].listen_port == 8444
-          - cfg_json.inbounds[0].auth_token == "MOLECULE_STUB_AUTH_TOKEN_NOT_REAL"
-        fail_msg: "Realm inbound missing or misconfigured in config.json"
+          - cfg_json.services[0].type == "hysteria-realm"
+          - cfg_json.services[0].listen_port == 8444
+          - cfg_json.services[0].users[0].token == "MOLECULE_STUB_AUTH_TOKEN_NOT_REAL"
+        fail_msg: "Realm service missing or misconfigured in config.json"
 
     - name: TLS block points at the staged cert + key
       ansible.builtin.assert:
         that:
-          - cfg_json.inbounds[0].tls.enabled
-          - cfg_json.inbounds[0].tls.certificate_path == "/etc/hysteria-realm/server.fullchain.pem"
-          - cfg_json.inbounds[0].tls.key_path == "/etc/hysteria-realm/server.key"
+          - cfg_json.services[0].tls.enabled
+          - cfg_json.services[0].tls.certificate_path == "/etc/hysteria-realm/server.fullchain.pem"
+          - cfg_json.services[0].tls.key_path == "/etc/hysteria-realm/server.key"
         fail_msg: "TLS block in config.json does not reference the staged material"
 
-    - name: Per-minute handshake cap is rendered
+    - name: Concurrent realm quota is rendered
       ansible.builtin.assert:
         that:
-          - cfg_json.inbounds[0].limits.events_per_minute_max == 600
-        fail_msg: "events_per_minute_max not rendered correctly"
+          - cfg_json.services[0].users[0].max_realms == 16
+        fail_msg: "max_realms not rendered correctly"
 
     - name: hysteria-realm.service is not in failed state
       ansible.builtin.command:

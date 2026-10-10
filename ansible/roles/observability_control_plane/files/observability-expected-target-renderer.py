@@ -88,7 +88,11 @@ def _validate_inventory(document: dict[str, Any]) -> list[tuple[str, str]]:
         identity = (target["target"], target["role"])
         if not all(_alias(value) for value in identity):
             raise RendererError("invalid inventory")
-        if identity in identities or target["lifecycle"] not in LIFECYCLES:
+        if (
+            identity in identities
+            or not isinstance(target["lifecycle"], str)
+            or target["lifecycle"] not in LIFECYCLES
+        ):
             raise RendererError("invalid inventory")
         if not isinstance(target["ever_seen"], bool):
             raise RendererError("invalid inventory")
@@ -101,18 +105,18 @@ def _validate_inventory(document: dict[str, Any]) -> list[tuple[str, str]]:
             if (
                 not isinstance(values, list)
                 or not 1 <= len(values) <= 32
-                or len(values) != len(set(values))
                 or not all(_alias(value) for value in values)
+                or len(values) != len(set(values))
             ):
                 raise RendererError("invalid inventory")
         families = target["required_families"]
         if (
             not isinstance(families, list)
             or not 1 <= len(families) <= 64
-            or len(families) != len(set(families))
             or not all(
                 isinstance(name, str) and METRIC.fullmatch(name) for name in families
             )
+            or len(families) != len(set(families))
         ):
             raise RendererError("invalid inventory")
         if target["lifecycle"] == "enabled":

@@ -9,5 +9,6 @@
     state: restarted
     daemon_reload: true
   when:
+    - backup_role_enabled | default(true) | bool
     - backup_restore_drill_enabled | bool
     - not ansible_check_mode or _backup_restore_drill_timer_preexisting.stat.exists

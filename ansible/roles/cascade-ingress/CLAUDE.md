@@ -35,3 +35,13 @@ that state requires a separately authorized recovery.
   pre-convergence refusal owns the current routing shape; keep this scaffold
   repository-disabled until a separately reviewed change ships the forwarding
   contract.
+
+- Ordinary site convergence always invokes lifecycle reconciliation. The
+  `cascade_ingress_role_enabled` input selects enable or owned runtime retirement before
+  secret/package guards. Disable stops units and removes only declared authority;
+  shared packages, immutable runtime receipts, historical logs and recovery data
+  remain available for a later explicit recovery.
+
+Disable preserves the same historical-ownership refusal boundary as inert
+convergence. An active/residual historical tunnel or policy is not adopted or
+deleted; only a clean inactive implementation scaffold can retire its files.

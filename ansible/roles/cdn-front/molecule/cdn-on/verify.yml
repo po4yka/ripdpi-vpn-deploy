@@ -3,7 +3,7 @@
 # Asserts:
 #   1. real-IP restoration block present in nginx vhost (set_real_ip_from directives).
 #   2. AOP cert path consumed — nginx vhost references ssl_client_certificate.
-#   3. Origin CA cert generation step is idempotent (file exists, unchanged on re-run).
+#   3. Real TLS accepts the authorized ephemeral client and rejects absent/untrusted clients.
 #   4. Cloudflare prefix caches present with expected fixture values.
 
 - name: Verify cdn-front cdn-on scenario
@@ -26,14 +26,15 @@
       register: cdn_site_enabled
       failed_when: not cdn_site_enabled.stat.exists or not cdn_site_enabled.stat.islnk
 
-    - name: Read cdn-front vhost config
-      ansible.builtin.slurp:
-        src: /etc/nginx/sites-available/cdn-front.conf
-      register: cdn_vhost_raw
+    - name: Read the complete effective nginx configuration
+      ansible.builtin.command:
+        argv: [/usr/sbin/nginx, -T]
+      changed_when: false
+      register: cdn_effective
 
-    - name: Decode vhost content
+    - name: Select the complete effective configuration text
       ansible.builtin.set_fact:
-        cdn_vhost_text: "{{ cdn_vhost_raw.content | b64decode }}"
+        cdn_vhost_text: "{{ cdn_effective.stdout }}"
 
     - name: real-IP restoration block is present (set_real_ip_from directive)
       ansible.builtin.assert:
@@ -65,22 +66,32 @@
           - cdn_vhost_text is search('ssl_verify_client\s+on')
         fail_msg: "ssl_verify_client on missing from cdn-front vhost — AOP not enforced"
 
-    - name: Stubbed AOP cert file is present at configured path (idempotency check)
-      ansible.builtin.stat:
-        path: /etc/nginx/tls/cloudflare-aop.pem
-      register: aop_cert_stat
-      failed_when: not aop_cert_stat.stat.exists
+    - name: Verify the ephemeral AOP authority parses and signs a client identity
+      ansible.builtin.command:
+        argv: [openssl, verify, -purpose, sslclient, -CAfile, /etc/nginx/tls/cloudflare-aop.pem, /etc/nginx/tls/aop-client.crt]
+      changed_when: false
 
-    - name: AOP cert file unchanged after second converge (idempotent)
-      ansible.builtin.slurp:
-        src: /etc/nginx/tls/cloudflare-aop.pem
-      register: aop_cert_content
-
-    - name: AOP cert is non-empty PEM
-      ansible.builtin.assert:
-        that:
-          - (aop_cert_content.content | b64decode) is search('BEGIN CERTIFICATE')
-        fail_msg: "AOP cert at /etc/nginx/tls/cloudflare-aop.pem is empty or not PEM"
+    - name: Exercise authenticated and rejected client pulls through real TLS
+      ansible.builtin.command:
+        argv: >-
+          {{ ['/usr/bin/curl', '--silent', '--insecure', '--noproxy', '*', '--resolve',
+              'cdn.example.test:8443:127.0.0.1', '--output', '/dev/null', '--write-out', '%{http_code}']
+             + item.credentials + ['https://cdn.example.test:8443/app-sync'] }}
+      loop:
+        - name: authenticated
+          credentials: [--cert, /etc/nginx/tls/aop-client.crt, --key, /etc/nginx/tls/aop-client.key]
+          status: '502'
+        - name: absent
+          credentials: []
+          status: '400'
+        - name: untrusted
+          credentials: [--cert, /etc/nginx/tls/aop-rejected.crt, --key, /etc/nginx/tls/aop-rejected.key]
+          status: '400'
+      loop_control:
+        label: "{{ item.name }}"
+      register: aop_tls
+      changed_when: false
+      failed_when: aop_tls.rc != 0 or aop_tls.stdout != item.status
 
     - name: Cloudflare IPv4 prefix cache is present with fixture value
       ansible.builtin.shell:

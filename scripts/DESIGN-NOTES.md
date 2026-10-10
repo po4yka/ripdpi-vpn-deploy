@@ -327,6 +327,12 @@ interface with a general fault selector or a new permanent guest capability.
 
 ## Observability — `observability-operator.py`
 
+The monitoring role's private endpoint validator also runs before standalone
+sender mutation and in the verification playbook. Both exporter scrape jobs use
+its normalized endpoint. Literal loopback binds are accepted; Tailnet binds need
+an exact explicit approval and local address fact. Custom ports and bracketed
+IPv6 remain aligned across installation, sender configuration and verification.
+
 **Sender and staging contracts have consumers outside their entrypoint** —
 inspect these dependencies when changing a sender runtime or acceptance row.
 The retained dedicated-staging harness consumes the runtime contract but does
@@ -403,3 +409,12 @@ requests rollback; an uncertain rollback remains an explicit refusal.
 ## Probe matrix — `probe-matrix-driver.py`
 
 **Probe-matrix drivers keep secrets file-bound** — `probe-matrix-driver.py` reads an owner-controlled `0600` target profile, writes Xray configs only inside `0700` temporary directories, and sends MTProxy requests to the pinned Go helper on stdin. Keep credentials out of argv, environment variables, diagnostics, and reports; only same-tick failures with a healthy direct control can become `blocked`.
+
+### Selected Naive export
+
+`naive-client.py readout` requires `--output`; `make naive-readout` requires
+`OUTPUT` and preserves its literal argv value. Selected credentials stay in a
+new owner-only artifact rather than terminal output. Validate private destination
+authority before encrypted reads, reject existing entries, verify pinned identity
+after writing, and remove only the created inode on failure. No mutation operation
+accepts a readout output flag.

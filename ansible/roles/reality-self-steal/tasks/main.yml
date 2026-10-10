@@ -14,7 +14,7 @@
     fail_msg: >-
       REALITY self-steal requires reality_self_steal.server_name, cert_pem, and key_pem
       in the decrypted SOPS secrets file.
-  when: vpn.enable_reality_self_steal | default(false) | bool
+  when: reality_self_steal_role_enabled | bool
 
 - name: Validate the enabled self-steal transport contract
   ansible.builtin.assert:
@@ -30,7 +30,7 @@
       the loopback TLS endpoint {{ reality_self_steal_listen_address }}:{{ reality_self_steal_port }};
       xray.server_names must contain only the owned certificate hostname
       {{ reality_self_steal.server_name }}.
-  when: vpn.enable_reality_self_steal | default(false) | bool
+  when: reality_self_steal_role_enabled | bool
 
 - name: Derive the immutable TLS release path
   ansible.builtin.set_fact:
@@ -41,12 +41,12 @@
       }}
   changed_when: false
   no_log: true
-  when: vpn.enable_reality_self_steal | default(false) | bool
+  when: reality_self_steal_role_enabled | bool
 
 - name: Configure the owned self-steal target
   ansible.builtin.include_tasks: configure.yml
-  when: vpn.enable_reality_self_steal | default(false) | bool
+  when: reality_self_steal_role_enabled | bool
 
 - name: Remove the owned self-steal target when disabled
   ansible.builtin.include_tasks: cleanup.yml
-  when: not (vpn.enable_reality_self_steal | default(false) | bool)
+  when: not (reality_self_steal_role_enabled | bool)

@@ -19,6 +19,12 @@
     xray_runtime_arch: "{{ '64' if ansible_facts['architecture'] == 'x86_64' else 'arm64-v8a' }}"
     xray_runtime_sha256: "{{ xray.linux_amd64_sha256 if ansible_facts['architecture'] == 'x86_64' else xray.linux_arm64_sha256 }}"
 
+- name: Derive mode-bound immutable Xray release identity
+  ansible.builtin.set_fact:
+    _xray_runtime_release_identity: >-
+      {{ xray.version ~ '-source-' ~ xray.source_commit if xray_runtime_build_from_source | bool
+         else xray.version ~ '-archive' }}
+
 - name: Install Xray runtime dependencies
   ansible.builtin.apt:
     name: "{{ ['golang-go', 'git'] if xray_runtime_build_from_source | bool else ['unzip'] }}"
@@ -28,7 +34,7 @@
 
 - name: Ensure Xray release directory
   ansible.builtin.file:
-    path: "{{ xray_install_dir }}/releases/{{ xray.version }}"
+    path: "{{ xray_install_dir }}/releases/{{ _xray_runtime_release_identity }}"
     state: directory
     owner: root
     group: root
@@ -93,7 +99,7 @@
       outputs:
         - name: installed
           staged_path: /var/lib/ripdpi/runtime-build-staging/xray-core/xray
-          path: "{{ xray_install_dir }}/releases/{{ xray.version }}/xray"
+          path: "{{ xray_install_dir }}/releases/{{ _xray_runtime_release_identity }}/xray"
           expected_sha256: "{{ xray_runtime_source_sha256 }}"
   when: xray_runtime_build_from_source | bool
 
@@ -101,7 +107,7 @@
   ansible.builtin.include_role:
     name: runtime-release
   vars:
-    runtime_release_version: "{{ xray.version }}"
+    runtime_release_version: "{{ _xray_runtime_release_identity }}"
     runtime_release_install_root: "{{ xray_install_dir }}"
     runtime_release_binary_name: xray
     runtime_release_public_link: /usr/local/bin/xray
@@ -169,7 +175,7 @@
 
 - name: Ensure pinned Xray binary permissions
   ansible.builtin.file:
-    path: "{{ xray_install_dir }}/releases/{{ xray.version }}/xray"
+    path: "{{ xray_install_dir }}/releases/{{ _xray_runtime_release_identity }}/xray"
     owner: root
     group: root
     mode: "0755"
@@ -177,7 +183,7 @@
 
 - name: Point current Xray runtime at pinned release
   ansible.builtin.file:
-    src: "{{ xray_install_dir }}/releases/{{ xray.version }}"
+    src: "{{ xray_install_dir }}/releases/{{ _xray_runtime_release_identity }}"
     dest: "{{ xray_install_dir }}/current"
     state: link
     force: true

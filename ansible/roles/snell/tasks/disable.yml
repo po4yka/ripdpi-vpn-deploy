@@ -1,0 +1,11 @@
+---
+- name: Retire snell runtime authority
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: retire
+  vars:
+    runtime_retire_units:
+      - snell.service
+    runtime_retire_paths:
+      - /etc/systemd/system/snell.service
+      - '{{ snell.config_dir }}/config.json'

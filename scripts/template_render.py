@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import base64
 import json
 import os
 import re
@@ -10,7 +11,15 @@ from copy import deepcopy
 from pathlib import Path
 
 import yaml
-from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
+from jinja2 import (
+    DictLoader,
+    Environment,
+    FileSystemLoader,
+    StrictUndefined,
+    pass_eval_context,
+    select_autoescape,
+)
+from jinja2.utils import htmlsafe_json_dumps
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ROLES_DIR = REPO_ROOT / "ansible" / "roles"
@@ -61,6 +70,9 @@ def merge_render_vars() -> dict:
     if EXAMPLE_FILE.exists():
         merged.update(yaml.safe_load(EXAMPLE_FILE.read_text()) or {})
     _resolve_exact_variable_references(merged)
+    # Concrete role path authority for templates consuming the effective
+    # configuration location rather than a hard-coded runtime path.
+    merged["xray_etc_dir"] = merged.get("xray_config_dir", "/etc/xray")
     merged.update(SYNTHETIC_FACTS)
     merged.setdefault("xray_arch", "64")
     merged.setdefault("xray_sha256", "0" * 64)
@@ -78,21 +90,27 @@ def merge_render_vars() -> dict:
     # Synthetic private endpoints make snapshots concrete without admitting a
     # real host or changing the deliberately inert deployment defaults.
     merged["observability_control_plane"]["ingress_address"] = "100.64.0.2"
-    merged["observability_agent"].update({
-        "node_id": "node-01",
-        "environment": "staging",
-        "receiver_origin": "https://100.64.0.2:9443",
-        "receiver_address": "100.64.0.2",
-    })
-    merged["observability_push"].update({
-        "node_id": "node-01",
-        "expected_nodes": ["node-01", "node-02"],
-    })
-    merged["observability_kuma"].update({
-        "bind_address": "100.64.0.8",
-        "allowed_sources": ["100.64.0.1/32"],
-        "backup_directory": "/srv/observer-backup",
-    })
+    merged["observability_agent"].update(
+        {
+            "node_id": "node-01",
+            "environment": "staging",
+            "receiver_origin": "https://100.64.0.2:9443",
+            "receiver_address": "100.64.0.2",
+        }
+    )
+    merged["observability_push"].update(
+        {
+            "node_id": "node-01",
+            "expected_nodes": ["node-01", "node-02"],
+        }
+    )
+    merged["observability_kuma"].update(
+        {
+            "bind_address": "100.64.0.8",
+            "allowed_sources": ["100.64.0.1/32"],
+            "backup_directory": "/srv/observer-backup",
+        }
+    )
     merged.setdefault(
         "watchdog_reality_probes",
         [
@@ -198,7 +216,9 @@ def merge_render_vars() -> dict:
     return merged
 
 
-def _resolve_exact_variable_references(value: object, context: dict | None = None) -> object:
+def _resolve_exact_variable_references(
+    value: object, context: dict | None = None
+) -> object:
     """Resolve only whole-value references used by role defaults.
 
     Repository template snapshots load role defaults as YAML rather than through
@@ -230,16 +250,34 @@ def _sha256(value: str, algorithm: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def render_template(path: Path, vars_: dict) -> str:
-    """Render one repository template with Ansible-compatible polyfills."""
+@pass_eval_context
+def _to_json(context, value):
+    # HTML scripts need valid JSON without script-closing characters. Config
+    # artifacts retain ordinary JSON serialization instead of HTML entities.
+    return htmlsafe_json_dumps(value) if context.autoescape else json.dumps(value)
+
+
+def template_environment(loader) -> Environment:
+    """Build a named environment using the rendered artifact's file type."""
+    from ansible.plugins.filter.core import FilterModule
+
     env = Environment(
-        loader=FileSystemLoader(str(path.parent)),
+        loader=loader,
         undefined=StrictUndefined,
         keep_trailing_newline=True,
-        autoescape=select_autoescape(),
+        autoescape=select_autoescape(
+            enabled_extensions=("html", "htm", "xml", "html.j2", "htm.j2", "xml.j2"),
+        ),
     )
+    for name, filter_ in FilterModule().filters().items():
+        # Keep Jinja's default filter paired with StrictUndefined; Ansible's
+        # default expects its own Undefined implementation instead.
+        env.filters.setdefault(name, filter_)
     env.filters["hash"] = _sha256
-    env.filters["to_json"] = lambda value: json.dumps(value)
+    env.filters["to_json"] = _to_json
+    env.filters["b64encode"] = lambda value: base64.b64encode(
+        str(value).encode("utf-8")
+    ).decode("ascii")
     env.filters["quote"] = lambda value: "'" + str(value).replace("'", "'\\''") + "'"
     env.filters["dirname"] = lambda value: os.path.dirname(str(value))
     env.filters["basename"] = lambda value: os.path.basename(str(value))
@@ -253,6 +291,20 @@ def render_template(path: Path, vars_: dict) -> str:
     )
     env.filters["extract"] = lambda key, container: container[key]
     env.filters["from_json"] = json.loads
+    env.tests["match"] = lambda value, pattern: bool(re.search(pattern, str(value)))
+    env.tests["search"] = lambda value, pattern: bool(re.search(pattern, str(value)))
+    return env
+
+
+def render_fragment(name: str, source: str, vars_: dict) -> str:
+    """Render an in-memory artifact with an explicit filename and format."""
+    env = template_environment(DictLoader({name: source}))
+    return env.get_template(name).render(**vars_)
+
+
+def render_template(path: Path, vars_: dict) -> str:
+    """Render one repository template with Ansible-compatible polyfills."""
+    env = template_environment(FileSystemLoader(str(path.parent)))
 
     def lookup(plugin: str, term: str, *, template_vars: dict | None = None) -> str:
         """Render a shared Ansible template used by repository fixtures only."""
@@ -270,6 +322,4 @@ def render_template(path: Path, vars_: dict) -> str:
         return render_template(resolved, context)
 
     env.globals["lookup"] = lookup
-    env.tests["match"] = lambda value, pattern: bool(re.search(pattern, str(value)))
-    env.tests["search"] = lambda value, pattern: bool(re.search(pattern, str(value)))
     return env.get_template(path.name).render(**vars_)

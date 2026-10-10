@@ -1,4 +1,4 @@
-"""Regression coverage for version-aware Xray geodata activation."""
+"""Regression coverage for controlled Xray geodata activation."""
 from __future__ import annotations
 
 import os
@@ -67,9 +67,9 @@ def test_pre_hot_reload_xray_is_restarted_instead_of_killed(tmp_path: Path) -> N
     assert calls[-1] == "is-active --quiet xray.service"
 
 
-def test_hot_reload_capable_xray_receives_hup(tmp_path: Path) -> None:
+def test_newer_xray_uses_the_same_supported_restart(tmp_path: Path) -> None:
     calls = _run_activation(tmp_path, "26.4.0")
 
-    assert "kill --signal=HUP xray.service" in calls
-    assert "restart xray.service" not in calls
+    assert "kill --signal=HUP xray.service" not in calls
+    assert "restart xray.service" in calls
     assert calls[-1] == "is-active --quiet xray.service"

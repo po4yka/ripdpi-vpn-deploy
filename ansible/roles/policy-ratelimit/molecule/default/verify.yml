@@ -3,6 +3,20 @@
   hosts: all
   become: true
   tasks:
+    - name: Inspect explicitly provisioned log reader group
+      ansible.builtin.getent:
+        database: group
+        key: xray
+
+    - name: Require narrow log reader membership without DAC capabilities
+      ansible.builtin.command:
+        argv: [systemctl, show, policy-ratelimit.service, "--property=SupplementaryGroups,CapabilityBoundingSet"]
+      register: policy_reader_authority
+      changed_when: false
+      failed_when: >-
+        'SupplementaryGroups=xray' not in policy_reader_authority.stdout or
+        'CapabilityBoundingSet=cap_net_admin' not in policy_reader_authority.stdout
+
     - name: Daemon script installed and executable
       ansible.builtin.stat:
         path: /usr/local/bin/policy-ratelimit.py

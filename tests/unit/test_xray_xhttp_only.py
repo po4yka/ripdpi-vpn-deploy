@@ -22,7 +22,7 @@ SITE_PLAYBOOK = REPO_ROOT / "ansible" / "playbooks" / "site.yml"
 ROTATION_PLAYBOOK = REPO_ROOT / "ansible" / "playbooks" / "rotate-credentials.yml"
 VERIFY_PLAYBOOK = REPO_ROOT / "ansible" / "playbooks" / "verify.yml"
 NGINX_XHTTP_TASKS = (
-    REPO_ROOT / "ansible" / "roles" / "nginx-xhttp" / "tasks" / "main.yml"
+    REPO_ROOT / "ansible" / "roles" / "nginx-xhttp" / "tasks" / "enable.yml"
 )
 ROLLBACK_PLAYBOOK = REPO_ROOT / "ansible" / "playbooks" / "rollback-xray.yml"
 
@@ -210,7 +210,7 @@ def _run_live_p0_shape_preflight(
         group_vars / f"{profile}.yml",
     )
     source = yaml.safe_load(
-        (REPO_ROOT / "ansible" / "roles" / "xray" / "tasks" / "main.yml").read_text()
+        (REPO_ROOT / "ansible" / "roles" / "xray" / "tasks" / "enable.yml").read_text()
     )
     names = {
         "Resolve the effective P0 REALITY shape",
@@ -282,7 +282,8 @@ def test_site_playbook_runs_xray_for_reality_or_xhttp() -> None:
     xray_role = playbook.split("- role: xray", 1)[1].split("- role: nginx-xhttp", 1)[0]
     assert "enable_xray_reality" in xray_role
     assert "enable_nginx_xhttp" in xray_role
-    assert ") or\n" in xray_role
+    assert ") or (" in xray_role
+    assert "xray_role_enabled:" in xray_role
 
 
 def test_rotation_playbook_updates_xhttp_only_xray() -> None:
@@ -303,7 +304,11 @@ def test_xray_restart_chain_is_inert_in_check_mode() -> None:
     )
     restart_chain = [task for task in handlers if task.get("listen") == "Restart xray"]
     assert len(restart_chain) == 3
-    assert all(task.get("when") == "not ansible_check_mode" for task in restart_chain)
+    assert all(
+        task.get("when")
+        == "not ansible_check_mode and xray_role_enabled | default(true) | bool"
+        for task in restart_chain
+    )
 
 
 def test_p1_hostname_self_resolution_is_managed_and_verified() -> None:
@@ -353,7 +358,10 @@ def _validation_binary(path: Path, trace: Path) -> None:
 
 
 def _run_xray_tasks(
-    tmp_path: Path, play: dict, *, check: bool = False,
+    tmp_path: Path,
+    play: dict,
+    *,
+    check: bool = False,
     validation_binary: Path | None = None,
 ) -> subprocess.CompletedProcess:
     """Execute source tasks locally; only paths and service effects are sandboxed."""
@@ -386,9 +394,11 @@ def _run_xray_tasks(
     helper_command = str(helper)
     if validation_binary is not None:
         helper_command += " --binary " + shlex.quote(str(validation_binary))
-    play = yaml.safe_load(yaml.safe_dump(play).replace(
-        "/usr/local/libexec/vpn-xray-validate", helper_command
-    ))
+    play = yaml.safe_load(
+        yaml.safe_dump(play).replace(
+            "/usr/local/libexec/vpn-xray-validate", helper_command
+        )
+    )
     assets = tmp_path / "runtime assets"
     assets.mkdir()
     (assets / "fixture.dat").write_text("validation asset")
@@ -406,14 +416,17 @@ def _run_xray_tasks(
     path = tmp_path / "play.yml"
     path.write_text(yaml.safe_dump([play], sort_keys=False))
     config = tmp_path / "ansible.cfg"
-    config.write_text(f"[defaults]\nretry_files_enabled = False\nroles_path = {tmp_path / 'roles'}\n")
+    config.write_text(
+        f"[defaults]\nretry_files_enabled = False\nroles_path = {tmp_path / 'roles'}\n"
+    )
     env = {
         key: value
         for key, value in os.environ.items()
         if not key.startswith("ANSIBLE_")
     }
     env.update(
-        ANSIBLE_CONFIG=str(config), ANSIBLE_LOCAL_TEMP=str(tmp_path / "ansible-local"),
+        ANSIBLE_CONFIG=str(config),
+        ANSIBLE_LOCAL_TEMP=str(tmp_path / "ansible-local"),
         PATH=str(commands) + os.pathsep + os.environ["PATH"],
     )
     return subprocess.run(
@@ -503,12 +516,25 @@ def test_rollback_validates_before_runtime_change(
     if trace.exists():
         validation = json.loads(trace.read_text())
         assert validation["assets"] == str(tmp_path / "runtime assets")
-        assert validation["argv"] == ["run", "-test", "-config", str(tmp_path / "config.json")]
+        assert validation["argv"] == [
+            "run",
+            "-test",
+            "-config",
+            str(tmp_path / "config.json"),
+        ]
 
 
 @pytest.mark.parametrize(
     "scenario",
-    ["changed", "unchanged", "first-config", "check", "disabled", "xhttp-only", "reject-config"],
+    [
+        "changed",
+        "unchanged",
+        "first-config",
+        "check",
+        "disabled",
+        "xhttp-only",
+        "reject-config",
+    ],
 )
 def test_rotation_preserves_immediate_restore_point(
     tmp_path: Path, scenario: str
@@ -551,14 +577,22 @@ def test_rotation_preserves_immediate_restore_point(
     result = _run_xray_tasks(
         tmp_path, play, check=scenario == "check", validation_binary=binary
     )
-    assert (result.returncode != 0) == (scenario == "reject-config"), result.stdout + result.stderr
-    assert trace.exists() == (scenario in {"changed", "first-config", "xhttp-only", "reject-config"})
+    assert (result.returncode != 0) == (scenario == "reject-config"), (
+        result.stdout + result.stderr
+    )
+    assert trace.exists() == (
+        scenario in {"changed", "first-config", "xhttp-only", "reject-config"}
+    )
     if trace.exists():
-        assert json.loads(trace.read_text())["assets"] == str(tmp_path / "runtime assets")
+        assert json.loads(trace.read_text())["assets"] == str(
+            tmp_path / "runtime assets"
+        )
     assert current.read_text() == (
         old_bytes if scenario in {"check", "disabled", "reject-config"} else desired
     )
     assert previous.read_text() == (
-        old_bytes if scenario in {"changed", "xhttp-only", "reject-config"} else "older restore point\n"
+        old_bytes
+        if scenario in {"changed", "xhttp-only", "reject-config"}
+        else "older restore point\n"
     )
     assert previous.stat().st_mode & 0o777 == 0o640

@@ -1,0 +1,42 @@
+---
+- name: Retire honeypot runtime authority
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: retire
+  vars:
+    runtime_retire_units:
+      - honeypot-logrotate.timer
+      - honeypot-logrotate.service
+      - honeypot.service
+    runtime_retire_paths:
+      - /etc/systemd/system/honeypot-logrotate.timer
+      - /etc/systemd/system/honeypot-logrotate.service
+      - /etc/systemd/system/honeypot.service
+      - /usr/local/bin/honeypot.py
+      - /etc/honeypot-logrotate.conf
+      - '{{ honeypot.textfile_dir }}/vpn_honeypot.prom'
+
+- name: Discover previously owned honeypot secondary address units
+  ansible.builtin.find:
+    paths: /etc/systemd/system
+    patterns: vpn-honeypot-address-*.service
+    file_type: file
+  register: _honeypot_retired_address_units
+
+- name: Stop exact owned secondary addresses after listener retirement
+  ansible.builtin.systemd_service:
+    name: "{{ item.path | basename }}"
+    state: stopped
+  loop: "{{ _honeypot_retired_address_units.files }}"
+
+- name: Remove retired secondary address units
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ _honeypot_retired_address_units.files }}"
+  register: _honeypot_retired_address_removed
+
+- name: Reload retired honeypot secondary address units
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: _honeypot_retired_address_removed.changed and not ansible_check_mode

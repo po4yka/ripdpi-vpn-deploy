@@ -118,3 +118,18 @@ cleanup. A third receipt state refuses without mutating any inode.
   POSIX pathname deletion and is outside the threat model; portable `unlinkat`
   has no expected-inode compare-and-delete operation. Detectable substitutions
   are preserved as manual-recovery evidence rather than removed.
+
+- `tasks/retire.yml` is a consumer-selected lifecycle entry point. Consumers
+  declare their exact runtime units and authority paths; it stops installed units,
+  refuses foreign owners and removes that set. It never deletes shared packages,
+  runtime release receipts or durable recovery/backup state.
+
+Retirement and authority rollback query every declared service, timer and target
+directly. `service_facts` enumerates services and cannot prove timer state; the
+bounded metadata helper emits only existence and active/enabled flags.
+
+Complete file/ancestor/descendant ownership validation precedes any unit stop.
+Symlinks are never traversed during retirement, unsafe shared parents and
+foreign children refuse before lifecycle changes, and broad system roots are
+not retirement targets. Consumers should declare exact authority files while
+retaining unrelated configuration children and inactive evaluation payloads.

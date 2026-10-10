@@ -1,0 +1,16 @@
+---
+- name: Retire backup runtime authority
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: retire
+  vars:
+    runtime_retire_units:
+      - vpn-backup.timer
+      - vpn-backup-restore-drill.timer
+      - vpn-backup.service
+      - vpn-backup-restore-drill.service
+    runtime_retire_paths:
+      - /etc/systemd/system/vpn-backup.timer
+      - /etc/systemd/system/vpn-backup-restore-drill.timer
+      - /etc/systemd/system/vpn-backup.service
+      - /etc/systemd/system/vpn-backup-restore-drill.service

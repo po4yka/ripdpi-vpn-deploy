@@ -1,0 +1,34 @@
+[Unit]
+Description=Bounded subscription audit and consumed-grant maintenance
+Documentation=https://github.com/po4yka/ripdpi-vpn-deploy/blob/main/docs/SUBSCRIPTION-PLANE.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=vpn-bootstrap
+Group=vpn-bootstrap
+ExecStart=/usr/local/bin/vpn-bootstrap.py --maintain
+TimeoutStartSec=120
+
+# Hardening
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX
+PrivateNetwork=true
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths={{ subscription.subscription_dir | default('/var/lib/vpn-subscription') }} {{ subscription.reads_log | default('/var/log/vpn-subscription/reads.log') | dirname }}
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=yes
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources

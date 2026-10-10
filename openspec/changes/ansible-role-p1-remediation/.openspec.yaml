@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-09
+goal: SEC-1791545689674403 Repair critical Ansible role audit security and
+  availability paths

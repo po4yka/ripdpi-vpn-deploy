@@ -531,3 +531,133 @@ def test_production_root_requires_effective_root_before_filesystem_access() -> N
     )
     refusal(result, "root")
     assert result.stderr == ""
+
+
+def test_retained_receiver_scope_restores_complete_authority_without_replay_rewind(
+    tmp_path,
+):
+    root = tmp_path / "host"
+    root.mkdir(mode=0o700)
+    config = root / "etc/observability-deadman"
+    for path in (
+        config / "credentials",
+        config / "generations",
+        root / "etc/systemd/system",
+        root / "usr/local/libexec",
+        root / "var/lib/observability-deadman",
+    ):
+        path.mkdir(parents=True, mode=0o700)
+    paths = [
+        config / "credentials/pulse-token",
+        config / "credentials/telegram-bot-token",
+        config / "credentials/pulse-server.crt",
+        config / "credentials/pulse-server.key",
+        config / "credentials/reverse-health-ca.pem",
+        config / "credentials/reverse-health-client.crt",
+        config / "credentials/reverse-health-client.key",
+        root / "usr/local/libexec/observability-deadman.py",
+        root / "etc/systemd/system/observability-deadman.service",
+        root / "etc/systemd/system/observability-deadman-tick.service",
+        root / "etc/systemd/system/observability-deadman-tick.timer",
+    ]
+    for path in paths:
+        path.write_text("prior authority")
+        path.chmod(0o600 if path.parent.name == "credentials" else 0o644)
+    old = config / ("generations/deadman-" + "a" * 64 + ".json")
+    new = config / ("generations/deadman-" + "b" * 64 + ".json")
+    old.write_text("prior generation")
+    new.write_text("candidate generation")
+    current = config / "deadman-current.json"
+    current.symlink_to(old)
+    replay = root / "var/lib/observability-deadman/replay.json"
+    replay.write_text("sequence=10")
+    services = {
+        name: {
+            "exists": True,
+            "active": active,
+            "enabled": enabled,
+            "unit_file_state": "enabled" if enabled else "disabled",
+        }
+        for name, active, enabled in (
+            ("observability-deadman.service", True, True),
+            ("observability-deadman-tick.timer", False, False),
+        )
+    }
+
+    def cli(action, identifier=None):
+        return subprocess.run(
+            [
+                sys.executable,
+                str(HELPER),
+                "deadman",
+                action,
+                str(root),
+                *([identifier] if identifier else []),
+            ],
+            input=json.dumps({"services": services}),
+            text=True,
+            capture_output=True,
+            timeout=10,
+        )
+
+    captured = cli("prepare")
+    assert captured.returncode == 0, captured.stderr
+    state = json.loads(captured.stdout)
+    assert state["services"] == services
+    for path in paths:
+        path.write_text("candidate authority")
+    current.unlink()
+    current.symlink_to(new)
+    replay.write_text("sequence=11")
+    restored = cli("restore", state["id"])
+    assert restored.returncode == 0, restored.stderr
+    assert all(path.read_text() == "prior authority" for path in paths)
+    assert current.readlink() == old
+    assert replay.read_text() == "sequence=11"
+    assert cli("finish", state["id"]).returncode == 0
+    assert not (config / ".authority-rollback").exists()
+
+
+def test_retained_receiver_failed_first_activation_removes_new_authority(tmp_path):
+    root = tmp_path / "host"
+    root.mkdir(mode=0o700)
+    config = root / "etc/observability-deadman"
+    for path in (
+        config / "credentials",
+        config / "generations",
+        root / "etc/systemd/system",
+        root / "usr/local/libexec",
+    ):
+        path.mkdir(parents=True, mode=0o700)
+    services = {
+        name: {
+            "exists": False,
+            "active": False,
+            "enabled": False,
+            "unit_file_state": "not-found",
+        }
+        for name in (
+            "observability-deadman.service",
+            "observability-deadman-tick.timer",
+        )
+    }
+    result = subprocess.run(
+        [sys.executable, str(HELPER), "deadman", "prepare", str(root)],
+        input=json.dumps({"services": services}),
+        text=True,
+        capture_output=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    identifier = json.loads(result.stdout)["id"]
+    token = config / "credentials/pulse-token"
+    token.write_text("candidate")
+    token.chmod(0o600)
+    result = subprocess.run(
+        [sys.executable, str(HELPER), "deadman", "restore", str(root), identifier],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    assert not token.exists()

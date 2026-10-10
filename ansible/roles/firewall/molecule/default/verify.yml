@@ -95,3 +95,52 @@
           ! grep -q 'oifname "awg0" accept' <<< "$forward_chain"
         executable: /bin/bash
       changed_when: false
+
+    - name: Timed IPv4 and IPv6 bans survive actual atomic ruleset replacement
+      ansible.builtin.command:
+        argv: [python3, '-']
+        stdin: |
+          import ipaddress
+          import json
+          import pathlib
+          import subprocess
+          import time
+
+          selected = [
+              ('f2b_sshd4', '198.51.100.22'),
+              ('f2b_sshd6', '2001:db8::22'),
+              ('policy_offenders', '198.51.100.23'),
+              ('policy_offenders6', '2001:db8::23'),
+          ]
+          def nft(*args):
+              return subprocess.run(['nft', *args], check=True, capture_output=True, text=True).stdout
+          def expiry(name, address):
+              payload = json.loads(nft('-j', 'list', 'set', 'inet', 'filter', name))
+              current = next(row['set'] for row in payload['nftables'] if 'set' in row)
+              assert (current['family'], current['table'], current['name']) == ('inet', 'filter', name)
+              entry = next(row['elem'] for row in current['elem']
+                           if ipaddress.ip_address(row['elem']['val']) == ipaddress.ip_address(address))
+              assert ipaddress.ip_address(entry['val']) == ipaddress.ip_address(address)
+              assert type(entry['expires']) is int and entry['expires'] > 0
+              return entry['expires']
+          for name, address in selected:
+              nft('add', 'element', 'inet', 'filter', name, '{', address, 'timeout', '90s', '}')
+          previous = {name: expiry(name, address) for name, address in selected}
+          candidate = pathlib.Path('/run/vpn-firewall-dynamic-regression.nft')
+          source = pathlib.Path('/etc/nftables.conf').read_text()
+          candidate.write_text(source.replace('counter drop', 'counter drop comment "molecule-rule-refresh"', 1))
+          try:
+              nft('-c', '-f', str(candidate))
+              time.sleep(1.1)
+              nft('-f', str(candidate))
+              for name, address in selected:
+                  remaining = expiry(name, address)
+                  assert 0 < remaining < previous[name], 'ban timeout was refreshed instead of preserved'
+              rules = nft('list', 'chain', 'inet', 'filter', 'input')
+              for name, _address in selected:
+                  assert '@' + name + ' drop' in rules
+          finally:
+              candidate.unlink(missing_ok=True)
+              for name, address in selected:
+                  nft('delete', 'element', 'inet', 'filter', name, '{', address, '}')
+      changed_when: false

@@ -3,25 +3,133 @@
   hosts: all
   become: true
   tasks:
-    # Trigger a probe immediately instead of waiting on the 5-min timer.
-    - name: Run vpn-watchdog.sh once with the env file loaded
-      ansible.builtin.shell:
-        cmd: |
-          set -a
-          . /etc/vpn-watchdog.env
-          set +a
-          /usr/local/sbin/vpn-watchdog.sh
-        executable: /bin/bash
-      changed_when: false
-      register: watchdog_run
-      failed_when: watchdog_run.rc != 1
+    - name: Require canonical failed probe and actual notification capture
+      block:
+        # Trigger a probe immediately instead of waiting on the 5-min timer.
+        - name: Run the failed probe through the credential-bearing unit
+          ansible.builtin.command:
+            argv: [systemctl, start, vpn-watchdog.service]
+          changed_when: false
+          register: watchdog_run
+          failed_when: watchdog_run.rc != 1
 
-    # Give the stub listener a moment to finish writing.
-    - name: Wait for the stub to flush the captured alert
-      ansible.builtin.wait_for:
-        path: /tmp/ntfy-stub.log
-        search_regex: '"title":'
-        timeout: 10
+        # Give the stub listener a moment to finish writing.
+        - name: Wait for the stub to flush the captured alert
+          ansible.builtin.wait_for:
+            path: /tmp/ntfy-stub.log
+            search_regex: '"title":'
+            timeout: 10
+
+      rescue:
+        - name: Collect bounded categorical native watchdog failure evidence
+          ansible.builtin.command:
+            argv:
+              - python3
+              - -c
+              - |
+                import json
+                import re
+                import subprocess
+
+                def collect(argv):
+                    try:
+                        return subprocess.run(argv, capture_output=True, text=True, timeout=3)
+                    except (OSError, subprocess.TimeoutExpired):
+                        return None
+
+                properties = {'Result', 'ExecMainCode', 'ExecMainStatus', 'ActiveState', 'SubState'}
+                status = collect(['systemctl', 'show', 'vpn-watchdog.service',
+                                  '--property=' + ','.join(sorted(properties | {'ExecStartPre'}))])
+                report = {'unit': {}, 'pre_start': [], 'journal_signals': []}
+                configured_credential = None
+                if status is not None:
+                    for line in status.stdout.splitlines():
+                        key, _, value = line.partition('=')
+                        if key in properties and re.fullmatch(r'[A-Za-z0-9_-]{1,64}', value):
+                            report['unit'][key] = value
+                        elif key == 'ExecStartPre':
+                            for result in re.finditer(
+                                r'; code=([a-z]+|\(null\)) ; status=([0-9]+)(?:/[A-Z0-9]+)? }', value
+                            ):
+                                code, exit_status = result.groups()
+                                if code in {'exited', 'killed', 'dumped', 'trapped', 'stopped', 'continued', '(null)'}:
+                                    report['pre_start'].append({
+                                        'code': 'not-run' if code == '(null)' else code,
+                                        'status': int(exit_status),
+                                    })
+                unit = collect(['systemctl', 'cat', 'vpn-watchdog.service'])
+                if unit is not None and unit.returncode == 0:
+                    identifiers = set()
+                    section = None
+                    for line in unit.stdout.splitlines():
+                        line = line.strip()
+                        if line.startswith('[') and line.endswith(']'):
+                            section = line
+                        elif section == '[Service]' and line.startswith('LoadCredential='):
+                            value = line.split('=', 1)[1].strip()
+                            if not value:
+                                identifiers.clear()
+                            else:
+                                identifiers.add(value.split(':', 1)[0].strip('"'))
+                    configured_credential = 'notifications.json' in identifiers
+                journal = collect(['journalctl', '--unit=vpn-watchdog.service',
+                                   '--lines=30', '--no-pager', '--output=json'])
+                metadata_journal = collect(['journalctl', '--unit=vpn-watchdog.service',
+                                            '--grep=^watchdog-credential-metadata ',
+                                            '--lines=4', '--no-pager', '--output=json'])
+                for captured in (journal, metadata_journal):
+                    if captured is None:
+                        continue
+                    for line in captured.stdout.splitlines():
+                        try:
+                            message = json.loads(line).get('MESSAGE', '')
+                        except (ValueError, AttributeError):
+                            continue
+                        if not isinstance(message, str):
+                            continue
+                        metadata = re.fullmatch(
+                            r'watchdog-credential-metadata mode=0o[0-7]+ uid=[0-9]+ '
+                            r'gid=[0-9]+ nlink=[0-9]+ size=[0-9]+ readonly=(?:[01]|unknown)', message)
+                        metadata_error = re.fullmatch(
+                            r'watchdog-credential-metadata stage=(?:file-stat|mount-stat) '
+                            r'(?:errno=[0-9]+|error=(?:OSError|KeyError|AttributeError|TypeError|ValueError|'
+                            r'NotImplementedError|OverflowError|Exception))', message)
+                        location = re.fullmatch(
+                            r'watchdog-credential-metadata location directory_exists=[01] '
+                            r'service_directory_matches=[01] canonical_file_exists=[01] source_file_exists=[01]', message)
+                        if (metadata or metadata_error or location) and message not in report['journal_signals']:
+                            report['journal_signals'].append(message)
+                        elif message in {
+                            'watchdog notification failed', 'watchdog: notification delivery failed',
+                            'watchdog-notify-wrapper error=delegate-unavailable',
+                        }:
+                            report['journal_signals'].append(message)
+                        else:
+                            counters = re.match(
+                                r'watchdog: consecutive_fails=([0-9]+) alerts_this_hour=([0-9]+) '
+                                r'kicks_this_hour=([0-9]+)', message)
+                            step = re.search(r'Failed at step ([A-Z_]+)', message)
+                            if counters:
+                                report['journal_signals'].append('watchdog counters=' + ','.join(counters.groups()))
+                            elif step and step.group(1) in {
+                                'NAMESPACE', 'CREDENTIALS', 'EXEC', 'USER', 'GROUP', 'STDIN', 'STDOUT', 'STDERR'
+                            }:
+                                report['journal_signals'].append('unit startup step=' + step.group(1))
+                if 'watchdog-credential-metadata stage=file-stat errno=2' in report['journal_signals']:
+                    report['effective_unit_required_credential'] = configured_credential
+                print(json.dumps(report, sort_keys=True))
+          changed_when: false
+          register: watchdog_failure_diagnostics
+
+        - name: Publish only categorical native watchdog failure evidence
+          ansible.builtin.debug:
+            msg: "{{ watchdog_failure_diagnostics.stdout | from_json }}"
+
+        - name: Preserve the failed canonical invocation or missing notification result
+          ansible.builtin.fail:
+            msg: >-
+              Native watchdog invocation or actual notification capture failed;
+              categorical unit and loaded-credential metadata are reported above.
 
     - name: Read the captured alerts
       ansible.builtin.slurp:
@@ -72,11 +180,6 @@
             | grep -q 'consecutive_fails='
         executable: /bin/bash
       changed_when: false
-      # The probe ran above directly from the verify (not via the timer),
-      # so the journal entry may not include it. Mark the task as a soft
-      # signal — its absence isn't a fail on its own; the title-shape
-      # assertion above is the load-bearing check.
-      failed_when: false
 
     - name: vpn-watchdog journal contains no probe credentials or canary URL
       ansible.builtin.shell:

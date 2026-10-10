@@ -5,8 +5,14 @@ import subprocess
 
 import pytest
 
-
-TEMPLATE = Path(__file__).resolve().parents[2] / "ansible" / "roles" / "cdn-front" / "templates" / "refresh-cf-prefixes.sh.j2"
+TEMPLATE = (
+    Path(__file__).resolve().parents[2]
+    / "ansible"
+    / "roles"
+    / "cdn-front"
+    / "templates"
+    / "refresh-cf-prefixes.sh.j2"
+)
 
 
 def _script() -> str:
@@ -18,7 +24,20 @@ def _write_executable(path: Path, content: str) -> None:
     path.chmod(0o700)
 
 
-def _run_refresh(tmp_path: Path, *, v4_mode: str = "valid", fail_lock: bool = False, fail_nginx_call: int = 0, fail_nft_check: bool = False, fail_nft_apply: bool = False, fail_reload: bool = False, fail_cache_restore: bool = False, origin_firewall: bool = True, seed_only: bool = False, nginx_active: bool = True) -> tuple[subprocess.CompletedProcess[str], Path, str]:
+def _run_refresh(
+    tmp_path: Path,
+    *,
+    v4_mode: str = "valid",
+    fail_lock: bool = False,
+    fail_nginx_call: int = 0,
+    fail_nft_check: bool = False,
+    fail_nft_apply: bool = False,
+    fail_reload: bool = False,
+    fail_cache_restore: bool = False,
+    origin_firewall: bool = True,
+    seed_only: bool = False,
+    nginx_active: bool = True,
+) -> tuple[subprocess.CompletedProcess[str], Path, str]:
     prefix_dir = tmp_path / "prefixes"
     prefix_dir.mkdir()
     (prefix_dir / "cloudflare.v4").write_text("192.0.2.0/24\n")
@@ -28,17 +47,25 @@ def _run_refresh(tmp_path: Path, *, v4_mode: str = "valid", fail_lock: bool = Fa
     fake_bin.mkdir()
     call_log = tmp_path / "calls.log"
     restore_fail_marker = tmp_path / "fail-cache-restore"
-    _write_executable(fake_bin / "flock", """#!/usr/bin/env bash
+    _write_executable(
+        fake_bin / "flock",
+        """#!/usr/bin/env bash
 exit "${FAIL_FLOCK:-0}"
-""")
-    _write_executable(fake_bin / "install", """#!/usr/bin/env bash
+""",
+    )
+    _write_executable(
+        fake_bin / "install",
+        """#!/usr/bin/env bash
 target="${!#}"
 if [[ "$target" == *'.rollback.'* && "${FAIL_CACHE_RESTORE:-0}" == "1" && -e "$RESTORE_FAIL_MARKER" ]]; then
   exit 46
 fi
 exec "$REAL_INSTALL" "$@"
-""")
-    _write_executable(fake_bin / "curl", """#!/usr/bin/env bash
+""",
+    )
+    _write_executable(
+        fake_bin / "curl",
+        """#!/usr/bin/env bash
 set -euo pipefail
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -62,20 +89,33 @@ case "$url" in
   */ips-v6) printf '%s\n' '2001:db8:cf::/48' '2001:db8:100::/48' '2001:db8:200::/48' > "$output" ;;
   *) exit 64 ;;
 esac
-""")
+""",
+    )
     nginx_state = tmp_path / "nginx-state"
     nginx_state.write_text("0\n")
-    _write_executable(fake_bin / "nginx", """#!/usr/bin/env bash
+    _write_executable(
+        fake_bin / "nginx",
+        """#!/usr/bin/env bash
 count="$(cat "$NGINX_STATE")"
 count=$((count + 1))
 printf '%s\n' "$count" > "$NGINX_STATE"
 printf 'nginx %s\n' "$*" >> "$CALL_LOG"
+previous=""
+for value in "$@"; do
+  if [[ "$previous" == "-c" ]]; then
+    cat "$value" >> "$CALL_LOG"
+  fi
+  previous="$value"
+done
 if [[ "$count" == "${FAIL_NGINX_CALL:-0}" ]]; then
   exit 43
 fi
 exit 0
-""")
-    _write_executable(fake_bin / "nft", """#!/usr/bin/env bash
+""",
+    )
+    _write_executable(
+        fake_bin / "nft",
+        """#!/usr/bin/env bash
 printf 'nft %s\n' "$*" >> "$CALL_LOG"
 batch="${!#}"
 cat "$batch" >> "$CALL_LOG"
@@ -85,8 +125,11 @@ fi
 if [[ "$*" != *'-c'* && "${FAIL_NFT_APPLY:-0}" == "1" ]]; then
   exit 42
 fi
-""")
-    _write_executable(fake_bin / "systemctl", """#!/usr/bin/env bash
+""",
+    )
+    _write_executable(
+        fake_bin / "systemctl",
+        """#!/usr/bin/env bash
 printf 'systemctl %s\n' "$*" >> "$CALL_LOG"
 if [[ "$1" == "is-active" ]]; then
   [[ "${NGINX_ACTIVE:-1}" == "1" ]] && exit 0
@@ -101,8 +144,16 @@ if [[ "${FAIL_RELOAD:-0}" == "1" ]]; then
   exit 45
 fi
 exit 0
-""")
-    rendered = _script().replace("{{ cdn_front.cf_prefix_dir }}", str(prefix_dir)).replace("{{ cdn_front.origin_firewall | string | lower }}", "true" if origin_firewall else "false")
+""",
+    )
+    rendered = (
+        _script()
+        .replace("{{ cdn_front.cf_prefix_dir }}", str(prefix_dir))
+        .replace(
+            "{{ cdn_front.origin_firewall | string | lower }}",
+            "true" if origin_firewall else "false",
+        )
+    )
     script = tmp_path / "refresh.sh"
     _write_executable(script, rendered)
     env = {
@@ -118,10 +169,16 @@ exit 0
         "FAIL_NFT_APPLY": "1" if fail_nft_apply else "0",
         "FAIL_RELOAD": "1" if fail_reload else "0",
         "FAIL_CACHE_RESTORE": "1" if fail_cache_restore else "0",
-        "REAL_INSTALL": shutil.which("install", path=os.environ["PATH"]) or "/usr/bin/install",
+        "REAL_INSTALL": shutil.which("install", path=os.environ["PATH"])
+        or "/usr/bin/install",
         "RESTORE_FAIL_MARKER": str(restore_fail_marker),
     }
-    result = subprocess.run([str(script), *(["--seed-only"] if seed_only else [])], capture_output=True, text=True, env=env)
+    result = subprocess.run(
+        [str(script), *(["--seed-only"] if seed_only else [])],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
     return result, prefix_dir, call_log.read_text() if call_log.exists() else ""
 
 
@@ -143,7 +200,7 @@ def test_nftables_sets_are_replaced_in_one_checked_transaction():
     assert script.count("flush set inet filter cdn_front_origins") == 2
     assert "nft add element" not in script
     assert "2>/dev/null || true" not in script
-    assert 'flock -n 9' in script
+    assert "flock -n 9" in script
     assert script.index("NFT_APPLIED=1") < script.index('nft -f "$WORK/nft.batch"')
 
 
@@ -156,7 +213,9 @@ def test_candidates_are_validated_before_cache_publish_and_reload_is_strict():
     cache_publish = script.index('mv -f "$STAGED_V4"')
     reload_call = script.rindex("\nreload_nginx\n")
     assert candidate_check < cache_stage < nft_apply < cache_publish < reload_call
-    assert script.index("INTEGRATED_PROBE=1") < script.index('mv -f "$STAGED_REAL_IP" "$PREFIX_DIR/cloudflare.real_ip"')
+    assert script.index("INTEGRATED_PROBE=1") < script.index(
+        'mv -f "$STAGED_REAL_IP" "$PREFIX_DIR/cloudflare.real_ip"'
+    )
     assert "systemctl reload nginx 2>/dev/null || true" not in script
 
 
@@ -220,8 +279,12 @@ def test_success_replaces_caches_applies_batch_and_reloads(tmp_path):
     result, prefix_dir, calls = _run_refresh(tmp_path)
 
     assert result.returncode == 0, result.stderr
-    assert (prefix_dir / "cloudflare.v4").read_text().splitlines()[0] == "198.51.100.0/25"
-    assert (prefix_dir / "cloudflare.v6").read_text().splitlines()[0] == "2001:db8:cf::/48"
+    assert (prefix_dir / "cloudflare.v4").read_text().splitlines()[
+        0
+    ] == "198.51.100.0/25"
+    assert (prefix_dir / "cloudflare.v6").read_text().splitlines()[
+        0
+    ] == "2001:db8:cf::/48"
     assert "add element inet filter cdn_front_origins { 198.51.100.0/25" in calls
     assert "add element inet filter cdn_front_origins_v6 { 2001:db8:cf::/48" in calls
     assert calls.count("nft -f") == 1
@@ -249,13 +312,17 @@ def test_origin_firewall_disabled_does_not_require_nft(tmp_path):
     result, prefix_dir, calls = _run_refresh(tmp_path, origin_firewall=False)
 
     assert result.returncode == 0, result.stderr
-    assert (prefix_dir / "cloudflare.v4").read_text().splitlines()[0] == "198.51.100.0/25"
+    assert (prefix_dir / "cloudflare.v4").read_text().splitlines()[
+        0
+    ] == "198.51.100.0/25"
     assert "nft " not in calls
     assert "systemctl reload nginx" in calls
 
 
 def test_cold_seed_publishes_validated_prefixes_without_starting_nginx(tmp_path):
-    result, prefix_dir, calls = _run_refresh(tmp_path, seed_only=True, nginx_active=False)
+    result, prefix_dir, calls = _run_refresh(
+        tmp_path, seed_only=True, nginx_active=False
+    )
 
     assert result.returncode == 0, result.stderr
     assert (prefix_dir / "cloudflare.v4").read_text().startswith("198.51.100.0/25")
@@ -282,11 +349,41 @@ def test_regular_refresh_does_not_pass_when_nginx_is_stopped(tmp_path):
 
 
 def test_role_starts_nginx_only_after_the_desired_site_is_validated():
-    tasks = (TEMPLATE.parents[1] / "tasks/main.yml").read_text()
+    tasks = (TEMPLATE.parents[1] / "tasks/enable.yml").read_text()
     assert "--seed-only" in tasks
-    assert "policy_rc_d: 101" in tasks, "package install must not start the default listener"
-    assert tasks.index("Disable default nginx site") < tasks.index("Seed CF prefix list")
-    validate = tasks.index("name: Validate the full nginx config")
-    start = tasks.index("name: Ensure nginx is enabled and started after validation")
+    assert (
+        "policy_rc_d: 101" in tasks
+    ), "package install must not start the default listener"
+    candidate = tasks.index(
+        "name: Stage CDN vhost authority without touching the current nginx tree"
+    )
+    publication = tasks.index("tasks_from: transaction")
     timer = tasks.index("name: Enable prefix-refresh timer")
-    assert tasks.index("name: Drop nginx CDN-front site") < validate < start < timer
+    assert tasks.index("name: Seed CF prefix list") < candidate < publication < timer
+    assert "nginx_transaction_desired_enabled: true" in tasks
+    assert "nginx_transaction_activation: reload" in tasks
+    assert "path: /etc/nginx/sites-enabled/default, kind: absent" in tasks
+
+
+def test_candidate_http_temp_paths_are_private_and_full_deployment_validation_remains(
+    tmp_path,
+):
+    result, _, calls = _run_refresh(tmp_path)
+    assert result.returncode == 0, result.stderr
+    for directive in (
+        "client_body_temp_path",
+        "proxy_temp_path",
+        "fastcgi_temp_path",
+        "uwsgi_temp_path",
+        "scgi_temp_path",
+    ):
+        line = next(
+            line
+            for line in calls.splitlines()
+            if line.strip().startswith(directive + " ")
+        )
+        path = line.strip().split()[1].removesuffix(";")
+        assert "/cdn-prefixes." in path and "/var/lib/nginx" not in path
+    assert "nginx -t -q -c " in calls
+    assert calls.count("nginx -t -q\n") == 2
+    assert "systemctl reload nginx" in calls

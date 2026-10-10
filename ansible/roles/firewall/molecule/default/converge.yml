@@ -3,6 +3,8 @@
   hosts: all
   become: true
   vars:
+    security_controls:
+      fail2ban: true
     xray_port: 443
     xray_fallback_port: 2053
     nginx_xhttp_public_port: 8443

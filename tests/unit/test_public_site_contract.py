@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import json
 import re
@@ -10,7 +11,6 @@ from pathlib import Path
 
 import yaml
 import pytest
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RENDERER = REPO_ROOT / "scripts" / "check-templates-render.py"
@@ -62,7 +62,9 @@ def test_primary_vhost_serves_static_site_and_keeps_xhttp_path_separate() -> Non
     assert rendered.index("# XHTTP path") < rendered.index("location / {")
 
 
-@pytest.mark.parametrize("value", ['quote"and\\slash', "line\nbreak", "# hash: [scalar]"])
+@pytest.mark.parametrize(
+    "value", ['quote"and\\slash', "line\nbreak", "# hash: [scalar]"]
+)
 def test_hysteria_string_values_roundtrip_through_yaml(value: str) -> None:
     variables = renderer.merge_render_vars()
     variables["hysteria"] = {
@@ -82,16 +84,27 @@ def test_subscription_routes_inherit_the_complete_no_store_header_baseline() -> 
     variables = renderer.merge_render_vars()
     variables["subscription"]["enable_bootstrap"] = True
     variables["vpn"]["share_bundles"] = [{"token": "synthetic"}]
-    template = REPO_ROOT / "ansible/roles/subscription-host/templates/subscription.conf.j2"
+    template = (
+        REPO_ROOT / "ansible/roles/subscription-host/templates/subscription.conf.j2"
+    )
     rendered = renderer.render_template(template, variables)
     server_scope, locations = rendered.split("    location ", 1)
-    for header in ("Strict-Transport-Security", "Content-Security-Policy", "Permissions-Policy", "X-Content-Type-Options", "Referrer-Policy", "X-Robots-Tag"):
+    for header in (
+        "Strict-Transport-Security",
+        "Content-Security-Policy",
+        "Permissions-Policy",
+        "X-Content-Type-Options",
+        "Referrer-Policy",
+        "X-Robots-Tag",
+    ):
         assert f"add_header {header} " in server_scope
     assert 'add_header Cache-Control "no-store" always;' in server_scope
     for header in ("Cache-Control", "Referrer-Policy", "X-Robots-Tag"):
         assert f"proxy_hide_header {header};" in server_scope
     assert "proxy_hide_header " not in locations
-    assert "add_header " not in locations, "location overrides discard all inherited headers"
+    assert (
+        "add_header " not in locations
+    ), "location overrides discard all inherited headers"
     for route in ("sub", "bootstrap", "share"):
         assert f'"^/{route}/' in locations
 
@@ -560,13 +573,84 @@ def test_operator_healthcheck_probes_the_site_root_not_a_health_endpoint() -> No
 
 
 def test_nginx_role_activates_validated_site_immediately() -> None:
-    tasks = (
-        REPO_ROOT / "ansible" / "roles" / "nginx-xhttp" / "tasks" / "main.yml"
+    tasks = yaml.safe_load(
+        (REPO_ROOT / "ansible/roles/nginx-xhttp/tasks/enable.yml").read_text()
+    )
+    publication = next(
+        task
+        for task in tasks
+        if task.get("ansible.builtin.include_role", {}).get("tasks_from")
+        == "transaction"
+    )
+    assert publication["ansible.builtin.include_role"]["name"] == "nginx-xhttp"
+    assert publication["vars"]["nginx_transaction_validate_argv"] == [
+        "/usr/sbin/nginx",
+        "-t",
+    ]
+    assert publication["vars"]["nginx_transaction_activation"] == "reload"
+    assert publication["vars"]["nginx_transaction_desired_enabled"] is True
+    ensure = next(
+        task for task in tasks if task["name"] == "Ensure nginx is enabled and started"
+    )
+    assert tasks.index(publication) < tasks.index(ensure)
+    helper = (
+        REPO_ROOT / "ansible/roles/nginx-xhttp/files/nginx_transaction.py"
     ).read_text()
-    validate_at = tasks.index("cmd: nginx -t")
-    flush_at = tasks.index("ansible.builtin.meta: flush_handlers")
-    ensure_at = tasks.index("name: Ensure nginx is enabled and started")
-    assert validate_at < flush_at < ensure_at
+    # The complete candidate validates before any current authority is published,
+    # and activation occurs synchronously in that publication task.
+    publication_source = next(
+        node
+        for node in ast.parse(helper).body
+        if isinstance(node, ast.FunctionDef) and node.name == "publish"
+    )
+    calls = [
+        node
+        for node in ast.walk(publication_source)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "command"
+        and node.args
+        and isinstance(node.args[0], ast.List)
+    ]
+    validation = next(
+        node
+        for node in calls
+        if node.args[0].elts
+        and isinstance(node.args[0].elts[0], ast.Constant)
+        and node.args[0].elts[0].value == "unshare"
+    )
+    assert [element.value for element in validation.args[0].elts[:4]] == [
+        "unshare",
+        "--mount",
+        "--propagation",
+        "private",
+    ]
+    commit_boundary = next(
+        node
+        for node in ast.walk(publication_source)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name)
+            and target.id == "publication_may_have_occurred"
+            for target in node.targets
+        )
+        and isinstance(node.value, ast.Constant)
+        and node.value.value is True
+    )
+    activation = next(
+        node
+        for node in calls
+        if any(
+            isinstance(value, ast.IfExp)
+            and isinstance(value.body, ast.Subscript)
+            and isinstance(value.body.slice, ast.Constant)
+            and value.body.slice.value == "activation"
+            and isinstance(value.orelse, ast.Constant)
+            and value.orelse.value == "start"
+            for value in node.args[0].elts
+        )
+    )
+    assert validation.lineno < commit_boundary.lineno < activation.lineno
 
 
 def test_transport_profiles_share_one_canonical_site_identity() -> None:
@@ -580,7 +664,7 @@ def test_transport_profiles_share_one_canonical_site_identity() -> None:
     assert p1["public_site_canonical_url"] == p2["public_site_canonical_url"]
     assert secrets["hysteria"]["masquerade_url"] == "https://vpn.example.com"
     tasks = (
-        REPO_ROOT / "ansible" / "roles" / "hysteria" / "tasks" / "main.yml"
+        REPO_ROOT / "ansible" / "roles" / "hysteria" / "tasks" / "enable.yml"
     ).read_text()
     assert "hysteria.masquerade_url == public_site_canonical_url" in tasks
 

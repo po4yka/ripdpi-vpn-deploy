@@ -1,0 +1,57 @@
+---
+# Active-probing rate-limiter daemon. Requires the firewall role's
+# `policy_offenders` set to exist (firewall template gates it on
+# vpn.enable_policy_ratelimit). The site.yml ordering ensures firewall
+# runs first.
+
+- name: Require bounded policy detector settings
+  ansible.builtin.assert:
+    that:
+      - policy_ratelimit.rejects_per_window | type_debug == 'int'
+      - policy_ratelimit.rejects_per_window >= 1 and policy_ratelimit.rejects_per_window <= 100
+      - policy_ratelimit.window_seconds | type_debug == 'int'
+      - policy_ratelimit.window_seconds >= 1 and policy_ratelimit.window_seconds <= 3600
+      - policy_ratelimit.max_sources | type_debug == 'int'
+      - policy_ratelimit.max_sources >= 1 and policy_ratelimit.max_sources <= 16384
+      - policy_ratelimit.ban_seconds | type_debug == 'int'
+      - policy_ratelimit.ban_seconds >= 1 and policy_ratelimit.ban_seconds <= 86400
+    fail_msg: Policy detector thresholds and source capacity must use bounded positive integers.
+
+- name: Pre-flight — policy-offender nftables sets must exist
+  ansible.builtin.command:
+    cmd: nft list set inet filter {{ item }}
+  loop:
+    - policy_offenders
+    - policy_offenders6
+  changed_when: false
+  when: vpn.enable_policy_ratelimit | default(false)
+
+- name: Ensure explicit Xray log reader group before service activation
+  ansible.builtin.group:
+    name: "{{ xray_runtime_group | default('xray') }}"
+    system: true
+
+- name: Install daemon script
+  ansible.builtin.template:
+    src: policy-ratelimit.py.j2
+    dest: /usr/local/bin/policy-ratelimit.py
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart policy-ratelimit
+
+- name: Install systemd unit
+  ansible.builtin.template:
+    src: policy-ratelimit.service.j2
+    dest: /etc/systemd/system/policy-ratelimit.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart policy-ratelimit
+
+- name: Enable + start policy-ratelimit
+  ansible.builtin.systemd_service:
+    name: policy-ratelimit.service
+    enabled: true
+    state: started
+    daemon_reload: true

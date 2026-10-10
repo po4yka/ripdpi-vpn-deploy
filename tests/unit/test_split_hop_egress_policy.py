@@ -27,7 +27,7 @@ def test_wireguard_config_delegates_policy_ownership_to_ansible() -> None:
 
 
 def test_policy_is_validated_then_loaded_when_changed_missing_or_drifted() -> None:
-    tasks = yaml.safe_load((ROLE / "tasks/main.yml").read_text())
+    tasks = yaml.safe_load((ROLE / "tasks/enable.yml").read_text())
     names = [task["name"] for task in tasks]
 
     render_index = names.index("Render validated split-hop egress policy")
@@ -72,7 +72,7 @@ def test_policy_is_validated_then_loaded_when_changed_missing_or_drifted() -> No
 
 
 def test_validated_policy_loader_is_enabled_for_boot_before_wireguard() -> None:
-    tasks = yaml.safe_load((ROLE / "tasks/main.yml").read_text())
+    tasks = yaml.safe_load((ROLE / "tasks/enable.yml").read_text())
     names = [task["name"] for task in tasks]
     install = tasks[names.index("Install split-hop egress boot policy loader")]
     enable = tasks[names.index("Enable split-hop egress boot policy loader")]
@@ -115,7 +115,7 @@ def test_existing_wrong_table_is_reconciled_once_then_becomes_idempotent(
     tmp_path: Path,
 ) -> None:
     """Run the live render/inspect/drift/load task slice against fake nft."""
-    tasks = yaml.safe_load((ROLE / "tasks/main.yml").read_text())
+    tasks = yaml.safe_load((ROLE / "tasks/enable.yml").read_text())
     names = [task["name"] for task in tasks]
     selected = copy.deepcopy(
         tasks[
@@ -249,7 +249,9 @@ def test_existing_wrong_table_is_reconciled_once_then_becomes_idempotent(
     config = tmp_path / "ansible.cfg"
     config.write_text("[defaults]\nretry_files_enabled = False\n")
     environment = {
-        key: value for key, value in os.environ.items() if not key.startswith("ANSIBLE_")
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("ANSIBLE_")
     }
     environment.update(
         {

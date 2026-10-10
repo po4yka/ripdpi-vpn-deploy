@@ -2,6 +2,16 @@
 
 ## Design decisions
 
+Budget files are owner-only 0600. Under the parent directory inode lock, a
+known owned single-link 0640 budget migrates only after complete typed payload
+validation, preserving bytes/counters and fsyncing file and directory. Unsafe
+ancestry, foreign files and malformed budgets refuse without repair or reset.
+Descriptor cleanup includes stream-wrapping and temporary-unlink failures.
+Entropy is obtained before opening files. Each acquired descriptor belongs to
+an explicit lexical try/finally context, including ancestor traversal failures.
+The directory walker transfers ownership before closing an old parent; read
+absence is recognized only at initial acquisition, never after a body failure.
+
 **Server validation uses the installed runtime environment** — the shared Xray validator resolves `XRAY_LOCATION_ASSET` from the loaded Xray unit before testing its server configuration, including bundled-asset profiles. Canary client invocation remains separate.
 
 **Two-level supervision** — systemd is layer 1 (Restart=on-failure). The
@@ -32,6 +42,11 @@ red probe run exits non-zero so systemd and external checks retain the signal.
 KILL after a short deadline. A wedged probe process must never hold the systemd
 oneshot open indefinitely.
 
+**Notification authority stays in systemd credentials** — the root-only JSON
+input is loaded as `notifications.json`. The Python sender reads it internally;
+the shell forwards only title, tags and body. An absolute request deadline and
+the finite oneshot deadline prevent a notification stall from disabling probes.
+
 ## What's done well
 
 - **Protocol completion is load-bearing** — the configured exact HTTP status returned through the temporary
@@ -49,6 +64,23 @@ oneshot open indefinitely.
 - **Fresh-host check mode has no watchdog timer yet** — inspect the existing
   unit before rendering. Skip only its systemd operations when the unit is
   absent in check mode; normal convergence must still start it.
+- **Direct script runs require loaded notification credentials** — use the
+  service unit to exercise delivery. The environment file contains runtime
+  settings only, and sender failures never log credential or destination values.
+- **Owned Molecule containers need shared runtime propagation** — inspect `/run`
+  as an existing mountpoint and prepare it as recursively shared before either
+  watchdog scenario converges. Assert shared propagation afterward; a private
+  runtime mount prevents the credential helper namespace from publishing its
+  read-only credential filesystem to the main service. Production units and
+  credential ownership/link/mode checks remain unchanged.
+- **Failure fixtures must provision the real unit's sandbox paths** — the
+  synthetic Xray service does not create `/var/log/xray`. Prepare that mandatory
+  `ReadWritePaths` directory as root:xray 0750 before enabling the watchdog timer;
+  an absent path can reject unit namespace setup before any probe or delivery.
+  A failure-only sender wrapper reports loaded credential stat metadata in the
+  main service child, then execs the actual sender with its original arguments,
+  stdin and environment. Diagnostics never read credential contents and retain
+  the required invocation and actual-notification failure.
 - **The canary is part of the contract** — it must be operator-owned, have valid public TLS, and return `watchdog_secrets.reality_probe_expected_status` (default `204`). A normal public site root can use `200` without exposing a dedicated health endpoint. Canary failure correctly makes the
   protocol signal red.
 - **On-node is not outside-in** — self-dialing the public listener validates
@@ -66,3 +98,15 @@ oneshot open indefinitely.
 - **Inventory must preserve both addresses** — `make inventory` emits
   `vpn_service_address` beside `ansible_host`. Local SSH overrides may replace
   only the latter.
+
+- Listener diagnostics and loopback wedge checks use the same configured REALITY
+  probe manifest, including cohorts that omit the base port.
+- Recovery budgets are validated before actions and atomically replaced with
+  synced private temporary files. A corrupt existing budget fails closed rather
+  than resetting hourly recovery and notification limits.
+
+- Ordinary site convergence always invokes lifecycle reconciliation. The
+  `watchdog_role_enabled` input selects enable or owned runtime retirement before
+  secret/package guards. Disable stops units and removes only declared authority;
+  shared packages, immutable runtime receipts, historical logs and recovery data
+  remain available for a later explicit recovery.

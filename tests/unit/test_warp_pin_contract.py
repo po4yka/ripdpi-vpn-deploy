@@ -13,7 +13,7 @@ from pathlib import Path
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-TASKS = REPO_ROOT / "ansible" / "roles" / "warp-outbound" / "tasks" / "main.yml"
+TASKS = REPO_ROOT / "ansible" / "roles" / "warp-outbound" / "tasks" / "enable.yml"
 DEFAULTS = REPO_ROOT / "ansible" / "roles" / "warp-outbound" / "defaults" / "main.yml"
 
 
@@ -32,9 +32,9 @@ def test_defaults_ship_a_real_sha256_pin() -> None:
     defaults = yaml.safe_load(DEFAULTS.read_text())
     pin = defaults["warp_outbound"]["pubkey_sha256"]
     assert isinstance(pin, str)
-    assert re.fullmatch(r"[0-9a-f]{64}", pin), (
-        "warp_outbound.pubkey_sha256 must carry a pinned sha256 digest"
-    )
+    assert re.fullmatch(
+        r"[0-9a-f]{64}", pin
+    ), "warp_outbound.pubkey_sha256 must carry a pinned sha256 digest"
 
 
 def test_pin_presence_assert_fails_closed_when_unset() -> None:

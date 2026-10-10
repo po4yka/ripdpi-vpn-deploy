@@ -1,0 +1,52 @@
+---
+- name: Inspect Fail2Ban runtime without creating it
+  ansible.builtin.command:
+    argv: [systemctl, show, fail2ban.service, '--property=ActiveState', --value]
+  register: _fail2ban_disabled_active
+  changed_when: false
+  check_mode: false
+  failed_when: _fail2ban_disabled_active.rc not in [0, 1] or _fail2ban_disabled_active.stdout not in ['active', 'inactive', 'failed']
+
+- name: Inspect existing jail ownership before runtime removal
+  ansible.builtin.command:
+    argv: [fail2ban-client, status]
+  register: _fail2ban_disabled_status
+  changed_when: false
+  check_mode: false
+  when: _fail2ban_disabled_active.stdout == 'active'
+
+- name: Require a complete jail ownership report
+  ansible.builtin.assert:
+    that:
+      - "_fail2ban_disabled_status.stdout is search('Jail list:[^\\n]*')"
+    fail_msg: Refusing to retire runtime without a complete jail ownership report.
+  when: _fail2ban_disabled_active.stdout == 'active'
+
+- name: Select exact existing owned and foreign jails
+  ansible.builtin.set_fact:
+    _fail2ban_disabled_jails: >-
+      {{ ((_fail2ban_disabled_status.stdout | regex_search('Jail list:[^\n]*') | default('', true))
+          | regex_replace('^Jail list:\s*', '')).split(',') | map('trim') | reject('equalto', '') | list }}
+  when: _fail2ban_disabled_active.stdout == 'active'
+
+- name: Stop the owned sshd jail before retiring its configuration
+  ansible.builtin.command:
+    argv: [fail2ban-client, stop, sshd]
+  changed_when: true
+  when:
+    - _fail2ban_disabled_active.stdout == 'active'
+    - "'sshd' in _fail2ban_disabled_jails"
+
+- name: Stop an otherwise unused Fail2Ban service
+  ansible.builtin.systemd_service:
+    name: fail2ban.service
+    state: stopped
+    enabled: false
+  when:
+    - _fail2ban_disabled_active.stdout == 'active'
+    - _fail2ban_disabled_jails | reject('equalto', 'sshd') | list | length == 0
+
+- name: Remove only the owned sshd jail configuration
+  ansible.builtin.file:
+    path: /etc/fail2ban/jail.d/ripdpi-sshd.local
+    state: absent

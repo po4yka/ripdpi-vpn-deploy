@@ -11,6 +11,10 @@ subscription:
   # 127.0.0.1:8445; nginx proxies and rate-limits. The Python service
   # atomically reads and deletes the payload file on first successful
   # GET, so the token is single-use.
+  bootstrap_max_lifetime_seconds: 604800
+  bootstrap_max_consumed_markers: 10000
+  reads_log_max_bytes: 10485760
+  reads_log_backup_count: 4
   enable_bootstrap: false
   # The local Python service handles BOTH /bootstrap/<token> (single-
   # use) and /sub/<token> (long-lived). Both routes use hashed-on-disk
@@ -73,3 +77,6 @@ subscription:
     restic_snapshot_path: ""
     # Also kept outside subscription_dir — see ssh_key_path rationale above.
     restic_password_file: "/etc/vpn-subscription/mirror_restic_password"
+
+# Direct calls enable the role; site dispatch supplies its exact predicate.
+subscription_host_role_enabled: true

@@ -218,9 +218,11 @@ def test_role_defaults_and_tasks_fail_closed_before_host_writes() -> None:
     assert defaults["prometheus"]["version"] == ""
     assert defaults["tls"]["server_key_pem"] == ""
     assert "requires exact bounded receiver settings" in enabled
-    assert "- sslclient" in enabled
-    assert "- -crl_check_all" in enabled
-    assert "- -checkip" in enabled
+    helper = (ROLE / "files/observability-tls-preflight.py").read_text()
+    assert "sslclient_public" in enabled
+    assert '"-crl_check_all"' in helper
+    assert '"-verify_ip"' in helper
+    assert "check_mode: false" in enabled
     assert "observability_control_plane.ingress_address" in enabled
     assert "/etc/nginx/sites-enabled/default" not in enabled
 
@@ -415,7 +417,13 @@ def test_disabled_molecule_seeds_retained_tsdb_once_before_idempotence() -> None
 
 
 def test_prometheus_restart_is_conditional_on_published_runtime_changes() -> None:
-    tasks = yaml.safe_load((ROLE / "tasks/enable.yml").read_text())
+    def flatten(rows):
+        for row in rows:
+            yield row
+            for key in ("block", "rescue", "always"):
+                yield from flatten(row.get(key, []))
+
+    tasks = list(flatten(yaml.safe_load((ROLE / "tasks/enable.yml").read_text())))
     nested = [
         child
         for task in tasks

@@ -20,14 +20,14 @@
       - -config
       - "{{ xray_etc_dir }}/config.json"
   changed_when: false
-  when: not ansible_check_mode
+  when: not ansible_check_mode and xray_role_enabled | default(true) | bool
   listen: Restart xray
 
 - name: Restart Xray
   ansible.builtin.systemd_service:
     name: xray
     state: restarted
-  when: not ansible_check_mode
+  when: not ansible_check_mode and xray_role_enabled | default(true) | bool
   listen: Restart xray
 
 - name: Wait for Xray service to become active
@@ -38,5 +38,5 @@
   delay: 2
   until: xray_active.stdout == "active"
   changed_when: false
-  when: not ansible_check_mode
+  when: not ansible_check_mode and xray_role_enabled | default(true) | bool
   listen: Restart xray

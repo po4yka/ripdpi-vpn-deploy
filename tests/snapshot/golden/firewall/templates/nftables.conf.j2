@@ -4,7 +4,26 @@
 # Replace only tables owned by this role. Other components (for example the
 # split-hop egress NAT table) install independent nftables tables that must
 # survive a firewall reload. `destroy` is idempotent on a fresh host.
-destroy table inet filter
+# Flush rules in one native transaction while retaining named timed sets.
+# This preserves both current membership and the kernel's remaining expiry.
+add table inet filter
+flush table inet filter
+# Tailnet set elements are declared by the transaction-owned include below;
+# replace those declarations so removed approved sources cannot survive.
+destroy set inet filter vpn_tailnet_ssh_v4
+destroy set inet filter vpn_tailnet_ssh_v6
+
+destroy set inet filter f2b_sshd4
+destroy set inet filter f2b_sshd6
+
+
+destroy set inet filter policy_offenders
+destroy set inet filter policy_offenders6
+
+
+destroy set inet filter cdn_front_origins
+destroy set inet filter cdn_front_origins_v6
+
 destroy table inet nat
 
 

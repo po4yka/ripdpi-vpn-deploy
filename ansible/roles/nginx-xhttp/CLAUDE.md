@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+Publication change reporting compares recaptured authority under the writer
+lock. The preliminary snapshot validates recoverability; check mode computes
+its own predicted difference without runtime publication.
+
 **Direct only by default** — `vpn.enable_cdn_front` is false in baseline.
 The role ships nginx pointed at a public CA cert for the operator's domain,
 listening on `nginx_xhttp_public_port` (default 8443), reverse-proxying the
@@ -49,10 +53,37 @@ Permissions/Referrer/nosniff set at server scope in both public vhosts.
 `proxy_read_timeout` and `proxy_send_timeout`; the public root vhost uses
 defaults. Don't mix these — XHTTP needs long-lived streams.
 
+**Both XHTTP locations suppress access logging** — primary and fallback transport paths keep request/session identifiers out of public-site logs; ordinary site requests retain their access logs.
+
+The shared publisher journals complete prior/desired rows, exact boot/running
+state and a versioned phase before each live boundary. Recognized interruption
+recovers only that write set under the unit lock, restores prior service state,
+and then re-converges normally. Foreign bytes and unknown journals fail closed.
+Private per-owner receipts bind stable managed authority; a missing/stale receipt
+forces adoption even when disk bytes are unchanged. Runtime validation precedes
+the fsynced receipt. Reload also requires a fresh stable live worker pool under
+the same trusted master/executable identity; command acknowledgement and disk
+validation alone cannot acknowledge adoption. Failed/missing new workers retain
+intent and compensate. SIGKILL proofs cover publication, activation and recovery.
+An absent validation root containing only absent desired rows remains absent in
+the candidate. This lets a never-enabled owner reconcile against an active shared
+nginx on later convergences without creating a payload tree or skipping adoption.
+Missing roots required by a desired file or credential binding still refuse.
+An unchanged all-absent owner may record only a disk-absence witness while the
+unit is actually inactive with MainPID zero. Its private receipt binds the
+kernel boot UUID and CLOCK_BOOTTIME in the same clock ticks as `/proc/PID/stat`.
+A later master that started strictly after that witness on the same boot can
+acknowledge the absence without a redundant reload, after stable canonical
+master/worker identity and candidate plus actual-namespace validation. Promotion
+rechecks that generation around its durable receipt write. Equal/older starts,
+another boot or stale fingerprints require real adoption; future ticks and
+malformed/foreign private authority refuse. This preserves first-to-second
+shared-role idempotence without claiming an inactive unit adopted configuration.
+
 ## What's done well
 
 - **SOPS-delivered public certificate** — the role writes `nginx_xhttp.cert_pem` and `key_pem` to the nginx TLS directory with restricted key permissions. Certificate issuance and renewal remain operator-owned; `check-certs.sh` verifies SAN, expiry, and key match before deploy.
-- **Validate before activation** — the role enables the rendered site, runs `nginx -t`, then flushes its reload handler immediately so a recovery converge cannot leave nginx serving the previous listener set until the end of a long full-stack play.
+- **Complete candidate before publication** — `tasks/transaction.yml` accepts an exact owned write set, roots, validator argv and target unit. It stages full roots, validates at actual absolute paths in a private mount namespace, then publishes under a per-unit lock. Ordinary activation failure restores prior bytes, runtime and exact boot enablement; failed compensation retains a private pending snapshot and refuses reuse. Ordinary candidate-preparation failure removes only this invocation’s pending snapshot while preserving live bytes, so correcting an unrelated FIFO permits a valid retry. Once publication or activation may occur, failed compensation retains recovery authority. Credential roots are bound to the exact unit credential paths only inside validation namespace. Check mode predicts changes without creating state or activating runtime.
 - **Fresh-host check mode plans nginx without activating it** — the role checks for the distro unit and requires a planned package installation when it is absent. Reload and start remain runtime actions on a real converge; check mode does not claim a nonexistent service is active.
 - **No public admin path** — there is no admin/status/management endpoint on
   this vhost. The only non-XHTTP public path is the opt-in, secret-token Snell

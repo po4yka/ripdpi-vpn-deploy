@@ -8,6 +8,14 @@
     vpn:
       enable_policy_ratelimit: true
   pre_tasks:
+    - name: Provide the private shared textfile export foundation
+      ansible.builtin.file:
+        path: /var/lib/node_exporter/textfile
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+
     # The role expects /var/log/xray/access.log; the daemon waits for the
     # file rather than failing, so we just need to ensure the directory
     # exists for service start.

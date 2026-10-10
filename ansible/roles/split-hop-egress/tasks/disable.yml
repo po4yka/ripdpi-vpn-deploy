@@ -1,0 +1,37 @@
+---
+- name: Retire split-hop-egress owned runtime authority
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: retire
+  vars:
+    runtime_retire_units:
+      - wg-quick@{{ split_hop_egress.wg_interface }}.service
+      - split-hop-egress-policy.service
+    runtime_retire_paths:
+      - /etc/wireguard/{{ split_hop_egress.wg_interface }}.conf
+      - '{{ split_hop_egress.policy_path }}'
+      - /etc/systemd/system/split-hop-egress-policy.service
+
+- name: Inspect installed packages for scoped policy retirement
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Inspect scoped split-hop egress policy authority
+  ansible.builtin.command:
+    argv: [nft, -j, list, tables]
+  register: _split_hop_retire_tables
+  check_mode: false
+  changed_when: false
+  when: "'nftables' in ansible_facts.packages | default({})"
+
+- name: Retire only the split-hop egress nftables table
+  ansible.builtin.command:
+    argv: [nft, delete, table, inet, split_hop_egress]
+  changed_when: true
+  when:
+    - not ansible_check_mode
+    - _split_hop_retire_tables is not skipped
+    - >-
+      ((_split_hop_retire_tables.stdout | from_json).nftables | selectattr('table', 'defined')
+       | map(attribute='table') | selectattr('family', 'equalto', 'inet')
+       | selectattr('name', 'equalto', 'split_hop_egress') | list | length) > 0

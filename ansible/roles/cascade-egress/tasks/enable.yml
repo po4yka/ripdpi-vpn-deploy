@@ -1,0 +1,61 @@
+---
+- name: Assert cascade and split-hop role families are not co-located
+  vars:
+    split_hop_role_family_enabled: >-
+      {{ (vpn.enable_split_hop_ingress | default(false) | bool) or
+         (vpn.enable_split_hop_egress | default(false) | bool) }}
+    split_hop_conflicting_roles: >-
+      {{ (['split-hop-ingress'] if vpn.enable_split_hop_ingress | default(false) | bool else []) +
+         (['split-hop-egress'] if vpn.enable_split_hop_egress | default(false) | bool else []) }}
+  ansible.builtin.assert:
+    that:
+      - not split_hop_role_family_enabled
+    fail_msg: >-
+      Host {{ inventory_hostname }} may not apply cascade-egress while
+      split-hop roles {{ split_hop_conflicting_roles }} are enabled.
+  tags:
+    - always
+
+- name: Validate cascade egress contract
+  ansible.builtin.assert:
+    that:
+      - cascade_egress.listen_port | int > 0
+      - cascade_egress.listen_port | int <= 65535
+      - cascade_secrets.egress_private_key | length > 0
+      - cascade_secrets.ingress_public_key | length > 0
+    fail_msg: Cascade egress requires its own private key, the ingress public key, and a valid tunnel port.
+  no_log: true
+
+- name: Install cascade egress packages
+  ansible.builtin.apt:
+    name: [wireguard, wireguard-tools, nftables]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure WireGuard configuration directory
+  ansible.builtin.file:
+    path: /etc/wireguard
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Render cascade egress scoped policy
+  ansible.builtin.template:
+    src: cascade-egress.nft.j2
+    dest: "{{ cascade_egress.policy_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "{{ 'nft -c -f %s' if cascade_egress.validate_policy | bool else omit }}"
+
+- name: Render cascade egress tunnel configuration
+  ansible.builtin.template:
+    src: cascade-egress.conf.j2
+    dest: "/etc/wireguard/{{ cascade_egress.wg_interface }}.conf"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  diff: false

@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-10-10
+goal: ANS-1791586652330612 Implement remaining Ansible role audit improvements

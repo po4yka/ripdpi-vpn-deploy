@@ -3,7 +3,7 @@
 # Active-probing-defense forwarder. The dns-morph bridge listens on
 # 0.0.0.0:53;
 # every non-handshake query is forwarded here so the public listener
-# answers like a normal recursive resolver under probe.
+# returns local authoritative data or REFUSED without recursive upstream traffic.
 
 server:
     interface: 127.0.0.1@5353
@@ -11,7 +11,7 @@ server:
     do-ip6: no
     do-udp: yes
     do-tcp: yes
-    access-control: 127.0.0.0/8 allow
+    access-control: 127.0.0.0/8 refuse_non_local
     access-control: 0.0.0.0/0 refuse
     hide-identity: yes
     hide-version: yes

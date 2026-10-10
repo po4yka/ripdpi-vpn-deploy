@@ -23,17 +23,25 @@
         not reality_cfg.stat.exists
         or reality_cfg.stat.mode != "0600"
 
-    - name: env file contains the topic but no obvious leaks
+    - name: env file contains only nonsecret runtime settings
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          grep -q 'NTFY_TOPIC=molecule-stub-topic' /etc/vpn-watchdog.env
+          ! grep -q 'NTFY_\|PUSHOVER_' /etc/vpn-watchdog.env
           grep -q 'XRAY_REALITY_PROBES=443:31082' /etc/vpn-watchdog.env
           ! grep -Fq 'HOSTNAME=$(hostname)' /etc/vpn-watchdog.env
           ! grep -q '98765432-1234-4234-8234-123456789abc' /etc/vpn-watchdog.env
           ! grep -q '55667788' /etc/vpn-watchdog.env
         executable: /bin/bash
       changed_when: false
+
+    - name: Notification credential has private ownership
+      ansible.builtin.stat:
+        path: /etc/vpn-watchdog-notifications.json
+      register: notification_credential
+      failed_when: >-
+        notification_credential.stat.mode != "0600"
+        or notification_credential.stat.uid != 0
 
     - name: REALITY probe config maps the dedicated client to the public listener
       ansible.builtin.shell:

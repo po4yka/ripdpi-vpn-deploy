@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+Archive and source publication have distinct immutable release identities.
+Source identity includes its exact commit, so archive→source→archive cannot
+replace bytes behind an archive receipt at the same logical Xray version.
+Public/current link ownership remains in the same managed install root.
+
 This role selects the SHA256-pinned Xray archive or source build while the
 shared `runtime-release` contracts own archive extraction, receipts, and
 `current`/public/`previous` publication. It owns no listener, configuration,

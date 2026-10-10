@@ -9,8 +9,8 @@ server {
 
     server_tokens off;
 
-    ssl_certificate     /etc/nginx/tls/{{ subscription.server_name | default(nginx_xhttp.server_name) }}.fullchain.pem;
-    ssl_certificate_key /etc/nginx/tls/{{ subscription.server_name | default(nginx_xhttp.server_name) }}.key;
+    ssl_certificate     /etc/nginx/tls/subscription-host/server.fullchain.pem;
+    ssl_certificate_key /etc/nginx/tls/subscription-host/server.key;
 
     ssl_protocols       TLSv1.2 TLSv1.3;
     # Keep the complete header set at server scope: every child location
@@ -51,7 +51,10 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
 
-        access_log off;
+        # Error records include request/upstream URIs; bearer locations use
+        # only URI-free categorical diagnostics, including failure outcomes.
+        error_log /dev/null crit;
+        access_log /var/log/nginx/vpn-sub.categorical.log vpn_sub_category;
     }
 
 {% if subscription.enable_bootstrap | default(false) %}
@@ -68,7 +71,10 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
 
-        access_log off;
+        # Error records include request/upstream URIs; bearer locations use
+        # only URI-free categorical diagnostics, including failure outcomes.
+        error_log /dev/null crit;
+        access_log /var/log/nginx/vpn-sub.categorical.log vpn_sub_category;
     }
 {% endif %}
 
@@ -82,7 +88,10 @@ server {
         alias /var/www/subscription-host/share/$vpn_share_token/;
         try_files $uri $uri/index.html =404;
 
-        access_log off;
+        # Error records include request/upstream URIs; bearer locations use
+        # only URI-free categorical diagnostics, including failure outcomes.
+        error_log /dev/null crit;
+        access_log /var/log/nginx/vpn-sub.categorical.log vpn_sub_category;
     }
 {% endif %}
 

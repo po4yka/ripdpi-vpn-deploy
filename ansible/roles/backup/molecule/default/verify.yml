@@ -52,7 +52,7 @@
 
     - name: Hash live sentinel before backup and restore drill
       ansible.builtin.command:
-        cmd: sha256sum /etc/vpn-watchdog.env
+        cmd: sha256sum /etc/xray/config.json
       register: live_hash_before
       changed_when: false
 
@@ -86,7 +86,7 @@
 
     - name: Hash live sentinel after restore drill
       ansible.builtin.command:
-        cmd: sha256sum /etc/vpn-watchdog.env
+        cmd: sha256sum /etc/xray/config.json
       register: live_hash_after
       changed_when: false
       failed_when: live_hash_after.stdout != live_hash_before.stdout

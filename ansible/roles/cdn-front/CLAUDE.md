@@ -2,6 +2,9 @@
 
 ## Design decisions
 
+**Disposable AOP proof uses real TLS** — the cdn-on scenario generates a local ephemeral CA, signed client and untrusted client. It inspects nginx’s complete effective configuration and proves authenticated requests reach the upstream seam while absent/untrusted client identities are rejected. The Cloudflare prefix download seam remains synthetic and is not external-network acceptance.
+
+
 **Off by default** — `vpn.enable_cdn_front: false`. Rationale lives in
 `docs/CDN-DECISION.md`: as of 2026-04, RU traffic to Cloudflare egresses via
 RU PoPs (DME/KJA/LED) which carry TSPU, with a 16KB byte-threshold curtain
@@ -17,6 +20,8 @@ then the CDN vhost is installed and validated before the service starts.
 The packaged default site is disabled. Active refreshes and timer runs
 must reload successfully; they retain transactional rollback on failure.
 
+**Real-IP trust is server-scoped** — only the CDN vhost includes the prefix/header restoration file. Refresh validates the generated include inside a server context, so co-resident direct and delivery listeners never inherit CDN attribution.
+
 ## What's done well
 
 - **Origin CA is generated locally, not pulled from CF** — avoids a
@@ -25,6 +30,8 @@ must reload successfully; they retain transactional rollback on failure.
 - **Prefix refresh is transactional** — every CIDR is parsed with the expected address family, nginx candidates are syntax-checked, and both nftables sets are replaced in one checked batch before caches are published.
 
 ## Pitfalls
+
+- **Candidate HTTP temp paths stay private** — every standalone Nginx validation HTTP temp directory is beneath the refresh workspace. Omitting them lets Nginx’s default worker identity chown shared distro temp directories under the strict sandbox. Full deployed-config validation remains required; the unit floor and writable paths are unchanged.
 
 - **Do not enable this for the RU baseline** — re-read the ADR. Use it only
   when the failure shape is "TLS handshake never completes from this network,

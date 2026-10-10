@@ -1,0 +1,14 @@
+---
+- name: Retire naive owned runtime authority
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: retire
+  vars:
+    runtime_retire_units:
+      - caddy-naive.service
+    runtime_retire_paths:
+      - /etc/systemd/system/caddy-naive.service
+      - '{{ naive.config_dir }}/caddy.json'
+      - '{{ naive.config_dir }}/Caddyfile'
+      - '{{ naive.config_dir }}/server.fullchain.pem'
+      - '{{ naive.config_dir }}/server.key'

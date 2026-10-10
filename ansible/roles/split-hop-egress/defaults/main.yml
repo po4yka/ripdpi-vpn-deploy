@@ -62,3 +62,5 @@ split_hop_egress_secrets:
   node_a_public_ip: ""
   # Optional preshared key for the tunnel. Empty disables PSK.
   preshared_key: ""
+
+split_hop_egress_role_enabled: true

@@ -143,20 +143,100 @@ local_attempted_at="$(timestamp)"
 active_stage="local"
 publish_outcome
 
+
+
+
 INCLUDES=(
-  /etc/xray
-  /etc/hysteria
-  /etc/snell
-
-  "/etc/amnezia/amneziawg"
-
-  /etc/nginx
   /etc/nftables.conf
   /etc/ssh
   /etc/sysctl.d
   /etc/systemd/system
+
+  "/etc/xray"
+
+
+  "/etc/hysteria"
+
+
+
+  "/etc/amnezia/amneziawg"
+
+
+  /etc/nginx
+
+
+
+
+
+
+
+
+
   /etc/vpn-watchdog.env
+  /etc/vpn-watchdog-notifications.json
+
+  /etc/vpn-watchdog-reality.json
+
+
 )
+
+# Realm may store its TLS authority outside its configuration tree or link to
+# Hysteria's files. Archive both configured entries and their actual targets;
+# restic preserves symlinks rather than following them into backup content.
+
+
+# restic may tolerate a partially unreadable tree. Required selected inputs
+# must exist before snapshot/retention/integrity can publish success.
+for input in "${INCLUDES[@]}"; do
+  if [[ ! -e "$input" ]]; then
+    printf '%s\n' 'backup: required enabled input is absent' >&2
+    exit 1
+  fi
+done
+
+REQUIRED_FILES=(
+  /etc/nftables.conf
+  /etc/ssh/sshd_config.d/20-ansible-hardening.conf
+  /etc/sysctl.d/90-vpn.conf
+
+  "/etc/xray/config.json"
+
+
+  "/etc/hysteria/config.yaml"
+  "/etc/hysteria/server.fullchain.pem"
+  "/etc/hysteria/server.key"
+
+
+
+
+  "/etc/amnezia/amneziawg/awg0.conf"
+
+
+
+  /etc/nginx/sites-available/vpn-xhttp.conf
+  /etc/nginx/tls/vpn.example.com.fullchain.pem
+  /etc/nginx/tls/vpn.example.com.key
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+)
+for input in "${REQUIRED_FILES[@]}"; do
+  if [[ ! -f "$input" || ! -s "$input" ]]; then
+    printf '%s\n' 'backup: required enabled configuration is absent or empty' >&2
+    exit 1
+  fi
+done
 
 restic -r "$REPO" backup \
   --tag "vpn-stack" \

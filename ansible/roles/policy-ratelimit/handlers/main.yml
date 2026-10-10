@@ -4,3 +4,4 @@
     name: policy-ratelimit.service
     state: restarted
     daemon_reload: true
+  when: policy_ratelimit_role_enabled | default(true) | bool and not ansible_check_mode

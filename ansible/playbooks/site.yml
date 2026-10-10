@@ -254,22 +254,19 @@
       tags: [baseline, always]
 
     - role: package_updates
-      when: (security_controls | default({})).unattended_upgrades | default(false)
       tags: [baseline, security, updates]
 
     - role: firewall
       tags: [firewall, always]
 
     - role: intrusion_prevention
-      when: (security_controls | default({})).fail2ban | default(false)
       tags: [security, intrusion-prevention]
 
     - role: geodata
-      when: >-
-        (vpn.enable_geodata | default(true)) and
-        ((vpn.enable_xray_reality | default(true)) or
-         (vpn.enable_cascade_ingress | default(false))) and
-        not (vpn_subscription_only | default(false))
+      vars:
+        geodata_role_enabled: >-
+          {{ (vpn.enable_geodata | default(true)) and ((vpn.enable_xray_reality | default(true)) or
+             (vpn.enable_cascade_ingress | default(false))) and not (vpn_subscription_only | default(false)) }}
       tags: [geodata, xray]
 
     - role: tailnet-management
@@ -279,94 +276,136 @@
     # Verify the optional egress before any Xray render or handler flush can
     # activate routes that depend on it. The xray tag must retain this gate.
     - role: warp-outbound
-      when: (vpn.enable_warp_outbound | default(false)) and not (vpn_subscription_only | default(false))
+      vars:
+        warp_outbound_role_enabled: >-
+          {{ (vpn.enable_warp_outbound | default(false)) and not (vpn_subscription_only | default(false)) }}
       tags: [warp, outbound, xray, p0, p1, transport]
 
     - role: xray
-      when: >-
-        ((vpn.enable_xray_reality | default(true)) or
-         (vpn.enable_nginx_xhttp | default(true))) and
-        not (vpn_subscription_only | default(false))
+      vars:
+        xray_role_enabled: >-
+          {{ ((vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true))) and not
+             (vpn_subscription_only | default(false)) }}
       tags: [xray, p0, p1, transport]
 
     - role: reality-self-steal
-      when: not (vpn_subscription_only | default(false))
+      vars:
+        reality_self_steal_role_enabled: >-
+          {{ (not (vpn_subscription_only | default(false))) and (vpn.enable_reality_self_steal | default(false) | bool) }}
       tags: [reality-self-steal, p0, transport]
 
     - role: nginx-xhttp
-      when: (vpn.enable_nginx_xhttp | default(true)) and not (vpn_subscription_only | default(false))
+      vars:
+        nginx_xhttp_role_enabled: >-
+          {{ (vpn.enable_nginx_xhttp | default(true)) and not (vpn_subscription_only | default(false)) }}
       tags: [nginx, xhttp, p1, transport]
 
     - role: cdn-front
-      when: (vpn.enable_cdn_front | default(false)) and not (vpn_subscription_only | default(false))
+      vars:
+        cdn_front_role_enabled: >-
+          {{ (vpn.enable_cdn_front | default(false)) and not (vpn_subscription_only | default(false)) }}
       tags: [cdn-front, p1, transport]
 
     - role: naive
-      when: (vpn.enable_naive | default(false)) and not (vpn_subscription_only | default(false))
+      vars:
+        naive_role_enabled: >-
+          {{ (vpn.enable_naive | default(false)) and not (vpn_subscription_only | default(false)) }}
       tags: [naive, p1, transport]
 
     - role: hysteria
-      when: (vpn.enable_hysteria | default(true)) and not (vpn_subscription_only | default(false))
+      vars:
+        hysteria_role_enabled: >-
+          {{ (vpn.enable_hysteria | default(true)) and not (vpn_subscription_only | default(false)) }}
       tags: [hysteria, p2, transport]
 
     - role: amneziawg
-      when: (vpn.enable_amneziawg | default(true)) and not (vpn_subscription_only | default(false))
+      vars:
+        amneziawg_role_enabled: >-
+          {{ (vpn.enable_amneziawg | default(true)) and not (vpn_subscription_only | default(false)) }}
       tags: [amneziawg, awg, p2, transport]
 
     - role: subscription-host
-      when: (vpn.enable_subscription_host | default(false)) or (vpn_subscription_only | default(false))
+      vars:
+        subscription_host_role_enabled: >-
+          {{ (vpn.enable_subscription_host | default(false)) or (vpn_subscription_only | default(false)) }}
       tags: [subscription]
 
     - role: honeypot
-      when: (vpn.enable_honeypot | default(false)) and not (vpn_subscription_only | default(false))
+      vars:
+        honeypot_role_enabled: >-
+          {{ (vpn.enable_honeypot | default(false)) and not (vpn_subscription_only | default(false)) }}
       tags: [honeypot, defensive]
 
     - role: policy-ratelimit
-      when: (vpn.enable_policy_ratelimit | default(false)) and not (vpn_subscription_only | default(false))
+      vars:
+        policy_ratelimit_role_enabled: >-
+          {{ (vpn.enable_policy_ratelimit | default(false)) and not (vpn_subscription_only | default(false)) }}
       tags: [policy-ratelimit, defensive]
 
     - role: dns-morph-bridge
-      when: (vpn.enable_dns_morph_bridge | default(false)) and not (vpn_subscription_only | default(false))
+      vars:
+        dns_morph_bridge_role_enabled: >-
+          {{ (vpn.enable_dns_morph_bridge | default(false)) and not (vpn_subscription_only | default(false)) }}
       tags: [dns-morph-bridge, p4, transport, bootstrap]
 
     - role: hysteria-realm
-      when: (vpn.enable_hysteria_realm | default(false)) and not (vpn_subscription_only | default(false))
+      vars:
+        hysteria_realm_role_enabled: >-
+          {{ (vpn.enable_hysteria_realm | default(false)) and not (vpn_subscription_only | default(false)) }}
       tags: [hysteria-realm, p5, transport, rendezvous]
 
     - role: snell
-      when: (vpn.enable_snell | default(false)) and not (vpn_subscription_only | default(false))
+      vars:
+        snell_role_enabled: >-
+          {{ (vpn.enable_snell | default(false)) and not (vpn_subscription_only | default(false)) }}
       tags: [snell, p3, transport, research]
 
     - role: split-hop-egress
-      when: (vpn.enable_split_hop_egress | default(false)) and not (vpn_subscription_only | default(false))
+      vars:
+        split_hop_egress_role_enabled: >-
+          {{ (vpn.enable_split_hop_egress | default(false)) and not (vpn_subscription_only | default(false)) }}
       tags: [split-hop-egress, topology]
 
     - role: split-hop-ingress
-      when: (vpn.enable_split_hop_ingress | default(false)) and not (vpn_subscription_only | default(false))
+      vars:
+        split_hop_ingress_role_enabled: >-
+          {{ (vpn.enable_split_hop_ingress | default(false)) and not (vpn_subscription_only | default(false)) }}
       tags: [split-hop-ingress, topology, research]
 
     - role: cascade-ingress
-      when: (vpn.enable_cascade_ingress | default(false)) and not (vpn_subscription_only | default(false))
+      vars:
+        cascade_ingress_role_enabled: >-
+          {{ (vpn.enable_cascade_ingress | default(false)) and not (vpn_subscription_only | default(false)) }}
       tags: [cascade-ingress, topology, exception]
 
     - role: cascade-egress
-      when: (vpn.enable_cascade_egress | default(false)) and not (vpn_subscription_only | default(false))
+      vars:
+        cascade_egress_role_enabled: >-
+          {{ (vpn.enable_cascade_egress | default(false)) and not (vpn_subscription_only | default(false)) }}
       tags: [cascade-egress, topology, exception]
 
     - role: probe-matrix-target
-      when: (vpn.enable_probe_matrix_target | default(false)) and not (vpn_subscription_only | default(false))
+      vars:
+        probe_matrix_target_role_enabled: >-
+          {{ (vpn.enable_probe_matrix_target | default(false)) and not (vpn_subscription_only | default(false)) }}
       tags: [probe-matrix-target, measurement, research]
 
     - role: monitoring
-      when: vpn.enable_monitoring | default(true)
+      vars:
+        monitoring_role_enabled: >-
+          {{ vpn.enable_monitoring | default(true) }}
       tags: [monitoring]
 
     - role: backup
-      when: vpn.enable_backup | default(true)
+      vars:
+        backup_role_enabled: >-
+          {{ vpn.enable_backup | default(true) }}
       tags: [backup]
 
     - role: watchdog
-      when: vpn.enable_watchdog | default(true)
+      vars:
+        watchdog_role_enabled: >-
+          {{ vpn.enable_watchdog | default(true) }}
       tags: [watchdog, monitoring]
 
     - role: node_manifest

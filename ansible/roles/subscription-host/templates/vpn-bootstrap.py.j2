@@ -28,6 +28,10 @@ Managed by Ansible role subscription-host; do not hand-edit.
 from __future__ import annotations
 
 import datetime as _dt
+import contextlib
+import fcntl
+import time
+import uuid
 import errno
 import hashlib
 import json
@@ -50,6 +54,15 @@ MIRROR_GENERATIONS = SUBSCRIPTION_DIR / ".vpn-sub-mirror-generations"
 MIRROR_CURRENT = SUBSCRIPTION_DIR / ".vpn-sub-mirror-current"
 CONSUMED_BOOTSTRAP_DIR = SUBSCRIPTION_DIR / ".vpn-bootstrap-consumed"
 
+BOOTSTRAP_REPLAY_HORIZON = 2592000
+BOOTSTRAP_MAX_LIFETIME = {{ subscription.bootstrap_max_lifetime_seconds | default(604800) }}
+BOOTSTRAP_MAX_MARKERS = {{ subscription.bootstrap_max_consumed_markers | default(10000) }}
+READS_LOG_MAX_BYTES = {{ subscription.reads_log_max_bytes | default(10485760) }}
+READS_LOG_BACKUP_COUNT = {{ subscription.reads_log_backup_count | default(4) }}
+BOOTSTRAP_TOKEN_RE = re.compile(r"^b1_([0-9]{10})_([A-Za-z0-9_-]{43})$")
+FENCE_NAME = ".vpn-bootstrap-retired-before"
+STATE_LOCK_NAME = ".vpn-bootstrap-state.lock"
+
 PATH_RE = re.compile(r"^/(bootstrap|sub)/([A-Za-z0-9_-]{16,64})$")
 
 _lock = threading.Lock()
@@ -68,23 +81,33 @@ def _hash(token: str) -> str:
     return hashlib.sha256(token.encode("ascii")).hexdigest()
 
 
+def _open_revocation():
+    descriptor = os.open(REVOKED_FILE, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(descriptor)
+        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                or info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o600):
+            raise OSError("unsafe revocation authority")
+        return os.fdopen(descriptor, "r", encoding="ascii")
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
 def _is_revoked(token_hash: str) -> bool | None:
     try:
-        # Re-read every call — the revoked list is small (line count grows
-        # with operator-side rotation cadence, not with client count) and
-        # the read is amortised by the per-IP nginx rate limit.
-        with REVOKED_FILE.open("r", encoding="ascii") as fh:
+        # Re-open safely on every request so replacement cannot bypass authority.
+        with _open_revocation() as fh:
             for line in fh:
                 entry = line.strip().lower()
                 if not entry or entry.startswith("#"):
                     continue
+                if not re.fullmatch(r"[0-9a-f]{64}", entry):
+                    raise ValueError("invalid revocation authority")
                 if entry == token_hash.strip().lower():
                     return True
-    except FileNotFoundError as exc:
-        logging.error("revocation state is missing: %s", exc)
-        return None
-    except OSError as exc:
-        logging.error("revocation read failed: %s", exc)
+    except (OSError, UnicodeError, ValueError):
+        logging.error("revocation authority unavailable or unsafe")
         return None
     return False
 
@@ -100,11 +123,218 @@ def _audit(route: str, token_hash: str, outcome: str, src_ip: str, n_bytes: int)
         "bytes": n_bytes,
     }
     try:
-        READS_LOG.parent.mkdir(parents=True, exist_ok=True)
-        with READS_LOG.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, sort_keys=True) + "\n")
+        _audit_append((json.dumps(record, sort_keys=True) + "\n").encode())
+    except (OSError, ValueError):
+        logging.warning("audit append unavailable or unsafe")
+
+
+def _unique_authority_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate replay authority key")
+        result[key] = value
+    return result
+
+
+def _sync_directory(descriptor):
+    try:
+        os.fsync(descriptor)
     except OSError as exc:
-        logging.warning("audit append failed: %s", exc)
+        if not (sys.platform != "linux" and exc.errno == errno.EINVAL):
+            raise
+
+
+def _private_file(directory, name, flags=os.O_RDONLY, *, create=False):
+    descriptor = os.open(name, flags | os.O_NOFOLLOW | os.O_NONBLOCK | (os.O_CREAT if create else 0), 0o600, dir_fd=directory)
+    metadata = os.fstat(descriptor)
+    if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.geteuid()
+            or metadata.st_nlink != 1 or stat.S_IMODE(metadata.st_mode) != 0o600):
+        os.close(descriptor)
+        raise ValueError("unsafe private authority")
+    return descriptor
+
+
+@contextlib.contextmanager
+def _state_authority():
+    root = os.open(SUBSCRIPTION_DIR, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    lock = None
+    try:
+        metadata = os.fstat(root)
+        if metadata.st_uid != os.geteuid() or metadata.st_mode & 0o077:
+            raise ValueError("unsafe subscription authority")
+        lock = _private_file(root, STATE_LOCK_NAME, os.O_RDWR)
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        # Retained directory and lock must still be the named authority.
+        named = SUBSCRIPTION_DIR.lstat()
+        lock_named = os.stat(STATE_LOCK_NAME, dir_fd=root, follow_symlinks=False)
+        if (named.st_dev, named.st_ino) != (metadata.st_dev, metadata.st_ino) or (lock_named.st_dev, lock_named.st_ino) != (os.fstat(lock).st_dev, os.fstat(lock).st_ino):
+            raise ValueError("changed subscription authority")
+        yield root
+    finally:
+        if lock is not None:
+            os.close(lock)
+        os.close(root)
+
+
+def _read_fence(root):
+    descriptor = _private_file(root, FENCE_NAME)
+    if os.fstat(descriptor).st_size > 1024:
+        os.close(descriptor)
+        raise ValueError("oversized retirement authority")
+    with os.fdopen(descriptor, "r", encoding="ascii") as stream:
+        value = json.loads(stream.read(1025), object_pairs_hook=_unique_authority_object)
+    if (not isinstance(value, dict) or set(value) != {"schema", "retired_before"}
+            or type(value["schema"]) is not int or value["schema"] != 1 or type(value["retired_before"]) is not int
+            or not 0 <= value["retired_before"] <= 9999999999):
+        raise ValueError("invalid retirement authority")
+    return value["retired_before"]
+
+
+def _commit_fence(root, value):
+    # Confirm existing provisioned authority before replacing it.
+    if value <= _read_fence(root):
+        return
+    temporary = FENCE_NAME + "." + uuid.uuid4().hex
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=root)
+    try:
+        with os.fdopen(descriptor, "w", encoding="ascii") as stream:
+            stream.write(json.dumps({"schema": 1, "retired_before": value}) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, FENCE_NAME, src_dir_fd=root, dst_dir_fd=root)
+        _sync_directory(root)
+    finally:
+        try:
+            os.unlink(temporary, dir_fd=root)
+        except FileNotFoundError:
+            pass
+
+
+def _marker_records(directory):
+    names = os.listdir(directory)
+    if len(names) > 100000:
+        raise ValueError("consumption authority exceeds hard bound")
+    records = []
+    for name in names:
+        if not re.fullmatch(r"[0-9a-f]{64}", name):
+            raise ValueError("unexpected consumption entry")
+        descriptor = _private_file(directory, name)
+        if os.fstat(descriptor).st_size > 1024:
+            os.close(descriptor)
+            raise ValueError("oversized consumption marker")
+        with os.fdopen(descriptor, "r", encoding="ascii") as stream:
+            raw = stream.read(1025)
+        # Legacy empty markers are consumed authority, never guessed/deleted.
+        if raw == "":
+            records.append((name, None))
+            continue
+        value = json.loads(raw, object_pairs_hook=_unique_authority_object)
+        if (not isinstance(value, dict) or set(value) != {"schema", "issued", "expires"}
+                or type(value["schema"]) is not int or value["schema"] != 1 or type(value["issued"]) is not int
+                or type(value["expires"]) is not int or not 0 < value["issued"] < value["expires"] <= 9999999999
+                or value["expires"] - value["issued"] > BOOTSTRAP_REPLAY_HORIZON):
+            raise ValueError("malformed consumption marker")
+        records.append((name, value))
+    return records
+
+
+def _maintain_locked(root, now):
+    fence = _read_fence(root)
+    directory = _open_consumption_directory()
+    if directory is None:
+        raise ValueError("unsafe consumption directory")
+    try:
+        records = _marker_records(directory)
+        retired = max(fence, max(0, now - BOOTSTRAP_REPLAY_HORIZON))
+        _commit_fence(root, retired)  # acknowledged durability BEFORE any deletion
+        for name, record in records:
+            if record is not None and record["issued"] <= retired:
+                os.unlink(name, dir_fd=directory)
+        _sync_directory(directory)
+        return sum(record is None or record["issued"] > retired for _, record in records)
+    finally:
+        os.close(directory)
+
+
+def _bootstrap_issued(token, root, now):
+    match = BOOTSTRAP_TOKEN_RE.fullmatch(token)
+    if not match:
+        return None
+    issued = int(match[1])
+    if issued <= _read_fence(root) or issued > now or now >= issued + BOOTSTRAP_MAX_LIFETIME:
+        return None
+    return issued
+
+
+def _audit_append(data=None):
+    directory = os.open(READS_LOG.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    lock = None
+    opened = []
+    try:
+        info = os.fstat(directory)
+        if info.st_uid != os.geteuid() or info.st_mode & 0o022:
+            raise ValueError("unsafe audit directory")
+        lock = _private_file(directory, ".reads.lock", os.O_RDWR, create=True)
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        # Inspect the full supported archive namespace before changing metadata
+        # or deleting excess history after a retention-policy contraction.
+        names = [READS_LOG.name] + [READS_LOG.name + "." + str(i) for i in range(1, 15)]
+        for name in names:
+            try:
+                fd = os.open(name, os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+            except FileNotFoundError:
+                continue
+            metadata = os.fstat(fd)
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.geteuid() or metadata.st_nlink != 1:
+                os.close(fd)
+                raise ValueError("unsafe audit file")
+            opened.append((name, fd, metadata))
+        for name, fd, metadata in opened:
+            named = os.stat(name, dir_fd=directory, follow_symlinks=False)
+            if (named.st_dev, named.st_ino) != (metadata.st_dev, metadata.st_ino):
+                raise ValueError("changed audit authority")
+            if name != READS_LOG.name and int(name.rsplit(".", 1)[1]) > READS_LOG_BACKUP_COUNT:
+                os.unlink(name, dir_fd=directory)
+                continue
+            os.fchmod(fd, 0o600)
+            if metadata.st_size > READS_LOG_MAX_BYTES:
+                with os.fdopen(os.dup(fd), "r+b") as stream:
+                    stream.seek(-READS_LOG_MAX_BYTES, os.SEEK_END)
+                    tail = stream.read().partition(b"\n")[2]
+                    stream.seek(0)
+                    stream.write(tail)
+                    stream.truncate()
+        _sync_directory(directory)
+        if data is None:
+            return
+        if len(data) > READS_LOG_MAX_BYTES:
+            raise ValueError("audit record exceeds bound")
+        current = _private_file(directory, READS_LOG.name, os.O_RDWR, create=True)
+        size = os.fstat(current).st_size
+        os.close(current)
+        if size + len(data) > READS_LOG_MAX_BYTES:
+            for i in range(READS_LOG_BACKUP_COUNT, 0, -1):
+                source = READS_LOG.name if i == 1 else READS_LOG.name + "." + str(i - 1)
+                try:
+                    os.replace(source, READS_LOG.name + "." + str(i), src_dir_fd=directory, dst_dir_fd=directory)
+                except FileNotFoundError:
+                    pass
+        fd = _private_file(directory, READS_LOG.name, os.O_WRONLY | os.O_APPEND, create=True)
+        with os.fdopen(fd, "ab") as stream:
+            stream.write(data)
+    finally:
+        for _, fd, _ in opened:
+            os.close(fd)
+        if lock is not None:
+            os.close(lock)
+        os.close(directory)
+
+
+def _validate_bounds():
+    for value, minimum, maximum in ((BOOTSTRAP_MAX_LIFETIME, 60, 2592000), (BOOTSTRAP_MAX_MARKERS, 1, 100000), (READS_LOG_MAX_BYTES, 4096, 104857600), (READS_LOG_BACKUP_COUNT, 1, 14)):
+        if type(value) is not int or not minimum <= value <= maximum:
+            raise ValueError("invalid retention bounds")
 
 
 def _now_utc() -> _dt.datetime:
@@ -241,7 +471,7 @@ def _bootstrap_consumed(token_hash: str) -> bool | None:
         os.close(directory)
 
 
-def _record_bootstrap_consumption(token_hash: str) -> bool | None:
+def _record_bootstrap_consumption(token_hash: str, issued: int) -> bool | None:
     """Durably consume one bootstrap token before its payload is delivered."""
     try:
         name = _consumption_tombstone(token_hash).name
@@ -268,6 +498,13 @@ def _record_bootstrap_consumption(token_hash: str) -> bool | None:
             consumed = _bootstrap_consumed(token_hash)
             return False if consumed else None
         os.fchmod(descriptor, 0o600)
+        data = (json.dumps({"schema": 1, "issued": issued, "expires": issued + BOOTSTRAP_MAX_LIFETIME}) + "\n").encode()
+        remaining = memoryview(data)
+        while remaining:
+            count = os.write(descriptor, remaining)
+            if count <= 0:
+                raise OSError("short marker write")
+            remaining = remaining[count:]
         os.fsync(descriptor)
     except OSError as exc:
         logging.error("bootstrap consumption state write failed: %s", exc)
@@ -350,74 +587,97 @@ class Handler(BaseHTTPRequestHandler):
         src_ip = self._src_ip()
         single_use = (route == "bootstrap")
 
-        with _lock:
-            revoked = _is_revoked(token_hash)
-            if revoked is None:
-                _audit(route, token_hash, "revocation-unavailable", src_ip, 0)
-                self.send_error(503, "Service Unavailable")
-                return
-            if revoked:
-                _audit(route, token_hash, "revoked", src_ip, 0)
-                self.send_error(410, "Gone")
-                return
-            if single_use:
-                consumed = _bootstrap_consumed(token_hash)
-                if consumed is None:
-                    _audit(route, token_hash, "consumption-unavailable", src_ip, 0)
+        try:
+            with _lock, _state_authority() as authority:
+                now = int(time.time())
+                issued = None
+                marker_count = 0
+                if single_use:
+                    issued = _bootstrap_issued(token, authority, now)
+                    if issued is None:
+                        _audit(route, token_hash, "retired-or-invalid", src_ip, 0)
+                        self.send_error(410, "Gone")
+                        return
+                revoked = _is_revoked(token_hash)
+                if revoked is None:
+                    _audit(route, token_hash, "revocation-unavailable", src_ip, 0)
                     self.send_error(503, "Service Unavailable")
                     return
-                if consumed:
-                    _audit(route, token_hash, "consumed", src_ip, 0)
+                if revoked:
+                    _audit(route, token_hash, "revoked", src_ip, 0)
                     self.send_error(410, "Gone")
                     return
-            payload_root = _payload_root()
-            if payload_root is None:
-                _audit(route, token_hash, "mirror-state-invalid", src_ip, 0)
-                self.send_error(503, "Service Unavailable")
-                return
-            route_dir = payload_root / route
-            path = route_dir / token_hash
-            meta_path = route_dir / f"{token_hash}.meta"
-            try:
-                data = path.read_bytes()
-            except FileNotFoundError:
-                _audit(route, token_hash, "unknown", src_ip, 0)
-                self.send_error(410, "Gone")
-                return
-            expired = _expired(meta_path)
-            if expired is None:
-                _audit(route, token_hash, "expiry-unavailable", src_ip, 0)
-                self.send_error(503, "Service Unavailable")
-                return
-            if expired:
-                _audit(route, token_hash, "expired", src_ip, 0)
-                # On /bootstrap/, purge the payload so the next read for
-                # the same token also returns 410 fast. On /sub/, leave
-                # the payload — an admin may bump the .meta date.
                 if single_use:
+                    consumed = _bootstrap_consumed(token_hash)
+                    if consumed is None:
+                        _audit(route, token_hash, "consumption-unavailable", src_ip, 0)
+                        self.send_error(503, "Service Unavailable")
+                        return
+                    if consumed:
+                        _audit(route, token_hash, "consumed", src_ip, 0)
+                        self.send_error(410, "Gone")
+                        return
+                payload_root = _payload_root()
+                if payload_root is None:
+                    _audit(route, token_hash, "mirror-state-invalid", src_ip, 0)
+                    self.send_error(503, "Service Unavailable")
+                    return
+                route_dir = payload_root / route
+                path = route_dir / token_hash
+                meta_path = route_dir / f"{token_hash}.meta"
+                try:
+                    data = path.read_bytes()
+                except FileNotFoundError:
+                    _audit(route, token_hash, "unknown", src_ip, 0)
+                    self.send_error(410, "Gone")
+                    return
+                expired = _expired(meta_path)
+                if expired is None:
+                    _audit(route, token_hash, "expiry-unavailable", src_ip, 0)
+                    self.send_error(503, "Service Unavailable")
+                    return
+                if expired:
+                    _audit(route, token_hash, "expired", src_ip, 0)
+                    # On /bootstrap/, purge the payload so the next read for
+                    # the same token also returns 410 fast. On /sub/, leave
+                    # the payload — an admin may bump the .meta date.
+                    if single_use:
+                        try: path.unlink()
+                        except FileNotFoundError: pass
+                        try: meta_path.unlink()
+                        except FileNotFoundError: pass
+                    self.send_error(410, "Gone")
+                    return
+                if single_use:
+                    marker_count = _maintain_locked(authority, now)
+                    if _bootstrap_issued(token, authority, now) is None:
+                        _audit(route, token_hash, "retired-or-invalid", src_ip, 0)
+                        self.send_error(410, "Gone")
+                        return
+                    if marker_count >= BOOTSTRAP_MAX_MARKERS:
+                        _audit(route, token_hash, "consumption-capacity", src_ip, 0)
+                        self.send_error(503, "Service Unavailable")
+                        return
+                    # Record the external no-follow tombstone before delivery.
+                    # Mirror generations may restore this payload on a later pull.
+                    consumed = _record_bootstrap_consumption(token_hash, issued)
+                    if consumed is None:
+                        _audit(route, token_hash, "consumption-unavailable", src_ip, 0)
+                        self.send_error(503, "Service Unavailable")
+                        return
+                    if not consumed:
+                        _audit(route, token_hash, "consumed", src_ip, 0)
+                        self.send_error(410, "Gone")
+                        return
                     try: path.unlink()
                     except FileNotFoundError: pass
-                    try: meta_path.unlink()
-                    except FileNotFoundError: pass
-                self.send_error(410, "Gone")
-                return
-            if single_use:
-                # Record the external no-follow tombstone before delivery.
-                # Mirror generations may restore this payload on a later pull.
-                consumed = _record_bootstrap_consumption(token_hash)
-                if consumed is None:
-                    _audit(route, token_hash, "consumption-unavailable", src_ip, 0)
-                    self.send_error(503, "Service Unavailable")
-                    return
-                if not consumed:
-                    _audit(route, token_hash, "consumed", src_ip, 0)
-                    self.send_error(410, "Gone")
-                    return
-                try: path.unlink()
-                except FileNotFoundError: pass
-                if meta_path.is_file():
-                    try: meta_path.unlink()
-                    except FileNotFoundError: pass
+                    if meta_path.is_file():
+                        try: meta_path.unlink()
+                        except FileNotFoundError: pass
+        except (OSError, ValueError):
+            _audit(route, token_hash, "state-unavailable", src_ip, 0)
+            self.send_error(503, "Service Unavailable")
+            return
 
         _audit(route, token_hash, "consumed", src_ip, len(data))
         self.send_response(200)
@@ -430,15 +690,26 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
 
-def main():
+def main(arguments=()):
+    _validate_bounds()
+    if list(arguments) == ["--maintain"]:
+        with _state_authority() as authority:
+            _maintain_locked(authority, int(time.time()))
+        _audit_append()
+        return
+    if arguments:
+        raise ValueError("unsupported service arguments")
+    with _state_authority() as authority:
+        _read_fence(authority)
+    # Only convergence may provision revocation authority. Restart cannot
+    # invent an empty deny list after loss of durable state.
+    if _is_revoked("") is None:
+        raise RuntimeError("revocation authority is not safely provisioned")
     for sub in ("bootstrap", "sub"):
         (SUBSCRIPTION_DIR / sub).mkdir(parents=True, exist_ok=True)
     if not _trusted_consumption_directory():
         raise RuntimeError("bootstrap consumption state is not safely provisioned")
     READS_LOG.parent.mkdir(parents=True, exist_ok=True)
-    REVOKED_FILE.parent.mkdir(parents=True, exist_ok=True)
-    if not REVOKED_FILE.exists():
-        REVOKED_FILE.touch(mode=0o600)
     server = ThreadingHTTPServer((LISTEN_ADDR, LISTEN_PORT), Handler)
     logging.info("listening on http://%s:%d/  dir=%s",
                  LISTEN_ADDR, LISTEN_PORT, SUBSCRIPTION_DIR)
@@ -449,4 +720,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

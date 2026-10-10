@@ -14,3 +14,6 @@ geodata:
   geoip_sha256: ""
   install_dir: /usr/local/share/xray
   refresh_interval: "1d"
+
+# Direct calls enable the role; site dispatch supplies its exact predicate.
+geodata_role_enabled: true

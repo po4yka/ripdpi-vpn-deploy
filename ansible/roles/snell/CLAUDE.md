@@ -20,3 +20,9 @@
 - The pinned `1.14.0-alpha` line is forbidden in `prod`; the role fails before download when a prerelease is selected there.
 - Server version 5 pairs with client version 4 because sing-box does not expose a separate v5 client wire format.
 - v6 traffic shaping is key-dependent. Do not generalize from one PSK; rotate across the documented evaluation sequence.
+
+- Ordinary site convergence always invokes lifecycle reconciliation. The
+  `snell_role_enabled` input selects enable or owned runtime retirement before
+  secret/package guards. Disable stops units and removes only declared authority;
+  shared packages, immutable runtime receipts, historical logs and recovery data
+  remain available for a later explicit recovery.

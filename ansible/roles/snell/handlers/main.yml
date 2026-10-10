@@ -7,3 +7,4 @@
   ansible.builtin.systemd_service:
     name: snell.service
     state: restarted
+  when: snell_role_enabled | default(true) | bool and not ansible_check_mode

@@ -42,3 +42,5 @@ xray:
   version: ""
   linux_amd64_sha256: ""
   linux_arm64_sha256: ""
+
+xray_role_enabled: true

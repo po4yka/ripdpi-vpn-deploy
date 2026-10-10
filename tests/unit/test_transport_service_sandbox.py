@@ -91,7 +91,7 @@ def test_transport_units_run_as_dedicated_non_root_users() -> None:
 @pytest.mark.parametrize("shared_tls", [False, True])
 def test_realm_user_group_arguments_match_the_tls_ownership_mode(shared_tls) -> None:
     tasks = yaml.safe_load(
-        (REPO_ROOT / "ansible/roles/hysteria-realm/tasks/main.yml").read_text()
+        (REPO_ROOT / "ansible/roles/hysteria-realm/tasks/enable.yml").read_text()
     )
     task = next(task for task in tasks if task.get("name") == "Ensure system user")
     environment = Environment(autoescape=True, undefined=StrictUndefined)

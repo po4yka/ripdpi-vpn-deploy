@@ -35,6 +35,21 @@ else
 PROVIDER ?= upcloud
 ENV      ?= prod
 
+ifneq ($(filter naive-issue naive-revoke naive-readout,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error Naive device operations require exactly one make goal)
+endif
+override NAIVE_CLIENT_LITERAL := $(value CLIENT)
+override NAIVE_SOPS_FILE_LITERAL := $(value SOPS_FILE)
+override NAIVE_OUTPUT_LITERAL := $(value OUTPUT)
+override CLIENT := $(value CLIENT)
+override SOPS_FILE := $(value SOPS_FILE)
+override OUTPUT := $(value OUTPUT)
+export NAIVE_CLIENT_LITERAL NAIVE_SOPS_FILE_LITERAL NAIVE_OUTPUT_LITERAL
+unexport CLIENT SOPS_FILE OUTPUT MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+endif
+
 ifneq ($(filter observability-pki-prepare,$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error observability PKI preparation requires exactly one make goal)
@@ -504,7 +519,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
         molecule-test smoke-test validate-target monitor-reality-target probe-sni-survival scan-targets blue-green \
         spot-check-secrets bootstrap-secrets probe-asn probe-matrix-control probe-matrix-cell probe-matrix-tools emit-probe-matrix-profile emit-qr check-certs \
-        audit-permissions asn-drift check-ip-reputation issue-bootstrap \
+        audit-permissions asn-drift check-ip-reputation issue-bootstrap naive-issue naive-revoke naive-readout \
         test-tls-policing probe-payload-throttle fleet-status drift-since-tag fleet-rotate \
         snell-refinement \
         protocol-liveness monitor-protocol-liveness install-liveness-sentinel \
@@ -518,7 +533,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         observability-remove observability-silence-create observability-silence-delete observability-staging-prepare observability-staging-materialize observability-staging-acceptance \
         observability-staging-cleanup-preflight observability-staging-cleanup-snapshot observability-staging-cleanup-seal observability-staging-cleanup-validate observability-staging-cleanup \
         awg-evidence-provision \
-        test-native-runtime test-probe-matrix-mtproto test-unit test-unit-profile test-unit-shard snapshot-check snapshot-update validate-secrets \
+        native-naive-build test-native-runtime test-probe-matrix-mtproto test-unit test-unit-profile test-unit-shard snapshot-check snapshot-update validate-secrets \
         actionlint-check zizmor-check zizmor-test cloud-init-schema tf-test yamllint-check shellcheck \
         ci-fast bats-test vpnd-test vpnd-clippy vpnd-deny vpnd-msrv vpnd-mutants tf-policy tf-policy-verify \
         task-tools task-check task-list task-ready task-graph task-federation \
@@ -610,6 +625,7 @@ help:
 	@echo "  emit-bundle CLIENT=…       RIPDPI P0/P1/P2 JSON with ripdpi extension"
 	@echo "  emit-qr CLIENT=…           PNG QR for the client (TYPE=singbox|uri, OUT=path)"
 	@echo "  issue-bootstrap CLIENT=…   Issue a one-time /bootstrap/<token> URL"
+	@echo "  naive-issue/revoke/readout CLIENT=…  Manage one encrypted Naive device (SOPS_FILE=…)"
 	@echo "  issue-sub-token CLIENT=…   Issue a long-lived /sub/<token> URL (FORMAT=singbox|ripdpi EXPIRES=… QR=1)"
 	@echo "  client-drift CLIENT=…      Compare a device's last delivery identity with current inputs"
 	@echo "  sub-reads [SINCE=… ROUTE=… LIMIT=…]  Pull the server-side read-audit log"
@@ -1040,6 +1056,10 @@ install-hooks:
 	pre-commit install
 	pre-commit install --hook-type commit-msg
 
+# Exact Caddy/forwardproxy composite; native tests never accept stock Caddy.
+native-naive-build:
+	./scripts/build-native-naive-test.sh
+
 # Explicit Linux-only lane; run as root in a disposable runner/container.
 test-native-runtime:
 	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 || { echo "native runtime tests require a disposable Linux root environment" >&2; exit 1; }
@@ -1321,6 +1341,14 @@ issue-bootstrap:
 	@test -n "$${CLIENT:-}" || { echo "usage: make issue-bootstrap CLIENT=phone"; exit 1; }
 	HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" \
 	./scripts/issue-bootstrap.sh "$${CLIENT}"
+
+naive-issue naive-revoke:
+	@test -n "$${NAIVE_CLIENT_LITERAL:-}" && test -n "$${NAIVE_SOPS_FILE_LITERAL:-}" || { echo "usage: make $@ CLIENT=phone SOPS_FILE=…"; exit 1; }
+	python3 scripts/naive-client.py $(patsubst naive-%,%,$@) "$${NAIVE_CLIENT_LITERAL}" --file "$${NAIVE_SOPS_FILE_LITERAL}"
+
+naive-readout:
+	@test -n "$${NAIVE_CLIENT_LITERAL:-}" && test -n "$${NAIVE_SOPS_FILE_LITERAL:-}" && test -n "$${NAIVE_OUTPUT_LITERAL:-}" || { echo "usage: make naive-readout CLIENT=phone SOPS_FILE=… OUTPUT=<new private file>"; exit 1; }
+	python3 scripts/naive-client.py readout "$${NAIVE_CLIENT_LITERAL}" --file "$${NAIVE_SOPS_FILE_LITERAL}" --output "$${NAIVE_OUTPUT_LITERAL}"
 
 issue-sub-token:
 	@test -n "$${CLIENT:-}" || { echo "usage: make issue-sub-token CLIENT=phone [FORMAT=singbox|ripdpi] [EXPIRES=YYYY-MM-DD] [QR=1]"; exit 1; }

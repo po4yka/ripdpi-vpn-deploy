@@ -7,6 +7,8 @@
     create 0640 xray xray
     sharedscripts
     postrotate
-        systemctl kill -s HUP xray.service 2>/dev/null || true
+        if systemctl is-active --quiet xray.service; then
+            systemctl restart xray.service && systemctl is-active --quiet xray.service
+        fi
     endscript
 }

@@ -66,7 +66,7 @@ point operators at the minimum versions.
 NaiveProxy v147.0.7727.49-3 (released 2026-05) and the follow-on
 v148.0.7778.96-2 (2026-05-02) inject realistic Chrome HTTP/2 preambles
 derived from the fronting Caddy site's root page. The server-side
-`naive` role's Caddyfile already ships the compression headers a real
+`naive` role's native Caddy JSON configuration already ships the compression headers a real
 Chrome browser would trigger (`encode zstd gzip`, ERROR-only access
 log) so the preambles look organic.
 

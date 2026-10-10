@@ -12,7 +12,11 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def _tasks(role: str) -> list[dict]:
-    return yaml.safe_load((ROOT / f"ansible/roles/{role}/tasks/main.yml").read_text())
+    directory = ROOT / "ansible/roles" / role / "tasks"
+    source = directory / (
+        "enable.yml" if (directory / "enable.yml").exists() else "main.yml"
+    )
+    return yaml.safe_load(source.read_text())
 
 
 def _task(role: str, name: str) -> dict:
@@ -44,7 +48,7 @@ def test_naive_build_uses_compound_identity_and_pinned_output_receipt() -> None:
         }
     ]
 
-    source = (ROOT / "ansible/roles/naive/tasks/main.yml").read_text()
+    source = (ROOT / "ansible/roles/naive/tasks/enable.yml").read_text()
     assert "Check whether caddy-naive binary already exists" not in source
     assert "Verify caddy-naive binary sha256" not in source
     assert "_caddy_naive_stat.stat.checksum" not in source
@@ -59,10 +63,55 @@ def test_naive_build_uses_compound_identity_and_pinned_output_receipt() -> None:
         for argument in step["argv"]
     )
 
-    restart = _task("naive", "Queue caddy-naive restart after source publication")
-    assert restart["when"] == "naive.build_with_xcaddy | bool"
-    assert restart["changed_when"] == "runtime_build_changed | bool"
-    assert restart["notify"] == "Restart caddy-naive"
+    # Publication flags cannot acknowledge adoption: unchanged bytes can still
+    # need activation after interruption or replacement of the running inode.
+    activation = _task(
+        "naive", "Adopt unacknowledged Naive authority before convergence succeeds"
+    )
+    assert activation["ansible.builtin.command"]["argv"] == [
+        "/usr/bin/python3",
+        "/usr/local/libexec/vpn-naive-activate.py",
+        "--binary",
+        "/usr/local/bin/caddy-naive",
+        "--unit-file",
+        "/etc/systemd/system/caddy-naive.service",
+        "--config",
+        "{{ naive.config_dir }}/caddy.json",
+        "--certificate",
+        "{{ naive.config_dir }}/server.fullchain.pem",
+        "--key",
+        "{{ naive.config_dir }}/server.key",
+        "--unit",
+        "caddy-naive.service",
+        "--state",
+        "/var/lib/ripdpi/naive-activation",
+        "--server-name",
+        "{{ naive_secrets.server_name }}",
+        "--port",
+        "{{ naive.bind_port | string }}",
+    ]
+    assert activation["when"] == "not ansible_check_mode"
+    assert activation["register"] == "naive_activation_result"
+    assert activation["changed_when"] == (
+        "(naive_activation_result.stdout | from_json).changed | bool"
+    )
+    assert activation["no_log"] is True
+    assert "notify" not in activation
+    helper = _task("naive", "Install durable Naive activation helper")
+    assert helper["ansible.builtin.copy"]["src"] == "naive_activate.py"
+    assert (
+        helper["ansible.builtin.copy"]["dest"]
+        == activation["ansible.builtin.command"]["argv"][1]
+    )
+    tasks = _tasks("naive")
+    assert tasks.index(wrapper) < tasks.index(helper) < tasks.index(activation)
+    for name in (
+        "Drop TLS cert + key",
+        "Render authoritative native Caddy JSON",
+        "Install systemd unit",
+    ):
+        assert tasks.index(_task("naive", name)) < tasks.index(activation)
+    assert not any(task.get("notify") == "Restart caddy-naive" for task in tasks)
 
 
 def test_xray_source_build_uses_resolved_commit_and_shared_receipt() -> None:
@@ -87,7 +136,7 @@ def test_xray_source_build_uses_resolved_commit_and_shared_receipt() -> None:
         {
             "name": "installed",
             "staged_path": "/var/lib/ripdpi/runtime-build-staging/xray-core/xray",
-            "path": "{{ xray_install_dir }}/releases/{{ xray.version }}/xray",
+            "path": "{{ xray_install_dir }}/releases/{{ _xray_runtime_release_identity }}/xray",
             "expected_sha256": "{{ xray_runtime_source_sha256 }}",
         }
     ]
@@ -431,20 +480,20 @@ def test_source_build_controller_validation_uses_running_ansible_python() -> Non
 
 
 def test_source_publication_changes_drive_service_restart_state(tmp_path: Path) -> None:
+    # Xray still exports publication state. Naive's synchronous adoption is
+    # exercised with its real managed Caddy process in test_naive_native.py.
     executable = shutil.which("ansible-playbook")
     assert executable, "installed Ansible is required for the restart-state proof"
-    naive_task = _task("naive", "Queue caddy-naive restart after source publication")
     xray_task = _task("xray-runtime", "Publish Xray runtime change state")
     cases = [
-        ("source-changed", True, True, True, False, True),
-        ("source-idempotent", True, False, True, False, False),
-        ("prebuilt-stale-source-fact", False, True, False, False, False),
-        ("prebuilt-link-changed", False, True, False, True, True),
+        ("source-changed", True, True, False, True),
+        ("source-idempotent", False, True, False, False),
+        ("prebuilt-stale-source-fact", True, False, False, False),
+        ("prebuilt-link-changed", True, False, True, True),
     ]
 
     for (
         name,
-        naive_source_enabled,
         runtime_build_changed,
         xray_source_enabled,
         xray_link_changed,
@@ -452,9 +501,8 @@ def test_source_publication_changes_drive_service_restart_state(tmp_path: Path) 
     ) in cases:
         case_root = tmp_path / name
         case_root.mkdir()
-        restart_marker = case_root / "naive-restarted"
         tasks_path = case_root / "source-publication-tasks.yml"
-        tasks_path.write_text(yaml.safe_dump([naive_task, xray_task], sort_keys=False))
+        tasks_path.write_text(yaml.safe_dump([xray_task], sort_keys=False))
         playbook = case_root / "source-publication-playbook.yml"
         playbook.write_text(
             yaml.safe_dump(
@@ -465,7 +513,6 @@ def test_source_publication_changes_drive_service_restart_state(tmp_path: Path) 
                         "connection": "local",
                         "gather_facts": False,
                         "vars": {
-                            "naive": {"build_with_xcaddy": naive_source_enabled},
                             "runtime_build_changed": runtime_build_changed,
                             "runtime_build_results": {
                                 "xray-core": {"changed": runtime_build_changed}
@@ -475,19 +522,8 @@ def test_source_publication_changes_drive_service_restart_state(tmp_path: Path) 
                             "_xray_runtime_current": {"changed": xray_link_changed},
                             "expected_xray_changed": expected_xray_changed,
                         },
-                        "handlers": [
-                            {
-                                "name": "Restart caddy-naive",
-                                "ansible.builtin.copy": {
-                                    "content": "restarted\n",
-                                    "dest": str(restart_marker),
-                                    "mode": "0600",
-                                },
-                            }
-                        ],
                         "tasks": [
                             {"ansible.builtin.include_tasks": str(tasks_path)},
-                            {"ansible.builtin.meta": "flush_handlers"},
                             {
                                 "name": "Require Xray publication restart state",
                                 "ansible.builtin.assert": {
@@ -529,9 +565,6 @@ def test_source_publication_changes_drive_service_restart_state(tmp_path: Path) 
         )
 
         assert result.returncode == 0, result.stdout + result.stderr
-        assert restart_marker.exists() is (
-            naive_source_enabled and runtime_build_changed
-        )
 
 
 def test_fresh_source_build_check_predicts_change_without_running_recipe(

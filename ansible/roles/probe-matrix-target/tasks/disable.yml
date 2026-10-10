@@ -1,0 +1,34 @@
+---
+- name: Remove only the probe listener through complete nginx publication
+  ansible.builtin.include_role:
+    name: nginx-xhttp
+    tasks_from: transaction
+  vars:
+    nginx_transaction_owner: probe-matrix-target
+    nginx_transaction_roots: [/etc/nginx]
+    nginx_transaction_files:
+      - path: /etc/nginx/sites-enabled/probe-matrix-tls.conf
+        kind: absent
+      - path: /etc/nginx/sites-available/probe-matrix-tls.conf
+        kind: absent
+    nginx_transaction_validate_argv: [/usr/sbin/nginx, -t]
+    nginx_transaction_unit: nginx.service
+    nginx_transaction_activation: reload
+    nginx_transaction_activate_inactive: false
+    nginx_transaction_desired_enabled: null
+
+- name: Retire probe-matrix-target owned runtime authority
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: retire
+  vars:
+    runtime_retire_units:
+      - probe-matrix-xray.service
+      - probe-matrix-mtg.service
+    runtime_retire_paths:
+      - /etc/systemd/system/probe-matrix-xray.service
+      - /etc/systemd/system/probe-matrix-mtg.service
+      - /etc/probe-matrix/xray.json
+      - /etc/probe-matrix/mtg.toml
+      - /etc/probe-matrix/tls.crt
+      - /etc/probe-matrix/tls.key

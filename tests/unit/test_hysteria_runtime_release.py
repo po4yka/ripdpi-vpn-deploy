@@ -6,7 +6,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-ROLE_TASKS = ROOT / "ansible" / "roles" / "hysteria" / "tasks" / "main.yml"
+ROLE_TASKS = ROOT / "ansible" / "roles" / "hysteria" / "tasks" / "enable.yml"
 CONVERGE = (
     ROOT / "ansible" / "roles" / "hysteria" / "molecule" / "default" / "converge.yml"
 )
@@ -180,10 +180,7 @@ def test_hysteria_molecule_runs_check_mode_in_a_global_ansible_process() -> None
         == "Assert global check mode predicted a release without writes or restart"
     )
     clauses = state_assertion["ansible.builtin.assert"]["that"]
-    assert any(
-        "results[1].stat.exists ==" in clause
-        for clause in clauses
-    )
+    assert any("results[1].stat.exists ==" in clause for clause in clauses)
     assert any(
         "not check_mode_before_paths.results[1].stat.exists or" in clause
         for clause in clauses

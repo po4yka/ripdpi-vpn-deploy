@@ -1,0 +1,28 @@
+---
+- name: Refuse historical cascade ingress state before scaffold retirement
+  ansible.builtin.import_tasks: historical-state.yml
+
+- name: Retire cascade-ingress runtime authority
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: retire
+  vars:
+    runtime_retire_units:
+      - cascade-classifier-proxy.service
+      - cascade-leg-probe.timer
+      - cascade-leg-probe.service
+    runtime_retire_paths:
+      - '{{ cascade_ingress.classifier_proxy_unit_path }}'
+      - /etc/systemd/system/cascade-leg-probe.timer
+      - /etc/systemd/system/cascade-leg-probe.service
+      - '{{ cascade_ingress.classifier_path }}'
+      - '{{ cascade_ingress.classifier_library_path }}'
+      - '{{ cascade_ingress.classifier_proxy_path }}'
+      - '{{ cascade_ingress.leg_probe_path }}'
+      - '{{ cascade_ingress.leg_probe_schema_path }}'
+      - '{{ cascade_ingress.classifier_proxy_password_path }}'
+      - '{{ cascade_ingress.classifier_interface_path }}'
+      - '{{ cascade_ingress.leg_probe_config_path }}'
+      - '{{ cascade_ingress.leg_probe_token_path }}'
+      - '{{ cascade_ingress.policy_path }}'
+      - /etc/wireguard/{{ cascade_ingress.wg_interface }}.conf

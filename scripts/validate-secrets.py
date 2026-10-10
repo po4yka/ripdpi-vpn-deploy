@@ -344,6 +344,10 @@ def _semantic_errors(
     for path, clients in [("hysteria.clients", (doc.get("hysteria") or {}).get("clients") or [])]:
         if _duplicate_values(clients, "name"):
             errors.append((path, "duplicate name"))
+    naive_clients = (doc.get("naive_secrets") or {}).get("clients") or []
+    for key in ("name", "username", "password"):
+        if _duplicate_values(naive_clients, key):
+            errors.append(("naive_secrets.clients", f"duplicate {key}"))
     variants = (doc.get("snell_secrets") or {}).get("variants") or []
     if _duplicate_values(variants, "id"):
         errors.append(("snell_secrets.variants", "duplicate id"))

@@ -15,7 +15,6 @@ import subprocess
 import tempfile
 import time
 
-
 OWNER_UID = 0
 SSHD = "/usr/sbin/sshd"
 SCRATCH_ROOT = Path("/run/vpn-sshd-validation")
@@ -33,23 +32,51 @@ FRAGMENTS = (BOOT, MANAGED, CLOUD)
 OWNERSHIP_FILES = ("sshd_config", *FRAGMENTS)
 BASELINE_FILES = ("sshd_config", MANAGED)
 PACKAGED_SFTP = ("sftp", "/usr/lib/openssh/sftp-server")
-INTERNAL_SFTP = {("sftp", "internal-sftp"), ("sftp", "internal-sftp", "-f", "AUTHPRIV", "-l", "INFO")}
-AUTH = {"passwordauthentication": "no", "kbdinteractiveauthentication": "no",
-        "permitrootlogin": "no", "pubkeyauthentication": "yes"}
+INTERNAL_SFTP = {
+    ("sftp", "internal-sftp"),
+    ("sftp", "internal-sftp", "-f", "AUTHPRIV", "-l", "INFO"),
+}
+AUTH = {
+    "passwordauthentication": "no",
+    "kbdinteractiveauthentication": "no",
+    "permitrootlogin": "no",
+    "pubkeyauthentication": "yes",
+}
 CANONICAL_ALGORITHMS = {
-    "ciphers": ("chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com",),
+    "ciphers": (
+        "chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com",
+    ),
     "macs": ("hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com",),
-    "kexalgorithms": ("curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512",),
+    "kexalgorithms": (
+        "curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512",
+    ),
 }
 CANONICAL_EFFECTIVE_ALGORITHMS = {
     key.encode(): f"{key} {','.join(values)}".encode()
     for key, values in CANONICAL_ALGORITHMS.items()
 }
-TUNABLE = {"x11forwarding", "allowtcpforwarding", "allowagentforwarding", "permittunnel",
-           "permituserenvironment", "permitemptypasswords", "ignorerhosts", "loglevel",
-           "clientaliveinterval", "clientalivecountmax", "maxauthtries", "maxsessions",
-           "maxstartups", "logingracetime", "requiredrsasize", "allowusers", "subsystem",
-           "ciphers", "macs", "kexalgorithms"}
+TUNABLE = {
+    "x11forwarding",
+    "allowtcpforwarding",
+    "allowagentforwarding",
+    "permittunnel",
+    "permituserenvironment",
+    "permitemptypasswords",
+    "ignorerhosts",
+    "loglevel",
+    "clientaliveinterval",
+    "clientalivecountmax",
+    "maxauthtries",
+    "maxsessions",
+    "maxstartups",
+    "logingracetime",
+    "requiredrsasize",
+    "allowusers",
+    "subsystem",
+    "ciphers",
+    "macs",
+    "kexalgorithms",
+}
 OWNED = TUNABLE | AUTH.keys() | {"port"}
 
 
@@ -62,7 +89,9 @@ class OwnershipError(ValueError):
 
 
 def _canonical(value):
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    return json.dumps(
+        value, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode()
 
 
 def _sha(raw):
@@ -77,7 +106,9 @@ def _directory(path):
     fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
     try:
         for part in path.parts[1:]:
-            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            child = os.open(
+                part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd
+            )
             os.close(fd)
             fd = child
             info = os.fstat(fd)
@@ -92,21 +123,83 @@ def _read(directory_fd, name, relative):
     fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory_fd)
     try:
         before = os.fstat(fd)
-        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or before.st_uid != OWNER_UID or before.st_mode & 0o022:
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_uid != OWNER_UID
+            or before.st_mode & 0o022
+        ):
             raise OwnershipError("unsafe-file")
         if before.st_size > MAX_FILE:
             raise OwnershipError("file-too-large")
         with os.fdopen(fd, "rb", closefd=False) as stream:
             raw = stream.read(MAX_FILE + 1)
         after = os.fstat(fd)
-        if len(raw) > MAX_FILE or (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+        if len(raw) > MAX_FILE or (
+            before.st_size,
+            before.st_mtime_ns,
+            before.st_ctime_ns,
+        ) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
             raise OwnershipError("read-race")
-        metadata = {"relative_path": relative, "sha256": _sha(raw), "size": len(raw),
-                    "uid": before.st_uid, "gid": before.st_gid, "mode": stat.S_IMODE(before.st_mode),
-                    "dev": before.st_dev, "ino": before.st_ino}
+        metadata = {
+            "relative_path": relative,
+            "sha256": _sha(raw),
+            "size": len(raw),
+            "uid": before.st_uid,
+            "gid": before.st_gid,
+            "mode": stat.S_IMODE(before.st_mode),
+            "dev": before.st_dev,
+            "ino": before.st_ino,
+        }
         return raw, metadata
     finally:
         os.close(fd)
+
+
+RESTRICTED_OPTIONS = (
+    ("AllowTcpForwarding", "no"),
+    ("AllowAgentForwarding", "no"),
+    ("X11Forwarding", "no"),
+    ("PermitTunnel", "no"),
+    ("PermitTTY", "no"),
+    ("PermitUserRC", "no"),
+)
+
+
+def _restricted_suffix(raw):
+    """Recognize only the exact terminal account restriction grammar we own."""
+    lines = raw.splitlines(keepends=True)
+    start = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if re.match(rb"\s*Match(?:\s|=)", line, re.I)
+        ),
+        len(lines),
+    )
+    prefix = b"".join(lines[:start])
+    suffix = b"".join(lines[start:])
+    users = []
+    if suffix:
+        fields = [
+            shlex.split(line.decode("ascii"), comments=True) for line in lines[start:]
+        ]
+        width = 1 + len(RESTRICTED_OPTIONS)
+        if len(fields) % width:
+            raise OwnershipError("unsupported-match")
+        for offset in range(0, len(fields), width):
+            match = fields[offset]
+            if (
+                len(match) != 3
+                or match[:2] != ["Match", "User"]
+                or not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", match[2])
+                or match[2] in users
+                or fields[offset + 1 : offset + width]
+                != [list(value) for value in RESTRICTED_OPTIONS]
+            ):
+                raise OwnershipError("unsupported-match")
+            users.append(match[2])
+    return prefix, suffix, users
 
 
 def _lines(raw):
@@ -143,7 +236,10 @@ def _capture(config_dir, *, baseline=False):
                 if entry.name.endswith(".conf") and not entry.name.startswith("."):
                     names.append(entry.name)
         names.sort()
-        if len(names) > 64 or any(not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\.conf", name) for name in names):
+        if len(names) > 64 or any(
+            not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\.conf", name)
+            for name in names
+        ):
             raise OwnershipError("unsupported-membership")
         captures = {"sshd_config": _read(fd, "sshd_config", "sshd_config")}
         for name in names:
@@ -153,17 +249,34 @@ def _capture(config_dir, *, baseline=False):
             raise OwnershipError("graph-too-large")
     include_count = 0
     for relative, (raw, _) in captures.items():
-        for _, key, values in _lines(raw):
+        for _, key, values in _lines(
+            _restricted_suffix(raw)[0] if relative == "sshd_config" else raw
+        ):
             if key == "include":
-                if relative != "sshd_config" or values != [str(root / "sshd_config.d/*.conf")]:
+                if relative != "sshd_config" or values != [
+                    str(root / "sshd_config.d/*.conf")
+                ]:
                     raise OwnershipError("unsupported-include")
                 include_count += 1
             elif key in OWNED:
-                allowed_main = ({"subsystem"} if baseline else {"kbdinteractiveauthentication", "x11forwarding", "subsystem", "permitrootlogin"})
+                allowed_main = (
+                    {"subsystem"}
+                    if baseline
+                    else {
+                        "kbdinteractiveauthentication",
+                        "x11forwarding",
+                        "subsystem",
+                        "permitrootlogin",
+                    }
+                )
                 if relative != "sshd_config" or key not in allowed_main:
                     if relative not in FRAGMENTS:
                         raise OwnershipError("unmanaged-owned-directive", relative)
-    if include_count != 1 or BOOT not in captures or (not baseline and MANAGED not in captures):
+    if (
+        include_count != 1
+        or BOOT not in captures
+        or (not baseline and MANAGED not in captures)
+    ):
         raise OwnershipError("unsupported-layout")
     if baseline:
         _baseline_layout(captures)
@@ -182,7 +295,11 @@ def _directives(raw, allowed):
 
 
 def _remove(raw, indexes):
-    return b"".join(line for index, line in enumerate(raw.splitlines(keepends=True)) if index not in indexes)
+    return b"".join(
+        line
+        for index, line in enumerate(raw.splitlines(keepends=True))
+        if index not in indexes
+    )
 
 
 def _candidates(captures):
@@ -192,14 +309,23 @@ def _candidates(captures):
     if any(b.get(key, (None, None))[1] != [value] for key, value in AUTH.items()):
         raise OwnershipError("unsupported-authentication")
     port = b.get("port", (None, []))[1]
-    if len(port) != 1 or not port[0].isascii() or not port[0].isdigit() or not 1 <= int(port[0]) <= 65535:
+    if (
+        len(port) != 1
+        or not port[0].isascii()
+        or not port[0].isdigit()
+        or not 1 <= int(port[0]) <= 65535
+    ):
         raise OwnershipError("unsupported-port")
     for key in AUTH.keys() & m.keys():
         if m[key][1] != b[key][1]:
             raise OwnershipError("conflicting-authentication")
     if "x11forwarding" not in b and "x11forwarding" not in m:
         raise OwnershipError("missing-x11-owner")
-    if any(values[1] != ["no"] for key, values in [*b.items(), *m.items()] if key == "x11forwarding"):
+    if any(
+        values[1] != ["no"]
+        for key, values in [*b.items(), *m.items()]
+        if key == "x11forwarding"
+    ):
         raise OwnershipError("unsupported-x11")
     changed_managed = _remove(managed, {m[key][0] for key in AUTH.keys() & m.keys()})
     if "x11forwarding" not in m:
@@ -212,11 +338,13 @@ def _candidates(captures):
     for index, key in packaged:
         if key != "subsystem":
             line = lines[index]
-            indent = line[:len(line) - len(line.lstrip())]
-            lines[index] = indent + b"# normalized-shadowed " + line[len(indent):]
-    result = {"sshd_config": b"".join(lines),
-              BOOT: _remove(boot, {b["x11forwarding"][0]} if "x11forwarding" in b else set()),
-              MANAGED: changed_managed}
+            indent = line[: len(line) - len(line.lstrip())]
+            lines[index] = indent + b"# normalized-shadowed " + line[len(indent) :]
+    result = {
+        "sshd_config": b"".join(lines),
+        BOOT: _remove(boot, {b["x11forwarding"][0]} if "x11forwarding" in b else set()),
+        MANAGED: changed_managed,
+    }
     if CLOUD in captures:
         cloud = captures[CLOUD][0]
         c = _directives(cloud, {"passwordauthentication"})
@@ -227,11 +355,19 @@ def _candidates(captures):
 
 
 def _ownership_main(captures):
-    allowed = {"kbdinteractiveauthentication": ["no"], "x11forwarding": ["yes"], "permitrootlogin": ["yes"]}
-    include_index = next(index for index, key, _ in _lines(captures["sshd_config"][0]) if key == "include")
+    allowed = {
+        "kbdinteractiveauthentication": ["no"],
+        "x11forwarding": ["yes"],
+        "permitrootlogin": ["yes"],
+    }
+    include_index = next(
+        index
+        for index, key, _ in _lines(_restricted_suffix(captures["sshd_config"][0])[0])
+        if key == "include"
+    )
     result = []
     seen = set()
-    for index, key, values in _lines(captures["sshd_config"][0]):
+    for index, key, values in _lines(_restricted_suffix(captures["sshd_config"][0])[0]):
         if key not in OWNED:
             continue
         if key in seen:
@@ -275,13 +411,26 @@ def _baseline_layout(captures):
     if any(boot.get(key, (None, None))[1] != [value] for key, value in AUTH.items()):
         raise OwnershipError("unsupported-authentication")
     port = boot.get("port", (None, []))[1]
-    if len(port) != 1 or not port[0].isascii() or not port[0].isdigit() or not 1 <= int(port[0]) <= 65535:
+    if (
+        len(port) != 1
+        or not port[0].isascii()
+        or not port[0].isdigit()
+        or not 1 <= int(port[0]) <= 65535
+    ):
         raise OwnershipError("unsupported-port")
     managed = _runtime_directives(captures[MANAGED][0]) if MANAGED in captures else {}
     if CLOUD in captures and _lines(captures[CLOUD][0]):
         raise OwnershipError("unsupported-owned-directive")
-    subsystems = [(index, words) for index, key, words in _lines(captures["sshd_config"][0]) if key == "subsystem"]
-    if len(subsystems) > 1 or any(tuple(words) != PACKAGED_SFTP for _, words in subsystems):
+    subsystems = [
+        (index, words)
+        for index, key, words in _lines(
+            _restricted_suffix(captures["sshd_config"][0])[0]
+        )
+        if key == "subsystem"
+    ]
+    if len(subsystems) > 1 or any(
+        tuple(words) != PACKAGED_SFTP for _, words in subsystems
+    ):
         raise OwnershipError("unsupported-subsystem")
     if len(subsystems) + int("subsystem" in managed) != 1:
         raise OwnershipError("unsupported-subsystem")
@@ -293,10 +442,18 @@ def _contexts(contexts):
         raise OwnershipError("invalid-context")
     result = []
     for context in contexts:
-        if not isinstance(context, dict) or set(context) != {"user", "host", "addr", "laddr", "lport"}:
+        if not isinstance(context, dict) or set(context) != {
+            "user",
+            "host",
+            "addr",
+            "laddr",
+            "lport",
+        }:
             raise OwnershipError("invalid-context")
         for key in ("user", "host"):
-            if not isinstance(context[key], str) or not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}", context[key]):
+            if not isinstance(context[key], str) or not re.fullmatch(
+                r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}", context[key]
+            ):
                 raise OwnershipError("invalid-context")
         for key in ("addr", "laddr"):
             if not isinstance(context[key], str) or "%" in context[key]:
@@ -317,8 +474,13 @@ def _command(arguments, budget):
     if budget <= 0:
         raise OwnershipError("sshd-timeout")
     deadline = time.monotonic() + min(COMMAND_TIMEOUT, budget)
-    with subprocess.Popen([SSHD, *arguments], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                          stderr=subprocess.DEVNULL, env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"}) as process:
+    with subprocess.Popen(
+        [SSHD, *arguments],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"},
+    ) as process:
         output = bytearray()
         try:
             with selectors.DefaultSelector() as selector:
@@ -351,9 +513,21 @@ def _command(arguments, budget):
 def _assemble(captures, replacements):
     fragments = sorted((captures.keys() | replacements.keys()) - {"sshd_config"})
     main = replacements.get("sshd_config", captures["sshd_config"][0])
-    include = next(index for index, key, _ in _lines(main) if key == "include")
+    include = next(
+        index
+        for index, key, _ in _lines(_restricted_suffix(main)[0])
+        if key == "include"
+    )
     lines = main.splitlines(keepends=True)
-    lines[include] = b"".join((replacements[relative] if relative in replacements else captures[relative][0]).rstrip(b"\n") + b"\n" for relative in fragments)
+    lines[include] = b"".join(
+        (
+            replacements[relative]
+            if relative in replacements
+            else captures[relative][0]
+        ).rstrip(b"\n")
+        + b"\n"
+        for relative in fragments
+    )
     return b"".join(lines)
 
 
@@ -370,14 +544,20 @@ def _scratch_parent():
     for directory in (parent, *parent.parents):
         info = directory.lstat()
         sticky = directory == parent and bool(info.st_mode & stat.S_ISVTX)
-        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or (info.st_mode & 0o022 and not sticky):
+        if (
+            not stat.S_ISDIR(info.st_mode)
+            or info.st_uid != 0
+            or (info.st_mode & 0o022 and not sticky)
+        ):
             raise OwnershipError("unsafe-scratch")
     return parent
 
 
 def _effective_outputs(captures, replacements, contexts):
     deadline = time.monotonic() + EFFECTIVE_TIMEOUT
-    with tempfile.TemporaryDirectory(prefix="sshd-ownership-", dir=_scratch_parent()) as directory:
+    with tempfile.TemporaryDirectory(
+        prefix="sshd-ownership-", dir=_scratch_parent()
+    ) as directory:
         path = Path(directory) / "sshd_config"
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, "wb") as stream:
@@ -387,19 +567,31 @@ def _effective_outputs(captures, replacements, contexts):
         for context in [None, *contexts]:
             arguments = ["-T", "-f", str(path)]
             if context is not None:
-                arguments += ["-C", ",".join(f"{key}={context[key]}" for key in ("user", "host", "addr", "laddr", "lport"))]
+                arguments += [
+                    "-C",
+                    ",".join(
+                        f"{key}={context[key]}"
+                        for key in ("user", "host", "addr", "laddr", "lport")
+                    ),
+                ]
             result.append(_command(arguments, deadline - time.monotonic()))
         return result
 
 
 def _effective(captures, replacements, contexts):
-    return [_sha(output) for output in _effective_outputs(captures, replacements, contexts)]
+    return [
+        _sha(output) for output in _effective_outputs(captures, replacements, contexts)
+    ]
 
 
 def _ownership_policy(captures, candidates, contexts):
     """Validate every deterministic apply prefix and reverse rollback suffix."""
     outputs = _effective_outputs(captures, {}, contexts)
-    if any([line for line in output.splitlines() if line.startswith(b"permitrootlogin ")] != [b"permitrootlogin no"] for output in outputs):
+    if any(
+        [line for line in output.splitlines() if line.startswith(b"permitrootlogin ")]
+        != [b"permitrootlogin no"]
+        for output in outputs
+    ):
         raise OwnershipError("unsafe-effective-root-login")
     before = [_sha(output) for output in outputs]
     replacements = {}
@@ -426,9 +618,20 @@ def _algorithms(output):
 
 def _record(raw=None, metadata=None):
     if raw is None:
-        return {"exists": False, "data_b64": None, "sha256": None, "mode": None, "uid": None, "gid": None}
-    return {"exists": True, "data_b64": base64.b64encode(raw).decode(), "sha256": _sha(raw),
-            **{key: metadata[key] for key in ("mode", "uid", "gid")}}
+        return {
+            "exists": False,
+            "data_b64": None,
+            "sha256": None,
+            "mode": None,
+            "uid": None,
+            "gid": None,
+        }
+    return {
+        "exists": True,
+        "data_b64": base64.b64encode(raw).decode(),
+        "sha256": _sha(raw),
+        **{key: metadata[key] for key in ("mode", "uid", "gid")},
+    }
 
 
 def _snapshot(captures):
@@ -437,22 +640,59 @@ def _snapshot(captures):
 
 def _check_plan(plan):
     try:
-        fields = {"schema_version", "operation", "changed", "read_set", "include_inventory", "files", "effective", "snapshot_digest"}
-        if not isinstance(plan, dict) or set(plan) != fields or len(_canonical(plan)) > MAX_PLAN or type(plan["schema_version"]) is not int or plan["schema_version"] != 2 or plan["operation"] not in {"sshd-ownership", "sshd-baseline"}:
+        fields = {
+            "schema_version",
+            "operation",
+            "changed",
+            "read_set",
+            "include_inventory",
+            "files",
+            "effective",
+            "snapshot_digest",
+        }
+        if (
+            not isinstance(plan, dict)
+            or set(plan) != fields
+            or len(_canonical(plan)) > MAX_PLAN
+            or type(plan["schema_version"]) is not int
+            or plan["schema_version"] != 2
+            or plan["operation"] not in {"sshd-ownership", "sshd-baseline"}
+        ):
             raise ValueError
-        expected_files = BASELINE_FILES if plan["operation"] == "sshd-baseline" else OWNERSHIP_FILES
-        if type(plan["changed"]) is not bool or not isinstance(plan["read_set"], list) or not isinstance(plan["include_inventory"], list) or not isinstance(plan["files"], dict) or set(plan["files"]) != set(expected_files):
+        expected_files = (
+            BASELINE_FILES if plan["operation"] == "sshd-baseline" else OWNERSHIP_FILES
+        )
+        if (
+            type(plan["changed"]) is not bool
+            or not isinstance(plan["read_set"], list)
+            or not isinstance(plan["include_inventory"], list)
+            or not isinstance(plan["files"], dict)
+            or set(plan["files"]) != set(expected_files)
+        ):
             raise ValueError
-        if plan.get("snapshot_digest") != _sha(_canonical({key: value for key, value in plan.items() if key != "snapshot_digest"})):
+        if plan.get("snapshot_digest") != _sha(
+            _canonical(
+                {key: value for key, value in plan.items() if key != "snapshot_digest"}
+            )
+        ):
             raise ValueError
-        if not isinstance(plan["effective"], list) or not plan["effective"] or plan["effective"][0]["context"] is not None:
+        if (
+            not isinstance(plan["effective"], list)
+            or not plan["effective"]
+            or plan["effective"][0]["context"] is not None
+        ):
             raise ValueError
         contexts = _contexts([entry["context"] for entry in plan["effective"][1:]])
         for entry in plan["effective"]:
             for key in ("before_sha256", "after_sha256"):
-                if not isinstance(entry[key], str) or not re.fullmatch(r"[0-9a-f]{64}", entry[key]):
+                if not isinstance(entry[key], str) or not re.fullmatch(
+                    r"[0-9a-f]{64}", entry[key]
+                ):
                     raise ValueError
-            if plan["operation"] == "sshd-ownership" and entry["before_sha256"] != entry["after_sha256"]:
+            if (
+                plan["operation"] == "sshd-ownership"
+                and entry["before_sha256"] != entry["after_sha256"]
+            ):
                 raise ValueError
         return contexts
     except (KeyError, TypeError, ValueError):
@@ -466,13 +706,33 @@ def build_plan(config_dir=Path("/etc/ssh"), *, contexts):
         captures, inventory = _capture(config_dir)
         candidates = _candidates(captures)
         before = _ownership_policy(captures, candidates, contexts)
-        files = {relative: {"before": _record(*captures[relative]) if relative in captures else _record(),
-                            "after": _record(candidates[relative], captures[relative][1]) if relative in candidates else _record()}
-                 for relative in OWNERSHIP_FILES}
-        plan = {"schema_version": 2, "operation": "sshd-ownership", "changed": any(value["before"] != value["after"] for value in files.values()),
-                "read_set": _snapshot(captures), "include_inventory": inventory, "files": files,
-                "effective": [{"context": context, "before_sha256": value, "after_sha256": value}
-                              for context, value in zip([None, *contexts], before)]}
+        files = {
+            relative: {
+                "before": (
+                    _record(*captures[relative]) if relative in captures else _record()
+                ),
+                "after": (
+                    _record(candidates[relative], captures[relative][1])
+                    if relative in candidates
+                    else _record()
+                ),
+            }
+            for relative in OWNERSHIP_FILES
+        }
+        plan = {
+            "schema_version": 2,
+            "operation": "sshd-ownership",
+            "changed": any(
+                value["before"] != value["after"] for value in files.values()
+            ),
+            "read_set": _snapshot(captures),
+            "include_inventory": inventory,
+            "files": files,
+            "effective": [
+                {"context": context, "before_sha256": value, "after_sha256": value}
+                for context, value in zip([None, *contexts], before)
+            ],
+        }
         plan["snapshot_digest"] = _sha(_canonical(plan))
         _check_plan(plan)
         assert_snapshot(plan, config_dir)
@@ -486,37 +746,79 @@ def build_baseline_plan(config_dir=Path("/etc/ssh"), *, contexts, hardening):
     try:
         if type(hardening) is not bytes or not 0 < len(hardening) <= MAX_HARDENING:
             raise OwnershipError("invalid-hardening")
+        hardening, restricted, extra_users = _restricted_suffix(hardening)
         desired = _runtime_directives(hardening)
+        allowed = desired.get("allowusers", (None, []))[1]
+        if any(user not in allowed for user in extra_users):
+            raise OwnershipError("restricted-user-not-admitted")
         _algorithm_directives(desired, required=True)
         contexts = _contexts(contexts)
+        if not set(extra_users) <= {context["user"] for context in contexts}:
+            raise OwnershipError("restricted-context-missing")
         captures, inventory = _capture(config_dir, baseline=True)
-        existing = _runtime_directives(captures[MANAGED][0]) if MANAGED in captures else {}
+        existing = (
+            _runtime_directives(captures[MANAGED][0]) if MANAGED in captures else {}
+        )
         existing_algorithms = _algorithm_directives(existing, required=False)
         subsystems = _baseline_layout(captures)
-        main = captures["sshd_config"][0]
+        main = _restricted_suffix(captures["sshd_config"][0])[0]
         if subsystems and "subsystem" in desired:
             lines = main.splitlines(keepends=True)
             lines[subsystems[0][0]] = b"# " + lines[subsystems[0][0]]
             main = b"".join(lines)
         elif not subsystems and "subsystem" not in desired:
             raise OwnershipError("unsupported-subsystem")
+        if restricted:
+            main = main.rstrip(b"\n") + b"\n" + restricted
         candidates = {"sshd_config": main, MANAGED: hardening}
         before = _effective_outputs(captures, {}, contexts)
         after = _effective_outputs(captures, candidates, contexts)
         before_algorithms = [_algorithms(output) for output in before]
         after_algorithms = [_algorithms(output) for output in after]
+        for context, output in zip(contexts, after[1:]):
+            if context["user"] in extra_users:
+                actual = dict(
+                    line.split(b" ", 1) for line in output.splitlines() if b" " in line
+                )
+                for key, value in RESTRICTED_OPTIONS:
+                    if actual.get(key.lower().encode()) != value.encode():
+                        raise OwnershipError("restricted-policy-changed")
+
         if any(value != CANONICAL_EFFECTIVE_ALGORITHMS for value in after_algorithms):
             raise OwnershipError("algorithm-policy-changed")
-        if existing_algorithms and any(value != CANONICAL_EFFECTIVE_ALGORITHMS for value in before_algorithms):
+        if existing_algorithms and any(
+            value != CANONICAL_EFFECTIVE_ALGORITHMS for value in before_algorithms
+        ):
             raise OwnershipError("algorithm-policy-changed")
         created_metadata = {"mode": 0o644, "uid": OWNER_UID, "gid": 0}
-        files = {relative: {"before": _record(*captures[relative]) if relative in captures else _record(),
-                            "after": _record(candidates[relative], captures[relative][1] if relative in captures else created_metadata)}
-                 for relative in BASELINE_FILES}
-        plan = {"schema_version": 2, "operation": "sshd-baseline", "changed": any(pair["before"] != pair["after"] for pair in files.values()),
-                "read_set": _snapshot(captures), "include_inventory": inventory, "files": files,
-                "effective": [{"context": context, "before_sha256": _sha(old), "after_sha256": _sha(new)}
-                              for context, old, new in zip([None, *contexts], before, after)]}
+        files = {
+            relative: {
+                "before": (
+                    _record(*captures[relative]) if relative in captures else _record()
+                ),
+                "after": _record(
+                    candidates[relative],
+                    captures[relative][1] if relative in captures else created_metadata,
+                ),
+            }
+            for relative in BASELINE_FILES
+        }
+        plan = {
+            "schema_version": 2,
+            "operation": "sshd-baseline",
+            "changed": any(pair["before"] != pair["after"] for pair in files.values()),
+            "read_set": _snapshot(captures),
+            "include_inventory": inventory,
+            "files": files,
+            "effective": [
+                {
+                    "context": context,
+                    "before_sha256": _sha(old),
+                    "after_sha256": _sha(new),
+                }
+                for context, old, new in zip([None, *contexts], before, after)
+            ],
+        }
         plan["snapshot_digest"] = _sha(_canonical(plan))
         _check_plan(plan)
         assert_snapshot(plan, config_dir)
@@ -529,8 +831,13 @@ def assert_snapshot(plan, config_dir=Path("/etc/ssh")):
     """Refuse changed bytes, file identity, metadata, or Include membership."""
     try:
         _check_plan(plan)
-        captures, inventory = _capture(config_dir, baseline=plan["operation"] == "sshd-baseline")
-        if plan["read_set"] != _snapshot(captures) or plan["include_inventory"] != inventory:
+        captures, inventory = _capture(
+            config_dir, baseline=plan["operation"] == "sshd-baseline"
+        )
+        if (
+            plan["read_set"] != _snapshot(captures)
+            or plan["include_inventory"] != inventory
+        ):
             raise OwnershipError("snapshot-changed")
     except (OSError, UnicodeError):
         raise OwnershipError("snapshot-unavailable") from None
@@ -542,7 +849,9 @@ def assert_effective(plan, config_dir=Path("/etc/ssh"), *, phase):
         if phase not in ("before", "after"):
             raise OwnershipError("invalid-phase")
         contexts = _check_plan(plan)
-        captures, _ = _capture(config_dir, baseline=plan["operation"] == "sshd-baseline")
+        captures, _ = _capture(
+            config_dir, baseline=plan["operation"] == "sshd-baseline"
+        )
         actual = _effective(captures, {}, contexts)
         if actual != [entry[phase + "_sha256"] for entry in plan["effective"]]:
             raise OwnershipError("effective-policy-changed")

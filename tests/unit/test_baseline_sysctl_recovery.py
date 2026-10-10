@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -13,6 +12,18 @@ def test_baseline_reconciles_sysctls_without_change_notifications():
     tasks = (ROOT / "ansible/roles/baseline/tasks/forwarding.yml").read_text()
 
     assert "name: Reconcile effective sysctl values on every converge" in tasks
-    assert "cmd: sysctl -e --system" in tasks
+    assert "cmd: /usr/local/libexec/vpn-baseline-sysctl" in tasks
     assert "notify: Apply sysctl" not in tasks
     assert "name: Apply sysctl" not in handlers
+
+
+def test_only_optional_congestion_tuning_can_ignore_native_setting_failure():
+    config = (ROOT / "ansible/roles/baseline/templates/sysctl-vpn.conf.j2").read_text()
+    tasks = (ROOT / "ansible/roles/baseline/tasks/forwarding.yml").read_text()
+    optional = [line for line in config.splitlines() if line.startswith("-")]
+    assert optional == [
+        "-net.core.default_qdisc = fq",
+        "-net.ipv4.tcp_congestion_control = bbr",
+    ]
+    assert "failed_when:" not in tasks
+    assert "/usr/local/libexec/vpn-baseline-sysctl" in tasks

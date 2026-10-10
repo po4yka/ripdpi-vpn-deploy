@@ -12,3 +12,5 @@ watchdog:
   # ntfy is HTTP POST to ntfy.topic; no signup, but anyone with the topic
   # can read alerts. Use a long random topic name and treat it as a secret.
   provider: ntfy
+
+watchdog_role_enabled: true

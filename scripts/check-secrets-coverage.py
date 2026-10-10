@@ -65,6 +65,7 @@ NON_SECRET_TOPLEVEL = {
     # (subscription block) and is documentation-only, since the checker
     # validates only top-level identifiers.
     "monitoring",
+    "monitoring_node_exporter_endpoint",  # normalized literal endpoint from private-address admission
     "subscription",
     "watchdog",
     "geodata",

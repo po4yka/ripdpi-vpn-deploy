@@ -47,10 +47,8 @@ hysteria_realm:
   # single hostname; override only if the operator splits hostnames.
   sni: "{{ nginx_xhttp.server_name | default('vpn.example.com') }}"
 
-  # Per-minute cap on rendezvous handshakes. The handshake is cheap
-  # but a flood would still exhaust file descriptors; cap to a level
-  # that no plausible client population would breach.
-  events_per_minute_max: 600
+  # Exact pinned service quota: concurrent realm slots for the control user.
+  max_realms: 16
 
 # Secrets surface — declared with empty defaults so the role does not
 # blow up `check-secrets-coverage.py` when disabled. Populated from
@@ -76,3 +74,5 @@ hysteria_realm_release_urls:
     https://github.com/SagerNet/sing-box/releases/download/{{ hysteria_realm.version
     }}/sing-box-{{ hysteria_realm.version | regex_replace('^v', '')
     }}-linux-arm64.tar.gz
+
+hysteria_realm_role_enabled: true

@@ -2,6 +2,13 @@
 
 ## Design decisions
 
+**Recovery evidence exercises actual role outcomes** — Molecule's stateful CLI fixture changes only in response to real role commands, supports idempotence, and injects CLI and trace transport failures before successful reconvergence. `warp=off` remains rejected. No test increments an invented retry counter; this proves role reconvergence, not automatic vendor retries or live registration.
+
+The role requires an explicit stable `package_version`, validates native APT
+metadata, installs that exact dpkg version and checks the installed identity
+before any registration, mode or route changes. Out-of-band installations must
+also present the approved dpkg identity; no mutable latest-package selection remains.
+
 **Health-gated activation** — `vpn.enable_warp_outbound` flips the toggle,
 but the role only swings outbound routing *after* WARP confirms it's up.
 Failure leaves the previous egress intact.
@@ -31,4 +38,9 @@ through WARP — too easy to lock yourself out.
 - **WARP changes egress IP** — anything keying on the server's public IPv4
   (asn-drift, burn-check) sees a different reality through WARP. Probes must
   account for this when WARP is on.
-- **On-host health check is vantage-limited — does not confirm RU reachability** — the `warp=on` liveness check that the role performs runs from the VPS itself (non-RU vantage) and confirms only that the local WARP daemon is up and the SOCKS5 proxy responds. It does NOT verify that WARP egress survives RU ISP filtering. WARP's default transports (WireGuard UDP 2408/UDP 500, and the HTTP/2 fallback) were broadly blocked on RU ISPs by early 2026. Operators should verify WARP egress end-to-end from a filtered RU vantage after deployment and after any WARP version or config change; a clean on-host health check is a necessary but not sufficient signal.
+- **On-host health is vantage-limited** — a successful local SOCKS check does not
+  establish reachability from a filtered client path. That requires scoped client
+  acceptance after deployment or a version/configuration change.
+- Disable stops the vendor unit only when this role's private bounded ownership
+  record claims it; registration, vendor package and recovery state are retained.
+  An unrecorded prior vendor installation is preserved for explicit owner review.

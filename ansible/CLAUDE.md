@@ -2,9 +2,21 @@
 
 ## Design decisions
 
+**Exporter endpoint verification shares installation admission** — `verify.yml`
+gathers only local network facts and reuses monitoring's literal private endpoint
+validator. Custom ports and IPv6 targets match the sender's scrape jobs; public,
+wildcard and unapproved Tailnet overrides refuse before the HTTP probe.
+
+Credential rotation enters the enabled Naive role's authoritative validation and
+activation lifecycle, so all-profile issuance/removal cannot leave Naive access
+unchanged while the other transport credentials rotate.
+
 **Drift inspection is read-only** — `diff-secrets.yml` compares full parsed Xray configuration using the canonical role template and defaults with selected inventory/secrets, then checks enabled services and binary pins. Secret comparisons use `no_log` and never print configuration diffs. The `vpn-ci-*` profiles use typed complete toggle maps with explicit research allowlists; they retain normal SSH ownership requirements.
 
 **Operational validation follows runtime state** — Xray rotation, verify and rollback use the shared validator with the installed service asset authority; rollback candidates validate before publication and failed activation restores original bytes. OS maintenance loads the effective secret contract before upgrades and verifies selected services plus every configured AWG instance.
+Watchdog verification starts its bounded role-owned unit so systemd loads
+notification credentials, then checks only journal records after a captured
+cursor; it never recreates a secret-bearing shell environment.
 
 **One playbook per intent** — `site.yml` (deploy), `os-maintenance.yml` (serial OS upgrades/reboots), `verify.yml`, `security-verify.yml`, `smoke-test.yml`, `rollback-config.yml`, `rollback-xray.yml`, `rotate-credentials.yml`. No mega-playbook with conditional flags; new intent = new playbook.
 `observability-host-bootstrap.yml` retains only the historical dedicated-host
@@ -128,3 +140,8 @@ count in `docs/TESTING.md`.
   later roles depend on the restart having happened.
 
 - **Smoke cleanup requires ownership** — atomically claim the private workdir, use unique per-run unit names, and stop only clients whose start returned success; failed claims or starts never authorize cleaning another invocation, and an unconfirmed start/stop retains the private claim to block unsafe retries.
+
+- Site roles use a unique `<role>_role_enabled` scalar for lifecycle dispatch
+  instead of skipping disabled roles. Preserve each prior enable predicate and
+  tags; security policy roles always reconcile their explicit false policies.
+  Tailnet management retirement requires separately recovered SSH authority.

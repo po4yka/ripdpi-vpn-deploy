@@ -195,13 +195,13 @@ def test_declared_runtime_port_defaults_render_with_no_consumer_numeric_fallback
         REPO_ROOT / "ansible/templates/listener-manifest.json.j2",
         REPO_ROOT / "ansible/roles/firewall/templates/nftables.conf.j2",
         REPO_ROOT / "ansible/roles/hysteria/templates/config.yaml.j2",
-        REPO_ROOT / "ansible/roles/nginx-xhttp/tasks/main.yml",
+        REPO_ROOT / "ansible/roles/nginx-xhttp/tasks/enable.yml",
         REPO_ROOT / "ansible/roles/nginx-xhttp/templates/site.conf.j2",
         REPO_ROOT / "ansible/roles/reality-self-steal/tasks/configure.yml",
         REPO_ROOT / "ansible/playbooks/verify.yml",
         REPO_ROOT / "ansible/playbooks/smoke-test.yml",
         REPO_ROOT / "ansible/playbooks/security-verify.yml",
-        REPO_ROOT / "ansible/roles/xray/tasks/main.yml",
+        REPO_ROOT / "ansible/roles/xray/tasks/enable.yml",
         REPO_ROOT / "ansible/roles/xray/templates/config.json.j2",
         REPO_ROOT / "ansible/roles/subscription-host/defaults/main.yml",
         REPO_ROOT / "ansible/roles/subscription-host/templates/subscription.conf.j2",
@@ -211,7 +211,11 @@ def test_declared_runtime_port_defaults_render_with_no_consumer_numeric_fallback
         r"default\\((?:443|2053|8443|10085|2083|51820|4443|53|8444|51821)\\)"
     )
     assert not [
-        str(path) for path in sources if numeric_default.search(path.read_text())
+        str(path)
+        for path in sources
+        if numeric_default.search(
+            (path if path.exists() else path.with_name("main.yml")).read_text()
+        )
     ]
 
 

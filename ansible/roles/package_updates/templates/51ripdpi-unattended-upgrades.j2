@@ -1,10 +1,12 @@
 // Managed by Ansible role `package_updates`. Hand edits will be overwritten.
 
-APT::Periodic::Update-Package-Lists "{{ '1' if package_updates.enabled | default(true) else '0' }}";
-APT::Periodic::Download-Upgradeable-Packages "{{ '1' if package_updates.enabled | default(true) else '0' }}";
-APT::Periodic::Unattended-Upgrade "{{ '1' if package_updates.enabled | default(true) else '0' }}";
+APT::Periodic::Update-Package-Lists "{{ '1' if _package_updates_effective_enabled | default(package_updates.enabled | default(true)) else '0' }}";
+APT::Periodic::Download-Upgradeable-Packages "{{ '1' if _package_updates_effective_enabled | default(package_updates.enabled | default(true)) else '0' }}";
+APT::Periodic::Unattended-Upgrade "{{ '1' if _package_updates_effective_enabled | default(package_updates.enabled | default(true)) else '0' }}";
 APT::Periodic::AutocleanInterval "7";
 
+#clear Unattended-Upgrade::Origins-Pattern;
+#clear Unattended-Upgrade::Allowed-Origins;
 Unattended-Upgrade::Origins-Pattern {
 {% if package_updates.security_only | default(true) %}
   "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";

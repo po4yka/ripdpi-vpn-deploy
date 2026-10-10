@@ -1,0 +1,4 @@
+---
+
+# Direct calls enable the role; site dispatch supplies its exact predicate.
+nginx_xhttp_role_enabled: true

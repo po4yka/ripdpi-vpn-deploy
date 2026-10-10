@@ -1,0 +1,41 @@
+---
+- name: Inspect historical cascade egress interface before scaffold retirement
+  ansible.builtin.command:
+    argv: [ip, link, show, dev, "{{ cascade_egress.wg_interface }}"]
+  register: _cascade_egress_historical_interface
+  changed_when: false
+  failed_when: _cascade_egress_historical_interface.rc not in [0, 1]
+  check_mode: false
+
+- name: Inspect historical cascade egress service before scaffold retirement
+  ansible.builtin.command:
+    argv: [systemctl, is-active, --quiet, "wg-quick@{{ cascade_egress.wg_interface }}.service"]
+  register: _cascade_egress_historical_service
+  changed_when: false
+  failed_when: _cascade_egress_historical_service.rc not in [0, 3, 4]
+  check_mode: false
+
+- name: Inspect historical cascade egress firewall before scaffold retirement
+  ansible.builtin.command:
+    argv: [nft, list, tables]
+  register: _cascade_egress_historical_tables
+  changed_when: false
+  check_mode: false
+
+- name: Refuse historical cascade egress state before deleting its recovery inputs
+  ansible.builtin.assert:
+    that:
+      - _cascade_egress_historical_interface.rc != 0
+      - _cascade_egress_historical_service.rc != 0
+      - _cascade_egress_historical_tables.stdout is not search('(?m)^table inet cascade_egress$')
+    fail_msg: Historical cascade egress ownership requires explicit recovery before inert scaffold retirement.
+
+- name: Retire cascade-egress runtime authority
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: retire
+  vars:
+    runtime_retire_units: []
+    runtime_retire_paths:
+      - '{{ cascade_egress.policy_path }}'
+      - /etc/wireguard/{{ cascade_egress.wg_interface }}.conf

@@ -17,4 +17,4 @@
     label: "{{ item.name }}"
   no_log: true
   changed_when: true
-  when: not ansible_check_mode
+  when: amneziawg_role_enabled | bool and not ansible_check_mode

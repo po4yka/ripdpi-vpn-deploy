@@ -1,32 +1,30 @@
 ---
-- name: Prove malformed Caddyfile fails native validation
+- name: Prove malformed JSON fails native validation
   hosts: all
   become: true
   tasks:
-    - name: Stage malformed Caddyfile candidate
+    - name: Stage malformed JSON candidate
       ansible.builtin.copy:
-        dest: /var/tmp/naive-invalid.Caddyfile
+        dest: /var/tmp/naive-invalid.json
         mode: "0600"
-        content: "INVALID_CONFIG {\n"
+        content: "{INVALID_CONFIG\n"
 
-    - name: Reject malformed Caddyfile candidate
+    - name: Reject malformed JSON candidate
       ansible.builtin.command:
         argv:
           - /usr/local/bin/caddy-naive
           - validate
           - --config
-          - /var/tmp/naive-invalid.Caddyfile
-          - --adapter
-          - caddyfile
+          - /var/tmp/naive-invalid.json
       register: _invalid_naive
       changed_when: false
       failed_when: false
 
-    - name: Require malformed Caddyfile candidate refusal
+    - name: Require malformed JSON candidate refusal
       ansible.builtin.assert:
         that: _invalid_naive.rc != 0
 
-    - name: Remove malformed Caddyfile candidate
+    - name: Remove malformed JSON candidate
       ansible.builtin.file:
-        path: /var/tmp/naive-invalid.Caddyfile
+        path: /var/tmp/naive-invalid.json
         state: absent

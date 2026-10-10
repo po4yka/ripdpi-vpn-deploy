@@ -57,6 +57,7 @@ _events_lock = threading.Lock()
 _workers = threading.BoundedSemaphore(MAX_CONCURRENT_CONNECTIONS)
 _recent_minutes: deque[tuple[int, int]] = deque(maxlen=60)  # (minute_epoch, count)
 _total_events = 0
+_suppressed_logs = 0
 _unique_ips: set[str] = set()
 _unique_snis: set[str] = set()
 _slot_exhaustion_drops = 0
@@ -118,6 +119,7 @@ def _flush_textfile() -> None:
         _prune_recent_minutes(now_min)
         per_min = list(_recent_minutes)
         total = _total_events
+        suppressed_logs = _suppressed_logs
         unique_ips = len(_unique_ips)
         unique_snis = len(_unique_snis)
         slot_drops = _slot_exhaustion_drops
@@ -149,6 +151,9 @@ def _flush_textfile() -> None:
         "# HELP vpn_honeypot_events_total Total probe events seen since service start",
         "# TYPE vpn_honeypot_events_total counter",
         f"vpn_honeypot_events_total {total}",
+        "# HELP vpn_honeypot_logs_suppressed_total Observed events omitted by the per-minute log cap",
+        "# TYPE vpn_honeypot_logs_suppressed_total counter",
+        f"vpn_honeypot_logs_suppressed_total {suppressed_logs}",
         "# HELP vpn_honeypot_events_last_minute Events in the current calendar minute",
         "# TYPE vpn_honeypot_events_last_minute gauge",
         f"vpn_honeypot_events_last_minute {last_minute_count}",
@@ -173,22 +178,22 @@ def _flush_textfile() -> None:
 
 def _bump(source_ip: str, sni: str | None) -> bool:
     """Returns True if this event is below the per-minute cap, False to drop."""
-    global _total_events
+    global _total_events, _suppressed_logs
     now_min = int(time.time()) // 60
     with _events_lock:
         _prune_recent_minutes(now_min)
         if not _recent_minutes or _recent_minutes[-1][0] != now_min:
             _recent_minutes.append((now_min, 0))
         cur_min_count = _recent_minutes[-1][1]
-        if cur_min_count >= EVENTS_PER_MINUTE_MAX:
-            return False
         _recent_minutes[-1] = (now_min, cur_min_count + 1)
         _total_events += 1
         if len(_unique_ips) < UNIQUE_SETS_MAX:
             _unique_ips.add(source_ip)
         if sni and len(_unique_snis) < UNIQUE_SETS_MAX:
             _unique_snis.add(sni)
-    return True
+        if cur_min_count >= EVENTS_PER_MINUTE_MAX:
+            _suppressed_logs += 1
+    return cur_min_count < EVENTS_PER_MINUTE_MAX
 
 
 def _flush_loop() -> None:

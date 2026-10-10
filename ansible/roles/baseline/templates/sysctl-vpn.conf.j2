@@ -3,9 +3,9 @@ net.ipv4.tcp_fastopen = 3
 net.ipv4.tcp_syncookies = 1
 net.ipv4.tcp_mtu_probing = 1
 
-# BBR congestion control if available (kernel >=4.9 has it; Debian 13 / Ubuntu 24.04 do).
-net.core.default_qdisc = fq
-net.ipv4.tcp_congestion_control = bbr
+# Queue discipline and BBR availability are optional; hardening remains mandatory.
+-net.core.default_qdisc = fq
+-net.ipv4.tcp_congestion_control = bbr
 
 # Spoof protection
 net.ipv4.conf.all.rp_filter = 1

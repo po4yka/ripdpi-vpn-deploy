@@ -151,7 +151,17 @@ pid $WORK/nginx.pid;
 error_log stderr;
 events {}
 http {
-  include $WORK/cloudflare.real_ip.new;
+  # Standalone validation must not initialize or chown the distro's runtime
+  # HTTP temporary directories from inside the refresh unit's strict sandbox.
+  client_body_temp_path $WORK/client-body;
+  proxy_temp_path $WORK/proxy;
+  fastcgi_temp_path $WORK/fastcgi;
+  uwsgi_temp_path $WORK/uwsgi;
+  scgi_temp_path $WORK/scgi;
+  server {
+    listen 127.0.0.1:8080;
+    include $WORK/cloudflare.real_ip.new;
+  }
 }
 EOF
 nginx -t -q -c "$WORK/nginx-candidate.conf"

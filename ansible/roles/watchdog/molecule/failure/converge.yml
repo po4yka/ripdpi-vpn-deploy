@@ -50,6 +50,34 @@
       reality_probe_url: "https://canary.example.test/healthz"
 
   pre_tasks:
+    - name: Inspect owned container runtime mount propagation
+      ansible.builtin.command:
+        argv: [findmnt, --mountpoint, /run, --output, PROPAGATION, --noheadings]
+      register: _watchdog_molecule_run_propagation
+      changed_when: false
+      failed_when: >-
+        _watchdog_molecule_run_propagation.rc != 0 or
+        (_watchdog_molecule_run_propagation.stdout | trim) not in
+        ['private', 'shared', 'slave', 'shared,slave', 'unbindable']
+
+    - name: Prepare owned container runtime propagation for systemd credentials
+      ansible.builtin.command:
+        argv: [mount, --make-rshared, /run]
+      when: "'shared' not in (_watchdog_molecule_run_propagation.stdout | trim).split(',')"
+      changed_when: true
+
+    - name: Inspect prepared runtime mount propagation
+      ansible.builtin.command:
+        argv: [findmnt, --mountpoint, /run, --output, PROPAGATION, --noheadings]
+      register: _watchdog_molecule_run_ready
+      changed_when: false
+
+    - name: Require shared owned runtime propagation before watchdog convergence
+      ansible.builtin.assert:
+        that:
+          - "'shared' in (_watchdog_molecule_run_ready.stdout | trim).split(',')"
+        fail_msg: The owned container runtime must publish systemd credential mounts.
+
     - name: Install curl, jq, and python3 (stub listener + alert delivery)
       ansible.builtin.apt:
         name: [curl, jq, python3]
@@ -132,6 +160,88 @@
         owner: root
         group: root
         mode: "0755"
+
+    - name: Create Xray log group for the canonical watchdog sandbox
+      ansible.builtin.group:
+        name: xray
+        system: true
+
+    - name: Provision Xray log directory before the credential-bearing watchdog unit
+      ansible.builtin.file:
+        path: /var/log/xray
+        state: directory
+        owner: root
+        group: xray
+        mode: "0750"
+
+    - name: Create failure-only watchdog diagnostic drop-in directory
+      ansible.builtin.file:
+        path: /etc/systemd/system/vpn-watchdog.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install transparent failure-only sender diagnostic wrapper
+      ansible.builtin.copy:
+        dest: /usr/local/sbin/watchdog-notify-diagnostic.py
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/usr/bin/python3
+          import os
+          import sys
+
+          def report_error(stage, error):
+              if isinstance(error, OSError) and isinstance(error.errno, int):
+                  detail = 'errno=' + str(error.errno)
+              else:
+                  allowed = {'OSError', 'KeyError', 'AttributeError', 'TypeError', 'ValueError',
+                             'NotImplementedError', 'OverflowError', 'Exception'}
+                  name = type(error).__name__
+                  detail = 'error=' + (name if name in allowed else 'Exception')
+              print('watchdog-credential-metadata stage=' + stage + ' ' + detail, flush=True)
+
+          try:
+              directory = os.environ['CREDENTIALS_DIRECTORY']
+              if not directory:
+                  raise KeyError('directory')
+              path = directory + '/notifications.json'
+              print('watchdog-credential-metadata location directory_exists=' + str(int(os.path.isdir(directory)))
+                    + ' service_directory_matches=' + str(int(directory == '/run/credentials/vpn-watchdog.service'))
+                    + ' canonical_file_exists=' + str(int(os.path.isfile(
+                        '/run/credentials/vpn-watchdog.service/notifications.json')))
+                    + ' source_file_exists=' + str(int(os.path.isfile('/etc/vpn-watchdog-notifications.json'))), flush=True)
+              metadata = os.stat(path, follow_symlinks=False)
+          except Exception as error:
+              report_error('file-stat', error)
+          else:
+              readonly = 'unknown'
+              try:
+                  readonly = str(int(bool(os.statvfs(path).f_flag & os.ST_RDONLY)))
+              except Exception as error:
+                  report_error('mount-stat', error)
+              print('watchdog-credential-metadata mode=' + oct(metadata.st_mode)
+                    + ' uid=' + str(metadata.st_uid) + ' gid=' + str(metadata.st_gid)
+                    + ' nlink=' + str(metadata.st_nlink) + ' size=' + str(metadata.st_size)
+                    + ' readonly=' + readonly, flush=True)
+          sender = '/usr/local/libexec/vpn-watchdog-notify.py'
+          try:
+              os.execv(sender, [sender, *sys.argv[1:]])
+          except OSError:
+              print('watchdog-notify-wrapper error=delegate-unavailable', file=sys.stderr)
+              raise SystemExit(1)
+
+    - name: Route only the failure fixture through the transparent sender wrapper
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/vpn-watchdog.service.d/diagnostics.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Service]
+          Environment=WATCHDOG_NOTIFY_BIN=/usr/local/sbin/watchdog-notify-diagnostic.py
 
     - name: Drop fake Xray server config
       ansible.builtin.copy:

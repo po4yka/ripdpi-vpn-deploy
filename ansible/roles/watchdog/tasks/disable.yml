@@ -1,0 +1,18 @@
+---
+- name: Retire watchdog runtime authority
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: retire
+  vars:
+    runtime_retire_units:
+      - vpn-watchdog.timer
+      - vpn-watchdog.service
+    runtime_retire_paths:
+      - /etc/systemd/system/vpn-watchdog.timer
+      - /etc/systemd/system/vpn-watchdog.service
+      - /etc/vpn-watchdog.env
+      - /etc/vpn-watchdog-reality.json
+      - /etc/vpn-watchdog-notifications.json
+      - /usr/local/sbin/vpn-watchdog.sh
+      - /usr/local/libexec/vpn-watchdog-notify.py
+      - /usr/local/libexec/vpn-watchdog-state.py

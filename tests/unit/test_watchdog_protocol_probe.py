@@ -31,6 +31,9 @@ def _run_watchdog(
     socks_ready: bool = True,
     xray_client_exits: bool = False,
     stats_service_ready: bool = True,
+    notification_sender: Path | None = None,
+    credential_directory: Path | None = None,
+    server_port: int = 443,
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -43,13 +46,21 @@ def _run_watchdog(
         bin_dir / "systemctl",
         'printf \'%s\\n\' "$*" >> "${SYSTEMCTL_LOG}"\n'
         'if [[ "$*" == *"--property=Environment"* ]]; then\n'
-        '  printf \'%s\\n\' \'XRAY_LOCATION_ASSET=/tmp/watchdog-test-assets\'\n'
-        'fi\nexit 0\n',
+        "  printf '%s\\n' 'XRAY_LOCATION_ASSET=/tmp/watchdog-test-assets'\n"
+        "fi\nexit 0\n",
     )
     _executable(bin_dir / "timeout", "exit 0\n")
     _executable(
+        bin_dir / "watchdog-notify",
+        (
+            f'exec "{sys.executable}" "{notification_sender}" "$@"\n'
+            if notification_sender
+            else "cat >/dev/null\nexit 0\n"
+        ),
+    )
+    _executable(
         bin_dir / "ss",
-        "printf '%s\\n' 'LISTEN 0 4096 0.0.0.0:443 0.0.0.0:*'\n"
+        f"printf '%s\\n' 'LISTEN 0 4096 0.0.0.0:{server_port} 0.0.0.0:*'\n"
         + (
             "printf '%s\\n' 'LISTEN 0 4096 127.0.0.1:31082 0.0.0.0:*'\n"
             if socks_ready
@@ -86,6 +97,10 @@ def _run_watchdog(
         f'exec "{sys.executable}" "{REPO_ROOT / "ansible/roles/xray/files/xray_validate.py"}" "$@"\n',
     )
 
+    _executable(
+        bin_dir / "watchdog-state",
+        f'exec "{sys.executable}" "{REPO_ROOT / "ansible/roles/watchdog/files/vpn-watchdog-state.py"}" "$@"\n',
+    )
     env = os.environ.copy()
     env.update(
         {
@@ -98,7 +113,7 @@ def _run_watchdog(
             "XRAY_VALIDATE_BIN": str(bin_dir / "xray-validate"),
             "XRAY_PORT": "443",
             "XRAY_REALITY_CONFIG": str(config_file),
-            "XRAY_REALITY_PROBES": "443:31082",
+            "XRAY_REALITY_PROBES": f"{server_port}:31082",
             "XRAY_REALITY_PROBE_URL": "https://canary.example.test/healthz",
             "XRAY_REALITY_PROBE_EXPECTED_STATUS": expected_status,
             "XRAY_REALITY_PROBE_TIMEOUT": "1",
@@ -108,11 +123,12 @@ def _run_watchdog(
             "FAIL_THRESHOLD": "1",
             "KICKS_PER_HOUR_MAX": "1",
             "SYSTEMCTL_LOG": str(tmp_path / "systemctl.log"),
-            "WATCHDOG_PROVIDER": "ntfy",
-            "NTFY_URL": "https://notify.example.test",
-            "NTFY_TOPIC": "test-topic",
+            "WATCHDOG_STATE_BIN": str(bin_dir / "watchdog-state"),
+            "WATCHDOG_NOTIFY_BIN": str(bin_dir / "watchdog-notify"),
         }
     )
+    if credential_directory is not None:
+        env["CREDENTIALS_DIRECTORY"] = str(credential_directory)
     return subprocess.run(
         ["bash", str(SCRIPT)],
         capture_output=True,
@@ -205,3 +221,11 @@ def test_stats_service_failure_is_a_probe_failure_and_restarts_xray(tmp_path):
     assert "FAIL  xray StatsService query" in result.stdout
     assert "restart xray.service" in (tmp_path / "systemctl.log").read_text()
     assert "consecutive_fails=1" in (tmp_path / "state").read_text()
+
+
+def test_cohort_only_non_base_listener_does_not_trigger_recovery(tmp_path):
+    result = _run_watchdog(tmp_path, server_port=2443)
+    assert result.returncode == 0, result.stderr
+    assert "xray TCP/2443 listening" in result.stdout
+    assert "TCP/443" not in result.stdout
+    assert "restart" not in (tmp_path / "systemctl.log").read_text()

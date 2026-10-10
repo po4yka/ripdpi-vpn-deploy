@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+**Observations are independent of log sampling** — total/minute and bounded unique observations update for every admitted detector event before the per-minute logging decision. `vpn_honeypot_logs_suppressed_total` records omitted event records; busy-worker admission drops retain their own metric. The log cap bounds disk output without hiding observation volume.
+
 **Same-host honeypot for cheap signal** — binds one plausible-looking listener
 on `honeypot.port` (`honeypot_port: 4443` in `group_vars/all.yml`) that records
 hits without responding. Any hit is a probing signal because legitimate users
@@ -44,3 +46,9 @@ it or letting one producer replace another producer's metrics.
 - **Verify each enabled address family separately** — a matching TCP port on IPv4 does not prove the provider's IPv6 firewall opening has a consumer. Keep Molecule and `security-verify.yml` assertions split across `ss -4` and `ss -6`.
 - **Rate-limit log writes** — a broad scan can fill the disk otherwise. Keep the in-process event cap, the 10M logrotate threshold, the five-minute timer, and bounded archive retention together.
 - **Canary shares the relay IP — observability, not guaranteed early warning** — because the honeypot listeners and the REALITY/VLESS port live on the same IP, a probe that targets the honeypot port and a probe that targets the VPN port are identical from a routing perspective. Under netflow-seeded or infrastructure-enumeration targeting, the adversary may probe both ports simultaneously or probe the VPN port directly without ever hitting the canary. The canary therefore provides a useful probing signal when it fires, but the absence of a canary hit does NOT mean the VPN port was not probed. A separate-IP canary (different VPS, same operator) is the path to real early-warning with meaningful lead time.
+
+- Ordinary site convergence always invokes lifecycle reconciliation. The
+  `honeypot_role_enabled` input selects enable or owned runtime retirement before
+  secret/package guards. Disable stops units and removes only declared authority;
+  shared packages, immutable runtime receipts, historical logs and recovery data
+  remain available for a later explicit recovery.

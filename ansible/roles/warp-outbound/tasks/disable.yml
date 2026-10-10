@@ -1,0 +1,42 @@
+---
+- name: Inspect WARP role ownership before disabling a vendor service
+  ansible.builtin.stat:
+    path: /var/lib/ripdpi/warp-outbound/managed.json
+    follow: false
+  register: _warp_owned
+- name: Require private regular WARP role ownership
+  ansible.builtin.assert:
+    that:
+      - not (_warp_owned.stat.islnk | default(false))
+      - not _warp_owned.stat.exists or (_warp_owned.stat.isreg and _warp_owned.stat.uid == 0 and _warp_owned.stat.nlink ==
+        1)
+      - not _warp_owned.stat.exists or _warp_owned.stat.mode == '0600'
+      - not _warp_owned.stat.exists or _warp_owned.stat.size <= 256
+    fail_msg: Unsafe WARP role ownership prevents runtime retirement.
+
+- name: Read private WARP role ownership
+  ansible.builtin.slurp:
+    src: /var/lib/ripdpi/warp-outbound/managed.json
+  register: _warp_owner_bytes
+  when: _warp_owned.stat.exists
+  no_log: true
+
+- name: Require exact WARP role ownership content
+  ansible.builtin.assert:
+    that:
+      - (_warp_owner_bytes.content | b64decode | from_json).schema | type_debug == 'int'
+      - >-
+        (_warp_owner_bytes.content | b64decode | from_json) == {'schema': 1, 'unit': 'warp-svc.service'}
+    fail_msg: WARP role ownership content is not its declared runtime authority.
+  when: _warp_owned.stat.exists
+  no_log: true
+- name: Retire only claimed WARP runtime and retain vendor registration state
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: retire
+  vars:
+    runtime_retire_units:
+      - warp-svc.service
+    runtime_retire_paths:
+      - /var/lib/ripdpi/warp-outbound/managed.json
+  when: _warp_owned.stat.exists

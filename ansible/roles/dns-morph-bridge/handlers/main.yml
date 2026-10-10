@@ -4,7 +4,7 @@
     name: dns-morph-bridge.service
     state: restarted
     daemon_reload: true
-  when: not ansible_check_mode
+  when: dns_morph_bridge_role_enabled | bool and not ansible_check_mode
 
 - name: Wait for dns-morph-bridge to become active
   ansible.builtin.command:
@@ -14,11 +14,11 @@
   delay: 2
   until: dns_morph_active.stdout == "active"
   changed_when: false
-  when: not ansible_check_mode
+  when: dns_morph_bridge_role_enabled | bool and not ansible_check_mode
   listen: Restart dns-morph-bridge
 
 - name: Restart unbound
   ansible.builtin.systemd_service:
     name: unbound.service
     state: restarted
-  when: not ansible_check_mode
+  when: dns_morph_bridge_role_enabled | bool and not ansible_check_mode

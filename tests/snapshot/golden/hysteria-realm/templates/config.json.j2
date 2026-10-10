@@ -4,17 +4,18 @@
     "output": "/var/log/hysteria-realm/sing-box.log",
     "timestamp": true
   },
-  "inbounds": [
+  "services": [
     {
-      "type": "realm-service",
-      "tag": "realm-in",
+      "type": "hysteria-realm",
+      "tag": "realm",
       "listen": "::",
       "listen_port": 8444,
       "tcp_fast_open": false,
-      "auth_token": "REPLACE_WITH_LONG_RANDOM_REALM_AUTH_TOKEN",
-      "limits": {
-        "events_per_minute_max": 600
-      },
+      "users": [{
+        "name": "realm-control",
+        "token": "REPLACE_WITH_LONG_RANDOM_REALM_AUTH_TOKEN",
+        "max_realms": 16
+      }],
       "tls": {
         "enabled": true,
         "server_name": "{{ nginx_xhttp.server_name | default('vpn.example.com') }}",
@@ -22,12 +23,6 @@
         "key_path": "{{ hysteria_realm.config_dir }}/server.key",
         "alpn": ["h2", "http/1.1"]
       }
-    }
-  ],
-  "outbounds": [
-    {
-      "type": "direct",
-      "tag": "direct"
     }
   ]
 }

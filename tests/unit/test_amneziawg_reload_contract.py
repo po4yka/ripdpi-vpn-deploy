@@ -27,10 +27,14 @@ def test_role_restart_applies_full_state_via_the_awg_quick_unit():
 
 
 def test_config_render_notifies_the_installed_restart_handler():
-    tasks = yaml.safe_load((ROLE_DIR / "tasks" / "main.yml").read_text())
+    tasks = yaml.safe_load((ROLE_DIR / "tasks" / "enable.yml").read_text())
     handlers = yaml.safe_load(HANDLER.read_text())
-    render = next(task for task in tasks if task["name"] == "Render AmneziaWG interface configs")
-    handler = next(handler for handler in handlers if handler["name"] == render["notify"])
+    render = next(
+        task for task in tasks if task["name"] == "Render AmneziaWG interface configs"
+    )
+    handler = next(
+        handler for handler in handlers if handler["name"] == render["notify"]
+    )
     assert handler["ansible.builtin.systemd_service"]["state"] == "restarted"
 
 

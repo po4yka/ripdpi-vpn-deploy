@@ -21,10 +21,19 @@ LoginGraceTime 20
 {% if (ssh_controls.ssh_required_rsa_size | default(0) | int) > 0 %}
 RequiredRSASize {{ ssh_controls.ssh_required_rsa_size | int }}
 {% endif %}
-AllowUsers {{ ansible_user }}
+AllowUsers {{ ([ansible_user] + baseline_ssh_extra_allowed_users | default([])) | join(" ") }}
 {% if ssh_controls.ssh_strict | default(true) %}
 Subsystem sftp internal-sftp -f AUTHPRIV -l INFO
 {% endif -%}
 Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
 MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
 KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512
+{% for restricted_user in baseline_ssh_extra_allowed_users | default([]) %}
+Match User {{ restricted_user }}
+AllowTcpForwarding no
+AllowAgentForwarding no
+X11Forwarding no
+PermitTunnel no
+PermitTTY no
+PermitUserRC no
+{% endfor -%}

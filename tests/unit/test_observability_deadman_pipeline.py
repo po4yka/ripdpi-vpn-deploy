@@ -1024,7 +1024,7 @@ def test_deadman_reverse_summary_contains_every_bounded_health_axis(
         return True
 
     monkeypatch.setattr(deadman, "_post_reverse", post)
-    current = deadman._empty_state()
+    current = deadman._empty_state(GENERATION)
     current.update(last_sequence=4, last_pulse=NOW, last_delivery="recovery")
 
     assert deadman._reverse_health({}, TOKEN, current, NOW) is True
@@ -1059,11 +1059,32 @@ def test_current_collector_does_not_install_retired_pipeline_units() -> None:
 
 
 def test_historical_alarm_route_is_refused_before_runtime_mutation() -> None:
-    tasks = yaml.safe_load((CONTROL_ROLE / "tasks/enable.yml").read_text())
+    def task_tree(items):
+        for task in items:
+            yield task
+            for section in ("block", "rescue", "always"):
+                yield from task_tree(task.get(section, []))
+
+    tasks = list(
+        task_tree(yaml.safe_load((CONTROL_ROLE / "tasks/enable.yml").read_text()))
+    )
     names = [task["name"] for task in tasks]
-    probe = next(task for task in tasks if task["name"].startswith("Inspect historical alarm services"))
-    guard = next(task for task in tasks if task["name"].startswith("Preserve any working historical alarm"))
-    assert probe["ansible.builtin.command"]["argv"] == ["systemctl", "is-active", "--quiet", "{{ item }}"]
+    probe = next(
+        task
+        for task in tasks
+        if task["name"].startswith("Inspect historical alarm services")
+    )
+    guard = next(
+        task
+        for task in tasks
+        if task["name"].startswith("Preserve any working historical alarm")
+    )
+    assert probe["ansible.builtin.command"]["argv"] == [
+        "systemctl",
+        "is-active",
+        "--quiet",
+        "{{ item }}",
+    ]
     assert probe["loop"] == [
         "observability-deadman-pipeline.service",
         "observability-deadman-pulse.timer",
@@ -1071,15 +1092,29 @@ def test_historical_alarm_route_is_refused_before_runtime_mutation() -> None:
     ]
     assert probe["check_mode"] is False
     assert guard["ansible.builtin.assert"]["that"] == ["item.rc != 0"]
-    mutators = ("ansible.builtin.apt", "ansible.builtin.copy", "ansible.builtin.file",
-                "ansible.builtin.template", "ansible.builtin.user", "ansible.builtin.systemd_service")
-    first_mutation = next(index for index, task in enumerate(tasks) if any(key in task for key in mutators))
+    mutators = (
+        "ansible.builtin.apt",
+        "ansible.builtin.copy",
+        "ansible.builtin.file",
+        "ansible.builtin.template",
+        "ansible.builtin.user",
+        "ansible.builtin.systemd_service",
+    )
+    first_mutation = next(
+        index
+        for index, task in enumerate(tasks)
+        if any(key in task for key in mutators)
+    )
     assert names.index(guard["name"]) < first_mutation
 
 
 def test_authority_snapshot_restores_only_current_authority_chain() -> None:
     tasks = yaml.safe_load((CONTROL_ROLE / "tasks/alerting-authority.yml").read_text())
-    capture = next(task for task in tasks if task["name"] == "Capture previous active and enabled states")
+    capture = next(
+        task
+        for task in tasks
+        if task["name"] == "Capture previous active and enabled states"
+    )
     expected = [
         "observability-alertmanager.service",
         "observability-telegram-relay.service",
@@ -1087,24 +1122,55 @@ def test_authority_snapshot_restores_only_current_authority_chain() -> None:
         "observability-prometheus.service",
     ]
     assert capture["loop"] == expected
-    activation = next(task for task in tasks if task["name"] == "Activate validated Alertmanager generation with rollback")
-    restore_block = next(task["block"] for task in activation["rescue"]
-                         if task["name"] == "Restore the captured authority and service credential snapshots")
-    restore = next(task for task in restore_block
-                   if task["name"] == "Restore previous service state and LoadCredential snapshots in dependency order")
+    activation = next(
+        task
+        for task in tasks
+        if task["name"] == "Activate validated Alertmanager generation with rollback"
+    )
+    restore_block = next(
+        task["block"]
+        for task in activation["rescue"]
+        if task["name"]
+        == "Restore the captured authority and service credential snapshots"
+    )
+    restore = next(
+        task
+        for task in restore_block
+        if task["name"]
+        == "Restore previous service state and LoadCredential snapshots in dependency order"
+    )
     assert set(restore["loop"]) == set(expected)
-    assert restore["ansible.builtin.systemd_service"]["enabled"] == "{{ _observability_authority.services[item].enabled }}"
-    assert "services[item].active" in restore["ansible.builtin.systemd_service"]["state"]
+    assert (
+        restore["ansible.builtin.systemd_service"]["enabled"]
+        == "{{ _observability_authority.services[item].enabled }}"
+    )
+    assert (
+        "services[item].active" in restore["ansible.builtin.systemd_service"]["state"]
+    )
 
 
-def test_collector_disable_scopes_kuma_producers_without_erasing_legacy_credentials() -> None:
+def test_collector_disable_scopes_kuma_producers_without_erasing_legacy_credentials() -> (
+    None
+):
     tasks = yaml.safe_load((CONTROL_ROLE / "tasks/disable.yml").read_text())
     tasks += yaml.safe_load((CONTROL_ROLE / "tasks/alerting-disable.yml").read_text())
-    producer = next(task for task in tasks if task.get("ansible.builtin.include_role", {}).get("tasks_from") == "producers-disable")
+    producer = next(
+        task
+        for task in tasks
+        if task.get("ansible.builtin.include_role", {}).get("tasks_from")
+        == "producers-disable"
+    )
     assert producer["ansible.builtin.include_role"]["name"] == "observability_kuma"
-    assert producer["vars"]["observability_push_disable_kinds"] == ["pipeline", "delivery"]
-    removed = [item for task in tasks if task.get("ansible.builtin.file", {}).get("state") == "absent"
-               for item in task.get("loop", [])]
+    assert producer["vars"]["observability_push_disable_kinds"] == [
+        "pipeline",
+        "delivery",
+    ]
+    removed = [
+        item
+        for task in tasks
+        if task.get("ansible.builtin.file", {}).get("state") == "absent"
+        for item in task.get("loop", [])
+    ]
     assert not any("deadman" in item for item in removed)
     assert not (CONTROL_ROLE / "tasks/alerting-deadman-disable.yml").exists()
 

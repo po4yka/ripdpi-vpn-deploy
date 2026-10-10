@@ -64,7 +64,7 @@
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          grep -q 'deadbeefdeadbeefdeadbeef' /var/lib/vpn-subscription/revoked
+          grep -Fxq 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef' /var/lib/vpn-subscription/revoked
         executable: /bin/bash
       changed_when: false
 
@@ -156,7 +156,7 @@
       ansible.builtin.shell:
         cmd: |
           set -o pipefail
-          grep -q 'deadbeefdeadbeefdeadbeef' /var/lib/vpn-subscription/revoked
+          grep -Fxq 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef' /var/lib/vpn-subscription/revoked
         executable: /bin/bash
       changed_when: false
 

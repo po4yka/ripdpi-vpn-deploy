@@ -172,6 +172,75 @@ def _load_port_resolver():
     return module
 
 
+def test_bootstrap_grant_is_versioned_intrinsically_bounded_and_override_aware(
+    tmp_path, monkeypatch
+):
+    module = _load_port_resolver()
+    group_vars = tmp_path / "vars"
+    group_vars.mkdir()
+    (group_vars / "all.yml").write_text(
+        "subscription:\n  bootstrap_max_lifetime_seconds: 120\n"
+    )
+    monkeypatch.setattr(module, "GROUP_VARS", group_vars)
+    monkeypatch.setattr(module, "INVENTORY", tmp_path / "absent.ini")
+    monkeypatch.setattr(module.time, "time", lambda: 1800000000)
+    grant = module.bootstrap_grant("node.example.test", {})
+    assert re.fullmatch(r"b1_1800000000_[A-Za-z0-9_-]{43}", grant["token"])
+    assert grant["expires"] == 1800000120
+    (group_vars / "vpn.yml").write_text(
+        "subscription:\n  server_name: node.example.test\n"
+    )
+    # Higher-precedence dictionaries replace earlier policy rather than merging.
+    assert module.bootstrap_grant("node.example.test", {})["lifetime"] == 604800
+    assert (
+        module.bootstrap_grant("node.example.test", {"_replace_policy": True})[
+            "lifetime"
+        ]
+        == 604800
+    )
+    from datetime import datetime, timedelta, timezone
+
+    tomorrow = (
+        datetime.fromtimestamp(1800000000, timezone.utc) + timedelta(days=1)
+    ).date()
+    shortened = module.bootstrap_grant("node.example.test", {}, tomorrow.isoformat())
+    assert 1800000000 < shortened["expires"] < 1800000000 + 604800
+    assert (
+        module.bootstrap_grant(
+            "node.example.test", {"bootstrap_max_lifetime_seconds": 60}
+        )["expires"]
+        == 1800000060
+    )
+    for lifetime in (True, "60", 59, 2592001):
+        with pytest.raises(ValueError):
+            module.bootstrap_grant(
+                "node.example.test", {"bootstrap_max_lifetime_seconds": lifetime}
+            )
+    for expiry in ("invalid", "2026-01-01", "2099-01-01", "2027-1-1"):
+        with pytest.raises(ValueError):
+            module.bootstrap_grant("node.example.test", {}, expiry)
+
+
+def test_bootstrap_issuer_publishes_versioned_token_hash_and_bounded_metadata(tmp_path):
+    env, payload, _, _ = _harness(tmp_path)
+    result = subprocess.run(
+        ["bash", str(BOOTSTRAP_ISSUER), "phone"],
+        env=env,
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    match = re.search(r"/bootstrap/(b1_([0-9]{10})_[A-Za-z0-9_-]{43})", result.stdout)
+    assert match
+    assert (
+        json.loads((tmp_path / "meta.json").read_text())["expires"]
+        == int(match[2]) + 604800
+    )
+    assert payload.exists()
+
+
 def test_subscription_port_resolver_matches_effective_cohort_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -264,7 +333,7 @@ def test_issuer_revoke_hint_names_the_key_the_role_consumes() -> None:
     token stayed valid after a by-the-book revocation.
     """
     role_tasks = (
-        REPO_ROOT / "ansible/roles/subscription-host/tasks/main.yml"
+        REPO_ROOT / "ansible/roles/subscription-host/tasks/enable.yml"
     ).read_text()
     iterated = set(re.findall(r"for \w+ in subscription\.(\w+)", role_tasks))
     assert iterated == {"revoked_tokens"}

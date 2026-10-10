@@ -281,3 +281,12 @@ After a successful run, confirm that the server contains exactly one rule with
 comment `awg-nat-awg-evidence0` and that the sentinel timer is enabled. Remove
 the temporary source bundle and non-secret operator vars file after
 provisioning; `make clean` removes the decrypted SOPS material.
+
+The evidence command account is admitted separately from the admin account.
+Before initial evidence provisioning, use canonical deployment with
+`baseline_ssh_extra_allowed_users: [ripdpi-awg-evidence]` and reviewed SSH contexts
+for that user on both public and management transports. The baseline transaction
+publishes the fixed restricted-account Match policy and proves management recovery.
+Evidence provisioning then verifies effective admission before installing its
+source-restricted forced key; server-local recurring application never edits SSH
+authority. An SSH context alone never grants an account access.

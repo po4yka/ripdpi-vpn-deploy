@@ -2,6 +2,21 @@
 
 ## Design decisions
 
+**Naive devices have independent encrypted identities** — `naive-client.py`
+centralizes the three explicit Make verbs for issuance, revocation, and selected
+credential readout. Selected readout requires an explicit new `0600` output in a
+private `0700` directory, outside tracked source or under ignored `secrets/local/`.
+Its stdout carries only metadata; linked/existing/shared output authority refuses.
+It shares `.new-client.lock`, uses encrypted sibling publication,
+refuses unsafe source authority, and preserves unrelated fields. `new-client.sh`
+includes optional Naive issuance inside its existing all-profile transaction.
+No scalar credential compatibility path or plaintext staging is supported.
+
+**Bootstrap issuance follows intrinsic retention** — the subscription resolver
+uses role defaults, group/profile policy and encrypted overrides to create versioned
+epoch-bound grants. Optional expiry only shortens the deadline, and its bounded
+metadata is installed before the payload. No old-format bootstrap URLs are issued.
+
 - SNI secrets are parsed structurally through PyYAML; only `xray.server_names` becomes probe targets, and malformed private input produces categorical diagnostics.
 
 - Disposable CI creates its no-clobber public result directory before validating
@@ -404,3 +419,12 @@ Independent controller homes are not a supported shared-ownership mechanism.
   policy inspection, and enrollment. The RAM revoker and firewall replacement
   share a coordination lock; durable rollback always uses bridge-free policy.
   A reviewed legacy digest is not permission to adopt unexplained runtime drift.
+
+- Tailnet firewall foundations flush rules atomically while preserving dynamic
+  timed enforcement sets. Only the two exact static SSH source sets are replaced
+  before the transaction-owned include, so removed approvals cannot survive.
+
+`build-native-naive-test.sh` supplies the exact composite used by native tests,
+with repository-pinned Go and a separate scoped GOBIN/GOPATH/cache. It never
+substitutes stock Caddy. Local compilation uses the machine build gate; CI
+keeps compilation at two workers and passes the verified output explicitly.

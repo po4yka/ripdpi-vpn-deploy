@@ -2,6 +2,15 @@
 
 ## Design decisions
 
+New log inodes start private at 0600. Only after both no-follow single-link
+entries validate does provisioning grant the explicit Xray group read access.
+The capability-bounded policy reader joins that group without DAC bypass.
+Descriptor contexts own all acquired files and ancestors through failures.
+Each raw acquisition closes in its own lexical finally; log provisioning uses
+metadata descriptors directly without allocating unnecessary text buffers.
+The fixed pair uses nested lexical contexts; directory traversal owns only its
+current descriptor and transfers that ownership before closing an old parent.
+
 **Configuration validation shares one executable contract** — `files/xray_validate.py` is installed as `/usr/local/libexec/vpn-xray-validate`. Read-only verify always streams that same repository source into remote Python, so checking an existing node never requires installing or updating the helper first. Candidate convergence supplies the planned asset directory explicitly; verify, rotation, rollback and watchdog derive the exact asset directory from the loaded Xray unit. Missing or ambiguous authority fails closed without printing environment values.
 
 **Drift is a read-only role entry point** — `tasks/drift.yml` compares the inventory-and-secrets render with the complete normalized deployed configuration under `no_log`; diagnostics never print config values.
@@ -35,6 +44,15 @@ role's regular file with the other role's symlink.
 for redacted diagnostics, but the gRPC API binds only to
 `xray_api_listen=127.0.0.1:10086`. The monitoring role owns export and
 retention; this role owns only the Xray-side counter contract.
+
+**Log directory entries belong to root** — convergence opens every path
+component without following links, claims the log directory as root:xray 0750,
+and validates regular single-link logs before descriptor-backed metadata writes.
+Xray owns only the 0640 log files; startup has no privileged pathname repair.
+Rotation creates fresh runtime-writable files and restarts the active service.
+The command appends `--check` only in check mode; normal convergence sends no
+placeholder argument. JSON change reporting is evaluated only after a successful
+helper exit, preserving the helper's original failure result.
 
 ## What's done well
 
@@ -77,3 +95,9 @@ retention; this role owns only the Xray-side counter contract.
   the binary is hash-pinned via the release-line tracker.
 - **10085 belongs to XHTTP** — keep StatsService on 10086 or another validated
   loopback port; the pre-flight guard rejects public binds and collisions.
+
+- Ordinary site convergence always invokes lifecycle reconciliation. The
+  `xray_role_enabled` input selects enable or owned runtime retirement before
+  secret/package guards. Disable stops units and removes only declared authority;
+  shared packages, immutable runtime receipts, historical logs and recovery data
+  remain available for a later explicit recovery.
