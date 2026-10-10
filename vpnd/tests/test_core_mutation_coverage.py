@@ -3,13 +3,16 @@
 import asyncio
 import json
 import os
+import signal
+import subprocess
 import sys
 import threading
+import time
 
 import pytest
 
 from artifact_helpers import context, executable, scaffold
-from vpnd.runner import Cmd, ansible, make, process
+from vpnd.runner import CapturePolicy, Cmd, ansible, make, process
 from vpnd.state import Host
 
 
@@ -168,3 +171,80 @@ def test_async_capture_passes_its_shared_spawn_lock_to_the_real_worker(monkeypat
     output = asyncio.run(command.capture_detailed())
     assert output.rc == 0 and output.stdout == output.stderr == ""
     assert len(observed) == 1
+
+
+def test_owned_child_tree_is_reaped_after_capture_setup_error(tmp_path, monkeypatch):
+    pids = tmp_path / "owned-tree"
+    children = []
+    original_spawn = process.subprocess.Popen
+    original_selector = process.selectors.DefaultSelector
+
+    def observe_spawn(*args, **kwargs):
+        child = original_spawn(*args, **kwargs)
+        children.append(child)
+        return child
+
+    class BrokenSelector(original_selector):
+        def register(self, *args, **kwargs):
+            deadline = time.monotonic() + 3
+            while not pids.exists():
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("controlled child tree did not start")
+                time.sleep(0.01)
+            raise OSError("capture setup failed")
+
+    def running(pid):
+        result = subprocess.run(
+            ["ps", "-o", "stat=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        status = result.stdout.strip()
+        return bool(status) and not status.startswith("Z")
+
+    command = (
+        Cmd.new("sh")
+        .args(
+            [
+                "-c",
+                'sleep 60 & printf \'%s\\n\' "$$" "$!" > "$PIDS.tmp"; mv "$PIDS.tmp" "$PIDS"; wait',
+            ]
+        )
+        .env("PIDS", pids)
+        .capture_policy(CapturePolicy.OWNED_PROCESS_GROUP)
+    )
+    monkeypatch.setattr(process.subprocess, "Popen", observe_spawn)
+    monkeypatch.setattr(process.selectors, "DefaultSelector", BrokenSelector)
+    try:
+        with pytest.raises(OSError, match="capture setup failed"):
+            command._worker(threading.Event(), True, True)
+        monkeypatch.setattr(process.subprocess, "Popen", original_spawn)
+        monkeypatch.setattr(process.selectors, "DefaultSelector", original_selector)
+        assert len(children) == 1
+        child = children[0]
+        leader, descendant = map(int, pids.read_text().splitlines())
+        assert leader == child.pid and child.returncode is not None
+        deadline = time.monotonic() + 2
+        while running(descendant) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert not running(leader) and not running(descendant)
+    finally:
+        monkeypatch.setattr(process.subprocess, "Popen", original_spawn)
+        monkeypatch.setattr(process.selectors, "DefaultSelector", original_selector)
+        for child in children:
+            if child.returncode is None:
+                # The unreaped leader still reserves this owned group ID.
+                try:
+                    os.killpg(child.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    # A completed cleanup may already have removed the group.
+                    pass
+                child.kill()
+                child.wait(timeout=3)
+        if pids.exists():
+            for pid in map(int, pids.read_text().splitlines()[1:]):
+                if running(pid):
+                    # The controlled descendants sleep throughout this short
+                    # test; teardown removes any survivor of broken cleanup.
+                    os.kill(pid, signal.SIGKILL)
