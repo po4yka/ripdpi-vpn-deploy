@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-10
+goal: SCR-1791618064422507 Upgrade Hysteria with validated congestion and UDP
+  resource profiles

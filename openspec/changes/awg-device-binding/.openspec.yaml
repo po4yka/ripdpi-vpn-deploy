@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-10
+goal: SCR-1791618039091425 Deliver authoritative AmneziaWG device enrollment and
+  client bindings
