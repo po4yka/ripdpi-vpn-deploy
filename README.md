@@ -20,7 +20,7 @@ flowchart LR
     CI["cloud-init<br/><sub>admin user · SSH hardening · python3</sub>"]
     AN["Ansible<br/><sub>nftables · xray · nginx · hysteria · AWG · monitoring · backup</sub>"]
     SC[("SOPS + age<br/><sub>secrets at rest, outside Git tracking</sub>")]
-    VD["vpnd CLI<br/><sub>Rust convenience over Make / TF / Ansible / SOPS</sub>"]
+    VD["vpnd CLI<br/><sub>Python convenience over Make / TF / Ansible / SOPS</sub>"]
 
     TF --> CI --> AN
     SC -. VPN_SECRETS_FILE .-> AN
@@ -260,6 +260,9 @@ make xray-diagnostics                     # fresh redacted Xray counters over SS
 make snell-refinement BUNDLE=<json> CONFIG=<yaml> VANTAGE=<technical-id> # staging-only Snell payload/refinement matrix
 make blue-green GREEN_ENV=<name>          # orchestrate blue-green replacement
 ```
+
+`vpnd` requires Python 3.12; installation, development checks and the native-binary
+to Python wheel-bundle transition are documented in [vpnd/README.md](vpnd/README.md).
 
 `make help` is the canonical target inventory. `SOPS_FILE`, `SECRETS_FILE`,
 `HOSTS`, and `COHORTS` may be set in the git-ignored `.fleet.mk`; the default

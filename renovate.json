@@ -25,11 +25,17 @@
       ]
     },
     {
-      "description": "Group all Rust crate updates into one weekly PR",
+      "description": "Group vpnd Python runtime updates into one weekly PR",
       "matchManagers": [
-        "cargo"
+        "pep621"
       ],
-      "groupName": "rust crates",
+      "matchFileNames": [
+        "vpnd/pyproject.toml"
+      ],
+      "matchDepTypes": [
+        "project.dependencies"
+      ],
+      "groupName": "vpnd Python runtime",
       "schedule": [
         "on weekend"
       ]

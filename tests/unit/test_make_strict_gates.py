@@ -30,8 +30,10 @@ def test_validate_checks_every_provider_and_ci_fast_has_no_tool_skips():
         "tf-policy-verify",
         "yamllint-check",
         "shellcheck",
-        "vpnd-deny",
-        "vpnd-msrv",
+        "vpnd-dependency-check",
+        "vpnd-lint",
+        "vpnd-package-check",
+        "vpnd-parity-check",
     ):
         assert f"$(MAKE) {target}" in ci_fast
     assert "python3 scripts/render-cloud-init-ci.py" in ci

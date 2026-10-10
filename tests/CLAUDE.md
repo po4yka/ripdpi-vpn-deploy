@@ -71,13 +71,18 @@ fail instead of silently becoming an unspecified task.
 
 **`ci-fast` is the portable pre-PR gate** — runs the credential-free required
 CI checks, including workflow/YAML/shell lint, cloud-init schema, all Terraform
-tests, pytest/bats, cargo-deny, MSRV, clippy, and Rust tests. `make check` adds
+tests, pytest/bats, Go helper integration, and vpnd Python tests, lint/type
+checks, baseline parity, packages and dependency policy. `make check` adds
 Terraform fmt/validate, gitleaks, and ansible-lint. Native Linux runtime integration, Molecule, GitHub-native
 security services, and credentialed deploy jobs remain CI-only or explicit.
 
 **Snapshots, not mocks, for templates** — `tests/snapshot/golden/` holds
 the expected output of every Jinja render against fixtures. Drift is
 visible in PR diffs.
+
+**Baseline parity outlives planning** — the vpnd transfer gate reads its
+permanent package inventory. Test it without an active OpenSpec directory;
+task archival must not remove executable regression obligations.
 Role-render tests reuse `scripts/template_render.py` for named-template escaping
 and Ansible filters. Local HTTPS fixtures explicitly require TLS 1.2 or newer.
 HTML/XML names include their compound `.html.j2`/`.xml.j2` suffixes; markup
@@ -185,8 +190,8 @@ The native lane consumes this setup through `setup-disposable-ci`; cache
 coverage follows that composite and includes its required Galaxy installation.
 
 **CI selection follows complete consumers** — common Python/static checks always
-run; costly PR lanes follow the selector's path graph. Docs are compiled into
-Rust. Keep Ansible scenarios together for cross-role inputs, and full CI for
+run; costly PR lanes follow the selector's path graph. Docs are bundled into
+Python vpnd. Keep Ansible scenarios together for cross-role inputs, and full CI for
 main/manual/shared/unknown changes. The final gate requires every selected job
 and permits only planned skips; adding a job must update the selector and tests.
 
@@ -235,14 +240,14 @@ remain fatal; package signatures and the real schema validator stay enforced.
 - **Compiled helper coverage is real Go execution** — `ci-fast` includes
   `make test-probe-matrix-mtproto`; Python driver tests cannot replace it.
 
-- **Release SBOM is the locked Cargo inventory** — CI and publication share
+- **Release SBOM is the locked Python inventory** — CI and publication share
   `.github/actions/vpnd-sbom`, which stages `dist/sbom.json`. The deployment
   example emitter serves `make emit-sbom` and is not the vpnd release SBOM.
 
 - **Mutation CI distinguishes findings from execution failure** — only exit
   0 (caught) and 2 (survivors reported) are successful runs. The runtime tests
   exercise actual workflow shell error propagation and disposable-copy cleanup;
-  real cargo-mutants baseline and mutation execution remain the acceptance gate.
+  real mutmut baseline and mutation execution remain the acceptance gate.
 
 - **Snapshot files are committed** — never gitignore `tests/snapshot/golden/`.
   PR diff is the review surface.

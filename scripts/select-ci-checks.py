@@ -17,7 +17,7 @@ ALWAYS = {
 CHECKS = {
     "ansible": {"ansible", "molecule", "molecule-full-stack", "molecule-failure-scenarios"},
     "terraform": {"terraform", "terraform-exception", "tf-test", "tf-policy", "cloud-init"},
-    "rust": {"vpnd-test", "vpnd-clippy", "vpnd-msrv", "vpnd-deny", "vpnd-sbom"},
+    "python-vpnd": {"vpnd-test", "vpnd-lint", "vpnd-package", "vpnd-dependency", "vpnd-sbom"},
     "native": {"native-runtime"},
     "go": {"go-helper"},
     "shell": {"bats-test"},
@@ -31,12 +31,12 @@ CHECKS = {
 CONSUMERS = {
     "ansible": {"native", "images"},
     "terraform": {"native"},
-    "pins": {"ansible", "rust"},
-    "contract": {"ansible", "rust"},
+    "pins": {"ansible", "python-vpnd"},
+    "contract": {"ansible", "python-vpnd"},
 }
 PATHS = (
-    ("docs/", {"rust"}),  # vpnd/src/docs_bundle.rs embeds the entire directory.
-    ("vpnd/", {"rust"}),
+    ("docs/", {"python-vpnd"}),  # vpnd packages the entire tracked Markdown directory.
+    ("vpnd/", {"python-vpnd"}),
     ("ansible/", {"ansible"}),
     ("terraform/", {"terraform"}),
     ("secrets/", {"pins"}),

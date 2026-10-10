@@ -1,0 +1,49 @@
+---
+name: _python-vpnd
+on:
+  workflow_call:
+    inputs:
+      command:
+        description: Fixed vpnd check (test, lint, package, dependency)
+        required: true
+        type: string
+      cross-platform:
+        description: Exercise all four supported installation surfaces
+        default: false
+        type: boolean
+permissions:
+  contents: read
+jobs:
+  python:
+    name: Python vpnd (${{ inputs.command }}, ${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(inputs.cross-platform && '{"include":[{"runner":"ubuntu-24.04"},{"runner":"ubuntu-24.04-arm"},{"runner":"macos-15-intel"},{"runner":"macos-15"}]}' || '{"include":[{"runner":"ubuntu-24.04"}]}') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-ci-python
+      - name: Reject any compiler dependency
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/no-rust"
+          for tool in cargo rustc; do
+            printf '#!/bin/sh\necho "unexpected Rust invocation" >&2\nexit 97\n' > "$RUNNER_TEMP/no-rust/$tool"
+            chmod +x "$RUNNER_TEMP/no-rust/$tool"
+          done
+          echo "$RUNNER_TEMP/no-rust" >> "$GITHUB_PATH"
+      - name: Run the fixed selected check
+        shell: bash
+        env:
+          VPND_CHECK: ${{ inputs.command }}
+        run: |
+          case "$VPND_CHECK" in
+            test) make vpnd-test vpnd-parity-check ;;
+            lint) make vpnd-lint ;;
+            package) make vpnd-package-check ;;
+            dependency) make vpnd-dependency-check ;;
+            *) echo "unknown vpnd check" >&2; exit 1 ;;
+          esac

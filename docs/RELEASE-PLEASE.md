@@ -3,12 +3,11 @@
 The `release-please` workflow runs on `main` by default. It maintains the
 release PR from conventional commits. Merging that PR creates the `vpnd-vX.Y.Z`
 tag and GitHub Release. Release PR approval and merge remain operator decisions.
-The version updater changes both `vpnd/Cargo.toml` and the `vpnd` package entry
-in `vpnd/Cargo.lock`, preserving dependency versions and `--locked` builds.
-The lockfile JSONPath uses `name.value` because the pinned release-please TOML
-parser wraps scalar values with source positions. When upgrading the action,
-verify the actual updater against both files and run `cargo metadata --locked`
-on the resulting candidate; a plain `name` filter silently matches nothing.
+The version updater changes `vpnd/pyproject.toml` at `$.project.version`.
+Runtime dependency pins and hashes remain in `vpnd/requirements.in` and
+`vpnd/requirements.txt`; a release version bump does not refresh dependencies.
+When changing release-please configuration, verify the resulting package version
+against the release manifest and run `make vpnd-package-check` on the candidate.
 
 The repository must allow GitHub Actions to create pull requests under
 **Settings → Actions → General → Workflow permissions**. Missing permissions
@@ -33,7 +32,7 @@ For unattended release-PR CI, use a separately authorized, repository-scoped
 GitHub App identity. That requires provisioning and managing an App credential;
 it is not configured by this token-only release handoff.
 
-## Binary handoff
+## Python artifact handoff
 
 When the root package reports `release_created=true`, a separate job verifies
 that `tag_name` resolves to release-please's full commit `sha`, then explicitly
@@ -42,13 +41,31 @@ runs `release-vpnd.yml` with that tag as both the dispatch ref and input.
 explicit handoff. No personal token or GitHub App is required.
 
 The downstream workflow validates the tag against its own `GITHUB_SHA`, builds
-four target binaries, attests them, and attaches the binaries, `SHA256SUMS`, and
-the locked Cargo SBOM. Running on the tag keeps checkout, builds, attestations,
+one platform-neutral application wheel/source distribution plus four native
+wheel bundles, attests the archives, and attaches them with `SHA256SUMS` and
+the locked Python runtime SBOM. Each bundle installs offline with Python 3.12
+and includes package templates/docs and all twenty generated man pages. Running on the tag keeps checkout, builds, attestations,
 and SBOM on the same revision even if `main` has advanced.
 
-Creating or updating a release PR does not dispatch binary publication.
+Creating or updating a release PR does not dispatch artifact publication.
 Dispatch errors fail the parent workflow. A successful dispatch means the
 build was requested; publication is complete only when `release-vpnd` succeeds.
+
+## Installation contract break
+
+Native executable assets are replaced by `vpnd-X.Y.Z-py3-none-any.whl`,
+`vpnd-X.Y.Z.tar.gz` and `vpnd-<target>.tar.gz` bundles for Linux/macOS
+x86_64/arm64. Python 3.12 is now an operator prerequisite. The installer keeps
+PREFIX/root and checksum/provenance guards, validates dependency closure and
+package resources, stages an isolated environment, then publishes the launcher
+and man pages. Interrupted publication restores the preceding installation;
+whole-release recovery retains prior verified environments.
+
+The runtime set is PyYAML, Jinja2, MarkupSafe, qrcode and tomli-w. The dependency
+gate checks vulnerabilities, locked wheel hashes, reviewed SPDX/license-file
+policy and official non-yanked registry artifacts before release consumption.
+Required CI also exercises installed artifacts on all four platform surfaces.
+These gates describe required checks, not evidence that a particular run passed.
 
 ## Verification and recovery
 
@@ -58,7 +75,7 @@ build was requested; publication is complete only when `release-vpnd` succeeds.
    After that PR is merged, check `dispatch vpnd binaries` and find the
    `release-vpnd` run on the created tag and SHA.
 3. Check all build, attestation, SBOM and asset-upload jobs before consuming
-   the release. The release metadata can exist before binaries are attached.
+   the release. The release metadata can exist before artifacts are attached.
 
 If the dispatch failed after release creation, recover explicitly with the
 existing tag; rerunning release-please might not report it as newly created:

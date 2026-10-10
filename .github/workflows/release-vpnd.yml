@@ -1,6 +1,5 @@
 ---
 name: release-vpnd
-
 on:
   push:
     tags:
@@ -8,148 +7,93 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "vpnd release tag (vpnd-vX.Y.Z)"
+        description: vpnd release tag (vpnd-vX.Y.Z)
         required: true
         type: string
-
 permissions:
   contents: read
-
 jobs:
   validate-tag:
     runs-on: ubuntu-24.04
     outputs:
       release-tag: ${{ steps.validate.outputs.release-tag }}
     steps:
-      - name: Checkout release revision and tags
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-
       - name: Validate release tag
         id: validate
         env:
           TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: bash scripts/validate-vpnd-release-tag.sh "$TAG" "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
-
-  build-x86_64-linux:
-    name: build (x86_64-unknown-linux-gnu)
+  build:
     needs: validate-tag
-    uses: ./.github/workflows/_rust.yml
-    with:
-      target: x86_64-unknown-linux-gnu
-      cargo-command: build --release --locked
-      cross: false
-      upload-binary: true
-
-  build-aarch64-linux:
-    name: build (aarch64-unknown-linux-gnu)
-    needs: validate-tag
-    uses: ./.github/workflows/_rust.yml
-    with:
-      target: aarch64-unknown-linux-gnu
-      cargo-command: build --release --locked
-      cross: true
-      upload-binary: true
-
-  build-x86_64-macos:
-    name: build (x86_64-apple-darwin)
-    needs: validate-tag
-    uses: ./.github/workflows/_rust.yml
-    with:
-      target: x86_64-apple-darwin
-      cargo-command: build --release --locked
-      cross: false
-      upload-binary: true
-
-  build-aarch64-macos:
-    name: build (aarch64-apple-darwin)
-    needs: validate-tag
-    uses: ./.github/workflows/_rust.yml
-    with:
-      target: aarch64-apple-darwin
-      cargo-command: build --release --locked
-      cross: false
-      upload-binary: true
-
-  attest:
-    name: attest (${{ matrix.target }})
-    needs:
-      - build-x86_64-linux
-      - build-aarch64-linux
-      - build-x86_64-macos
-      - build-aarch64-macos
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     permissions:
+      contents: read
       id-token: write
       attestations: write
-      contents: read
     strategy:
       fail-fast: false
       matrix:
-        target:
-          - x86_64-unknown-linux-gnu
-          - aarch64-unknown-linux-gnu
-          - x86_64-apple-darwin
-          - aarch64-apple-darwin
-
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - runner: macos-15
+            target: aarch64-apple-darwin
     steps:
-      - name: Download binary artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          name: vpnd-${{ matrix.target }}
-          path: dist
-
+          persist-credentials: false
+      - uses: ./.github/actions/setup-ci-python
+      - name: Verify Python release
+        env:
+          RELEASE_TAG: ${{ needs.validate-tag.outputs.release-tag }}
+        run: python3 scripts/check-vpnd-package.py --release-tag "$RELEASE_TAG"
+      - name: Build locked release bundle
+        env:
+          TARGET: ${{ matrix.target }}
+        run: python3 scripts/build-vpnd-package.py --output dist --bundle-target "$TARGET"
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
         with:
-          subject-path: dist/vpnd-${{ matrix.target }}
-
-      - name: Re-upload attested artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+          subject-path: dist/vpnd-*.tar.gz
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
-          name: attested-vpnd-${{ matrix.target }}
-          path: dist/vpnd-${{ matrix.target }}
+          name: vpnd-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
           retention-days: 1
-
   release:
     name: attach release assets
-    needs:
-      - attest
-      - validate-tag
+    needs: [build, validate-tag]
     runs-on: ubuntu-24.04
     concurrency:
       group: vpnd-release-${{ needs.validate-tag.outputs.release-tag }}
       cancel-in-progress: false
-    # contents: write is required for gh release create/upload/edit. It is
-    # scoped to this job only; the top-level token remains read-only.
     permissions:
       contents: write
     env:
       RELEASE_TAG: ${{ needs.validate-tag.outputs.release-tag }}
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-
-      - name: Download all attested binary artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
-          pattern: attested-vpnd-*
+          pattern: vpnd-*
           path: dist
           merge-multiple: true
-
-      - name: Generate SHA256SUMS
-        working-directory: dist
-        run: |
-          sha256sum vpnd-* | tee SHA256SUMS
-
       - name: Emit SBOM
         uses: ./.github/actions/vpnd-sbom
-
+      - name: Generate SHA256SUMS
+        working-directory: dist
+        run: sha256sum vpnd-* sbom.json | tee SHA256SUMS
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
@@ -157,28 +101,30 @@ jobs:
           path: dist/sbom.json
           if-no-files-found: error
           retention-days: 90
-
       - name: Publish GitHub release
         env:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
           set -euo pipefail
           assets=(
-            dist/vpnd-x86_64-unknown-linux-gnu
-            dist/vpnd-aarch64-unknown-linux-gnu
-            dist/vpnd-x86_64-apple-darwin
-            dist/vpnd-aarch64-apple-darwin
+            dist/vpnd-x86_64-unknown-linux-gnu.tar.gz
+            dist/vpnd-aarch64-unknown-linux-gnu.tar.gz
+            dist/vpnd-x86_64-apple-darwin.tar.gz
+            dist/vpnd-aarch64-apple-darwin.tar.gz
             dist/SHA256SUMS
             dist/sbom.json
           )
-
           for asset in "${assets[@]}"; do
             test -s "$asset"
           done
-
-          if release_is_draft="$(gh release view "$RELEASE_TAG" \
-            --json isDraft --jq .isDraft 2>/dev/null)"; then
+          packages=(dist/vpnd-*-py3-none-any.whl dist/vpnd-[0-9]*.tar.gz)
+          for asset in "${packages[@]}"; do
+            test -s "$asset"
+          done
+          assets+=("${packages[@]}")
+          if release_is_draft="$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft 2>/dev/null)"; then
             gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
             if [[ "$release_is_draft" == "true" ]]; then
               gh release edit "$RELEASE_TAG" --draft=false

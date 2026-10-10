@@ -41,6 +41,6 @@ Name the area touched, singular: a role directory (`xray`, `nginx-xhttp`, `amnez
 - No `Co-Authored-By:` trailers and no mention of AI assistants or their vendors in the message (see `AGENTS.md`). The commit-msg hook installed by `make install-hooks` rejects the trailer.
 - Imperative mood (`add`, `fix`, `drop`), no emoji.
 - One logical change per commit; split unrelated work.
-- Never edit `CHANGELOG.md` or the `# x-release-please-version` line in `vpnd/Cargo.toml` by hand.
+- Never edit `CHANGELOG.md` or the `# x-release-please-version` line in `vpnd/pyproject.toml` by hand.
 
-Release mechanics (release PR, tags, binary handoff) are in `docs/RELEASE-PLEASE.md`.
+Release mechanics (release PR, tags, package handoff) are in `docs/RELEASE-PLEASE.md`.

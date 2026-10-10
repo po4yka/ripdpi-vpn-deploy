@@ -1,0 +1,1 @@
+"""Protected recipient artifacts."""

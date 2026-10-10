@@ -535,7 +535,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         awg-evidence-provision \
         native-naive-build test-native-runtime test-probe-matrix-mtproto test-unit test-unit-profile test-unit-shard snapshot-check snapshot-update validate-secrets \
         actionlint-check zizmor-check zizmor-test cloud-init-schema tf-test yamllint-check shellcheck \
-        ci-fast bats-test vpnd-test vpnd-clippy vpnd-deny vpnd-msrv vpnd-mutants tf-policy tf-policy-verify \
+        ci-fast bats-test vpnd-test vpnd-lint vpnd-dependency-check vpnd-package-check vpnd-parity-check vpnd-mutants tf-policy tf-policy-verify \
         task-tools task-check task-list task-ready task-graph task-federation \
         check
 
@@ -685,10 +685,10 @@ help:
 	@echo "  shellcheck                 Lint every operator shell script"
 	@echo "  ci-fast                    Portable CI-parity bundle (excludes native Linux lane, Molecule and validate)"
 	@echo "  bats-test                  Run bats shell tests (tests/bats/)"
-	@echo "  vpnd-test                  cargo test --release --locked inside vpnd/"
-	@echo "  vpnd-clippy                cargo clippy --release --locked (deny warnings) inside vpnd/"
-	@echo "  vpnd-deny                  cargo-deny policy against the committed lockfile"
-	@echo "  vpnd-msrv                  cargo check --locked with Rust 1.88.0"
+	@echo "  vpnd-test                  complete Python vpnd test suite"
+	@echo "  vpnd-lint                  Python lint and type checks"
+	@echo "  vpnd-dependency-check      audit hash-locked Python runtime dependencies"
+	@echo "  vpnd-package-check         verify installed Python release artifacts"
 	@echo "  tf-policy                  terraform test + conftest OPA policy check for all providers"
 	@echo "  tf-policy-verify           Run pinned Conftest policy tests without provider credentials"
 	@echo "  network-exposure-review    Validate signed policy without changing managed hosts"
@@ -1164,13 +1164,20 @@ shellcheck:
 	@command -v shellcheck >/dev/null 2>&1 || { echo "missing: shellcheck" >&2; exit 1; }
 	shellcheck -s bash -S warning scripts/*.sh terraform/exception/*/*.sh
 
-vpnd-deny:
-	@command -v cargo-deny >/dev/null 2>&1 || { echo "missing: cargo-deny" >&2; exit 1; }
-	cd vpnd && cargo deny --locked check --config deny.toml
+vpnd-dependency-check:
+	python3 -m pip_audit --require-hashes --no-deps --disable-pip -r vpnd/requirements.txt
+	python3 scripts/check-vpnd-dependencies.py
 
-vpnd-msrv:
-	@command -v cargo >/dev/null 2>&1 || { echo "missing: cargo" >&2; exit 1; }
-	cd vpnd && cargo +1.88.0 check --locked
+vpnd-package-check:
+	python3 scripts/check-vpnd-package.py
+
+vpnd-parity-check:
+	python3 scripts/check-vpnd-test-transfer.py
+
+vpnd-lint:
+	python3 -m ruff check vpnd/src/vpnd vpnd/tests scripts/vpnd-cli.py scripts/build-vpnd-package.py scripts/check-vpnd-package.py scripts/check-vpnd-test-transfer.py scripts/install-vpnd.py scripts/vpnd-sbom.py scripts/check-vpnd-dependencies.py scripts/check-vpnd-mutation-results.py scripts/prepare-vpnd-mutation-tree.py
+	python3 -m mypy --config-file vpnd/pyproject.toml vpnd/src/vpnd
+
 
 task-tools:
 	npm ci --prefix tools/tasking --ignore-scripts
@@ -1210,8 +1217,8 @@ ci-fast:
 	@$(MAKE) tf-policy-verify
 	@$(MAKE) yamllint-check
 	@$(MAKE) shellcheck
-	@$(MAKE) vpnd-deny
-	@$(MAKE) vpnd-msrv
+	@$(MAKE) vpnd-dependency-check
+	@$(MAKE) vpnd-package-check
 	@echo "== render check =="; python3 scripts/check-templates-render.py
 	@echo "== AmneziaWG arm64 version floor =="; python3 scripts/check-amneziawg-arm64-version-floor.py
 	@echo "== Xray breaking-change guard =="; python3 scripts/check-xray-breaking-changes.py
@@ -1227,9 +1234,10 @@ ci-fast:
 	@promtool --version 2>&1 | grep -F "version $(PROMTOOL_VERSION)" >/dev/null || { echo "promtool $(PROMTOOL_VERSION) required (run: mise install)" >&2; exit 1; }
 	@$(MAKE) test-unit
 	@echo "== bats shell tests =="; bats tests/bats/
-	@command -v cargo >/dev/null 2>&1 || { echo "missing: cargo" >&2; exit 1; }
-	@echo "== vpnd clippy =="; cd vpnd && cargo clippy --release --all-targets --locked -- -D warnings
-	@echo "== vpnd tests =="; cd vpnd && cargo test --release --locked
+	@$(MAKE) vpnd-lint
+	@$(MAKE) vpnd-test
+	@$(MAKE) vpnd-parity-check
+
 	@echo "ci-fast: OK"
 
 # Union gate: everything in validate + everything in ci-fast.
@@ -1701,10 +1709,7 @@ bats-test:
 	bats tests/bats/
 
 vpnd-test:
-	cd vpnd && cargo test --release --locked
-
-vpnd-clippy:
-	cd vpnd && cargo clippy --release --all-targets --locked -- -D warnings
+	PYTHONPATH=vpnd/src python3 -m pytest -c vpnd/pyproject.toml vpnd/tests --fail-on-vpnd-skip --vpnd-results=$(CURDIR)/vpnd/test-results.json
 
 vpnd-mutants:
 	./scripts/test-vpnd-mutants.sh

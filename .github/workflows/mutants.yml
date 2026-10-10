@@ -1,5 +1,5 @@
 ---
-name: cargo-mutants weekly
+name: Python mutation checks weekly
 
 on:
   schedule:
@@ -22,23 +22,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067  # stable
-        with:
-          toolchain: stable
-
-      - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16  # v2
-        with:
-          workspaces: vpnd
-
-      - name: Install cargo-mutants
-        run: cargo install cargo-mutants --version 27.0.0 --locked
+      - uses: ./.github/actions/setup-ci-python
 
       - name: Run mutation tests
         id: mutants
         working-directory: vpnd
-        # Full pass over vpnd/.cargo/mutants.toml. Surviving mutants are
+        # Full pass over the mutation scope in vpnd/pyproject.toml. Survivors are
         # reported below; baseline, timeout, usage and logging failures are red.
         shell: bash
         run: |
@@ -62,7 +51,7 @@ jobs:
           name: vpnd-mutation-results
           path: |
             ${{ runner.temp }}/mutants-output.txt
-            vpnd/mutants.out/
+            vpnd/mutants/
           retention-days: 14
 
       - name: Report surviving mutants to tracking issue
@@ -90,7 +79,7 @@ jobs:
                   repo: context.repo.repo,
                   name: label,
                   color: 'e4e669',
-                  description: 'Tracks cargo-mutants surviving mutant reports',
+                  description: 'Tracks Python surviving mutant reports',
                 });
               }
             }
@@ -116,7 +105,7 @@ jobs:
               '```',
               '',
               'Each surviving mutant either needs a new test in the next PR',
-              'or a `// MUTANT-OK: <reason>` comment in the source.',
+              'or an independently reviewed equivalent-mutant explanation.',
             ].join('\n');
 
             if (issues.data.length > 0) {

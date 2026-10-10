@@ -1,158 +1,57 @@
 #!/usr/bin/env bash
-# install-vpnd.sh — download and install the vpnd binary from GitHub releases.
-#
-# Usage:
-#   curl -fsSL https://raw.githubusercontent.com/po4yka/ripdpi-vpn-deploy/main/scripts/install-vpnd.sh \
-#     -o install-vpnd.sh && chmod +x install-vpnd.sh && ./install-vpnd.sh
-#   PREFIX=/usr/local ./install-vpnd.sh
-#
-# Environment variables:
-#   PREFIX                 Installation prefix (default: /usr/local); binary goes to $PREFIX/bin/vpnd
-#   ALLOW_ROOT             Set to 1 to permit running as root
-#   VPND_SKIP_ATTESTATION  Set to any non-empty value to skip gh attestation verify
-#
-# Attestation verification:
-#   After the SHA256 checksum passes, the script attempts to verify the binary's
-#   SLSA build provenance via `gh attestation verify`. This requires the GitHub
-#   CLI (gh) to be installed and authenticated. If gh is not on PATH the check
-#   is skipped with a warning. Set VPND_SKIP_ATTESTATION=1 to skip explicitly.
-#
-#   To verify manually:
-#     gh attestation verify <path-to-vpnd-binary> \
-#       --owner po4yka \
-#       --signer-workflow .github/workflows/release-vpnd.yml
-#
-# shellcheck shell=bash
-
+# Download, verify and atomically install the Python vpnd release.
+# PREFIX defaults to /usr/local; ALLOW_ROOT=1 explicitly permits root.
+# Provenance follows the existing policy: gh verifies when available;
+# VPND_SKIP_ATTESTATION explicitly opts out. Python 3.12 is required.
 set -euo pipefail
 
-REPO="po4yka/ripdpi-vpn-deploy"
-RELEASES_BASE="https://github.com/${REPO}/releases/latest/download"
-
-# ---------------------------------------------------------------------------
-# Root guard
-# ---------------------------------------------------------------------------
-if [ "$(id -u)" -eq 0 ] && [ "${ALLOW_ROOT:-0}" != "1" ]; then
+if [[ "$(id -u)" -eq 0 && "${ALLOW_ROOT:-0}" != 1 ]]; then
   echo "error: refusing to run as root. Set ALLOW_ROOT=1 to override." >&2
   exit 1
 fi
-
-# ---------------------------------------------------------------------------
-# Detect OS and architecture
-# ---------------------------------------------------------------------------
-os="$(uname -s)"
-arch="$(uname -m)"
-
-case "${os}" in
-  Linux)
-    case "${arch}" in
-      x86_64)  target="x86_64-unknown-linux-gnu" ;;
-      aarch64) target="aarch64-unknown-linux-gnu" ;;
-      arm64)   target="aarch64-unknown-linux-gnu" ;;
-      *)
-        echo "error: unsupported Linux architecture: ${arch}" >&2
-        exit 1
-        ;;
-    esac
-    ;;
-  Darwin)
-    case "${arch}" in
-      x86_64)  target="x86_64-apple-darwin" ;;
-      arm64)   target="aarch64-apple-darwin" ;;
-      *)
-        echo "error: unsupported macOS architecture: ${arch}" >&2
-        exit 1
-        ;;
-    esac
-    ;;
-  *)
-    echo "error: unsupported operating system: ${os}" >&2
-    exit 1
-    ;;
+python3 -c 'import sys; sys.exit(0 if sys.version_info[:2] == (3, 12) else 1)' || {
+  echo "error: vpnd requires Python 3.12" >&2
+  exit 1
+}
+case "$(uname -s):$(uname -m)" in
+  Linux:x86_64) target=x86_64-unknown-linux-gnu ;;
+  Linux:aarch64|Linux:arm64) target=aarch64-unknown-linux-gnu ;;
+  Darwin:x86_64) target=x86_64-apple-darwin ;;
+  Darwin:arm64) target=aarch64-apple-darwin ;;
+  *) echo "error: unsupported OS or architecture" >&2; exit 1 ;;
 esac
-
-binary_name="vpnd-${target}"
-binary_url="${RELEASES_BASE}/${binary_name}"
-sums_url="${RELEASES_BASE}/SHA256SUMS"
-
-# ---------------------------------------------------------------------------
-# Working directory
-# ---------------------------------------------------------------------------
-tmpdir="$(mktemp -d)"
-# Ensure cleanup on exit
-trap 'rm -rf "${tmpdir}"' EXIT
-
-# ---------------------------------------------------------------------------
-# Download binary and checksums
-# ---------------------------------------------------------------------------
-echo "Downloading ${binary_name} ..."
-curl -fsSL --connect-timeout 5 --max-time 30 -o "${tmpdir}/vpnd" "${binary_url}"
-
-echo "Downloading SHA256SUMS ..."
-curl -fsSL --connect-timeout 5 --max-time 30 -o "${tmpdir}/SHA256SUMS" "${sums_url}"
-
-# ---------------------------------------------------------------------------
-# Verify checksum
-# ---------------------------------------------------------------------------
-echo "Verifying checksum ..."
-
-# Extract the expected hash for our binary from SHA256SUMS
-expected="$(grep "${binary_name}" "${tmpdir}/SHA256SUMS" | awk '{print $1}')"
-
-if [ -z "${expected}" ]; then
-  echo "error: ${binary_name} not found in SHA256SUMS" >&2
-  exit 1
+asset="vpnd-${target}.tar.gz"
+base="https://github.com/po4yka/ripdpi-vpn-deploy/releases/latest/download"
+scratch="$(mktemp -d "${TMPDIR:-/tmp}/vpnd-install.XXXXXX")"
+trap 'rm -rf "$scratch"' EXIT
+curl -fsSL --connect-timeout 5 --max-time 60 -o "$scratch/$asset" "$base/$asset"
+curl -fsSL --connect-timeout 5 --max-time 30 -o "$scratch/SHA256SUMS" "$base/SHA256SUMS"
+python3 - "$scratch/$asset" "$scratch/SHA256SUMS" "$asset" <<'PY'
+import hashlib, pathlib, re, sys
+artifact, sums, name = sys.argv[1:]
+rows = [line.split() for line in pathlib.Path(sums).read_text().splitlines()]
+found = [row[0] for row in rows if len(row) == 2 and row[1] == name]
+if len(found) != 1 or re.fullmatch(r'[0-9a-f]{64}', found[0]) is None:
+    raise SystemExit('missing, duplicate or invalid checksum')
+if hashlib.sha256(pathlib.Path(artifact).read_bytes()).hexdigest() != found[0]:
+    raise SystemExit('artifact checksum mismatch')
+PY
+if [[ -z "${VPND_SKIP_ATTESTATION:-}" ]] && command -v gh >/dev/null 2>&1; then
+  gh attestation verify "$scratch/$asset" --owner po4yka \
+    --signer-workflow .github/workflows/release-vpnd.yml
+elif [[ -z "${VPND_SKIP_ATTESTATION:-}" ]]; then
+  echo "warning: gh unavailable; build provenance was not verified" >&2
 fi
-
-# Compute actual hash (sha256sum on Linux, shasum -a 256 on macOS)
-if command -v sha256sum > /dev/null 2>&1; then
-  actual="$(sha256sum "${tmpdir}/vpnd" | awk '{print $1}')"
-elif command -v shasum > /dev/null 2>&1; then
-  actual="$(shasum -a 256 "${tmpdir}/vpnd" | awk '{print $1}')"
-else
-  echo "error: neither sha256sum nor shasum found; cannot verify download" >&2
-  exit 1
-fi
-
-if [ "${actual}" != "${expected}" ]; then
-  echo "error: checksum mismatch" >&2
-  echo "  expected: ${expected}" >&2
-  echo "  actual:   ${actual}" >&2
-  exit 1
-fi
-
-# ---------------------------------------------------------------------------
-# Verify SLSA build provenance attestation (optional)
-# ---------------------------------------------------------------------------
-if [ -z "${VPND_SKIP_ATTESTATION:-}" ]; then
-  if command -v gh > /dev/null 2>&1; then
-    echo "Verifying build provenance attestation ..."
-    if ! gh attestation verify "${tmpdir}/vpnd" \
-        --owner po4yka \
-        --signer-workflow .github/workflows/release-vpnd.yml; then
-      echo "error: attestation verification failed." >&2
-      echo "  The binary may not have been built by the official release workflow." >&2
-      echo "  Set VPND_SKIP_ATTESTATION=1 to bypass (not recommended)." >&2
-      exit 1
-    fi
-    echo "Attestation verified."
-  else
-    echo "warning: 'gh' not found on PATH; skipping attestation verification." >&2
-    echo "  To verify manually after install:" >&2
-    echo "    gh attestation verify <path-to-vpnd> \\" >&2
-    echo "      --owner po4yka \\" >&2
-    echo "      --signer-workflow .github/workflows/release-vpnd.yml" >&2
-  fi
-fi
-
-# ---------------------------------------------------------------------------
-# Install
-# ---------------------------------------------------------------------------
-install_dir="${PREFIX:-/usr/local}/bin"
-install_path="${install_dir}/vpnd"
-
-mkdir -p "${install_dir}"
-cp "${tmpdir}/vpnd" "${install_path}"
-chmod 0755 "${install_path}"
-
-echo "vpnd installed to ${install_path}"
+# Extract only the verified installer file, never arbitrary archive paths.
+python3 - "$scratch/$asset" "$scratch/install.py" <<'PY'
+import pathlib, sys, tarfile
+with tarfile.open(sys.argv[1], 'r:gz') as archive:
+    members = [m for m in archive if m.name == 'install.py']
+    if len(members) != 1 or not members[0].isfile() or members[0].size > 100000:
+        raise SystemExit('invalid installer member')
+    stream = archive.extractfile(members[0])
+    if stream is None:
+        raise SystemExit('missing installer member')
+    pathlib.Path(sys.argv[2]).write_bytes(stream.read())
+PY
+python3 "$scratch/install.py" "$scratch/$asset" "${PREFIX:-/usr/local}"
