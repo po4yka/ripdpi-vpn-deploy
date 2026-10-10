@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-10
+goal: VPD-1791615284178957 Replace vpnd with Python while preserving commands
+  and security
