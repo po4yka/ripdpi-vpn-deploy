@@ -14,7 +14,7 @@ openspec_change: replace-vpnd-with-python
 created: 2026-10-10
 updated: 2026-10-10
 related_tasks: []
-status_detail: Python CLI, all 206 baseline test transfers, 297 source cases, four native artifact lanes, complete hermetic mutation and exact-SHA Rust-free source/CI gates passed; ready for PR review.
+status_detail: PR 283 merged after all nine required checks passed; OpenSpec archived and specs synchronized. Terminal closure awaits the approved observability_agent historical-sample fixture remediation and green post-merge CI.
 ---
 
 ## Goal
@@ -22,8 +22,10 @@ status_detail: Python CLI, all 206 baseline test transfers, 297 source cases, fo
 Deliver a Python 3.12 `vpnd` with every existing command, flag, state format,
 operator artifact and security guarantee preserved, then remove the authored
 Rust implementation and its compiler-dependent development/release lanes.
-Make remains the canonical operator surface. Implementation and PR preparation are authorized; qrcode and tomli-w are
-approved. Real fleet operations and merge remain outside this request.
+Make remains the canonical operator surface. Implementation, PR merge and
+OpenSpec archival are authorized; qrcode and tomli-w are approved. The bounded
+observability_agent fixture remediation is also approved. Real fleet operations
+remain outside this request.
 
 ## Acceptance criteria
 

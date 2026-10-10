@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-10-10T15:17:07Z",
+  "change": "replace-vpnd-with-python",
+  "commit_sha": "b88a41ad86fbe4f6590a07067713e9ebb15aa53c",
+  "outcome": "review",
+  "schema": 1,
+  "task_id": "VPD-1791615284178957"
+}

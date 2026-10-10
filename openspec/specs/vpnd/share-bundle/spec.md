@@ -2,6 +2,10 @@
 
 ## Purpose
 Define correctness and permission requirements for vpnd-generated recipient bundles so a shared bundle is always usable and never exposes the bearer token through file modes or crash residue.
+
+Preserve private atomic recipient outputs and clarify temporary-file ownership
+so the Python migration does not delete another writer's artifacts.
+
 ## Requirements
 ### Requirement: REQ-SHARE-TOKEN-VALIDITY — Non-empty base64url token gate
 
@@ -23,14 +27,18 @@ If neither subscription.server_name nor nginx_xhttp.server_name resolves to a ho
 
 ### Requirement: REQ-SHARE-BUNDLE-PERMS — Crash-safe 0600 bundle writes
 
-Every regular file in the bundle including QR SVGs MUST be created mode 0600 through a temp-and-rename write whose temp carries 0600 from creation, MUST tolerate and replace a leftover temp from a previous crashed run, and MUST remove its temp when the write fails.
+Every regular bundle file, including QR SVGs, MUST be created through a unique
+mode-0600 temporary file, synced and atomically renamed. The bundle directory
+MUST be mode 0700. A failed write MUST remove only the temporary file owned by
+that invocation. Unrelated stale or concurrent temporary files MUST remain
+intact and MUST NOT prevent a subsequent successful write.
 
 #### Scenario: Re-run after interrupted share
 
-- **WHEN** a previous share crashed between temp creation and rename leaving name.tmp behind
-- **THEN** the next share run succeeds, replaces the stale temp, and all bundle files are mode 0600
+- **WHEN** an earlier invocation left a temporary file behind
+- **THEN** a new invocation uses its own unique temporary name, succeeds with private output modes and preserves the unrelated leftover
 
 #### Scenario: Write failure mid-bundle
 
-- **WHEN** the disk fills during a bundle write
-- **THEN** the command exits nonzero and no partial temp files remain in the bundle directory
+- **WHEN** a bundle write fails during generation
+- **THEN** the command exits nonzero and removes its own incomplete temporary file without deleting another writer's files
