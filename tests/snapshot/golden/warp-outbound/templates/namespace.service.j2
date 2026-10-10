@@ -1,0 +1,29 @@
+[Unit]
+Description=Owned isolated WARP namespace
+Before=warp-svc.service ripdpi-transport-warp.service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/bin/python3 -Es /usr/local/libexec/ripdpi-warp/namespace.py prepare
+RemainAfterExit=true
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+# Namespace and nft ownership are the purpose of this root lifecycle job.
+RestrictNamespaces=net mnt
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_ADMIN CAP_DAC_OVERRIDE
+ReadWritePaths=/run /var/lib/ripdpi /etc/ripdpi/transport-egress
+
+[Install]
+WantedBy=multi-user.target

@@ -1,19 +1,19 @@
 ---
-id: "SEC-1791617841911853"
-title: "Enforce resolved destination isolation for P0 P1 and Hysteria2"
-kind: "bug"
-status: "backlog"
-area: "security"
-priority: "critical"
-risk: "high"
-owner: "primary"
-parent: "EPC-1791618453830051"
-blocked_by: ["SCT-1791617687019287"]
-spec_mode: "required"
-openspec_change: "resolved-destination-boundary"
-created: "2026-10-10"
-updated: "2026-10-10"
-related_tasks: ["SEC-1791471757439452", "SEC-1791545689674403", "ANS-1791562764586678"]
+id: SEC-1791617841911853
+title: Enforce resolved destination isolation for P0 P1 and Hysteria2
+kind: bug
+status: doing
+area: security
+priority: critical
+risk: high
+owner: primary
+parent: EPC-1791618453830051
+blocked_by: [SCT-1791617687019287]
+spec_mode: required
+openspec_change: resolved-destination-boundary
+created: 2026-10-10
+updated: 2026-10-10
+related_tasks: [SEC-1791471757439452, SEC-1791545689674403, ANS-1791562764586678]
 ---
 
 ## Goal

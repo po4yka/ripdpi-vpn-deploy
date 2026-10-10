@@ -397,7 +397,7 @@ def test_ingress_default_route_is_inert_and_documents_scoped_mark_routing() -> N
     assert "masquerade" not in policy
     assert "forward" not in policy
 
-    contract = str(yaml.safe_load((role / "tasks/enable.yml").read_text())[1])
+    contract = str(next(task for task in yaml.safe_load((role / "tasks/enable.yml").read_text()) if task["name"] == "Validate cascade ingress contract"))
     assert "cascade_ingress.routing_table | int > 0" in contract
     assert "cascade_ingress.fwmark | int > 0" in contract
 
@@ -551,3 +551,13 @@ def test_cascade_molecule_prepares_deterministic_nft_preflight_fixture() -> None
         assert copy_task["mode"] == "0755"
         assert '"$1 $2" = "list tables"' in copy_task["content"]
         assert "exit 64" in copy_task["content"]
+
+
+def test_inert_classifier_has_dedicated_credential_and_packet_authority():
+    service = (ROOT / 'ansible/roles/cascade-ingress/templates/cascade-classifier-proxy.service.j2').read_text()
+    assert 'ExecCondition=/usr/bin/false' in service
+    assert 'User=cascade-classifier' in service and 'Group=cascade-classifier' in service
+    assert 'LoadCredential=password:' in service and 'LoadCredential=policy:' in service
+    assert 'policy-loader.py verify --config /etc/ripdpi/transport-egress/policy.json' in service
+    assert 'CapabilityBoundingSet=CAP_NET_RAW' in service
+    assert 'BindsTo=ripdpi-transport-normalizer.service' in service

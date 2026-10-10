@@ -1,41 +1,13 @@
 ---
-# WARP outbound — installs Cloudflare WARP CLI on the host and registers
-# it in WARP+DoH mode. Xray's routing rules can then send selected
-# upstream traffic via the WARP exit, splitting the dual-role flow that
-# would otherwise mark our VPS as both ingress and egress on the same IP.
-#
-# Off by default. When enabled, the xray role consults
-# `warp_outbound.routing_tag` and `warp_outbound.routing_outbound_ip`
-# when building the routing block. Today this is a server-side install
-# only; the xray template integration is the next layer.
-
+# Optional vendor TUN backend for selected Xray routes. It never registers an
+# account or changes host DNS/routing; retained registration is required.
 warp_outbound:
-  # CLI install: package "cloudflare-warp" via Cloudflare's apt repo on
-  # Debian/Ubuntu. Set to false to skip install on systems that already
-  # have warp-cli or wgcf provisioned out of band.
+  # false admits only the already installed exact canonical vendor package.
   install_warp_cli: true
-  # Exact stable dpkg identity; example approved main-channel pin: 2026.8.2100.0.
-  # The enabled role refuses an omitted pin rather than selecting a repository candidate.
+  # Explicit public inventory/group_vars pin; it is not a SOPS secret.
   package_version: ""
-
-  # SHA-256 of Cloudflare's WARP apt signing key
-  # (https://pkg.cloudflareclient.com/pubkey.gpg), pinned at role level
-  # so the repository-key check is mandatory, never TOFU. The role fails
-  # closed when this pin is unset and refuses to converge on a key whose
-  # digest differs. After an upstream rotation: fetch the new key from a
-  # trusted network, verify it out-of-band, update this pin, deploy.
+  # Approved repository key digest; verify rotations before changing this pin.
   pubkey_sha256: "0f37fc298c98e88ee3c0ee68c95b69f1dba9eb477abe3167e13982105911264d"
-
-  # WARP mode. "warp+doh" tunnels everything; "proxy" exposes a SOCKS5
-  # listener on 127.0.0.1:40000 that Xray can target as an outbound.
-  # We default to proxy mode so Xray (not the whole host) routes through
-  # WARP. Whole-host warp mode would also reroute SSH egress and
-  # interfere with restic / monitoring outbound.
-  mode: proxy
-  socks_port: 40000
-
-  # Tag the WARP outbound under this name when xray builds routing
-  # rules. Operators can match on this tag in custom routing.
+  mode: tunnel_only
   routing_tag: warp-out
-
 warp_outbound_role_enabled: true

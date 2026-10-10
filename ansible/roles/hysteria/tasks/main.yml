@@ -1,3 +1,17 @@
 ---
-- name: Reconcile hysteria runtime lifecycle
-  ansible.builtin.include_tasks: "{{ 'enable.yml' if hysteria_role_enabled | bool else 'disable.yml' }}"
+- name: Reconcile hysteria runtime lifecycle with guarded recovery
+  block:
+    - name: Reconcile hysteria runtime lifecycle
+      ansible.builtin.include_tasks: "{{ 'enable.yml' if hysteria_role_enabled | bool else 'disable.yml' }}"
+  rescue:
+    - name: Restore the accepted protected generation after frontend staging failure
+      ansible.builtin.include_role:
+        name: transport-egress
+        tasks_from: rollback
+      when:
+        - hysteria_role_enabled | bool
+        - _transport_egress_transaction_started | default(false) | bool
+
+    - name: Report refused frontend candidate after guarded recovery
+      ansible.builtin.fail:
+        msg: Protected frontend candidate was refused; accepted-generation recovery was attempted when available.

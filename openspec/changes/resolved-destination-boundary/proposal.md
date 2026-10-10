@@ -14,6 +14,8 @@ Audit coverage: A01, A02; planning baseline `605ae0be18dcbe1c55e3e7d8658131b2e0c
 - Bind policy evaluation to the addresses actually dialed, including DNS retries and multi-address answers, without relying solely on an Xray routing strategy change.
 - Preserve positive public TCP and supported UDP forwarding, intended DNS resolution and documented trusted adapter entry points.
 - Add exact pinned-runtime positive and adversarial destination tests; retain privacy-safe failure diagnostics.
+- Reuse pinned Xray private egress gateways and final nftables UID boundaries.
+- Redesign optional WARP UDP through an isolated vendor tunnel-only backend, with no plaintext fallback and separate real-vendor acceptance.
 
 ## Capabilities
 
@@ -38,5 +40,5 @@ Audit coverage: A01, A02; planning baseline `605ae0be18dcbe1c55e3e7d8658131b2e0c
 - NEW: tests/unit/test_transport_destination_boundary.py
 - NEW: tests/integration/transport_destination_boundary/
 - NEW: docs/TRANSPORT-DESTINATION-POLICY.md
-- Planning only: no implementation, private-input mutation, provider action or deployment is authorized by these artifacts.
+- Current user authorization covers source implementation, isolated validation, local commits and a PR. Private-input mutation, provider registration and deployment remain separately authorized.
 - Dependency and prerequisite ownership is recorded in the portfolio and design; source-fixed predecessor evidence stays intact.

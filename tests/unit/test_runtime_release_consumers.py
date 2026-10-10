@@ -201,7 +201,7 @@ def test_xray_publishes_required_geoip_as_a_pinned_read_only_runtime_asset() -> 
     contract = asset["vars"]
 
     assert xray_defaults["xray_bundled_asset_dir"] == (
-        "{{ xray_install_dir }}/bundled-assets"
+        "{{ xray_runtime_bundled_asset_dir }}"
     )
     assert "vpn.enable_geodata" in xray_defaults["xray_asset_dir"]
     assert "xray_bundled_asset_dir" in xray_defaults["xray_asset_dir"]
@@ -236,7 +236,7 @@ def test_xray_publishes_required_geoip_as_a_pinned_read_only_runtime_asset() -> 
     assert caller["vars"]["xray_runtime_publish_geoip"] == (
         "{{ not (vpn.enable_geodata | default(false) | bool) }}"
     )
-    assert caller["vars"]["xray_runtime_asset_public_dir"] == ("{{ xray_asset_dir }}")
+    assert caller["vars"]["xray_runtime_asset_public_dir"] == ("{{ xray_install_dir }}/bundled-assets")
 
     validation_commands = [
         task["ansible.builtin.template"]["validate"]
@@ -249,13 +249,17 @@ def test_xray_publishes_required_geoip_as_a_pinned_read_only_runtime_asset() -> 
     ]
     expected = (
         "/usr/local/libexec/vpn-xray-validate "
-        "--asset-dir {{ xray_asset_dir | quote }} --config %s"
+        "--binary {{ xray_runtime_binary | quote }} --asset-dir {{ xray_asset_dir | quote }} --config %s"
     )
-    assert validation_commands == [expected, expected]
+    assert validation_commands[0].startswith('/usr/bin/python3 -c {{ lookup("ansible.builtin.file", role_path ~ "/files/xray_validate.py") | quote }}')
+    assert validation_commands[0].endswith(expected.split(" ", 1)[1])
+    assert validation_commands[1] == expected
     service = (ROOT / "ansible/roles/xray/templates/xray.service.j2").read_text(
         encoding="utf-8"
     )
     assert "Environment=XRAY_LOCATION_ASSET={{ xray_asset_dir }}" in service
+    assert "ExecStart={{ xray_runtime_binary }} run" in service
+    assert "Environment=XRAY_RUNTIME_BINARY={{ xray_runtime_binary }}" in service
 
     handlers = yaml.safe_load(
         (ROOT / "ansible/roles/xray/handlers/main.yml").read_text(encoding="utf-8")
@@ -268,7 +272,7 @@ def test_xray_publishes_required_geoip_as_a_pinned_read_only_runtime_asset() -> 
     assert validate_handler["ansible.builtin.command"]["argv"] == [
         "/usr/bin/env",
         "XRAY_LOCATION_ASSET={{ xray_asset_dir }}",
-        "/usr/local/bin/xray",
+        "{{ xray_runtime_binary }}",
         "run",
         "-test",
         "-config",

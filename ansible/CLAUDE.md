@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+**Protected frontends share one egress generation** — site stages the normalizer, private native gateways and both enabled Xray/Hysteria frontends before activation. Protected transport tags select both frontend consumers so internal authority changes cannot leave one with stale credentials. Host and namespace guards precede listeners; subscription-only and disabled profiles retire consumers first. Hysteria-only hosts acquire the shared pinned Xray runtime without creating a REALITY frontend.
+
 **Transport semantic admission precedes mutation** — site and credential
 rotation import `playbooks/tasks/transport-input-preflight.yml` before host
 changes. Enabled Xray, Hysteria and AWG roles use that same controller-side

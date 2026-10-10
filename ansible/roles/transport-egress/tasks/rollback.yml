@@ -1,0 +1,134 @@
+---
+- name: Restore the complete accepted guarded route after a candidate failure
+  when:
+    - not ansible_check_mode
+    - _transport_egress_transaction_started | default(false) | bool
+  block:
+    - name: Inspect rollback unit authority before stopping candidate services
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/ownership.py'') }}'
+      register: _transport_egress_rollback_owned
+      changed_when: false
+      no_log: true
+    - name: Stop candidate controller before restoring any credential file
+      ansible.builtin.systemd_service:
+        name: ripdpi-transport-generation.service
+        state: stopped
+      when: '''ripdpi-transport-generation.service'' in (_transport_egress_rollback_owned.stdout | from_json).units'
+    - name: Stop remaining candidate generation processes before restore
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+        state: stopped
+      loop: '{{ (_transport_egress_rollback_owned.stdout | from_json).units }}'
+      when: item != 'ripdpi-transport-generation.service'
+    - name: Inspect prior accepted generation before removing candidate vendor isolation
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/snapshot.py'') }}'
+          - inspect
+      register: _transport_egress_rollback_previous
+      changed_when: false
+      no_log: true
+    - name: Stop unaccepted legacy frontends before restoring any unsafe configuration
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+        state: stopped
+        enabled: false
+      loop: '{{ (_transport_egress_rollback_previous.stdout | from_json).units }}'
+      when:
+        - not (_transport_egress_rollback_previous.stdout | from_json).accepted
+        - item in ['xray.service', 'hysteria-server.service']
+    - name: Retire owned candidate WARP before removing its isolation files
+      ansible.builtin.include_role:
+        name: warp-outbound
+        tasks_from: retire
+      when: "'ripdpi-transport-warp.service' not in (_transport_egress_rollback_previous.stdout | from_json).units"
+    - name: Restore accepted files including policy and frontend credentials
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/snapshot.py'') }}'
+          - restore
+      changed_when: true
+      no_log: true
+    - name: Reload restored units before kernel and runtime recovery
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+    - name: Keep restored unaccepted frontend units stopped and boot-disabled
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+        state: stopped
+        enabled: false
+      loop: '{{ (_transport_egress_rollback_previous.stdout | from_json).units }}'
+      when:
+        - not (_transport_egress_rollback_previous.stdout | from_json).accepted
+        - item in ['xray.service', 'hysteria-server.service']
+    - name: Recreate only previously claimed accepted WARP namespace before policy restore
+      ansible.builtin.command:
+        argv: [python3, -Es, /usr/local/libexec/ripdpi-warp/namespace.py, prepare]
+      changed_when: true
+      no_log: true
+      when:
+        - (_transport_egress_rollback_previous.stdout | from_json).accepted
+        - "'ripdpi-transport-warp.service' in (_transport_egress_rollback_previous.stdout | from_json).units"
+    - name: Seal restored WARP recipient egress before vendor tunnel recovery
+      ansible.builtin.command:
+        argv: [python3, -Es, /usr/local/libexec/ripdpi-warp/namespace.py, guard]
+      register: _transport_egress_rollback_guard
+      changed_when: (_transport_egress_rollback_guard.stdout | from_json).changed | bool
+      no_log: true
+      when:
+        - (_transport_egress_rollback_previous.stdout | from_json).accepted
+        - "'ripdpi-transport-warp.service' in (_transport_egress_rollback_previous.stdout | from_json).units"
+    - name: Reapply and verify accepted host policy before restart
+      ansible.builtin.command:
+        argv:
+          - '{{ transport_egress_policy_loader }}'
+          - '{{ item }}'
+          - --config
+          - '{{ transport_egress_policy_config }}'
+      loop:
+        - apply
+        - verify
+      changed_when: item == 'apply'
+      no_log: true
+      when: (_transport_egress_rollback_previous.stdout | from_json).accepted
+    - name: Restore the accepted isolated retained-registration vendor route
+      ansible.builtin.include_role:
+        name: warp-outbound
+        tasks_from: activate
+      when:
+        - (_transport_egress_rollback_previous.stdout | from_json).accepted
+        - "'ripdpi-transport-warp.service' in (_transport_egress_rollback_previous.stdout | from_json).units"
+    - name: Restart the accepted controller and its exact frontend list
+      ansible.builtin.systemd_service:
+        name: ripdpi-transport-generation.service
+        state: started
+      when: (_transport_egress_rollback_previous.stdout | from_json).accepted
+    - name: Require actual accepted generation readiness after rollback
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -Es
+          - '{{ transport_egress_libexec_dir }}/generation.py'
+          - status
+          - --config
+          - '{{ transport_egress_config_dir }}/generation.json'
+          - --normalizer-config
+          - '{{ transport_egress_config_dir }}/normalizer.json'
+      register: _transport_egress_rollback_readiness
+      until: _transport_egress_rollback_readiness.rc == 0
+      retries: '{{ transport_egress_control_timeout_seconds }}'
+      delay: 1
+      changed_when: false
+      no_log: true
+      when: (_transport_egress_rollback_previous.stdout | from_json).accepted
+    - name: Finish the failed candidate transaction after accepted restoration
+      ansible.builtin.set_fact:
+        _transport_egress_transaction_started: false

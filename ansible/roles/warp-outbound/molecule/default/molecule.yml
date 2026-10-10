@@ -33,9 +33,8 @@ provisioner:
 verifier:
   name: ansible
 
-# Cloudflare WARP CLI cannot register in CI (no reachable Cloudflare
-# endpoint). The converge stubs out warp-cli + curl so role tasks
-# exercise real role success, CLI/health refusal and subsequent reconvergence.
+# Actual Linux namespace/veth/TUN lifecycle only. Registered vendor tunneling
+# and authenticated recipient packets have separate acceptance layers.
 scenario:
   test_sequence:
     - dependency

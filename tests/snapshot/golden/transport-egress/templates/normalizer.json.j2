@@ -1,0 +1,68 @@
+{
+    "backends": {
+        "direct": {
+            "address": "127.0.0.1",
+            "password": "snapshot direct_gateway_password authority 0000000000000000000000",
+            "port": 12090,
+            "udp_source_port_max": 17999,
+            "udp_source_port_min": 16000,
+            "username": "gateway-direct"
+        }
+    },
+    "limits": {
+        "connect_seconds": 5,
+        "handshake_seconds": 5,
+        "idle_seconds": 300,
+        "max_associations": 128,
+        "max_bindings_per_association": 128,
+        "max_connections": 256,
+        "max_datagram_bytes": 65507,
+        "max_pending_packets": 256,
+        "udp_quarantine_seconds": 240
+    },
+    "listeners": [
+        {
+            "address": "127.0.0.1",
+            "backend": "direct",
+            "frontend_uid": 1003,
+            "name": "direct_xray",
+            "password": "snapshot direct_xray_password authority 0000000000000000000000",
+            "port": 12080,
+            "udp_port_max": 13999,
+            "udp_port_min": 13000,
+            "username": "normalizer-direct-xray"
+        },
+        {
+            "address": "127.0.0.1",
+            "backend": "direct",
+            "frontend_uid": 1004,
+            "name": "direct_hysteria",
+            "password": "snapshot direct_hysteria_password authority 0000000000000000000000",
+            "port": 12081,
+            "udp_port_max": 14999,
+            "udp_port_min": 14000,
+            "username": "normalizer-direct-hysteria"
+        }
+    ],
+    "policy": {
+        "management_tcp_ports": [
+            22
+        ],
+        "management_udp_ports": [],
+        "owned_addresses": [
+            "198.51.100.10"
+        ]
+    },
+    "resolver": {
+        "attempts": 1,
+        "lookup_timeout_seconds": 5,
+        "nameservers": [
+            "1.1.1.1",
+            "8.8.8.8"
+        ],
+        "timeout_seconds": 1,
+        "workers": 4
+    },
+    "runtime_uid": 1001,
+    "schema_version": 1
+}

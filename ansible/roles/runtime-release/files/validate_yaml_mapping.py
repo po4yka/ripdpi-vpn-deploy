@@ -104,6 +104,20 @@ def _validate_hysteria(document: dict) -> None:
     if module.hysteria_errors({"masquerade_type": masquerade.get("type"),
                                "masquerade_url": proxy.get("url")}):
         raise ValueError("Hysteria masquerade is invalid")
+    outbounds = document.get("outbounds")
+    if not isinstance(outbounds, list) or len(outbounds) != 1:
+        raise ValueError("Hysteria requires one guarded outbound")
+    outbound = outbounds[0]
+    if not isinstance(outbound, dict) or set(outbound) != {"name", "type", "socks5"} or outbound.get("name") != "guarded-direct" or outbound.get("type") != "socks5":
+        raise ValueError("Hysteria outbound is invalid")
+    proxy_out = _mapping(outbound, "socks5")
+    if set(proxy_out) != {"addr", "username", "password"} or proxy_out.get("addr") != "127.0.0.1:12081" or proxy_out.get("username") != "normalizer-direct-hysteria":
+        raise ValueError("Hysteria gateway authority is invalid")
+    password = _string(proxy_out, "password")
+    if not re.fullmatch(r"[ -~]{32,128}", password):
+        raise ValueError("Hysteria gateway credential is invalid")
+    if "acl" in document or "resolver" in document:
+        raise ValueError("Hysteria recipient authority override is invalid")
     quic = _mapping(document, "quic")
     for key in (
         "initStreamReceiveWindow",

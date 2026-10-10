@@ -79,6 +79,7 @@ def test_role_profiles_reject_wrong_types_and_missing_nested_fields(
     valid = {
         "hysteria": {
             "listen": ":443",
+            "outbounds": [{"name": "guarded-direct", "type": "socks5", "socks5": {"addr": "127.0.0.1:12081", "username": "normalizer-direct-hysteria", "password": "synthetic internal authority 00000000000000"}}],
             "tls": {"cert": "/cert", "key": "/key"},
             "auth": {"type": "userpass", "userpass": {"alice": "secret"}},
             "bandwidth": {"up": "100 mbps", "down": "200 mbps"},

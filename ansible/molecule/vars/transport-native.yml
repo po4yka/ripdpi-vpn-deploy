@@ -1,0 +1,16 @@
+---
+transport_egress_secrets:
+  direct_xray_password: fixture-transport-direct-xray-password-authority-0001
+  direct_hysteria_password: fixture-transport-direct-hysteria-password-authority-0001
+  warp_xray_password: fixture-transport-warp-xray-password-authority-0001
+  direct_gateway_password: fixture-transport-direct-gateway-password-authority-0001
+  warp_gateway_password: fixture-transport-warp-gateway-password-authority-0001
+transport_native_xray_runtime:
+  version: v26.3.27
+  linux_amd64_sha256: 23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae
+  linux_arm64_sha256: 4d30283ae614e3057f730f67cd088a42be6fdf91f8639d82cb69e48cde80413c
+transport_native_hysteria_tls:
+  cert_pem: '{{ (lookup(''ansible.builtin.file'', playbook_dir ~ ''/../../../../molecule/full-stack/test-secrets.yaml'')
+    | from_yaml).hysteria.cert_pem }}'
+  key_pem: '{{ (lookup(''ansible.builtin.file'', playbook_dir ~ ''/../../../../molecule/full-stack/test-secrets.yaml'')
+    | from_yaml).hysteria.key_pem }}'

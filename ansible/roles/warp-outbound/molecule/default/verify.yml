@@ -1,179 +1,175 @@
 ---
-# Verify warp-outbound molecule scenario.
-# Asserts:
-#   1. warp-svc unit file present at expected path with correct ExecStart line.
-#   2. Actual repeated role convergence is idempotent.
-#   3. Real role CLI/health failure boundaries and subsequent reconvergence.
-
-- name: Verify warp-outbound role
+- name: Verify actual namespace ownership and TUN readiness boundary
   hosts: all
   become: true
   tasks:
-    - name: warp-svc unit file is present
-      ansible.builtin.stat:
-        path: /etc/systemd/system/warp-svc.service
-      register: warp_unit
-      failed_when: not warp_unit.stat.exists
-
-    - name: warp-svc unit has expected ExecStart entry
-      ansible.builtin.shell:
-        cmd: |
-          set -o pipefail
-          grep -q 'ExecStart=' /etc/systemd/system/warp-svc.service
-        executable: /bin/bash
+    - name: Require actual owned namespace authority
+      ansible.builtin.command:
+        argv: [python3, -Es, /usr/local/libexec/ripdpi-warp/namespace.py, inspect]
+      register: actual
       changed_when: false
-
-    - name: Repeat actual successful WARP convergence
-      ansible.builtin.include_role:
-        name: warp-outbound
-      vars: &warp_fixture_vars
-        vpn: {enable_warp_outbound: true}
-        warp_outbound: {package_version: '2026.8.2100.0', install_warp_cli: false, mode: proxy, socks_port: 40000}
-
-    - name: Require actual repeat CLI convergence to be idempotent
+    - name: Require recorded actual inode and veth indices
       ansible.builtin.assert:
         that:
-          - not warp_register.changed
-          - not warp_mode.changed
-          - not warp_port.changed
-          - not warp_connect.changed
-          - warp_trace.rc == 0
-          - "'warp=on' in warp_trace.stdout"
-
-    - name: Exercise actual CLI failure without inventing retry state
-      environment: {WARP_CLI_FIXTURE: connect-failed}
-      block:
-        - name: Run the actual role with a failed connect
-          ansible.builtin.include_role:
-            name: warp-outbound
-          vars: *warp_fixture_vars
-        - name: Fail if failed CLI connection was accepted
-          ansible.builtin.fail:
-            msg: Actual WARP role accepted CLI failure
-      rescue:
-        - name: Require actual Connect WARP failure
-          ansible.builtin.assert:
-            that:
-              - ansible_failed_task.name == 'Connect WARP'
-              - ansible_failed_result.rc == 1
-
-    - name: Exercise actual curl failure without inventing retry state
-      environment: {WARP_TRACE_FIXTURE: network-failed}
-      block:
-        - name: Run the actual role with a failed trace request
-          ansible.builtin.include_role:
-            name: warp-outbound
-          vars: *warp_fixture_vars
-        - name: Fail if trace transport failure was accepted
-          ansible.builtin.fail:
-            msg: Actual WARP role accepted trace transport failure
-      rescue:
-        - name: Require actual trace command failure
-          ansible.builtin.assert:
-            that:
-              - ansible_failed_task.name == 'Verify WARP exit IP is reachable'
-              - ansible_failed_result.rc == 7
-
-    - name: Reconverge the actual role after CLI and health failures
-      ansible.builtin.include_role:
-        name: warp-outbound
-      vars: *warp_fixture_vars
-
-    - name: Require actual successful recovered role health
+          - (actual.stdout | from_json).present
+          - (actual.stdout | from_json).record.namespace_inode | int > 0
+          - (actual.stdout | from_json).record.host_ifindex | int > 0
+          - (actual.stdout | from_json).record.peer_ifindex | int > 0
+    - name: Require absent TUN to refuse readiness
+      ansible.builtin.command:
+        argv: [python3, -Es, /usr/local/libexec/ripdpi-warp/namespace.py, tunnel]
+      register: absent
+      changed_when: false
+      failed_when: absent.rc == 0
+    - name: Create owned native kernel TUN fixture without a vendor identity
+      ansible.builtin.command:
+        argv: [ip, netns, exec, ripdpi-warp, ip, tuntap, add, dev, CloudflareWARP, mode, tun]
+      changed_when: true
+    - name: Keep down TUN outside recipient readiness
+      ansible.builtin.command:
+        argv: [python3, -Es, /usr/local/libexec/ripdpi-warp/namespace.py, tunnel]
+      register: down
+      changed_when: false
+      failed_when: down.rc == 0
+    - name: Bring owned TUN fixture up
+      ansible.builtin.command:
+        argv: [ip, -n, ripdpi-warp, link, set, CloudflareWARP, up]
+      changed_when: true
+    - name: Require verified actual UP TUN ifindex
+      ansible.builtin.command:
+        argv: [python3, -Es, /usr/local/libexec/ripdpi-warp/namespace.py, tunnel]
+      register: ready
+      changed_when: false
+    - name: Require positive native kernel interface identity
       ansible.builtin.assert:
         that:
-          - warp_trace.rc == 0
-          - "'warp=on' in warp_trace.stdout"
-          - not warp_connect.changed
-
-    - name: warp-cli stub was invoked (call log exists)
-      ansible.builtin.stat:
-        path: /tmp/warp-cli-calls.log
-      register: warp_call_log
-      failed_when: not warp_call_log.stat.exists
-
-    - name: warp-cli registration new was invoked
-      ansible.builtin.shell:
-        cmd: |
-          set -o pipefail
-          grep -q 'registration new' /tmp/warp-cli-calls.log
-        executable: /bin/bash
+          - (ready.stdout | from_json).tunnel_ifindex | int > 0
+    - name: Read outer native PID namespace identity
+      ansible.builtin.command:
+        argv: [python3, -c, "import os;print(os.stat('/proc/self/ns/pid').st_ino)"]
+      register: outer_pid_namespace
       changed_when: false
-
-    - name: warp-cli mode proxy was invoked
-      ansible.builtin.shell:
-        cmd: |
-          set -o pipefail
-          grep -q 'mode proxy' /tmp/warp-cli-calls.log
-        executable: /bin/bash
+    - name: Prepare sealed numeric vendor resolver fixture directory
+      ansible.builtin.file:
+        path: /etc/ripdpi/warp-outbound
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+    - name: Install exact private resolver input for production sandbox bind
+      ansible.builtin.copy:
+        dest: /etc/ripdpi/warp-outbound/resolv.conf
+        content: "nameserver 1.1.1.1\noptions timeout:1 attempts:1\n"
+        owner: root
+        group: root
+        mode: '0644'
+    - name: Install native vendor sandbox invariant probe
+      ansible.builtin.copy:
+        content: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/sandbox.py', rstrip=false) }}"
+        dest: /usr/local/libexec/warp-sandbox-probe.py
+        mode: '0755'
+    - name: Install exact production sandbox directives for a kernel boundary probe
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/molecule-vendor-sandbox.service
+        mode: '0644'
+        content: |
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/bin/python3 /usr/local/libexec/warp-sandbox-probe.py {{ outer_pid_namespace.stdout }}
+          {{ lookup('ansible.builtin.template', playbook_dir ~ '/../../templates/vendor-namespace.conf.j2') }}
+    - name: Run native isolation probe with the exact production sandbox
+      ansible.builtin.systemd_service:
+        name: molecule-vendor-sandbox.service
+        daemon_reload: true
+        state: started
+    - name: Read categorical native sandbox result
+      ansible.builtin.slurp:
+        src: /var/log/cloudflare-warp/probe.json
+      register: sandbox
+    - name: Require actual isolation and permitted tunnel device
+      ansible.builtin.assert:
+        that: (sandbox.content | b64decode | from_json).values() | list | unique == [true]
+    - name: Prepare private rollback state for an unaccepted first WARP candidate
+      ansible.builtin.file:
+        path: /var/lib/ripdpi/transport-egress
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+    - name: Capture the actual prior non-WARP snapshot before candidate activation
+      ansible.builtin.include_role:
+        name: transport-egress
+        tasks_from: begin
+    - name: Prepare exact vendor drop-in directory for an owned service fixture
+      ansible.builtin.file:
+        path: /etc/systemd/system/warp-svc.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Install a native retained-package unit without vendor execution
+      ansible.builtin.copy:
+        dest: /usr/lib/systemd/system/warp-svc.service
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Service]
+          Type=simple
+          ExecStart=/usr/bin/python3 -c "import signal,sys,time;signal.signal(signal.SIGTERM,lambda *_:sys.exit(0));time.sleep(3600)"
+          [Install]
+          WantedBy=multi-user.target
+    - name: Publish the actual candidate isolation drop-in
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/warp-svc.service.d/10-ripdpi-namespace.conf
+        content: "{{ lookup('ansible.builtin.template', playbook_dir ~ '/../../templates/vendor-namespace.conf.j2') }}"
+        owner: root
+        group: root
+        mode: '0644'
+    - name: Start the owned candidate through genuine isolated systemd authority
+      ansible.builtin.systemd_service:
+        name: warp-svc.service
+        daemon_reload: true
+        enabled: true
+        masked: false
+        state: started
+    - name: Exercise exact production rollback of the newly added WARP candidate
+      ansible.builtin.include_role:
+        name: transport-egress
+        tasks_from: rollback
+    - name: Inspect retained service authority after rollback removed the drop-in
+      ansible.builtin.command:
+        argv: [systemctl, show, warp-svc.service, '--property=ActiveState,MainPID,LoadState,UnitFileState']
+      register: rolled_back_vendor
       changed_when: false
-
-    - name: Cloudflare WARP apt source file is present (when install_warp_cli true)
+    - name: Require no candidate execution or default-unit reboot activation
+      ansible.builtin.assert:
+        that:
+          - "'ActiveState=inactive' in rolled_back_vendor.stdout_lines"
+          - "'MainPID=0' in rolled_back_vendor.stdout_lines"
+          - "'LoadState=masked' in rolled_back_vendor.stdout_lines"
+          - "'UnitFileState=masked' in rolled_back_vendor.stdout_lines"
+        fail_msg: "Retained candidate service metadata: {{ rolled_back_vendor.stdout_lines }}"
+    - name: Require the unaccepted candidate isolation drop-in was removed
       ansible.builtin.stat:
-        path: /etc/apt/sources.list.d/cloudflare-warp.list
-      register: warp_apt_source
-      # The converge stub sets install_warp_cli: false, so the file is
-      # absent; the check is a no-op. When install_warp_cli: true this
-      # assertion fires and validates the role placed the source file.
-      failed_when: false
-
-    - name: Cloudflare WARP GPG keyring is present (when install_warp_cli true)
-      ansible.builtin.stat:
-        path: /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
-      register: warp_gpg_keyring
-      # Same note as above — absent when install_warp_cli: false.
-      failed_when: false
-
-    - name: Reject a successful trace response from an inactive tunnel
-      environment:
-        WARP_TRACE_FIXTURE: warp-off
-      block:
-        - name: Run the actual role with the inactive-tunnel response
-          ansible.builtin.include_role:
-            name: warp-outbound
-          vars:
-            warp_outbound:
-              package_version: "2026.8.2100.0"
-              install_warp_cli: false
-              mode: proxy
-              socks_port: 40000
-
-        - name: Fail if the role accepts the inactive tunnel
-          ansible.builtin.fail:
-            msg: The actual WARP health gate accepted warp=off
-      rescue:
-        - name: Require failure from the role health gate
-          ansible.builtin.assert:
-            that:
-              - ansible_failed_task.name == 'Verify WARP exit IP is reachable'
-              - ansible_failed_result.rc == 0
-              - "'warp=off' in ansible_failed_result.stdout"
-
-    - name: Reject an empty signing-key pin before repository installation
-      block:
-        - name: Run the actual installer with an empty pin
-          ansible.builtin.include_role:
-            name: warp-outbound
-          vars:
-            warp_outbound:
-              package_version: "2026.8.2100.0"
-              install_warp_cli: true
-              pubkey_sha256: ""
-
-        - name: Fail if the role accepts an empty signing-key pin
-          ansible.builtin.fail:
-            msg: The actual WARP installer accepted an empty key pin
-      rescue:
-        - name: Require failure from the signing-key pin preflight
-          ansible.builtin.assert:
-            that:
-              - ansible_failed_task.name == 'Assert the repository signing key pin is present'
-
-    - name: Empty pin leaves the repository and key absent
-      ansible.builtin.stat:
-        path: "{{ item }}"
-      loop:
-        - /etc/apt/sources.list.d/cloudflare-warp.list
-        - /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
-      register: rejected_install_artifacts
-      failed_when: rejected_install_artifacts.stat.exists
+        path: /etc/systemd/system/warp-svc.service.d/10-ripdpi-namespace.conf
+      register: rolled_back_dropin
+    - name: Require rejected candidate cannot leave an active unisolated service
+      ansible.builtin.assert:
+        that: not rolled_back_dropin.stat.exists
+    - name: Retire exact owned empty namespace while retaining registration authority
+      ansible.builtin.command:
+        argv: [python3, -Es, /usr/local/libexec/ripdpi-warp/namespace.py, retire]
+      changed_when: true
+    - name: Recreate from retained bounded ownership to prove positive recovery
+      ansible.builtin.command:
+        argv: [python3, -Es, /usr/local/libexec/ripdpi-warp/namespace.py, prepare]
+      changed_when: true
+    - name: Require actual ownership after recreation
+      ansible.builtin.command:
+        argv: [python3, -Es, /usr/local/libexec/ripdpi-warp/namespace.py, inspect]
+      register: recovered
+      changed_when: false
+    - name: Require recovered bounded namespace
+      ansible.builtin.assert:
+        that: (recovered.stdout | from_json).present

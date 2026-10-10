@@ -1,0 +1,3 @@
+---
+- name: Prepare genuine isolated credential delivery
+  ansible.builtin.import_playbook: ../prepare-transport-credentials.yml

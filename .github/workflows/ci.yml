@@ -287,6 +287,7 @@ jobs:
           - firewall
           - intrusion_prevention
           - xray
+          - transport-egress
           - hysteria
           - naive
           - nginx-xhttp
@@ -550,10 +551,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 openssh-server e2fsprogs util-linux mount nginx openssl wireguard-tools unbound lynis prometheus-node-exporter
+            nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 openssh-server e2fsprogs util-linux mount nginx iproute2 openssl wireguard-tools unbound lynis prometheus-node-exporter
       - name: Execute native tests with UID and GID capabilities
         run: |
           sudo env \
+            "TRANSPORT_NATIVE_ISOLATED=1" \
             "ALERTMANAGER_BIN=$RUNNER_TEMP/alertmanager-0.28.1.linux-amd64/alertmanager" \
             "NAIVE_NATIVE_BINARY=$GITHUB_WORKSPACE/.cache/p2-native-caddy/caddy" \
             "AWG_NATIVE_GO_SOURCE=$GITHUB_WORKSPACE/.cache/native-transport-semantics/amneziawg-go-2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf" \

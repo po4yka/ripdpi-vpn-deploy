@@ -1,5 +1,5 @@
 ---
-- name: Converge Hysteria role with deterministic runtime-release artifacts
+- name: Converge Hysteria using genuine pinned runtime-release artifacts
   hosts: all
   become: true
   vars:
@@ -7,147 +7,40 @@
     hysteria_config_dir: /etc/hysteria
     hysteria_log_dir: /var/log/hysteria
     hysteria_port: 443
-    hysteria_port_range: ""
-    public_site_canonical_url: "https://vpn.example.test"
+    hysteria_port_range: ''
+    public_site_canonical_url: https://vpn.example.test
     hysteria_release_urls:
       amd64: file:///var/tmp/hysteria-molecule/hysteria-v2.8.2
       arm64: file:///var/tmp/hysteria-molecule/hysteria-v2.8.2-arm64
     hysteria:
-      version: "v2.8.2"
-      linux_amd64_sha256: "ff2fe5e3c9d0cc3ce2b219580faca6767b2ebe8de43511157b12edbe57ac88fc"
-      linux_arm64_sha256: "33cdb04ed03021bf9b67c34e2b15e385b72b596ee72fa481fc897f7fe51579bc"
-      cert_pem: |
-        -----BEGIN CERTIFICATE-----
-        STUB_CERT_FOR_MOLECULE
-        -----END CERTIFICATE-----
-      key_pem: |
-        -----BEGIN PRIVATE KEY-----
-        STUB_KEY_FOR_MOLECULE
-        -----END PRIVATE KEY-----
-      bandwidth_up: "100 mbps"
-      bandwidth_down: "200 mbps"
-      masquerade_url: "https://vpn.example.test"
+      version: v2.8.2
+      linux_amd64_sha256: b11bf0fb5f84a3f5c6baff3696e899539e68af4cee868c9203cfb896784ad3b0
+      linux_arm64_sha256: 802d77ae3ca37bdc235ec848edfaaa7cb9109007d9044f50b0746239269cb8cf
+      cert_pem: '{{ transport_native_hysteria_tls.cert_pem }}'
+      key_pem: '{{ transport_native_hysteria_tls.key_pem }}'
+      bandwidth_up: 100 mbps
+      bandwidth_down: 200 mbps
+      masquerade_url: https://vpn.example.test
       salamander_enabled: false
       clients:
         - name: alice
           password: stub-pw-1
         - name: bob
           password: stub-pw-2
+    vpn:
+      enable_xray_reality: false
+      enable_nginx_xhttp: false
+      enable_hysteria: true
+      enable_warp_outbound: false
+      enable_transport_egress: true
+      enable_geodata: false
+    xray: '{{ transport_native_xray_runtime }}'
   pre_tasks:
     - name: Create deterministic Hysteria fixture artifacts
       ansible.builtin.file:
         path: /var/tmp/hysteria-molecule
         state: directory
-        mode: "0755"
-
-    - name: Write deterministic Hysteria v2.8.2 artifact
-      ansible.builtin.copy:
-        dest: /var/tmp/hysteria-molecule/hysteria-v2.8.2
-        owner: root
-        group: root
-        mode: "0755"
-        content: |
-          #!/bin/sh
-          if [ "$1" = "server" ]; then
-            trap 'exit 0' TERM INT
-            while true; do
-              sleep 3600 &
-              wait $!
-            done
-          fi
-          printf '%s\n' 'v2.8.2'
-          exit 0
-
-    - name: Write deterministic Hysteria v2.8.3 artifact
-      ansible.builtin.copy:
-        dest: /var/tmp/hysteria-molecule/hysteria-v2.8.3
-        owner: root
-        group: root
-        mode: "0755"
-        content: |
-          #!/bin/sh
-          if [ "$1" = "server" ]; then
-            trap 'exit 0' TERM INT
-            while true; do
-              sleep 3600 &
-              wait $!
-            done
-          fi
-          printf '%s\n' 'v2.8.3'
-          exit 0
-
-    - name: Write deterministic Hysteria v2.8.2 arm64 artifact
-      ansible.builtin.copy:
-        dest: /var/tmp/hysteria-molecule/hysteria-v2.8.2-arm64
-        owner: root
-        group: root
-        mode: "0755"
-        content: |
-          #!/bin/sh
-          if [ "$1" = "server" ]; then
-            trap 'exit 0' TERM INT
-            while true; do
-              sleep 3600 &
-              wait $!
-            done
-          fi
-          printf '%s\n' 'v2.8.2-arm64'
-          exit 0
-
-    - name: Write deterministic Hysteria v2.8.3 arm64 artifact
-      ansible.builtin.copy:
-        dest: /var/tmp/hysteria-molecule/hysteria-v2.8.3-arm64
-        owner: root
-        group: root
-        mode: "0755"
-        content: |
-          #!/bin/sh
-          if [ "$1" = "server" ]; then
-            trap 'exit 0' TERM INT
-            while true; do
-              sleep 3600 &
-              wait $!
-            done
-          fi
-          printf '%s\n' 'v2.8.3-arm64'
-          exit 0
-
-    - name: Write deterministic Hysteria v2.8.4 artifact
-      ansible.builtin.copy:
-        dest: /var/tmp/hysteria-molecule/hysteria-v2.8.4
-        owner: root
-        group: root
-        mode: "0755"
-        content: |
-          #!/bin/sh
-          if [ "$1" = "server" ]; then
-            trap 'exit 0' TERM INT
-            while true; do
-              sleep 3600 &
-              wait $!
-            done
-          fi
-          printf '%s\n' 'v2.8.4'
-          exit 0
-
-    - name: Write deterministic Hysteria v2.8.4 arm64 artifact
-      ansible.builtin.copy:
-        dest: /var/tmp/hysteria-molecule/hysteria-v2.8.4-arm64
-        owner: root
-        group: root
-        mode: "0755"
-        content: |
-          #!/bin/sh
-          if [ "$1" = "server" ]; then
-            trap 'exit 0' TERM INT
-            while true; do
-              sleep 3600 &
-              wait $!
-            done
-          fi
-          printf '%s\n' 'v2.8.4-arm64'
-          exit 0
-
+        mode: '0755'
     - name: Pre-create system user (the role itself does this; molecule pre_tasks short-circuit get_url)
       ansible.builtin.user:
         name: hysteria
@@ -155,8 +48,39 @@
         shell: /usr/sbin/nologin
         home: /var/lib/hysteria
         create_home: true
-  # Use `roles:` (static binding) so the role's handlers (Restart
-  # hysteria, Reload systemd) register with the play and notify
-  # resolves correctly.
+    - name: Fetch verified Hysteria 2.8.2 amd64 fixture
+      ansible.builtin.get_url:
+        url: https://github.com/HyNetworks/hysteria/releases/download/app/v2.8.2/hysteria-linux-amd64
+        dest: /var/tmp/hysteria-molecule/hysteria-v2.8.2
+        checksum: sha256:b11bf0fb5f84a3f5c6baff3696e899539e68af4cee868c9203cfb896784ad3b0
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Fetch verified Hysteria 2.8.2 arm64 fixture
+      ansible.builtin.get_url:
+        url: https://github.com/HyNetworks/hysteria/releases/download/app/v2.8.2/hysteria-linux-arm64
+        dest: /var/tmp/hysteria-molecule/hysteria-v2.8.2-arm64
+        checksum: sha256:802d77ae3ca37bdc235ec848edfaaa7cb9109007d9044f50b0746239269cb8cf
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Fetch verified Hysteria 2.9.0 amd64 fixture
+      ansible.builtin.get_url:
+        url: https://github.com/HyNetworks/hysteria/releases/download/app/v2.9.0/hysteria-linux-amd64
+        dest: /var/tmp/hysteria-molecule/hysteria-v2.9.0
+        checksum: sha256:8225c8380f1ae8122921d4986c2b70976e9c6e6f87a977e7d0498a813f4f3e37
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Fetch verified Hysteria 2.9.0 arm64 fixture
+      ansible.builtin.get_url:
+        url: https://github.com/HyNetworks/hysteria/releases/download/app/v2.9.0/hysteria-linux-arm64
+        dest: /var/tmp/hysteria-molecule/hysteria-v2.9.0-arm64
+        checksum: sha256:a3ccc0a3e791b85710ef63d22304a6f7dea210259be71bcd70cf9a210a385454
+        owner: root
+        group: root
+        mode: '0755'
   roles:
     - role: hysteria
+  vars_files:
+    - ../../../../molecule/vars/transport-native.yml

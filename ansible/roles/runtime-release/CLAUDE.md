@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+**Hysteria candidates retain the destination boundary** — semantic YAML validation requires exactly the fixed guarded SOCKS outbound and rejects ACL or resolver substitutions. A parser-valid config cannot restore an unguarded direct route. Native runtime and full frontend tests remain separate from configuration shape checks.
+
 **Hysteria semantic validation has one companion source** — the Hysteria
 consumer installs `scripts/transport_semantics.py` beside the shared YAML
 validator. Repository execution resolves that canonical source; installed

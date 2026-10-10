@@ -1,0 +1,4 @@
+{% for address in transport_egress_normalizer_config.resolver.nameservers %}
+nameserver {{ address }}
+{% endfor %}
+options timeout:1 attempts:1

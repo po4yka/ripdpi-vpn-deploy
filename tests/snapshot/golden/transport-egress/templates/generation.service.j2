@@ -1,0 +1,30 @@
+[Unit]
+Description=Owned transport egress generation and frontend recovery
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+AmbientCapabilities=CAP_SETUID
+LoadCredential=config:/etc/ripdpi/transport-egress/generation.json
+LoadCredential=normalizer:/etc/ripdpi/transport-egress/normalizer.json
+ExecStart=/usr/bin/python3 -Es /usr/local/libexec/ripdpi-transport-egress/generation.py run --config %d/config --normalizer-config %d/normalizer
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=120
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+ReadWritePaths=/var/lib/ripdpi/transport-egress /run
+TasksMax=32
+LimitNOFILE=256

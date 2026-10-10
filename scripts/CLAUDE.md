@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+- `transport_private_authority.py` reads bounded private configuration and the observed systemd credential ACL contract. Its credential exception is restricted to the exact private per-unit directory on a read-only mount, with effective read authority only for root and the service UID; ordinary files remain owner-only. Install that companion beside normalizer and classifier consumers.
+
+**Recipient metadata has a fixed exit authority** — `transport_egress_config.py` constructs private fixed listeners and literal-only native gateways from admitted credentials and actual service UIDs. `transport_egress_host_context.py` reads kernel addresses and effective SSH/recovery ownership; `transport_egress_kernel.py` owns an atomic nft table and private receipt. The final output guard runs after earlier ACCEPT and destination rewrites. Unknown late hooks, packet duplication, TC/XDP and flow offload refuse admission. Resolver inputs remain numeric and sealed; no recipient domain is forwarded to a gateway.
+
 **Transport relationships share one validator** — `transport_semantics.py`
 validates globally unique client names and explicit cohort membership, effective
 AWG headers/bounds/interface,

@@ -3,6 +3,8 @@ Description=Hysteria 2 Server
 Documentation=https://v2.hysteria.network/
 After=network-online.target nss-lookup.target
 Wants=network-online.target
+BindsTo=ripdpi-transport-normalizer.service
+After=ripdpi-transport-normalizer.service
 
 [Service]
 User=hysteria
@@ -11,7 +13,7 @@ CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 NoNewPrivileges=true
 
-ExecStart=/usr/local/bin/hysteria server -c {{ hysteria_config_dir }}/config.yaml
+ExecStart={{ hysteria_install_root }}/releases/{{ hysteria.version }}/hysteria server -c {{ hysteria_config_dir }}/config.yaml
 Restart=on-failure
 RestartSec=5s
 

@@ -1,0 +1,33 @@
+[Unit]
+Description=Authenticated normalized transport egress
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=transport-normalizer
+Group=transport-normalizer
+LoadCredential=config:/etc/ripdpi/transport-egress/normalizer.json
+# Every process start resets native mapping state before fresh in-memory pools exist.
+ExecStartPre=+/usr/bin/python3 -Es /usr/local/libexec/ripdpi-transport-egress/generation.py prepare --config /etc/ripdpi/transport-egress/generation.json --normalizer-config /etc/ripdpi/transport-egress/normalizer.json
+ExecStart=/usr/bin/python3 -Es /usr/local/libexec/ripdpi-transport-egress/transport_egress_normalizer.py --config %d/config
+Restart=no
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_INET AF_INET6
+BindReadOnlyPaths=/etc/ripdpi/transport-egress/resolv.conf:/etc/resolv.conf
+BindReadOnlyPaths=/etc/ripdpi/transport-egress/nsswitch.conf:/etc/nsswitch.conf
+BindReadOnlyPaths=/etc/ripdpi/transport-egress/hosts:/etc/hosts
+TasksMax=276
+LimitNOFILE=1664

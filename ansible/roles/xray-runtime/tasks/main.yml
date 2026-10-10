@@ -200,8 +200,11 @@
 
 - name: Publish Xray runtime change state
   ansible.builtin.set_fact:
+    xray_runtime_binary: "{{ xray_install_dir }}/releases/{{ _xray_runtime_release_identity }}/xray"
+    xray_runtime_bundled_asset_dir: "{{ xray_install_dir }}/assets/geoip/releases/{{ xray.version }}"
     xray_runtime_changed: >-
       {{
+        (xray_runtime_changed | default(false) | bool) or (
         (
           (_xray_runtime_current.changed | bool)
           or (
@@ -214,5 +217,5 @@
         else (
           (_xray_runtime_binary_changed | default(false) | bool)
           or (_xray_runtime_geoip_changed | default(false) | bool)
-        )
+        ))
       }}

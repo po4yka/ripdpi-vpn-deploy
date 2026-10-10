@@ -1,0 +1,9 @@
+---
+galaxy_info:
+  namespace: ripdpi
+  role_name: transport_egress
+  author: repository maintainers
+  description: Private normalized transport egress with owned process generations
+  license: MIT
+  min_ansible_version: "2.16"
+dependencies: []

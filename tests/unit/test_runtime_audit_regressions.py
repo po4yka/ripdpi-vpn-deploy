@@ -11,6 +11,7 @@ import sys
 
 import pytest
 import yaml
+from transport_fixtures import guarded_xray_bytes
 
 from scripts.template_render import merge_render_vars, render_template
 
@@ -319,6 +320,7 @@ print(json.dumps({{"asset": os.environ["XRAY_LOCATION_ASSET"], "args": sys.argv[
         **os.environ,
         "PATH": str(binary_dir) + os.pathsep + os.environ["PATH"],
     }
+    (tmp_path / "config.json").write_text(guarded_xray_bytes())
     return binary, systemctl, environment
 
 
@@ -396,7 +398,7 @@ def test_xray_candidate_validation_can_use_explicit_unpublished_assets(tmp_path)
             "--asset-dir",
             "/candidate/assets",
             "--config",
-            "/candidate/config.json",
+            str(tmp_path / "config.json"),
         ],
         capture_output=True,
         text=True,

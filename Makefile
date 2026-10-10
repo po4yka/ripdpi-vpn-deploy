@@ -1065,6 +1065,17 @@ native-naive-build:
 native-transport-semantics-build:
 	TRANSPORT_NATIVE_ISOLATED=1 ./scripts/build-native-transport-semantics.sh
 
+# Complete destination-boundary lane in an explicitly owned isolated Linux lab.
+.PHONY: test-transport-destination-boundary
+test-transport-destination-boundary:
+	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 && test "$${TRANSPORT_NATIVE_ISOLATED:-}" = 1 || { echo "destination-boundary tests require an owned isolated Linux root environment" >&2; exit 1; }
+	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest \
+	  tests/unit/test_transport_egress_kernel_native.py \
+	  tests/unit/test_transport_normalizer_native.py \
+	  tests/unit/test_transport_frontend_boundary_native.py \
+	  tests/unit/test_transport_classifier_boundary_native.py \
+	  tests/unit/test_transport_warp_tun_native.py --fail-on-skip -v
+
 # Explicit Linux-only lane; run as root in a disposable runner/container.
 test-native-runtime:
 	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 || { echo "native runtime tests require a disposable Linux root environment" >&2; exit 1; }

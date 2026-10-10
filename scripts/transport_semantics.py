@@ -21,6 +21,10 @@ INTERFACE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,14}\Z")
 PLACEHOLDER = re.compile(r"REPLACE_WITH_[A-Z0-9_]+\Z")
 AWG_PARAMETERS = {"jc": 4, "jmin": 40, "jmax": 70, "s1": 50, "s2": 100}
 MAX_INPUT_BYTES = 4 * 1024 * 1024
+EGRESS_CREDENTIALS = (
+    "direct_xray_password", "direct_hysteria_password", "warp_xray_password",
+    "direct_gateway_password", "warp_gateway_password",
+)
 
 
 def key_valid(value: object, *, allow_placeholders: bool = False) -> bool:
@@ -241,11 +245,61 @@ def awg_errors(raw: object, defaults: object = None, cohort: object = None, *,
     return errors
 
 
+def egress_errors(raw: object, vpn: object = None, *, required: bool = False,
+                  allow_placeholders: bool = False) -> list[tuple[str, str]]:
+    """Validate private service authority without exposing credential values."""
+    vpn = vpn if isinstance(vpn, dict) else {}
+    xray_enabled = bool(vpn.get("enable_xray_reality", True)
+                        or vpn.get("enable_nginx_xhttp", False))
+    hysteria_enabled = bool(vpn.get("enable_hysteria", False))
+    active = required and (xray_enabled or hysteria_enabled)
+    if active and not vpn.get("enable_transport_egress", True):
+        return [("vpn.enable_transport_egress", "required for enabled proxy transports")]
+    if raw is None and not active:
+        return []
+    if not isinstance(raw, dict):
+        return [("transport_egress_secrets", "must be a credential mapping")]
+    errors = []
+    if set(raw) - set(EGRESS_CREDENTIALS):
+        errors.append(("transport_egress_secrets", "unknown credential field"))
+    needed = set()
+    if active:
+        needed.add("direct_gateway_password")
+        if xray_enabled:
+            needed.add("direct_xray_password")
+        if hysteria_enabled:
+            needed.add("direct_hysteria_password")
+        if xray_enabled and vpn.get("enable_warp_outbound", False):
+            needed.update(("warp_xray_password", "warp_gateway_password"))
+    values = set()
+    for name in EGRESS_CREDENTIALS:
+        if name not in raw:
+            if name in needed:
+                errors.append(("transport_egress_secrets." + name, "required for enabled path"))
+            continue
+        value = raw[name]
+        path = "transport_egress_secrets." + name
+        if (allow_placeholders and isinstance(value, str)
+                and PLACEHOLDER.fullmatch(value)):
+            continue
+        if (not isinstance(value, str) or not 32 <= len(value) <= 128
+                or any(ord(char) < 32 or ord(char) > 126 for char in value)
+                or PLACEHOLDER.fullmatch(value)):
+            errors.append((path, "must be a non-placeholder printable ASCII credential of 32 to 128 bytes"))
+        elif value in values:
+            errors.append((path, "service credentials must be distinct"))
+        else:
+            values.add(value)
+    return errors
+
+
 def transport_errors(doc: object, context: object = None, *, sections: list[str] | None = None,
                      allow_placeholders: bool = False, check_top_level_awg: bool = False) -> list[tuple[str, str]]:
     if not isinstance(doc, dict):
         return [("transport", "must be a mapping")]
     context = context if isinstance(context, dict) else {}
+    require_egress = bool(context.get("require_transport_egress",
+                                    sections is not None and "egress" in sections))
     if sections is None:
         vpn = context.get("vpn")
         if isinstance(vpn, dict):
@@ -258,6 +312,8 @@ def transport_errors(doc: object, context: object = None, *, sections: list[str]
                 sections.append("hysteria")
         else:
             sections = [name for name, field in (("xray", "xray"), ("awg", "amneziawg_secrets"), ("hysteria", "hysteria")) if field in doc]
+        if "transport_egress_secrets" in doc or context.get("require_transport_egress", False):
+            sections.append("egress")
     errors = []
     if "xray" in sections:
         errors.extend(cohort_errors(doc.get("xray")))
@@ -271,6 +327,10 @@ def transport_errors(doc: object, context: object = None, *, sections: list[str]
 
     if "hysteria" in sections:
         errors.extend(hysteria_errors(doc.get("hysteria"), context.get("public_site_canonical_url")))
+    if "egress" in sections:
+        errors.extend(egress_errors(doc.get("transport_egress_secrets"), context.get("vpn"),
+                                    required=require_egress,
+                                    allow_placeholders=allow_placeholders))
     return errors
 
 
@@ -306,7 +366,7 @@ def selected_context(context: object, sections: list[str] | None) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--section", action="append", choices=("xray", "awg", "hysteria"))
+    parser.add_argument("--section", action="append", choices=("xray", "awg", "hysteria", "egress"))
     parser.add_argument("--allow-placeholders", action="store_true")
     parser.add_argument("--check-top-level-awg", action="store_true")
     args = parser.parse_args()

@@ -1,0 +1,489 @@
+---
+- name: Verify real private TCP and UDP plus process-loss recovery
+  hosts: all
+  become: true
+  vars_files:
+    - vars/main.yml
+  tasks:
+    - name: Require current genuine generation readiness
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -Es
+          - /usr/local/libexec/ripdpi-transport-egress/generation.py
+          - status
+          - --config
+          - /etc/ripdpi/transport-egress/generation.json
+          - --normalizer-config
+          - /etc/ripdpi/transport-egress/normalizer.json
+      changed_when: false
+    - name: Prove actual frontend TCP and UDP public recipient echo
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - '{{ lookup(''ansible.builtin.file'', playbook_dir ~ ''/probe.py'') }}'
+      changed_when: false
+    - name: Stop admitted processes before controlled account-alias admission probes
+      ansible.builtin.systemd_service:
+        name: ripdpi-transport-generation.service
+        state: stopped
+    - name: Read actual normalizer numeric identity for the owned alias fixture
+      ansible.builtin.command:
+        argv: [id, -u, transport-normalizer]
+      register: native_normalizer_uid
+      changed_when: false
+    - name: Build non-UID input authority through the canonical controller builder
+      ansible.builtin.command:
+        argv:
+          - '{{ ansible_playbook_python }}'
+          - '{{ playbook_dir }}/../../../../../scripts/transport_egress_config.py'
+          - --input-only
+        stdin: '{{ {''vpn'': vpn, ''secrets'': transport_egress_secrets, ''owned_addresses'': [],
+          ''management_tcp_ports'': [22], ''management_udp_ports'': []} | to_json }}'
+      delegate_to: localhost
+      become: false
+      register: native_identity_input
+      changed_when: false
+      check_mode: false
+      no_log: true
+    - name: Exercise actual UID alias refusal before any role allocation
+      block:
+        - name: Create only the owned UID alias with a distinct foreign primary group
+          ansible.builtin.user:
+            name: molecule-normalizer-alias
+            uid: '{{ native_normalizer_uid.stdout | int }}'
+            non_unique: true
+            group: nogroup
+            system: true
+            shell: /usr/sbin/nologin
+            create_home: false
+        - name: Refuse shared credential authority through exact production prepare
+          block:
+            - name: Invoke production identity admission with the actual UID alias
+              ansible.builtin.include_role:
+                name: transport-egress
+                tasks_from: prepare
+              vars:
+                transport_egress_input_config: '{{ (native_identity_input.stdout | from_json).normalizer }}'
+            - name: Fail if a foreign UID alias was admitted
+              ansible.builtin.fail:
+                msg: Foreign credential UID alias was incorrectly admitted.
+          rescue:
+            - name: Require refusal before account group or package mutation
+              ansible.builtin.assert:
+                that: ansible_failed_task.name == 'Inspect existing transport identities without mutation'
+      always:
+        - name: Remove only the owned UID alias after stopped-process admission
+          ansible.builtin.user:
+            name: molecule-normalizer-alias
+            state: absent
+    - name: Prepare only the unused owned orphan service group for admission probes
+      ansible.builtin.group:
+        name: transport-warp-gateway
+        system: true
+        state: present
+    - name: Exercise foreign explicit member refusal in an orphan named group
+      block:
+        - name: Add one actual foreign group member in the owned fixture
+          ansible.builtin.command:
+            argv: [gpasswd, --add, root, transport-warp-gateway]
+          changed_when: true
+        - name: Require production helper to refuse occupied orphan group before user allocation
+          ansible.builtin.command:
+            argv:
+              - python3
+              - -c
+              - '{{ lookup(''ansible.builtin.file'', playbook_dir ~ ''/../../files/identity.py'') }}'
+            stdin: '["transport-warp-gateway"]'
+          register: orphan_refusal
+          changed_when: false
+          failed_when: orphan_refusal.rc == 0 or orphan_refusal.stderr | trim != 'transport-identity-refused'
+      always:
+        - name: Remove only the fixture group membership before positive admission
+          ansible.builtin.command:
+            argv: [gpasswd, --delete, root, transport-warp-gateway]
+          changed_when: true
+    - name: Admit the actual nonzero empty unshared orphan group without inventing a UID
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - '{{ lookup(''ansible.builtin.file'', playbook_dir ~ ''/../../files/identity.py'') }}'
+        stdin: '["transport-warp-gateway"]'
+      register: orphan_admission
+      changed_when: false
+    - name: Require positive unresolved user admission with the existing private group
+      ansible.builtin.assert:
+        that:
+          - (orphan_admission.stdout | from_json).missing == ['transport-warp-gateway']
+          - (orphan_admission.stdout | from_json).missing_groups == []
+          - (orphan_admission.stdout | from_json).uids == {}
+    - name: Remove only the unused owned orphan group fixture
+      ansible.builtin.group:
+        name: transport-warp-gateway
+        state: absent
+    - name: Require complete ordinary actual account admission after alias cleanup
+      ansible.builtin.include_role:
+        name: transport-egress
+        tasks_from: prepare
+      vars:
+        transport_egress_input_config: '{{ (native_identity_input.stdout | from_json).normalizer }}'
+    - name: Recover the accepted generation after actual account authority admission
+      ansible.builtin.systemd_service:
+        name: ripdpi-transport-generation.service
+        state: started
+    - name: Require authenticated recovery after account admission probes
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -Es
+          - /usr/local/libexec/ripdpi-transport-egress/generation.py
+          - status
+          - --config
+          - /etc/ripdpi/transport-egress/generation.json
+          - --normalizer-config
+          - /etc/ripdpi/transport-egress/normalizer.json
+      register: account_recovered
+      until: account_recovered.rc == 0
+      retries: 30
+      delay: 1
+      changed_when: false
+    - name: Check actual expected gateway UID through production process inspection
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -Es
+          - -c
+          - >-
+            import sys;sys.path.insert(0,'/usr/local/libexec/ripdpi-transport-egress');import generation as g;
+            c=g.Controller(g.private_json('/etc/ripdpi/transport-egress/generation.json'),
+            g.private_json('/etc/ripdpi/transport-egress/normalizer.json'));
+            c.state('ripdpi-transport-direct.service')
+      changed_when: false
+    - name: Stop accepted generation before an owned runtime identity override
+      ansible.builtin.systemd_service:
+        name: ripdpi-transport-generation.service
+        state: stopped
+    - name: Prepare owned direct gateway override directory
+      ansible.builtin.file:
+        path: /etc/systemd/system/ripdpi-transport-direct.service.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Exercise actual root gateway refusal while recipients remain stopped
+      block:
+        - name: Install owned root UID override for the native negative proof
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/ripdpi-transport-direct.service.d/99-molecule-identity.conf
+            content: "[Service]\nUser=root\nGroup=root\n"
+            owner: root
+            group: root
+            mode: '0644'
+        - name: Start real pinned gateway with the disallowed actual UID
+          ansible.builtin.systemd_service:
+            name: ripdpi-transport-direct.service
+            daemon_reload: true
+            state: started
+        - name: Require production actual MainPID UID admission to refuse root
+          ansible.builtin.command:
+            argv:
+              - python3
+              - -Es
+              - -c
+              - >-
+                import sys;sys.path.insert(0,'/usr/local/libexec/ripdpi-transport-egress');import generation as g;
+                c=g.Controller(g.private_json('/etc/ripdpi/transport-egress/generation.json'),
+                g.private_json('/etc/ripdpi/transport-egress/normalizer.json'));
+                c.state('ripdpi-transport-direct.service')
+          register: root_gateway_refusal
+          changed_when: false
+          failed_when: root_gateway_refusal.rc == 0 or 'generation-process-identity' not in root_gateway_refusal.stderr
+      always:
+        - name: Stop only the owned invalid gateway process before removing the override
+          ansible.builtin.systemd_service:
+            name: ripdpi-transport-direct.service
+            state: stopped
+        - name: Remove only the owned runtime identity override
+          ansible.builtin.file:
+            path: /etc/systemd/system/ripdpi-transport-direct.service.d/99-molecule-identity.conf
+            state: absent
+        - name: Recover accepted generation with the declared actual gateway UID
+          ansible.builtin.systemd_service:
+            name: ripdpi-transport-generation.service
+            daemon_reload: true
+            state: started
+    - name: Require real accepted UID readiness after invalid override removal
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -Es
+          - /usr/local/libexec/ripdpi-transport-egress/generation.py
+          - status
+          - --config
+          - /etc/ripdpi/transport-egress/generation.json
+          - --normalizer-config
+          - /etc/ripdpi/transport-egress/normalizer.json
+      register: identity_recovered
+      until: identity_recovered.rc == 0
+      retries: 30
+      delay: 1
+      changed_when: false
+    - name: Prove actual public TCP and UDP after expected UID recovery
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - '{{ lookup(''ansible.builtin.file'', playbook_dir ~ ''/probe.py'') }}'
+      changed_when: false
+    - name: Kill genuine normalizer to exercise autonomous paired reset
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - kill
+          - --signal=SIGKILL
+          - --kill-whom=main
+          - ripdpi-transport-normalizer.service
+      changed_when: true
+    - name: Require autonomous frontend and mapping-generation recovery
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -Es
+          - /usr/local/libexec/ripdpi-transport-egress/generation.py
+          - status
+          - --config
+          - /etc/ripdpi/transport-egress/generation.json
+          - --normalizer-config
+          - /etc/ripdpi/transport-egress/normalizer.json
+      register: recovered
+      until: recovered.rc == 0
+      retries: 30
+      delay: 1
+      changed_when: false
+    - name: Prove public TCP and UDP remain usable after recovery
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - '{{ lookup(''ansible.builtin.file'', playbook_dir ~ ''/probe.py'') }}'
+      changed_when: false
+    - name: Stop the complete accepted generation before emulating reboot table loss
+      ansible.builtin.systemd_service:
+        name: ripdpi-transport-generation.service
+        state: stopped
+    - name: Verify every managed consumer is definitively stopped
+      ansible.builtin.command:
+        argv: [systemctl, show, '{{ item }}', '--property=ActiveState,MainPID']
+      loop:
+        - xray.service
+        - ripdpi-transport-normalizer.service
+        - ripdpi-transport-direct.service
+      register: stopped_consumers
+      changed_when: false
+      failed_when: "'ActiveState=inactive' not in stopped_consumers.stdout_lines or 'MainPID=0' not in stopped_consumers.stdout_lines"
+    - name: Remove only the owned guard table to emulate reboot kernel state loss
+      ansible.builtin.command:
+        argv: [nft, delete, table, inet, ripdpi_transport]
+      changed_when: true
+    - name: Restart the accepted controller without Ansible policy convergence
+      ansible.builtin.systemd_service:
+        name: ripdpi-transport-generation.service
+        state: started
+    - name: Require genuine autonomous guard and frontend recovery after table loss
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -Es
+          - /usr/local/libexec/ripdpi-transport-egress/generation.py
+          - status
+          - --config
+          - /etc/ripdpi/transport-egress/generation.json
+          - --normalizer-config
+          - /etc/ripdpi/transport-egress/normalizer.json
+      register: reboot_recovered
+      until: reboot_recovered.rc == 0
+      retries: 30
+      delay: 1
+      changed_when: false
+    - name: Verify actual restored kernel guard authority after controller recovery
+      ansible.builtin.command:
+        argv:
+          - /usr/local/libexec/ripdpi-transport-egress/policy-loader.py
+          - verify
+          - --config
+          - /etc/ripdpi/transport-egress/policy.json
+      changed_when: false
+    - name: Prove public TCP and UDP after kernel table loss recovery
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - '{{ lookup(''ansible.builtin.file'', playbook_dir ~ ''/probe.py'') }}'
+      changed_when: false
+    - name: Read accepted frontend permissions without exposing credentials
+      ansible.builtin.stat:
+        path: /etc/xray/config.json
+        checksum_algorithm: sha256
+      register: accepted_frontend
+      no_log: true
+    - name: Read accepted genuine helper authority privately
+      ansible.builtin.stat:
+        path: /usr/local/libexec/vpn-xray-validate
+        checksum_algorithm: sha256
+      register: accepted_helper
+    - name: Begin actual whole-route candidate transaction
+      ansible.builtin.include_role:
+        name: transport-egress
+        tasks_from: begin
+    - name: Publish changed genuine helper revision inside the candidate transaction
+      ansible.builtin.copy:
+        content: |-
+          {{ lookup('ansible.builtin.file', playbook_dir ~ '/../../../xray/files/xray_validate.py', rstrip=false) ~ '
+          # Owned candidate validation revision.
+          ' }}
+        dest: /usr/local/libexec/vpn-xray-validate
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Inject owned invalid frontend publication for rollback exercise
+      ansible.builtin.copy:
+        dest: /etc/xray/config.json
+        content: invalid-json
+        owner: root
+        group: root
+        mode: '0600'
+      no_log: true
+    - name: Confirm genuine runtime refuses injected frontend candidate
+      ansible.builtin.command:
+        argv:
+          - /opt/xray/releases/v26.3.27-archive/xray
+          - run
+          - -test
+          - -config
+          - /etc/xray/config.json
+      register: rejected_frontend
+      changed_when: false
+      failed_when: rejected_frontend.rc == 0
+      no_log: true
+    - name: Exercise complete production rollback entrypoint
+      ansible.builtin.include_role:
+        name: transport-egress
+        tasks_from: rollback
+    - name: Read restored frontend authority privately
+      ansible.builtin.stat:
+        path: /etc/xray/config.json
+        checksum_algorithm: sha256
+      register: restored_frontend
+      no_log: true
+    - name: Require original bytes and mode0640 group restoration
+      ansible.builtin.assert:
+        that:
+          - accepted_frontend.stat.checksum == restored_frontend.stat.checksum
+          - accepted_frontend.stat.gid == restored_frontend.stat.gid
+          - restored_frontend.stat.mode == '0640'
+      no_log: true
+    - name: Read restored genuine helper authority
+      ansible.builtin.stat:
+        path: /usr/local/libexec/vpn-xray-validate
+        checksum_algorithm: sha256
+      register: restored_helper
+    - name: Require original validation helper bytes after rejected candidate
+      ansible.builtin.assert:
+        that: accepted_helper.stat.checksum == restored_helper.stat.checksum
+    - name: Prove actual TCP and UDP completion after whole-route rollback
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - '{{ lookup(''ansible.builtin.file'', playbook_dir ~ ''/probe.py'') }}'
+      changed_when: false
+    - name: Read accepted immutable executable and asset checksums
+      ansible.builtin.stat:
+        path: '{{ item }}'
+        checksum_algorithm: sha256
+      loop:
+        - /opt/xray/releases/v26.3.27-archive/xray
+        - /opt/xray/assets/geoip/releases/v26.3.27/geoip.dat
+      register: accepted_authority
+    - name: Install a different actual stable runtime before a rejected candidate
+      ansible.builtin.include_role:
+        name: xray-runtime
+      vars:
+        xray:
+          version: v26.2.6
+          linux_amd64_sha256: 29ce535b56e207a406ffa1c2d4842dcc410be003eff8ec508bb732abc9f8e385
+          linux_arm64_sha256: b52d8263453fbd6f4747fd6a1ecf70cd43a664243615dc892ea4674c01b2b5ee
+        xray_runtime_publish_geoip: true
+    - name: Read the actual different installed public runtime version
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/xray
+          - version
+      register: changed_version
+      changed_when: false
+    - name: Require genuine changed executable authority
+      ansible.builtin.assert:
+        that: '''26.2.6'' in changed_version.stdout'
+    - name: Load accepted normalizer authority privately for candidate refusal
+      ansible.builtin.slurp:
+        src: /etc/ripdpi/transport-egress/normalizer.json
+      register: accepted_normalizer
+      no_log: true
+    - name: Submit an invalid candidate without replacing the accepted route
+      block:
+        - name: Refuse zero-identity candidate through actual role admission
+          ansible.builtin.include_role:
+            name: transport-egress
+            tasks_from: stage
+          vars:
+            transport_egress_normalizer_config: '{{ (accepted_normalizer.content | b64decode | from_json) |
+              combine({''runtime_uid'': 0}) }}'
+        - name: Refuse an unexpectedly admitted invalid candidate
+          ansible.builtin.fail:
+            msg: Invalid candidate unexpectedly admitted.
+      rescue:
+        - name: Require the candidate failed its genuine admission step
+          ansible.builtin.assert:
+            that: ansible_failed_task.name == 'Validate complete normalizer configuration before publication'
+    - name: Read immutable executable and assets after pin publication/refusal
+      ansible.builtin.stat:
+        path: '{{ item }}'
+        checksum_algorithm: sha256
+      loop:
+        - /opt/xray/releases/v26.3.27-archive/xray
+        - /opt/xray/assets/geoip/releases/v26.3.27/geoip.dat
+      register: preserved_authority
+    - name: Require accepted executable and asset bytes preserved
+      ansible.builtin.assert:
+        that:
+          - accepted_authority.results[0].stat.checksum == preserved_authority.results[0].stat.checksum
+          - accepted_authority.results[1].stat.checksum == preserved_authority.results[1].stat.checksum
+    - name: Restart accepted generation after different public runtime publication
+      ansible.builtin.systemd_service:
+        name: ripdpi-transport-generation.service
+        state: restarted
+    - name: Require accepted immutable-path restart readiness
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -Es
+          - /usr/local/libexec/ripdpi-transport-egress/generation.py
+          - status
+          - --config
+          - /etc/ripdpi/transport-egress/generation.json
+          - --normalizer-config
+          - /etc/ripdpi/transport-egress/normalizer.json
+      register: immutable_recovered
+      until: immutable_recovered.rc == 0
+      retries: 30
+      delay: 1
+      changed_when: false
+    - name: Prove actual TCP and UDP after immutable authority recovery
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - '{{ lookup(''ansible.builtin.file'', playbook_dir ~ ''/probe.py'') }}'
+      changed_when: false

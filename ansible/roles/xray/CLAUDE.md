@@ -2,6 +2,16 @@
 
 ## Design decisions
 
+- Recipient address isolation belongs to the canonical normalizer and final packet guard. Do not add a GeoIP-only private rule to the AsIs frontend: asset ranges can reject literals while names resolve to the same admitted address downstream.
+
+- Protected Xray service identity is fixed at `xray:xray`, matching actual shared frontend UID admission. Alternate runtime user/group settings fail before host mutation; the controller cannot report a different probe identity as frontend readiness.
+
+- Candidate validation runs private staged source before quiescence. Detect validator byte changes without publishing them; installed validators and semantic companions are snapshotted and published only after the whole-route transaction opens. A rejected helper update cannot invalidate the accepted rollback receipt.
+
+**Accepted units pin immutable executables** — frontend units execute their verified release paths directly. Publishing installer CLI links cannot change the executable used by an accepted unit after a rejected candidate. Xray candidate validation also selects the planned immutable executable and bundled asset release; runtime-aware checks derive both authorities from the loaded unit.
+
+**Recipient egress is authenticated and guarded** — the direct and optional WARP outbounds target fixed local normalizer listeners; no Freedom or DNS recipient outbound remains. Requested DNS destinations and non-A payloads retain their authority. Runtime-aware validation rejects an unguarded rollback topology before native parsing. Loss of the normalizer stops the frontend; the owned generation controller resets gateway mappings and recovers enabled frontends.
+
 **Explicit cohorts require admitted membership** — the shared transport
 preflight runs before helper installation or runtime publication. Every cohort
 has a unique name and explicit nonempty, unique references to known clients.

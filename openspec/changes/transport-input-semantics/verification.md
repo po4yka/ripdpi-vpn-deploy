@@ -1,7 +1,7 @@
 ---
 task_id: SCT-1791617687019287
 change: transport-input-semantics
-commit_sha: null
+commit_sha: 6202c7ec93c075b6b5fd3b40065204e4f59d9461
 local: required
 local_evidence: complete affected tests, exact native cases and full source gates after implementation
 remote_ci: required
@@ -22,7 +22,7 @@ artifact_evidence: validated contracts, private redacted outputs and requirement
 
 ## Requirement evidence
 
-Source observations below were obtained in the dedicated implementation worktree based on `8828ffebdbe42ad17d5f98433db78db1a0aa95eb`. The final implementation SHA and terminal hosted checks remain pending; this record does not claim deployment or fleet acceptance.
+Source observations below were obtained in the dedicated implementation worktree based on `8828ffebdbe42ad17d5f98433db78db1a0aa95eb` and committed at `6202c7ec93c075b6b5fd3b40065204e4f59d9461`. Terminal hosted checks on the integrated implementation remain pending; this record does not claim deployment or fleet acceptance.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|

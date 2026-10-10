@@ -213,6 +213,33 @@ def merge_render_vars() -> dict:
             "real_vps_awg_nat_apply_prerequisites": True,
         }
     )
+    # Concrete synthetic identities are render inputs only, never host readiness.
+    from transport_egress_config import build as build_egress
+    egress = build_egress({
+        'vpn': {'enable_xray_reality': True, 'enable_nginx_xhttp': True,
+                'enable_hysteria': True, 'enable_warp_outbound': False},
+        'secrets': {name: 'snapshot '+name+' authority 0000000000000000000000'
+                    for name in merged['transport_egress_secrets']},
+        'normalizer_uid': 1001, 'gateway_uid': 1002,
+        'frontend_uids': {'xray': 1003, 'hysteria': 1004},
+        'owned_addresses': ['198.51.100.10'],
+        'management_tcp_ports': [22], 'management_udp_ports': [],
+    })
+    merged['transport_egress_normalizer_config'] = egress['normalizer']
+    merged['transport_egress_input_config'] = egress['normalizer']
+    merged['transport_egress_policy_config_data'] = egress['policy']
+    merged['_transport_egress_backend'] = egress['normalizer']['backends']['direct']
+    merged['_transport_egress_backend_name'] = 'direct'
+    merged['_transport_egress_gateway_unit_list'] = ['ripdpi-transport-direct.service']
+    merged['transport_egress_frontend_units'] = ['xray.service', 'hysteria-server.service']
+    merged['transport_egress_normalizer_uid'] = 1001
+    merged['transport_egress_runtime_binary'] = '/opt/xray/releases/v26.3.27/xray'
+    merged['xray_runtime_binary'] = '/opt/xray/releases/v26.3.27/xray'
+    merged['xray_runtime_bundled_asset_dir'] = '/opt/xray/assets/geoip/releases/v26.3.27'
+    merged['xray_bundled_asset_dir'] = merged['xray_runtime_bundled_asset_dir']
+    merged['xray_asset_dir'] = (merged['geodata']['install_dir'] if merged['vpn'].get('enable_geodata', False) else merged['xray_bundled_asset_dir'])
+    from transport_destination_policy import IPV4_DENY, IPV6_DENY
+    merged['_transport_egress_forbidden'] = {'ipv4': list(IPV4_DENY), 'ipv6': list(IPV6_DENY)}
     return merged
 
 

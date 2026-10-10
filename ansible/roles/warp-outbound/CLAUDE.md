@@ -1,46 +1,30 @@
-# role: warp-outbound — server egress through Cloudflare WARP
+# role: warp-outbound — isolated vendor tunnel backend
 
 ## Design decisions
 
-**Recovery evidence exercises actual role outcomes** — Molecule's stateful CLI fixture changes only in response to real role commands, supports idempotence, and injects CLI and trace transport failures before successful reconvergence. `warp=off` remains rejected. No test increments an invented retry counter; this proves role reconvergence, not automatic vendor retries or live registration.
+One exact stable vendor package and the canonical `warp-svc.service` own retained registration state. The role never registers an account. A private bounded ownership record claims only the canonical vendor unit and one namespace/veth pair; foreign units, drop-ins or namespace authority refuse before mutation.
 
-The role requires an explicit stable `package_version`, validates native APT
-metadata, installs that exact dpkg version and checks the installed identity
-before any registration, mode or route changes. Out-of-band installations must
-also present the approved dpkg identity; no mutable latest-package selection remains.
+The vendor runs in `tunnel_only` inside `ripdpi-warp`, with its private numeric resolver and host bus inaccessible. Package installation suppresses both maintainer-script and direct systemd autostart before namespace guard publication. Host management routing and DNS remain outside the namespace.
 
-**Health-gated activation** — `vpn.enable_warp_outbound` flips the toggle,
-but the role only swings outbound routing *after* WARP confirms it's up.
-Failure leaves the previous egress intact.
-`site.yml` runs this gate before Xray, including `--tags xray`; a later
-nginx handler flush must never activate unverified WARP routes first.
-
-**SOCKS5 at 127.0.0.1:40000** — WARP runs in `proxy` mode; Xray's
-`outbound.protocol: socks` points at it. Don't try kernel-level routing
-through WARP — too easy to lock yourself out.
+Recipient WARP traffic uses a distinct native gateway identity. Namespace policy admits only the verified current UP TUN ifindex; underlay fallback remains denied. TUN replacement updates host and namespace policy together and resets the paired recipient generation. Retirement preserves the vendor package and registration state.
 
 ## What's done well
 
-- **Reversible** — disabling the toggle and re-running puts outbound routing
-  back.
-- **Current CLI syntax only** — the role runs `warp-cli --accept-tos mode
-  <mode>`; there is no fallback to the older `warp-cli set-mode` form.
+- Namespace ownership uses recorded inode and exact veth ifindices; no broad interface or process cleanup occurs.
+- Readiness checks actual kernel TUN kind, type and state, rather than vendor status text alone.
+- The exact signing-key checksum and stable package identity remain mandatory.
 
 ## Pitfalls
 
-- **WARP packages have a Cloudflare repo with a key rotation history** —
-  pin the apt-key once and don't auto-refresh; manual update via the
-  release-line tracker.
-- **WARP and IPv6 don't get along on some kernels** — disable v6 on the WARP
-  interface if you see ICMPv6 floods.
-- **`warp-cli register` runs unattended-only on first boot** — if it fails
-  mid-deploy, manual `warp-cli register` is needed before re-running.
-- **WARP changes egress IP** — anything keying on the server's public IPv4
-  (asn-drift, burn-check) sees a different reality through WARP. Probes must
-  account for this when WARP is on.
-- **On-host health is vantage-limited** — a successful local SOCKS check does not
-  establish reachability from a filtered client path. That requires scoped client
-  acceptance after deployment or a version/configuration change.
-- Disable stops the vendor unit only when this role's private bounded ownership
-  record claims it; registration, vendor package and recovery state are retained.
-  An unrecorded prior vendor installation is preserved for explicit owner review.
+- No local fixture proves registered vendor TCP/UDP capability. Real registered tunnel acceptance requires separately authorized vendor account and client evidence.
+- Vendor root authority is isolated because tunnel management requires network administration. Recipient gateway and normalizer processes retain empty capabilities.
+- A pinned package upgrade must not start the vendor outside its namespace or bypass guard publication.
+- Registration output may contain private identity details; CLI tasks stay under `no_log`.
+- The public package version comes from inventory or group vars, not SOPS. Same-pin redesign and fresh install are supported; a claimed different package identity refuses before mutation until its separate upgrade transaction is accepted.
+- Molecule exercises the actual namespace/veth/TUN lifecycle and recovery. It deliberately creates no vendor registration and provides no registered vendor traffic claim.
+- The isolated vendor backend requires actual systemd 257 or newer before mutation. Older managers are unsupported because ignoring PrivatePIDs would expose host process authority; direct/normalizer operation does not inherit this vendor-only version floor.
+
+- Vendor admission reads only the canonical unit through one comma-separated property selector under `no_log`; extra positional property names would be interpreted as unrelated units and can falsely supply `LoadState=not-found`. Molecule requires actual unclaimed-unit refusal before ownership mutation.
+
+- Partial-install retirement reads exact current lifecycle unit metadata and skips only actual `not-found` units. Existing units must have canonical owned fragments; namespace removal still requires an empty actual process set.
+- Resolver comparison and publication consume one canonical rendered byte string, with each numeric nameserver and the options on separate lines. Identical input must compare unchanged; joining directives onto one line both changes resolver behavior and needlessly quiesces the accepted route.

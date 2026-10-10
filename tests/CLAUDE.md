@@ -14,6 +14,8 @@
 
 ## Design decisions
 
+**Transport boundary proof uses real protocol paths** — portable tests cover typed authority and socket contracts; disconnected Linux native tests use the pinned gateways, sealed libc/NSS, real REALITY/Vision and XHTTP TLS frontends, and Hysteria TCP/UDP. Kernel tests count forbidden endpoint contacts after earlier ACCEPT and DNAT, while public traffic remains positive. Active lifetime and quiet quarantine are measured once in the common helper lane. An owned TUN fixture does not establish vendor WARP registration or live acceptance.
+
 **Shared transport semantics use real boundaries** —
 `test_transport_semantics.py` covers accepted inputs, typed malformed values,
 ambiguous client-name refusal, routed versus device claims, key reuse, prefix
