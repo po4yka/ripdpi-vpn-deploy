@@ -4,11 +4,12 @@ import asyncio
 import json
 import os
 import sys
+import threading
 
 import pytest
 
 from artifact_helpers import context, executable, scaffold
-from vpnd.runner import ansible, make
+from vpnd.runner import Cmd, ansible, make, process
 from vpnd.state import Host
 
 
@@ -109,3 +110,61 @@ def test_make_secret_path_rejects_all_c0_and_c1_controls_without_disclosing_valu
 def test_make_identifier_allowlist_accepts_uppercase_ascii():
     for key, value in [("ENV", "StageA"), ("PRESET", "TCPA-1"), ("TAG", "READY_tag")]:
         make.validate_kv(key, value)
+
+
+def test_late_cancellation_checks_stop_under_the_shared_spawn_lock(monkeypatch):
+    entered, release = threading.Event(), threading.Event()
+    stopped = threading.Event()
+    spawned, results, errors = [], [], []
+    original_spawn = process.subprocess.Popen
+
+    def observe_spawn(*args, **kwargs):
+        spawned.append(True)
+        return original_spawn(*args, **kwargs)
+
+    class HeldLock:
+        def __enter__(self):
+            entered.set()
+            released = release.wait(5)
+            assert released, "shared spawn lock was never released"
+
+        def __exit__(self, *args):
+            return False
+
+    command = Cmd.new("sh").args(["-c", ":"])
+    monkeypatch.setattr(process.subprocess, "Popen", observe_spawn)
+
+    def work():
+        try:
+            results.append(command._worker(stopped, True, True, HeldLock()))
+        except Exception as error:
+            errors.append(error)
+
+    worker = threading.Thread(target=work, daemon=True)
+    worker.start()
+    try:
+        reached_lock = entered.wait(3)
+        assert reached_lock, "worker bypassed the shared spawn lock"
+        stopped.set()
+    finally:
+        release.set()
+        worker.join(timeout=3)
+    assert not worker.is_alive(), "stopped worker did not finish"
+    assert not errors and not spawned
+    assert results == [(0, b"", b"")]
+
+
+def test_async_capture_passes_its_shared_spawn_lock_to_the_real_worker(monkeypatch):
+    command = Cmd.new("sh").args(["-c", ":"])
+    observed = []
+    original_worker = command._worker
+
+    def observe_worker(stopped, capture, detailed, spawn_lock=None):
+        assert spawn_lock is not None, "capture dropped the shared cancellation lock"
+        observed.append(spawn_lock)
+        return original_worker(stopped, capture, detailed, spawn_lock)
+
+    monkeypatch.setattr(command, "_worker", observe_worker)
+    output = asyncio.run(command.capture_detailed())
+    assert output.rc == 0 and output.stdout == output.stderr == ""
+    assert len(observed) == 1
