@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-10
+goal: SEC-1791617841911853 Enforce resolved destination isolation for P0 P1 and
+  Hysteria2

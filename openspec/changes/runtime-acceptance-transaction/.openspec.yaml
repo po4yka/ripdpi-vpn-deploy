@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-10
+goal: ANS-1791617913525586 Commit transport runtimes only after complete
+  configuration and readiness acceptance

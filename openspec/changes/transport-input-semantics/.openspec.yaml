@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-10-10
+goal: SCT-1791617687019287 Reject incoherent transport inputs before runtime mutation

@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-10
+goal: MON-1791618056169855 Deliver topology-aware authenticated transport health
+  and secure smoke probes
