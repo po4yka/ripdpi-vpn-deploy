@@ -20,6 +20,30 @@ artifact_evidence: "All four exact-b88 Linux/macOS x86_64/arm64 package jobs suc
 
 # Verification
 
+## Integration and archival follow-up
+
+PR 283 merged as `6a606bf4a7f23d5ebee075ce58057ff2bec2a684` after all nine
+required checks passed on `95a3178605a0c504617dfb0574a88067b0e191f5`.
+Both revisions have Git tree `6f14f132efb982c0ce4795aefdaf1e5de6cb443d`.
+The final dispatcher return clarification is bytecode-identical under Python
+3.12; its 297 tests, 206-function parity, lint and offline package gate passed.
+
+`taskctl verify --archive-ready` passed before archival. `taskctl openspec
+archive` synchronized 16 added and two modified requirements, removing none.
+Its two ignored-Purpose warnings were resolved by appending the approved delta
+paragraphs to the existing main Purpose sections, preserving their prior scope.
+Strict validation passed all 27 items, the permanent-inventory regression passed
+without an active change, and independent archival review approved the result.
+
+Post-merge main CI exposed a failed one-shot pending-queue depth assertion in
+`ansible/roles/observability_agent/molecule/enabled/verify.yml`. The log confirms
+restored-runtime readiness and the unit, generation and queue-inode assertions;
+it does not record the failing metric value or prove data loss. The pinned sender
+can hold a dequeued block during transport retry, outside the pending-byte gauge.
+A correct fixture must prove delivery of specific historical samples after
+rollback, retaining the existing guards. This fixture remediation is approved;
+the portfolio task remains in review and must not close on the failed main gate.
+
 ## Acceptance boundary
 
 Accepted implementation source is `b88a41ad86fbe4f6590a07067713e9ebb15aa53c`.

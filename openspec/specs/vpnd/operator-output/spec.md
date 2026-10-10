@@ -2,15 +2,22 @@
 
 ## Purpose
 Every documented element of vpnd's operator surface — help text, man page, global flags — must match actual behavior, and diagnostic exports must survive partial failures.
+
+Keep generated operator documentation aligned with the Python parser after
+retiring clap and the Rust implementation.
+
 ## Requirements
 ### Requirement: REQ-MANPAGE-SYNC — Man page derived from the real CLI
 
-The installed man page MUST be generated from the same clap Command definition that drives the binary, and a gate MUST fail when the two surfaces diverge.
+The installed man page MUST be generated from the same command definition
+that drives the Python parser, help and completions. A gate MUST fail when
+commands, options, defaults or argument relationships diverge. Generation
+MUST cover the root and all existing subcommand pages without requiring Rust.
 
 #### Scenario: Flag added without docs update
 
 - **WHEN** a contributor adds or changes a subcommand flag
-- **THEN** the parity gate fails until the generated man page reflects it
+- **THEN** the parity gate fails until generated man pages and supported-shell completions reflect the actual parser
 
 ### Requirement: REQ-JSON-FLAG-HONESTY — No dead global flags
 
@@ -38,4 +45,3 @@ Doctor MUST continue running remaining steps after one fails, MUST include captu
 
 - **WHEN** one doctor step exits nonzero while later steps would succeed
 - **THEN** the report contains all completed outputs plus the failed step's stderr, marked failed, and the final exit code is nonzero
-
