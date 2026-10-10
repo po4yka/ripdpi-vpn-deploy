@@ -3,7 +3,7 @@
 Task: `VPD-1791615284178957`. Baseline:
 `5365cbd4b33dff5b3d0be0e1f8c5cb2c9d17ac50`. Implementation and PR preparation were authorized after planning; fleet operations remain outside scope.
 The current crate has 36 source files (including inline tests), 21 integration
-test files and 271 Cargo lockfile packages. `test-inventory.md` enumerates 206
+test files and 271 Cargo lockfile packages. `vpnd/test-inventory.md` enumerates 206
 Rust test functions and ten directly referencing Python consumer suites; these
 are static counts, not evidence that tests ran.
 
@@ -163,7 +163,8 @@ permanent fallback nor rewrites shared history or persisted configuration.
 
 - Lost tests hidden by file deletion: baseline transfer manifest maps every
   function and assertion to collected/passed Python node IDs; new upstream
-  tests invalidate retirement until mapped. Parameter cases, seeds and snapshot
+tests invalidate retirement until mapped. The permanent package inventory is
+independent of planning archival. Parameter cases, seeds and snapshot
   data are included. Exact syntax/generator changes need reviewed equivalence.
 - Lost signal/security semantics: real local process-tree, FIFO/symlink/race,
   file mode, timeout, crash/write-failure and partial-report tests on Linux/macOS.

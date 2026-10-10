@@ -78,6 +78,10 @@ security services, and credentialed deploy jobs remain CI-only or explicit.
 **Snapshots, not mocks, for templates** — `tests/snapshot/golden/` holds
 the expected output of every Jinja render against fixtures. Drift is
 visible in PR diffs.
+
+**Baseline parity outlives planning** — the vpnd transfer gate reads its
+permanent package inventory. Test it without an active OpenSpec directory;
+task archival must not remove executable regression obligations.
 Role-render tests reuse `scripts/template_render.py` for named-template escaping
 and Ansible filters. Local HTTPS fixtures explicitly require TLS 1.2 or newer.
 HTML/XML names include their compound `.html.j2`/`.xml.j2` suffixes; markup

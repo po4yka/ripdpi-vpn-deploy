@@ -283,6 +283,8 @@ and upgrade recovery. install-vpnd.py validates the native bundle, exact locked
 wheel closure and private publication transaction before changing the launcher.
 Dependency policy verifies pinned wheel hashes, reviewed SPDX license text and
 non-yanked official registry metadata; it complements the vulnerability audit.
+The parity gate reads the permanent `vpnd/test-inventory.md` baseline, so
+archiving a planning change never removes its test obligations.
 
 ## What's done well
 

@@ -67,7 +67,8 @@ a complete prior verified environment, without migrating operator state.
   keeps both streams and redacts every exported report/archive/clipboard surface.
 - **Tests retain their baseline identity.** Source annotations and the checked
   transfer manifest map every baseline function to collected, passed Python node
-  IDs. Hypothesis properties retain the explicit regression seeds; snapshots
+  IDs against permanent `test-inventory.md`, independently of task archival.
+  Hypothesis properties retain the explicit regression seeds; snapshots
   retain machine-contract assertions.
 - **Distribution checks exercise artifacts.** Package tests install offline into
   a private prefix, use packaged assets outside the checkout, verify every manual,

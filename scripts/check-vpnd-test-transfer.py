@@ -38,7 +38,7 @@ def test_destinations():
 
 
 def source_cases():
-    inventory = ROOT / "openspec/changes/replace-vpnd-with-python/test-inventory.md"
+    inventory = ROOT / "vpnd/test-inventory.md"
     return {
         path + "::" + name
         for path, name in re.findall(

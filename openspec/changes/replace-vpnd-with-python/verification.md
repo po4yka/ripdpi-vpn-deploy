@@ -66,7 +66,7 @@ command/artifact transfer requirements above; they are not new delta IDs.
 
 ## Implementation acceptance gates
 
-1. Refresh `test-inventory.md` against the chosen implementation baseline and
+1. Refresh `vpnd/test-inventory.md` against the chosen implementation baseline and
    establish a checked transfer manifest with actual assertions and pytest
    node IDs, not file-level equivalence. Preserve added upstream tests too.
 2. Execute full `make vpnd-test vpnd-lint vpnd-parity-check`, generated
