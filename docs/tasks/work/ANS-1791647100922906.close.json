@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "Exact ee5be722 accepted: 53 unit/render cases including 15 executable regressions, full Rust-free make check, independent security review, real Linux enabled Molecule convergence/idempotence/exact historical node/value/timestamp reception after rollback, and all nine required CI checks. Production runtime/pins/dependencies unchanged.",
+  "execution_sha256": "d14d04c19306cebea2efc76f2803ce57f97b63f1843a6874f43c137d7815293a",
+  "issue_sha256": "f2cd7128035f0baeaec591dcc52e628a7f726f3cadc07fd81dc0a385d46d586d",
+  "outcome": "done",
+  "prepared_at": "2026-10-10T17:03:19Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "ANS-1791647100922906"
+}

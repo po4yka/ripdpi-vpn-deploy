@@ -2,7 +2,7 @@
 id: ANS-1791647100922906
 title: Prove historical sender samples survive failed activation
 kind: bug
-status: review
+status: done
 area: ansible
 priority: high
 risk: standard
@@ -16,6 +16,9 @@ updated: 2026-10-10
 spec_reason: test-only
 related_tasks: []
 status_detail: Historical-sample proof, all 53 consumer cases, full local gate and exact ee5be722 native/required CI passed; source-only acceptance.
+closed_at: "2026-10-10T17:03:19Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "Exact ee5be722 accepted: 53 unit/render cases including 15 executable regressions, full Rust-free make check, independent security review, real Linux enabled Molecule convergence/idempotence/exact historical node/value/timestamp reception after rollback, and all nine required CI checks. Production runtime/pins/dependencies unchanged."
 ---
 
 ## Goal
