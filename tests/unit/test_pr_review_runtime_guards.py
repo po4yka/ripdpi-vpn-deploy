@@ -33,6 +33,15 @@ def load(role, name):
     return module
 
 
+@pytest.fixture(params=[0o022, 0o077], ids=["umask022", "umask077"])
+def _creation_umask(request):
+    previous = os.umask(request.param)
+    try:
+        yield
+    finally:
+        os.umask(previous)
+
+
 @contextmanager
 def track_fds(monkeypatch):
     actual_open, actual_stat = os.open, os.fstat
@@ -52,7 +61,7 @@ def track_fds(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "failure", ["first-stat", "second-stat", "fdopen", "metadata", "close"]
+    "failure", ["first-stat", "second-stat", "second-open", "metadata", "close"]
 )
 def test_xray_failure_closes_all_files_and_directory_fds(
     tmp_path, monkeypatch, failure
@@ -82,14 +91,14 @@ def test_xray_failure_closes_all_files_and_directory_fds(
             return value
 
         patch.setattr(os, "fstat", inspect)
-        if failure == "fdopen":
-            patch.setattr(
-                os,
-                "fdopen",
-                lambda *a, **kw: (_ for _ in ()).throw(
-                    OSError("injected wrapping failure")
-                ),
-            )
+        if failure == "second-open":
+
+            def fail_second(path, *args, **kwargs):
+                if path == "error.log":
+                    raise OSError("injected second log acquisition failure")
+                return mapped_open(path, *args, **kwargs)
+
+            patch.setattr(os, "open", fail_second)
         elif failure == "metadata":
             patch.setattr(
                 os,
@@ -123,22 +132,24 @@ def test_xray_failure_closes_all_files_and_directory_fds(
 
 
 def test_xray_creates_private_then_validates_both_before_authorized_group_grant(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, _creation_umask
 ):
     module = load("xray", "xray_log_setup.py")
     created, granted = [], []
-    with track_fds(monkeypatch) as (patch, _, _):
+    with track_fds(monkeypatch) as (patch, _, actual_stat):
         actual_open, actual_chmod = os.open, os.fchmod
 
-        def mapped_open(path, flags, mode=0o777, **kwargs):
+        def mapped_open(path, flags, mode=0o600, **kwargs):
             if flags & os.O_CREAT:
                 created.append(mode)
             return actual_open(tmp_path if path == "/" else path, flags, mode, **kwargs)
 
         def grant(fd, mode):
-            assert (tmp_path / "owned/access.log").exists()
-            assert (tmp_path / "owned/error.log").exists()
-            granted.append(mode)
+            if stat.S_ISREG(actual_stat(fd).st_mode):
+                assert mode == 0o640
+                assert (tmp_path / "owned/access.log").exists()
+                assert (tmp_path / "owned/error.log").exists()
+                granted.append(mode)
             actual_chmod(fd, mode)
 
         patch.setattr(os, "open", mapped_open)
@@ -150,11 +161,12 @@ def test_xray_creates_private_then_validates_both_before_authorized_group_grant(
 
 @pytest.mark.parametrize("failure", ["stat", "chmod", "sync"])
 def test_naive_failure_closes_leaf_and_directory_without_truncation(
-    tmp_path, monkeypatch, failure
+    tmp_path, monkeypatch, failure, _creation_umask
 ):
     module = load("naive", "prepare_log.py")
     directory = tmp_path / "logs"
     directory.mkdir(mode=0o750)
+    directory.chmod(0o750)
     leaf = directory / "access.log"
     leaf.write_bytes(b"retained log bytes\n")
     leaf.chmod(0o640)
@@ -215,10 +227,10 @@ def test_watchdog_failed_publication_closes_every_owned_fd(
         patch.setattr(sys, "stdin", io.StringIO(previous.replace("123", "456")))
         if failure.endswith("wrap"):
 
-            def wrap(fd, mode):
+            def wrap(fd, mode, **kwargs):
                 if mode == ("r" if failure == "read-wrap" else "w"):
                     raise OSError("injected stream wrapping failure")
-                return original(fd, mode)
+                return original(fd, mode, **kwargs)
 
             patch.setattr(os, "fdopen", wrap)
         elif failure in {"chmod", "sync"}:
@@ -282,6 +294,27 @@ def test_watchdog_lock_contention_refuses_without_budget_mutation(tmp_path):
         os.close(fd)
     assert path.read_text() == raw
     assert path.stat().st_mode & 0o777 == 0o640
+
+
+def test_watchdog_entropy_failure_never_acquires_or_leaks_descriptor(
+    tmp_path, monkeypatch
+):
+    module = load("watchdog", "vpn-watchdog-state.py")
+    path = tmp_path / "state"
+    raw = budget(module)
+    path.write_text(raw)
+    path.chmod(0o600)
+    monkeypatch.setattr(
+        module.secrets,
+        "token_hex",
+        lambda _: (_ for _ in ()).throw(OSError("injected entropy failure")),
+    )
+    with track_fds(monkeypatch) as (_, acquired, _):
+        with pytest.raises(OSError, match="entropy failure"):
+            module.operate(path, "read")
+    assert acquired == []
+    assert path.read_text() == raw
+    assert path.stat().st_mode & 0o777 == 0o600
 
 
 def test_watchdog_candidate_collision_preserves_foreign_inode(tmp_path, monkeypatch):

@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 import grp
 import json
 import os
@@ -12,12 +12,22 @@ import pwd
 import stat
 
 
+@contextmanager
+def open_descriptor(path, flags, mode=0o600, *, dir_fd=None):
+    fd = os.open(path, flags, mode, dir_fd=dir_fd)
+    try:
+        yield fd
+    finally:
+        os.close(fd)
+
+
 def provision(directory: str, uid: int, gid: int, *, check: bool = False) -> bool:
     if not os.path.isabs(directory) or ".." in directory.split("/"):
         raise ValueError("unsafe-log-directory")
     with ExitStack() as resources:
-        parent = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
-        resources.callback(os.close, parent)
+        parent = resources.enter_context(
+            open_descriptor("/", os.O_RDONLY | os.O_DIRECTORY)
+        )
         files = []
         changed = False
         parts = [part for part in directory.split("/") if part]
@@ -29,18 +39,25 @@ def provision(directory: str, uid: int, gid: int, *, check: bool = False) -> boo
             if info.st_uid != os.geteuid() or info.st_mode & 0o022:
                 raise ValueError("unsafe-log-parent")
             try:
-                child = os.open(
-                    name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent
+                child = resources.enter_context(
+                    open_descriptor(
+                        name,
+                        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                        dir_fd=parent,
+                    )
                 )
             except FileNotFoundError:
                 if check:
                     return True
                 os.mkdir(name, 0o750 if final else 0o755, dir_fd=parent)
-                child = os.open(
-                    name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent
+                child = resources.enter_context(
+                    open_descriptor(
+                        name,
+                        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                        dir_fd=parent,
+                    )
                 )
                 changed = True
-            resources.callback(os.close, child)
             parent = child
         info = os.fstat(parent)
         if (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)) != (
@@ -55,36 +72,29 @@ def provision(directory: str, uid: int, gid: int, *, check: bool = False) -> boo
                 os.fchmod(parent, 0o750)
         for name in ("access.log", "error.log"):
             try:
-                descriptor = os.open(
-                    name, os.O_WRONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=parent
+                descriptor = resources.enter_context(
+                    open_descriptor(
+                        name, os.O_WRONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=parent
+                    )
                 )
             except FileNotFoundError:
                 changed = True
                 if check:
                     continue
-                descriptor = os.open(
-                    name,
-                    os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                    0o600,
-                    dir_fd=parent,
+                descriptor = resources.enter_context(
+                    open_descriptor(
+                        name,
+                        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                        0o600,
+                        dir_fd=parent,
+                    )
                 )
-            try:
-                entry = os.fdopen(descriptor, "ab")
-            except BaseException:
-                os.close(descriptor)
-                raise
-            try:
-                resources.enter_context(entry)
-            except BaseException:
-                entry.close()
-                raise
-            files.append(entry)
-            info = os.fstat(entry.fileno())
+            files.append(descriptor)
+            info = os.fstat(descriptor)
             if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
                 raise ValueError("unsafe-log-entry")
         # Validate every entry before changing any file's ownership or mode.
-        for entry in files:
-            descriptor = entry.fileno()
+        for descriptor in files:
             info = os.fstat(descriptor)
             if (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)) != (
                 uid,
