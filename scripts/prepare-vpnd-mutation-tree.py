@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Preserve repository-relative paths in mutmut's generated execution tree."""
 
+import shutil
 import sys
 import tomllib
 from pathlib import Path
@@ -47,6 +48,13 @@ def prepare(root):
     ]
     if any(not (root / path).exists() for path in copied):
         raise ValueError("required mutation input is missing")
+    # The projected src layout changes checkout-relative resource anchors.
+    # Use the same package resource layout as the distribution build instead;
+    # mutmut copies it beside the instrumented modules before executing tests.
+    data = root / "vpnd/src/vpnd/data"
+    data.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(root / "vpnd/templates/recipient.html", data / "recipient.html")
+    shutil.copytree(root / "docs", data / "docs", dirs_exist_ok=True)
     target = root / "pyproject.toml"
     if target.exists():
         raise ValueError("scratch root already has a project configuration")

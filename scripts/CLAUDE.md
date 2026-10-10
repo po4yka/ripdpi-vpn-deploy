@@ -358,6 +358,8 @@ Independent controller homes are not a supported shared-ownership mechanism.
 - **Mutation builds require sibling inputs** — `test-vpnd-mutants.sh` copies
   tracked working-tree files before running Python mutmut in that owned
   temporary tree. Never mutate the operator checkout or suppress its exit code.
+  Completed killed and timeout outcomes are detected mutations; survivors
+  remain exit 2. Empty, partial, unexecuted or technically failed runs stay red.
 
 - **SOPS snapshot filenames preserve YAML format** — disposable onboarding
   copies encrypted YAML to a `.yaml` snapshot because the canonical decrypt

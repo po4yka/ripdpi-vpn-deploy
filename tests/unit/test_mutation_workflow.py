@@ -1,10 +1,10 @@
 """Exercise mutation runner isolation and the hosted step's exit-code contract."""
 
 import os
-from pathlib import Path
+import shlex
 import subprocess
 import sys
-import shlex
+from pathlib import Path
 
 import pytest
 import yaml
@@ -52,7 +52,7 @@ def test_workflow_only_accepts_clean_or_surviving_mutants(tmp_path, code, log_fa
         (tmp_path / "mutants-output.txt").mkdir()
     result = subprocess.run(
         ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", step["run"]],
-        cwd=crate, capture_output=True, text=True,
+        cwd=crate, capture_output=True, text=True, check=False,
         env={**os.environ, "PATH": f"{binary}:{os.environ['PATH']}",
              "RUNNER_TEMP": str(tmp_path), "GITHUB_OUTPUT": str(output)},
         timeout=10,
@@ -66,7 +66,7 @@ def test_workflow_only_accepts_clean_or_surviving_mutants(tmp_path, code, log_fa
 
 
 @pytest.mark.parametrize("missing_input", [False, True])
-def test_runner_preserves_repository_inputs_and_original_source(tmp_path, missing_input):
+def test_runner_preserves_repository_inputs_and_original_source(tmp_path, monkeypatch, missing_input):
     repo = tmp_path / "repo"
     repo.mkdir()
     for name, content in {
@@ -98,6 +98,19 @@ def test_runner_preserves_repository_inputs_and_original_source(tmp_path, missin
     obsolete.write_text("#!/bin/sh\necho 'unexpected Rust dependency in mutation runner' >&2\nexit 98\n")
     obsolete.chmod(0o755)
     marker = tmp_path / "scratch-path"
+    parent_environment = {
+        "PATH": f"{binary}:{os.environ['PATH']}",
+        "HOME": str(tmp_path / "operator-home"),
+        "XDG_CONFIG_HOME": str(tmp_path / "operator-config"),
+        "XDG_CACHE_HOME": str(tmp_path / "operator-cache"),
+        "BUILD_GATE_HELD": "1",
+        "UPCLOUD_PASSWORD": "fixture-provider-value",
+        "AWS_SECRET_ACCESS_KEY": "fixture-cloud-value",
+        "SOPS_AGE_KEY": "fixture-age-value",
+        "SOPS_AGE_KEY_FILE": str(tmp_path / "operator-key"),
+    }
+    for key, value in parent_environment.items():
+        monkeypatch.setenv(key, value)
     if missing_input:
         # GNU tar uses 2 for fatal copy errors, the same code the normalized mutation wrapper
         # uses for survivors. A setup error must never become a finding.
@@ -114,8 +127,17 @@ configuration = tomllib.loads((root / 'pyproject.toml').read_text())['tool']['mu
 assert configuration['source_paths'] == ['src/vpnd/']
 assert configuration['only_mutate'] == ['src/vpnd/core.py']
 assert os.environ['PYTHONPATH'] == str(root / 'mutants/src')
-assert root != Path(os.environ['ORIGINAL_ROOT'])
+assert root != Path(__ORIGINAL_ROOT__)
+assert os.environ['PATH'] == __EXPECTED_PATH__
+assert os.environ['BUILD_GATE_HELD'] == '1'
+assert os.environ['CARGO_BUILD_JOBS'] == os.environ['CMAKE_BUILD_PARALLEL_LEVEL'] == '2'
+for key, name in [('HOME', 'home'), ('XDG_CONFIG_HOME', 'config'), ('XDG_CACHE_HOME', 'cache'), ('XDG_DATA_HOME', 'data'), ('XDG_STATE_HOME', 'state'), ('XDG_RUNTIME_DIR', 'runtime'), ('TMPDIR', 'tmp')]:
+    assert Path(os.environ[key]) == root / name
+    assert Path(os.environ[key]).is_dir()
+assert not {'UPCLOUD_PASSWORD', 'AWS_SECRET_ACCESS_KEY', 'SOPS_AGE_KEY', 'SOPS_AGE_KEY_FILE', 'ORIGINAL_ROOT', 'SCRATCH_MARKER'} & os.environ.keys()
 assert (root / 'docs/runbook.md').read_text() == 'working tree docs\\n'
+assert (root / 'vpnd/src/vpnd/data/docs/runbook.md').read_text() == 'working tree docs\\n'
+assert (root / 'vpnd/src/vpnd/data/recipient.html').read_text() == (root / 'vpnd/templates/recipient.html').read_text()
 assert (root / 'tests/fixtures/sample.yml').read_text() == 'fixture\\n'
 assert (root / 'scripts/helper.sh').read_text() == 'helper\\n'
 assert not (root / 'untracked-private-file').exists()
@@ -123,17 +145,21 @@ if sys.argv[1:] == ['export-cicd-stats']:
     sys.exit(0)
 assert sys.argv[1:] == ['run', '--max-children', '2']
 (root / 'vpnd/src/vpnd/core.py').write_text('mutated')
-Path(os.environ['SCRATCH_MARKER']).write_text(str(root))
+Path(__SCRATCH_MARKER__).write_text(str(root))
 sys.exit(4)
-""")
+""".replace('__ORIGINAL_ROOT__', repr(str(repo)))
+       .replace('__EXPECTED_PATH__', repr(parent_environment['PATH']))
+       .replace('__SCRATCH_MARKER__', repr(str(marker))))
     mutmut.chmod(0o755)
     result = subprocess.run(
         ["bash", str(repo / "scripts/test-vpnd-mutants.sh")],
-        env={**os.environ, "PATH": f"{binary}:{os.environ['PATH']}",
+        check=False,
+        env={**os.environ,
              "ORIGINAL_ROOT": str(repo), "SCRATCH_MARKER": str(marker)},
         capture_output=True, text=True, timeout=10,
     )
     assert result.returncode == (1 if missing_input else 4), result.stderr
+    assert {key: os.environ[key] for key in parent_environment} == parent_environment
     assert (repo / "vpnd/src/vpnd/core.py").read_text() == "original source\n"
     if missing_input:
         assert not marker.exists()
@@ -144,9 +170,12 @@ sys.exit(4)
 @pytest.mark.parametrize("mode,expected", [
     ("killed", 0), ("survived", 2), ("tool-failure", 4), ("backend-usage", 1),
     ("missing-output", 1), ("invalid-output", 1), ("empty-output", 1),
-    ("no_tests", 1), ("skipped", 1), ("suspicious", 1), ("timeout", 1),
+    ("no_tests", 1), ("skipped", 1), ("suspicious", 1), ("timeout", 0),
     ("check_was_interrupted_by_user", 1), ("segfault", 1), ("partial", 1),
     ("invalid-count", 1), ("export-failure", 23),
+    ("timeout-mixed-detected", 0), ("timeout-survivor", 2),
+    ("timeout-tool-failure", 4), ("timeout-partial", 1),
+    ("timeout-no-tests", 1), ("timeout-export-failure", 23),
 ])
 def test_runner_normalizes_only_complete_executed_mutation_results(tmp_path, mode, expected):
     repo = tmp_path / "repo"
@@ -175,15 +204,15 @@ import json
 import os
 from pathlib import Path
 import sys
-mode = os.environ['MUTATION_MODE']
+mode = __MUTATION_MODE__
 output = Path('mutants')
 output.mkdir(exist_ok=True)
 (output / 'diagnostic.txt').write_text('retained diagnostic')
 if sys.argv[1:] == ['run', '--max-children', '2']:
     (Path('vpnd/src/vpnd/core.py')).write_text('mutated')
-    sys.exit(4 if mode == 'tool-failure' else 2 if mode == 'backend-usage' else 0)
+    sys.exit(4 if mode in ('tool-failure', 'timeout-tool-failure') else 2 if mode == 'backend-usage' else 0)
 assert sys.argv[1:] == ['export-cicd-stats']
-if mode == 'export-failure':
+if mode in ('export-failure', 'timeout-export-failure'):
     sys.exit(23)
 if mode == 'missing-output':
     sys.exit(0)
@@ -194,6 +223,20 @@ if mode == 'invalid-output':
 document = dict.fromkeys(['killed', 'survived', 'no_tests', 'skipped', 'suspicious', 'timeout', 'check_was_interrupted_by_user', 'segfault'], 0)
 document['total'] = 1
 document['killed' if mode not in document else mode] = 1
+if mode.startswith('timeout-'):
+    document['killed'] = 0
+    document['timeout'] = 1
+    if mode == 'timeout-mixed-detected':
+        document['killed'] = 1
+        document['total'] = 2
+    if mode == 'timeout-survivor':
+        document['survived'] = 1
+        document['total'] = 2
+    if mode == 'timeout-no-tests':
+        document['no_tests'] = 1
+        document['total'] = 2
+    if mode == 'timeout-partial':
+        document['total'] = 2
 if mode == 'empty-output':
     document['total'] = document['killed'] = 0
 if mode == 'partial':
@@ -201,7 +244,7 @@ if mode == 'partial':
 if mode == 'invalid-count':
     document['killed'] = True
 path.write_text(json.dumps(document))
-''')
+'''.replace('__MUTATION_MODE__', repr(mode)))
     backend.chmod(0o755)
     result = subprocess.run(
         ["bash", str(repo / "scripts/test-vpnd-mutants.sh")],
@@ -209,6 +252,8 @@ path.write_text(json.dumps(document))
         capture_output=True, text=True, timeout=10, check=False,
     )
     assert result.returncode == expected, result.stderr
+    if mode in {"timeout", "timeout-mixed-detected", "timeout-survivor"}:
+        assert "timeout=1" in result.stdout
     assert (repo / "vpnd/src/vpnd/core.py").read_text() == "original source\n"
     reports = list((repo / "vpnd/mutants").glob("run.*"))
     assert len(reports) == 1

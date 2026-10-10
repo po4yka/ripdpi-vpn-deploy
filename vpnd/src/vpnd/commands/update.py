@@ -127,6 +127,7 @@ def _fetch_network(url, request_timeout):
 
 _FETCH_WORKER = r"""
 import importlib.util, json, os, signal, sys, threading
+from pathlib import Path
 parent_read = int(sys.argv[4])
 def parent_liveness():
     try:
@@ -136,6 +137,9 @@ def parent_liveness():
         os.killpg(os.getpgrp(), signal.SIGKILL)
 threading.Thread(target=parent_liveness, daemon=True).start()
 try:
+    # The launcher adds the package root only to its own interpreter. Resolve
+    # the same root from this known module in both source and installed layouts.
+    sys.path.insert(0, str(Path(sys.argv[1]).resolve().parents[2]))
     spec = importlib.util.spec_from_file_location('vpnd_update_network', sys.argv[1])
     network = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(network)
@@ -158,6 +162,7 @@ def fetch_latest_tag_with_timeout(url, request_timeout):
         child = subprocess.Popen(
             [
                 sys.executable,
+                "-I",
                 "-c",
                 _FETCH_WORKER,
                 str(Path(__file__).resolve()),

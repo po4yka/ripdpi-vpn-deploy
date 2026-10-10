@@ -29,7 +29,7 @@ def verdict(path):
             or any(
                 document[name]
                 for name in COUNTERS
-                if name not in {"killed", "survived"}
+                if name not in {"killed", "timeout", "survived"}
             )
         ):
             raise ValueError("incomplete mutation inventory")
@@ -40,7 +40,7 @@ def verdict(path):
         )
         return 1
     print(
-        f"Mutation results: killed={document['killed']}, survived={document['survived']}, total={document['total']}"
+        f"Mutation results: killed={document['killed']}, timeout={document['timeout']}, survived={document['survived']}, total={document['total']}"
     )
     return 2 if document["survived"] else 0
 

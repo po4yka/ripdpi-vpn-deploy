@@ -294,3 +294,89 @@ def test_fetch_worker_exits_when_parent_is_terminated(tmp_path):
         if parent.poll() is None:
             parent.kill()
         parent.wait()
+
+
+def test_source_launcher_fetches_loopback_release_without_pythonpath_from_outside_checkout(
+    tmp_path,
+):
+    from pathlib import Path
+    import subprocess
+    import sys
+    import tomllib
+
+    root = tmp_path / "checkout"
+    scaffold(root)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    shadow = outside / "vpnd"
+    shadow.mkdir()
+    (shadow / "__init__.py").write_text(
+        "raise RuntimeError('unexpected package from working directory')\n"
+    )
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen()
+    listener.settimeout(3)
+    url = f"http://127.0.0.1:{listener.getsockname()[1]}/releases/latest"
+    requests, server_errors = [], []
+    body = b'{"tag_name":"vpnd-v999.0.0"}'
+
+    def serve():
+        try:
+            connection, _ = listener.accept()
+            with connection:
+                connection.settimeout(3)
+                requests.append(connection.recv(4096).decode())
+                connection.sendall(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: "
+                    + str(len(body)).encode()
+                    + b"\r\nConnection: close\r\n\r\n"
+                    + body
+                )
+        except (TimeoutError, OSError) as error:
+            server_errors.append(error)
+        finally:
+            listener.close()
+
+    thread = threading.Thread(target=serve)
+    thread.start()
+    launcher = Path(__file__).resolve().parents[2] / "scripts/vpnd-cli.py"
+    # Bootstrap the actual source launcher, replace only its remote endpoint,
+    # and execute its __main__ path. No successful handler is substituted.
+    source = """import runpy, sys
+launcher, endpoint, root = sys.argv[1:]
+runpy.run_path(launcher, run_name='source_launcher_bootstrap')
+from vpnd.commands import update
+update.GITHUB_API_URL = endpoint
+sys.argv = [launcher, '--root', root, 'update']
+runpy.run_path(launcher, run_name='__main__')
+"""
+    env = environment(root)
+    env.pop("PYTHONPATH", None)
+    env.pop("PYTHONHOME", None)
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", source, str(launcher), url, str(root)],
+            env=env,
+            cwd=outside,
+            capture_output=True,
+            text=True,
+            timeout=12,
+            check=False,
+        )
+    finally:
+        thread.join(timeout=4)
+        listener.close()
+    assert not thread.is_alive()
+    assert result.returncode == 0, result.stderr
+    assert "A newer vpnd release is available" in result.stderr
+    assert server_errors == [] and len(requests) == 1
+    assert requests[0].startswith("GET /releases/latest HTTP/1.1")
+    assert "user-agent: vpnd/" + version() + "\r\n" in requests[0].lower()
+    config = (
+        Path(env["HOME"]) / "Library/Application Support"
+        if sys.platform == "darwin"
+        else Path(env["XDG_CONFIG_HOME"])
+    )
+    cache = config / "vpn-provision" / update.CACHE_FILE
+    assert tomllib.loads(cache.read_text())["latest_tag"] == "vpnd-v999.0.0"

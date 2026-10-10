@@ -3,40 +3,56 @@
 # means valid completed results contain survivors; technical failures stay red.
 set -euo pipefail
 
-root="$(cd "$(dirname "$0")/.." && pwd)"
-scratch="$(mktemp -d "${TMPDIR:-/tmp}/vpnd-mutants.XXXXXX")"
+mutation_environment=("PATH=$PATH" "LANG=C" "LC_ALL=C" "PYTHONUTF8=1" "PYTHONNOUSERSITE=1")
+clean() { env -i "${mutation_environment[@]}" "$@"; }
+
+root="$(cd "$(clean dirname "$0")/.." && pwd -P)"
+scratch="$(clean mktemp -d /tmp/vpnd-mutants.XXXXXX)"
 scratch="$(cd "$scratch" && pwd -P)"
-trap 'rm -rf "$scratch"' EXIT
+trap 'clean rm -rf "$scratch"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+# Mutated guards must never fall through to operator configuration or
+# credentials. Only public tool paths and the already-acquired gate survive.
+mutation_environment+=(
+  "HOME=$scratch/home" "XDG_CONFIG_HOME=$scratch/config"
+  "XDG_CACHE_HOME=$scratch/cache" "XDG_DATA_HOME=$scratch/data"
+  "XDG_STATE_HOME=$scratch/state" "XDG_RUNTIME_DIR=$scratch/runtime"
+  "TMPDIR=$scratch/tmp" "PYTHONPATH=$scratch/mutants/src"
+  "GIT_CONFIG_GLOBAL=/dev/null" "GIT_CONFIG_NOSYSTEM=1"
+  "CARGO_BUILD_JOBS=2" "CMAKE_BUILD_PARALLEL_LEVEL=2"
+)
+if [[ ${BUILD_GATE_HELD:-} == 1 ]]; then
+  mutation_environment+=("BUILD_GATE_HELD=1")
+fi
+clean mkdir -p "$scratch"/{home,config,cache,data,state,runtime,tmp}
 
 if (( $# != 0 )); then
   echo "Mutation checks do not accept a partial selection" >&2
   exit 1
 fi
-if ! git -C "$root" ls-files -z | tar -C "$root" --null -T - -cf - | tar -C "$scratch" -xf -; then
+if ! clean git -C "$root" ls-files -z | clean tar -C "$root" --null -T - -cf - | clean tar -C "$scratch" -xf -; then
   echo "Cannot prepare mutation source tree" >&2
   exit 1 # Copy failure is never a surviving-mutant verdict.
 fi
 
-python3 "$root/scripts/prepare-vpnd-mutation-tree.py" "$scratch"
+clean python3 "$root/scripts/prepare-vpnd-mutation-tree.py" "$scratch"
 cd "$scratch"
-# Both direct imports and subprocess launchers resolve the generated source.
-export PYTHONPATH="$scratch/mutants/src"
 set +e
-mutmut run --max-children 2
+clean mutmut run --max-children 2
 run_status=$?
 # mutmut 3.8 exports the structured inventory with a separate command.
-mutmut export-cicd-stats
+clean mutmut export-cicd-stats
 export_status=$?
 set -e
 
 # Retain each invocation independently, including technical-failure output.
 # Never remove another run's report or mutate the caller's source tree.
-mkdir -p "$root/vpnd/mutants"
-report="$(mktemp -d "$root/vpnd/mutants/run.XXXXXX")"
+clean mkdir -p "$root/vpnd/mutants"
+report="$(clean mktemp -d "$root/vpnd/mutants/run.XXXXXX")"
 if [[ -d mutants ]]; then
-  cp -R mutants/. "$report/"
+  clean cp -R mutants/. "$report/"
 fi
 if (( run_status != 0 )); then
   if (( run_status == 2 )); then
@@ -51,4 +67,4 @@ if (( export_status != 0 )); then
   fi
   exit "$export_status"
 fi
-python3 "$root/scripts/check-vpnd-mutation-results.py" "$report/mutmut-cicd-stats.json"
+clean python3 "$root/scripts/check-vpnd-mutation-results.py" "$report/mutmut-cicd-stats.json"
