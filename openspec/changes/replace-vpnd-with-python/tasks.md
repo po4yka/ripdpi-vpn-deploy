@@ -35,7 +35,7 @@ observed checks; the portfolio advances at most to review.
 - [x] VPD-1791615724808852 Port doctor ai-docs update completions and parser-derived man pages with resilient diagnostics, redaction, cache and packaged-doc tests #feature !high @item:VPD-1791615284178957
 - [x] VPD-1791615725580652 Port schema-3 probe-matrix scheduling classification journals and signals with full snapshot, concurrency, timeout and descendant-reaping tests #feature !high @item:VPD-1791615284178957
 - [x] VPD-1791615726382311 Deliver verified Python wheel source distribution and atomic installer, version authority, SBOM and reproducibility with four-platform artifact tests #feature !high @item:VPD-1791615284178957
-- [ ] VPD-1791615727227192 Switch CI dependency selection hooks release and mutation lanes to Python, transfer properties seeds snapshots and consumer tests, and enforce exhaustive test parity #feature !high @item:VPD-1791615284178957
+- [x] VPD-1791615727227192 Switch CI dependency selection hooks release and mutation lanes to Python, transfer properties seeds snapshots and consumer tests, and enforce exhaustive test parity #feature !high @item:VPD-1791615284178957
 - [ ] VPD-1791615728004540 Remove active Rust source and tooling after parity passes, update operator guidance, and pass full Rust-free gates independent security review and exact-SHA hosted checks #feature !high @item:VPD-1791615284178957
 
 ## Verification

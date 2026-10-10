@@ -46,7 +46,7 @@ mise exec -- make install-hooks
 `install-hooks` uses that Python to install the hash-pinned
 [`requirements.txt`](requirements.txt) with `--require-hashes --no-deps`,
 then installs both hooks. Python tooling does not provide PATH executables for
-actionlint, shellcheck, Bats, cargo-deny, SOPS, Xray or sing-box. Continue with
+actionlint, shellcheck, Bats, SOPS, Xray or sing-box. Continue with
 the following Bash session; it reads existing pins rather than maintaining
 another version list. Node uses CI's major selector, with its minimum declared
 in [`tools/tasking/package.json`](tools/tasking/package.json). Run both blocks
@@ -55,9 +55,9 @@ in the same Bash session; failed installs or checksum checks stop the sequence.
 ```bash
 set -euo pipefail
 read -r setup_actionlint setup_sops setup_singbox setup_xray setup_xray_sha \
-  setup_msrv setup_rust setup_node setup_providers < <(mise exec -- python - <<'PY'
+  setup_node setup_providers < <(mise exec -- python - <<'PY'
 from pathlib import Path
-import re, tomllib, yaml
+import re, yaml
 ci_text = Path('.github/workflows/ci.yml').read_text()
 jobs = yaml.safe_load(ci_text)['jobs']
 steps = [step for job in jobs.values() for step in job.get('steps', [])]
@@ -70,16 +70,13 @@ singbox = next(job['env']['SING_BOX_CLIENT_VERSION'] for job in jobs.values()
 sops = re.search(r'/sops/releases/download/v([^/]+)/sops-', ci_text).group(1)
 xray = yaml.safe_load(Path('.github/actions/install-xray/action.yml').read_text())
 xray_env = xray['runs']['steps'][0]['env']
-msrv = re.search(r'cargo \+([0-9.]+) check', Path('Makefile').read_text()).group(1)
-rust = tomllib.loads(Path('mise.toml').read_text())['tools']['rust']
 print(actionlint, sops, singbox, xray_env['XRAY_VERSION'],
-      xray_env['XRAY_SHA256'], msrv, rust, node,
+      xray_env['XRAY_SHA256'], node,
       ','.join(jobs['terraform']['strategy']['matrix']['provider']))
 PY
 )
 setup_gate_tools=("node@$setup_node" "aqua:rhysd/actionlint@$setup_actionlint"
-  "aqua:getsops/sops@$setup_sops" "sing-box@$setup_singbox"
-  "aqua:EmbarkStudios/cargo-deny@0.20.2")
+  "aqua:getsops/sops@$setup_sops" "sing-box@$setup_singbox")
 ```
 
 Install those tools and initialize the local inputs used before the first gate:
@@ -87,9 +84,6 @@ Install those tools and initialize the local inputs used before the first gate:
 ```bash
 set -euo pipefail
 mise install "${setup_gate_tools[@]}"
-mise exec -- rustup component add clippy --toolchain "$setup_rust"
-mise exec -- rustup toolchain install "$setup_msrv" --profile minimal
-
 setup_xray_dir=$(mktemp -d)
 curl -fsSL --connect-timeout 10 --max-time 120 \
   "https://github.com/XTLS/Xray-core/releases/download/$setup_xray/Xray-linux-64.zip" \
@@ -100,7 +94,7 @@ install -d "$HOME/.local/bin"
 install -m 0755 "$setup_xray_dir/xray" "$HOME/.local/bin/xray"
 install -m 0644 "$setup_xray_dir/geoip.dat" "$setup_xray_dir/geosite.dat" "$HOME/.local/bin/"
 rm -r "$setup_xray_dir"
-export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
 export ANSIBLE_COLLECTIONS_PATH="$PWD/.ansible/collections"
 mise exec "${setup_gate_tools[@]}" -- ansible-galaxy collection install \
   -r requirements.yml --collections-path "$ANSIBLE_COLLECTIONS_PATH"
@@ -113,9 +107,7 @@ done
 mise exec "${setup_gate_tools[@]}" -- make check-prereqs
 ```
 
-The cargo-deny version above is the binary version in the Dockerfile of the
-exact `cargo-deny-action` commit selected by `ci.yml`; update it when that
-action pin changes. Xray's version and Linux archive checksum come from
+Xray's version and Linux archive checksum come from
 [the shared CI installer](.github/actions/install-xray/action.yml).
 The Galaxy collections use [`requirements.yml`](requirements.yml), and
 `task-tools` uses `npm ci --prefix tools/tasking --ignore-scripts` against its
@@ -138,7 +130,7 @@ selection for ordinary Make commands and runbooks in this Bash
 session. In a new session, repeat the pin-reading block above and this block:
 
 ```bash
-export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
 export ANSIBLE_COLLECTIONS_PATH="$PWD/.ansible/collections"
 setup_tool_environment=$(mise env --shell bash "${setup_gate_tools[@]}")
 eval "$setup_tool_environment"

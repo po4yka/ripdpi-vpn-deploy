@@ -91,7 +91,7 @@ Thumbs.db
 .omc/
 .omo/
 
-# Generated deployment and Cargo SBOMs, and staged release assets
+# Generated deployment and Python package SBOMs, and staged release assets
 sbom/*.json
 /vpnd/sbom.json
 /dist/

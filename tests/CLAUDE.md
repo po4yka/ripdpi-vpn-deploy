@@ -71,7 +71,8 @@ fail instead of silently becoming an unspecified task.
 
 **`ci-fast` is the portable pre-PR gate** — runs the credential-free required
 CI checks, including workflow/YAML/shell lint, cloud-init schema, all Terraform
-tests, pytest/bats, cargo-deny, MSRV, clippy, and Rust tests. `make check` adds
+tests, pytest/bats, Go helper integration, and vpnd Python tests, lint/type
+checks, baseline parity, packages and dependency policy. `make check` adds
 Terraform fmt/validate, gitleaks, and ansible-lint. Native Linux runtime integration, Molecule, GitHub-native
 security services, and credentialed deploy jobs remain CI-only or explicit.
 

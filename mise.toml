@@ -10,8 +10,8 @@
 # into the mise-managed python below, so requirements.txt stays the single
 # source of truth for the Python toolchain.
 #
-# Reference workflows: .github/workflows/ci.yml, _rust.yml
-# Reference files:     vpnd/Cargo.toml (rust-version),
+# Reference workflows: .github/workflows/ci.yml, _python-vpnd.yml
+# Reference files:     vpnd/pyproject.toml (requires-python),
 #                      .pre-commit-config.yaml (gitleaks rev)
 
 [tools]
@@ -27,11 +27,6 @@ conftest = "0.57.0"
 # After `mise install`, run `pip install -r requirements.txt` to get the
 # pinned ansible-core / ansible-lint / yamllint into this interpreter.
 python = "3.12"
-
-# dtolnay/rust-toolchain stable; rust-version in vpnd/Cargo.toml remains the
-# declared crate MSRV floor, but the current lockfile includes dependencies
-# whose manifests require modern Cargo support for Rust 2024 metadata.
-rust = "1.96.0"
 
 # gitleaks rev: v8.30.1 in .pre-commit-config.yaml
 gitleaks = "8.30.1"
