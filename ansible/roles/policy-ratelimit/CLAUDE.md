@@ -24,6 +24,12 @@ owns it) for an early drop.
 on a blackhole line is the *client's* real IP, so a strict limit on a
 carrier-NAT pool takes out legitimate clients first.
 
+Same-inode truncation resets the existing read offset when file size shrinks;
+inode replacement reopens from the beginning. Permanent regressions exercise
+both kernel file identities, subsequent input and absence of double counting.
+The correct reader is preserved; bytes overwritten between polls are not an
+input-recovery guarantee.
+
 ## What's done well
 
 - **Decision core is a pure `RateLimiter` class** — no I/O, unit-tested

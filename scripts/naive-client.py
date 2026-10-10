@@ -1,0 +1,225 @@
+#!/usr/bin/env python3
+"""Issue, revoke or read one Naive device from an encrypted document."""
+
+from __future__ import annotations
+
+import argparse
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import secrets
+import stat
+import subprocess
+import sys
+import tempfile
+
+NAME = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
+USERNAME = re.compile(r"[A-Za-z0-9_.@-]{1,64}\Z")
+
+
+def validate_clients(clients):
+    if not isinstance(clients, list) or len(clients) > 128:
+        raise ValueError("invalid client collection")
+    seen = {key: set() for key in ("name", "username", "password")}
+    for item in clients:
+        if not isinstance(item, dict) or set(item) != set(seen):
+            raise ValueError("invalid client entry")
+        if not isinstance(item["name"], str) or not NAME.fullmatch(item["name"]):
+            raise ValueError("invalid device name")
+        if not isinstance(item["username"], str) or not USERNAME.fullmatch(
+            item["username"]
+        ):
+            raise ValueError("invalid username")
+        password = item["password"]
+        if (
+            not isinstance(password, str)
+            or not 20 <= len(password) <= 128
+            or not all(33 <= ord(c) <= 126 for c in password)
+        ):
+            raise ValueError("invalid password")
+        for key in seen:
+            if item[key] in seen[key]:
+                raise ValueError("duplicate device identity or credential")
+            seen[key].add(item[key])
+
+
+def update_clients(clients, action, name):
+    validate_clients(clients)
+    matching = [item for item in clients if item["name"] == name]
+    if action == "issue":
+        if (
+            matching
+            or any(item["username"] == name for item in clients)
+            or len(clients) == 128
+        ):
+            raise ValueError("device already exists or capacity reached")
+        return [
+            *clients,
+            {"name": name, "username": name, "password": secrets.token_urlsafe(32)},
+        ]
+    if not matching:
+        raise ValueError("device not found")
+    return [item for item in clients if item["name"] != name]
+
+
+def run_sops(argv, *, data=None):
+    result = subprocess.run(
+        ["sops", *argv], input=data, capture_output=True, timeout=60
+    )
+    if result.returncode:
+        # SOPS diagnostics may contain input/credentials; expose only the phase.
+        raise RuntimeError("encrypted document operation failed")
+    return result.stdout
+
+
+def private_file(fd):
+    info = os.fstat(fd)
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or info.st_uid != os.getuid()
+        or info.st_nlink != 1
+        or stat.S_IMODE(info.st_mode) != 0o600
+    ):
+        raise ValueError("unsafe private document authority")
+    return info
+
+
+def identity(info):
+    return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
+
+
+def operate(path, action, name):
+    path = Path(os.path.abspath(path))
+    path = path.parent.resolve(strict=True) / path.name
+    parent = os.open(
+        path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    )
+    directory = os.fstat(parent)
+    if directory.st_uid != os.getuid() or directory.st_mode & 0o022:
+        os.close(parent)
+        raise ValueError("unsafe encrypted document directory")
+    flags = os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC
+    try:
+        lock = os.open(str(path) + ".new-client.lock", flags, 0o600)
+    except OSError:
+        os.close(parent)
+        raise
+    temporary = None
+    source = None
+    try:
+        private_file(lock)
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        source = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        before = private_file(source)
+        if before.st_size > 4 * 1024 * 1024:
+            raise ValueError("document exceeds capacity")
+        encrypted = os.read(source, before.st_size + 1)
+        if len(encrypted) != before.st_size or identity(os.fstat(source)) != identity(
+            before
+        ):
+            raise ValueError("document changed during read")
+        input_type = "json" if path.suffix == ".json" else "yaml"
+        document = json.loads(
+            run_sops(
+                [
+                    "--decrypt",
+                    "--input-type",
+                    input_type,
+                    "--output-type",
+                    "json",
+                    "/dev/stdin",
+                ],
+                data=encrypted,
+            )
+        )
+        block = document.get("naive_secrets")
+        if not isinstance(block, dict) or "username" in block or "password" in block:
+            raise ValueError("per-device Naive contract required")
+        clients = block.get("clients", [])
+        validate_clients(clients)
+        if action == "readout":
+            selected = next((item for item in clients if item["name"] == name), None)
+            if selected is None:
+                raise ValueError("device not found")
+            server = block.get("server_name")
+            if not isinstance(server, str) or not server:
+                raise ValueError("server identity unavailable")
+            if identity(os.stat(path, follow_symlinks=False)) != identity(before):
+                raise ValueError("document changed during read")
+            return {"server_name": server, **selected}
+        updated = update_clients(clients, action, name)
+        descriptor, temporary = tempfile.mkstemp(
+            prefix="." + path.name + ".naive-client.",
+            suffix=path.suffix,
+            dir=path.parent,
+        )
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(encrypted)
+            output.flush()
+            os.fsync(output.fileno())
+        run_sops(
+            ["set", "--value-stdin", temporary, '["naive_secrets"]'],
+            data=json.dumps({**block, "clients": updated}).encode(),
+        )
+        check = json.loads(run_sops(["--decrypt", "--output-type", "json", temporary]))
+        expected = {**document, "naive_secrets": {**block, "clients": updated}}
+        if (
+            check != expected
+            or identity(os.stat(path, follow_symlinks=False)) != identity(before)
+            or (os.stat(path.parent).st_dev, os.stat(path.parent).st_ino)
+            != (directory.st_dev, directory.st_ino)
+        ):
+            raise ValueError("document changed during transaction")
+        with open(temporary, "rb") as staged:
+            private_file(staged.fileno())
+            os.fsync(staged.fileno())
+        os.replace(temporary, path)
+        temporary = None
+        os.fsync(parent)
+        return {"device": name, "action": action, "clients": len(updated)}
+    finally:
+        if temporary is not None:
+            Path(temporary).unlink(missing_ok=True)
+        if source is not None:
+            os.close(source)
+        os.close(lock)
+        os.close(parent)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("action", choices=("issue", "revoke", "readout"))
+    parser.add_argument("name")
+    parser.add_argument("--file", required=True)
+    args = parser.parse_args()
+    if not NAME.fullmatch(args.name):
+        parser.error("invalid device name")
+    try:
+        result = operate(args.file, args.action, args.name)
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+        print("Naive device operation refused or failed", file=sys.stderr)
+        return 1
+    if args.action != "readout":
+        try:
+            subprocess.run(
+                [
+                    str(Path(__file__).with_name("audit-log.sh")),
+                    "append-best-effort",
+                    "--action",
+                    "naive-" + args.action,
+                    "--client",
+                    args.name,
+                ],
+                capture_output=True,
+                timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError):
+            pass  # Audit availability cannot undo an already committed credential change.
+    print(json.dumps(result))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -2,6 +2,18 @@
 
 ## Design decisions
 
+**Naive devices have independent encrypted identities** — `naive-client.py`
+centralizes the three explicit Make verbs for issuance, revocation, and selected
+credential readout. It shares `.new-client.lock`, uses encrypted sibling publication,
+refuses unsafe source authority, and preserves unrelated fields. `new-client.sh`
+includes optional Naive issuance inside its existing all-profile transaction.
+No scalar credential compatibility path or plaintext staging is supported.
+
+**Bootstrap issuance follows intrinsic retention** — the subscription resolver
+uses role defaults, group/profile policy and encrypted overrides to create versioned
+epoch-bound grants. Optional expiry only shortens the deadline, and its bounded
+metadata is installed before the payload. No old-format bootstrap URLs are issued.
+
 - SNI secrets are parsed structurally through PyYAML; only `xray.server_names` becomes probe targets, and malformed private input produces categorical diagnostics.
 
 - Disposable CI creates its no-clobber public result directory before validating

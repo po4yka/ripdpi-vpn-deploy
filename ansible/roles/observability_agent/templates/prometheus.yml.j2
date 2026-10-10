@@ -9,7 +9,7 @@ scrape_configs:
     sample_limit: {{ observability_agent.scrape_sample_limit - 200 }}
     label_limit: {{ observability_agent.scrape_label_limit }}
     static_configs:
-      - targets: ["127.0.0.1:9100"]
+      - targets: ["{{ monitoring_node_exporter_endpoint | default('127.0.0.1:9100') }}"]
     metric_relabel_configs:
       - source_labels: [__name__]
         regex: "^(node_(cpu|memory|filesystem|time|boot|network|disk|filefd)_.*|node_load(1|5|15)|observability_push_.*|vpn_(xray_stats|observability_|watchdog_|backup_|certificate_|honeypot_|policy_ratelimit_|burn_).*)$"
@@ -26,7 +26,7 @@ scrape_configs:
     sample_limit: 150
     label_limit: {{ observability_agent.scrape_label_limit }}
     static_configs:
-      - targets: ["127.0.0.1:9100"]
+      - targets: ["{{ monitoring_node_exporter_endpoint | default('127.0.0.1:9100') }}"]
     metric_relabel_configs:
       - source_labels: [__name__, name, state]
         regex: "^node_systemd_unit_state;({% for unit in observability_alert_policy.required_systemd_units %}{{ unit | replace('.', '[.]') }}{% if not loop.last %}|{% endif %}{% endfor %});(active|failed)$"

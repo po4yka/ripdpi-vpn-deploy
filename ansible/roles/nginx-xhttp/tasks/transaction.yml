@@ -33,6 +33,7 @@
           'runtime_directories': nginx_transaction_runtime_directories | default([]),
           'activate_inactive': nginx_transaction_activate_inactive | default(true),
           'desired_enabled': nginx_transaction_desired_enabled | default(none),
+          'prune_releases': nginx_transaction_prune_releases | default(none),
           'check': ansible_check_mode} | to_json }}
   register: nginx_transaction_result
   changed_when: nginx_transaction_result.rc == 0 and (nginx_transaction_result.stdout | from_json).changed

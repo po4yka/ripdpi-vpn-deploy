@@ -2,8 +2,8 @@
 # Verify warp-outbound molecule scenario.
 # Asserts:
 #   1. warp-svc unit file present at expected path with correct ExecStart line.
-#   2. Fallback retry counter file exists at expected path.
-#   3. Synthetic failure: bump the counter and assert it increments.
+#   2. Actual repeated role convergence is idempotent.
+#   3. Real role CLI/health failure boundaries and subsequent reconvergence.
 
 - name: Verify warp-outbound role
   hosts: all
@@ -23,66 +23,68 @@
         executable: /bin/bash
       changed_when: false
 
-    - name: warp-svc unit references the retry counter env var
-      ansible.builtin.shell:
-        cmd: |
-          set -o pipefail
-          grep -q 'WARP_RETRY_COUNTER_FILE' /etc/systemd/system/warp-svc.service
-        executable: /bin/bash
-      changed_when: false
+    - name: Repeat actual successful WARP convergence
+      ansible.builtin.include_role:
+        name: warp-outbound
+      vars: &warp_fixture_vars
+        vpn: {enable_warp_outbound: true}
+        warp_outbound: {package_version: '2026.8.2100.0', install_warp_cli: false, mode: proxy, socks_port: 40000}
 
-    - name: Fallback retry counter file exists
-      ansible.builtin.stat:
-        path: /var/lib/warp-svc/retry_counter
-      register: retry_file
-      failed_when: not retry_file.stat.exists
-
-    - name: Read current retry counter value
-      ansible.builtin.slurp:
-        src: /var/lib/warp-svc/retry_counter
-      register: counter_before_raw
-
-    - name: Parse counter before synthetic failure
-      ansible.builtin.set_fact:
-        counter_before: "{{ (counter_before_raw.content | b64decode).strip() | int }}"
-
-    # Failure-injection pattern from watchdog/molecule/failure/:
-    # trigger a non-routable address attempt to simulate a WARP outage,
-    # then increment the retry counter as the production handler would.
-    - name: Simulate WARP fallback failure (curl non-routable address)
-      ansible.builtin.command:
-        cmd: >-
-          curl --max-time 1 --socks5-hostname 127.0.0.1:40000
-          http://192.0.2.1/nonexistent
-      register: warp_fail_attempt
-      changed_when: false
-      failed_when: false
-
-    - name: Increment retry counter (simulates production retry handler)
-      ansible.builtin.shell:
-        cmd: |
-          count=$(cat /var/lib/warp-svc/retry_counter 2>/dev/null || echo 0)
-          echo $(( count + 1 )) > /var/lib/warp-svc/retry_counter
-        executable: /bin/sh
-      changed_when: true
-
-    - name: Read counter after synthetic failure
-      ansible.builtin.slurp:
-        src: /var/lib/warp-svc/retry_counter
-      register: counter_after_raw
-
-    - name: Parse counter after synthetic failure
-      ansible.builtin.set_fact:
-        counter_after: "{{ (counter_after_raw.content | b64decode).strip() | int }}"
-
-    - name: Assert retry counter incremented
+    - name: Require actual repeat CLI convergence to be idempotent
       ansible.builtin.assert:
         that:
-          - counter_after | int > counter_before | int
-        success_msg: "Retry counter incremented: {{ counter_before }} -> {{ counter_after }}"
-        fail_msg: >-
-          Retry counter did not increment.
-          before={{ counter_before }} after={{ counter_after }}
+          - not warp_register.changed
+          - not warp_mode.changed
+          - not warp_port.changed
+          - not warp_connect.changed
+          - warp_trace.rc == 0
+          - "'warp=on' in warp_trace.stdout"
+
+    - name: Exercise actual CLI failure without inventing retry state
+      environment: {WARP_CLI_FIXTURE: connect-failed}
+      block:
+        - name: Run the actual role with a failed connect
+          ansible.builtin.include_role:
+            name: warp-outbound
+          vars: *warp_fixture_vars
+        - name: Fail if failed CLI connection was accepted
+          ansible.builtin.fail:
+            msg: Actual WARP role accepted CLI failure
+      rescue:
+        - name: Require actual Connect WARP failure
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Connect WARP'
+              - ansible_failed_result.rc == 1
+
+    - name: Exercise actual curl failure without inventing retry state
+      environment: {WARP_TRACE_FIXTURE: network-failed}
+      block:
+        - name: Run the actual role with a failed trace request
+          ansible.builtin.include_role:
+            name: warp-outbound
+          vars: *warp_fixture_vars
+        - name: Fail if trace transport failure was accepted
+          ansible.builtin.fail:
+            msg: Actual WARP role accepted trace transport failure
+      rescue:
+        - name: Require actual trace command failure
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Verify WARP exit IP is reachable'
+              - ansible_failed_result.rc == 7
+
+    - name: Reconverge the actual role after CLI and health failures
+      ansible.builtin.include_role:
+        name: warp-outbound
+      vars: *warp_fixture_vars
+
+    - name: Require actual successful recovered role health
+      ansible.builtin.assert:
+        that:
+          - warp_trace.rc == 0
+          - "'warp=on' in warp_trace.stdout"
+          - not warp_connect.changed
 
     - name: warp-cli stub was invoked (call log exists)
       ansible.builtin.stat:

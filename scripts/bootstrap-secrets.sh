@@ -187,6 +187,7 @@ REALITY_PUB="$( echo "$REALITY_RAW" | awk -F': ' '/Public/ {print $2}' | tr -d '
 # ---------------------------------------------------------------------------
 declare -a CLIENT_BLOCKS_XRAY
 declare -a CLIENT_BLOCKS_HYS
+declare -a CLIENT_BLOCKS_NAIVE
 IFS=',' read -r -a client_list <<< "$CLIENTS"
 for name in "${client_list[@]}"; do
   name_yaml="$(printf '%s' "$name" | yaml_scalar)"
@@ -199,6 +200,10 @@ for name in "${client_list[@]}"; do
   hys_pw="$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)"
   CLIENT_BLOCKS_HYS+=("    - name: ${name_yaml}
       password: \"${hys_pw}\"")
+  naive_pw="$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)"
+  CLIENT_BLOCKS_NAIVE+=("    - name: ${name_yaml}
+      username: ${name_yaml}
+      password: \"${naive_pw}\"")
 
 done
 
@@ -305,8 +310,10 @@ NGX
 
 naive_secrets:
   server_name: ${XHTTP_HOST_YAML}
-  username: "u-$(openssl rand -hex 4)"
-  password: "$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)"
+  clients:
+NAIVE
+  for block in "${CLIENT_BLOCKS_NAIVE[@]}"; do echo "$block"; done
+  cat <<NAIVE
   probe_resistance_secret: "$(openssl rand -hex 16)"
   cert_pem: |
     -----BEGIN CERTIFICATE-----

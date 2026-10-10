@@ -111,6 +111,25 @@ for index, variant in enumerate(variants):
     print(index, len(users), variant_id, sep="\t")
 ')" || { echo "error: failed to inspect Snell client collections" >&2; exit 1; }
 
+# Optional Naive identities share this encrypted transaction and device name.
+# Validate before the first staged edit; an absent transport stays absent.
+naive_plan="$(sops --decrypt --output-type json "$SOPS_FILE" 2>/dev/null | \
+  CLIENT_NAME="$NAME" REPO_ROOT="$REPO_ROOT" python3 -c '
+import importlib.util, json, os, sys
+spec = importlib.util.spec_from_file_location("naive_client", os.environ["REPO_ROOT"] + "/scripts/naive-client.py")
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+document = json.load(sys.stdin)
+block = document.get("naive_secrets")
+if block is None:
+    print("absent")
+elif not isinstance(block, dict) or "username" in block or "password" in block:
+    raise SystemExit("per-device Naive contract required")
+else:
+    updated = module.update_clients(block.get("clients", []), "issue", os.environ["CLIENT_NAME"])
+    print(json.dumps({**block, "clients": updated}))
+' 2>/dev/null)" || { echo "error: failed to inspect Naive device collection" >&2; exit 1; }
+
 UUID="$(uuidgen)"
 SHORT_ID="$(openssl rand -hex 4)"
 HY_PASSWORD="$(openssl rand -base64 24)"
@@ -162,6 +181,10 @@ print(temporary)
 ')"
 cp "$SOPS_FILE" "$SOPS_TEMP"
 chmod 0600 "$SOPS_TEMP"
+
+if [[ "$naive_plan" != "absent" ]]; then
+  printf '%s' "$naive_plan" | sops set --value-stdin "$SOPS_TEMP" '["naive_secrets"]'
+fi
 
 printf '{"name":"%s","uuid":"%s","short_id":"%s"}' "$NAME" "$UUID" "$SHORT_ID" |
   sops set --value-stdin "$SOPS_TEMP" "[\"xray\"][\"clients\"][${xray_index}]"
@@ -228,9 +251,12 @@ encrypted notes app). Local plaintext artifacts under
 secrets/local/clients/ are disposable caches — shred them after
 delivery; recovery reads the SOPS document, not local files.
 
-To remove this client later: sops --set '...' to delete the matching entries
+To remove this client later: edit the encrypted document to delete the matching entries
 in xray.clients / hysteria.clients / amneziawg_secrets.peers /
-client_registry and run
+client_registry, plus snell_secrets.variants[].users and naive_secrets.clients
+when those optional transports are configured. Naive-only removal is available
+through make naive-revoke CLIENT=${NAME} SOPS_FILE=... . Then run the reviewed
+credential deployment:
   make rotate-credentials.
 EOF
 

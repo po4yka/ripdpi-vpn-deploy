@@ -33,9 +33,7 @@ provisioner:
 verifier:
   name: ansible
 
-# The source-build path needs Go and network. This scenario instead binds an
-# explicitly supplied synthetic binary to its digest with source builds
-# disabled, then verifies the surrounding role contract.
+# Requires the exact controller-built composite via NAIVE_NATIVE_BINARY.
 scenario:
   test_sequence:
     - dependency

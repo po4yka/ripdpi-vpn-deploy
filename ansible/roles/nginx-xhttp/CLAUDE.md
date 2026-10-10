@@ -51,6 +51,17 @@ defaults. Don't mix these — XHTTP needs long-lived streams.
 
 **Both XHTTP locations suppress access logging** — primary and fallback transport paths keep request/session identifiers out of public-site logs; ordinary site requests retain their access logs.
 
+The shared publisher journals complete prior/desired rows, exact boot/running
+state and a versioned phase before each live boundary. Recognized interruption
+recovers only that write set under the unit lock, restores prior service state,
+and then re-converges normally. Foreign bytes and unknown journals fail closed.
+Private per-owner receipts bind stable managed authority; a missing/stale receipt
+forces adoption even when disk bytes are unchanged. Runtime validation precedes
+the fsynced receipt. Reload also requires a fresh stable live worker pool under
+the same trusted master/executable identity; command acknowledgement and disk
+validation alone cannot acknowledge adoption. Failed/missing new workers retain
+intent and compensate. SIGKILL proofs cover publication, activation and recovery.
+
 ## What's done well
 
 - **SOPS-delivered public certificate** — the role writes `nginx_xhttp.cert_pem` and `key_pem` to the nginx TLS directory with restricted key permissions. Certificate issuance and renewal remain operator-owned; `check-certs.sh` verifies SAN, expiry, and key match before deploy.

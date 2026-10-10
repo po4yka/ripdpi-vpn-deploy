@@ -47,6 +47,17 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+def _bootstrap_token(seed="fixture"):
+    import base64
+
+    random = (
+        base64.urlsafe_b64encode(hashlib.sha256(seed.encode()).digest())
+        .decode()
+        .rstrip("=")
+    )
+    return f"b1_{int(time.time()):010d}_{random}"
+
+
 @pytest.fixture
 def service(tmp_path):
     """Render the .j2 with test paths, import as a module, start the
@@ -93,6 +104,14 @@ def service(tmp_path):
         consumed_dir = sub_dir / ".vpn-bootstrap-consumed"
         consumed_dir.mkdir(mode=0o700)
         consumed_dir.chmod(0o700)
+        for name, data in (
+            (".vpn-bootstrap-state.lock", ""),
+            (".vpn-bootstrap-retired-before", '{"schema":1,"retired_before":0}'),
+        ):
+            authority = sub_dir / name
+            authority.write_text(data)
+            authority.chmod(0o600)
+        reads_log.parent.chmod(0o700)
         reads_log.parent.mkdir(parents=True, exist_ok=True)
         revoked_file.parent.mkdir(parents=True, exist_ok=True)
         if not revoked_file.exists():
@@ -204,7 +223,7 @@ def test_sub_is_idempotent(service):
 # /bootstrap/ — single-use, atomic consume
 # ---------------------------------------------------------------------------
 def test_bootstrap_consumes_once(service):
-    token = "aaaa1111bbbb2222"
+    token = _bootstrap_token("aaaa1111bbbb2222")
     service.place("bootstrap", token, b"hello")
 
     resp = service.get(f"/bootstrap/{token}")
@@ -219,7 +238,7 @@ def test_bootstrap_consumes_once(service):
 
 
 def test_bootstrap_purges_meta_with_payload(service):
-    token = "1111aaaa2222bbbb"
+    token = _bootstrap_token("1111aaaa2222bbbb")
     service.place("bootstrap", token, b"payload", expires="2099-01-01")
     h = hashlib.sha256(token.encode()).hexdigest()
 
@@ -244,7 +263,7 @@ def test_sub_expired_returns_410_but_keeps_payload(service):
 
 
 def test_bootstrap_expired_returns_410_and_purges(service):
-    token = "exp20000exp20000"
+    token = _bootstrap_token("exp20000exp20000")
     service.place("bootstrap", token, b"payload", expires="2000-01-01")
     h = hashlib.sha256(token.encode()).hexdigest()
 
@@ -367,7 +386,7 @@ def test_unreadable_revocation_state_fails_closed_and_is_audited(service, monkey
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize("route", ["sub", "bootstrap"])
 def test_unknown_token_returns_410_audit_unknown(service, route):
-    token = "missing0missing0"
+    token = _bootstrap_token("missing") if route == "bootstrap" else "missing0missing0"
     resp = service.get(f"/{route}/{token}")
     assert resp.status == 410
     assert service.reads()[-1]["outcome"] == "unknown"
@@ -473,9 +492,9 @@ class TestRevokeLifecycle:
         service.get(f"/sub/{token}")  # revoked
 
         outcomes = [r["outcome"] for r in service.reads()]
-        assert outcomes[-1] == "revoked", (
-            f"Last audit outcome must be 'revoked', got: {outcomes}"
-        )
+        assert (
+            outcomes[-1] == "revoked"
+        ), f"Last audit outcome must be 'revoked', got: {outcomes}"
 
     def test_revoked_token_stays_on_disk(self, service):
         """Revocation must NOT delete the payload file — the operator can
@@ -486,9 +505,9 @@ class TestRevokeLifecycle:
         service.revoke(token)
 
         h = hashlib.sha256(token.encode()).hexdigest()
-        assert (service.sub_dir / "sub" / h).exists(), (
-            "Revocation must not delete the payload — it is soft-blocked."
-        )
+        assert (
+            service.sub_dir / "sub" / h
+        ).exists(), "Revocation must not delete the payload — it is soft-blocked."
 
         resp = service.get(f"/sub/{token}")
         assert resp.status == 410
@@ -496,7 +515,7 @@ class TestRevokeLifecycle:
     def test_bootstrap_revoked_returns_410_and_does_not_consume(self, service):
         """Revoked bootstrap tokens must return 410 without consuming the file,
         because the payload should not be silently discarded for a revoked token."""
-        token = "rb_rev_rb_rev_rbb"  # 17 chars
+        token = _bootstrap_token("rb_rev_rb_rev_rbb")
 
         service.place("bootstrap", token, b"bootstrap-payload")
         service.revoke(token)
@@ -525,6 +544,7 @@ def test_restart_refuses_lost_or_unsafe_revocation_authority(service, tmp_path, 
         service.revoked_file.symlink_to(target)
     elif kind == "hardlink":
         import os
+
         service.revoked_file.unlink()
         os.link(target, service.revoked_file)
     elif kind == "mode":

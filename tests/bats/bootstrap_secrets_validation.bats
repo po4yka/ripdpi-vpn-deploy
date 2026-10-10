@@ -144,8 +144,54 @@ EOF
   [ ! -e "${BATS_TEST_TMPDIR}/.config/vpn-provision/test-env.secrets.yaml" ]
   [ "$(grep -Fc 'target: "mirror.example.com:8443"' "$encrypted")" -eq 1 ]
   [ "$(grep -Fc '    - "mirror.example.com"' "$encrypted")" -eq 1 ]
-  [ "$(grep -Fc '    - name: "phone"' "$encrypted")" -eq 2 ]
-  [ "$(grep -Fc '    - name: "laptop"' "$encrypted")" -eq 2 ]
+  # The SOPS stub exposes only synthetic producer output. Inspect each protocol
+  # separately so a missing client block cannot be hidden by another duplicate.
+  run python3 - "$encrypted" <<'PY'
+import sys
+from pathlib import Path
+import json
+import re
+
+source = Path(sys.argv[1]).read_text()
+contracts = {
+    "xray": {"name", "uuid", "short_id"},
+    "hysteria": {"name", "password"},
+    "naive_secrets": {"name", "username", "password"},
+}
+for protocol, fields in contracts.items():
+    sections = re.findall(
+        rf"^{protocol}:\n(.*?)(?=^\S|\Z)", source, flags=re.M | re.S
+    )
+    assert len(sections) == 1, protocol
+    blocks = re.findall(
+        r"^  clients:\n((?:    -[^\n]*\n|      [^\n]*\n)*)",
+        sections[0], flags=re.M,
+    )
+    assert len(blocks) == 1, protocol
+    records = []
+    for line in blocks[0].splitlines():
+        match = re.fullmatch(r'(    - |      )([a-z_]+): (".*")', line)
+        assert match, protocol
+        prefix, field, scalar = match.groups()
+        if prefix == "    - ":
+            assert field == "name", protocol
+            records.append({})
+        assert records and field not in records[-1], protocol
+        records[-1][field] = json.loads(scalar)
+    assert [row["name"] for row in records] == ["phone", "laptop"], protocol
+    for row in records:
+        assert set(row) == fields, protocol
+        assert all(isinstance(value, str) and value for value in row.values()), protocol
+        if protocol == "naive_secrets":
+            assert row["username"] == row["name"]
+            assert len(row["password"]) == 24
+    if protocol == "xray":
+        assert len({row["uuid"] for row in records}) == 2
+        assert len({row["short_id"] for row in records}) == 2
+    if protocol == "naive_secrets":
+        assert not re.search(r"^  (username|password):", sections[0], flags=re.M)
+PY
+  [ "$status" -eq 0 ]
   [ "$(grep -Fc 'server_name: "vpn.example.com"' "$encrypted")" -eq 2 ]
   [ "$(grep -Fc '  peers: []' "$encrypted")" -eq 1 ]
   [ "$(grep -Fc '  source_commit:' "$encrypted")" -eq 1 ]

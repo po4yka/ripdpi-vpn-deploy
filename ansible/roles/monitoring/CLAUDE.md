@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+**Private endpoint admission precedes mutation** — `files/private_endpoint.py` normalizes a literal host:port before handler flush, packages or config writes. Loopback is allowed; a Tailnet address requires both exact `node_exporter_approved_tailnet_addresses` approval and gathered local identity. Wildcards, public/private-LAN addresses, hostnames and argument injection are rejected. `monitoring_node_exporter_endpoint` is the normalized contract shared with independent sender and verification calls.
+
 **No external telemetry** — Prometheus node_exporter listens on 127.0.0.1
 only. `scripts/probing-summary.sh` pulls metrics via SSH on demand. Nothing
 egresses unless the operator runs it.

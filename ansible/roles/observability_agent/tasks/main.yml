@@ -72,6 +72,22 @@
 - name: Configure observability agent when feature is enabled
   when: observability_agent.enabled | default(false) | bool
   block:
+    - name: Validate shared private exporter endpoint before sender mutation
+      ansible.builtin.command:
+        argv: [python3, -c, "{{ lookup('ansible.builtin.file', role_path ~ '/../monitoring/files/private_endpoint.py') }}"]
+        stdin: >-
+          {{ {'endpoint': monitoring.node_exporter_listen | default('127.0.0.1:9100'),
+              'approved_tailnet_addresses': monitoring.node_exporter_approved_tailnet_addresses | default([]),
+              'local_addresses': (ansible_facts['all_ipv4_addresses'] | default([]))
+                + (ansible_facts['all_ipv6_addresses'] | default([]))} | to_json }}
+      register: _observability_agent_exporter_endpoint
+      changed_when: false
+      check_mode: false
+
+    - name: Retain normalized shared exporter endpoint for all scrape jobs
+      ansible.builtin.set_fact:
+        monitoring_node_exporter_endpoint: "{{ (_observability_agent_exporter_endpoint.stdout | from_json).endpoint }}"
+
     - name: Require direct node heartbeat scope before mutation
       ansible.builtin.assert:
         that:

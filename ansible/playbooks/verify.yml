@@ -84,12 +84,36 @@
         ((vpn.enable_xray_reality | default(true)) or
          (vpn.enable_nginx_xhttp | default(true)))
 
+    - name: Gather exporter local address facts for private endpoint verification
+      ansible.builtin.setup:
+        gather_subset: ["!all", "!min", network]
+        filter: [ansible_all_ipv4_addresses, ansible_all_ipv6_addresses]
+      when: vpn.enable_monitoring | default(true)
+
+    - name: Validate shared private exporter endpoint before verification
+      ansible.builtin.command:
+        argv: [python3, -c, "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../roles/monitoring/files/private_endpoint.py') }}"]
+        stdin: >-
+          {{ {'endpoint': monitoring.node_exporter_listen | default('127.0.0.1:9100'),
+              'approved_tailnet_addresses': monitoring.node_exporter_approved_tailnet_addresses | default([]),
+              'local_addresses': (ansible_facts['all_ipv4_addresses'] | default([]))
+                + (ansible_facts['all_ipv6_addresses'] | default([]))} | to_json }}
+      register: _verify_exporter_endpoint
+      changed_when: false
+      check_mode: false
+      when: vpn.enable_monitoring | default(true)
+
+    - name: Retain shared normalized exporter endpoint for verification
+      ansible.builtin.set_fact:
+        monitoring_node_exporter_endpoint: "{{ (_verify_exporter_endpoint.stdout | from_json).endpoint }}"
+      when: vpn.enable_monitoring | default(true)
+
     - name: Xray redacted diagnostic metrics are fresh
       ansible.builtin.shell:
         cmd: |
           set -euo pipefail
           metrics="$(curl --fail --silent --show-error --max-time 5 \
-            http://{{ monitoring.node_exporter_listen | default('127.0.0.1:9100') }}/metrics \
+            {{ ('http://' ~ monitoring_node_exporter_endpoint ~ '/metrics') | quote }} \
             | awk '/^vpn_xray_/')"
           grep -q '^vpn_xray_stats_collection_success 1$' <<<"$metrics"
           age="$(awk -v now="$(date +%s)" '

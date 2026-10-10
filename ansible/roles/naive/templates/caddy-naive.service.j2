@@ -7,8 +7,8 @@ Wants=network-online.target
 [Service]
 User=naive
 Group=naive
-ExecStart=/usr/local/bin/caddy-naive run --config {{ naive.config_dir }}/Caddyfile --adapter caddyfile
-ExecReload=/usr/local/bin/caddy-naive reload --config {{ naive.config_dir }}/Caddyfile --adapter caddyfile
+ExecStart=/usr/local/bin/caddy-naive run --config {{ naive.config_dir }}/caddy.json
+ExecReload=/usr/local/bin/caddy-naive reload --config {{ naive.config_dir }}/caddy.json
 Restart=on-failure
 RestartSec=5s
 LimitNOFILE=1048576

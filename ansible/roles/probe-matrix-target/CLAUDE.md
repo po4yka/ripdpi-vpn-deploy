@@ -17,6 +17,11 @@ nginx transaction. The local Molecule PKI is synthetic but the nginx parser is
 real. Disable removes the owned TLS vhost through the shared complete-candidate nginx
 transaction before retiring its certificate. It preserves global nginx enablement,
 does not start an inactive shared nginx, and preserves every other listener.
+Disabled absence always enters the nginx transaction, even when both vhost files
+are already gone: a retained publication journal or stale active listener must
+recover before certificate retirement. Its validation root is only `/etc/nginx`,
+matching the vhost-only write set; a missing `/etc/probe-matrix` cannot block
+reconciliation of an unchanged inactive or interrupted removal.
 
 ## What's done well
 

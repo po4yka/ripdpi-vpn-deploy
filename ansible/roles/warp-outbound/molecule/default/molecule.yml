@@ -35,8 +35,7 @@ verifier:
 
 # Cloudflare WARP CLI cannot register in CI (no reachable Cloudflare
 # endpoint). The converge stubs out warp-cli + curl so role tasks
-# succeed; verify.yml asserts the service unit shape and that the
-# fallback retry counter increments on a synthetic failure.
+# exercise real role success, CLI/health refusal and subsequent reconvergence.
 scenario:
   test_sequence:
     - dependency
@@ -44,5 +43,6 @@ scenario:
     - create
     - prepare
     - converge
+    - idempotence
     - verify
     - destroy

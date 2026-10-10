@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+**Recovery evidence exercises actual role outcomes** — Molecule's stateful CLI fixture changes only in response to real role commands, supports idempotence, and injects CLI and trace transport failures before successful reconvergence. `warp=off` remains rejected. No test increments an invented retry counter; this proves role reconvergence, not automatic vendor retries or live registration.
+
 The role requires an explicit stable `package_version`, validates native APT
 metadata, installs that exact dpkg version and checks the installed identity
 before any registration, mode or route changes. Out-of-band installations must

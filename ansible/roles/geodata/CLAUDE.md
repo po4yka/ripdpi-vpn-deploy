@@ -15,7 +15,16 @@ the refresh succeeds; no inferred version threshold authorizes unsupported HUP.
 **Geodata is one verified pair** — convergence and the timer use the same
 publisher. Both pinned files verify before either current file changes; ordinary
 activation failure restores prior bytes/modes and reactivates the complete old
-pair. Failed rollback retains a private pending pair and blocks reuse. Disabling
+pair. A fsynced versioned phase journal retains both desired/prior pair digests and
+metadata before publication. Recognized interruption restores that exact pair
+and re-converges under the publisher lock; foreign bytes or metadata and unknown
+journals remain blocked. An exact typed active-runtime receipt binds the pinned
+pair and its expected
+0644/root ownership metadata. Safe owned mode/group drift is republished even
+when byte hashes match; foreign ownership/links and writable input metadata
+refuse. Unknown or malformed receipts never get overwritten silently. Missing
+acknowledgement forces unchanged activation before success. Inactive
+Xray remains inactive and cannot earn an active adoption receipt. Disabling
 stops scheduling while retaining these recovery and data files.
 
 ## What's done well
@@ -44,3 +53,7 @@ stops scheduling while retaining these recovery and data files.
   their planned creation and check the pinned URLs with read-only HEAD requests.
   Defer downloads and activation only until real convergence can write their
   destinations and verify both SHA256 pins.
+
+A read-only ancestor guard runs before Ansible directory metadata convergence;
+symlink/foreign/writable roots are refused before the file module can follow or
+repair them. Fresh missing directory creation remains a planned role action.

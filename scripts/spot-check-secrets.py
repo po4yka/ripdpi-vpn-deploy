@@ -199,6 +199,10 @@ def main() -> int:
             f.add(f"hysteria.clients[{client.get('name','?')}].password",
                   f"password length {len(pw)} < 16")
 
+    for index, client in enumerate((data.get("naive_secrets") or {}).get("clients") or []):
+        if not isinstance(client, dict) or not isinstance(client.get("password"), str) or len(client["password"]) < 20:
+            f.add(f"naive_secrets.clients[{index}]", "missing or short independent password")
+
     restic = (data.get("backup") or {}).get("restic_password", "")
     if len(restic) < 32:
         f.add("backup.restic_password",

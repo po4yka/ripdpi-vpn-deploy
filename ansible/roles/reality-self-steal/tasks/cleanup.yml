@@ -1,49 +1,34 @@
 ---
-- name: Remove self-steal nginx site files
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: absent
-  loop:
-    - /etc/nginx/sites-enabled/reality-self-steal.conf
-    - /etc/nginx/sites-available/reality-self-steal.conf
-  register: reality_self_steal_removed_site_files
+- name: Stage removal of the exact owned self-steal listener and pointer
+  ansible.builtin.set_fact:
+    nginx_transaction_files:
+      - {path: /etc/nginx/sites-enabled/reality-self-steal.conf, kind: absent}
+      - {path: /etc/nginx/sites-available/reality-self-steal.conf, kind: absent}
+      - {path: '{{ reality_self_steal_tls_dir }}/current', kind: absent}
 
-- name: Remove self-steal TLS and site data
-  ansible.builtin.file:
-    path: "{{ item }}"
-    state: absent
-  loop:
-    - "{{ reality_self_steal_tls_dir }}"
-    - "{{ reality_self_steal_site_root }}"
-    - "{{ reality_self_steal_staging_dir }}"
-  register: reality_self_steal_removed_data
+- name: Include exact owned landing assets in compensated retirement
+  ansible.builtin.set_fact:
+    nginx_transaction_files: >-
+      {{ nginx_transaction_files + [{'path': reality_self_steal_site_root ~ '/' ~ (item | basename),
+          'kind': 'absent'}] }}
+  loop: "{{ query('ansible.builtin.fileglob', role_path ~ '/files/public-site/*') }}"
+  no_log: true
+  diff: false
 
-- name: Detect a stale in-memory self-steal nginx listener
-  ansible.builtin.shell:
-    cmd: |
-      set -o pipefail
-      ss -lntpH 'sport = :{{ reality_self_steal_port | int }}' |
-        grep -E '127\.0\.0\.1:{{ reality_self_steal_port | int }}.*nginx'
-    executable: /bin/bash
-  register: reality_self_steal_stale_listener
-  changed_when: false
-  failed_when: false
-
-- name: Detect whether nginx can be reloaded
-  ansible.builtin.command:
-    cmd: systemctl is-active --quiet nginx
-  register: reality_self_steal_nginx_active
-  changed_when: false
-  failed_when: false
-
-- name: Reload nginx even after an interrupted earlier cleanup
-  ansible.builtin.systemd_service:
-    name: nginx
-    state: reloaded
-  when:
-    - not ansible_check_mode
-    - reality_self_steal_nginx_active.rc == 0
-    - >-
-      reality_self_steal_removed_site_files.changed or
-      reality_self_steal_removed_data.changed or
-      reality_self_steal_stale_listener.rc == 0
+- name: Validate retire and reload only the owned surface under shared nginx lock
+  ansible.builtin.include_role:
+    name: nginx-xhttp
+    tasks_from: transaction
+  vars:
+    nginx_transaction_owner: reality-self-steal
+    nginx_transaction_prune_releases:
+      root: '{{ reality_self_steal_tls_dir }}/releases'
+      keep: null
+    nginx_transaction_roots: >-
+      {{ ['/etc/nginx', reality_self_steal_site_root]
+         + ([reality_self_steal_tls_dir] if not reality_self_steal_tls_dir.startswith('/etc/nginx/') else []) }}
+    nginx_transaction_validate_argv: [/usr/sbin/nginx, -t]
+    nginx_transaction_unit: nginx.service
+    nginx_transaction_activation: reload
+    nginx_transaction_activate_inactive: false
+    nginx_transaction_desired_enabled: null

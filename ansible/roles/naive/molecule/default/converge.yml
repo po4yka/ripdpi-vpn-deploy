@@ -1,85 +1,109 @@
 ---
-# Converge naive with a digest-bound, operator-supplied synthetic binary.
-# The source build remains disabled explicitly; the role must validate these
-# bytes rather than infer source-build state from mere file existence.
-- name: Converge naive role
+- name: Converge naive with the exact composite and disposable TLS identity
   hosts: all
   become: true
   vars:
+    naive_bind_port: 443
     vpn:
       enable_naive: true
       enable_nginx_xhttp: false
     naive_secrets:
-      server_name: "vpn.example.com"
-      username: "u-test"
-      password: "p-test-not-secret"
-      probe_resistance_secret: "long-random-string-for-test-only"
-      cert_pem: |
-        -----BEGIN CERTIFICATE-----
-        MIIBpDCCAQmgAwIBAgIUMoleculeStubCert000000001MA0GCSqGSIb3DQEBDQUA
-        MBExDzANBgNVBAMMBnN0dWIgMDAeFw0yNjAxMDEwMDAwMDBaFw0yNzAxMDEwMDAw
-        MDBaMBExDzANBgNVBAMMBnN0dWIgMDAqMAUGAytlcAMhAMoleculeStubKeyData00
-        0000000000000000000000000000000000000000oxIwEDAOBgNVHQ8BAf8EBAMCB4A
-        wDQYJKoZIhvcNAQENBQADgYEAMoleculeStubSignature000000000000000000000
-        0000000000000000000000000000000000000000000000000000000000000000000=
-        -----END CERTIFICATE-----
-      key_pem: |
-        -----BEGIN PRIVATE KEY-----
-        MC4CAQAwBQYDK2VwBCIEIMoleculeStubPrivateKey000000000000000000000000
-        00000000000000000000000=
-        -----END PRIVATE KEY-----
-
+      server_name: vpn.example.com
+      clients:
+        - name: fixture-device
+          username: u-test
+          password: p-test-not-secret-long
+      probe_resistance_secret: long-random-string-for-test-only
+    _naive_fixture_binary: "{{ lookup('ansible.builtin.env', 'NAIVE_NATIVE_BINARY') }}"
   pre_tasks:
-    - name: Pre-create naive system user (role will also do this idempotently)
-      ansible.builtin.user:
-        name: naive
-        system: true
-        shell: /usr/sbin/nologin
-        home: /var/lib/naive
-        create_home: true
+    - name: Require exact composite artifact from the pinned native builder
+      ansible.builtin.assert:
+        that:
+          - _naive_fixture_binary is match('^/')
+        fail_msg: Run make native-naive-build and supply its absolute NAIVE_NATIVE_BINARY path.
 
-    - name: Ensure naive binary directory
+    - name: Install disposable PKI prerequisites
+      ansible.builtin.apt:
+        name: openssl
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Ensure private disposable PKI directory
       ansible.builtin.file:
-        path: /usr/local/bin
+        path: /var/lib/naive-molecule-pki
         state: directory
         owner: root
         group: root
-        mode: "0755"
+        mode: "0700"
 
-    - name: Install operator-supplied caddy-naive fixture
+    - name: Generate actual disposable server certificate and key
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - req
+          - -x509
+          - -newkey
+          - rsa:2048
+          - -nodes
+          - -keyout
+          - /var/lib/naive-molecule-pki/key.pem
+          - -out
+          - /var/lib/naive-molecule-pki/cert.pem
+          - -subj
+          - /CN=vpn.example.com
+          - -addext
+          - subjectAltName=DNS:vpn.example.com
+          - -days
+          - "1"
+        creates: /var/lib/naive-molecule-pki/cert.pem
+      no_log: true
+
+    - name: Read disposable PKI
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - /var/lib/naive-molecule-pki/cert.pem
+        - /var/lib/naive-molecule-pki/key.pem
+      register: _naive_fixture_pki
+      no_log: true
+
+    - name: Bind actual disposable TLS bytes
+      ansible.builtin.set_fact:
+        naive_secrets: >-
+          {{ naive_secrets | combine({'cert_pem': _naive_fixture_pki.results[0].content | b64decode,
+                                      'key_pem': _naive_fixture_pki.results[1].content | b64decode}) }}
+      no_log: true
+
+    - name: Install exact controller-built composite fixture
       ansible.builtin.copy:
+        src: "{{ _naive_fixture_binary }}"
         dest: /usr/local/bin/caddy-naive
         owner: root
         group: root
         mode: "0755"
-        content: |
-          #!/bin/sh
-          # Molecule stub for caddy-naive with a deterministic validation refusal.
-          case "$1" in
-            validate)
-              grep -q 'INVALID_CONFIG' "$3" && exit 1
-              exit 0
-              ;;
-            run|version) echo "caddy-naive stub v{{ naive.caddy_version | default('v2.11.2') }}"; exit 0 ;;
-            *) exit 0 ;;
-          esac
 
-    - name: Inspect pinned caddy-naive fixture digest
+    - name: Inspect exact supplied composite identity
+      ansible.builtin.command:
+        argv: [/usr/local/bin/caddy-naive, build-info]
+      register: _naive_fixture_info
+      changed_when: false
+
+    - name: Require exact reviewed Caddy and forwardproxy pins
+      ansible.builtin.assert:
+        that:
+          - "'v2.11.2' in _naive_fixture_info.stdout"
+          - "'github.com/klzgrad/forwardproxy' in _naive_fixture_info.stdout"
+          - "'d62c80d3dd2c' in _naive_fixture_info.stdout"
+
+    - name: Inspect pinned composite digest
       ansible.builtin.stat:
         path: /usr/local/bin/caddy-naive
         checksum_algorithm: sha256
-      register: _molecule_caddy_naive
+      register: _naive_fixture_digest
 
-    - name: Bind the disabled-build fixture to its exact digest
+    - name: Bind supplied exact composite digest
       ansible.builtin.set_fact:
-        naive: >-
-          {{
-            naive
-            | combine({
-                'build_with_xcaddy': false,
-                'xcaddy_sha256': _molecule_caddy_naive.stat.checksum
-              })
-          }}
-
+        naive: "{{ naive | combine({'build_with_xcaddy': false, 'xcaddy_sha256': _naive_fixture_digest.stat.checksum}) }}"
   roles:
     - role: naive

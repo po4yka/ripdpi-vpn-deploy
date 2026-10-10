@@ -269,6 +269,171 @@ def test_real_nginx_complete_tls_boot_and_failed_activation_compensation():
             run("findmnt", "-n", "-o", "TARGET,PROPAGATION", "-T", "/run").stdout
             == before_root
         )
+        # Interrupt the real helper around permanent publication and activation.
+        # The wrapper only pauses after actual helper operations; no success is faked.
+        wrapper = base / "interrupt.py"
+        barrier = base / "barrier"
+        wrapper.write_text(
+            "import importlib.util,json,os,signal,sys\n"
+            "from pathlib import Path\n"
+            f"spec=importlib.util.spec_from_file_location('transaction',{str(helper)!r})\n"
+            "m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)\n"
+            "phase=sys.argv[1];barrier=Path(sys.argv[2])\n"
+            "def pause():\n barrier.write_text('ready');os.kill(os.getpid(),signal.SIGSTOP)\n"
+            "original_apply=m.apply\n"
+            "def apply(path,row,created):\n original_apply(path,row,created)\n"
+            f" if phase=='first-write' and str(path)=={str(config / 'nginx.conf')!r}: pause()\n"
+            "m.apply=apply\n"
+            "original_persist=m.persist\n"
+            "def persist(path,data):\n original_persist(path,data)\n"
+            " if path.name=='pending.json' and data.get('phase')==phase: pause()\n"
+            "m.persist=persist\n"
+            "print(json.dumps(m.publish(json.load(sys.stdin))))\n"
+        )
+
+        def interrupted(document, phase):
+            barrier.unlink(missing_ok=True)
+            process = subprocess.Popen(
+                ["/usr/bin/python3", str(wrapper), phase, str(barrier)],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            try:
+                process.stdin.write(json.dumps(document))
+                process.stdin.close()
+                deadline = time.monotonic() + 40
+                while not barrier.exists():
+                    assert (
+                        process.poll() is None
+                    ), "actual transaction exited before interruption boundary"
+                    assert (
+                        time.monotonic() < deadline
+                    ), "actual transaction never reached interruption boundary"
+                    time.sleep(0.05)
+                process.kill()
+                assert process.wait(timeout=5) == -9
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait(timeout=5)
+                process.stdout.close()
+                process.stderr.close()
+
+        for phase in ("prepared", "first-write", "activating", "activated"):
+            requested = "recovered-" + phase
+            interrupted(request(requested), phase)
+            assert (
+                Path("/var/lib/vpn-nginx-publication") / unit / "pending.json"
+            ).exists()
+            resumed = publish(request(requested))
+            assert resumed.returncode == 0, resumed.stderr
+            assert json.loads(resumed.stdout)["changed"] is True
+            assert body() == requested
+            assert not list(
+                (Path("/var/lib/vpn-nginx-publication") / unit).glob("candidate-*")
+            )
+            repeated = publish(request(requested))
+            assert (
+                repeated.returncode == 0
+                and json.loads(repeated.stdout)["changed"] is False
+            )
+        interrupted(request("recover-after-recovery-death"), "activating")
+        interrupted(request("recover-after-recovery-death"), "recovering")
+        resumed = publish(request("recover-after-recovery-death"))
+        assert resumed.returncode == 0, resumed.stderr
+        assert body() == "recover-after-recovery-death"
+        reload_unit = unit_text.replace(
+            "PrivateTmp=true", "ExecReload=/bin/kill -HUP $MAINPID\nPrivateTmp=true"
+        )
+        baseline = publish(request("reload-baseline", unit_data=reload_unit))
+        assert baseline.returncode == 0 and body() == "reload-baseline", baseline.stderr
+        reload_request = request("reload-positive", unit_data=reload_unit)
+        reload_request["activation"] = "reload"
+        positive = publish(reload_request)
+        assert positive.returncode == 0 and body() == "reload-positive", positive.stderr
+        receipt_path = (
+            Path("/var/lib/vpn-nginx-publication")
+            / unit
+            / "native-regression.activated.json"
+        )
+        old_receipt = receipt_path.read_bytes()
+        adoption_wrapper = base / "adoption.py"
+        adoption_marker = base / "reload-ack"
+        release = base / "release-hup"
+        adoption_wrapper.write_text(
+            "import importlib.util,json,os,signal,subprocess,sys\nfrom pathlib import Path\n"
+            f"spec=importlib.util.spec_from_file_location('transaction',{str(helper)!r})\n"
+            "m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)\n"
+            "original=m.command\n"
+            "def command(argv):\n"
+            f" if argv==['systemctl','reload',{unit!r}]:\n"
+            f"  Path({str(adoption_marker)!r}).write_text('manager-ack')\n"
+            "  if sys.argv[1]=='delayed':\n"
+            f"   pid=original(['systemctl','show',{unit!r},'--property=MainPID','--value']).strip()\n"
+            f'   code="import os,signal,time;from pathlib import Path;gate=Path({str(release)!r});deadline=time.monotonic()+5\\nwhile not gate.exists():\\n assert time.monotonic()<deadline;time.sleep(.02)\\nos.kill(int("+pid+"),signal.SIGHUP)"\n'
+            "   subprocess.Popen(['/usr/bin/python3','-c',code],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)\n"
+            "  return ''\n"
+            " return original(argv)\n"
+            "m.command=command\nprint(json.dumps(m.publish(json.load(sys.stdin))))\n"
+        )
+        desired = request("delayed-adopted", unit_data=reload_unit)
+        desired["activation"] = "reload"
+        delayed = subprocess.Popen(
+            ["/usr/bin/python3", str(adoption_wrapper), "delayed"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            delayed.stdin.write(json.dumps(desired))
+            delayed.stdin.close()
+            deadline = time.monotonic() + 20
+            while not adoption_marker.exists():
+                assert delayed.poll() is None
+                assert time.monotonic() < deadline
+                time.sleep(0.02)
+            time.sleep(0.2)
+            assert receipt_path.read_bytes() == old_receipt
+            assert body() == "reload-positive"
+            assert (
+                delayed.poll() is None
+            ), "manager ack must not acknowledge worker adoption"
+            release.write_text("release actual HUP")
+            assert delayed.wait(timeout=20) == 0
+            assert body() == "delayed-adopted"
+            assert receipt_path.read_bytes() != old_receipt
+        finally:
+            if delayed.poll() is None:
+                delayed.kill()
+                delayed.wait(timeout=5)
+            delayed.stdout.close()
+            delayed.stderr.close()
+        prior = snapshot()
+        prior_receipt = receipt_path.read_bytes()
+        denied = request("never-adopted", unit_data=reload_unit)
+        denied["activation"] = "reload"
+        rejected = subprocess.run(
+            ["/usr/bin/python3", str(adoption_wrapper), "non-adoption"],
+            input=json.dumps(denied),
+            text=True,
+            capture_output=True,
+            timeout=30,
+        )
+        assert rejected.returncode == 1
+        assert snapshot() == prior and receipt_path.read_bytes() == prior_receipt
+        assert body() == "delayed-adopted"
+        # Missing receipt must adopt unchanged bytes rather than report a stale success.
+        receipt = (
+            Path("/var/lib/vpn-nginx-publication")
+            / unit
+            / "native-regression.activated.json"
+        )
+        receipt.unlink()
+        adopted = publish(desired)
+        assert adopted.returncode == 0 and json.loads(adopted.stdout)["changed"] is True
         print(
             json.dumps(
                 {

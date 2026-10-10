@@ -105,6 +105,8 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
         "test_memory_only_tls_preflight_validates_actual_authority",
         "test_real_policy_daemon_idle_heartbeat_and_enabled_disabled_idempotence",
         "test_exact_realm_pin_accepts_supported_config_and_authenticated_rendezvous",
+        "test_actual_fresh_disabled_caller_preserves_inactive_shared_nginx",
+        "test_sigkill_after_both_vhosts_removed_then_actual_unchanged_disable_recovers_listener",
     }
 
 

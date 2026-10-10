@@ -86,6 +86,9 @@ decrypt.
 |---|---|
 | Edit existing secrets | `sops ~/.config/vpn-provision/prod.secrets.sops.yaml` |
 | Add a new client | `SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml ./scripts/new-client.sh laptop` |
+| Issue one Naive device | `make naive-issue CLIENT=laptop SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml` |
+| Revoke one Naive device | `make naive-revoke CLIENT=laptop SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml` |
+| Read one Naive credential for delivery | `make naive-readout CLIENT=laptop SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml` |
 | Re-encrypt under a new recipient | `sops updatekeys ~/.config/vpn-provision/prod.secrets.sops.yaml` |
 | Decrypt for deploy | `make decrypt` (writes configured `SECRETS_FILE`, mode 0600) |
 | Wipe plaintext | `make clean` (shred or rm) |
@@ -93,6 +96,33 @@ decrypt.
 `sops <file>` opens your `$EDITOR` against a temp plaintext file in `/tmp`
 with mode 0600, re-encrypts on save, and deletes the plaintext. It never
 writes plaintext to a path you can `cat` later.
+
+Naive uses `naive_secrets.clients[]` with unique `name`, `username`, and independent
+strong `password` fields. The encrypted writers require the reviewed SOPS 3.13.3
+controller tool; both CI installers verify that release's checksum. Values cross
+its stdin update interface rather than secret-bearing command arguments. The
+former scalar username/password contract is rejected;
+issue new per-device identities. `new-client.sh` adds Naive when its section exists,
+inside the same encrypted transaction as the other transports. The three dedicated
+verbs share that transaction lock, edit encrypted siblings, and preserve unrelated
+material. Readout deliberately prints only the selected device credential: use a
+private terminal and secure delivery channel. Revocation changes encrypted source;
+use the reviewed credential-rotation deployment, which enters the enabled Naive
+role, to enforce it on the node. Revoking the last device
+sets `clients: []`, which disables forwarding and retains the decoy site. These verbs
+do not revoke that device's credentials in other transports or change its registry
+lifecycle.
+
+Bootstrap grants now use `b1_<issued-epoch>_<random>` and expire intrinsically after
+`subscription.bootstrap_max_lifetime_seconds` (seven days by default; 60 seconds
+through 30 days). Older bootstrap token URLs are rejected and need reissuance;
+ordinary `/sub/` URLs retain their existing contract. Optional `--expires` shortens
+the intrinsic deadline. Persistent maintenance bounds consumed markers and audit
+logs, publishing a monotonic retirement fence before deleting old replay proof.
+Compaction uses the absolute supported 30-day lifetime, even under a shorter
+current policy. This protects older grants when policy changes; expired markers
+may therefore occupy admission capacity until that safe horizon. Increase the
+explicit marker capacity for higher issuance volume instead of discarding proof.
 
 Without a `.fleet.mk` override, `SECRETS_FILE` resolves below
 `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}/vpn-provision-$(id -u)}/`. A repo-local

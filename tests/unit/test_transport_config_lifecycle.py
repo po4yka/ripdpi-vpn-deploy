@@ -147,16 +147,14 @@ def test_transport_templates_use_format_specific_validation() -> None:
     realm = _named(_tasks("hysteria-realm"), "Render sing-box realm config")[
         "ansible.builtin.template"
     ]
-    naive = _named(_tasks("naive"), "Render Caddyfile")["ansible.builtin.template"]
+    naive = _named(_tasks("naive"), "Render authoritative native Caddy JSON")["ansible.builtin.template"]
     dns = _named(_tasks("dns-morph-bridge"), "Render bridge config")[
         "ansible.builtin.template"
     ]
 
     assert hysteria["validate"].endswith("--profile hysteria %s")
     assert realm["validate"] == "/usr/local/bin/sing-box-realm check -c %s"
-    assert naive["validate"] == (
-        "/usr/local/bin/caddy-naive validate --config %s --adapter caddyfile"
-    )
+    assert naive["validate"] == "/usr/local/bin/caddy-naive validate --config %s"
     assert dns["validate"].endswith("--profile dns-morph %s")
 
 

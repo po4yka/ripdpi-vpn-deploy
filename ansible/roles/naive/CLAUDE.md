@@ -6,9 +6,11 @@ Disabled role intent stops only declared owned services and removes exact runtim
 configuration; shared packages, immutable release receipts and unrelated state
 remain. The unique `naive_role_enabled` selector defaults true for direct calls.
 
-**Native validation and liveness are one lifecycle** — Caddyfile publication
-uses the pinned caddy-naive `validate` command and the restart handler waits for
-the service to become active before convergence may succeed.
+**Native validation and liveness are one lifecycle** — Native JSON publication
+uses the pinned caddy-naive `validate` command. A private fsynced activation
+receipt binds binary, unit, config and TLS digests. Missing/stale acknowledgement
+forces synchronous restart and a verified local TLS handshake before success,
+even if publication was interrupted and its bytes are now unchanged.
 
 **Optional, off by default** — `vpn.enable_naive: false`. NaiveProxy is a
 useful tactical option for HTTP/2 + Chromium TLS fingerprint, but its v147
@@ -27,9 +29,17 @@ pin form one shared runtime-build receipt. The receipt also binds the expected
 installed binary SHA256; changing one pin rebuilds in a private project stage
 and publishes only after the expected digest passes.
 
-Both Caddy site addresses carry the explicit configured port. A bare hostname
-would silently add TCP/443 when a non-default port is selected, bypassing the
-listener manifest. Native exact-composite adaptation checks the sole listener.
+Native JSON declares one explicit TCP listener at the configured port; no
+hostname auto-HTTPS address can acquire an undeclared port. Receipt readiness
+binds the actual unit MainPID, executable inode, exact config argv and listening
+socket ownership before/after the TLS handshake.
+
+Per-device `clients` is explicit and permits zero entries for last-device
+revocation. Names, usernames and passwords are independently unique. The pinned
+plugin receives one native `auth_credentials` entry per device. Its byte-slice
+JSON encoding preserves all schema-valid printable ASCII without Caddyfile
+quoting or environment substitution. An empty list removes the whole
+forward-proxy handler and retains the decoy, without an unauthenticated fallback.
 
 ## What's done well
 
@@ -43,8 +53,13 @@ listener manifest. Native exact-composite adaptation checks the sole listener.
 - **v147 preamble change is breaking** — clients on < v147 cannot connect to
   server on ≥ v147. Coordinate upgrades; staging environment exists for this.
 - **Authentication is HTTP Basic over TLS** — credentials come from SOPS and
-  render inline into the Caddyfile (`basic_auth` line), owned `0640`
+  render as native JSON byte-slice credentials into `caddy.json`, owned `0640`
   root:naive. There is no env-delivery path; the render is `no_log` with diff
   disabled so the pair never reaches Ansible output.
 - **Don't share the auth pair across clients** — one credential per device,
   same rule as VLESS UUIDs.
+
+The former credential-bearing `Caddyfile` is never a runtime fallback. A guarded
+retirement recognizes only its former role-rendered footprint and exact private
+metadata; it is unlinked durably after successful JSON adoption. Foreign files
+refuse without deletion or restart. Disabled intent retires both known paths.

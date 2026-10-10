@@ -1,8 +1,8 @@
 ---
 # Verify naive molecule scenario.
 # Asserts:
-#   1. Caddyfile is present at expected path (/etc/naive/Caddyfile).
-#   2. Caddyfile contains expected NaiveProxy upstream (forward_proxy) block.
+#   1. native JSON configuration is present at expected path (/etc/naive/caddy.json).
+#   2. native JSON configuration contains expected NaiveProxy upstream (forward_proxy) block.
 #   3. xcaddy version matches the pinned value from defaults/main.yml.
 #   4. the digest-bound operator-supplied fixture remains executable.
 # Live xcaddy build is outside this scenario and requires separate evidence.
@@ -11,57 +11,57 @@
   hosts: all
   become: true
   tasks:
-    - name: Caddyfile is present at expected path
+    - name: native JSON configuration is present at expected path
       ansible.builtin.stat:
-        path: /etc/naive/Caddyfile
+        path: /etc/naive/caddy.json
       register: caddyfile_stat
       failed_when: not caddyfile_stat.stat.exists
 
-    - name: Caddyfile has restrictive permissions (group naive can read)
+    - name: native JSON configuration has restrictive permissions (group naive can read)
       ansible.builtin.assert:
         that:
           - caddyfile_stat.stat.mode == "0640"
-        fail_msg: "Caddyfile mode is {{ caddyfile_stat.stat.mode }}, expected 0640"
+        fail_msg: "native JSON configuration mode is {{ caddyfile_stat.stat.mode }}, expected 0640"
 
-    - name: Read Caddyfile content
+    - name: Read native JSON configuration content
       ansible.builtin.slurp:
-        src: /etc/naive/Caddyfile
+        src: /etc/naive/caddy.json
       register: caddyfile_raw
 
-    - name: Decode Caddyfile
+    - name: Decode native JSON configuration
       ansible.builtin.set_fact:
         caddyfile_text: "{{ caddyfile_raw.content | b64decode }}"
 
-    - name: Caddyfile contains forward_proxy block (NaiveProxy upstream)
+    - name: native JSON configuration contains forward_proxy block (NaiveProxy upstream)
       ansible.builtin.assert:
         that:
           - caddyfile_text is search('forward_proxy')
-        fail_msg: "forward_proxy directive missing from Caddyfile"
+        fail_msg: "forward_proxy directive missing from native JSON configuration"
 
-    - name: Caddyfile contains basic_auth directive
+    - name: native JSON configuration contains per-device authentication array
       ansible.builtin.assert:
         that:
-          - caddyfile_text is search('basic_auth')
-        fail_msg: "basic_auth missing from Caddyfile forward_proxy block"
+          - caddyfile_text is search('auth_credentials')
+        fail_msg: "auth_credentials missing from native JSON configuration forward_proxy block"
 
-    - name: Caddyfile contains probe_resistance directive
+    - name: native JSON configuration contains probe_resistance directive
       ansible.builtin.assert:
         that:
           - caddyfile_text is search('probe_resistance')
-        fail_msg: "probe_resistance missing from Caddyfile"
+        fail_msg: "probe_resistance missing from native JSON configuration"
 
-    - name: Caddyfile contains hide_ip directive
+    - name: native JSON configuration contains hide_ip directive
       ansible.builtin.assert:
         that:
           - caddyfile_text is search('hide_ip')
-        fail_msg: "hide_ip missing from Caddyfile"
+        fail_msg: "hide_ip missing from native JSON configuration"
 
-    - name: Caddyfile references TLS cert and key paths
+    - name: native JSON configuration references TLS cert and key paths
       ansible.builtin.assert:
         that:
           - caddyfile_text is search('/etc/naive/server.fullchain.pem')
           - caddyfile_text is search('/etc/naive/server.key')
-        fail_msg: "TLS cert/key paths missing or wrong in Caddyfile"
+        fail_msg: "TLS cert/key paths missing or wrong in native JSON configuration"
 
     - name: caddy-naive binary is present
       ansible.builtin.stat:

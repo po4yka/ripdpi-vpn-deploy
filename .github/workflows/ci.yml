@@ -270,7 +270,7 @@ jobs:
         run: ansible-playbook playbooks/site.yml --syntax-check -i 'localhost,'
 
   molecule:
-    timeout-minutes: 20
+    timeout-minutes: ${{ matrix.role == 'naive' && 30 || 20 }}
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['molecule'] }}
     name: molecule (${{ matrix.role }})
@@ -288,6 +288,7 @@ jobs:
           - intrusion_prevention
           - xray
           - hysteria
+          - naive
           - nginx-xhttp
           - watchdog
           - monitoring
@@ -315,12 +316,23 @@ jobs:
         with:
           galaxy: "true"
 
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        if: matrix.role == 'naive'
+        with:
+          go-version: "1.27.1"
+          cache: false
+
+      - name: Build exact composite for Naive role acceptance
+        if: matrix.role == 'naive'
+        run: make native-naive-build
+
       - name: molecule test
         working-directory: ansible/roles/${{ matrix.role }}
         run: molecule test
         env:
           PY_COLORS: "1"
           ANSIBLE_FORCE_COLOR: "1"
+          NAIVE_NATIVE_BINARY: ${{ github.workspace }}/.cache/p2-native-caddy/caddy
 
   shellcheck:
     timeout-minutes: 5
@@ -394,10 +406,10 @@ jobs:
       - name: Install SOPS and age
         run: |
           sudo apt-get update
-          sudo apt-get install -y age restic openssh-server
+          sudo apt-get install -y age restic openssh-server wireguard-tools uuid-runtime
           sudo install -d -m 0755 /run/sshd
-          curl -fsSL "https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64" -o /tmp/sops
-          echo "0d65660fbe785647ff4f1764d7f69edf598f79d6d79ebbef4a501909b6ff6b82  /tmp/sops" | sha256sum -c -
+          curl -fsSL "https://github.com/getsops/sops/releases/download/v3.13.3/sops-v3.13.3.linux.amd64" -o /tmp/sops
+          echo "e5bec3346a873ae91d871550f3e698c1aad962aff462a080e40f25fde17fef6b  /tmp/sops" | sha256sum -c -
           sudo install -m 0755 /tmp/sops /usr/local/bin/sops
       - name: Install checksum-verified gitleaks
         env:
@@ -536,7 +548,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 openssh-server e2fsprogs util-linux mount nginx openssl wireguard-tools unbound
+            nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 openssh-server e2fsprogs util-linux mount nginx openssl wireguard-tools unbound lynis prometheus-node-exporter
       - name: Execute native tests with UID and GID capabilities
         run: |
           sudo env "PATH=$PATH" \

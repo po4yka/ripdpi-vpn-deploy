@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+**Observations are independent of log sampling** — total/minute and bounded unique observations update for every admitted detector event before the per-minute logging decision. `vpn_honeypot_logs_suppressed_total` records omitted event records; busy-worker admission drops retain their own metric. The log cap bounds disk output without hiding observation volume.
+
 **Same-host honeypot for cheap signal** — binds one plausible-looking listener
 on `honeypot.port` (`honeypot_port: 4443` in `group_vars/all.yml`) that records
 hits without responding. Any hit is a probing signal because legitimate users

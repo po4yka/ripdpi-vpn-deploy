@@ -1,0 +1,57 @@
+{
+  "logging": {
+    "logs": {
+      "default": {
+        "writer": {"output": "file", "filename": {{ (naive.log_dir ~ '/access.log') | to_json }}},
+        "level": "INFO",
+        "exclude": ["http.log.access.log0"]
+      },
+      "log0": {
+        "writer": {"output": "file", "filename": {{ (naive.log_dir ~ '/site-error.log') | to_json }}},
+        "level": "ERROR",
+        "include": ["http.log.access.log0"]
+      }
+    }
+  },
+  "apps": {
+    "http": {
+      "servers": {
+        "srv0": {
+          "listen": [{{ (':' ~ naive.bind_port) | to_json }}],
+          "protocols": ["h1", "h2"],
+          "automatic_https": {"disable": true},
+          "tls_connection_policies": [{"certificate_selection": {"any_tag": ["cert0"]}}],
+          "logs": {"default_logger_name": "log0"},
+          "routes": [{"handle": [
+            {"handler": "encode", "encodings": {"gzip": {}, "zstd": {}}, "prefer": ["zstd", "gzip"]},
+            {"handler": "subroute", "routes": [{"handle": [
+{% if naive_secrets.clients | length > 0 %}
+              {
+                "handler": "forward_proxy",
+                "auth_credentials": [
+{% for client in naive_secrets.clients %}
+                  {{ ((client.username ~ ':' ~ client.password) | b64encode | b64encode) | to_json }}{{ ',' if not loop.last else '' }}
+{% endfor %}
+                ],
+                "hide_ip": true,
+                "hide_via": true,
+                "probe_resistance": {"domain": {{ naive_secrets.probe_resistance_secret | to_json }}}
+              },
+{% endif %}
+              {"handler": "file_server", "root": {{ naive.decoy_root | to_json }}, "hide": [{{ (naive.config_dir ~ '/caddy.json') | to_json }}, {{ (naive.config_dir ~ '/server.key') | to_json }}, {{ (naive.config_dir ~ '/server.fullchain.pem') | to_json }}]}
+            ]}]}
+          ]}]
+        }
+      }
+    },
+    "tls": {
+      "certificates": {
+        "load_files": [{
+          "certificate": {{ (naive.config_dir ~ '/server.fullchain.pem') | to_json }},
+          "key": {{ (naive.config_dir ~ '/server.key') | to_json }},
+          "tags": ["cert0"]
+        }]
+      }
+    }
+  }
+}

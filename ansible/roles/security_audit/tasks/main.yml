@@ -1,4 +1,9 @@
 ---
+- name: Require an enabled scanner for opt-in audit acceptance
+  ansible.builtin.assert:
+    that: not (security_audit.fail_on_high_findings | default(false) | bool) or (security_audit.lynis | default(true) | bool)
+    fail_msg: Opt-in audit acceptance requires Lynis collection to be enabled.
+
 - name: Capture security audit timestamp
   ansible.builtin.set_fact:
     security_audit_run_id: "{{ ansible_facts.get('date_time', {}).get('iso8601_basic_short', '%Y%m%dT%H%M%S' | strftime) }}"

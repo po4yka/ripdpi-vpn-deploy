@@ -8,6 +8,8 @@
       - --property=LoadState
       - --value
   loop:
+    - vpn-subscription-maintenance.timer
+    - vpn-subscription-maintenance.service
     - vpn-sub-mirror.timer
     - vpn-sub-mirror.service
     - vpn-bootstrap.service
@@ -37,6 +39,8 @@
     path: '{{ item }}'
     state: absent
   loop:
+    - /etc/systemd/system/vpn-subscription-maintenance.timer
+    - /etc/systemd/system/vpn-subscription-maintenance.service
     - /etc/systemd/system/vpn-sub-mirror.timer
     - /etc/systemd/system/vpn-sub-mirror.service
     - /etc/systemd/system/vpn-bootstrap.service

@@ -362,3 +362,35 @@ def test_failed_atomic_publication_preserves_previous_complete_metrics(
     assert (tmp_path / "vpn_policy_ratelimit.prom").read_bytes() == before
     assert limiter.errors == 1
     assert not list(tmp_path.glob(".policy-ratelimit-*"))
+
+
+@pytest.mark.parametrize("rotation", ["truncate", "replace"])
+def test_actual_tail_recovers_rotation_without_recounting_retained_input(
+    daemon, tmp_path, monkeypatch, rotation
+):
+    monkeypatch.setattr(daemon["time"], "sleep", lambda _seconds: None)
+    path = tmp_path / "access.log"
+    path.write_text("retained history\n" * 20)
+    follower = daemon["tail"](path)
+    assert next(follower) == (None, True), "startup must not recount retained history"
+    with path.open("a") as stream:
+        stream.write("observed before rotation\n")
+    assert next(follower) == ("observed before rotation\n", True)
+    previous_inode = path.stat().st_ino
+    if rotation == "truncate":
+        path.write_text("observed after rotation\n")
+        assert path.stat().st_ino == previous_inode
+    else:
+        replacement = tmp_path / "replacement.log"
+        replacement.write_text("observed after rotation\n")
+        replacement.replace(path)
+        assert path.stat().st_ino != previous_inode
+    assert next(follower) == ("observed after rotation\n", True)
+    assert next(follower) == (
+        None,
+        True,
+    ), "rotation must not count the new record twice"
+    with path.open("a") as stream:
+        stream.write("subsequent input\n")
+    assert next(follower) == ("subsequent input\n", True)
+    follower.close()

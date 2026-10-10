@@ -3,6 +3,22 @@
 # and a small set of journald log rules. Remote scrape and alert routing are
 # operator's choice and are not configured here.
 
+- name: Validate literal private exporter endpoint before mutation
+  ansible.builtin.command:
+    argv: [python3, -c, "{{ lookup('ansible.builtin.file', role_path ~ '/files/private_endpoint.py') }}"]
+    stdin: >-
+      {{ {'endpoint': monitoring.node_exporter_listen | default('127.0.0.1:9100'),
+          'approved_tailnet_addresses': monitoring.node_exporter_approved_tailnet_addresses | default([]),
+          'local_addresses': (ansible_facts['all_ipv4_addresses'] | default([]))
+            + (ansible_facts['all_ipv6_addresses'] | default([]))} | to_json }}
+  register: _monitoring_endpoint_validation
+  changed_when: false
+  check_mode: false
+
+- name: Retain normalized private exporter endpoint
+  ansible.builtin.set_fact:
+    monitoring_node_exporter_endpoint: "{{ (_monitoring_endpoint_validation.stdout | from_json).endpoint }}"
+
 - name: Apply pending transport handlers before observing runtime
   ansible.builtin.meta: flush_handlers
 
@@ -13,6 +29,7 @@
     state: present
     update_cache: true
     cache_valid_time: 3600
+    policy_rc_d: 101
   register: _monitoring_node_exporter_package
 
 - name: Configure node_exporter listen address (loopback only by default)
@@ -22,7 +39,7 @@
     group: root
     mode: "0644"
     content: >
-      ARGS="--web.listen-address={{ monitoring.node_exporter_listen | default('127.0.0.1:9100') }}
+      ARGS="--web.listen-address={{ monitoring_node_exporter_endpoint }}
       --collector.systemd --collector.processes
       --collector.textfile.directory={{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}
       --no-collector.wifi"

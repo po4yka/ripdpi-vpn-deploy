@@ -16,6 +16,13 @@
       geodata.geoip_sha256 to concrete release artifacts before enabling
       vpn.enable_geodata.
 
+- name: Validate owned geodata directory ancestors before metadata or package mutation
+  ansible.builtin.command:
+    argv: [python3, -c, "{{ lookup('ansible.builtin.file', role_path ~ '/files/geodata_publish.py') }}", --inspect]
+    stdin: "{{ {'install_dir': geodata.install_dir} | to_json }}"
+  changed_when: false
+  check_mode: false
+
 - name: Install the scheduled refresher download dependency
   ansible.builtin.apt:
     name: curl
@@ -34,6 +41,7 @@
 - name: Ensure geodata install directory
   ansible.builtin.file:
     path: "{{ geodata.install_dir }}"
+    follow: false
     state: directory
     owner: root
     group: root

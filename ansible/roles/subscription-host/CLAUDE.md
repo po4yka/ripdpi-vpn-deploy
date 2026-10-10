@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+**Bounded bootstrap history** — bootstrap grants use `b1_<10-digit-issued-epoch>_<43-character-random>`; legacy bootstrap formats are refused. Intrinsic maximum lifetime is independent of restored expiry metadata. Private request/maintenance locking serializes admission, consume and GC. The durable monotonic retired-before fence commits before removing expired markers, so restoring old payloads, increasing the configured lifetime or rolling the clock backward cannot revive retired URIs. Capacity never discards fresh consumption authority. Compaction uses the conservative 30-day maximum supported lifetime, independently of the currently selected shorter policy or an expired marker; expired short-lived records remain until that replay-proof horizon retires their issuance. Cheap format/fence and direct known/consumed checks precede full history scanning, so rejected guesses do not trigger O(history) GC. Ordinary subscription tokens retain their existing format. Legacy empty markers remain conservative consumed authority; migration does not guess their issuance and may require explicit reviewed retirement when they occupy capacity. Missing lock/fence is provisioned only for a genuinely new payload namespace without an installed bootstrap runtime. Retained or partially initialized state refuses missing authority instead of resetting replay proof; recovery/migration must restore or establish separately reviewed authority.
+
+**Audit bounds** — append uses private no-follow files and a separate writer lock, rotates by configured bytes/archive count, and trims oversized historical files to complete trailing records. Policy contractions reconcile all fourteen supported archive names under the same writer lock, validate the whole set before writes, and remove only safe owned excess archives. A persistent five-minute maintenance timer collects retired markers and reconciles audit size bounds; disable retires that timer while preserving replay authority.
+
 **Independent TLS ownership** — `subscription.cert_pem` and `subscription.key_pem` are required independently of XHTTP. The memory-only preflight proves key match, current validity and the effective delivery hostname before complete nginx transaction publication under `/etc/nginx/tls/subscription-host/`. An existing check-mode host performs the same preflight; a fresh missing validator requires its package installation plan.
 
 **Bearer failures retain only categorical diagnostics** — bearer locations suppress URI-bearing nginx error records and use an explicit format containing only HTTP status, upstream status and limit outcome. No URI, header, address or token field enters this log; native stopped-upstream and rate-limit tests check every nginx log.
@@ -15,8 +19,7 @@ Revocation + rate-limit (v1.2) is a thin Lua module on top.
 this role + nginx + firewall on a host. Isolates compromise blast radius
 from the proxy host. See `docs/SUBSCRIPTION-HOST-SEPARATION.md`.
 
-**Audit log** — every read is recorded (route, ts, token-hash, source ASN).
-Decryptable only with the audit-log key. See `scripts/sub-reads.sh`.
+**Audit log** — successful and rejected token fetches retain JSONL route, timestamp, hash prefix, source IP and byte count. Owner-only files and bounded rotation protect this local metadata; the payload and plaintext token are excluded. See `scripts/sub-reads.sh`.
 
 **Revocation is provisioned authority** — startup never creates a missing deny
 list. Startup and each request require a readable regular single-link 0600 file

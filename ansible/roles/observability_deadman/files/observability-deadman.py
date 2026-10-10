@@ -797,6 +797,49 @@ def _reverse_health(
     return _post_reverse(config, token, payload, context)
 
 
+def _recovery_path(path: Path) -> Path:
+    return path.with_name(path.name + ".recovery.json")
+
+
+def _recovery_intent(path: Path) -> dict[str, Any] | None:
+    """One private, bounded outbox; replay state remains schema 2."""
+    target = _recovery_path(path)
+    try:
+        fd = os.open(target, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except FileNotFoundError:
+        return None
+    try:
+        info = os.fstat(fd)
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.geteuid()
+            or info.st_nlink != 1
+            or stat.S_IMODE(info.st_mode) != 0o600
+            or info.st_size > MAX_STATE_BYTES
+        ):
+            raise DeadmanError("unsafe recovery intent")
+        raw = os.read(fd, MAX_STATE_BYTES + 1)
+        data = json.loads(raw.decode("utf-8"), object_pairs_hook=_pairs)
+    except (OSError, ValueError, UnicodeError) as exc:
+        raise DeadmanError("unsafe recovery intent") from exc
+    finally:
+        os.close(fd)
+    if (
+        not isinstance(data, dict)
+        or set(data)
+        != {"schema", "phase", "created_at", "attempt_nonce", "next_attempt_at"}
+        or type(data["schema"]) is not int
+        or data["schema"] != 1
+        or data["phase"] not in {"queued", "complete"}
+        or any(
+            type(data[k]) is not int or not 0 <= data[k] <= 2**63 - 1
+            for k in ("created_at", "attempt_nonce", "next_attempt_at")
+        )
+    ):
+        raise DeadmanError("unsafe recovery intent")
+    return data
+
+
 def _reserve_delivery(
     path: Path,
     config: dict[str, Any],
@@ -804,6 +847,49 @@ def _reserve_delivery(
 ) -> tuple[dict[str, Any], tuple[str, int] | None]:
     with _state_lock(path):
         state = _state(path, config["source_generation"])
+        intent = _recovery_intent(path)
+        overdue = (
+            state["source_generation"] != config["source_generation"]
+            or state["last_pulse"] == 0
+            or now - state["last_pulse"]
+            >= config["pulse_interval_seconds"] * config["missed_pulse_limit"]
+        )
+        was_incident = state["incident"]
+        if not overdue and was_incident:
+            if (
+                intent is None
+                or intent["phase"] == "complete"
+                or state["pending_event"] == "recovery"
+                and intent["attempt_nonce"] == state["pending_nonce"]
+            ):
+                intent = {
+                    "schema": 1,
+                    "phase": "queued",
+                    "created_at": now,
+                    "attempt_nonce": 0,
+                    "next_attempt_at": now,
+                }
+                # Intent precedes the health transition: process death cannot lose it.
+                _save_state(_recovery_path(path), intent)
+            state["incident"] = False
+            _save_state(path, state)
+        if overdue and not state["incident"]:
+            state["incident"] = True
+            # Preserve immediate firing eligibility across an in-flight other
+            # event or process death between health and reservation writes.
+            state["last_delivery_at"] = 0
+            _save_state(path, state)
+        if (
+            state["pending_event"] == "recovery"
+            and intent is not None
+            and (
+                intent["phase"] == "complete"
+                and intent["attempt_nonce"] == state["pending_nonce"]
+            )
+        ):
+            # A durable acknowledgement may precede the state update across death.
+            state.update(pending_event="none", pending_at=0, last_delivery="recovery")
+            _save_state(path, state)
         if (
             state["pending_event"] != "none"
             and now - state["pending_at"]
@@ -814,45 +900,53 @@ def _reserve_delivery(
                 state["last_canary"] = state["pending_at"]
             else:
                 state["last_delivery"] = "failed"
-                state["last_delivery_at"] = state["pending_at"]
+                state["last_delivery_at"] = (
+                    0
+                    if state["pending_event"] == "recovery" and state["incident"]
+                    else state["pending_at"]
+                )
             state["pending_event"] = "none"
             state["pending_at"] = 0
             _save_state(path, state)
         if state["pending_event"] != "none":
             return dict(state), None
-        overdue = (
-            state["source_generation"] != config["source_generation"]
-            or state["last_pulse"] == 0
-            or now - state["last_pulse"]
-            >= config["pulse_interval_seconds"] * config["missed_pulse_limit"]
-        )
         event: str | None = None
         notification_due = (
             now - state["last_delivery_at"] >= config["reminder_interval_seconds"]
         )
-        if overdue and (not state["incident"] or notification_due):
+        if overdue and (
+            not was_incident or notification_due or state["last_delivery"] == "recovery"
+        ):
             state["incident"] = True
             event = "firing"
-        elif not overdue and state["incident"]:
-            state["incident"] = False
+        elif (
+            not overdue
+            and intent is not None
+            and intent["phase"] == "queued"
+            and now >= intent["next_attempt_at"]
+        ):
             event = "recovery"
         if (
-            not state["incident"]
+            not overdue
             and event is None
             and (
                 now - state["last_canary"] >= config["canary_interval_seconds"]
-                or (
-                    state["last_canary_delivery"] == "failed"
-                    and now - state["last_canary"]
-                    >= config["reminder_interval_seconds"]
-                )
+                or state["last_canary_delivery"] == "failed"
+                and now - state["last_canary"] >= config["reminder_interval_seconds"]
             )
         ):
             event = "canary"
         if event is not None:
+            if state["pending_nonce"] >= 2**63 - 1:
+                raise DeadmanError("delivery sequence exhausted")
             state["pending_nonce"] += 1
             state["pending_event"] = event
             state["pending_at"] = now
+            if event == "recovery":
+                assert intent is not None
+                intent["attempt_nonce"] = state["pending_nonce"]
+                intent["next_attempt_at"] = now + config["reminder_interval_seconds"]
+                _save_state(_recovery_path(path), intent)
             _save_state(path, state)
             return dict(state), (event, state["pending_nonce"])
         return dict(state), None
@@ -865,6 +959,17 @@ def _complete_delivery(
         state = _state(path)
         if state["pending_event"] != event or state["pending_nonce"] != nonce:
             return state
+        if event == "recovery":
+            intent = _recovery_intent(path)
+            if (
+                intent is None
+                or intent["attempt_nonce"] != nonce
+                or intent["phase"] != "queued"
+            ):
+                return state
+            if success:
+                intent["phase"] = "complete"
+                _save_state(_recovery_path(path), intent)
         state["pending_event"] = "none"
         state["pending_at"] = 0
         if event == "canary":
@@ -872,7 +977,9 @@ def _complete_delivery(
             state["last_canary"] = now
         else:
             state["last_delivery"] = event if success else "failed"
-            state["last_delivery_at"] = now
+            state["last_delivery_at"] = (
+                0 if event == "recovery" and state["incident"] else now
+            )
         _save_state(path, state)
         return state
 

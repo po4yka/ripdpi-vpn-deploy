@@ -333,12 +333,16 @@ def test_sender_constructs_exact_node_bound_write_path_and_sni() -> None:
     assert "{{ observability_agent.web_listen }}" in template
 
 
-def test_sender_template_renders_node_path_without_credential_values() -> None:
+@pytest.mark.parametrize(
+    "endpoint", ["127.0.0.1:19100", "[::1]:19100", "100.64.0.8:19100"]
+)
+def test_sender_template_renders_node_path_without_credential_values(endpoint) -> None:
     template = (ROLE / "templates" / "prometheus.yml.j2").read_text(encoding="utf-8")
     rendered = (
         Environment(undefined=StrictUndefined, autoescape=True)
         .from_string(template)
         .render(
+            monitoring_node_exporter_endpoint=endpoint,
             observability_alert_policy={
                 "required_systemd_units": ["nginx.service", "xray.service"]
             },
@@ -363,6 +367,9 @@ def test_sender_template_renders_node_path_without_credential_values() -> None:
         "node": "edge-prod",
     }
     assert set(document) == {"global", "scrape_configs"}
+    assert [
+        job["static_configs"][0]["targets"] for job in document["scrape_configs"][:2]
+    ] == [[endpoint], [endpoint]]
     assert "remote_write" not in document
     assert "BEGIN" not in rendered
 

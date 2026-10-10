@@ -28,8 +28,8 @@ runs:
         TAILSCALE_SHA256: 36ddd9b51be57ffc2990cf76323cfa13643bfbb1b8a969f6183fa164741cdef5
         CONFTEST_VERSION: "0.57.0"
         CONFTEST_SHA256: db1018a7e301cada4d4bd8a70880a13314daae27b3f4d409c7ffba1847718392
-        SOPS_VERSION: "3.9.0"
-        SOPS_SHA256: 0d65660fbe785647ff4f1764d7f69edf598f79d6d79ebbef4a501909b6ff6b82
+        SOPS_VERSION: "3.13.3"
+        SOPS_SHA256: e5bec3346a873ae91d871550f3e698c1aad962aff462a080e40f25fde17fef6b
       run: |
         set -euo pipefail
         work="$(mktemp -d "$RUNNER_TEMP/deploy-tools.XXXXXXXX")"

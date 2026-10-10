@@ -3,6 +3,7 @@
 set -euo pipefail
 
 if ! systemctl is-active --quiet xray.service; then
+  printf '%s\n' inactive
   exit 0
 fi
 
@@ -10,3 +11,4 @@ fi
 # reopens logs/assets and must restore service availability before success.
 systemctl restart xray.service
 systemctl is-active --quiet xray.service
+printf '%s\n' active

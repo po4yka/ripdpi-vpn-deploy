@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+**Opt-in acceptance requires real collection** — a unique private directory receives the actual scanner's explicit machine report and log. Successful rc, fresh UTC start/end, completed tests and `finish=true` are required before warning records are counted. Missing/skipped/failed/stale/malformed output cannot mean clean acceptance; disabling Lynis while requesting the gate fails before mutation. Check mode reports prediction without producing a scan receipt. Default reporting remains non-blocking; the opt-in gate treats every Lynis warning conservatively as a finding.
+
 **Operator-run only** — this role is called by `security-audit.yml`, not `site.yml`. It must never become a deploy or verify blocker by default.
 
 **Reports over enforcement** — command failures and findings are written under `/var/log/ripdpi-vpn-deploy/security-audit/<timestamp>/` with `failed_when: false`. Only `security_audit.fail_on_high_findings` may intentionally convert a finding into failure.

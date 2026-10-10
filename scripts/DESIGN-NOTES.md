@@ -327,6 +327,12 @@ interface with a general fault selector or a new permanent guest capability.
 
 ## Observability — `observability-operator.py`
 
+The monitoring role's private endpoint validator also runs before standalone
+sender mutation and in the verification playbook. Both exporter scrape jobs use
+its normalized endpoint. Literal loopback binds are accepted; Tailnet binds need
+an exact explicit approval and local address fact. Custom ports and bracketed
+IPv6 remain aligned across installation, sender configuration and verification.
+
 **Sender and staging contracts have consumers outside their entrypoint** —
 inspect these dependencies when changing a sender runtime or acceptance row.
 The retained dedicated-staging harness consumes the runtime contract but does

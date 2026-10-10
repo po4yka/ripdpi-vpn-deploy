@@ -1,0 +1,11 @@
+[Unit]
+Description=Bounded subscription history maintenance
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=true
+RandomizedDelaySec=30
+Unit=vpn-subscription-maintenance.service
+
+[Install]
+WantedBy=timers.target

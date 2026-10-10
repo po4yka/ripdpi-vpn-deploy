@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import argparse
 import base64
+import copy
+from contextlib import contextmanager
 import fcntl
 import grp
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -17,6 +20,8 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
+import uuid
 
 LIMIT = 8 * 1024 * 1024
 
@@ -69,6 +74,100 @@ def service_state(unit):
         "unit_file_state": enabled,
         "exists": load != "not-found",
     }
+
+
+def process_stat(process):
+    with (process / "stat").open("rb") as source:
+        raw = source.read(8193)
+    if len(raw) > 8192 or b")" not in raw:
+        raise TransactionError("runtime-identity")
+    fields = raw.rsplit(b")", 1)[1].decode("ascii").split()
+    if len(fields) < 20:
+        raise TransactionError("runtime-identity")
+    return fields
+
+
+def nginx_master(unit):
+    pid = command(["systemctl", "show", unit, "--property=MainPID", "--value"]).strip()
+    if not pid.isascii() or not pid.isdigit() or int(pid) <= 0:
+        raise TransactionError("runtime-not-ready")
+    process = Path("/proc") / pid
+    fields = process_stat(process)
+    executable = (process / "exe").stat()
+    installed = Path("/usr/sbin/nginx").stat()
+    if (executable.st_dev, executable.st_ino) != (installed.st_dev, installed.st_ino):
+        raise TransactionError("runtime-identity")
+    return (pid, fields[19], executable.st_dev, executable.st_ino)
+
+
+def nginx_workers(master):
+    pid, started, device, inode = master
+    process = Path("/proc") / pid
+    fields = process_stat(process)
+    executable = (process / "exe").stat()
+    if fields[19] != started or (executable.st_dev, executable.st_ino) != (
+        device,
+        inode,
+    ):
+        raise TransactionError("runtime-identity")
+    with (process / "task" / pid / "children").open("rb") as source:
+        raw = source.read(32769)
+    if len(raw) > 32768:
+        raise TransactionError("runtime-capacity")
+    pool = set()
+    for child in raw.decode("ascii").split():
+        target = Path("/proc") / child
+        try:
+            with (target / "cmdline").open("rb") as source:
+                title = source.read(4097)
+            if len(title) > 4096:
+                raise TransactionError("runtime-capacity")
+            # Graceful old workers remain alive, but cannot acknowledge adoption.
+            if title.rstrip(b"\0 ") != b"nginx: worker process":
+                continue
+            info = (target / "exe").stat()
+            child_fields = process_stat(target)
+            if (info.st_dev, info.st_ino) != (device, inode) or child_fields[1] != pid:
+                raise TransactionError("runtime-identity")
+            pool.add((child, child_fields[19]))
+        except FileNotFoundError:
+            continue
+    return pool
+
+
+def wait_adoption(unit, previous=None):
+    deadline = time.monotonic() + 10
+    observed = None
+    stable_since = 0.0
+    master = previous[0] if previous is not None else None
+    while True:
+        now = time.monotonic()
+        try:
+            current_master = nginx_master(unit)
+            if previous is not None and current_master != previous[0]:
+                raise TransactionError("runtime-identity")
+            if current_master != master:
+                master, observed = current_master, None
+            pool = nginx_workers(master)
+        except (OSError, TransactionError):
+            if previous is not None:
+                raise
+            # Type=simple acknowledges start before exec/worker initialization.
+            # No receipt exists until one trusted generation becomes stable.
+            master, observed, pool = None, None, set()
+        fresh = bool(pool) and (previous is None or pool.isdisjoint(previous[1]))
+        if fresh:
+            if pool != observed:
+                observed, stable_since = pool, now
+            elif now - stable_since >= 0.1:
+                if nginx_master(unit) != master or nginx_workers(master) != pool:
+                    raise TransactionError("runtime-identity")
+                return master[0]
+        else:
+            observed = None
+        if now >= deadline:
+            raise TransactionError("runtime-adoption-timeout")
+        time.sleep(0.05)
 
 
 def set_enabled(unit, desired):
@@ -162,7 +261,12 @@ def capture(path):
     row = {"uid": info.st_uid, "gid": info.st_gid, "mode": stat.S_IMODE(info.st_mode)}
     if stat.S_ISLNK(info.st_mode):
         return {**row, "kind": "link", "target": os.readlink(path)}
-    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > LIMIT:
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or info.st_nlink != 1
+        or info.st_size > LIMIT
+        or info.st_mode & 0o022
+    ):
         raise TransactionError("unsafe-file")
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
@@ -200,7 +304,7 @@ def apply(path, row, created):
     safe(path.parent)
     if row["kind"] == "absent":
         if os.path.lexists(path):
-            path.unlink()
+            clear(path)
         return
     fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=".nginx-publish-")
     try:
@@ -236,7 +340,10 @@ def apply(path, row, created):
 
 
 def request(document):
+    if isinstance(document, dict):
+        document.setdefault("prune_releases", None)
     expected = {
+        "prune_releases",
         "owner",
         "roots",
         "files",
@@ -327,6 +434,23 @@ def request(document):
             or not any(Path(row["target"]).is_relative_to(root) for root in roots)
         ):
             raise TransactionError("link")
+    prune = document["prune_releases"]
+    if prune is not None:
+        if (
+            document["owner"] != "reality-self-steal"
+            or not isinstance(prune, dict)
+            or set(prune) != {"root", "keep"}
+            or not isinstance(prune["root"], str)
+            or not Path(prune["root"]).is_absolute()
+            or ".." in Path(prune["root"]).parts
+            or not any(Path(prune["root"]).is_relative_to(root) for root in roots)
+            or prune["keep"] is not None
+            and (
+                not isinstance(prune["keep"], str)
+                or not re.fullmatch(r"[0-9a-f]{64}", prune["keep"])
+            )
+        ):
+            raise TransactionError("release-prune")
     argv = document["validate_argv"]
     if (
         not isinstance(argv, list)
@@ -351,6 +475,19 @@ def request(document):
     return document, roots
 
 
+def validate_previous(document, previous):
+    prior = copy.deepcopy(document)
+    prior["files"] = [{"path": path, **row} for path, row in previous.items()]
+    for row in prior["files"]:
+        if row["kind"] == "link" and not Path(row["target"]).is_absolute():
+            # Preserve the exact captured spelling for restoration; validate its
+            # lexical destination under the same owned roots as a desired link.
+            row["target"] = os.path.normpath(
+                str(Path(row["path"]).parent / row["target"])
+            )
+    request(prior)
+
+
 def validate(manifest):
     # This branch runs only after unshare --propagation private. All mounts and
     # transient credential/runtime directories are confined to that namespace.
@@ -370,12 +507,290 @@ def validate(manifest):
     command(manifest["validate_argv"])
 
 
+def expand_release_prune(document):
+    """Resolve only self-steal's immutable pair namespace under the unit lock."""
+    prune = document["prune_releases"]
+    if prune is None:
+        return document
+    result = copy.deepcopy(document)
+    root = Path(prune["root"])
+    safe(root, missing=True)
+    if not root.exists():
+        return result
+    explicit = {row["path"]: row for row in result["files"]}
+    releases = []
+    with os.scandir(root) as entries:
+        for entry in entries:
+            if len(releases) >= 4096:
+                raise TransactionError("release-capacity")
+            releases.append(Path(entry.path))
+    nonempty = 0
+    for release in sorted(releases):
+        info = release.lstat()
+        if (
+            not re.fullmatch(r"[0-9a-f]{64}", release.name)
+            or not stat.S_ISDIR(info.st_mode)
+            or info.st_uid != os.geteuid()
+            or info.st_mode & 0o022
+        ):
+            raise TransactionError("foreign-release")
+        children = []
+        with os.scandir(release) as entries:
+            for entry in entries:
+                if len(children) >= 2:
+                    raise TransactionError("foreign-release")
+                children.append(Path(entry.path))
+        if children:
+            nonempty += 1
+            if nonempty > 64:
+                raise TransactionError("release-capacity")
+        for path in sorted(children):
+            if path.name not in {"fullchain.pem", "privkey.pem"}:
+                raise TransactionError("foreign-release")
+            observed = capture(path)
+            if observed["kind"] != "file" or observed["mode"] & 0o022:
+                raise TransactionError("foreign-release")
+            if release.name != prune["keep"]:
+                row = {"path": str(path), "kind": "absent"}
+                if str(path) in explicit and explicit[str(path)] != row:
+                    raise TransactionError("release-prune-conflict")
+                if str(path) not in explicit:
+                    if len(result["files"]) >= 128:
+                        raise TransactionError("release-capacity")
+                    result["files"].append(row)
+    return result
+
+
+def compact_empty_releases(document):
+    prune = document["prune_releases"]
+    if prune is None:
+        return
+    # Revalidate the whole bounded namespace before any directory deletion.
+    expand_release_prune(document)
+    root = Path(prune["root"])
+    if not root.exists():
+        return
+    empty = []
+    for path in root.iterdir():
+        if path.name != prune["keep"] and not any(path.iterdir()):
+            empty.append(path)
+    for path in empty:
+        safe(path)
+        path.rmdir()  # Exact owned empty directories only; never recurse.
+    descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def candidate_authority(path):
+    if not os.path.lexists(path):
+        return
+    info = path.lstat()
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or info.st_uid != os.geteuid()
+        or stat.S_IMODE(info.st_mode) != 0o700
+    ):
+        raise TransactionError("foreign-candidate")
+    count = 0
+    for directory, folders, files in os.walk(path, followlinks=False):
+        for name in [*folders, *files]:
+            count += 1
+            if count > 100000:
+                raise TransactionError("candidate-capacity")
+            child = Path(directory) / name
+            metadata = child.lstat()
+            if metadata.st_uid != os.geteuid() or not (
+                stat.S_ISDIR(metadata.st_mode)
+                or stat.S_ISREG(metadata.st_mode)
+                or stat.S_ISLNK(metadata.st_mode)
+            ):
+                raise TransactionError("foreign-candidate")
+            if not stat.S_ISDIR(metadata.st_mode) and metadata.st_nlink != 1:
+                raise TransactionError("foreign-candidate")
+
+
+def remove_candidate(path):
+    candidate_authority(path)
+    if os.path.lexists(path):
+        shutil.rmtree(path)
+        descriptor = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
+
+@contextmanager
+def candidate_workspace(path):
+    path.mkdir(mode=0o700)
+    try:
+        yield path
+    finally:
+        remove_candidate(path)
+
+
+def private_json(path):
+    row = capture(path)
+    if row["kind"] == "absent":
+        return None
+    if row["kind"] != "file" or row["mode"] != 0o600:
+        raise TransactionError("unsafe-journal")
+
+    def pairs(values):
+        result = {}
+        for key, value in values:
+            if key in result:
+                raise TransactionError("unsafe-journal")
+            result[key] = value
+        return result
+
+    return json.loads(base64.b64decode(row["content_b64"]), object_pairs_hook=pairs)
+
+
+def persist(path, document):
+    raw = json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
+    if len(raw) > LIMIT:
+        raise TransactionError("journal-size")
+    apply(
+        path,
+        {
+            "kind": "file",
+            "uid": os.geteuid(),
+            "gid": os.getegid(),
+            "mode": 0o600,
+            "content_b64": base64.b64encode(raw).decode(),
+        },
+        [],
+    )
+
+
+def clear(path):
+    path.unlink(missing_ok=True)
+    descriptor = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def fingerprint(document):
+    stable = {key: value for key, value in document.items() if key != "check"}
+    stable["files"] = sorted(stable["files"], key=lambda row: row["path"])
+    return hashlib.sha256(
+        json.dumps(stable, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def recover(pending, unit):
+    journal = private_json(pending)
+    if journal is None:
+        return False
+    if (
+        not isinstance(journal, dict)
+        or set(journal)
+        != {
+            "schema",
+            "phase",
+            "request",
+            "files",
+            "active",
+            "service",
+            "owner",
+            "candidate",
+        }
+        or type(journal["schema"]) is not int
+        or journal["schema"] != 1
+        or journal["phase"]
+        not in {"prepared", "publishing", "activating", "activated", "recovering"}
+    ):
+        raise TransactionError("manual-recovery-required")
+    if not isinstance(journal["candidate"], str) or not re.fullmatch(
+        r"candidate-[0-9a-f]{32}", journal["candidate"]
+    ):
+        raise TransactionError("foreign-candidate")
+    candidate = pending.parent / journal["candidate"]
+    candidate_authority(candidate)
+    original, roots = request(journal["request"])
+    if (
+        original["unit"] != unit
+        or original["check"]
+        or original["owner"] != journal["owner"]
+    ):
+        raise TransactionError("manual-recovery-required")
+    previous = journal["files"]
+    prior = journal["service"]
+    if (
+        not isinstance(previous, dict)
+        or set(previous) != {row["path"] for row in original["files"]}
+        or not isinstance(prior, dict)
+        or set(prior) != {"active", "unit_file_state", "exists"}
+        or type(prior["active"]) is not bool
+        or type(prior["exists"]) is not bool
+        or journal["active"] != prior["active"]
+        or prior["unit_file_state"]
+        not in {
+            "enabled",
+            "enabled-runtime",
+            "disabled",
+            "static",
+            "indirect",
+            "not-found",
+            "masked",
+            "masked-runtime",
+        }
+    ):
+        raise TransactionError("manual-recovery-required")
+    validate_previous(original, previous)
+    desired = {
+        row["path"]: {k: v for k, v in row.items() if k != "path"}
+        for row in original["files"]
+    }
+    # Validate the entire write set before touching any runtime or disk state.
+    for path, row in previous.items():
+        if row["kind"] != "absent" and row["uid"] != os.geteuid():
+            raise TransactionError("foreign-journal")
+        observed = capture(Path(path))
+        if observed != row and observed != desired[path]:
+            raise TransactionError("foreign-publication")
+    if journal["phase"] != "prepared":
+        journal["phase"] = "recovering"
+        persist(pending, journal)
+        if not prior["active"]:
+            command(["systemctl", "stop", unit])
+        unit_path = "/etc/systemd/system/" + unit
+        if (
+            not prior["exists"]
+            and unit_path in desired
+            and capture(Path(unit_path))["kind"] != "absent"
+        ):
+            command(["systemctl", "disable", unit])
+        for path, row in previous.items():
+            if capture(Path(path)) != row:
+                apply(Path(path), row, [])
+        if unit_path in desired:
+            command(["systemctl", "daemon-reload"])
+        restore_enabled(unit, prior)
+        if prior["active"]:
+            command(["systemctl", "reset-failed", unit])
+            command(["systemctl", "restart", unit])
+            command(["systemctl", "is-active", "--quiet", unit])
+            wait_adoption(unit)
+    remove_candidate(candidate)
+    clear(pending)
+    return True
+
+
 def publish(document):
     document, roots = request(document)
+    logical_document = copy.deepcopy(document)
     previous = {row["path"]: capture(Path(row["path"])) for row in document["files"]}
     total = sum(len(json.dumps(row)) for row in previous.values())
     if total > LIMIT:
         raise TransactionError("snapshot-size")
+    validate_previous(document, previous)
     changed = any(
         {key: value for key, value in row.items() if key != "path"}
         != previous[row["path"]]
@@ -384,15 +799,26 @@ def publish(document):
     state = Path("/var/lib/vpn-nginx-publication") / document["unit"]
     safe(state.parent, missing=True)
     pending = state / "pending.json"
-    if os.path.lexists(pending):
-        raise TransactionError("manual-recovery-required")
     if document["check"]:
+        document = expand_release_prune(document)
+        previous = {
+            row["path"]: capture(Path(row["path"])) for row in document["files"]
+        }
+        changed = any(
+            {key: value for key, value in row.items() if key != "path"}
+            != previous[row["path"]]
+            for row in document["files"]
+        )
+        if os.path.lexists(pending):
+            raise TransactionError("recovery-required")
         return {
             "status": "would-change" if changed else "unchanged",
             "changed": changed,
         }
     state.mkdir(mode=0o700, parents=True, exist_ok=True)
     safe(state)
+    if stat.S_IMODE(state.stat().st_mode) != 0o700:
+        raise TransactionError("unsafe-state")
     prepared_owned = False
     publication_may_have_occurred = False
     lock_fd = os.open(state / "lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
@@ -406,8 +832,27 @@ def publish(document):
         ):
             raise TransactionError("unsafe-lock")
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        if os.path.lexists(pending):
-            raise TransactionError("manual-recovery-required")
+        recovered = recover(pending, document["unit"])
+        document = expand_release_prune(logical_document)
+        request(document)
+        receipt = state / (document["owner"] + ".activated.json")
+        receipt_data = private_json(receipt)
+        if receipt_data is not None and (
+            not isinstance(receipt_data, dict)
+            or set(receipt_data) != {"schema", "fingerprint", "active"}
+            or type(receipt_data["schema"]) is not int
+            or receipt_data["schema"] != 1
+            or type(receipt_data["active"]) is not bool
+            or not isinstance(receipt_data["fingerprint"], str)
+            or not re.fullmatch(r"[0-9a-f]{64}", receipt_data["fingerprint"])
+        ):
+            raise TransactionError("unsafe-receipt")
+        expected_receipt = {
+            "schema": 1,
+            "fingerprint": fingerprint(logical_document),
+            "active": True,
+        }
+        activation_due = receipt_data != expected_receipt
         # Re-capture under the shared per-unit writer lock.
         previous = {
             row["path"]: capture(Path(row["path"])) for row in document["files"]
@@ -415,6 +860,7 @@ def publish(document):
         total = sum(len(json.dumps(row)) for row in previous.values())
         if total > LIMIT:
             raise TransactionError("snapshot-size")
+        validate_previous(document, previous)
         changed = any(
             {key: value for key, value in row.items() if key != "path"}
             != previous[row["path"]]
@@ -424,34 +870,29 @@ def publish(document):
             not changed
             and not document["activate_inactive"]
             and document["desired_enabled"] is None
+            and not recovered
         ):
-            return {"status": "unchanged", "changed": False}
+            if not activation_due or not service_state(document["unit"])["active"]:
+                compact_empty_releases(logical_document)
+                return {"status": "unchanged", "changed": False}
         previous_service = service_state(document["unit"])
         if previous_service["unit_file_state"] in {"masked", "masked-runtime"} and (
             document["activate_inactive"] or document["desired_enabled"] is not None
         ):
             raise TransactionError("masked-unit")
         snapshot = {
+            "schema": 1,
+            "candidate": "candidate-" + uuid.uuid4().hex,
             "phase": "prepared",
+            "request": document,
             "files": previous,
             "active": previous_service["active"],
             "service": previous_service,
             "owner": document["owner"],
         }
         prepared_owned = True
-        apply(
-            pending,
-            {
-                "kind": "file",
-                "uid": os.geteuid(),
-                "gid": os.getegid(),
-                "mode": 0o600,
-                "content_b64": base64.b64encode(json.dumps(snapshot).encode()).decode(),
-            },
-            [],
-        )
-        with tempfile.TemporaryDirectory(prefix="candidate-", dir=state) as temporary:
-            candidate = Path(temporary)
+        persist(pending, snapshot)
+        with candidate_workspace(state / snapshot["candidate"]) as candidate:
             bindings = []
             for index, root in enumerate(roots):
                 target = candidate / str(index)
@@ -503,7 +944,6 @@ def publish(document):
                     ]
                 )
             except TransactionError:
-                pending.unlink()
                 raise TransactionError("candidate-invalid") from None
             created = []
             attempted = []
@@ -514,6 +954,8 @@ def publish(document):
                 for row in document["files"]
             )
             publication_may_have_occurred = True
+            snapshot["phase"] = "publishing"
+            persist(pending, snapshot)
             try:
                 for row in document["files"]:
                     path = Path(row["path"])
@@ -530,12 +972,20 @@ def publish(document):
                 enablement_changed = set_enabled(
                     document["unit"], document["desired_enabled"]
                 )
+                snapshot["phase"] = "activating"
+                persist(pending, snapshot)
                 if (
-                    changed
+                    (changed or activation_due)
                     and snapshot["active"]
                     or not snapshot["active"]
                     and document["activate_inactive"]
                 ):
+                    reload_previous = None
+                    if snapshot["active"] and document["activation"] == "reload":
+                        master = nginx_master(document["unit"])
+                        reload_previous = (master, nginx_workers(master))
+                        if not reload_previous[1]:
+                            raise TransactionError("runtime-not-ready")
                     command(
                         [
                             "systemctl",
@@ -543,6 +993,7 @@ def publish(document):
                             document["unit"],
                         ]
                     )
+                    wait_adoption(document["unit"], reload_previous)
                 if snapshot["active"] or document["activate_inactive"]:
                     command(["systemctl", "is-active", "--quiet", document["unit"]])
                     main_pid = command(
@@ -603,15 +1054,27 @@ def publish(document):
                         command(["systemctl", "reset-failed", document["unit"]])
                         command(["systemctl", "restart", document["unit"]])
                         command(["systemctl", "is-active", "--quiet", document["unit"]])
+                        wait_adoption(document["unit"])
                     for directory in reversed(created):
                         Path(directory).rmdir()
                 except Exception:
                     raise TransactionError("manual-recovery-required") from None
-                pending.unlink()
+                remove_candidate(candidate)
+                clear(pending)
                 raise TransactionError("publication-compensated") from None
-        pending.unlink()
+        snapshot["phase"] = "activated"
+        persist(pending, snapshot)
+        compact_empty_releases(logical_document)
+        if snapshot["active"] or document["activate_inactive"]:
+            persist(receipt, expected_receipt)
+        else:
+            clear(receipt)
+        clear(pending)
         actual_changed = (
-            changed
+            recovered
+            or activation_due
+            and snapshot["active"]
+            or changed
             or enablement_changed
             or not snapshot["active"]
             and document["activate_inactive"]
@@ -625,7 +1088,8 @@ def publish(document):
         # live publication/activation. Existing or post-publication authority
         # remains available for explicit recovery after an ambiguous failure.
         if prepared_owned and not publication_may_have_occurred:
-            pending.unlink(missing_ok=True)
+            remove_candidate(state / snapshot["candidate"])
+            clear(pending)
         os.close(lock_fd)
 
 

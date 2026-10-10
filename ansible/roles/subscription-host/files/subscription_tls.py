@@ -23,7 +23,7 @@ def invoke(*arguments, content=None, descriptors=()):
     return result.stdout.strip()
 
 
-def validate(value):
+def validate(value, minimum_lifetime=0):
     if (
         not isinstance(value, dict)
         or set(value) != {"certificate", "private_key", "hostname"}
@@ -39,7 +39,13 @@ def validate(value):
     public = invoke("x509", "-pubkey", "-noout", content=value["certificate"])
     if public != invoke("pkey", "-pubout", content=value["private_key"]):
         raise ValueError("key mismatch")
-    invoke("x509", "-checkend", "0", "-noout", content=value["certificate"])
+    invoke(
+        "x509",
+        "-checkend",
+        str(minimum_lifetime),
+        "-noout",
+        content=value["certificate"],
+    )
     descriptor = os.memfd_create("subscription-tls", os.MFD_CLOEXEC)
     try:
         with os.fdopen(os.dup(descriptor), "wb") as output:
@@ -70,7 +76,10 @@ def validate(value):
 
 def main():
     try:
-        validate(json.loads(sys.stdin.read(196609)))
+        minimum_lifetime = int(sys.argv[1]) if len(sys.argv) == 2 else 0
+        if not 0 <= minimum_lifetime <= 604800 or len(sys.argv) > 2:
+            raise ValueError("invalid lifetime policy")
+        validate(json.loads(sys.stdin.read(196609)), minimum_lifetime)
     except (ValueError, OSError, subprocess.SubprocessError):
         print("subscription TLS preflight rejected", file=sys.stderr)
         return 2

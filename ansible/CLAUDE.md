@@ -2,6 +2,15 @@
 
 ## Design decisions
 
+**Exporter endpoint verification shares installation admission** — `verify.yml`
+gathers only local network facts and reuses monitoring's literal private endpoint
+validator. Custom ports and IPv6 targets match the sender's scrape jobs; public,
+wildcard and unapproved Tailnet overrides refuse before the HTTP probe.
+
+Credential rotation enters the enabled Naive role's authoritative validation and
+activation lifecycle, so all-profile issuance/removal cannot leave Naive access
+unchanged while the other transport credentials rotate.
+
 **Drift inspection is read-only** — `diff-secrets.yml` compares full parsed Xray configuration using the canonical role template and defaults with selected inventory/secrets, then checks enabled services and binary pins. Secret comparisons use `no_log` and never print configuration diffs. The `vpn-ci-*` profiles use typed complete toggle maps with explicit research allowlists; they retain normal SSH ownership requirements.
 
 **Operational validation follows runtime state** — Xray rotation, verify and rollback use the shared validator with the installed service asset authority; rollback candidates validate before publication and failed activation restores original bytes. OS maintenance loads the effective secret contract before upgrades and verifies selected services plus every configured AWG instance.

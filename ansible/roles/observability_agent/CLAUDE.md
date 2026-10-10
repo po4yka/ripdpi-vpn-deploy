@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+**Exporter installation and scrape consumers share one endpoint guard** — the
+monitoring role's literal private-address validator runs before standalone sender
+mutation too. Both node-exporter jobs consume its normalized endpoint, including
+bracketed IPv6 and explicitly approved, locally assigned Tailnet addresses.
+
 **Binary changes activate immediately** — capture the runtime-release result before configuration work, include it in restart selection, and restore the captured release link before restarting the old generation after failed acceptance. `site.yml` always enters this lifecycle so enabled-to-disabled transitions reach cleanup.
 
 Before changing the sender runtime contract, inspect its [cross-role and operator consumers](../../../scripts/DESIGN-NOTES.md#observability--observability-operatorpy).

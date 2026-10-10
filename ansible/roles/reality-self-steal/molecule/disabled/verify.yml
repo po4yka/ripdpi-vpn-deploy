@@ -17,8 +17,10 @@
       loop:
         - /etc/nginx/sites-enabled/reality-self-steal.conf
         - /etc/nginx/sites-available/reality-self-steal.conf
-        - /etc/nginx/reality-self-steal
-        - /var/www/reality-self-steal
+        - /etc/nginx/reality-self-steal/current
+        - /var/www/reality-self-steal/index.html
+        - /var/www/reality-self-steal/404.html
+        - /var/www/reality-self-steal/site.css
       register: self_steal_path
       failed_when: self_steal_path.stat.exists
 

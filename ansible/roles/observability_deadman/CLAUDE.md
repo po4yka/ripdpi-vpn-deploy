@@ -23,6 +23,14 @@ an authenticated healthy pulse from that generation can advance its epoch.
 An authorized configuration generation change permits sequence one, while the
 expiry fence stays monotonic across epochs and configuration rollback.
 
+Recovery health and notification acknowledgement are separate. A private bounded
+`.recovery.json` outbox is fsynced before clearing incident health; failed or
+ambiguous deliveries remain queued across ticks and process restarts. Matching
+attempt nonces fence stale completion, and acknowledgement is durable before
+clearing its reservation. Delivery is at least once: an API acknowledgement lost
+before its receipt is persisted can produce a duplicate. No human receipt or
+retired topology activation is implied.
+
 ## What's done well
 
 Immutable configuration generations are validated before their current link is

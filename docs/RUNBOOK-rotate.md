@@ -19,6 +19,12 @@ Remove the leaked client from:
 - `xray.clients[*]` (matching `name`)
 - `hysteria.clients[*]` (matching `name`)
 - `amneziawg_secrets.peers[*]` (matching `name`)
+- `naive_secrets.clients[*]`, when configured (matching `name`; `make naive-revoke` removes only this transport)
+- `snell_secrets.variants[*].users[*]`, when configured (matching `name`)
+
+Keep the encrypted device registry lifecycle and subscription token revocation in
+sync with complete device retirement. Naive uses independent per-device passwords;
+removing its last client keeps the decoy site and disables proxy forwarding.
 
 Save and exit (sops re-encrypts automatically). Then:
 
@@ -29,13 +35,17 @@ make verify
 make clean
 ```
 
+Credential rotation enters the authoritative Naive role when enabled, including
+native validation and acknowledgement of the activated configuration. Editing the
+encrypted source alone does not revoke a running server's access.
+
 For changed Xray configuration, rotation saves the outgoing bytes in
 `/etc/xray/config.json.prev` before publication. An unchanged configuration
 keeps the existing restore point. This follows the Xray role's change-detection
 contract; it is not an automatic rollback if a later service restart fails.
 
-Other clients are unaffected. The dropped client now gets `403`/`reset` /
-`Authentication failure` on every transport.
+Other clients retain valid credentials; a service restart may interrupt existing
+connections. The removed credentials fail authentication after runtime adoption.
 
 ## 2. Server-wide REALITY keypair
 

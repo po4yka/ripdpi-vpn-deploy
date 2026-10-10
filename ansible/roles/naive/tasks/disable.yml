@@ -8,6 +8,7 @@
       - caddy-naive.service
     runtime_retire_paths:
       - /etc/systemd/system/caddy-naive.service
+      - '{{ naive.config_dir }}/caddy.json'
       - '{{ naive.config_dir }}/Caddyfile'
       - '{{ naive.config_dir }}/server.fullchain.pem'
       - '{{ naive.config_dir }}/server.key'

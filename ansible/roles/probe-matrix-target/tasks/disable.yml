@@ -1,20 +1,11 @@
 ---
-- name: Inspect owned probe matrix nginx listener
-  ansible.builtin.stat:
-    path: "{{ item }}"
-    follow: false
-  loop:
-    - /etc/nginx/sites-enabled/probe-matrix-tls.conf
-    - /etc/nginx/sites-available/probe-matrix-tls.conf
-  register: _probe_matrix_retire_nginx
-
 - name: Remove only the probe listener through complete nginx publication
   ansible.builtin.include_role:
     name: nginx-xhttp
     tasks_from: transaction
   vars:
     nginx_transaction_owner: probe-matrix-target
-    nginx_transaction_roots: [/etc/nginx, /etc/probe-matrix]
+    nginx_transaction_roots: [/etc/nginx]
     nginx_transaction_files:
       - path: /etc/nginx/sites-enabled/probe-matrix-tls.conf
         kind: absent
@@ -25,7 +16,6 @@
     nginx_transaction_activation: reload
     nginx_transaction_activate_inactive: false
     nginx_transaction_desired_enabled: null
-  when: _probe_matrix_retire_nginx.results | selectattr('stat.exists') | list | length > 0
 
 - name: Retire probe-matrix-target owned runtime authority
   ansible.builtin.include_role:

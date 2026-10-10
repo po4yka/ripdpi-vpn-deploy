@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import base64
 import json
 import os
 import re
@@ -243,6 +244,7 @@ def render_template(path: Path, vars_: dict) -> str:
     )
     env.filters["hash"] = _sha256
     env.filters["to_json"] = lambda value: json.dumps(value)
+    env.filters["b64encode"] = lambda value: base64.b64encode(str(value).encode("utf-8")).decode("ascii")
     env.filters["quote"] = lambda value: "'" + str(value).replace("'", "'\\''") + "'"
     env.filters["dirname"] = lambda value: os.path.dirname(str(value))
     env.filters["basename"] = lambda value: os.path.basename(str(value))

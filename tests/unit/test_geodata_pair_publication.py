@@ -59,7 +59,9 @@ def test_pair_verifies_then_activates_once_and_repeat_is_unchanged(
 ):
     root, installed, request = paths
     seen = []
-    monkeypatch.setattr(publisher, "activate", lambda: seen.append(snapshot(installed)))
+    monkeypatch.setattr(
+        publisher, "activate", lambda: (seen.append(snapshot(installed)), True)[1]
+    )
     assert publisher.publish(request) == {"changed": True}
     assert len(seen) == 1 and all(
         value[0].startswith(b"new-") for value in seen[0].values()
@@ -120,7 +122,7 @@ def test_failed_rollback_retains_private_recovery_and_rejects_reuse(
     assert pending.stat().st_mode & 0o777 == 0o700
     assert (pending / "snapshot.json").stat().st_mode & 0o777 == 0o600
     assert (pending / "old-geosite.dat").read_bytes() == b"old-geosite.dat"
-    with pytest.raises(ValueError, match="manual-recovery-required"):
+    with pytest.raises(RuntimeError):
         publisher.publish(request)
 
 
@@ -137,3 +139,51 @@ def test_concurrent_owner_or_symlink_input_refuses_before_publication(publisher,
     with pytest.raises(ValueError, match="unsafe-file"):
         publisher.publish(request)
     assert (installed / "geosite.dat").read_bytes() == before["geosite.dat"][0]
+
+
+def test_same_hash_owned_metadata_drift_republishes_before_adoption(
+    publisher, paths, monkeypatch
+):
+    _, installed, request = paths
+    calls = []
+    monkeypatch.setattr(
+        publisher, "activate", lambda: (calls.append(snapshot(installed)), True)[1]
+    )
+    assert publisher.publish(request)["changed"] is True
+    for name in ("geosite.dat", "geoip.dat"):
+        (installed / name).chmod(0o600)
+    assert publisher.publish(request)["changed"] is True
+    assert len(calls) == 2
+    assert all(
+        (installed / name).stat().st_mode & 0o777 == 0o644
+        for name in ("geosite.dat", "geoip.dat")
+    )
+    assert publisher.publish(request)["changed"] is False
+
+
+@pytest.mark.parametrize("malformed", ["boolean", "duplicate", "unknown"])
+def test_malformed_activated_receipt_refuses_without_overwrite(
+    publisher, paths, monkeypatch, malformed
+):
+    import json
+
+    _, installed, request = paths
+    receipt = installed / ".geodata-activated.json"
+    value = dict(
+        schema=True if malformed == "boolean" else 2,
+        desired={name: source["sha256"] for name, source in request["sources"].items()},
+        metadata=dict(mode=0o644, uid=os.geteuid(), gid=os.getegid()),
+    )
+    raw = json.dumps(value).encode()
+    if malformed == "duplicate":
+        raw = raw.replace(b'"schema": 2', b'"schema": 1, "schema": 1')
+    receipt.write_bytes(raw)
+    receipt.chmod(0o600)
+    before = snapshot(installed)
+    monkeypatch.setattr(
+        publisher, "activate", lambda: pytest.fail("must not adopt invalid receipt")
+    )
+    with pytest.raises(ValueError):
+        publisher.publish(request)
+    assert receipt.read_bytes() == raw and snapshot(installed) == before
+    assert not (installed / ".geodata-pending").exists()

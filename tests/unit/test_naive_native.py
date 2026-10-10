@@ -20,6 +20,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 import jinja2
+from ansible.plugins.filter.core import FilterModule
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -81,7 +82,7 @@ def test_exact_naive_composite_accepts_tcp_and_disables_http3(tmp_path):
     with socket.socket() as reserve:
         reserve.bind(("127.0.0.1", 0))
         port = reserve.getsockname()[1]
-    config = tmp_path / "Caddyfile"
+    config = tmp_path / "caddy.json"
     values = {
         "naive": {
             "log_dir": str(tmp_path),
@@ -91,24 +92,28 @@ def test_exact_naive_composite_accepts_tcp_and_disables_http3(tmp_path):
         },
         "naive_secrets": {
             "server_name": "localhost",
-            "username": "p2-user",
-            "password": "p2-local-test-password",
+            "clients": [
+                {
+                    "name": "device-a",
+                    "username": "p2-user",
+                    "password": "p2-local-test-password",
+                },
+                {
+                    "name": "device-b",
+                    "username": "p2-other",
+                    "password": 'p2-quote-"-backtick-`-{$NAIVE_AUTH_TEST_UNSET}-backslash-\\-password-\\',
+                },
+            ],
             "probe_resistance_secret": "p2-local-test-secret",
         },
     }
-    config.write_text(
-        jinja2.Template(
-            (ROOT / "ansible/roles/naive/templates/Caddyfile.j2").read_text()
-        ).render(**values)
+    env = jinja2.Environment()
+    env.filters.update(FilterModule().filters())
+    template = env.from_string(
+        (ROOT / "ansible/roles/naive/templates/caddy.json.j2").read_text()
     )
-    adapted = subprocess.run(
-        [str(binary), "adapt", "--config", str(config), "--adapter", "caddyfile"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    assert adapted.returncode == 0, adapted.stderr
-    document = json.loads(adapted.stdout)
+    config.write_text(template.render(**values))
+    document = json.loads(config.read_text())
     servers = document["apps"]["http"]["servers"]
     listeners = {address for server in servers.values() for address in server["listen"]}
     assert listeners == {
@@ -116,7 +121,7 @@ def test_exact_naive_composite_accepts_tcp_and_disables_http3(tmp_path):
     }, "only the configured manifest TCP port may listen"
     assert all(server.get("protocols") == ["h1", "h2"] for server in servers.values())
     valid = subprocess.run(
-        [str(binary), "validate", "--config", str(config), "--adapter", "caddyfile"],
+        [str(binary), "validate", "--config", str(config)],
         capture_output=True,
         text=True,
         timeout=10,
@@ -154,7 +159,7 @@ def test_exact_naive_composite_accepts_tcp_and_disables_http3(tmp_path):
             timeout=5,
         )
         process = subprocess.Popen(
-            [str(binary), "run", "--config", str(config), "--adapter", "caddyfile"],
+            [str(binary), "run", "--config", str(config)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
         )
@@ -252,9 +257,92 @@ def test_exact_naive_composite_accepts_tcp_and_disables_http3(tmp_path):
             with upstream.accept()[0] as accepted:
                 accepted.settimeout(3)
                 proxy.sendall(b"positive authenticated tunnel")
-                assert accepted.recv(4096) == b"positive authenticated tunnel"
+                received = b""
+                while len(received) < len(b"positive authenticated tunnel"):
+                    block = accepted.recv(4096)
+                    assert block
+                    received += block
+                assert received == b"positive authenticated tunnel"
                 accepted.sendall(b"positive upstream reply")
-                assert proxy.recv(4096) == b"positive upstream reply"
+                received = b""
+                while len(received) < len(b"positive upstream reply"):
+                    block = proxy.recv(4096)
+                    assert block
+                    received += block
+                assert received == b"positive upstream reply"
+
+        def connect(client, allowed):
+            with context.wrap_socket(
+                socket.create_connection(("127.0.0.1", port), 3),
+                server_hostname="localhost",
+            ) as proxy:
+                proxy.settimeout(3)
+                target = f"203.0.113.9:{upstream.getsockname()[1]}"
+                auth = base64.b64encode(
+                    (client["username"] + ":" + client["password"]).encode()
+                ).decode()
+                proxy.sendall(
+                    f"CONNECT {target} HTTP/1.1\r\nHost: {target}\r\nProxy-Authorization: Basic {auth}\r\n\r\n".encode()
+                )
+                response = proxy.recv(4096)
+                assert (b"200" in response.split(b"\r\n", 1)[0]) is allowed
+                if allowed:
+                    with upstream.accept()[0] as accepted:
+                        proxy.sendall(b"independent device tunnel")
+                        received = b""
+                        while len(received) < len(b"independent device tunnel"):
+                            block = accepted.recv(4096)
+                            assert block, "authenticated tunnel closed early"
+                            received += block
+                        assert received == b"independent device tunnel"
+                else:
+                    upstream.settimeout(0.1)
+                    with pytest.raises(socket.timeout):
+                        upstream.accept()
+                    upstream.settimeout(3)
+
+        clients = list(values["naive_secrets"]["clients"])
+        connect(clients[1], True)
+        for remaining in ([clients[1]], []):
+            values["naive_secrets"]["clients"] = remaining
+            config.write_text(template.render(**values))
+            reload = subprocess.run(
+                [
+                    str(binary),
+                    "reload",
+                    "--config",
+                    str(config),
+                ],
+                capture_output=True,
+                timeout=10,
+            )
+            assert reload.returncode == 0, "exact composite must adopt revocation"
+            connect(clients[0], False)
+            connect(clients[1], bool(remaining))
+            response = subprocess.run(
+                [
+                    "curl",
+                    "--noproxy",
+                    "*",
+                    "--http2",
+                    "--silent",
+                    "--show-error",
+                    "--max-time",
+                    "3",
+                    "--cacert",
+                    str(tmp_path / "server.fullchain.pem"),
+                    "--resolve",
+                    f"localhost:{port}:127.0.0.1",
+                    "--write-out",
+                    "\n%{http_version}",
+                    f"https://localhost:{port}/",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            assert response.returncode == 0 and response.stdout.endswith("\n2")
+            assert "native exact Naive decoy" in response.stdout
     finally:
         if upstream:
             upstream.close()
@@ -270,3 +358,208 @@ def test_exact_naive_composite_accepts_tcp_and_disables_http3(tmp_path):
         subprocess.run(
             ["ip", "netns", "delete", namespace], capture_output=True, timeout=5
         )
+
+
+def test_naive_unacknowledged_revocation_is_adopted_by_actual_unit():
+    """Actual unit re-convergence closes config-publication/activation interruption."""
+    import shutil
+
+    assert sys.platform == "linux" and os.geteuid() == 0
+    binary = Path(
+        os.environ.get(
+            "NAIVE_NATIVE_BINARY", str(ROOT / ".cache/p2-native-caddy/caddy")
+        )
+    ).resolve()
+    assert binary.is_file()
+    suffix = uuid.uuid4().hex[:12]
+    base = Path("/var/lib") / ("p2-naive-adoption-" + suffix)
+    base.mkdir(mode=0o700)
+    unit = "p2-naive-adoption-" + suffix + ".service"
+    unit_file = Path("/etc/systemd/system") / unit
+    shutil.copyfile(binary, base / "caddy")
+    binary = base / "caddy"
+    binary.chmod(0o755)
+    config = base / "caddy.json"
+
+    def run(argv):
+        result = subprocess.run(argv, capture_output=True, timeout=20)
+        assert result.returncode == 0, "actual native command failed"
+        return result.stdout
+
+    try:
+        run(
+            [
+                "openssl",
+                "req",
+                "-x509",
+                "-newkey",
+                "rsa:2048",
+                "-nodes",
+                "-keyout",
+                str(base / "server.key"),
+                "-out",
+                str(base / "server.fullchain.pem"),
+                "-subj",
+                "/CN=localhost",
+                "-addext",
+                "subjectAltName=DNS:localhost",
+                "-days",
+                "1",
+            ]
+        )
+        (base / "index.html").write_text("actual decoy remains")
+        with socket.socket() as reserve:
+            reserve.bind(("127.0.0.1", 0))
+            port = reserve.getsockname()[1]
+        values = dict(
+            naive=dict(
+                log_dir=str(base),
+                config_dir=str(base),
+                decoy_root=str(base),
+                bind_port=port,
+            ),
+            naive_secrets=dict(
+                server_name="localhost",
+                clients=[
+                    dict(
+                        name="device",
+                        username="device",
+                        password="native-one-device-password",
+                    )
+                ],
+                probe_resistance_secret="native-synthetic-secret",
+            ),
+        )
+        env = jinja2.Environment()
+        env.filters.update(FilterModule().filters())
+        template = env.from_string(
+            (ROOT / "ansible/roles/naive/templates/caddy.json.j2").read_text()
+        )
+        config.write_text(template.render(**values))
+        config.chmod(0o640)
+        unit_file.write_text(
+            f"[Service]\nType=simple\nExecStart={binary} run --config {config}\n"
+        )
+        unit_file.chmod(0o644)
+        helper = ROOT / "ansible/roles/naive/files/naive_activate.py"
+        argv = [
+            sys.executable,
+            str(helper),
+            "--binary",
+            str(binary),
+            "--unit-file",
+            str(unit_file),
+            "--config",
+            str(config),
+            "--certificate",
+            str(base / "server.fullchain.pem"),
+            "--key",
+            str(base / "server.key"),
+            "--unit",
+            unit,
+            "--state",
+            str(base / "receipt"),
+            "--server-name",
+            "localhost",
+            "--port",
+            str(port),
+        ]
+        legacy = base / "Caddyfile"
+        legacy.write_text(
+            f"{{\n  log default {{\n    output file {base}/legacy-access.log\n  }}\n  auto_https off\n}}\n"
+            f":{port}, localhost:{port} {{\n  tls {base}/server.fullchain.pem {base}/server.key\n"
+            "  route {\n    forward_proxy {\n      basic_auth old-device old-synthetic-password\n"
+            "      hide_ip\n      hide_via\n      probe_resistance synthetic-old-secret\n    }\n"
+            f"    file_server {{\n      root {base}\n    }}\n  }}\n}}\n"
+            "# NOTE: NaiveProxy v147.0.7727.49-3\n"
+        )
+        run(
+            [str(binary), "validate", "--config", str(legacy), "--adapter", "caddyfile"]
+        )
+        legacy.chmod(0o640)
+        assert json.loads(run(argv))["changed"] is True
+        assert (
+            not legacy.exists()
+        ), "old credential-bearing role output must retire after new adoption"
+        assert json.loads(run(argv))["changed"] is False
+        previous_pid = run(
+            ["systemctl", "show", unit, "--property=MainPID", "--value"]
+        ).strip()
+        # Disk publication survives while the old actual process still runs.
+        values["naive_secrets"]["clients"] = []
+        config.write_text(template.render(**values))
+        assert (
+            run(["systemctl", "show", unit, "--property=MainPID", "--value"]).strip()
+            == previous_pid
+        )
+        assert json.loads(run(argv))["changed"] is True
+        assert (
+            run(["systemctl", "show", unit, "--property=MainPID", "--value"]).strip()
+            != previous_pid
+        )
+        context = ssl.create_default_context(cafile=str(base / "server.fullchain.pem"))
+        with context.wrap_socket(
+            socket.create_connection(("127.0.0.1", port), 3),
+            server_hostname="localhost",
+        ) as client:
+            client.settimeout(3)
+            auth = base64.b64encode(b"device:native-one-device-password").decode()
+            client.sendall(
+                f"CONNECT 203.0.113.9:80 HTTP/1.1\r\nHost: 203.0.113.9\r\nProxy-Authorization: Basic {auth}\r\n\r\n".encode()
+            )
+            assert b"200" not in client.recv(4096).split(b"\r\n", 1)[0]
+        decoy = run(
+            [
+                "curl",
+                "--noproxy",
+                "*",
+                "--silent",
+                "--show-error",
+                "--max-time",
+                "3",
+                "--cacert",
+                str(base / "server.fullchain.pem"),
+                "--resolve",
+                f"localhost:{port}:127.0.0.1",
+                f"https://localhost:{port}/",
+            ]
+        )
+        assert b"actual decoy remains" in decoy
+        assert json.loads(run(argv))["changed"] is False
+        # An interrupted acknowledgement cannot turn unchanged publication into acceptance.
+        (base / "receipt/activated.json").unlink()
+        assert json.loads(run(argv))["changed"] is True
+        assert json.loads(run(argv))["changed"] is False
+        receipt = base / "receipt/activated.json"
+        valid_receipt = receipt.read_bytes()
+        for malformed in (
+            b'{"schema":true,"fingerprint":"' + b"a" * 64 + b'"}',
+            b'{"schema":1,"schema":1,"fingerprint":"' + b"a" * 64 + b'"}',
+        ):
+            receipt.write_bytes(malformed)
+            failed = subprocess.run(argv, capture_output=True, timeout=20)
+            assert failed.returncode == 1
+            assert receipt.read_bytes() == malformed
+        receipt.write_bytes(valid_receipt)
+        assert json.loads(run(argv))["changed"] is False
+        # An atomic same-byte binary replacement leaves the old executable inode
+        # in the live process. A current digest receipt must still adopt it.
+        prior_pid = run(
+            ["systemctl", "show", unit, "--property=MainPID", "--value"]
+        ).strip()
+        replacement = base / "replacement"
+        shutil.copyfile(binary, replacement)
+        replacement.chmod(0o755)
+        os.replace(replacement, binary)
+        assert json.loads(run(argv))["changed"] is True
+        assert (
+            run(["systemctl", "show", unit, "--property=MainPID", "--value"]).strip()
+            != prior_pid
+        )
+        assert json.loads(run(argv))["changed"] is False
+
+    finally:
+        subprocess.run(["systemctl", "stop", unit], capture_output=True, timeout=10)
+        unit_file.unlink(missing_ok=True)
+        subprocess.run(["systemctl", "daemon-reload"], capture_output=True, timeout=10)
+        shutil.rmtree(base)
