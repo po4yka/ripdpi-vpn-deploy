@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import ExitStack, contextmanager
+from contextlib import contextmanager
 import fcntl
 import os
 import secrets
@@ -42,12 +42,44 @@ def validate(content: str) -> str:
 
 
 @contextmanager
-def open_descriptor(path, flags, mode=0o600, *, dir_fd=None):
-    fd = os.open(path, flags, mode, dir_fd=dir_fd)
+def open_descriptor(path, flags, mode=0o600, *, dir_fd=None, optional=False):
+    try:
+        fd = os.open(path, flags, mode, dir_fd=dir_fd)
+    except FileNotFoundError:
+        if not optional:
+            raise
+        fd = None
     try:
         yield fd
     finally:
-        os.close(fd)
+        if fd is not None:
+            os.close(fd)
+
+
+@contextmanager
+def budget_directory(path):
+    current = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for name in path.parts[1:]:
+            ancestor = os.fstat(current)
+            trusted_sticky = ancestor.st_uid == 0 and ancestor.st_mode & stat.S_ISVTX
+            if ancestor.st_uid not in (0, os.geteuid()) or (
+                ancestor.st_mode & 0o022 and not trusted_sticky
+            ):
+                raise PermissionError("unsafe budget ancestry")
+            child = os.open(
+                name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=current
+            )
+            old = current
+            current = child
+            os.close(old)
+        parent = os.fstat(current)
+        if parent.st_uid != os.geteuid() or parent.st_mode & 0o022:
+            raise PermissionError("unsafe budget directory")
+        fcntl.flock(current, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        yield current
+    finally:
+        os.close(current)
 
 
 def operate(path: Path, operation: str) -> None:
@@ -55,56 +87,30 @@ def operate(path: Path, operation: str) -> None:
         raise PermissionError("unsafe budget path")
     temporary = ".watchdog-state-" + secrets.token_hex(16)
     candidate_identity = None
-    with ExitStack() as resources:
-        directory = resources.enter_context(
-            open_descriptor("/", os.O_RDONLY | os.O_DIRECTORY)
-        )
+    with budget_directory(path.parent) as directory:
         try:
-            for name in path.parent.parts[1:]:
-                ancestor = os.fstat(directory)
-                trusted_sticky = (
-                    ancestor.st_uid == 0 and ancestor.st_mode & stat.S_ISVTX
-                )
-                if ancestor.st_uid not in (0, os.geteuid()) or (
-                    ancestor.st_mode & 0o022 and not trusted_sticky
-                ):
-                    raise PermissionError("unsafe budget ancestry")
-                directory = resources.enter_context(
-                    open_descriptor(
-                        name,
-                        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-                        dir_fd=directory,
-                    )
-                )
-            parent = os.fstat(directory)
-            if parent.st_uid != os.geteuid() or parent.st_mode & 0o022:
-                raise PermissionError("unsafe budget directory")
-            fcntl.flock(directory, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            try:
-                fd = resources.enter_context(
-                    open_descriptor(
-                        path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory
-                    )
-                )
-            except FileNotFoundError:
-                content = None
-            else:
-                with os.fdopen(fd, "r", closefd=False) as source:
-                    metadata = os.fstat(source.fileno())
-                    if (
-                        not stat.S_ISREG(metadata.st_mode)
-                        or metadata.st_nlink != 1
-                        or metadata.st_uid != os.geteuid()
-                        or stat.S_IMODE(metadata.st_mode) not in (0o600, 0o640)
-                    ):
-                        raise PermissionError("unsafe budget file")
-                    content = validate(source.read(4097))
-                    if stat.S_IMODE(metadata.st_mode) == 0o640:
-                        # Retire the exact previously canonical group grant only
-                        # after complete typed-state validation; counters never reset.
-                        os.fchmod(source.fileno(), 0o600)
-                        os.fsync(source.fileno())
-                        os.fsync(directory)
+            # Only an acquisition-time ENOENT represents an absent budget.
+            with open_descriptor(
+                path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory, optional=True
+            ) as fd:
+                if fd is None:
+                    content = None
+                else:
+                    with os.fdopen(fd, "r", closefd=False) as source:
+                        metadata = os.fstat(fd)
+                        if (
+                            not stat.S_ISREG(metadata.st_mode)
+                            or metadata.st_nlink != 1
+                            or metadata.st_uid != os.geteuid()
+                            or stat.S_IMODE(metadata.st_mode) not in (0o600, 0o640)
+                        ):
+                            raise PermissionError("unsafe budget file")
+                        content = validate(source.read(4097))
+                        if stat.S_IMODE(metadata.st_mode) == 0o640:
+                            # Retire the prior grant only after typed validation.
+                            os.fchmod(fd, 0o600)
+                            os.fsync(fd)
+                            os.fsync(directory)
             if operation == "read":
                 if content is not None:
                     sys.stdout.write(content)

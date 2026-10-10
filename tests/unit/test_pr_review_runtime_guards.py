@@ -317,6 +317,81 @@ def test_watchdog_entropy_failure_never_acquires_or_leaks_descriptor(
     assert path.stat().st_mode & 0o777 == 0o600
 
 
+def test_watchdog_directory_handoff_failure_closes_the_new_child(tmp_path, monkeypatch):
+    module = load("watchdog", "vpn-watchdog-state.py")
+    path = tmp_path / "state"
+    raw = budget(module)
+    path.write_text(raw)
+    path.chmod(0o600)
+    with track_fds(monkeypatch) as (patch, acquired, _):
+        original_close = os.close
+        first = True
+
+        def close(fd):
+            nonlocal first
+            original_close(fd)
+            if first:
+                first = False
+                raise OSError("injected old-parent close failure")
+
+        patch.setattr(os, "close", close)
+        with pytest.raises(OSError, match="old-parent close failure"):
+            module.operate(path, "read")
+    assert len(acquired) == 2
+    assert path.read_text() == raw
+
+
+@pytest.mark.parametrize("stage", ["stat", "read", "sync"])
+def test_watchdog_existing_read_enoent_is_not_an_absent_budget_reset(
+    tmp_path, monkeypatch, capsys, stage
+):
+    module = load("watchdog", "vpn-watchdog-state.py")
+    path = tmp_path / "state"
+    raw = budget(module)
+    path.write_text(raw)
+    path.chmod(0o640)
+    with track_fds(monkeypatch) as (patch, _, actual_stat):
+        if stage == "stat":
+
+            def inspect(fd):
+                value = actual_stat(fd)
+                if stat.S_ISREG(value.st_mode):
+                    raise FileNotFoundError("injected open-inode inspection failure")
+                return value
+
+            patch.setattr(os, "fstat", inspect)
+        elif stage == "read":
+            original = os.fdopen
+
+            class Unreadable:
+                def __init__(self, stream):
+                    self.stream = stream
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *args):
+                    return self.stream.__exit__(*args)
+
+                def read(self, count):
+                    raise FileNotFoundError("injected opened-stream read failure")
+
+            patch.setattr(os, "fdopen", lambda *a, **kw: Unreadable(original(*a, **kw)))
+        else:
+            patch.setattr(
+                os,
+                "fsync",
+                lambda *a: (_ for _ in ()).throw(
+                    FileNotFoundError("injected sync failure")
+                ),
+            )
+        with pytest.raises(FileNotFoundError):
+            module.operate(path, "read")
+    assert capsys.readouterr().out == ""
+    assert path.read_text() == raw
+    assert path.stat().st_mode & 0o777 == (0o600 if stage == "sync" else 0o640)
+
+
 def test_watchdog_candidate_collision_preserves_foreign_inode(tmp_path, monkeypatch):
     module = load("watchdog", "vpn-watchdog-state.py")
     path = tmp_path / "state"

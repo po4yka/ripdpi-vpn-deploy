@@ -9,6 +9,8 @@ ancestry, foreign files and malformed budgets refuse without repair or reset.
 Descriptor cleanup includes stream-wrapping and temporary-unlink failures.
 Entropy is obtained before opening files. Each acquired descriptor belongs to
 an explicit lexical try/finally context, including ancestor traversal failures.
+The directory walker transfers ownership before closing an old parent; read
+absence is recognized only at initial acquisition, never after a body failure.
 
 **Server validation uses the installed runtime environment** — the shared Xray validator resolves `XRAY_LOCATION_ASSET` from the loaded Xray unit before testing its server configuration, including bundled-asset profiles. Canary client invocation remains separate.
 

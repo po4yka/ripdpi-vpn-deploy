@@ -8,6 +8,8 @@ The capability-bounded policy reader joins that group without DAC bypass.
 Descriptor contexts own all acquired files and ancestors through failures.
 Each raw acquisition closes in its own lexical finally; log provisioning uses
 metadata descriptors directly without allocating unnecessary text buffers.
+The fixed pair uses nested lexical contexts; directory traversal owns only its
+current descriptor and transfers that ownership before closing an old parent.
 
 **Configuration validation shares one executable contract** — `files/xray_validate.py` is installed as `/usr/local/libexec/vpn-xray-validate`. Read-only verify always streams that same repository source into remote Python, so checking an existing node never requires installing or updating the helper first. Candidate convergence supplies the planned asset directory explicitly; verify, rotation, rollback and watchdog derive the exact asset directory from the loaded Xray unit. Missing or ambiguous authority fails closed without printing environment values.
 
