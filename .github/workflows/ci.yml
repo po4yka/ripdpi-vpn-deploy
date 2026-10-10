@@ -614,52 +614,38 @@ jobs:
   vpnd-test:
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['vpnd-test'] }}
-    name: vpnd cargo test
-    uses: ./.github/workflows/_rust.yml
+    name: vpnd-test
+    uses: ./.github/workflows/_python-vpnd.yml
     with:
-      target: x86_64-unknown-linux-gnu
-      cargo-command: test --release --locked
+      command: test
+      cross-platform: true
 
-  vpnd-clippy:
+  vpnd-lint:
     needs: selection
-    if: ${{ fromJSON(needs.selection.outputs.checks)['vpnd-clippy'] }}
-    name: vpnd cargo clippy
-    uses: ./.github/workflows/_rust.yml
+    if: ${{ fromJSON(needs.selection.outputs.checks)['vpnd-lint'] }}
+    name: vpnd-lint
+    uses: ./.github/workflows/_python-vpnd.yml
     with:
-      target: x86_64-unknown-linux-gnu
-      cargo-command: clippy --release --all-targets --locked -- -D warnings
+      command: lint
+      cross-platform: false
 
-  vpnd-msrv:
-    timeout-minutes: 20
+  vpnd-package:
     needs: selection
-    if: ${{ fromJSON(needs.selection.outputs.checks)['vpnd-msrv'] }}
-    name: vpnd MSRV check
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067  # stable
-        with:
-          toolchain: "1.88.0"
-      - run: cargo +1.88.0 check --locked
-        working-directory: vpnd
+    if: ${{ fromJSON(needs.selection.outputs.checks)['vpnd-package'] }}
+    name: vpnd-package
+    uses: ./.github/workflows/_python-vpnd.yml
+    with:
+      command: package
+      cross-platform: true
 
-  vpnd-deny:
-    timeout-minutes: 10
+  vpnd-dependency:
     needs: selection
-    if: ${{ fromJSON(needs.selection.outputs.checks)['vpnd-deny'] }}
-    name: vpnd dependency policy
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25  # v2.1.1
-        with:
-          manifest-path: vpnd/Cargo.toml
-          arguments: "--all-features --config vpnd/deny.toml"
-          rust-version: "1.88.0"
+    if: ${{ fromJSON(needs.selection.outputs.checks)['vpnd-dependency'] }}
+    name: vpnd-dependency
+    uses: ./.github/workflows/_python-vpnd.yml
+    with:
+      command: dependency
+      cross-platform: false
 
   molecule-failure-scenarios:
     timeout-minutes: 20
@@ -810,9 +796,9 @@ jobs:
       - bats-test
       - tf-test
       - vpnd-test
-      - vpnd-clippy
-      - vpnd-msrv
-      - vpnd-deny
+      - vpnd-lint
+      - vpnd-package
+      - vpnd-dependency
       - vpnd-sbom
       - molecule-failure-scenarios
       - tf-policy

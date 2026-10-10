@@ -1,122 +1,99 @@
-# vpnd — Rust convenience CLI
+# vpnd — Python convenience CLI
 
 ## Design decisions
 
-**Reconverge shares the deployment controller** — scoped exact inventory aliases pass through `make dry-run`, `make deploy` and `make verify`, retaining proof gates and cleanup. `make validate` initializes isolated backend-free Terraform validation data for every root, so a fresh checkout does not depend on deployment workspace caches.
+**Make owns operations.** Python command handlers delegate infrastructure work
+to documented Make targets. Reconverge resolves exact inventory keys for the
+selected environment/provider before the deployment controller's dry-run,
+deploy and verify calls. `--explain` shows a redacted plan without executing it.
 
-**Convenience layer, not replacement** — every subcommand maps to a documented
-`make <target>` invocation. `--explain` prints the underlying shell calls and
-exits. The Makefile and `scripts/` are the canonical surface; `vpnd` is the
-front door. Subcommand definitions live in `vpnd/src/cli.rs`.
+**One command definition.** `src/vpnd/cli.py` owns the standard-library parser,
+global-flag precedence, help, completions and all twenty man pages. Add commands
+there and an async `run(ctx, args)` handler under `src/vpnd/commands/`; dispatch
+lives in `src/vpnd/__main__.py`. Completions are a context-free synchronous
+handler. Test actual parser behavior and update operator guidance with changes.
 
-**Runner abstraction** — `runner/process.rs::Cmd` is a fluent builder that
-carries program + args + env + cwd + a human description. `--explain` calls
-`Cmd::explain()` to produce a shell-quoted equivalent; `run()` streams to the
-terminal; `capture()` collects stdout. Every other module talks to the world
-through `Cmd`.
+**One package version.** `pyproject.toml` is the version authority. The
+repository launcher is `scripts/vpnd.py`; installed execution reads distribution
+metadata. Release packaging copies reviewed tracked source/docs and bundles
+Jinja templates plus parser-generated manuals. Python 3.12, exact hashes and
+an isolated offline installation replace the native executable distribution.
 
-**Wizard helpers** — `wizard::{choose, prompt, confirm, section, Summary}` mirror
-Meridian's `console.py`. `Summary` is the pre-commit panel printed before every
-state-changing op. Never raw Y/n prompts.
+**State retains its formats.** The local TOML registry resolves host aliases to
+environment/provider/IPs. TOML reads use the standard library; writes use
+`tomli-w` and the private atomic writer. Secrets remain a read-only typed view
+of descriptor-gated YAML. Shared strict loading preserves scalar semantics and
+rejects duplicate mappings with categorical errors.
 
-**Host registry** — local TOML at `~/.config/vpn-provision/hosts.toml`. Mirrors
-Meridian's server registry; resolves `--host <name>` to env/provider/IPs.
+**Process ownership is explicit.** `src/vpnd/runner/process.py` (`Cmd`) carries argv,
+environment, cwd and a description. Foreground operations retain terminal
+behavior. Doctor and matrix captures opt into owned groups; each worker drains
+pipes while holding an unreaped leader, kills owned descendants before reaping
+on cancellation, and completes cleanup before returning. Matrix owns SIGINT
+and SIGTERM so durable partial evidence precedes exits 130/143.
 
-**Provider discovery follows Terraform roots** — `Context::discover` resolves `terraform/providers/<provider>` and accepts a provider only when that directory exists. The diagnostic list documents the shipped roots (UpCloud, Hetzner, Vultr, Scaleway), while the directory check remains authoritative.
+**Matrix owns orchestration and analysis.** Its shell calls remain canonical
+Make targets. `src/vpnd/commands/probe_matrix.py` preserves fixed-rate scheduling,
+concurrent cells, control/target validation, topology classifications, schema-3
+JSON, per-tick JSONL journals and private persistent session locks. The exact
+report snapshot and real lifecycle tests protect these contracts.
 
-**Long-running orchestrators (`probe-matrix`)** — when a subcommand needs to
-loop over many shell invocations on a fixed schedule and aggregate their
-output into a single report, vpnd owns the loop, the JSON shape, and the
-analysis pass; each per-cell shell-out is still a `Cmd` to a documented
-Make target. That preserves the "convenience layer" contract — the
-shell-out surface stays canonical, vpnd just adds the scheduling glue
-that's awkward to express in Make. Schema is versioned via
-`schema_version` in the report JSON and locked by an `insta` snapshot
-in `tests/`. See `commands/probe_matrix.rs` + `docs/PROBE-MATRIX.md`.
+**Recipient artifacts remain private.** `src/vpnd/pages/recipient.py` uses Jinja2 with
+mandatory HTML autoescaping and `StrictUndefined`. The source template is
+`templates/recipient.html`; the installed template is package data. `share`
+accepts an opaque token only through stdin or a current-owner private file.
+`qrcode` produces both SVGs through the private atomic writer.
 
-**Recipient page** — `pages/recipient.rs` renders via askama; template lives at
-`vpnd/templates/recipient.html`. Generated by `vpnd share <client>` into
-`<repo>/share/<client>/` and served by the existing `subscription-host` role.
-Pass a token from stdin or a `0600` file through `--token-stdin` or
-`--token-file` to use an opaque subscription URL; the token is validated
-against `^[A-Za-z0-9_-]+$` before use.
-
-**New subcommands follow one shape** — add a variant to the `Command` enum in
-`src/cli.rs`; create `src/commands/<name>.rs` with
-`pub async fn run(ctx: &Context, args: <Name>Args) -> Result<()>` (args by
-value, like every existing handler); wire it in `src/commands/mod.rs` and add a
-match arm in `src/main.rs`. Add an `insta` snapshot under `tests/` if it
-renders output. Document the command and its flags in the root `README.md`
-subcommand list and `vpnd/README.md`, and update any `docs/RUNBOOK-*.md` that
-covers the workflow it changes.
-
-**Crate conventions** — `vpnd` is one crate with a `[lib]` (`src/lib.rs`) and a
-`[[bin]]`; there is no Cargo workspace. `anyhow::Result` is used end to end;
-the one typed error, `probe_matrix::Interrupted` (`thiserror`), exists so
-`main.rs` can map a caught signal to its exit code. `Cargo.toml` denies
-`clippy::unwrap_used`, `expect_used`, and `panic`; test modules opt out with a
-module-level `#![allow(...)]`. MSRV is pinned by `rust-version` and checked by
-`make vpnd-msrv`. The tokio runtime is multi-threaded: ProbeMatrix fans out
-with `JoinSet`, and long-running commands handle signals through
-`InterruptSignals` in `commands/probe_matrix.rs`. Make and Terraform calls go
-through the runner builders; only local diagnostics in `doctor.rs` spawn
-processes directly.
+**Release recovery is transactional.** Verified flat wheel bundles carry a
+platform/version/file manifest and locked runtime wheels. Installation validates
+metadata, dependency closure, templates/docs and parser-derived manuals before
+publishing. A persistent prefix lock serializes publication; rollback restores
+previous native files or symlinks and pages after interruption. Recovery selects
+a complete prior verified environment, without migrating operator state.
 
 ## What's done well
 
-- **`--explain` is side-effect free** — env vars and cwd are encoded in
-  shell-quoted form; secret-file paths use explicit redaction placeholders.
-  Inventory-dependent targeting is marked unresolved, never silently widened.
-- **Decryption is delegated** — `vpnd` never reimplements SOPS. It shells out
-  to `sops`, preserving the existing audit-log and YubiKey paths.
-- **Read-only secrets** — `secrets::Secrets` only reads decrypted YAML.
-  Mutation goes through the Ansible/scripts layer, not `vpnd`.
-- **Spinner discipline** — long ops should call `print_explain()` and let the
-  shelled-out subcommand stream output. Don't fake a spinner over real output.
+- **Safety contracts share implementations.** Make values use per-key
+  expansion-safe allowlists; Terraform calls use `scripts/terraform-env.sh`.
+  Secret/token files use held-descriptor owner/type/privacy checks and fd-based
+  hardening. JSON/HTML/QR outputs use unique private temp files, sync and rename.
+- **Diagnostics retain evidence.** Doctor continues after individual failures,
+  keeps both streams and redacts every exported report/archive/clipboard surface.
+- **Tests retain their baseline identity.** Source annotations and the checked
+  transfer manifest map every baseline function to collected, passed Python node
+  IDs. Hypothesis properties retain the explicit regression seeds; snapshots
+  retain machine-contract assertions.
+- **Distribution checks exercise artifacts.** Package tests install offline into
+  a private prefix, use packaged assets outside the checkout, verify every manual,
+  and exercise failed/interrupted replacement. The five runtime packages have
+  locked hashes plus reviewed license/source policy.
 
 ## Pitfalls
 
-- **Mutation tests need the repository layout** — use `make vpnd-mutants`:
-  its disposable tracked working-tree copy retains sibling docs, fixtures and
-  scripts. Stage new inputs first. `.cargo/mutants.toml` is the discovered
-  config; baseline and technical failures must never become successful CI.
-
-- **Don't add a shell-via-string surface** — every `Cmd` is argv-shaped. If you
-  ever need a pipe or redirect, add a dedicated method to `Cmd`, don't smuggle
-  `bash -c "…"` through.
-- **`secrets_file` is operator-trusted** — it is the configured runtime path
-  produced by `make decrypt`, with `0600`. Never log it. Never copy it across
-  the network.
-- **Snapshots are reviewed, never blindly accepted** — `insta` files live in
-  `vpnd/tests/snapshots/`; inspect each change with `cargo insta review`.
-  `tracing` writes to stderr so stdout stays clean for output assertions.
-- **clap global flags need `global = true`** — adding a new flag without it
-  causes "argument not allowed here" on subcommands.
-- **askama escapes by default** — `escape = "html"` in the template attribute.
-  Don't disable per-block; pass already-safe URLs as plain strings.
-- **`make decrypt` is not idempotent** — it overwrites the configured
-  `SECRETS_FILE` every time. Subcommands check `secrets_file.is_file()` before
-  triggering it.
-- **Runtime plaintext is volatile** — use `XDG_RUNTIME_DIR` or a user-specific
-  temporary directory, never a persistent cache. Make receives this exact path.
-- **Secret/token file gates share `protected_file`** — rustix opens with
-  `NOFOLLOW|NONBLOCK`, then validates the regular-file type and current UID on
-  the held descriptor. Read only after private-mode validation; harden through
-  the descriptor, never through the path. Missing or empty plaintext is an error.
-- **Private share artifacts share one atomic writer** — JSON/HTML/QR outputs
-  create unique mode-0600 temp files, sync, and rename; unrelated stale temp
-  files are preserved and failed writes clean only their own file.
-- **Ansible limits match inventory keys, not `ansible_host`** — resolve the
-  `vpn` inventory group with env/provider and `vpn_service_address`, then use
-  validated exact host keys. Reject missing or ambiguous registry matches.
-- **Cleanup is unconditional after a deployment pipeline starts** — successful
-  dry runs also clean. A cleanup error fails success but never masks the primary error.
-- **Group cleanup is explicit** — ProbeMatrix/Doctor opt into owned capture
-  groups; ProbeMatrix owns signals internally so schema-3 reports and JSONL
-  journals flush before 130/143. Share/Reconverge retain foreground captures and
-  default signals around blocking input/prompts; run() and raw helpers are unchanged.
-- **Make targets carry state via env** — `ENV` and `PROVIDER` must be passed on
-  every invocation; `make::target()` does this. Don't bypass it.
-- **Terraform must use the workspace wrapper** — runner builders call `scripts/terraform-env.sh` with `PROVIDER` and `ENV`; do not construct raw Terraform commands, or non-production environments can select the wrong local state.
-- **`--explain` shows env + cwd + argv but cannot show what's inside the
-  decrypted secrets file** — that's by design; the file is gated by SOPS.
+- **Stage new inputs before packaging or mutation.** Both use reviewed tracked
+  working-tree files and require sibling docs, fixtures and scripts. Use
+  `make vpnd-mutants`; `pyproject.toml` defines its full scope. The wrapper rejects
+  partial selections and treats missing, empty, incomplete or technical results
+  as failures. Never mutate the operator checkout.
+- **Review snapshots semantically.** Files live under `tests/snapshots/`; inspect
+  every changed command, flag, default, link and machine field. Preserve the exact
+  schema-3 report snapshot and property seeds. Run `make vpnd-parity-check` after
+  the complete `make vpnd-test`, without skipped or focused baseline cases.
+- **Keep parser defaults deterministic in packaged docs.** Global flags must
+  work at every nesting depth without subcommand defaults replacing explicit
+  values. Generate release manuals with environment-derived defaults cleared;
+  actual command parsing retains the operator's environment defaults.
+- **Retain output escaping and redaction.** Keep Jinja autoescape enabled and
+  sensitive paths registered before rendering invocations. Bearer URLs stay in
+  protected recipient artifacts; diagnostics never export secret-file locations.
+- **Plaintext stays volatile.** `XDG_RUNTIME_DIR` wins; fallback storage is a
+  user-specific temporary directory. Pass that exact path to every Make call.
+  `make decrypt` overwrites it; share/preflight check for existing plaintext
+  first. Missing, empty or unsafe input must fail before dependent work.
+- **Limits are inventory keys.** Match the `vpn` group, env/provider and
+  `vpn_service_address`; reject absent, ambiguous or pattern-shaped matches.
+  A cleanup failure fails success but never replaces a primary pipeline error.
+- **Respect capture lifetimes.** Doctor/matrix need group ownership and signal
+  owners. Share/reconverge retain foreground captures and default signals during
+  token input and confirmation. Kill before reaping; await cleanup rather than
+  relying on garbage collection or an executor queue.

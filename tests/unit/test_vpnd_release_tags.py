@@ -117,7 +117,10 @@ def test_release_assets_are_uploaded_with_rerun_overwrite_semantics():
     assert "GH_TOKEN: ${{ github.token }}" in workflow
     assert "GH_REPO: ${{ github.repository }}" in workflow
     assert "group: vpnd-release-${{ needs.validate-tag.outputs.release-tag }}" in workflow
-    assert workflow.count("            dist/vpnd-") == 4
+    for target in ("x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "aarch64-apple-darwin"):
+        assert f"dist/vpnd-{target}.tar.gz" in workflow
+    assert "dist/vpnd-*-py3-none-any.whl" in workflow
+    assert "dist/vpnd-[0-9]*.tar.gz" in workflow
     assert "            dist/SHA256SUMS" in workflow
     assert "            dist/sbom.json" in workflow
     assert "              --verify-tag \\" in workflow
@@ -131,16 +134,18 @@ def test_release_publish_handles_missing_existing_and_interrupted_releases(tmp_p
     )
     release_steps = workflow["jobs"]["release"]["steps"]
     publish = next(
-        step for step in release_steps if step["name"] == "Publish GitHub release"
+        step for step in release_steps if step.get("name") == "Publish GitHub release"
     )
 
     dist = tmp_path / "dist"
     dist.mkdir()
     assets = [
-        "vpnd-x86_64-unknown-linux-gnu",
-        "vpnd-aarch64-unknown-linux-gnu",
-        "vpnd-x86_64-apple-darwin",
-        "vpnd-aarch64-apple-darwin",
+        "vpnd-x86_64-unknown-linux-gnu.tar.gz",
+        "vpnd-aarch64-unknown-linux-gnu.tar.gz",
+        "vpnd-x86_64-apple-darwin.tar.gz",
+        "vpnd-aarch64-apple-darwin.tar.gz",
+        "vpnd-1.2.3-py3-none-any.whl",
+        "vpnd-1.2.3.tar.gz",
         "SHA256SUMS",
         "sbom.json",
     ]

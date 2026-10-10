@@ -20,11 +20,17 @@ def workflow():
 def test_release_version_updates_include_the_locked_root_package():
     config = json.loads((ROOT / ".github/release-please-config.json").read_text())
     files = config["packages"]["."]["extra-files"]
-    assert "vpnd/Cargo.toml" in files
     assert {
-        "type": "toml", "path": "vpnd/Cargo.lock",
-        "jsonpath": "$.package[?(@.name.value=='vpnd')].version",
+        "type": "toml",
+        "path": "vpnd/pyproject.toml",
+        "jsonpath": "$.project.version",
     } in files
+    assert not any("Cargo" in str(entry) for entry in files)
+    import tomllib
+
+    project = tomllib.loads((ROOT / "vpnd/pyproject.toml").read_text())["project"]
+    manifest = json.loads((ROOT / ".github/release-please-manifest.json").read_text())
+    assert project["version"] == manifest["."]
 
 
 def test_release_automation_is_enabled_by_default_and_errors_are_fatal():

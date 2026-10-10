@@ -2,7 +2,7 @@
 id: VPD-1791615284178957
 title: Replace vpnd with Python while preserving commands and security
 kind: feature
-status: backlog
+status: doing
 area: vpnd
 priority: high
 risk: high
@@ -21,8 +21,8 @@ related_tasks: []
 Deliver a Python 3.12 `vpnd` with every existing command, flag, state format,
 operator artifact and security guarantee preserved, then remove the authored
 Rust implementation and its compiler-dependent development/release lanes.
-Make remains the canonical operator surface. This record currently authorizes
-planning only; implementation requires a subsequent explicit request.
+Make remains the canonical operator surface. Implementation and PR preparation are authorized; qrcode and tomli-w are
+approved. Real fleet operations and merge remain outside this request.
 
 ## Acceptance criteria
 

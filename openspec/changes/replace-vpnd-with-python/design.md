@@ -1,7 +1,7 @@
 ## Context
 
 Task: `VPD-1791615284178957`. Baseline:
-`5365cbd4b33dff5b3d0be0e1f8c5cb2c9d17ac50`. This is a planning-only change.
+`5365cbd4b33dff5b3d0be0e1f8c5cb2c9d17ac50`. Implementation and PR preparation were authorized after planning; fleet operations remain outside scope.
 The current crate has 36 source files (including inline tests), 21 integration
 test files and 271 Cargo lockfile packages. `test-inventory.md` enumerates 206
 Rust test functions and ten directly referencing Python consumer suites; these
@@ -48,9 +48,9 @@ Proposed production additions are `qrcode` for pure-Python SVG generation
 (without Pillow) and `tomli-w` for registry/cache TOML serialization. They avoid
 a new external QR runtime prerequisite and a custom serialization engine.
 They expand the locked dependency/SBOM set and require Python 3.12/platform,
-maintenance, vulnerability and license review. Their exact versions/hashes and
-approval must be resolved before adding them during implementation; this plan
-installs neither. A rejected dependency choice requires revising this design
+maintenance, vulnerability and license review. The owner approved both dependencies; exact runtime versions are qrcode 8.2 and
+tomli-w 1.2.0, with generated hash locks and blocking license/source/vulnerability
+checks. A rejected dependency choice requires revising this design
 before that slice, rather than silently implementing a homemade substitute.
 Use Hypothesis for generated-property transfer and a pinned Python mutation
 runner for the existing mutation contract. Build tooling is separately pinned;

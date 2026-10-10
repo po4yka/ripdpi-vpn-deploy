@@ -140,9 +140,9 @@ repos:
         pass_filenames: false
         files: ^ansible/(role-tiers\.yml|group_vars/.*\.yml|host_vars/.*\.yml|roles/.*)$
 
-      - id: cargo-clippy
-        name: cargo-clippy (workspace warnings as errors)
-        entry: cargo clippy --manifest-path vpnd/Cargo.toml --workspace --all-targets -- -D warnings
+      - id: vpnd-python-lint
+        name: vpnd Python lint
+        entry: python3 -m ruff check vpnd/src/vpnd vpnd/tests scripts/vpnd.py
         language: system
         pass_filenames: false
         files: ^vpnd/

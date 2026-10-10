@@ -24,12 +24,12 @@ JOBS = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
     [
         (
             "docs/tasks/issues/example.md",
-            {"vpnd-test", "vpnd-clippy", "vpnd-sbom"},
+            {"vpnd-test", "vpnd-lint", "vpnd-sbom"},
             {"molecule", "tf-test", "go-helper"},
         ),
         (
-            "vpnd/src/main.rs",
-            {"vpnd-test", "vpnd-deny", "vpnd-msrv"},
+            "vpnd/src/vpnd/__main__.py",
+            {"vpnd-test", "vpnd-dependency", "vpnd-package"},
             {"ansible", "tf-policy"},
         ),
         (

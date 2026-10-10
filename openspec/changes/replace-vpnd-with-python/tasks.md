@@ -4,13 +4,18 @@
 
 Deliver one complete Python 3.12 CLI and trusted installed distribution with
 the baseline command/state/security/test contract preserved, then retire
-authored Rust and compiler tooling. This plan is not implementation approval:
-all execution checkboxes remain open and the portfolio stays in backlog.
+authored Rust and compiler tooling. Implementation and PR preparation are authorized. Steps are marked only after
+observed checks; the portfolio advances at most to review.
 
 ## Ownership
 
 - Implementation starts in a dedicated worktree after explicit authorization.
-- CLI and safety modules own `vpnd/`, the repository launcher and matching tests.
+- Core contributor owns parser/context/runner/state/secrets, operational commands,
+  `scripts/vpnd.py` and their test files. Artifact contributor owns
+  share/doctor/docs/update/completions/probe-matrix/pages and their test files.
+  The primary integration owner owns packaging, conftest/test-transfer gate,
+  dependencies, CI/release/installer and shared consumers. Contributors preserve
+  each other's edits; only the primary runs the heavy baseline/final build gates.
 - Artifact modules own recipient/QR, diagnostics, docs, cache and matrix output.
 - A single integration owner serializes root Makefile, mise, dependency locks,
   hooks, CI selection/aggregation, release/install/version/SBOM, shared Python
@@ -23,12 +28,12 @@ all execution checkboxes remain open and the portfolio stays in backlog.
 
 ## Execution
 
-- [ ] VPD-1791615721526525 Deliver the Python package launcher and complete parser, preserve all command flags, and establish baseline-to-pytest transfer checks with parser tests #feature !high @item:VPD-1791615284178957
-- [ ] VPD-1791615722328162 Implement descriptor-safe secrets, atomic private files, validated Make runner, process groups and state formats with adversarial and lifecycle tests #feature !high @item:VPD-1791615284178957
-- [ ] VPD-1791615723154686 Port deploy reconverge preflight probe fleet and host with exact targeting, side-effect-free explain and failure-cleanup subprocess tests #feature !high @item:VPD-1791615284178957
-- [ ] VPD-1791615723996375 Port share recipient HTML deep links and both QR SVGs with escaped rendering, private-mode and write-failure tests #feature !high @item:VPD-1791615284178957
-- [ ] VPD-1791615724808852 Port doctor ai-docs update completions and parser-derived man pages with resilient diagnostics, redaction, cache and packaged-doc tests #feature !high @item:VPD-1791615284178957
-- [ ] VPD-1791615725580652 Port schema-3 probe-matrix scheduling classification journals and signals with full snapshot, concurrency, timeout and descendant-reaping tests #feature !high @item:VPD-1791615284178957
+- [x] VPD-1791615721526525 Deliver the Python package launcher and complete parser, preserve all command flags, and establish baseline-to-pytest transfer checks with parser tests #feature !high @item:VPD-1791615284178957
+- [x] VPD-1791615722328162 Implement descriptor-safe secrets, atomic private files, validated Make runner, process groups and state formats with adversarial and lifecycle tests #feature !high @item:VPD-1791615284178957
+- [x] VPD-1791615723154686 Port deploy reconverge preflight probe fleet and host with exact targeting, side-effect-free explain and failure-cleanup subprocess tests #feature !high @item:VPD-1791615284178957
+- [x] VPD-1791615723996375 Port share recipient HTML deep links and both QR SVGs with escaped rendering, private-mode and write-failure tests #feature !high @item:VPD-1791615284178957
+- [x] VPD-1791615724808852 Port doctor ai-docs update completions and parser-derived man pages with resilient diagnostics, redaction, cache and packaged-doc tests #feature !high @item:VPD-1791615284178957
+- [x] VPD-1791615725580652 Port schema-3 probe-matrix scheduling classification journals and signals with full snapshot, concurrency, timeout and descendant-reaping tests #feature !high @item:VPD-1791615284178957
 - [ ] VPD-1791615726382311 Deliver verified Python wheel source distribution and atomic installer, version authority, SBOM and reproducibility with four-platform artifact tests #feature !high @item:VPD-1791615284178957
 - [ ] VPD-1791615727227192 Switch CI dependency selection hooks release and mutation lanes to Python, transfer properties seeds snapshots and consumer tests, and enforce exhaustive test parity #feature !high @item:VPD-1791615284178957
 - [ ] VPD-1791615728004540 Remove active Rust source and tooling after parity passes, update operator guidance, and pass full Rust-free gates independent security review and exact-SHA hosted checks #feature !high @item:VPD-1791615284178957

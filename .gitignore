@@ -98,3 +98,12 @@ sbom/*.json
 
 # Local pytest group reports and mutable copies of duration data.
 .pytest-shards/
+
+# Python CLI build outputs.
+.venv/
+/vpnd/dist/
+/vpnd/build/
+/vpnd/src/*.egg-info/
+/vpnd/src/vpnd/data/
+/vpnd/test-results.json
+/vpnd/mutants/
