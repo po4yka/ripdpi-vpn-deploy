@@ -36,4 +36,4 @@ machine-report proof; recovery retry through restart and stale completions;
 relevant canonical Molecule, reviewed snapshots, schema/coverage/profile/listener
 checks, full build-gated make check, independent security review and all exact-
 source hosted checks. Live/provider/client/human acceptance are outside scope.
-- [ ] ANS-1791605822012676 Fix PR review resource ownership TLS rendering and private credential export findings with regression and exact-source CodeQL proof #bug !high @item:ANS-1791586652330612
+- [x] ANS-1791605822012676 Fix PR review resource ownership TLS rendering and private credential export findings with regression and exact-source CodeQL proof #bug !high @item:ANS-1791586652330612

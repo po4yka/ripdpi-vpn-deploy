@@ -2,7 +2,7 @@
 id: ANS-1791586652330612
 title: Implement remaining Ansible role audit improvements
 kind: feature
-status: doing
+status: review
 area: ansible
 priority: medium
 risk: high
@@ -14,7 +14,7 @@ openspec_change: ansible-role-audit-improvements
 created: 2026-10-10
 updated: 2026-10-10
 related_tasks: []
-status_detail: Implement current PR 282 review findings and all open CodeQL alerts at head 64b8f959, preserving positive runtime behavior and private authority.
+status_detail: PR 282 review findings fixed; all 83 exact-source hosted checks passed with zero CodeQL findings and 22 resolved threads. Local acceptance remains blocked by one unchanged smoke fixture Ansible deadline; no archive or feature closure.
 ---
 
 ## Goal
