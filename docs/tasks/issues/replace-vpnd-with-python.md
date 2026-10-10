@@ -14,7 +14,7 @@ openspec_change: replace-vpnd-with-python
 created: 2026-10-10
 updated: 2026-10-10
 related_tasks: []
-status_detail: PR 283 merged after all nine required checks passed; OpenSpec archived and specs synchronized. Terminal closure awaits the approved observability_agent historical-sample fixture remediation and green post-merge CI.
+status_detail: PR 283 merged after all nine required checks passed; OpenSpec archived and specs synchronized. Approved historical-sample fixture remediation passed enabled Linux Molecule, full local gate and all nine exact-source checks at ee5be722; ready for terminal closure.
 ---
 
 ## Goal
