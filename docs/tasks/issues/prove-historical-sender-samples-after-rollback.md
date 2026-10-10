@@ -2,7 +2,7 @@
 id: ANS-1791647100922906
 title: Prove historical sender samples survive failed activation
 kind: bug
-status: doing
+status: review
 area: ansible
 priority: high
 risk: standard
@@ -15,6 +15,7 @@ created: 2026-10-10
 updated: 2026-10-10
 spec_reason: test-only
 related_tasks: []
+status_detail: Historical-sample proof, all 53 consumer cases, full local gate and exact ee5be722 native/required CI passed; source-only acceptance.
 ---
 
 ## Goal

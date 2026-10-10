@@ -40,9 +40,23 @@ Post-merge main CI exposed a failed one-shot pending-queue depth assertion in
 restored-runtime readiness and the unit, generation and queue-inode assertions;
 it does not record the failing metric value or prove data loss. The pinned sender
 can hold a dequeued block during transport retry, outside the pending-byte gauge.
-A correct fixture must prove delivery of specific historical samples after
-rollback, retaining the existing guards. This fixture remediation is approved;
-the portfolio task remains in review and must not close on the failed main gate.
+The approved fixture remediation now proves delivery of specific historical
+samples after rollback, retaining the existing guards. Accepted follow-up source
+is `ee5be722805dbc2424b1a0d2b931ef6bb6aedbd9`: Linux enabled Molecule job
+114257384069 passed convergence, idempotence and verification, including exact
+node, nonce and pre-cutover timestamp reception through the real native sink.
+CI run https://github.com/po4yka/ripdpi-vpn-deploy/actions/runs/38067272809 completed
+successfully with all nine required checks passed, planned selector skips and a
+neutral Trivy historical-configuration comparison. Independent security review
+approved the fixture; runtime, dependencies and pins were unchanged.
+
+The exact-ee5be722 Rust-free `build-gate -- make -j1 check` exited 0 with the
+task-owned Docker socket: 5,897 portable tests, 18 native-provider tests, 56 Bats,
+215 Terraform cases, 59 policy assertions, 152 snapshots, 297 vpnd cases,
+206-function parity and all validation/lint/offline artifact gates passed.
+The local enabled Molecule attempt could not create the unchanged pinned image
+on ARM; native acceptance belongs to the successful Linux job, not that attempt.
+The failed main run above remains historical evidence and is not reclassified.
 
 ## Acceptance boundary
 
