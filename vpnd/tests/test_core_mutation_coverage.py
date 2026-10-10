@@ -248,3 +248,178 @@ def test_owned_child_tree_is_reaped_after_capture_setup_error(tmp_path, monkeypa
                     # The controlled descendants sleep throughout this short
                     # test; teardown removes any survivor of broken cleanup.
                     os.kill(pid, signal.SIGKILL)
+
+
+def test_closed_capture_pipes_do_not_block_live_leader_cancellation(tmp_path, monkeypatch):
+    pids = tmp_path / "closed-pipes-tree"
+    stopped = threading.Event()
+    results, errors = [], []
+    waiting = threading.Event()
+    original_spawn = process.subprocess.Popen
+
+    def observe_spawn(*args, **kwargs):
+        child = original_spawn(*args, **kwargs)
+        original_wait = child.wait
+
+        def observe_wait(*args, **kwargs):
+            waiting.set()
+            return original_wait(*args, **kwargs)
+
+        monkeypatch.setattr(child, "wait", observe_wait)
+        return child
+
+    monkeypatch.setattr(process.subprocess, "Popen", observe_spawn)
+    command = (
+        Cmd.new("sh")
+        .args(
+            [
+                "-c",
+                'exec 1>&- 2>&-; sleep 60 & printf \'%s\\n\' "$$" "$!" > "$PIDS.tmp"; mv "$PIDS.tmp" "$PIDS"; wait',
+            ]
+        )
+        .env("PIDS", pids)
+        .capture_policy(CapturePolicy.OWNED_PROCESS_GROUP)
+    )
+
+    def work():
+        try:
+            results.append(command._worker(stopped, True, True))
+        except Exception as error:
+            errors.append(error)
+
+    worker = threading.Thread(target=work, daemon=True)
+    worker.start()
+    try:
+        deadline = time.monotonic() + 3
+        while not pids.exists():
+            assert time.monotonic() < deadline, "controlled child tree did not start"
+            time.sleep(0.01)
+        leader, descendant = map(int, pids.read_text().splitlines())
+        assert worker.is_alive()
+        reached_wait = waiting.wait(timeout=max(0, deadline - time.monotonic()))
+        assert reached_wait, "worker did not reach the live-child wait after pipe EOF"
+        stopped.set()
+        worker.join(timeout=max(0, deadline - time.monotonic()))
+        assert not worker.is_alive(), (
+            "closed pipes prevented cancellation from reaping the live leader"
+        )
+        assert not errors and results == [(-signal.SIGKILL, b"", b"")]
+        for pid in (leader, descendant):
+            status = subprocess.run(
+                ["ps", "-o", "stat=", "-p", str(pid)],
+                capture_output=True,
+                text=True,
+                check=False,
+            ).stdout.strip()
+            assert not status or status.startswith("Z")
+    finally:
+        stopped.set()
+        if worker.is_alive() and pids.exists():
+            leader = int(pids.read_text().splitlines()[0])
+            # A blocked wait keeps this live, owned leader/group ID reserved.
+            os.killpg(leader, signal.SIGKILL)
+            worker.join(timeout=3)
+
+
+def test_foreground_capture_setup_failure_kills_only_its_direct_child(monkeypatch):
+    children = []
+    groups = []
+    expired = threading.Event()
+    original_spawn = process.subprocess.Popen
+    original_selector = process.selectors.DefaultSelector
+
+    def observe_spawn(*args, **kwargs):
+        groups.append(kwargs.get("process_group"))
+        child = original_spawn(*args, **kwargs)
+        children.append(child)
+        return child
+
+    class BrokenSelector(original_selector):
+        def register(self, *args, **kwargs):
+            raise OSError("foreground capture setup failed")
+
+    def force_deadline():
+        expired.set()
+        for child in children:
+            child.kill()
+
+    timer = threading.Timer(3, force_deadline)
+    monkeypatch.setattr(process.subprocess, "Popen", observe_spawn)
+    monkeypatch.setattr(process.selectors, "DefaultSelector", BrokenSelector)
+    command = Cmd.new(sys.executable).args(["-c", "import time; time.sleep(60)"])
+    timer.start()
+    try:
+        with pytest.raises(OSError, match="foreground capture setup failed"):
+            command._worker(threading.Event(), True, True)
+        assert not expired.is_set(), "foreground child was left alive until the test deadline"
+        assert len(children) == 1 and children[0].returncode == -signal.SIGKILL
+        assert groups == [None]
+    finally:
+        timer.cancel()
+        timer.join(timeout=3)
+        for child in children:
+            child.kill()
+            child.wait(timeout=3)
+
+
+def test_fatal_worker_exception_reaches_the_caller_before_the_deadline(monkeypatch):
+    class WorkerFailure(BaseException):
+        pass
+
+    finished, terminated = threading.Event(), threading.Event()
+    results, failures = [], []
+    loops, futures = [], []
+    fatal = WorkerFailure("controlled fatal worker exit")
+    command = Cmd.new("unused")
+
+    def fail_spawn(*args, **kwargs):
+        raise fatal
+
+    def observe_thread_exit(args):
+        failures.append(args.exc_value)
+        terminated.set()
+
+    def capture():
+        loop = asyncio.new_event_loop()
+        loops.append(loop)
+        original_future = loop.create_future
+
+        def observe_future():
+            future = original_future()
+            futures.append(future)
+            return future
+
+        loop.create_future = observe_future
+        try:
+            loop.run_until_complete(command.capture_detailed())
+        except WorkerFailure as error:
+            results.append(error)
+        except Exception as error:
+            results.append(error)
+        finally:
+            loop.close()
+            finished.set()
+
+    monkeypatch.setattr(process.subprocess, "Popen", fail_spawn)
+    monkeypatch.setattr(threading, "excepthook", observe_thread_exit)
+    caller = threading.Thread(target=capture, daemon=True)
+    caller.start()
+    try:
+        completed = finished.wait(3)
+        assert completed, "fatal worker exit stranded the async caller"
+        caller.join(timeout=1)
+        reported = terminated.wait(1)
+        assert reported and not caller.is_alive()
+        assert len(results) == len(failures) == 1
+        assert results[0] is fatal and failures[0] is fatal
+    finally:
+        if caller.is_alive() and loops and futures:
+
+            def recover():
+                for future in futures:
+                    if not future.done():
+                        future.set_exception(WorkerFailure("teardown recovery"))
+
+            # Recovery happens after the failure assertion, never to satisfy it.
+            loops[0].call_soon_threadsafe(recover)
+            caller.join(timeout=3)
