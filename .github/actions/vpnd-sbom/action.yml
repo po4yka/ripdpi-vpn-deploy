@@ -11,7 +11,6 @@ runs:
         python3 -m venv "$RUNNER_TEMP/vpnd-sbom-tools"
         "$RUNNER_TEMP/vpnd-sbom-tools/bin/python" -m pip install \
           --require-hashes --no-deps --only-binary=:all: -r vpnd/sbom-requirements.txt
-        echo "$RUNNER_TEMP/vpnd-sbom-tools/bin" >> "$GITHUB_PATH"
     - name: Generate vpnd SBOM
       shell: bash
-      run: python3 scripts/vpnd-sbom.py --out dist/sbom.json
+      run: '"$RUNNER_TEMP/vpnd-sbom-tools/bin/python" scripts/vpnd-sbom.py --out dist/sbom.json'

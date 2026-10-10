@@ -97,7 +97,9 @@ def emit(output):
         candidate = Path(directory) / "sbom.json"
         subprocess.run(
             [
-                "cyclonedx-py",
+                os.sys.executable,
+                "-m",
+                "cyclonedx_py",
                 "requirements",
                 str(lock),
                 "--pyproject",

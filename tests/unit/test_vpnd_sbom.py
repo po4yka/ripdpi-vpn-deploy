@@ -66,6 +66,9 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 original = subprocess.run
 def transport(args, **kwargs):
+    if args[1:3] == ['-m', 'cyclonedx_py']:
+        tool = Path(os.environ['RUNNER_TEMP']) / 'bin/cyclonedx-py'
+        return original([str(tool), *args[3:]], **kwargs)
     if args[1:4] == ['-m', 'pip', 'download']:
         assert '--require-hashes' in args and '--no-deps' in args
         assert '--only-binary=:all:' in args
@@ -79,6 +82,9 @@ module.emit(Path(sys.argv[sys.argv.index('--out') + 1]))
 """
     )
     interpreter.chmod(0o755)
+    isolated = tmp_path / "vpnd-sbom-tools/bin"
+    isolated.mkdir(parents=True)
+    (isolated / "python").symlink_to(interpreter)
     tool = binary / "cyclonedx-py"
     tool.write_text("""#!/usr/bin/env python3
 import json
