@@ -1,0 +1,51 @@
+_vpnd() {
+    local cur="${COMP_WORDS[COMP_CWORD]}" path="" word
+    local i
+    for ((i=1; i<COMP_CWORD; i++)); do
+        word="${COMP_WORDS[i]}"
+        case "$path:$word" in
+            :deploy) path=deploy ;;
+            :reconverge) path=reconverge ;;
+            :share) path=share ;;
+            :doctor) path=doctor ;;
+            :probe) path=probe ;;
+            :probe-matrix) path=probe-matrix ;;
+            :preflight) path=preflight ;;
+            :fleet) path=fleet ;;
+            fleet:status) path='fleet status' ;;
+            fleet:rotate) path='fleet rotate' ;;
+            fleet:drift) path='fleet drift' ;;
+            :host) path=host ;;
+            host:list) path='host list' ;;
+            host:show) path='host show' ;;
+            host:add) path='host add' ;;
+            host:remove) path='host remove' ;;
+            :ai-docs) path=ai-docs ;;
+            :update) path=update ;;
+            :completions) path=completions ;;
+        esac
+    done
+    case "$path" in
+        '') COMPREPLY=( $(compgen -W '-h --help --explain --yes -y --root --env -e --provider -p --version -V deploy reconverge share doctor probe probe-matrix preflight fleet host ai-docs update completions' -- "$cur") ) ;;
+        deploy) COMPREPLY=( $(compgen -W '-h --help --explain --yes -y --root --env -e --provider -p --skip-precheck --tag-on-success' -- "$cur") ) ;;
+        reconverge) COMPREPLY=( $(compgen -W '-h --help --explain --yes -y --root --env -e --provider -p --host --dry-run' -- "$cur") ) ;;
+        share) COMPREPLY=( $(compgen -W '-h --help --explain --yes -y --root --env -e --provider -p --qr --type singbox uri --out --token-stdin --token-file' -- "$cur") ) ;;
+        doctor) COMPREPLY=( $(compgen -W '-h --help --explain --yes -y --root --env -e --provider -p --host --ai --clip --bundle' -- "$cur") ) ;;
+        probe) COMPREPLY=( $(compgen -W '-h --help --explain --yes -y --root --env -e --provider -p --host --profile p0 p1 p2 all' -- "$cur") ) ;;
+        probe-matrix) COMPREPLY=( $(compgen -W '-h --help --explain --yes -y --root --env -e --provider -p --duration --poll-interval-seconds --config --output --json' -- "$cur") ) ;;
+        preflight) COMPREPLY=( $(compgen -W '-h --help --explain --yes -y --root --env -e --provider -p --skip-certs' -- "$cur") ) ;;
+        fleet) COMPREPLY=( $(compgen -W '-h --help --explain --yes -y --root --env -e --provider -p status rotate drift' -- "$cur") ) ;;
+        'fleet status') COMPREPLY=( $(compgen -W '-h --help --explain --yes -y --root --env -e --provider -p' -- "$cur") ) ;;
+        'fleet rotate') COMPREPLY=( $(compgen -W '-h --help --explain --yes -y --root --env -e --provider -p --plan --resume --dry-run' -- "$cur") ) ;;
+        'fleet drift') COMPREPLY=( $(compgen -W '-h --help --explain --yes -y --root --env -e --provider -p' -- "$cur") ) ;;
+        host) COMPREPLY=( $(compgen -W '-h --help --explain --yes -y --root --env -e --provider -p list show add remove' -- "$cur") ) ;;
+        'host list') COMPREPLY=( $(compgen -W '-h --help --explain --yes -y --root --env -e --provider -p --json' -- "$cur") ) ;;
+        'host show') COMPREPLY=( $(compgen -W '-h --help --explain --yes -y --root --env -e --provider -p --json' -- "$cur") ) ;;
+        'host add') COMPREPLY=( $(compgen -W '-h --help --explain --yes -y --root --env --provider --ipv4 --ipv6' -- "$cur") ) ;;
+        'host remove') COMPREPLY=( $(compgen -W '-h --help --explain --yes -y --root --env -e --provider -p' -- "$cur") ) ;;
+        ai-docs) COMPREPLY=( $(compgen -W '-h --help --explain --yes -y --root --env -e --provider -p --out' -- "$cur") ) ;;
+        update) COMPREPLY=( $(compgen -W '-h --help --explain --yes -y --root --env -e --provider -p' -- "$cur") ) ;;
+        completions) COMPREPLY=( $(compgen -W '-h --help --explain --yes -y --root --env -e --provider -p' -- "$cur") ) ;;
+    esac
+}
+complete -F _vpnd vpnd

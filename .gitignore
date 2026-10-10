@@ -91,10 +91,19 @@ Thumbs.db
 .omc/
 .omo/
 
-# Generated deployment and Cargo SBOMs, and staged release assets
+# Generated deployment and Python package SBOMs, and staged release assets
 sbom/*.json
 /vpnd/sbom.json
 /dist/
 
 # Local pytest group reports and mutable copies of duration data.
 .pytest-shards/
+
+# Python CLI build outputs.
+.venv/
+/vpnd/dist/
+/vpnd/build/
+/vpnd/src/*.egg-info/
+/vpnd/src/vpnd/data/
+/vpnd/test-results.json
+/vpnd/mutants/

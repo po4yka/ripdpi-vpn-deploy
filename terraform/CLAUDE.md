@@ -59,7 +59,7 @@ provider list: Makefile loops, the `ci.yml` provider matrices,
 `scripts/terraform-env.sh`, `scripts/backup-tf-state.sh`,
 `scripts/tf-policy-test.sh`, `scripts/destroy.sh`, the liveness allowlists
 (`contract/protocol-liveness.schema.json`, `scripts/liveness_profiles.py`,
-`scripts/install_liveness_sentinel.py`), `vpnd/src/config.rs`, and the
+`scripts/install_liveness_sentinel.py`), `vpnd/src/vpnd/config.py`, and the
 provider tuples in `tests/unit/` (for example
 `test_provider_listeners_parity.py`). This list drifts, so finish with
 `rg -il scaleway --hidden -g '!terraform/providers/**'` and cover every

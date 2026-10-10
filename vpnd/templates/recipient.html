@@ -94,11 +94,11 @@
     <div class="card">
       <h3>{{ app.platform }}</h3>
       <a class="btn" href="{{ app.primary.url }}">{{ app.primary.label }}</a>
-      {% if !app.also.is_empty() %}
+      {% if app.also %}
         <details>
           <summary>Other options</summary>
           <p>
-            {% for link in app.also %}<a href="{{ link.url }}">{{ link.label }}</a>{% if !loop.last %} · {% endif %}{% endfor %}
+            {% for link in app.also %}<a href="{{ link.url }}">{{ link.label }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
           </p>
         </details>
       {% endif %}

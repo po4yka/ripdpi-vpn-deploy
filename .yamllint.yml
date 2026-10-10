@@ -27,6 +27,7 @@ ignore: |
   .ansible/
   .terraform/
   .venv/
+  vpnd/mutants/
   ansible/inventory/generated.ini
   secrets/local/
   state-backups/

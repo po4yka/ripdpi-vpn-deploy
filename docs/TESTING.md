@@ -90,9 +90,9 @@ matrix records coverage and commands rather than manually maintained totals.
 | **Kill-switch validation** | **`scripts/check-singbox-killswitch.py`** (operator-driven) | static JSON analysis | n/a | Verifies auto_route + strict_route, route.final ≠ direct, DNS detour ≠ direct, no IPv6-only outbounds. |
 | **sing-box client compatibility** | official sing-box 1.13.16 parser (sha256-pinned in CI) | complete emitted test profile | n/a | Rejects removed DNS/inbound fields and unsupported transports before a profile can ship. |
 | **Sentinel profile compatibility** | official sing-box 1.13.16 and Xray 26.3.27 parsers (SHA256-verified assets in CI) | canonical emitters plus named-client materialization | `make liveness-profile-check` | Required by `ci-fast`; verifies REALITY/Hysteria2 and XHTTP syntax with real binaries. This is not external traffic or AWG/device acceptance. |
-| **vpnd Rust crate** | `cargo clippy --release --all-targets -- -D warnings` (CI) | n/a | `cargo test --release --locked` (CI, blocking) | Covers runner builders (process, make, ansible, terraform, sops), config discovery, secrets parsing, registry round-trip, QR encode, update-cache, completions snapshot, ai-docs emit, host CRUD, doctor bundle, share bundle. Plus proptest properties for `urlencode` round-trip and `redact_secrets` per-line invariants. |
-| **vpnd mutation testing (weekly)** | `make vpnd-mutants` (`.github/workflows/mutants.yml`) | real unmutated baseline | full configured mutation pass | Cargo-mutants 27.0.0 reads `vpnd/.cargo/mutants.toml`. The runner mutates a disposable copy of tracked working-tree files, retaining sibling docs, fixtures and scripts; stage new inputs first. Exit 2 reports survivors; baseline, timeout, usage and logging failures fail the workflow. Logs and outcomes are retained for 14 days. |
-| **vpnd release SBOM** | shared `.github/actions/vpnd-sbom` in required CI and release publication | locked Cargo dependency resolution | real cargo-cyclonedx 0.5.9 generation | SHA256-verified tool; stages `dist/sbom.json` only after checking product identity, version, dependencies and unchanged Cargo.lock. All-target crate inventory (including conditional platform dependencies), excluding dev dependencies; not per-binary reachability analysis. Deployment inventories remain separate under `make emit-sbom`. |
+| **vpnd Python CLI** | `make vpnd-lint` (Ruff + mypy) | `make vpnd-parity-check` after complete pytest | `make vpnd-test` (blocking CI on Linux/macOS x86_64/arm64) | Covers all command/parser, runner, registry, secrets, descriptor/atomic-file, recipient/QR, diagnostics, docs/cache/completions/man-page and matrix lifecycle contracts. The transfer manifest maps all 206 baseline functions to passed Python node IDs; Hypothesis preserves properties and explicit regression seeds. |
+| **vpnd mutation testing (weekly)** | `make vpnd-mutants` (`.github/workflows/mutants.yml`) | real unmutated pytest baseline | full `pyproject.toml` mutation scope | Pinned mutmut 3.8 runs in a disposable tracked working-tree copy with sibling docs, fixtures and scripts; stage new inputs first. The wrapper rejects partial selections. Exit 2 means completed structured results contain survivors; empty, uncovered, interrupted, timed-out or technically failed results fail. Logs/reports are retained per run for 14 days. |
+| **vpnd release SBOM** | shared `.github/actions/vpnd-sbom` in required CI and release publication | exact hash-locked Python runtime inventory | pinned CycloneDX generation | Verifies package version, direct pins, runtime components and unchanged `vpnd/requirements.txt` before publishing `dist/sbom.json`. The five runtime packages have reviewed license-file/SPDX and official non-yanked source checks under `make vpnd-dependency-check`. Deployment inventories remain separate under `make emit-sbom`. |
 | **Native runtime integration** | required `native-runtime` CI lane; `make test-native-runtime` in disposable Linux root environment | Terraform 1.15.2 FD-backed commands and saved-plan lifecycle | Alertmanager 0.28.1 webhook timeout; supplementary-group metrics reader | `native_runtime` tests; SHA256-verified Alertmanager/amtool; missing tools or UID/GID capabilities fail. No cloud credentials or provider resources. |
 | **MTProxy Go helper** | required `go-helper` CI lane; `make test-probe-matrix-mtproto` in `ci-fast` | Go tests with locked module resolution and uncached execution | injected connector; no Telegram traffic | Go 1.27.1, dependency cache keyed by `go.sum`; native helper tests supplement Python driver coverage. |
 | **REALITY scanner wrapper** | pytest | installer, CSV filtering, ASN status, top limit, empty-output failure | offline scanner/WHOIS fixtures | Full public TLS scan remains an explicit operator integration (`scripts/scan-reality-targets.sh --seeds <file>`), not automated coverage. No placeholder or unconditional skipped test. |
@@ -113,7 +113,7 @@ All shared test inputs live under `tests/fixtures/` and stub binaries under
 
 | File | Purpose |
 |---|---|
-| `secrets-sample.yml` | SOPS-decrypted-shaped YAML with placeholder values; loaded by pytest and Rust integration tests via `include_str!` |
+| `secrets-sample.yml` | SOPS-decrypted-shaped YAML with placeholder values; loaded by repository and vpnd pytest suites |
 | `secrets-sample.sops.yaml` | Same content age-encrypted to a test-only key (`tests/fixtures/age-test.key`) |
 | `tf-output-sample.json` | `terraform output -json` shape; consumed by render-inventory tests |
 | `inventory-sample.ini` | Expected output of `render-inventory.sh` for the sample TF output |
@@ -153,11 +153,11 @@ with the checked-out merge commit and follows downstream consumer groups:
 
 | Changed paths | Additional checks beyond the common checks |
 |---|---|
-| `docs/`, `vpnd/` | Rust tests, clippy, MSRV, dependency policy and SBOM; Rust embeds all of `docs/` |
+| `docs/`, `vpnd/` | Python vpnd tests/parity, Ruff/mypy, installed-package checks, dependency policy and SBOM; packaging includes reviewed tracked Markdown |
 | `ansible/`, `images/` | All Ansible/Molecule scenarios, native runtime and image scanning |
 | `terraform/` | All provider validation/tests/policies, cloud-init and native runtime |
-| `secrets/` | Binary pin verification plus Ansible, native/image and Rust consumers |
-| `contract/` | Client contract synchronization plus Ansible, native/image and Rust consumers |
+| `secrets/` | Binary pin verification plus Ansible, native/image and Python vpnd consumers |
+| `contract/` | Client contract synchronization plus Ansible, native/image and Python vpnd consumers |
 | `tools/probe-matrix-mtproto/` | Compiled Go helper tests |
 | `tests/unit/` | Native runtime tests, alongside the complete common pytest suite |
 | `tests/bats/` | Bats tests |
@@ -237,10 +237,10 @@ repeat the recipe at the merged source SHA, which may differ from the PR head.
 | Operator step | Tests that protect it |
 |---|---|
 | `git commit` (local) | pre-commit hooks: gitleaks, terraform fmt, ansible-lint, yamllint, **shellcheck**, **secrets-coverage**, **templates-render**, **Xray release/PQ-REALITY guards**, **placeholder-scan** |
-| `git push` (PR) | Dependency-selected CI matrix (complete on main pushes and manual runs): terraform fmt+validate (4 providers plus the inert exception root), terraform test (4 providers), cloud-init schema, ansible-lint + syntax, default Molecule scenarios for `baseline`, `package_updates`, `firewall`, `intrusion_prevention`, `network-exposure-gate`, `tailnet-management`, `transport-egress`, `xray`, `hysteria`, `naive`, `nginx-xhttp`, `watchdog`, `monitoring`, `observability_agent`, `observability_control_plane`, `observability_deadman`, `backup`, `subscription-host`, `amneziawg`, `geodata`, `cascade-egress`, `cdn-front`, `warp-outbound`, `hysteria-realm`, `honeypot`, `dns-morph-bridge`, and `split-hop-egress`; required hosted full-stack scenarios `full-stack`, `full-stack-published`; non-default scenarios `watchdog/failure`, `observability_agent/enabled`, `observability_control_plane/enabled`, `observability_deadman/enabled`, `cascade-ingress/populated`, `cascade-ingress/forced-empty`, `hysteria-realm/shared-tls`, and `cdn-front/cdn-on`; shellcheck, secrets-coverage, templates-render, yamllint, gitleaks, strict offline zizmor, `pytest tests/unit/`, Rust tests, bats tests, Conftest TF policy, Trivy image scan, snapshot diff, and secrets schema. |
+| `git push` (PR) | Dependency-selected CI matrix (complete on main pushes and manual runs): terraform fmt+validate (4 providers plus the inert exception root), terraform test (4 providers), cloud-init schema, ansible-lint + syntax, default Molecule scenarios for `baseline`, `package_updates`, `firewall`, `intrusion_prevention`, `network-exposure-gate`, `tailnet-management`, `transport-egress`, `xray`, `hysteria`, `naive`, `nginx-xhttp`, `watchdog`, `monitoring`, `observability_agent`, `observability_control_plane`, `observability_deadman`, `backup`, `subscription-host`, `amneziawg`, `geodata`, `cascade-egress`, `cdn-front`, `warp-outbound`, `hysteria-realm`, `honeypot`, `dns-morph-bridge`, and `split-hop-egress`; required hosted full-stack scenarios `full-stack`, `full-stack-published`; non-default scenarios `watchdog/failure`, `observability_agent/enabled`, `observability_control_plane/enabled`, `observability_deadman/enabled`, `cascade-ingress/populated`, `cascade-ingress/forced-empty`, `hysteria-realm/shared-tls`, and `cdn-front/cdn-on`; shellcheck, secrets-coverage, templates-render, yamllint, gitleaks, strict offline zizmor, `pytest tests/unit/`, Python vpnd tests/parity/lint, installed artifacts on four platforms, dependency policy/SBOM, bats tests, Conftest TF policy, Trivy image scan, snapshot diff, and secrets schema. |
 | PR labeled `ci-real-deploy` | **real-vps-deploy** workflow: provisions an ephemeral UpCloud VPS, runs site.yml + verify, destroys — closest approximation to production in CI. See `docs/CI-REAL-DEPLOY.md`. |
 | `make validate` (operator) | terraform fmt + validate + gitleaks + ansible-lint + ansible syntax-check |
-| `make ci-fast` (operator) | Portable credential-free CI jobs: actionlint, strict offline zizmor, cloud-init schema, all provider Terraform tests and Conftest policy tests, yamllint, shellcheck, cargo-deny, MSRV, render/schema/unit/bats, clippy, and Rust tests. Missing or wrong-version tools fail closed. |
+| `make ci-fast` (operator) | Portable credential-free CI jobs: actionlint, strict offline zizmor, cloud-init schema, all provider Terraform tests and Conftest policy tests, yamllint, shellcheck, render/schema/unit/bats, Python vpnd lint/tests/parity, package installation/reproducibility and dependency policy. Missing or wrong-version tools fail closed. Mutation testing remains an explicit `make vpnd-mutants` gate. |
 | `make check` (operator) | Union of `validate` and `ci-fast`; the local pre-PR parity gate. Molecule, GitHub-native security services, and credentialed deploy jobs remain explicit or CI-only. |
 | `make validate-target` | live probe of REALITY target (TLS / H2 / SAN / uTLS / ASN / template OPSEC) |
 | `make monitor-reality-target VANTAGE=<technical-label>` | filtered-vantage active-target path and ASN/prefix signal; unhealthy observations on two consecutive UTC days alert |
@@ -253,7 +253,7 @@ repeat the recipe at the merged source SHA, which may differ from the PR head.
 | `make security-audit` | operator-run, non-blocking audit report collection; intentionally not part of deploy or verify gates by default |
 | `make drift-since-tag` | weekly: diff fleet against the last known-good tag (terraform plan + ansible --check). The CI scheduled variant uses `--repo-only` and runs without SOPS access — see `.github/workflows/drift.yml`. |
 | `make source-drift` | fail-closed comparison of both the clean checkout's exact source revision and deployable digest with each selected live node manifest; also runs automatically after `make deploy` and `make verify`. Equal digests with different revisions fail. |
-| scheduled Monday 08:00 UTC | **cargo-mutants** (`.github/workflows/mutants.yml`) — full baseline and configured mutations; surviving mutants create a tracking issue, technical failures fail the workflow |
+| scheduled Monday 08:00 UTC | **mutmut** (`.github/workflows/mutants.yml`) — full baseline and configured mutations; verified survivors create a tracking issue, technical failures fail the workflow |
 
 The repository-safe record of the last observed production deployment is
 [DEPLOYMENT-STATUS.md](DEPLOYMENT-STATUS.md). It distinguishes provider-live
@@ -263,7 +263,7 @@ host verification, and outside-in client-path evidence. At `infra-v1.0.0`,
 failure; a live deploy does not turn that false failure into a passing test.
 | scheduled Monday 12:00 UTC | **drift-since-tag --repo-only** (`.github/workflows/drift.yml`) — repository-level drift detection; opens/updates a rolling issue |
 | scheduled Monday 10:23 UTC | **AmneziaWG arm64 floor watch** (`.github/workflows/amneziawg-arm64-floor.yml`) — flags issue-state or release-note fix claims for physical revalidation; never relaxes guards |
-| weekly weekend | **Renovate** opens dependency-update PRs for supported managers, including grouped Terraform providers and Rust crates, GitHub Actions digest pins, and Hysteria Realm / Snell sing-box pins via regex managers. |
+| weekly weekend | **Renovate** opens dependency-update PRs for supported managers, including grouped Terraform providers and Python tooling/runtime dependencies, GitHub Actions digest pins, and Hysteria Realm / Snell sing-box pins via regex managers. |
 | `make smoke-test` | end-to-end real-traffic dial through every enabled profile |
 | `make check-killswitch BUNDLE=…` | per-client validation of emitted sing-box bundle (5 rules: auto_route, strict_route, sniff, final ≠ direct, DNS detour ≠ direct, no IPv6-only outbound) |
 
@@ -279,19 +279,20 @@ The limits bound running jobs, not time waiting for a runner.
 | Final CI gate / selector | 3 |
 | Gitleaks, actionlint, shellcheck, pytest aggregate, contract sync, image enumeration, CLAUDE coverage | 5 |
 | Task contracts | 8 |
-| Terraform validation/tests, cloud-init, Bats, native runtime, Python validators, Rust dependency policy/SBOM, Markdown links | 10 |
+| Terraform validation/tests, cloud-init, Bats, native runtime, Python validators, SBOM and Markdown links | 10 |
 | Pytest groups, Ansible lint, Go helper, Terraform policy, image scans | 15 |
-| Role/failure Molecule scenarios, CodeQL, Rust MSRV | 20 |
+| Role/failure Molecule scenarios, CodeQL | 20 |
 | Full-stack Molecule scenarios | 30 |
-| Shared Rust build/test/clippy job, including release cross-build callers | 45 |
+| Shared Python vpnd test/lint/package/dependency job | 30 |
 
 The limits leave headroom over five recent full executions: the maximum
 observed job runtime was 409 seconds for pytest, 389 for failure/full-stack
 Molecule, 199 for role Molecule and 152 for Rust tests. This small sample includes
 setup and execution but mostly benefits from warm caches. The larger shared
-Rust limit accommodates cold cross-builds; these measurements do not establish
-a release-build upper bound. Existing bounded reproducible-build jobs retain
-their per-component limits of 20, 15 and 5 minutes.
+Rust limit accommodated cold cross-builds. This historical sample predates the
+Python migration and does not establish Python/platform or release-build runtime
+results. Existing bounded reproducible-build jobs retain their per-component
+limits of 20, 15 and 5 minutes.
 
 `markdown-link-check` and `claude-md-touch` use workflow/event/PR concurrency
 keys and cancel older runs of that PR. The run-ID fallback keeps scheduled
@@ -314,8 +315,8 @@ Renovate config lives at `renovate.json` at the repo root. Key behaviors:
 
 - `helpers:pinGitHubActionDigests` preset — every Action stays SHA-pinned;
   Renovate auto-updates digests with the matching version comment preserved.
-- Terraform providers grouped into a single weekly PR; Rust crates grouped
-  the same way (lowers merge overhead).
+- Terraform provider and Python dependency updates use their configured weekly groups.
+
 - Custom regex managers cover only the Hysteria Realm and Snell sing-box
   version pins. Xray follows `docs/XRAY-RELEASE-LINE.md`; AmneziaWG follows
   the arm64 floor-watch workflow and both require manual updates.
@@ -325,7 +326,7 @@ Renovate config lives at `renovate.json` at the repo root. Key behaviors:
 |---|---|---|---|
 | GitHub Actions (digests) | yes | `.github/workflows/*.yml` | weekly, one PR per Action |
 | Terraform providers | yes | `terraform/providers/*/versions.tf` + `.terraform.lock.hcl` | weekly, grouped |
-| Rust crates | yes | `vpnd/Cargo.toml` + `vpnd/Cargo.lock` | weekly, grouped |
+| Python vpnd runtime | yes | `vpnd/pyproject.toml`, `vpnd/requirements.in` + `vpnd/requirements.txt` | weekly; reviewed license/hash policy must remain aligned |
 | Python tooling | yes | `requirements.txt` | weekly, grouped |
 | Hysteria Realm / Snell sing-box binaries | yes (via regex managers) | role defaults | per upstream release; human review required |
 | Xray / AmneziaWG binaries | **no** | secrets/example pin and role defaults; Xray CI version/hash in `.github/actions/install-xray/action.yml` | manual, after release-policy and platform validation |
@@ -358,23 +359,33 @@ Auto-merge is intentionally **not** enabled for any Renovate PR — every
 update goes through a human review. Operators who want auto-merge can
 configure it per-ecosystem in repo Settings.
 
-## Build attestation (SLSA Level 3)
+## Build provenance
 
-Every released `vpnd` binary ships with a Sigstore-signed SLSA-v1.0 Build
-Level 3 provenance attestation generated by `actions/attest-build-provenance`
-from `.github/workflows/release-vpnd.yml`. The attestation proves the binary
-came from this repo's trusted build workflow on a specific commit SHA.
+The Python release workflow requests Sigstore-signed build provenance for the
+source and four platform bundle archives through `actions/attest-build-provenance`.
+The verification binds an archive to the repository workflow and source SHA;
+standalone wheel integrity is covered by `SHA256SUMS` and the verified bundle
+manifest.
 
-Verify a downloaded binary:
+Verify a downloaded platform bundle:
 
 ```bash
-gh attestation verify ./vpnd-x86_64-unknown-linux-gnu \
+gh attestation verify ./vpnd-x86_64-unknown-linux-gnu.tar.gz \
   --owner po4yka --signer-workflow .github/workflows/release-vpnd.yml
 ```
 
-`scripts/install-vpnd.sh` calls this automatically when `gh` is on PATH and
-`VPND_SKIP_ATTESTATION` is unset. The script warns and continues if `gh` is
-missing — set `VPND_SKIP_ATTESTATION=1` to opt out explicitly.
+`scripts/install-vpnd.sh` calls this when `gh` is on PATH and
+`VPND_SKIP_ATTESTATION` is unset. Missing `gh` retains the existing warning;
+`VPND_SKIP_ATTESTATION=1` explicitly opts out. The native-executable to Python
+wheel-bundle installation break and Python 3.12 prerequisite are documented in
+[vpnd/README.md](../vpnd/README.md) and [RELEASE-PLEASE.md](RELEASE-PLEASE.md).
+
+`make vpnd-package-check` builds reproducible wheel/source artifacts, installs
+locked dependency wheels offline into a private environment, validates actual
+runtime closure and packaged templates/docs/manuals, and exercises failed
+replacement without changing the previous command. All twenty man pages derive
+from the twelve-command parser tree. Local artifact success does not establish
+hosted CI, other-platform execution, mutation results or live deployment.
 
 ## External reachability (post-deploy, operator-side)
 
@@ -409,7 +420,7 @@ issues before CI cycles:
 - `terraform_fmt`, `terraform_docs`, `terraform_tflint` via
   `antonbabenko/pre-commit-terraform` — Terraform formatting, auto-generated
   per-provider README, and security linting.
-- `cargo-clippy` (local hook) — workspace warnings-as-errors for vpnd.
+- `vpnd-python-lint` (local hook) — Ruff over vpnd source/tests, using the pinned Python tooling.
 - `prettier` scoped to JSON files in `tests/fixtures/` and `secrets/schema.json`
   only — does not touch markdown or vendored package.json files.
 

@@ -563,13 +563,20 @@
             name: observability-receiver-fixture.service
             state: stopped
 
+        - name: Create a unique historical sample while its receiver is offline
+          ansible.builtin.command:
+            argv: [python3, /usr/local/libexec/observability_fixture_proof.py, prepare]
+          register: _rollback_probe
+          changed_when: true
+
         - name: Require actual persisted native backlog before activation failure
           ansible.builtin.command:
             argv:
               - python3
               - -c
               - |
-                import re, urllib.request
+                import json, re, sys, time, urllib.request
+                proof = json.loads(sys.argv[1])
                 text = urllib.request.urlopen('http://127.0.0.1:19090/metrics', timeout=5).read().decode()
                 def value(name):
                     rows = re.findall(r'^' + name + r'(?:[{][^}]*[}])? ([0-9.eE+-]+)$', text, re.M)
@@ -577,28 +584,59 @@
                     return float(rows[0])
                 assert value('vmagent_remotewrite_pending_data_bytes') > 0
                 assert value('vmagent_remotewrite_pending_inmemory_blocks') == 0
+                assert time.time() - proof['outage_at'] >= 70
+                assert value('vm_persistentqueue_blocks_written_total') >= proof['blocks_before'] + 2
+              - "{{ _rollback_probe.stdout }}"
           changed_when: false
           register: _rollback_queue_persisted
           retries: 90
           delay: 2
           until: _rollback_queue_persisted.rc == 0
 
-        - name: Prove actual failed vmagent activation restores its previous live generation
-          ansible.builtin.include_tasks: tasks/failed-activation.yml
-
-        - name: Require the retained queue remains pending after real recovery
+        - name: Remove the owned sample before cutover and freeze its historical window
           ansible.builtin.command:
             argv:
               - python3
-              - -c
-              - |
-                import re, urllib.request
-                text = urllib.request.urlopen('http://127.0.0.1:19090/metrics', timeout=5).read().decode()
-                pending = re.findall(r'^vmagent_remotewrite_pending_data_bytes(?:[{][^}]*[}])? ([0-9.eE+-]+)$', text, re.M)
-                assert len(pending) == 1 and float(pending[0]) > 0
-          changed_when: false
-      always:
-        - name: Restore only the owned fixture receiver after the rollback proof
+              - /usr/local/libexec/observability_fixture_proof.py
+              - freeze
+              - "{{ _rollback_probe.stdout }}"
+          register: _rollback_historical
+          changed_when: true
+
+        - name: Prove actual failed vmagent activation restores its previous live generation
+          ansible.builtin.include_tasks: tasks/failed-activation.yml
+
+        - name: Restore the owned receiver only after actual runtime rollback
           ansible.builtin.systemd_service:
             name: observability-receiver-fixture.service
             state: started
+
+        - name: Require the exact historical sample after real rollback delivery
+          ansible.builtin.command:
+            argv:
+              - python3
+              - /usr/local/libexec/observability_fixture_proof.py
+              - verify
+              - "{{ _rollback_historical.stdout }}"
+          register: _rollback_delivered
+          changed_when: false
+          retries: 90
+          delay: 1
+          until: _rollback_delivered.rc == 0
+      always:
+        - name: Retire only the owned probe and always restore its receiver
+          block:
+            - name: Remove only this invocation's historical probe on failure
+              ansible.builtin.command:
+                argv:
+                  - python3
+                  - /usr/local/libexec/observability_fixture_proof.py
+                  - cleanup
+                  - "{{ _rollback_probe.stdout }}"
+              when: _rollback_probe is defined and _rollback_probe is succeeded
+              changed_when: false
+          always:
+            - name: Restore only the owned fixture receiver after the rollback proof
+              ansible.builtin.systemd_service:
+                name: observability-receiver-fixture.service
+                state: started

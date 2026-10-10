@@ -1,0 +1,11 @@
+{
+  "change": "replace-vpnd-with-python",
+  "evidence_summary": "PR 283 merged at 6a606bf4 after all nine required checks passed; approved archive/spec sync and fixture repair accepted at ee5be722 by full Rust-free make check, 297 vpnd cases, all 206 baseline functions, 53 fixture cases, real enabled Linux Molecule and all nine required hosted checks. Independent security and archival review approved; no live rollout claimed.",
+  "execution_sha256": "7849f2d01e200e850425e0edaaab7d6c3155a7f1fd1f0abf4faa4e6ebcca753d",
+  "issue_sha256": "d7a24962742e5262b2b7c1c185372bc2c3ad9d56ff80143c1df11b19f5e7ffd1",
+  "outcome": "done",
+  "prepared_at": "2026-10-10T17:03:19Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "VPD-1791615284178957"
+}

@@ -1,0 +1,40 @@
+{
+  "allowed_licenses": [
+    "MIT",
+    "BSD-3-Clause"
+  ],
+  "packages": {
+    "jinja2": {
+      "license": "BSD-3-Clause",
+      "license_files": {
+        "licenses/LICENSE.txt": "3b49dcee4105eb37bac10faf1be260408fe85d252b8e9df2e0979fc1e094437b"
+      }
+    },
+    "markupsafe": {
+      "license": "BSD-3-Clause",
+      "license_files": {
+        "licenses/LICENSE.txt": "489a8e1108509ed98a37bb983e11e0f7e1d31f0bd8f99a79c8448e7ff37d07ea"
+      }
+    },
+    "pyyaml": {
+      "license": "MIT",
+      "license_files": {
+        "licenses/LICENSE": "8d3928f9dc4490fd635707cb88eb26bd764102a7282954307d3e5167a577e8a4"
+      }
+    },
+    "qrcode": {
+      "license": "BSD-3-Clause",
+      "license_files": {
+        "LICENSE": "40dfb903c94ee3f789500131311186548ecba5cefd3557623d7700e2522ab994"
+      }
+    },
+    "tomli-w": {
+      "license": "MIT",
+      "license_files": {
+        "LICENSE": "b80816b0d530b8accb4c2211783790984a6e3b61922c2b5ee92f3372ab2742fe"
+      }
+    }
+  },
+  "registry": "https://pypi.org",
+  "schema": 1
+}

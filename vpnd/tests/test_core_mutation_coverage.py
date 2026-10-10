@@ -1,0 +1,425 @@
+"""Exercise inventory subprocess boundaries directly for mutation associations."""
+
+import asyncio
+import json
+import os
+import signal
+import subprocess
+import sys
+import threading
+import time
+
+import pytest
+
+from artifact_helpers import context, executable, scaffold
+from vpnd.runner import CapturePolicy, Cmd, ansible, make, process
+from vpnd.state import Host
+
+
+@pytest.mark.parametrize(
+    "builder,name", [(ansible.verify, "verify"), (ansible.smoke, "smoke-test")]
+)
+def test_public_playbook_builders_keep_inventory_and_secret_delivery(tmp_path, builder, name):
+    ctx = context(scaffold(tmp_path))
+    command = builder(ctx)
+    assert command.program == "ansible-playbook"
+    assert command.argv == [
+        str(ctx.ansible_dir / "playbooks" / f"{name}.yml"),
+        "--inventory",
+        str(ctx.ansible_dir / "inventory/generated.ini"),
+    ]
+    assert command.directory == ctx.root
+    assert dict(command.environment) == {
+        "ANSIBLE_CONFIG": str(ctx.ansible_cfg()),
+        "VPN_SECRETS_FILE": str(ctx.secrets_file),
+    }
+    assert str(ctx.secrets_file) not in command.redacted_explain()
+
+
+def inventory_program(tmp_path, monkeypatch, inventory):
+    scaffold(tmp_path)
+    marker = tmp_path / "inventory-call.json"
+    executable(
+        tmp_path,
+        "ansible-inventory",
+        f"#!{sys.executable}\n"
+        "import json, os, sys\nfrom pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text(json.dumps({{'args': sys.argv[1:], 'cwd': os.getcwd(), 'config': os.environ.get('ANSIBLE_CONFIG')}}))\n"
+        f"print({json.dumps(inventory)!r})\n",
+    )
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+    return context(tmp_path), marker
+
+
+def inventory():
+    return {
+        "vpn": {"hosts": ["selected", "second", "foreign"]},
+        "_meta": {
+            "hostvars": {
+                "selected": {
+                    "env": "test",
+                    "provider": "upcloud",
+                    "ansible_host": "203.0.113.8",
+                    "vpn_service_address": "192.0.2.1",
+                },
+                "second": {"env": "test", "provider": "upcloud", "ansible_host": "192.0.2.2"},
+                "foreign": {"env": "test", "provider": "hetzner", "ansible_host": "192.0.2.3"},
+            }
+        },
+    }
+
+
+def test_inventory_scope_uses_selected_provider_and_service_address(tmp_path, monkeypatch):
+    ctx, marker = inventory_program(tmp_path, monkeypatch, inventory())
+    selected = asyncio.run(ansible.scoped_limit(ctx))
+    assert selected == "second,selected"
+    host = ("registered", Host("test", "upcloud", ipv4="192.0.2.1"))
+    selected_host = asyncio.run(ansible.scoped_limit(ctx, host))
+    assert selected_host == "selected"
+    assert json.loads(marker.read_text()) == {
+        "args": ["--inventory", str(ctx.ansible_dir / "inventory/generated.ini"), "--list"],
+        "cwd": str(ctx.root),
+        "config": str(ctx.ansible_cfg()),
+    }
+    assert os.environ["PATH"] == str(tmp_path / "bin")
+
+
+def test_inventory_scope_refuses_ambiguous_service_address(tmp_path, monkeypatch):
+    data = inventory()
+    data["_meta"]["hostvars"]["second"]["vpn_service_address"] = "192.0.2.1"
+    ctx, marker = inventory_program(tmp_path, monkeypatch, data)
+    host = ("registered", Host("test", "upcloud", ipv4="192.0.2.1"))
+    with pytest.raises(ValueError, match="exactly one matching inventory hosts, found 2"):
+        asyncio.run(ansible.scoped_limit(ctx, host))
+    assert marker.is_file()
+
+
+def test_inventory_scope_explain_does_not_spawn_inventory_program(tmp_path, monkeypatch):
+    ctx, marker = inventory_program(tmp_path, monkeypatch, inventory())
+    ctx.explain = True
+    selected = asyncio.run(ansible.scoped_limit(ctx))
+    assert selected == "<validated inventory host keys>"
+    assert not marker.exists()
+
+
+def test_make_secret_path_rejects_all_c0_and_c1_controls_without_disclosing_value():
+    for code in [*range(32), *range(127, 160)]:
+        value = "/tmp/fixture-private-" + chr(code) + ".yaml"
+        with pytest.raises(ValueError) as failure:
+            make.validate_kv("SECRETS_FILE", value)
+        assert "fixture-private-" not in str(failure.value)
+
+
+def test_make_identifier_allowlist_accepts_uppercase_ascii():
+    for key, value in [("ENV", "StageA"), ("PRESET", "TCPA-1"), ("TAG", "READY_tag")]:
+        make.validate_kv(key, value)
+
+
+def test_late_cancellation_checks_stop_under_the_shared_spawn_lock(monkeypatch):
+    entered, release = threading.Event(), threading.Event()
+    stopped = threading.Event()
+    spawned, results, errors = [], [], []
+    original_spawn = process.subprocess.Popen
+
+    def observe_spawn(*args, **kwargs):
+        spawned.append(True)
+        return original_spawn(*args, **kwargs)
+
+    class HeldLock:
+        def __enter__(self):
+            entered.set()
+            released = release.wait(5)
+            assert released, "shared spawn lock was never released"
+
+        def __exit__(self, *args):
+            return False
+
+    command = Cmd.new("sh").args(["-c", ":"])
+    monkeypatch.setattr(process.subprocess, "Popen", observe_spawn)
+
+    def work():
+        try:
+            results.append(command._worker(stopped, True, True, HeldLock()))
+        except Exception as error:
+            errors.append(error)
+
+    worker = threading.Thread(target=work, daemon=True)
+    worker.start()
+    try:
+        reached_lock = entered.wait(3)
+        assert reached_lock, "worker bypassed the shared spawn lock"
+        stopped.set()
+    finally:
+        release.set()
+        worker.join(timeout=3)
+    assert not worker.is_alive(), "stopped worker did not finish"
+    assert not errors and not spawned
+    assert results == [(0, b"", b"")]
+
+
+def test_async_capture_passes_its_shared_spawn_lock_to_the_real_worker(monkeypatch):
+    command = Cmd.new("sh").args(["-c", ":"])
+    observed = []
+    original_worker = command._worker
+
+    def observe_worker(stopped, capture, detailed, spawn_lock=None):
+        assert spawn_lock is not None, "capture dropped the shared cancellation lock"
+        observed.append(spawn_lock)
+        return original_worker(stopped, capture, detailed, spawn_lock)
+
+    monkeypatch.setattr(command, "_worker", observe_worker)
+    output = asyncio.run(command.capture_detailed())
+    assert output.rc == 0 and output.stdout == output.stderr == ""
+    assert len(observed) == 1
+
+
+def test_owned_child_tree_is_reaped_after_capture_setup_error(tmp_path, monkeypatch):
+    pids = tmp_path / "owned-tree"
+    children = []
+    original_spawn = process.subprocess.Popen
+    original_selector = process.selectors.DefaultSelector
+
+    def observe_spawn(*args, **kwargs):
+        child = original_spawn(*args, **kwargs)
+        children.append(child)
+        return child
+
+    class BrokenSelector(original_selector):
+        def register(self, *args, **kwargs):
+            deadline = time.monotonic() + 3
+            while not pids.exists():
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("controlled child tree did not start")
+                time.sleep(0.01)
+            raise OSError("capture setup failed")
+
+    def running(pid):
+        result = subprocess.run(
+            ["ps", "-o", "stat=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        status = result.stdout.strip()
+        return bool(status) and not status.startswith("Z")
+
+    command = (
+        Cmd.new("sh")
+        .args(
+            [
+                "-c",
+                'sleep 60 & printf \'%s\\n\' "$$" "$!" > "$PIDS.tmp"; mv "$PIDS.tmp" "$PIDS"; wait',
+            ]
+        )
+        .env("PIDS", pids)
+        .capture_policy(CapturePolicy.OWNED_PROCESS_GROUP)
+    )
+    monkeypatch.setattr(process.subprocess, "Popen", observe_spawn)
+    monkeypatch.setattr(process.selectors, "DefaultSelector", BrokenSelector)
+    try:
+        with pytest.raises(OSError, match="capture setup failed"):
+            command._worker(threading.Event(), True, True)
+        monkeypatch.setattr(process.subprocess, "Popen", original_spawn)
+        monkeypatch.setattr(process.selectors, "DefaultSelector", original_selector)
+        assert len(children) == 1
+        child = children[0]
+        leader, descendant = map(int, pids.read_text().splitlines())
+        assert leader == child.pid and child.returncode is not None
+        deadline = time.monotonic() + 2
+        while running(descendant) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert not running(leader) and not running(descendant)
+    finally:
+        monkeypatch.setattr(process.subprocess, "Popen", original_spawn)
+        monkeypatch.setattr(process.selectors, "DefaultSelector", original_selector)
+        for child in children:
+            if child.returncode is None:
+                # The unreaped leader still reserves this owned group ID.
+                try:
+                    os.killpg(child.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    # A completed cleanup may already have removed the group.
+                    pass
+                child.kill()
+                child.wait(timeout=3)
+        if pids.exists():
+            for pid in map(int, pids.read_text().splitlines()[1:]):
+                if running(pid):
+                    # The controlled descendants sleep throughout this short
+                    # test; teardown removes any survivor of broken cleanup.
+                    os.kill(pid, signal.SIGKILL)
+
+
+def test_closed_capture_pipes_do_not_block_live_leader_cancellation(tmp_path, monkeypatch):
+    pids = tmp_path / "closed-pipes-tree"
+    stopped = threading.Event()
+    results, errors = [], []
+    waiting = threading.Event()
+    original_spawn = process.subprocess.Popen
+
+    def observe_spawn(*args, **kwargs):
+        child = original_spawn(*args, **kwargs)
+        original_wait = child.wait
+
+        def observe_wait(*args, **kwargs):
+            waiting.set()
+            return original_wait(*args, **kwargs)
+
+        monkeypatch.setattr(child, "wait", observe_wait)
+        return child
+
+    monkeypatch.setattr(process.subprocess, "Popen", observe_spawn)
+    command = (
+        Cmd.new("sh")
+        .args(
+            [
+                "-c",
+                'exec 1>&- 2>&-; sleep 60 & printf \'%s\\n\' "$$" "$!" > "$PIDS.tmp"; mv "$PIDS.tmp" "$PIDS"; wait',
+            ]
+        )
+        .env("PIDS", pids)
+        .capture_policy(CapturePolicy.OWNED_PROCESS_GROUP)
+    )
+
+    def work():
+        try:
+            results.append(command._worker(stopped, True, True))
+        except Exception as error:
+            errors.append(error)
+
+    worker = threading.Thread(target=work, daemon=True)
+    worker.start()
+    try:
+        deadline = time.monotonic() + 3
+        while not pids.exists():
+            assert time.monotonic() < deadline, "controlled child tree did not start"
+            time.sleep(0.01)
+        leader, descendant = map(int, pids.read_text().splitlines())
+        assert worker.is_alive()
+        reached_wait = waiting.wait(timeout=max(0, deadline - time.monotonic()))
+        assert reached_wait, "worker did not reach the live-child wait after pipe EOF"
+        stopped.set()
+        worker.join(timeout=max(0, deadline - time.monotonic()))
+        assert not worker.is_alive(), (
+            "closed pipes prevented cancellation from reaping the live leader"
+        )
+        assert not errors and results == [(-signal.SIGKILL, b"", b"")]
+        for pid in (leader, descendant):
+            status = subprocess.run(
+                ["ps", "-o", "stat=", "-p", str(pid)],
+                capture_output=True,
+                text=True,
+                check=False,
+            ).stdout.strip()
+            assert not status or status.startswith("Z")
+    finally:
+        stopped.set()
+        if worker.is_alive() and pids.exists():
+            leader = int(pids.read_text().splitlines()[0])
+            # A blocked wait keeps this live, owned leader/group ID reserved.
+            os.killpg(leader, signal.SIGKILL)
+            worker.join(timeout=3)
+
+
+def test_foreground_capture_setup_failure_kills_only_its_direct_child(monkeypatch):
+    children = []
+    groups = []
+    expired = threading.Event()
+    original_spawn = process.subprocess.Popen
+    original_selector = process.selectors.DefaultSelector
+
+    def observe_spawn(*args, **kwargs):
+        groups.append(kwargs.get("process_group"))
+        child = original_spawn(*args, **kwargs)
+        children.append(child)
+        return child
+
+    class BrokenSelector(original_selector):
+        def register(self, *args, **kwargs):
+            raise OSError("foreground capture setup failed")
+
+    def force_deadline():
+        expired.set()
+        for child in children:
+            child.kill()
+
+    timer = threading.Timer(3, force_deadline)
+    monkeypatch.setattr(process.subprocess, "Popen", observe_spawn)
+    monkeypatch.setattr(process.selectors, "DefaultSelector", BrokenSelector)
+    command = Cmd.new(sys.executable).args(["-c", "import time; time.sleep(60)"])
+    timer.start()
+    try:
+        with pytest.raises(OSError, match="foreground capture setup failed"):
+            command._worker(threading.Event(), True, True)
+        assert not expired.is_set(), "foreground child was left alive until the test deadline"
+        assert len(children) == 1 and children[0].returncode == -signal.SIGKILL
+        assert groups == [None]
+    finally:
+        timer.cancel()
+        timer.join(timeout=3)
+        for child in children:
+            child.kill()
+            child.wait(timeout=3)
+
+
+def test_fatal_worker_exception_reaches_the_caller_before_the_deadline(monkeypatch):
+    class WorkerFailure(BaseException):
+        pass
+
+    finished, terminated = threading.Event(), threading.Event()
+    results, failures = [], []
+    loops, futures = [], []
+    fatal = WorkerFailure("controlled fatal worker exit")
+    command = Cmd.new("unused")
+
+    def fail_spawn(*args, **kwargs):
+        raise fatal
+
+    def observe_thread_exit(args):
+        failures.append(args.exc_value)
+        terminated.set()
+
+    def capture():
+        loop = asyncio.new_event_loop()
+        loops.append(loop)
+        original_future = loop.create_future
+
+        def observe_future():
+            future = original_future()
+            futures.append(future)
+            return future
+
+        loop.create_future = observe_future
+        try:
+            loop.run_until_complete(command.capture_detailed())
+        except WorkerFailure as error:
+            results.append(error)
+        except Exception as error:
+            results.append(error)
+        finally:
+            loop.close()
+            finished.set()
+
+    monkeypatch.setattr(process.subprocess, "Popen", fail_spawn)
+    monkeypatch.setattr(threading, "excepthook", observe_thread_exit)
+    caller = threading.Thread(target=capture, daemon=True)
+    caller.start()
+    try:
+        completed = finished.wait(3)
+        assert completed, "fatal worker exit stranded the async caller"
+        caller.join(timeout=1)
+        reported = terminated.wait(1)
+        assert reported and not caller.is_alive()
+        assert len(results) == len(failures) == 1
+        assert results[0] is fatal and failures[0] is fatal
+    finally:
+        if caller.is_alive() and loops and futures:
+
+            def recover():
+                for future in futures:
+                    if not future.done():
+                        future.set_exception(WorkerFailure("teardown recovery"))
+
+            # Recovery happens after the failure assertion, never to satisfy it.
+            loops[0].call_soon_threadsafe(recover)
+            caller.join(timeout=3)

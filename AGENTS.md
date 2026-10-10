@@ -21,7 +21,7 @@ Layer ownership is strict; nothing crosses these boundaries except through docum
 | cloud-init | admin user, SSH hardening, python3, marker file |
 | Ansible | all runtime state (packages, nftables, xray, nginx, ...) |
 | SOPS + age | secrets at rest, outside Git tracking |
-| `vpnd` (Rust) | convenience CLI in front of Make/Terraform/Ansible/SOPS; never a replacement |
+| `vpnd` (Python) | convenience CLI in front of Make/Terraform/Ansible/SOPS; never a replacement |
 
 The Makefile is the canonical operator surface.
 
@@ -74,9 +74,9 @@ use rescue/GRUB only when the owner explicitly chooses that emergency path.
 | Terraform `mock_provider` tests / Conftest policies | `make tf-test` / `make tf-policy-verify` |
 | Python unit tests | `python3 -m pytest tests/unit/<file>.py` (all: `make test-unit`) |
 | Shell scripts | `make shellcheck` |
-| vpnd | `cd vpnd && cargo test` (CI parity: `make vpnd-test vpnd-clippy`) |
+| vpnd | `make vpnd-test vpnd-lint vpnd-parity-check` |
 
-Verify in proportion to risk. Run the narrowest check that exercises the change (the matching test file, `molecule-test` for the touched role, `snapshot-check` for template edits, `tf-test` for a provider root, `cargo test` for vpnd), then `make check` before handing off changes that span layers or touch schemas, secrets handling, CI, or shared scripts. `docs/TESTING.md` maps each area to its CI coverage. Report the commands you ran and their results; a skipped or failing check is reported as such.
+Verify in proportion to risk. Run the narrowest check that exercises the change (the matching test file, `molecule-test` for the touched role, `snapshot-check` for template edits, `tf-test` for a provider root, `make vpnd-test` for vpnd), then `make check` before handing off changes that span layers or touch schemas, secrets handling, CI, or shared scripts. `docs/TESTING.md` maps each area to its CI coverage. Report the commands you ran and their results; a skipped or failing check is reported as such.
 
 Toolchains are pinned in `mise.toml` (Python 3.12 with `requirements.txt`, Terraform, Go, conftest, promtool). If a non-interactive shell resolves a different `python3`, run commands through `mise exec -- <cmd>`; otherwise Ansible-dependent tests fail with `ModuleNotFoundError` instead of reporting real regressions. An operator-local `.fleet.mk` feeds every `make` call, so Make-driven tests can fail locally for fleet-configuration reasons; confirm such a failure against a clean checkout before treating it as a regression.
 
@@ -94,9 +94,9 @@ For monitoring changes or historical `MON-`/fleet-observation task lookups, star
 
 | Artifact | Canonical location | Must stay in sync with |
 |---|---|---|
-| CLI flags / subcommands | `vpnd/src/cli.rs` | README, runbooks |
-| Package versions | release-please + `CHANGELOG.md` | `vpnd/Cargo.toml` `[package].version` |
-| Secrets schema (structure) | `secrets/schema.json` + `scripts/validate-secrets.py` | `ansible/roles/*/`, `vpnd::secrets` |
+| CLI flags / subcommands | `vpnd/src/vpnd/cli.py` | README, runbooks |
+| Package versions | release-please + `CHANGELOG.md` | `vpnd/pyproject.toml` `[project].version` |
+| Secrets schema (structure) | `secrets/schema.json` + `scripts/validate-secrets.py` | `ansible/roles/*/`, `vpnd.secrets` |
 | Secrets schema (coverage) | `scripts/check-secrets-coverage.py` | `secrets/prod.secrets.example.yaml`, all Jinja2 templates |
 | RIPDPI bundle contract | `contract/ripdpi-bundle.schema.json` (+ `scripts/validate-bundle.py`, `docs/RIPDPI-BUNDLE.md`) | `scripts/emit-bundle.sh`, vendored copy in the RIPDPI client repo |
 | AWG cohort fingerprint algorithm | `scripts/ripdpi_cohort_fingerprint.py` + `contract/cohort-fingerprint.golden.json` | `scripts/emit-bundle.sh`, client `AmneziaWgParameters.cohortFingerprint()` |

@@ -299,6 +299,17 @@ delete-only plan before the first apply. It emits a redacted receipt only after
 provider-authenticated absence; never turn it into a generic provider,
 environment, URL, address, or command runner.
 
+**Python CLI delivery is verified before publication** — build-vpnd-package.py
+copies reviewed tracked Python sources and Markdown, rejects source symlinks,
+and generates canonical parser-derived manuals. check-vpnd-package.py compares
+reproducible artifacts and checks isolated offline installation, packaged assets
+and upgrade recovery. install-vpnd.py validates the native bundle, exact locked
+wheel closure and private publication transaction before changing the launcher.
+Dependency policy verifies pinned wheel hashes, reviewed SPDX license text and
+non-yanked official registry metadata; it complements the vulnerability audit.
+The parity gate reads the permanent `vpnd/test-inventory.md` baseline, so
+archiving a planning change never removes its test obligations.
+
 ## What's done well
 
 - **Promotion-intent preparation is local** — `prepare-disposable-promotion-intent.py` consumes literal environment inputs through an isolated Make target, reads one private JSON configuration and uses the existing disposable validator. It publishes a no-clobber private intent plus exact-alias mapping, keeps credentials unopened and reports no remote success. Retained partial output is not a completed mapping; runtime readiness and authority remain controller checks.
@@ -371,8 +382,10 @@ Independent controller homes are not a supported shared-ownership mechanism.
   reboot. Exhausting those transport retries publishes no success evidence.
 
 - **Mutation builds require sibling inputs** — `test-vpnd-mutants.sh` copies
-  tracked working-tree files before using cargo-mutants in-place in that owned
+  tracked working-tree files before running Python mutmut in that owned
   temporary tree. Never mutate the operator checkout or suppress its exit code.
+  Completed killed and timeout outcomes are detected mutations; survivors
+  remain exit 2. Empty, partial, unexecuted or technically failed runs stay red.
 
 - **SOPS snapshot filenames preserve YAML format** — disposable onboarding
   copies encrypted YAML to a `.yaml` snapshot because the canonical decrypt

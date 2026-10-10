@@ -1034,3 +1034,238 @@ def test_enabled_molecule_preserves_bounded_failure_diagnostics() -> None:
     assert rescue[-1]["ansible.builtin.fail"]["msg"].startswith(
         "Observability agent fixture convergence failed"
     )
+
+
+def _fixture_proof_module():
+    import importlib.util
+
+    path = ROLE / "molecule/enabled/observability_fixture_proof.py"
+    spec = importlib.util.spec_from_file_location("observability_fixture_proof", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("status", [200, 204, 400, 503])
+def test_fixture_forwarding_requires_real_sink_acceptance(monkeypatch, status):
+    import http.server
+    import threading
+    import urllib.error
+
+    module = _fixture_proof_module()
+    received = []
+
+    class Sink(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            received.append(
+                (
+                    self.path,
+                    self.headers,
+                    self.rfile.read(int(self.headers["Content-Length"])),
+                )
+            )
+            self.send_response(status)
+            self.end_headers()
+
+        def log_message(self, *_args):
+            pass
+
+    sink = http.server.HTTPServer(("127.0.0.1", 0), Sink)
+    worker = threading.Thread(target=sink.serve_forever, daemon=True)
+    worker.start()
+    monkeypatch.setattr(module, "SINK", f"http://127.0.0.1:{sink.server_port}")
+    headers = {
+        "Content-Type": "application/x-protobuf",
+        "Content-Encoding": "snappy",
+        "X-Prometheus-Remote-Write-Version": "0.1.0",
+        "Authorization": "must-not-forward",
+    }
+    try:
+        if status >= 400:
+            with pytest.raises(urllib.error.HTTPError):
+                module.forward_payload(b"synthetic-protobuf-payload", headers)
+        else:
+            module.forward_payload(b"synthetic-protobuf-payload", headers)
+    finally:
+        sink.shutdown()
+        sink.server_close()
+        worker.join(timeout=2)
+    assert not worker.is_alive()
+    path, forwarded, body = received[0]
+    assert path == "/api/v1/write" and body == b"synthetic-protobuf-payload"
+    assert all(
+        forwarded[name] == value
+        for name, value in headers.items()
+        if name != "Authorization"
+    )
+    assert "Authorization" not in forwarded
+
+
+def test_mtls_fixture_never_acknowledges_or_records_a_rejected_payload(
+    monkeypatch, tmp_path
+):
+    import ast
+    import sys
+
+    module = _fixture_proof_module()
+
+    def refuse(*_args):
+        raise ValueError("sink_did_not_accept")
+
+    monkeypatch.setattr(module, "forward_payload", refuse)
+    monkeypatch.setitem(sys.modules, "observability_fixture_proof", module)
+    tasks = yaml.safe_load((ROLE / "molecule/enabled/prepare.yml").read_text())[0][
+        "tasks"
+    ]
+    script = next(
+        t["ansible.builtin.copy"]["content"]
+        for t in tasks
+        if t["name"] == "Install bounded mTLS remote-write fixture"
+    )
+    tree = ast.parse(script)
+    # Exercise the installed Handler, without starting its fixed-address server.
+    boundary = next(
+        i
+        for i, n in enumerate(tree.body)
+        if isinstance(n, ast.Assign)
+        and any(isinstance(x, ast.Name) and x.id == "server" for x in n.targets)
+    )
+    namespace = {}
+    exec(
+        compile(
+            ast.Module(body=tree.body[:boundary], type_ignores=[]),
+            "receiver-fixture",
+            "exec",
+        ),
+        namespace,
+    )
+    namespace["LOG"] = str(tmp_path / "receiver.log")
+    namespace["EVENTS"] = str(tmp_path / "events.log")
+    handler = object.__new__(namespace["Handler"])
+    handler.headers = {"Content-Length": "3"}
+    handler.rfile = io.BytesIO(b"abc")
+    handler.path = "/remote-write/v1/nodes/node-fixture"
+    handler.connection = SimpleNamespace(
+        getpeercert=lambda: {"subject": ((("commonName", "node-fixture"),),)}
+    )
+    responses = []
+    handler.send_response = responses.append
+    handler.end_headers = lambda: None
+    with pytest.raises(ValueError, match="sink_did_not_accept"):
+        handler.do_POST()
+    assert responses == []
+    assert not (tmp_path / "receiver.log").exists()
+    assert [
+        json.loads(x)["phase"]
+        for x in (tmp_path / "events.log").read_text().splitlines()
+    ] == ["headers", "handler_error"]
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "exact",
+        "missing",
+        "ambiguous",
+        "wrong-node",
+        "wrong-value",
+        "before-outage",
+        "fresh",
+        "wrong-timestamp-node",
+        "failed-query",
+    ],
+)
+def test_historical_rollback_proof_refuses_fresh_or_unrelated_samples(
+    monkeypatch, case
+):
+    import copy
+    import urllib.parse
+
+    module = _fixture_proof_module()
+    proof = {"nonce": 123456, "outage_at": 100, "outage_end": 200}
+    sample = {
+        "metric": {
+            "__name__": module.METRIC,
+            "node": "node-fixture",
+            "job": "node-exporter",
+        },
+        "value": [200, "123456"],
+    }
+    timestamp = {
+        "metric": {"node": "node-fixture", "job": "node-exporter"},
+        "value": [200, "150"],
+    }
+    vectors = [[copy.deepcopy(sample)], [copy.deepcopy(timestamp)]]
+    if case == "missing":
+        vectors[0] = []
+    if case == "ambiguous":
+        vectors[0].append(copy.deepcopy(sample))
+    if case == "wrong-node":
+        vectors[0][0]["metric"]["node"] = "other-node"
+    if case == "wrong-value":
+        vectors[0][0]["value"][1] = "123455"
+    if case == "before-outage":
+        vectors[1][0]["value"][1] = "100"
+    if case == "fresh":
+        vectors[1][0]["value"][1] = "201"
+    if case == "wrong-timestamp-node":
+        vectors[1][0]["metric"]["node"] = "other-node"
+    queries = []
+
+    def query(url, timeout):
+        assert timeout == 5
+        params = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
+        queries.append(params)
+        payload = {
+            "status": "error" if case == "failed-query" else "success",
+            "data": {"resultType": "vector", "result": vectors[len(queries) - 1]},
+        }
+        return contextlib.nullcontext(
+            SimpleNamespace(read=lambda _limit: json.dumps(payload).encode())
+        )
+
+    monkeypatch.setattr(module.OPENER, "open", query)
+    if case == "exact":
+        module.require_historical(proof)
+        assert queries == [
+            {"query": [module.METRIC + '{node="node-fixture"}'], "time": ["200"]},
+            {
+                "query": ["timestamp(" + module.METRIC + '{node="node-fixture"})'],
+                "time": ["200"],
+            },
+        ]
+    else:
+        with pytest.raises(ValueError):
+            module.require_historical(proof)
+
+
+def test_historical_probe_uses_private_unique_files_and_preserves_foreign_replacements(
+    monkeypatch, tmp_path
+):
+    module = _fixture_proof_module()
+    monkeypatch.setattr(module, "FIXTURE", tmp_path)
+    monkeypatch.setattr(
+        module.OPENER,
+        "open",
+        lambda *_args, **_kwargs: contextlib.nullcontext(
+            SimpleNamespace(
+                read=lambda: b"vm_persistentqueue_blocks_written_total 42\n"
+            )
+        ),
+    )
+    proof = module.prepare_probe()
+    path = Path(proof["probe"])
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert path.read_text() == f"{module.METRIC} {proof['nonce']}\n"
+    assert proof["blocks_before"] == 42
+    retained = tmp_path / "retained-original"
+    path.rename(retained)
+    path.write_text("unrelated replacement")
+    with pytest.raises(ValueError, match="foreign_probe_identity"):
+        module.remove_probe(proof)
+    assert path.read_text() == "unrelated replacement"
+    path.unlink()
+    retained.rename(path)
+    module.remove_probe(proof)
+    assert not path.exists()
+    module.remove_probe(proof)

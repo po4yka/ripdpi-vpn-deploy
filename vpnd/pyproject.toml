@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools==84.0.0", "wheel==0.48.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vpnd"
+version = "1.4.2" # x-release-please-version
+requires-python = ">=3.12,<3.13"
+description = "Convenience CLI wrapping the vpn-deploy Make/Terraform/Ansible/SOPS layers"
+license = "BSD-3-Clause"
+dependencies = ["PyYAML==6.0.3", "Jinja2==3.1.6", "qrcode==8.2", "tomli-w==1.2.0"]
+
+[project.scripts]
+vpnd = "vpnd.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+vpnd = ["data/**/*", "data/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
+[tool.mypy]
+python_version = "3.12"
+check_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.mutmut]
+source_paths = ["src/vpnd/runner/", "src/vpnd/commands/doctor.py", "src/vpnd/pages/qr.py", "src/vpnd/secrets.py"]
+pytest_add_cli_args = ["-x", "-q"]
+pytest_add_cli_args_test_selection = ["tests/"]

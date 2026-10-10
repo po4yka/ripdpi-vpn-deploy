@@ -39,6 +39,11 @@ Before changing the sender runtime contract, inspect its [cross-role and operato
 
 - Runtime activation remains uncommitted until readiness passes. The outer rescue restores the old binary link (or removes a failed first link) even when candidate validation fails before the service transaction; collector rollback also restores exact prior unit bytes before restart.
 
+- Failed-activation acceptance forwards bounded mTLS payloads to a separate
+  loopback Prometheus fixture using the already verified historical binary.
+  It removes its unique probe before cutover and requires the exact node,
+  nonce and pre-cutover sample timestamp after rollback; queued depth can be
+  zero while a retry worker holds an unsent block and is not delivery proof.
 - Restart acceptance must recover exact historical samples after both clean stop and SIGKILL once persistence is observed. Retaining files, a queue-depth decrease, or fresh samples after restart cannot establish recovery. Host power-loss/fsync durability is not implied by a process-kill test.
 - This role needs the monitoring and node_manifest producers to have converged before it runs; site ordering is intentionally owned by a separate change.
 - Do not widen the metric regex or add a telemetry fallback without the metric contract and ingestion role changes.
