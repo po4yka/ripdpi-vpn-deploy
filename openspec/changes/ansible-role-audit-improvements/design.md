@@ -112,3 +112,10 @@ acceptance gates. Validate focused boundaries, relevant Molecule, native positiv
 and interrupted/interleaved behavior, 150+ reviewed snapshots, schema/coverage/
 profile/listener checks, full build-gated make check, independent review and
 all exact-source hosted checks before completing the PR extension.
+
+## Review correction contracts
+
+- Register descriptor ownership immediately and close on every exceptional exit; retain no-follow inode/ancestor gates. Runtime log/state consumers use owner-only 0600 where no separate group reader is required. Xray files begin private, then receive only the validated dedicated writer/group contract; the capability-bounded policy reader receives that exact supplementary group rather than unrestricted DAC privileges.
+- Explicitly require TLS 1.2 or newer in runtime probes and native test clients; certificate and identity checks remain intact.
+- Tests use named file-type-aware Jinja rendering. HTML/XML inputs escape markup; shell, JSON and unit inputs retain format-specific quoting without HTML entity corruption. No CodeQL exclusion or alert suppression is introduced.
+- Selected Naive readout writes an explicitly requested new private 0600 artifact in an owner-controlled non-writable directory. Standard output contains only categorical operation metadata and the artifact path; caller contract requires OUTPUT for naive-readout. No stdout compatibility path or plaintext credential argv is retained.

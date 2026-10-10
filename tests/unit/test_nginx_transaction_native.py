@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -13,7 +12,6 @@ import socket
 import ssl
 import subprocess
 import sys
-import tempfile
 import time
 import urllib.request
 import uuid

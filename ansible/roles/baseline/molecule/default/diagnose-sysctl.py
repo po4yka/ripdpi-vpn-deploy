@@ -38,7 +38,6 @@ def keys(message):
 def main():
     failed = []
     deadline = time.monotonic() + DEADLINE_SECONDS
-    status = "diagnostic-unavailable"
     try:
         loader = importlib.machinery.SourceFileLoader("fixture_baseline_sysctl", HELPER)
         spec = importlib.util.spec_from_loader(loader.name, loader)
@@ -74,8 +73,8 @@ def main():
             return result.returncode == 0
 
         module.invoke = invoke
-        status = "replay-completed"
         module.apply(policies)
+        status = "replay-completed"
     except RuntimeError:
         status = "mandatory-failure-reproduced"
     except (OSError, ValueError, TimeoutError, subprocess.SubprocessError):

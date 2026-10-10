@@ -28,7 +28,7 @@
           - item.stat.nlink == 1
           - item.stat.pw_name == 'naive'
           - item.stat.gr_name == 'naive'
-          - item.stat.mode == '0640'
+          - item.stat.mode == '0600'
       loop: "{{ naive_logs.results }}"
       loop_control:
         label: "{{ item.item }}"

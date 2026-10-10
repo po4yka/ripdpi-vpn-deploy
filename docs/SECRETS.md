@@ -88,7 +88,7 @@ decrypt.
 | Add a new client | `SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml ./scripts/new-client.sh laptop` |
 | Issue one Naive device | `make naive-issue CLIENT=laptop SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml` |
 | Revoke one Naive device | `make naive-revoke CLIENT=laptop SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml` |
-| Read one Naive credential for delivery | `make naive-readout CLIENT=laptop SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml` |
+| Read one Naive credential for delivery | `make naive-readout CLIENT=laptop SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml OUTPUT=~/.config/vpn-provision/laptop.naive.json` |
 | Re-encrypt under a new recipient | `sops updatekeys ~/.config/vpn-provision/prod.secrets.sops.yaml` |
 | Decrypt for deploy | `make decrypt` (writes configured `SECRETS_FILE`, mode 0600) |
 | Wipe plaintext | `make clean` (shred or rm) |
@@ -96,6 +96,13 @@ decrypt.
 `sops <file>` opens your `$EDITOR` against a temp plaintext file in `/tmp`
 with mode 0600, re-encrypts on save, and deletes the plaintext. It never
 writes plaintext to a path you can `cat` later.
+
+Naive readout requires a new explicit `OUTPUT` artifact in an owner-controlled
+`0700` directory. The artifact is `0600` and contains only the selected device.
+Existing files, links and shared directories are refused; stdout reports only
+operation metadata and the output path. Keep the artifact outside tracked source
+or under ignored `secrets/local/`, transfer it through the authorized private
+channel, then retire the local copy. No stdout credential compatibility path remains.
 
 Naive uses `naive_secrets.clients[]` with unique `name`, `username`, and independent
 strong `password` fields. The encrypted writers require the reviewed SOPS 3.13.3

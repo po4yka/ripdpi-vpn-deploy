@@ -117,6 +117,7 @@ def test_actual_role_rotation_and_prebuilt_disable_collect_latest_tls_under_lock
 
     def certificate_matches(pair):
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
         with socket.create_connection(("127.0.0.1", port), timeout=2) as plain:

@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+Xray rotation preserves the explicit 0640 writer/log-reader group contract.
+The capability-bounded policy service joins that group; logs have no other
+reader grant. Naive logs and watchdog budgets have no group reader and stay 0600.
+
 **Private endpoint admission precedes mutation** — `files/private_endpoint.py` normalizes a literal host:port before handler flush, packages or config writes. Loopback is allowed; a Tailnet address requires both exact `node_exporter_approved_tailnet_addresses` approval and gathered local identity. Wildcards, public/private-LAN addresses, hostnames and argument injection are rejected. `monitoring_node_exporter_endpoint` is the normalized contract shared with independent sender and verification calls.
 
 **No external telemetry** — Prometheus node_exporter listens on 127.0.0.1

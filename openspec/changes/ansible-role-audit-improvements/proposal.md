@@ -47,3 +47,7 @@ existing PR 282, retaining the P1/P2 fixes and the bounded I01-I06 evidence.
 - Source-only validation and PR publication; no provider, fleet, credential
   issuance/decryption, live deployment, external client or human acceptance.
 - No new production dependency, compatibility shim or P1/P2 safety relaxation.
+
+## PR review remediation
+
+Address the current inline review and all open CodeQL findings in PR 282: failure-safe descriptor ownership, owner-only runtime logs/state, explicit supported TLS floors, file-type-aware template rendering, unused code removal and private selected-device export. Preserve existing safety and positive protocol behavior.

@@ -100,6 +100,8 @@ class BoundedPulseServer(ThreadingHTTPServer):
                 try:
                     connection.shutdown(socket.SHUT_RDWR)
                 except OSError:
+                    # The bounded request may already have closed its socket.
+                    # Expiry is best-effort shutdown; thread cleanup still runs.
                     pass
 
             # A socket timeout alone is renewed by slow-drip headers/body.

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import importlib.util
-import json
 import os
 from pathlib import Path
 import shutil
@@ -308,6 +307,7 @@ def test_actual_disabled_self_steal_then_enabled_xhttp_converges_twice():
         assert tx.private_json(self_receipt)["active"] is True
         assert not absent_site.exists() and not absent_tls.exists()
         context = ssl.create_default_context(cafile=str(base / "cert"))
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
         with socket.create_connection(("127.0.0.1", port), timeout=3) as plain:
             with context.wrap_socket(plain, server_hostname=hostname) as connection:
                 connection.sendall(

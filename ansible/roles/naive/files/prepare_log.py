@@ -45,10 +45,9 @@ def prepare(path, username, inspect=False):
         try:
             if inspect:
                 fd = os.open(path.name, flags, dir_fd=directory)
-                changed = False
             else:
                 fd = os.open(
-                    path.name, flags | os.O_CREAT | os.O_EXCL, 0o640, dir_fd=directory
+                    path.name, flags | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=directory
                 )
                 changed = True
         except FileNotFoundError:
@@ -69,10 +68,10 @@ def prepare(path, username, inspect=False):
                 raise ValueError("file")
             if inspect:
                 return False
-            expected = (account.pw_uid, account.pw_gid, 0o640)
+            expected = (account.pw_uid, account.pw_gid, 0o600)
             if (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)) != expected:
                 os.fchown(fd, account.pw_uid, account.pw_gid)
-                os.fchmod(fd, 0o640)
+                os.fchmod(fd, 0o600)
                 changed = True
             os.fsync(fd)
         finally:

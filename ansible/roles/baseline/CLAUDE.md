@@ -2,6 +2,9 @@
 
 ## Design decisions
 
+The bounded Molecule sysctl diagnostic assigns successful replay status only
+after the real replay completes; failure categories contain no setting values.
+
 **Explicit restricted account admission** — `baseline_ssh_extra_allowed_users` adds reviewed accounts to AllowUsers through the recoverable controller. The intent has only the exact six-option Match User restriction grammar. The guest planner places this suffix at the end of sshd_config, leaving the include fragment global-only; OpenSSH Match all does not restore global directive context. Native context output must prove all restrictions. Arbitrary Match blocks remain rejected.
 
 

@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 import yaml
-from ansible.plugins.filter.core import FilterModule
-from jinja2 import Environment, StrictUndefined
+from jinja2 import DictLoader
+from template_render import template_environment
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -54,8 +54,7 @@ def test_restart_handlers_skip_runtime_checks_in_check_mode(
     handlers = yaml.safe_load(handlers_path.read_text())
 
     by_name = {handler["name"]: handler for handler in handlers}
-    environment = Environment(undefined=StrictUndefined)
-    environment.filters["bool"] = FilterModule().filters()["bool"]
+    environment = template_environment(DictLoader({}))
     selector = role.replace("-", "_") + "_role_enabled"
     for name in handler_names:
         conditions = by_name[name]["when"]

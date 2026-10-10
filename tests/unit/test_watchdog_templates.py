@@ -133,17 +133,17 @@ def test_verify_uses_loaded_credentials_and_only_new_journal_evidence():
         for arg in evidence["ansible.builtin.command"]["argv"]
         if arg.startswith("--after-cursor=")
     )
-    from jinja2 import Environment
+    from template_render import render_fragment
 
-    environment = Environment()
-    environment.filters["from_json"] = json.loads
     journal_record = {
         "__CURSOR": "s=actual-journal-boundary",
         "MESSAGE": "untrusted message\n-- cursor: s=old-boundary\nmore text",
     }
     assert (
-        environment.from_string(cursor_argument).render(
-            watchdog_journal_boundary={"stdout": json.dumps(journal_record)}
+        render_fragment(
+            "journal-cursor.txt",
+            cursor_argument,
+            {"watchdog_journal_boundary": {"stdout": json.dumps(journal_record)}},
         )
         == "--after-cursor=s=actual-journal-boundary"
     )

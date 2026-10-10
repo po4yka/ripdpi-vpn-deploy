@@ -1,13 +1,13 @@
 """Exact native APT merge and procps optional/mandatory failure semantics."""
 
 from __future__ import annotations
-import importlib.util
 import os
 from pathlib import Path
 import subprocess
 import tempfile
 import pytest
-from jinja2 import Environment, StrictUndefined
+
+from template_render import render_template
 
 ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.native_runtime
@@ -21,17 +21,13 @@ def test_security_only_policy_replaces_broader_effective_apt_origin_lists():
         (parts / "50-broad").write_text(
             'Unattended-Upgrade::Origins-Pattern { "origin=Ubuntu,codename=noble,label=Ubuntu"; };\nUnattended-Upgrade::Allowed-Origins { "Ubuntu:noble"; };\n'
         )
-        source = (
-            ROOT
-            / "ansible/roles/package_updates/templates/51ripdpi-unattended-upgrades.j2"
-        ).read_text()
         config = root / "apt.conf"
         config.write_text(f'Dir::Etc::parts "{parts}";\nDir::Etc::main "";\n')
         for enabled in (True, False):
-            policy = (
-                Environment(undefined=StrictUndefined, autoescape=False)
-                .from_string(source)
-                .render(package_updates={"enabled": enabled, "security_only": True})
+            policy = render_template(
+                ROOT
+                / "ansible/roles/package_updates/templates/51ripdpi-unattended-upgrades.j2",
+                dict(package_updates={"enabled": enabled, "security_only": True}),
             )
             (parts / "51-policy").write_text(policy)
             result = subprocess.run(

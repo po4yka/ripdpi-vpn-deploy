@@ -4,7 +4,10 @@
 
 **Naive devices have independent encrypted identities** — `naive-client.py`
 centralizes the three explicit Make verbs for issuance, revocation, and selected
-credential readout. It shares `.new-client.lock`, uses encrypted sibling publication,
+credential readout. Selected readout requires an explicit new `0600` output in a
+private `0700` directory, outside tracked source or under ignored `secrets/local/`.
+Its stdout carries only metadata; linked/existing/shared output authority refuses.
+It shares `.new-client.lock`, uses encrypted sibling publication,
 refuses unsafe source authority, and preserves unrelated fields. `new-client.sh`
 includes optional Naive issuance inside its existing all-profile transaction.
 No scalar credential compatibility path or plaintext staging is supported.

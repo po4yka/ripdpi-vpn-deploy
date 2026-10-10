@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+Activation probes explicitly require TLS 1.2 or newer while preserving CA,
+hostname, PID, executable and listener ownership checks. Log files need only
+the service owner and root validator; no separate group reader is granted.
+
 Disabled role intent stops only declared owned services and removes exact runtime
 configuration; shared packages, immutable release receipts and unrelated state
 remain. The unique `naive_role_enabled` selector defaults true for direct calls.
@@ -53,7 +57,7 @@ forward-proxy handler and retains the decoy, without an unauthenticated fallback
 - **Validation opens the default log writer** — root-run Caddy validation can
   create root-owned `0600` access and site-error logs before the service starts.
   Inspect retained log authority before directory metadata convergence, then
-  provision the exact service-owned `0640` logs before validation, preserving
+  provision the exact service-owned `0600` logs before validation, preserving
   bytes and refusing symlinks, hardlinks, unsafe ancestry and foreign owners.
   Existing root-owned safe logs from validation are migrated without truncation.
 

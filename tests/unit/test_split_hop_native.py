@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 import shutil
@@ -12,8 +11,9 @@ import sys
 import time
 import uuid
 
-import jinja2
 import pytest
+
+from template_render import render_template
 
 ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.native_runtime
@@ -185,17 +185,14 @@ server.serve_forever()
             },
             "probe_matrix_runtime_users": {"xray_uid": 65532, "mtg_uid": 65533},
         }
-        ingress = jinja2.Template(
-            (
-                ROOT / "ansible/roles/split-hop-ingress/templates/policy.nft.j2"
-            ).read_text()
-        ).render(**values)
-        egress = jinja2.Template(
-            (
-                ROOT
-                / "ansible/roles/split-hop-egress/templates/split-hop-egress.nft.j2"
-            ).read_text()
-        ).render(split_hop_egress={"wg_interface": "shop0", "forward_iface": "toe"})
+        ingress = render_template(
+            ROOT / "ansible/roles/split-hop-ingress/templates/policy.nft.j2",
+            dict(**values),
+        )
+        egress = render_template(
+            ROOT / "ansible/roles/split-hop-egress/templates/split-hop-egress.nft.j2",
+            dict(split_hop_egress={"wg_interface": "shop0", "forward_iface": "toe"}),
+        )
         # The unprivileged listener can write only its private test evidence.
         tmp_path.chmod(0o777)
         for parent in tmp_path.parents:

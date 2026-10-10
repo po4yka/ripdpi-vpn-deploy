@@ -1,7 +1,6 @@
 """Actual Ansible disabled entrypoints need no enabled-role inputs or package writes."""
 
 from __future__ import annotations
-import json
 import os
 from pathlib import Path
 import re

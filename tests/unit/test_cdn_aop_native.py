@@ -11,9 +11,10 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from jinja2 import Environment, StrictUndefined
 import pytest
 import yaml
+
+from template_render import render_template
 
 ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.native_runtime
@@ -89,14 +90,9 @@ def test_cdn_scenario_generated_authority_accepts_only_signed_client():
                 "xhttp_path": "/app-sync",
             }
         }
-        site = (
-            Environment(undefined=StrictUndefined, autoescape=False)
-            .from_string(
-                (
-                    ROOT / "ansible/roles/cdn-front/templates/cdn-front.conf.j2"
-                ).read_text()
-            )
-            .render(**variables)
+        site = render_template(
+            ROOT / "ansible/roles/cdn-front/templates/cdn-front.conf.j2",
+            dict(**variables),
         )
         site = site.replace(
             "/etc/nginx/tls/cdn.example.test.fullchain.pem", str(server_cert)

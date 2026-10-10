@@ -270,6 +270,7 @@ def activate(args):
         command(["systemctl", "daemon-reload"])
         command(["systemctl", "restart", args.unit])
         context = ssl.create_default_context(cafile=args.certificate)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
         deadline = time.monotonic() + 10
         while True:
             try:

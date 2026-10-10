@@ -11,6 +11,12 @@ and qualifications, and extend existing PR 282 with verified code.
 - Runtime worker owns `ansible/roles/nginx-xhttp/files/nginx_transaction.py`, `ansible/roles/nginx-xhttp/tasks/transaction.yml`, `ansible/roles/geodata/`, `ansible/roles/naive/`, `ansible/roles/policy-ratelimit/`, `ansible/roles/observability_deadman/`; uniquely named/direct activation, auth, tail and notification tests plus notes. I08/I10/I11/I12. Initial shared activation ownership is coordinated through primary. For the hosted convergence correction, the host worker owns shared nginx and the runtime worker independently reviews it.
 - Primary owns `secrets/schema.json`, `secrets/prod.secrets.example.yaml`, `scripts/`, `vpnd/`, `ansible/group_vars/`, shared observability endpoint consumers under `observability_agent/`, all generic fixtures/shared tests, snapshots, CI, docs and task/spec artifacts. All other shared requests go through primary. No worker stages or commits, reads private inputs, changes default contexts, or touches another lane. Preserve P1/P2 and unrelated work.
 
+## Review ownership
+
+- Runtime worker owns reviewed production helpers under xray, watchdog, naive, nginx-xhttp and observability_deadman plus baseline diagnosis, the policy reader role/group/unit and monitoring log rotation; corresponding role notes/Molecule checks and unique test_pr_review_runtime_guards.py. Requests changes to existing tests through the test worker.
+- Test worker owns all existing affected review test files and scripts/template_render.py; tests/CLAUDE.md and unique renderer regressions. It coordinates production mode changes with runtime worker.
+- Primary owns scripts/naive-client.py, Makefile, its existing device-operation tests, scripts/CLAUDE.md, operator docs and all task/spec/evidence files. No worker stages/commits or changes other lanes.
+
 ## Execution
 
 - [x] ANS-1791587032080262 Bound bootstrap audit and consumption history behind durable retirement authority #feature @item:ANS-1791586652330612
@@ -30,3 +36,4 @@ machine-report proof; recovery retry through restart and stale completions;
 relevant canonical Molecule, reviewed snapshots, schema/coverage/profile/listener
 checks, full build-gated make check, independent security review and all exact-
 source hosted checks. Live/provider/client/human acceptance are outside scope.
+- [ ] ANS-1791605822012676 Fix PR review resource ownership TLS rendering and private credential export findings with regression and exact-source CodeQL proof #bug !high @item:ANS-1791586652330612

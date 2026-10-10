@@ -831,11 +831,6 @@ def publish(document):
     if total > LIMIT:
         raise TransactionError("snapshot-size")
     validate_previous(document, previous)
-    changed = any(
-        {key: value for key, value in row.items() if key != "path"}
-        != previous[row["path"]]
-        for row in document["files"]
-    )
     state = Path("/var/lib/vpn-nginx-publication") / document["unit"]
     safe(state.parent, missing=True)
     pending = state / "pending.json"

@@ -12,8 +12,9 @@ import sys
 import time
 import uuid
 
-import jinja2
 import pytest
+
+from template_render import render_template
 
 ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.native_runtime
@@ -28,17 +29,17 @@ def test_forwarded_loopback_query_cannot_recurse_but_local_authority_works(tmp_p
     # The distro AppArmor profile admits configuration under /etc/unbound.
     # Use an exact disposable role test file without changing that profile.
     config = Path("/etc/unbound") / (ns + ".conf")
-    template = (
-        ROOT / "ansible/roles/dns-morph-bridge/templates/unbound-fwd.conf.j2"
-    ).read_text()
     config.write_text(
-        jinja2.Template(template).render(
-            dns_morph_bridge={
-                "listen_addr": "0.0.0.0",
-                "listen_port": 53,
-                "recursor_addr": "127.0.0.1",
-                "recursor_port": 15353,
-            }
+        render_template(
+            ROOT / "ansible/roles/dns-morph-bridge/templates/unbound-fwd.conf.j2",
+            dict(
+                dns_morph_bridge={
+                    "listen_addr": "0.0.0.0",
+                    "listen_port": 53,
+                    "recursor_addr": "127.0.0.1",
+                    "recursor_port": 15353,
+                }
+            ),
         )
         + '\n    username: ""\n    chroot: ""\n    pidfile: ""\n    use-syslog: no\n    local-zone: "p2-test.invalid." static\n    local-data: "answer.p2-test.invalid. 60 IN A 192.0.2.123"\n'
     )

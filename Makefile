@@ -41,10 +41,12 @@ $(error Naive device operations require exactly one make goal)
 endif
 override NAIVE_CLIENT_LITERAL := $(value CLIENT)
 override NAIVE_SOPS_FILE_LITERAL := $(value SOPS_FILE)
+override NAIVE_OUTPUT_LITERAL := $(value OUTPUT)
 override CLIENT := $(value CLIENT)
 override SOPS_FILE := $(value SOPS_FILE)
-export NAIVE_CLIENT_LITERAL NAIVE_SOPS_FILE_LITERAL
-unexport CLIENT SOPS_FILE MAKEFLAGS MFLAGS
+override OUTPUT := $(value OUTPUT)
+export NAIVE_CLIENT_LITERAL NAIVE_SOPS_FILE_LITERAL NAIVE_OUTPUT_LITERAL
+unexport CLIENT SOPS_FILE OUTPUT MAKEFLAGS MFLAGS
 MAKEOVERRIDES :=
 endif
 
@@ -1340,9 +1342,13 @@ issue-bootstrap:
 	HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" \
 	./scripts/issue-bootstrap.sh "$${CLIENT}"
 
-naive-issue naive-revoke naive-readout:
+naive-issue naive-revoke:
 	@test -n "$${NAIVE_CLIENT_LITERAL:-}" && test -n "$${NAIVE_SOPS_FILE_LITERAL:-}" || { echo "usage: make $@ CLIENT=phone SOPS_FILE=…"; exit 1; }
 	python3 scripts/naive-client.py $(patsubst naive-%,%,$@) "$${NAIVE_CLIENT_LITERAL}" --file "$${NAIVE_SOPS_FILE_LITERAL}"
+
+naive-readout:
+	@test -n "$${NAIVE_CLIENT_LITERAL:-}" && test -n "$${NAIVE_SOPS_FILE_LITERAL:-}" && test -n "$${NAIVE_OUTPUT_LITERAL:-}" || { echo "usage: make naive-readout CLIENT=phone SOPS_FILE=… OUTPUT=<new private file>"; exit 1; }
+	python3 scripts/naive-client.py readout "$${NAIVE_CLIENT_LITERAL}" --file "$${NAIVE_SOPS_FILE_LITERAL}" --output "$${NAIVE_OUTPUT_LITERAL}"
 
 issue-sub-token:
 	@test -n "$${CLIENT:-}" || { echo "usage: make issue-sub-token CLIENT=phone [FORMAT=singbox|ripdpi] [EXPIRES=YYYY-MM-DD] [QR=1]"; exit 1; }

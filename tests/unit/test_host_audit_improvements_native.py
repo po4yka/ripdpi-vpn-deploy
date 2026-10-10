@@ -10,6 +10,8 @@ import subprocess
 
 import pytest
 
+from template_render import render_template
+
 ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.native_runtime
 
@@ -370,7 +372,6 @@ def test_real_maintenance_unit_floor_collects_retired_markers_and_bounds_private
     import sys
     import time
     import uuid
-    from jinja2 import Environment, StrictUndefined
 
     assert os.geteuid() == 0
     account = pwd.getpwnam("vpn-bootstrap")
@@ -406,27 +407,21 @@ def test_real_maintenance_unit_floor_collects_retired_markers_and_bounds_private
         "reads_log_max_bytes": 4096,
         "reads_log_backup_count": 2,
     }
-    env = Environment(
-        undefined=StrictUndefined, autoescape=False, keep_trailing_newline=True
-    )
-    env.filters["dirname"] = lambda value: str(Path(value).parent)
     script = base / "bootstrap.py"
     script.write_text(
-        env.from_string(
-            (
-                ROOT / "ansible/roles/subscription-host/templates/vpn-bootstrap.py.j2"
-            ).read_text()
-        ).render(subscription=subscription)
+        render_template(
+            ROOT / "ansible/roles/subscription-host/templates/vpn-bootstrap.py.j2",
+            dict(subscription=subscription),
+        )
     )
     script.chmod(0o755)
     name = "vpn-p2-sub-maint-" + suffix + ".service"
     unit = Path("/etc/systemd/system") / name
-    source = env.from_string(
-        (
-            ROOT
-            / "ansible/roles/subscription-host/templates/vpn-subscription-maintenance.service.j2"
-        ).read_text()
-    ).render(subscription=subscription)
+    source = render_template(
+        ROOT
+        / "ansible/roles/subscription-host/templates/vpn-subscription-maintenance.service.j2",
+        dict(subscription=subscription),
+    )
     unit.write_text(source.replace("/usr/local/bin/vpn-bootstrap.py", str(script)))
     try:
         subprocess.run(

@@ -134,3 +134,17 @@ NOT be represented as provider, live client or vendor-registration acceptance.
 
 - **WHEN** the improvement extension is prepared for PR 282
 - **THEN** I07-I15 and F43 have per-ID evidence, P1/P2 regressions remain intact and source/native/CI results are separated from live acceptance
+
+### Requirement: REQ-IMP-REVIEW — Preserve private runtime and export boundaries
+
+PR review corrections MUST close descriptors on every failure path, preserve no-follow authority, use owner-only log/state access when no group reader is needed, and explicitly reject deprecated TLS protocols. Named template rendering MUST escape HTML/XML while preserving the quoting of non-HTML artifacts. Selected-device credentials MUST be delivered only through an explicitly requested private artifact, never standard output or diagnostics. No warning exclusion, dismissal or suppression substitutes for an observed correction.
+
+#### Scenario: Export one device and encounter unsafe output authority
+
+- **WHEN** a selected-device export is requested with a private output or an existing, linked or shared-writable destination
+- **THEN** the private new artifact contains only that device, or the operation refuses without replacement; stdout/stderr contain no credential values
+
+#### Scenario: Close on failure and preserve rendered consumers
+
+- **WHEN** descriptor inspection or publication fails, or a template contains special characters
+- **THEN** every acquired descriptor closes, foreign bytes remain unchanged, markup is escaped only for HTML/XML, and native protocol probes retain valid typed configuration

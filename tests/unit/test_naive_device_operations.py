@@ -144,7 +144,7 @@ def test_foreign_alias_authority_is_refused_before_encrypted_read(encrypted):
         module.operate(path, "issue", "first")
 
 
-@pytest.mark.parametrize("field", ["CLIENT", "SOPS_FILE"])
+@pytest.mark.parametrize("field", ["CLIENT", "SOPS_FILE", "OUTPUT"])
 @pytest.mark.parametrize("value_kind", ["make", "shell"])
 def test_make_keeps_device_and_document_arguments_literal(tmp_path, field, value_kind):
     marker = tmp_path / "expanded"
@@ -152,10 +152,15 @@ def test_make_keeps_device_and_document_arguments_literal(tmp_path, field, value
     arguments = {
         "CLIENT": "first",
         "SOPS_FILE": str(tmp_path / "absent.yaml"),
+        "OUTPUT": str(tmp_path / "selected.json"),
         field: value,
     }
     result = subprocess.run(
-        ["make", "naive-issue", *(f"{key}={item}" for key, item in arguments.items())],
+        [
+            "make",
+            "naive-readout" if field == "OUTPUT" else "naive-issue",
+            *(f"{key}={item}" for key, item in arguments.items()),
+        ],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -205,3 +210,226 @@ def test_all_profile_issuer_includes_optional_naive_in_same_encrypted_commit(enc
     assert document["client_registry"]["first"]["status"] == "issued"
     assert "password" not in result.stdout
     assert not list(path.parent.glob(".*.new-client.*"))
+
+
+def test_real_readout_publishes_only_selected_device_without_terminal_credentials(
+    encrypted, monkeypatch, capsys
+):
+    source, _ = encrypted
+    module.operate(source, "issue", "first")
+    module.operate(source, "issue", "second")
+    before = source.read_bytes()
+    clients = decrypt(source)["naive_secrets"]["clients"]
+    destination = source.parent / "selected.json"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "naive-client.py",
+            "readout",
+            "first",
+            "--file",
+            str(source),
+            "--output",
+            str(destination),
+        ],
+    )
+    assert module.main() == 0
+    output = capsys.readouterr()
+    assert json.loads(output.out) == {
+        "device": "first",
+        "action": "readout",
+        "output": str(destination),
+    }
+    for client in clients:
+        assert client["password"] not in output.out + output.err
+    assert "password" not in output.out + output.err
+    assert json.loads(destination.read_text()) == {
+        "server_name": "proxy.example.test",
+        **clients[0],
+    }
+    assert clients[1]["password"] not in destination.read_text()
+    assert destination.stat().st_mode & 0o777 == 0o600
+    assert destination.stat().st_nlink == 1
+    assert source.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "kind", ["file", "directory", "symlink", "dangling", "hardlink"]
+)
+def test_existing_output_authority_refuses_before_decryption(
+    tmp_path, monkeypatch, kind
+):
+    destination = tmp_path / "selected.json"
+    foreign = tmp_path / "foreign"
+    foreign.write_bytes(b"foreign-preserved")
+    if kind == "file":
+        destination.write_bytes(b"existing-preserved")
+    elif kind == "directory":
+        destination.mkdir()
+    elif kind == "hardlink":
+        os.link(foreign, destination)
+    else:
+        destination.symlink_to(foreign if kind == "symlink" else tmp_path / "absent")
+    before = destination.lstat()
+
+    def forbidden_read(*args):
+        pytest.fail("unsafe output must refuse before encrypted input is read")
+
+    monkeypatch.setattr(module, "operate", forbidden_read)
+    with pytest.raises(ValueError, match="already exists"):
+        module.export_readout(tmp_path / "source", "first", destination)
+    assert destination.lstat() == before
+    assert foreign.read_bytes() == b"foreign-preserved"
+
+
+@pytest.mark.parametrize("mode", [0o750, 0o755, 0o777])
+def test_shared_output_directory_refuses_before_decryption(tmp_path, monkeypatch, mode):
+    tmp_path.chmod(mode)
+    monkeypatch.setattr(
+        module, "operate", lambda *args: pytest.fail("unsafe output must not decrypt")
+    )
+    try:
+        with pytest.raises(ValueError, match="directory"):
+            module.export_readout(
+                tmp_path / "source", "first", tmp_path / "selected.json"
+            )
+        assert not (tmp_path / "selected.json").exists()
+    finally:
+        tmp_path.chmod(0o700)
+
+
+def test_partial_output_failure_removes_only_owned_artifact_and_closes_descriptors(
+    tmp_path, monkeypatch
+):
+    destination = tmp_path / "selected.json"
+    monkeypatch.setattr(
+        module,
+        "operate",
+        lambda *args: {"name": "first", "password": "synthetic-private-material"},
+    )
+    opened, closed = [], []
+    real_open, real_close, real_write = os.open, os.close, os.write
+
+    def record_open(*args, **kwargs):
+        fd = real_open(*args, **kwargs)
+        opened.append(fd)
+        return fd
+
+    def record_close(fd):
+        closed.append(fd)
+        return real_close(fd)
+
+    def partial_write(fd, data):
+        real_write(fd, data[:3])
+        raise OSError("synthetic write failure")
+
+    monkeypatch.setattr(module.os, "open", record_open)
+    monkeypatch.setattr(module.os, "close", record_close)
+    monkeypatch.setattr(module.os, "write", partial_write)
+    with pytest.raises(OSError, match="write failure"):
+        module.export_readout(tmp_path / "source", "first", destination)
+    assert not destination.exists()
+    assert sorted(opened) == sorted(closed)
+
+
+def test_swapped_output_preserves_foreign_replacement(tmp_path, monkeypatch):
+    destination = tmp_path / "selected.json"
+    monkeypatch.setattr(
+        module, "operate", lambda *args: {"password": "synthetic-private-material"}
+    )
+    real_write = os.write
+
+    def swap_after_write(fd, data):
+        written = real_write(fd, data)
+        destination.unlink()
+        destination.write_bytes(b"foreign-replacement-preserved")
+        return written
+
+    monkeypatch.setattr(module.os, "write", swap_after_write)
+    with pytest.raises(ValueError, match="authority changed"):
+        module.export_readout(tmp_path / "source", "first", destination)
+    assert destination.read_bytes() == b"foreign-replacement-preserved"
+
+
+def test_writable_output_ancestor_refuses_before_decryption(tmp_path, monkeypatch):
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    shared.chmod(0o777)
+    private = shared / "private"
+    private.mkdir(mode=0o700)
+    monkeypatch.setattr(
+        module, "operate", lambda *args: pytest.fail("unsafe ancestry must not decrypt")
+    )
+    with pytest.raises(ValueError, match="ancestry"):
+        module.export_readout(tmp_path / "source", "first", private / "selected.json")
+    assert not (private / "selected.json").exists()
+
+
+def test_tracked_output_path_refuses_before_decryption(monkeypatch):
+    monkeypatch.setattr(
+        module, "operate", lambda *args: pytest.fail("tracked output must not decrypt")
+    )
+    with pytest.raises(ValueError, match="tracked source"):
+        module.export_readout(ROOT / "absent", "first", ROOT / "selected-device.json")
+
+
+def test_source_directory_metadata_failure_closes_acquired_parent(
+    tmp_path, monkeypatch
+):
+    acquired, closed = [], []
+    real_open, real_close = os.open, os.close
+
+    def record_open(*args, **kwargs):
+        fd = real_open(*args, **kwargs)
+        acquired.append(fd)
+        return fd
+
+    def record_close(fd):
+        closed.append(fd)
+        return real_close(fd)
+
+    def fail_metadata(fd):
+        raise OSError("synthetic source metadata failure")
+
+    monkeypatch.setattr(module.os, "open", record_open)
+    monkeypatch.setattr(module.os, "close", record_close)
+    monkeypatch.setattr(module.os, "fstat", fail_metadata)
+    with pytest.raises(OSError, match="source metadata failure"):
+        module.operate(tmp_path / "source", "readout", "first")
+    assert len(acquired) == 1
+    assert acquired == closed
+
+
+def test_encrypted_candidate_cleanup_failure_still_closes_source_authority(
+    encrypted, monkeypatch
+):
+    path, _ = encrypted
+    before = path.read_bytes()
+    acquired, closed = [], []
+    real_open, real_close, real_sops = os.open, os.close, module.run_sops
+
+    def record_open(*args, **kwargs):
+        fd = real_open(*args, **kwargs)
+        acquired.append(fd)
+        return fd
+
+    def record_close(fd):
+        closed.append(fd)
+        return real_close(fd)
+
+    def fail_set(arguments, **kwargs):
+        if arguments[0] == "set":
+            raise RuntimeError("synthetic encrypted update failure")
+        return real_sops(arguments, **kwargs)
+
+    def fail_cleanup(*args, **kwargs):
+        raise OSError("synthetic cleanup failure")
+
+    monkeypatch.setattr(module.os, "open", record_open)
+    monkeypatch.setattr(module.os, "close", record_close)
+    monkeypatch.setattr(module, "run_sops", fail_set)
+    monkeypatch.setattr(Path, "unlink", fail_cleanup)
+    with pytest.raises(OSError, match="cleanup failure"):
+        module.operate(path, "issue", "first")
+    assert acquired[:3] == list(reversed(closed[-3:]))
+    assert path.read_bytes() == before

@@ -31,7 +31,7 @@ def test_round_trip_and_mode(tmp_path):
     content = "".join(f"{key}=7\n" for key in KEYS)
     assert invoke("write", path, content).returncode == 0
     assert invoke("read", path).stdout == content
-    assert path.stat().st_mode & 0o777 == 0o640
+    assert path.stat().st_mode & 0o777 == 0o600
     assert not list(tmp_path.glob(".watchdog-state-*"))
     before = path.read_bytes()
     assert invoke("write", path, "consecutive_fails=0\n").returncode == 2

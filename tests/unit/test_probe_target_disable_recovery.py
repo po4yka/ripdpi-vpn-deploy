@@ -6,7 +6,6 @@ import base64
 import json
 import os
 from pathlib import Path
-import signal
 import shutil
 import socket
 import ssl
@@ -181,6 +180,7 @@ def test_sigkill_after_both_vhosts_removed_then_actual_unchanged_disable_recover
 
     def probe():
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
         with socket.create_connection(("127.0.0.1", port), timeout=2) as plain:

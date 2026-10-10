@@ -96,19 +96,15 @@ def operate(path, action, name):
     parent = os.open(
         path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
     )
-    directory = os.fstat(parent)
-    if directory.st_uid != os.getuid() or directory.st_mode & 0o022:
-        os.close(parent)
-        raise ValueError("unsafe encrypted document directory")
-    flags = os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC
-    try:
-        lock = os.open(str(path) + ".new-client.lock", flags, 0o600)
-    except OSError:
-        os.close(parent)
-        raise
+    lock = None
     temporary = None
     source = None
     try:
+        directory = os.fstat(parent)
+        if directory.st_uid != os.getuid() or directory.st_mode & 0o022:
+            raise ValueError("unsafe encrypted document directory")
+        flags = os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC
+        lock = os.open(str(path) + ".new-client.lock", flags, 0o600)
         private_file(lock)
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         source = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
@@ -155,7 +151,12 @@ def operate(path, action, name):
             suffix=path.suffix,
             dir=path.parent,
         )
-        with os.fdopen(descriptor, "wb") as output:
+        try:
+            output = os.fdopen(descriptor, "wb")
+        except BaseException:
+            os.close(descriptor)
+            raise
+        with output:
             output.write(encrypted)
             output.flush()
             os.fsync(output.fileno())
@@ -180,12 +181,106 @@ def operate(path, action, name):
         os.fsync(parent)
         return {"device": name, "action": action, "clients": len(updated)}
     finally:
-        if temporary is not None:
-            Path(temporary).unlink(missing_ok=True)
-        if source is not None:
-            os.close(source)
-        os.close(lock)
-        os.close(parent)
+        try:
+            if temporary is not None:
+                Path(temporary).unlink(missing_ok=True)
+        finally:
+            try:
+                if source is not None:
+                    os.close(source)
+            finally:
+                try:
+                    if lock is not None:
+                        os.close(lock)
+                finally:
+                    os.close(parent)
+
+
+def export_readout(source, name, destination):
+    """Publish only the selected device to a new owner-only artifact."""
+    path = Path(os.path.abspath(destination))
+    path = path.parent.resolve(strict=True) / path.name
+    repository = Path(__file__).resolve().parent.parent
+    if path.is_relative_to(repository) and not path.is_relative_to(
+        repository / "secrets" / "local"
+    ):
+        raise ValueError("credential output must stay outside tracked source")
+    for ancestor in reversed(path.parent.parents):
+        metadata = ancestor.lstat()
+        trusted_sticky = metadata.st_uid == 0 and metadata.st_mode & stat.S_ISVTX
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or metadata.st_uid not in (0, os.getuid())
+            or (metadata.st_mode & 0o022 and not trusted_sticky)
+        ):
+            raise ValueError("unsafe credential output ancestry")
+    parent = os.open(
+        path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    )
+    descriptor = None
+    created = None
+    complete = False
+    try:
+        directory = os.fstat(parent)
+        if directory.st_uid != os.getuid() or stat.S_IMODE(directory.st_mode) != 0o700:
+            raise ValueError("unsafe credential output directory")
+        try:
+            os.stat(path.name, dir_fd=parent, follow_symlinks=False)
+        except FileNotFoundError:
+            pass  # Only a new destination may receive selected credentials.
+        else:
+            raise ValueError("credential output already exists")
+        material = operate(source, "readout", name)
+        descriptor = os.open(
+            path.name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+            0o600,
+            dir_fd=parent,
+        )
+        created = os.fstat(descriptor)
+        private_file(descriptor)
+        payload = memoryview((json.dumps(material) + "\n").encode("utf-8"))
+        while payload:
+            written = os.write(descriptor, payload)
+            if written <= 0:
+                raise OSError("credential publication failed")
+            payload = payload[written:]
+        os.fsync(descriptor)
+        current = os.stat(path.name, dir_fd=parent, follow_symlinks=False)
+        current_parent = os.stat(path.parent, follow_symlinks=False)
+        pinned_parent = os.fstat(parent)
+        if (
+            (current.st_dev, current.st_ino) != (created.st_dev, created.st_ino)
+            or (current_parent.st_dev, current_parent.st_ino)
+            != (directory.st_dev, directory.st_ino)
+            or pinned_parent.st_uid != os.getuid()
+            or stat.S_IMODE(pinned_parent.st_mode) != 0o700
+        ):
+            raise ValueError("credential output authority changed")
+        private_file(descriptor)
+        os.fsync(parent)
+        complete = True
+        return path
+    finally:
+        try:
+            if not complete and created is not None:
+                try:
+                    current = os.stat(path.name, dir_fd=parent, follow_symlinks=False)
+                except FileNotFoundError:
+                    pass  # A removed owned artifact needs no cleanup.
+                else:
+                    if (current.st_dev, current.st_ino) == (
+                        created.st_dev,
+                        created.st_ino,
+                    ):
+                        os.unlink(path.name, dir_fd=parent)
+                        os.fsync(parent)
+        finally:
+            try:
+                if descriptor is not None:
+                    os.close(descriptor)
+            finally:
+                os.close(parent)
 
 
 def main():
@@ -193,11 +288,27 @@ def main():
     parser.add_argument("action", choices=("issue", "revoke", "readout"))
     parser.add_argument("name")
     parser.add_argument("--file", required=True)
+    parser.add_argument("--output")
     args = parser.parse_args()
     if not NAME.fullmatch(args.name):
         parser.error("invalid device name")
+    if (args.action == "readout") != bool(args.output):
+        parser.error("readout requires --output; mutation commands do not accept it")
     try:
-        result = operate(args.file, args.action, args.name)
+        if args.action == "readout":
+            destination = export_readout(args.file, args.name, args.output)
+            result = {
+                "device": args.name,
+                "action": "readout",
+                "output": str(destination),
+            }
+        else:
+            operation = operate(args.file, args.action, args.name)
+            result = {
+                "device": args.name,
+                "action": args.action,
+                "clients": operation["clients"],
+            }
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
         print("Naive device operation refused or failed", file=sys.stderr)
         return 1

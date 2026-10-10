@@ -2,9 +2,9 @@
 task_id: ANS-1791586652330612
 change: ansible-role-audit-improvements
 commit_sha: 9a4177c7f1924ebd7077d33b666060ab4349b93f
-local: passed
+local: required
 local_evidence: Uninterrupted make check passed on the canonical role corrections; 5793 Python tests, 22 subtests, 56 Bats tests, 205 Rust tests and 152 snapshots. Actual hardened nonroot Naive and shared-nginx reconvergence plus receipt/unsafe-authority boundaries passed; independent reviews approve.
-remote_ci: passed
+remote_ci: required
 remote_ci_evidence: All 83 hosted checks passed for 9a4177c7f1924ebd7077d33b666060ab4349b93f; CI run 38021204879 and all three auxiliary workflows completed successfully.
 dry_run: not_applicable
 dry_run_evidence: Source-only scope; no real inventory or controller SSH transaction.
@@ -14,7 +14,7 @@ live: not_applicable
 live_evidence: Production convergence and private-state acceptance remain separate.
 client: not_applicable
 client_evidence: Local synthetic protocols are not external client or human acceptance.
-artifact: passed
+artifact: required
 artifact_evidence: Existing PR 282 contains the reviewed source extension and canonical role corrections at 9a4177c7f1924ebd7077d33b666060ab4349b93f.
 ---
 
@@ -24,6 +24,7 @@ artifact_evidence: Existing PR 282 contains the reviewed source extension and ca
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
+| REQ-IMP-REVIEW | ANS-1791605822012676 | Current PR inline threads and 46 open CodeQL findings; focused boundary/native proofs and exact-source zero-open scan pending | pending |
 | REQ-IMP-RETENTION | ANS-1791587032080262 | Versioned bounded grants, monotonic 30-day compaction, mixed-policy/clock/GC/capacity checks, no-scan invalid requests, count/byte archive contraction, actual retained-path rejection and maintenance sandbox | passed locally |
 | REQ-IMP-ACTIVATION | ANS-1791587032645227 | Native nginx SIGKILL and delayed/missing HUP worker adoption; exact candidate retirement; geodata paired activator and actual metadata read repair; unchanged probe-disable recovery | passed locally |
 | REQ-IMP-TLS-CONCURRENCY | ANS-1791587032645227 | Actual self-steal interleaved rotation/disable and seven-day memory TLS validation; locked pruning plus portable 70-rotation and 80-empty-scaffold regressions | passed locally |
@@ -37,9 +38,9 @@ artifact_evidence: Existing PR 282 contains the reviewed source extension and ca
 
 I01/I02/I04/I05/I06 corrections and I03 supported Unbound boundary are already
 in the reviewed P2 extension; their evidence remains in that change. I11
-same-inode recovery is present and receives permanent regression proof. Full
-DNS-Morph source matching the role has not been found; no implementation source
-has been supplied. Preserve the supported Unbound boundary qualification. No invented artifact or live/vendor claim is permitted.
+same-inode recovery is present and receives permanent regression proof. The operator selected the supported Unbound boundary for I03. Full DNS-Morph
+bridge functionality remains outside this PR capability; preserve that explicit
+limitation. No invented artifact or live/vendor claim is permitted.
 New implementation covers I07-I15 and F43. No archive or feature closure follows
 from a refusal-only or missing external-artifact state.
 

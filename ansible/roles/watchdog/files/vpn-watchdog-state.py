@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
+import fcntl
 import os
 import secrets
 import stat
@@ -39,28 +41,59 @@ def validate(content: str) -> str:
     return "".join(f"{key}={int(values[key])}\n" for key in KEYS)
 
 
-def operate(path: Path, operation: str) -> None:
-    directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    temporary = ".watchdog-state-" + secrets.token_hex(16)
+def stream(fd, mode):
     try:
+        return os.fdopen(fd, mode)
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def operate(path: Path, operation: str) -> None:
+    if not path.is_absolute() or ".." in path.parts:
+        raise PermissionError("unsafe budget path")
+    resources = ExitStack()
+    directory = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    resources.callback(os.close, directory)
+    temporary = ".watchdog-state-" + secrets.token_hex(16)
+    candidate_identity = None
+    try:
+        for name in path.parent.parts[1:]:
+            ancestor = os.fstat(directory)
+            trusted_sticky = ancestor.st_uid == 0 and ancestor.st_mode & stat.S_ISVTX
+            if ancestor.st_uid not in (0, os.geteuid()) or (
+                ancestor.st_mode & 0o022 and not trusted_sticky
+            ):
+                raise PermissionError("unsafe budget ancestry")
+            directory = os.open(
+                name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory
+            )
+            resources.callback(os.close, directory)
         parent = os.fstat(directory)
         if parent.st_uid != os.geteuid() or parent.st_mode & 0o022:
             raise PermissionError("unsafe budget directory")
+        fcntl.flock(directory, fcntl.LOCK_EX | fcntl.LOCK_NB)
         try:
             fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory)
         except FileNotFoundError:
             content = None
         else:
-            with os.fdopen(fd, "r") as source:
+            with stream(fd, "r") as source:
                 metadata = os.fstat(source.fileno())
                 if (
                     not stat.S_ISREG(metadata.st_mode)
                     or metadata.st_nlink != 1
                     or metadata.st_uid != os.geteuid()
-                    or metadata.st_mode & 0o027
+                    or stat.S_IMODE(metadata.st_mode) not in (0o600, 0o640)
                 ):
                     raise PermissionError("unsafe budget file")
                 content = validate(source.read(4097))
+                if stat.S_IMODE(metadata.st_mode) == 0o640:
+                    # Retire the exact previously canonical group grant only
+                    # after complete typed-state validation; counters never reset.
+                    os.fchmod(source.fileno(), 0o600)
+                    os.fsync(source.fileno())
+                    os.fsync(directory)
         if operation == "read":
             if content is not None:
                 sys.stdout.write(content)
@@ -69,22 +102,41 @@ def operate(path: Path, operation: str) -> None:
         fd = os.open(
             temporary,
             os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-            0o640,
+            0o600,
             dir_fd=directory,
         )
-        with os.fdopen(fd, "w") as destination:
-            os.fchmod(destination.fileno(), 0o640)
+        try:
+            created = os.fstat(fd)
+            candidate_identity = (created.st_dev, created.st_ino)
+        except BaseException:
+            os.close(fd)
+            raise
+        with stream(fd, "w") as destination:
+            os.fchmod(destination.fileno(), 0o600)
             destination.write(candidate)
             destination.flush()
             os.fsync(destination.fileno())
+        current = os.stat(temporary, dir_fd=directory, follow_symlinks=False)
+        if (current.st_dev, current.st_ino) != candidate_identity:
+            raise PermissionError("foreign budget candidate")
         os.replace(temporary, path.name, src_dir_fd=directory, dst_dir_fd=directory)
         os.fsync(directory)
     finally:
         try:
-            os.unlink(temporary, dir_fd=directory)
-        except FileNotFoundError:
-            pass
-        os.close(directory)
+            if candidate_identity is not None:
+                try:
+                    current = os.stat(
+                        temporary, dir_fd=directory, follow_symlinks=False
+                    )
+                except FileNotFoundError:
+                    # Successful writes rename the owned candidate away.
+                    pass
+                else:
+                    if (current.st_dev, current.st_ino) != candidate_identity:
+                        raise PermissionError("foreign budget candidate")
+                    os.unlink(temporary, dir_fd=directory)
+        finally:
+            resources.close()
 
 
 def main() -> int:

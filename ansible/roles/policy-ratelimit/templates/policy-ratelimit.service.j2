@@ -10,6 +10,8 @@ Type=simple
 # the seccomp surface inside @system-service.
 User=root
 Group=root
+# Read only the explicitly authorized Xray log group; no DAC bypass capability.
+SupplementaryGroups={{ xray_runtime_group | default('xray') }}
 ExecStart=/usr/local/bin/policy-ratelimit.py
 Restart=on-failure
 RestartSec=5s

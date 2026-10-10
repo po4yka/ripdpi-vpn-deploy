@@ -80,6 +80,11 @@ the expected output of every Jinja render against fixtures. Drift is
 visible in PR diffs.
 Role-render tests reuse `scripts/template_render.py` for named-template escaping
 and Ansible filters. Local HTTPS fixtures explicitly require TLS 1.2 or newer.
+HTML/XML names include their compound `.html.j2`/`.xml.j2` suffixes; markup
+values escape, while embedded JSON remains parseable and script-safe. JSON,
+shell, unit, nginx and explicitly named text fragments retain artifact quoting
+and exact credential characters. Recovery conditions use the same environment
+policy even though expression evaluation does not produce markup.
 
 **Client configs need an upstream parser gate** — CI installs a sha256-pinned
 official sing-box binary and checks the complete standard emitter output.

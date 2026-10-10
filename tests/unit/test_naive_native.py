@@ -19,9 +19,10 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
-import jinja2
-from ansible.plugins.filter.core import FilterModule
+from jinja2 import FileSystemLoader
 import pytest
+
+from template_render import render_template, template_environment
 
 ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.native_runtime
@@ -107,11 +108,10 @@ def test_exact_naive_composite_accepts_tcp_and_disables_http3(tmp_path):
             "probe_resistance_secret": "p2-local-test-secret",
         },
     }
-    env = jinja2.Environment()
-    env.filters.update(FilterModule().filters())
-    template = env.from_string(
-        (ROOT / "ansible/roles/naive/templates/caddy.json.j2").read_text()
+    env = template_environment(
+        FileSystemLoader(str(ROOT / "ansible/roles/naive/templates"))
     )
+    template = env.get_template("caddy.json.j2")
     config.write_text(template.render(**values))
     document = json.loads(config.read_text())
     servers = document["apps"]["http"]["servers"]
@@ -170,6 +170,7 @@ def test_exact_naive_composite_accepts_tcp_and_disables_http3(tmp_path):
         context = ssl.create_default_context(
             cafile=str(tmp_path / "server.fullchain.pem")
         )
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.set_alpn_protocols(["http/1.1"])
         for _ in range(100):
             try:
@@ -478,19 +479,19 @@ def test_naive_unacknowledged_revocation_is_adopted_by_actual_unit():
                 probe_resistance_secret="native-synthetic-secret",
             ),
         )
-        env = jinja2.Environment()
-        env.filters.update(FilterModule().filters())
-        template = env.from_string(
-            (ROOT / "ansible/roles/naive/templates/caddy.json.j2").read_text()
+        env = template_environment(
+            FileSystemLoader(str(ROOT / "ansible/roles/naive/templates"))
         )
+        template = env.get_template("caddy.json.j2")
         config.write_text(template.render(**values))
         config.chmod(0o640)
         for authority in (config, base / "server.key", base / "server.fullchain.pem"):
             authority.chmod(0o640)
             os.chown(authority, 0, account.pw_gid)
-        canonical_unit = env.from_string(
-            (ROOT / "ansible/roles/naive/templates/caddy-naive.service.j2").read_text()
-        ).render(**values)
+        canonical_unit = render_template(
+            ROOT / "ansible/roles/naive/templates/caddy-naive.service.j2",
+            dict(**values),
+        )
         unit_file.write_text(
             canonical_unit.replace("User=naive", "User=" + principal)
             .replace("Group=naive", "Group=" + principal)
@@ -516,7 +517,7 @@ def test_naive_unacknowledged_revocation_is_adopted_by_actual_unit():
         assert access_log.read_bytes() == b"synthetic prior log\n"
         assert access_log.stat().st_uid == account.pw_uid
         assert access_log.stat().st_gid == account.pw_gid
-        assert access_log.stat().st_mode & 0o777 == 0o640
+        assert access_log.stat().st_mode & 0o777 == 0o600
         assert json.loads(run(prepare_log))["changed"] is False
         # Neither preparation nor its read-only preflight follows an unexpected
         # inode or repairs unsafe directory metadata.
@@ -617,6 +618,7 @@ def test_naive_unacknowledged_revocation_is_adopted_by_actual_unit():
             != previous_pid
         )
         context = ssl.create_default_context(cafile=str(base / "server.fullchain.pem"))
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
         with context.wrap_socket(
             socket.create_connection(("127.0.0.1", port), 3),
             server_hostname="localhost",

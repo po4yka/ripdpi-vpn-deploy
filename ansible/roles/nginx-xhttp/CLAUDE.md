@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+Publication change reporting compares recaptured authority under the writer
+lock. The preliminary snapshot validates recoverability; check mode computes
+its own predicted difference without runtime publication.
+
 **Direct only by default** — `vpn.enable_cdn_front` is false in baseline.
 The role ships nginx pointed at a public CA cert for the operator's domain,
 listening on `nginx_xhttp_public_port` (default 8443), reverse-proxying the

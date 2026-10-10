@@ -13,6 +13,8 @@ import time
 import uuid
 import pytest
 
+from template_render import render_template
+
 ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.native_runtime
 
@@ -99,23 +101,15 @@ def test_explicit_account_authenticates_only_the_forced_key_command():
         )
         planner = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(planner)
-        from jinja2 import Environment, StrictUndefined
 
-        intent = (
-            Environment(undefined=StrictUndefined, autoescape=False)
-            .from_string(
-                (
-                    ROOT
-                    / "ansible/roles/baseline/templates/sshd_config.d-hardening.conf.j2"
-                ).read_text()
-            )
-            .render(
+        intent = render_template(
+            ROOT / "ansible/roles/baseline/templates/sshd_config.d-hardening.conf.j2",
+            dict(
                 ansible_user="deploy",
                 baseline_ssh_extra_allowed_users=[user],
                 security_controls={"ssh_allow_tcp_forwarding": True},
-            )
-            .encode()
-        )
+            ),
+        ).encode()
         context = {
             "user": user,
             "host": "sentinel.example.test",

@@ -2,6 +2,12 @@
 
 ## Design decisions
 
+Budget files are owner-only 0600. Under the parent directory inode lock, a
+known owned single-link 0640 budget migrates only after complete typed payload
+validation, preserving bytes/counters and fsyncing file and directory. Unsafe
+ancestry, foreign files and malformed budgets refuse without repair or reset.
+Descriptor cleanup includes stream-wrapping and temporary-unlink failures.
+
 **Server validation uses the installed runtime environment** — the shared Xray validator resolves `XRAY_LOCATION_ASSET` from the loaded Xray unit before testing its server configuration, including bundled-asset profiles. Canary client invocation remains separate.
 
 **Two-level supervision** — systemd is layer 1 (Restart=on-failure). The

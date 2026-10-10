@@ -26,6 +26,11 @@
   changed_when: false
   when: vpn.enable_policy_ratelimit | default(false)
 
+- name: Ensure explicit Xray log reader group before service activation
+  ansible.builtin.group:
+    name: "{{ xray_runtime_group | default('xray') }}"
+    system: true
+
 - name: Install daemon script
   ansible.builtin.template:
     src: policy-ratelimit.py.j2

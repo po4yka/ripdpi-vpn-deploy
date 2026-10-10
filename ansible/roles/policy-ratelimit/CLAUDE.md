@@ -2,6 +2,14 @@
 
 ## Design decisions
 
+The root policy unit bounds capabilities to NET_ADMIN, so root UID alone cannot
+read a dedicated Xray user's logs. Its sole extra reader grant is membership in
+the configured Xray log group; validated 0640 logs admit that reader while
+other identities remain denied. No DAC bypass capability is added.
+The role ensures the named reader group without changing an existing GID, so
+an independently enabled detector can still run and report unavailable input
+when Xray is disabled or its log has not appeared.
+
 **Bans blackhole/rejected abuse, NOT external probes** — the historical
 `probe-ratelimit` name implied it throttles REALITY active-probing. It
 cannot: on failed auth `xtls/reality`'s `func Server` proxies the prober to

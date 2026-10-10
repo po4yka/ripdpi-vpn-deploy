@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+A request deadline may race a connection already closed by its worker. That
+expected shutdown error is intentionally ignored; worker cleanup and bounded
+capacity release still run. This does not change the component retirement.
+
 The receiver accepts only compact schema-1 HMAC pulses with an advancing
 sequence and bounded expiry. It has neither fleet credentials nor primary
 Telegram authority. Its secondary token enters only through `LoadCredential`.

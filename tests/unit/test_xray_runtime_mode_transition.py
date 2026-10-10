@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
-import json
 import os
 from pathlib import Path
 import pwd
@@ -18,7 +17,7 @@ import subprocess
 import sys
 import tempfile
 
-import jinja2
+from template_render import render_fragment
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -47,14 +46,16 @@ def test_archive_source_archive_preserves_exact_receipt_bytes_and_current():
         identity_expr = derive["ansible.builtin.set_fact"][
             "_xray_runtime_release_identity"
         ]
-        environment = jinja2.Environment()
-        environment.filters["bool"] = bool
         pin = {"version": "vfixture", "source_commit": "a" * 40}
-        archive_name = environment.from_string(identity_expr).render(
-            xray=pin, xray_runtime_build_from_source=False
+        archive_name = render_fragment(
+            "runtime-identity.txt",
+            identity_expr,
+            {"xray": pin, "xray_runtime_build_from_source": False},
         )
-        source_name = environment.from_string(identity_expr).render(
-            xray=pin, xray_runtime_build_from_source=True
+        source_name = render_fragment(
+            "runtime-identity.txt",
+            identity_expr,
+            {"xray": pin, "xray_runtime_build_from_source": True},
         )
         assert (
             archive_name == "vfixture-archive"

@@ -12,8 +12,9 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-from jinja2 import Environment, StrictUndefined
 import pytest
+
+from template_render import render_template
 
 ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.native_runtime
@@ -80,12 +81,10 @@ def test_bearer_rate_and_upstream_failures_keep_only_categorical_diagnostics():
         "nginx_xhttp": {"server_name": "unused.example.test"},
         "vpn": {"share_bundles": [{"token": "synthetic"}]},
     }
-    environment = Environment(undefined=StrictUndefined, autoescape=False)
-    site = environment.from_string(
-        (
-            ROOT / "ansible/roles/subscription-host/templates/subscription.conf.j2"
-        ).read_text()
-    ).render(**context)
+    site = render_template(
+        ROOT / "ansible/roles/subscription-host/templates/subscription.conf.j2",
+        dict(**context),
+    )
     site = (
         site.replace(
             "/etc/nginx/tls/subscription-host/server.fullchain.pem", str(certificate)
@@ -93,11 +92,10 @@ def test_bearer_rate_and_upstream_failures_keep_only_categorical_diagnostics():
         .replace("/etc/nginx/tls/subscription-host/server.key", str(key))
         .replace("/var/log/nginx/", str(base) + "/")
     )
-    zone = environment.from_string(
-        (
-            ROOT / "ansible/roles/subscription-host/templates/rate-limit.conf.j2"
-        ).read_text()
-    ).render(**context)
+    zone = render_template(
+        ROOT / "ansible/roles/subscription-host/templates/rate-limit.conf.j2",
+        dict(**context),
+    )
     config = base / "nginx.conf"
     config.write_text(
         f"pid {base}/nginx.pid; error_log {base}/global.error.log warn; events {{}} http {{ access_log {base}/global.access.log; {zone} {site} }}"
