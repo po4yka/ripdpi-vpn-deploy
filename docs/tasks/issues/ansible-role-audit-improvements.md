@@ -2,7 +2,7 @@
 id: ANS-1791586652330612
 title: Implement remaining Ansible role audit improvements
 kind: feature
-status: doing
+status: review
 area: ansible
 priority: medium
 risk: high
@@ -14,15 +14,8 @@ openspec_change: ansible-role-audit-improvements
 created: 2026-10-10
 updated: 2026-10-10
 related_tasks: []
+status_detail: Reviewed source and canonical role corrections are in PR 282; uninterrupted local gate and all 83 exact-source hosted checks passed. Provider, live client and human acceptance remain outside scope; missing full morphology source remains qualified.
 ---
-
-## Goal
-
-Describe the observable outcome.
-
-## Acceptance criteria
-
-Define verifiable completion criteria.
 
 ## Goal
 

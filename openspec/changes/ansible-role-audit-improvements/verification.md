@@ -1,11 +1,11 @@
 ---
 task_id: ANS-1791586652330612
 change: ansible-role-audit-improvements
-commit_sha: null
+commit_sha: 9a4177c7f1924ebd7077d33b666060ab4349b93f
 local: passed
 local_evidence: Uninterrupted make check passed on the canonical role corrections; 5793 Python tests, 22 subtests, 56 Bats tests, 205 Rust tests and 152 snapshots. Actual hardened nonroot Naive and shared-nginx reconvergence plus receipt/unsafe-authority boundaries passed; independent reviews approve.
-remote_ci: required
-remote_ci_evidence: Pending exact-source hosted checks on existing PR 282.
+remote_ci: passed
+remote_ci_evidence: All 83 hosted checks passed for 9a4177c7f1924ebd7077d33b666060ab4349b93f; CI run 38021204879 and all three auxiliary workflows completed successfully.
 dry_run: not_applicable
 dry_run_evidence: Source-only scope; no real inventory or controller SSH transaction.
 staging: not_applicable
@@ -14,8 +14,8 @@ live: not_applicable
 live_evidence: Production convergence and private-state acceptance remain separate.
 client: not_applicable
 client_evidence: Local synthetic protocols are not external client or human acceptance.
-artifact: required
-artifact_evidence: Pending reviewed source extension in existing PR 282.
+artifact: passed
+artifact_evidence: Existing PR 282 contains the reviewed source extension and canonical role corrections at 9a4177c7f1924ebd7077d33b666060ab4349b93f.
 ---
 
 # Verification
@@ -31,7 +31,7 @@ artifact_evidence: Pending reviewed source extension in existing PR 282.
 | REQ-IMP-METRICS | ANS-1791587033777473 | Permanent actual same-inode truncate/replacement regressions; admitted counters above log cap; native four-socket IPv4/IPv6 loopback and approved local Tailnet exporter scrapes; both sender jobs share normalized endpoint | passed locally |
 | REQ-IMP-RECOVERY-INTENT | ANS-1791587034315130 | Existing replay suite plus durable outbox regressions: failed recovery, fresh pulses, restart, stale completion and matching successful acknowledgement | passed locally |
 | REQ-IMP-AUDIT-GATE | ANS-1791587034859002 | Actual distro Lynis machine report plus disabled/unavailable/stale/malformed/warning gate failures; actual WARP fixture playbook idempotence, connection/trace refusals and reconvergence | passed locally |
-| REQ-IMP-ACCEPTANCE | ANS-1791587035398569 | I01-I15/F43 evidence, prior safety, complete local/hosted gates and PR | pending |
+| REQ-IMP-ACCEPTANCE | ANS-1791587035398569 | I01-I15/F43 evidence with missing-artifact qualifications, prior safety, uninterrupted local gate, independent reviews, 83 passing hosted checks and existing PR 282 | passed source and CI |
 
 ## Coverage and scope
 
