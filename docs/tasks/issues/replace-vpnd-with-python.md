@@ -2,7 +2,7 @@
 id: VPD-1791615284178957
 title: Replace vpnd with Python while preserving commands and security
 kind: feature
-status: review
+status: done
 area: vpnd
 priority: high
 risk: high
@@ -15,6 +15,9 @@ created: 2026-10-10
 updated: 2026-10-10
 related_tasks: []
 status_detail: PR 283 merged after all nine required checks passed; OpenSpec archived and specs synchronized. Approved historical-sample fixture remediation passed enabled Linux Molecule, full local gate and all nine exact-source checks at ee5be722; ready for terminal closure.
+closed_at: "2026-10-10T17:03:19Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: PR 283 merged at 6a606bf4 after all nine required checks passed; approved archive/spec sync and fixture repair accepted at ee5be722 by full Rust-free make check, 297 vpnd cases, all 206 baseline functions, 53 fixture cases, real enabled Linux Molecule and all nine required hosted checks. Independent security and archival review approved; no live rollout claimed.
 ---
 
 ## Goal
