@@ -449,12 +449,15 @@ def test_capture_timeout_terminates_real_make_child_and_grandchild(tmp_path):
                 try:
                     await capture
                 except asyncio.CancelledError:
+                    # Teardown requested cancellation and waited for owned
+                    # process cleanup before accepting its acknowledgement.
                     pass
             if pids.exists():
                 for pid in pids.read_text().splitlines():
                     try:
                         os.kill(int(pid), signal.SIGKILL)
                     except ProcessLookupError:
+                        # Successful cancellation already removed this child.
                         pass
 
     asyncio.run(exercise())
@@ -464,6 +467,32 @@ def test_capture_preserves_non_newline_control_separators():
     async def exercise():
         output = await Cmd.new("sh").args(["-c", "printf 'a\\034b\\r\\nc\\r'"]).capture()
         assert output.stdout == "a\x1cb\nc\r\n"
+
+    asyncio.run(exercise())
+
+
+def test_make_isolates_parent_control_environment_before_json_capture(tmp_path, monkeypatch):
+    inherited = {
+        "MAKELEVEL": "1",
+        "MAKEFLAGS": "--print-directory",
+        "MFLAGS": "--print-directory",
+        "GNUMAKEFLAGS": "--print-directory",
+        "MAKEFILES": str(tmp_path / "parent.mk"),
+    }
+    for key, value in inherited.items():
+        monkeypatch.setenv(key, value)
+    (tmp_path / "parent.mk").write_text("$(error inherited parent Make input)\n")
+    (tmp_path / "Makefile").write_text('probe:\n\t@printf \'%s\\n\' \'{"status":"ok"}\'\n')
+
+    async def exercise():
+        for detailed in (False, True):
+            command = make.target(fake_ctx(tmp_path), "probe")
+            output = await (command.capture_detailed() if detailed else command.capture())
+            assert output.rc == 0
+            assert output.stdout == '{"status":"ok"}\n'
+            assert json.loads(output.stdout) == {"status": "ok"}
+            assert output.stderr == ""
+        assert {key: os.environ[key] for key in inherited} == inherited
 
     asyncio.run(exercise())
 
@@ -512,12 +541,15 @@ def test_owned_capture_reserves_exited_leader_until_pipe_cleanup(tmp_path):
                 try:
                     await task
                 except asyncio.CancelledError:
+                    # Teardown requested cancellation and waited for owned
+                    # process cleanup before accepting its acknowledgement.
                     pass
             if pids.exists():
                 for pid in pids.read_text().splitlines():
                     try:
                         os.kill(int(pid), signal.SIGKILL)
                     except ProcessLookupError:
+                        # Successful cancellation already removed this child.
                         pass
 
     asyncio.run(exercise())

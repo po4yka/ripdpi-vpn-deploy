@@ -193,8 +193,10 @@ def test_total_timeout_bounds_a_trickling_header():
                         conn.sendall(bytes([byte]))
                         time.sleep(0.05)
                 except OSError:
+                    # Killing the timed-out client closes the fixture's active socket.
                     pass
         except (TimeoutError, OSError):
+            # Fixture shutdown closes the listener even if the client never connected.
             pass
         finally:
             listener.close()

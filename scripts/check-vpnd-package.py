@@ -43,7 +43,7 @@ def verify_installed_parser(command, environment, directory):
     ):
         result = subprocess.run(
             [str(command), *arguments], cwd=directory, env=environment,
-            capture_output=True,
+            capture_output=True, check=False,
         )
         if result.returncode != 2:
             raise ValueError("installed parser accepted an invalid baseline scope")

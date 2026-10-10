@@ -57,4 +57,5 @@ def write_private(path, payload):
         try:
             os.unlink(temporary)
         except FileNotFoundError:
+            # Successful replacement already consumed the temporary name.
             pass

@@ -13,7 +13,7 @@ async def execute(args):
     if args.command == "completions":
         result = module.run(args)
         if hasattr(result, "__await__"):
-            await result
+            return await result
         return
     if args.command == "update" and args.explain:
         print(
@@ -45,10 +45,12 @@ async def dispatch(args):
             try:
                 await task
             except asyncio.CancelledError:
+                # The signal handler requested cancellation; group cleanup
+                # finishes before the task acknowledges this exception.
                 pass
             return interrupted.result()
-        await task
-        return 0
+        result = await task
+        return 0 if result is None else result
     finally:
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.remove_signal_handler(sig)

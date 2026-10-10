@@ -6,7 +6,7 @@ import os
 import subprocess
 import sys
 
-LAUNCHER = Path(__file__).resolve().parents[2] / "scripts/vpnd.py"
+LAUNCHER = Path(__file__).resolve().parents[2] / "scripts/vpnd-cli.py"
 
 
 def invoke(root, args):

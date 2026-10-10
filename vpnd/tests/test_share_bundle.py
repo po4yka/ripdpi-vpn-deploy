@@ -1,4 +1,5 @@
-from urllib.parse import unquote
+from html.parser import HTMLParser
+from urllib.parse import unquote, urlsplit
 from vpnd.commands.share import build_sub_urls, urlencode
 from vpnd.pages.recipient import RecipientCtx, render
 from vpnd.pages.qr import write_svg
@@ -40,9 +41,27 @@ def test_urlencode_is_reversible():
 
 # Rust test: vpnd/tests/share_bundle.rs::share_bundle_directory_structure_index_html
 def test_share_bundle_directory_structure_index_html(tmp_path):
+    class Links(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.hrefs = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "a":
+                self.hrefs.extend(value for name, value in attrs if name == "href")
+
     path = tmp_path / "index.html"
-    path.write_text(render(recipient()))
-    assert path.is_file() and "phone" in path.read_text() and "vpn.example.com" in path.read_text()
+    ctx = recipient()
+    path.write_text(render(ctx))
+    assert path.is_file()
+    html = path.read_text()
+    assert "phone" in html
+    links = Links()
+    links.feed(html)
+    assert ctx.subscription_url in links.hrefs
+    subscription = next(urlsplit(href) for href in links.hrefs if href == ctx.subscription_url)
+    assert subscription.hostname == "vpn.example.com"
+    assert subscription.scheme == "https" and subscription.path == "/sub/phone"
 
 
 # Rust test: vpnd/tests/share_bundle.rs::share_bundle_qr_svg_is_valid_xml

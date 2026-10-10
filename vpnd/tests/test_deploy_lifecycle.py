@@ -15,7 +15,7 @@ from vpnd.runner import Cmd
 from vpnd.state import Registry, Host
 
 ROOT = Path(__file__).resolve().parents[2]
-LAUNCHER = ROOT / "scripts/vpnd.py"
+LAUNCHER = ROOT / "scripts/vpnd-cli.py"
 
 
 def fake_ctx(root, explain=False):

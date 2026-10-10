@@ -44,6 +44,10 @@ def target(ctx, name):
         validate_kv(key, value)
     return (
         Cmd.new("make")
+        # Each invocation is an independent operator transaction. Inherited
+        # recursion flags add directory banners to structured stdout; other
+        # Make controls can inject files, flags or parent command variables.
+        .env_remove("MAKELEVEL", "MAKEFLAGS", "MAKEFILES", "MFLAGS", "GNUMAKEFLAGS")
         .args([name, f"ENV={ctx.env}", f"PROVIDER={ctx.provider}", f"SECRETS_FILE={secrets}"])
         .sensitive(secrets)
         .sensitive(str(ctx.sops_file))

@@ -49,7 +49,7 @@ From the repository root, use the pinned toolchain and hash-locked tooling:
 ```bash
 mise install
 mise exec -- python3 -m pip install --require-hashes --no-deps -r requirements.txt
-mise exec -- python3 scripts/vpnd.py --help
+mise exec -- python3 scripts/vpnd-cli.py --help
 make vpnd-test vpnd-lint vpnd-parity-check
 make vpnd-package-check vpnd-dependency-check
 ```

@@ -32,6 +32,7 @@ class Cmd:
         self.program = str(program)
         self.argv = []
         self.environment = []
+        self.removed_environment = set()
         self.directory = None
         self.description = None
         self.secrets = []
@@ -51,6 +52,10 @@ class Cmd:
 
     def env(self, key, value):
         self.environment.append((str(key), str(value)))
+        return self
+
+    def env_remove(self, *keys):
+        self.removed_environment.update(map(str, keys))
         return self
 
     def cwd(self, value):
@@ -106,6 +111,8 @@ class Cmd:
             return 0, b"", b""
         owned = capture and self.policy == CapturePolicy.OWNED_PROCESS_GROUP
         environment = os.environ.copy()
+        for key in self.removed_environment:
+            environment.pop(key, None)
         environment.update(self.environment)
         # Popen has no asyncio child watcher: the leader stays unreaped while
         # a descendant holds a pipe, reserving its PID/group ID until cleanup.
@@ -170,6 +177,8 @@ class Cmd:
             elif child.returncode is None:
                 child.kill()
         except ProcessLookupError:
+            # Exiting children can disappear before the cancellation signal;
+            # the owning worker still reaps its reserved leader below.
             pass
 
     async def _execute(self, explain, capture, detailed):
@@ -190,8 +199,13 @@ class Cmd:
         def work():
             try:
                 result = self._worker(stopped, capture, detailed, spawn_lock)
-            except BaseException as error:
+            except Exception as error:
                 loop.call_soon_threadsafe(complete, None, error)
+            except BaseException as error:
+                # Wake the caller for every fatal worker exit, then preserve
+                # thread termination instead of swallowing the exception.
+                loop.call_soon_threadsafe(complete, None, error)
+                raise
             else:
                 loop.call_soon_threadsafe(complete, result, None)
 

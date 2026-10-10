@@ -142,7 +142,7 @@ repos:
 
       - id: vpnd-python-lint
         name: vpnd Python lint
-        entry: python3 -m ruff check vpnd/src/vpnd vpnd/tests scripts/vpnd.py
+        entry: python3 -m ruff check vpnd/src/vpnd vpnd/tests scripts/vpnd-cli.py
         language: system
         pass_filenames: false
         files: ^vpnd/

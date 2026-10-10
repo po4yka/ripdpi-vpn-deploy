@@ -214,6 +214,8 @@ def test_file_gates_never_follow_concurrently_swapped_symlinks(tmp_path):
             try:
                 harden(current)
             except ValueError:
+                # Concurrent replacement intentionally produces refused
+                # symlink generations; only accepted regular files matter.
                 pass
     finally:
         running.clear()

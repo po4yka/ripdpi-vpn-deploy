@@ -30,7 +30,8 @@ refresh the baseline inventory if upstream changes before execution.
 ### Package and entry points
 
 Use `vpnd/pyproject.toml`, `vpnd/src/vpnd/`, `vpnd/tests/test_*.py` and a
-repository entry point `scripts/vpnd.py`. Keep command handlers, context,
+repository entry point `scripts/vpnd-cli.py`. Its distinct module name avoids
+shadowing the `vpnd` package when other repository tests import script modules. Keep command handlers, context,
 runner, protected files, registry, pages and matrix analysis as distinct modules
 corresponding to the existing boundaries. A single Python command definition
 feeds the standard-library parser, help, man pages and completion generation.
@@ -142,7 +143,7 @@ permanent fallback nor rewrites shared history or persisted configuration.
 
 ## Contracts and ownership
 
-- CLI/package lane: `vpnd/`, `scripts/vpnd.py`, Python dependency inputs/locks.
+- CLI/package lane: `vpnd/`, `scripts/vpnd-cli.py`, Python dependency inputs/locks.
 - Safety lane: Python runner/protected-file/context/registry modules and their
   matching tests; no Terraform/Ansible controller behavior changes.
 - Artifact lane: recipient template, QR, doctor/docs outputs and tests. Keep

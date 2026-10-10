@@ -106,6 +106,7 @@ class Fixture:
                 try:
                     os.kill(int(pid), signal.SIGKILL)
                 except ProcessLookupError:
+                    # Successful cancellation may already have reclaimed this fixture job.
                     pass
 
 

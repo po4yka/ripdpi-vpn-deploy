@@ -6,6 +6,9 @@
 to documented Make targets. Reconverge resolves exact inventory keys for the
 selected environment/provider before the deployment controller's dry-run,
 deploy and verify calls. `--explain` shows a redacted plan without executing it.
+Each child Make invocation removes inherited recursion, flags and injected
+Makefile controls. Structured output stays free of directory banners, and the
+parent process environment remains unchanged.
 
 **One command definition.** `src/vpnd/cli.py` owns the standard-library parser,
 global-flag precedence, help, completions and all twenty man pages. Add commands
@@ -14,10 +17,13 @@ lives in `src/vpnd/__main__.py`. Completions are a context-free synchronous
 handler. Test actual parser behavior and update operator guidance with changes.
 
 **One package version.** `pyproject.toml` is the version authority. The
-repository launcher is `scripts/vpnd.py`; installed execution reads distribution
+repository launcher is `scripts/vpnd-cli.py`; installed execution reads distribution
 metadata. Release packaging copies reviewed tracked source/docs and bundles
 Jinja templates plus parser-generated manuals. Python 3.12, exact hashes and
 an isolated offline installation replace the native executable distribution.
+SBOM generation uses its own hash-pinned tool environment from
+`sbom-requirements.txt`. Its optional schema-format libraries must never enter
+the operator validation environment or change signed-policy acceptance.
 
 **State retains its formats.** The local TOML registry resolves host aliases to
 environment/provider/IPs. TOML reads use the standard library; writes use

@@ -356,15 +356,13 @@ def test_real_offline_install_uses_packaged_assets_outside_checkout(tmp_path):
     artifact = distribution / ("vpnd-" + installer.current_target() + ".tar.gz")
     prefix = tmp_path / "prefix"
     binary = installer.install(artifact, prefix)
-    assert (
-        subprocess.check_output(
-            [str(binary), "--version"],
-            text=True,
-            cwd=tmp_path,
-            env=installer.installation_environment(),
-        ).strip()
-        == "vpnd " + VERSION
+    installed_version = subprocess.check_output(
+        [str(binary), "--version"],
+        text=True,
+        cwd=tmp_path,
+        env=installer.installation_environment(),
     )
+    assert installed_version.strip() == "vpnd " + VERSION
     for name, _ in render_page_set():
         assert (prefix / "share/man/man1" / (name + ".1")).is_file()
     runtime = scaffold(tmp_path / "isolated")

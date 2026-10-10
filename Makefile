@@ -1175,7 +1175,7 @@ vpnd-parity-check:
 	python3 scripts/check-vpnd-test-transfer.py
 
 vpnd-lint:
-	python3 -m ruff check vpnd/src/vpnd vpnd/tests scripts/vpnd.py scripts/build-vpnd-package.py scripts/check-vpnd-package.py scripts/check-vpnd-test-transfer.py scripts/install-vpnd.py scripts/vpnd-sbom.py scripts/check-vpnd-dependencies.py scripts/check-vpnd-mutation-results.py scripts/prepare-vpnd-mutation-tree.py
+	python3 -m ruff check vpnd/src/vpnd vpnd/tests scripts/vpnd-cli.py scripts/build-vpnd-package.py scripts/check-vpnd-package.py scripts/check-vpnd-test-transfer.py scripts/install-vpnd.py scripts/vpnd-sbom.py scripts/check-vpnd-dependencies.py scripts/check-vpnd-mutation-results.py scripts/prepare-vpnd-mutation-tree.py
 	python3 -m mypy --config-file vpnd/pyproject.toml vpnd/src/vpnd
 
 

@@ -34,7 +34,8 @@ def load_cache(path, now):
         ):
             return cache
     except (OSError, ValueError, KeyError, TypeError):
-        pass
+        # Missing or malformed advisory cache entries trigger a fresh check.
+        return None
     return None
 
 
@@ -51,7 +52,8 @@ def check_update(path, now, fetch):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(tomli_w.dumps({"checked_at": now, "latest_tag": tag}))
     except OSError:
-        pass
+        # A read-only cache directory must not discard the fetched release tag.
+        return tag
     return tag
 
 
@@ -90,6 +92,7 @@ def _fetch_network(url, request_timeout):
                 try:
                     socket_handle.shutdown(socket.SHUT_RDWR)
                 except OSError:
+                    # A completed request may close the socket before the timer fires.
                     pass
 
             watchdog = threading.Timer(remaining, expire)
@@ -185,6 +188,7 @@ def fetch_latest_tag_with_timeout(url, request_timeout):
             try:
                 os.killpg(child.pid, signal.SIGKILL)
             except ProcessLookupError:
+                # The worker may exit between the state check and group termination.
                 pass
             child.communicate()
         raise

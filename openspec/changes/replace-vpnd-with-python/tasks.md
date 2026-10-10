@@ -11,7 +11,7 @@ observed checks; the portfolio advances at most to review.
 
 - Implementation starts in a dedicated worktree after explicit authorization.
 - Core contributor owns parser/context/runner/state/secrets, operational commands,
-  `scripts/vpnd.py` and their test files. Artifact contributor owns
+  `scripts/vpnd-cli.py` and their test files. Artifact contributor owns
   share/doctor/docs/update/completions/probe-matrix/pages and their test files.
   The primary integration owner owns packaging, conftest/test-transfer gate,
   dependencies, CI/release/installer and shared consumers. Contributors preserve

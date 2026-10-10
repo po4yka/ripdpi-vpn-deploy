@@ -99,7 +99,9 @@ def test_production_registry_io_roundtrip_and_fail_closed_errors(tmp_path, monke
     assert list(loaded.hosts) == ["alpha", "middle", "zeta"]
     assert loaded.get("alpha") == host
     loaded.upsert("alpha", Host("prod", "vultr"))
-    assert loaded.remove("middle") is not None and loaded.remove("missing") is None
+    removed = loaded.remove("middle")
+    missing = loaded.remove("missing")
+    assert removed is not None and missing is None
     loaded.save()
     loaded = Registry.load()
     assert (
