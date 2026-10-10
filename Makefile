@@ -1060,6 +1060,11 @@ install-hooks:
 native-naive-build:
 	./scripts/build-native-naive-test.sh
 
+# Exact source-pinned AWG and checksum-pinned Hysteria parser fixtures.
+.PHONY: native-transport-semantics-build
+native-transport-semantics-build:
+	TRANSPORT_NATIVE_ISOLATED=1 ./scripts/build-native-transport-semantics.sh
+
 # Explicit Linux-only lane; run as root in a disposable runner/container.
 test-native-runtime:
 	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 || { echo "native runtime tests require a disposable Linux root environment" >&2; exit 1; }

@@ -14,6 +14,17 @@
 
 ## Design decisions
 
+**Shared transport semantics use real boundaries** —
+`test_transport_semantics.py` covers accepted inputs, typed malformed values,
+ambiguous client-name refusal, routed versus device claims, key reuse, prefix
+collisions, privacy and actual
+localhost Ansible preflight in normal/check mode. `test_transport_semantics_native.py`
+requires an isolated Linux root/TUN host, exact source-commit AWG ELF outputs,
+pinned Xray with adjacent GeoIP and checksum-pinned Hysteria. It fails missing
+prerequisites rather than skipping. Native synthetic credentials are valid
+runtime keys/UUIDs; source placeholders cannot prove parser acceptance.
+
+
 **Review regressions preserve first-use boundaries** — invalid CI configuration
 publishes categorical results before deployment; blue-green waits for bootstrap
 after pinning and refuses before recovery instructions when readiness fails.

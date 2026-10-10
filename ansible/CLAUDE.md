@@ -2,6 +2,14 @@
 
 ## Design decisions
 
+**Transport semantic admission precedes mutation** — site and credential
+rotation import `playbooks/tasks/transport-input-preflight.yml` before host
+changes. Enabled Xray, Hysteria and AWG roles use that same controller-side
+entry for standalone invocation. It delegates to localhost without privilege,
+executes read-only in check mode, and sends private values only on stdin under
+`no_log`. Disabled-role reconciliation bypasses unused transport inputs.
+
+
 **Exporter endpoint verification shares installation admission** — `verify.yml`
 gathers only local network facts and reuses monitoring's literal private endpoint
 validator. Custom ports and IPv6 targets match the sender's scrape jobs; public,

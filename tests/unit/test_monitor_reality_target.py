@@ -455,7 +455,7 @@ def test_healthy_target_change_creates_new_baseline_without_alert(monitor_env):
     fixture.write_text(json.dumps(data))
 
     changed = _report(_run(monitor_env))
-    assert changed["verdict"] == "ok"
+    assert changed["verdict"] == "ok", changed
     assert changed["baseline_created"] is True
     assert changed["target_fingerprint"] != original["target_fingerprint"]
     assert not _alerts(monitor_env)

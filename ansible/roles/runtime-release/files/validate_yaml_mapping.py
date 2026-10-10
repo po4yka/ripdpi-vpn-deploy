@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
+from pathlib import Path
 import os
 import re
 import stat
@@ -90,9 +92,18 @@ def _validate_hysteria(document: dict) -> None:
     _string(bandwidth, "up")
     _string(bandwidth, "down")
     masquerade = _mapping(document, "masquerade")
-    if masquerade.get("type") != "proxy":
-        raise ValueError("Hysteria masquerade type is invalid")
-    _string(_mapping(masquerade, "proxy"), "url")
+    # The same source is installed beside this helper; repository execution
+    # selects its canonical scripts location instead of maintaining a copy.
+    shared = Path(__file__).with_name("transport_semantics.py")
+    if not shared.is_file():
+        shared = Path(__file__).resolve().parents[4] / "scripts" / "transport_semantics.py"
+    spec = importlib.util.spec_from_file_location("transport_semantics", shared)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    proxy = _mapping(masquerade, "proxy")
+    if module.hysteria_errors({"masquerade_type": masquerade.get("type"),
+                               "masquerade_url": proxy.get("url")}):
+        raise ValueError("Hysteria masquerade is invalid")
     quic = _mapping(document, "quic")
     for key in (
         "initStreamReceiveWindow",

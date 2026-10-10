@@ -67,7 +67,25 @@ def test_site_requires_exact_node_then_runs_transaction_after_stack():
     converge, transaction = plays
     assert converge["serial"] == transaction["serial"] == 1
     assert converge["any_errors_fatal"] is transaction["any_errors_fatal"] is True
-    first = converge["pre_tasks"][0]
+    pre_tasks = converge["pre_tasks"]
+    node_guards = [
+        task
+        for task in pre_tasks
+        if "ansible_play_hosts_all | length == 1"
+        in task.get("ansible.builtin.assert", {}).get("that", [])
+    ]
+    assert len(node_guards) == 1
+    first = node_guards[0]
+    assert "always" in first["tags"]
+    assert pre_tasks[0]["ansible.builtin.import_tasks"] == (
+        "tasks/transport-input-preflight.yml"
+    )
+    for preceding in pre_tasks[:pre_tasks.index(first)]:
+        assert (
+            preceding.get("ansible.builtin.import_tasks")
+            == "tasks/transport-input-preflight.yml"
+            or "ansible.builtin.assert" in preceding
+        ), "exact-node ownership must precede host mutation or role execution"
     assert (
         "ansible_play_hosts_all | length == 1"
         in first["ansible.builtin.assert"]["that"]

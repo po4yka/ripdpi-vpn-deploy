@@ -2,6 +2,13 @@
 
 ## Design decisions
 
+**Explicit cohorts require admitted membership** — the shared transport
+preflight runs before helper installation or runtime publication. Every cohort
+has a unique name and explicit nonempty, unique references to known clients.
+Schema, emission and liveness consume the same semantic rules; invalid inputs
+never rely on later native parser failure to protect the existing service.
+
+
 New log inodes start private at 0600. Only after both no-follow single-link
 entries validate does provisioning grant the explicit Xray group read access.
 The capability-bounded policy reader joins that group without DAC bypass.

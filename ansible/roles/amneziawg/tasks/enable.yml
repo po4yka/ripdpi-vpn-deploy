@@ -4,6 +4,11 @@
 # Userspace path is preferred for portability across kernels. The kernel module
 # variant ships separately and is not assumed here.
 
+- name: Preflight amneziawg input semantics
+  ansible.builtin.import_tasks: "{{ role_path }}/../../playbooks/tasks/transport-input-preflight.yml"
+  vars:
+    transport_input_sections: [awg]
+
 - name: Pre-flight - AmneziaWG source refs and commits are pinned
   ansible.builtin.assert:
     that:

@@ -9,6 +9,7 @@ Two threats this catches:
 """
 from __future__ import annotations
 
+import base64
 import json
 import importlib.util
 import shutil
@@ -165,7 +166,7 @@ def filled():
         "amneziawg_tools_version": "v1.0.20241018",
         "amneziawg_tools_commit": "c0b400c6dfc046f5cae8f3051b14cb61686fcf55",
         "amneziawg_secrets": {
-            "server_private_key": "PRIVATEKEYPRIVATEKEYPRIVATEKEY",
+            "server_private_key": base64.b64encode(bytes([8]) * 32).decode(),
             "jc": 4,
             "jmin": 40,
             "jmax": 70,
@@ -178,8 +179,8 @@ def filled():
             "peers": [
                 {
                     "name": "phone",
-                    "public_key": "PUBLICKEYPUBLICKEYPUBLIC",
-                    "preshared_key": "PSKPSKPSKPSKPSKPSKPSKPSK",
+                    "public_key": 'CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk=',
+                    "preshared_key": 'CgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgo=',
                     "allowed_ips": "10.66.66.2/32",
                 }
             ],
@@ -848,6 +849,7 @@ def _validate_cli_with_selector(doc, tmp_path, *, enabled):
     (root / "secrets").mkdir()
     (root / "ansible" / "group_vars").mkdir(parents=True)
     shutil.copyfile(VALIDATOR, root / "scripts" / "validate-secrets.py")
+    shutil.copyfile(REPO_ROOT / "scripts" / "transport_semantics.py", root / "scripts" / "transport_semantics.py")
     shutil.copyfile(SCHEMA, root / "secrets" / "schema.json")
     (root / "ansible" / "group_vars" / "all.yml").write_text(
         yaml.safe_dump(
@@ -970,7 +972,7 @@ def _registry_entry(**overrides):
         "token_hash_prefix": "9f86d081",
         "token_expires": "2026-12-31",
         "awg_public_key_fingerprint": "REPLACE_" + "WITH_AWG_KEY_FINGERPRINT",
-        "awg_private_key": "PRIVATEKEYPRIVATEKEYPRIVATEKEY",
+        "awg_private_key": base64.b64encode(bytes([8]) * 32).decode(),
         "last_payload_identity": {"source": "", "outputs": ""},
     }
     entry.update(overrides)
@@ -1046,7 +1048,7 @@ def test_registry_semantic_mismatch_fails_naming_device(filled, tmp_path):
 def test_registry_semantic_match_passes(filled, tmp_path):
     import hashlib
 
-    pubkey = "PUBLICKEYPUBLICKEYPUBLIC"
+    pubkey = 'CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk='
     good = "sha256:" + hashlib.sha256(pubkey.encode()).hexdigest()[:16]
     filled["client_registry"] = {
         "phone": _registry_entry(awg_public_key_fingerprint=good)

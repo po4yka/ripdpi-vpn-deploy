@@ -2,6 +2,14 @@
 
 ## Design decisions
 
+**Hysteria semantic validation has one companion source** — the Hysteria
+consumer installs `scripts/transport_semantics.py` beside the shared YAML
+validator. Repository execution resolves that canonical source; installed
+execution imports its sibling. The same proxy/origin rules apply before
+mutation and before config publication. Other profiles do not import an
+unneeded Hysteria companion.
+
+
 **Shared YAML syntax gate** — `files/validate_yaml_mapping.py` is the bounded,
 duplicate-key rejecting validator for transport formats that have no safe
 native check command. Consumers install the same helper and select a strict

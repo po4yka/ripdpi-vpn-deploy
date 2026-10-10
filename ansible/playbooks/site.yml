@@ -17,6 +17,10 @@
     - "{{ vpn_secrets_file }}"
 
   pre_tasks:
+    - name: Preflight enabled transport input semantics
+      ansible.builtin.import_tasks: tasks/transport-input-preflight.yml
+      tags: [always]
+
     - name: Require exact-node controller ownership before convergence
       tags: [always]
       ansible.builtin.assert:

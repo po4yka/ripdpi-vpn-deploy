@@ -2,6 +2,15 @@
 
 ## Design decisions
 
+**Effective inputs are admitted before build or retirement** — shared
+controller semantics validate bounded ordered junk, distinct headers, 1–15
+character interface names, canonical key material and noncolliding peer CIDRs.
+Device peers use host prefixes; broader routing needs explicit
+`address_kind: routed`, which is not an issued device identity. Root/peer key
+reuse and per-device collisions fail with categorical private diagnostics.
+The existing S3/S4 zero guard and ownership-aware disable behavior remain intact.
+
+
 A private bounded instance record owns retirement. Convergence stops and disables
 only recorded obsolete interfaces before removing their exact configuration;
 unrelated WireGuard/AWG instances stay untouched. Missing historical records

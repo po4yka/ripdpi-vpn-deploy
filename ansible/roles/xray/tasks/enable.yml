@@ -2,6 +2,11 @@
 # P0 primary transport: Xray with VLESS+REALITY+XTLS-Vision.
 # Pinning, symlink rollback, validate-before-restart, .prev backup.
 
+- name: Preflight xray input semantics
+  ansible.builtin.import_tasks: "{{ role_path }}/../../playbooks/tasks/transport-input-preflight.yml"
+  vars:
+    transport_input_sections: [xray]
+
 - name: Install the shared Xray validation entry point
   ansible.builtin.import_tasks: validation-helper.yml
 

@@ -33,6 +33,8 @@ from pathlib import Path
 
 import yaml
 
+from transport_semantics import transport_errors
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = REPO_ROOT / "secrets" / "schema.json"
 DEFAULT_TARGET = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
@@ -267,7 +269,7 @@ def _observability_rotation_errors(
 
 
 def _semantic_errors(
-    doc: dict, *, observability_enabled: bool = False
+    doc: dict, *, observability_enabled: bool = False, allow_placeholders: bool = True
 ) -> list[tuple[str, str]]:
     """Validate relationships and network values JSON Schema cannot express."""
     errors: list[tuple[str, str]] = []
@@ -289,57 +291,7 @@ def _semantic_errors(
     for key in ("name", "uuid", "short_id"):
         if _duplicate_values(xray_clients, key):
             errors.append(("xray.clients", f"duplicate {key}"))
-    cohorts = xray.get("cohorts") or []
-    if _duplicate_values(cohorts, "name"):
-        errors.append(("xray.cohorts", "duplicate name"))
-    for cohort_index, cohort in enumerate(cohorts):
-        if not isinstance(cohort, dict):
-            continue
-        refs = cohort.get("clients") or []
-        if len(refs) != len(set(refs)):
-            errors.append((f"xray.cohorts.{cohort_index}.clients", "duplicate client reference"))
-        for name in refs:
-            if name not in client_names:
-                errors.append((f"xray.cohorts.{cohort_index}.clients", "unknown xray client reference"))
-
-    for path, peers in [("amneziawg_secrets.peers", (doc.get("amneziawg_secrets") or {}).get("peers") or [])]:
-        for key in ("name", "public_key"):
-            if _duplicate_values(peers, key):
-                errors.append((path, f"duplicate {key}"))
-        for index, peer in enumerate(peers):
-            if not isinstance(peer, dict):
-                continue
-            try:
-                ipaddress.ip_network(peer.get("allowed_ips", ""), strict=False)
-            except ValueError:
-                errors.append((f"{path}.{index}.allowed_ips", "must be a valid IPv4 or IPv6 CIDR"))
-
-    instances = (doc.get("amneziawg_secrets") or {}).get("instances") or []
-    if _duplicate_values(instances, "name"):
-        errors.append(("amneziawg_secrets.instances", "duplicate name"))
-    if _duplicate_values(instances, "listen_port"):
-        errors.append(("amneziawg_secrets.instances", "duplicate listen_port"))
-    for index, instance in enumerate(instances):
-        if not isinstance(instance, dict):
-            continue
-        for field in ("address_v4", "address_v6"):
-            if field not in instance:
-                continue
-            try:
-                ipaddress.ip_network(instance[field], strict=False)
-            except ValueError:
-                errors.append((f"amneziawg_secrets.instances.{index}.{field}", "must be a valid IPv4 or IPv6 CIDR"))
-        peers = instance.get("peers") or []
-        for key in ("name", "public_key"):
-            if _duplicate_values(peers, key):
-                errors.append((f"amneziawg_secrets.instances.{index}.peers", f"duplicate {key}"))
-        for peer_index, peer in enumerate(peers):
-            if not isinstance(peer, dict):
-                continue
-            try:
-                ipaddress.ip_network(peer.get("allowed_ips", ""), strict=False)
-            except ValueError:
-                errors.append((f"amneziawg_secrets.instances.{index}.peers.{peer_index}.allowed_ips", "must be a valid IPv4 or IPv6 CIDR"))
+    errors.extend(transport_errors(doc, allow_placeholders=allow_placeholders))
 
     for path, clients in [("hysteria.clients", (doc.get("hysteria") or {}).get("clients") or [])]:
         if _duplicate_values(clients, "name"):

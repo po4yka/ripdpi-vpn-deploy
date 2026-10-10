@@ -1,0 +1,23 @@
+---
+- name: Validate enabled transport semantics before mutation
+  ansible.builtin.command:
+    argv: >-
+      {{ [ansible_playbook_python,
+          (role_path ~ '/../../../scripts/transport_semantics.py') if role_path is defined
+          else (playbook_dir ~ '/../../scripts/transport_semantics.py')]
+         + (transport_input_sections | default([]) | map('regex_replace', '^', '--section=') | list) }}
+    stdin: >-
+      {{ {'secrets': {'xray': xray | default({}),
+                      'amneziawg_secrets': amneziawg_secrets | default({}),
+                      'hysteria': hysteria | default({})},
+          'context': {'vpn': vpn | default({}),
+                      'amneziawg': amneziawg | default({}),
+                      'amneziawg_cohort': amneziawg_cohort | default({}),
+                      'public_site_canonical_url': public_site_canonical_url | default(none)}} | to_json }}
+    stdin_add_newline: false
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+  no_log: true
+  tags: [always]

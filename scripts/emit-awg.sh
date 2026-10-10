@@ -71,6 +71,8 @@ SECRETS_TMP="${WORK}/secrets.json"
 sops --decrypt --output-type json "$SOPS_FILE" > "$SECRETS_TMP"
 chmod 0600 "$SECRETS_TMP"
 
+python3 "${REPO_ROOT}/scripts/transport_semantics.py" --section awg --check-top-level-awg < "$SECRETS_TMP"
+
 # ---------------------------------------------------------------------------
 # Resolve peer entry from secrets
 # ---------------------------------------------------------------------------
@@ -79,6 +81,11 @@ peer_json="$(jq --arg name "$CLIENT_NAME" \
 
 if [[ -z "$peer_json" || "$peer_json" == "null" ]]; then
   echo "no AmneziaWG peer named '$CLIENT_NAME' in amneziawg_secrets.peers in ${SOPS_FILE}" >&2
+  exit 1
+fi
+
+if [[ "$(jq -r '.address_kind // "device"' <<< "$peer_json")" != "device" ]]; then
+  echo "selected routed peer is not a device profile" >&2
   exit 1
 fi
 

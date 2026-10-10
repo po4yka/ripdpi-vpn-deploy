@@ -1,19 +1,20 @@
 ---
-id: "SCT-1791617687019287"
-title: "Reject incoherent transport inputs before runtime mutation"
-kind: "bug"
-status: "backlog"
-area: "secrets"
-priority: "high"
-risk: "high"
-owner: "primary"
-parent: "EPC-1791618453830051"
+id: SCT-1791617687019287
+title: Reject incoherent transport inputs before runtime mutation
+kind: bug
+status: review
+area: secrets
+priority: high
+risk: high
+owner: primary
+parent: EPC-1791618453830051
 blocked_by: []
-spec_mode: "required"
-openspec_change: "transport-input-semantics"
-created: "2026-10-10"
-updated: "2026-10-10"
+spec_mode: required
+openspec_change: transport-input-semantics
+created: 2026-10-10
+updated: 2026-10-10
 related_tasks: []
+status_detail: Local full source gate, exact native cases, complete affected Molecule and independent review passed; hosted exact-SHA CI pending.
 ---
 
 ## Goal

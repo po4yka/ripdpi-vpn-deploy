@@ -2,6 +2,26 @@
 
 ## Design decisions
 
+**Transport relationships share one validator** — `transport_semantics.py`
+validates globally unique client names and explicit cohort membership, effective
+AWG headers/bounds/interface,
+canonical 32-byte keys and noncolliding device or explicitly routed prefixes,
+and owned HTTPS proxy masquerade. CLI requests use bounded JSON on stdin;
+diagnostics contain fixed field paths and categories, never values. Enrollment
+checks before generation and before encrypted publication; emitters and liveness
+use the same rules. Disabled transports are excluded by resolved profile intent.
+A broad prefix requires `address_kind: routed` and cannot be emitted as a device.
+Named cohorts load only through validated repository-owned technical slugs.
+
+**Native semantic fixtures use pinned real inputs** —
+`build-native-transport-semantics.sh` provisions exact-commit AWG source outputs
+and checksum-verified Hysteria only in the isolated Linux amd64 fixture cache.
+It uses pinned Go with two jobs, rejects tracked source drift and never installs
+onto a live service path. The native lane verifies source commits, compiled ELF
+outputs, actual parser/startup behavior and owned cleanup; fixtures and missing
+prerequisites cannot become a native pass.
+
+
 **Naive devices have independent encrypted identities** — `naive-client.py`
 centralizes the three explicit Make verbs for issuance, revocation, and selected
 credential readout. Selected readout requires an explicit new `0600` output in a
