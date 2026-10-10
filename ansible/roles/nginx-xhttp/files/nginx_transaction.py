@@ -170,6 +170,46 @@ def wait_adoption(unit, previous=None):
         time.sleep(0.05)
 
 
+def boot_clock():
+    boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+    if not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", boot):
+        raise TransactionError("runtime-clock")
+    ticks = (
+        time.clock_gettime_ns(time.CLOCK_BOOTTIME) * os.sysconf("SC_CLK_TCK") // 10**9
+    )
+    return boot, ticks
+
+
+def inactive_absence_receipt(unit, fingerprint):
+    raw = command(
+        ["systemctl", "show", unit, "--property=LoadState,ActiveState,MainPID"]
+    )
+    values = dict(line.split("=", 1) for line in raw.splitlines() if "=" in line)
+    if (
+        values.get("LoadState") not in {"loaded", "masked", "not-found"}
+        or values.get("ActiveState") != "inactive"
+        or values.get("MainPID") != "0"
+    ):
+        raise TransactionError("runtime-not-inactive")
+    boot, ticks = boot_clock()
+    return {
+        "schema": 1,
+        "fingerprint": fingerprint,
+        "active": False,
+        "boot_id": boot,
+        "inactive_after_ticks": ticks,
+    }
+
+
+def stable_generation(unit, generation):
+    if (
+        not generation[1]
+        or nginx_master(unit) != generation[0]
+        or nginx_workers(generation[0]) != generation[1]
+    ):
+        raise TransactionError("runtime-identity")
+
+
 def set_enabled(unit, desired):
     current = service_state(unit)["unit_file_state"]
     if (
@@ -837,9 +877,12 @@ def publish(document):
         request(document)
         receipt = state / (document["owner"] + ".activated.json")
         receipt_data = private_json(receipt)
+        receipt_fields = {"schema", "fingerprint", "active"}
+        if isinstance(receipt_data, dict) and receipt_data.get("active") is False:
+            receipt_fields |= {"boot_id", "inactive_after_ticks"}
         if receipt_data is not None and (
             not isinstance(receipt_data, dict)
-            or set(receipt_data) != {"schema", "fingerprint", "active"}
+            or set(receipt_data) != receipt_fields
             or type(receipt_data["schema"]) is not int
             or receipt_data["schema"] != 1
             or type(receipt_data["active"]) is not bool
@@ -847,6 +890,24 @@ def publish(document):
             or not re.fullmatch(r"[0-9a-f]{64}", receipt_data["fingerprint"])
         ):
             raise TransactionError("unsafe-receipt")
+        if receipt_data is not None and receipt_data["active"] is False:
+            if (
+                not isinstance(receipt_data["boot_id"], str)
+                or not re.fullmatch(
+                    r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}",
+                    receipt_data["boot_id"],
+                )
+                or type(receipt_data["inactive_after_ticks"]) is not int
+                or not 0 <= receipt_data["inactive_after_ticks"] <= 2**63 - 1
+            ):
+                raise TransactionError("unsafe-receipt")
+            boot, ticks = boot_clock()
+            if (
+                receipt_data["boot_id"] == boot
+                and receipt_data["inactive_after_ticks"] > ticks
+            ):
+                raise TransactionError("unsafe-receipt")
+        prior_receipt = capture(receipt)
         expected_receipt = {
             "schema": 1,
             "fingerprint": fingerprint(logical_document),
@@ -866,16 +927,44 @@ def publish(document):
             != previous[row["path"]]
             for row in document["files"]
         )
+        previous_service = service_state(document["unit"])
+        inactive_adoption = None
+        if (
+            not changed
+            and previous_service["active"]
+            and all(row["kind"] == "absent" for row in document["files"])
+            and receipt_data is not None
+            and receipt_data["active"] is False
+            and receipt_data["fingerprint"] == expected_receipt["fingerprint"]
+            and receipt_data["boot_id"] == boot_clock()[0]
+        ):
+            master = nginx_master(document["unit"])
+            if int(master[1]) > receipt_data["inactive_after_ticks"]:
+                if wait_adoption(document["unit"]) != master[0]:
+                    raise TransactionError("runtime-identity")
+                inactive_adoption = (master, nginx_workers(master))
+                stable_generation(document["unit"], inactive_adoption)
+                activation_due = False
         if (
             not changed
             and not document["activate_inactive"]
             and document["desired_enabled"] is None
+            and not document["credential_root"]
             and not recovered
         ):
-            if not activation_due or not service_state(document["unit"])["active"]:
+            if not previous_service["active"]:
+                if all(row["kind"] == "absent" for row in document["files"]):
+                    persist(
+                        receipt,
+                        inactive_absence_receipt(
+                            document["unit"], expected_receipt["fingerprint"]
+                        ),
+                    )
                 compact_empty_releases(logical_document)
                 return {"status": "unchanged", "changed": False}
-        previous_service = service_state(document["unit"])
+            if not activation_due and inactive_adoption is None:
+                compact_empty_releases(logical_document)
+                return {"status": "unchanged", "changed": False}
         if previous_service["unit_file_state"] in {"masked", "masked-runtime"} and (
             document["activate_inactive"] or document["desired_enabled"] is not None
         ):
@@ -894,14 +983,31 @@ def publish(document):
         persist(pending, snapshot)
         with candidate_workspace(state / snapshot["candidate"]) as candidate:
             bindings = []
+            staged_roots = set()
             for index, root in enumerate(roots):
+                if not os.path.lexists(root):
+                    # A disabled owner may never have created its payload tree.
+                    # Its absence is already the complete candidate: do not
+                    # manufacture a host mount point merely to adopt nginx.
+                    if any(
+                        row["kind"] != "absent"
+                        and Path(row["path"]).is_relative_to(root)
+                        for row in document["files"]
+                    ) or (
+                        document["credential_root"]
+                        and Path(document["credential_root"]).is_relative_to(root)
+                    ):
+                        raise TransactionError("missing-root")
+                    continue
+                safe(root)
                 target = candidate / str(index)
                 shutil.copytree(root, target, symlinks=True)
                 bindings.append({"source": str(target), "target": str(root)})
+                staged_roots.add(root)
             for row in document["files"]:
                 path = Path(row["path"])
                 root = next((root for root in roots if path.is_relative_to(root)), None)
-                if root is not None:
+                if root in staged_roots:
                     stage = candidate / str(roots.index(root)) / path.relative_to(root)
                     # A copied symlink may be replaced, never traversed during writes.
                     apply(
@@ -996,6 +1102,8 @@ def publish(document):
                     wait_adoption(document["unit"], reload_previous)
                 if snapshot["active"] or document["activate_inactive"]:
                     command(["systemctl", "is-active", "--quiet", document["unit"]])
+                    if inactive_adoption is not None:
+                        stable_generation(document["unit"], inactive_adoption)
                     main_pid = command(
                         [
                             "systemctl",
@@ -1023,6 +1131,8 @@ def publish(document):
                         ]
                     )
                     command(["systemctl", "is-active", "--quiet", document["unit"]])
+                    if inactive_adoption is not None:
+                        stable_generation(document["unit"], inactive_adoption)
             except Exception:
                 try:
                     if not snapshot["active"]:
@@ -1066,7 +1176,20 @@ def publish(document):
         persist(pending, snapshot)
         compact_empty_releases(logical_document)
         if snapshot["active"] or document["activate_inactive"]:
+            if inactive_adoption is not None:
+                stable_generation(document["unit"], inactive_adoption)
             persist(receipt, expected_receipt)
+            if inactive_adoption is not None:
+                try:
+                    stable_generation(document["unit"], inactive_adoption)
+                except (OSError, TransactionError):
+                    # Keep the prior disk-only witness if runtime changed while
+                    # promotion was being committed. The journal remains for
+                    # recovery; this call cannot acknowledge that generation.
+                    if private_json(receipt) != expected_receipt:
+                        raise TransactionError("foreign-receipt") from None
+                    apply(receipt, prior_receipt, [])
+                    raise TransactionError("runtime-identity") from None
         else:
             clear(receipt)
         clear(pending)

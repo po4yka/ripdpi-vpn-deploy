@@ -372,6 +372,7 @@ def test_naive_unacknowledged_revocation_is_adopted_by_actual_unit():
     ).resolve()
     assert binary.is_file()
     suffix = uuid.uuid4().hex[:12]
+    principal = "p2-naive-" + suffix
     base = Path("/var/lib") / ("p2-naive-adoption-" + suffix)
     base.mkdir(mode=0o700)
     unit = "p2-naive-adoption-" + suffix + ".service"
@@ -383,10 +384,57 @@ def test_naive_unacknowledged_revocation_is_adopted_by_actual_unit():
 
     def run(argv):
         result = subprocess.run(argv, capture_output=True, timeout=20)
-        assert result.returncode == 0, "actual native command failed"
+        if result.returncode:
+            state = subprocess.run(
+                [
+                    "systemctl",
+                    "show",
+                    unit,
+                    "--property=ActiveState,SubState,Result,ExecMainStatus",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            ).stdout
+            journal = subprocess.run(
+                ["journalctl", "-u", unit, "-n", "12", "--output=cat", "--no-pager"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            ).stdout
+            categories = [
+                label
+                for label in (
+                    "permission denied",
+                    "address already in use",
+                    "Failed at step",
+                )
+                if label in journal
+            ]
+            assert (
+                result.returncode == 0
+            ), f"actual native command failed: {state}; categories={categories}"
         return result.stdout
 
     try:
+        run(
+            [
+                "useradd",
+                "--system",
+                "--user-group",
+                "--home-dir",
+                str(base / "home"),
+                principal,
+            ]
+        )
+        import pwd
+
+        account = pwd.getpwnam(principal)
+        base.chmod(0o750)
+        os.chown(base, 0, account.pw_gid)
+        for directory in (base / "home", base / "logs"):
+            directory.mkdir(mode=0o750)
+            os.chown(directory, account.pw_uid, account.pw_gid)
         run(
             [
                 "openssl",
@@ -413,7 +461,7 @@ def test_naive_unacknowledged_revocation_is_adopted_by_actual_unit():
             port = reserve.getsockname()[1]
         values = dict(
             naive=dict(
-                log_dir=str(base),
+                log_dir=str(base / "logs"),
                 config_dir=str(base),
                 decoy_root=str(base),
                 bind_port=port,
@@ -437,10 +485,80 @@ def test_naive_unacknowledged_revocation_is_adopted_by_actual_unit():
         )
         config.write_text(template.render(**values))
         config.chmod(0o640)
+        for authority in (config, base / "server.key", base / "server.fullchain.pem"):
+            authority.chmod(0o640)
+            os.chown(authority, 0, account.pw_gid)
+        canonical_unit = env.from_string(
+            (ROOT / "ansible/roles/naive/templates/caddy-naive.service.j2").read_text()
+        ).render(**values)
         unit_file.write_text(
-            f"[Service]\nType=simple\nExecStart={binary} run --config {config}\n"
+            canonical_unit.replace("User=naive", "User=" + principal)
+            .replace("Group=naive", "Group=" + principal)
+            .replace("/usr/local/bin/caddy-naive", str(binary))
+            .replace("/var/lib/naive", str(base / "home"))
         )
         unit_file.chmod(0o644)
+        run(["setcap", "cap_net_bind_service=+ep", str(binary)])
+        # Actual root validation creates the inode that formerly prevented the
+        # canonical dedicated-user service from starting. Preserve its bytes.
+        run([str(binary), "validate", "--config", str(config)])
+        access_log = base / "logs/access.log"
+        assert access_log.stat().st_uid == 0
+        access_log.write_bytes(b"synthetic prior log\n")
+        prepare_log = [
+            sys.executable,
+            str(ROOT / "ansible/roles/naive/files/prepare_log.py"),
+            str(access_log),
+            "--user",
+            principal,
+        ]
+        assert json.loads(run(prepare_log))["changed"] is True
+        assert access_log.read_bytes() == b"synthetic prior log\n"
+        assert access_log.stat().st_uid == account.pw_uid
+        assert access_log.stat().st_gid == account.pw_gid
+        assert access_log.stat().st_mode & 0o777 == 0o640
+        assert json.loads(run(prepare_log))["changed"] is False
+        # Neither preparation nor its read-only preflight follows an unexpected
+        # inode or repairs unsafe directory metadata.
+        prior_log = access_log.read_bytes()
+        access_log.unlink()
+        target = base / "foreign.log"
+        target.write_bytes(b"unrelated bytes")
+        access_log.symlink_to(target)
+        for suffix in ([], ["--inspect"]):
+            refused = subprocess.run(
+                prepare_log + suffix, capture_output=True, timeout=10
+            )
+            assert refused.returncode == 1
+            assert target.read_bytes() == b"unrelated bytes"
+            assert access_log.is_symlink()
+        access_log.unlink()
+        os.link(target, access_log)
+        assert (
+            subprocess.run(prepare_log, capture_output=True, timeout=10).returncode == 1
+        )
+        assert target.read_bytes() == b"unrelated bytes"
+        access_log.unlink()
+        access_log.write_bytes(prior_log)
+        access_log.chmod(0o666)
+        assert (
+            subprocess.run(prepare_log, capture_output=True, timeout=10).returncode == 1
+        )
+        assert access_log.stat().st_mode & 0o777 == 0o666
+        access_log.chmod(0o600)
+        (base / "logs").chmod(0o777)
+        assert (
+            subprocess.run(
+                prepare_log + ["--inspect"], capture_output=True, timeout=10
+            ).returncode
+            == 1
+        )
+        assert (base / "logs").stat().st_mode & 0o777 == 0o777
+        (base / "logs").chmod(0o750)
+        assert json.loads(run(prepare_log))["changed"] is True
+        prepare_log[2] = str(base / "logs/site-error.log")
+        assert json.loads(run(prepare_log))["changed"] is True
+        assert json.loads(run(prepare_log))["changed"] is False
         helper = ROOT / "ansible/roles/naive/files/naive_activate.py"
         argv = [
             sys.executable,
@@ -477,6 +595,7 @@ def test_naive_unacknowledged_revocation_is_adopted_by_actual_unit():
             [str(binary), "validate", "--config", str(legacy), "--adapter", "caddyfile"]
         )
         legacy.chmod(0o640)
+        os.chown(legacy, 0, account.pw_gid)
         assert json.loads(run(argv))["changed"] is True
         assert (
             not legacy.exists()
@@ -563,3 +682,5 @@ def test_naive_unacknowledged_revocation_is_adopted_by_actual_unit():
         unit_file.unlink(missing_ok=True)
         subprocess.run(["systemctl", "daemon-reload"], capture_output=True, timeout=10)
         shutil.rmtree(base)
+        subprocess.run(["userdel", principal], capture_output=True, timeout=10)
+        subprocess.run(["groupdel", principal], capture_output=True, timeout=10)

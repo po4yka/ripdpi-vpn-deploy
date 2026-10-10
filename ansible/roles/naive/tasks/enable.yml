@@ -60,6 +60,35 @@
     home: /var/lib/naive
     create_home: true
 
+- name: Ensure Naive activation helper directory
+  ansible.builtin.file:
+    path: /usr/local/libexec
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install no-follow Naive log preparation helper
+  ansible.builtin.copy:
+    src: prepare_log.py
+    dest: /usr/local/libexec/vpn-naive-prepare-log.py
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Inspect retained log authority before directory metadata convergence
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - /usr/local/libexec/vpn-naive-prepare-log.py
+      - "{{ naive.log_dir }}/{{ item }}"
+      - --inspect
+  loop:
+    - access.log
+    - site-error.log
+  changed_when: false
+  when: not ansible_check_mode
+
 - name: Ensure naive directories
   ansible.builtin.file:
     path: "{{ item.path }}"
@@ -183,6 +212,19 @@
   when: "'cap_net_bind_service=ep' not in naive_caddy_capabilities.stdout"
   changed_when: true
 
+- name: Prepare owned logs before root-run Caddy validation
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - /usr/local/libexec/vpn-naive-prepare-log.py
+      - "{{ naive.log_dir }}/{{ item }}"
+  loop:
+    - access.log
+    - site-error.log
+  register: naive_log_preparation
+  changed_when: naive_log_preparation.rc == 0 and (naive_log_preparation.stdout | from_json).changed | bool
+  when: not ansible_check_mode
+
 - name: Drop TLS cert + key
   ansible.builtin.copy:
     content: "{{ item.content }}"
@@ -223,14 +265,6 @@
     enabled: true
     state: started
     daemon_reload: true
-
-- name: Ensure Naive activation helper directory
-  ansible.builtin.file:
-    path: /usr/local/libexec
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
 
 - name: Install durable Naive activation helper
   ansible.builtin.copy:

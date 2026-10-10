@@ -50,6 +50,13 @@ forward-proxy handler and retains the decoy, without an unauthenticated fallback
 
 ## Pitfalls
 
+- **Validation opens the default log writer** — root-run Caddy validation can
+  create root-owned `0600` access and site-error logs before the service starts.
+  Inspect retained log authority before directory metadata convergence, then
+  provision the exact service-owned `0640` logs before validation, preserving
+  bytes and refusing symlinks, hardlinks, unsafe ancestry and foreign owners.
+  Existing root-owned safe logs from validation are migrated without truncation.
+
 - **v147 preamble change is breaking** — clients on < v147 cannot connect to
   server on ≥ v147. Coordinate upgrades; staging environment exists for this.
 - **Authentication is HTTP Basic over TLS** — credentials come from SOPS and

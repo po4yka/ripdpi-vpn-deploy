@@ -11,6 +11,33 @@
   hosts: all
   become: true
   tasks:
+    - name: Inspect exact service-owned log inodes
+      ansible.builtin.stat:
+        path: "/var/log/naive/{{ item }}"
+        follow: false
+      loop:
+        - access.log
+        - site-error.log
+      register: naive_logs
+
+    - name: Require private appendable logs for the dedicated service
+      ansible.builtin.assert:
+        that:
+          - item.stat.isreg
+          - not item.stat.islnk
+          - item.stat.nlink == 1
+          - item.stat.pw_name == 'naive'
+          - item.stat.gr_name == 'naive'
+          - item.stat.mode == '0640'
+      loop: "{{ naive_logs.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Require actual canonical service activation
+      ansible.builtin.command:
+        argv: [systemctl, is-active, caddy-naive.service]
+      changed_when: false
+
     - name: native JSON configuration is present at expected path
       ansible.builtin.stat:
         path: /etc/naive/caddy.json

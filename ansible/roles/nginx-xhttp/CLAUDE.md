@@ -61,6 +61,20 @@ the fsynced receipt. Reload also requires a fresh stable live worker pool under
 the same trusted master/executable identity; command acknowledgement and disk
 validation alone cannot acknowledge adoption. Failed/missing new workers retain
 intent and compensate. SIGKILL proofs cover publication, activation and recovery.
+An absent validation root containing only absent desired rows remains absent in
+the candidate. This lets a never-enabled owner reconcile against an active shared
+nginx on later convergences without creating a payload tree or skipping adoption.
+Missing roots required by a desired file or credential binding still refuse.
+An unchanged all-absent owner may record only a disk-absence witness while the
+unit is actually inactive with MainPID zero. Its private receipt binds the
+kernel boot UUID and CLOCK_BOOTTIME in the same clock ticks as `/proc/PID/stat`.
+A later master that started strictly after that witness on the same boot can
+acknowledge the absence without a redundant reload, after stable canonical
+master/worker identity and candidate plus actual-namespace validation. Promotion
+rechecks that generation around its durable receipt write. Equal/older starts,
+another boot or stale fingerprints require real adoption; future ticks and
+malformed/foreign private authority refuse. This preserves first-to-second
+shared-role idempotence without claiming an inactive unit adopted configuration.
 
 ## What's done well
 

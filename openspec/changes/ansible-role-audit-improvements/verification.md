@@ -3,7 +3,7 @@ task_id: ANS-1791586652330612
 change: ansible-role-audit-improvements
 commit_sha: null
 local: passed
-local_evidence: Uninterrupted make check passed; 5793 Python tests, 22 subtests, 56 Bats tests, 205 Rust tests and 152 snapshots. Focused real age/SOPS 3.13.3 and native runtime proofs passed; independent host and receiver reviews approve.
+local_evidence: Uninterrupted make check passed on the canonical role corrections; 5793 Python tests, 22 subtests, 56 Bats tests, 205 Rust tests and 152 snapshots. Actual hardened nonroot Naive and shared-nginx reconvergence plus receipt/unsafe-authority boundaries passed; independent reviews approve.
 remote_ci: required
 remote_ci_evidence: Pending exact-source hosted checks on existing PR 282.
 dry_run: not_applicable
@@ -54,3 +54,16 @@ command hit an emulation SIGSEGV; hosted native architecture verification remain
 required. Private exporter namespace addresses are synthetic local assignments,
 not Tailnet enrollment or fleet evidence. Bootstrap legacy or missing authority
 requires reviewed retirement/recreation and reissuance; no automatic reset occurs.
+
+## Canonical role corrections
+
+The first hosted run exposed root-created Naive log ownership and a disabled
+self-steal owner with a missing document root on second shared-nginx convergence.
+Both were reproduced with actual roles. Naive now provisions safe byte-preserving
+service-owned logs before validation; hardened nonroot adoption, unchanged role
+convergence, verification and actual 100 MiB log rotation pass. Disabled nginx
+roots remain absent, and a typed disk-only witness permits unchanged promotion
+only after a strictly newer canonical master on the same kernel boot. Native
+first/second role convergence preserves the actual master/workers, returns zero
+changes and serves TLS; malformed, future, stale and unsafe authority cases pass.
+Independent review approves both corrections.
