@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+- Temporary candidate allocation, validation and cleanup run on every ordinary pass but report no accepted-runtime change. Persistent publication and predictive change flags retain their real results; idempotence must not skip validation or hide a changed accepted file.
+
+- The foreground service explicitly uses `Type=exec`. Successful manager startup must complete process setup and execution before strict runtime UID admission; journal and authenticated probes still establish application readiness.
+
 - Candidate validation runs private staged source before quiescence. Detect validator byte changes without publishing them; installed validators and semantic companions are snapshotted and published only after the whole-route transaction opens. A rejected helper update cannot invalidate the accepted rollback receipt.
 
 **Accepted units pin immutable executables** — frontend units execute their verified release paths directly. Publishing installer CLI links cannot change the executable used by an accepted unit after a rejected candidate. Xray candidate validation also selects the planned immutable executable and bundled asset release; runtime-aware checks derive both authorities from the loaded unit.

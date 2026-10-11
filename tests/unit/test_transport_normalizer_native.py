@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import shutil
 import subprocess
@@ -285,5 +286,157 @@ def test_actual_sealed_normalizer_named_udp_long_stream_and_quarantine(tmp_path)
         assert stack.config["backends"]["direct"]["password"] not in logs
         assert stack.config["listeners"][0]["password"] not in logs
         assert "192.0.2.80" not in logs and "public.test" not in logs
+    finally:
+        stack.close()
+
+
+LIVE_CONTROL_DRIVER = r'''
+import json,pathlib,socket,sys,time
+sys.path.insert(0,sys.argv[1])
+import transport_socks as w
+from transport_egress_normalizer import _frame,_expected
+data=json.load(sys.stdin);listener=data['listener'];root=pathlib.Path(data['state'])
+result={};controls=[]
+def auth():
+ c=socket.create_connection((listener['address'],listener['port']),timeout=3)
+ controls.append(c)
+ c.sendall(b'\x05\x01\x02');_frame(c,lambda b:_expected(b,b'\x05\x02'))
+ c.sendall(w.upstream_auth(listener['username'],listener['password']))
+ _frame(c,lambda b:_expected(b,b'\x01\x00'));return c
+def request(command,host,port):
+ c=auth();c.sendall(w.upstream_request(command,host,port))
+ _,address,bound=_frame(c,w.upstream_reply);c.settimeout(3)
+ return c,(address,bound)
+def exact(c,value):
+ c.sendall(value);received=bytearray();deadline=time.monotonic()+3
+ while len(received)<len(value):
+  c.settimeout(max(.001,deadline-time.monotonic()));part=c.recv(len(value)-len(received))
+  assert part;received.extend(part)
+ assert bytes(received)==value
+def packet(udp,relay,host,value,accepted):
+ udp.sendto(w.encoded_datagram(host,9000,value,65507),relay)
+ udp.settimeout(.7)
+ if accepted:
+  frame,_=udp.recvfrom(65535);_,_,payload=w.datagram(frame,65507);assert payload==value
+ else:
+  try:udp.recvfrom(65535)
+  except socket.timeout:return
+  raise AssertionError('denied-packet-delivered')
+try:
+ tcp,_=request(1,'192.0.2.80',9000);exact(tcp,b'live-control-tcp')
+ control,relay=request(3,'0.0.0.0',0)
+ with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as udp:
+  packet(udp,relay,'192.0.2.80',b'live-control-udp',True)
+  result['public_tcp']=result['public_udp']=True
+  if data['phase']=='live':
+   (root/'live-controls-ready.json').write_text(json.dumps(result))
+   deadline=time.monotonic()+10
+   while not (root/'normalizer-killed').exists():
+    assert time.monotonic()<deadline;time.sleep(.02)
+   for c in (tcp,control):
+    c.settimeout(3);assert c.recv(1)==b'';c.close()
+   result['both_controls_closed']=True
+  else:
+   private=auth();private.sendall(w.upstream_request(1,'127.0.0.2',9000))
+   try:_frame(private,w.upstream_reply)
+   except ValueError:result['private_tcp_refused']=True
+   else:raise AssertionError('private-tcp-admitted')
+   packet(udp,relay,'127.0.0.2',b'denied-after-restart',False)
+   result['private_udp_refused']=True
+   packet(udp,relay,'192.0.2.80',b'public-after-denial',True)
+   result['public_recovery']=True
+except BaseException as error:
+ result['failure_category']=type(error).__name__
+finally:
+ for c in controls:c.close()
+ (root/(data['phase']+'-control-result.json')).write_text(json.dumps(result))
+assert result and 'failure_category' not in result
+'''
+
+
+def test_actual_live_tcp_udp_controls_crash_and_immediate_listener_rebind(tmp_path):
+    if sys.platform != "linux" or os.geteuid() != 0 or os.environ.get("TRANSPORT_NATIVE_ISOLATED") != "1":
+        pytest.fail("owned native normalizer requires explicit isolated Linux root authority")
+    for binary in ("ip", "nft", "tc", "ss", "systemctl", "useradd", "userdel", "runuser", "xray"):
+        assert shutil.which(binary), "owned native normalizer prerequisite is unavailable"
+    import importlib.util
+    specification = importlib.util.spec_from_file_location("owned_live_control_fixture", ROOT / "tests/integration/transport_destination_boundary/fixture.py")
+    fixture = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(fixture)
+    stack = fixture.NativeStack()
+
+    def client(phase):
+        process = subprocess.Popen(["ip", "netns", "exec", stack.namespace, "runuser", "-u", stack.users["x"], "--",
+                                    sys.executable, str(driver), str(stack.library)],
+                                   stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        stack.processes.append(process)
+        process.stdin.write(json.dumps({"listener": stack.config["listeners"][0], "state": str(stack.driver_state), "phase": phase}).encode())
+        process.stdin.close()
+        return process
+
+    try:
+        stack.start(common=True, peer_source=PEER)
+        driver = stack.library / "live-control-driver.py"
+        driver.write_text(LIVE_CONTROL_DRIVER);driver.chmod(0o644)
+        live = client("live")
+        deadline = time.monotonic() + 10
+        while not (stack.driver_state / "live-controls-ready.json").is_file() and time.monotonic() < deadline:
+            assert live.poll() is None, "live native control setup failed"
+            time.sleep(.02)
+        assert (stack.driver_state / "live-controls-ready.json").is_file(), "live native control setup deadline"
+        unit = stack.token + "-normalizer"
+        old_pid = command(["systemctl", "show", unit, "--property=MainPID", "--value"]).strip()
+        assert int(old_pid) > 0
+        command(["systemctl", "kill", "--signal=SIGKILL", "--kill-whom=main", unit])
+        (stack.driver_state / "normalizer-killed").touch()
+        assert live.wait(timeout=10) == 0, "live control closure failed"
+        closed = json.loads((stack.driver_state / "live-control-result.json").read_text())
+        assert closed == {"public_tcp": True, "public_udp": True, "both_controls_closed": True}, closed
+        sockets = command(["ip", "netns", "exec", stack.namespace, "ss", "-H", "-n", "-a", "-t", "-u", "-e"])
+        time_wait = [line for line in sockets.splitlines() if len(line.split()) >= 6
+                     and line.split()[:2] == ["tcp", "TIME-WAIT"] and line.split()[4].endswith(":12080")]
+        time_wait_count = len(time_wait)
+        assert time_wait_count >= 2, "crash did not retain both live accepted TCP tuples"
+        metadata = {"state": "TIME-WAIT", "count": time_wait_count,
+                    "uid_present_count": sum(bool(re.search(r'(?:^| )uid:[0-9]+(?: |$)', line)) for line in time_wait),
+                    "inode_present_count": sum(bool(re.search(r'(?:^| )ino:[0-9]+(?: |$)', line)) for line in time_wait),
+                    "inode_zero_count": sum(bool(re.search(r'(?:^| )ino:0(?: |$)', line)) for line in time_wait)}
+        audit = ("import json,sys;sys.path.insert(0,sys.argv[1]+'/scripts');import transport_egress_kernel as k;"
+                 "raw=json.load(sys.stdin)\ntry:k.admit_owners(raw);result={'accepted':True,'category':None}\n"
+                 "except k.BoundaryError as error:result={'accepted':False,'category':str(error)}\n"
+                 "print(json.dumps(result))")
+        ownership = subprocess.run(["ip", "netns", "exec", stack.namespace, sys.executable, "-Es", "-c", audit, str(ROOT)],
+                                   input=json.dumps(stack.policy), capture_output=True, text=True, timeout=20)
+        assert ownership.returncode == 0, "read-only socket authority diagnosis failed"
+        diagnosis = {"time_wait": metadata, "owner_admission": json.loads(ownership.stdout)}
+        (tmp_path / "live-control-socket-diagnosis.json").write_text(json.dumps(diagnosis, sort_keys=True))
+        # Reset native mappings before the fresh in-memory UDP pools can exist.
+        command(["systemctl", "stop", stack.token + "-gateway"])
+        command(["systemctl", "start", stack.token + "-gateway"])
+        command(["systemctl", "reset-failed", unit])
+        retained = command(["ip", "netns", "exec", stack.namespace, "ss", "-Htan", "state", "time-wait",
+                            "( sport = :12080 )"])
+        assert len(retained.splitlines()) >= 2, "live TCP tuples expired before the immediate bind proof"
+        command(["systemctl", "start", unit])  # Exactly one immediate restart; no retry around bind failures.
+        deadline = time.monotonic() + 10
+        ready = False
+        while time.monotonic() < deadline:
+            pid = command(["systemctl", "show", unit, "--property=MainPID", "--value"]).strip()
+            records = [json.loads(line) for line in command(["journalctl", "--unit", unit, "--no-pager", "-o", "json"]).splitlines()]
+            if int(pid or "0") > 0 and pid != old_pid and any(row.get("_PID") == pid and row.get("MESSAGE") == "normalizer-ready" for row in records):
+                ready = True
+                break
+            time.sleep(.2)
+        categories = [row["MESSAGE"] for row in records if row.get("MESSAGE", "").startswith("normalizer-unavailable:")]
+        assert ready, {**diagnosis, "restart_ready": ready, "categories": categories}
+        assert command(["systemctl", "show", unit, "--property=NRestarts", "--value"]).strip() == "0"
+        fresh = client("fresh")
+        assert fresh.wait(timeout=15) == 0, "fresh native control proof failed"
+        result = json.loads((stack.driver_state / "fresh-control-result.json").read_text())
+        assert result and all(value is True for value in result.values()), result
+        counts = json.loads((stack.driver_state / "counts.json").read_text())
+        assert counts["private_tcp"] == counts["private_udp"] == 0
+        assert counts["public_tcp"] >= 2 and counts["public_udp"] >= 3
+        assert diagnosis["owner_admission"] == {"accepted": True, "category": None}, diagnosis
     finally:
         stack.close()

@@ -402,6 +402,10 @@ def admit_owners(raw, namespace=False):
                 match = re.search(r'(?:^| )uid:([0-9]+)(?: |$)', line)
                 actual = int(match.group(1)) if match else 0
                 if actual != uid:
+                    # Kernel TIME_WAIT records have no live socket or process owner.
+                    if (fields[:2] == ['tcp', 'TIME-WAIT'] and actual == 0
+                            and re.search(r'(?:^| )ino:0(?: |$)', line) and 'users:' not in line):
+                        continue
                     raise BoundaryError('foreign-port-owner')
 
 

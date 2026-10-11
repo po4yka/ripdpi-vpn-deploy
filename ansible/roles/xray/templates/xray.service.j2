@@ -7,6 +7,7 @@ BindsTo=ripdpi-transport-normalizer.service
 After=ripdpi-transport-normalizer.service
 
 [Service]
+Type=exec
 User={{ xray_runtime_user }}
 Group={{ xray_runtime_group }}
 Environment=XRAY_LOCATION_ASSET={{ xray_asset_dir }}

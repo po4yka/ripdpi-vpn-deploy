@@ -7,6 +7,7 @@ BindsTo=ripdpi-transport-normalizer.service
 After=ripdpi-transport-normalizer.service
 
 [Service]
+Type=exec
 User=xray
 Group=xray
 Environment=XRAY_LOCATION_ASSET=/usr/local/share/xray

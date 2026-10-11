@@ -81,6 +81,7 @@
     runtime_release_artifact_type: binary
 
 - name: Validate Hysteria candidate before quiescing the accepted route
+  # Private candidates are removed below; accepted publication reports runtime changes.
   when: not ansible_check_mode
   block:
     - name: Allocate an owned private Hysteria validation candidate
@@ -88,6 +89,7 @@
         state: directory
         suffix: .hysteria-validation
       register: _hysteria_validation_candidate
+      changed_when: false
       no_log: true
 
     - name: Stage candidate validator with its exact semantic companion privately
@@ -100,6 +102,7 @@
       loop:
         - {source: "{{ role_path }}/../../../scripts/transport_semantics.py", name: transport_semantics.py}
         - {source: "{{ role_path }}/../runtime-release/files/validate_yaml_mapping.py", name: validate_yaml_mapping.py}
+      changed_when: false
 
     - name: Prove guarded Hysteria candidate admission
       ansible.builtin.template:
@@ -111,12 +114,14 @@
         validate: /usr/bin/python3 {{ _hysteria_validation_candidate.path }}/validate_yaml_mapping.py --profile hysteria %s
       no_log: true
       diff: false
+      changed_when: false
   always:
     - name: Remove only the owned Hysteria validation candidate
       ansible.builtin.file:
         path: "{{ _hysteria_validation_candidate.path }}"
         state: absent
       no_log: true
+      changed_when: false
       when: _hysteria_validation_candidate.path is defined
 
 - name: Detect Hysteria frontend authority change before publication

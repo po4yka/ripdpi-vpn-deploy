@@ -547,8 +547,10 @@ def test_rotation_preserves_immediate_restore_point(
     old_bytes = guarded_xray_bytes('outgoing')
     if scenario != "first-config":
         current.write_text(old_bytes)
+        os.chown(current, -1, os.getgid())
         current.chmod(0o640)
     previous.write_text("older restore point\n")
+    os.chown(previous, -1, os.getgid())
     previous.chmod(0o640)
     desired = old_bytes if scenario == "unchanged" else guarded_xray_bytes('incoming')
     if scenario == "reject-config":

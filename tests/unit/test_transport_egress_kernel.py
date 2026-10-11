@@ -118,6 +118,28 @@ def test_namespace_uses_its_actual_ephemeral_and_reserved_port_authority(monkeyp
     monkeypatch.setattr(kernel, 'command', lambda args, namespace=False, **kwargs: '12000 19000' if args[-1].endswith('ip_local_port_range') else '12000-19000,25000')
     kernel.admit_ports(build(context(True))['policy'], True)
 
+
+@pytest.mark.parametrize('port,namespace', [(12080, False), (12090, False), (13000, False), (16000, False), (12091, True)])
+@pytest.mark.parametrize('uid', ['', ' uid:0'])
+def test_inode_less_retired_tcp_tuple_has_no_live_port_owner(monkeypatch, port, namespace, uid):
+    monkeypatch.setattr(kernel, 'command', lambda *_: f'tcp TIME-WAIT 0 0 127.0.0.1:{port} 127.0.0.1:40000{uid} ino:0 sk:0\n')
+    kernel.admit_owners(build(context(True))['policy'], namespace)
+
+
+@pytest.mark.parametrize('record', [
+    'tcp LISTEN 0 128 127.0.0.1:12080 0.0.0.0:* ino:0',
+    'tcp ESTAB 0 0 127.0.0.1:12080 127.0.0.1:40000 ino:0',
+    'udp UNCONN 0 0 127.0.0.1:13000 0.0.0.0:* ino:0',
+    'tcp TIME-WAIT 0 0 127.0.0.1:12080 127.0.0.1:40000 uid:77 ino:0',
+    'tcp TIME-WAIT 0 0 127.0.0.1:12080 127.0.0.1:40000 ino:123',
+    'tcp TIME-WAIT 0 0 127.0.0.1:12080 127.0.0.1:40000',
+    'tcp TIME-WAIT 0 0 127.0.0.1:12080 127.0.0.1:40000 ino:0 users:(("foreign",pid=123,fd=4))',
+])
+def test_retired_tuple_exception_preserves_live_and_unknown_authority_refusal(monkeypatch, record):
+    monkeypatch.setattr(kernel, 'command', lambda *_: record + '\n')
+    with pytest.raises(kernel.BoundaryError, match='foreign-port-owner'):
+        kernel.admit_owners(build(context(True))['policy'])
+
 @pytest.mark.parametrize('transfer', ['jump', 'goto'])
 def test_postrouting_regular_chain_mutation_cannot_bypass_activation(transfer):
     ruleset = {'nftables': [
@@ -189,7 +211,7 @@ def test_actual_ansible_host_context_source_compiles_before_discovery(tmp_path):
     assert executable, 'actual Ansible source assembly is required'
     tasks = yaml.safe_load((ROOT/'ansible/playbooks/tasks/transport-egress-prepare.yml').read_text())
     source = next(t for t in tasks if t['name']=='Read actual host destination authority')['ansible.builtin.command']['argv'][-1]
-    play = {'hosts':'localhost','connection':'local','gather_facts':False,
+    play = {'hosts':'localhost','connection':'local','gather_facts':False,'become':False,
             'vars':{'role_path':str(ROOT/'ansible/roles/xray'), 'ansible_python_interpreter':sys.executable},
             'tasks':[{'name':'Compile exact source without host or fleet discovery',
                       'ansible.builtin.command':{'argv':[sys.executable,'-c','import sys; compile(sys.argv[1], "owned-host-context", "exec"); print("source-compiles")',source]},

@@ -206,6 +206,9 @@ def test_installed_ansible_rotation_uses_shared_shape_from_playbook_context(
                     "become": False,
                     "vars": {
                         "ansible_python_interpreter": sys.executable,
+                        "transport_egress_secrets": merge_render_vars()[
+                            "transport_egress_secrets"
+                        ],
                         "p0_reality_shape_template": rotation["vars"][
                             "p0_reality_shape_template"
                         ],

@@ -136,6 +136,7 @@
       {{ role_path }}/../../templates/p0-reality-shape.json.j2
 
 - name: Validate Xray candidate before quiescing the accepted route
+  # Private candidates are removed below; accepted publication reports runtime changes.
   when: not ansible_check_mode
   block:
     - name: Allocate an owned private Xray validation candidate
@@ -143,6 +144,7 @@
         state: file
         suffix: .xray.json
       register: _xray_validation_candidate
+      changed_when: false
       no_log: true
 
     - name: Prove native and guarded Xray candidate admission
@@ -158,6 +160,7 @@
           --asset-dir {{ xray_asset_dir | quote }} --config %s
       no_log: true
       diff: false
+      changed_when: false
       vars:
         p0_reality_shape_template: "{{ role_path }}/../../templates/p0-reality-shape.json.j2"
   always:
@@ -166,6 +169,7 @@
         path: "{{ _xray_validation_candidate.path }}"
         state: absent
       no_log: true
+      changed_when: false
       when: _xray_validation_candidate.path is defined
 
 - name: Detect Xray unit change before guarded transaction

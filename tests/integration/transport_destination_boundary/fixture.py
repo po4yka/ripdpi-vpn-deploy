@@ -186,6 +186,7 @@ class NativeStack:
             categories = [line for line in lines if line.startswith("normalizer-unavailable")]
             raise RuntimeError("sealed-normalizer-unavailable:" + ",".join(categories))
         self.config = value
+        self.policy = projection
         self.cert = self.library / "certificate.pem"
         self.key = self.library / "private.pem"
         command(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(self.key),

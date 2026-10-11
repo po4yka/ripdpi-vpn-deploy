@@ -329,11 +329,47 @@ def test_start_resets_only_actual_failed_state(monkeypatch, initial, operations)
         'control_timeout_seconds': 30, 'recovery_seconds': 5},
         {'runtime_uid': 1001, 'backends': {'direct': {}}, 'listeners': []})
     states = iter([{'ActiveState': initial, 'MainPID': '0'}, {'ActiveState': 'active', 'MainPID': '1234'}])
-    monkeypatch.setattr(controller, 'state', lambda _: next(states))
+    identity_checks = []
+    def inspect(_unit, *, check_identity=True):
+        identity_checks.append(check_identity)
+        return next(states)
+    monkeypatch.setattr(controller, 'state', inspect)
     calls = []
     monkeypatch.setattr(mod, 'command', lambda argv, _: calls.append(argv[1]))
     assert controller.start('ripdpi-transport-direct.service') == 1234
     assert calls == operations
+    assert identity_checks == [False, True]
+
+
+@pytest.mark.parametrize('final_identity', [True, False])
+def test_start_inspects_executor_metadata_but_admits_only_final_process_identity(monkeypatch, final_identity):
+    mod = load('generation')
+    controller = readiness_controller(mod)
+    checks = []
+    def inspect(_unit, *, check_identity=True):
+        checks.append(check_identity)
+        if not check_identity:
+            return {'ActiveState': 'activating', 'MainPID': '1234'}
+        if not final_identity:
+            raise mod.Refusal('generation-process-identity')
+        return {'ActiveState': 'active', 'MainPID': '1234'}
+    monkeypatch.setattr(controller, 'state', inspect)
+    operations = []
+    monkeypatch.setattr(mod, 'command', lambda argv, _: operations.append(argv))
+    if final_identity:
+        assert controller.start('ripdpi-transport-direct.service') == 1234
+    else:
+        with pytest.raises(mod.Refusal, match='generation-process-identity'):
+            controller.start('ripdpi-transport-direct.service')
+    assert checks == [False, True]
+    assert operations == [['systemctl', 'start', 'ripdpi-transport-direct.service']]
+
+
+def test_every_controller_started_foreground_runtime_has_explicit_exec_start_contract():
+    for path in [ROLE / 'templates/gateway.service.j2', ROLE / 'templates/normalizer.service.j2',
+                 ROOT / 'ansible/roles/xray/templates/xray.service.j2',
+                 ROOT / 'ansible/roles/hysteria/templates/hysteria-server.service.j2']:
+        assert 'Type=exec' in path.read_text().splitlines()
 
 
 def test_native_gateway_credential_preserves_json_parser_format():

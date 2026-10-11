@@ -8,6 +8,7 @@ Requires=ripdpi-warp-namespace.service warp-svc.service
 {% endif %}
 
 [Service]
+Type=exec
 User={{ transport_egress_warp_gateway_user if _transport_egress_backend_name == 'warp' else transport_egress_gateway_user }}
 Group={{ transport_egress_warp_gateway_user if _transport_egress_backend_name == 'warp' else transport_egress_gateway_user }}
 LoadCredential=config.json:{{ transport_egress_config_dir }}/{{ _transport_egress_backend_name }}.json

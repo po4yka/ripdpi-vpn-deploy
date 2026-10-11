@@ -432,6 +432,7 @@ class Normalizer:
         try:
             for item in self.config["listeners"]:
                 connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                connection.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 connection.bind((item["address"], item["port"]))
                 connection.listen(min(self.limits["max_connections"], 128))
                 connection.setblocking(False)

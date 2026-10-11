@@ -1,4 +1,4 @@
-"""WARP repository signing key pin must be mandatory, never TOFU.
+"""WARP pins and actual namespace readiness gate recipient activation.
 
 The role ships a real default sha256 for Cloudflare's WARP apt key and
 fails closed when the pin is unset or malformed; the checksum verify +
@@ -7,13 +7,17 @@ assert pair runs unconditionally under the install toggle.
 
 from __future__ import annotations
 
+import copy
+import importlib.util
 import re
 from pathlib import Path
 
 import yaml
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-TASKS = REPO_ROOT / "ansible" / "roles" / "warp-outbound" / "tasks" / "enable.yml"
+ROLE = REPO_ROOT / "ansible" / "roles" / "warp-outbound"
+TASKS = ROLE / "tasks" / "prepare.yml"
 DEFAULTS = REPO_ROOT / "ansible" / "roles" / "warp-outbound" / "defaults" / "main.yml"
 
 
@@ -62,17 +66,55 @@ def test_health_gate_runs_before_xray_can_activate_warp_routes() -> None:
     plays = yaml.safe_load((REPO_ROOT / "ansible/playbooks/site.yml").read_text())
     roles = next(play["roles"] for play in plays if "roles" in play)
     names = [role["role"] for role in roles]
-    assert names.index("warp-outbound") < names.index("xray")
-    assert names.index("warp-outbound") < names.index("nginx-xhttp")
-    warp = roles[names.index("warp-outbound")]
-    assert set(roles[names.index("xray")]["tags"]) <= set(warp["tags"])
+    protected = roles[names.index("transport-egress")]
+    assert protected["tasks_from"] == "prepare-site"
+    assert names.index("transport-egress") < names.index("xray")
+    assert names.index("transport-egress") < names.index("nginx-xhttp")
+    assert set(roles[names.index("xray")]["tags"]) <= set(protected["tags"])
+    prepare = yaml.safe_load((REPO_ROOT / "ansible/playbooks/tasks/transport-egress-prepare.yml").read_text())
+    adapter = next(task for task in prepare if task.get("ansible.builtin.include_role", {}).get("name") == "warp-outbound")
+    stage = next(task for task in prepare if task.get("ansible.builtin.include_role", {}).get("tasks_from") == "stage")
+    assert adapter["ansible.builtin.include_role"]["tasks_from"] == "prepare"
+    assert prepare.index(adapter) < prepare.index(stage)
+    activation = yaml.safe_load((REPO_ROOT / "ansible/playbooks/tasks/transport-egress-activate.yml").read_text())[0]["block"]
+    assert [task["ansible.builtin.include_role"] for task in activation[:2]] == [
+        {"name": "warp-outbound", "tasks_from": "activate"},
+        {"name": "transport-egress", "tasks_from": "activate"},
+    ]
+    site = next(play for play in plays if "roles" in play)
+    post = next(task for task in site["post_tasks"] if task.get("ansible.builtin.import_tasks") == "tasks/transport-egress-activate.yml")
+    assert set(roles[names.index("xray")]["tags"]) <= set(post["tags"])
+    vendor = yaml.safe_load((ROLE / "tasks/activate.yml").read_text())[0]["block"]
+    readiness = next(task for task in vendor if task["name"] == "Require actual UP TUN identity before recipient gateway admission")
+    identity = next(task for task in vendor if task["name"] == "Retain actual verified tunnel identity")
+    assert readiness["ansible.builtin.command"]["argv"][-1] == "refresh"
+    assert readiness["until"] == "_warp_tunnel_readiness.rc == 0"
+    assert vendor.index(readiness) < vendor.index(identity)
 
 
-def test_health_gate_rejects_successful_http_with_inactive_tunnel() -> None:
-    from jinja2 import Environment
-
-    gate = _task_by_name("Verify WARP exit IP is reachable")["failed_when"]
-    evaluate = Environment(autoescape=True).compile_expression(gate)
-    assert evaluate(warp_trace={"rc": 0, "stdout": "warp=off\n"})
-    assert evaluate(warp_trace={"rc": 7, "stdout": "warp=on\n"})
-    assert not evaluate(warp_trace={"rc": 0, "stdout": "warp=on\n"})
+@pytest.mark.parametrize("present,kind,tun_type,flags,admitted", [
+    (False, "tun", "tun", ["UP"], False),
+    (True, None, None, [], False),
+    (True, "dummy", "tun", ["UP"], False),
+    (True, "tun", "tap", ["UP"], False),
+    (True, "tun", "tun", [], False),
+    (True, "tun", "tun", ["UP"], True),
+])
+def test_health_gate_requires_owned_actual_up_tun_identity(monkeypatch, present, kind, tun_type, flags, admitted):
+    # Portable predicate proof; real TUN/native and registered vendor acceptance
+    # remain separate gates. HTTP/status text alone never enters this predicate.
+    spec = importlib.util.spec_from_file_location("warp_pin_namespace", ROLE / "files/namespace.py")
+    namespace = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(namespace)
+    monkeypatch.setattr(namespace, "inspect", lambda: {"present": present})
+    link = None if kind is None else {"ifindex": 42, "flags": copy.deepcopy(flags),
+                                     "linkinfo": {"info_kind": kind, "info_data": {"type": tun_type}}}
+    def actual_link(name, inside=False):
+        assert name == namespace.TUNNEL and inside is True
+        return link
+    monkeypatch.setattr(namespace, "link", actual_link)
+    if admitted:
+        assert namespace.tunnel() == 42
+    else:
+        with pytest.raises(namespace.Refusal, match="namespace-(absent|tunnel-not-ready)"):
+            namespace.tunnel()

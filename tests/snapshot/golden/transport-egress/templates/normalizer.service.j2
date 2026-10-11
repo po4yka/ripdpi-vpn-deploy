@@ -4,6 +4,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+Type=exec
 User=transport-normalizer
 Group=transport-normalizer
 LoadCredential=config:/etc/ripdpi/transport-egress/normalizer.json

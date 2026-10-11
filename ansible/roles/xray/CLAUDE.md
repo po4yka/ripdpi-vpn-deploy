@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+- Temporary candidate allocation, validation and cleanup run on every ordinary pass but report no accepted-runtime change. Persistent publication and predictive change flags retain their real results; idempotence must not skip validation or hide a changed accepted file.
+
+- The foreground service explicitly uses `Type=exec`. Successful manager startup must complete process setup and execution before strict runtime UID admission; journal and authenticated probes still establish application readiness.
+
 - Recipient address isolation belongs to the canonical normalizer and final packet guard. Do not add a GeoIP-only private rule to the AsIs frontend: asset ranges can reject literals while names resolve to the same admitted address downstream.
 
 - Protected Xray service identity is fixed at `xray:xray`, matching actual shared frontend UID admission. Alternate runtime user/group settings fail before host mutation; the controller cannot report a different probe identity as frontend readiness.

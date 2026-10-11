@@ -4,6 +4,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+Type=exec
 User={{ transport_egress_normalizer_user }}
 Group={{ transport_egress_normalizer_user }}
 LoadCredential=config:{{ transport_egress_config_dir }}/normalizer.json

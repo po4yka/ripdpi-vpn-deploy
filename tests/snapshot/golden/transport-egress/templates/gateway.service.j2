@@ -5,6 +5,7 @@ Wants=network-online.target
 
 
 [Service]
+Type=exec
 User=transport-gateway
 Group=transport-gateway
 LoadCredential=config.json:/etc/ripdpi/transport-egress/direct.json

@@ -137,7 +137,10 @@ class Controller:
                 raise Refusal("generation-stop-unconfirmed")
 
     def start(self, unit):
-        state = self.state(unit)
+        # Startup metadata may describe systemd's privileged executor before
+        # the configured UID and executable are installed. Admission follows
+        # the synchronous Type=exec start, not this reset-state inspection.
+        state = self.state(unit, check_identity=False)
         # An inactive, unreferenced unit may be garbage-collected after show;
         # reset-failed does not load it. Only clear actual failed state.
         if state.get('ActiveState') == 'failed':
