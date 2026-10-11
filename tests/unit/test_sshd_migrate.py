@@ -5,6 +5,7 @@ import base64
 import importlib.util
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,6 +19,7 @@ def adapter(monkeypatch):
     spec = importlib.util.spec_from_file_location('sshd_migrate', FILES / 'sshd_migrate.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    monkeypatch.setattr(module, 'time', SimpleNamespace(**vars(module.time)))
     monkeypatch.setattr(module.Runtime, 'boot_id', lambda self: '00000000-0000-4000-8000-000000000001')
     return module
 

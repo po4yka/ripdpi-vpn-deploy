@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: transport-input-semantics
 created: 2026-10-10
-updated: 2026-10-11
+updated: 2026-10-12
 related_tasks: []
-status_detail: Integrated source f8055ff0 passed complete refreshed local make check, exact native cases, full hosted CI and independent review; no deployment or fleet acceptance claimed.
+status_detail: "Accepted integrated runtime source cf01f94a640913412f3316b5cb288881639712ce passed all 86 protected-main jobs in run 38134843683. Recorded verification results and external scope qualifications are preserved."
 ---
 
 ## Goal

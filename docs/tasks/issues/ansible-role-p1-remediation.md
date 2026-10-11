@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: ansible-role-p1-remediation
 created: 2026-10-09
-updated: 2026-10-09
+updated: 2026-10-12
 related_tasks: []
-status_detail: Source PR 282 prepared; exact source 2c3a311d passed all hosted workflows, local gates and independent review. Deployment acceptance remains outside this task.
+status_detail: "Accepted integrated runtime source cf01f94a640913412f3316b5cb288881639712ce passed all 86 protected-main jobs in run 38134843683. Recorded verification results and external scope qualifications are preserved."
 ---
 
 ## Goal

@@ -1,11 +1,11 @@
 ---
 task_id: SEC-1791545689674403
 change: ansible-role-p1-remediation
-commit_sha: 2c3a311d256ae95faea8bf8049145473886b32d4
+commit_sha: "cf01f94a640913412f3316b5cb288881639712ce"
 local: passed
 local_evidence: Full build-gated make check passed with 5599 Python tests, 22 subtests, 56 Bats tests and 205 Rust release tests; final make validate and 19 watchdog fixture regressions passed. Native owned-VM LoadCredential delivery verified authorization, title and body with the unchanged sender.
-remote_ci: passed
-remote_ci_evidence: Exact source 2c3a311d256ae95faea8bf8049145473886b32d4 passed CI run 37954531623 (74 jobs), CodeQL run 37954531107, Markdown links run 37954531164 and instruction checks run 37954531135; all terminal conclusions were success. The canonical Debian failed-probe watchdog scenario captured actual notification title/body with private systemd credentials.
+remote_ci: "passed"
+remote_ci_evidence: "Protected-main CI run 38134843683 completed successfully on exact integrated source cf01f94a640913412f3316b5cb288881639712ce; all jobs succeeded, including portable, native, role, failure and full-stack checks. Scorecard, CodeQL and release-please completed successfully on the same source."
 dry_run: not_applicable
 dry_run_evidence: Source remediation only; no real inventory or SSH controller mutation.
 staging: not_applicable
@@ -41,3 +41,7 @@ artifact_evidence: PR 282 contains the reviewed source and regressions; independ
 - The Docker fixture's private runtime mount prevented systemd credential publication from its helper namespace. Both owned-container scenarios now inspect and prepare shared runtime propagation before convergence; production units, image pins, credential guards and actual capture assertions stay intact.
 - Local emulated Molecule service activation was unavailable; direct native owned-VM delivery and exact-source Debian CI supply the separately named runtime proof. Registry download failures are infrastructure retrieval failures, not role convergence evidence.
 - No production, provider, SSH inventory, real secret, authenticated external-client or human-receipt action is claimed.
+
+## Closure reconciliation (2026-10-11)
+
+The preceding sections retain their historical source and environment boundaries. The earlier verification SHA was `2c3a311d256ae95faea8bf8049145473886b32d4`. The accepted integrated source for this closure is `cf01f94a640913412f3316b5cb288881639712ce`; protected-main CI run `38134843683` completed with every job successful. This supersedes earlier pending PR/hosted-check observations without claiming a new deployment. Runtime and source files are unchanged by the closure increment.

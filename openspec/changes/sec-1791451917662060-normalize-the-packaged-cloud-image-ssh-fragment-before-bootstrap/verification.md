@@ -1,11 +1,11 @@
 ---
 task_id: SEC-1791451917662060
 change: sec-1791451917662060-normalize-the-packaged-cloud-image-ssh-fragment-before-bootstrap
-commit_sha: bb171af8385396729a0d75a9e0ca1f9aa435d008
+commit_sha: "cf01f94a640913412f3316b5cb288881639712ce"
 local: passed
 local_evidence: "Full make check exit 0 at bb171af8385396729a0d75a9e0ca1f9aa435d008; 5194 Python tests, 20 subtests and remaining portable gates passed."
-remote_ci: passed
-remote_ci_evidence: "CI run 37760701503 at bb171af8385396729a0d75a9e0ca1f9aa435d008: terminal success, 38 successful and 9 dependency-selected skipped checks."
+remote_ci: "passed"
+remote_ci_evidence: "Protected-main CI run 38134843683 completed successfully on exact integrated source cf01f94a640913412f3316b5cb288881639712ce; all jobs succeeded, including portable, native, role, failure and full-stack checks. Scorecard, CodeQL and release-please completed successfully on the same source."
 dry_run: passed
 dry_run_evidence: "Exact repair check-mode passed; clean replacement plan confirmed five creates, current SSH /32 and exact reviewed helper bytes."
 staging: not_applicable
@@ -35,3 +35,9 @@ The failed candidate's final-stage retry returned nonzero and skipped the
 per-instance script; it is not positive bootstrap evidence. The fresh
 replacement completed actual first boot from the validated helper source.
 Full P0/P1/P2 protocol and publication acceptance remains separate.
+
+## Closure reconciliation (2026-10-11)
+
+The preceding sections retain their historical source and environment boundaries. The earlier verification SHA was `bb171af8385396729a0d75a9e0ca1f9aa435d008`. The accepted integrated source for this closure is `cf01f94a640913412f3316b5cb288881639712ce`; protected-main CI run `38134843683` completed with every job successful. This supersedes earlier pending PR/hosted-check observations without claiming a new deployment. Runtime and source files are unchanged by the closure increment.
+
+The accepted first-boot helper is byte-identical to its recorded `bb171af8385396729a0d75a9e0ca1f9aa435d008` source (`terraform/shared/bootstrap-sshd-ownership.py`). Its prior dry-run and clean first-boot receipts remain applicable; the failed-stage retry remains excluded.

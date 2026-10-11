@@ -12,8 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: ans-1790316250156031-reject-public-listeners-on-the-effective-ssh-port-before-convergence
 created: 2026-09-25
-updated: 2026-09-25
+updated: 2026-10-12
 related_tasks: []
+status_detail: "Accepted integrated runtime source cf01f94a640913412f3316b5cb288881639712ce passed all 86 protected-main jobs in run 38134843683. Recorded verification results and external scope qualifications are preserved."
 ---
 
 ## Goal

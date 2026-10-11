@@ -12,9 +12,9 @@ blocked_by: [SCT-1791617687019287]
 spec_mode: required
 openspec_change: resolved-destination-boundary
 created: 2026-10-10
-updated: 2026-10-11
+updated: 2026-10-12
 related_tasks: [SEC-1791471757439452, SEC-1791545689674403, ANS-1791562764586678]
-status_detail: Implemented source f8055ff0 passed complete local make check, native/role/full-stack validation, independent review and every hosted check. Registered WARP vendor forwarding and deployment remain separately authorized and unverified.
+status_detail: "Accepted integrated runtime source cf01f94a640913412f3316b5cb288881639712ce passed all 86 protected-main jobs in run 38134843683. Recorded verification results and external scope qualifications are preserved. Registered WARP TCP/UDP completion was owner-confirmed on 2026-10-11; no new vendor execution is claimed."
 ---
 
 ## Goal
