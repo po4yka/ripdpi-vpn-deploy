@@ -15,6 +15,9 @@ import sys
 import pytest
 import yaml
 
+from tests.site_role_graph import site_roles
+from transport_fixtures import guarded_xray_bytes
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RENDERER = REPO_ROOT / "scripts" / "check-templates-render.py"
 TEMPLATE = REPO_ROOT / "ansible" / "roles" / "xray" / "templates" / "config.json.j2"
@@ -278,18 +281,25 @@ def test_installed_ansible_cohort_without_flow_inherits_profile_shape(
 
 
 def test_site_playbook_runs_xray_for_reality_or_xhttp() -> None:
-    playbook = SITE_PLAYBOOK.read_text()
-    xray_role = playbook.split("- role: xray", 1)[1].split("- role: nginx-xhttp", 1)[0]
-    assert "enable_xray_reality" in xray_role
-    assert "enable_nginx_xhttp" in xray_role
-    assert ") or (" in xray_role
-    assert "xray_role_enabled:" in xray_role
+    playbook = yaml.safe_load(SITE_PLAYBOOK.read_text())[0]
+    xray_role = next(role for role in site_roles(playbook) if role["role"] == "xray")
+    enabled = xray_role["vars"]["xray_role_enabled"]
+    assert "enable_xray_reality" in enabled
+    assert "enable_nginx_xhttp" in enabled
+    from scripts.template_render import render_fragment
+    for reality, xhttp, subscription in [(False, False, False), (True, False, False),
+                                         (False, True, False), (True, True, False), (True, True, True)]:
+        selected = render_fragment('selected.txt', enabled, {
+            'vpn': {'enable_xray_reality': reality, 'enable_nginx_xhttp': xhttp},
+            'vpn_subscription_only': subscription,
+        })
+        assert selected == str((reality or xhttp) and not subscription)
 
 
 def test_rotation_playbook_updates_xhttp_only_xray() -> None:
     playbook = ROTATION_PLAYBOOK.read_text()
-    xray_task = playbook.split("- name: Re-render Xray config", 1)[1].split(
-        "- name: Re-render Hysteria config",
+    xray_task = playbook.split("- name: Stage rotated Xray credentials through the authoritative role", 1)[1].split(
+        "- name: Stage rotated Hysteria credentials through the authoritative role",
         1,
     )[0]
 
@@ -298,47 +308,37 @@ def test_rotation_playbook_updates_xhttp_only_xray() -> None:
     assert "xray_log_path: /var/log/xray" in playbook
 
 
-def test_xray_restart_chain_is_inert_in_check_mode() -> None:
+def test_xray_activation_has_one_guarded_owner_and_is_inert_in_check_mode() -> None:
     handlers = yaml.safe_load(
         (REPO_ROOT / "ansible" / "roles" / "xray" / "handlers" / "main.yml").read_text()
     )
-    restart_chain = [task for task in handlers if task.get("listen") == "Restart xray"]
-    assert len(restart_chain) == 3
-    assert all(
-        task.get("when")
-        == "not ansible_check_mode and xray_role_enabled | default(true) | bool"
-        for task in restart_chain
-    )
+    assert handlers == []
+    activation = yaml.safe_load((REPO_ROOT / "ansible/roles/transport-egress/tasks/activate.yml").read_text())[0]
+    assert activation["when"] == "not ansible_check_mode"
+    assert activation["block"][0]["ansible.builtin.systemd_service"]["name"] == "ripdpi-transport-generation.service"
+    assert "status" in activation["block"][1]["ansible.builtin.command"]["argv"]
 
 
-def test_p1_hostname_self_resolution_is_managed_and_verified() -> None:
+def test_private_masquerade_resolution_preserves_global_nss_authority() -> None:
     role_tasks = yaml.safe_load(NGINX_XHTTP_TASKS.read_text())
-    role_by_name = {task["name"]: task for task in role_tasks}
-
-    pin = role_by_name["Pin public hostname for node-local resolution"]
-    assert pin["ansible.builtin.blockinfile"]["path"] == "/etc/hosts"
-    assert "vpn_service_address" in pin["ansible.builtin.blockinfile"]["block"]
-    assert "nginx_xhttp.server_name" in pin["ansible.builtin.blockinfile"]["block"]
-    assert pin["ansible.builtin.blockinfile"]["unsafe_writes"] is True
-    assert pin["no_log"] is True
-    assert pin["diff"] is False
-
-    role_probe = role_by_name["Verify node-local public hostname resolution"]
-    assert role_probe["changed_when"] is False
-    assert role_probe["no_log"] is True
-
-    verify_tasks = yaml.safe_load(VERIFY_PLAYBOOK.read_text())[0]["tasks"]
-    verify_by_name = {task["name"]: task for task in verify_tasks}
-    verify_probe = verify_by_name["P1 public hostname resolves to its service address"]
-    assert verify_probe["changed_when"] is False
-    assert verify_probe["no_log"] is True
-    assert "vpn.enable_nginx_xhttp | default(true)" in verify_probe["when"]
-
-    ipv6_probe = verify_by_name["P1 public hostname exposes its IPv6 service address"]
-    assert ipv6_probe["changed_when"] is False
-    assert ipv6_probe["no_log"] is True
-    assert "vpn.enable_nginx_xhttp | default(true)" in ipv6_probe["when"]
-    assert "server_ipv6" in ipv6_probe["failed_when"]
+    assert all('ansible.builtin.blockinfile' not in task for task in role_tasks)
+    assert '/etc/hosts' not in NGINX_XHTTP_TASKS.read_text()
+    hysteria = REPO_ROOT / 'ansible/roles/hysteria'
+    unit = (hysteria / 'templates/hysteria-server.service.j2').read_text()
+    assert 'masquerade-hosts:/etc/hosts' in unit
+    tasks = yaml.safe_load((hysteria / 'tasks/enable.yml').read_text())
+    publish = next(task for task in tasks if task['name'] == 'Publish private masquerade hosts after guarded quiescence')
+    assert publish['no_log'] is True and publish['diff'] is False
+    assert publish['ansible.builtin.copy']['mode'] == '0640'
+    names = [task['name'] for task in tasks]
+    assert names.index('Quiesce accepted topology before changed Hysteria publication') < names.index(publish['name'])
+    verify_tasks = yaml.safe_load(VERIFY_PLAYBOOK.read_text())[0]['tasks']
+    by_name = {task['name']: task for task in verify_tasks}
+    private = by_name['Verify Hysteria private origin resolution inside its actual mount namespace']
+    assert private['changed_when'] is False and private['no_log'] is True
+    assert 'nsenter' in private['ansible.builtin.command']['argv'][2]
+    for name in ('P1 public IPv4 hostname resolves through host NSS', 'P1 public IPv6 hostname resolves through host NSS'):
+        assert by_name[name]['changed_when'] is False and by_name[name]['no_log'] is True
 
 
 def _validation_binary(path: Path, trace: Path) -> None:
@@ -352,7 +352,7 @@ def _validation_binary(path: Path, trace: Path) -> None:
         "assert (assets / 'fixture.dat').read_text() == 'validation asset'\n"
         f"Path({str(trace)!r}).write_text(json.dumps({{'argv': sys.argv[1:], 'assets': str(assets)}}))\n"
         "config = json.loads(Path(sys.argv[4]).read_text())\n"
-        "assert config['credential'] in {'outgoing', 'incoming'}\n"
+        "assert config['outbounds'][0]['settings']['servers'][0]['users'][0]['pass'] in {'synthetic-outgoing-authority-00000000000000000000', 'synthetic-incoming-authority-00000000000000000000'}\n"
     )
     path.chmod(0o755)
 
@@ -473,7 +473,7 @@ def test_rollback_validates_before_runtime_change(
     for directory in (current_release, candidate):
         _validation_binary(directory / "xray", trace)
     (tmp_path / "config.json").write_text(
-        "{invalid candidate" if rejects else '{"credential":"outgoing"}\n'
+        "{invalid candidate" if rejects else guarded_xray_bytes('outgoing')
     )
     if scenario == "non-executable":
         (candidate / "xray").chmod(0o644)
@@ -512,7 +512,7 @@ def test_rollback_validates_before_runtime_change(
         assert result.returncode != 0, result.stdout + result.stderr
         assert link.resolve() == current_release
         assert not restart.exists()
-        assert trace.exists() == rejects
+        assert not trace.exists()  # Metadata refusal precedes native execution.
     if trace.exists():
         validation = json.loads(trace.read_text())
         assert validation["assets"] == str(tmp_path / "runtime assets")
@@ -539,17 +539,28 @@ def test_rollback_validates_before_runtime_change(
 def test_rotation_preserves_immediate_restore_point(
     tmp_path: Path, scenario: str
 ) -> None:
-    source = yaml.safe_load(ROTATION_PLAYBOOK.read_text())[0]
-    tasks = [task for task in source["tasks"] if "Xray" in task["name"]]
+    rotation = yaml.safe_load(ROTATION_PLAYBOOK.read_text())[0]
+    stages = next(task["block"] for task in rotation["tasks"] if task["name"] ==
+                  "Reconcile protected credential rotation through authoritative roles")
+    selected = next(task for task in stages if task.get("ansible.builtin.include_role") == {"name": "xray"})
+    role = yaml.safe_load((REPO_ROOT / "ansible/roles/xray/tasks/enable.yml").read_text())
+    names = {"Check if previous Xray config exists",
+             "Detect Xray config change before preserving rollback state",
+             "Validate Xray candidate before quiescing the accepted route",
+             "Backup previous Xray config if exists", "Render and validate Xray config"}
+    tasks = [copy.deepcopy(task) for task in role if task["name"] in names]
+    assert len(tasks) == len(names)
     current = tmp_path / "config.json"
     previous = tmp_path / "config.json.prev"
-    old_bytes = '{"credential":"outgoing"}\n'
+    old_bytes = guarded_xray_bytes('outgoing')
     if scenario != "first-config":
         current.write_text(old_bytes)
+        os.chown(current, -1, os.getgid())
         current.chmod(0o640)
     previous.write_text("older restore point\n")
+    os.chown(previous, -1, os.getgid())
     previous.chmod(0o640)
-    desired = old_bytes if scenario == "unchanged" else '{"credential":"incoming"}\n'
+    desired = old_bytes if scenario == "unchanged" else guarded_xray_bytes('incoming')
     if scenario == "reject-config":
         desired = "{invalid candidate"
     template = tmp_path / "candidate.j2"
@@ -557,17 +568,24 @@ def test_rotation_preserves_immediate_restore_point(
     trace = tmp_path / "validated"
     binary = tmp_path / "xray"
     _validation_binary(binary, trace)
-    for task in tasks:
-        task.pop("notify", None)
-        module = task.get("ansible.builtin.template", task.get("ansible.builtin.copy"))
-        if module is not None:
-            module.update(owner=str(os.getuid()), group=str(os.getgid()))
-        if "ansible.builtin.template" in task:
-            module["src"] = str(template)
-    tasks = yaml.safe_load(yaml.safe_dump(tasks).replace("/etc/xray", str(tmp_path)))
+    def adapt(items):
+        for task in items:
+            for section in ("block", "always"):
+                if section in task:
+                    adapt(task[section])
+            module = task.get("ansible.builtin.template", task.get("ansible.builtin.copy"))
+            if module is not None:
+                module.update(owner=str(os.getuid()), group=str(os.getgid()))
+            if "ansible.builtin.template" in task:
+                module["src"] = str(template)
+    adapt(tasks)
     play = {
-        "tasks": tasks,
+        "tasks": [{"name": "Exercise canonical role restore point selected by rotation",
+                   "when": selected["when"], "block": tasks}],
         "vars": {
+            "role_path": str(tmp_path / "roles/xray"),
+            "xray_etc_dir": str(tmp_path), "xray_runtime_group": str(os.getgid()),
+            "xray_runtime_binary": str(binary), "xray_asset_dir": str(tmp_path / "runtime assets"),
             "vpn": {
                 "enable_xray_reality": scenario not in {"disabled", "xhttp-only"},
                 "enable_nginx_xhttp": scenario == "xhttp-only",
@@ -581,7 +599,7 @@ def test_rotation_preserves_immediate_restore_point(
         result.stdout + result.stderr
     )
     assert trace.exists() == (
-        scenario in {"changed", "first-config", "xhttp-only", "reject-config"}
+        scenario in {"changed", "unchanged", "first-config", "xhttp-only"}
     )
     if trace.exists():
         assert json.loads(trace.read_text())["assets"] == str(
@@ -592,7 +610,7 @@ def test_rotation_preserves_immediate_restore_point(
     )
     assert previous.read_text() == (
         old_bytes
-        if scenario in {"changed", "xhttp-only", "reject-config"}
+        if scenario in {"changed", "xhttp-only"}
         else "older restore point\n"
     )
     assert previous.stat().st_mode & 0o777 == 0o640

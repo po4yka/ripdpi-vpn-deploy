@@ -1,7 +1,6 @@
 """Fail-closed checks for Molecule's offline dependencies and scenario inputs."""
 
 import base64
-from hashlib import sha256
 import importlib.util
 import json
 import os
@@ -10,9 +9,10 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-import zipfile
 
 import yaml
+
+from tests.site_role_graph import site_roles
 
 from template_render import render_template
 
@@ -106,6 +106,49 @@ def test_full_stack_scenarios_repeat_convergence_before_verification() -> None:
     for scenario in (_full_stack_scenario(), _published_scenario()):
         sequence = scenario["scenario"]["test_sequence"]
         assert sequence == expected
+
+
+def test_both_full_stack_prepare_entrypoints_require_genuine_credential_delivery() -> None:
+    shared = REPO_ROOT / "ansible/molecule/prepare-transport-credentials.yml"
+    for name in ("full-stack", "full-stack-published"):
+        directory = REPO_ROOT / "ansible/molecule" / name
+        scenario = yaml.safe_load((directory / "molecule.yml").read_text())
+        sequence = scenario["scenario"]["test_sequence"]
+        assert sequence.index("create") < sequence.index("prepare") < sequence.index("converge")
+        prepare = directory / "prepare.yml"
+        assert prepare.is_file(), f"{name}: declared preparation has no entrypoint"
+        plays = yaml.safe_load(prepare.read_text())
+        assert len(plays) == 1
+        assert plays[0]["ansible.builtin.import_playbook"] == "../prepare-transport-credentials.yml"
+        assert (directory / plays[0]["ansible.builtin.import_playbook"]).resolve() == shared
+    play = yaml.safe_load(shared.read_text())[0]
+    assert play["hosts"] == "all" and play["become"] is True
+    tasks = play["tasks"]
+    propagation = next(index for index, task in enumerate(tasks)
+                       if task.get("ansible.builtin.command", {}).get("argv") ==
+                       ["mount", "--make-rshared", "/run"])
+    source = next(task["ansible.builtin.copy"] for task in tasks
+                  if task.get("ansible.builtin.copy", {}).get("dest") == "/run/molecule-credential-source")
+    assert source["owner"] == source["group"] == "root" and source["mode"] == "0600"
+    assert source["content"] == "owned-fixture-source"
+    unit = next(task["ansible.builtin.copy"]["content"] for task in tasks
+                if task.get("ansible.builtin.copy", {}).get("dest") ==
+                "/etc/systemd/system/molecule-credential-probe.service")
+    assert "Type=oneshot" in unit and "User=root" in unit
+    assert "LoadCredential=probe:/run/molecule-credential-source" in unit
+    assert "ExecStart=/usr/bin/python3 /usr/local/libexec/molecule-credential-probe.py" in unit
+    verifier = next(task["ansible.builtin.copy"]["content"] for task in tasks
+                    if task.get("ansible.builtin.copy", {}).get("dest") ==
+                    "/usr/local/libexec/molecule-credential-probe.py")
+    assert "os.environ['CREDENTIALS_DIRECTORY']" in verifier
+    assert "path.read_text() == 'owned-fixture-source'" in verifier
+    activation = next(index for index, task in enumerate(tasks)
+                      if task.get("ansible.builtin.systemd_service", {}).get("name") ==
+                      "molecule-credential-probe.service")
+    assert propagation < activation
+    assert tasks[activation]["ansible.builtin.systemd_service"] == {
+        "name": "molecule-credential-probe.service", "daemon_reload": True, "state": "started",
+    }
 
 
 def test_hosted_full_stack_job_runs_both_idempotence_scenarios() -> None:
@@ -213,34 +256,17 @@ def test_xray_molecule_uses_a_hash_pinned_local_runtime_archive() -> None:
         (REPO_ROOT / "ansible/roles/xray/molecule/default/converge.yml").read_text()
     )[0]
     variables = converge["vars"]
-    artifact = next(
-        task["ansible.builtin.copy"]
-        for task in converge["pre_tasks"]
-        if task["name"] == "Create hash-pinned Xray runtime archive fixture"
-    )
-    artifact_index = next(
-        index for index, task in enumerate(converge["pre_tasks"])
-        if task["name"] == "Create hash-pinned Xray runtime archive fixture"
-    )
-    parent = converge["pre_tasks"][artifact_index - 1]
-
-    assert variables["xray_runtime_release_urls"]["amd64"].startswith("file://")
-    assert variables["xray_runtime_release_urls"]["arm64"].startswith("file://")
-    assert artifact["dest"].endswith("xray-v26.3.27.zip")
-    assert artifact["src"] == "{{ playbook_dir }}/files/xray-v26.3.27.zip"
-    assert parent["ansible.builtin.file"] == {
-        "path": "/var/tmp/xray-molecule",
-        "state": "directory",
-        "owner": "root",
-        "group": "root",
-        "mode": "0755",
-    }
-    archive = REPO_ROOT / "ansible/roles/xray/molecule/default/files/xray-v26.3.27.zip"
-    assert sha256(archive.read_bytes()).hexdigest() == variables["xray"]["linux_amd64_sha256"]
-    with zipfile.ZipFile(archive) as payload:
-        assert payload.namelist() == ["xray", "geoip.dat"]
-        assert payload.read("xray").startswith(b"#!/bin/sh\n")
-        assert payload.read("geoip.dat") == b"MOLECULE_GEOIP_FIXTURE\n"
+    artifact_index = next(index for index, task in enumerate(converge['pre_tasks'])
+                          if task['name'] == 'Fetch exact checksum-verified native Xray archive fixture')
+    artifact = converge['pre_tasks'][artifact_index]['ansible.builtin.get_url']
+    parent = converge['pre_tasks'][artifact_index-1]
+    assert artifact['url'].startswith('https://github.com/XTLS/Xray-core/releases/download/v26.3.27/')
+    assert 'xray.linux_arm64_sha256' in artifact['checksum'] and 'xray.linux_amd64_sha256' in artifact['checksum']
+    assert artifact['dest'].endswith('xray-v26.3.27.zip')
+    assert parent['ansible.builtin.file']['mode'] == '0755'
+    assert variables['xray']['linux_amd64_sha256'] == '23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae'
+    assert variables['xray']['linux_arm64_sha256'] == '4d30283ae614e3057f730f67cd088a42be6fdf91f8639d82cb69e48cde80413c'
+    assert not any('src' in task.get('ansible.builtin.copy', {}) for task in converge['pre_tasks'])
     pre_task_names = {task["name"] for task in converge["pre_tasks"]}
     assert "Pre-create release dir for runtime link idempotence coverage" not in pre_task_names
     assert "Seed Xray binary for runtime link idempotence coverage" not in pre_task_names
@@ -356,7 +382,7 @@ def test_published_static_role_defaults_match_declared_manifest(tmp_path) -> Non
     manifest_tasks = [task for task in source["pre_tasks"]
                       if task["name"] == "Build effective public listener manifest"]
     assert len(manifest_tasks) == 1
-    roles = [{**role, "when": False} for role in source["roles"]]
+    roles = [{**role, "when": False} for role in site_roles(source)]
     assert roles and all(role["when"] is False for role in roles)
     playbooks = tmp_path / "ansible/playbooks"
     playbooks.mkdir(parents=True)

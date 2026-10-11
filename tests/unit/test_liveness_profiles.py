@@ -30,7 +30,7 @@ def inputs():
         "client_registry": {"sentinel": {"status": "active", "hosts": ["vultr:probe"]}},
         "xray": {"clients": [xray], "reality_public_key": "public-reality-key", "server_names": ["cover.example"], "xhttp_path": "/sync"},
         "nginx_xhttp": {"server_name": "origin.example"},
-        "hysteria": {"clients": [{"name": "sentinel", "password": "private-password"}]},
+        "hysteria": {"masquerade_url": "https://origin.example", "clients": [{"name": "sentinel", "password": "private-password"}]},
         "amneziawg_secrets": {"server_private_key": key(4), "peers": [peer], "instances": [],
                               "jc": 0, "h1": 11, "h2": 12, "h3": 13, "h4": 14},
     }
@@ -175,7 +175,7 @@ def test_awg_client_requires_unique_host_address_inside_selected_subnet(address)
     module = load()
     args = inputs()
     args["secrets_doc"]["amneziawg_secrets"]["peers"][0]["allowed_ips"] = address
-    with pytest.raises(module.ProfileError, match="awg-address"):
+    with pytest.raises(module.ProfileError, match="awg-input-semantics|awg-address"):
         module.build_profiles(**args)
 
 
@@ -199,7 +199,7 @@ def test_duplicate_client_identity_is_rejected(kind):
         if kind == "awg-address":
             duplicate["public_key"] = key(99)
     peers.append(duplicate)
-    with pytest.raises(module.ProfileError, match="duplicate"):
+    with pytest.raises(module.ProfileError, match="duplicate|awg-input-semantics|transport-input-semantics"):
         module.build_profiles(**args)
 
 
@@ -210,7 +210,7 @@ def test_multi_instance_binding_uses_only_selected_instance_not_cohort_or_top_le
     instance = {**awg, "name": "awg-selected", "listen_port": 51999, "address_v4": "10.66.66.1/24"}
     del instance["instances"]
     instance.pop("jc")
-    awg["instances"] = [{**instance, "name": "awg-other", "peers": []}, instance]
+    awg["instances"] = [{**instance, "name": "awg-other", "listen_port": 51998, "peers": []}, instance]
     args["awg_binding"]["instance"] = "awg-selected"
     built = module.build_profiles(**args)
     assert "Endpoint = 192.0.2.3:51999" in built["files"]["awg.conf"]
@@ -222,7 +222,7 @@ def test_unsupported_or_ambiguous_awg_parameters_fail_closed(parameter, value):
     module = load()
     args = inputs()
     args["secrets_doc"]["amneziawg_secrets"][parameter] = value
-    with pytest.raises(module.ProfileError, match="awg-parameters"):
+    with pytest.raises(module.ProfileError, match="awg-parameters|awg-input-semantics"):
         module.build_profiles(**args)
 
 
@@ -292,7 +292,7 @@ def test_equivalent_awg_peer_address_is_not_a_second_identity():
     args["secrets_doc"]["amneziawg_secrets"]["peers"].append({
         "name": "other", "public_key": key(99), "preshared_key": key(98), "allowed_ips": "10.66.66.2/255.255.255.255",
     })
-    with pytest.raises(module.ProfileError, match="duplicate"):
+    with pytest.raises(module.ProfileError, match="duplicate|awg-input-semantics|transport-input-semantics"):
         module.build_profiles(**args)
 
 

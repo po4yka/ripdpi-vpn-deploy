@@ -1,0 +1,124 @@
+---
+- name: Select active protected transport frontends
+  ansible.builtin.set_fact:
+    transport_egress_role_enabled: >-
+      {{ not (vpn_subscription_only | default(false) | bool) and
+         ((vpn.enable_xray_reality | default(true) | bool) or
+          (vpn.enable_nginx_xhttp | default(true) | bool) or
+          (vpn.enable_hysteria | default(true) | bool)) }}
+    transport_egress_frontend_users: >-
+      {{ (['xray'] if ((vpn.enable_xray_reality | default(true) | bool) or
+                       (vpn.enable_nginx_xhttp | default(true) | bool)) else [])
+         + (['hysteria'] if (vpn.enable_hysteria | default(true) | bool) else []) }}
+
+- name: Require the fixed protected Xray identity before host mutation
+  ansible.builtin.assert:
+    that:
+      - >-
+        not ((vpn.enable_xray_reality | default(true) | bool) or
+             (vpn.enable_nginx_xhttp | default(true) | bool)) or
+        ((xray_runtime_user | default('xray')) == 'xray' and
+         (xray_runtime_group | default('xray')) == 'xray')
+    fail_msg: Protected Xray runtime user and group must both be xray.
+  when: transport_egress_role_enabled | bool
+
+- name: Build admitted egress input before host mutation
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ role_path }}/../../../scripts/transport_egress_config.py"
+      - --input-only
+    stdin: >-
+      {{ {'vpn': vpn, 'secrets': transport_egress_secrets | default({}),
+          'owned_addresses': [], 'management_tcp_ports': [],
+          'management_udp_ports': []} | to_json }}
+    stdin_add_newline: false
+  delegate_to: localhost
+  become: false
+  register: _transport_egress_input
+  changed_when: false
+  check_mode: false
+  no_log: true
+  when: transport_egress_role_enabled | bool
+
+- name: Record private admitted topology
+  ansible.builtin.set_fact:
+    transport_egress_input_config: "{{ (_transport_egress_input.stdout | from_json).normalizer }}"
+  no_log: true
+  when: transport_egress_role_enabled | bool
+
+- name: Prepare egress identities and runtime prerequisites
+  ansible.builtin.include_role:
+    name: transport-egress
+    tasks_from: prepare
+  when: transport_egress_role_enabled | bool
+
+- name: Prepare optional namespace adapter before guard publication
+  ansible.builtin.include_role:
+    name: warp-outbound
+    tasks_from: prepare
+  when:
+    - transport_egress_role_enabled | bool
+    - transport_egress_warp_enabled | default(false) | bool
+
+- name: Read actual host destination authority
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |-
+        {{ lookup('ansible.builtin.file', role_path ~ '/../../../scripts/transport_destination_policy.py')
+             | regex_replace('(?s)if __name__ == .__main__.:.*$', '') }}
+        {{ lookup('ansible.builtin.file', role_path ~ '/../../../scripts/transport_egress_host_context.py')
+             | replace('from transport_destination_policy import normalize_address', '') }}
+    stdin: "{{ [vpn_service_address | default(none), honeypot_ipv4 | default(none)] | to_json }}"
+    stdin_add_newline: false
+  register: _transport_egress_host_context
+  changed_when: false
+  check_mode: false
+  no_log: true
+  when: transport_egress_role_enabled | bool
+
+- name: Build egress context using actual service identities
+  ansible.builtin.command:
+    argv: [python3, "{{ role_path }}/../../../scripts/transport_egress_config.py"]
+    stdin: >-
+      {{ (_transport_egress_host_context.stdout | from_json) | combine({
+          'vpn': vpn, 'secrets': transport_egress_secrets,
+          'normalizer_uid': transport_egress_normalizer_uid | int,
+          'gateway_uid': transport_egress_gateway_uid | int,
+          'classifier_uid': transport_egress_classifier_uid | default(0) | int,
+          'warp_gateway_uid': transport_egress_warp_gateway_uid | default(0) | int,
+          'frontend_uids': transport_egress_frontend_uids,
+          'tunnel_ifindex': transport_egress_warp_tunnel_ifindex | default(none),
+          'management_tcp_ports': ((_transport_egress_host_context.stdout | from_json).management_tcp_ports
+                                   + ([ansible_port | int] if ansible_port is defined else [])) | unique | list}) | to_json }}
+    stdin_add_newline: false
+  delegate_to: localhost
+  become: false
+  register: _transport_egress_context
+  changed_when: false
+  check_mode: false
+  no_log: true
+  when:
+    - transport_egress_role_enabled | bool
+    - not (transport_egress_fresh_check_mode | default(false) | bool)
+
+- name: Record complete egress publication authority
+  ansible.builtin.set_fact:
+    transport_egress_normalizer_config: "{{ (_transport_egress_context.stdout | from_json).normalizer }}"
+    transport_egress_policy_config_data: "{{ (_transport_egress_context.stdout | from_json).policy }}"
+  no_log: true
+  when:
+    - transport_egress_role_enabled | bool
+    - not (transport_egress_fresh_check_mode | default(false) | bool)
+
+- name: Stage protected egress before frontend configuration
+  ansible.builtin.include_role:
+    name: transport-egress
+    tasks_from: stage
+  when: transport_egress_role_enabled | bool
+
+- name: Record prepared topology for standalone consumers
+  ansible.builtin.set_fact:
+    transport_egress_prepared: true

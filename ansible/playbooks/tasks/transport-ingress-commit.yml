@@ -1,0 +1,19 @@
+---
+- name: Discard private ingress compensation only after guarded route readiness
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - '{{ lookup("ansible.builtin.file", playbook_dir ~ "/../roles/nginx-xhttp/files/nginx_transaction.py") }}'
+      - --site
+      - commit
+    stdin: '{{ _transport_ingress_request | to_json }}'
+  changed_when: false
+  no_log: true
+  diff: false
+  when: transport_site_transaction_active | default(false) | bool
+
+- name: Close the complete protected site transaction
+  ansible.builtin.set_fact:
+    transport_site_transaction_active: false
+    _transport_egress_transaction_started: false

@@ -50,8 +50,7 @@
       "tcp://8.8.8.8:53"
       {%- else %}
       "1.1.1.1",
-      "8.8.8.8",
-      "https+local://dns.cloudflare.com/dns-query"
+      "8.8.8.8"
       {%- endif %}
     ],
     "queryStrategy": "{% if vpn.enable_cascade_ingress | default(false) %}UseIPv4{% else %}UseIP{% endif %}",
@@ -149,17 +148,11 @@
   "outbounds": [
     {
       "tag": "direct",
-      "protocol": "freedom",
-      "settings": {
-        "domainStrategy": "UseIP"
-      }
-    },
-    {
-      "tag": "direct-asis",
-      "protocol": "freedom",
-      "settings": {
-        "domainStrategy": "AsIs"
-      }
+      "protocol": "socks",
+      "settings": {"servers": [{
+        "address": "127.0.0.1", "port": 12080,
+        "users": [{"user": "normalizer-direct-xray", "pass": {{ transport_egress_secrets.direct_xray_password | to_json }}}]
+      }]}
     },
     {
       "tag": "block",
@@ -169,10 +162,6 @@
           "type": "none"
         }
       }
-    },
-    {
-      "tag": "dns-out",
-      "protocol": "dns"
     }{% if vpn.enable_cascade_ingress | default(false) %},
     {
       "tag": "cascade-classifier",
@@ -205,14 +194,15 @@
         "servers": [
           {
             "address": "127.0.0.1",
-            "port": {{ warp_outbound.socks_port | default(40000) }}
+            "port": 12082,
+            "users": [{"user": "normalizer-warp-xray", "pass": {{ transport_egress_secrets.warp_xray_password | to_json }}}]
           }
         ]
       }
     }{% endif %}
   ],
   "routing": {
-    "domainStrategy": "IPIfNonMatch",
+    "domainStrategy": "AsIs",
     "rules": [
       {%- if vpn.enable_cascade_ingress | default(false) %}
       {
@@ -220,20 +210,6 @@
         "comment": "Route built-in TCP DNS resolution through the classifier before Xray sends resolved IPs",
         "inboundTag": ["dns-inbound"],
         "outboundTag": "cascade-classifier"
-      },
-      {%- endif %}
-      {%- if not (vpn.enable_cascade_ingress | default(false)) %}
-      {
-        "type": "field",
-        "comment": "DNS hijack — keep client DNS lookups visible to xray and resolvable",
-        "inboundTag": [
-          {%- for _coh in _cohorts -%}
-          "{% if _multi %}vless-reality-{{ _coh.name }}{% else %}vless-reality{% endif %}"{% if not loop.last %},{% endif %}
-          {%- endfor -%}
-          {% if vpn.enable_nginx_xhttp | default(false) %}{% if _reality_enabled %},{% endif %}"vless-xhttp-localhost"{% endif %}
-        ],
-        "port": "53",
-        "outboundTag": "dns-out"
       },
       {%- endif %}
       {
@@ -251,16 +227,6 @@
         "outboundTag": "block"
       },
       {%- endif %}
-      {
-        "type": "field",
-        "comment": "RFC1918 / link-local / loopback should never egress",
-        "ip": [
-          "geoip:private",
-          "127.0.0.0/8",
-          "169.254.0.0/16"
-        ],
-        "outboundTag": "block"
-      },
       {% if not (vpn.enable_cascade_ingress | default(false)) and (vpn.enable_warp_outbound | default(false)) and ((vpn.warp_outbound_routes | default([])) | length > 0) %}
       {%- for r in vpn.warp_outbound_routes %}
       {
@@ -283,7 +249,7 @@
       {% endif -%}
       {
         "type": "field",
-        "comment": "{% if vpn.enable_cascade_ingress | default(false) %}Default TCP traffic enters the loopback classifier adapter{% else %}Default — direct freedom outbound with UseIP strategy{% endif %}",
+        "comment": "{% if vpn.enable_cascade_ingress | default(false) %}Default TCP traffic enters the loopback classifier adapter{% else %}Default recipient traffic enters the guarded metadata normalizer{% endif %}",
         "network": "{% if vpn.enable_cascade_ingress | default(false) %}tcp{% else %}tcp,udp{% endif %}",
         "outboundTag": "{% if vpn.enable_cascade_ingress | default(false) %}cascade-classifier{% else %}direct{% endif %}"
       }

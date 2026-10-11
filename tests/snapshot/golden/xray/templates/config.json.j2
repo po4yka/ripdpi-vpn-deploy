@@ -14,8 +14,7 @@
   "dns": {
     "servers": [
       "1.1.1.1",
-      "8.8.8.8",
-      "https+local://dns.cloudflare.com/dns-query"
+      "8.8.8.8"
     ],
     "queryStrategy": "UseIP",
     "tag": "dns-inbound"
@@ -144,17 +143,11 @@
   "outbounds": [
     {
       "tag": "direct",
-      "protocol": "freedom",
-      "settings": {
-        "domainStrategy": "UseIP"
-      }
-    },
-    {
-      "tag": "direct-asis",
-      "protocol": "freedom",
-      "settings": {
-        "domainStrategy": "AsIs"
-      }
+      "protocol": "socks",
+      "settings": {"servers": [{
+        "address": "127.0.0.1", "port": 12080,
+        "users": [{"user": "normalizer-direct-xray", "pass": "REPLACE_WITH_TRANSPORT_DIRECT_XRAY_PASSWORD"}]
+      }]}
     },
     {
       "tag": "block",
@@ -164,23 +157,11 @@
           "type": "none"
         }
       }
-    },
-    {
-      "tag": "dns-out",
-      "protocol": "dns"
     }
   ],
   "routing": {
-    "domainStrategy": "IPIfNonMatch",
+    "domainStrategy": "AsIs",
     "rules": [
-      {
-        "type": "field",
-        "comment": "DNS hijack — keep client DNS lookups visible to xray and resolvable",
-        "inboundTag": ["vless-reality-primary","vless-reality-fallback","vless-xhttp-localhost"
-        ],
-        "port": "53",
-        "outboundTag": "dns-out"
-      },
       {
         "type": "field",
         "comment": "Probe-defense: block BitTorrent on the exit (graylist correlates BT)",
@@ -196,17 +177,7 @@
       },
       {
         "type": "field",
-        "comment": "RFC1918 / link-local / loopback should never egress",
-        "ip": [
-          "geoip:private",
-          "127.0.0.0/8",
-          "169.254.0.0/16"
-        ],
-        "outboundTag": "block"
-      },
-      {
-        "type": "field",
-        "comment": "Default — direct freedom outbound with UseIP strategy",
+        "comment": "Default recipient traffic enters the guarded metadata normalizer",
         "network": "tcp,udp",
         "outboundTag": "direct"
       }

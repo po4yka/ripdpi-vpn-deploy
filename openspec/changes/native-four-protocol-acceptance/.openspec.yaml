@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-10
+goal: TST-1791618356595983 Deliver isolated native acceptance for every baseline
+  transport

@@ -1,0 +1,17 @@
+---
+vpn:
+  enable_xray_reality: true
+  enable_nginx_xhttp: false
+  enable_hysteria: false
+  enable_warp_outbound: false
+  build_xray_from_source: false
+transport_egress_frontend_users:
+  - xray
+transport_egress_secrets:
+  direct_gateway_password: molecule-private-direct-gateway-credential
+  direct_xray_password: molecule-private-direct-frontend-credential
+xray:
+  version: v26.3.27
+  linux_amd64_sha256: 23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae
+  linux_arm64_sha256: 4d30283ae614e3057f730f67cd088a42be6fdf91f8639d82cb69e48cde80413c
+xray_runtime_publish_geoip: true

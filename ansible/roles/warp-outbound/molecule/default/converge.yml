@@ -1,158 +1,47 @@
 ---
-# Full converge for warp-outbound in a privileged systemd container.
-# The real cloudflare-warp CLI cannot register in CI (no reachable
-# Cloudflare endpoint), so we stub the CLI and service. Proxy mode does
-# not require managing systemd-networkd in this fixture.
-
-- name: Converge warp-outbound role
+- name: Converge actual owned namespace lifecycle without vendor registration
   hosts: all
   become: true
-  vars:
-    vpn:
-      enable_warp_outbound: true
-    warp_outbound:
-      package_version: "2026.8.2100.0"
-      install_warp_cli: false   # stub is placed in pre_tasks instead
-      mode: proxy
-      socks_port: 40000
-      routing_tag: warp-out
-
-  pre_tasks:
-    - name: Ensure /usr/bin exists (stub target)
-      ansible.builtin.file:
-        path: /usr/bin
-        state: directory
-        owner: root
-        group: root
-        mode: "0755"
-
-    - name: Install warp-cli stub
-      ansible.builtin.copy:
-        dest: /usr/bin/warp-cli
-        owner: root
-        group: root
-        mode: "0755"
-        content: |
-          #!/usr/bin/python3
-          import json
-          import os
-          from pathlib import Path
-          import sys
-          state_path = Path('/var/lib/warp-svc/fixture-state.json')
-          state_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-          state = json.loads(state_path.read_text()) if state_path.exists() else {}
-          args = sys.argv[1:]
-          with open('/tmp/warp-cli-calls.log', 'a') as log:
-              log.write('warp-cli fixture: ' + ' '.join(args) + '\n')
-          command = args[1:] if args[:1] == ['--accept-tos'] else args
-          if command == ['connect'] and os.environ.get('WARP_CLI_FIXTURE') == 'connect-failed':
-              print('fixture connect failed', file=sys.stderr)
-              sys.exit(1)
-          if command == ['registration', 'new']:
-              key, value = 'registered', True
-          elif command[:1] == ['mode'] and len(command) == 2:
-              key, value = 'mode', command[1]
-          elif command[:2] == ['proxy', 'port'] and len(command) == 3:
-              key, value = 'port', command[2]
-          elif command == ['connect']:
-              key, value = 'connected', True
-          else:
-              print('unsupported fixture command', file=sys.stderr)
-              sys.exit(2)
-          if state.get(key) == value:
-              print('already registered' if key == 'registered' else 'already configured')
-          else:
-              state[key] = value
-              state_path.write_text(json.dumps(state))
-              state_path.chmod(0o600)
-              print('Success')
-
-    - name: Install curl stub (for WARP trace check)
-      ansible.builtin.copy:
-        dest: /usr/local/bin/curl
-        owner: root
-        group: root
-        mode: "0755"
-        content: |
-          #!/bin/sh
-          # Molecule stub — returns a fake warp=on trace for the WARP check.
-          # WARP_TRACE_FIXTURE=warp-off flips the trace to warp=off (rc=0)
-          # so verify can exercise the tunnel-down health-gate fixture.
-          echo "warp-cli stub: curl $*" >> /tmp/warp-cli-calls.log
-          if [ "${WARP_TRACE_FIXTURE:-}" = "network-failed" ]; then
-            exit 7
-          fi
-          echo "fl=stub"
-          if [ "${WARP_TRACE_FIXTURE:-}" = "warp-off" ]; then
-            echo "warp=off"
-          else
-            echo "warp=on"
-          fi
-          echo "gateway=stub"
-          exit 0
-
-    - name: Ensure warp-svc stub systemd unit (simulates real warp-svc)
-      ansible.builtin.copy:
-        dest: /etc/systemd/system/warp-svc.service
-        owner: root
-        group: root
-        mode: "0644"
-        content: |
-          [Unit]
-          Description=Cloudflare WARP Service (molecule stub)
-          After=network-online.target
-
-          [Service]
-          Type=simple
-          ExecStart=/bin/sh -c 'echo warp-svc stub running; while true; do sleep 3600; done'
-          Restart=on-failure
-
-          [Install]
-          WantedBy=multi-user.target
-
-    - name: Ensure warp-svc state directory
-      ansible.builtin.file:
-        path: /var/lib/warp-svc
-        state: directory
-        owner: root
-        group: root
-        mode: "0700"
-
-    - name: Reload systemd
-      ansible.builtin.systemd_service:
-        daemon_reload: true
-
-    - name: Start warp-svc stub
-      ansible.builtin.systemd_service:
-        name: warp-svc.service
-        enabled: true
-        state: started
-
-    - name: Create synthetic exact WARP package control directory
-      ansible.builtin.file:
-        path: /var/tmp/molecule-warp-package/DEBIAN
-        state: directory
-        mode: "0755"
-
-    - name: Declare synthetic exact WARP package identity
-      ansible.builtin.copy:
-        dest: /var/tmp/molecule-warp-package/DEBIAN/control
-        mode: "0644"
-        content: |
-          Package: cloudflare-warp
-          Version: 2026.8.2100.0
-          Architecture: all
-          Maintainer: Fixture <fixture@example.test>
-          Description: Synthetic local WARP role-control fixture
-
-    - name: Build synthetic exact WARP package
-      ansible.builtin.command:
-        argv: [dpkg-deb, --build, /var/tmp/molecule-warp-package, /var/tmp/molecule-warp.deb]
-        creates: /var/tmp/molecule-warp.deb
-
-    - name: Install synthetic exact WARP package identity
+  tasks:
+    - name: Install genuine kernel namespace tooling
       ansible.builtin.apt:
-        deb: /var/tmp/molecule-warp.deb
+        name: [iproute2, nftables]
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+    - name: Prepare private exact lifecycle paths
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - {path: /var/lib/ripdpi/warp-outbound, mode: '0700'}
+        - {path: /usr/local/libexec/ripdpi-warp, mode: '0755'}
+        - {path: /etc/ripdpi/transport-egress, mode: '0700'}
+    - name: Install production namespace helper
+      ansible.builtin.copy:
+        content: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../../files/namespace.py', rstrip=false) }}"
+        dest: /usr/local/libexec/ripdpi-warp/namespace.py
+        owner: root
+        group: root
+        mode: '0755'
+    - name: Prepare actual bounded namespace and veth pair
+      ansible.builtin.command:
+        argv: [python3, -Es, /usr/local/libexec/ripdpi-warp/namespace.py, prepare]
+      register: prepared
+      changed_when: (prepared.stdout | from_json).changed | bool
 
-  roles:
-    - role: warp-outbound
+    - name: Install actual namespace boot lifecycle unit
+      ansible.builtin.copy:
+        content: "{{ lookup('ansible.builtin.template', playbook_dir ~ '/../../templates/namespace.service.j2') }}"
+        dest: /etc/systemd/system/ripdpi-warp-namespace.service
+        owner: root
+        group: root
+        mode: '0644'
+    - name: Admit actual boot lifecycle service without vendor registration
+      ansible.builtin.systemd_service:
+        name: ripdpi-warp-namespace.service
+        daemon_reload: true
+        state: started

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from jinja2 import Environment, StrictUndefined
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -46,5 +47,26 @@ def test_xray_molecule_uses_shared_runtime_publisher_and_idempotence():
 
     assert publisher["ansible.builtin.include_role"]["name"] == "runtime-release"
     assert publisher["when"] == "not xray_runtime_build_from_source | bool"
-    assert "Create hash-pinned Xray runtime archive fixture" in setup_names
+    archive = next(task["ansible.builtin.get_url"] for task in converge["pre_tasks"]
+                   if task["name"] == "Fetch exact checksum-verified native Xray archive fixture")
+    pins = converge["vars"]["xray"]
+    assert pins["version"] == "v26.3.27"
+    destination = f"/var/tmp/xray-molecule/xray-{pins['version']}.zip"
+    assert archive["dest"] == destination
+    assert archive["mode"] == "0600"
+    environment = Environment(undefined=StrictUndefined)
+    for architecture, filename, pin in (
+        ("x86_64", "64", "linux_amd64_sha256"),
+        ("aarch64", "arm64-v8a", "linux_arm64_sha256"),
+    ):
+        context = {"ansible_facts": {"architecture": architecture}, "xray": pins}
+        assert environment.from_string(archive["url"]).render(context) == (
+            f"https://github.com/XTLS/Xray-core/releases/download/{pins['version']}/Xray-linux-{filename}.zip"
+        )
+        assert environment.from_string(archive["checksum"]).render(context) == f"sha256:{pins[pin]}"
+    assert converge["vars"]["xray_runtime_release_urls"] == {
+        "amd64": f"file://{destination}", "arm64": f"file://{destination}",
+    }
+    assert "Pre-create release dir for runtime link idempotence coverage" not in setup_names
+    assert "Seed Xray binary for runtime link idempotence coverage" not in setup_names
     assert "idempotence" in molecule["scenario"]["test_sequence"]

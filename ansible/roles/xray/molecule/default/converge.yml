@@ -1,5 +1,5 @@
 ---
-- name: Converge xray role (template-only, no real binary download)
+- name: Converge Xray and guarded shared egress with the exact native runtime
   hosts: all
   become: true
   vars:
@@ -11,33 +11,38 @@
       arm64: file:///var/tmp/xray-molecule/xray-v26.3.27.zip
     p0_reality_shapes:
       vision:
-        client_flow: "xtls-rprx-vision"
+        client_flow: xtls-rprx-vision
         client_mux: false
         finalmask: false
       mux:
-        client_flow: ""
+        client_flow: ''
         client_mux: true
         finalmask: false
     vpn:
       enable_nginx_xhttp: true
       xray_flow_mode: mux
       xray_finalmask: true
+      enable_xray_reality: true
+      enable_hysteria: false
+      enable_warp_outbound: false
+      enable_transport_egress: true
+      enable_geodata: false
     xray:
-      version: "v26.3.27"
-      linux_amd64_sha256: "96b7d6441dfc2f8d685b12e155bcbd22c5c553bbf15998681413d4926bc2e3fd"
-      linux_arm64_sha256: "96b7d6441dfc2f8d685b12e155bcbd22c5c553bbf15998681413d4926bc2e3fd"
-      reality_private_key: "MOLECULE_TEST_PRIVATE_KEY_NOT_REAL"
-      target: "www.cloudflare.com:443"
+      version: v26.3.27
+      linux_amd64_sha256: 23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae
+      linux_arm64_sha256: 4d30283ae614e3057f730f67cd088a42be6fdf91f8639d82cb69e48cde80413c
+      reality_private_key: 6MpEOecc4Vy3oLd7MWFEozYpJ61O6x98ULDrgYVJxV8
+      target: www.cloudflare.com:443
       server_names:
-        - "www.cloudflare.com"
-      xhttp_path: "/test"
+        - www.cloudflare.com
+      xhttp_path: /test
       clients:
         - name: alice
-          uuid: "11111111-1111-1111-1111-111111111111"
-          short_id: "deadbeef"
+          uuid: 11111111-1111-1111-1111-111111111111
+          short_id: deadbeef
         - name: bob
-          uuid: "22222222-2222-2222-2222-222222222222"
-          short_id: "cafebabe"
+          uuid: 22222222-2222-2222-2222-222222222222
+          short_id: cafebabe
   pre_tasks:
     - name: Create Xray runtime fixture directory
       ansible.builtin.file:
@@ -45,23 +50,23 @@
         state: directory
         owner: root
         group: root
-        mode: "0755"
-
-    - name: Create hash-pinned Xray runtime archive fixture
-      ansible.builtin.copy:
+        mode: '0755'
+    - name: Fetch exact checksum-verified native Xray archive fixture
+      ansible.builtin.get_url:
+        url: https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-{{ 'arm64-v8a' if
+          ansible_facts['architecture'] in ['aarch64', 'arm64'] else '64' }}.zip
         dest: /var/tmp/xray-molecule/xray-v26.3.27.zip
-        src: "{{ playbook_dir }}/files/xray-v26.3.27.zip"
+        checksum: sha256:{{ xray.linux_arm64_sha256 if ansible_facts['architecture'] in ['aarch64', 'arm64']
+          else xray.linux_amd64_sha256 }}
         owner: root
         group: root
-        mode: "0600"
-        directory_mode: "0755"
+        mode: '0600'
     - name: Install jq (needed by molecule verify)
       ansible.builtin.apt:
         name: jq
         state: present
         update_cache: true
         cache_valid_time: 3600
-
     - name: Create xray user
       ansible.builtin.user:
         name: xray
@@ -69,9 +74,7 @@
         shell: /usr/sbin/nologin
         home: /var/lib/xray
         create_home: true
-
-  # Use `roles:` (static binding) instead of `include_role` so the role's
-  # handlers (Restart xray, Reload systemd) register with the play and
-  # `notify:` from the role tasks resolves correctly.
   roles:
     - role: xray
+  vars_files:
+    - ../../../../molecule/vars/transport-native.yml

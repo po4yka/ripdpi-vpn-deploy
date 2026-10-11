@@ -145,8 +145,12 @@ def test_amneziawg_scenario_dispatches_real_role_tasks(tmp_path):
     executable = shutil.which("ansible-playbook")
     assert executable, "Ansible is required for the real role-dispatch regression"
     role = REPO_ROOT / "ansible/roles/amneziawg"
-    copied_role = tmp_path / "roles/amneziawg"
+    fixture_root = tmp_path / "repo"
+    copied_role = fixture_root / "ansible/roles/amneziawg"
     shutil.copytree(role, copied_role)
+    shutil.copytree(REPO_ROOT / "ansible/playbooks/tasks", fixture_root / "ansible/playbooks/tasks")
+    (fixture_root / "scripts").mkdir()
+    shutil.copyfile(REPO_ROOT / "scripts/transport_semantics.py", fixture_root / "scripts/transport_semantics.py")
     tasks_path = copied_role / "tasks/enable.yml"
     tasks = yaml.safe_load(tasks_path.read_text())
     sentinel = "MOLECULE_AWG_ROLE_DISPATCH_SENTINEL"
@@ -186,7 +190,7 @@ def test_amneziawg_scenario_dispatches_real_role_tasks(tmp_path):
     }
     environment.update(
         ANSIBLE_CONFIG=str(config),
-        ANSIBLE_ROLES_PATH=str(tmp_path / "roles"),
+        ANSIBLE_ROLES_PATH=str(fixture_root / "ansible/roles"),
         ANSIBLE_BECOME="false",
         ANSIBLE_DEBUG="false",
         ANSIBLE_NOCOLOR="1",

@@ -24,6 +24,10 @@ import time
 import uuid
 
 LIMIT = 8 * 1024 * 1024
+STATE_ROOT = Path("/var/lib/vpn-nginx-publication")
+SITE_OWNERS = {"nginx-xhttp", "reality-self-steal"}
+DEFAULT_ENABLED = Path("/etc/nginx/sites-enabled/default")
+DEFAULT_AVAILABLE = Path("/etc/nginx/sites-available/default")
 
 
 class TransactionError(RuntimeError):
@@ -180,7 +184,7 @@ def boot_clock():
     return boot, ticks
 
 
-def inactive_absence_receipt(unit, fingerprint):
+def inactive_absence_receipt(unit, receipt):
     raw = command(
         ["systemctl", "show", unit, "--property=LoadState,ActiveState,MainPID"]
     )
@@ -193,8 +197,7 @@ def inactive_absence_receipt(unit, fingerprint):
         raise TransactionError("runtime-not-inactive")
     boot, ticks = boot_clock()
     return {
-        "schema": 1,
-        "fingerprint": fingerprint,
+        **receipt,
         "active": False,
         "boot_id": boot,
         "inactive_after_ticks": ticks,
@@ -547,7 +550,7 @@ def validate(manifest):
     command(manifest["validate_argv"])
 
 
-def expand_release_prune(document):
+def expand_release_prune(document, owned_files=()):
     """Resolve only self-steal's immutable pair namespace under the unit lock."""
     prune = document["prune_releases"]
     if prune is None:
@@ -555,9 +558,28 @@ def expand_release_prune(document):
     result = copy.deepcopy(document)
     root = Path(prune["root"])
     safe(root, missing=True)
+    explicit = {row["path"]: row for row in result["files"]}
+    # A known owned release may already be absent while its listener is cached.
+    # The typed prune declaration still requires its retirement and adoption.
+    for name in owned_files:
+        path = Path(name)
+        if not path.is_relative_to(root):
+            continue
+        parts = path.relative_to(root).parts
+        if (len(parts) != 2 or not re.fullmatch(r"[0-9a-f]{64}", parts[0])
+                or parts[1] not in {"fullchain.pem", "privkey.pem"}
+                or parts[0] == prune["keep"]):
+            continue
+        row = {"path": name, "kind": "absent"}
+        if name in explicit and explicit[name] != row:
+            raise TransactionError("release-prune-conflict")
+        if name not in explicit:
+            if len(result["files"]) >= 128:
+                raise TransactionError("release-capacity")
+            result["files"].append(row)
+            explicit[name] = row
     if not root.exists():
         return result
-    explicit = {row["path"]: row for row in result["files"]}
     releases = []
     with os.scandir(root) as entries:
         for entry in entries:
@@ -724,6 +746,381 @@ def fingerprint(document):
     ).hexdigest()
 
 
+def witness(row):
+    """Receipts contain typed metadata and digests, never certificate/key bytes."""
+    result = {key: value for key, value in row.items() if key != "content_b64"}
+    if row["kind"] == "file":
+        result["sha256"] = hashlib.sha256(base64.b64decode(row["content_b64"], validate=True)).hexdigest()
+    return result
+
+
+def witness_request(owner, unit, roots, files):
+    rows = []
+    for path, row in files.items():
+        value = dict(row)
+        if value.get("kind") == "file":
+            digest = value.pop("sha256", None)
+            if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+                raise TransactionError("unsafe-receipt")
+            value["content_b64"] = ""
+        if value.get("kind") == "link" and not Path(value["target"]).is_absolute():
+            value["target"] = os.path.normpath(str(Path(path).parent / value["target"]))
+        rows.append({"path": path, **value})
+    return request({
+        "owner": owner, "unit": unit, "roots": roots, "files": rows,
+        "validate_argv": ["/usr/sbin/nginx", "-t"], "activation": "reload",
+        "check": False, "credential_root": "", "runtime_directories": [],
+        "activate_inactive": False, "desired_enabled": None, "prune_releases": None,
+    })[0]
+
+
+def validate_receipt(receipt, owner, unit):
+    fields = {"schema", "owner", "unit", "roots", "files", "fingerprint", "active"}
+    if isinstance(receipt, dict) and receipt.get("active") is False:
+        fields |= {"boot_id", "inactive_after_ticks"}
+    if (not isinstance(receipt, dict) or set(receipt) != fields
+            or type(receipt.get("schema")) is not int or receipt["schema"] != 2
+            or receipt["owner"] != owner or receipt["unit"] != unit
+            or type(receipt["active"]) is not bool
+            or not isinstance(receipt["files"], dict)
+            or not isinstance(receipt["fingerprint"], str)
+            or not re.fullmatch(r"[0-9a-f]{64}", receipt["fingerprint"])):
+        raise TransactionError("unsafe-receipt")
+    witness_request(owner, unit, receipt["roots"], receipt["files"])
+    if not receipt["active"]:
+        if (not isinstance(receipt["boot_id"], str)
+                or not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", receipt["boot_id"])
+                or type(receipt["inactive_after_ticks"]) is not int
+                or not 0 <= receipt["inactive_after_ticks"] <= 2**63 - 1):
+            raise TransactionError("unsafe-receipt")
+        boot, ticks = boot_clock()
+        if receipt["boot_id"] == boot and receipt["inactive_after_ticks"] > ticks:
+            raise TransactionError("unsafe-receipt")
+    return receipt
+
+
+def validate_receipt_row(row, owner, unit):
+    if row == {"kind": "absent"}:
+        return
+    if (not isinstance(row, dict) or set(row) != {"kind", "uid", "gid", "mode", "content_b64"}
+            or row["kind"] != "file" or row["mode"] != 0o600
+            or type(row["uid"]) is not int or row["uid"] != os.geteuid()
+            or type(row["gid"]) is not int or row["gid"] < 0):
+        raise TransactionError("unsafe-receipt")
+    raw = base64.b64decode(row["content_b64"], validate=True)
+    if len(raw) > LIMIT:
+        raise TransactionError("unsafe-receipt")
+    validate_receipt(json.loads(raw), owner, unit)
+
+
+def verify_witnesses(files, declared_absent=()):
+    retired = False
+    for path, row in files.items():
+        observed = witness(capture(Path(path)))
+        if observed != row:
+            if observed == {"kind": "absent"} and path in declared_absent:
+                retired = True
+                continue
+            raise TransactionError("foreign-publication")
+    return retired
+
+
+def owned_receipt(document, files=None, roots=None):
+    return {
+        "schema": 2, "owner": document["owner"], "unit": document["unit"],
+        "roots": roots or document["roots"],
+        "files": files if files is not None else {
+            row["path"]: witness({k: v for k, v in row.items() if k != "path"})
+            for row in document["files"]},
+        "fingerprint": fingerprint(document), "active": True,
+    }
+
+
+def merged_roots(roots):
+    values = sorted(set(roots))
+    return [value for value in values if not any(
+        value != other and Path(value).is_relative_to(Path(other)) for other in values)]
+
+
+@contextmanager
+def unit_lock(state):
+    safe(state.parent, missing=True)
+    state.mkdir(mode=0o700, parents=True, exist_ok=True)
+    safe(state)
+    if stat.S_IMODE(state.stat().st_mode) != 0o700:
+        raise TransactionError("unsafe-state")
+    descriptor = os.open(state / "lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    try:
+        info = os.fstat(descriptor)
+        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                or info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o600):
+            raise TransactionError("unsafe-lock")
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        yield
+    finally:
+        os.close(descriptor)
+
+
+def site_request(document):
+    if (not isinstance(document, dict) or set(document) != {"owners", "check"}
+            or type(document["check"]) is not bool or not isinstance(document["owners"], list)
+            or len(document["owners"]) != 2):
+        raise TransactionError("site-request")
+    result = []
+    for owner in document["owners"]:
+        if (not isinstance(owner, dict) or set(owner) != {"owner", "roots", "paths", "prune_releases"}
+                or owner["owner"] not in SITE_OWNERS or not isinstance(owner["paths"], list)):
+            raise TransactionError("site-request")
+        value = witness_request(owner["owner"], "nginx.service", owner["roots"], {
+            path: {"kind": "absent"} for path in owner["paths"]})
+        if len(value["files"]) != len(owner["paths"]):
+            raise TransactionError("site-request")
+        value["prune_releases"] = owner["prune_releases"]
+        request(value)
+        result.append(value)
+    if {value["owner"] for value in result} != SITE_OWNERS:
+        raise TransactionError("site-request")
+    return result
+
+
+def read_site(state):
+    journal = private_json(state / "site.json")
+    if journal is None:
+        return None
+    if (not isinstance(journal, dict) or set(journal) != {
+            "schema", "requests", "files", "receipts", "allowed", "allowed_receipts", "service", "phase"}
+            or type(journal["schema"]) is not int or journal["schema"] != 1 or journal["phase"] not in {"open", "restoring"}
+            or not isinstance(journal["requests"], list) or len(journal["requests"]) != 2
+            or {value.get("owner") for value in journal["requests"]} != SITE_OWNERS):
+        raise TransactionError("unsafe-site-journal")
+    paths = set()
+    for value in journal["requests"]:
+        request(value)
+        if value["unit"] != "nginx.service" or value["check"]:
+            raise TransactionError("unsafe-site-journal")
+        paths.update(row["path"] for row in value["files"])
+        validate_previous(value, {row["path"]: journal["files"][row["path"]] for row in value["files"]})
+    if (set(journal["files"]) != paths or set(journal["allowed"]) != paths
+            or set(journal["receipts"]) != SITE_OWNERS
+            or set(journal["allowed_receipts"]) != SITE_OWNERS):
+        raise TransactionError("unsafe-site-journal")
+    for value in journal["requests"]:
+        for row in value["files"]:
+            choices = journal["allowed"][row["path"]]
+            if not isinstance(choices, list) or not 1 <= len(choices) <= 4:
+                raise TransactionError("unsafe-site-journal")
+            for choice in choices:
+                witness_request(value["owner"], value["unit"], value["roots"], {row["path"]: choice})
+    for owner in SITE_OWNERS:
+        rows = [journal["receipts"][owner], *journal["allowed_receipts"][owner]]
+        if not 2 <= len(rows) <= 6:
+            raise TransactionError("unsafe-site-journal")
+        for row in rows:
+            validate_receipt_row(row, owner, "nginx.service")
+    prior = journal["service"]
+    if (not isinstance(prior, dict) or set(prior) != {"active", "unit_file_state", "exists"}
+            or type(prior["active"]) is not bool or type(prior["exists"]) is not bool
+            or prior["unit_file_state"] not in {
+                "enabled", "enabled-runtime", "disabled", "static", "indirect", "not-found", "masked", "masked-runtime"}):
+        raise TransactionError("unsafe-site-journal")
+    return journal
+
+
+def verify_site(state, journal):
+    for path, choices in journal["allowed"].items():
+        if witness(capture(Path(path))) not in choices:
+            raise TransactionError("foreign-publication")
+    for owner, choices in journal["allowed_receipts"].items():
+        if capture(state / (owner + ".activated.json")) not in choices:
+            raise TransactionError("foreign-receipt")
+
+
+def packaged_default(row):
+    if (row.get("kind") != "link" or row.get("uid") != os.geteuid()
+            or row.get("gid") != os.getegid() or row.get("mode") != 0o777
+            or os.path.normpath(str(DEFAULT_ENABLED.parent / row["target"])) != str(DEFAULT_AVAILABLE)):
+        return False
+    target = capture(DEFAULT_AVAILABLE)
+    if target["kind"] != "file" or target["uid"] != os.geteuid() or target["mode"] != 0o644:
+        return False
+    return command(["dpkg-query", "--search", str(DEFAULT_AVAILABLE)]).strip() == "nginx-common: " + str(DEFAULT_AVAILABLE)
+
+
+def admit_packaged_default(state, journal, document):
+    name = str(DEFAULT_ENABLED)
+    if (journal["files"].get(name) != {"kind": "absent"}
+            or not any(row == {"path": name, "kind": "absent"} for row in document["files"])):
+        return
+    observed = capture(DEFAULT_ENABLED)
+    current = witness(observed)
+    if current not in journal["allowed"][name] and packaged_default(observed):
+        # apt's suppressed-autostart install may create this exact distro link
+        # after begin. Admit only its witnessed removal, retaining original
+        # absence for site rollback; no other package-created path is adopted.
+        journal["allowed"][name].append(current)
+        persist(state / "site.json", journal)
+
+
+def receipt_row(receipt):
+    return {"kind": "file", "uid": os.geteuid(), "gid": os.getegid(), "mode": 0o600,
+            "content_b64": base64.b64encode(json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()).decode()}
+
+
+def site_authorize(state, document, expected_receipt):
+    """Extend only the typed site's declared write set before a one-shot writer."""
+    journal = read_site(state)
+    if journal is None:
+        return
+    if document["owner"] not in SITE_OWNERS:
+        raise TransactionError("site-transaction-busy")
+    if journal["phase"] != "open":
+        raise TransactionError("recovery-required")
+    authorized = next(value for value in journal["requests"] if value["owner"] == document["owner"])
+    if not set(row["path"] for row in document["files"]) <= set(row["path"] for row in authorized["files"]):
+        raise TransactionError("site-write-set")
+    if not all(any(Path(root).is_relative_to(Path(allowed)) for allowed in authorized["roots"])
+               for root in document["roots"]):
+        raise TransactionError("site-write-set")
+    validate_receipt(expected_receipt, document["owner"], document["unit"])
+    admit_packaged_default(state, journal, document)
+    verify_site(state, journal)
+    for row in document["files"]:
+        choices = journal["allowed"][row["path"]]
+        desired = witness({key: value for key, value in row.items() if key != "path"})
+        if desired not in choices:
+            choices.append(desired)
+            if len(choices) > 4:
+                raise TransactionError("site-capacity")
+    receipt = receipt_row(expected_receipt)
+    choices = journal["allowed_receipts"][document["owner"]]
+    if receipt not in choices:
+        choices.append(receipt)
+    # Inactive one-shot retirement may remove its receipt after publication.
+    if {"kind": "absent"} not in choices:
+        choices.append({"kind": "absent"})
+    persist(state / "site.json", journal)
+
+
+def site_transaction(action, document):
+    requests = site_request(document)
+    state = STATE_ROOT / "nginx.service"
+    if document["check"]:
+        if os.path.lexists(state / "site.json") or os.path.lexists(state / "pending.json"):
+            raise TransactionError("recovery-required")
+        # Check-only admission uses exactly the receipt validation of begin.
+        for value in requests:
+            receipt = private_json(state / (value["owner"] + ".activated.json"))
+            if receipt is not None:
+                validate_receipt(receipt, value["owner"], "nginx.service")
+                verify_witnesses(receipt["files"])
+        return {"status": "validated", "changed": False}
+    if action == "begin":
+        # Legacy/foreign receipt authority is refused before even lock creation.
+        for value in requests:
+            prior = private_json(state / (value["owner"] + ".activated.json"))
+            if prior is not None:
+                validate_receipt(prior, value["owner"], "nginx.service")
+                verify_witnesses(prior["files"])
+    with unit_lock(state):
+        if action == "begin":
+            if os.path.lexists(state / "site.json") or os.path.lexists(state / "pending.json"):
+                raise TransactionError("recovery-required")
+            files, receipts = {}, {}
+            for value in requests:
+                path = state / (value["owner"] + ".activated.json")
+                prior = private_json(path)
+                if prior is not None:
+                    validate_receipt(prior, value["owner"], "nginx.service")
+                    verify_witnesses(prior["files"])
+                    value["roots"] = merged_roots(value["roots"] + prior["roots"])
+                    by_path = {row["path"]: row for row in value["files"]}
+                    by_path.update({path: {"path": path, "kind": "absent"} for path in prior["files"]})
+                    value["files"] = list(by_path.values())
+                value = expand_release_prune(value)
+                request(value)
+                requests[requests.index(next(item for item in requests if item["owner"] == value["owner"]))] = value
+                observed = {row["path"]: capture(Path(row["path"])) for row in value["files"]}
+                validate_previous(value, observed)
+                if prior is None:
+                    for name, row in observed.items():
+                        default_owned = name == str(DEFAULT_ENABLED) and packaged_default(row)
+                        if row["kind"] != "absent" and not default_owned:
+                            raise TransactionError("unclaimed-ingress")
+                files.update(observed)
+                receipts[value["owner"]] = capture(path)
+            if sum(len(json.dumps(row)) for row in files.values()) > LIMIT:
+                raise TransactionError("snapshot-size")
+            journal = {"schema": 1, "phase": "open", "requests": requests, "files": files,
+                       "receipts": receipts, "allowed": {path: [witness(row)] for path, row in files.items()},
+                       "allowed_receipts": {owner: [row] for owner, row in receipts.items()},
+                       "service": service_state("nginx.service")}
+            persist(state / "site.json", journal)
+            return {"status": "captured", "changed": False}
+        journal = read_site(state)
+        if journal is None:
+            return {"status": "absent", "changed": False}
+        pending = private_json(state / "pending.json")
+        if pending is not None:
+            if action == "commit":
+                raise TransactionError("recovery-required")
+            staged, _ = request(pending["request"])
+            authorized = next((value for value in journal["requests"]
+                               if value["owner"] == staged["owner"]), None)
+            if (authorized is None or staged["unit"] != "nginx.service"
+                    or not {row["path"] for row in staged["files"]}
+                    <= {row["path"] for row in authorized["files"]}
+                    or not all(any(Path(root).is_relative_to(Path(allowed))
+                                   for allowed in authorized["roots"]) for root in staged["roots"])):
+                raise TransactionError("site-write-set")
+            recover(state / "pending.json", "nginx.service")
+        verify_site(state, journal)
+        if action == "commit":
+            for owner in SITE_OWNERS:
+                current = private_json(state / (owner + ".activated.json"))
+                if current is not None:
+                    validate_receipt(current, owner, "nginx.service")
+                    verify_witnesses(current["files"])
+            clear(state / "site.json")
+            return {"status": "committed", "changed": False}
+        journal["phase"] = "restoring"
+        persist(state / "site.json", journal)
+        prior = journal["service"]
+        if not prior["active"]:
+            command(["systemctl", "stop", "nginx.service"])
+        changed = False
+        for path, row in journal["files"].items():
+            observed = capture(Path(path))
+            if witness(observed) not in journal["allowed"][path]:
+                raise TransactionError("foreign-publication")
+            if observed != row:
+                apply(Path(path), row, [])
+                changed = True
+        for owner, row in journal["receipts"].items():
+            path = state / (owner + ".activated.json")
+            if capture(path) not in journal["allowed_receipts"][owner]:
+                raise TransactionError("foreign-receipt")
+            apply(path, row, [])
+        if "/etc/systemd/system/nginx.service" in journal["files"]:
+            command(["systemctl", "daemon-reload"])
+        if prior["exists"]:
+            restore_enabled("nginx.service", prior)
+        elif service_state("nginx.service")["exists"]:
+            # Fresh role installation may add the distro unit. Retain packages,
+            # but never leave a failed first candidate enabled at boot.
+            command(["systemctl", "disable", "nginx.service"])
+            current = service_state("nginx.service")
+            if current["active"] or current["unit_file_state"] not in {"disabled", "static", "indirect"}:
+                raise TransactionError("enablement-restore-failed")
+        if prior["active"]:
+            command(["/usr/sbin/nginx", "-t"])
+            command(["systemctl", "reset-failed", "nginx.service"])
+            command(["systemctl", "restart", "nginx.service"])
+            command(["systemctl", "is-active", "--quiet", "nginx.service"])
+            wait_adoption("nginx.service")
+        clear(state / "site.json")
+        return {"status": "restored", "changed": changed}
+
+
 def recover(pending, unit):
     journal = private_json(pending)
     if journal is None:
@@ -740,9 +1137,11 @@ def recover(pending, unit):
             "service",
             "owner",
             "candidate",
+            "receipt",
+            "next_receipt",
         }
         or type(journal["schema"]) is not int
-        or journal["schema"] != 1
+        or journal["schema"] != 2
         or journal["phase"]
         not in {"prepared", "publishing", "activating", "activated", "recovering"}
     ):
@@ -761,6 +1160,17 @@ def recover(pending, unit):
     ):
         raise TransactionError("manual-recovery-required")
     previous = journal["files"]
+    prior_receipt = journal["receipt"]
+    validate_receipt_row(prior_receipt, original["owner"], unit)
+    validate_receipt_row(journal["next_receipt"], original["owner"], unit)
+    current_receipt = capture(pending.parent / (original["owner"] + ".activated.json"))
+    allowed_receipts = [prior_receipt]
+    if journal["phase"] in {"activated", "recovering"}:
+        allowed_receipts.append(journal["next_receipt"])
+        if not journal["active"] and not original["activate_inactive"]:
+            allowed_receipts.append({"kind": "absent"})
+    if current_receipt not in allowed_receipts:
+        raise TransactionError("foreign-receipt")
     prior = journal["service"]
     if (
         not isinstance(previous, dict)
@@ -818,6 +1228,7 @@ def recover(pending, unit):
             command(["systemctl", "restart", unit])
             command(["systemctl", "is-active", "--quiet", unit])
             wait_adoption(unit)
+    apply(pending.parent / (original["owner"] + ".activated.json"), prior_receipt, [])
     remove_candidate(candidate)
     clear(pending)
     return True
@@ -826,12 +1237,17 @@ def recover(pending, unit):
 def publish(document):
     document, roots = request(document)
     logical_document = copy.deepcopy(document)
+    admission_receipt = private_json(STATE_ROOT / document["unit"] / (document["owner"] + ".activated.json"))
+    if admission_receipt is not None:
+        validate_receipt(admission_receipt, document["owner"], document["unit"])
+        if document["check"]:
+            verify_witnesses(admission_receipt["files"])
     previous = {row["path"]: capture(Path(row["path"])) for row in document["files"]}
     total = sum(len(json.dumps(row)) for row in previous.values())
     if total > LIMIT:
         raise TransactionError("snapshot-size")
     validate_previous(document, previous)
-    state = Path("/var/lib/vpn-nginx-publication") / document["unit"]
+    state = STATE_ROOT / document["unit"]
     safe(state.parent, missing=True)
     pending = state / "pending.json"
     if document["check"]:
@@ -868,47 +1284,25 @@ def publish(document):
             raise TransactionError("unsafe-lock")
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         recovered = recover(pending, document["unit"])
-        document = expand_release_prune(logical_document)
-        request(document)
         receipt = state / (document["owner"] + ".activated.json")
         receipt_data = private_json(receipt)
-        receipt_fields = {"schema", "fingerprint", "active"}
-        if isinstance(receipt_data, dict) and receipt_data.get("active") is False:
-            receipt_fields |= {"boot_id", "inactive_after_ticks"}
-        if receipt_data is not None and (
-            not isinstance(receipt_data, dict)
-            or set(receipt_data) != receipt_fields
-            or type(receipt_data["schema"]) is not int
-            or receipt_data["schema"] != 1
-            or type(receipt_data["active"]) is not bool
-            or not isinstance(receipt_data["fingerprint"], str)
-            or not re.fullmatch(r"[0-9a-f]{64}", receipt_data["fingerprint"])
-        ):
-            raise TransactionError("unsafe-receipt")
-        if receipt_data is not None and receipt_data["active"] is False:
-            if (
-                not isinstance(receipt_data["boot_id"], str)
-                or not re.fullmatch(
-                    r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}",
-                    receipt_data["boot_id"],
-                )
-                or type(receipt_data["inactive_after_ticks"]) is not int
-                or not 0 <= receipt_data["inactive_after_ticks"] <= 2**63 - 1
-            ):
-                raise TransactionError("unsafe-receipt")
-            boot, ticks = boot_clock()
-            if (
-                receipt_data["boot_id"] == boot
-                and receipt_data["inactive_after_ticks"] > ticks
-            ):
-                raise TransactionError("unsafe-receipt")
+        if receipt_data is not None:
+            validate_receipt(receipt_data, document["owner"], document["unit"])
+        document = expand_release_prune(logical_document, () if receipt_data is None else receipt_data["files"])
+        request(document)
+        removed = {row["path"] for row in document["files"] if row["kind"] == "absent"}
+        retired = receipt_data is not None and verify_witnesses(receipt_data["files"], removed)
         prior_receipt = capture(receipt)
-        expected_receipt = {
-            "schema": 1,
-            "fingerprint": fingerprint(logical_document),
-            "active": True,
-        }
-        activation_due = receipt_data != expected_receipt
+        retained = {} if receipt_data is None else {
+            path: row for path, row in receipt_data["files"].items()
+            if row["kind"] != "absent" and path not in removed}
+        expected_receipt = owned_receipt(logical_document, {
+            **retained,
+            **{row["path"]: witness({k: v for k, v in row.items() if k != "path"})
+               for row in logical_document["files"]},
+        }, merged_roots(document["roots"] + ([] if receipt_data is None else receipt_data["roots"])))
+        validate_receipt(expected_receipt, document["owner"], document["unit"])
+        activation_due = retired or receipt_data != expected_receipt
         # Re-capture under the shared per-unit writer lock.
         previous = {
             row["path"]: capture(Path(row["path"])) for row in document["files"]
@@ -926,6 +1320,7 @@ def publish(document):
         inactive_adoption = None
         if (
             not changed
+            and not retired
             and previous_service["active"]
             and all(row["kind"] == "absent" for row in document["files"])
             and receipt_data is not None
@@ -949,12 +1344,9 @@ def publish(document):
         ):
             if not previous_service["active"]:
                 if all(row["kind"] == "absent" for row in document["files"]):
-                    persist(
-                        receipt,
-                        inactive_absence_receipt(
-                            document["unit"], expected_receipt["fingerprint"]
-                        ),
-                    )
+                    inactive_receipt = inactive_absence_receipt(document["unit"], expected_receipt)
+                    site_authorize(state, document, inactive_receipt)
+                    persist(receipt, inactive_receipt)
                 compact_empty_releases(logical_document)
                 return {"status": "unchanged", "changed": False}
             if not activation_due and inactive_adoption is None:
@@ -965,7 +1357,7 @@ def publish(document):
         ):
             raise TransactionError("masked-unit")
         snapshot = {
-            "schema": 1,
+            "schema": 2,
             "candidate": "candidate-" + uuid.uuid4().hex,
             "phase": "prepared",
             "request": document,
@@ -973,7 +1365,10 @@ def publish(document):
             "active": previous_service["active"],
             "service": previous_service,
             "owner": document["owner"],
+            "receipt": prior_receipt,
+            "next_receipt": receipt_row(expected_receipt),
         }
+        site_authorize(state, document, expected_receipt)
         prepared_owned = True
         persist(pending, snapshot)
         with candidate_workspace(state / snapshot["candidate"]) as candidate:
@@ -1214,6 +1609,7 @@ def publish(document):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--validate")
+    parser.add_argument("--site", choices=("begin", "restore", "commit"))
     args = parser.parse_args()
     try:
         if args.validate:
@@ -1222,7 +1618,8 @@ def main():
         data = sys.stdin.buffer.read(LIMIT + 1)
         if len(data) > LIMIT:
             raise TransactionError("request-size")
-        print(json.dumps(publish(json.loads(data))))
+        document = json.loads(data)
+        print(json.dumps(site_transaction(args.site, document) if args.site else publish(document)))
     except (TransactionError, OSError, ValueError, KeyError, TypeError):
         print("nginx publication failed", file=sys.stderr)
         return 1

@@ -176,12 +176,15 @@ def test_installed_ansible_rotation_uses_shared_shape_from_playbook_context(
     executable = shutil.which("ansible-playbook")
     assert executable, "ansible-playbook is required for the shared P0 contract"
     rotation = yaml.safe_load(ROTATE.read_text(encoding="utf-8"))[0]
-    task = next(
-        task for task in rotation["tasks"] if task["name"] == "Re-render Xray config"
-    )
+    stages = next(task["block"] for task in rotation["tasks"]
+                  if task["name"] == "Reconcile protected credential rotation through authoritative roles")
+    assert any(task.get("ansible.builtin.include_role") == {"name": "xray"} for task in stages)
+    role_tasks = yaml.safe_load((ROOT / "ansible/roles/xray/tasks/enable.yml").read_text())
+    task = next(task for task in role_tasks if task["name"] == "Render and validate Xray config")
     task = deepcopy(task)
     destination = tmp_path / "xray-config.json"
     template_args = task["ansible.builtin.template"]
+    template_args["src"] = "../roles/xray/templates/config.json.j2"
     template_args["dest"] = str(destination)
     for key in ("owner", "group", "mode", "validate"):
         template_args.pop(key, None)
@@ -206,6 +209,10 @@ def test_installed_ansible_rotation_uses_shared_shape_from_playbook_context(
                     "become": False,
                     "vars": {
                         "ansible_python_interpreter": sys.executable,
+                        "role_path": str(fixture_ansible / "roles/xray"),
+                        "transport_egress_secrets": merge_render_vars()[
+                            "transport_egress_secrets"
+                        ],
                         "p0_reality_shape_template": rotation["vars"][
                             "p0_reality_shape_template"
                         ],
@@ -248,12 +255,6 @@ def test_installed_ansible_rotation_uses_shared_shape_from_playbook_context(
                         },
                     },
                     "tasks": [task],
-                    "handlers": [
-                        {
-                            "name": "Restart xray",
-                            "ansible.builtin.debug": {"msg": "fixture handler"},
-                        }
-                    ],
                 }
             ],
             sort_keys=False,

@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+**Recipient egress has an independent late guard** — the transport role owns a separate nft table, so this role's scoped filter/NAT reload preserves its active boundary. WARP namespace forwarding is limited to the exact owned veth and source address; the namespace gateway can send plaintext only through a verified TUN ifindex. The transport table owns underlay NAT and refuses private forwarding destinations. Host infrastructure UIDs retain their ordinary firewall policy.
+
 **Hysteria hopping belongs to nftables** — the role redirects the admitted UDP range to the fixed Hysteria listener in the owned inet NAT table. The daemon receives no network-administration capability. Removing the range removes the redirect without affecting AWG postrouting.
 
 **Strict proxy egress includes XHTTP and Snell** — standalone enabled proxy profiles have the same arbitrary upstream allowance as REALITY, Hysteria and Naive; host-only profiles keep their narrow infrastructure allowance.

@@ -3,6 +3,7 @@
 # Complete map because the deployment controller replaces canonical vpn maps.
 # Exact approved Tailnet sources remain inherited from all.yml.
 vpn:
+  enable_transport_egress: true
   enable_xray_reality: true
   enable_reality_self_steal: false
   enable_nginx_xhttp: true

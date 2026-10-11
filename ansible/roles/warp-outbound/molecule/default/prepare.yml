@@ -1,0 +1,114 @@
+---
+- name: Require native TUN device availability
+  hosts: all
+  become: true
+  tasks:
+    - name: Inspect owned fixture run mount propagation
+      ansible.builtin.command:
+        argv: [findmnt, -n, -o, PROPAGATION, -T, /run]
+      register: fixture_run_propagation
+      changed_when: false
+    - name: Bind owned fixture run mount before credential namespace propagation
+      ansible.builtin.command:
+        argv: [mount, --bind, /run, /run]
+      changed_when: true
+      when: "'shared' not in fixture_run_propagation.stdout"
+    - name: Enable genuine credential mount propagation in the owned fixture
+      ansible.builtin.command:
+        argv: [mount, --make-rshared, /run]
+      changed_when: true
+      when: "'shared' not in fixture_run_propagation.stdout"
+    - name: Install private non-secret credential primitive source
+      ansible.builtin.copy:
+        dest: /run/molecule-credential-source
+        content: owned-fixture-source
+        owner: root
+        group: root
+        mode: '0600'
+    - name: Install real credential primitive verifier
+      ansible.builtin.copy:
+        dest: /usr/local/libexec/molecule-credential-probe.py
+        owner: root
+        group: root
+        mode: '0755'
+        content: |
+          import os, pathlib, stat
+          path = pathlib.Path(os.environ['CREDENTIALS_DIRECTORY']) / 'probe'
+          info = path.stat()
+          assert stat.S_ISREG(info.st_mode) and info.st_nlink == 1
+          assert info.st_uid == 0 and info.st_mode & 0o077 == 0
+          assert path.read_text() == 'owned-fixture-source'
+          print('molecule-credential-ready', flush=True)
+    - name: Install genuine credential-bearing test unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/molecule-credential-probe.service
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Service]
+          Type=oneshot
+          User=root
+          LoadCredential=probe:/run/molecule-credential-source
+          ExecStart=/usr/bin/python3 /usr/local/libexec/molecule-credential-probe.py
+    - name: Require actual credential delivery before dependent native services
+      ansible.builtin.systemd_service:
+        name: molecule-credential-probe.service
+        daemon_reload: true
+        state: started
+    - name: Inspect actual kernel TUN device
+      ansible.builtin.stat:
+        path: /dev/net/tun
+      register: tun
+    - name: Require kernel device in owned privileged container
+      ansible.builtin.assert:
+        that: tun.stat.exists and tun.stat.ischr
+
+    - name: Install genuine namespace tooling before read-only ownership admission
+      ansible.builtin.apt:
+        name: iproute2
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+    - name: Create an actual unclaimed service unit without vendor execution
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/warp-svc.service
+        content: |
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/bin/true
+        owner: root
+        group: root
+        mode: '0644'
+    - name: Load the actual unclaimed unit into the native manager
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+    - name: Require production admission to refuse the actual unclaimed unit
+      block:
+        - name: Invoke exact production ownership guard
+          ansible.builtin.include_role:
+            name: warp-outbound
+            tasks_from: vendor-ownership
+        - name: Fail if an unclaimed actual unit was admitted
+          ansible.builtin.fail:
+            msg: Actual unclaimed vendor service was incorrectly adopted.
+      rescue:
+        - name: Require refusal at the exact pre-mutation ownership assertion
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Refuse adoption of an unclaimed vendor service or custom service authority'
+        - name: Require namespace ownership to remain absent after refusal
+          ansible.builtin.stat:
+            path: /var/lib/ripdpi/warp-outbound/managed.json
+          register: refused_owner
+        - name: Require no ownership mutation by rejected admission
+          ansible.builtin.assert:
+            that: not refused_owner.stat.exists
+      always:
+        - name: Remove only the owned unclaimed service fixture
+          ansible.builtin.file:
+            path: /etc/systemd/system/warp-svc.service
+            state: absent
+        - name: Reload after owned fixture removal
+          ansible.builtin.systemd_service:
+            daemon_reload: true

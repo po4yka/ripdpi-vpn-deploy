@@ -1,0 +1,32 @@
+---
+- name: Capture fixture hosts authority before nginx convergence
+  hosts: all
+  become: true
+  tasks:
+    - name: Hash the original global hosts file without exposing its contents
+      ansible.builtin.stat:
+        path: /etc/hosts
+        follow: false
+        get_checksum: true
+        checksum_algorithm: sha256
+      register: nginx_fixture_hosts_before
+      no_log: true
+
+    - name: Require a readable regular original hosts file
+      ansible.builtin.assert:
+        that:
+          - nginx_fixture_hosts_before.stat.isreg | default(false)
+          - not (nginx_fixture_hosts_before.stat.islnk | default(false))
+          - nginx_fixture_hosts_before.stat.checksum | default('') is match('^[0-9a-f]{64}$')
+      no_log: true
+
+    - name: Retain only the pre-convergence digest in a private fixture file
+      ansible.builtin.copy:
+        content: |
+          {{ nginx_fixture_hosts_before.stat.checksum }}
+        dest: /run/vpn-nginx-hosts-before.sha256
+        owner: root
+        group: root
+        mode: '0600'
+      no_log: true
+      diff: false

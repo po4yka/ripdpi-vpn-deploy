@@ -79,6 +79,7 @@ def test_role_profiles_reject_wrong_types_and_missing_nested_fields(
     valid = {
         "hysteria": {
             "listen": ":443",
+            "outbounds": [{"name": "guarded-direct", "type": "socks5", "socks5": {"addr": "127.0.0.1:12081", "username": "normalizer-direct-hysteria", "password": "synthetic internal authority 00000000000000"}}],
             "tls": {"cert": "/cert", "key": "/key"},
             "auth": {"type": "userpass", "userpass": {"alice": "secret"}},
             "bandwidth": {"up": "100 mbps", "down": "200 mbps"},
@@ -183,10 +184,18 @@ def test_restart_only_handlers_wait_for_service_liveness() -> None:
         )
 
 
-def test_hysteria_tls_rotation_uses_the_liveness_restart_topic() -> None:
-    """TLS-only changes must restart Hysteria and prove the service is active."""
-    tls = _named(_tasks("hysteria"), "Drop TLS material")
-    assert tls["notify"] == "Restart hysteria"
+def test_hysteria_tls_rotation_enters_the_guarded_generation_transaction() -> None:
+    """TLS changes must quiesce the accepted route before single-owner activation."""
+    tasks = _tasks("hysteria")
+    tls = _named(tasks, "Drop TLS material")
+    detect = _named(tasks, "Detect Hysteria TLS authority change before publication")
+    begin = _named(tasks, "Quiesce accepted topology before changed Hysteria publication")
+    activate = _named(tasks, "Activate guarded standalone frontend generation")
+    assert detect["check_mode"] is True
+    assert "_hysteria_tls_change.changed" in begin["when"][1]
+    assert tasks.index(detect) < tasks.index(begin) < tasks.index(tls) < tasks.index(activate)
+    assert tls["no_log"] is True and tls["diff"] is False and "notify" not in tls
+    assert _handlers("hysteria") == []
 
 
 def test_every_transport_molecule_runs_a_negative_validation_case() -> None:

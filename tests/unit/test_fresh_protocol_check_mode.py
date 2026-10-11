@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
             "/etc/systemd/system/hysteria-server.service",
             "Inspect Hysteria unit before check-mode activation",
             "Require planned Hysteria unit on a fresh check-mode host",
-            "Ensure hysteria-server is enabled and started",
+            "Activate guarded standalone frontend generation",
             "_hysteria_unit_plan",
             "_hysteria_unit_before",
         ),
@@ -68,4 +68,24 @@ def test_fresh_unit_is_planned_before_service_activation(
         < tasks.index(guard)
         < tasks.index(service)
     )
-    assert f"{stat_var}.stat.exists" in service["when"]
+    if role == "hysteria":
+        assert service["ansible.builtin.import_tasks"] == (
+            "{{ role_path }}/../../playbooks/tasks/transport-egress-activate.yml"
+        )
+        shared = yaml.safe_load(
+            (ROOT / "ansible/playbooks/tasks/transport-egress-activate.yml").read_text()
+        )[0]["block"]
+        generation = next(task for task in shared if task["name"] == "Activate guarded generation after frontend staging")
+        assert generation["ansible.builtin.include_role"] == {
+            "name": "transport-egress", "tasks_from": "activate",
+        }
+        assert generation["when"] == "transport_egress_role_enabled | default(false) | bool"
+        activation = yaml.safe_load(
+            (ROOT / "ansible/roles/transport-egress/tasks/activate.yml").read_text()
+        )[0]
+        assert activation["when"] == "not ansible_check_mode"
+        assert activation["block"][0]["ansible.builtin.systemd_service"]["name"] == (
+            "ripdpi-transport-generation.service"
+        )
+    else:
+        assert f"{stat_var}.stat.exists" in service["when"]

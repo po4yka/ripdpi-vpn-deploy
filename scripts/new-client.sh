@@ -59,6 +59,10 @@ if ! "${lock_command[@]}"; then
   exit 1
 fi
 
+# Validate relationships under the writer lock before generating or staging credentials.
+sops --decrypt --output-type json "$SOPS_FILE" |
+  python3 "${REPO_ROOT}/scripts/transport_semantics.py" --check-top-level-awg
+
 # Fail fast if a client with this name already exists in any profile and return the current array length as the insertion index for the staged transaction.
 client_state() {
   local extract="$1"
@@ -229,6 +233,9 @@ while IFS=$'\t' read -r variant_index user_index _variant_id; do
   printf '{"name":"%s","userkey":"%s"}' "$NAME" "$SNELL_USERKEY" |
     sops set --value-stdin "$SOPS_TEMP" "[\"snell_secrets\"][\"variants\"][${variant_index}][\"users\"][${user_index}]"
 done <<< "$snell_plan"
+
+sops --decrypt --output-type json "$SOPS_TEMP" |
+  python3 "${REPO_ROOT}/scripts/transport_semantics.py" --check-top-level-awg
 
 mv -f -- "$SOPS_TEMP" "$SOPS_FILE"
 SOPS_TEMP=""

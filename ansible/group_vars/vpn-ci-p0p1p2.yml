@@ -1,5 +1,6 @@
 ---
 # Disposable test profile; deployment still requires canonical SSH ownership.
+public_site_canonical_url: "https://{{ nginx_xhttp.server_name }}"
 vpn:
   enable_xray_reality: true
   enable_nginx_xhttp: true

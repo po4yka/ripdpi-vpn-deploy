@@ -12,9 +12,9 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def tasks(role):
+def tasks(role, filename="enable.yml"):
     return yaml.safe_load(
-        (ROOT / "ansible/roles" / role / "tasks/enable.yml").read_text()
+        (ROOT / "ansible/roles" / role / "tasks" / filename).read_text()
     )
 
 
@@ -196,6 +196,11 @@ def test_transport_selector_is_unique_and_enters_disable_before_input_guard(role
     ],
 )
 def test_warp_exact_stable_version_guard_precedes_mutation(tmp_path, version, success):
+    prepare = tasks("warp-outbound", "prepare.yml")
+    guard = next(task for task in prepare
+                 if task["name"] == "Require exact stable WARP package version before mutation")
+    first_mutation = next(task for task in prepare if "ansible.builtin.apt" in task)
+    assert prepare.index(guard) < prepare.index(first_mutation)
     play = [
         {
             "hosts": "localhost",
@@ -206,7 +211,7 @@ def test_warp_exact_stable_version_guard_precedes_mutation(tmp_path, version, su
                 "warp_outbound": {"package_version": version},
             },
             "tasks": [
-                tasks("warp-outbound")[0],
+                guard,
                 {
                     "ansible.builtin.copy": {
                         "dest": str(tmp_path / "admitted"),
@@ -227,7 +232,7 @@ def test_warp_exact_stable_version_guard_precedes_mutation(tmp_path, version, su
 def test_warp_installed_dpkg_identity_gates_registration(tmp_path, actual, success):
     guard = next(
         task
-        for task in tasks("warp-outbound")
+        for task in tasks("warp-outbound", "prepare.yml")
         if task["name"] == "Require installed WARP identity to match the approved pin"
     )
     play = [

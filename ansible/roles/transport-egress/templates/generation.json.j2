@@ -1,0 +1,6 @@
+{{ {'schema_version': 1,
+    'gateway_units': _transport_egress_gateway_unit_list,
+    'frontend_units': transport_egress_frontend_units,
+    'normalizer_uid': transport_egress_normalizer_uid,
+    'control_timeout_seconds': transport_egress_control_timeout_seconds,
+    'recovery_seconds': transport_egress_recovery_seconds} | to_nice_json }}

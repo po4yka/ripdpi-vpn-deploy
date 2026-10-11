@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
+from pathlib import Path
 import os
 import re
 import stat
@@ -90,9 +92,32 @@ def _validate_hysteria(document: dict) -> None:
     _string(bandwidth, "up")
     _string(bandwidth, "down")
     masquerade = _mapping(document, "masquerade")
-    if masquerade.get("type") != "proxy":
-        raise ValueError("Hysteria masquerade type is invalid")
-    _string(_mapping(masquerade, "proxy"), "url")
+    # The same source is installed beside this helper; repository execution
+    # selects its canonical scripts location instead of maintaining a copy.
+    shared = Path(__file__).with_name("transport_semantics.py")
+    if not shared.is_file():
+        shared = Path(__file__).resolve().parents[4] / "scripts" / "transport_semantics.py"
+    spec = importlib.util.spec_from_file_location("transport_semantics", shared)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    proxy = _mapping(masquerade, "proxy")
+    if module.hysteria_errors({"masquerade_type": masquerade.get("type"),
+                               "masquerade_url": proxy.get("url")}):
+        raise ValueError("Hysteria masquerade is invalid")
+    outbounds = document.get("outbounds")
+    if not isinstance(outbounds, list) or len(outbounds) != 1:
+        raise ValueError("Hysteria requires one guarded outbound")
+    outbound = outbounds[0]
+    if not isinstance(outbound, dict) or set(outbound) != {"name", "type", "socks5"} or outbound.get("name") != "guarded-direct" or outbound.get("type") != "socks5":
+        raise ValueError("Hysteria outbound is invalid")
+    proxy_out = _mapping(outbound, "socks5")
+    if set(proxy_out) != {"addr", "username", "password"} or proxy_out.get("addr") != "127.0.0.1:12081" or proxy_out.get("username") != "normalizer-direct-hysteria":
+        raise ValueError("Hysteria gateway authority is invalid")
+    password = _string(proxy_out, "password")
+    if not re.fullmatch(r"[ -~]{32,128}", password):
+        raise ValueError("Hysteria gateway credential is invalid")
+    if "acl" in document or "resolver" in document:
+        raise ValueError("Hysteria recipient authority override is invalid")
     quic = _mapping(document, "quic")
     for key in (
         "initStreamReceiveWindow",

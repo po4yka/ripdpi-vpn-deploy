@@ -1,0 +1,51 @@
+---
+- name: Capture and quiesce the accepted generation once before candidate publication
+  when:
+    - not ansible_check_mode
+    - not (_transport_egress_transaction_started | default(false) | bool)
+  block:
+    - name: Capture the complete exact-path accepted route privately
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/snapshot.py'') }}'
+          - capture
+        stdin: '{{ transport_egress_snapshot_paths | to_json }}'
+      no_log: true
+      changed_when: true
+    - name: Inspect bounded accepted generation recovery authority
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/snapshot.py'') }}'
+          - inspect
+      register: _transport_egress_previous
+      changed_when: false
+      no_log: true
+    - name: Stop the accepted owned controller before changing its credentials
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+        state: stopped
+      loop: '{{ (_transport_egress_previous.stdout | from_json).units | sort }}'
+      when: item == 'ripdpi-transport-generation.service'
+    - name: Definitively stop remaining accepted frontend and gateway processes
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+        state: stopped
+      loop: '{{ (_transport_egress_previous.stdout | from_json).units | sort }}'
+      when: item != 'ripdpi-transport-generation.service'
+    - name: Disable unaccepted frontend boot authority before candidate publication
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+        state: stopped
+        enabled: false
+      loop: '{{ (_transport_egress_previous.stdout | from_json).units }}'
+      when:
+        - not (_transport_egress_previous.stdout | from_json).accepted
+        - item in ['xray.service', 'hysteria-server.service']
+    - name: Record that a whole-route transaction is open
+      ansible.builtin.set_fact:
+        _transport_egress_transaction_started: true
+        transport_egress_changed: true

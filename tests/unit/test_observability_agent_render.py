@@ -13,6 +13,8 @@ from jinja2 import Environment, StrictUndefined
 import pytest
 import yaml
 
+from tests.site_role_graph import site_roles
+
 ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / "ansible" / "roles" / "observability_agent"
 
@@ -991,7 +993,7 @@ def test_site_uses_the_role_contract_as_the_single_enablement_flag() -> None:
 
     selected = next(
         role
-        for role in yaml.safe_load(site)[0]["roles"]
+        for role in site_roles(yaml.safe_load(site)[0])
         if role["role"] == "observability_agent"
     )
     assert "when" not in selected

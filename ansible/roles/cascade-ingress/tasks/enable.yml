@@ -16,6 +16,15 @@
   tags:
     - always
 
+- name: Require the fixed guarded classifier endpoint before mutation
+  ansible.builtin.assert:
+    that:
+      - cascade_ingress.classifier_proxy_host == '127.0.0.1'
+      - cascade_ingress.classifier_proxy_port is integer
+      - cascade_ingress.classifier_proxy_port == 10808
+    fail_msg: The guarded classifier endpoint is fixed at loopback TCP10808.
+  tags: [always]
+
 - name: Validate cascade ingress contract
   ansible.builtin.assert:
     that:
@@ -52,6 +61,14 @@
     update_cache: true
     cache_valid_time: 3600
 
+- name: Allocate the dedicated inert classifier identity
+  ansible.builtin.user:
+    name: cascade-classifier
+    system: true
+    shell: /usr/sbin/nologin
+    home: /var/lib/cascade-classifier
+    create_home: true
+
 - name: Ensure cascade runtime directories
   ansible.builtin.file:
     path: "{{ item.path }}"
@@ -79,6 +96,22 @@
   ansible.builtin.copy:
     src: "{{ role_path }}/../../../scripts/cascade_classifier_lib.py"
     dest: "{{ cascade_ingress.classifier_library_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install shared literal destination policy beside the classifier
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../../scripts/transport_destination_policy.py"
+    dest: /usr/local/libexec/transport_destination_policy.py
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install private credential authority beside the classifier
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../../scripts/transport_private_authority.py"
+    dest: /usr/local/libexec/transport_private_authority.py
     owner: root
     group: root
     mode: "0644"

@@ -1405,6 +1405,8 @@ def test_generated_wrapper_accepts_all_canonical_roles_in_real_ansible_syntax_ch
         shutil.copytree(ROOT / "ansible" / name, root / "ansible" / name, dirs_exist_ok=True, symlinks=True)
     for name in ("site.yml", "source-drift.yml"):
         shutil.copyfile(ROOT / "ansible/playbooks" / name, root / "ansible/playbooks" / name)
+    shutil.copytree(ROOT / "ansible/playbooks/tasks", root / "ansible/playbooks/tasks",
+                    dirs_exist_ok=True)
     shutil.copyfile(ROOT / "ansible/role-tiers.yml", root / "ansible/role-tiers.yml")
     workspace["secrets"].write_bytes((ROOT / "tests/fixtures/secrets-sample.yml").read_bytes())
     executable = Path(workspace["env"]["PATH"].split(os.pathsep)[0]) / "ansible-playbook"

@@ -252,6 +252,10 @@ for i in "${!host_pairs[@]}"; do
   fi
   host_json="$(host_config_json "$cohort")"
   vpn_json="$(jq -c '.vpn // {}' <<< "$host_json")"
+  jq -nc --slurpfile secrets "$secrets_tmp" --argjson context "$host_json" \
+    '{secrets:$secrets[0], context:$context}' |
+    python3 "${REPO_ROOT}/scripts/transport_semantics.py"
+
   enable_reality="$(toggle_enabled "$vpn_json" enable_xray_reality true)"
   enable_xhttp="$(toggle_enabled "$vpn_json" enable_nginx_xhttp true)"
   enable_hysteria="$(toggle_enabled "$vpn_json" enable_hysteria false)"

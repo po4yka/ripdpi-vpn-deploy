@@ -1,0 +1,3 @@
+---
+- name: Prepare shared protected egress workflow
+  ansible.builtin.import_tasks: '{{ role_path }}/../../playbooks/tasks/transport-egress-prepare.yml'

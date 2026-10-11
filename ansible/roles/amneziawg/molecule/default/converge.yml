@@ -22,7 +22,7 @@
     vpn:
       awg_cohort: narrow-junk-sequential
     amneziawg_secrets:
-      server_private_key: "MOLECULE_STUB_PRIVATE_KEY_NOT_REAL_AAAAAAAAAAAAA="
+      server_private_key: "CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg="
       peers: []
   pre_tasks:
     - name: Read the synthetic AmneziaWG Go source pin

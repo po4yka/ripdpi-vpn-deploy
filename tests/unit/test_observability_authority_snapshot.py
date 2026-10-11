@@ -150,7 +150,12 @@ def first_converge_root(tmp_path: Path) -> Path:
     ):
         path = root / relative
         path.mkdir(exist_ok=True)
+        if mode == 0o3775:
+            # BSD temporary roots can inherit a group this actor cannot retain SGID for.
+            os.chown(path, -1, os.getgid())
         path.chmod(mode)
+        if mode == 0o3775:
+            assert stat.S_IMODE(path.stat().st_mode) == mode
     return root
 
 

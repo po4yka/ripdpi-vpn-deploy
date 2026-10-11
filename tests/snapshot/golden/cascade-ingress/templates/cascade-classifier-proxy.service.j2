@@ -2,19 +2,38 @@
 Description=Repository-disabled cascade per-connection classifier proxy
 After=network-online.target
 Wants=network-online.target
+BindsTo=ripdpi-transport-normalizer.service
+After=ripdpi-transport-normalizer.service
 
 [Service]
 Type=simple
 # Executable contract: cascade-classifier-proxy.py
 ExecCondition=/usr/bin/false
-ExecStart=/usr/bin/python3 /usr/local/libexec/cascade-classifier-proxy.py --dataset /usr/local/share/xray/geoip.dat --listen-host 127.0.0.1 --listen-port 10808 --direct-interface  --foreign-interface csi0 --password-file /etc/cascade/classifier-proxy.password
-User=root
-Group=root
+ExecStartPre=+/usr/local/libexec/ripdpi-transport-egress/policy-loader.py verify --config /etc/ripdpi/transport-egress/policy.json
+ExecStart=/usr/bin/python3 /usr/local/libexec/cascade-classifier-proxy.py --dataset /usr/local/share/xray/geoip.dat --listen-host 127.0.0.1 --listen-port 10808 --direct-interface  --foreign-interface csi0 --password-file %d/password --policy-file %d/policy
+User=cascade-classifier
+Group=cascade-classifier
+LoadCredential=password:/etc/cascade/classifier-proxy.password
+LoadCredential=policy:/etc/ripdpi/transport-egress/policy.json
+CapabilityBoundingSet=CAP_NET_RAW
+AmbientCapabilities=CAP_NET_RAW
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
-ReadOnlyPaths=/usr/local/share/xray/geoip.dat /etc/cascade/classifier-proxy.password
+ReadOnlyPaths=/usr/local/share/xray/geoip.dat
+BindReadOnlyPaths=/etc/ripdpi/transport-egress/resolv.conf:/etc/resolv.conf
+BindReadOnlyPaths=/etc/ripdpi/transport-egress/nsswitch.conf:/etc/nsswitch.conf
+BindReadOnlyPaths=/etc/ripdpi/transport-egress/hosts:/etc/hosts
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_INET AF_INET6
 Restart=no
 
 [Install]

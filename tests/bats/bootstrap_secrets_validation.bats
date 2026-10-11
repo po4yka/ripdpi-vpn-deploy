@@ -52,6 +52,12 @@ case "${2:-}:${3:-}" in
     ;;
   -hex:8) printf '0102030405060708\n' ;;
   -hex:16) printf '0102030405060708090a0b0c0d0e0f10\n' ;;
+  -hex:32)
+    count="$(cat "$OPENSSL_STATE")"
+    count=$((count + 1))
+    printf '%s\n' "$count" > "$OPENSSL_STATE"
+    printf '%064x\n' "$count"
+    ;;
   -base64:24) printf 'abcdefghijklmnopqrstuvwx12345678\n' ;;
   -base64:32) printf 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH\n' ;;
   *) exit 64 ;;
@@ -153,6 +159,10 @@ import json
 import re
 
 source = Path(sys.argv[1]).read_text()
+authority = re.search(r"^transport_egress_secrets:\n((?:  [^\n]+\n)+)", source, re.M)
+assert authority
+values = re.findall(r'password: "([0-9a-f]{64})"', authority.group(1))
+assert len(values) == len(set(values)) == 5
 contracts = {
     "xray": {"name", "uuid", "short_id"},
     "hysteria": {"name", "password"},
@@ -213,5 +223,23 @@ PY
   [ "$status" -eq 0 ]
   [ -f "${config_dir}/age.key" ]
   [ -f "${config_dir}/local-env.secrets.sops.yaml" ]
+  [ ! -e "${BATS_TEST_TMPDIR}/.config/vpn-provision/local-env.secrets.sops.yaml" ]
+}
+
+@test "bootstrap malformed keygen output never discloses private material" {
+  _install_bootstrap_stubs
+  cat > "${FAKE_BIN}/xray" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' 'PrivateKey: private-keygen-sentinel'
+EOF
+  chmod 0700 "${FAKE_BIN}/xray"
+
+  run env PATH="${FAKE_BIN}:${PATH}" UUID_STATE="$UUID_STATE" OPENSSL_STATE="$OPENSSL_STATE" HOME="$BATS_TEST_TMPDIR" bash "$SCRIPT" \
+    --env local-env --clients phone --target mirror.example.com:443 \
+    --server-name mirror.example.com --xhttp-host vpn.example.com
+
+  [ "$status" -ne 0 ]
+  [[ "$output" != *"private-keygen-sentinel"* ]]
+  [[ "$output" == *"could not parse xray x25519 output"* ]]
   [ ! -e "${BATS_TEST_TMPDIR}/.config/vpn-provision/local-env.secrets.sops.yaml" ]
 }

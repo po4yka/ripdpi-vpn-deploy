@@ -1,0 +1,47 @@
+[Unit]
+After=ripdpi-warp-namespace.service
+Requires=ripdpi-warp-namespace.service
+
+[Service]
+# Preserve only the exact vendor daemon and its declared private persistent state.
+User=root
+Group=root
+NetworkNamespacePath=/run/netns/ripdpi-warp
+PrivateMounts=true
+PrivateTmp=true
+PrivatePIDs=true
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+# Tunnel configuration requires NET_ADMIN; raw packet/MTU work stays in this netns.
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+DevicePolicy=closed
+DeviceAllow=/dev/net/tun rw
+StateDirectory=cloudflare-warp
+StateDirectoryMode=0700
+RuntimeDirectory=cloudflare-warp
+RuntimeDirectoryMode=0700
+LogsDirectory=cloudflare-warp
+LogsDirectoryMode=0700
+UMask=0077
+# Whitelist the exact package's declared state and public operating-system inputs.
+TemporaryFileSystem=/etc:ro /var/lib:ro /var/log:ro /run:ro
+BindPaths=/var/lib/cloudflare-warp /run/cloudflare-warp /var/log/cloudflare-warp
+BindReadOnlyPaths=/etc/ssl/certs /etc/machine-id /etc/os-release /etc/passwd /etc/group
+BindReadOnlyPaths=/etc/nsswitch.conf /etc/hosts /etc/ripdpi/warp-outbound/resolv.conf:/etc/resolv.conf
+ReadWritePaths=/var/lib/cloudflare-warp /run/cloudflare-warp /var/log/cloudflare-warp
+# No host service-manager API, management bus or unrelated private authority.
+InaccessiblePaths=-/run/dbus -/run/systemd/private -/run/systemd/resolve -/run/credentials -/run/netns
+InaccessiblePaths=-/etc/ripdpi/transport-egress -/etc/xray -/etc/hysteria -/var/lib/ripdpi

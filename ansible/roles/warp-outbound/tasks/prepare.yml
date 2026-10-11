@@ -1,0 +1,293 @@
+---
+- name: Inspect native service-manager version before isolated vendor mutation
+  ansible.builtin.command:
+    argv: [systemctl, show, --property=Version, --value]
+  register: _warp_systemd_version
+  changed_when: false
+  check_mode: false
+
+- name: Require vendor PID isolation supported by the actual manager
+  ansible.builtin.assert:
+    that:
+      - (_warp_systemd_version.stdout | regex_search('^[0-9]+') | default('0', true) | int) >= 257
+    fail_msg: Isolated WARP requires systemd 257 or newer; older vendor sandbox contracts are unsupported.
+
+- name: Require namespace-only WARP contract before any mutation
+  ansible.builtin.assert:
+    that:
+      - warp_outbound.mode | default('tunnel_only') == 'tunnel_only'
+      - warp_outbound.install_warp_cli | default(true) is boolean
+      - warp_outbound.package_version | default('') is match('^[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+(?:-[0-9]+)?$')
+    fail_msg: WARP requires exact stable package identity and isolated tunnel_only mode.
+- name: Admit exact vendor ownership before service or package changes
+  ansible.builtin.include_tasks: vendor-ownership.yml
+- name: Require exact stable WARP package version before mutation
+  ansible.builtin.assert:
+    that:
+      - warp_outbound.package_version | default('') is string
+      - warp_outbound.package_version | default('') is match('^[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+(?:-[0-9]+)?$')
+    fail_msg: WARP requires an explicit exact stable package_version before activation.
+- name: Inspect installed vendor package before deciding autostart suppression
+  ansible.builtin.command:
+    argv:
+      - dpkg-query
+      - -W
+      - -f=${Version}
+      - cloudflare-warp
+    expand_argument_vars: false
+  register: _warp_before_version
+  changed_when: false
+  failed_when: _warp_before_version.rc not in [0, 1]
+  check_mode: false
+- name: Preserve claimed vendor runtime until a separately accepted package upgrade
+  ansible.builtin.assert:
+    that:
+      - (_warp_namespace_inspection.stdout | from_json).record is none or (_warp_before_version.rc == 0 and _warp_before_version.stdout
+        == warp_outbound.package_version)
+    fail_msg: Claimed WARP package changes require the vendor upgrade transaction before boundary convergence.
+- name: Render one canonical namespace resolver byte string
+  ansible.builtin.set_fact:
+    _warp_resolver_content: '{{ lookup(''ansible.builtin.template'', ''resolv.conf.j2'') }}'
+  no_log: true
+- name: Build fixed namespace publication candidates before changing accepted route
+  ansible.builtin.set_fact:
+    _warp_candidate_files:
+      /usr/local/libexec/ripdpi-warp/namespace.py:
+        mode: 493
+        gid: 0
+        data: '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/namespace.py'', rstrip=false) | b64encode
+          }}'
+      /etc/systemd/system/warp-svc.service.d/10-ripdpi-namespace.conf:
+        mode: 420
+        gid: 0
+        data: '{{ lookup(''ansible.builtin.template'', ''vendor-namespace.conf.j2'') | b64encode }}'
+      /etc/systemd/system/ripdpi-warp-namespace.service:
+        mode: 420
+        gid: 0
+        data: '{{ lookup(''ansible.builtin.template'', ''namespace.service.j2'') | b64encode }}'
+      /etc/systemd/system/ripdpi-warp-refresh.service:
+        mode: 420
+        gid: 0
+        data: '{{ lookup(''ansible.builtin.template'', ''refresh.service.j2'') | b64encode }}'
+      /etc/ripdpi/warp-outbound/resolv.conf:
+        mode: 420
+        gid: 0
+        data: '{{ _warp_resolver_content | b64encode }}'
+  no_log: true
+- name: Compare namespace candidate bytes and modes before mutation
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/../transport-egress/files/snapshot.py'') }}'
+      - compare
+    stdin: '{{ _warp_candidate_files | to_json }}'
+  register: _warp_candidate_comparison
+  changed_when: false
+  check_mode: false
+  no_log: true
+- name: Inspect prior guarded generation before namespace mutation
+  ansible.builtin.stat:
+    path: /etc/ripdpi/transport-egress/generation.json
+    follow: false
+  register: _warp_prior_generation
+- name: Capture complete accepted route before changed namespace publication
+  ansible.builtin.include_role:
+    name: transport-egress
+    tasks_from: begin
+  when:
+    - not ansible_check_mode
+    - _warp_prior_generation.stat.exists
+    - (_warp_candidate_comparison.stdout | from_json).changed | bool or not (_warp_namespace_inspection.stdout | from_json).present
+- name: Ensure HTTPS apt transport is available
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - gnupg
+      - lsb-release
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: warp_outbound.install_warp_cli | default(true)
+- name: Assert the repository signing key pin is present
+  ansible.builtin.assert:
+    that:
+      - warp_outbound.pubkey_sha256 | default('') is match('^[0-9a-f]{64}$')
+    fail_msg: warp_outbound.pubkey_sha256 must pin the sha256 of Cloudflare's WARP apt signing key. Fetch the current
+      key from a trusted network, verify it out-of-band, and set the pin before enabling this role.
+  when: warp_outbound.install_warp_cli | default(true)
+- name: Install Cloudflare WARP GPG key
+  ansible.builtin.get_url:
+    url: https://pkg.cloudflareclient.com/pubkey.gpg
+    dest: /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+    mode: '0644'
+    force: false
+  when: warp_outbound.install_warp_cli | default(true)
+- name: Verify Cloudflare WARP GPG key checksum against the pin
+  ansible.builtin.stat:
+    path: /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+    checksum_algorithm: sha256
+  register: _warp_gpg_stat
+  when: warp_outbound.install_warp_cli | default(true)
+- name: Assert GPG key matches pinned sha256
+  ansible.builtin.assert:
+    that:
+      - _warp_gpg_stat.stat.checksum == warp_outbound.pubkey_sha256
+    fail_msg: 'Cloudflare WARP GPG key checksum mismatch: got {{ _warp_gpg_stat.stat.checksum }} but warp_outbound.pubkey_sha256
+      pins {{ warp_outbound.pubkey_sha256 }}. Verify the key has not been rotated upstream and update the pin if
+      intentional.'
+  when: warp_outbound.install_warp_cli | default(true)
+- name: Add Cloudflare WARP apt source
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/cloudflare-warp.list
+    owner: root
+    group: root
+    mode: '0644'
+    content: deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/
+      {{ ansible_facts['distribution_release'] }} main
+  register: _warp_apt_source
+  when: warp_outbound.install_warp_cli | default(true)
+- name: Refresh WARP package metadata after repository publication
+  ansible.builtin.apt:
+    update_cache: true
+  when:
+    - warp_outbound.install_warp_cli | default(true)
+    - not ansible_check_mode
+    - _warp_apt_source.changed
+- name: Inspect approved WARP package metadata before installation
+  ansible.builtin.command:
+    argv:
+      - apt-cache
+      - show
+      - cloudflare-warp={{ warp_outbound.package_version }}
+  register: _warp_package_metadata
+  changed_when: false
+  check_mode: false
+  when:
+    - warp_outbound.install_warp_cli | default(true)
+    - not ansible_check_mode or not _warp_apt_source.changed
+- name: Require the exact WARP package to suit this native architecture
+  ansible.builtin.assert:
+    that:
+      - '(''Package: cloudflare-warp'') in _warp_package_metadata.stdout_lines'
+      - '(''Version: '' ~ warp_outbound.package_version) in _warp_package_metadata.stdout_lines'
+      - '(''Architecture: '' ~ {''x86_64'': ''amd64'', ''aarch64'': ''arm64''}.get(ansible_facts[''architecture''],
+        ''unsupported'')) in _warp_package_metadata.stdout_lines'
+    fail_msg: The approved WARP package is unavailable or does not suit the native architecture.
+  when: _warp_package_metadata is not skipped
+- name: Suppress direct and maintainer-script vendor autostart before package installation
+  ansible.builtin.systemd_service:
+    name: warp-svc.service
+    masked: true
+    state: stopped
+  when:
+    - not ansible_check_mode
+    - _warp_before_version.rc != 0 or _warp_before_version.stdout != warp_outbound.package_version
+- name: Install cloudflare-warp package
+  ansible.builtin.apt:
+    name: cloudflare-warp={{ warp_outbound.package_version }}
+    state: present
+    update_cache: true
+    policy_rc_d: 101
+  when: warp_outbound.install_warp_cli | default(true)
+- name: Read installed WARP package identity before configuration
+  ansible.builtin.command:
+    argv:
+      - dpkg-query
+      - -W
+      - -f=${Version}
+      - cloudflare-warp
+    expand_argument_vars: false
+  register: _warp_installed_version
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+- name: Require installed WARP identity to match the approved pin
+  ansible.builtin.assert:
+    that:
+      - _warp_installed_version.stdout == warp_outbound.package_version
+    fail_msg: Installed WARP package differs from the approved exact version.
+  when: not ansible_check_mode
+- name: Prepare private owned namespace lifecycle paths
+  ansible.builtin.file:
+    path: '{{ item.path }}'
+    state: directory
+    owner: root
+    group: root
+    mode: '{{ item.mode }}'
+  loop:
+    - path: /var/lib/ripdpi/warp-outbound
+      mode: '0700'
+    - path: /usr/local/libexec/ripdpi-warp
+      mode: '0755'
+    - path: /etc/systemd/system/warp-svc.service.d
+      mode: '0755'
+    - path: /etc/ripdpi/warp-outbound
+      mode: '0700'
+- name: Install exact namespace lifecycle helper
+  ansible.builtin.copy:
+    src: namespace.py
+    dest: /usr/local/libexec/ripdpi-warp/namespace.py
+    owner: root
+    group: root
+    mode: '0755'
+  register: _warp_namespace_helper
+- name: Seal namespace vendor DNS without host resolver writes
+  ansible.builtin.copy:
+    dest: /etc/ripdpi/warp-outbound/resolv.conf
+    content: '{{ _warp_resolver_content }}'
+    owner: root
+    group: root
+    mode: '0644'
+  register: _warp_resolver
+- name: Install canonical vendor namespace drop-in and lifecycle units
+  ansible.builtin.template:
+    src: '{{ item.src }}'
+    dest: '{{ item.dest }}'
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - src: vendor-namespace.conf.j2
+      dest: /etc/systemd/system/warp-svc.service.d/10-ripdpi-namespace.conf
+    - src: namespace.service.j2
+      dest: /etc/systemd/system/ripdpi-warp-namespace.service
+    - src: refresh.service.j2
+      dest: /etc/systemd/system/ripdpi-warp-refresh.service
+  register: _warp_namespace_units
+- name: Prepare owned veth before host and namespace guard publication
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -Es
+      - /usr/local/libexec/ripdpi-warp/namespace.py
+      - prepare
+  register: _warp_namespace_prepare
+  changed_when: (_warp_namespace_prepare.stdout | from_json).changed | bool
+  no_log: true
+  when: not ansible_check_mode
+- name: Retain namespace lifecycle change without erasing transport changes
+  ansible.builtin.set_fact:
+    transport_egress_changed: '{{ transport_egress_changed | default(false) | bool or _warp_namespace_helper.changed
+      or _warp_namespace_units.changed or _warp_resolver.changed or (_warp_namespace_prepare.changed | default(false))
+      }}'
+- name: Inspect current owned TUN without admitting an absent or down interface
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/namespace.py'') }}'
+      - tunnel
+  register: _warp_existing_tunnel
+  changed_when: false
+  failed_when: _warp_existing_tunnel.rc not in [0, 1]
+  check_mode: false
+  no_log: true
+  when: (_warp_namespace_inspection.stdout | from_json).present
+- name: Publish current verified TUN identity when it exists
+  ansible.builtin.set_fact:
+    transport_egress_warp_tunnel_ifindex: '{{ (_warp_existing_tunnel.stdout | from_json).tunnel_ifindex }}'
+  no_log: true
+  when:
+    - _warp_existing_tunnel is not skipped
+    - _warp_existing_tunnel.rc == 0

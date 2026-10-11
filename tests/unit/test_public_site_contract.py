@@ -669,14 +669,49 @@ def test_transport_profiles_share_one_canonical_site_identity() -> None:
     assert "hysteria.masquerade_url == public_site_canonical_url" in tasks
 
 
+def _neutral_committed_origin(profile: str, url: str) -> bool:
+    return url == "https://vpn.example.com" or (
+        profile == "vpn-ci-p0p1p2.yml"
+        and url == "https://{{ nginx_xhttp.server_name }}"
+    )
+
+
 def test_committed_profiles_carry_only_the_neutral_placeholder_origin() -> None:
-    """The decoy identity is operator-supplied (ANSIBLE_EXTRA_VARS_FILE), never committed."""
+    """Identity comes from operator overrides or the one CI bootstrap consumer."""
     for path in sorted((REPO_ROOT / "ansible" / "group_vars").glob("*.yml")):
         document = yaml.safe_load(path.read_text())
         url = (document or {}).get("public_site_canonical_url")
         if url is None:
             continue
-        assert url == "https://vpn.example.com", (
-            f"{path.name} must carry the neutral placeholder; the real decoy "
-            "origin is supplied per deploy via ANSIBLE_EXTRA_VARS_FILE"
+        assert _neutral_committed_origin(path.name, url), (
+            f"{path.name} must carry the neutral placeholder or its exact allowed CI expression; "
+            "real origins are supplied at runtime, never committed"
         )
+
+
+def test_allowed_ci_origin_renders_only_its_runtime_hostname() -> None:
+    from template_render import render_fragment
+
+    profile = yaml.safe_load((REPO_ROOT / "ansible/group_vars/vpn-ci-p0p1p2.yml").read_text())
+    url = profile["public_site_canonical_url"]
+    assert _neutral_committed_origin("vpn-ci-p0p1p2.yml", url)
+    assert url == "https://{{ nginx_xhttp.server_name }}"
+    assert render_fragment("neutral-ci-origin.txt", url, {
+        "nginx_xhttp": {"server_name": "vpn.example.com"}
+    }) == "https://vpn.example.com"
+
+
+@pytest.mark.parametrize("profile,url", [
+    ("vpn-ci-p0p1p2.yml", "https://committed.example.test"),
+    ("vpn-p1-web.yml", "https://committed.example.test"),
+    ("all.yml", "https://committed.example.test"),
+    ("vpn-ci-p0p1p2.yml", "https://{{ hysteria.masquerade_url }}"),
+    ("vpn-ci-p0p1p2.yml", "https://{{ nginx_xhttp.server_name | default('committed.example.test') }}"),
+    ("vpn-ci-p0p1p2.yml", "http://{{ nginx_xhttp.server_name }}"),
+    ("vpn-ci-p0p1p2.yml", "https://{{ nginx_xhttp.server_name }}/path"),
+    ("vpn-p1-web.yml", "https://{{ nginx_xhttp.server_name }}"),
+    ("vpn-ci-p0p1.yml", "https://{{ nginx_xhttp.server_name }}"),
+    ("all.yml", "https://{{ nginx_xhttp.server_name }}"),
+])
+def test_committed_origin_rejects_literal_identity_other_expressions_and_profiles(profile, url):
+    assert not _neutral_committed_origin(profile, url)

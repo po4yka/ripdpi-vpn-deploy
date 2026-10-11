@@ -1,42 +1,65 @@
 ---
-- name: Inspect WARP role ownership before disabling a vendor service
-  ansible.builtin.stat:
-    path: /var/lib/ripdpi/warp-outbound/managed.json
-    follow: false
-  register: _warp_owned
-- name: Require private regular WARP role ownership
-  ansible.builtin.assert:
-    that:
-      - not (_warp_owned.stat.islnk | default(false))
-      - not _warp_owned.stat.exists or (_warp_owned.stat.isreg and _warp_owned.stat.uid == 0 and _warp_owned.stat.nlink ==
-        1)
-      - not _warp_owned.stat.exists or _warp_owned.stat.mode == '0600'
-      - not _warp_owned.stat.exists or _warp_owned.stat.size <= 256
-    fail_msg: Unsafe WARP role ownership prevents runtime retirement.
-
-- name: Read private WARP role ownership
-  ansible.builtin.slurp:
-    src: /var/lib/ripdpi/warp-outbound/managed.json
-  register: _warp_owner_bytes
-  when: _warp_owned.stat.exists
+- name: Inspect bounded namespace retirement authority
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/namespace.py'') }}'
+      - inspect
+  register: _warp_retire_owner
+  changed_when: false
+  check_mode: false
   no_log: true
-
-- name: Require exact WARP role ownership content
-  ansible.builtin.assert:
-    that:
-      - (_warp_owner_bytes.content | b64decode | from_json).schema | type_debug == 'int'
-      - >-
-        (_warp_owner_bytes.content | b64decode | from_json) == {'schema': 1, 'unit': 'warp-svc.service'}
-    fail_msg: WARP role ownership content is not its declared runtime authority.
-  when: _warp_owned.stat.exists
-  no_log: true
-- name: Retire only claimed WARP runtime and retain vendor registration state
-  ansible.builtin.include_role:
-    name: runtime-release
-    tasks_from: retire
-  vars:
-    runtime_retire_units:
-      - warp-svc.service
-    runtime_retire_paths:
-      - /var/lib/ripdpi/warp-outbound/managed.json
-  when: _warp_owned.stat.exists
+- name: Retire only claimed isolated vendor adapter while retaining registration
+  when: (_warp_retire_owner.stdout | from_json).record is not none
+  block:
+    - name: Inspect exact current lifecycle units before partial-install retirement
+      ansible.builtin.command:
+        argv: [systemctl, show, '{{ item }}', '--property=LoadState,FragmentPath']
+      loop:
+        - warp-svc.service
+        - ripdpi-warp-refresh.service
+        - ripdpi-warp-namespace.service
+      register: _warp_retire_units
+      changed_when: false
+      check_mode: false
+      no_log: true
+    - name: Refuse foreign lifecycle unit authority during retirement
+      ansible.builtin.assert:
+        that:
+          - >-
+            'LoadState=not-found' in item.stdout_lines or 'LoadState=masked' in item.stdout_lines or
+            ('LoadState=loaded' in item.stdout_lines and
+             (('FragmentPath=/etc/systemd/system/' ~ item.item) in item.stdout_lines or
+              (item.item == 'warp-svc.service' and
+               ('FragmentPath=/usr/lib/systemd/system/warp-svc.service' in item.stdout_lines or
+                'FragmentPath=/lib/systemd/system/warp-svc.service' in item.stdout_lines))))
+        fail_msg: Owned namespace retirement encountered foreign service authority.
+        quiet: true
+      loop: '{{ _warp_retire_units.results }}'
+      no_log: true
+    - name: Stop and mask sole owned vendor service
+      ansible.builtin.systemd_service:
+        name: warp-svc.service
+        state: "{{ 'stopped' if 'LoadState=not-found' not in _warp_retire_units.results[0].stdout_lines else omit }}"
+        enabled: false
+        masked: true
+    - name: Stop owned namespace and refresh lifecycle units
+      ansible.builtin.systemd_service:
+        name: '{{ item.item }}'
+        state: stopped
+        enabled: false
+      loop: '{{ _warp_retire_units.results[1:] }}'
+      when: "'LoadState=not-found' not in item.stdout_lines"
+      no_log: true
+    - name: Remove only empty owned namespace and exact veth pair
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/namespace.py'') }}'
+          - retire
+      register: _warp_namespace_retirement
+      changed_when: (_warp_namespace_retirement.stdout | from_json).changed | bool
+      no_log: true
+      when: not ansible_check_mode

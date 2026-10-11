@@ -100,7 +100,7 @@ def test_notification_authority_is_separate_and_the_unit_has_a_deadline():
     assert (
         "LoadCredential=notifications.json:/etc/vpn-watchdog-notifications.json" in unit
     )
-    assert "TimeoutStartSec=345s" in unit
+    assert "TimeoutStartSec=535s" in unit
     assert config["token"] not in unit and config["topic"] not in unit
 
 
@@ -175,6 +175,67 @@ def test_failure_fixture_provisions_xray_sandbox_path_before_canonical_unit():
     assert provisioned[log_directory]["owner"] == "root"
     assert provisioned[log_directory]["group"] == "xray"
     assert provisioned[log_directory]["mode"] == "0750"
+
+
+def test_failure_fixture_admits_guarded_config_and_explicit_runtime_authority(tmp_path, monkeypatch):
+    """Actual semantic admission; the intentional protocol stub is not engine proof."""
+    import importlib.util
+    import subprocess
+    import yaml
+    from transport_fixtures import guarded_xray_config
+    from template_render import render_fragment
+
+    scenario = yaml.safe_load(
+        (REPO_ROOT / "ansible/roles/watchdog/molecule/failure/converge.yml").read_text()
+    )[0]
+    variables = scenario["vars"]
+    fixture = variables["watchdog_failure_server_config"]
+    assert fixture == guarded_xray_config("watchdog-failure")
+    config_task = next(task for task in scenario["pre_tasks"]
+                       if task["name"] == "Drop fake Xray server config")
+    config = render_fragment("failure-config.json", config_task["ansible.builtin.copy"]["content"], variables)
+    assert json.loads(config) == fixture
+    assert config_task["no_log"] is True and config_task["diff"] is False
+    assert config_task["ansible.builtin.copy"]["mode"] == "0600"
+    candidate = tmp_path / "config.json"
+    candidate.write_text(config)
+    candidate.chmod(int(config_task["ansible.builtin.copy"]["mode"], 8))
+    assert candidate.stat().st_mode & 0o777 == 0o600
+    spec = importlib.util.spec_from_file_location(
+        "watchdog_failure_xray_validator", REPO_ROOT / "ansible/roles/xray/files/xray_validate.py"
+    )
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    validator.read_candidate(str(candidate))
+    candidate.write_text("{}\n")
+    with pytest.raises(ValueError, match="unguarded-outbound-shape"):
+        validator.read_candidate(str(candidate))
+
+    unit_task = next(task for task in scenario["pre_tasks"]
+                     if task["name"] == "Install fake Xray service")
+    unit = render_fragment("failure-unit.txt", unit_task["ansible.builtin.copy"]["content"], variables)
+    binary = variables["watchdog_failure_runtime_binary"]
+    assets = variables["watchdog_failure_asset_dir"]
+    assert binary.startswith("/opt/watchdog-fixture/releases/v1/")
+    assert assets.startswith("/opt/watchdog-fixture/releases/v1/")
+    assert f"ExecStart={binary} run -config /etc/xray/config.json" in unit
+    environment = " ".join(line.removeprefix("Environment=") for line in unit.splitlines()
+                           if line.startswith("Environment="))
+    def show(argv, **kwargs):
+        assert argv == ["systemctl", "show", "xray.service", "--property=Environment", "--value"]
+        return subprocess.CompletedProcess(argv, 0, environment, "")
+    monkeypatch.setattr(validator.subprocess, "run", show)
+    assert validator.managed_authority(None, "XRAY_RUNTIME_BINARY") == binary
+    assert validator.managed_authority(None, "XRAY_LOCATION_ASSET") == assets
+    environment = f"XRAY_LOCATION_ASSET={assets}"
+    with pytest.raises(ValueError, match="missing or ambiguous runtime authority"):
+        validator.managed_authority(None, "XRAY_RUNTIME_BINARY")
+    link = next(task for task in scenario["pre_tasks"]
+                if task["name"] == "Expose failure-fixture CLI without choosing its accepted runtime")
+    assert link["ansible.builtin.file"] == {
+        "src": "{{ watchdog_failure_runtime_binary }}", "dest": "/usr/local/bin/xray",
+        "state": "link", "owner": "root", "group": "root",
+    }
 
 
 def test_watchdog_fails_when_stats_service_is_not_queryable():
@@ -505,3 +566,14 @@ def test_owned_molecule_runtime_propagation_is_prepared_only_when_needed(
         assert calls.read_text() == "--make-rshared /run"
     else:
         assert not calls.exists()
+
+
+@pytest.mark.parametrize("xray,hysteria,control", [(True, True, 60), (True, False, 60), (False, True, 60), (False, False, 60)])
+def test_service_deadline_includes_each_enabled_guarded_recovery(xray, hysteria, control):
+    variables = _multi_cohort_vars()
+    variables["vpn"].update(enable_xray_reality=xray, enable_hysteria=hysteria)
+    variables["transport_egress_control_timeout_seconds"] = control
+    unit = render_template(TEMPLATES / "vpn-watchdog.service.j2", variables)
+    probe_budget = 300 + 3 * variables["watchdog"].get("reality_probe_timeout", 15)
+    expected = probe_budget + (int(xray)+int(hysteria))*(3*control+5)
+    assert f"TimeoutStartSec={expected}s" in unit

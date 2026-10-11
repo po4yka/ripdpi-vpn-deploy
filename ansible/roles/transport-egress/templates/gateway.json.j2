@@ -1,0 +1,21 @@
+{
+  "log": {"loglevel": "warning", "access": "none"},
+  "dns": {
+    "queryStrategy": "UseIP",
+    "servers": [
+{% for address in transport_egress_normalizer_config.resolver.nameservers %}
+      {"address": {{ address | to_json }}, "port": 53, "unexpectedIPs": {{ (_transport_egress_forbidden.ipv4 + _transport_egress_forbidden.ipv6) | to_json }}}{% if not loop.last %},{% endif %}
+{% endfor %}
+    ]
+  },
+  "inbounds": [{
+    "listen": {{ _transport_egress_backend.address | to_json }},
+    "port": {{ _transport_egress_backend.port }},
+    "protocol": "socks",
+    "settings": {
+      "auth": "password", "udp": true, "ip": {{ _transport_egress_backend.address | to_json }},
+      "accounts": [{"user": {{ _transport_egress_backend.username | to_json }}, "pass": {{ _transport_egress_backend.password | to_json }}}]
+    }
+  }],
+  "outbounds": [{"protocol": "freedom", "settings": {"domainStrategy": "ForceIP"}}]
+}

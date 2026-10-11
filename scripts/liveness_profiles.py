@@ -7,7 +7,6 @@ from an allowlist before hashing and never includes key-derived fingerprints.
 """
 from __future__ import annotations
 
-import base64
 import copy
 import hashlib
 import ipaddress
@@ -15,6 +14,8 @@ import json
 from pathlib import PurePosixPath
 import re
 import uuid
+
+from transport_semantics import awg_errors, cohort_errors, hysteria_errors, key_valid, parameter_errors
 
 PROFILES = {"p0-reality", "p1-xhttp", "p2-hysteria2", "p2-amneziawg"}
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}\Z")
@@ -48,12 +49,8 @@ def _port(value):
 
 
 def _key(value):
-    try:
-        decoded = base64.b64decode(value, validate=True) if isinstance(value, str) else b""
-        if len(decoded) != 32 or base64.b64encode(decoded).decode() != value:
-            raise ValueError
-    except (ValueError, TypeError):
-        raise ProfileError("invalid-awg-key") from None
+    if not key_valid(value):
+        raise ProfileError("invalid-awg-key")
     return value
 
 
@@ -153,13 +150,10 @@ def _selected_awg(secrets, binding, defaults, cohort):
     instances = raw.get("instances", [])
     if not isinstance(instances, list) or any(not isinstance(i, dict) for i in instances):
         raise ProfileError("invalid-awg-instances")
-    names = [i.get("name") for i in instances]
-    if any(not isinstance(n, str) or not NAME.fullmatch(n) for n in names) or len(names) != len(set(names)):
-        raise ProfileError("duplicate-or-invalid-awg-instance")
-    # Match the server's guard across all sources, not merely the selected one.
+    if awg_errors(raw, defaults, cohort):
+        raise ProfileError("awg-input-semantics")
     for source in (raw, cohort, *instances):
-        if (any(type(source.get(p, 0)) is not int or source.get(p, 0) != 0 for p in ("s3", "s4"))
-                or any(p in source for p in ("i1", "i2", "i3", "i4", "i5"))):
+        if any(p in source for p in ("i1", "i2", "i3", "i4", "i5")):
             raise ProfileError("awg-parameters-unsupported")
     if instances:
         matches = [i for i in instances if i["name"] == binding["instance"]]
@@ -190,15 +184,11 @@ def _awg(secrets, client, binding, endpoint, private_key, derive, defaults, coho
             raise ValueError
     except (ValueError, TypeError):
         raise ProfileError("awg-address") from None
-    parameters = {}
-    for name in (*PARAM_DEFAULTS, "h1", "h2", "h3", "h4"):
-        value = chosen.get(name)
-        maximum = 128 if name == "jc" else (2**32 - 1 if name.startswith("h") else 1280)
-        if type(value) is not int or not 0 <= value <= maximum:
-            raise ProfileError("awg-parameters-invalid")
-        parameters[name] = value
-    if parameters["jmin"] > parameters["jmax"] or len({parameters[f"h{i}"] for i in range(1, 5)}) != 4:
-        raise ProfileError("awg-parameters-invalid")
+    parameters = {name: chosen[name] for name in (*PARAM_DEFAULTS, "h1", "h2", "h3", "h4")}
+    if parameter_errors(parameters, "amneziawg_secrets"):
+        raise ProfileError("awg-input-semantics")
+    if peer.get("address_kind", "device") != "device":
+        raise ProfileError("awg-routed-peer-not-device")
     if _derive(derive, private_key) != _key(peer.get("public_key")):
         raise ProfileError("awg-key-mismatch")
     server_public = _derive(derive, chosen.get("server_private_key"))
@@ -237,6 +227,10 @@ def build_profiles(standard_doc, ripdpi_doc, secrets_doc, client, required_profi
     for section, enabled in (("xray", bool(needed & {"p0-reality", "p1-xhttp"})), ("hysteria", "p2-hysteria2" in needed)):
         if enabled and not isinstance(secrets_doc.get(section), dict):
             raise ProfileError("invalid-clients")
+    if needed & {"p0-reality", "p1-xhttp"} and cohort_errors(secrets_doc["xray"]):
+        raise ProfileError("transport-input-semantics")
+    if "p2-hysteria2" in needed and hysteria_errors(secrets_doc["hysteria"]):
+        raise ProfileError("transport-input-semantics")
     xray_client = _client(secrets_doc.get("xray", {}).get("clients"), client, ("uuid", "short_id")) if needed & {"p0-reality", "p1-xhttp"} else None
     hysteria_client = _client(secrets_doc.get("hysteria", {}).get("clients"), client, ("password",)) if "p2-hysteria2" in needed else None
     if xray_client:

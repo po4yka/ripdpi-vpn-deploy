@@ -2,6 +2,9 @@
 
 ## Design decisions
 
+Protected site compensation uses the shared unit lock and bounded private journal to retain exact prior ingress paths and owner receipts. Schema 2 receipts bind owner, unit, roots and digest-only path witnesses; old receipts/journals refuse before mutation because their ownership evidence is incomplete. Fresh publication and schema 2 warm reconvergence remain supported. Rollback restores the previous receipt alongside its files so interrupted publication cannot leave a stale witness.
+
+
 Publication change reporting compares recaptured authority under the writer
 lock. The preliminary snapshot validates recoverability; check mode computes
 its own predicted difference without runtime publication.
@@ -12,11 +15,7 @@ listening on `nginx_xhttp_public_port` (default 8443), reverse-proxying the
 XHTTP path to Xray on `127.0.0.1:10085`. No `set_real_ip_from`, no
 `CF-Connecting-IP`, no Origin CA. Rationale: `docs/CDN-DECISION.md`.
 
-**The primary hostname resolves locally without external DNS** — the role
-owns a marked `/etc/hosts` entry from `nginx_xhttp.server_name` to the
-provider-assigned `vpn_service_address` and verifies it through NSS. Public
-DNS remains an independent client-path requirement; this entry only makes
-same-node operations deterministic.
+**Origin resolution is scoped to its consumer** — the role never edits global `/etc/hosts`. Hysteria binds a private accepted hosts file for a matching node-local origin; public hostname resolution and external DNS remain separately verified acceptance. Hostname-bound pages/assets and their removals publish through the same typed owner transaction as TLS/vhosts, so site compensation restores complete accepted ingress content.
 
 **Ordinary paths are a real static site** — the role publishes repository-owned content to `/var/www/public-site`, serves it on the primary and alternate HTTPS vhosts, and redirects TCP/80 to the configured HTTPS port. Identity pages are rendered from `templates/public-site/` so canonical metadata follows `public_site_canonical_url`; reusable CSS, favicon, search logo, and the host-neutral 404 remain static files. The secret XHTTP path remains a separate exact transport seam. Keep admin, metrics, status, and health endpoints off the public vhost.
 
@@ -58,7 +57,7 @@ defaults. Don't mix these — XHTTP needs long-lived streams.
 The shared publisher journals complete prior/desired rows, exact boot/running
 state and a versioned phase before each live boundary. Recognized interruption
 recovers only that write set under the unit lock, restores prior service state,
-and then re-converges normally. Foreign bytes and unknown journals fail closed.
+and then re-converges normally. Foreign bytes and unknown journals fail closed. Ordinary publication checks disk witnesses after locked recovery, so accepted old or desired journal bytes can compensate before reconvergence. Already absent explicitly retired paths, including receipt-owned certificate pairs within the typed self-steal prune namespace, still require active runtime adoption. Changed non-absent bytes, undeclared paths and foreign receipts refuse; site compensation keeps strict witness admission.
 Private per-owner receipts bind stable managed authority; a missing/stale receipt
 forces adoption even when disk bytes are unchanged. Runtime validation precedes
 the fsynced receipt. Reload also requires a fresh stable live worker pool under
@@ -81,6 +80,8 @@ malformed/foreign private authority refuse. This preserves first-to-second
 shared-role idempotence without claiming an inactive unit adopted configuration.
 
 ## What's done well
+
+- **Molecule proves global hosts preservation** — prepare retains only a private root-owned SHA256 witness of `/etc/hosts`; verification requires identical post-convergence bytes and retains all real HTTPS checks through explicit local resolution.
 
 - **SOPS-delivered public certificate** — the role writes `nginx_xhttp.cert_pem` and `key_pem` to the nginx TLS directory with restricted key permissions. Certificate issuance and renewal remain operator-owned; `check-certs.sh` verifies SAN, expiry, and key match before deploy.
 - **Complete candidate before publication** — `tasks/transaction.yml` accepts an exact owned write set, roots, validator argv and target unit. It stages full roots, validates at actual absolute paths in a private mount namespace, then publishes under a per-unit lock. Ordinary activation failure restores prior bytes, runtime and exact boot enablement; failed compensation retains a private pending snapshot and refuses reuse. Ordinary candidate-preparation failure removes only this invocation’s pending snapshot while preserving live bytes, so correcting an unrelated FIFO permits a valid retry. Once publication or activation may occur, failed compensation retains recovery authority. Credential roots are bound to the exact unit credential paths only inside validation namespace. Check mode predicts changes without creating state or activating runtime.

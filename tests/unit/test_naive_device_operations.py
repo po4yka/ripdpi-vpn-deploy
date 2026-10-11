@@ -1,5 +1,6 @@
 """Real encrypted per-device writes preserve unrelated material and permissions."""
 
+import base64
 import fcntl
 import importlib.util
 import json
@@ -36,8 +37,10 @@ def encrypted(tmp_path, monkeypatch):
         "unrelated": {"keep": "fixture-private-marker"},
         "naive_secrets": {"server_name": "proxy.example.test", "clients": []},
         "xray": {"clients": []},
-        "hysteria": {"clients": []},
-        "amneziawg_secrets": {"peers": []},
+        "hysteria": {"masquerade_type": "proxy", "masquerade_url": "https://owned.example", "clients": []},
+        "amneziawg_secrets": {"server_private_key": base64.b64encode(bytes([8]) * 32).decode(),
+                              "jc": 4, "jmin": 40, "jmax": 70, "s1": 50, "s2": 100,
+                              "h1": 11, "h2": 12, "h3": 13, "h4": 14, "peers": []},
         "client_registry": {},
     }
     path = tmp_path / "devices.sops.yaml"

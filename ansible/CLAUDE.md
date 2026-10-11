@@ -2,6 +2,32 @@
 
 ## Design decisions
 
+The disposable P0/P1/Hysteria profile derives its canonical HTTPS origin from the generated nginx server name, so server masquerade and the served certificate share one authority. Its watchdog canary endpoint remains independent.
+
+Full-stack Molecule scenarios keep the default task/recap callback stream with JSON results. Structured YAML result bodies can resemble changed-task lines to the pinned idempotence reporter; genuine persistent changes must still be reported. The operator callback remains YAML.
+
+Both full-stack scenarios import `molecule/prepare-transport-credentials.yml` through their preparation entrypoints, establishing owned runtime mount propagation and proving genuine `LoadCredential` delivery before transport convergence.
+
+**Protected site staging has one compensation owner** — explicit static role imports keep protected preparation, Xray/self-steal/XHTTP/Hysteria staging, shared activation and ingress compensation commit in one rescued block. It closes before unrelated runtime roles. Failure quiesces candidate transports, restores matching protected Nginx authority, then resumes accepted egress. Static imports expose their defaults to preflight just as the prerequisite roles do; shared protocol tags select the full protected sequence.
+
+**Protected frontends share one egress generation** — site stages the normalizer, private native gateways and both enabled Xray/Hysteria frontends before activation. Protected transport tags select both frontend consumers so internal authority changes cannot leave one with stale credentials. Host and namespace guards precede listeners; subscription-only and disabled profiles retire consumers first. Hysteria-only hosts acquire the shared pinned Xray runtime without creating a REALITY frontend.
+
+Credential rotation stages enabled protected frontends through these same roles
+and activates their shared generation once. It reconciles their approved pinned
+runtime/configuration authority and uses the roles' candidate validation and
+whole-route rollback, rather than a second config publisher or direct restart
+handler. AWG, Snell and Naive retain their independent rotation flows.
+
+Complete-map rehearsal profiles explicitly retain `enable_transport_egress: true` with their enabled protected frontends because the controller replaces the canonical `vpn` map.
+
+**Transport semantic admission precedes mutation** — site and credential
+rotation import `playbooks/tasks/transport-input-preflight.yml` before host
+changes. Enabled Xray, Hysteria and AWG roles use that same controller-side
+entry for standalone invocation. It delegates to localhost without privilege,
+executes read-only in check mode, and sends private values only on stdin under
+`no_log`. Disabled-role reconciliation bypasses unused transport inputs.
+
+
 **Exporter endpoint verification shares installation admission** — `verify.yml`
 gathers only local network facts and reuses monitoring's literal private endpoint
 validator. Custom ports and IPv6 targets match the sender's scrape jobs; public,

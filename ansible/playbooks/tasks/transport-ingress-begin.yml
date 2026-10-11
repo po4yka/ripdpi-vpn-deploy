@@ -1,0 +1,82 @@
+---
+- name: Derive the exact protected ingress candidate paths before publication
+  ansible.builtin.set_fact:
+    _transport_ingress_self_steal_release: >-
+      {{ reality_self_steal_tls_dir }}/releases/{{
+        ((reality_self_steal.cert_pem | hash('sha256')) ~
+         (reality_self_steal.key_pem | hash('sha256'))) | hash('sha256') }}
+  when:
+    - not (vpn_subscription_only | default(false) | bool)
+    - vpn.enable_reality_self_steal | default(false) | bool
+  no_log: true
+
+- name: Declare bounded desired ingress paths without reading runtime secrets
+  ansible.builtin.set_fact:
+    _transport_ingress_request:
+      check: '{{ ansible_check_mode }}'
+      owners:
+        - owner: nginx-xhttp
+          roots: [/etc/nginx, /var/www/public-site]
+          paths: >-
+            {{ ['/etc/nginx/sites-available/vpn-xhttp.conf', '/etc/nginx/sites-enabled/vpn-xhttp.conf',
+                '/etc/nginx/sites-enabled/default']
+               + (['/var/www/public-site/favicon.svg', '/var/www/public-site/logo.svg',
+                '/var/www/public-site/404.html', '/var/www/public-site/assets/site.css',
+                '/var/www/public-site/index.html', '/var/www/public-site/about.html',
+                '/var/www/public-site/methodology.html', '/var/www/public-site/updates.html',
+                '/var/www/public-site/notes/reading-benchmark-results.html',
+                '/var/www/public-site/notes/latency-throughput-context.html',
+                '/var/www/public-site/notes/repeatable-model-comparisons.html',
+                '/var/www/public-site/feed.xml', '/var/www/public-site/robots.txt',
+                '/var/www/public-site/sitemap.xml', '/var/www/public-site/.well-known/security.txt']
+                  if ((vpn.enable_nginx_xhttp | default(true) | bool)
+                      and not (vpn_subscription_only | default(false) | bool)) else [])
+               + (['/etc/nginx/tls/' ~ nginx_xhttp.server_name ~ '.fullchain.pem',
+                   '/etc/nginx/tls/' ~ nginx_xhttp.server_name ~ '.key']
+                  if ((vpn.enable_nginx_xhttp | default(true) | bool) and not (vpn_subscription_only | default(false) | bool)) else [])
+               + (['/etc/nginx/tls/' ~ nginx_xhttp.fallback_server_name ~ '.fullchain.pem',
+                   '/etc/nginx/tls/' ~ nginx_xhttp.fallback_server_name ~ '.key']
+                  if ((vpn.enable_nginx_xhttp | default(true) | bool)
+                      and not (vpn_subscription_only | default(false) | bool))
+                     and (nginx_xhttp.fallback_enabled | default(false) | bool)
+                     and nginx_xhttp.fallback_server_name != nginx_xhttp.server_name else []) }}
+          prune_releases: null
+        - owner: reality-self-steal
+          roots: >-
+            {{ ['/etc/nginx', reality_self_steal_site_root]
+               + ([reality_self_steal_tls_dir] if not reality_self_steal_tls_dir.startswith('/etc/nginx/') else []) }}
+          paths: >-
+            {{ ['/etc/nginx/sites-available/reality-self-steal.conf',
+                '/etc/nginx/sites-enabled/reality-self-steal.conf',
+                '/etc/nginx/sites-enabled/default', reality_self_steal_tls_dir ~ '/current']
+               + (query('ansible.builtin.fileglob', playbook_dir ~ '/../roles/reality-self-steal/files/public-site/*')
+                  | map('basename') | map('regex_replace', '^', reality_self_steal_site_root ~ '/') | list)
+               + ([_transport_ingress_self_steal_release ~ '/fullchain.pem',
+                   _transport_ingress_self_steal_release ~ '/privkey.pem']
+                  if ((vpn.enable_reality_self_steal | default(false) | bool)
+                      and not (vpn_subscription_only | default(false) | bool)) else []) }}
+          prune_releases:
+            root: '{{ reality_self_steal_tls_dir }}/releases'
+            keep: >-
+              {{ (_transport_ingress_self_steal_release | basename)
+                 if ((vpn.enable_reality_self_steal | default(false) | bool)
+                     and not (vpn_subscription_only | default(false) | bool)) else none }}
+  no_log: true
+
+- name: Capture or check protected ingress under its existing shared unit lock
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - '{{ lookup("ansible.builtin.file", playbook_dir ~ "/../roles/nginx-xhttp/files/nginx_transaction.py") }}'
+      - --site
+      - begin
+    stdin: '{{ _transport_ingress_request | to_json }}'
+  check_mode: false
+  changed_when: false
+  no_log: true
+  diff: false
+
+- name: Record the protected site's sole compensation ownership
+  ansible.builtin.set_fact:
+    transport_site_transaction_active: '{{ not ansible_check_mode }}'

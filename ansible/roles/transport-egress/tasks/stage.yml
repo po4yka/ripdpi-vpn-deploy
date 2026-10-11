@@ -1,0 +1,313 @@
+---
+- name: Predict absent egress runtime without claiming identity or socket readiness
+  ansible.builtin.debug:
+    msg: Admitted private egress installation requires convergence to allocate actual service identities.
+  changed_when: true
+  when: transport_egress_fresh_check_mode | default(false) | bool
+- name: Stage egress with actual identity authority
+  when: not (transport_egress_fresh_check_mode | default(false) | bool)
+  block:
+    - name: Validate complete normalizer configuration before publication
+      ansible.builtin.command:
+        argv:
+          - '{{ ansible_playbook_python }}'
+          - -Es
+          - '{{ role_path }}/../../../scripts/transport_egress_normalizer.py'
+          - --validate
+          - --config
+          - '-'
+        stdin: '{{ transport_egress_normalizer_config | to_json }}'
+        stdin_add_newline: false
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      check_mode: false
+      no_log: true
+    - name: Require bounded existing unit ownership before publication
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/ownership.py'') }}'
+      register: _transport_egress_prior_ownership
+      changed_when: false
+      check_mode: false
+      no_log: true
+    - name: Validate every accepted route path before filesystem mutation
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/snapshot.py'') }}'
+          - validate
+        stdin: '{{ transport_egress_snapshot_paths | to_json }}'
+      changed_when: false
+      check_mode: false
+      no_log: true
+    - name: Install shared verified Xray runtime for private gateways
+      ansible.builtin.include_role:
+        name: xray-runtime
+    - name: Obtain canonical forbidden sets on the controller
+      ansible.builtin.command:
+        argv:
+          - '{{ ansible_playbook_python }}'
+          - -Es
+          - '{{ role_path }}/../../../scripts/transport_destination_policy.py'
+          - --print-policy
+      delegate_to: localhost
+      become: false
+      register: _transport_egress_policy_sets
+      changed_when: false
+      check_mode: false
+    - name: Retain immutable runtime and candidate authority
+      ansible.builtin.set_fact:
+        transport_egress_runtime_binary: '{{ xray_runtime_binary }}'
+        _transport_egress_gateway_unit_list: '{{ transport_egress_normalizer_config.backends.keys() | map(''extract'',
+          transport_egress_generation_units) | list }}'
+        _transport_egress_forbidden: '{{ _transport_egress_policy_sets.stdout | from_json }}'
+        _transport_egress_candidate_files: []
+      no_log: true
+    - name: Render fixed private candidate files without remote publication
+      ansible.builtin.set_fact:
+        _transport_egress_candidate_files: '{{ _transport_egress_candidate_files + [item] }}'
+      loop:
+        - path: '{{ transport_egress_config_dir }}/normalizer.json'
+          mode: '0600'
+          content: '{{ lookup("ansible.builtin.template", "normalizer.json.j2") }}'
+        - path: '{{ transport_egress_config_dir }}/generation.json'
+          mode: '0600'
+          content: '{{ lookup("ansible.builtin.template", "generation.json.j2") }}'
+        - path: '{{ transport_egress_config_dir }}/policy.json'
+          mode: '0600'
+          content: '{{ transport_egress_policy_config_data | to_nice_json }}'
+        - path: '{{ transport_egress_config_dir }}/resolv.conf'
+          mode: '0644'
+          content: '{{ lookup("ansible.builtin.template", "resolv.conf.j2") }}'
+        - path: '{{ transport_egress_config_dir }}/hosts'
+          mode: '0644'
+          content: ''
+        - path: '{{ transport_egress_config_dir }}/nsswitch.conf'
+          mode: '0644'
+          content: |
+            passwd: files
+            group: files
+            shadow: files
+            hosts: dns
+        - path: /etc/systemd/system/ripdpi-transport-normalizer.service
+          mode: '0644'
+          content: '{{ lookup("ansible.builtin.template", "normalizer.service.j2") }}'
+        - path: /etc/systemd/system/ripdpi-transport-generation.service
+          mode: '0644'
+          content: '{{ lookup("ansible.builtin.template", "generation.service.j2") }}'
+      no_log: true
+    - name: Render gateway credentials and units into private candidates
+      ansible.builtin.set_fact:
+        _transport_egress_candidate_files: |-
+          {{ _transport_egress_candidate_files + [
+            {'path': transport_egress_config_dir ~ '/' ~ item.key ~ '.json', 'mode': '0600',
+             'content': lookup('ansible.builtin.template', 'gateway.json.j2')},
+            {'path': '/etc/systemd/system/' ~ transport_egress_generation_units[item.key], 'mode': '0644',
+             'content': lookup('ansible.builtin.template', 'gateway.service.j2')}] }}
+      vars:
+        _transport_egress_backend: '{{ item.value }}'
+        _transport_egress_backend_name: '{{ item.key }}'
+      loop: '{{ transport_egress_normalizer_config.backends | dict2items }}'
+      no_log: true
+    - name: Add exact shared helper source candidates
+      ansible.builtin.set_fact:
+        _transport_egress_candidate_files: '{{ _transport_egress_candidate_files + [{''path'': transport_egress_libexec_dir
+          ~ ''/'' ~ item, ''mode'': ''0755'', ''content'': lookup(''ansible.builtin.file'', role_path ~ ''/../../../scripts/''
+          ~ item, rstrip=false)}] }}'
+      loop:
+        - transport_egress_normalizer.py
+        - transport_socks.py
+        - transport_destination_policy.py
+        - transport_private_authority.py
+      no_log: true
+    - name: Add exact lifecycle source candidates
+      ansible.builtin.set_fact:
+        _transport_egress_candidate_files: '{{ _transport_egress_candidate_files + [{''path'': transport_egress_libexec_dir
+          ~ ''/'' ~ item, ''mode'': ''0755'', ''content'': lookup(''ansible.builtin.file'', role_path ~ ''/files/''
+          ~ item, rstrip=false)}] }}'
+      loop:
+        - generation.py
+        - snapshot.py
+        - ownership.py
+      no_log: true
+    - name: Add the shared kernel loader candidate
+      ansible.builtin.set_fact:
+        _transport_egress_candidate_files: '{{ _transport_egress_candidate_files + [{''path'': transport_egress_policy_loader,
+          ''mode'': ''0755'', ''content'': lookup(''ansible.builtin.file'', role_path ~ ''/../../../scripts/transport_egress_kernel.py'',
+          rstrip=false)}] }}'
+        _transport_egress_candidate_projection: {}
+      no_log: true
+    - name: Project candidates for exact byte and permission comparison
+      ansible.builtin.set_fact:
+        _transport_egress_candidate_projection: '{{ _transport_egress_candidate_projection | combine({item.path:
+          {''mode'': item.mode | int(base=8), ''gid'': 0, ''data'': item.content | b64encode}}) }}'
+      loop: '{{ _transport_egress_candidate_files }}'
+      no_log: true
+    - name: Compare desired files without changing the accepted route
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/snapshot.py'') }}'
+          - compare
+        stdin: '{{ _transport_egress_candidate_projection | to_json }}'
+      register: _transport_egress_candidate_comparison
+      changed_when: false
+      check_mode: false
+      no_log: true
+    - name: Retain exact candidate difference
+      ansible.builtin.set_fact:
+        _transport_egress_candidate_changed: '{{ (_transport_egress_candidate_comparison.stdout | from_json).changed
+          | bool }}'
+        transport_egress_changed: '{{ transport_egress_changed | default(false) | bool or (_transport_egress_candidate_comparison.stdout
+          | from_json).changed | bool or xray_runtime_changed | bool }}'
+    - name: Predict admitted candidate changes in check mode
+      ansible.builtin.debug:
+        msg: Complete admitted private egress candidate differs from the installed generation.
+      changed_when: _transport_egress_candidate_changed | bool
+      when: ansible_check_mode
+    - name: Validate and publish changed private candidates
+      when:
+        - not ansible_check_mode
+        - _transport_egress_candidate_changed | bool
+      block:
+        - name: Prepare private state before snapshot creation
+          ansible.builtin.file:
+            path: '{{ transport_egress_state_dir }}'
+            state: directory
+            owner: root
+            group: root
+            mode: '0700'
+        - name: Allocate private validation staging directory
+          ansible.builtin.tempfile:
+            state: directory
+            prefix: ripdpi-egress-candidate-
+          register: _transport_egress_candidate_dir
+        - name: Write private credential candidates for genuine parser validation
+          ansible.builtin.copy:
+            content: '{{ item.content }}'
+            dest: '{{ _transport_egress_candidate_dir.path }}/{{ item.path | basename }}'
+            owner: root
+            group: root
+            mode: '0600'
+          loop: '{{ _transport_egress_candidate_files | selectattr(''path'', ''match'', ''^/etc/ripdpi/transport-egress/.*[.]json$'')
+            | list }}'
+          no_log: true
+        - name: Validate every native gateway candidate before quiescence
+          ansible.builtin.command:
+            argv:
+              - '{{ transport_egress_runtime_binary }}'
+              - run
+              - -test
+              - -config
+              - '{{ _transport_egress_candidate_dir.path }}/{{ item }}.json'
+          loop: '{{ transport_egress_normalizer_config.backends.keys() | list }}'
+          changed_when: false
+          no_log: true
+        - name: Validate paired generation candidate before quiescence
+          ansible.builtin.command:
+            argv:
+              - python3
+              - -c
+              - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/generation.py'') }}'
+              - validate
+              - --config
+              - '{{ _transport_egress_candidate_dir.path }}/generation.json'
+              - --normalizer-config
+              - '{{ _transport_egress_candidate_dir.path }}/normalizer.json'
+          changed_when: false
+          no_log: true
+        - name: Capture and stop the previous whole-route generation
+          ansible.builtin.include_tasks: begin.yml
+        - name: Retire removed owned WARP adapter before removing its host guard authority
+          ansible.builtin.include_role:
+            name: warp-outbound
+            tasks_from: retire
+          when: not transport_egress_warp_enabled | bool
+        - name: Claim exact private unit ownership before publishing units
+          ansible.builtin.command:
+            argv:
+              - python3
+              - -c
+              - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/ownership.py'') }}'
+              - claim
+            stdin: >-
+              {{ (_transport_egress_gateway_unit_list +
+                  ['ripdpi-transport-normalizer.service', 'ripdpi-transport-generation.service']) | to_json }}
+          changed_when: true
+          no_log: true
+        - name: Prepare root-owned publication directories
+          ansible.builtin.file:
+            path: '{{ item.path }}'
+            state: directory
+            owner: root
+            group: root
+            mode: '{{ item.mode }}'
+          loop:
+            - path: '{{ transport_egress_config_dir }}'
+              mode: '0700'
+            - path: '{{ transport_egress_libexec_dir }}'
+              mode: '0755'
+        - name: Publish the complete validated candidate
+          ansible.builtin.copy:
+            content: '{{ item.content }}'
+            dest: '{{ item.path }}'
+            owner: root
+            group: root
+            mode: '{{ item.mode }}'
+          loop: '{{ _transport_egress_candidate_files }}'
+          no_log: true
+        - name: Apply and verify host policy before any runtime admission
+          ansible.builtin.command:
+            argv:
+              - '{{ transport_egress_policy_loader }}'
+              - '{{ item }}'
+              - --config
+              - '{{ transport_egress_policy_config }}'
+          loop:
+            - apply
+            - verify
+          register: _transport_egress_host_policy
+          changed_when: item == 'apply' and (_transport_egress_host_policy.stdout | default('{}') | from_json).changed
+            | default(false) | bool
+          no_log: true
+        - name: Apply and verify deny-all namespace policy before vendor activation
+          ansible.builtin.command:
+            argv:
+              - '{{ transport_egress_policy_loader }}'
+              - '{{ item }}'
+              - --config
+              - '{{ transport_egress_policy_config }}'
+              - --namespace
+              - '{{ transport_egress_namespace }}'
+          loop:
+            - apply
+            - verify
+          register: _transport_egress_namespace_policy
+          changed_when: item == 'apply' and (_transport_egress_namespace_policy.stdout | default('{}') | from_json).changed
+            | default(false) | bool
+          no_log: true
+          when: transport_egress_warp_enabled | bool
+        - name: Verify actual published unit syntax
+          ansible.builtin.command:
+            argv: '{{ [''systemd-analyze'', ''verify'', ''/etc/systemd/system/ripdpi-transport-normalizer.service'',
+              ''/etc/systemd/system/ripdpi-transport-generation.service''] + (_transport_egress_gateway_unit_list
+              | map(''regex_replace'', ''^'', ''/etc/systemd/system/'') | list) }}'
+          changed_when: false
+      rescue:
+        - name: Restore accepted route if candidate publication began
+          ansible.builtin.include_tasks: rollback.yml
+        - name: Refuse failed candidate publication after recovery
+          ansible.builtin.fail:
+            msg: Private egress candidate publication failed; accepted route recovery was attempted.
+      always:
+        - name: Remove owned private validation directory
+          ansible.builtin.file:
+            path: '{{ _transport_egress_candidate_dir.path }}'
+            state: absent
+          when: _transport_egress_candidate_dir.path is defined
+          no_log: true

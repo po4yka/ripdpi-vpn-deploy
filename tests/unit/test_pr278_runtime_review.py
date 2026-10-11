@@ -91,7 +91,8 @@ print("synthetic-private-validator-output")
     )
     executable(tmp_path / "systemctl", '#!/bin/sh\nprintf "%s\\n" "$TEST_UNIT_ENV"\n')
     configuration = tmp_path / "config.json"
-    configuration.write_text('{"synthetic":true}\n')
+    from tests.transport_fixtures import guarded_xray_bytes
+    configuration.write_text(guarded_xray_bytes())
     original = configuration.read_bytes()
     task = copy.deepcopy(
         next(

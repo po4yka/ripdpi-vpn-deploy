@@ -166,10 +166,17 @@ def test_naive_failure_closes_leaf_and_directory_without_truncation(
     module = load("naive", "prepare_log.py")
     directory = tmp_path / "logs"
     directory.mkdir(mode=0o750)
+    os.chown(directory, -1, os.getegid())
     directory.chmod(0o750)
     leaf = directory / "access.log"
     leaf.write_bytes(b"retained log bytes\n")
+    os.chown(leaf, -1, os.getegid())
     leaf.chmod(0o640)
+    for path, mode in ((directory, 0o750), (leaf, 0o640)):
+        metadata = path.lstat()
+        assert metadata.st_uid == os.geteuid()
+        assert metadata.st_gid == os.getegid()
+        assert stat.S_IMODE(metadata.st_mode) == mode
     original_lstat = Path.lstat
 
     # This portable fault model supplies trusted ancestry. Native coverage below

@@ -7,6 +7,7 @@
   gather_facts: true
 
   vars:
+    transport_egress_site_staging: true
     vpn_secrets_file: >-
       {{
         lookup('env', 'VPN_SECRETS_FILE')
@@ -17,6 +18,10 @@
     - "{{ vpn_secrets_file }}"
 
   pre_tasks:
+    - name: Preflight enabled transport input semantics
+      ansible.builtin.import_tasks: tasks/transport-input-preflight.yml
+      tags: [always]
+
     - name: Require exact-node controller ownership before convergence
       tags: [always]
       ansible.builtin.assert:
@@ -273,145 +278,227 @@
       when: vpn.enable_tailnet_management | default(false)
       tags: [tailnet-management, security]
 
-    # Verify the optional egress before any Xray render or handler flush can
-    # activate routes that depend on it. The xray tag must retain this gate.
-    - role: warp-outbound
-      vars:
-        warp_outbound_role_enabled: >-
-          {{ (vpn.enable_warp_outbound | default(false)) and not (vpn_subscription_only | default(false)) }}
-      tags: [warp, outbound, xray, p0, p1, transport]
-
-    - role: xray
-      vars:
-        xray_role_enabled: >-
-          {{ ((vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true))) and not
-             (vpn_subscription_only | default(false)) }}
-      tags: [xray, p0, p1, transport]
-
-    - role: reality-self-steal
-      vars:
-        reality_self_steal_role_enabled: >-
-          {{ (not (vpn_subscription_only | default(false))) and (vpn.enable_reality_self_steal | default(false) | bool) }}
-      tags: [reality-self-steal, p0, transport]
-
-    - role: nginx-xhttp
-      vars:
-        nginx_xhttp_role_enabled: >-
-          {{ (vpn.enable_nginx_xhttp | default(true)) and not (vpn_subscription_only | default(false)) }}
-      tags: [nginx, xhttp, p1, transport]
-
-    - role: cdn-front
+  tasks:
+    - name: Stage and close the protected transport generation before unrelated roles
+      tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
+      block:
+        - name: Capture the protected ingress composition before staging
+          ansible.builtin.import_tasks: tasks/transport-ingress-begin.yml
+        - name: Reconcile transport-egress runtime
+          ansible.builtin.import_role:
+            name: transport-egress
+            public: true
+            tasks_from: prepare-site
+          tags: [xray, hysteria, p0, p1, p2, transport]
+        - name: Reconcile xray runtime
+          ansible.builtin.import_role:
+            name: xray
+            public: true
+          vars:
+            xray_role_enabled: >-
+              {{ ((vpn.enable_xray_reality | default(true)) or
+                  (vpn.enable_nginx_xhttp | default(true))) and
+                 not (vpn_subscription_only | default(false)) }}
+          tags: [xray, hysteria, p0, p1, p2, transport]
+        - name: Reconcile reality-self-steal runtime
+          ansible.builtin.import_role:
+            name: reality-self-steal
+            public: true
+          vars:
+            reality_self_steal_role_enabled: >-
+              {{ (not (vpn_subscription_only | default(false))) and
+                 (vpn.enable_reality_self_steal | default(false) | bool) }}
+          tags: [reality-self-steal, p0, transport]
+        - name: Reconcile nginx-xhttp runtime
+          ansible.builtin.import_role:
+            name: nginx-xhttp
+            public: true
+          vars:
+            nginx_xhttp_role_enabled: >-
+              {{ (vpn.enable_nginx_xhttp | default(true)) and not (vpn_subscription_only | default(false)) }}
+          tags: [nginx, xhttp, p1, transport]
+        - name: Reconcile hysteria runtime
+          ansible.builtin.import_role:
+            name: hysteria
+            public: true
+          vars:
+            hysteria_role_enabled: >-
+              {{ (vpn.enable_hysteria | default(true)) and not (vpn_subscription_only | default(false)) }}
+          tags: [xray, hysteria, p0, p1, p2, transport]
+        - name: Admit protected transports after complete frontend staging
+          ansible.builtin.import_tasks: tasks/transport-egress-activate.yml
+        - name: Commit the ready protected ingress and egress composition
+          ansible.builtin.import_tasks: tasks/transport-ingress-commit.yml
+      rescue:
+        - name: Quiesce candidate transport processes before ingress compensation
+          ansible.builtin.include_role:
+            name: transport-egress
+            tasks_from: quiesce
+          when:
+            - transport_site_transaction_active | default(false) | bool
+            - _transport_egress_transaction_started | default(false) | bool
+        - name: Restore accepted ingress before any protected frontend recovery
+          ansible.builtin.include_tasks: tasks/transport-ingress-restore.yml
+        - name: Restore accepted protected generation after site staging failure
+          ansible.builtin.include_role:
+            name: transport-egress
+            tasks_from: rollback
+          when:
+            - transport_site_transaction_active | default(false) | bool
+            - _transport_egress_transaction_started | default(false) | bool
+        - name: Report protected site staging refusal after bounded recovery
+          ansible.builtin.fail:
+            msg: Protected transport staging failed; accepted-generation recovery was attempted when available.
+    - name: Reconcile cdn-front runtime
+      ansible.builtin.import_role:
+        name: cdn-front
+        public: true
       vars:
         cdn_front_role_enabled: >-
           {{ (vpn.enable_cdn_front | default(false)) and not (vpn_subscription_only | default(false)) }}
       tags: [cdn-front, p1, transport]
-
-    - role: naive
+    - name: Reconcile naive runtime
+      ansible.builtin.import_role:
+        name: naive
+        public: true
       vars:
         naive_role_enabled: >-
           {{ (vpn.enable_naive | default(false)) and not (vpn_subscription_only | default(false)) }}
       tags: [naive, p1, transport]
-
-    - role: hysteria
-      vars:
-        hysteria_role_enabled: >-
-          {{ (vpn.enable_hysteria | default(true)) and not (vpn_subscription_only | default(false)) }}
-      tags: [hysteria, p2, transport]
-
-    - role: amneziawg
+    - name: Reconcile amneziawg runtime
+      ansible.builtin.import_role:
+        name: amneziawg
+        public: true
       vars:
         amneziawg_role_enabled: >-
           {{ (vpn.enable_amneziawg | default(true)) and not (vpn_subscription_only | default(false)) }}
       tags: [amneziawg, awg, p2, transport]
-
-    - role: subscription-host
+    - name: Reconcile subscription-host runtime
+      ansible.builtin.import_role:
+        name: subscription-host
+        public: true
       vars:
         subscription_host_role_enabled: >-
           {{ (vpn.enable_subscription_host | default(false)) or (vpn_subscription_only | default(false)) }}
       tags: [subscription]
-
-    - role: honeypot
+    - name: Reconcile honeypot runtime
+      ansible.builtin.import_role:
+        name: honeypot
+        public: true
       vars:
         honeypot_role_enabled: >-
           {{ (vpn.enable_honeypot | default(false)) and not (vpn_subscription_only | default(false)) }}
       tags: [honeypot, defensive]
-
-    - role: policy-ratelimit
+    - name: Reconcile policy-ratelimit runtime
+      ansible.builtin.import_role:
+        name: policy-ratelimit
+        public: true
       vars:
         policy_ratelimit_role_enabled: >-
-          {{ (vpn.enable_policy_ratelimit | default(false)) and not (vpn_subscription_only | default(false)) }}
+          {{ (vpn.enable_policy_ratelimit | default(false)) and not (vpn_subscription_only | default(false))
+          }}
       tags: [policy-ratelimit, defensive]
-
-    - role: dns-morph-bridge
+    - name: Reconcile dns-morph-bridge runtime
+      ansible.builtin.import_role:
+        name: dns-morph-bridge
+        public: true
       vars:
         dns_morph_bridge_role_enabled: >-
-          {{ (vpn.enable_dns_morph_bridge | default(false)) and not (vpn_subscription_only | default(false)) }}
+          {{ (vpn.enable_dns_morph_bridge | default(false)) and not (vpn_subscription_only | default(false))
+          }}
       tags: [dns-morph-bridge, p4, transport, bootstrap]
-
-    - role: hysteria-realm
+    - name: Reconcile hysteria-realm runtime
+      ansible.builtin.import_role:
+        name: hysteria-realm
+        public: true
       vars:
         hysteria_realm_role_enabled: >-
           {{ (vpn.enable_hysteria_realm | default(false)) and not (vpn_subscription_only | default(false)) }}
       tags: [hysteria-realm, p5, transport, rendezvous]
-
-    - role: snell
+    - name: Reconcile snell runtime
+      ansible.builtin.import_role:
+        name: snell
+        public: true
       vars:
         snell_role_enabled: >-
           {{ (vpn.enable_snell | default(false)) and not (vpn_subscription_only | default(false)) }}
       tags: [snell, p3, transport, research]
-
-    - role: split-hop-egress
+    - name: Reconcile split-hop-egress runtime
+      ansible.builtin.import_role:
+        name: split-hop-egress
+        public: true
       vars:
         split_hop_egress_role_enabled: >-
-          {{ (vpn.enable_split_hop_egress | default(false)) and not (vpn_subscription_only | default(false)) }}
+          {{ (vpn.enable_split_hop_egress | default(false)) and not (vpn_subscription_only | default(false))
+          }}
       tags: [split-hop-egress, topology]
-
-    - role: split-hop-ingress
+    - name: Reconcile split-hop-ingress runtime
+      ansible.builtin.import_role:
+        name: split-hop-ingress
+        public: true
       vars:
         split_hop_ingress_role_enabled: >-
-          {{ (vpn.enable_split_hop_ingress | default(false)) and not (vpn_subscription_only | default(false)) }}
+          {{ (vpn.enable_split_hop_ingress | default(false)) and not (vpn_subscription_only | default(false))
+          }}
       tags: [split-hop-ingress, topology, research]
-
-    - role: cascade-ingress
+    - name: Reconcile cascade-ingress runtime
+      ansible.builtin.import_role:
+        name: cascade-ingress
+        public: true
       vars:
         cascade_ingress_role_enabled: >-
           {{ (vpn.enable_cascade_ingress | default(false)) and not (vpn_subscription_only | default(false)) }}
       tags: [cascade-ingress, topology, exception]
-
-    - role: cascade-egress
+    - name: Reconcile cascade-egress runtime
+      ansible.builtin.import_role:
+        name: cascade-egress
+        public: true
       vars:
         cascade_egress_role_enabled: >-
           {{ (vpn.enable_cascade_egress | default(false)) and not (vpn_subscription_only | default(false)) }}
       tags: [cascade-egress, topology, exception]
-
-    - role: probe-matrix-target
+    - name: Reconcile probe-matrix-target runtime
+      ansible.builtin.import_role:
+        name: probe-matrix-target
+        public: true
       vars:
         probe_matrix_target_role_enabled: >-
-          {{ (vpn.enable_probe_matrix_target | default(false)) and not (vpn_subscription_only | default(false)) }}
+          {{ (vpn.enable_probe_matrix_target | default(false)) and not (vpn_subscription_only | default(false))
+          }}
       tags: [probe-matrix-target, measurement, research]
-
-    - role: monitoring
+    - name: Reconcile monitoring runtime
+      ansible.builtin.import_role:
+        name: monitoring
+        public: true
       vars:
         monitoring_role_enabled: >-
           {{ vpn.enable_monitoring | default(true) }}
       tags: [monitoring]
-
-    - role: backup
+    - name: Reconcile backup runtime
+      ansible.builtin.import_role:
+        name: backup
+        public: true
       vars:
         backup_role_enabled: >-
           {{ vpn.enable_backup | default(true) }}
       tags: [backup]
-
-    - role: watchdog
+    - name: Reconcile watchdog runtime
+      ansible.builtin.import_role:
+        name: watchdog
+        public: true
       vars:
         watchdog_role_enabled: >-
           {{ vpn.enable_watchdog | default(true) }}
       tags: [watchdog, monitoring]
-
-    - role: node_manifest
+    - name: Reconcile node_manifest runtime
+      ansible.builtin.import_role:
+        name: node_manifest
+        public: true
       tags: [manifest]
-
-    - role: observability_agent
+    - name: Reconcile observability_agent runtime
+      ansible.builtin.import_role:
+        name: observability_agent
+        public: true
       tags: [observability-agent, monitoring]
 
 - name: Publish and prove the SSH baseline after the VPN stack converges

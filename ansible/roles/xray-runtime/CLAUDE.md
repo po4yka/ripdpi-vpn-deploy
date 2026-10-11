@@ -38,3 +38,9 @@ the Xray install root. The geodata role remains the sole owner of
 - Keep both the prebuilt archive and explicit source-build paths here; adding an installation path to a caller would recreate pin drift.
 - Capture binary and asset publication results separately; the final change
   signal must not be overwritten by the second shared-role include.
+- The changed signal is monotonic within one play so a later consumer cannot
+  erase a verified publication observed by an earlier gateway consumer. The
+  published immutable binary path lets private gateways retain their accepted
+  binary identity through configuration rollback, including Hysteria-only use.
+
+- `xray_runtime_bundled_asset_dir` exposes the immutable archive-derived GeoIP release directory, distinct from its mutable public link. Frontend validation and runtime paths bind to this versioned authority; geodata remains an independently owned publication.

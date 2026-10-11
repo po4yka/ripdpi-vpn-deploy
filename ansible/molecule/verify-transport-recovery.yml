@@ -1,0 +1,55 @@
+---
+- name: Prove controller-owned targeted frontend recovery with retained mappings
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json, pathlib, subprocess
+        root = pathlib.Path('/etc/ripdpi/transport-egress')
+        config = json.loads((root / 'generation.json').read_bytes())
+        ready = pathlib.Path('/var/lib/ripdpi/transport-egress/ready.json')
+        for unit in config['frontend_units']:
+            before = json.loads(ready.read_bytes())
+            result = subprocess.run([
+                'python3', '-Es', '/usr/local/libexec/ripdpi-transport-egress/generation.py',
+                'recover', '--config', str(root / 'generation.json'),
+                '--normalizer-config', str(root / 'normalizer.json'), '--unit', unit,
+            ], capture_output=True, timeout=3*config['control_timeout_seconds']+5)
+            if result.returncode:
+                raise RuntimeError('owned-targeted-recovery-failed')
+            after = json.loads(ready.read_bytes())
+            if (after['controller_pid'] != before['controller_pid'] or
+                    after['config_digest'] != before['config_digest'] or
+                    after['generation'][unit] == before['generation'][unit] or
+                    any(after['generation'][name] != pid
+                        for name, pid in before['generation'].items() if name != unit)):
+                raise RuntimeError('owned-targeted-recovery-replaced-unrelated-process')
+        print('owned-targeted-recovery-passed')
+  changed_when: false
+
+- name: Prove private Hysteria hosts binding without ambient host publication
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json, pathlib, subprocess
+        config = json.loads(pathlib.Path('/etc/ripdpi/transport-egress/generation.json').read_bytes())
+        if 'hysteria-server.service' not in config['frontend_units']:
+            raise SystemExit(0)
+        bindings = subprocess.check_output(
+            ['systemctl', 'show', 'hysteria-server.service', '--property=BindReadOnlyPaths', '--value'], text=True)
+        if '/etc/hysteria/masquerade-hosts:/etc/hosts' in bindings:
+            pid = subprocess.check_output(
+                ['systemctl', 'show', 'hysteria-server.service', '--property=MainPID', '--value'], text=True).strip()
+            if not pid.isdecimal() or int(pid) <= 0:
+                raise RuntimeError('owned-origin-process-absent')
+            private = pathlib.Path('/etc/hysteria/masquerade-hosts')
+            scoped = pathlib.Path('/proc') / pid / 'root/etc/hosts'
+            if scoped.read_bytes() != private.read_bytes():
+                raise RuntimeError('owned-origin-bind-mismatch')
+        if b'RIPDPI nginx self-resolution' in pathlib.Path('/etc/hosts').read_bytes():
+            raise RuntimeError('unexpected-global-origin-publication')
+        print('owned-origin-resolution-passed')
+  changed_when: false

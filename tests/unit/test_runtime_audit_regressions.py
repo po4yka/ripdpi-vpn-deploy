@@ -12,6 +12,9 @@ import sys
 import pytest
 import yaml
 
+from tests.site_role_graph import site_roles
+from transport_fixtures import guarded_xray_bytes
+
 from scripts.template_render import merge_render_vars, render_template
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -287,7 +290,7 @@ def test_hysteria_hopping_keeps_daemon_unprivileged_and_redirects_both_families(
 def test_agent_disable_branch_remains_reachable_from_site():
     role = next(
         role
-        for role in tasks("playbooks/site.yml")[0]["roles"]
+        for role in site_roles(tasks("playbooks/site.yml")[0])
         if role["role"] == "observability_agent"
     )
     assert "when" not in role
@@ -319,6 +322,7 @@ print(json.dumps({{"asset": os.environ["XRAY_LOCATION_ASSET"], "args": sys.argv[
         **os.environ,
         "PATH": str(binary_dir) + os.pathsep + os.environ["PATH"],
     }
+    (tmp_path / "config.json").write_text(guarded_xray_bytes())
     return binary, systemctl, environment
 
 
@@ -396,7 +400,7 @@ def test_xray_candidate_validation_can_use_explicit_unpublished_assets(tmp_path)
             "--asset-dir",
             "/candidate/assets",
             "--config",
-            "/candidate/config.json",
+            str(tmp_path / "config.json"),
         ],
         capture_output=True,
         text=True,

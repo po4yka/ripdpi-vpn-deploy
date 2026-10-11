@@ -34,19 +34,23 @@ def _run_watchdog(
     notification_sender: Path | None = None,
     credential_directory: Path | None = None,
     server_port: int = 443,
+    recovery_succeeds: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     state_file = tmp_path / "state"
     config_file = tmp_path / "reality.json"
     config_file.write_text("{}")
+    from tests.transport_fixtures import guarded_xray_bytes
+    server_config = tmp_path / "server.json"
+    server_config.write_text(guarded_xray_bytes())
     term_marker = tmp_path / "xray-terminated"
 
     _executable(
         bin_dir / "systemctl",
         'printf \'%s\\n\' "$*" >> "${SYSTEMCTL_LOG}"\n'
         'if [[ "$*" == *"--property=Environment"* ]]; then\n'
-        "  printf '%s\\n' 'XRAY_LOCATION_ASSET=/tmp/watchdog-test-assets'\n"
+        f"  printf '%s\\n' 'XRAY_LOCATION_ASSET=/tmp/watchdog-test-assets XRAY_RUNTIME_BINARY={bin_dir / 'xray'}'\n"
         "fi\nexit 0\n",
     )
     _executable(bin_dir / "timeout", "exit 0\n")
@@ -94,12 +98,19 @@ def _run_watchdog(
 
     _executable(
         bin_dir / "xray-validate",
-        f'exec "{sys.executable}" "{REPO_ROOT / "ansible/roles/xray/files/xray_validate.py"}" "$@"\n',
+        f'args=("$@"); args[${{#args[@]}}-1]="{server_config}"; exec "{sys.executable}" "{REPO_ROOT / "ansible/roles/xray/files/xray_validate.py"}" "${{args[@]}}"\n',
     )
 
     _executable(
         bin_dir / "watchdog-state",
         f'exec "{sys.executable}" "{REPO_ROOT / "ansible/roles/watchdog/files/vpn-watchdog-state.py"}" "$@"\n',
+    )
+    recovery = bin_dir / "generation.py"
+    recovery.write_text(
+        "import pathlib,sys\n"
+        f"with pathlib.Path({str(tmp_path / 'recovery.log')!r}).open('a') as output:\n"
+        "    output.write(' '.join(sys.argv[1:])+'\\n')\n"
+        f"raise SystemExit({0 if recovery_succeeds else 1})\n"
     )
     env = os.environ.copy()
     env.update(
@@ -110,6 +121,7 @@ def _run_watchdog(
             "ENABLE_HYSTERIA": "false",
             "ENABLE_AMNEZIAWG": "false",
             "XRAY_BIN": str(bin_dir / "xray"),
+            "TRANSPORT_GENERATION_BIN": str(recovery),
             "XRAY_VALIDATE_BIN": str(bin_dir / "xray-validate"),
             "XRAY_PORT": "443",
             "XRAY_REALITY_CONFIG": str(config_file),
@@ -176,7 +188,8 @@ def test_wrong_canary_status_is_a_probe_failure_and_cleans_up(tmp_path):
     assert "FAIL  xray REALITY TCP/443 round-trip" in result.stdout
     assert (tmp_path / "xray-terminated").exists()
     assert "consecutive_fails=1" in (tmp_path / "state").read_text()
-    assert "restart xray.service" in (tmp_path / "systemctl.log").read_text()
+    assert "--unit xray.service" in (tmp_path / "recovery.log").read_text()
+    assert "restart xray.service" not in (tmp_path / "systemctl.log").read_text()
 
 
 def test_owned_site_root_can_require_exact_200_status(tmp_path):
@@ -193,7 +206,8 @@ def test_recovery_kicks_are_bounded_per_hour(tmp_path):
     assert first.returncode != 0, first.stderr
     assert second.returncode != 0, second.stderr
     calls = (tmp_path / "systemctl.log").read_text().splitlines()
-    assert calls.count("restart xray.service") == 1
+    assert "restart xray.service" not in calls
+    assert (tmp_path / "recovery.log").read_text().count("--unit xray.service") == 1
     assert "kicks_this_hour=1" in (tmp_path / "state").read_text()
 
 
@@ -219,7 +233,8 @@ def test_stats_service_failure_is_a_probe_failure_and_restarts_xray(tmp_path):
 
     assert result.returncode != 0, result.stderr
     assert "FAIL  xray StatsService query" in result.stdout
-    assert "restart xray.service" in (tmp_path / "systemctl.log").read_text()
+    assert "--unit xray.service" in (tmp_path / "recovery.log").read_text()
+    assert "restart xray.service" not in (tmp_path / "systemctl.log").read_text()
     assert "consecutive_fails=1" in (tmp_path / "state").read_text()
 
 
@@ -229,3 +244,12 @@ def test_cohort_only_non_base_listener_does_not_trigger_recovery(tmp_path):
     assert "xray TCP/2443 listening" in result.stdout
     assert "TCP/443" not in result.stdout
     assert "restart" not in (tmp_path / "systemctl.log").read_text()
+
+
+def test_failed_guarded_recovery_never_falls_back_to_direct_restart(tmp_path):
+    result = _run_watchdog(tmp_path, canary_status="200", recovery_succeeds=False)
+    assert result.returncode != 0
+    assert "RESTART FAILED  xray.service" in result.stdout
+    assert "--unit xray.service" in (tmp_path / "recovery.log").read_text()
+    assert "restart xray.service" not in (tmp_path / "systemctl.log").read_text()
+    assert "kicks_this_hour=1" in (tmp_path / "state").read_text()

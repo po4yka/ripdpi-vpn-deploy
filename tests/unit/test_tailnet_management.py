@@ -16,6 +16,8 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
+from tests.site_role_graph import site_roles
+
 from template_render import merge_render_vars, render_template
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -38,7 +40,7 @@ def test_tailnet_role_is_opt_in_tactical_and_wired_after_geodata() -> None:
     defaults = yaml.safe_load((ROOT / "ansible/group_vars/all.yml").read_text())
     tiers = yaml.safe_load((ROOT / "ansible/role-tiers.yml").read_text())
     site = yaml.safe_load((ROOT / "ansible/playbooks/site.yml").read_text())[0]
-    roles = [entry["role"] for entry in site["roles"]]
+    roles = [entry["role"] for entry in site_roles(site)]
 
     assert defaults["vpn"]["enable_tailnet_management"] is False
     assert tiers["tiers"]["tailnet-management"] == "tactical"

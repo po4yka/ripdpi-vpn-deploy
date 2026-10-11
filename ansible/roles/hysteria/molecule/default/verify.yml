@@ -7,62 +7,60 @@
     hysteria_config_dir: /etc/hysteria
     hysteria_log_dir: /var/log/hysteria
     hysteria_port: 443
-    hysteria_port_range: ""
-    public_site_canonical_url: "https://vpn.example.test"
+    hysteria_port_range: ''
+    public_site_canonical_url: https://vpn.example.test
     hysteria_release_urls:
       amd64: file:///var/tmp/hysteria-molecule/hysteria-v2.8.2
       arm64: file:///var/tmp/hysteria-molecule/hysteria-v2.8.2-arm64
     hysteria:
       version: v2.8.2
-      linux_amd64_sha256: ff2fe5e3c9d0cc3ce2b219580faca6767b2ebe8de43511157b12edbe57ac88fc
-      linux_arm64_sha256: 33cdb04ed03021bf9b67c34e2b15e385b72b596ee72fa481fc897f7fe51579bc
-      cert_pem: |
-        -----BEGIN CERTIFICATE-----
-        STUB_CERT_FOR_MOLECULE
-        -----END CERTIFICATE-----
-      key_pem: |
-        -----BEGIN PRIVATE KEY-----
-        STUB_KEY_FOR_MOLECULE
-        -----END PRIVATE KEY-----
-      bandwidth_up: "100 mbps"
-      bandwidth_down: "200 mbps"
-      masquerade_url: "https://vpn.example.test"
+      linux_amd64_sha256: b11bf0fb5f84a3f5c6baff3696e899539e68af4cee868c9203cfb896784ad3b0
+      linux_arm64_sha256: 802d77ae3ca37bdc235ec848edfaaa7cb9109007d9044f50b0746239269cb8cf
+      cert_pem: '{{ transport_native_hysteria_tls.cert_pem }}'
+      key_pem: '{{ transport_native_hysteria_tls.key_pem }}'
+      bandwidth_up: 100 mbps
+      bandwidth_down: 200 mbps
+      masquerade_url: https://vpn.example.test
       salamander_enabled: false
       clients:
         - name: alice
           password: stub-pw-1
         - name: bob
           password: stub-pw-2
+    vpn:
+      enable_xray_reality: false
+      enable_nginx_xhttp: false
+      enable_hysteria: true
+      enable_warp_outbound: false
+      enable_transport_egress: true
+      enable_geodata: false
+    xray: '{{ transport_native_xray_runtime }}'
   tasks:
     - name: config.yaml exists
       ansible.builtin.stat:
         path: /etc/hysteria/config.yaml
       register: cfg
       failed_when: not cfg.stat.exists
-
     - name: config.yaml owned by root:hysteria 0640
       ansible.builtin.assert:
         that:
           - cfg.stat.pw_name == "root"
           - cfg.stat.gr_name == "hysteria"
           - cfg.stat.mode == "0640"
-
     - name: systemd unit installed
       ansible.builtin.stat:
         path: /etc/systemd/system/hysteria-server.service
       register: unit
       failed_when: not unit.stat.exists
-
     - name: Inspect runtime-release current/public/previous links and receipt
       ansible.builtin.stat:
-        path: "{{ item }}"
+        path: '{{ item }}'
         follow: false
       loop:
         - /opt/hysteria/current
         - /usr/local/bin/hysteria
         - /opt/hysteria/releases/v2.8.2/.runtime-release.json
       register: runtime_release_paths
-
     - name: Assert runtime-release current/public/previous links and receipt
       ansible.builtin.assert:
         that:
@@ -72,121 +70,103 @@
           - runtime_release_paths.results[1].stat.lnk_target == '/opt/hysteria/current/hysteria'
           - runtime_release_paths.results[2].stat.isreg
           - runtime_release_paths.results[2].stat.mode == '0644'
-
     - name: Re-converge identical Hysteria runtime release
       ansible.builtin.include_role:
         name: hysteria
-
     - name: Assert identical runtime release is idempotent
       ansible.builtin.assert:
         that:
           - not (runtime_release_changed | bool)
-
     - name: Upgrade Hysteria through runtime-release
       ansible.builtin.include_role:
         name: hysteria
       vars:
         hysteria_release_urls:
-          amd64: file:///var/tmp/hysteria-molecule/hysteria-v2.8.3
-          arm64: file:///var/tmp/hysteria-molecule/hysteria-v2.8.3-arm64
+          amd64: file:///var/tmp/hysteria-molecule/hysteria-v2.9.0
+          arm64: file:///var/tmp/hysteria-molecule/hysteria-v2.9.0-arm64
         hysteria:
-          version: v2.8.3
-          linux_amd64_sha256: f61dc01abae6cb72404aae6582b86e0958bb0bc3119012c606772351d6c37fbd
-          linux_arm64_sha256: 29fa1c48937c356daf098f17a7512e8df2af29015ca7188f0cd0d9124fd24276
-          cert_pem: |
-            -----BEGIN CERTIFICATE-----
-            STUB_CERT_FOR_MOLECULE
-            -----END CERTIFICATE-----
-          key_pem: |
-            -----BEGIN PRIVATE KEY-----
-            STUB_KEY_FOR_MOLECULE
-            -----END PRIVATE KEY-----
-          bandwidth_up: "100 mbps"
-          bandwidth_down: "200 mbps"
-          masquerade_url: "https://vpn.example.test"
+          version: v2.9.0
+          linux_amd64_sha256: 8225c8380f1ae8122921d4986c2b70976e9c6e6f87a977e7d0498a813f4f3e37
+          linux_arm64_sha256: a3ccc0a3e791b85710ef63d22304a6f7dea210259be71bcd70cf9a210a385454
+          cert_pem: '{{ transport_native_hysteria_tls.cert_pem }}'
+          key_pem: '{{ transport_native_hysteria_tls.key_pem }}'
+          bandwidth_up: 100 mbps
+          bandwidth_down: 200 mbps
+          masquerade_url: https://vpn.example.test
           salamander_enabled: false
           clients:
             - name: alice
               password: stub-pw-1
             - name: bob
               password: stub-pw-2
-
     - name: Flush upgraded Hysteria runtime-release handler
       ansible.builtin.meta: flush_handlers
-
     - name: Read upgraded Hysteria fixture version
       ansible.builtin.command:
-        cmd: /usr/local/bin/hysteria
+        cmd: /usr/local/bin/hysteria version
       register: upgraded_hysteria_version
       changed_when: false
-
     - name: Read upgraded Hysteria service state
       ansible.builtin.command:
         cmd: systemctl is-active hysteria-server.service
       register: upgraded_hysteria_service
       changed_when: false
-
     - name: Assert upgraded fixture version and active Hysteria service
       ansible.builtin.assert:
         that:
-          - upgraded_hysteria_version.stdout == 'v2.8.3'
+          - '''2.9.0'' in upgraded_hysteria_version.stdout'
           - upgraded_hysteria_service.stdout == 'active'
-
     - name: Inspect upgraded runtime-release links and receipts
       ansible.builtin.stat:
-        path: "{{ item }}"
+        path: '{{ item }}'
         follow: false
       loop:
         - /opt/hysteria/current
         - /opt/hysteria/previous
         - /usr/local/bin/hysteria
         - /opt/hysteria/releases/v2.8.2/.runtime-release.json
-        - /opt/hysteria/releases/v2.8.3/.runtime-release.json
+        - /opt/hysteria/releases/v2.9.0/.runtime-release.json
       register: upgraded_runtime_release_paths
-
     - name: Assert upgraded runtime-release links and receipts
       ansible.builtin.assert:
         that:
           - runtime_release_changed | bool
-          - upgraded_runtime_release_paths.results[0].stat.lnk_source == '/opt/hysteria/releases/v2.8.3'
+          - upgraded_runtime_release_paths.results[0].stat.lnk_source == '/opt/hysteria/releases/v2.9.0'
           - upgraded_runtime_release_paths.results[1].stat.lnk_source == '/opt/hysteria/releases/v2.8.2'
           - upgraded_runtime_release_paths.results[2].stat.lnk_target == '/opt/hysteria/current/hysteria'
           - upgraded_runtime_release_paths.results[3].stat.mode == '0644'
           - upgraded_runtime_release_paths.results[4].stat.mode == '0644'
-
     - name: config references both clients
       ansible.builtin.shell:
-        cmd: |
-          set -o pipefail
-          grep -q '"alice":' /etc/hysteria/config.yaml
-          grep -q '"bob":' /etc/hysteria/config.yaml
+        cmd: 'set -o pipefail
+
+          grep -q ''"alice":'' /etc/hysteria/config.yaml
+
+          grep -q ''"bob":'' /etc/hysteria/config.yaml
+
+          '
         executable: /bin/bash
       changed_when: false
-
     - name: Salamander disabled-by-default not in config
       ansible.builtin.shell:
-        cmd: |
-          set -o pipefail
-          ! grep -q 'type: salamander' /etc/hysteria/config.yaml
+        cmd: 'set -o pipefail
+
+          ! grep -q ''type: salamander'' /etc/hysteria/config.yaml
+
+          '
         executable: /bin/bash
       changed_when: false
-
-    # State-level: hysteria binary is stubbed in molecule, so the unit
-    # may be `activating` rather than `active` depending on the stub;
-    # still catch a hard `failed` state.
     - name: hysteria-server.service is not in failed state
       ansible.builtin.command:
         cmd: systemctl is-failed hysteria-server.service
       register: hys_failed
       changed_when: false
       failed_when: hys_failed.stdout == "failed"
-
     - name: hysteria-server journal has no panic / traceback
       ansible.builtin.shell:
-        cmd: |
-          set -o pipefail
-          ! journalctl -u hysteria-server.service --since "5 minutes ago" \
-            --no-pager --output=cat \
-            | grep -iE 'panic|traceback|fatal'
+        cmd: "set -o pipefail\n! journalctl -u hysteria-server.service --since \"5 minutes ago\" \\\n\
+          \  --no-pager --output=cat \\\n  | grep -iE 'panic|traceback|fatal'\n"
         executable: /bin/bash
       changed_when: false
+  vars_files:
+    - ../../../../molecule/vars/transport-native.yml

@@ -227,7 +227,38 @@
         - not (vpn_subscription_only | default(false))
         - vpn.enable_nginx_xhttp | default(true)
 
-    - name: P1 public hostname resolves to its service address
+    - name: Verify Hysteria private origin resolution inside its actual mount namespace
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import subprocess, sys
+            pid = subprocess.check_output(
+                ['systemctl', 'show', 'hysteria-server.service', '--property=MainPID', '--value'], text=True).strip()
+            if not pid.isdecimal() or int(pid) <= 0:
+                raise SystemExit('hysteria-origin-process-absent')
+            unit = subprocess.check_output(
+                ['systemctl', 'show', 'hysteria-server.service', '--property=BindReadOnlyPaths', '--value'], text=True)
+            if '/etc/hysteria/masquerade-hosts:/etc/hosts' not in unit:
+                raise SystemExit('hysteria-origin-bind-absent')
+            result = subprocess.run(
+                ['nsenter', '--mount', '--target', pid, 'getent', 'ahostsv4', sys.argv[1]],
+                capture_output=True, text=True, timeout=10)
+            addresses = {line.split()[0] for line in result.stdout.splitlines() if line.split()}
+            if result.returncode or sys.argv[2] not in addresses:
+                raise SystemExit('hysteria-origin-resolution-failed')
+          - '{{ nginx_xhttp.server_name }}'
+          - '{{ vpn_service_address }}'
+      changed_when: false
+      no_log: true
+      when:
+        - not (vpn_subscription_only | default(false))
+        - vpn.enable_hysteria | default(true) | bool
+        - vpn.enable_nginx_xhttp | default(true) | bool
+        - hysteria.masquerade_url is match('^https://' ~ (nginx_xhttp.server_name | regex_escape) ~ '(?::[0-9]+)?/?$')
+
+    - name: P1 public IPv4 hostname resolves through host NSS
       ansible.builtin.command:
         argv:
           - getent
@@ -257,7 +288,7 @@
         - not (vpn_subscription_only | default(false))
         - vpn.enable_nginx_xhttp | default(true)
 
-    - name: P1 public hostname exposes its IPv6 service address
+    - name: P1 public IPv6 hostname resolves through host NSS
       ansible.builtin.command:
         argv:
           - python3

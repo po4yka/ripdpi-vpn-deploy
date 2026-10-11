@@ -9,6 +9,9 @@ import subprocess
 import sys
 from unittest.mock import patch
 
+import yaml
+from tests.site_role_graph import site_roles
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GALAXY_CHECKER = REPO_ROOT / "scripts" / "check-ansible-galaxy-updates.py"
 
@@ -24,9 +27,8 @@ def test_firewall_precedes_intrusion_prevention_in_site_playbook():
     site = (REPO_ROOT / "ansible" / "playbooks" / "site.yml").read_text(
         encoding="utf-8"
     )
-    assert site.index("    - role: firewall") < site.index(
-        "    - role: intrusion_prevention"
-    )
+    names = [role["role"] for role in site_roles(yaml.safe_load(site)[0])]
+    assert names.index("firewall") < names.index("intrusion_prevention")
 
 
 def test_firewall_applies_nftables_before_policy_ratelimit_preflight():
@@ -48,9 +50,8 @@ def test_firewall_applies_nftables_before_policy_ratelimit_preflight():
         / "default"
         / "converge.yml"
     ).read_text(encoding="utf-8")
-    assert site.index("    - role: firewall") < site.index(
-        "    - role: policy-ratelimit"
-    )
+    names = [role["role"] for role in site_roles(yaml.safe_load(site)[0])]
+    assert names.index("firewall") < names.index("policy-ratelimit")
     assert tasks.index("- name: Render nftables config") < tasks.index(
         "- name: Reload nftables before dependent roles run"
     )

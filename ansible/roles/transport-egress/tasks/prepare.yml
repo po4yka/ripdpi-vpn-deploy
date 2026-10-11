@@ -1,0 +1,156 @@
+---
+- name: Inspect native service-manager version before isolated vendor mutation
+  ansible.builtin.command:
+    argv: [systemctl, show, --property=Version, --value]
+  register: _warp_systemd_version
+  changed_when: false
+  check_mode: false
+  when: transport_egress_input_config.backends.warp is defined
+
+- name: Require vendor PID isolation supported by the actual manager
+  ansible.builtin.assert:
+    that:
+      - (_warp_systemd_version.stdout | regex_search('^[0-9]+') | default('0', true) | int) >= 257
+    fail_msg: Isolated WARP requires systemd 257 or newer; older vendor sandbox contracts are unsupported.
+  when: transport_egress_input_config.backends.warp is defined
+
+- name: Validate egress inputs before identity or package mutation
+  ansible.builtin.import_tasks: '{{ role_path }}/../../playbooks/tasks/transport-input-preflight.yml'
+  vars:
+    transport_input_sections:
+      - egress
+  when: transport_egress_role_enabled | bool
+- name: Validate complete non-UID egress contract before allocating identities
+  ansible.builtin.command:
+    argv:
+      - '{{ ansible_playbook_python }}'
+      - -Es
+      - '{{ role_path }}/../../../scripts/transport_egress_normalizer.py'
+      - --validate-input
+      - --config
+      - '-'
+    stdin: '{{ transport_egress_input_config | to_json }}'
+    stdin_add_newline: false
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  check_mode: false
+  no_log: true
+  when: transport_egress_role_enabled | bool
+- name: Require fixed role paths and exact runtime inputs before identity mutation
+  ansible.builtin.assert:
+    that:
+      - transport_egress_config_dir == '/etc/ripdpi/transport-egress'
+      - transport_egress_state_dir == '/var/lib/ripdpi/transport-egress'
+      - transport_egress_libexec_dir == '/usr/local/libexec/ripdpi-transport-egress'
+      - transport_egress_namespace == 'ripdpi-warp'
+      - transport_egress_policy_config == '/etc/ripdpi/transport-egress/policy.json'
+      - transport_egress_policy_loader == '/usr/local/libexec/ripdpi-transport-egress/policy-loader.py'
+      - xray.version | default('') is match('^v[0-9]+[.][0-9]+[.][0-9]+$')
+      - ansible_facts['architecture'] in ['x86_64', 'aarch64']
+      - |-
+        (xray.linux_amd64_sha256 if ansible_facts['architecture'] == 'x86_64'
+         else xray.linux_arm64_sha256) | default('') is match('^[0-9a-f]{64}$')
+    fail_msg: Private egress requires fixed owned paths and an exact native stable runtime pin.
+  when: transport_egress_role_enabled | bool
+- name: Require declared frontend identities
+  ansible.builtin.assert:
+    that:
+      - transport_egress_frontend_users is sequence
+      - transport_egress_frontend_users is not string
+      - transport_egress_frontend_users | difference(['xray', 'hysteria']) | length == 0
+      - transport_egress_frontend_users | unique | length == transport_egress_frontend_users | length
+    fail_msg: Invalid transport frontend identity declaration.
+  when: transport_egress_role_enabled | bool
+- name: Derive effective optional backend from the admitted contract
+  ansible.builtin.set_fact:
+    transport_egress_warp_enabled: '{{ ''warp'' in transport_egress_input_config.backends }}'
+  when: transport_egress_role_enabled | bool
+- name: Select enabled service identities
+  ansible.builtin.set_fact:
+    _transport_egress_users: |-
+      {{ [transport_egress_normalizer_user, transport_egress_gateway_user]
+         + ([transport_egress_warp_gateway_user] if transport_egress_warp_enabled | bool else [])
+         + ([transport_egress_classifier_user] if vpn.enable_cascade_ingress | default(false) | bool else [])
+         + transport_egress_frontend_users }}
+  when: transport_egress_role_enabled | bool
+- name: Inspect existing transport identities without mutation
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/identity.py'') }}'
+    stdin: '{{ _transport_egress_users | to_json }}'
+    stdin_add_newline: false
+  register: _transport_egress_before_identity
+  changed_when: false
+  check_mode: false
+  no_log: true
+  when: transport_egress_role_enabled | bool
+- name: Prepare only admitted absent private groups before user allocation
+  ansible.builtin.group:
+    name: '{{ item }}'
+    system: true
+    state: present
+  loop: '{{ (_transport_egress_before_identity.stdout | from_json).missing_groups }}'
+  when: transport_egress_role_enabled | bool
+  no_log: true
+- name: Prepare admitted unprivileged service identities
+  ansible.builtin.user:
+    name: '{{ item }}'
+    # Fresh check mode has predicted but not created this group yet.
+    group: '{{ omit if ansible_check_mode and item in (_transport_egress_before_identity.stdout | from_json).missing_groups else item }}'
+    system: true
+    shell: /usr/sbin/nologin
+    home: '{{ ''/var/lib/xray'' if item == ''xray'' else ''/nonexistent'' }}'
+    create_home: false
+  loop: '{{ _transport_egress_users }}'
+  when:
+    - transport_egress_role_enabled | bool
+    - item in (_transport_egress_before_identity.stdout | from_json).missing
+- name: Resolve actual transport identities
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/identity.py'') }}'
+    stdin: '{{ _transport_egress_users | to_json }}'
+    stdin_add_newline: false
+  register: _transport_egress_identity
+  changed_when: false
+  check_mode: false
+  no_log: true
+  when: transport_egress_role_enabled | bool
+- name: Publish resolved identity facts without inventing fresh check-mode authority
+  ansible.builtin.set_fact:
+    transport_egress_normalizer_uid: '{{ (_transport_egress_identity.stdout | from_json).uids.get(transport_egress_normalizer_user)
+      }}'
+    transport_egress_gateway_uid: '{{ (_transport_egress_identity.stdout | from_json).uids.get(transport_egress_gateway_user)
+      }}'
+    transport_egress_warp_gateway_uid: '{{ (_transport_egress_identity.stdout | from_json).uids.get(transport_egress_warp_gateway_user)
+      }}'
+    transport_egress_classifier_uid: >-
+      {{ (_transport_egress_identity.stdout | from_json).uids.get(transport_egress_classifier_user) }}
+    transport_egress_frontend_uids: '{{ (_transport_egress_identity.stdout | from_json).uids | dict2items | selectattr(''key'',
+      ''in'', transport_egress_frontend_users) | items2dict }}'
+    transport_egress_fresh_check_mode: '{{ ansible_check_mode and ((_transport_egress_identity.stdout | from_json).missing
+      | length > 0) }}'
+    transport_egress_frontend_units: '{{ transport_egress_frontend_users | map(''regex_replace'', ''^xray$'', ''xray.service'')
+      | map(''regex_replace'', ''^hysteria$'', ''hysteria-server.service'') | list }}'
+  no_log: true
+  when: transport_egress_role_enabled | bool
+- name: Require actual identities outside predictive check mode
+  ansible.builtin.assert:
+    that:
+      - ansible_check_mode or (_transport_egress_identity.stdout | from_json).missing | length == 0
+    fail_msg: Egress service identities could not be resolved.
+  when: transport_egress_role_enabled | bool
+- name: Install private egress kernel tooling
+  ansible.builtin.apt:
+    name:
+      - nftables
+      - iproute2
+    state: present
+    update_cache: '{{ not ansible_check_mode }}'
+    cache_valid_time: 3600
+  when: transport_egress_role_enabled | bool

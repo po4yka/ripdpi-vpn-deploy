@@ -10,6 +10,7 @@ vpn:
   # Toggle transport and service surfaces. Keep host-hardening posture in
   # `security_controls` below so deploy profiles can change security policy
   # without overloading the VPN transport namespace.
+  enable_transport_egress: true  # required recipient destination boundary
   enable_xray_reality: true
   enable_reality_self_steal: false # P0 loopback TLS target for owned REALITY camouflage
   enable_nginx_xhttp: true        # P1 — direct, no CDN baseline

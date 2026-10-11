@@ -1,0 +1,106 @@
+---
+- name: Activate isolated existing-registration vendor tunnel
+  when: not ansible_check_mode
+  block:
+    - name: Require guarded namespace policy before unmasking vendor
+      ansible.builtin.command:
+        argv:
+          - '{{ transport_egress_policy_loader }}'
+          - verify
+          - --config
+          - '{{ transport_egress_policy_config }}'
+          - --namespace
+          - ripdpi-warp
+      changed_when: false
+      no_log: true
+    - name: Activate boot-persistent owned namespace
+      ansible.builtin.systemd_service:
+        name: ripdpi-warp-namespace.service
+        daemon_reload: true
+        enabled: true
+        state: started
+    - name: Start sole canonical vendor service inside owned namespace
+      ansible.builtin.systemd_service:
+        name: warp-svc.service
+        masked: false
+        enabled: true
+        state: '{{ ''restarted'' if _warp_namespace_units.changed | default(false) or _warp_namespace_helper.changed
+          | default(false) else ''started'' }}'
+    - name: Inspect retained registration without creating an account
+      ansible.builtin.command:
+        argv:
+          - ip
+          - netns
+          - exec
+          - ripdpi-warp
+          - warp-cli
+          - registration
+          - show
+      changed_when: false
+      no_log: true
+    - name: Read isolated native WARP mode
+      ansible.builtin.command:
+        argv:
+          - ip
+          - netns
+          - exec
+          - ripdpi-warp
+          - warp-cli
+          - settings
+      register: _warp_settings
+      changed_when: false
+      no_log: true
+    - name: Select tunnel_only without host DNS routing
+      ansible.builtin.command:
+        argv:
+          - ip
+          - netns
+          - exec
+          - ripdpi-warp
+          - warp-cli
+          - mode
+          - tunnel_only
+      changed_when: true
+      no_log: true
+      when: '''tunnel_only'' not in _warp_settings.stdout and ''TunnelOnly'' not in _warp_settings.stdout'
+    - name: Read isolated vendor connection state
+      ansible.builtin.command:
+        argv:
+          - ip
+          - netns
+          - exec
+          - ripdpi-warp
+          - warp-cli
+          - status
+      register: _warp_connection
+      changed_when: false
+      no_log: true
+    - name: Connect only the retained registered namespace identity
+      ansible.builtin.command:
+        argv:
+          - ip
+          - netns
+          - exec
+          - ripdpi-warp
+          - warp-cli
+          - connect
+      changed_when: true
+      no_log: true
+      when: '''Status update: Connected'' not in _warp_connection.stdout'
+    - name: Require actual UP TUN identity before recipient gateway admission
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -Es
+          - /usr/local/libexec/ripdpi-warp/namespace.py
+          - refresh
+      register: _warp_tunnel_readiness
+      until: _warp_tunnel_readiness.rc == 0
+      retries: '{{ transport_egress_control_timeout_seconds }}'
+      delay: 1
+      changed_when: false
+      no_log: true
+    - name: Retain actual verified tunnel identity
+      ansible.builtin.set_fact:
+        transport_egress_warp_tunnel_ifindex: '{{ (_warp_tunnel_readiness.stdout | from_json).tunnel_ifindex }}'
+      no_log: true

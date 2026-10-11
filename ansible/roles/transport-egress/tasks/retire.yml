@@ -1,0 +1,46 @@
+---
+- name: Inspect bounded egress retirement ownership without creating state
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/ownership.py'') }}'
+  register: _transport_egress_retire_owner
+  changed_when: false
+  check_mode: false
+  no_log: true
+- name: Retire only exact previously claimed generation units
+  when: (_transport_egress_retire_owner.stdout | from_json).units | length > 0
+  block:
+    - name: Stop and disable controller before gateways
+      ansible.builtin.systemd_service:
+        name: ripdpi-transport-generation.service
+        state: stopped
+        enabled: false
+      when: '''ripdpi-transport-generation.service'' in (_transport_egress_retire_owner.stdout | from_json).units'
+    - name: Stop remaining exact private mapping processes
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+        state: stopped
+        enabled: false
+      loop: '{{ (_transport_egress_retire_owner.stdout | from_json).units }}'
+      when: item != 'ripdpi-transport-generation.service'
+    - name: Retire owned optional vendor namespace after mapping processes stop
+      ansible.builtin.include_role:
+        name: warp-outbound
+        tasks_from: retire
+    - name: Remove listener authority while retaining final deny guard and identities
+      ansible.builtin.file:
+        path: '{{ item }}'
+        state: absent
+      loop:
+        - /etc/ripdpi/transport-egress/normalizer.json
+        - /etc/ripdpi/transport-egress/generation.json
+        - /etc/ripdpi/transport-egress/direct.json
+        - /etc/ripdpi/transport-egress/warp.json
+        - /var/lib/ripdpi/transport-egress/ready.json
+        - /var/lib/ripdpi/transport-egress/previous.json
+        - /var/lib/ripdpi/transport-egress/accepted.json
+    - name: Retain exact unit ownership for later guarded readmission
+      ansible.builtin.debug:
+        msg: Private listeners are retired; kernel deny policy, receipts, identities and unit ownership remain.

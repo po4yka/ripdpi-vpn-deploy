@@ -1,0 +1,4 @@
+---
+- name: Reconcile private transport egress lifecycle
+  ansible.builtin.include_tasks: '{{ ''prepare-site.yml'' if transport_egress_role_enabled | bool else ''retire.yml''
+    }}'

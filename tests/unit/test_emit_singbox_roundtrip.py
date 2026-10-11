@@ -175,6 +175,7 @@ def _run_snell_only_script(
     (repo / "ansible/roles/snell/defaults").mkdir(parents=True)
     (repo / "terraform/providers/upcloud").mkdir(parents=True)
     shutil.copy2(SCRIPT, repo / "scripts/emit-singbox.sh")
+    shutil.copy2(REPO_ROOT / "scripts/transport_semantics.py", repo / "scripts/transport_semantics.py")
     shutil.copy2(
         REPO_ROOT / "scripts/terraform-env.sh", repo / "scripts/terraform-env.sh"
     )
@@ -263,6 +264,7 @@ def _run_shape_only_emitter(
     (repo / "ansible/roles/snell/defaults").mkdir(parents=True)
     (repo / "terraform/providers/upcloud").mkdir(parents=True)
     shutil.copy2(SCRIPT, repo / "scripts/emit-singbox.sh")
+    shutil.copy2(REPO_ROOT / "scripts/transport_semantics.py", repo / "scripts/transport_semantics.py")
     shutil.copy2(
         REPO_ROOT / "scripts/terraform-env.sh", repo / "scripts/terraform-env.sh"
     )

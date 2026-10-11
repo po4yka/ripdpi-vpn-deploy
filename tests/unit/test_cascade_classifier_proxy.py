@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import socket
 import subprocess
 import sys
@@ -75,6 +77,13 @@ def _password_file(dataset: Path) -> Path:
     return path
 
 
+def _policy_file(dataset: Path) -> Path:
+    path = dataset.parent / 'destination-policy.json'
+    path.write_text(json.dumps({'policy': {'owned_addresses': [], 'management_tcp_ports': [], 'management_udp_ports': []}}))
+    path.chmod(0o600)
+    return path
+
+
 def _start_proxy(dataset: Path, port: int, foreign_interface: str) -> subprocess.Popen[str]:
     process = subprocess.Popen(
         [
@@ -92,6 +101,8 @@ def _start_proxy(dataset: Path, port: int, foreign_interface: str) -> subprocess
             foreign_interface,
             "--password-file",
             str(_password_file(dataset)),
+            "--policy-file",
+            str(_policy_file(dataset)),
         ],
         cwd=ROOT,
         text=True,
@@ -121,16 +132,15 @@ def _socks_round_trip(proxy_port: int, target_port: int) -> bytes:
         assert client.recv(2) == b"\x01\x00"
         client.sendall(b"\x05\x01\x00\x01" + socket.inet_aton("127.0.0.1") + target_port.to_bytes(2, "big"))
         reply = client.recv(10)
-        assert reply[:2] == b"\x05\x00"
-        client.sendall(b"cascade")
-        return client.recv(7)
+        assert reply[:2] == b"\x05\x01"
+        return reply[:2]
 
 
 def _loopback_interface() -> str:
     return "lo0" if sys.platform == "darwin" else "lo"
 
 
-def test_ru_connection_uses_direct_path_and_completes(tmp_path: Path) -> None:
+def test_classified_direct_private_address_is_rejected_before_connect(tmp_path: Path) -> None:
     dataset = tmp_path / "geoip.dat"
     dataset.write_bytes(_geoip_dat("127.0.0.0", 8))
     proxy_port = _free_port()
@@ -138,13 +148,13 @@ def test_ru_connection_uses_direct_path_and_completes(tmp_path: Path) -> None:
     with EchoServer() as target:
         proxy = _start_proxy(dataset, proxy_port, _loopback_interface())
         try:
-            assert _socks_round_trip(proxy_port, target.port) == b"cascade"
+            assert _socks_round_trip(proxy_port, target.port) == b"\x05\x01"
         finally:
             proxy.terminate()
             proxy.wait(timeout=2)
 
 
-def test_foreign_connection_binds_to_configured_leg_and_completes(tmp_path: Path) -> None:
+def test_classified_foreign_private_address_is_rejected_before_connect(tmp_path: Path) -> None:
     dataset = tmp_path / "geoip.dat"
     dataset.write_bytes(_geoip_dat("192.0.2.0", 24))
     proxy_port = _free_port()
@@ -152,7 +162,7 @@ def test_foreign_connection_binds_to_configured_leg_and_completes(tmp_path: Path
     with EchoServer() as target:
         proxy = _start_proxy(dataset, proxy_port, _loopback_interface())
         try:
-            assert _socks_round_trip(proxy_port, target.port) == b"cascade"
+            assert _socks_round_trip(proxy_port, target.port) == b"\x05\x01"
         finally:
             proxy.terminate()
             proxy.wait(timeout=2)
@@ -179,6 +189,8 @@ def test_empty_dataset_refuses_to_open_classifier_listener(tmp_path: Path) -> No
             _loopback_interface(),
             "--password-file",
             str(_password_file(dataset)),
+            "--policy-file",
+            str(_policy_file(dataset)),
         ],
         cwd=ROOT,
         text=True,
@@ -211,6 +223,8 @@ def test_non_loopback_listener_is_rejected_before_bind(tmp_path: Path) -> None:
             _loopback_interface(),
             "--password-file",
             str(_password_file(dataset)),
+            "--policy-file",
+            str(_policy_file(dataset)),
         ],
         cwd=ROOT,
         text=True,
@@ -219,7 +233,7 @@ def test_non_loopback_listener_is_rejected_before_bind(tmp_path: Path) -> None:
     )
 
     assert result.returncode != 0
-    assert "loopback" in result.stderr.lower()
+    assert result.stderr.strip() == "cascade classifier proxy configuration refused"
 
 
 def test_runtime_dataset_loss_blocks_new_connections(tmp_path: Path) -> None:

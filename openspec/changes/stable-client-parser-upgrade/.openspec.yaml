@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-10
+goal: TST-1791618376497512 Upgrade verified recipient parsers to the current
+  stable client line

@@ -329,7 +329,19 @@ def test_ci_generator_real_crypto_passes_secret_schema(tmp_path):
                              cwd=ROOT, env=environment, capture_output=True, timeout=30)
     assert checked.returncode == 0, "generated CI credentials violate schema"
     value = yaml.safe_load(output.read_bytes())
-    assert value["hysteria"]["masquerade_url"] == environment["WATCHDOG_CANARY_URL"]
+    assert value["hysteria"]["masquerade_url"] == "https://" + environment["SERVER_NAME"]
+    assert value["watchdog_secrets"]["reality_probe_url"] == environment["WATCHDOG_CANARY_URL"]
+    from template_render import render_fragment
+    profile = yaml.safe_load((ROOT / "ansible/group_vars/vpn-ci-p0p1p2.yml").read_text())
+    served_origin = render_fragment("ci-origin.txt", profile["public_site_canonical_url"],
+                                    {"nginx_xhttp": value["nginx_xhttp"]})
+    assert served_origin == value["hysteria"]["masquerade_url"]
+    from transport_semantics import EGRESS_CREDENTIALS, egress_errors
+    internal = value["transport_egress_secrets"]
+    assert set(internal) == set(EGRESS_CREDENTIALS)
+    assert len(set(internal.values())) == len(EGRESS_CREDENTIALS)
+    assert not egress_errors(internal, profile["vpn"], required=True)
+    assert all(secret.encode() not in generated.stdout + generated.stderr for secret in internal.values())
     registry = value["client_registry"]["ci-test"]
     assert registry["hosts"] == ["upcloud:ci-staging-generator"]
     assert registry["cohorts"] == ["ci-p0p1p2"]

@@ -2,6 +2,14 @@
 
 ## Design decisions
 
+- Server configuration validation derives the accepted executable and asset paths from the loaded Xray unit. The operator CLI link remains available for stats and the separately pinned canary client, but never chooses the accepted server validator.
+
+- The watchdog failure scenario declares a versioned synthetic runtime and a
+  canonical guarded server configuration. Its CLI symlink does not select the
+  accepted validator. The scenario proves notification delivery for an
+  intentionally protocol-red listener; it does not establish native Xray parser
+  or authenticated transport completion.
+
 Budget files are owner-only 0600. Under the parent directory inode lock, a
 known owned single-link 0640 budget migrates only after complete typed payload
 validation, preserving bytes/counters and fsyncing file and directory. Unsafe
@@ -34,7 +42,7 @@ Overriding `ansible_host` for Tailscale administration must never redirect a
 data-plane probe onto the management path.
 
 **Bounded recovery** — failures must cross `fail_threshold` before the watchdog
-restarts only the transport units whose probes failed. Restart attempts remain
+requests targeted Xray/Hysteria recovery from the guarded generation controller; other failed units retain their direct recovery. Only the controller may replace a protected frontend and acknowledge its new admitted PID while retaining healthy frontend and mapping processes. A failed controller request has no direct-restart fallback. Restart attempts remain
 capped by `kicks_per_hour_max`, notifications by `alerts_per_hour_max`, and a
 red probe run exits non-zero so systemd and external checks retain the signal.
 
@@ -110,3 +118,5 @@ the finite oneshot deadline prevent a notification stall from disabling probes.
   secret/package guards. Disable stops units and removes only declared authority;
   shared packages, immutable runtime receipts, historical logs and recovery data
   remain available for a later explicit recovery.
+
+- The finite watchdog service deadline reserves three controller control budgets plus completion margin for each enabled protected frontend, in addition to existing probe and other recovery budgets. The supported 60-second controller setting cannot truncate a second protected request before state publication.

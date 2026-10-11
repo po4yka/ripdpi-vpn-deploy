@@ -190,6 +190,10 @@ table inet filter {
     # Node B forwards decapsulated traffic from the B-initiated split-hop flow.
     ct state new iifname "{{ split_hop_egress.wg_interface }}" oifname "{{ split_hop_egress.forward_iface }}" accept
 {% endif %}
+{% if vpn.enable_warp_outbound | default(false) and not (vpn_subscription_only | default(false)) %}
+    # Plaintext gateway packets are confined to the verified TUN before this underlay.
+    iifname "rpd-warp-host" ip saddr 10.250.254.2 meta l4proto { tcp, udp } accept
+{% endif %}
 {% for forwarding in firewall_forward_interface_contract | default([]) %}
     # Additive forwarding contract: {{ forwarding.name }}.
     ct state new iifname "{{ forwarding.input_interface }}" oifname "{{ forwarding.output_interface }}" accept
@@ -216,8 +220,7 @@ table inet filter {
     udp dport 123 accept
     tcp dport { 80, 443 } accept
 {% if vpn.enable_warp_outbound | default(false) %}
-    # Cloudflare WARP control/data plane. WARP role still runs in proxy mode;
-    # this only permits the local warp-svc to establish its tunnel.
+    # Cloudflare WARP control/data plane; the owned namespace carries its underlay.
     udp dport { 2408, 500, 4500 } accept
 {% endif %}
 {% if transport_needs_open_egress %}
