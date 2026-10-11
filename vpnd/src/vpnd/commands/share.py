@@ -9,6 +9,7 @@ from vpnd.text import trim_whitespace
 from vpnd.pages import qr, recipient
 from vpnd.protected_file import open_private, write_private
 from vpnd.runner import make
+from vpnd.runner import Cmd, terraform
 from vpnd.secrets import Secrets
 
 
@@ -86,6 +87,30 @@ def per_platform_apps():
     ]
 
 
+async def subscription_port(ctx, secrets):
+    port = secrets.subscription_port()
+    if port is None:
+        host = await (
+            terraform.base(ctx).args(["output", "-raw", "server_hostname"])
+            .describe("resolve the subscription inventory host").capture(False)
+        )
+        name = host.stdout.strip()
+        if not name:
+            raise ValueError("missing subscription inventory host")
+        result = await (
+            Cmd.new(sys.executable)
+            .args([ctx.root / "scripts/resolve-subscription-port.py", "--host", name])
+            .describe("resolve the effective subscription listener port").capture(False)
+        )
+        try:
+            port = int(result.stdout.strip())
+        except ValueError:
+            raise ValueError("invalid effective subscription port") from None
+    if type(port) is not int or not 1 <= port <= 65535:
+        raise ValueError("subscription port must be in 1..65535")
+    return port
+
+
 async def run(ctx, args):
     if not ctx.secrets_file.is_file():
         await make.target(ctx, "decrypt").run(ctx.explain)
@@ -105,8 +130,8 @@ async def run(ctx, args):
         raise ValueError("missing subscription.server_name or nginx_xhttp.server_name in secrets")
     host = fallback if fallback and trim_whitespace(fallback) else sub_host
     token = read_token(args)
-    port = secrets.subscription_port()
-    base = f"https://{sub_host}" + (f":{port}" if port is not None and port != 443 else "")
+    port = await subscription_port(ctx, secrets)
+    base = f"https://{sub_host}" + (f":{port}" if port != 443 else "")
     urls = build_sub_urls(base, token)
     singbox = await make.target_with(ctx, "emit-singbox", [("CLIENT", args.client)]).capture(False)
     out = Path(args.out) if args.out else ctx.root / "share" / args.client
@@ -121,17 +146,25 @@ async def run(ctx, args):
             urls.singbox_deeplink,
             deep,
             per_platform_apps(),
+            include_qr=args.qr,
         )
     )
 
     def emit():
         out.mkdir(parents=True, exist_ok=True, mode=0o700)
         out.chmod(0o700)
+        if not args.qr:
+            for name in ("qr.svg", "qr-ripdpi.svg"):
+                path = out / name
+                if path.exists() or path.is_symlink():
+                    with open_private(path):
+                        pass
+                    path.unlink()
         write_private(out / "config.singbox.json", singbox.stdout.encode())
-        write_private(out / "index.html", page.encode())
         if args.qr:
             qr.write_svg(urls.qr_uri if args.type == "uri" else urls.qr_singbox, out / "qr.svg")
             qr.write_svg(deep, out / "qr-ripdpi.svg")
+        write_private(out / "index.html", page.encode())
 
     await asyncio.to_thread(emit)
     print(

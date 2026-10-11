@@ -9,6 +9,7 @@ import tarfile
 from vpnd import docs_bundle
 from vpnd.runner import make, Cmd
 from vpnd.runner.process import CapturePolicy
+from vpnd.state import Registry, ipv4_limit
 
 STEPS = [
     "fleet-status",
@@ -137,24 +138,26 @@ async def try_copy_to_clipboard(text):
 
 
 async def run(ctx, args):
-    if args.host:
-        from vpnd.commands import ensure_host_in_registry
-        from vpnd.state.registry import Registry
-
-        ensure_host_in_registry(ctx, Registry.load(), args.host)
+    address = (
+        ipv4_limit(args.host, Registry.load().resolve_for(args.host, ctx.env, ctx.provider))
+        if args.host is not None else None
+    )
     report, failed = "", 0
     for step in STEPS:
         command = make.target(ctx, step).capture_policy(CapturePolicy.OWNED_PROCESS_GROUP)
+        if address is not None and step not in {"fleet-status", "audit-permissions"}:
+            command.env("IP", address)
+        scope = " (global check)" if step in {"fleet-status", "audit-permissions"} else ""
         try:
             result = await command.capture_detailed(ctx.explain)
             failed += result.rc != 0
             report += render_step_section(
-                command.redacted_explain(), result.stdout, result.stderr, result.rc != 0
+                command.redacted_explain() + scope, result.stdout, result.stderr, result.rc != 0
             )
         except Exception as error:
             failed += 1
             report += render_step_section(
-                command.redacted_explain(), "", f"(capture failed: {error})", True
+                command.redacted_explain() + scope, "", f"(capture failed: {error})", True
             )
     if ctx.explain:
         return 0

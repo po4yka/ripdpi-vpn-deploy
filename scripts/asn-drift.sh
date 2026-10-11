@@ -27,6 +27,14 @@ mkdir -p "$STATE_DIR"
 PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
 STATE_FILE="${STATE_DIR}/asn-${PROVIDER}-${ENV}.state"
+if [[ -n "${IP:-}" ]]; then
+  # Explicit host diagnostics must not replace the primary host's baseline.
+  python3 - "$IP" <<'PY'
+import ipaddress, sys
+ipaddress.IPv4Address(sys.argv[1])
+PY
+  STATE_FILE="${STATE_DIR}/asn-${PROVIDER}-${ENV}-${IP}.state"
+fi
 
 if [[ -z "${IP:-}" ]]; then
   IP="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4 2>/dev/null || true)"

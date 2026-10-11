@@ -29,6 +29,7 @@ class RecipientCtx:
     singbox_deeplink: str
     ripdpi_deeplink: str
     apps: list[AppCard] = field(default_factory=list)
+    include_qr: bool = False
 
 
 def render(ctx: RecipientCtx) -> str:

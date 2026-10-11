@@ -1,6 +1,7 @@
 """Local synthetic command fixtures; never access operator state or providers."""
 
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -21,7 +22,20 @@ def scaffold(root):
     for name in ["ansible/inventory", "terraform/providers/upcloud", "runtime", "bin"]:
         (root / name).mkdir(parents=True, exist_ok=True)
     (root / "Makefile").touch()
+    subscription_fixture(root)
     return root
+
+
+def subscription_fixture(root):
+    scripts = root / "scripts"
+    scripts.mkdir(exist_ok=True)
+    shutil.copyfile(REPO / "scripts/resolve-subscription-port.py", scripts / "resolve-subscription-port.py")
+    helper = scripts / "terraform-env.sh"
+    helper.write_text("#!/bin/sh\nprintf '%s\\n' fixture-node\n")
+    helper.chmod(0o700)
+    group_vars = root / "ansible/group_vars"
+    group_vars.mkdir(parents=True, exist_ok=True)
+    (group_vars / "all.yml").write_text("subscription_port: 8444\n")
 
 
 def context(root, explain=False):

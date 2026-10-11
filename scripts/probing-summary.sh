@@ -10,13 +10,17 @@
 # After run:
 #   reports/probing-<host>-YYYY-MM-DD.md is on the workstation
 #   the Prometheus textfile is updated on the VPS
+# IP optionally selects an explicit public IPv4 address instead of the primary node.
 set -euo pipefail
 
 PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-ip="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4 2>/dev/null || true)"
+ip="${IP:-}"
+if [[ -z "$ip" ]]; then
+  ip="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4 2>/dev/null || true)"
+fi
 admin="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw admin_user 2>/dev/null || echo admin)"
 if ! [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "no IP available for ${PROVIDER}:${ENV}" >&2
@@ -24,7 +28,9 @@ if ! [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
 fi
 
 today="$(date -u +%Y-%m-%d)"
-local_out="${REPO_ROOT}/reports/probing-${PROVIDER}-${ENV}-${today}.md"
+host_suffix=""
+[[ -z "${IP:-}" ]] || host_suffix="-${ip}"
+local_out="${REPO_ROOT}/reports/probing-${PROVIDER}-${ENV}${host_suffix}-${today}.md"
 mkdir -p "${REPO_ROOT}/reports"
 
 # StrictHostKeyChecking=accept-new: trusts the host key on first connect and
