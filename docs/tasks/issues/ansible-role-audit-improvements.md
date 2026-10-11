@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: ansible-role-audit-improvements
 created: 2026-10-10
-updated: 2026-10-11
+updated: 2026-10-12
 related_tasks: []
-status_detail: "Integrated source cf01f94a640913412f3316b5cb288881639712ce passed all protected-main hosted checks in run 38134843683; recorded source scope and external qualifications are preserved. Final local evidence reconciliation is pending before authorized closure."
+status_detail: "Accepted integrated source cf01f94a640913412f3316b5cb288881639712ce; all 86 protected-main jobs passed. Complete local gate components now passed across native Mac/Linux with no selected skips; historical failures and external scope qualifications retained."
 ---
 
 ## Goal

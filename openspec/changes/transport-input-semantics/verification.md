@@ -2,8 +2,8 @@
 task_id: SCT-1791617687019287
 change: transport-input-semantics
 commit_sha: "cf01f94a640913412f3316b5cb288881639712ce"
-local: required
-local_evidence: complete affected tests, exact native cases and full source gates after implementation
+local: "passed"
+local_evidence: "Complete local gate components passed across native macOS and Linux arm64 on unchanged runtime source cf01f94a640913412f3316b5cb288881639712ce. Mac validation and every ci-fast stage before test-unit passed; all four complete disjoint Linux ordinary-user portable groups passed (6340 tests passed across all four complete disjoint portable CI groups; group 1: 1585 passed, 4890 deselected, 5 warnings, 7 subtests passed in 255.95s (0:04:15); group 2: 1584 passed, 4891 deselected, 6 warnings, 9 subtests passed in 232.44s (0:03:52); group 3: 1585 passed, 4890 deselected, 5 warnings in 232.07s (0:03:52); group 4: 1586 passed, 4889 deselected, 2 warnings, 6 subtests passed in 256.55s (0:04:16)), all CLI tests passed (297 passed in 26.87s), lint and baseline transfer passed, and all 57 shell tests passed. No single make check invocation is claimed successful; earlier failures are retained below."
 remote_ci: "passed"
 remote_ci_evidence: "Protected-main CI run 38134843683 completed successfully on exact integrated source cf01f94a640913412f3316b5cb288881639712ce; all jobs succeeded, including portable, native, role, failure and full-stack checks. Scorecard, CodeQL and release-please completed successfully on the same source."
 dry_run: not_applicable
@@ -12,10 +12,10 @@ staging: not_applicable
 staging_evidence: isolated native source acceptance owns this change; fleet rehearsal requires separate authorization
 live: not_applicable
 live_evidence: no production rollout is part of this source task
-client: required
-client_evidence: real isolated consuming-client behavior named in the requirements; not host activity alone
-artifact: required
-artifact_evidence: validated contracts, private redacted outputs and requirement-to-test evidence on the exact implementation SHA
+client: "passed"
+client_evidence: "Complete supported real-client native cases passed in protected-main run 38134843683 at exact source cf01f94a640913412f3316b5cb288881639712ce; source-specific observations are retained below. These are isolated parser/runtime/client proofs, not fleet acceptance."
+artifact: "passed"
+artifact_evidence: "Exact integrated source cf01f94a640913412f3316b5cb288881639712ce passed all 86 hosted jobs; 163 rendered templates and golden snapshots matched locally. Complete scoped native artifacts and reviewed private-output/contract proofs are retained below; no new production artifact or fleet rollout is claimed."
 ---
 
 # Verification
@@ -26,10 +26,10 @@ Source observations below were obtained in the dedicated implementation worktree
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-PROTO-INPUT-COHORT | SCT-1791617711124536 | Complete affected portable suite: 383 passed, zero skips; missing/empty/unknown/duplicate cohort and actual controller early-refusal cases. Exact Xray 26.3.27 accepted the rendered candidate in the complete native suite. | source cases passed |
-| REQ-PROTO-INPUT-AWG | SCT-1791617712074772 | Complete portable consumer/semantic cases plus real AWG TUN/setconf host and explicit routed-prefix acceptance using source-pinned Go v0.2.12 and tools v1.0.20241018. Existing legacy consumers validate their consumed view; instance-selection changes remain separately tracked. | source cases passed |
-| REQ-PROTO-INPUT-HYSTERIA | SCT-1791617711124536 | Complete lifecycle/schema negative and privacy cases; exact Hysteria v2.9.0 accepted the installed validator and started the owned HTTPS proxy candidate. | source cases passed |
-| REQ-PROTO-INPUT-PRIVACY | SCT-1791617713075181 | Complete floor/schema/marker cases passed in the 383-test portable suite; coverage resolves 119 variables across 236 references; all 152 snapshots match. Complete affected Molecule scenarios passed; final full source gate passed with 5907 portable tests and 22 subtests. | source cases passed |
+| REQ-PROTO-INPUT-COHORT | SCT-1791617711124536 | Complete affected portable suite: 383 passed, zero skips; missing/empty/unknown/duplicate cohort and actual controller early-refusal cases. Exact Xray 26.3.27 accepted the rendered candidate in the complete native suite. | passed |
+| REQ-PROTO-INPUT-AWG | SCT-1791617712074772 | Complete portable consumer/semantic cases plus real AWG TUN/setconf host and explicit routed-prefix acceptance using source-pinned Go v0.2.12 and tools v1.0.20241018. Existing legacy consumers validate their consumed view; instance-selection changes remain separately tracked. | passed |
+| REQ-PROTO-INPUT-HYSTERIA | SCT-1791617711124536 | Complete lifecycle/schema negative and privacy cases; exact Hysteria v2.9.0 accepted the installed validator and started the owned HTTPS proxy candidate. | passed |
+| REQ-PROTO-INPUT-PRIVACY | SCT-1791617713075181 | Complete floor/schema/marker cases passed in the 383-test portable suite; coverage resolves 119 variables across 236 references; all 152 snapshots match. Complete affected Molecule scenarios passed; final full source gate passed with 5907 portable tests and 22 subtests. | passed |
 
 ## Observed validation
 
@@ -59,3 +59,9 @@ The complete refreshed `build-gate -- make check` passed against the final runti
 ## Closure reconciliation (2026-10-11)
 
 The preceding sections retain their historical source and environment boundaries. The earlier verification SHA was `6202c7ec93c075b6b5fd3b40065204e4f59d9461`. The accepted integrated source for this closure is `cf01f94a640913412f3316b5cb288881639712ce`; protected-main CI run `38134843683` completed with every job successful. This supersedes earlier pending PR/hosted-check observations without claiming a new deployment. Runtime and source files are unchanged by the closure increment.
+
+## Final closure acceptance (2026-10-12)
+
+The closure snapshot `e6ac235439bc66f9bb2bf9d9c71a4dded780ac38` has byte-identical production runtime files to integrated source `cf01f94a640913412f3316b5cb288881639712ce`. Validation was assembled from the complete passed Mac `validate` and `ci-fast` pre-test stages, then the complete ordinary-user Linux `make test-unit-shard PYTEST_GROUP=1..4`, `make vpnd-lint vpnd-test vpnd-parity-check` and `bats tests/bats/` stages. Portable result: 6340 tests passed across all four complete disjoint portable CI groups; group 1: 1585 passed, 4890 deselected, 5 warnings, 7 subtests passed in 255.95s (0:04:15); group 2: 1584 passed, 4891 deselected, 6 warnings, 9 subtests passed in 232.44s (0:03:52); group 3: 1585 passed, 4890 deselected, 5 warnings in 232.07s (0:03:52); group 4: 1586 passed, 4889 deselected, 2 warnings, 6 subtests passed in 256.55s (0:04:16). CLI result: 297 passed in 26.87s. All 57 shell tests passed; all 206 baseline transfer functions mapped to passing cases. No selected tests were skipped and no assertions, deadlines, locks or production source were changed.
+
+Earlier attempts retain their failed diagnostic status: tool activation, root-only runner admission, absent parser/cache prerequisites, existing Mac fixture deadlines, and the intermittent monolithic SSH recovery unit failure did not count as acceptance. Read-only tracing diagnosed the original failure. The acceptance snapshot isolates the adapter test clock interface from the shared standard-library time module; production behavior, assertions and deadlines are unchanged. The complete 118-test SSH module subsequently passed without tracing. The tracer observed Python subprocess polling consuming the shared test fake clock and making its fixed synthetic worker timestamps stale; production freshness checks remained intact. All four canonical CI groups subsequently passed without the diagnostic tracer and with unchanged production source and assertions. The Linux arm64 standalone `make check` stopped at a Scaleway cached-provider checksum mismatch; the repository lockfile was preserved and the already-passed native Mac Terraform validation supplied that component. This record claims passed components across both environments, not one successful standalone `make check`. Protected-main CI run `38134843683` passed all 86 jobs on `cf01f94a640913412f3316b5cb288881639712ce`, including the complete native, role, failure and full-stack lanes.
