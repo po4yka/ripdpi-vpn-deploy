@@ -1,0 +1,11 @@
+{
+  "change": "ansible-role-p2-remediation",
+  "evidence_summary": "Integrated cf01f94a640913412f3316b5cb288881639712ce passed all 86 protected-main CI jobs, including real native, role, failure and full-stack coverage. Recorded complete local gate and independent source reviews preserved; accepted requirement results normalized to canonical archive states. Eight requirements synchronized. Source-only closure retains all external capability qualifications.",
+  "execution_sha256": "743d042ac309c682fa672741c0476bfd64fd22661d1ef987b1d12cd436fed95b",
+  "issue_sha256": "4dca44d0e889d4cddec11872c53ca8e5b183a6e23cd7966fc9b7220edba2d070",
+  "outcome": "done",
+  "prepared_at": "2026-10-11T15:08:47Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "ANS-1791562764586678"
+}

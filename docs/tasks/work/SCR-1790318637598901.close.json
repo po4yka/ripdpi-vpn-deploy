@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "Frozen review fec70c9dc7747dc53e008379430fa7b03dd7005a has 29 successful PR checks and 15 dependency-selected not-applicable skips; no failed or pending checks. Protected implementation cf01f94a640913412f3316b5cb288881639712ce passed all 86 main CI jobs. Full taskctl/instruction/workspace/firewall coverage passed 155 tests and 22 subtests; 37 records and 141 steps validated. Missing-OpenSpec fail-before-write regression accepted.",
+  "execution_sha256": "2c2aa70e1fba9f73aeee8eaf2bf6b607e0f3f85277c73817b07e8f1d3e4becd2",
+  "issue_sha256": "6499bdb9b862acfb45272451085bfbeca8d6089ecd612a4c891eba42da1bf142",
+  "outcome": "done",
+  "prepared_at": "2026-10-11T15:05:11Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SCR-1790318637598901"
+}

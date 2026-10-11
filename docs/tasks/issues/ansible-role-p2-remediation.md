@@ -2,7 +2,7 @@
 id: ANS-1791562764586678
 title: Repair P2 Ansible role lifecycle and configuration audit defects
 kind: bug
-status: review
+status: done
 area: ansible
 priority: high
 risk: high
@@ -14,7 +14,10 @@ openspec_change: ansible-role-p2-remediation
 created: 2026-10-09
 updated: 2026-10-11
 related_tasks: []
-status_detail: "Integrated source cf01f94a640913412f3316b5cb288881639712ce passed all protected-main hosted checks in run 38134843683; recorded source scope and external qualifications are preserved. Archive-readiness verification passed; authorized lifecycle completion is in progress."
+status_detail: Integrated source cf01f94a640913412f3316b5cb288881639712ce passed all protected-main hosted checks in run 38134843683; recorded source scope and external qualifications are preserved. Archive-readiness verification passed; authorized lifecycle completion is in progress.
+closed_at: "2026-10-11T15:08:47Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Integrated cf01f94a640913412f3316b5cb288881639712ce passed all 86 protected-main CI jobs, including real native, role, failure and full-stack coverage. Recorded complete local gate and independent source reviews preserved; accepted requirement results normalized to canonical archive states. Eight requirements synchronized. Source-only closure retains all external capability qualifications.
 ---
 
 ## Goal

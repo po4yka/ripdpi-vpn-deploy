@@ -24,9 +24,9 @@ artifact_evidence: No bundle, schema or release artifact contract changes.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-SSH-PORT-RESERVED | ANS-1790316534792016 | Assert "Reject public listeners on the effective SSH port" in ansible/roles/firewall/tasks/main.yml follows the single-port sshd -T assert and precedes the UFW disable and nftables render; test_check_precedes_firewall_mutation | passed locally |
-| REQ-SSH-PORT-RESERVED | ANS-1790316540041401 | test_tcp_listener_on_ssh_port_fails (exact, range, padded upper-case protocol, port set alongside port_range), test_contract_without_tcp_ssh_claim_passes (empty, distinct, UDP, adjacent ranges), test_tcp_listener_without_port_fails_closed, test_failure_message_names_listener_and_port | passed locally |
-| REQ-SSH-PORT-RESERVED | ANS-1790316540566345 | ansible/roles/honeypot/CLAUDE.md pitfall, ansible/roles/firewall/CLAUDE.md design decision, ansible/CLAUDE.md listener-collision pointer | passed locally |
+| REQ-SSH-PORT-RESERVED | ANS-1790316534792016 |Assert "Reject public listeners on the effective SSH port" in ansible/roles/firewall/tasks/main.yml follows the single-port sshd -T assert and precedes the UFW disable and nftables render; test_check_precedes_firewall_mutation; historical qualification: locally; final source acceptance reconciled above | passed |
+| REQ-SSH-PORT-RESERVED | ANS-1790316540041401 |test_tcp_listener_on_ssh_port_fails (exact, range, padded upper-case protocol, port set alongside port_range), test_contract_without_tcp_ssh_claim_passes (empty, distinct, UDP, adjacent ranges), test_tcp_listener_without_port_fails_closed, test_failure_message_names_listener_and_port; historical qualification: locally; final source acceptance reconciled above | passed |
+| REQ-SSH-PORT-RESERVED | ANS-1790316540566345 |ansible/roles/honeypot/CLAUDE.md pitfall, ansible/roles/firewall/CLAUDE.md design decision, ansible/CLAUDE.md listener-collision pointer; historical qualification: locally; final source acceptance reconciled above | passed |
 
 ## Closure reconciliation (2026-10-11)
 

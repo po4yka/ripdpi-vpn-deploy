@@ -24,17 +24,17 @@ artifact_evidence: Independent host and transport reviewers approve the P2 sourc
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-P2-ACCESS | ANS-1791563231017425 | TLS/SSH authority, actual predictive Tailnet and mandatory sysctl boundaries | passed locally |
-| REQ-P2-ENFORCEMENT | ANS-1791563231017425 | Effective APT/jail, nft failure and timed dynamic-set preservation | passed locally |
-| REQ-P2-PUBLICATION | ANS-1791563231572678 | Complete nginx/geodata candidate, rollback and real privacy/AOP fixtures | passed locally |
-| REQ-P2-TRANSPORT | ANS-1791563232134870 | Exact native Realm, Naive listener and WARP version contracts | passed locally |
-| REQ-P2-TRANSPORT | ANS-1791563232708226 | AWG/probe pin, unit and membership transition behavior | passed locally |
-| REQ-P2-LIFECYCLE | ANS-1791563233266863 | Site full-to-minimal and owned/runtime/recovery preservation | passed locally |
-| REQ-P2-OBSERVABILITY | ANS-1791563233830915 | Fresh/existing predictive task graphs, upgrade and full authority rollback | passed locally |
-| REQ-P2-EVIDENCE | ANS-1791563234416737 | 45 focused policy/state/context tests; 49 adapter/expected-target tests; native real policy idle heartbeat and retirement plus fresh/retained sender check mode (8 passed); cohort-only watchdog regression | passed locally |
-| REQ-P2-TRANSPORT | ANS-1791563234994294 | Bounded I01-I04 native packet/DNS/release-identity evidence and qualification | passed locally |
-| REQ-P2-PUBLICATION | ANS-1791563234994294 | Bounded I05/I06 effective update and bearer-log evidence and qualification | passed locally |
-| REQ-P2-ACCEPTANCE | ANS-1791563235717247 | Per-ID current-source coverage, preserved P1, independent review and complete local gate and all 82 exact-source hosted checks pass | passed source/CI |
+| REQ-P2-ACCESS | ANS-1791563231017425 |TLS/SSH authority, actual predictive Tailnet and mandatory sysctl boundaries; local and hosted source acceptance recorded above | passed |
+| REQ-P2-ENFORCEMENT | ANS-1791563231017425 |Effective APT/jail, nft failure and timed dynamic-set preservation; local and hosted source acceptance recorded above | passed |
+| REQ-P2-PUBLICATION | ANS-1791563231572678 |Complete nginx/geodata candidate, rollback and real privacy/AOP fixtures; local and hosted source acceptance recorded above | passed |
+| REQ-P2-TRANSPORT | ANS-1791563232134870 |Exact native Realm, Naive listener and WARP version contracts; local and hosted source acceptance recorded above | passed |
+| REQ-P2-TRANSPORT | ANS-1791563232708226 |AWG/probe pin, unit and membership transition behavior; local and hosted source acceptance recorded above | passed |
+| REQ-P2-LIFECYCLE | ANS-1791563233266863 |Site full-to-minimal and owned/runtime/recovery preservation; local and hosted source acceptance recorded above | passed |
+| REQ-P2-OBSERVABILITY | ANS-1791563233830915 |Fresh/existing predictive task graphs, upgrade and full authority rollback; local and hosted source acceptance recorded above | passed |
+| REQ-P2-EVIDENCE | ANS-1791563234416737 |45 focused policy/state/context tests; 49 adapter/expected-target tests; native real policy idle heartbeat and retirement plus fresh/retained sender check mode (8 passed); cohort-only watchdog regression; local and hosted source acceptance recorded above | passed |
+| REQ-P2-TRANSPORT | ANS-1791563234994294 |Bounded I01-I04 native packet/DNS/release-identity evidence and qualification; local and hosted source acceptance recorded above | passed |
+| REQ-P2-PUBLICATION | ANS-1791563234994294 |Bounded I05/I06 effective update and bearer-log evidence and qualification; local and hosted source acceptance recorded above | passed |
+| REQ-P2-ACCEPTANCE | ANS-1791563235717247 |Per-ID current-source coverage, preserved P1, independent review and complete local gate and all 82 exact-source hosted checks pass; local and hosted source acceptance recorded above | passed |
 
 ## Audit coverage
 

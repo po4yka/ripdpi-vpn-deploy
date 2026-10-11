@@ -24,14 +24,14 @@ artifact_evidence: PR 281 now includes the P2 source commit 4c600d43536c2c1b1ab0
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-PMI-SSH | TFR-1791523579427434 | Complete native management tests and range-aware policy tests | passed; aggregate local-gate gap below |
-| REQ-PMI-IDENTITY | TFR-1791523580174419 | Mock state transitions, unchanged plans and exact prevent_destroy diagnostics | passed; aggregate local-gate gap below |
-| REQ-PMI-HETZNER | TFR-1791523580174419 | Current-type plans and non-destructive attachment ownership migration | passed; aggregate local-gate gap below |
-| REQ-PMI-POLICY | TFR-1791523580836950 | Real Conftest positive/negative/empty evaluation and saved-plan subprocess tests | passed; aggregate local-gate gap below |
-| REQ-PMI-ADAPTER | TFR-1791537004741307 | Native Vultr range/singleton and enabled/disabled backup plans | passed; no live provider proof |
+| REQ-PMI-SSH | TFR-1791523579427434 |Complete native management tests and range-aware policy tests; historical qualification: aggregate local-gate gap below; final source acceptance reconciled above | passed |
+| REQ-PMI-IDENTITY | TFR-1791523580174419 |Mock state transitions, unchanged plans and exact prevent_destroy diagnostics; historical qualification: aggregate local-gate gap below; final source acceptance reconciled above | passed |
+| REQ-PMI-HETZNER | TFR-1791523580174419 |Current-type plans and non-destructive attachment ownership migration; historical qualification: aggregate local-gate gap below; final source acceptance reconciled above | passed |
+| REQ-PMI-POLICY | TFR-1791523580836950 |Real Conftest positive/negative/empty evaluation and saved-plan subprocess tests; historical qualification: aggregate local-gate gap below; final source acceptance reconciled above | passed |
+| REQ-PMI-ADAPTER | TFR-1791537004741307 |Native Vultr range/singleton and enabled/disabled backup plans; historical qualification: no live provider proof; final source acceptance reconciled above | passed |
 | REQ-PMI-LISTENERS | TFR-1791537005304551 | Four-root fractional refusal, integer boundaries and effective legacy collision tests | passed |
 | REQ-PMI-SCALARS | TFR-1791537005854827 | Actual Terraform rendering, YAML parsing, null refusal and CI-renderer parity | passed |
-| REQ-PMI-P2-DELIVERY | TFR-1791537006373613 | Full local gate passed, independent review APPROVE and P2 source published on PR 281 | source published; terminal hosted results required |
+| REQ-PMI-P2-DELIVERY | TFR-1791537006373613 | Full local gate and independent review recorded; PR 281 merged; protected-main cf01f94a completed all 86 CI jobs in run 38134843683 | passed |
 
 ## Delivery gates
 

@@ -2,7 +2,7 @@
 id: SCR-1790318637598901
 title: Keep taskctl new fail-before-write when openspec is missing
 kind: bug
-status: review
+status: done
 area: scripts
 priority: medium
 risk: standard
@@ -15,7 +15,10 @@ created: 2026-09-25
 updated: 2026-10-11
 spec_reason: tooling-only
 related_tasks: []
-status_detail: "Integrated source cf01f94a640913412f3316b5cb288881639712ce passed all protected-main hosted checks in run 38134843683; recorded source scope and external qualifications are preserved. Archive-readiness verification passed; authorized lifecycle completion is in progress."
+status_detail: Integrated source cf01f94a640913412f3316b5cb288881639712ce passed all protected-main hosted checks in run 38134843683; recorded source scope and external qualifications are preserved. Archive-readiness verification passed; authorized lifecycle completion is in progress.
+closed_at: "2026-10-11T15:05:11Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Frozen review fec70c9dc7747dc53e008379430fa7b03dd7005a has 29 successful PR checks and 15 dependency-selected not-applicable skips; no failed or pending checks. Protected implementation cf01f94a640913412f3316b5cb288881639712ce passed all 86 main CI jobs. Full taskctl/instruction/workspace/firewall coverage passed 155 tests and 22 subtests; 37 records and 141 steps validated. Missing-OpenSpec fail-before-write regression accepted.
 ---
 
 ## Goal
