@@ -22,7 +22,7 @@ artifact_evidence: validated contracts, private redacted outputs and requirement
 
 ## Requirement evidence
 
-Source observations below were obtained in the dedicated implementation worktree based on `8828ffebdbe42ad17d5f98433db78db1a0aa95eb` and committed at `6202c7ec93c075b6b5fd3b40065204e4f59d9461`. Terminal hosted checks on the integrated implementation remain pending; this record does not claim deployment or fleet acceptance.
+Source observations below were obtained in the dedicated implementation worktree based on `8828ffebdbe42ad17d5f98433db78db1a0aa95eb` and committed at `6202c7ec93c075b6b5fd3b40065204e4f59d9461`. The integrated source revision `f8055ff0c4624a0a4e504e0fd2bc3823718f455b` subsequently passed all main CI jobs and its complete native lane. The five reviewed CodeQL alerts were individually dismissed with user authorization and verified audit comments; re-evaluation passed on the same source SHA; this record does not claim deployment or fleet acceptance.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
@@ -47,3 +47,11 @@ Source observations below were obtained in the dedicated implementation worktree
 - Isolated inventory/topology/controller/bootstrap/SOPS repair coverage: 273 passed; ownership/native-CI/semantic fixture coverage: 166 passed; complete emitter coverage: 33 passed. Genuine jq avoided inactive-shim startup latency without changing the 20-second test timeout.
 - Staged gitleaks after those test corrections: passed, no leaks found.
 - Ruff through the workstation shim was unavailable; no Ruff result is claimed.
+
+## Integrated producer follow-up
+
+CI credential generation now emits the served nginx HTTPS origin for Hysteria rather than reusing the watchdog endpoint path. The disposable profile derives the same canonical origin from its generated hostname; the watchdog retains its separate exact canary endpoint. The genuine-crypto native regression checks schema admission and the producer/profile equality. All 134 native cases and all 6,205 portable cases plus 22 subtests passed on integrated source `f8055ff0c4624a0a4e504e0fd2bc3823718f455b` in main CI run `38107544582`, with zero selected skips. Both full-stack scenarios passed after their required credential preparation was present. The authorized CodeQL alert dispositions are complete; re-evaluation passed on the same source SHA, and the final refreshed local gate also passed; no live or vendor acceptance is inferred.
+
+## Final local gate
+
+The complete refreshed `build-gate -- make check` passed against the final runtime source and current task artifacts. Portable tests: 6,205 passed, 134 native cases assigned to their separately passed lane, 22 subtests passed, zero selected skips, 2,003.41 seconds. Python CLI: all 297 passed in 53.92 seconds; all 206 baseline transfer functions mapped to passing cases. All remaining task, schema, template, snapshot, dependency, secret, Terraform, Ansible, workflow, shell and package gates passed. The changes remain in review; no archive, deployment, registered vendor action or PR merge was performed.

@@ -2,7 +2,7 @@
 id: SEC-1791617841911853
 title: Enforce resolved destination isolation for P0 P1 and Hysteria2
 kind: bug
-status: doing
+status: review
 area: security
 priority: critical
 risk: high
@@ -12,8 +12,9 @@ blocked_by: [SCT-1791617687019287]
 spec_mode: required
 openspec_change: resolved-destination-boundary
 created: 2026-10-10
-updated: 2026-10-10
+updated: 2026-10-11
 related_tasks: [SEC-1791471757439452, SEC-1791545689674403, ANS-1791562764586678]
+status_detail: Implemented source f8055ff0 passed complete local make check, native/role/full-stack validation, independent review and every hosted check. Registered WARP vendor forwarding and deployment remain separately authorized and unverified.
 ---
 
 ## Goal

@@ -2,7 +2,9 @@
 
 Original protocol audit: `28783a7e1d48a0c192db4da06cf23b9d9a9d5637`. Planning revalidation: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` on 2026-10-10. This is the 22-item protocol audit, not the separate user-owned 44-item role audit.
 
-Six findings have integrated source repairs. Existing verification records remain unchanged; their recorded source/local/hosted results are not freshly rerun here and are not live or physical acceptance. A16 is partly repaired. Every new acceptance below is **required, not executed**. All portfolio records stay open.
+At the planning revalidation baseline, six findings had integrated source repairs. Existing verification records remain unchanged; their recorded source/local/hosted results are not freshly rerun here and are not live or physical acceptance. A16 is partly repaired. Every new acceptance below is **required, not executed**. All portfolio records stay open.
+
+The table preserves that planning baseline. Later authorized source implementation covers A01/A02 in [resolved-destination-boundary](../resolved-destination-boundary/verification.md) and A18 in [transport-input-semantics](../transport-input-semantics/verification.md). Integrated source `f8055ff0` passed complete hosted tests and CodeQL; the final local gate refresh also passed. This does not close other findings or establish registered vendor, fleet or physical-device acceptance.
 
 | Audit | Finding | Current disposition / inherited owner | New acceptance owner | Required acceptance |
 |---|---|---|---|---|

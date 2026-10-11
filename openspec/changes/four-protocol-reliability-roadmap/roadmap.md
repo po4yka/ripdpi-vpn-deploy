@@ -1,6 +1,6 @@
 # Prioritized implementation and evolution roadmap
 
-Owner epic: `EPC-1791618453830051`. Plans are complete for review only. All implementation steps are open; no code, private input, deployment or promotion is authorized by this planning request.
+Owner epic: `EPC-1791618453830051`. This roadmap records the planning baseline. The later implementation request authorized the first two children: [transport-input-semantics](../transport-input-semantics/verification.md) and [resolved-destination-boundary](../resolved-destination-boundary/verification.md). Their integrated source `f8055ff0` passed complete hosted tests and CodeQL; the final local gate refresh also passed. Other portfolio work stays open, and no deployment, registered vendor action or promotion is authorized by this roadmap.
 
 ## Order and hard dependencies
 

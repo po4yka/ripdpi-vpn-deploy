@@ -2,7 +2,7 @@
 
 ## Objective
 
-Deliver isolated reliable and upgradeable four-protocol connectivity. All execution checkboxes remain open; this is planning, not implementation or deployment approval.
+Deliver isolated reliable and upgradeable four-protocol connectivity. The epic execution checkboxes remain open. Later implementation authorization covers only the linked transport-input-semantics and resolved-destination-boundary children; their own execution and verification records track source progress. This epic does not authorize deployment or the remaining roadmap implementations.
 
 ## Ownership
 

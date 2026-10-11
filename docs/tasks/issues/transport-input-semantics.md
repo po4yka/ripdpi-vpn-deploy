@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: transport-input-semantics
 created: 2026-10-10
-updated: 2026-10-10
+updated: 2026-10-11
 related_tasks: []
-status_detail: Local full source gate, exact native cases, complete affected Molecule and independent review passed; hosted exact-SHA CI pending.
+status_detail: Integrated source f8055ff0 passed complete refreshed local make check, exact native cases, full hosted CI and independent review; no deployment or fleet acceptance claimed.
 ---
 
 ## Goal

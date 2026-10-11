@@ -29,8 +29,8 @@ Enforce resolved destination isolation for P0 P1 and Hysteria2. Implementation, 
 
 - [x] SEC-1791617852155511 Define the resolved destination policy and implement typed Xray and Hysteria2 enforcement with schema and rendering regressions #bug !crit @item:SEC-1791617841911853
 - [x] SEC-1791617853671017 Bind resolution and final dialing and add exact runtime mixed-answer rebinding and retry tests #bug !crit @item:SEC-1791617841911853
-- [ ] SEC-1791617861504003 Prove public forwarding trusted plumbing rejection rollback and private diagnostics in owned native integration #bug !crit @item:SEC-1791617841911853
-- [ ] SEC-1791617866332021 Review affected snapshots run required local gates and document exact source versus separately authorized staging acceptance #bug !crit @item:SEC-1791617841911853
+- [x] SEC-1791617861504003 Prove public forwarding trusted plumbing rejection rollback and private diagnostics in owned native integration #bug !crit @item:SEC-1791617841911853
+- [x] SEC-1791617866332021 Review affected snapshots run required local gates and document exact source versus separately authorized staging acceptance #bug !crit @item:SEC-1791617841911853
 
 ## Verification
 
