@@ -5,6 +5,8 @@
   vars_files:
     - vars/main.yml
   tasks:
+    - name: Verify selective protected recovery before other runtime probes
+      ansible.builtin.import_tasks: ../../../../molecule/verify-transport-recovery.yml
     - name: Require current genuine generation readiness
       ansible.builtin.command:
         argv:

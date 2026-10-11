@@ -14,6 +14,8 @@ import sys
 
 import pytest
 import yaml
+
+from tests.site_role_graph import site_roles
 from transport_fixtures import guarded_xray_bytes
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -279,12 +281,19 @@ def test_installed_ansible_cohort_without_flow_inherits_profile_shape(
 
 
 def test_site_playbook_runs_xray_for_reality_or_xhttp() -> None:
-    playbook = SITE_PLAYBOOK.read_text()
-    xray_role = playbook.split("- role: xray", 1)[1].split("- role: nginx-xhttp", 1)[0]
-    assert "enable_xray_reality" in xray_role
-    assert "enable_nginx_xhttp" in xray_role
-    assert ") or (" in xray_role
-    assert "xray_role_enabled:" in xray_role
+    playbook = yaml.safe_load(SITE_PLAYBOOK.read_text())[0]
+    xray_role = next(role for role in site_roles(playbook) if role["role"] == "xray")
+    enabled = xray_role["vars"]["xray_role_enabled"]
+    assert "enable_xray_reality" in enabled
+    assert "enable_nginx_xhttp" in enabled
+    from scripts.template_render import render_fragment
+    for reality, xhttp, subscription in [(False, False, False), (True, False, False),
+                                         (False, True, False), (True, True, False), (True, True, True)]:
+        selected = render_fragment('selected.txt', enabled, {
+            'vpn': {'enable_xray_reality': reality, 'enable_nginx_xhttp': xhttp},
+            'vpn_subscription_only': subscription,
+        })
+        assert selected == str((reality or xhttp) and not subscription)
 
 
 def test_rotation_playbook_updates_xhttp_only_xray() -> None:
@@ -310,34 +319,26 @@ def test_xray_activation_has_one_guarded_owner_and_is_inert_in_check_mode() -> N
     assert "status" in activation["block"][1]["ansible.builtin.command"]["argv"]
 
 
-def test_p1_hostname_self_resolution_is_managed_and_verified() -> None:
+def test_private_masquerade_resolution_preserves_global_nss_authority() -> None:
     role_tasks = yaml.safe_load(NGINX_XHTTP_TASKS.read_text())
-    role_by_name = {task["name"]: task for task in role_tasks}
-
-    pin = role_by_name["Pin public hostname for node-local resolution"]
-    assert pin["ansible.builtin.blockinfile"]["path"] == "/etc/hosts"
-    assert "vpn_service_address" in pin["ansible.builtin.blockinfile"]["block"]
-    assert "nginx_xhttp.server_name" in pin["ansible.builtin.blockinfile"]["block"]
-    assert pin["ansible.builtin.blockinfile"]["unsafe_writes"] is True
-    assert pin["no_log"] is True
-    assert pin["diff"] is False
-
-    role_probe = role_by_name["Verify node-local public hostname resolution"]
-    assert role_probe["changed_when"] is False
-    assert role_probe["no_log"] is True
-
-    verify_tasks = yaml.safe_load(VERIFY_PLAYBOOK.read_text())[0]["tasks"]
-    verify_by_name = {task["name"]: task for task in verify_tasks}
-    verify_probe = verify_by_name["P1 public hostname resolves to its service address"]
-    assert verify_probe["changed_when"] is False
-    assert verify_probe["no_log"] is True
-    assert "vpn.enable_nginx_xhttp | default(true)" in verify_probe["when"]
-
-    ipv6_probe = verify_by_name["P1 public hostname exposes its IPv6 service address"]
-    assert ipv6_probe["changed_when"] is False
-    assert ipv6_probe["no_log"] is True
-    assert "vpn.enable_nginx_xhttp | default(true)" in ipv6_probe["when"]
-    assert "server_ipv6" in ipv6_probe["failed_when"]
+    assert all('ansible.builtin.blockinfile' not in task for task in role_tasks)
+    assert '/etc/hosts' not in NGINX_XHTTP_TASKS.read_text()
+    hysteria = REPO_ROOT / 'ansible/roles/hysteria'
+    unit = (hysteria / 'templates/hysteria-server.service.j2').read_text()
+    assert 'masquerade-hosts:/etc/hosts' in unit
+    tasks = yaml.safe_load((hysteria / 'tasks/enable.yml').read_text())
+    publish = next(task for task in tasks if task['name'] == 'Publish private masquerade hosts after guarded quiescence')
+    assert publish['no_log'] is True and publish['diff'] is False
+    assert publish['ansible.builtin.copy']['mode'] == '0640'
+    names = [task['name'] for task in tasks]
+    assert names.index('Quiesce accepted topology before changed Hysteria publication') < names.index(publish['name'])
+    verify_tasks = yaml.safe_load(VERIFY_PLAYBOOK.read_text())[0]['tasks']
+    by_name = {task['name']: task for task in verify_tasks}
+    private = by_name['Verify Hysteria private origin resolution inside its actual mount namespace']
+    assert private['changed_when'] is False and private['no_log'] is True
+    assert 'nsenter' in private['ansible.builtin.command']['argv'][2]
+    for name in ('P1 public IPv4 hostname resolves through host NSS', 'P1 public IPv6 hostname resolves through host NSS'):
+        assert by_name[name]['changed_when'] is False and by_name[name]['no_log'] is True
 
 
 def _validation_binary(path: Path, trace: Path) -> None:

@@ -162,12 +162,13 @@ class TestCdnOff:
         )
         assert rendered.count("client_max_body_size 0;") == 2
 
-    def test_xhttp_reload_handler_is_not_shadowed_by_other_nginx_roles(self):
-        handlers = NGINX_XHTTP_HANDLERS.read_text()
-        tasks = NGINX_XHTTP_TASKS.read_text()
-        assert "name: Reload nginx-xhttp" in handlers
-        assert "notify: Reload nginx-xhttp" in tasks
-        assert "notify: Reload nginx\n" not in tasks
+    def test_xhttp_publication_has_one_explicit_reload_owner(self):
+        tasks = yaml.safe_load(NGINX_XHTTP_TASKS.read_text())
+        assert all("notify" not in task for task in tasks)
+        publisher = next(task for task in tasks if task["name"] == "Validate publish and activate complete XHTTP authority")
+        assert publisher["ansible.builtin.include_role"] == {"name": "nginx-xhttp", "tasks_from": "transaction"}
+        assert publisher["vars"]["nginx_transaction_unit"] == "nginx.service"
+        assert publisher["vars"]["nginx_transaction_activation"] == "reload"
 
 
 # ---------------------------------------------------------------------------

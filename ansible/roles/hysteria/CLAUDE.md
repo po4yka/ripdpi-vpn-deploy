@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+- Matching node-local masquerade origins use a typed private hosts file bound read-only into this service. It maps the owned Nginx hostname to the provider IPv4 address only while that local frontend is enabled. External owned origins retain ordinary NSS. The file participates in guarded comparison, quiescence, publication and accepted rollback; global `/etc/hosts` is untouched.
+
+- Site staging defers frontend rescue to the protected site transaction, which restores matching ingress before accepted frontend recovery. Standalone role reconciliation keeps its own guarded rollback.
+
 - The guarded generation is the sole frontend lifecycle owner, including TLS
   changes and credential rotation. It reloads systemd before startup and proves
   authenticated readiness; delayed direct restart handlers cannot invalidate

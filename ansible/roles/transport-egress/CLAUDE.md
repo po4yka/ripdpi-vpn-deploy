@@ -8,6 +8,10 @@ Candidate files are compared and parsed before publication. `begin` captures all
 
 The root controller owns service generation and recovery. Normalizer startup resets both native mapping processes before fresh UDP tuple pools can exist. Current authenticated readiness, process IDs and the accepted config digest identify a generation; `is-active` alone is insufficient. Enabled frontends recover after gateway and normalizer recovery. WARP TUN replacement triggers a fresh paired generation.
 
+Watchdog requests use fixed per-frontend signals delivered to the current root controller. The controller verifies retained mapping and other frontend PIDs, authenticated readiness and frontend credentials before replacing only the requested frontend and publishing its updated accepted receipt. The requester validates the private receipt/controller binding and waits within one bounded deadline for the admitted new PID; unrelated drift retains whole-generation recovery.
+
+Site compensation retains the open egress transaction until ingress compensation commits. Frontend and activation rescues defer to that one owner while a site transaction is active. The shared quiescence task stops only the exact owned units before ingress restoration, and ordinary standalone rollback reuses the same sequence.
+
 ## What's done well
 
 - Input and identity admission happen before package or account mutation; unresolved fresh check mode predicts changes without invented UIDs or sockets.

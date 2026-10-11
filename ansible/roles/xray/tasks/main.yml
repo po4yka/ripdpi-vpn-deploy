@@ -11,6 +11,7 @@
       when:
         - xray_role_enabled | bool
         - _transport_egress_transaction_started | default(false) | bool
+        - not (transport_site_transaction_active | default(false) | bool)
 
     - name: Report refused frontend candidate after guarded recovery
       ansible.builtin.fail:

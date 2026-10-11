@@ -100,7 +100,7 @@ def test_notification_authority_is_separate_and_the_unit_has_a_deadline():
     assert (
         "LoadCredential=notifications.json:/etc/vpn-watchdog-notifications.json" in unit
     )
-    assert "TimeoutStartSec=345s" in unit
+    assert "TimeoutStartSec=535s" in unit
     assert config["token"] not in unit and config["topic"] not in unit
 
 
@@ -566,3 +566,14 @@ def test_owned_molecule_runtime_propagation_is_prepared_only_when_needed(
         assert calls.read_text() == "--make-rshared /run"
     else:
         assert not calls.exists()
+
+
+@pytest.mark.parametrize("xray,hysteria,control", [(True, True, 60), (True, False, 60), (False, True, 60), (False, False, 60)])
+def test_service_deadline_includes_each_enabled_guarded_recovery(xray, hysteria, control):
+    variables = _multi_cohort_vars()
+    variables["vpn"].update(enable_xray_reality=xray, enable_hysteria=hysteria)
+    variables["transport_egress_control_timeout_seconds"] = control
+    unit = render_template(TEMPLATES / "vpn-watchdog.service.j2", variables)
+    probe_budget = 300 + 3 * variables["watchdog"].get("reality_probe_timeout", 15)
+    expected = probe_budget + (int(xray)+int(hysteria))*(3*control+5)
+    assert f"TimeoutStartSec={expected}s" in unit

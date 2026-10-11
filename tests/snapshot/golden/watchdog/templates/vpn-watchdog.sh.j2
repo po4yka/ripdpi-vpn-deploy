@@ -10,6 +10,7 @@ set -euo pipefail
 : "${ALERTS_PER_HOUR_MAX:=4}"
 : "${KICKS_PER_HOUR_MAX:=3}"
 : "${XRAY_BIN:=/usr/local/bin/xray}"
+: "${TRANSPORT_GENERATION_BIN:=/usr/local/libexec/ripdpi-transport-egress/generation.py}"
 : "${XRAY_VALIDATE_BIN:=/usr/local/libexec/vpn-xray-validate}"
 : "${XRAY_API_SERVER:=127.0.0.1:10086}"
 : "${XRAY_REALITY_CONFIG:=/etc/vpn-watchdog-reality.json}"
@@ -244,7 +245,14 @@ if (( STATE[consecutive_fails] >= FAIL_THRESHOLD )); then
     if (( STATE[kicks_this_hour] >= KICKS_PER_HOUR_MAX )); then
       break
     fi
-    if systemctl restart "$unit"; then
+    if [[ "$unit" == "xray.service" || "$unit" == "hysteria-server.service" ]]; then
+      recovery=(python3 -Es "$TRANSPORT_GENERATION_BIN" recover
+        --config /etc/ripdpi/transport-egress/generation.json
+        --normalizer-config /etc/ripdpi/transport-egress/normalizer.json --unit "$unit")
+    else
+      recovery=(systemctl restart "$unit")
+    fi
+    if "${recovery[@]}"; then
       kick_results+=("RESTARTED  $unit")
     else
       kick_results+=("RESTART FAILED  $unit")

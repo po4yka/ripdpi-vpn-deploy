@@ -3,6 +3,8 @@
   hosts: all
   become: true
   tasks:
+    - name: Verify selective protected recovery before other runtime probes
+      ansible.builtin.import_tasks: ../verify-transport-recovery.yml
     - name: Collect service facts
       ansible.builtin.service_facts:
 

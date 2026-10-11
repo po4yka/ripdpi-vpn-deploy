@@ -12,6 +12,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.site_role_graph import site_roles
+
 ROOT = Path(__file__).resolve().parents[2]
 ANSIBLE = ROOT / "ansible"
 
@@ -529,8 +531,9 @@ def test_site_has_attestation_and_colocation_guards_before_roles() -> None:
             )
         ]
     )
-    assert site.index("role: cascade-ingress") > first_role
-    assert site.index("role: cascade-egress") > first_role
+    roles = site_roles(yaml.safe_load(site)[0])
+    assert [role["role"] for role in roles].index("cascade-ingress") > 5
+    assert [role["role"] for role in roles].index("cascade-egress") > 5
 
 
 def test_cascade_molecule_prepares_deterministic_nft_preflight_fixture() -> None:

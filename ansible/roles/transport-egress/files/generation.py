@@ -15,12 +15,14 @@ import subprocess
 import sys
 import time
 
+CONTROLLER = "ripdpi-transport-generation.service"
 NORMALIZER = "ripdpi-transport-normalizer.service"
 GATEWAYS = {"direct": "ripdpi-transport-direct.service", "warp": "ripdpi-transport-warp.service"}
 FRONTENDS = {"xray.service", "hysteria-server.service"}
 LOADER = "/usr/local/libexec/ripdpi-transport-egress/policy-loader.py"
 POLICY = "/etc/ripdpi/transport-egress/policy.json"
 READY = Path('/var/lib/ripdpi/transport-egress/ready.json')
+RECOVERY_SIGNALS = {"xray.service": signal.SIGUSR1, "hysteria-server.service": signal.SIGUSR2}
 stopping = False
 
 
@@ -84,11 +86,85 @@ class Controller:
     def __init__(self, config, normalizer):
         self.config, self.normalizer = validate(config, normalizer), normalizer
         self.timeout = config["control_timeout_seconds"]
+        self.deadline = None
+        self.frontend_requests = set()
+
+    def command(self, argv, timeout):
+        if self.deadline is not None:
+            remaining = self.deadline - time.monotonic()
+            if remaining <= 0:
+                raise Refusal("generation-recovery-timeout")
+            timeout = min(timeout, remaining)
+        return command(argv, timeout)
+
+    def recover_frontends(self, generation):
+        targets = self.frontend_requests.copy()
+        self.frontend_requests.difference_update(targets)
+        if not targets or not targets <= set(self.config["frontend_units"]):
+            raise Refusal("generation-recovery-target-invalid")
+        self.deadline = time.monotonic() + 3 * self.timeout
+        try:
+            # Only the requested frontend may change; paired UDP mapping
+            # processes and healthy frontend PIDs retain their authority.
+            def retain_others():
+                for unit, pid in generation.items():
+                    if unit not in targets:
+                        state = self.state(unit)
+                        if state.get("ActiveState") != "active" or int(state.get("MainPID", "0")) != pid:
+                            raise Refusal("generation-process-changed")
+            retain_others()
+            self.frontend_credentials()
+            self.ready()
+            for unit in self.config["frontend_units"]:
+                if unit in targets:
+                    self.stop(unit)
+                    self.start(unit)
+            retain_others()
+            updated = self.snapshot()
+            self.publish_ready(updated)
+            return updated
+        finally:
+            self.deadline = None
+
+    def recover(self, unit):
+        if unit not in self.config["frontend_units"] or unit not in RECOVERY_SIGNALS:
+            raise Refusal("generation-recovery-target-invalid")
+        self.deadline = time.monotonic() + 3 * self.timeout
+        try:
+            before = private_json(READY)
+            expected = hashlib.sha256(json.dumps(self.normalizer, sort_keys=True).encode()).hexdigest()
+            fields = self.state(CONTROLLER)
+            if (before.get("schema") != 1 or before.get("config_digest") != expected or
+                    fields.get("ActiveState") != "active" or
+                    int(fields.get("MainPID", "0")) <= 0 or
+                    int(fields["MainPID"]) != before.get("controller_pid") or
+                    unit not in before.get("generation", {})):
+                raise Refusal("generation-readiness-stale")
+            self.command(["systemctl", "kill", "--kill-whom=main",
+                          "--signal=" + RECOVERY_SIGNALS[unit].name,
+                          "ripdpi-transport-generation.service"], self.timeout)
+            while time.monotonic() < self.deadline:
+                after = private_json(READY)
+                if (after.get("controller_pid") != before["controller_pid"] or
+                        after.get("config_digest") != expected):
+                    raise Refusal("generation-readiness-stale")
+                if after.get("generation", {}).get(unit) != before["generation"][unit]:
+                    updated = after.get("generation", {})
+                    original = before["generation"]
+                    if (set(updated) != set(original) or
+                            any(updated[name] != pid for name, pid in original.items() if name != unit)):
+                        raise Refusal("generation-recovery-unrelated-change")
+                    self.status()
+                    return
+                time.sleep(min(0.1, max(0, self.deadline-time.monotonic())))
+            raise Refusal("generation-recovery-timeout")
+        finally:
+            self.deadline = None
 
     def state(self, unit, *, check_identity=True):
-        if unit not in {NORMALIZER, *GATEWAYS.values(), *FRONTENDS}:
+        if unit not in {CONTROLLER, NORMALIZER, *GATEWAYS.values(), *FRONTENDS}:
             raise Refusal("generation-unit-invalid")
-        text = command(["systemctl", "show", unit, "--property=LoadState,ActiveState,MainPID,ControlGroup,FragmentPath"], self.timeout)
+        text = self.command(["systemctl", "show", unit, "--property=LoadState,ActiveState,MainPID,ControlGroup,FragmentPath"], self.timeout)
         fields = dict(line.split("=", 1) for line in text.splitlines() if "=" in line)
         expected = Path("/etc/systemd/system") / unit
         if fields.get("LoadState") != "loaded" or fields.get("FragmentPath") != str(expected):
@@ -98,8 +174,10 @@ class Controller:
             raise Refusal("generation-unit-unowned")
         pid = int(fields.get('MainPID', '0'))
         if check_identity and pid > 0:
-            policy = private_json(POLICY)
-            if unit == NORMALIZER:
+            policy = private_json(POLICY) if unit != CONTROLLER else None
+            if unit == CONTROLLER:
+                expected_uid = 0
+            elif unit == NORMALIZER:
                 expected_uid = policy['normalizer_uid']
             elif unit in GATEWAYS.values():
                 expected_uid = policy['gateway_uid' if unit == GATEWAYS['direct'] else 'warp_gateway_uid']
@@ -109,7 +187,7 @@ class Controller:
                 if len(listeners) != 1:
                     raise Refusal('generation-process-identity')
                 expected_uid = listeners[0]['frontend_uid']
-            if type(expected_uid) is not int or expected_uid <= 0:
+            if type(expected_uid) is not int or expected_uid < 0 or (expected_uid == 0 and unit != CONTROLLER):
                 raise Refusal('generation-process-identity')
             fd = os.open('/proc/'+str(pid)+'/status', os.O_RDONLY | os.O_NOFOLLOW)
             try:
@@ -126,7 +204,7 @@ class Controller:
     def stop(self, unit):
         # Invalid runtime identity must never prevent stopping the owned unit.
         before = self.state(unit, check_identity=False)
-        command(["systemctl", "stop", unit], self.timeout)
+        self.command(["systemctl", "stop", unit], self.timeout)
         state = self.state(unit, check_identity=False)
         if state.get("ActiveState") not in {"inactive", "failed"} or int(state.get("MainPID", "-1")) != 0:
             raise Refusal("generation-stop-unconfirmed")
@@ -144,8 +222,8 @@ class Controller:
         # An inactive, unreferenced unit may be garbage-collected after show;
         # reset-failed does not load it. Only clear actual failed state.
         if state.get('ActiveState') == 'failed':
-            command(["systemctl", "reset-failed", unit], self.timeout)
-        command(["systemctl", "start", unit], self.timeout)
+            self.command(["systemctl", "reset-failed", unit], self.timeout)
+        self.command(["systemctl", "start", unit], self.timeout)
         state = self.state(unit)
         if state.get("ActiveState") != "active" or int(state.get("MainPID", "0")) <= 0:
             raise Refusal("generation-start-unconfirmed")
@@ -164,11 +242,11 @@ class Controller:
         self.stop_frontends()
         self.stop_gateways()
         if 'warp' in self.normalizer['backends']:
-            command(['/usr/bin/python3', '-Es', '/usr/local/libexec/ripdpi-warp/namespace.py', 'refresh'], self.timeout)
+            self.command(['/usr/bin/python3', '-Es', '/usr/local/libexec/ripdpi-warp/namespace.py', 'refresh'], self.timeout)
         # Reboot loses owned nft state. Restore only after definitive consumer stop;
         # apply retains the loader's foreign-hook and kernel-authority admission.
-        command([LOADER, "apply", "--config", POLICY], self.timeout)
-        command([LOADER, "verify", "--config", POLICY], self.timeout)
+        self.command([LOADER, "apply", "--config", POLICY], self.timeout)
+        self.command([LOADER, "verify", "--config", POLICY], self.timeout)
         for unit in self.config["gateway_units"]:
             self.start(unit)
 
@@ -188,13 +266,15 @@ class Controller:
         probes.extend((self.normalizer["runtime_uid"], {**backend, "name": name, "probe_kind": "udp-control"})
                       for name, backend in self.normalizer["backends"].items())
         deadline = time.monotonic() + self.timeout
+        if self.deadline is not None:
+            deadline = min(deadline, self.deadline)
         while True:
             stage = 'generation-readiness-process-state'
             try:
                 pid = self.state(NORMALIZER).get('MainPID')
                 process_verified = int(pid or '0') > 0
                 stage = 'generation-readiness-journal-query'
-                journal = command(['journalctl', '--unit='+NORMALIZER, '--boot', '--output=json',
+                journal = self.command(['journalctl', '--unit='+NORMALIZER, '--boot', '--output=json',
                                    '--lines=200', '--no-pager'], max(0.1, deadline-time.monotonic()))
                 messages = [json.loads(line) for line in journal.splitlines()]
                 matching = [value for value in messages if value.get('_PID') == pid
@@ -216,9 +296,12 @@ class Controller:
                         os.setgroups([])
                         os.setgid(entry.pw_gid)
                         os.setuid(entry.pw_uid)
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise Refusal('generation-recovery-timeout')
                     result = subprocess.run([sys.executable, '-Es', __file__, 'probe'], input=payload,
                                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                            timeout=max(0.1, deadline-time.monotonic()), preexec_fn=demote, check=False)
+                                            timeout=remaining, preexec_fn=demote, check=False)
                     if result.returncode:
                         raise Refusal('generation-readiness-failed')
                 return
@@ -283,8 +366,10 @@ class Controller:
                 self.publish_ready(generation)
                 print("transport-generation-ready", flush=True)
                 while not stopping:
+                    if self.frontend_requests:
+                        generation = self.recover_frontends(generation)
                     if "warp" in self.normalizer["backends"] and time.monotonic() >= next_tunnel_check:
-                        command(["systemctl", "start", "ripdpi-warp-refresh.service"], self.timeout)
+                        self.command(["systemctl", "start", "ripdpi-warp-refresh.service"], self.timeout)
                         if private_json(POLICY).get("warp", {}).get("tunnel_ifindex") != tunnel_index:
                             raise Refusal("generation-tunnel-changed")
                         next_tunnel_check = time.monotonic() + self.config["recovery_seconds"]
@@ -326,8 +411,7 @@ class Controller:
     def status(self):
         value = private_json(READY)
         expected = hashlib.sha256(json.dumps(self.normalizer, sort_keys=True).encode()).hexdigest()
-        state = command(['systemctl', 'show', 'ripdpi-transport-generation.service', '--property=MainPID,ActiveState'], self.timeout)
-        fields = dict(line.split('=', 1) for line in state.splitlines() if '=' in line)
+        fields = self.state(CONTROLLER)
         if value.get('schema') != 1 or value.get('config_digest') != expected or value.get('generation') != self.snapshot() or fields.get('ActiveState') != 'active' or int(fields.get('MainPID', '0')) != value.get('controller_pid'):
             raise Refusal('generation-readiness-stale')
         self.frontend_credentials()
@@ -371,9 +455,10 @@ def terminate(*_):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=["run", "prepare", "validate", "status", "probe"])
+    parser.add_argument("action", choices=["run", "prepare", "validate", "status", "probe", "recover"])
     parser.add_argument("--config")
     parser.add_argument("--normalizer-config")
+    parser.add_argument("--unit", choices=sorted(FRONTENDS))
     args = parser.parse_args()
     if args.action == "probe":
         raw = sys.stdin.buffer.read(65537)
@@ -388,7 +473,13 @@ def main():
         raise Refusal("generation-requires-root")
     signal.signal(signal.SIGTERM, terminate)
     signal.signal(signal.SIGINT, terminate)
-    getattr(controller, args.action)()
+    if args.action == "run":
+        for unit, requested_signal in RECOVERY_SIGNALS.items():
+            signal.signal(requested_signal, lambda _signum, _frame, unit=unit: controller.frontend_requests.add(unit))
+    if args.action == "recover":
+        controller.recover(args.unit)
+    else:
+        getattr(controller, args.action)()
 
 
 if __name__ == "__main__":

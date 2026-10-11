@@ -11,6 +11,8 @@ import sys
 
 import pytest
 import yaml
+
+from tests.site_role_graph import site_roles
 from transport_fixtures import guarded_xray_bytes
 
 from scripts.template_render import merge_render_vars, render_template
@@ -288,7 +290,7 @@ def test_hysteria_hopping_keeps_daemon_unprivileged_and_redirects_both_families(
 def test_agent_disable_branch_remains_reachable_from_site():
     role = next(
         role
-        for role in tasks("playbooks/site.yml")[0]["roles"]
+        for role in site_roles(tasks("playbooks/site.yml")[0])
         if role["role"] == "observability_agent"
     )
     assert "when" not in role

@@ -8,6 +8,28 @@
   vars:
     transport_input_sections: [hysteria, egress]
 
+- name: Derive private masquerade origin resolution without global host changes
+  ansible.builtin.command:
+    argv:
+      - '{{ ansible_playbook_python }}'
+      - -c
+      - '{{ lookup("ansible.builtin.file", role_path ~ "/files/masquerade_hosts.py") }}'
+    stdin: >-
+      {{ {'origin': hysteria.masquerade_url, 'server_name': nginx_xhttp.server_name | default(''),
+          'nginx_enabled': vpn.enable_nginx_xhttp | default(true) | bool,
+          'service_address': vpn_service_address | default('')} | to_json }}
+  delegate_to: localhost
+  become: false
+  register: _hysteria_masquerade_projection
+  changed_when: false
+  check_mode: false
+  no_log: true
+
+- name: Retain scoped private origin resolution authority
+  ansible.builtin.set_fact:
+    hysteria_masquerade_hosts: '{{ _hysteria_masquerade_projection.stdout | from_json }}'
+  no_log: true
+
 - name: Prepare guarded topology for standalone frontend convergence
   ansible.builtin.import_tasks: "{{ role_path }}/../../playbooks/tasks/transport-egress-prepare.yml"
   when: not (transport_egress_prepared | default(false) | bool)
@@ -139,6 +161,18 @@
   no_log: true
   diff: false
 
+- name: Detect private masquerade hosts change before publication
+  ansible.builtin.copy:
+    content: '{{ hysteria_masquerade_hosts.content }}'
+    dest: '{{ hysteria_config_dir }}/masquerade-hosts'
+    owner: root
+    group: hysteria
+    mode: '0640'
+  check_mode: true
+  register: _hysteria_hosts_change
+  no_log: true
+  diff: false
+
 - name: Detect Hysteria TLS authority change before publication
   ansible.builtin.copy:
     content: "{{ item.content }}"
@@ -179,7 +213,7 @@
     - not ansible_check_mode
     - >-
       _hysteria_frontend_change.changed or _hysteria_tls_change.changed or
-      _hysteria_validator_change.changed or runtime_release_changed | default(false) | bool
+      _hysteria_validator_change.changed or _hysteria_hosts_change.changed or runtime_release_changed | default(false) | bool
 
 - name: Install shared transport semantics beside the YAML validator
   ansible.builtin.copy:
@@ -196,6 +230,16 @@
     owner: root
     group: root
     mode: "0755"
+
+- name: Publish private masquerade hosts after guarded quiescence
+  ansible.builtin.copy:
+    content: '{{ hysteria_masquerade_hosts.content }}'
+    dest: '{{ hysteria_config_dir }}/masquerade-hosts'
+    owner: root
+    group: hysteria
+    mode: '0640'
+  no_log: true
+  diff: false
 
 - name: Drop TLS material
   ansible.builtin.copy:

@@ -25,7 +25,9 @@
       ansible.builtin.include_role:
         name: transport-egress
         tasks_from: rollback
-      when: _transport_egress_transaction_started | default(false) | bool
+      when:
+        - not (transport_site_transaction_active | default(false) | bool)
+        - _transport_egress_transaction_started | default(false) | bool
 
     - name: Report protected topology activation refusal
       ansible.builtin.fail:

@@ -336,6 +336,12 @@ def test_ci_generator_real_crypto_passes_secret_schema(tmp_path):
     served_origin = render_fragment("ci-origin.txt", profile["public_site_canonical_url"],
                                     {"nginx_xhttp": value["nginx_xhttp"]})
     assert served_origin == value["hysteria"]["masquerade_url"]
+    from transport_semantics import EGRESS_CREDENTIALS, egress_errors
+    internal = value["transport_egress_secrets"]
+    assert set(internal) == set(EGRESS_CREDENTIALS)
+    assert len(set(internal.values())) == len(EGRESS_CREDENTIALS)
+    assert not egress_errors(internal, profile["vpn"], required=True)
+    assert all(secret.encode() not in generated.stdout + generated.stderr for secret in internal.values())
     registry = value["client_registry"]["ci-test"]
     assert registry["hosts"] == ["upcloud:ci-staging-generator"]
     assert registry["cohorts"] == ["ci-p0p1p2"]

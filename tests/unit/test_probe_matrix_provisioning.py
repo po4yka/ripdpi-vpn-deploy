@@ -9,6 +9,8 @@ import subprocess
 
 import yaml
 
+from tests.site_role_graph import site_roles
+
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -20,8 +22,9 @@ def test_research_roles_are_tiered_and_wired_behind_explicit_toggles() -> None:
     assert manifest["toggle_role_map"]["enable_probe_matrix_target"] == "probe-matrix-target"
     assert manifest["toggle_role_map"]["enable_split_hop_ingress"] == "split-hop-ingress"
     site = (ROOT / "ansible/playbooks/site.yml").read_text()
-    assert "role: probe-matrix-target" in site
-    assert "role: split-hop-ingress" in site
+    names = [role["role"] for role in site_roles(yaml.safe_load(site)[0])]
+    assert "probe-matrix-target" in names
+    assert "split-hop-ingress" in names
 
 
 def test_listener_manifest_exposes_five_target_ports_and_ingress_wireguard() -> None:

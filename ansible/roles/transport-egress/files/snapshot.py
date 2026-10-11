@@ -15,7 +15,7 @@ UNITS = {'ripdpi-transport-normalizer.service', 'ripdpi-transport-direct.service
 FILES = {'normalizer.json', 'direct.json', 'warp.json', 'generation.json', 'policy.json', 'resolv.conf', 'hosts', 'nsswitch.conf'}
 FRONTEND_FILES = {
     Path('/etc/xray/config.json'), Path('/etc/hysteria/config.yaml'),
-    Path('/etc/hysteria/server.fullchain.pem'), Path('/etc/hysteria/server.key'),
+    Path('/etc/hysteria/masquerade-hosts'), Path('/etc/hysteria/server.fullchain.pem'), Path('/etc/hysteria/server.key'),
     Path('/etc/systemd/system/xray.service'), Path('/etc/systemd/system/hysteria-server.service'),
     Path('/usr/local/libexec/vpn-xray-validate'),
     Path('/usr/local/libexec/ripdpi-validate-yaml-mapping'),

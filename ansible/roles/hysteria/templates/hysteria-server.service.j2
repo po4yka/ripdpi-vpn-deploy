@@ -20,6 +20,9 @@ RestartSec=5s
 
 LimitNOFILE=1048576
 
+{% if (hysteria_masquerade_hosts | default({})).enabled | default(false) %}
+BindReadOnlyPaths={{ hysteria_config_dir }}/masquerade-hosts:/etc/hosts
+{% endif %}
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict

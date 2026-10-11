@@ -28,6 +28,7 @@
     - name: Close the accepted candidate transaction
       ansible.builtin.set_fact:
         _transport_egress_transaction_started: false
+      when: not (transport_site_transaction_active | default(false) | bool)
   rescue:
     - name: Record categorical generation failure without blocking rollback
       block:
@@ -179,6 +180,7 @@
             msg: {diagnostic: unavailable}
     - name: Restore the previous complete guarded route
       ansible.builtin.include_tasks: rollback.yml
+      when: not (transport_site_transaction_active | default(false) | bool)
     - name: Report candidate activation failure after bounded recovery
       ansible.builtin.fail:
         msg: Guarded transport candidate failed readiness; accepted route recovery was attempted.

@@ -23,46 +23,6 @@
       - public_site_canonical_url == 'https://' ~ nginx_xhttp.server_name
     fail_msg: public_site_canonical_url must equal the HTTPS URL for nginx_xhttp.server_name.
 
-- name: Pre-flight — public service address is available for self-resolution
-  ansible.builtin.assert:
-    that:
-      - vpn_service_address is defined
-      - vpn_service_address | length > 0
-      - vpn_service_address is match('^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$')
-    fail_msg: vpn_service_address must contain the provider-assigned public IPv4 address.
-
-- name: Pin public hostname for node-local resolution
-  ansible.builtin.blockinfile:
-    path: /etc/hosts
-    marker: "# {mark} RIPDPI nginx self-resolution"
-    block: "{{ vpn_service_address }} {{ nginx_xhttp.server_name }}"
-    owner: root
-    group: root
-    mode: "0644"
-    unsafe_writes: true
-  no_log: true
-  diff: false
-  register: _nginx_self_resolution_plan
-
-- name: Verify node-local public hostname resolution
-  ansible.builtin.command:
-    argv:
-      - getent
-      - ahostsv4
-      - "{{ nginx_xhttp.server_name }}"
-  register: nginx_xhttp_self_resolution
-  check_mode: false
-  when: not ansible_check_mode or not _nginx_self_resolution_plan.changed
-  changed_when: false
-  failed_when: >-
-    nginx_xhttp_self_resolution.rc != 0 or
-    not (
-      nginx_xhttp_self_resolution.stdout is search(
-        '(?m)^' ~ (vpn_service_address | regex_escape) ~ '\\s'
-      )
-    )
-  no_log: true
-
 - name: Pre-flight — fallback frontend port must not collide with other listeners
   ansible.builtin.assert:
     that:
@@ -106,67 +66,58 @@
     group: root
     mode: "0750"
 
-- name: Publish static site content
-  ansible.builtin.copy:
-    src: public-site/
-    dest: /var/www/public-site/
-    owner: root
-    group: root
-    mode: "u=rwX,go=rX"
-  notify: Reload nginx-xhttp
+- name: Inspect the public candidate root before any file publication
+  ansible.builtin.stat:
+    path: /var/www/public-site
+    follow: false
+  register: _nginx_public_site_root
 
-- name: Ensure the public notes directory exists
+- name: Require an existing public candidate root to retain owned safe authority
+  ansible.builtin.assert:
+    that:
+      - not (_nginx_public_site_root.stat.exists | default(false)) or (_nginx_public_site_root.stat.isdir | default(false))
+      - not (_nginx_public_site_root.stat.islnk | default(false))
+      - not (_nginx_public_site_root.stat.exists | default(false)) or _nginx_public_site_root.stat.uid == 0
+      - not (_nginx_public_site_root.stat.exists | default(false)) or _nginx_public_site_root.stat.mode is match('^[0-7]+[0145][0145]$')
+    fail_msg: Public site candidates require an owned non-symlink directory.
+
+- name: Prepare an absent public root for private candidate binding
   ansible.builtin.file:
-    path: /var/www/public-site/notes
+    path: /var/www/public-site
     state: directory
     owner: root
     group: root
-    mode: "0755"
+    mode: '0755'
+  when: not (_nginx_public_site_root.stat.exists | default(false))
 
-- name: Render public site pages
-  ansible.builtin.template:
-    src: "public-site/{{ item.src }}"
-    dest: "/var/www/public-site/{{ item.dest }}"
-    owner: root
-    group: root
-    mode: "0644"
+- name: Inspect public asset parent directories before candidate binding
+  ansible.builtin.stat:
+    path: '{{ item }}'
+    follow: false
   loop:
-    - src: index.html.j2
-      dest: index.html
-    - src: about.html.j2
-      dest: about.html
-    - src: methodology.html.j2
-      dest: methodology.html
-    - src: updates.html.j2
-      dest: updates.html
-    - src: reading-benchmark-results.html.j2
-      dest: notes/reading-benchmark-results.html
-    - src: latency-throughput-context.html.j2
-      dest: notes/latency-throughput-context.html
-    - src: repeatable-model-comparisons.html.j2
-      dest: notes/repeatable-model-comparisons.html
-  notify: Reload nginx-xhttp
+    - /var/www/public-site/assets
+    - /var/www/public-site/notes
+  register: _nginx_public_site_directories
 
-- name: Remove the retired security contact file
+- name: Require public asset parents to retain owned safe directory authority
+  ansible.builtin.assert:
+    that:
+      - not (item.stat.exists | default(false)) or (item.stat.isdir | default(false))
+      - not (item.stat.islnk | default(false))
+      - not (item.stat.exists | default(false)) or item.stat.uid == 0
+      - not (item.stat.exists | default(false)) or item.stat.mode is match('^[0-7]+[0145][0145]$')
+    fail_msg: Public assets require owned non-symlink parent directories.
+  loop: '{{ _nginx_public_site_directories.results }}'
+
+- name: Prepare absent public asset parents with nginx-readable traversal
   ansible.builtin.file:
-    path: /var/www/public-site/.well-known/security.txt
-    state: absent
-
-- name: Render hostname-bound site discovery files
-  ansible.builtin.template:
-    src: "public-site/{{ item.src }}"
-    dest: "/var/www/public-site/{{ item.dest }}"
+    path: '{{ item.item }}'
+    state: directory
     owner: root
     group: root
-    mode: "0644"
-  loop:
-    - src: feed.xml.j2
-      dest: feed.xml
-    - src: robots.txt.j2
-      dest: robots.txt
-    - src: sitemap.xml.j2
-      dest: sitemap.xml
-  notify: Reload nginx-xhttp
+    mode: '0755'
+  loop: '{{ _nginx_public_site_directories.results }}'
+  when: not (item.stat.exists | default(false))
 
 - name: Stage complete XHTTP TLS and vhost authority
   ansible.builtin.set_fact:
@@ -213,13 +164,54 @@
   no_log: true
   diff: false
 
+- name: Stage exact public assets in the same compensated nginx publication
+  ansible.builtin.set_fact:
+    nginx_transaction_files: >-
+      {{ nginx_transaction_files + [{'path': '/var/www/public-site/' ~ item,
+          'kind': 'file', 'content_b64': lookup('ansible.builtin.file', role_path ~ '/files/public-site/' ~ item, rstrip=false) | b64encode,
+          'mode': '0644', 'uid': 0, 'gid': 0}] }}
+  loop:
+    - favicon.svg
+    - logo.svg
+    - 404.html
+    - assets/site.css
+  no_log: true
+  diff: false
+
+- name: Stage hostname-bound public pages in the same compensated publication
+  ansible.builtin.set_fact:
+    nginx_transaction_files: >-
+      {{ nginx_transaction_files + [{'path': '/var/www/public-site/' ~ item.dest,
+          'kind': 'file', 'content_b64': lookup('ansible.builtin.template', 'public-site/' ~ item.src) | b64encode,
+          'mode': '0644', 'uid': 0, 'gid': 0}] }}
+  loop:
+    - {src: index.html.j2, dest: index.html}
+    - {src: about.html.j2, dest: about.html}
+    - {src: methodology.html.j2, dest: methodology.html}
+    - {src: updates.html.j2, dest: updates.html}
+    - {src: reading-benchmark-results.html.j2, dest: notes/reading-benchmark-results.html}
+    - {src: latency-throughput-context.html.j2, dest: notes/latency-throughput-context.html}
+    - {src: repeatable-model-comparisons.html.j2, dest: notes/repeatable-model-comparisons.html}
+    - {src: feed.xml.j2, dest: feed.xml}
+    - {src: robots.txt.j2, dest: robots.txt}
+    - {src: sitemap.xml.j2, dest: sitemap.xml}
+  no_log: true
+  diff: false
+
+- name: Stage removal of the exact retired security contact alongside the site
+  ansible.builtin.set_fact:
+    nginx_transaction_files: >-
+      {{ nginx_transaction_files + [{'path': '/var/www/public-site/.well-known/security.txt', 'kind': 'absent'}] }}
+  no_log: true
+  diff: false
+
 - name: Validate publish and activate complete XHTTP authority
   ansible.builtin.include_role:
     name: nginx-xhttp
     tasks_from: transaction
   vars:
     nginx_transaction_owner: nginx-xhttp
-    nginx_transaction_roots: [/etc/nginx]
+    nginx_transaction_roots: [/etc/nginx, /var/www/public-site]
     nginx_transaction_validate_argv: [/usr/sbin/nginx, -t]
     nginx_transaction_unit: nginx.service
     nginx_transaction_activation: reload

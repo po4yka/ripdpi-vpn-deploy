@@ -211,7 +211,12 @@ def test_rollback_retires_new_vendor_before_restoring_its_isolation_files():
     retire = next(task for task in tasks if task['name'].startswith('Retire owned candidate WARP'))
     assert retire['ansible.builtin.include_role'] == {'name': 'warp-outbound', 'tasks_from': 'retire'}
     assert "'ripdpi-transport-warp.service' not in" in retire['when']
-    assert names.index('Stop remaining candidate generation processes before restore') < names.index(retire['name']) < names.index('Restore accepted files including policy and frontend credentials')
+    assert names.index('Quiesce owned candidate processes before restoring accepted authority') < names.index(retire['name']) < names.index('Restore accepted files including policy and frontend credentials')
+    quiesce = yaml.safe_load((ROLE / 'tasks/quiesce.yml').read_text())
+    assert [task['name'] for task in quiesce] == [
+        'Inspect rollback unit authority before stopping candidate services',
+        'Stop candidate controller before restoring any credential file',
+        'Stop remaining candidate generation processes before restore']
 
 
 def test_actual_gateway_identity_checks_every_uid_column(tmp_path, monkeypatch):
@@ -460,7 +465,8 @@ def test_readiness_probe_failure_categories_never_print_child_values(monkeypatch
     from types import SimpleNamespace
     mod = load('generation')
     controller = readiness_controller(mod)
-    readiness_clock(monkeypatch, mod)
+    now = [0.0]
+    monkeypatch.setattr(mod.time, 'monotonic', lambda: now[0])
     monkeypatch.setattr(controller, 'state', lambda _: {'MainPID': '1234'})
     monkeypatch.setattr(mod, 'command', lambda *_: json.dumps({
         '_PID': '1234', '_UID': '1001', 'MESSAGE': 'normalizer-ready'}))
@@ -470,6 +476,7 @@ def test_readiness_probe_failure_categories_never_print_child_values(monkeypatch
         calls.append(True)
         if len(calls) - 1 < probe_index:
             return SimpleNamespace(returncode=0)
+        now[0] = 2.0  # This exact failed child exhausts the one-second budget.
         if failure == 'timeout':
             raise subprocess.TimeoutExpired(['private-argument'], 1, stderr=b'private child value')
         if failure == 'preexec':
@@ -478,6 +485,7 @@ def test_readiness_probe_failure_categories_never_print_child_values(monkeypatch
     monkeypatch.setattr(mod.subprocess, 'run', child)
     with pytest.raises(mod.Refusal) as error:
         controller.ready()
+    assert len(calls) == probe_index + 1
     assert str(error.value) == 'generation-readiness-' + stage + suffix
     assert 'private' not in str(error.value)
     assert capsys.readouterr() == ('', '')
@@ -500,3 +508,160 @@ def test_readiness_matching_journal_and_all_private_probes_remain_accepted(monke
     assert controller.ready() is None
     assert [(value['name'], value['probe_kind']) for value in probes] == [
         ('direct_xray', 'auth'), ('direct', 'udp-control')]
+
+
+def recovery_controller(mod):
+    return mod.Controller({'schema_version': 1, 'normalizer_uid': 1001,
+        'gateway_units': [mod.GATEWAYS['direct']],
+        'frontend_units': ['xray.service', 'hysteria-server.service'],
+        'control_timeout_seconds': 1, 'recovery_seconds': 1},
+        {'runtime_uid': 1001, 'backends': {'direct': {}}, 'listeners': []})
+
+
+@pytest.mark.parametrize('target', ['xray.service', 'hysteria-server.service'])
+def test_requested_frontend_restart_retains_paired_processes_and_other_frontend(monkeypatch, target):
+    mod = load('generation')
+    controller = recovery_controller(mod)
+    generation = {mod.NORMALIZER: 10, mod.GATEWAYS['direct']: 20,
+                  'xray.service': 30, 'hysteria-server.service': 40}
+    current = dict(generation)
+    current[target] = 0  # The requested frontend may already be down.
+    actions, receipts = [], []
+    monkeypatch.setattr(controller, 'state', lambda unit: {'ActiveState': 'active', 'MainPID': str(current[unit])})
+    monkeypatch.setattr(controller, 'frontend_credentials', lambda: actions.append('credentials'))
+    monkeypatch.setattr(controller, 'ready', lambda: actions.append('authenticated-readiness'))
+    def stop(unit):
+        actions.append(('stop', unit))
+        current[unit] = 0
+    def start(unit):
+        actions.append(('start', unit))
+        current[unit] = 50
+    monkeypatch.setattr(controller, 'stop', stop)
+    monkeypatch.setattr(controller, 'start', start)
+    monkeypatch.setattr(controller, 'publish_ready', lambda value: receipts.append(dict(value)))
+    controller.frontend_requests.add(target)
+    updated = controller.recover_frontends(generation)
+    assert actions == ['credentials', 'authenticated-readiness', ('stop', target), ('start', target)]
+    assert updated[target] == 50 and receipts == [updated]
+    assert all(updated[unit] == pid for unit, pid in generation.items() if unit != target)
+    assert controller.frontend_requests == set() and controller.deadline is None
+
+
+@pytest.mark.parametrize('drift', ['normalizer', 'gateway', 'other-frontend', 'credentials'])
+def test_requested_recovery_refuses_unrelated_drift_before_target_restart(monkeypatch, drift):
+    mod = load('generation')
+    controller = recovery_controller(mod)
+    generation = {mod.NORMALIZER: 10, mod.GATEWAYS['direct']: 20,
+                  'xray.service': 30, 'hysteria-server.service': 40}
+    current = dict(generation)
+    if drift != 'credentials':
+        unit = {'normalizer': mod.NORMALIZER, 'gateway': mod.GATEWAYS['direct'],
+                'other-frontend': 'hysteria-server.service'}[drift]
+        current[unit] += 1
+    monkeypatch.setattr(controller, 'state', lambda unit: {'ActiveState': 'active', 'MainPID': str(current[unit])})
+    def credentials():
+        if drift == 'credentials':
+            raise mod.Refusal('generation-frontend-credential-mismatch')
+    monkeypatch.setattr(controller, 'frontend_credentials', credentials)
+    monkeypatch.setattr(controller, 'ready', lambda: None)
+    stops = []
+    monkeypatch.setattr(controller, 'stop', lambda unit: stops.append(unit))
+    controller.frontend_requests.add('xray.service')
+    with pytest.raises(mod.Refusal):
+        controller.recover_frontends(generation)
+    assert stops == [] and controller.deadline is None
+
+
+@pytest.mark.parametrize('ack', ['accepted', 'unchanged', 'controller-changed', 'config-changed', 'stale-status', 'mapping-changed'])
+def test_recovery_request_requires_current_controller_acknowledgement(monkeypatch, ack):
+    mod = load('generation')
+    controller = recovery_controller(mod)
+    digest = mod.hashlib.sha256(json.dumps(controller.normalizer, sort_keys=True).encode()).hexdigest()
+    before = {'schema': 1, 'controller_pid': 100, 'config_digest': digest,
+              'generation': {'xray.service': 30, mod.NORMALIZER: 10, mod.GATEWAYS['direct']: 20}}
+    after = json.loads(json.dumps(before))
+    if ack != 'unchanged':
+        after['generation']['xray.service'] = 50
+    if ack == 'controller-changed':
+        after['controller_pid'] += 1
+    if ack == 'config-changed':
+        after['config_digest'] = 'changed'
+    if ack == 'mapping-changed':
+        after['generation'][mod.GATEWAYS['direct']] += 1
+    reads = iter([before, after])
+    monkeypatch.setattr(mod, 'private_json', lambda _: next(reads, after))
+    now = [0.0]
+    monkeypatch.setattr(mod.time, 'monotonic', lambda: now[0])
+    monkeypatch.setattr(mod.time, 'sleep', lambda duration: now.__setitem__(0, now[0]+duration))
+    actions = []
+    monkeypatch.setattr(controller, 'state', lambda unit: {'MainPID': '100', 'ActiveState': 'active'})
+    def command(argv, timeout):
+        actions.append(argv)
+        assert 0 < timeout <= controller.timeout
+        return 'MainPID=100\nActiveState=active\n'
+    monkeypatch.setattr(mod, 'command', command)
+    def status():
+        if ack == 'stale-status':
+            raise mod.Refusal('generation-readiness-stale')
+    monkeypatch.setattr(controller, 'status', status)
+    if ack == 'accepted':
+        controller.recover('xray.service')
+    else:
+        with pytest.raises(mod.Refusal):
+            controller.recover('xray.service')
+    assert actions[0] == ['systemctl', 'kill', '--kill-whom=main', '--signal=SIGUSR1',
+                          'ripdpi-transport-generation.service']
+    assert now[0] <= 3 and controller.deadline is None
+
+
+@pytest.mark.parametrize('unit', ['ssh.service', None])
+def test_recovery_rejects_unknown_or_disabled_target_without_commands(monkeypatch, unit):
+    mod = load('generation')
+    controller = recovery_controller(mod)
+    monkeypatch.setattr(mod, 'command', lambda *_: pytest.fail('refused request dispatched a command'))
+    with pytest.raises(mod.Refusal, match='generation-recovery-target-invalid'):
+        controller.recover(unit)
+    controller.config['frontend_units'] = []
+    with pytest.raises(mod.Refusal, match='generation-recovery-target-invalid'):
+        controller.recover('xray.service')
+
+
+def test_targeted_recovery_probe_consumes_only_the_remaining_outer_budget(monkeypatch):
+    from types import SimpleNamespace
+    mod = load('generation')
+    controller = recovery_controller(mod)
+    controller.deadline = 0.05
+    now, probe_timeouts = [0.0], []
+    monkeypatch.setattr(mod.time, 'monotonic', lambda: now[0])
+    monkeypatch.setattr(controller, 'state', lambda _: {'MainPID': '1234'})
+    monkeypatch.setattr(mod, 'command', lambda *_: json.dumps({
+        '_PID': '1234', '_UID': '1001', 'MESSAGE': 'normalizer-ready'}))
+    def identity(uid):
+        now[0] += 0.04
+        return SimpleNamespace(pw_gid=uid)
+    monkeypatch.setattr(mod.pwd, 'getpwuid', identity)
+    def probe(*args, **kwargs):
+        probe_timeouts.append(kwargs['timeout'])
+        return SimpleNamespace(returncode=0)
+    monkeypatch.setattr(mod.subprocess, 'run', probe)
+    controller.ready()
+    assert len(probe_timeouts) == 1 and 0 < probe_timeouts[0] <= 0.01 + 1e-9
+
+
+def test_recovery_controller_admission_requires_all_four_root_uid_columns(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    mod = load('generation')
+    controller = recovery_controller(mod)
+    monkeypatch.setattr(mod, 'command', lambda *_: 'LoadState=loaded\nActiveState=active\nMainPID=1234\nFragmentPath=/etc/systemd/system/ripdpi-transport-generation.service\n')
+    monkeypatch.setattr(Path, 'lstat', lambda _: SimpleNamespace(st_mode=0o100644, st_uid=0, st_nlink=1))
+    proc = tmp_path / 'status'
+    actual_open = mod.os.open
+    monkeypatch.setattr(mod.os, 'open', lambda path, flags: actual_open(proc, flags))
+    proc.write_text('Pid:\t1234\nUid:\t0\t0\t0\t0\n')
+    assert controller.state(mod.CONTROLLER)['MainPID'] == '1234'
+    for index in range(4):
+        identities = ['0'] * 4
+        identities[index] = '1001'
+        proc.write_text('Pid:\t1234\nUid:\t'+'\t'.join(identities)+'\n')
+        with pytest.raises(mod.Refusal, match='generation-process-identity'):
+            controller.state(mod.CONTROLLER)

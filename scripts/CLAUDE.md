@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Disposable CI generates distinct internal normalizer/gateway credentials for every enabled guarded path, validates them through effective profile admission and keeps them out of process diagnostics.
+
 CI credential generation uses the served `SERVER_NAME` HTTPS origin for Hysteria masquerade. The watchdog keeps its separate exact canary endpoint, including its path; a probe URL is not a masquerade origin.
 
 - `transport_private_authority.py` reads bounded private configuration and the observed systemd credential ACL contract. Its credential exception is restricted to the exact private per-unit directory on a read-only mount, with effective read authority only for root and the service UID; ordinary files remain owner-only. Install that companion beside normalizer and classifier consumers.
@@ -9,6 +11,8 @@ CI credential generation uses the served `SERVER_NAME` HTTPS origin for Hysteria
 **Recipient metadata has a fixed exit authority** — `transport_egress_config.py` constructs private fixed listeners and literal-only native gateways from admitted credentials and actual service UIDs. `transport_egress_host_context.py` reads kernel addresses and effective SSH/recovery ownership; `transport_egress_kernel.py` owns an atomic nft table and private receipt. The final output guard runs after earlier ACCEPT and destination rewrites. Unknown late hooks, packet duplication, TC/XDP and flow offload refuse admission. Resolver inputs remain numeric and sealed; no recipient domain is forwarded to a gateway.
 
 Private-port admission distinguishes retired kernel TCP records from live socket authority: only `TIME-WAIT` with an explicit zero inode, zero or absent UID and no process owners can pass without the expected service UID. Live TCP, every UDP socket, nonzero inodes, missing inode metadata and foreign UIDs still refuse. This permits guarded recovery after active controls close without granting a live socket to another actor.
+
+Normalizer refusal replies are best-effort only after admission has already failed. A client disconnect while receiving the refusal does not suppress resource cleanup: the connection, backend control, concurrency slot and worker record are released in the same finalizer.
 
 Normalizer TCP listeners enable `SO_REUSEADDR` before binding so a new guarded process can recover while prior accepted TCP controls remain in TIME_WAIT after a crash. This does not share an active listener: `SO_REUSEPORT` stays disabled. UDP sockets, exclusive tuple pools, continuous-quiet quarantine and paired gateway reset retain their existing behavior.
 

@@ -122,6 +122,7 @@ def test_unsafe_existing_disabled_root_refuses_preserving_bytes_and_metadata():
         "bool-ticks",
         "unknown",
         "foreign-mode",
+        "legacy",
     ],
 )
 def test_inactive_witness_boundaries_adopt_or_preserve_refused_authority(case):
@@ -142,13 +143,8 @@ def test_inactive_witness_boundaries_adopt_or_preserve_refused_authority(case):
             master = tx.nginx_master("nginx.service")
             workers = tx.nginx_workers(master)
             boot, now = tx.boot_clock()
-            witness = {
-                "schema": 1,
-                "fingerprint": tx.fingerprint(document),
-                "active": False,
-                "boot_id": boot,
-                "inactive_after_ticks": int(master[1]),
-            }
+            witness = tx.owned_receipt(document)
+            witness.update(active=False, boot_id=boot, inactive_after_ticks=int(master[1]))
             if case == "older-master":
                 witness["inactive_after_ticks"] = now
             elif case == "other-boot":
@@ -161,11 +157,14 @@ def test_inactive_witness_boundaries_adopt_or_preserve_refused_authority(case):
                 witness["inactive_after_ticks"] = True
             elif case == "unknown":
                 witness["unknown"] = True
+            elif case == "legacy":
+                witness = {key: witness[key] for key in ("fingerprint", "active", "boot_id", "inactive_after_ticks")}
+                witness["schema"] = 1
             tx.persist(receipt, witness)
             if case == "foreign-mode":
                 receipt.chmod(0o644)
             before_bytes, before_metadata = receipt.read_bytes(), receipt.stat()
-            if case in {"future", "bool-ticks", "unknown", "foreign-mode"}:
+            if case in {"future", "bool-ticks", "unknown", "foreign-mode", "legacy"}:
                 with pytest.raises(tx.TransactionError):
                     tx.publish(document)
                 assert receipt.read_bytes() == before_bytes

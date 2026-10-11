@@ -1,0 +1,15 @@
+---
+- name: Restore protected ingress before accepted egress frontends can resume
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - '{{ lookup("ansible.builtin.file", playbook_dir ~ "/../roles/nginx-xhttp/files/nginx_transaction.py") }}'
+      - --site
+      - restore
+    stdin: '{{ _transport_ingress_request | to_json }}'
+  register: _transport_ingress_restored
+  changed_when: (_transport_ingress_restored.stdout | from_json).changed
+  no_log: true
+  diff: false
+  when: transport_site_transaction_active | default(false) | bool

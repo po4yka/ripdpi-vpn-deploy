@@ -12,6 +12,8 @@ from pathlib import Path
 
 import yaml
 
+from tests.site_role_graph import site_roles
+
 from template_render import render_template
 
 
@@ -380,7 +382,7 @@ def test_published_static_role_defaults_match_declared_manifest(tmp_path) -> Non
     manifest_tasks = [task for task in source["pre_tasks"]
                       if task["name"] == "Build effective public listener manifest"]
     assert len(manifest_tasks) == 1
-    roles = [{**role, "when": False} for role in source["roles"]]
+    roles = [{**role, "when": False} for role in site_roles(source)]
     assert roles and all(role["when"] is False for role in roles)
     playbooks = tmp_path / "ansible/playbooks"
     playbooks.mkdir(parents=True)

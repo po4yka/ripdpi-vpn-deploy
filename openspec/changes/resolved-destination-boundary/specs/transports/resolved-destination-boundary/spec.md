@@ -142,3 +142,17 @@ Malformed policy, unavailable resolution or unsupported runtime semantics MUST r
 - **WHEN** adding WARP fails and the accepted snapshot contains no WARP gateway
 - **THEN** the owned candidate vendor and namespace are retired before removing their isolation files
 - **AND** the vendor remains masked and disabled while registration state and unrelated resources remain intact
+
+
+#### Scenario: Protected site failure restores matching ingress and egress
+
+- **WHEN** protected ingress publication succeeds but a later protected frontend stage or shared activation fails
+- **THEN** the private compensation restores and validates the previous ingress files, TLS authority, links and owner receipts before resuming the accepted egress/frontend configuration
+- **AND** no unrelated role runs while a protected transaction remains open
+
+#### Scenario: Watchdog recovery retains healthy mapping processes
+
+- **WHEN** the watchdog requests recovery for one admitted protected frontend
+- **THEN** the running root controller replaces only that frontend and acknowledges its admitted new PID within a shared deadline
+- **AND** normalizer, gateways and the other frontend keep their PIDs; unexpected authority drift refuses that acknowledgement and retains guarded full recovery
+- **AND** the watchdog's finite service deadline covers every enabled protected request at the supported maximum timeout

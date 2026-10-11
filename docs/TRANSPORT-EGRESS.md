@@ -81,3 +81,14 @@ validation. A two-TUN packet fixture proves the local adapter path only.
 Actual registered vendor TCP/UDP, staging and production acceptance require
 separate authorized targets and observed evidence. This change does not deploy
 or register a WARP account.
+
+
+## Protected deployment and recovery
+
+Protected site staging has one compensation owner. It snapshots both ingress owners before publication, keeps frontend staging inside a rescued block, and closes the transaction before unrelated roles run. Failure quiesces owned candidate processes, restores and validates accepted Nginx authority, then resumes accepted egress/frontends. Standalone frontend roles retain their own rollback.
+
+Nginx adoption receipts now require schema 2 ownership and bounded digest-only path witnesses; ordinary interrupted publication also retains the prior receipt in its private journal. Legacy receipts/journals do not contain sufficient ownership evidence and refuse before mutation. This is a contract break: recreate those disposable nodes or perform separately authorized, verified authority reconciliation before rollout. No compatibility inference or automatic migration exists.
+
+Watchdog recovery for Xray and Hysteria goes through the running root controller. A successful request changes only its selected frontend PID; mappings and the other frontend retain their PIDs. The requester checks actual root controller identity, private receipt binding and current readiness under one deadline. Unrelated drift cannot count as targeted recovery, and failure has no direct-restart fallback. The watchdog service budget includes both enabled protected requests at the maximum supported timeout.
+
+Node-local masquerade resolution is scoped to Hysteria with a private read-only hosts bind that participates in frontend rollback. Nginx never changes global `/etc/hosts`; public site pages/assets share its typed publication and compensation. Host-NSS verification remains separate from independently authenticated public DNS/client acceptance.

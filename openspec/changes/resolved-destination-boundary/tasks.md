@@ -25,6 +25,14 @@ Enforce resolved destination isolation for P0 P1 and Hysteria2. Implementation, 
 - Assign disjoint source/native/integration lanes before implementation. No worker stages, commits or changes portfolio metadata; independent review remains read-only.
 - Include the direct gateway, WARP namespace/tunnel-only gateway, final nftables policy, sole vendor authority, retirement and rollback in the named existing execution steps. Real vendor acceptance stays required separately.
 
+### PR review remediation ownership
+
+- Resource worker owns `tests/integration/transport_warp_tun/fixture.py` and `tests/unit/test_transport_native_fixture_resources.py`; preserve actual TUN setup and add exception-path cleanup coverage.
+- Primary owns remaining reviewed scripts/test import cleanup, folder guidance, shared task evidence and PR delivery. No worker stages, commits or modifies shared portfolio files.
+- Transaction worker owns `ansible/playbooks/site.yml`, `ansible/playbooks/tasks/transport-egress-*.yml` , `ansible/roles/nginx-xhttp/files/nginx_transaction.py`, new `ansible/playbooks/tasks/transport-ingress-*.yml`, `tests/unit/test_transport_site_transaction.py` and `tests/unit/test_nginx_site_transaction.py`; ensure one bounded protected staging block closes with activation or rescue rollback before unrelated roles. Primary serializes related existing test updates and shared guidance.
+- Primary owns disposable CI credential generation, watchdog/controller recovery integration, their existing focused tests, frontend/activation rescue delegation, native receipt fixture updates, scoped Hysteria origin authority and verification callers, template snapshots and the shared Molecule targeted-recovery verification. Resource worker performs read-only final review of these non-authored lanes after completing its implementation.
+- Independent final review is read-only and covers the complete remediation diff. Heavy tests are serialized through the machine-wide build gate.
+
 ## Execution
 
 - [x] SEC-1791617852155511 Define the resolved destination policy and implement typed Xray and Hysteria2 enforcement with schema and rendering regressions #bug !crit @item:SEC-1791617841911853

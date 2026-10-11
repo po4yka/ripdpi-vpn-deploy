@@ -1,0 +1,432 @@
+"""Portable real-file compensation/authority proof; runtime adoption stays native."""
+import base64
+import copy
+import importlib.util
+import json
+import os
+from pathlib import Path
+import stat
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
+SOURCE = ROOT / 'ansible/roles/nginx-xhttp/files/nginx_transaction.py'
+
+
+def load():
+    spec = importlib.util.spec_from_file_location('site_nginx', SOURCE)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture
+def fixture(tmp_path, monkeypatch):
+    tx = load()
+    root = tmp_path.resolve()
+    root.chmod(0o700)
+    def safe(path, *, missing=False):
+        path = Path(path)
+        assert path.is_absolute() and '..' not in path.parts
+        assert path == root or path.is_relative_to(root)
+        for parent in [root, *list(path.relative_to(root).parents)[::-1], path.relative_to(root)]:
+            current = parent if parent.is_absolute() else root / parent
+            if not current.exists():
+                if missing:
+                    return
+                raise tx.TransactionError('missing-parent')
+            info = current.lstat()
+            if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022:
+                raise tx.TransactionError('unsafe-parent')
+    monkeypatch.setattr(tx, 'safe', safe)
+    monkeypatch.setattr(tx, 'STATE_ROOT', root / 'state')
+    commands = []
+    monkeypatch.setattr(tx, 'command', lambda argv: commands.append(argv) or '')
+    monkeypatch.setattr(tx, 'service_state', lambda unit: {'active': False, 'exists': True, 'unit_file_state': 'disabled'})
+    monkeypatch.setattr(tx, 'restore_enabled', lambda *args: None)
+    ingress = root / 'ingress'
+    ingress.mkdir(mode=0o700)
+    owners = [{'owner': owner, 'roots': [str(ingress)],
+               'paths': [str(ingress / (owner + '.conf'))], 'prune_releases': None}
+              for owner in sorted(tx.SITE_OWNERS)]
+    return tx, {'owners': owners, 'check': False}, commands
+
+
+def desired(tx, context, owner='nginx-xhttp', content=b'candidate', path=None):
+    value = next(value for value in tx.site_request(context) if value['owner'] == owner)
+    value['files'] = [{'path': path or value['files'][0]['path'], 'kind': 'file',
+                       'uid': os.geteuid(), 'gid': os.getegid(), 'mode': 0o640,
+                       'content_b64': base64.b64encode(content).decode()}]
+    return value
+
+
+def install_accepted(tx, context, *, content=b'accepted'):
+    state = tx.STATE_ROOT / 'nginx.service'
+    with tx.unit_lock(state):
+        for owner in tx.SITE_OWNERS:
+            document = desired(tx, context, owner, content)
+            for row in document['files']:
+                tx.apply(Path(row['path']), {k: v for k, v in row.items() if k != 'path'}, [])
+            tx.persist(state / (owner + '.activated.json'), tx.owned_receipt(document))
+    return state
+
+
+def publish_candidate(tx, context, content=b'candidate'):
+    state = tx.STATE_ROOT / 'nginx.service'
+    document = desired(tx, context, content=content)
+    receipt = tx.owned_receipt(document)
+    with tx.unit_lock(state):
+        tx.site_authorize(state, document, receipt)
+        for row in document['files']:
+            tx.apply(Path(row['path']), {k: v for k, v in row.items() if k != 'path'}, [])
+        tx.persist(state / 'nginx-xhttp.activated.json', receipt)
+    return Path(document['files'][0]['path'])
+
+
+def test_fresh_then_warm_private_snapshot_restores_exact_bytes_and_receipts(fixture):
+    tx, context, commands = fixture
+    tx.site_transaction('begin', context)
+    candidate = publish_candidate(tx, context)
+    tx.site_transaction('commit', context)
+    assert candidate.read_bytes() == b'candidate'
+    receipt = tx.private_json(tx.STATE_ROOT / 'nginx.service/nginx-xhttp.activated.json')
+    assert receipt['schema'] == 2 and 'content_b64' not in json.dumps(receipt)
+    before = tx.capture(candidate)
+    receipt_before = tx.capture(tx.STATE_ROOT / 'nginx.service/nginx-xhttp.activated.json')
+    tx.site_transaction('begin', context)
+    publish_candidate(tx, context, b'changed private fixture')
+    assert tx.site_transaction('restore', context)['changed'] is True
+    assert tx.capture(candidate) == before
+    assert tx.capture(tx.STATE_ROOT / 'nginx.service/nginx-xhttp.activated.json') == receipt_before
+    assert not (tx.STATE_ROOT / 'nginx.service/site.json').exists()
+    assert commands == [['systemctl', 'stop', 'nginx.service']]
+
+
+def test_old_owned_paths_union_new_declared_paths_and_durable_restore(fixture):
+    tx, context, _ = fixture
+    state = install_accepted(tx, context)
+    old = Path(next(value for value in context['owners'] if value['owner'] == 'nginx-xhttp')['paths'][0])
+    new = old.with_name('new-host.key')
+    changed = copy.deepcopy(context)
+    next(value for value in changed['owners'] if value['owner'] == 'nginx-xhttp')['paths'] = [str(new)]
+    tx.site_transaction('begin', changed)
+    journal = tx.read_site(state)
+    assert {str(old), str(new)} <= set(journal['files'])
+    document = desired(tx, changed, path=str(new))
+    receipt = tx.owned_receipt(document, {**tx.private_json(state / 'nginx-xhttp.activated.json')['files'], str(new): tx.witness({k:v for k,v in document['files'][0].items() if k != 'path'})})
+    tx.site_authorize(state, document, receipt)
+    tx.apply(new, {k:v for k,v in document['files'][0].items() if k != 'path'}, [])
+    tx.persist(state / 'nginx-xhttp.activated.json', receipt)
+    # A new invocation reconstructs authority exclusively from the private journal.
+    tx.site_transaction('restore', changed)
+    assert old.read_bytes() == b'accepted' and not new.exists()
+
+
+@pytest.mark.parametrize('case', ['legacy', 'owner', 'unit', 'path', 'digest'])
+def test_invalid_receipt_refuses_before_any_mutation(fixture, case):
+    tx, context, commands = fixture
+    state = install_accepted(tx, context)
+    path = state / 'nginx-xhttp.activated.json'
+    receipt = tx.private_json(path)
+    if case == 'legacy':
+        receipt = {'schema': 1, 'fingerprint': receipt['fingerprint'], 'active': True}
+    elif case == 'owner':
+        receipt['owner'] = 'foreign'
+    elif case == 'unit':
+        receipt['unit'] = 'foreign.service'
+    elif case == 'path':
+        receipt['files']['/outside/authority'] = {'kind': 'absent'}
+    else:
+        next(iter(receipt['files'].values()))['sha256'] = '0' * 64
+    tx.persist(path, receipt)
+    before = {p: tx.capture(p) for p in state.iterdir() if p.name != 'lock'}
+    with pytest.raises(tx.TransactionError):
+        tx.site_transaction('begin', context)
+    assert before == {p: tx.capture(p) for p in state.iterdir() if p.name != 'lock'}
+    assert not (state / 'site.json').exists() and not commands
+
+
+@pytest.mark.parametrize('action', ['restore', 'commit'])
+def test_foreign_edit_is_never_overwritten_or_committed(fixture, action):
+    tx, context, commands = fixture
+    install_accepted(tx, context)
+    tx.site_transaction('begin', context)
+    path = publish_candidate(tx, context)
+    path.write_bytes(b'foreign concurrent edit')
+    before = tx.capture(path)
+    with pytest.raises(tx.TransactionError, match='^foreign-publication$'):
+        tx.site_transaction(action, context)
+    assert tx.capture(path) == before and not commands
+    assert (tx.STATE_ROOT / 'nginx.service/site.json').exists()
+
+
+def test_existing_journal_is_not_clobbered_and_check_mode_is_read_only(fixture):
+    tx, context, commands = fixture
+    install_accepted(tx, context)
+    tx.site_transaction('begin', context)
+    journal = tx.STATE_ROOT / 'nginx.service/site.json'
+    before = tx.capture(journal)
+    with pytest.raises(tx.TransactionError, match='^recovery-required$'):
+        tx.site_transaction('begin', context)
+    assert tx.capture(journal) == before
+    tx.site_transaction('restore', context)
+    context['check'] = True
+    before = {p: tx.capture(p) for p in journal.parent.iterdir()}
+    tx.site_transaction('begin', context)
+    assert {p: tx.capture(p) for p in journal.parent.iterdir()} == before
+
+
+def test_foreign_owner_and_undeclared_candidate_paths_refuse(fixture):
+    tx, context, _ = fixture
+    install_accepted(tx, context)
+    tx.site_transaction('begin', context)
+    document = desired(tx, context)
+    document['owner'] = 'foreign'
+    with pytest.raises(tx.TransactionError, match='^site-transaction-busy$'):
+        tx.site_authorize(tx.STATE_ROOT / 'nginx.service', document, tx.owned_receipt(document))
+    document['owner'] = 'nginx-xhttp'
+    document['files'][0]['path'] += '.foreign'
+    with pytest.raises(tx.TransactionError, match='^site-write-set$'):
+        tx.site_authorize(tx.STATE_ROOT / 'nginx.service', document, tx.owned_receipt(document))
+
+
+def test_ordinary_disabled_publisher_fresh_warm_schema2_receipt(fixture, monkeypatch):
+    tx, context, _ = fixture
+    monkeypatch.setattr(tx, 'boot_clock', lambda: ('0' * 8 + '-0000-0000-0000-' + '0' * 12, 10))
+    monkeypatch.setattr(tx, 'inactive_absence_receipt', lambda unit, receipt: {**receipt, 'active': False, 'boot_id': tx.boot_clock()[0], 'inactive_after_ticks': 10})
+    document = tx.site_request(context)[0]
+    assert tx.publish(document) == {'status': 'unchanged', 'changed': False}
+    receipt = tx.private_json(tx.STATE_ROOT / 'nginx.service' / (document['owner'] + '.activated.json'))
+    assert receipt['schema'] == 2
+    assert tx.publish(document) == {'status': 'unchanged', 'changed': False}
+
+
+def test_interrupted_ordinary_publication_restores_prior_receipt_and_files(fixture):
+    tx, context, commands = fixture
+    state = install_accepted(tx, context)
+    document = desired(tx, context)
+    path = Path(document['files'][0]['path'])
+    original = tx.capture(path)
+    receipt_path = state / 'nginx-xhttp.activated.json'
+    prior_receipt = tx.capture(receipt_path)
+    tx.apply(path, {k:v for k,v in document['files'][0].items() if k != 'path'}, [])
+    tx.persist(receipt_path, tx.owned_receipt(document))
+    journal = {'schema': 2, 'phase': 'activated', 'candidate': 'candidate-' + '0' * 32,
+               'request': document, 'files': {str(path): original}, 'active': False,
+               'service': {'active': False, 'exists': True, 'unit_file_state': 'disabled'},
+               'owner': document['owner'], 'receipt': prior_receipt, 'next_receipt': tx.receipt_row(tx.owned_receipt(document))}
+    tx.persist(state / 'pending.json', journal)
+    assert tx.recover(state / 'pending.json', 'nginx.service') is True
+    assert tx.capture(path) == original and tx.capture(receipt_path) == prior_receipt
+    tx.validate_receipt(tx.private_json(receipt_path), 'nginx-xhttp', 'nginx.service')
+    tx.verify_witnesses(tx.private_json(receipt_path)['files'])
+    assert not (state / 'pending.json').exists()
+
+
+def test_unclaimed_existing_ingress_refuses_without_runtime_changes(fixture):
+    tx, context, commands = fixture
+    path = Path(context['owners'][0]['paths'][0])
+    path.write_bytes(b'foreign unclaimed configuration')
+    path.chmod(0o640)
+    before = tx.capture(path)
+    with pytest.raises(tx.TransactionError, match='^unclaimed-ingress$'):
+        tx.site_transaction('begin', context)
+    assert tx.capture(path) == before and not commands
+    assert not (tx.STATE_ROOT / 'nginx.service/site.json').exists()
+
+
+def test_partial_restore_can_resume_after_runtime_failure(fixture, monkeypatch):
+    tx, context, commands = fixture
+    state = install_accepted(tx, context)
+    tx.site_transaction('begin', context)
+    path = publish_candidate(tx, context)
+    def interrupted(*args):
+        raise tx.TransactionError('enablement-restore-failed')
+    monkeypatch.setattr(tx, 'restore_enabled', interrupted)
+    with pytest.raises(tx.TransactionError, match='^enablement-restore-failed$'):
+        tx.site_transaction('restore', context)
+    assert path.read_bytes() == b'accepted' and (state / 'site.json').exists()
+    monkeypatch.setattr(tx, 'restore_enabled', lambda *args: None)
+    assert tx.site_transaction('restore', context)['status'] == 'restored'
+    assert not (state / 'site.json').exists()
+
+
+def test_commit_refuses_candidate_file_receipt_mismatch(fixture):
+    tx, context, commands = fixture
+    state = install_accepted(tx, context)
+    tx.site_transaction('begin', context)
+    path = publish_candidate(tx, context)
+    # Even an earlier authorized version is not the adopted current receipt.
+    tx.apply(path, tx.read_site(state)['files'][str(path)], [])
+    with pytest.raises(tx.TransactionError, match='^foreign-publication$'):
+        tx.site_transaction('commit', context)
+    assert (state / 'site.json').exists() and not commands
+
+
+def test_fresh_package_default_link_is_removed_and_rollback_retains_original_absence(fixture, monkeypatch):
+    tx, context, commands = fixture
+    root = Path(context['owners'][0]['roots'][0])
+    enabled = root / 'sites-enabled/default'
+    available = root / 'sites-available/default'
+    monkeypatch.setattr(tx, 'DEFAULT_ENABLED', enabled)
+    monkeypatch.setattr(tx, 'DEFAULT_AVAILABLE', available)
+    for value in context['owners']:
+        value['paths'].append(str(enabled))
+    tx.site_transaction('begin', context)
+    # Actual package-shaped files arrive after begin, before one-shot publication.
+    available.parent.mkdir(mode=0o755)
+    available.write_bytes(b'distribution default configuration')
+    available.chmod(0o644)
+    enabled.parent.mkdir(mode=0o755)
+    enabled.symlink_to('../sites-available/default')
+    if stat.S_IMODE(enabled.lstat().st_mode) != 0o777:
+        os.chmod(enabled, 0o777, follow_symlinks=False)
+    assert stat.S_IMODE(enabled.lstat().st_mode) == 0o777
+    def package(argv):
+        commands.append(argv)
+        return 'nginx-common: ' + str(available) if argv[0] == 'dpkg-query' else ''
+    monkeypatch.setattr(tx, 'command', package)
+    document = desired(tx, context)
+    document['files'].append({'path': str(enabled), 'kind': 'absent'})
+    state = tx.STATE_ROOT / 'nginx.service'
+    receipt = tx.owned_receipt(document)
+    with tx.unit_lock(state):
+        tx.site_authorize(state, document, receipt)
+        assert tx.witness(tx.capture(enabled)) in tx.read_site(state)['allowed'][str(enabled)]
+        for row in document['files']:
+            tx.apply(Path(row['path']), {k:v for k,v in row.items() if k != 'path'}, [])
+        tx.persist(state / 'nginx-xhttp.activated.json', receipt)
+    assert not enabled.exists()
+    tx.site_transaction('restore', context)
+    assert not enabled.exists() and not Path(document['files'][0]['path']).exists()
+    assert available.read_bytes() == b'distribution default configuration'
+
+
+@pytest.mark.parametrize('case', ['wrong-target', 'unknown-package', 'regular-file'])
+def test_package_default_admission_is_exact_and_refuses_foreign_shapes(fixture, monkeypatch, case):
+    tx, context, commands = fixture
+    root = Path(context['owners'][0]['roots'][0])
+    enabled, available = root / 'default-link', root / 'package-default'
+    monkeypatch.setattr(tx, 'DEFAULT_ENABLED', enabled)
+    monkeypatch.setattr(tx, 'DEFAULT_AVAILABLE', available)
+    for value in context['owners']:
+        value['paths'].append(str(enabled))
+    tx.site_transaction('begin', context)
+    available.write_bytes(b'distro file')
+    available.chmod(0o644)
+    if case == 'regular-file':
+        enabled.write_bytes(b'foreign file')
+        enabled.chmod(0o644)
+    else:
+        enabled.symlink_to(str(available) + ('.foreign' if case == 'wrong-target' else ''))
+        if stat.S_IMODE(enabled.lstat().st_mode) != 0o777:
+            os.chmod(enabled, 0o777, follow_symlinks=False)
+    monkeypatch.setattr(tx, 'command', lambda argv: 'foreign-package: ' + str(available))
+    before = tx.capture(enabled)
+    document = desired(tx, context)
+    document['files'].append({'path': str(enabled), 'kind': 'absent'})
+    with pytest.raises(tx.TransactionError, match='^foreign-publication$'):
+        tx.site_authorize(tx.STATE_ROOT / 'nginx.service', document, tx.owned_receipt(document))
+    assert tx.capture(enabled) == before
+
+
+def test_valid_foreign_receipt_is_not_overwritten_during_ordinary_recovery(fixture):
+    tx, context, commands = fixture
+    state = install_accepted(tx, context)
+    document = desired(tx, context)
+    path = Path(document['files'][0]['path'])
+    receipt = state / 'nginx-xhttp.activated.json'
+    prior = tx.capture(receipt)
+    original = tx.capture(path)
+    journal = {'schema': 2, 'phase': 'activated', 'candidate': 'candidate-' + '0' * 32,
+               'request': document, 'files': {str(path): original}, 'active': False,
+               'service': {'active': False, 'exists': True, 'unit_file_state': 'disabled'},
+               'owner': document['owner'], 'receipt': prior,
+               'next_receipt': tx.receipt_row(tx.owned_receipt(document))}
+    tx.persist(state / 'pending.json', journal)
+    foreign = tx.owned_receipt(document)
+    foreign['fingerprint'] = '0' * 64
+    tx.persist(receipt, foreign)
+    before = (tx.capture(receipt), receipt.stat().st_ino, tx.capture(path), tx.capture(state / 'pending.json'))
+    with pytest.raises(tx.TransactionError, match='^foreign-receipt$'):
+        tx.recover(state / 'pending.json', 'nginx.service')
+    assert (tx.capture(receipt), receipt.stat().st_ino, tx.capture(path), tx.capture(state / 'pending.json')) == before
+    assert not commands
+
+
+def test_interrupted_ordinary_compensation_can_retry_exact_next_receipt(fixture, monkeypatch):
+    tx, context, _ = fixture
+    state = install_accepted(tx, context)
+    document = desired(tx, context)
+    path = Path(document['files'][0]['path'])
+    receipt = state / 'nginx-xhttp.activated.json'
+    prior, original = tx.capture(receipt), tx.capture(path)
+    tx.apply(path, {k:v for k,v in document['files'][0].items() if k != 'path'}, [])
+    tx.persist(receipt, tx.owned_receipt(document))
+    tx.persist(state / 'pending.json', {
+        'schema': 2, 'phase': 'activated', 'candidate': 'candidate-' + '0' * 32,
+        'request': document, 'files': {str(path): original}, 'active': False,
+        'service': {'active': False, 'exists': True, 'unit_file_state': 'disabled'},
+        'owner': document['owner'], 'receipt': prior,
+        'next_receipt': tx.receipt_row(tx.owned_receipt(document))})
+    original_apply = tx.apply
+    def interrupted(path, row, created):
+        if path == receipt:
+            raise tx.TransactionError('interrupted-receipt-restore')
+        original_apply(path, row, created)
+    monkeypatch.setattr(tx, 'apply', interrupted)
+    with pytest.raises(tx.TransactionError, match='^interrupted-receipt-restore$'):
+        tx.recover(state / 'pending.json', 'nginx.service')
+    assert tx.private_json(state / 'pending.json')['phase'] == 'recovering'
+    assert tx.capture(path) == original and tx.capture(receipt) != prior
+    monkeypatch.setattr(tx, 'apply', original_apply)
+    assert tx.recover(state / 'pending.json', 'nginx.service') is True
+    assert tx.capture(receipt) == prior and tx.capture(path) == original
+    assert not (state / 'pending.json').exists()
+
+
+@pytest.mark.parametrize('action', ['restore', 'commit'])
+def test_site_never_recovers_an_unrelated_owner_pending_journal(fixture, action):
+    tx, context, commands = fixture
+    state = install_accepted(tx, context)
+    tx.site_transaction('begin', context)
+    document = desired(tx, context)
+    document['owner'] = 'foreign-owner'
+    tx.persist(state / 'pending.json', {'request': document})
+    before = tx.capture(state / 'pending.json')
+    with pytest.raises(tx.TransactionError, match='^(site-write-set|recovery-required)$'):
+        tx.site_transaction(action, context)
+    assert tx.capture(state / 'pending.json') == before and not commands
+
+
+def test_public_origin_pages_assets_and_retirement_restore_exact_authority(fixture):
+    tx, context, _ = fixture
+    owner = next(value for value in context['owners'] if value['owner'] == 'nginx-xhttp')
+    root = Path(owner['roots'][0])
+    names = ['index.html', 'assets/site.css', 'notes/reading.html', '.well-known/security.txt']
+    owner['paths'] += [str(root / name) for name in names]
+    old = tx.site_request(context)[0]
+    old['owner'] = 'nginx-xhttp'
+    old['files'] = [{'path': str(root / name), 'kind': 'file', 'uid': os.geteuid(), 'gid': os.getegid(), 'mode': 0o644,
+                     'content_b64': base64.b64encode(b'accepted https://old-origin.example.invalid/' + name.encode()).decode()}
+                    for name in names]
+    state = tx.STATE_ROOT / 'nginx.service'
+    with tx.unit_lock(state):
+        for row in old['files']:
+            tx.apply(Path(row['path']), {k:v for k,v in row.items() if k != 'path'}, [])
+        tx.persist(state / 'nginx-xhttp.activated.json', tx.owned_receipt(old))
+    before = {row['path']: tx.capture(Path(row['path'])) for row in old['files']}
+    tx.site_transaction('begin', context)
+    candidate = copy.deepcopy(old)
+    for row in candidate['files']:
+        row['content_b64'] = base64.b64encode(b'candidate https://new-origin.example.invalid').decode()
+    candidate['files'][-1] = {'path': str(root / names[-1]), 'kind': 'absent'}
+    with tx.unit_lock(state):
+        receipt = tx.owned_receipt(candidate)
+        tx.site_authorize(state, candidate, receipt)
+        for row in candidate['files']:
+            tx.apply(Path(row['path']), {k:v for k,v in row.items() if k != 'path'}, [])
+        tx.persist(state / 'nginx-xhttp.activated.json', receipt)
+    assert not (root / names[-1]).exists()
+    tx.site_transaction('restore', context)
+    assert {path: tx.capture(Path(path)) for path in before} == before

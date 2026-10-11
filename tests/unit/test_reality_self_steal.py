@@ -8,6 +8,8 @@ import subprocess
 
 import yaml
 
+from tests.site_role_graph import site_roles
+
 ROOT = Path(__file__).resolve().parents[2]
 ANSIBLE = ROOT / "ansible"
 RENDERER = ROOT / "scripts" / "check-templates-render.py"
@@ -27,7 +29,7 @@ def test_self_steal_mode_is_default_off_and_wired_as_a_tactical_role() -> None:
     assert defaults["vpn"]["enable_reality_self_steal"] is False
     assert tiers["tiers"]["reality-self-steal"] == "tactical"
     assert tiers["toggle_role_map"]["enable_reality_self_steal"] == "reality-self-steal"
-    assert "- role: reality-self-steal" in site
+    assert "reality-self-steal" in [role["role"] for role in site_roles(yaml.safe_load(site)[0])]
 
 
 def test_self_steal_tls_site_is_loopback_only() -> None:

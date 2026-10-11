@@ -2,6 +2,9 @@
 
 ## Design decisions
 
+Protected site compensation uses the shared unit lock and bounded private journal to retain exact prior ingress paths and owner receipts. Schema 2 receipts bind owner, unit, roots and digest-only path witnesses; old receipts/journals refuse before mutation because their ownership evidence is incomplete. Fresh publication and schema 2 warm reconvergence remain supported. Rollback restores the previous receipt alongside its files so interrupted publication cannot leave a stale witness.
+
+
 Publication change reporting compares recaptured authority under the writer
 lock. The preliminary snapshot validates recoverability; check mode computes
 its own predicted difference without runtime publication.
@@ -12,11 +15,7 @@ listening on `nginx_xhttp_public_port` (default 8443), reverse-proxying the
 XHTTP path to Xray on `127.0.0.1:10085`. No `set_real_ip_from`, no
 `CF-Connecting-IP`, no Origin CA. Rationale: `docs/CDN-DECISION.md`.
 
-**The primary hostname resolves locally without external DNS** — the role
-owns a marked `/etc/hosts` entry from `nginx_xhttp.server_name` to the
-provider-assigned `vpn_service_address` and verifies it through NSS. Public
-DNS remains an independent client-path requirement; this entry only makes
-same-node operations deterministic.
+**Origin resolution is scoped to its consumer** — the role never edits global `/etc/hosts`. Hysteria binds a private accepted hosts file for a matching node-local origin; public hostname resolution and external DNS remain separately verified acceptance. Hostname-bound pages/assets and their removals publish through the same typed owner transaction as TLS/vhosts, so site compensation restores complete accepted ingress content.
 
 **Ordinary paths are a real static site** — the role publishes repository-owned content to `/var/www/public-site`, serves it on the primary and alternate HTTPS vhosts, and redirects TCP/80 to the configured HTTPS port. Identity pages are rendered from `templates/public-site/` so canonical metadata follows `public_site_canonical_url`; reusable CSS, favicon, search logo, and the host-neutral 404 remain static files. The secret XHTTP path remains a separate exact transport seam. Keep admin, metrics, status, and health endpoints off the public vhost.
 

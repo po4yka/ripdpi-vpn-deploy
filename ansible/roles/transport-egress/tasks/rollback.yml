@@ -4,26 +4,8 @@
     - not ansible_check_mode
     - _transport_egress_transaction_started | default(false) | bool
   block:
-    - name: Inspect rollback unit authority before stopping candidate services
-      ansible.builtin.command:
-        argv:
-          - python3
-          - -c
-          - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/ownership.py'') }}'
-      register: _transport_egress_rollback_owned
-      changed_when: false
-      no_log: true
-    - name: Stop candidate controller before restoring any credential file
-      ansible.builtin.systemd_service:
-        name: ripdpi-transport-generation.service
-        state: stopped
-      when: '''ripdpi-transport-generation.service'' in (_transport_egress_rollback_owned.stdout | from_json).units'
-    - name: Stop remaining candidate generation processes before restore
-      ansible.builtin.systemd_service:
-        name: '{{ item }}'
-        state: stopped
-      loop: '{{ (_transport_egress_rollback_owned.stdout | from_json).units }}'
-      when: item != 'ripdpi-transport-generation.service'
+    - name: Quiesce owned candidate processes before restoring accepted authority
+      ansible.builtin.include_tasks: quiesce.yml
     - name: Inspect prior accepted generation before removing candidate vendor isolation
       ansible.builtin.command:
         argv:

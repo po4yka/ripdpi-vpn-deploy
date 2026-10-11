@@ -8,6 +8,8 @@ Full-stack Molecule scenarios keep the default task/recap callback stream with J
 
 Both full-stack scenarios import `molecule/prepare-transport-credentials.yml` through their preparation entrypoints, establishing owned runtime mount propagation and proving genuine `LoadCredential` delivery before transport convergence.
 
+**Protected site staging has one compensation owner** — explicit static role imports keep protected preparation, Xray/self-steal/XHTTP/Hysteria staging, shared activation and ingress compensation commit in one rescued block. It closes before unrelated runtime roles. Failure quiesces candidate transports, restores matching protected Nginx authority, then resumes accepted egress. Static imports expose their defaults to preflight just as the prerequisite roles do; shared protocol tags select the full protected sequence.
+
 **Protected frontends share one egress generation** — site stages the normalizer, private native gateways and both enabled Xray/Hysteria frontends before activation. Protected transport tags select both frontend consumers so internal authority changes cannot leave one with stale credentials. Host and namespace guards precede listeners; subscription-only and disabled profiles retire consumers first. Hysteria-only hosts acquire the shared pinned Xray runtime without creating a REALITY frontend.
 
 Credential rotation stages enabled protected frontends through these same roles

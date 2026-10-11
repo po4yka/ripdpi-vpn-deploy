@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+- Site staging defers frontend rescue to the protected site transaction, which restores matching ingress before accepted frontend recovery. Standalone role reconciliation keeps its own guarded rollback.
+
 - The guarded generation is the sole frontend lifecycle owner. Candidate
   validation and whole-route snapshot/quiescence precede changed publication;
   activation reloads systemd and requires authenticated readiness. No delayed
