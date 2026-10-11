@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: ops-1791482216074755-make-project-skills-executable-for-node-deployment-and-acceptance
 created: 2026-10-08
-updated: 2026-10-09
+updated: 2026-10-11
 related_tasks: []
-status_detail: Local gate and exact-source PR checks passed; implementation awaits PR review and integration.
+status_detail: "Integrated source cf01f94a640913412f3316b5cb288881639712ce passed all protected-main hosted checks in run 38134843683; recorded source scope and external qualifications are preserved. Archive-readiness verification passed; authorized lifecycle completion is in progress."
 ---
 
 ## Goal

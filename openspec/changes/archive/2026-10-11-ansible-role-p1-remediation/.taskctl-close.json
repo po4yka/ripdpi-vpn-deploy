@@ -1,0 +1,11 @@
+{
+  "change": "ansible-role-p1-remediation",
+  "evidence_summary": "Integrated source cf01f94a640913412f3316b5cb288881639712ce passed protected-main CI run 38134843683 with complete native, role and full-stack coverage; recorded local gates and independent reviews remain applicable. Review evidence reconciled in 6ae99c95; OpenSpec archived with six requirements synchronized. Source-only completion; no new deployment.",
+  "execution_sha256": "cf2d5826da9b18891587b0eef930a0c061ce6f07de74d04b85ad44af5c18bfec",
+  "issue_sha256": "b657cf5883f1e2600ec801100795185a2361db207458104c648a6fc4f41308d3",
+  "outcome": "done",
+  "prepared_at": "2026-10-11T12:03:31Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SEC-1791545689674403"
+}

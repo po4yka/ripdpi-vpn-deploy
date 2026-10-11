@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: provider-management-isolation
 created: 2026-10-09
-updated: 2026-10-09
+updated: 2026-10-11
 related_tasks: []
-status_detail: All actionable P1/P2 source findings addressed; complete make check passed and independent review approves. P2 source 4c600d43536c2c1b1ab09b09fc9af4d5fafa1743 is published on PR 281; final-head hosted results are pending. No live acceptance or closure claimed.
+status_detail: "Integrated source cf01f94a640913412f3316b5cb288881639712ce passed all protected-main hosted checks in run 38134843683; recorded source scope and external qualifications are preserved. Archive-readiness verification passed; authorized lifecycle completion is in progress."
 ---
 
 ## Goal

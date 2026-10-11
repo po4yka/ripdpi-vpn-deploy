@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: ansible-role-p2-remediation
 created: 2026-10-09
-updated: 2026-10-10
+updated: 2026-10-11
 related_tasks: []
-status_detail: All 32 confirmed P2 paths covered in existing PR282; both independent reviews approve; local full gate and all82 exact-source hosted checks pass. Source-only scope; no rollout or archival.
+status_detail: "Integrated source cf01f94a640913412f3316b5cb288881639712ce passed all protected-main hosted checks in run 38134843683; recorded source scope and external qualifications are preserved. Archive-readiness verification passed; authorized lifecycle completion is in progress."
 ---
 
 ## Goal

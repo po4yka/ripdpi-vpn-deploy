@@ -1,0 +1,11 @@
+{
+  "change": "deployment-audit-remediation",
+  "evidence_summary": "Integrated source cf01f94a640913412f3316b5cb288881639712ce passed protected-main CI run 38134843683 with complete portable, native, role, failure and full-stack coverage. Recorded local gates and independent reviews remain applicable; review evidence reconciled in 6ae99c95 and OpenSpec requirements synchronized. Source-only closure preserves all recorded external capability qualifications.",
+  "execution_sha256": "2f3d96d2b9bb6be9cf32154559e756fd30ac1b3e149de2e58ed03b29f8bd0a3d",
+  "issue_sha256": "2de9bf7d881114e89e3544189058d671ed57dfdef8ff9eae96a5b7cc275a5636",
+  "outcome": "done",
+  "prepared_at": "2026-10-11T12:19:36Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SEC-1791471757439452"
+}

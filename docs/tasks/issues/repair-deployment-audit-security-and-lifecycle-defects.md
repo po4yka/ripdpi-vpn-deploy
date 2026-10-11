@@ -2,7 +2,7 @@
 id: SEC-1791471757439452
 title: Repair deployment audit security and lifecycle defects
 kind: bug
-status: review
+status: done
 area: security
 priority: high
 risk: high
@@ -12,9 +12,12 @@ blocked_by: []
 spec_mode: required
 openspec_change: deployment-audit-remediation
 created: 2026-10-08
-updated: 2026-10-09
+updated: 2026-10-11
 related_tasks: []
 status_detail: Six review corrections verified by full local and exact-source hosted gates; main conflicts resolved
+closed_at: "2026-10-11T12:19:36Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Integrated source cf01f94a640913412f3316b5cb288881639712ce passed protected-main CI run 38134843683 with complete portable, native, role, failure and full-stack coverage. Recorded local gates and independent reviews remain applicable; review evidence reconciled in 6ae99c95 and OpenSpec requirements synchronized. Source-only closure preserves all recorded external capability qualifications.
 ---
 
 ## Goal

@@ -14,7 +14,7 @@ openspec_change: resolved-destination-boundary
 created: 2026-10-10
 updated: 2026-10-11
 related_tasks: [SEC-1791471757439452, SEC-1791545689674403, ANS-1791562764586678]
-status_detail: Implemented source f8055ff0 passed complete local make check, native/role/full-stack validation, independent review and every hosted check. Registered WARP vendor forwarding and deployment remain separately authorized and unverified.
+status_detail: "Integrated source cf01f94a640913412f3316b5cb288881639712ce passed all protected-main hosted checks in run 38134843683; recorded source scope and external qualifications are preserved. Final local evidence reconciliation is pending before authorized closure. Registered WARP TCP/UDP completion was confirmed by the owner on 2026-10-11; no new vendor run is claimed."
 ---
 
 ## Goal

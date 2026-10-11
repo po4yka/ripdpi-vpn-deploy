@@ -2,7 +2,7 @@
 id: SEC-1791545689674403
 title: Repair critical Ansible role audit security and availability paths
 kind: bug
-status: review
+status: done
 area: security
 priority: critical
 risk: high
@@ -12,9 +12,12 @@ blocked_by: []
 spec_mode: required
 openspec_change: ansible-role-p1-remediation
 created: 2026-10-09
-updated: 2026-10-09
+updated: 2026-10-11
 related_tasks: []
 status_detail: Source PR 282 prepared; exact source 2c3a311d passed all hosted workflows, local gates and independent review. Deployment acceptance remains outside this task.
+closed_at: "2026-10-11T12:03:31Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Integrated source cf01f94a640913412f3316b5cb288881639712ce passed protected-main CI run 38134843683 with complete native, role and full-stack coverage; recorded local gates and independent reviews remain applicable. Review evidence reconciled in 6ae99c95; OpenSpec archived with six requirements synchronized. Source-only completion; no new deployment.
 ---
 
 ## Goal
