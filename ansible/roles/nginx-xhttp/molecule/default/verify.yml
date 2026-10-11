@@ -8,14 +8,46 @@
         cmd: nginx -t
       changed_when: false
 
-    - name: Public hostname resolves through the managed hosts entry
-      ansible.builtin.shell:
-        cmd: |
-          set -o pipefail
-          getent ahostsv4 vpn.example.test \
-            | awk '$1 == "127.0.0.1" { found=1 } END { exit !found }'
-        executable: /bin/bash
-      changed_when: false
+    - name: Inspect the private pre-convergence hosts digest fixture
+      ansible.builtin.stat:
+        path: /run/vpn-nginx-hosts-before.sha256
+        follow: false
+      register: nginx_fixture_hosts_digest
+      no_log: true
+
+    - name: Require the original hosts witness to retain private root ownership
+      ansible.builtin.assert:
+        that:
+          - nginx_fixture_hosts_digest.stat.isreg | default(false)
+          - not (nginx_fixture_hosts_digest.stat.islnk | default(false))
+          - nginx_fixture_hosts_digest.stat.uid == 0
+          - nginx_fixture_hosts_digest.stat.gid == 0
+          - nginx_fixture_hosts_digest.stat.mode == '0600'
+      no_log: true
+
+    - name: Read the private pre-convergence hosts digest
+      ansible.builtin.slurp:
+        src: /run/vpn-nginx-hosts-before.sha256
+      register: nginx_fixture_hosts_original
+      no_log: true
+
+    - name: Hash global hosts after convergence without exposing its contents
+      ansible.builtin.stat:
+        path: /etc/hosts
+        follow: false
+        get_checksum: true
+        checksum_algorithm: sha256
+      register: nginx_fixture_hosts_after
+      no_log: true
+
+    - name: Require nginx convergence to preserve the exact global hosts bytes
+      ansible.builtin.assert:
+        that:
+          - nginx_fixture_hosts_after.stat.isreg | default(false)
+          - not (nginx_fixture_hosts_after.stat.islnk | default(false))
+          - (nginx_fixture_hosts_original.content | b64decode | trim) is match('^[0-9a-f]{64}$')
+          - nginx_fixture_hosts_after.stat.checksum == (nginx_fixture_hosts_original.content | b64decode | trim)
+      no_log: true
 
     - name: Site is enabled
       ansible.builtin.stat:

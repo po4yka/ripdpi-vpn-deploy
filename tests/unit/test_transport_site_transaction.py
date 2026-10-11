@@ -1,5 +1,6 @@
 """Actual localhost Ansible composition failures; no native runtime claim."""
 import copy
+from html.parser import HTMLParser
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,61 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 SITE = ROOT / 'ansible/playbooks/site.yml'
+
+
+def _canonical_href(html):
+    class CanonicalLinks(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.links = []
+            self.in_head = False
+            self.in_body = False
+            self.heads = 0
+            self.invalid = False
+
+        def handle_starttag(self, tag, attributes):
+            if tag == 'body':
+                self.in_body = True
+                self.in_head = False
+            if tag == 'head':
+                self.heads += 1
+                if self.in_body or self.heads != 1:
+                    self.invalid = True
+                self.in_head = not self.in_body
+            if tag != 'link':
+                return
+            rels = [value for key, value in attributes if key == 'rel']
+            if not any('canonical' in (value or '').lower().split() for value in rels):
+                return
+            hrefs = [value for key, value in attributes if key == 'href']
+            if not self.in_head or len(rels) != 1 or len(hrefs) != 1:
+                self.invalid = True
+            self.links.append(hrefs[0] if len(hrefs) == 1 else None)
+
+        def handle_endtag(self, tag):
+            if tag == 'head':
+                self.in_head = False
+
+    page = CanonicalLinks()
+    page.feed(html)
+    page.close()
+    assert not page.invalid and len(page.links) == 1
+    assert page.links[0]
+    return page.links[0]
+
+
+@pytest.mark.parametrize('malformed', [
+    '<head><link rel="canonical" href="https://wrong.example.invalid/" href="https://new-origin.example.invalid/"></head>',
+    '<head><link rel="alternate" rel="canonical" href="https://new-origin.example.invalid/"></head>',
+    '<body><link rel="canonical" href="https://new-origin.example.invalid/"></body>',
+    '<head><body><link rel="canonical" href="https://new-origin.example.invalid/"></body>',
+    '<head></head><body><head><link rel="canonical" href="https://new-origin.example.invalid/"></head></body>',
+    '<head><link rel="canonical"></head>',
+    '<head><link rel="canonical" href="https://new-origin.example.invalid/"><link rel="alternate canonical" href="https://wrong.example.invalid/"></head>',
+])
+def test_canonical_extraction_rejects_ambiguous_or_non_head_links(malformed):
+    with pytest.raises(AssertionError):
+        _canonical_href(malformed)
 
 
 def protected():
@@ -249,7 +305,10 @@ def test_public_pages_and_assets_are_staged_by_actual_ansible_without_direct_pub
     by_path = {row['path']: row for row in rows}
     for filename in ['favicon.svg', 'logo.svg', '404.html', 'assets/site.css']:
         assert base64.b64decode(by_path['/var/www/public-site/' + filename]['content_b64']) == (source_role / 'files/public-site' / filename).read_bytes()
-    assert b'https://new-origin.example.invalid' in base64.b64decode(by_path['/var/www/public-site/index.html']['content_b64'])
+    from urllib.parse import urlsplit
+    canonical = urlsplit(_canonical_href(base64.b64decode(by_path['/var/www/public-site/index.html']['content_b64']).decode()))
+    assert canonical.scheme == 'https' and canonical.netloc == 'new-origin.example.invalid'
+    assert canonical.path == '/' and not canonical.query and not canonical.fragment
     # Candidate-only: no task in this producer can write /var/www or /etc/hosts.
     assert all('ansible.builtin.copy' not in value and 'ansible.builtin.template' not in value for value in tasks)
     enabled = (source_role / 'tasks/enable.yml').read_text()

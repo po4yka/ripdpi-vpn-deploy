@@ -430,3 +430,174 @@ def test_public_origin_pages_assets_and_retirement_restore_exact_authority(fixtu
     assert not (root / names[-1]).exists()
     tx.site_transaction('restore', context)
     assert {path: tx.capture(Path(path)) for path in before} == before
+
+
+def interrupted_publication(tx, context, phase, receipt_state='prior'):
+    state = install_accepted(tx, context)
+    document = desired(tx, context)
+    path = Path(document['files'][0]['path'])
+    receipt = state / 'nginx-xhttp.activated.json'
+    prior, original = tx.capture(receipt), tx.capture(path)
+    next_receipt = tx.receipt_row(tx.owned_receipt(document))
+    tx.persist(state / 'pending.json', {
+        'schema': 2, 'phase': phase, 'candidate': 'candidate-' + '0' * 32,
+        'request': document, 'files': {str(path): original}, 'active': False,
+        'service': {'active': False, 'exists': True, 'unit_file_state': 'disabled'},
+        'owner': document['owner'], 'receipt': prior, 'next_receipt': next_receipt})
+    if phase != 'prepared':
+        tx.apply(path, {k:v for k,v in document['files'][0].items() if k != 'path'}, [])
+    if receipt_state == 'next':
+        tx.apply(receipt, next_receipt, [])
+    elif receipt_state == 'absent':
+        tx.clear(receipt)
+    return state, document, path, receipt
+
+
+@pytest.mark.parametrize('phase,receipt_state', [
+    *[(phase, 'prior') for phase in ['prepared', 'publishing', 'activating', 'activated', 'recovering']],
+    ('activated', 'next'), ('recovering', 'next'),
+    ('activated', 'absent'), ('recovering', 'absent'),
+])
+def test_publish_entrypoint_recovers_owned_interruption_before_disk_witness_check(fixture, monkeypatch, phase, receipt_state):
+    tx, context, _ = fixture
+    state, document, path, _ = interrupted_publication(tx, context, phase, receipt_state)
+    recovered = []
+    original = tx.recover
+    def observe(pending, unit):
+        result = original(pending, unit)
+        recovered.append(result)
+        return result
+    monkeypatch.setattr(tx, 'recover', observe)
+    result = tx.publish(document)
+    assert recovered == [True]
+    assert result == {'status': 'committed', 'changed': True}
+    assert path.read_bytes() == b'candidate'
+    assert not (state / 'pending.json').exists() and not list(state.glob('candidate-*'))
+
+
+@pytest.mark.parametrize('phase', ['prepared', 'publishing', 'activating'])
+def test_publish_rejects_a_next_receipt_before_its_owned_commit_phase(fixture, phase):
+    tx, context, commands = fixture
+    state, document, path, receipt = interrupted_publication(tx, context, phase, 'next')
+    before = (tx.capture(path), tx.capture(receipt), tx.capture(state / 'pending.json'))
+    with pytest.raises(tx.TransactionError, match='^foreign-receipt$'):
+        tx.publish(document)
+    assert (tx.capture(path), tx.capture(receipt), tx.capture(state / 'pending.json')) == before
+    assert not commands
+
+
+@pytest.mark.parametrize('mutation', ['file', 'receipt'])
+def test_publish_pending_foreign_authority_refuses_before_recovery_mutation(fixture, mutation):
+    tx, context, commands = fixture
+    state, document, path, receipt = interrupted_publication(tx, context, 'activated')
+    if mutation == 'file':
+        path.write_bytes(b'foreign actual bytes')
+    else:
+        value = tx.private_json(receipt)
+        value['fingerprint'] = '0' * 64
+        tx.persist(receipt, value)
+    before = (tx.capture(path), tx.capture(receipt), receipt.stat().st_ino, tx.capture(state / 'pending.json'))
+    with pytest.raises(tx.TransactionError, match='^foreign-(publication|receipt)$'):
+        tx.publish(document)
+    assert (tx.capture(path), tx.capture(receipt), receipt.stat().st_ino, tx.capture(state / 'pending.json')) == before
+    assert not commands
+
+
+def test_check_mode_owned_pending_refuses_without_recovery_or_publication(fixture):
+    tx, context, commands = fixture
+    state, document, path, receipt = interrupted_publication(tx, context, 'prepared')
+    document['check'] = True
+    before = (tx.capture(path), tx.capture(receipt), tx.capture(state / 'pending.json'))
+    with pytest.raises(tx.TransactionError, match='^recovery-required$'):
+        tx.publish(document)
+    assert (tx.capture(path), tx.capture(receipt), tx.capture(state / 'pending.json')) == before
+    assert not commands
+
+
+@pytest.mark.parametrize('mutation', ['nonabsent-foreign', 'undeclared-missing'])
+def test_declared_retirement_never_adopts_foreign_bytes_or_undeclared_absence(fixture, mutation):
+    tx, context, commands = fixture
+    state = install_accepted(tx, context)
+    document = desired(tx, context)
+    path = Path(document['files'][0]['path'])
+    if mutation == 'nonabsent-foreign':
+        path.write_bytes(b'foreign body')
+        document['files'] = [{'path': str(path), 'kind': 'absent'}]
+    else:
+        path.unlink()
+    receipt = state / 'nginx-xhttp.activated.json'
+    before = (tx.capture(path), tx.capture(receipt), receipt.stat().st_ino)
+    with pytest.raises(tx.TransactionError, match='^foreign-publication$'):
+        tx.publish(document)
+    assert (tx.capture(path), tx.capture(receipt), receipt.stat().st_ino) == before and not commands
+
+
+def test_explicit_already_absent_retirement_reaches_active_runtime_adoption(fixture, monkeypatch):
+    tx, context, _ = fixture
+    state = install_accepted(tx, context)
+    document = desired(tx, context)
+    path = Path(document['files'][0]['path'])
+    path.unlink()
+    document['files'] = [{'path': str(path), 'kind': 'absent'}]
+    monkeypatch.setattr(tx, 'service_state', lambda unit: {'active': True, 'exists': True, 'unit_file_state': 'disabled'})
+    class AdoptionBoundary(BaseException):
+        pass
+    # Observe actual publisher selection before any platform-specific runtime
+    # operation. Real nginx reload/listener retirement remains a native proof.
+    def adoption(unit):
+        assert unit == 'nginx.service'
+        raise AdoptionBoundary()
+    monkeypatch.setattr(tx, 'nginx_master', adoption)
+    with pytest.raises(AdoptionBoundary):
+        tx.publish(document)
+    assert tx.private_json(state / 'pending.json')['phase'] == 'activating'
+
+
+def test_typed_prune_accounts_for_owned_release_pairs_already_absent(fixture, monkeypatch):
+    tx, context, _ = fixture
+    state = install_accepted(tx, context)
+    owner = next(value for value in tx.site_request(context) if value['owner'] == 'reality-self-steal')
+    root = Path(owner['roots'][0]) / 'releases'
+    release = root / ('a' * 64)
+    kept = root / ('b' * 64)
+    receipt_path = state / 'reality-self-steal.activated.json'
+    receipt = tx.private_json(receipt_path)
+    for pair in [release, kept]:
+        for name in ['fullchain.pem', 'privkey.pem']:
+            path = pair / name
+            row = {'kind': 'file', 'uid': os.geteuid(), 'gid': os.getegid(), 'mode': 0o600, 'content_b64': base64.b64encode(b'owned pair authority').decode()}
+            tx.apply(path, row, [])
+            receipt['files'][str(path)] = tx.witness(row)
+    tx.persist(receipt_path, receipt)
+    for path in release.iterdir():
+        path.unlink()
+    owner['prune_releases'] = {'root': str(root), 'keep': kept.name}
+    expanded = tx.expand_release_prune(owner, receipt['files'])
+    removed = {row['path'] for row in expanded['files'] if row['kind'] == 'absent'}
+    assert {str(release / name) for name in ['fullchain.pem', 'privkey.pem']} <= removed
+    assert not {str(kept / name) for name in ['fullchain.pem', 'privkey.pem']} & removed
+    assert tx.verify_witnesses(receipt['files'], removed) is True
+    owner['prune_releases']['keep'] = None
+    monkeypatch.setattr(tx, 'inactive_absence_receipt', lambda unit, value: {**value, 'active': False, 'boot_id': '00000000-0000-0000-0000-000000000000', 'inactive_after_ticks': 0})
+    assert tx.publish(owner)['status'] in {'committed', 'unchanged'}
+    assert not list(root.glob('*/*'))
+    assert tx.private_json(receipt_path) is None  # Inactive changed publication claims no live adoption.
+    assert tx.publish(owner) == {'status': 'unchanged', 'changed': False}
+    assert all(row['kind'] == 'absent' for row in tx.private_json(receipt_path)['files'].values())
+
+
+def test_site_authority_does_not_admit_external_deletion_as_retirement(fixture, monkeypatch):
+    tx, context, commands = fixture
+    state = install_accepted(tx, context)
+    tx.site_transaction('begin', context)
+    document = desired(tx, context)
+    path = Path(document['files'][0]['path'])
+    path.unlink()
+    document['files'] = [{'path': str(path), 'kind': 'absent'}]
+    monkeypatch.setattr(tx, 'inactive_absence_receipt', lambda unit, value: {**value, 'active': False, 'boot_id': '00000000-0000-0000-0000-000000000000', 'inactive_after_ticks': 0})
+    monkeypatch.setattr(tx, 'boot_clock', lambda: ('00000000-0000-0000-0000-000000000000', 1))
+    before = (tx.capture(state / 'site.json'), tx.capture(state / 'nginx-xhttp.activated.json'))
+    with pytest.raises(tx.TransactionError, match='^foreign-publication$'):
+        tx.publish(document)
+    assert (tx.capture(state / 'site.json'), tx.capture(state / 'nginx-xhttp.activated.json')) == before
+    assert not commands

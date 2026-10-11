@@ -550,7 +550,7 @@ def validate(manifest):
     command(manifest["validate_argv"])
 
 
-def expand_release_prune(document):
+def expand_release_prune(document, owned_files=()):
     """Resolve only self-steal's immutable pair namespace under the unit lock."""
     prune = document["prune_releases"]
     if prune is None:
@@ -558,9 +558,28 @@ def expand_release_prune(document):
     result = copy.deepcopy(document)
     root = Path(prune["root"])
     safe(root, missing=True)
+    explicit = {row["path"]: row for row in result["files"]}
+    # A known owned release may already be absent while its listener is cached.
+    # The typed prune declaration still requires its retirement and adoption.
+    for name in owned_files:
+        path = Path(name)
+        if not path.is_relative_to(root):
+            continue
+        parts = path.relative_to(root).parts
+        if (len(parts) != 2 or not re.fullmatch(r"[0-9a-f]{64}", parts[0])
+                or parts[1] not in {"fullchain.pem", "privkey.pem"}
+                or parts[0] == prune["keep"]):
+            continue
+        row = {"path": name, "kind": "absent"}
+        if name in explicit and explicit[name] != row:
+            raise TransactionError("release-prune-conflict")
+        if name not in explicit:
+            if len(result["files"]) >= 128:
+                raise TransactionError("release-capacity")
+            result["files"].append(row)
+            explicit[name] = row
     if not root.exists():
         return result
-    explicit = {row["path"]: row for row in result["files"]}
     releases = []
     with os.scandir(root) as entries:
         for entry in entries:
@@ -794,10 +813,16 @@ def validate_receipt_row(row, owner, unit):
     validate_receipt(json.loads(raw), owner, unit)
 
 
-def verify_witnesses(files):
+def verify_witnesses(files, declared_absent=()):
+    retired = False
     for path, row in files.items():
-        if witness(capture(Path(path))) != row:
+        observed = witness(capture(Path(path)))
+        if observed != row:
+            if observed == {"kind": "absent"} and path in declared_absent:
+                retired = True
+                continue
             raise TransactionError("foreign-publication")
+    return retired
 
 
 def owned_receipt(document, files=None, roots=None):
@@ -1215,7 +1240,8 @@ def publish(document):
     admission_receipt = private_json(STATE_ROOT / document["unit"] / (document["owner"] + ".activated.json"))
     if admission_receipt is not None:
         validate_receipt(admission_receipt, document["owner"], document["unit"])
-        verify_witnesses(admission_receipt["files"])
+        if document["check"]:
+            verify_witnesses(admission_receipt["files"])
     previous = {row["path"]: capture(Path(row["path"])) for row in document["files"]}
     total = sum(len(json.dumps(row)) for row in previous.values())
     if total > LIMIT:
@@ -1258,15 +1284,15 @@ def publish(document):
             raise TransactionError("unsafe-lock")
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         recovered = recover(pending, document["unit"])
-        document = expand_release_prune(logical_document)
-        request(document)
         receipt = state / (document["owner"] + ".activated.json")
         receipt_data = private_json(receipt)
         if receipt_data is not None:
             validate_receipt(receipt_data, document["owner"], document["unit"])
-            verify_witnesses(receipt_data["files"])
-        prior_receipt = capture(receipt)
+        document = expand_release_prune(logical_document, () if receipt_data is None else receipt_data["files"])
+        request(document)
         removed = {row["path"] for row in document["files"] if row["kind"] == "absent"}
+        retired = receipt_data is not None and verify_witnesses(receipt_data["files"], removed)
+        prior_receipt = capture(receipt)
         retained = {} if receipt_data is None else {
             path: row for path, row in receipt_data["files"].items()
             if row["kind"] != "absent" and path not in removed}
@@ -1276,7 +1302,7 @@ def publish(document):
                for row in logical_document["files"]},
         }, merged_roots(document["roots"] + ([] if receipt_data is None else receipt_data["roots"])))
         validate_receipt(expected_receipt, document["owner"], document["unit"])
-        activation_due = receipt_data != expected_receipt
+        activation_due = retired or receipt_data != expected_receipt
         # Re-capture under the shared per-unit writer lock.
         previous = {
             row["path"]: capture(Path(row["path"])) for row in document["files"]
@@ -1294,6 +1320,7 @@ def publish(document):
         inactive_adoption = None
         if (
             not changed
+            and not retired
             and previous_service["active"]
             and all(row["kind"] == "absent" for row in document["files"])
             and receipt_data is not None

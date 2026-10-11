@@ -56,11 +56,19 @@ def worker(target, *args):
     stop = threading.Event()
     failures = []
     def invoke():
+        returned = False
         try:
             target(stop, *args)
-        except BaseException:
+            returned = True
+        except Exception:
             failures.append(True)
-            stop.set()
+        finally:
+            # Control exceptions remain uncaught in the child, but any abnormal
+            # worker exit must also make a successful parent scope fail.
+            if not returned:
+                if not failures:
+                    failures.append(True)
+                stop.set()
     thread = threading.Thread(target=invoke, daemon=True)
     try:
         thread.start()

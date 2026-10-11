@@ -57,7 +57,7 @@ defaults. Don't mix these — XHTTP needs long-lived streams.
 The shared publisher journals complete prior/desired rows, exact boot/running
 state and a versioned phase before each live boundary. Recognized interruption
 recovers only that write set under the unit lock, restores prior service state,
-and then re-converges normally. Foreign bytes and unknown journals fail closed.
+and then re-converges normally. Foreign bytes and unknown journals fail closed. Ordinary publication checks disk witnesses after locked recovery, so accepted old or desired journal bytes can compensate before reconvergence. Already absent explicitly retired paths, including receipt-owned certificate pairs within the typed self-steal prune namespace, still require active runtime adoption. Changed non-absent bytes, undeclared paths and foreign receipts refuse; site compensation keeps strict witness admission.
 Private per-owner receipts bind stable managed authority; a missing/stale receipt
 forces adoption even when disk bytes are unchanged. Runtime validation precedes
 the fsynced receipt. Reload also requires a fresh stable live worker pool under
@@ -80,6 +80,8 @@ malformed/foreign private authority refuse. This preserves first-to-second
 shared-role idempotence without claiming an inactive unit adopted configuration.
 
 ## What's done well
+
+- **Molecule proves global hosts preservation** — prepare retains only a private root-owned SHA256 witness of `/etc/hosts`; verification requires identical post-convergence bytes and retains all real HTTPS checks through explicit local resolution.
 
 - **SOPS-delivered public certificate** — the role writes `nginx_xhttp.cert_pem` and `key_pem` to the nginx TLS directory with restricted key permissions. Certificate issuance and renewal remain operator-owned; `check-certs.sh` verifies SAN, expiry, and key match before deploy.
 - **Complete candidate before publication** — `tasks/transaction.yml` accepts an exact owned write set, roots, validator argv and target unit. It stages full roots, validates at actual absolute paths in a private mount namespace, then publishes under a per-unit lock. Ordinary activation failure restores prior bytes, runtime and exact boot enablement; failed compensation retains a private pending snapshot and refuses reuse. Ordinary candidate-preparation failure removes only this invocation’s pending snapshot while preserving live bytes, so correcting an unrelated FIFO permits a valid retry. Once publication or activation may occur, failed compensation retains recovery authority. Credential roots are bound to the exact unit credential paths only inside validation namespace. Check mode predicts changes without creating state or activating runtime.

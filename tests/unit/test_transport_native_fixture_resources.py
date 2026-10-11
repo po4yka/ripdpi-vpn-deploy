@@ -372,3 +372,25 @@ def test_real_pump_forwards_frames_and_stops_before_socket_scope_closes(monkeypa
                 receiver.send(b"owned-reply")
                 assert sender.recv(4096) == b"owned-reply"
             assert counts["tun_frames"] == 2 and counts["recipient_tun_frames"] == 1
+
+
+@pytest.mark.parametrize('error', [OSError, RuntimeError, SystemExit])
+@pytest.mark.parametrize('parent_failure', [False, True])
+def test_worker_abnormal_exit_surfaces_without_masking_parent_failure(monkeypatch, error, parent_failure):
+    module = load_fixture('transport_warp_tun', monkeypatch)
+    started = threading.Event()
+    uncaught = []
+    monkeypatch.setattr(threading, 'excepthook', lambda args: uncaught.append(args.exc_type))
+
+    def target(stop):
+        started.set()
+        raise error('owned-child-failure')
+
+    expected = ValueError if parent_failure else RuntimeError
+    message = '^owned-parent-failure$' if parent_failure else '^owned-worker-failed$'
+    with pytest.raises(expected, match=message):
+        with module.worker(target):
+            assert started.wait(1)
+            if parent_failure:
+                raise ValueError('owned-parent-failure')
+    assert uncaught == ([SystemExit] if error is SystemExit else [])
