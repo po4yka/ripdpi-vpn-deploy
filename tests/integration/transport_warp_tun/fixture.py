@@ -1,5 +1,6 @@
 """Disconnected IP-frame TUN pump; no vendor account or replacement proxy."""
 from __future__ import annotations
+from contextlib import ExitStack
 import ctypes
 import fcntl
 import hashlib
@@ -31,19 +32,27 @@ def run(*args, data=None):
 
 
 def tun(namespace, name):
-    original = os.open('/proc/self/ns/net', os.O_RDONLY)
-    selected = os.open('/run/netns/'+namespace, os.O_RDONLY)
-    libc = ctypes.CDLL(None, use_errno=True)
-    try:
-        if libc.setns(selected, 0x40000000):
-            raise OSError(ctypes.get_errno(), 'owned-setns-failed')
-        fd = os.open('/dev/net/tun', os.O_RDWR | os.O_NONBLOCK)
-        fcntl.ioctl(fd, 0x400454ca, struct.pack('16sH', name.encode(), 0x1001))
+    with ExitStack() as namespaces:
+        original = os.open('/proc/self/ns/net', os.O_RDONLY)
+        namespaces.callback(os.close, original)
+        selected = os.open('/run/netns/'+namespace, os.O_RDONLY)
+        namespaces.callback(os.close, selected)
+        libc = ctypes.CDLL(None, use_errno=True)
+        fd = None
+        try:
+            try:
+                if libc.setns(selected, 0x40000000):
+                    raise OSError(ctypes.get_errno(), 'owned-setns-failed')
+                fd = os.open('/dev/net/tun', os.O_RDWR | os.O_NONBLOCK)
+                fcntl.ioctl(fd, 0x400454ca, struct.pack('16sH', name.encode(), 0x1001))
+            finally:
+                if libc.setns(original, 0x40000000):
+                    raise OSError(ctypes.get_errno(), 'owned-setns-restore-failed')
+        except BaseException:
+            if fd is not None:
+                os.close(fd)
+            raise
         return fd
-    finally:
-        if libc.setns(original, 0x40000000):
-            raise OSError(ctypes.get_errno(), 'owned-setns-restore-failed')
-        os.close(original); os.close(selected)
 
 
 PEER = r'''

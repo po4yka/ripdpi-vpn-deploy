@@ -16,6 +16,8 @@
 
 **Transport boundary proof uses real protocol paths** — portable tests cover typed authority and socket contracts; disconnected Linux native tests use the pinned gateways, sealed libc/NSS, real REALITY/Vision and XHTTP TLS frontends, and Hysteria TCP/UDP. Kernel tests count forbidden endpoint contacts after earlier ACCEPT and DNAT, while public traffic remains positive. Active lifetime and quiet quarantine are measured once in the common helper lane. An owned TUN fixture does not establish vendor WARP registration or live acceptance.
 
+Native fixture configuration is written to private `0600` candidates and atomically published; TUN descriptors transfer only after setup and namespace restoration succeed, with failed paths closed.
+
 **Temporary validation reporting uses actual localhost Ansible** — two runs
 execute the owned candidate lifecycle and retain accepted config/helper/unit/TLS
 bytes and metadata. Real Hysteria semantic refusal must clean up without

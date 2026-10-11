@@ -25,6 +25,27 @@
     xray_fallback_port: 2053
     p0_reality_flow_mode: vision
     hysteria_port: 443
+    watchdog_failure_runtime_binary: /opt/watchdog-fixture/releases/v1/xray
+    watchdog_failure_asset_dir: /opt/watchdog-fixture/releases/v1/assets
+    watchdog_failure_server_config:
+      outbounds:
+        - tag: direct
+          protocol: socks
+          settings:
+            servers:
+              - address: 127.0.0.1
+                port: 12080
+                users:
+                  - user: normalizer-direct-xray
+                    pass: synthetic-watchdog-failure-authority-00000000000000000000
+        - tag: block
+          protocol: blackhole
+          settings:
+            response: {type: none}
+      routing:
+        domainStrategy: AsIs
+        rules:
+          - {type: field, network: 'tcp,udp', outboundTag: direct}
     p0_reality_shapes:
       vision:
         client_flow: "xtls-rprx-vision"
@@ -246,10 +267,12 @@
     - name: Drop fake Xray server config
       ansible.builtin.copy:
         dest: /etc/xray/config.json
-        content: "{}\n"
+        content: "{{ watchdog_failure_server_config | to_nice_json }}\n"
         owner: root
         group: root
-        mode: "0644"
+        mode: "0600"
+      no_log: true
+      diff: false
 
     - name: Drop TCP listener used by the liveness-green Xray stub
       ansible.builtin.copy:
@@ -271,9 +294,20 @@
                   connection, _ = server.accept()
                   connection.close()
 
+    - name: Create versioned failure-fixture runtime and asset directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - "{{ watchdog_failure_runtime_binary | dirname }}"
+        - "{{ watchdog_failure_asset_dir }}"
+
     - name: Drop liveness-green protocol-red Xray stub
       ansible.builtin.copy:
-        dest: /usr/local/bin/xray
+        dest: "{{ watchdog_failure_runtime_binary }}"
         owner: root
         group: root
         mode: "0755"
@@ -288,6 +322,14 @@
           fi
           exec /usr/local/sbin/watchdog-tcp-stub.py 443
 
+    - name: Expose failure-fixture CLI without choosing its accepted runtime
+      ansible.builtin.file:
+        src: "{{ watchdog_failure_runtime_binary }}"
+        dest: /usr/local/bin/xray
+        state: link
+        owner: root
+        group: root
+
     - name: Install fake Xray service
       ansible.builtin.copy:
         dest: /etc/systemd/system/xray.service
@@ -299,8 +341,9 @@
           Description=Test Xray liveness stub
           [Service]
           Type=simple
-          Environment=XRAY_LOCATION_ASSET=/usr/local/share/xray
-          ExecStart=/usr/local/bin/xray run -config /etc/xray/config.json
+          Environment=XRAY_RUNTIME_BINARY={{ watchdog_failure_runtime_binary }}
+          Environment=XRAY_LOCATION_ASSET={{ watchdog_failure_asset_dir }}
+          ExecStart={{ watchdog_failure_runtime_binary }} run -config /etc/xray/config.json
           Restart=on-failure
 
     - name: Start fake Xray service

@@ -11,6 +11,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 
@@ -53,10 +54,17 @@ class NativeStack:
 
     def file(self, name, value, group=None):
         path = self.library / name
-        path.write_text(value)
-        path.chmod(0o640 if group else 0o600)
-        if group:
-            os.chown(path, 0, self.gids[group])
+        fd, temporary = tempfile.mkstemp(prefix=".owned-config-", dir=self.library)
+        try:
+            with os.fdopen(fd, "w") as stream:
+                stream.write(value)
+                stream.flush()
+                if group:
+                    os.fchown(stream.fileno(), 0, self.gids[group])
+                os.fchmod(stream.fileno(), 0o640 if group else 0o600)
+            os.replace(temporary, path)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
         return path
 
     def unit(self, name, argv, user=None, properties=()):
