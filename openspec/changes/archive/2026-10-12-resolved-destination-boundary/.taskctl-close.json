@@ -1,0 +1,11 @@
+{
+  "change": "resolved-destination-boundary",
+  "evidence_summary": "Integrated runtime source cf01f94a640913412f3316b5cb288881639712ce passed all 86 protected-main jobs in run 38134843683. Recorded requirement-specific verification and external qualifications are preserved. Complete local gate components passed: 6,340 portable tests, 22 subtests, 297 CLI tests, 206 baseline transfers and 57 shell tests. Every assertion and deadline is retained; production code is unchanged. Registered WARP TCP/UDP acceptance was owner-confirmed on 2026-10-11; no new vendor or production execution occurred.",
+  "execution_sha256": "508307c10e4bc05820d1a0272b0ea0f9807b35ed02f65f9f9584afa4cd5469c6",
+  "issue_sha256": "f771fb62f2a7bee1b5db5e9644a0406e80c8555d3d59ba7572c89f921576c6e1",
+  "outcome": "done",
+  "prepared_at": "2026-10-11T22:28:43Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SEC-1791617841911853"
+}
