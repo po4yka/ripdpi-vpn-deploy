@@ -14,6 +14,24 @@
 
 ## Design decisions
 
+Runtime audit regressions cover guarded and unguarded Xray log rotation, exact
+producer-owned metric files with foreign-owner, symlink, hardlink and ancestor
+refusal, and named AWG observers including a failed secondary instance. Native
+Linux cases clear both IPv6 neighbor caches before strict-firewall exchanges and
+retire metrics written by a real service account. Portable checks do not replace
+these native systemd and packet checks.
+Local Ansible observer fixtures set `become: false` and isolate Ansible config.
+Task slices after AWG normalization supply its names-only output explicitly;
+the dedicated AWG test executes the actual normalization prerequisite.
+
+**Project audit regressions cover operator boundaries** — synthetic Git histories
+isolate ambient Git configuration only in temporary repositories. SSH fixtures
+set their intended group explicitly. Installer tests reject invalid checksums
+and provenance before execution. Host-selection tests cross the actual CLI and
+shell boundaries; token refresh, private locks and promotion tests exercise
+rejection and concurrent callers. These checks do not establish live host,
+provider, release or Linux systemd acceptance.
+
 **Transport boundary proof uses real protocol paths** — portable tests cover typed authority and socket contracts; disconnected Linux native tests use the pinned gateways, sealed libc/NSS, real REALITY/Vision and XHTTP TLS frontends, and Hysteria TCP/UDP. Kernel tests count forbidden endpoint contacts after earlier ACCEPT and DNAT, while public traffic remains positive. Active lifetime and quiet quarantine are measured once in the common helper lane. An owned TUN fixture does not establish vendor WARP registration or live acceptance.
 
 Native fixture configuration is written to private `0600` candidates and atomically published; TUN contexts yield only after setup and namespace restoration succeed. Peer, initial and replacement TUNs, capture sockets and bounded packet workers have lexical ownership; worker teardown precedes descriptor closure on success and failure. Private TUN fixture configs start as `0600` before writing and receive the gateway group only after complete serialization.
