@@ -1,0 +1,23 @@
+{
+  "log": {"loglevel": "warning", "access": "none"},
+  "dns": {
+    "queryStrategy": "UseIP",
+    "servers": [
+
+      {"address": "1.1.1.1", "port": 53, "unexpectedIPs": ["0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/4", "240.0.0.0/4", "::/128", "::1/128", "fc00::/7", "fe80::/10", "ff00::/8"]},
+
+      {"address": "8.8.8.8", "port": 53, "unexpectedIPs": ["0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/4", "240.0.0.0/4", "::/128", "::1/128", "fc00::/7", "fe80::/10", "ff00::/8"]}
+
+    ]
+  },
+  "inbounds": [{
+    "listen": "127.0.0.1",
+    "port": 12090,
+    "protocol": "socks",
+    "settings": {
+      "auth": "password", "udp": true, "ip": "127.0.0.1",
+      "accounts": [{"user": "gateway-direct", "pass": "snapshot direct_gateway_password authority 0000000000000000000000"}]
+    }
+  }],
+  "outbounds": [{"protocol": "freedom", "settings": {"domainStrategy": "ForceIP"}}]
+}

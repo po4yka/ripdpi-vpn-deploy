@@ -14,6 +14,7 @@ import sys
 
 import pytest
 import yaml
+from transport_fixtures import guarded_xray_bytes
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RENDERER = REPO_ROOT / "scripts" / "check-templates-render.py"
@@ -306,7 +307,7 @@ def test_xray_restart_chain_is_inert_in_check_mode() -> None:
     assert len(restart_chain) == 3
     assert all(
         task.get("when")
-        == "not ansible_check_mode and xray_role_enabled | default(true) | bool"
+        == ["not (transport_egress_site_staging | default(false) | bool)", "not ansible_check_mode", "xray_role_enabled | default(true) | bool"]
         for task in restart_chain
     )
 
@@ -352,7 +353,7 @@ def _validation_binary(path: Path, trace: Path) -> None:
         "assert (assets / 'fixture.dat').read_text() == 'validation asset'\n"
         f"Path({str(trace)!r}).write_text(json.dumps({{'argv': sys.argv[1:], 'assets': str(assets)}}))\n"
         "config = json.loads(Path(sys.argv[4]).read_text())\n"
-        "assert config['credential'] in {'outgoing', 'incoming'}\n"
+        "assert config['outbounds'][0]['settings']['servers'][0]['users'][0]['pass'] in {'synthetic-outgoing-authority-00000000000000000000', 'synthetic-incoming-authority-00000000000000000000'}\n"
     )
     path.chmod(0o755)
 
@@ -473,7 +474,7 @@ def test_rollback_validates_before_runtime_change(
     for directory in (current_release, candidate):
         _validation_binary(directory / "xray", trace)
     (tmp_path / "config.json").write_text(
-        "{invalid candidate" if rejects else '{"credential":"outgoing"}\n'
+        "{invalid candidate" if rejects else guarded_xray_bytes('outgoing')
     )
     if scenario == "non-executable":
         (candidate / "xray").chmod(0o644)
@@ -512,7 +513,7 @@ def test_rollback_validates_before_runtime_change(
         assert result.returncode != 0, result.stdout + result.stderr
         assert link.resolve() == current_release
         assert not restart.exists()
-        assert trace.exists() == rejects
+        assert not trace.exists()  # Metadata refusal precedes native execution.
     if trace.exists():
         validation = json.loads(trace.read_text())
         assert validation["assets"] == str(tmp_path / "runtime assets")
@@ -543,13 +544,15 @@ def test_rotation_preserves_immediate_restore_point(
     tasks = [task for task in source["tasks"] if "Xray" in task["name"]]
     current = tmp_path / "config.json"
     previous = tmp_path / "config.json.prev"
-    old_bytes = '{"credential":"outgoing"}\n'
+    old_bytes = guarded_xray_bytes('outgoing')
     if scenario != "first-config":
         current.write_text(old_bytes)
+        os.chown(current, -1, os.getgid())
         current.chmod(0o640)
     previous.write_text("older restore point\n")
+    os.chown(previous, -1, os.getgid())
     previous.chmod(0o640)
-    desired = old_bytes if scenario == "unchanged" else '{"credential":"incoming"}\n'
+    desired = old_bytes if scenario == "unchanged" else guarded_xray_bytes('incoming')
     if scenario == "reject-config":
         desired = "{invalid candidate"
     template = tmp_path / "candidate.j2"
@@ -581,7 +584,7 @@ def test_rotation_preserves_immediate_restore_point(
         result.stdout + result.stderr
     )
     assert trace.exists() == (
-        scenario in {"changed", "first-config", "xhttp-only", "reject-config"}
+        scenario in {"changed", "first-config", "xhttp-only"}
     )
     if trace.exists():
         assert json.loads(trace.read_text())["assets"] == str(

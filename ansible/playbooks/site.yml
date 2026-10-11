@@ -7,6 +7,7 @@
   gather_facts: true
 
   vars:
+    transport_egress_site_staging: true
     vpn_secrets_file: >-
       {{
         lookup('env', 'VPN_SECRETS_FILE')
@@ -17,6 +18,10 @@
     - "{{ vpn_secrets_file }}"
 
   pre_tasks:
+    - name: Preflight enabled transport input semantics
+      ansible.builtin.import_tasks: tasks/transport-input-preflight.yml
+      tags: [always]
+
     - name: Require exact-node controller ownership before convergence
       tags: [always]
       ansible.builtin.assert:
@@ -273,20 +278,16 @@
       when: vpn.enable_tailnet_management | default(false)
       tags: [tailnet-management, security]
 
-    # Verify the optional egress before any Xray render or handler flush can
-    # activate routes that depend on it. The xray tag must retain this gate.
-    - role: warp-outbound
-      vars:
-        warp_outbound_role_enabled: >-
-          {{ (vpn.enable_warp_outbound | default(false)) and not (vpn_subscription_only | default(false)) }}
-      tags: [warp, outbound, xray, p0, p1, transport]
+    - role: transport-egress
+      tasks_from: prepare-site
+      tags: [xray, hysteria, p0, p1, p2, transport]
 
     - role: xray
       vars:
         xray_role_enabled: >-
           {{ ((vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true))) and not
              (vpn_subscription_only | default(false)) }}
-      tags: [xray, p0, p1, transport]
+      tags: [xray, hysteria, p0, p1, p2, transport]
 
     - role: reality-self-steal
       vars:
@@ -316,7 +317,7 @@
       vars:
         hysteria_role_enabled: >-
           {{ (vpn.enable_hysteria | default(true)) and not (vpn_subscription_only | default(false)) }}
-      tags: [hysteria, p2, transport]
+      tags: [xray, hysteria, p0, p1, p2, transport]
 
     - role: amneziawg
       vars:
@@ -413,6 +414,11 @@
 
     - role: observability_agent
       tags: [observability-agent, monitoring]
+
+  post_tasks:
+    - name: Admit protected transports after complete frontend staging
+      ansible.builtin.import_tasks: tasks/transport-egress-activate.yml
+      tags: [xray, hysteria, p0, p1, p2, transport]
 
 - name: Publish and prove the SSH baseline after the VPN stack converges
   hosts: vpn

@@ -1,8 +1,6 @@
 ---
-# xray molecule scenario validates: directory layout, systemd unit shape,
-# config.json renders without secret leaks. It does NOT exercise the binary
-# download (that requires a real Xray release sha256 and would couple the
-# test to upstream availability).
+# Genuine pinned Xray, guarded private adapters and accepted lifecycle run in
+# a disposable systemd container; no synthetic executable substitutes.
 
 dependency:
   name: galaxy

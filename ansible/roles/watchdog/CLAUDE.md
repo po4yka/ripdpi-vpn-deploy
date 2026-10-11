@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+- Server configuration validation derives the accepted executable and asset paths from the loaded Xray unit. The operator CLI link remains available for stats and the separately pinned canary client, but never chooses the accepted server validator.
+
 Budget files are owner-only 0600. Under the parent directory inode lock, a
 known owned single-link 0640 budget migrates only after complete typed payload
 validation, preserving bytes/counters and fsyncing file and directory. Unsafe

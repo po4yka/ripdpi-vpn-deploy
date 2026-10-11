@@ -156,7 +156,11 @@ def test_renderer_accepts_shared_textfile_directory_and_publishes_collector_read
 ) -> None:
     shared = tmp_path / "textfile"
     shared.mkdir()
+    # A macOS /tmp child can inherit an unrelated group, which clears SGID.
+    os.chown(shared, -1, os.getgid())
     shared.chmod(0o3775)
+    assert stat.S_IMODE(shared.stat().st_mode) == 0o3775
+    assert shared.stat().st_gid == os.getgid()
     source = tmp_path / "expected.json"
     source.write_text(json.dumps(_inventory()), encoding="utf-8")
     output = shared / "observability-expected-targets.prom"

@@ -157,7 +157,7 @@ if [[ "${ENABLE_XRAY:-true}" == "true" ]]; then
       bash -c "ss -lnt | awk '{print \$4}' | grep -q ':${server_port}\$'"
   done
   probe_unit "xray.service" "xray config valid" \
-    "$XRAY_VALIDATE_BIN" --binary "$XRAY_BIN" --config /etc/xray/config.json
+    "$XRAY_VALIDATE_BIN" --config /etc/xray/config.json
   probe_unit "xray.service" "xray StatsService query" \
     "$XRAY_BIN" api statsquery "--server=${XRAY_API_SERVER}"
   probe_reality_listeners

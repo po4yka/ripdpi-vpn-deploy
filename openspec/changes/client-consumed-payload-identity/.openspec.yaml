@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-10
+goal: SCR-1791618188806822 Detect client payload drift from every consumed
+  private input

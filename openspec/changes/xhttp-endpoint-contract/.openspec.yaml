@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-10
+goal: XRY-1791617955392712 Align XHTTP endpoint paths forwarded attribution and
+  served origins

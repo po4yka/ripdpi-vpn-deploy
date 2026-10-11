@@ -14,20 +14,26 @@
     argv:
       - /usr/bin/env
       - XRAY_LOCATION_ASSET={{ xray_asset_dir }}
-      - /usr/local/bin/xray
+      - "{{ xray_runtime_binary }}"
       - run
       - -test
       - -config
       - "{{ xray_etc_dir }}/config.json"
   changed_when: false
-  when: not ansible_check_mode and xray_role_enabled | default(true) | bool
+  when:
+    - not (transport_egress_site_staging | default(false) | bool)
+    - not ansible_check_mode
+    - xray_role_enabled | default(true) | bool
   listen: Restart xray
 
 - name: Restart Xray
   ansible.builtin.systemd_service:
     name: xray
     state: restarted
-  when: not ansible_check_mode and xray_role_enabled | default(true) | bool
+  when:
+    - not (transport_egress_site_staging | default(false) | bool)
+    - not ansible_check_mode
+    - xray_role_enabled | default(true) | bool
   listen: Restart xray
 
 - name: Wait for Xray service to become active
@@ -38,5 +44,8 @@
   delay: 2
   until: xray_active.stdout == "active"
   changed_when: false
-  when: not ansible_check_mode and xray_role_enabled | default(true) | bool
+  when:
+    - not (transport_egress_site_staging | default(false) | bool)
+    - not ansible_check_mode
+    - xray_role_enabled | default(true) | bool
   listen: Restart xray

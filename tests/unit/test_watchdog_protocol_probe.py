@@ -40,13 +40,16 @@ def _run_watchdog(
     state_file = tmp_path / "state"
     config_file = tmp_path / "reality.json"
     config_file.write_text("{}")
+    from tests.transport_fixtures import guarded_xray_bytes
+    server_config = tmp_path / "server.json"
+    server_config.write_text(guarded_xray_bytes())
     term_marker = tmp_path / "xray-terminated"
 
     _executable(
         bin_dir / "systemctl",
         'printf \'%s\\n\' "$*" >> "${SYSTEMCTL_LOG}"\n'
         'if [[ "$*" == *"--property=Environment"* ]]; then\n'
-        "  printf '%s\\n' 'XRAY_LOCATION_ASSET=/tmp/watchdog-test-assets'\n"
+        f"  printf '%s\\n' 'XRAY_LOCATION_ASSET=/tmp/watchdog-test-assets XRAY_RUNTIME_BINARY={bin_dir / 'xray'}'\n"
         "fi\nexit 0\n",
     )
     _executable(bin_dir / "timeout", "exit 0\n")
@@ -94,7 +97,7 @@ def _run_watchdog(
 
     _executable(
         bin_dir / "xray-validate",
-        f'exec "{sys.executable}" "{REPO_ROOT / "ansible/roles/xray/files/xray_validate.py"}" "$@"\n',
+        f'args=("$@"); args[${{#args[@]}}-1]="{server_config}"; exec "{sys.executable}" "{REPO_ROOT / "ansible/roles/xray/files/xray_validate.py"}" "${{args[@]}}"\n',
     )
 
     _executable(

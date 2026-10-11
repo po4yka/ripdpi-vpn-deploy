@@ -232,6 +232,10 @@ for i in "${!host_pairs[@]}"; do
   cohort="${cohort_list[$i]:-}"
   host_json="$(host_config_json "$cohort")"
   vpn_json="$(jq -c '.vpn // {}' <<< "$host_json")"
+  jq -nc --slurpfile secrets "$secrets_tmp" --argjson context "$host_json" \
+    '{secrets:$secrets[0], context:$context}' |
+    python3 "${REPO_ROOT}/scripts/transport_semantics.py"
+
   tag_prefix="${prov}-${env_name}"
 
   # ------------------------------------------------------------------
@@ -269,11 +273,18 @@ for i in "${!host_pairs[@]}"; do
     'if has("enable_amneziawg") then .enable_amneziawg else false end | tostring | ascii_downcase' \
     <<< "$vpn_json")"
   if [[ "$AWG_BLOCK" == '[]' && "$enable_amneziawg" == "true" ]]; then
+    python3 "${REPO_ROOT}/scripts/transport_semantics.py" --section awg --check-top-level-awg < "$secrets_tmp"
+
     # Check if AWG secrets exist for this client
     peer_json="$(jq --arg name "$CLIENT_NAME" \
       '.amneziawg_secrets.peers[]? | select(.name == $name)' "$secrets_tmp")"
 
     if [[ -n "$peer_json" && "$peer_json" != "null" ]]; then
+      if [[ "$(jq -r '.address_kind // "device"' <<< "$peer_json")" != "device" ]]; then
+        echo "selected routed peer is not a device profile" >&2
+        exit 1
+      fi
+
       server_ip="$(PROVIDER="$prov" ENV="$env_name" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
 
       # Derive server public key

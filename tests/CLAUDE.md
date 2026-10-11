@@ -14,6 +14,29 @@
 
 ## Design decisions
 
+**Transport boundary proof uses real protocol paths** — portable tests cover typed authority and socket contracts; disconnected Linux native tests use the pinned gateways, sealed libc/NSS, real REALITY/Vision and XHTTP TLS frontends, and Hysteria TCP/UDP. Kernel tests count forbidden endpoint contacts after earlier ACCEPT and DNAT, while public traffic remains positive. Active lifetime and quiet quarantine are measured once in the common helper lane. An owned TUN fixture does not establish vendor WARP registration or live acceptance.
+
+**Temporary validation reporting uses actual localhost Ansible** — two runs
+execute the owned candidate lifecycle and retain accepted config/helper/unit/TLS
+bytes and metadata. Real Hysteria semantic refusal must clean up without
+publication. Predictive check-mode changes and a genuine persistent change must
+remain visible to the installed Molecule idempotence parser. The portable Xray
+candidate uses its real Python semantic admission function; this reporting test
+does not establish native parser, protocol, or TLS acceptance.
+
+Native normalizer recovery also retains live authenticated TCP and UDP controls when killing the process. Both accepted TCP tuples must enter TIME_WAIT before one immediate restart with the original readiness deadline; fresh public TCP/UDP and zero forbidden contacts remain required. Closed-probe recovery alone cannot establish listener rebinding under active traffic. UDP tuple quarantine and gateway generation reset retain their separate authority.
+
+**Shared transport semantics use real boundaries** —
+`test_transport_semantics.py` covers accepted inputs, typed malformed values,
+ambiguous client-name refusal, routed versus device claims, key reuse, prefix
+collisions, privacy and actual
+localhost Ansible preflight in normal/check mode. `test_transport_semantics_native.py`
+requires an isolated Linux root/TUN host, exact source-commit AWG ELF outputs,
+pinned Xray with adjacent GeoIP and checksum-pinned Hysteria. It fails missing
+prerequisites rather than skipping. Native synthetic credentials are valid
+runtime keys/UUIDs; source placeholders cannot prove parser acceptance.
+
+
 **Review regressions preserve first-use boundaries** — invalid CI configuration
 publishes categorical results before deployment; blue-green waits for bootstrap
 after pinning and refuses before recovery instructions when readiness fails.

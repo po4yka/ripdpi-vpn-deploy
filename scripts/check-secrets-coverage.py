@@ -52,6 +52,7 @@ NON_SECRET_TOPLEVEL = {
     "restic_repo_dir",
     "xray_runtime_user",
     "xray_runtime_group",
+    "xray_runtime_binary",  # verified immutable release fact
     "xray_install_dir",
     "xray_etc_dir",
     "xray_log_path",
@@ -70,6 +71,17 @@ NON_SECRET_TOPLEVEL = {
     "watchdog",
     "geodata",
     "naive",
+    # Private transport topology is built from admitted secrets and actual UIDs.
+    "transport_egress_normalizer_config",
+    "transport_egress_input_config",
+    "transport_egress_policy_config_data",
+    "transport_egress_runtime_binary",
+    "transport_egress_frontend_units",
+    "transport_egress_normalizer_uid",
+    "_transport_egress_backend",
+    "_transport_egress_backend_name",
+    "_transport_egress_gateway_unit_list",
+    "_transport_egress_forbidden",
     # Role-internal compute (set_fact)
     # Validated provider address and interface from honeypot secondary-address tasks.
     "_honeypot_secondary_address",

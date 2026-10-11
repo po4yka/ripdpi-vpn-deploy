@@ -1,0 +1,32 @@
+---
+- name: Admit staged protected topology with complete guarded recovery
+  block:
+    - name: Activate optional verified namespace adapter
+      ansible.builtin.include_role:
+        name: warp-outbound
+        tasks_from: activate
+      when:
+        - transport_egress_role_enabled | default(false) | bool
+        - transport_egress_warp_enabled | default(false) | bool
+
+    - name: Activate guarded generation after frontend staging
+      ansible.builtin.include_role:
+        name: transport-egress
+        tasks_from: activate
+      when: transport_egress_role_enabled | default(false) | bool
+
+    - name: Retire disabled protected topology after consumers
+      ansible.builtin.include_role:
+        name: transport-egress
+        tasks_from: retire
+      when: not (transport_egress_role_enabled | default(false) | bool)
+  rescue:
+    - name: Restore accepted generation after protected activation failure
+      ansible.builtin.include_role:
+        name: transport-egress
+        tasks_from: rollback
+      when: _transport_egress_transaction_started | default(false) | bool
+
+    - name: Report protected topology activation refusal
+      ansible.builtin.fail:
+        msg: Protected topology activation failed; accepted-generation recovery was attempted when available.

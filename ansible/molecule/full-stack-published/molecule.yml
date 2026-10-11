@@ -126,7 +126,7 @@ provisioner:
             xray_fallback_port: 0
   config_options:
     defaults:
-      callback_result_format: yaml
+      callback_result_format: json
 
 verifier:
   name: ansible

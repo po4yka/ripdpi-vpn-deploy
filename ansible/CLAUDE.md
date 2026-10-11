@@ -2,6 +2,20 @@
 
 ## Design decisions
 
+Full-stack Molecule scenarios keep the default task/recap callback stream with JSON results. Structured YAML result bodies can resemble changed-task lines to the pinned idempotence reporter; genuine persistent changes must still be reported. The operator callback remains YAML.
+
+**Protected frontends share one egress generation** — site stages the normalizer, private native gateways and both enabled Xray/Hysteria frontends before activation. Protected transport tags select both frontend consumers so internal authority changes cannot leave one with stale credentials. Host and namespace guards precede listeners; subscription-only and disabled profiles retire consumers first. Hysteria-only hosts acquire the shared pinned Xray runtime without creating a REALITY frontend.
+
+Complete-map rehearsal profiles explicitly retain `enable_transport_egress: true` with their enabled protected frontends because the controller replaces the canonical `vpn` map.
+
+**Transport semantic admission precedes mutation** — site and credential
+rotation import `playbooks/tasks/transport-input-preflight.yml` before host
+changes. Enabled Xray, Hysteria and AWG roles use that same controller-side
+entry for standalone invocation. It delegates to localhost without privilege,
+executes read-only in check mode, and sends private values only on stdin under
+`no_log`. Disabled-role reconciliation bypasses unused transport inputs.
+
+
 **Exporter endpoint verification shares installation admission** — `verify.yml`
 gathers only local network facts and reuses monitoring's literal private endpoint
 validator. Custom ports and IPv6 targets match the sender's scrape jobs; public,

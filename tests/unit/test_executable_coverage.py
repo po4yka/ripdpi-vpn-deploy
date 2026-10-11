@@ -1,6 +1,7 @@
 """Execute skip-policy regressions and guard mandatory native/Go lane wiring."""
 
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 
@@ -56,8 +57,31 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
         s for s in setup["runs"]["steps"] if "setup-terraform@" in s.get("uses", "")
     )
     assert terraform["with"]["terraform_wrapper"] is False
-    assert 'sudo env "PATH=$PATH"' in native[-1]["run"]
-    assert "ALERTMANAGER_BIN=" in native[-1]["run"]
+    command = shlex.split(native[-1]["run"].replace("\\\n", ""))
+    assert command[:2] == ["sudo", "env"]
+    assert command[-2:] == ["make", "test-native-runtime"]
+    environment = {}
+    for assignment in command[2:-2]:
+        name, value = assignment.split("=", 1)
+        assert name not in environment, f"duplicate native environment override: {name}"
+        environment[name] = value
+    assert environment["PATH"] == (
+        "$GITHUB_WORKSPACE/.cache/native-transport-semantics/bin:$PATH"
+    )
+    assert environment["ALERTMANAGER_BIN"] == (
+        "$RUNNER_TEMP/alertmanager-0.28.1.linux-amd64/alertmanager"
+    )
+    assert environment["NAIVE_NATIVE_BINARY"] == (
+        "$GITHUB_WORKSPACE/.cache/p2-native-caddy/caddy"
+    )
+    pins = yaml.safe_load((ROOT / "secrets/prod.secrets.example.yaml").read_text())
+    for variable, source, pin in (
+        ("AWG_NATIVE_GO_SOURCE", "amneziawg-go", "amneziawg_go_commit"),
+        ("AWG_NATIVE_TOOLS_SOURCE", "amneziawg-tools", "amneziawg_tools_commit"),
+    ):
+        assert environment[variable] == (
+            f"$GITHUB_WORKSPACE/.cache/native-transport-semantics/{source}-{pins[pin]}"
+        )
 
 
 def test_local_and_ci_partition_native_tests_without_silent_skips():

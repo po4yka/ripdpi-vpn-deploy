@@ -2,6 +2,23 @@
 
 ## Design decisions
 
+- Temporary candidate allocation, validation and cleanup run on every ordinary pass but report no accepted-runtime change. Persistent publication and predictive change flags retain their real results; idempotence must not skip validation or hide a changed accepted file.
+
+- The foreground service explicitly uses `Type=exec`. Successful manager startup must complete process setup and execution before strict runtime UID admission; journal and authenticated probes still establish application readiness.
+
+- Candidate validation runs private staged source before quiescence. Detect validator byte changes without publishing them; installed validators and semantic companions are snapshotted and published only after the whole-route transaction opens. A rejected helper update cannot invalidate the accepted rollback receipt.
+
+**Accepted units pin immutable executables** — frontend units execute their verified release paths directly. Publishing installer CLI links cannot change the executable used by an accepted unit after a rejected candidate. Xray candidate validation also selects the planned immutable executable and bundled asset release; runtime-aware checks derive both authorities from the loaded unit.
+
+**One guarded SOCKS outbound carries TCP and UDP** — recipient names and literals enter the private normalizer at `127.0.0.1:12081` with independent internal authority. The YAML validator refuses direct fallback, extra outbounds, ACL and resolver overrides. Frontend startup follows the owned shared generation; normalizer loss stops Hysteria until guarded recovery.
+
+**Masquerade admission uses the shared contract** — controller preflight,
+secret validation, emitters and installed YAML validation accept only the owned
+HTTPS proxy origin. The exact same `scripts/transport_semantics.py` is installed
+beside the server YAML validator; keep the companion source together with that
+consumer. Unsupported modes and origin disagreement fail before host changes.
+
+
 **Port hopping keeps one unprivileged socket** — the config always binds `hysteria_port`; firewall-owned NAT redirects `hysteria_port_range` onto it. Do not pass a port union to Hysteria or grant it `CAP_NET_ADMIN`.
 
 **Config validation is role-specific** — Hysteria exposes no safe

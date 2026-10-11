@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-10
+goal: ANS-1791618048083304 Deliver interface-correct dual-stack AmneziaWG
+  forwarding and configurable MTU

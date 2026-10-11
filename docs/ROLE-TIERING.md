@@ -8,7 +8,7 @@ two-layer guard. Deprecation/removal of any role is a **recommendation only**.
 ## Context and problem
 
 The stated purpose is keeping a few non-technical family devices in RU online
-with minimal remote intervention. The repo has grown to **36 Ansible roles**
+with minimal remote intervention. The repo has grown to **39 Ansible roles**
 plus research-grade machinery (split-hop dual-role defense, probe-matrix,
 idle-cycle measurement, multi-operator). On a single operator the
 maintenance and silent-failure surface now scales super-linearly — against a

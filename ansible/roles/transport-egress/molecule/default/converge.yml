@@ -1,0 +1,137 @@
+---
+- name: Converge actual private Xray gateway and normalizer generation
+  hosts: all
+  become: true
+  vars_files:
+    - vars/main.yml
+  tasks:
+    - name: Build non-UID input contract on controller
+      ansible.builtin.command:
+        argv:
+          - '{{ ansible_playbook_python }}'
+          - '{{ playbook_dir }}/../../../../../scripts/transport_egress_config.py'
+          - --input-only
+        stdin: '{{ {''vpn'': vpn, ''secrets'': transport_egress_secrets, ''owned_addresses'': [], ''management_tcp_ports'':
+          [22], ''management_udp_ports'': []} | to_json }}'
+      delegate_to: localhost
+      become: false
+      register: admitted
+      changed_when: false
+      check_mode: false
+      no_log: true
+    - name: Retain admitted input contract
+      ansible.builtin.set_fact:
+        transport_egress_input_config: '{{ (admitted.stdout | from_json).normalizer }}'
+      no_log: true
+    - name: Prepare genuine role identities
+      ansible.builtin.include_role:
+        name: transport-egress
+        tasks_from: prepare
+    - name: Build actual role authority after identity allocation
+      ansible.builtin.command:
+        argv:
+          - '{{ ansible_playbook_python }}'
+          - '{{ playbook_dir }}/../../../../../scripts/transport_egress_config.py'
+        stdin: |-
+          {{ {'vpn': vpn, 'secrets': transport_egress_secrets, 'owned_addresses': ['192.0.2.80'],
+              'management_tcp_ports': [22], 'management_udp_ports': [],
+              'normalizer_uid': transport_egress_normalizer_uid | int,
+              'gateway_uid': transport_egress_gateway_uid | int,
+              'frontend_uids': transport_egress_frontend_uids} | to_json }}
+      delegate_to: localhost
+      become: false
+      register: authority
+      changed_when: false
+      check_mode: false
+      no_log: true
+      when: not transport_egress_fresh_check_mode | bool
+    - name: Retain actual candidate role authority
+      ansible.builtin.set_fact:
+        transport_egress_normalizer_config: '{{ (authority.stdout | from_json).normalizer }}'
+        transport_egress_policy_config_data: '{{ (authority.stdout | from_json).policy }}'
+      no_log: true
+      when: not transport_egress_fresh_check_mode | bool
+    - name: Install actual frontend validator authority for snapshot coverage
+      ansible.builtin.copy:
+        content: '{{ lookup(''ansible.builtin.file'', playbook_dir ~ ''/../../../xray/files/xray_validate.py'',
+          rstrip=false) }}'
+        dest: /usr/local/libexec/vpn-xray-validate
+        owner: root
+        group: root
+        mode: '0755'
+      when: not ansible_check_mode
+    - name: Stage complete genuine private runtime
+      ansible.builtin.include_role:
+        name: transport-egress
+        tasks_from: stage
+    - name: Stage actual private frontend caller to exercise UID admission
+      ansible.builtin.copy:
+        dest: /etc/xray/config.json
+        group: xray
+        mode: '0640'
+        content: |-
+          {{ {'log': {'loglevel': 'warning'}, 'inbounds': [{'listen': '127.0.0.1', 'port': 19080,
+          'protocol': 'socks', 'settings': {'auth': 'noauth', 'udp': true}}],     'routing':
+          {'domainStrategy': 'AsIs', 'rules': [{'type': 'field', 'port': '65535', 'ip': ['geoip:private'],
+          'outboundTag': 'block'}]}, 'outbounds': [{'tag': 'direct', 'protocol': 'socks', 'settings':
+          {'servers': [{'address': '127.0.0.1',     'port': 12080, 'users': [{'user':
+          'normalizer-direct-xray',     'pass': transport_egress_secrets.direct_xray_password}]}]}}, {'tag':
+          'block', 'protocol': 'blackhole', 'settings': {}}]} | to_nice_json }}
+      no_log: true
+      when: not ansible_check_mode
+    - name: Stage actual frontend service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/xray.service
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Owned genuine native frontend caller
+          [Service]
+          User=xray
+          Group=xray
+          LoadCredential=config.json:/etc/xray/config.json
+          Environment=XRAY_LOCATION_ASSET={{ xray_runtime_bundled_asset_dir }}
+          ExecStart={{ transport_egress_runtime_binary }} run -config %d/config.json
+          CapabilityBoundingSet=
+          NoNewPrivileges=true
+          [Install]
+          WantedBy=multi-user.target
+      when: not ansible_check_mode
+    - name: Activate and require authenticated complete generation
+      when: not transport_egress_fresh_check_mode | bool
+      block:
+        - name: Invoke complete production activation
+          ansible.builtin.include_role:
+            name: transport-egress
+            tasks_from: activate
+      rescue:
+        - name: Collect only categorical owned-unit failure diagnostics before fixture destroy
+          ansible.builtin.command:
+            argv:
+              - python3
+              - -c
+              - |
+                import json, subprocess
+                units = ['ripdpi-transport-generation.service', 'ripdpi-transport-normalizer.service',
+                         'ripdpi-transport-direct.service', 'xray.service']
+                states = subprocess.run(['systemctl', 'show', *units,
+                    '--property=ActiveState,MainPID,Result,ExecMainStatus'], capture_output=True, text=True)
+                rows = subprocess.run(['journalctl', *['--unit='+unit for unit in units[:3]],
+                    '--boot', '--output=json', '--no-pager'], capture_output=True, text=True)
+                categories = []
+                for line in rows.stdout.splitlines():
+                    value = json.loads(line)
+                    message = value.get('MESSAGE', '')
+                    if message.startswith(('transport-generation-recovering:',
+                            'transport-generation-refused:', 'normalizer-refused:',
+                            'normalizer-unavailable:', 'normalizer-ready')):
+                        categories.append({'unit': value.get('_SYSTEMD_UNIT'), 'category': message})
+                print(json.dumps({'states': states.stdout.splitlines(), 'categories': categories[-32:]}))
+          register: native_failure_categories
+          changed_when: false
+        - name: Show categorical native failure evidence without credential payloads
+          ansible.builtin.debug:
+            msg: '{{ native_failure_categories.stdout | from_json }}'
+        - name: Retain the failed complete scenario outcome after diagnostics
+          ansible.builtin.fail:
+            msg: Genuine egress activation failed; categorical unit diagnostics were collected before cleanup.

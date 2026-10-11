@@ -1,7 +1,6 @@
 """Fail-closed checks for Molecule's offline dependencies and scenario inputs."""
 
 import base64
-from hashlib import sha256
 import importlib.util
 import json
 import os
@@ -10,7 +9,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-import zipfile
 
 import yaml
 
@@ -213,34 +211,17 @@ def test_xray_molecule_uses_a_hash_pinned_local_runtime_archive() -> None:
         (REPO_ROOT / "ansible/roles/xray/molecule/default/converge.yml").read_text()
     )[0]
     variables = converge["vars"]
-    artifact = next(
-        task["ansible.builtin.copy"]
-        for task in converge["pre_tasks"]
-        if task["name"] == "Create hash-pinned Xray runtime archive fixture"
-    )
-    artifact_index = next(
-        index for index, task in enumerate(converge["pre_tasks"])
-        if task["name"] == "Create hash-pinned Xray runtime archive fixture"
-    )
-    parent = converge["pre_tasks"][artifact_index - 1]
-
-    assert variables["xray_runtime_release_urls"]["amd64"].startswith("file://")
-    assert variables["xray_runtime_release_urls"]["arm64"].startswith("file://")
-    assert artifact["dest"].endswith("xray-v26.3.27.zip")
-    assert artifact["src"] == "{{ playbook_dir }}/files/xray-v26.3.27.zip"
-    assert parent["ansible.builtin.file"] == {
-        "path": "/var/tmp/xray-molecule",
-        "state": "directory",
-        "owner": "root",
-        "group": "root",
-        "mode": "0755",
-    }
-    archive = REPO_ROOT / "ansible/roles/xray/molecule/default/files/xray-v26.3.27.zip"
-    assert sha256(archive.read_bytes()).hexdigest() == variables["xray"]["linux_amd64_sha256"]
-    with zipfile.ZipFile(archive) as payload:
-        assert payload.namelist() == ["xray", "geoip.dat"]
-        assert payload.read("xray").startswith(b"#!/bin/sh\n")
-        assert payload.read("geoip.dat") == b"MOLECULE_GEOIP_FIXTURE\n"
+    artifact_index = next(index for index, task in enumerate(converge['pre_tasks'])
+                          if task['name'] == 'Fetch exact checksum-verified native Xray archive fixture')
+    artifact = converge['pre_tasks'][artifact_index]['ansible.builtin.get_url']
+    parent = converge['pre_tasks'][artifact_index-1]
+    assert artifact['url'].startswith('https://github.com/XTLS/Xray-core/releases/download/v26.3.27/')
+    assert 'xray.linux_arm64_sha256' in artifact['checksum'] and 'xray.linux_amd64_sha256' in artifact['checksum']
+    assert artifact['dest'].endswith('xray-v26.3.27.zip')
+    assert parent['ansible.builtin.file']['mode'] == '0755'
+    assert variables['xray']['linux_amd64_sha256'] == '23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae'
+    assert variables['xray']['linux_arm64_sha256'] == '4d30283ae614e3057f730f67cd088a42be6fdf91f8639d82cb69e48cde80413c'
+    assert not any('src' in task.get('ansible.builtin.copy', {}) for task in converge['pre_tasks'])
     pre_task_names = {task["name"] for task in converge["pre_tasks"]}
     assert "Pre-create release dir for runtime link idempotence coverage" not in pre_task_names
     assert "Seed Xray binary for runtime link idempotence coverage" not in pre_task_names

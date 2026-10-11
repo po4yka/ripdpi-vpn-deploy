@@ -1,0 +1,3 @@
+---
+- name: Retire owned namespace adapter
+  ansible.builtin.include_tasks: disable.yml

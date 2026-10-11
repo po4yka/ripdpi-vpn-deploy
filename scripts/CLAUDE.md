@@ -2,6 +2,34 @@
 
 ## Design decisions
 
+- `transport_private_authority.py` reads bounded private configuration and the observed systemd credential ACL contract. Its credential exception is restricted to the exact private per-unit directory on a read-only mount, with effective read authority only for root and the service UID; ordinary files remain owner-only. Install that companion beside normalizer and classifier consumers.
+
+**Recipient metadata has a fixed exit authority** — `transport_egress_config.py` constructs private fixed listeners and literal-only native gateways from admitted credentials and actual service UIDs. `transport_egress_host_context.py` reads kernel addresses and effective SSH/recovery ownership; `transport_egress_kernel.py` owns an atomic nft table and private receipt. The final output guard runs after earlier ACCEPT and destination rewrites. Unknown late hooks, packet duplication, TC/XDP and flow offload refuse admission. Resolver inputs remain numeric and sealed; no recipient domain is forwarded to a gateway.
+
+Private-port admission distinguishes retired kernel TCP records from live socket authority: only `TIME-WAIT` with an explicit zero inode, zero or absent UID and no process owners can pass without the expected service UID. Live TCP, every UDP socket, nonzero inodes, missing inode metadata and foreign UIDs still refuse. This permits guarded recovery after active controls close without granting a live socket to another actor.
+
+Normalizer TCP listeners enable `SO_REUSEADDR` before binding so a new guarded process can recover while prior accepted TCP controls remain in TIME_WAIT after a crash. This does not share an active listener: `SO_REUSEPORT` stays disabled. UDP sockets, exclusive tuple pools, continuous-quiet quarantine and paired gateway reset retain their existing behavior.
+
+**Transport relationships share one validator** — `transport_semantics.py`
+validates globally unique client names and explicit cohort membership, effective
+AWG headers/bounds/interface,
+canonical 32-byte keys and noncolliding device or explicitly routed prefixes,
+and owned HTTPS proxy masquerade. CLI requests use bounded JSON on stdin;
+diagnostics contain fixed field paths and categories, never values. Enrollment
+checks before generation and before encrypted publication; emitters and liveness
+use the same rules. Disabled transports are excluded by resolved profile intent.
+A broad prefix requires `address_kind: routed` and cannot be emitted as a device.
+Named cohorts load only through validated repository-owned technical slugs.
+
+**Native semantic fixtures use pinned real inputs** —
+`build-native-transport-semantics.sh` provisions exact-commit AWG source outputs
+and checksum-verified Hysteria only in the isolated Linux amd64 fixture cache.
+It uses pinned Go with two jobs, rejects tracked source drift and never installs
+onto a live service path. The native lane verifies source commits, compiled ELF
+outputs, actual parser/startup behavior and owned cleanup; fixtures and missing
+prerequisites cannot become a native pass.
+
+
 **Naive devices have independent encrypted identities** — `naive-client.py`
 centralizes the three explicit Make verbs for issuance, revocation, and selected
 credential readout. Selected readout requires an explicit new `0600` output in a

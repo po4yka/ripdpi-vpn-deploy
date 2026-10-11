@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-10
+goal: SCR-1791617975137354 Make REALITY target validation bounded
+  standards-correct and truthful

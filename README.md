@@ -199,6 +199,9 @@ Then:
     independent Uptime Kuma, local render, exact-host admission and lifecycle,
     encrypted backup/restore, and separate client/notification acceptance.
 
+28. `docs/TRANSPORT-EGRESS.md` — resolved recipient TCP/UDP policy, private
+    normalizer/gateway authority, WARP namespace isolation and rollback.
+
 Operational runbooks: `docs/RUNBOOK-{rotate,rollback,incident,restore,add-fallback}.md`.
 
 ## Contributing

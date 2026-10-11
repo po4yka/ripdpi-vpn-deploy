@@ -1,6 +1,5 @@
 """Consumer contract for Hysteria's shared runtime-release activation."""
 
-from hashlib import sha256
 from pathlib import Path
 
 import yaml
@@ -46,13 +45,11 @@ def test_hysteria_delegates_pinned_binary_activation_to_runtime_release() -> Non
     activation_index = names.index(
         "Install pinned Hysteria release through runtime-release"
     )
-    notification_index = names.index(
-        "Notify Hysteria restart after runtime release activation"
-    )
-    assert activation_index < notification_index
-    assert tasks[notification_index]["notify"] == "Restart hysteria"
-    assert "runtime_release_changed" in tasks[notification_index]["changed_when"]
-    assert tasks[notification_index]["when"] == "not ansible_check_mode"
+    assert activation_index < names.index("Validate Hysteria candidate before quiescing the accepted route")
+    assert not any(task.get("notify") == "Restart hysteria" for task in tasks[:activation_index + 1])
+    unit = (ROOT / "ansible/roles/hysteria/templates/hysteria-server.service.j2").read_text()
+    assert "ExecStart={{ hysteria_install_root }}/releases/{{ hysteria.version }}/hysteria" in unit
+    assert "ExecStart=/usr/local/bin" not in unit
     assert "ansible.builtin.get_url" not in ROLE_TASKS.read_text(encoding="utf-8")
 
 
@@ -66,42 +63,24 @@ def test_hysteria_molecule_uses_verified_local_artifacts() -> None:
         variables["hysteria_release_urls"]["amd64"]
         != variables["hysteria_release_urls"]["arm64"]
     )
-    fixture_artifacts = {
-        task["ansible.builtin.copy"]["dest"]: task["ansible.builtin.copy"]["content"]
-        for task in converge["pre_tasks"]
-        if task["name"].startswith("Write deterministic Hysteria")
-    }
-    assert (
-        sha256(
-            fixture_artifacts["/var/tmp/hysteria-molecule/hysteria-v2.8.2"].encode()
-        ).hexdigest()
-        == variables["hysteria"]["linux_amd64_sha256"]
-    )
-    assert (
-        sha256(
-            fixture_artifacts[
-                "/var/tmp/hysteria-molecule/hysteria-v2.8.2-arm64"
-            ].encode()
-        ).hexdigest()
-        == variables["hysteria"]["linux_arm64_sha256"]
-    )
-    assert (
-        sha256(
-            fixture_artifacts["/var/tmp/hysteria-molecule/hysteria-v2.8.3"].encode()
-        ).hexdigest()
-        == "f61dc01abae6cb72404aae6582b86e0958bb0bc3119012c606772351d6c37fbd"
-    )
-    assert (
-        sha256(
-            fixture_artifacts[
-                "/var/tmp/hysteria-molecule/hysteria-v2.8.3-arm64"
-            ].encode()
-        ).hexdigest()
-        == "29fa1c48937c356daf098f17a7512e8df2af29015ca7188f0cd0d9124fd24276"
-    )
-    assert not any(
-        "Stub hysteria binary" in task["name"] for task in converge["pre_tasks"]
-    )
+    artifacts = {task['ansible.builtin.get_url']['dest']: task['ansible.builtin.get_url']
+                 for task in converge['pre_tasks'] if 'ansible.builtin.get_url' in task}
+    assert len(artifacts) == 4
+    for architecture in ('amd64', 'arm64'):
+        suffix = '-arm64' if architecture == 'arm64' else ''
+        artifact = artifacts['/var/tmp/hysteria-molecule/hysteria-v2.8.2'+suffix]
+        assert artifact['checksum'] == 'sha256:'+variables['hysteria']['linux_'+architecture+'_sha256']
+        assert artifact['url'].endswith('/app/v2.8.2/hysteria-linux-'+architecture)
+    upgraded = yaml.safe_load(VERIFY.read_text())[0]
+    override = next(task['vars']['hysteria'] for task in upgraded['tasks']
+                    if task['name'] == 'Upgrade Hysteria through runtime-release')
+    assert override['version'] == 'v2.9.0'
+    for architecture in ('amd64', 'arm64'):
+        suffix = '-arm64' if architecture == 'arm64' else ''
+        artifact = artifacts['/var/tmp/hysteria-molecule/hysteria-v2.9.0'+suffix]
+        assert artifact['checksum'] == 'sha256:'+override['linux_'+architecture+'_sha256']
+        assert artifact['url'].endswith('/app/v2.9.0/hysteria-linux-'+architecture)
+    assert not any('content' in task.get('ansible.builtin.copy', {}) for task in converge['pre_tasks'])
 
 
 def test_hysteria_molecule_verifies_runtime_release_upgrade_and_rollback_links() -> (
@@ -164,14 +143,14 @@ def test_hysteria_molecule_runs_check_mode_in_a_global_ansible_process() -> None
     )
     assert include["ansible.builtin.include_role"]["name"] == "hysteria"
     variables = check_mode["vars"]
-    assert variables["hysteria"]["version"] == "v2.8.4"
-    assert variables["hysteria_release_urls"]["amd64"].endswith("hysteria-v2.8.4")
-    assert variables["hysteria_release_urls"]["arm64"].endswith("hysteria-v2.8.4-arm64")
+    assert variables["hysteria"]["version"] == "v2.9.0"
+    assert variables["hysteria_release_urls"]["amd64"].endswith("hysteria-v2.9.0")
+    assert variables["hysteria_release_urls"]["arm64"].endswith("hysteria-v2.9.0-arm64")
     assert variables["hysteria"]["linux_amd64_sha256"] == (
-        "a94b3a4cbb14183ae933de5c5e2478da95b1d000d1c7d0d50102dba0882eee46"
+        "8225c8380f1ae8122921d4986c2b70976e9c6e6f87a977e7d0498a813f4f3e37"
     )
     assert variables["hysteria"]["linux_arm64_sha256"] == (
-        "398f21663faa504a8e00518b298b4a4fd418a3ba61d5e33a4d87a25b05a4d2a0"
+        "a3ccc0a3e791b85710ef63d22304a6f7dea210259be71bcd70cf9a210a385454"
     )
     state_assertion = next(
         task
@@ -186,23 +165,8 @@ def test_hysteria_molecule_runs_check_mode_in_a_global_ansible_process() -> None
         for clause in clauses
     )
     converge = yaml.safe_load(CONVERGE.read_text(encoding="utf-8"))[0]
-    artifacts = {
-        task["ansible.builtin.copy"]["dest"]: task["ansible.builtin.copy"]["content"]
-        for task in converge["pre_tasks"]
-        if task["name"].startswith("Write deterministic Hysteria")
-    }
-    assert (
-        sha256(
-            artifacts["/var/tmp/hysteria-molecule/hysteria-v2.8.4"].encode()
-        ).hexdigest()
-        == variables["hysteria"]["linux_amd64_sha256"]
-    )
-    assert (
-        sha256(
-            artifacts["/var/tmp/hysteria-molecule/hysteria-v2.8.4-arm64"].encode()
-        ).hexdigest()
-        == variables["hysteria"]["linux_arm64_sha256"]
-    )
-    assert "Assert global check mode predicted a release without writes or restart" in {
-        task["name"] for task in check_mode["tasks"]
-    }
+    artifacts = {task['ansible.builtin.get_url']['dest']: task['ansible.builtin.get_url']
+                 for task in converge['pre_tasks'] if 'ansible.builtin.get_url' in task}
+    for architecture in ('amd64', 'arm64'):
+        suffix = '-arm64' if architecture == 'arm64' else ''
+        assert artifacts['/var/tmp/hysteria-molecule/hysteria-v2.9.0'+suffix]['checksum'] == 'sha256:'+variables['hysteria']['linux_'+architecture+'_sha256']

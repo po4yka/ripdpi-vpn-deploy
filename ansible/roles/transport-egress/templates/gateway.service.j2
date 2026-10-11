@@ -1,0 +1,39 @@
+[Unit]
+Description=Private {{ _transport_egress_backend_name }} transport gateway
+After=network-online.target
+Wants=network-online.target
+{% if _transport_egress_backend_name == 'warp' %}
+After=ripdpi-warp-namespace.service warp-svc.service
+Requires=ripdpi-warp-namespace.service warp-svc.service
+{% endif %}
+
+[Service]
+Type=exec
+User={{ transport_egress_warp_gateway_user if _transport_egress_backend_name == 'warp' else transport_egress_gateway_user }}
+Group={{ transport_egress_warp_gateway_user if _transport_egress_backend_name == 'warp' else transport_egress_gateway_user }}
+LoadCredential=config.json:{{ transport_egress_config_dir }}/{{ _transport_egress_backend_name }}.json
+{% if _transport_egress_backend_name == 'warp' %}
+NetworkNamespacePath=/run/netns/{{ transport_egress_namespace }}
+{% endif %}
+# A short root-owned verifier inspects nft authority; the gateway has no capabilities.
+ExecStartPre=+{{ transport_egress_policy_loader }} verify --config {{ transport_egress_policy_config }}{% if _transport_egress_backend_name == 'warp' %} --namespace {{ transport_egress_namespace }}{% endif %}
+
+ExecStart={{ transport_egress_runtime_binary }} run -config %d/config.json
+Restart=no
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_INET AF_INET6
+LimitNOFILE=65536
+TasksMax=512

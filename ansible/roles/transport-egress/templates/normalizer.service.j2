@@ -1,0 +1,34 @@
+[Unit]
+Description=Authenticated normalized transport egress
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User={{ transport_egress_normalizer_user }}
+Group={{ transport_egress_normalizer_user }}
+LoadCredential=config:{{ transport_egress_config_dir }}/normalizer.json
+# Every process start resets native mapping state before fresh in-memory pools exist.
+ExecStartPre=+/usr/bin/python3 -Es {{ transport_egress_libexec_dir }}/generation.py prepare --config {{ transport_egress_config_dir }}/generation.json --normalizer-config {{ transport_egress_config_dir }}/normalizer.json
+ExecStart=/usr/bin/python3 -Es {{ transport_egress_libexec_dir }}/transport_egress_normalizer.py --config %d/config
+Restart=no
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_INET AF_INET6
+BindReadOnlyPaths={{ transport_egress_config_dir }}/resolv.conf:/etc/resolv.conf
+BindReadOnlyPaths={{ transport_egress_config_dir }}/nsswitch.conf:/etc/nsswitch.conf
+BindReadOnlyPaths={{ transport_egress_config_dir }}/hosts:/etc/hosts
+TasksMax={{ transport_egress_normalizer_config.limits.max_connections + transport_egress_normalizer_config.resolver.workers + 16 }}
+LimitNOFILE={{ (transport_egress_normalizer_config.limits.max_connections * 4) + (transport_egress_normalizer_config.limits.max_associations * 4) + 128 }}

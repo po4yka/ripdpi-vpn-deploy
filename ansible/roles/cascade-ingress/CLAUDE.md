@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+- The inert classifier has its own unprivileged identity, credential delivery and a final UID packet boundary. CAP_NET_RAW supports SO_BINDTODEVICE only; root is not the recipient dial identity. Its fixed local TCP reply exception is distinct from recipient forwarding, and the shared guard rejects post-resolution DNAT to private or owned management destinations.
+
+**Classifier state does not admit unsafe destinations** — the TCP adapter checks the exact literal sockaddr immediately before connect using the shared recipient CIDRs and private owned management policy. Its required policy file is bounded and owner-controlled. The classifier endpoint is fixed at loopback TCP10808; other values refuse before mutation. The false systemd execution condition and repository-disabled governance remain intact.
+
 The role owns the disabled client-termination integration contract and tri-state per-connection classifier adapter. It renders the private egress-leg scaffold but exposes no foreign-facing tunnel listener and has no service-start task. The unchanged SHA256-pinned geodata role output at `geoip.dat` is the only production dataset source. Both the loopback SOCKS adapter and authenticated per-leg probe are installed as implementation artifacts behind literal false systemd execution conditions.
 
 The ingress WireGuard scaffold keeps `AllowedIPs = 0.0.0.0/0` for the future

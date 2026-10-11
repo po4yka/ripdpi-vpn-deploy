@@ -31,6 +31,8 @@ from pathlib import Path
 
 import yaml
 
+from transport_semantics import transport_errors
+
 PLACEHOLDER_RE = re.compile(r"REPLACE_WITH_")
 OVERUSED_TARGETS = {
     "www.cloudflare.com", "cloudflare.com",
@@ -150,7 +152,13 @@ def main() -> int:
         print(f"cannot read {path}: {exc.strerror}", file=sys.stderr)
         return 2
 
+    if not isinstance(data, dict):
+        print("invalid secrets mapping", file=sys.stderr)
+        return 2
+
     f = Findings()
+    for where, message in transport_errors(data):
+        f.add(where, message)
 
     walk_for_placeholders(data, "", f)
 
@@ -168,13 +176,13 @@ def main() -> int:
        PLACEHOLDER_RE.search(xray.get("reality_public_key", "")):
         f.add("xray.reality_public_key", "missing")
 
-    for client in xray.get("clients") or []:
+    for index, client in enumerate(xray.get("clients") or []):
         sid = client.get("short_id", "")
         if not re.fullmatch(r"[0-9a-fA-F]{2,16}", sid):
             # short_id is a per-device credential; report only its length
             # and whether it parsed as hex, never the value itself.
             kind = "non-hex" if not re.fullmatch(r"[0-9a-fA-F]*", sid) else "wrong-length"
-            f.add(f"xray.clients[{client.get('name','?')}].short_id",
+            f.add(f"xray.clients[{index}].short_id",
                   f"{kind} (length={len(sid)}; want 2-16 hex)")
 
     for role, key in (("nginx_xhttp", "key_pem"),
@@ -184,19 +192,10 @@ def main() -> int:
         check_cert_pem(block.get("cert_pem", ""), block.get(key, ""),
                        f"{role}.cert_pem", f)
 
-    awg = (data or {}).get("amneziawg_secrets") or {}
-    for h in ("h1", "h2", "h3", "h4"):
-        v = awg.get(h)
-        if not isinstance(v, int) or v == 0:
-            # AmneziaWG H values are part of per-cohort obfuscation; never
-            # echo. Report only the type/zero condition.
-            cond = "missing" if v is None else ("zero" if v == 0 else f"non-int ({type(v).__name__})")
-            f.add(f"amneziawg_secrets.{h}", f"expected non-zero int, got {cond}")
-
-    for client in (data.get("hysteria") or {}).get("clients") or []:
+    for index, client in enumerate((data.get("hysteria") or {}).get("clients") or []):
         pw = client.get("password", "")
         if len(pw) < 16:
-            f.add(f"hysteria.clients[{client.get('name','?')}].password",
+            f.add(f"hysteria.clients[{index}].password",
                   f"password length {len(pw)} < 16")
 
     for index, client in enumerate((data.get("naive_secrets") or {}).get("clients") or []):

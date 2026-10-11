@@ -1,0 +1,30 @@
+[Unit]
+Description=Owned transport egress generation and frontend recovery
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+AmbientCapabilities=CAP_SETUID
+LoadCredential=config:{{ transport_egress_config_dir }}/generation.json
+LoadCredential=normalizer:{{ transport_egress_config_dir }}/normalizer.json
+ExecStart=/usr/bin/python3 -Es {{ transport_egress_libexec_dir }}/generation.py run --config %d/config --normalizer-config %d/normalizer
+Restart=on-failure
+RestartSec={{ transport_egress_recovery_seconds }}
+TimeoutStopSec={{ transport_egress_control_timeout_seconds * 4 }}
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+ReadWritePaths={{ transport_egress_state_dir }} /run
+TasksMax=32
+LimitNOFILE=256

@@ -1,0 +1,58 @@
+---
+transport_egress_role_enabled: true
+transport_egress_frontend_users: []
+transport_egress_frontend_units: []
+transport_egress_warp_enabled: "{{ vpn.enable_warp_outbound | default(false) | bool }}"
+transport_egress_config_dir: /etc/ripdpi/transport-egress
+transport_egress_state_dir: /var/lib/ripdpi/transport-egress
+transport_egress_libexec_dir: /usr/local/libexec/ripdpi-transport-egress
+transport_egress_namespace: ripdpi-warp
+transport_egress_policy_config: /etc/ripdpi/transport-egress/policy.json
+transport_egress_policy_loader: /usr/local/libexec/ripdpi-transport-egress/policy-loader.py
+transport_egress_normalizer_user: transport-normalizer
+transport_egress_gateway_user: transport-gateway
+transport_egress_warp_gateway_user: transport-warp-gateway
+transport_egress_classifier_user: cascade-classifier
+transport_egress_generation_units:
+  normalizer: ripdpi-transport-normalizer.service
+  direct: ripdpi-transport-direct.service
+  warp: ripdpi-transport-warp.service
+transport_egress_control_timeout_seconds: 30
+transport_egress_recovery_seconds: 5
+transport_egress_snapshot_paths:
+  - /etc/ripdpi/transport-egress/normalizer.json
+  - /etc/ripdpi/transport-egress/direct.json
+  - /etc/ripdpi/transport-egress/warp.json
+  - /etc/ripdpi/transport-egress/generation.json
+  - /etc/ripdpi/transport-egress/policy.json
+  - /etc/ripdpi/transport-egress/resolv.conf
+  - /etc/ripdpi/transport-egress/hosts
+  - /etc/ripdpi/transport-egress/nsswitch.conf
+  - /etc/systemd/system/ripdpi-transport-normalizer.service
+  - /etc/systemd/system/ripdpi-transport-direct.service
+  - /etc/systemd/system/ripdpi-transport-warp.service
+  - /etc/systemd/system/ripdpi-transport-generation.service
+  - /etc/systemd/system/xray.service
+  - /etc/systemd/system/hysteria-server.service
+  - /etc/xray/config.json
+  - /etc/hysteria/config.yaml
+  - /etc/hysteria/server.fullchain.pem
+  - /etc/hysteria/server.key
+  - /usr/local/libexec/vpn-xray-validate
+  - /usr/local/libexec/ripdpi-transport-egress/transport_egress_normalizer.py
+  - /usr/local/libexec/ripdpi-transport-egress/transport_socks.py
+  - /usr/local/libexec/ripdpi-transport-egress/transport_destination_policy.py
+  - /usr/local/libexec/ripdpi-transport-egress/generation.py
+  - /usr/local/libexec/ripdpi-transport-egress/snapshot.py
+  - /usr/local/libexec/ripdpi-transport-egress/ownership.py
+  - /usr/local/libexec/ripdpi-transport-egress/policy-loader.py
+  - /var/lib/ripdpi/transport-egress/managed.json
+  - /etc/systemd/system/warp-svc.service.d/10-ripdpi-namespace.conf
+  - /etc/systemd/system/ripdpi-warp-namespace.service
+  - /etc/systemd/system/ripdpi-warp-refresh.service
+  - /etc/ripdpi/warp-outbound/resolv.conf
+  - /usr/local/libexec/ripdpi-warp/namespace.py
+  - /var/lib/ripdpi/transport-egress/accepted.json
+  - /usr/local/libexec/ripdpi-validate-yaml-mapping
+  - /usr/local/libexec/transport_semantics.py
+  - /usr/local/libexec/ripdpi-transport-egress/transport_private_authority.py

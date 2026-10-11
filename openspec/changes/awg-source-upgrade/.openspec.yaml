@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-10
+goal: SCR-1791618073850409 Upgrade pinned AmneziaWG sources with unchanged
+  reviewed wire settings

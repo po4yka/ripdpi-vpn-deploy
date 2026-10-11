@@ -16,6 +16,8 @@ import threading
 from pathlib import Path
 
 from cascade_classifier_lib import DatasetUnavailable, load_ru_networks, resolve_and_classify
+from transport_destination_policy import DestinationPolicy, PolicyError
+from transport_private_authority import read_private_file
 
 
 DATASET_UNAVAILABLE_EXIT = 3
@@ -138,6 +140,10 @@ class ClassifierProxyHandler(socketserver.BaseRequestHandler):
                 return
             destination, port = _request_destination(connection)
             state, (family, sockaddr) = resolve_and_classify(server.dataset.networks(), destination, port)
+            # Classifier state does not authorize a private or own-management address.
+            # Check the exact sockaddr used for the actual literal connect.
+            if not server.destination_policy.allows(sockaddr[0], port, "tcp"):
+                raise DatasetUnavailable("destination-denied")
             with socket.socket(family, socket.SOCK_STREAM) as outbound:
                 interface = interface_for_state(state, server.direct_interface, server.foreign_interface)
                 _bind_to_interface(outbound, interface)
@@ -148,7 +154,7 @@ class ClassifierProxyHandler(socketserver.BaseRequestHandler):
                 atyp = b"\x04" if family == socket.AF_INET6 else b"\x01"
                 connection.sendall(b"\x05\x00\x00" + atyp + packed + int(bound[1]).to_bytes(2, "big"))
                 _relay(connection, outbound)
-        except (ConnectionError, DatasetUnavailable, OSError, UnicodeError):
+        except (ConnectionError, DatasetUnavailable, PolicyError, OSError, UnicodeError):
             try:
                 connection.sendall(SOCKS_GENERAL_FAILURE)
             except OSError:
@@ -160,12 +166,13 @@ class ClassifierProxyServer(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], dataset: DatasetStore, password: bytes, direct_interface: str, foreign_interface: str, connect_timeout: float) -> None:
+    def __init__(self, address: tuple[str, int], dataset: DatasetStore, password: bytes, direct_interface: str, foreign_interface: str, connect_timeout: float, destination_policy: DestinationPolicy) -> None:
         self.dataset = dataset
         self.password = password
         self.direct_interface = direct_interface
         self.foreign_interface = foreign_interface
         self.connect_timeout = connect_timeout
+        self.destination_policy = destination_policy
         super().__init__(address, ClassifierProxyHandler)
 
 
@@ -177,6 +184,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--direct-interface", required=True)
     parser.add_argument("--foreign-interface", required=True)
     parser.add_argument("--password-file", required=True, type=Path)
+    parser.add_argument("--policy-file", required=True, type=Path)
     parser.add_argument("--connect-timeout", type=float, default=10)
     return parser.parse_args()
 
@@ -190,18 +198,20 @@ def main() -> int:
             raise ValueError("listen port must be between 1 and 65535")
         socket.if_nametoindex(args.direct_interface)
         socket.if_nametoindex(args.foreign_interface)
-        password = args.password_file.read_bytes().strip()
-        if args.password_file.stat().st_mode & 0o077 or not re.fullmatch(rb"[A-Za-z0-9_-]{43,255}", password):
+        password = read_private_file(args.password_file, max_bytes=256).strip()
+        if not re.fullmatch(rb"[A-Za-z0-9_-]{43,255}", password):
             raise ValueError("classifier password file must be private base64url text containing 43 to 255 bytes")
+        policy_config = json.loads(read_private_file(args.policy_file, max_bytes=131072))
+        destination_policy = DestinationPolicy(**policy_config["policy"])
         dataset = DatasetStore(args.dataset)
     except DatasetUnavailable as exc:
         print(json.dumps({"reason": str(exc), "state": "dataset-unavailable"}, sort_keys=True), file=sys.stderr)
         return DATASET_UNAVAILABLE_EXIT
-    except (OSError, ValueError) as exc:
-        print(f"cascade classifier proxy configuration error: {exc}", file=sys.stderr)
+    except (OSError, ValueError, TypeError, KeyError):
+        print("cascade classifier proxy configuration refused", file=sys.stderr)
         return 2
 
-    with ClassifierProxyServer((args.listen_host, args.listen_port), dataset, password, args.direct_interface, args.foreign_interface, args.connect_timeout) as server:
+    with ClassifierProxyServer((args.listen_host, args.listen_port), dataset, password, args.direct_interface, args.foreign_interface, args.connect_timeout, destination_policy) as server:
         print(json.dumps({"listen_host": args.listen_host, "listen_port": args.listen_port, "state": "ready"}), flush=True)
         server.serve_forever()
     return 0

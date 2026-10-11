@@ -1,0 +1,36 @@
+---
+- name: Inspect bounded namespace ownership before service or package changes
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/namespace.py'') }}'
+      - inspect
+  register: _warp_namespace_inspection
+  changed_when: false
+  check_mode: false
+  no_log: true
+- name: Inspect canonical vendor service ownership
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - show
+      - warp-svc.service
+      - --property=LoadState,FragmentPath,ActiveState,DropInPaths
+  register: _warp_vendor_unit
+  changed_when: false
+  check_mode: false
+  no_log: true
+- name: Refuse adoption of an unclaimed vendor service or custom service authority
+  ansible.builtin.assert:
+    that:
+      - (_warp_namespace_inspection.stdout | from_json).record is not none or 'LoadState=not-found' in _warp_vendor_unit.stdout_lines
+      - |-
+        (_warp_namespace_inspection.stdout | from_json).record is none or
+        ('FragmentPath=/lib/systemd/system/warp-svc.service' in _warp_vendor_unit.stdout_lines or
+         'FragmentPath=/usr/lib/systemd/system/warp-svc.service' in _warp_vendor_unit.stdout_lines or
+         'LoadState=masked' in _warp_vendor_unit.stdout_lines)
+      - ('DropInPaths=' in _warp_vendor_unit.stdout_lines) or ('DropInPaths=/etc/systemd/system/warp-svc.service.d/10-ripdpi-namespace.conf'
+        in _warp_vendor_unit.stdout_lines)
+    fail_msg: Existing vendor service is outside this role's exact canonical ownership.
+    quiet: true

@@ -34,3 +34,12 @@ quic:
   maxStreamReceiveWindow:  8388608
   initConnReceiveWindow:   20971520
   maxConnReceiveWindow:    20971520
+
+# The single outbound preserves recipient TCP/UDP destinations through admission.
+outbounds:
+  - name: guarded-direct
+    type: socks5
+    socks5:
+      addr: "127.0.0.1:12081"
+      username: "normalizer-direct-hysteria"
+      password: "REPLACE_WITH_TRANSPORT_DIRECT_HYSTERIA_PASSWORD"
