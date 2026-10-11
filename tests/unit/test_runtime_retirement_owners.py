@@ -6,6 +6,8 @@ import importlib.util
 import os
 from pathlib import Path
 import stat
+import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -79,20 +81,50 @@ def test_absent_producer_file_needs_no_removed_account(authority, monkeypatch):
         module.validate([], {metric: "honeypot"})
 
 
-def test_consumers_declare_their_actual_metric_writer():
+@pytest.mark.parametrize("custom", [False, True])
+@pytest.mark.parametrize("role,filename", [
+    ("monitoring", "vpn_xray.prom"),
+    ("honeypot", "vpn_honeypot.prom"),
+])
+def test_consumers_expand_their_actual_metric_writer(tmp_path, role, filename, custom):
+    """Ansible must expand owner-map keys before the validator checks paths."""
     import yaml
 
-    for role, account, filename in (
-        ("monitoring", "{{ monitoring.node_exporter_user | default('prometheus') }}", "vpn_xray.prom"),
-        ("honeypot", "honeypot", "vpn_honeypot.prom"),
-    ):
-        tasks = yaml.safe_load((ROOT / f"ansible/roles/{role}/tasks/disable.yml").read_text())
-        retire = next(task for task in tasks if task.get("ansible.builtin.include_role", {}).get("name") == "runtime-release")
-        owners = retire["vars"]["runtime_retire_file_owners"]
-        assert len(owners) == 1
-        assert next(iter(owners)).endswith(filename)
-        assert next(iter(owners.values())) == account
-        assert set(owners) <= set(retire["vars"]["runtime_retire_paths"])
+    tasks = yaml.safe_load((ROOT / f"ansible/roles/{role}/tasks/disable.yml").read_text())
+    retire = next(task for task in tasks if task.get("ansible.builtin.include_role", {}).get("name") == "runtime-release")
+    defaults = {}
+    for name in ("monitoring", "honeypot"):
+        defaults.update(yaml.safe_load((ROOT / f"ansible/roles/{name}/defaults/main.yml").read_text()))
+    directory = "/srv/custom-textfile" if custom else "/var/lib/node_exporter/textfile"
+    account = "custom_exporter" if custom and role == "monitoring" else (
+        "prometheus" if role == "monitoring" else "honeypot"
+    )
+    if custom:
+        defaults["monitoring"].update(node_exporter_textfile_dir=directory, node_exporter_user="custom_exporter")
+    preflight = next(task for task in yaml.safe_load((ROOT / "ansible/roles/runtime-release/tasks/retire.yml").read_text())
+                     if task["name"] == "Validate complete declared runtime authority before stopping units")
+    play = [{
+        "hosts": "localhost", "connection": "local", "gather_facts": False, "become": False,
+        "vars": {**defaults, **retire["vars"], "expected_owners": {f"{directory}/{filename}": account},
+                 "ansible_python_interpreter": sys.executable},
+        "tasks": [
+            {"name": "Evaluate the real validator request", "ansible.builtin.set_fact": {
+                "request": preflight["ansible.builtin.command"]["stdin"]}},
+            {"name": "Require exact expanded owner authority", "ansible.builtin.assert": {"that": [
+                "(request | from_json).owners == expected_owners",
+                "(request | from_json).owners.keys() | list | difference((request | from_json).paths) | length == 0",
+            ]}},
+        ],
+    }]
+    candidate = tmp_path / "play.yml"
+    candidate.write_text(yaml.safe_dump(play))
+    config = tmp_path / "ansible.cfg"
+    config.write_text("[defaults]\nfact_caching=memory\n")
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("ANSIBLE_")}
+    environment.update(ANSIBLE_CONFIG=str(config), ANSIBLE_LOCAL_TEMP=str(tmp_path / "ansible-local"))
+    result = subprocess.run(["ansible-playbook", "-i", "localhost,", str(candidate)],
+                            cwd=tmp_path, env=environment, capture_output=True, text=True, timeout=40)
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_declared_producer_grant_preserves_root_owned_metric(authority):

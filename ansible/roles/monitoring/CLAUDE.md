@@ -3,6 +3,8 @@
 ## Design decisions
 
 Xray log retention follows the effective service, including XHTTP-only hosts. Guarded log rotation requests targeted recovery from the generation controller and propagates refusal; unguarded services retain direct restart. Retirement grants only the exact diagnostic textfile to the exporter account.
+Build the owner map as a complete Jinja dictionary expression. Ansible does not
+expand expressions inside YAML mapping keys.
 
 Xray rotation preserves the explicit 0640 writer/log-reader group contract.
 The capability-bounded policy service joins that group; logs have no other
