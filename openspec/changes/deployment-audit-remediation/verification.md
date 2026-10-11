@@ -1,11 +1,11 @@
 ---
 task_id: SEC-1791471757439452
 change: deployment-audit-remediation
-commit_sha: bc3d11afbf91e036f910e3c8245a6d06de2d0327
+commit_sha: "cf01f94a640913412f3316b5cb288881639712ce"
 local: passed
 local_evidence: Full build-gated make check passed with the pinned mise toolchain and installed SOPS/age binaries; 5475 Python tests, 56 Bats tests, 205 Rust release tests, 108 Terraform mock tests, 52 policy tests and 148 snapshots passed.
-remote_ci: passed
-remote_ci_evidence: Exact source revision bc3d11afbf91e036f910e3c8245a6d06de2d0327 completed 79 successful checks and one neutral Trivy comparison; run 37884851139 includes 21 native Linux tests and all runtime scenarios.
+remote_ci: "passed"
+remote_ci_evidence: "Protected-main CI run 38134843683 completed successfully on exact integrated source cf01f94a640913412f3316b5cb288881639712ce; all jobs succeeded, including portable, native, role, failure and full-stack checks. Scorecard, CodeQL and release-please completed successfully on the same source."
 dry_run: not_applicable
 dry_run_evidence: Source PR only; isolated controller orchestration exercises positive and failure paths without live inventory or SSH. No remote dry-run acceptance is claimed.
 staging: not_applicable
@@ -96,3 +96,7 @@ remaining actionable defects. Hosted honeypot and split-hop Molecule scenarios
 passed on this revision. The local arm64 Molecule attempt could not create the
 pinned image because its manifest lacks that architecture; no local role-runtime
 pass is claimed.
+
+## Closure reconciliation (2026-10-11)
+
+The preceding sections retain their historical source and environment boundaries. The earlier verification SHA was `bc3d11afbf91e036f910e3c8245a6d06de2d0327`. The accepted integrated source for this closure is `cf01f94a640913412f3316b5cb288881639712ce`; protected-main CI run `38134843683` completed with every job successful. This supersedes earlier pending PR/hosted-check observations without claiming a new deployment. Runtime and source files are unchanged by the closure increment.

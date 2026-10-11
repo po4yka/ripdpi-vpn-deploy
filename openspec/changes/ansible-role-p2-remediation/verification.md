@@ -1,11 +1,11 @@
 ---
 task_id: ANS-1791562764586678
 change: ansible-role-p2-remediation
-commit_sha: cec0e7629061b6d638cd070a4699bbc06c9b9109
+commit_sha: "cf01f94a640913412f3316b5cb288881639712ce"
 local: passed
 local_evidence: Complete build-gated make check passed; 5703 portable tests, 22 subtests, 56 shell tests and 205 Rust tests passed; production lint, schema, policy and 150 snapshots pass. Scoped native runtime checks also pass.
-remote_ci: passed
-remote_ci_evidence: Exact source cec0e762 CI run 37998193161 completed success with all 78 jobs; four auxiliary jobs across CodeQL, markdown links and role notes also pass. All 82 selected hosted checks are terminal success.
+remote_ci: "passed"
+remote_ci_evidence: "Protected-main CI run 38134843683 completed successfully on exact integrated source cf01f94a640913412f3316b5cb288881639712ce; all jobs succeeded, including portable, native, role, failure and full-stack checks. Scorecard, CodeQL and release-please completed successfully on the same source."
 dry_run: not_applicable
 dry_run_evidence: Source-only remediation; no real inventory or SSH controller transaction.
 staging: not_applicable
@@ -24,17 +24,17 @@ artifact_evidence: Independent host and transport reviewers approve the P2 sourc
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-P2-ACCESS | ANS-1791563231017425 | TLS/SSH authority, actual predictive Tailnet and mandatory sysctl boundaries | passed locally |
-| REQ-P2-ENFORCEMENT | ANS-1791563231017425 | Effective APT/jail, nft failure and timed dynamic-set preservation | passed locally |
-| REQ-P2-PUBLICATION | ANS-1791563231572678 | Complete nginx/geodata candidate, rollback and real privacy/AOP fixtures | passed locally |
-| REQ-P2-TRANSPORT | ANS-1791563232134870 | Exact native Realm, Naive listener and WARP version contracts | passed locally |
-| REQ-P2-TRANSPORT | ANS-1791563232708226 | AWG/probe pin, unit and membership transition behavior | passed locally |
-| REQ-P2-LIFECYCLE | ANS-1791563233266863 | Site full-to-minimal and owned/runtime/recovery preservation | passed locally |
-| REQ-P2-OBSERVABILITY | ANS-1791563233830915 | Fresh/existing predictive task graphs, upgrade and full authority rollback | passed locally |
-| REQ-P2-EVIDENCE | ANS-1791563234416737 | 45 focused policy/state/context tests; 49 adapter/expected-target tests; native real policy idle heartbeat and retirement plus fresh/retained sender check mode (8 passed); cohort-only watchdog regression | passed locally |
-| REQ-P2-TRANSPORT | ANS-1791563234994294 | Bounded I01-I04 native packet/DNS/release-identity evidence and qualification | passed locally |
-| REQ-P2-PUBLICATION | ANS-1791563234994294 | Bounded I05/I06 effective update and bearer-log evidence and qualification | passed locally |
-| REQ-P2-ACCEPTANCE | ANS-1791563235717247 | Per-ID current-source coverage, preserved P1, independent review and complete local gate and all 82 exact-source hosted checks pass | passed source/CI |
+| REQ-P2-ACCESS | ANS-1791563231017425 |TLS/SSH authority, actual predictive Tailnet and mandatory sysctl boundaries; local and hosted source acceptance recorded above | passed |
+| REQ-P2-ENFORCEMENT | ANS-1791563231017425 |Effective APT/jail, nft failure and timed dynamic-set preservation; local and hosted source acceptance recorded above | passed |
+| REQ-P2-PUBLICATION | ANS-1791563231572678 |Complete nginx/geodata candidate, rollback and real privacy/AOP fixtures; local and hosted source acceptance recorded above | passed |
+| REQ-P2-TRANSPORT | ANS-1791563232134870 |Exact native Realm, Naive listener and WARP version contracts; local and hosted source acceptance recorded above | passed |
+| REQ-P2-TRANSPORT | ANS-1791563232708226 |AWG/probe pin, unit and membership transition behavior; local and hosted source acceptance recorded above | passed |
+| REQ-P2-LIFECYCLE | ANS-1791563233266863 |Site full-to-minimal and owned/runtime/recovery preservation; local and hosted source acceptance recorded above | passed |
+| REQ-P2-OBSERVABILITY | ANS-1791563233830915 |Fresh/existing predictive task graphs, upgrade and full authority rollback; local and hosted source acceptance recorded above | passed |
+| REQ-P2-EVIDENCE | ANS-1791563234416737 |45 focused policy/state/context tests; 49 adapter/expected-target tests; native real policy idle heartbeat and retirement plus fresh/retained sender check mode (8 passed); cohort-only watchdog regression; local and hosted source acceptance recorded above | passed |
+| REQ-P2-TRANSPORT | ANS-1791563234994294 |Bounded I01-I04 native packet/DNS/release-identity evidence and qualification; local and hosted source acceptance recorded above | passed |
+| REQ-P2-PUBLICATION | ANS-1791563234994294 |Bounded I05/I06 effective update and bearer-log evidence and qualification; local and hosted source acceptance recorded above | passed |
+| REQ-P2-ACCEPTANCE | ANS-1791563235717247 |Per-ID current-source coverage, preserved P1, independent review and complete local gate and all 82 exact-source hosted checks pass; local and hosted source acceptance recorded above | passed |
 
 ## Audit coverage
 
@@ -154,3 +154,7 @@ acceptance, full morphology artifact behavior or vendor registration.
 
 The subsequent evidence commit changes only task/verification documentation;
 cec0e762 remains the tested runtime source revision.
+
+## Closure reconciliation (2026-10-11)
+
+The preceding sections retain their historical source and environment boundaries. The earlier verification SHA was `cec0e7629061b6d638cd070a4699bbc06c9b9109`. The accepted integrated source for this closure is `cf01f94a640913412f3316b5cb288881639712ce`; protected-main CI run `38134843683` completed with every job successful. This supersedes earlier pending PR/hosted-check observations without claiming a new deployment. Runtime and source files are unchanged by the closure increment.

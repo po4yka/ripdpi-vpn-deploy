@@ -14,6 +14,10 @@
 
 ## Design decisions
 
+**Recovery clock tests isolate their time facade** — copy the adapter's time
+interface before patching sleep or clocks. Subprocess polling keeps real time,
+so candidate validation cannot advance synthetic worker timestamps.
+
 **Transport boundary proof uses real protocol paths** — portable tests cover typed authority and socket contracts; disconnected Linux native tests use the pinned gateways, sealed libc/NSS, real REALITY/Vision and XHTTP TLS frontends, and Hysteria TCP/UDP. Kernel tests count forbidden endpoint contacts after earlier ACCEPT and DNAT, while public traffic remains positive. Active lifetime and quiet quarantine are measured once in the common helper lane. An owned TUN fixture does not establish vendor WARP registration or live acceptance.
 
 Native fixture configuration is written to private `0600` candidates and atomically published; TUN contexts yield only after setup and namespace restoration succeed. Peer, initial and replacement TUNs, capture sockets and bounded packet workers have lexical ownership; worker teardown precedes descriptor closure on success and failure. Private TUN fixture configs start as `0600` before writing and receive the gateway group only after complete serialization.

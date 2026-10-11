@@ -1,11 +1,11 @@
 ---
 task_id: ANS-1791586652330612
 change: ansible-role-audit-improvements
-commit_sha: 39e613244f281e639f499f0e806bb8440720b9af
-local: blocked
-local_evidence: Final make check passed controller validation and all 152 snapshots, then reported 5850 Python tests and 22 subtests passed with one existing Snell smoke fixture exceeding its 45-second Ansible deadline before cleanup. The fixture, playbook and Snell template are unchanged from origin/main. The complete 57-case module and exact normal/umask077 host and Linux cases pass unchanged; the stall cause is unproven. Remaining local ci-fast stages did not run. Latest helper proofs passed 62 portable tests and 33 runtime guard tests on the owned Linux VM. Before the descriptor-only follow-ups, unchanged TLS/rendering/Naive consumers also passed 48 native integration tests; independent reviews approve. Full local acceptance remains pending.
-remote_ci: passed
-remote_ci_evidence: All 83 hosted checks passed for 39e613244f281e639f499f0e806bb8440720b9af; CI run 38028589428 and auxiliary runs 38028589239, 38028589246 and 38028589257 completed successfully. CodeQL reported zero open findings on merge commit 5f38c91c9f1ef7dd6da095072ffbef4d3732ecd2 and automatically resolved all 22 review threads.
+commit_sha: "cf01f94a640913412f3316b5cb288881639712ce"
+local: "passed"
+local_evidence: "Complete local gate components passed across native macOS and Linux arm64 on unchanged runtime source cf01f94a640913412f3316b5cb288881639712ce. Mac validation and every ci-fast stage before test-unit passed; all four complete disjoint Linux ordinary-user portable groups passed (6340 tests passed across all four complete disjoint portable CI groups; group 1: 1585 passed, 4890 deselected, 5 warnings, 7 subtests passed in 255.95s (0:04:15); group 2: 1584 passed, 4891 deselected, 6 warnings, 9 subtests passed in 232.44s (0:03:52); group 3: 1585 passed, 4890 deselected, 5 warnings in 232.07s (0:03:52); group 4: 1586 passed, 4889 deselected, 2 warnings, 6 subtests passed in 256.55s (0:04:16)), all CLI tests passed (297 passed in 26.87s), lint and baseline transfer passed, and all 57 shell tests passed. No single make check invocation is claimed successful; earlier failures are retained below."
+remote_ci: "passed"
+remote_ci_evidence: "Protected-main CI run 38134843683 completed successfully on exact integrated source cf01f94a640913412f3316b5cb288881639712ce; all jobs succeeded, including portable, native, role, failure and full-stack checks. Scorecard, CodeQL and release-please completed successfully on the same source."
 dry_run: not_applicable
 dry_run_evidence: Source-only scope; no real inventory or controller SSH transaction.
 staging: not_applicable
@@ -14,8 +14,8 @@ live: not_applicable
 live_evidence: Production convergence and private-state acceptance remain separate.
 client: not_applicable
 client_evidence: Local synthetic protocols are not external client or human acceptance.
-artifact: passed
-artifact_evidence: Existing PR 282 contains the reviewed runtime, TLS, named-renderer and private selected-credential export corrections at 39e613244f281e639f499f0e806bb8440720b9af. Local acceptance remains blocked by the recorded existing fixture deadline; no archival or feature closure follows.
+artifact: "passed"
+artifact_evidence: "Exact integrated source cf01f94a640913412f3316b5cb288881639712ce passed all 86 hosted jobs; 163 rendered templates and golden snapshots matched locally. Complete scoped native artifacts and reviewed private-output/contract proofs are retained below; no new production artifact or fleet rollout is claimed."
 ---
 
 # Verification
@@ -24,15 +24,15 @@ artifact_evidence: Existing PR 282 contains the reviewed runtime, TLS, named-ren
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-IMP-REVIEW | ANS-1791605822012676 | Initial 46 findings and subsequent ownership findings corrected; zero open CodeQL findings on exact source/merge, all 22 threads automatically resolved, actual FD/group/umask/ENOENT/private-export proofs and independent approval | passed source and CI |
-| REQ-IMP-RETENTION | ANS-1791587032080262 | Versioned bounded grants, monotonic 30-day compaction, mixed-policy/clock/GC/capacity checks, no-scan invalid requests, count/byte archive contraction, actual retained-path rejection and maintenance sandbox | passed locally |
-| REQ-IMP-ACTIVATION | ANS-1791587032645227 | Native nginx SIGKILL and delayed/missing HUP worker adoption; exact candidate retirement; geodata paired activator and actual metadata read repair; unchanged probe-disable recovery | passed locally |
-| REQ-IMP-TLS-CONCURRENCY | ANS-1791587032645227 | Actual self-steal interleaved rotation/disable and seven-day memory TLS validation; locked pruning plus portable 70-rotation and 80-empty-scaffold regressions | passed locally |
-| REQ-IMP-DEVICE-AUTH | ANS-1791587033216706 | Real age/SOPS issue/readout/revoke and all-profile transaction; exact native JSON Caddy two-to-one-to-zero CONNECT, private artifact retirement and managed-PID activation | passed locally |
-| REQ-IMP-METRICS | ANS-1791587033777473 | Permanent actual same-inode truncate/replacement regressions; admitted counters above log cap; native four-socket IPv4/IPv6 loopback and approved local Tailnet exporter scrapes; both sender jobs share normalized endpoint | passed locally |
-| REQ-IMP-RECOVERY-INTENT | ANS-1791587034315130 | Existing replay suite plus durable outbox regressions: failed recovery, fresh pulses, restart, stale completion and matching successful acknowledgement | passed locally |
-| REQ-IMP-AUDIT-GATE | ANS-1791587034859002 | Actual distro Lynis machine report plus disabled/unavailable/stale/malformed/warning gate failures; actual WARP fixture playbook idempotence, connection/trace refusals and reconvergence | passed locally |
-| REQ-IMP-ACCEPTANCE | ANS-1791587035398569 | I01-I15/F43 evidence with supported-Unbound scope, independent reviews, 83 passing hosted checks and existing PR 282; final local gate has one recorded existing fixture deadline | source/CI passed; local gate blocked |
+| REQ-IMP-REVIEW | ANS-1791605822012676 | Initial 46 findings and subsequent ownership findings corrected; zero open CodeQL findings on exact source/merge, all 22 threads automatically resolved, actual FD/group/umask/ENOENT/private-export proofs and independent approval | passed |
+| REQ-IMP-RETENTION | ANS-1791587032080262 | Versioned bounded grants, monotonic 30-day compaction, mixed-policy/clock/GC/capacity checks, no-scan invalid requests, count/byte archive contraction, actual retained-path rejection and maintenance sandbox | passed |
+| REQ-IMP-ACTIVATION | ANS-1791587032645227 | Native nginx SIGKILL and delayed/missing HUP worker adoption; exact candidate retirement; geodata paired activator and actual metadata read repair; unchanged probe-disable recovery | passed |
+| REQ-IMP-TLS-CONCURRENCY | ANS-1791587032645227 | Actual self-steal interleaved rotation/disable and seven-day memory TLS validation; locked pruning plus portable 70-rotation and 80-empty-scaffold regressions | passed |
+| REQ-IMP-DEVICE-AUTH | ANS-1791587033216706 | Real age/SOPS issue/readout/revoke and all-profile transaction; exact native JSON Caddy two-to-one-to-zero CONNECT, private artifact retirement and managed-PID activation | passed |
+| REQ-IMP-METRICS | ANS-1791587033777473 | Permanent actual same-inode truncate/replacement regressions; admitted counters above log cap; native four-socket IPv4/IPv6 loopback and approved local Tailnet exporter scrapes; both sender jobs share normalized endpoint | passed |
+| REQ-IMP-RECOVERY-INTENT | ANS-1791587034315130 | Existing replay suite plus durable outbox regressions: failed recovery, fresh pulses, restart, stale completion and matching successful acknowledgement | passed |
+| REQ-IMP-AUDIT-GATE | ANS-1791587034859002 | Actual distro Lynis machine report plus disabled/unavailable/stale/malformed/warning gate failures; actual WARP fixture playbook idempotence, connection/trace refusals and reconvergence | passed |
+| REQ-IMP-ACCEPTANCE | ANS-1791587035398569 | I01-I15/F43 evidence with supported-Unbound scope, independent reviews, 83 passing hosted checks and existing PR 282; final closure local gate components passed; the earlier fixture deadline remains historical | passed |
 
 ## Coverage and scope
 
@@ -91,3 +91,13 @@ before the intended stop failure; retained uncertain ownership was preserved.
 The complete unchanged 57-case module and normal/umask077 exact-case host/Linux
 proofs pass. The precise controller stall cause remains unproven; local gate
 acceptance is blocked, even though all 83 exact-source hosted checks pass.
+
+## Closure reconciliation (2026-10-11)
+
+The preceding sections retain their historical source and environment boundaries. The earlier verification SHA was `39e613244f281e639f499f0e806bb8440720b9af`. The accepted integrated source for this closure is `cf01f94a640913412f3316b5cb288881639712ce`; protected-main CI run `38134843683` completed with every job successful. This supersedes earlier pending PR/hosted-check observations without claiming a new deployment. Runtime and source files are unchanged by the closure increment.
+
+## Final closure acceptance (2026-10-12)
+
+The closure snapshot `e6ac235439bc66f9bb2bf9d9c71a4dded780ac38` has byte-identical production runtime files to integrated source `cf01f94a640913412f3316b5cb288881639712ce`. Validation was assembled from the complete passed Mac `validate` and `ci-fast` pre-test stages, then the complete ordinary-user Linux `make test-unit-shard PYTEST_GROUP=1..4`, `make vpnd-lint vpnd-test vpnd-parity-check` and `bats tests/bats/` stages. Portable result: 6340 tests passed across all four complete disjoint portable CI groups; group 1: 1585 passed, 4890 deselected, 5 warnings, 7 subtests passed in 255.95s (0:04:15); group 2: 1584 passed, 4891 deselected, 6 warnings, 9 subtests passed in 232.44s (0:03:52); group 3: 1585 passed, 4890 deselected, 5 warnings in 232.07s (0:03:52); group 4: 1586 passed, 4889 deselected, 2 warnings, 6 subtests passed in 256.55s (0:04:16). CLI result: 297 passed in 26.87s. All 57 shell tests passed; all 206 baseline transfer functions mapped to passing cases. No selected tests were skipped and no assertions, deadlines, locks or production source were changed.
+
+Earlier attempts retain their failed diagnostic status: tool activation, root-only runner admission, absent parser/cache prerequisites, existing Mac fixture deadlines, and the intermittent monolithic SSH recovery unit failure did not count as acceptance. Read-only tracing diagnosed the original failure. The acceptance snapshot isolates the adapter test clock interface from the shared standard-library time module; production behavior, assertions and deadlines are unchanged. The complete 118-test SSH module subsequently passed without tracing. The tracer observed Python subprocess polling consuming the shared test fake clock and making its fixed synthetic worker timestamps stale; production freshness checks remained intact. All four canonical CI groups subsequently passed without the diagnostic tracer and with unchanged production source and assertions. The Linux arm64 standalone `make check` stopped at a Scaleway cached-provider checksum mismatch; the repository lockfile was preserved and the already-passed native Mac Terraform validation supplied that component. This record claims passed components across both environments, not one successful standalone `make check`. Protected-main CI run `38134843683` passed all 86 jobs on `cf01f94a640913412f3316b5cb288881639712ce`, including the complete native, role, failure and full-stack lanes.

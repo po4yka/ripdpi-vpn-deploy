@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: sec-1791451917662060-normalize-the-packaged-cloud-image-ssh-fragment-before-bootstrap
 created: 2026-10-08
-updated: 2026-10-08
+updated: 2026-10-12
 related_tasks: []
-status_detail: Exact helper source passed full local gate, hosted CI and actual clean first boot; failed-stage retry explicitly excluded.
+status_detail: "Accepted integrated runtime source cf01f94a640913412f3316b5cb288881639712ce passed all 86 protected-main jobs in run 38134843683. Recorded verification results and external scope qualifications are preserved."
 ---
 
 ## Goal

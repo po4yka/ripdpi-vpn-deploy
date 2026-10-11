@@ -99,7 +99,7 @@ Additional recurring VPS/service subscription target: zero. Existing equipment s
 
 ## Migration Plan
 
-1. Record the approved Uptime Kuma direction and candidate existing observer. Keep the previous task open; any later drop/supersession uses taskctl, never a false done transition.
+1. Record the approved Uptime Kuma direction and candidate existing observer. The previous dedicated-staging task was cancelled through taskctl on 2026-10-08; preserve its dropped history without crediting it as passed replacement acceptance.
 2. Implement the new contract and all callers in isolated source changes; reject the old shape with actionable errors. Complete credential-free tests and full repository gates.
 3. With explicit access permission, run read-only admission on both the collector and independent observer, confirm existing runtime/private connectivity/backup storage, and capture matched VPN baselines. Record a technical alias, not identifying host details, in evidence.
 4. With exact-host deployment and credential permission, install the pinned Kuma runtime, configure five push monitors, verify separate notification receipts, and prepare private TLS. Test encrypted backup/restore and observer-outage reporting through the primary route. Do not disable any working old alarm route.
