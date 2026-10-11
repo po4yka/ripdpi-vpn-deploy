@@ -36,6 +36,7 @@ transport_egress_snapshot_paths:
   - /etc/systemd/system/hysteria-server.service
   - /etc/xray/config.json
   - /etc/hysteria/config.yaml
+  - /etc/hysteria/masquerade-hosts
   - /etc/hysteria/server.fullchain.pem
   - /etc/hysteria/server.key
   - /usr/local/libexec/vpn-xray-validate

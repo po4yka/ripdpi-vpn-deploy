@@ -177,6 +177,62 @@ def test_accepted_receipt_covers_frontend_bytes_and_permissions(tmp_path, monkey
     assert not mod.is_accepted({'/etc/xray/config.json':{**data,'mode':0o600}})
 
 
+def test_role_capture_paths_match_controller_accepted_authority():
+    mod = load('snapshot')
+    paths = yaml.safe_load((ROLE / 'defaults/main.yml').read_text())['transport_egress_snapshot_paths']
+    assert len(paths) == len(set(paths))
+    assert set(paths) == set(mod.managed_paths()) | {str(mod.ACCEPTED)}
+    # An absent optional file still has an explicit fingerprint in the receipt.
+    assert mod.fingerprints({path: None for path in paths}) == mod.fingerprints(
+        {path: None for path in mod.managed_paths()})
+
+
+@pytest.mark.parametrize('present', [False, True])
+def test_optional_hosts_file_retains_accepted_capture_and_restores_bytes(tmp_path, monkeypatch, present):
+    import io
+    import os
+    mod = load('snapshot')
+    hosts = tmp_path / 'masquerade-hosts'
+    mod.ACCEPTED = tmp_path / 'accepted.json'
+    mod.STATE = tmp_path / 'previous.json'
+    if present:
+        hosts.write_bytes(b'127.0.0.1 owned-origin.invalid\n')
+        hosts.chmod(0o640)
+    # The portable actor owns these exact temporary files; this exercises real
+    # serialization/publication/restore, not production root-ancestry admission.
+    owned = {hosts, mod.ACCEPTED, mod.STATE}
+    def safe_owned(path, missing=False):
+        assert path in owned
+        return path.lstat() if path.exists() else None
+    monkeypatch.setattr(mod, 'safe', safe_owned)
+    monkeypatch.setattr(mod, 'allowed', lambda path: path in owned)
+    monkeypatch.setattr(mod, 'managed_paths', lambda: [str(hosts)])
+    monkeypatch.setattr(mod.os, 'geteuid', lambda: 0)
+    actual_fchown = os.fchown
+    def chown_owned(fd, uid, gid):
+        assert uid == 0 and gid in {0, os.getgid()}
+        actual_fchown(fd, -1, os.getgid() if gid == 0 else gid)
+    monkeypatch.setattr(mod.os, 'fchown', chown_owned)
+    mod.accept()
+    monkeypatch.setattr(sys, 'argv', ['snapshot.py', 'capture'])
+    monkeypatch.setattr(sys, 'stdin', io.TextIOWrapper(io.BytesIO(
+        json.dumps([str(hosts), str(mod.ACCEPTED)]).encode())))
+    mod.main()
+    prior = json.loads(mod.STATE.read_bytes())
+    assert prior['accepted'] is True
+    hosts.write_bytes(b'invalid candidate\n')
+    hosts.chmod(0o600)
+    monkeypatch.setattr(sys, 'argv', ['snapshot.py', 'restore'])
+    mod.main()
+    assert mod.is_accepted(mod.capture([str(hosts)]))
+    if present:
+        assert hosts.read_bytes() == b'127.0.0.1 owned-origin.invalid\n'
+        assert hosts.stat().st_mode & 0o777 == 0o640
+        assert hosts.stat().st_gid == prior['files'][str(hosts)]['gid']
+    else:
+        assert not hosts.exists()
+
+
 def test_vendor_metadata_query_has_one_property_argument_and_private_result():
     tasks = yaml.safe_load((ROOT / 'ansible/roles/warp-outbound/tasks/vendor-ownership.yml').read_text())
     query = next(task for task in tasks if task['name'] == 'Inspect canonical vendor service ownership')
@@ -375,6 +431,10 @@ def test_every_controller_started_foreground_runtime_has_explicit_exec_start_con
                  ROOT / 'ansible/roles/xray/templates/xray.service.j2',
                  ROOT / 'ansible/roles/hysteria/templates/hysteria-server.service.j2']:
         assert 'Type=exec' in path.read_text().splitlines()
+    converge = yaml.safe_load((ROLE / 'molecule/default/converge.yml').read_text())
+    frontend = next(task for task in converge[0]['tasks']
+                    if task.get('name') == 'Stage actual frontend service')
+    assert 'Type=exec' in frontend['ansible.builtin.copy']['content'].splitlines()
 
 
 def test_native_gateway_credential_preserves_json_parser_format():

@@ -87,6 +87,7 @@
           [Unit]
           Description=Owned genuine native frontend caller
           [Service]
+          Type=exec
           User=xray
           Group=xray
           LoadCredential=config.json:/etc/xray/config.json
