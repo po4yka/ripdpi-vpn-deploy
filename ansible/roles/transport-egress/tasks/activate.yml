@@ -145,8 +145,11 @@
                         if not isinstance(record, dict) or record.get('_SYSTEMD_INVOCATION_ID') != invocation:
                             continue
                         message = record.get('MESSAGE')
-                        if isinstance(message, str) and message.startswith('transport-generation-recovering:'):
-                            report['controller_refusal'] = category(message, 'transport-generation-recovering:')
+                        if isinstance(message, str):
+                            for prefix in ('transport-generation-recovering:', 'transport-generation-refused:'):
+                                if message.startswith(prefix):
+                                    report['controller_refusal'] = category(message, prefix)
+                                    break
                     report['diagnostic'] = 'available'
                 except Exception:
                     # Unknown or unavailable evidence must never replace the original refusal.

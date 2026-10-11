@@ -162,6 +162,19 @@ def test_finite_journal_attribution_stage_is_retained(tmp_path):
     assert report["controller_refusal"] == stage
 
 
+@pytest.mark.parametrize("reason,expected", [
+    ("generation-config-invalid", "generation-config-invalid"),
+    (MARKER, "unclassified"),
+])
+def test_terminal_constructor_refusal_retains_only_known_category(tmp_path, reason, expected):
+    report, _, _ = collect(tmp_path, messages=[{
+        "_SYSTEMD_INVOCATION_ID": INVOCATION,
+        "MESSAGE": "transport-generation-refused:" + reason,
+    }])
+    assert report["controller_refusal"] == expected
+    assert report["diagnostic"] == "available"
+
+
 @pytest.mark.parametrize("collector_fault", [None, "exit", "malformed"])
 def test_actual_ansible_diagnostic_failure_cannot_prevent_rollback_or_original_refusal(tmp_path, collector_fault):
     executable = shutil.which("ansible-playbook")
