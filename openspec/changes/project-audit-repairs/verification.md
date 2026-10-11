@@ -1,11 +1,11 @@
 ---
 task_id: SEC-1791735853691219
 change: project-audit-repairs
-commit_sha: null
+commit_sha: e58e3de08fc250852cb437f7185a1ebca4fd4229
 local: blocked
 local_evidence: Focused runtime, operator, bootstrap and vpnd tests passed; all four Terraform providers validate, full production-profile Ansible lint and syntax pass, and staged/history secret scans pass. The full make check gate stops at cloud-init schema validation because Docker is unavailable. No complete local acceptance claim.
 remote_ci: required
-remote_ci_evidence: null
+remote_ci_evidence: PR 290 hosted checks started; no complete remote acceptance result yet.
 dry_run: not_applicable
 dry_run_evidence: Source repair PR only; no real inventory or SSH transaction.
 staging: not_applicable
@@ -14,8 +14,8 @@ live: not_applicable
 live_evidence: Live convergence requires a separate reviewed rollout.
 client: not_applicable
 client_evidence: No physical client acceptance is claimed by local regressions.
-artifact: required
-artifact_evidence: null
+artifact: passed
+artifact_evidence: https://github.com/po4yka/ripdpi-vpn-deploy/pull/290
 ---
 
 # Verification

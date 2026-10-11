@@ -18,7 +18,7 @@ Repair all sixteen REQ-AUDIT cases and publish source and validation evidence in
 - [x] SEC-1791735998160729 Repair subscription binding writer locks promotion and verification admission with regression tests #bug !high @item:SEC-1791735853691219
 - [x] SEC-1791735998967800 Repair release publication provenance SSH activation and isolated fixtures with regression tests #bug !high @item:SEC-1791735853691219
 - [x] SEC-1791735999672160 Repair diagnostic host scope and recipient origin and QR artifacts with regression tests #bug !high @item:SEC-1791735853691219
-- [ ] SEC-1791736000413192 Run integrated checks independent review and prepare the exact-source PR #bug !high @item:SEC-1791735853691219
+- [x] SEC-1791736000413192 Run integrated checks independent review and prepare the exact-source PR #bug !high @item:SEC-1791735853691219
 
 ## Verification
 
