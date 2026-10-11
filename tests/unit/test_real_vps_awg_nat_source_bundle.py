@@ -6,6 +6,8 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 HELPER = ROOT / "scripts/build-real-vps-awg-nat-source-bundle.sh"
 
@@ -26,6 +28,7 @@ def _clean_repo(tmp_path: Path) -> Path:
     return repo
 
 
+@pytest.mark.usefixtures("isolated_synthetic_git_config")
 def test_bundle_helper_rejects_untracked_input(tmp_path: Path) -> None:
     repo = _clean_repo(tmp_path)
     (repo / "untracked.txt").write_text("must not be omitted\n")
@@ -42,6 +45,7 @@ def test_bundle_helper_rejects_untracked_input(tmp_path: Path) -> None:
     assert not (tmp_path / "out.bundle").exists()
 
 
+@pytest.mark.usefixtures("isolated_synthetic_git_config")
 def test_bundle_helper_reports_commit_bundle_and_archive_digests(
     tmp_path: Path,
 ) -> None:

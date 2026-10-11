@@ -9,6 +9,8 @@ import stat
 import subprocess
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 RENDER_CHECK = ROOT / "scripts/check-templates-render.py"
 BUNDLE_HELPER = ROOT / "scripts/build-real-vps-awg-nat-source-bundle.sh"
@@ -53,6 +55,7 @@ def test_synthetic_render_covers_task_local_awg_nat_template_vars(tmp_path: Path
     assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
+@pytest.mark.usefixtures("isolated_synthetic_git_config")
 def test_bundle_helper_uses_python_tempfiles_beside_atomic_output(
     tmp_path: Path,
 ) -> None:
@@ -78,6 +81,7 @@ def test_bundle_helper_uses_python_tempfiles_beside_atomic_output(
     assert list(output_parent.iterdir()) == [output]
 
 
+@pytest.mark.usefixtures("isolated_synthetic_git_config")
 def test_bundle_helper_cleans_sibling_tempfiles_on_failure(tmp_path: Path) -> None:
     repo = _clean_repo(tmp_path)
     output_parent = tmp_path / "private output"
@@ -107,6 +111,7 @@ def test_bundle_helper_cleans_sibling_tempfiles_on_failure(tmp_path: Path) -> No
     assert list(output_parent.iterdir()) == []
 
 
+@pytest.mark.usefixtures("isolated_synthetic_git_config")
 def test_bundle_helper_rejects_head_change_during_generation(tmp_path: Path) -> None:
     repo = _clean_repo(tmp_path)
     output_parent = tmp_path / "private output"

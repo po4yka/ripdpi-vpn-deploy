@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 import tempfile
 from contextlib import redirect_stdout
@@ -43,6 +44,11 @@ DEPLOY_EVIDENCE_CATEGORIES = (
 
 class TaskctlFixture(TestCase):
     def setUp(self) -> None:
+        # Scope configuration isolation to these synthetic repository fixtures.
+        environment = {key: value for key, value in os.environ.items()
+                       if not key.startswith("GIT_CONFIG_")}
+        environment.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
+        self.enterContext(mock.patch.dict(os.environ, environment, clear=True))
         self.temp = tempfile.TemporaryDirectory(prefix="ripdpi-taskctl-test-")
         self.root = Path(self.temp.name)
         for relative in (

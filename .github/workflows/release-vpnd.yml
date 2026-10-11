@@ -124,14 +124,16 @@ jobs:
             test -s "$asset"
           done
           assets+=("${packages[@]}")
-          if release_is_draft="$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft 2>/dev/null)"; then
-            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
-            if [[ "$release_is_draft" == "true" ]]; then
-              gh release edit "$RELEASE_TAG" --draft=false
-            fi
-          else
-            gh release create "$RELEASE_TAG" "${assets[@]}" \
-              --verify-tag \
+          if ! release_is_draft="$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            gh release create "$RELEASE_TAG" \
+              --verify-tag --draft \
               --title "$RELEASE_TAG" \
               --notes ""
+            release_is_draft=true
           fi
+          if [[ "$release_is_draft" != "true" ]]; then
+            echo "Refusing asset upload: release $RELEASE_TAG is not a draft." >&2
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+          gh release edit "$RELEASE_TAG" --draft=false

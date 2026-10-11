@@ -5,10 +5,21 @@ import os
 from pathlib import Path
 import subprocess
 
+import pytest
 import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+@pytest.fixture(autouse=True)
+def isolated_git_configuration(monkeypatch):
+    # Only synthetic repositories in this module create commits or tags.
+    for name in tuple(os.environ):
+        if name.startswith("GIT_CONFIG_"):
+            monkeypatch.delenv(name)
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
 
 
 def test_release_please_emits_vpnd_component_tags():
@@ -107,12 +118,12 @@ def test_release_job_uses_one_validated_tag_for_all_dispatch_paths(tmp_path):
     assert "does not match the workflow revision" in mismatched.stderr
 
 
-def test_release_assets_are_uploaded_with_rerun_overwrite_semantics():
+def test_release_assets_are_uploaded_with_draft_rerun_semantics():
     workflow = (ROOT / ".github/workflows/release-vpnd.yml").read_text()
 
     assert "softprops/action-gh-release" not in workflow
     assert 'gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber' in workflow
-    assert 'gh release create "$RELEASE_TAG" "${assets[@]}"' in workflow
+    assert 'gh release create "$RELEASE_TAG"' in workflow
     assert 'gh release edit "$RELEASE_TAG" --draft=false' in workflow
     assert "GH_TOKEN: ${{ github.token }}" in workflow
     assert "GH_REPO: ${{ github.repository }}" in workflow
@@ -123,7 +134,7 @@ def test_release_assets_are_uploaded_with_rerun_overwrite_semantics():
     assert "dist/vpnd-[0-9]*.tar.gz" in workflow
     assert "            dist/SHA256SUMS" in workflow
     assert "            dist/sbom.json" in workflow
-    assert "              --verify-tag \\" in workflow
+    assert "              --verify-tag --draft \\" in workflow
     assert '              --title "$RELEASE_TAG" \\' in workflow
     assert '              --notes ""' in workflow
 
@@ -159,11 +170,15 @@ def test_release_publish_handles_missing_existing_and_interrupted_releases(tmp_p
         """#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\\n' "$*" >> "$FAKE_GH_LOG"
+if [[ "$1 $2" == "release upload" ]]; then
+  exit "${FAKE_UPLOAD_STATUS:-0}"
+fi
 if [[ "$1 $2" == "release view" ]]; then
   case "$FAKE_RELEASE_STATE" in
     missing) exit 1 ;;
     published) printf 'false\\n' ;;
     draft) printf 'true\\n' ;;
+    unknown) printf 'null\\n' ;;
   esac
 fi
 """
@@ -177,7 +192,8 @@ fi
             "--title vpnd-v1.2.3",
             "--notes",
         ),
-        "published": ("release upload vpnd-v1.2.3", "--clobber"),
+        "published": (),
+        "unknown": (),
         "draft": (
             "release upload vpnd-v1.2.3",
             "--clobber",
@@ -203,18 +219,36 @@ fi
             capture_output=True,
             text=True,
         )
-        assert completed.returncode == 0, completed.stderr
         calls = log.read_text()
+        if state in ("published", "unknown"):
+            assert completed.returncode != 0
+            assert "Refusing asset upload" in completed.stderr
+            assert calls.splitlines() == [
+                "release view vpnd-v1.2.3 --json isDraft --jq .isDraft"
+            ]
+            continue
+        assert completed.returncode == 0, completed.stderr
         for fragment in required_fragments:
             assert fragment in calls
         for asset in assets:
             assert f"dist/{asset}" in calls
         if state == "missing":
-            assert "release upload" not in calls
+            assert calls.index("release create") < calls.index("release upload")
+            assert "--draft" in calls
         else:
             assert "release create" not in calls
-        if state != "draft":
-            assert "release edit" not in calls
+        assert calls.index("release upload") < calls.index("release edit")
+
+    for state in ("missing", "draft"):
+        log = tmp_path / f"{state}-upload-failed.log"
+        environment.update(FAKE_GH_LOG=str(log), FAKE_RELEASE_STATE=state,
+                           FAKE_UPLOAD_STATUS="23")
+        failed = subprocess.run(["bash", "-c", publish["run"]], cwd=tmp_path,
+                                env=environment, capture_output=True, check=False)
+        assert failed.returncode == 23
+        assert "release upload" in log.read_text()
+        assert "release edit" not in log.read_text()
+    environment.pop("FAKE_UPLOAD_STATUS")
 
     (dist / "sbom.json").unlink()
     missing_asset_log = tmp_path / "missing-asset.log"

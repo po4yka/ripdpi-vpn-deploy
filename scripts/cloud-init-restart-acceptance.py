@@ -191,7 +191,9 @@ def production_command(port: str) -> str:
     return (
         f"test -f {MARKER} || {{ install -d -m 0755 /run/sshd && "
         f"/usr/bin/python3 -I -B {HELPER_GUEST} --config-dir /etc/ssh "
-        f"--ssh-port {port} && /usr/sbin/sshd -t && systemctl enable --now ssh "
+        f"--ssh-port {port} && /usr/sbin/sshd -t && systemctl daemon-reload "
+        f"&& {{ ! systemctl is-active --quiet ssh.socket || {{ systemctl restart ssh.socket && systemctl restart ssh.service; }}; }} "
+        f"&& systemctl enable --now ssh "
         f"&& systemctl reload ssh && touch {MARKER}; }}"
     )
 
@@ -294,7 +296,9 @@ def _interrupted_command(port: str) -> str:
     return (
         f"test -f {MARKER} || {{ install -d -m 0755 /run/sshd && "
         f"/usr/bin/python3 -I -B {WRAPPER_GUEST} && /usr/sbin/sshd -t && "
-        f"systemctl enable --now ssh && systemctl reload ssh && touch {MARKER}; }}"
+        f"systemctl daemon-reload && {{ ! systemctl is-active --quiet ssh.socket || {{ "
+        f"systemctl restart ssh.socket && systemctl restart ssh.service; }}; }} && systemctl enable --now ssh "
+        f"&& systemctl reload ssh && touch {MARKER}; }}"
     )
 
 
@@ -1120,6 +1124,7 @@ def parse_cloud_final_diagnostic(raw: bytes) -> CloudFinalDiagnostic:
 
 
 _INSPECTOR = r"""import hashlib
+import socket
 import json
 import os
 from pathlib import Path
@@ -1127,6 +1132,23 @@ import re
 import stat
 import subprocess
 import sys
+import time
+
+def verify_listener(port):
+    deadline = time.monotonic() + 5
+    with socket.create_connection(("127.0.0.1", int(port)), timeout=5) as connection:
+        banner = b""
+        while len(banner) < 4:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError("ssh listener")
+            connection.settimeout(remaining)
+            chunk = connection.recv(4 - len(banner))
+            if not chunk:
+                raise RuntimeError("ssh listener")
+            banner += chunk
+        if banner != b"SSH-":
+            raise RuntimeError("ssh listener")
 
 PORT = sys.argv[1]
 EXPECTED_INSTANCE = sys.argv[2]
@@ -1226,6 +1248,8 @@ if marker:
             if len(fields) != 2 or fields[0] in effective:
                 raise RuntimeError("sshd duplicate")
             effective[fields[0]] = fields[1].strip().lower()
+    # Parsed sshd policy alone does not prove the systemd socket moved ports.
+    verify_listener(PORT)
 
 counter = 0
 counter_path = Path("/var/lib/cloud-init-restart-acceptance/attempt")

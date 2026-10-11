@@ -54,7 +54,9 @@ def _source_fixture(root: Path) -> tuple[Path, bytes, str]:
         "test -f /var/lib/cloud-init-vpn-bootstrap.done || { "
         "install -d -m 0755 /run/sshd && /usr/bin/python3 -I -B "
         "/usr/local/libexec/vpn-bootstrap-sshd-ownership.py --config-dir /etc/ssh "
-        "--ssh-port 2222 && /usr/sbin/sshd -t && systemctl enable --now ssh && "
+        "--ssh-port 2222 && /usr/sbin/sshd -t && systemctl daemon-reload && "
+        "{ ! systemctl is-active --quiet ssh.socket || { systemctl restart ssh.socket && systemctl restart ssh.service; }; } && "
+        "systemctl enable --now ssh && "
         "systemctl reload ssh && touch /var/lib/cloud-init-vpn-bootstrap.done; }"
     )
     (shared / "cloud-init.yaml.tftpl").write_text(
@@ -912,3 +914,46 @@ def test_main_persists_private_failure_sidecar_after_cleanup(
     persisted = json.loads(failure_output.read_bytes())
     assert persisted["category"] == "cloud-init-recoverable-error"
     assert persisted["diagnostic"] == _diagnostic_document()
+
+
+@pytest.mark.parametrize("banner", [b"SSH-", b"HTTP", b"", None])
+def test_guest_inspector_requires_live_ssh_banner(acceptance_module, banner):
+    import ast
+    import socket
+    import threading
+    import time
+
+    # Execute the guest inspector's actual probe against a real loopback socket.
+    module = ast.parse(acceptance_module._INSPECTOR)
+    function = next(node for node in module.body
+                    if isinstance(node, ast.FunctionDef) and node.name == "verify_listener")
+    namespace = {"socket": socket, "time": time}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), "guest-probe", "exec"), namespace)
+    with socket.socket() as server:
+        server.bind(("127.0.0.1", 0))
+        port = server.getsockname()[1]
+        if banner is None:
+            # The configured port has no listener even if sshd -T reports it.
+            with pytest.raises(OSError):
+                namespace["verify_listener"](port)
+            return
+        server.listen(1)
+        server.settimeout(5)
+
+        def serve():
+            with server.accept()[0] as connection:
+                # Split writes exercise the TCP stream rather than a packet assumption.
+                for value in banner:
+                    connection.sendall(bytes([value]))
+
+        worker = threading.Thread(target=serve)
+        worker.start()
+        try:
+            if banner == b"SSH-":
+                namespace["verify_listener"](port)
+            else:
+                with pytest.raises(RuntimeError, match="ssh listener"):
+                    namespace["verify_listener"](port)
+        finally:
+            worker.join(5)
+            assert not worker.is_alive()

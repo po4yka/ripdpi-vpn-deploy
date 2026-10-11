@@ -399,6 +399,7 @@ def test_state_writes_refuse_symlink_or_writable_parent(tmp_path: Path) -> None:
 
     shared = tmp_path / "textfile"
     shared.mkdir(mode=0o700)
+    os.chown(shared, -1, os.getegid())
     _set_mode(shared, 0o3775)
     with pytest.raises(pipeline.PipelineError, match="unsafe directory"):
         pipeline._atomic_bytes(shared / "unsafe.prom", b"metric 1\n", mode=0o644)
@@ -466,6 +467,7 @@ def test_authority_snapshot_accepts_only_the_owned_sticky_textfile_parent(
     root = tmp_path / "root"
     textfile = root / "var/lib/node_exporter/textfile"
     textfile.mkdir(parents=True, mode=0o700)
+    os.chown(textfile, -1, os.getegid())
     _set_mode(textfile, 0o3775)
     snapshot = authority.Snapshot(root)
 

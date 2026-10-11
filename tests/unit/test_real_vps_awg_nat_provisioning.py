@@ -493,6 +493,7 @@ def toolchain_umask(request):
         os.umask(previous)
 
 
+@pytest.mark.usefixtures("isolated_synthetic_git_config")
 def test_digest_keyed_build_activates_complete_clean_host_command_set(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, toolchain_umask
 ) -> None:
@@ -1083,6 +1084,7 @@ def test_archive_members_reject_traversal_links_and_devices() -> None:
     )
 
 
+@pytest.mark.usefixtures("isolated_synthetic_git_config")
 def test_real_git_archive_allows_relative_symlink_within_snapshot(
     tmp_path: Path,
 ) -> None:
@@ -1887,6 +1889,7 @@ def test_bundle_builder_rejects_symlink_output() -> None:
     assert "git bundle verify" in source
 
 
+@pytest.mark.usefixtures("isolated_synthetic_git_config")
 def test_bundle_builder_emits_exact_clean_head_and_rejects_dirty_tree(
     tmp_path: Path,
 ) -> None:
