@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
-import ipaddress
 import json
 import os
 import re
@@ -287,7 +286,6 @@ def _semantic_errors(
 
     xray = doc.get("xray") or {}
     xray_clients = xray.get("clients") or []
-    client_names = {client.get("name") for client in xray_clients if isinstance(client, dict)}
     for key in ("name", "uuid", "short_id"):
         if _duplicate_values(xray_clients, key):
             errors.append(("xray.clients", f"duplicate {key}"))

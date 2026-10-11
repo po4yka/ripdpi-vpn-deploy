@@ -198,7 +198,9 @@ def retire():
                     if (process/'ns/net').stat().st_ino == inode:
                         raise Refusal('namespace-process-still-active')
                 except FileNotFoundError:
-                    pass
+                    # The process exited during /proc traversal. Other stat
+                    # failures remain fatal before namespace deletion.
+                    continue
         names = {value['ifname'] for value in json.loads(command(['ip', '-n', NAMESPACE, '-j', 'link', 'show']))}
         if names - {'lo', PEER, TUNNEL}:
             raise Refusal('namespace-foreign-link')

@@ -486,3 +486,27 @@ def test_sustained_late_packets_keep_paired_tuples_quarantined():
         finally:
             control.close()
             client.close()
+
+
+def test_disconnected_peer_refusal_releases_connection_and_worker():
+    resolver = OwnedResolver()
+    value = config()
+    server = normalizer.Normalizer(value, resolver=resolver)
+    connection, peer = socket.socketpair()
+    peer.close()
+    worker = threading.current_thread()
+    server.workers.add(worker)
+    admitted = server.connections.acquire(blocking=False)
+    assert admitted
+    try:
+        server._handle(connection, ("127.0.0.1", 12345), value["listeners"][0])
+        assert connection.fileno() == -1
+        assert worker not in server.workers
+        assert resolver.calls == []
+        for _ in range(value["limits"]["max_connections"]):
+            available = server.connections.acquire(blocking=False)
+            assert available
+        exhausted = server.connections.acquire(blocking=False)
+        assert not exhausted
+    finally:
+        connection.close()

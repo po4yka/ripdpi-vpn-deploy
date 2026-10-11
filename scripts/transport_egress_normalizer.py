@@ -546,6 +546,8 @@ class Normalizer:
                     connection.sendall(b"\x05\xff" if phase == "greeting" else
                                        b"\x01\x01" if phase == "authentication" else FAILURE)
                 except OSError:
+                    # A disconnected or timed-out client may miss the refusal;
+                    # the finally block still releases every owned resource.
                     pass
         finally:
             connection.close()

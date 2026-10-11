@@ -5,7 +5,6 @@ import json
 import os
 from pathlib import Path
 import re
-import secrets
 import shutil
 import subprocess
 import sys
@@ -13,8 +12,6 @@ import time
 
 import pytest
 import yaml
-
-from test_transport_destination_boundary import config
 
 ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.native_runtime

@@ -1,5 +1,4 @@
 """Internal adapter credentials are typed and generated without diagnostics leaks."""
-import copy
 import json
 from pathlib import Path
 import subprocess
@@ -7,8 +6,7 @@ import sys
 import pytest
 import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]/'scripts'))
-from transport_semantics import EGRESS_CREDENTIALS, egress_errors, transport_errors
-from transport_egress_config import build
+from transport_semantics import EGRESS_CREDENTIALS, egress_errors
 
 ROOT = Path(__file__).resolve().parents[2]
 

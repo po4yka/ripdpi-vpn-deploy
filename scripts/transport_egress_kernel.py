@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import fcntl
 import hashlib
-import ipaddress
 import json
 import os
 from pathlib import Path

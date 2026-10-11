@@ -28,3 +28,5 @@ Recipient WARP traffic uses a distinct native gateway identity. Namespace policy
 
 - Partial-install retirement reads exact current lifecycle unit metadata and skips only actual `not-found` units. Existing units must have canonical owned fragments; namespace removal still requires an empty actual process set.
 - Resolver comparison and publication consume one canonical rendered byte string, with each numeric nameserver and the options on separate lines. Identical input must compare unchanged; joining directives onto one line both changes resolver behavior and needlessly quiesces the accepted route.
+
+- Retirement tolerates only processes that disappear during `/proc` namespace inspection. Other stat errors and any still-active namespace process refuse before namespace deletion.

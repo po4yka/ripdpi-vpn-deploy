@@ -1,6 +1,4 @@
 """Portable authority and rendering checks; packet proofs live in native tests."""
-import copy
-import importlib.util
 import json
 from pathlib import Path
 import sys

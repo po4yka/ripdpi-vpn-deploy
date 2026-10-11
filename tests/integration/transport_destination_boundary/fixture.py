@@ -1,7 +1,6 @@
 """Owned disconnected native fixture; never registers a vendor or reads inventory."""
 from __future__ import annotations
 
-import copy
 import hashlib
 import json
 import os
@@ -18,7 +17,6 @@ import uuid
 import yaml
 
 from scripts.template_render import merge_render_vars, render_template
-from test_transport_destination_boundary import config
 from transport_egress_config import build
 
 ROOT = Path(__file__).resolve().parents[3]

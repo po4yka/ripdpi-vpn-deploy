@@ -1,12 +1,16 @@
 """Real file/descriptor ownership; namespace and ioctl faults are portable inputs."""
 from contextlib import contextmanager
 import ast
+import copy
 import errno
 import importlib.util
+import json
 import os
 from pathlib import Path
 import stat
+import socket
 import sys
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -96,17 +100,21 @@ def test_fixture_config_failure_retains_accepted_file_and_cleans_candidate(tmp_p
         assert closed.value.errno == errno.EBADF
 
 
-@pytest.mark.parametrize("fault", [None, "selected-open", "enter", "ioctl", "restore"])
-def test_tun_descriptor_transfers_only_after_success_and_restores_namespace(tmp_path, monkeypatch, fault):
+@pytest.mark.parametrize("fault", [None, "selected-open", "enter", "ioctl", "restore", "body"])
+def test_tun_scope_closes_all_descriptors_after_restore_and_body(tmp_path, monkeypatch, fault):
     module = load_fixture("transport_warp_tun", monkeypatch)
     descriptors, transitions = [], []
 
-    def open_descriptor(path, flags):
-        if fault == "selected-open" and path.startswith("/run/netns/"):
-            raise OSError(errno.EACCES, "owned-open-fault")
+    def acquire():
         fd = os.open(tmp_path / str(len(descriptors)), os.O_CREAT | os.O_RDWR, 0o600)
         descriptors.append(fd)
         return fd
+
+    def namespace_file(path, mode):
+        assert mode == "rb"
+        if fault == "selected-open" and path.startswith("/run/netns/"):
+            raise OSError(errno.EACCES, "owned-open-fault")
+        return os.fdopen(acquire(), mode)
 
     def setns(fd, kind):
         assert kind == 0x40000000
@@ -121,8 +129,9 @@ def test_tun_descriptor_transfers_only_after_success_and_restores_namespace(tmp_
         if fault == "ioctl":
             raise OSError(errno.EIO, "owned-ioctl-fault")
 
+    monkeypatch.setattr(module, "open", namespace_file, raising=False)
     monkeypatch.setattr(module, "os", SimpleNamespace(
-        open=open_descriptor, close=os.close, O_RDONLY=os.O_RDONLY,
+        open=lambda path, flags: acquire(), close=os.close,
         O_RDWR=os.O_RDWR, O_NONBLOCK=os.O_NONBLOCK,
     ))
     monkeypatch.setattr(module, "ctypes", SimpleNamespace(
@@ -130,74 +139,236 @@ def test_tun_descriptor_transfers_only_after_success_and_restores_namespace(tmp_
         get_errno=lambda: errno.EPERM,
     ))
     monkeypatch.setattr(module, "fcntl", SimpleNamespace(ioctl=ioctl))
-    retained = None
+
+    def enter():
+        with module.tun("owned", "owned-tun") as fd:
+            assert fd == descriptors[2]
+            os.fstat(fd)
+            for namespace in descriptors[:2]:
+                with pytest.raises(OSError) as closed:
+                    os.fstat(namespace)
+                assert closed.value.errno == errno.EBADF
+            if fault == "body":
+                raise OSError(errno.EIO, "owned-body-fault")
+
     try:
         if fault:
             with pytest.raises(OSError):
-                module.tun("owned", "owned-tun")
+                enter()
         else:
-            retained = module.tun("owned", "owned-tun")
-            assert retained == descriptors[2]
-            os.fstat(retained)
+            enter()
         if fault != "selected-open":
             assert transitions == [descriptors[1], descriptors[0]]
         for fd in descriptors:
-            if fd != retained:
-                with pytest.raises(OSError) as closed:
-                    os.fstat(fd)
-                assert closed.value.errno == errno.EBADF
-    finally:
-        if retained is not None:
-            os.close(retained)
-
-
-@pytest.mark.parametrize("second_fails", [False, True])
-def test_two_tun_caller_registers_each_transferred_descriptor_before_next_acquisition(tmp_path, second_fails):
-    """Execute the actual acquisition and cleanup statements with real owned FDs."""
-    source = ROOT / "tests/integration/transport_warp_tun/fixture.py"
-    main = next(node for node in ast.parse(source.read_text()).body
-                if isinstance(node, ast.FunctionDef) and node.name == "main")
-    owner = next(node for node in main.body if isinstance(node, ast.Try))
-    start = next(index for index, node in enumerate(owner.body) if isinstance(node, ast.Assign)
-                 and any(isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
-                         and call.func.id == "tun" for call in ast.walk(node)))
-    end = next(index for index in range(start + 1, len(owner.body))
-               if isinstance(owner.body[index], ast.For))
-    cleanup = next(node for node in owner.finalbody if isinstance(node, ast.For)
-                   and isinstance(node.iter, ast.Name) and node.iter.id == "descriptors")
-    program = ast.fix_missing_locations(ast.Module(body=[ast.Try(
-        body=owner.body[start:end], handlers=[], orelse=[], finalbody=[cleanup],
-    )], type_ignores=[]))
-    acquired, registered, calls = [], [], []
-
-    def acquire(namespace, name):
-        calls.append((namespace, name))
-        if len(calls) == 2 and second_fails:
-            raise OSError(errno.EIO, "owned-second-acquisition-fault")
-        fd = os.open(tmp_path / str(len(acquired)), os.O_CREAT | os.O_RDWR, 0o600)
-        acquired.append(fd)
-        return fd
-
-    values = {"tun": acquire, "os": os, "descriptors": registered,
-              "gateway_ns": "owned-gateway", "peer_ns": "owned-peer"}
-    try:
-        if second_fails:
-            with pytest.raises(OSError, match="owned-second-acquisition-fault"):
-                exec(compile(program, str(source), "exec"), values)
-        else:
-            exec(compile(program, str(source), "exec"), values)
-            assert values["gateway_fd"] == acquired[0] and values["peer_fd"] == acquired[1]
-        assert len(calls) == 2
-        assert registered == acquired
-        for fd in acquired:
             with pytest.raises(OSError) as closed:
                 os.fstat(fd)
             assert closed.value.errno == errno.EBADF
     finally:
-        # A red baseline must not leak its test descriptor into another case.
-        for fd in acquired:
+        for fd in descriptors:
             try:
                 os.fstat(fd)
             except OSError:
                 continue
             os.close(fd)
+
+
+def resource_scopes():
+    """Keep main's actual lexical owners, replacing native actions with fault sites."""
+    source = ROOT / "tests/integration/transport_warp_tun/fixture.py"
+    main = next(node for node in ast.parse(source.read_text()).body
+                if isinstance(node, ast.FunctionDef) and node.name == "main")
+    owner = next(node for node in main.body if isinstance(node, ast.Try))
+    outer = next(node for node in owner.body if isinstance(node, ast.With))
+    phase = 0
+
+    def scopes(node):
+        nonlocal phase
+        node = copy.deepcopy(node)
+        expression = node.items[0].context_expr
+        if isinstance(expression, ast.Call) and isinstance(expression.func, ast.Name) and expression.func.id == "worker":
+            if isinstance(expression.args[0], ast.Name) and expression.args[0].id == "pump":
+                phase += 1
+                node.body = [ast.Expr(value=ast.Call(func=ast.Name(id="exercise", ctx=ast.Load()),
+                    args=[ast.Constant(phase), ast.Name(id="gateway_fd", ctx=ast.Load()),
+                          ast.Name(id="peer_fd", ctx=ast.Load())], keywords=[]))]
+                return node
+        body = []
+        for child in node.body:
+            if isinstance(child, ast.With):
+                body.append(scopes(child))
+            elif isinstance(child, ast.Expr) and isinstance(child.value, ast.Call):
+                target = child.value.func
+                if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name) and target.value.id == "capture":
+                    body.append(child)
+        node.body = body
+        return node
+
+    program = ast.fix_missing_locations(ast.Module(body=[scopes(outer)], type_ignores=[]))
+    assert phase == 2
+    return compile(program, str(source), "exec")
+
+
+@pytest.mark.parametrize("fault", [None, "second-acquisition", "replacement-acquisition", "capture-bind",
+                                   "initial-body", "replacement-body", "initial-pump", "replacement-pump",
+                                   "monitor-start", "initial-pump-start", "replacement-pump-start"])
+def test_actual_main_scopes_close_fds_socket_and_workers_on_every_phase(tmp_path, monkeypatch, fault):
+    module = load_fixture("transport_warp_tun", monkeypatch)
+    descriptors, workers, acquisitions, created_threads = [], [], [], []
+    ready = {1: threading.Event(), 2: threading.Event()}
+    captures = []
+
+    def acquire():
+        fd = os.open(tmp_path / str(len(descriptors)), os.O_CREAT | os.O_RDWR, 0o600)
+        descriptors.append(fd)
+        return fd
+
+    def namespace_file(path, mode):
+        return os.fdopen(acquire(), mode)
+
+    def open_tun(path, flags):
+        assert path == "/dev/net/tun"
+        acquisitions.append(path)
+        if (fault == "second-acquisition" and len(acquisitions) == 2 or
+                fault == "replacement-acquisition" and len(acquisitions) == 3):
+            raise OSError(errno.EIO, "owned-acquisition-fault")
+        return acquire()
+
+    class Capture(socket.socket):
+        def __init__(self):
+            super().__init__(socket.AF_INET, socket.SOCK_DGRAM)
+            captures.append(self)
+
+        def bind(self, address):
+            assert address == ("rpd-warp-host", 0)
+            if fault == "capture-bind":
+                raise OSError(errno.EIO, "owned-capture-bind-fault")
+            super().bind(("127.0.0.1", 0))
+
+    class Thread(threading.Thread):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            created_threads.append(self)
+
+        def start(self):
+            failure = {1: "monitor-start", 2: "initial-pump-start", 3: "replacement-pump-start"}
+            if fault == failure[len(created_threads)]:
+                raise OSError(errno.EAGAIN, "owned-worker-start-fault")
+            super().start()
+
+    def monitor_target(stop, capture, counts):
+        workers.append(threading.current_thread())
+        module.monitor(stop, capture, counts)
+
+    def pump_target(stop, gateway, peer, counts):
+        phase = len(acquisitions) - 1
+        workers.append(threading.current_thread())
+        ready[phase].set()
+        if fault == ("initial-pump" if phase == 1 else "replacement-pump"):
+            raise OSError(errno.EIO, "owned-pump-fault")
+        stop.wait()
+
+    def exercise(phase, gateway, peer):
+        assert ready[phase].wait(1)
+        os.fstat(gateway); os.fstat(peer)
+        if fault == ("initial-body" if phase == 1 else "replacement-body"):
+            raise OSError(errno.EIO, "owned-phase-fault")
+
+    monkeypatch.setattr(module, "open", namespace_file, raising=False)
+    monkeypatch.setattr(module, "os", SimpleNamespace(
+        open=open_tun, close=os.close, O_RDWR=os.O_RDWR, O_NONBLOCK=os.O_NONBLOCK,
+    ))
+    monkeypatch.setattr(module, "ctypes", SimpleNamespace(
+        CDLL=lambda *args, **kwargs: SimpleNamespace(setns=lambda fd, kind: 0),
+        get_errno=lambda: errno.EPERM,
+    ))
+    monkeypatch.setattr(module, "fcntl", SimpleNamespace(ioctl=lambda *args: None))
+    monkeypatch.setattr(module, "socket", SimpleNamespace(
+        AF_PACKET=0, SOCK_RAW=0, htons=lambda value: value, socket=lambda *args: Capture(), timeout=socket.timeout,
+    ))
+    monkeypatch.setattr(module, "threading", SimpleNamespace(Event=threading.Event, Thread=Thread))
+    values = {"tun": module.tun, "worker": module.worker, "pump": pump_target, "monitor": monitor_target,
+              "socket": module.socket, "gateway_ns": "owned-gateway", "peer_ns": "owned-peer",
+              "counts": {"underlay_recipient_frames": 0}, "exercise": exercise}
+    try:
+        if fault:
+            with pytest.raises((OSError, RuntimeError)):
+                exec(resource_scopes(), values)
+        else:
+            exec(resource_scopes(), values)
+            assert len(acquisitions) == 3 and len(workers) == 3
+        assert all(not thread.is_alive() for thread in created_threads)
+        assert len(captures) == 1 and captures[0].fileno() == -1
+        for fd in descriptors:
+            with pytest.raises(OSError) as closed:
+                os.fstat(fd)
+            assert closed.value.errno == errno.EBADF
+    finally:
+        for capture in captures:
+            capture.close()
+        for fd in descriptors:
+            try:
+                os.fstat(fd)
+            except OSError:
+                continue
+            os.close(fd)
+
+
+@pytest.mark.parametrize("fault", [None, "write", "ownership", "mode"])
+def test_gateway_config_is_private_before_write_and_closes_failed_candidate(tmp_path, monkeypatch, fault):
+    module = load_fixture("transport_warp_tun", monkeypatch)
+    descriptors = []
+
+    def dump(document, stream):
+        descriptors.append(stream.fileno())
+        assert stat.S_IMODE(os.fstat(stream.fileno()).st_mode) == 0o600
+        json.dump(document, stream)
+        if fault == "write":
+            raise OSError(errno.EIO, "owned-config-write-fault")
+
+    def ownership(fd, uid, gid):
+        assert uid == 0 and gid == os.getgid()
+        assert stat.S_IMODE(os.fstat(fd).st_mode) == 0o600
+        if fault == "ownership":
+            raise OSError(errno.EPERM, "owned-config-ownership-fault")
+        os.fchown(fd, -1, gid)
+
+    def mode(fd, value):
+        assert value == 0o640
+        if fault == "mode":
+            raise OSError(errno.EPERM, "owned-config-mode-fault")
+        os.fchmod(fd, value)
+
+    monkeypatch.setattr(module, "json", SimpleNamespace(dump=dump))
+    monkeypatch.setattr(module, "os", SimpleNamespace(fchown=ownership, fchmod=mode))
+    if fault:
+        with pytest.raises(OSError):
+            module.gateway_config(tmp_path, {"authority": "owned-fixture"}, os.getgid())
+        assert list(tmp_path.iterdir()) == []
+    else:
+        path = module.gateway_config(tmp_path, {"authority": "owned-fixture"}, os.getgid())
+        assert path.suffix == ".json"
+        assert json.loads(path.read_text()) == {"authority": "owned-fixture"}
+        assert stat.S_IMODE(path.stat().st_mode) == 0o640
+        assert path.stat().st_gid == os.getgid()
+    for fd in descriptors:
+        with pytest.raises(OSError) as closed:
+            os.fstat(fd)
+        assert closed.value.errno == errno.EBADF
+
+
+def test_real_pump_forwards_frames_and_stops_before_socket_scope_closes(monkeypatch):
+    module = load_fixture("transport_warp_tun", monkeypatch)
+    counts = {"tun_frames": 0, "recipient_tun_frames": 0}
+    frame = bytes([0x45]) + bytes(15) + socket.inet_aton("192.0.2.80") + b"owned-frame"
+    left, sender = socket.socketpair(socket.AF_UNIX, socket.SOCK_DGRAM)
+    with left, sender:
+        right, receiver = socket.socketpair(socket.AF_UNIX, socket.SOCK_DGRAM)
+        with right, receiver:
+            receiver.settimeout(1)
+            sender.settimeout(1)
+            with module.worker(module.pump, left.fileno(), right.fileno(), counts):
+                sender.send(frame)
+                assert receiver.recv(4096) == frame
+                receiver.send(b"owned-reply")
+                assert sender.recv(4096) == b"owned-reply"
+            assert counts["tun_frames"] == 2 and counts["recipient_tun_frames"] == 1
