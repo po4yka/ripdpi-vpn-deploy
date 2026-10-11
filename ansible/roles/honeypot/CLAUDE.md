@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Retirement declares the exact honeypot metric as a regular file owned by root or the honeypot account. This grant never extends to directories, symlinks, other writers or unsafe ancestors.
+
 **Observations are independent of log sampling** — total/minute and bounded unique observations update for every admitted detector event before the per-minute logging decision. `vpn_honeypot_logs_suppressed_total` records omitted event records; busy-worker admission drops retain their own metric. The log cap bounds disk output without hiding observation volume.
 
 **Same-host honeypot for cheap signal** — binds one plausible-looking listener

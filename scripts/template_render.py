@@ -111,6 +111,9 @@ def merge_render_vars() -> dict:
             "backup_directory": "/srv/observer-backup",
         }
     )
+    merged["watchdog_awg_interfaces"] = [
+        instance["name"] for instance in merged["amneziawg_secrets"].get("instances", [])
+    ] or [merged["amneziawg"]["interface"]]
     merged.setdefault(
         "watchdog_reality_probes",
         [

@@ -16,29 +16,13 @@
   ansible.builtin.set_fact:
     _runtime_retire_unit_state: "{{ _runtime_retire_unit_capture.stdout | from_json }}"
 
-- name: Inspect role-owned runtime authority before retirement
-  ansible.builtin.stat:
-    path: "{{ item }}"
-    follow: false
-  loop: "{{ runtime_retire_paths }}"
-  register: _runtime_retire_authority
-
-- name: Refuse foreign runtime authority before retirement
-  ansible.builtin.assert:
-    that:
-      - not item.stat.exists or item.stat.uid | int == 0
-    fail_msg: Runtime retirement encountered a foreign owner in its declared authority set.
-  loop: "{{ _runtime_retire_authority.results }}"
-  loop_control:
-    label: "{{ item.item }}"
-
 - name: Validate complete declared runtime authority before stopping units
   ansible.builtin.command:
     argv:
       - python3
       - -c
       - "{{ lookup('ansible.builtin.file', role_path ~ '/files/validate_retirement.py') }}"
-    stdin: "{{ runtime_retire_paths | to_json }}"
+    stdin: "{{ {'paths': runtime_retire_paths, 'owners': runtime_retire_file_owners} | to_json }}"
   register: _runtime_retire_preflight
   changed_when: false
   check_mode: false
@@ -58,6 +42,17 @@
   register: _runtime_retire_lifecycle
   changed_when: _runtime_retire_lifecycle.rc == 0 and (_runtime_retire_lifecycle.stdout | from_json).changed
   when: not ansible_check_mode
+
+- name: Validate complete declared runtime authority after stopping producers
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path ~ '/files/validate_retirement.py') }}"
+    stdin: "{{ {'paths': runtime_retire_paths, 'owners': runtime_retire_file_owners} | to_json }}"
+  register: _runtime_retire_preflight
+  changed_when: false
+  check_mode: false
 
 - name: Remove only declared runtime authority
   ansible.builtin.file:

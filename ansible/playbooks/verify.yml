@@ -365,9 +365,18 @@
         - not (vpn_subscription_only | default(false))
         - vpn.enable_hysteria | default(true)
 
+    - name: Normalize configured AmneziaWG instances for verification
+      ansible.builtin.include_role:
+        name: amneziawg
+        tasks_from: instances
+      when:
+        - not (vpn_subscription_only | default(false))
+        - vpn.enable_amneziawg | default(true)
+
     - name: AmneziaWG interface up
       ansible.builtin.command:
-        cmd: awg show awg0
+        argv: [awg, show, "{{ item }}"]
+      loop: "{{ _awg_instances | default([]) | map(attribute='name') | list }}"
       changed_when: false
       when:
         - not (vpn_subscription_only | default(false))

@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Retirement accepts `runtime_retire_file_owners` only for declared regular files. Root ownership stays valid; the named producer account is an additional exact-file owner. Root ancestry, mode and single-link checks remain mandatory. Revalidate after stopping producers before deletion. Direct validator callers send both `paths` and `owners`.
+
 **Hysteria candidates retain the destination boundary** — semantic YAML validation requires exactly the fixed guarded SOCKS outbound and rejects ACL or resolver substitutions. A parser-valid config cannot restore an unguarded direct route. Native runtime and full frontend tests remain separate from configuration shape checks.
 
 **Hysteria semantic validation has one companion source** — the Hysteria

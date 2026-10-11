@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+AWG probes use every normalized configured instance. The environment carries only comma-separated interface names; each failed interface maps to its exact `awg-quick@` unit. Subscription-only hosts emit no AWG probe list.
+
 - Server configuration validation derives the accepted executable and asset paths from the loaded Xray unit. The operator CLI link remains available for stats and the separately pinned canary client, but never chooses the accepted server validator.
 
 - The watchdog failure scenario declares a versioned synthetic runtime and a

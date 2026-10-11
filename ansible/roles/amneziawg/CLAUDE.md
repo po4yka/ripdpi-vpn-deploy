@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+The normalization entrypoint also supplies verification and watchdog. These consumers must inspect every configured instance and must not assume an `awg0` instance exists.
+
 **Effective inputs are admitted before build or retirement** — shared
 controller semantics validate bounded ordered junk, distinct headers, 1–15
 character interface names, canonical key material and noncolliding peer CIDRs.

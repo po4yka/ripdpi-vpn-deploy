@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+The shared retirement validator receives an explicit empty file-owner map for the Unbound fragment; its root-owned authority remains unchanged.
+
 Disabled role intent stops only declared owned services and removes exact runtime
 configuration; shared packages, immutable release receipts and unrelated state
 remain. The unique `dns_morph_bridge_role_enabled` selector defaults true for direct calls.

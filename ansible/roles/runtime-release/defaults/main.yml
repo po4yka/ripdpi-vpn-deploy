@@ -25,3 +25,6 @@ runtime_release_download_dir: "{{ runtime_release_install_root }}/.runtime-relea
 # Immutable release directories, candidates, receipts, and staging are root-owned.
 runtime_release_storage_owner: root
 runtime_release_storage_group: root
+
+# Exact producer-owned regular files; all other retirement authority stays root-owned.
+runtime_retire_file_owners: {}

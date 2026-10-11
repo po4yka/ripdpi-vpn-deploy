@@ -103,3 +103,64 @@ def test_fresh_reload_timed_sets_static_sources_and_proxy_egress_native():
         timeout=45,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+IPV6_CONTROL = r'''
+import json,pathlib,socket,subprocess,sys,tempfile,time
+payload=json.load(sys.stdin)
+def run(*argv,check=True):
+ result=subprocess.run(argv,check=False,capture_output=True,text=True,timeout=15)
+ if check and result.returncode: raise AssertionError(result.stderr)
+ return result
+peer=subprocess.Popen(['unshare','--net',sys.executable,'-c','import time; time.sleep(60)'])
+server=None
+try:
+ for _ in range(100):
+  if pathlib.Path('/proc/self/ns/net').readlink()!=pathlib.Path(f'/proc/{peer.pid}/ns/net').readlink(): break
+  time.sleep(.01)
+ else: raise AssertionError('peer namespace did not start')
+ def inside(*argv): return run('nsenter','--target',str(peer.pid),'--net',*argv)
+ run('ip','link','set','lo','up'); inside('ip','link','set','lo','up')
+ run('ip','link','add','audit-left','type','veth','peer','name','audit-right')
+ run('ip','link','set','audit-right','netns',str(peer.pid))
+ run('ip','link','set','audit-left','up'); inside('ip','link','set','audit-right','up')
+ run('ip','-6','address','add','fd42:abcd::1/64','dev','audit-left','nodad')
+ inside('ip','-6','address','add','fd42:abcd::2/64','dev','audit-right','nodad')
+ with tempfile.TemporaryDirectory() as temp:
+  directory=pathlib.Path(temp)
+  fragment=directory/'sources.nft'
+  fragment.write_text('set vpn_tailnet_ssh_v4 { type ipv4_addr; flags interval; }\nset vpn_tailnet_ssh_v6 { type ipv6_addr; flags interval; }\n')
+  candidate=directory/'candidate.nft'
+  candidate.write_text(payload.replace('/etc/nftables.d/vpn-tailnet-ssh-sets.nft',str(fragment)))
+  run('nft','-c','-f',str(candidate)); run('nft','-f',str(candidate))
+  code="""import socket
+s=socket.socket(socket.AF_INET6); s.bind(('fd42:abcd::2',443)); s.listen(); print('ready',flush=True)
+for _ in range(2):
+ c,_=s.accept(); c.sendall(b'ok'); c.close()
+"""
+  server=subprocess.Popen(['nsenter','--target',str(peer.pid),'--net',sys.executable,'-c',code],stdout=subprocess.PIPE,text=True)
+  assert server.stdout.readline().strip()=='ready'
+  for _ in range(2):
+   run('ip','-6','neigh','flush','dev','audit-left')
+   inside('ip','-6','neigh','flush','dev','audit-right')
+   with socket.socket(socket.AF_INET6) as client:
+    client.settimeout(3); client.connect(('fd42:abcd::2',443)); assert client.recv(2)==b'ok'
+  server.wait(timeout=5)
+  # An unrelated outbound ICMPv6 echo still fails the strict policy.
+  assert run('ping','-6','-c','1','-W','1','fd42:abcd::2',check=False).returncode!=0
+  assert 'policy drop' in run('nft','list','chain','inet','filter','output').stdout
+finally:
+ if server is not None and server.poll() is None: server.terminate(); server.wait(timeout=5)
+ peer.terminate(); peer.wait(timeout=5)
+'''
+
+
+def test_strict_ipv6_neighbor_resolution_survives_empty_caches():
+    assert os.geteuid() == 0
+    variables = merge_render_vars()
+    variables["firewall_egress_policy"] = "strict"
+    variables["vpn"] = {key: False for key in variables["vpn"] if key.startswith("enable_")}
+    rendered = render_template(ROOT / "ansible/roles/firewall/templates/nftables.conf.j2", variables)
+    result = subprocess.run(["unshare", "--net", sys.executable, "-c", IPV6_CONTROL],
+                            input=json.dumps(rendered), capture_output=True, text=True, timeout=40)
+    assert result.returncode == 0, result.stdout + result.stderr

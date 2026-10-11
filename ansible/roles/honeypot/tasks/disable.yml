@@ -8,6 +8,8 @@
       - honeypot-logrotate.timer
       - honeypot-logrotate.service
       - honeypot.service
+    runtime_retire_file_owners:
+      "{{ honeypot.textfile_dir }}/vpn_honeypot.prom": "honeypot"
     runtime_retire_paths:
       - /etc/systemd/system/honeypot-logrotate.timer
       - /etc/systemd/system/honeypot-logrotate.service

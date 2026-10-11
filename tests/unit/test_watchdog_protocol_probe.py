@@ -35,6 +35,8 @@ def _run_watchdog(
     credential_directory: Path | None = None,
     server_port: int = 443,
     recovery_succeeds: bool = True,
+    awg_interfaces: tuple[str, ...] = (),
+    failed_awg: str = "",
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -112,6 +114,12 @@ def _run_watchdog(
         "    output.write(' '.join(sys.argv[1:])+'\\n')\n"
         f"raise SystemExit({0 if recovery_succeeds else 1})\n"
     )
+    _executable(
+        bin_dir / "awg",
+        """printf '%s\\n' "$*" >> "$AWG_LOG"
+[[ "$2" != "${FAILED_AWG:-}" ]]
+""",
+    )
     env = os.environ.copy()
     env.update(
         {
@@ -119,7 +127,10 @@ def _run_watchdog(
             "ENABLE_XRAY": "true",
             "ENABLE_NGINX_XHTTP": "false",
             "ENABLE_HYSTERIA": "false",
-            "ENABLE_AMNEZIAWG": "false",
+            "ENABLE_AMNEZIAWG": "true" if awg_interfaces else "false",
+            "AWG_INTERFACES": ",".join(awg_interfaces),
+            "AWG_LOG": str(tmp_path / "awg.log"),
+            "FAILED_AWG": failed_awg,
             "XRAY_BIN": str(bin_dir / "xray"),
             "TRANSPORT_GENERATION_BIN": str(recovery),
             "XRAY_VALIDATE_BIN": str(bin_dir / "xray-validate"),
@@ -253,3 +264,18 @@ def test_failed_guarded_recovery_never_falls_back_to_direct_restart(tmp_path):
     assert "--unit xray.service" in (tmp_path / "recovery.log").read_text()
     assert "restart xray.service" not in (tmp_path / "systemctl.log").read_text()
     assert "kicks_this_hour=1" in (tmp_path / "state").read_text()
+
+
+def test_named_awg_instances_are_all_probed_without_legacy_awg0(tmp_path):
+    result = _run_watchdog(tmp_path, awg_interfaces=("awg1", "awg2"))
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "awg.log").read_text().splitlines() == ["show awg1", "show awg2"]
+    assert "RESTARTED" not in result.stdout
+
+
+def test_failed_secondary_awg_recovers_only_that_instance(tmp_path):
+    result = _run_watchdog(tmp_path, awg_interfaces=("awg1", "awg2"), failed_awg="awg2")
+    assert result.returncode != 0
+    assert (tmp_path / "awg.log").read_text().splitlines() == ["show awg1", "show awg2"]
+    restarts = [line for line in (tmp_path / "systemctl.log").read_text().splitlines() if line.startswith("restart")]
+    assert restarts == ["restart awg-quick@awg2.service"]

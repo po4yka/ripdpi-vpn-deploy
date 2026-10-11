@@ -11,6 +11,22 @@
     ((vpn.enable_xray_reality | default(true)) or
      (vpn.enable_nginx_xhttp | default(true)))
 
+- name: Normalize configured AmneziaWG instances for watchdog probes
+  ansible.builtin.include_role:
+    name: amneziawg
+    tasks_from: instances
+  when:
+    - not (vpn_subscription_only | default(false))
+    - vpn.enable_amneziawg | default(false)
+
+- name: Select only effective AmneziaWG names for watchdog probes
+  ansible.builtin.set_fact:
+    watchdog_awg_interfaces: >-
+      {{ (_awg_instances | map(attribute='name') | list)
+         if (vpn.enable_amneziawg | default(false)) and not (vpn_subscription_only | default(false))
+         else [] }}
+  no_log: true
+
 - name: Ensure watchdog state directory
   ansible.builtin.file:
     path: /var/lib/vpn-watchdog

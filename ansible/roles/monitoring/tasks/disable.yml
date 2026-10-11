@@ -24,6 +24,8 @@
     runtime_retire_units: >-
       {{ ['xray-stats-exporter.timer', 'xray-stats-exporter.service'] +
          (['prometheus-node-exporter.service'] if _monitoring_runtime_owner.stat.exists else []) }}
+    runtime_retire_file_owners:
+      "{{ monitoring.node_exporter_textfile_dir }}/vpn_xray.prom": "{{ monitoring.node_exporter_user | default('prometheus') }}"
     runtime_retire_paths:
       - /etc/systemd/system/xray-stats-exporter.timer
       - /etc/systemd/system/xray-stats-exporter.service

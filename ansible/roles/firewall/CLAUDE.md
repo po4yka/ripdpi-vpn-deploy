@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Strict output admits untracked IPv6 router solicitation and neighbor discovery only at hop limit 255, plus essential ICMPv6 error reports. It does not permit arbitrary ICMPv6 or outbound echo. Native regression clears both neighbor caches before each HTTPS-port exchange.
+
 **Recipient egress has an independent late guard** — the transport role owns a separate nft table, so this role's scoped filter/NAT reload preserves its active boundary. WARP namespace forwarding is limited to the exact owned veth and source address; the namespace gateway can send plaintext only through a verified TUN ifindex. The transport table owns underlay NAT and refuses private forwarding destinations. Host infrastructure UIDs retain their ordinary firewall policy.
 
 **Hysteria hopping belongs to nftables** — the role redirects the admitted UDP range to the fixed Hysteria listener in the owned inet NAT table. The daemon receives no network-administration capability. Removing the range removes the redirect without affecting AWG postrouting.
