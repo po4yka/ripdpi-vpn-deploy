@@ -11,6 +11,7 @@
 # their own — they would need both the topic and a way onto this
 # workstation.
 set -euo pipefail
+umask 077
 
 PROVIDER="${PROVIDER:-upcloud}"
 BLUE_ENV="${BLUE_ENV:-${ENV:-prod}}"
@@ -23,6 +24,16 @@ context_file="${STATE_DIR}/pending-otp-context.json"
 
 given="${OTP:-${1:-}}"
 [[ -n "$given" ]] || { echo "usage: $0 <OTP>   (or: make promote-spare OTP=<OTP>)" >&2; exit 1; }
+
+# Keep the approval generation stable from validation through orchestration.
+mkdir -p "$STATE_DIR"
+[[ -d "$STATE_DIR" && ! -L "$STATE_DIR" && -O "$STATE_DIR" ]] || {
+  echo 'unsafe promotion state directory' >&2; exit 1;
+}
+chmod 0700 "$STATE_DIR"
+[[ ! -L "${STATE_DIR}/promotion.lock" ]] || { echo 'unsafe promotion lock' >&2; exit 1; }
+exec 9<> "${STATE_DIR}/promotion.lock"
+python3 "$REPO_ROOT/scripts/private-operator-lock.py" "${STATE_DIR}/promotion.lock" 9
 
 if [[ ! -s "$otp_file" ]]; then
   echo "no pending OTP. warm-spare-watcher hasn't issued one." >&2

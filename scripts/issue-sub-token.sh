@@ -114,7 +114,7 @@ registry = json.loads(sys.stdin.read() or "{}")
 if "client_registry" in registry and isinstance(registry["client_registry"], dict):
     registry = registry["client_registry"]
 matches = [
-    entry for name, entry in registry.items()
+    (name, entry) for name, entry in registry.items()
     if isinstance(entry, dict)
     and (entry.get("token_hash_prefix") or "") == os.environ["TOKEN_PREFIX"]
 ]
@@ -128,7 +128,9 @@ if not matches:
     )
 if len(matches) > 1:
     raise SystemExit("error: ambiguous client_registry entries for this token prefix; re-issue")
-entry = matches[0]
+name, entry = matches[0]
+if name != os.environ["CLIENT_NAME"]:
+    raise SystemExit("error: token does not belong to the requested client; refresh refused")
 formats = entry.get("formats") or []
 hosts = entry.get("hosts") or []
 cohorts = entry.get("cohorts") or []
