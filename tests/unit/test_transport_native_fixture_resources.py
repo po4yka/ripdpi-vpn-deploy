@@ -1,5 +1,6 @@
 """Real file/descriptor ownership; namespace and ioctl faults are portable inputs."""
 from contextlib import contextmanager
+import ast
 import errno
 import importlib.util
 import os
@@ -148,3 +149,55 @@ def test_tun_descriptor_transfers_only_after_success_and_restores_namespace(tmp_
     finally:
         if retained is not None:
             os.close(retained)
+
+
+@pytest.mark.parametrize("second_fails", [False, True])
+def test_two_tun_caller_registers_each_transferred_descriptor_before_next_acquisition(tmp_path, second_fails):
+    """Execute the actual acquisition and cleanup statements with real owned FDs."""
+    source = ROOT / "tests/integration/transport_warp_tun/fixture.py"
+    main = next(node for node in ast.parse(source.read_text()).body
+                if isinstance(node, ast.FunctionDef) and node.name == "main")
+    owner = next(node for node in main.body if isinstance(node, ast.Try))
+    start = next(index for index, node in enumerate(owner.body) if isinstance(node, ast.Assign)
+                 and any(isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+                         and call.func.id == "tun" for call in ast.walk(node)))
+    end = next(index for index in range(start + 1, len(owner.body))
+               if isinstance(owner.body[index], ast.For))
+    cleanup = next(node for node in owner.finalbody if isinstance(node, ast.For)
+                   and isinstance(node.iter, ast.Name) and node.iter.id == "descriptors")
+    program = ast.fix_missing_locations(ast.Module(body=[ast.Try(
+        body=owner.body[start:end], handlers=[], orelse=[], finalbody=[cleanup],
+    )], type_ignores=[]))
+    acquired, registered, calls = [], [], []
+
+    def acquire(namespace, name):
+        calls.append((namespace, name))
+        if len(calls) == 2 and second_fails:
+            raise OSError(errno.EIO, "owned-second-acquisition-fault")
+        fd = os.open(tmp_path / str(len(acquired)), os.O_CREAT | os.O_RDWR, 0o600)
+        acquired.append(fd)
+        return fd
+
+    values = {"tun": acquire, "os": os, "descriptors": registered,
+              "gateway_ns": "owned-gateway", "peer_ns": "owned-peer"}
+    try:
+        if second_fails:
+            with pytest.raises(OSError, match="owned-second-acquisition-fault"):
+                exec(compile(program, str(source), "exec"), values)
+        else:
+            exec(compile(program, str(source), "exec"), values)
+            assert values["gateway_fd"] == acquired[0] and values["peer_fd"] == acquired[1]
+        assert len(calls) == 2
+        assert registered == acquired
+        for fd in acquired:
+            with pytest.raises(OSError) as closed:
+                os.fstat(fd)
+            assert closed.value.errno == errno.EBADF
+    finally:
+        # A red baseline must not leak its test descriptor into another case.
+        for fd in acquired:
+            try:
+                os.fstat(fd)
+            except OSError:
+                continue
+            os.close(fd)

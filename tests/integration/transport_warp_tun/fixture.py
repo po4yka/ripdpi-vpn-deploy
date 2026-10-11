@@ -129,8 +129,10 @@ def main():
         run('ip','-n',gateway_ns,'address','add','10.250.254.2/30','dev','rpd-warp-ns')
         run('ip','-n',gateway_ns,'link','set','rpd-warp-ns','up')
         run('ip','-n',gateway_ns,'route','add','default','via','10.250.254.1')
-        gateway_fd, peer_fd = tun(gateway_ns,'CloudflareWARP'), tun(peer_ns,'rdb-peer-tun')
-        descriptors.extend([gateway_fd,peer_fd])
+        gateway_fd = tun(gateway_ns,'CloudflareWARP')
+        descriptors.append(gateway_fd)
+        peer_fd = tun(peer_ns,'rdb-peer-tun')
+        descriptors.append(peer_fd)
         for ns,name,address in [(gateway_ns,'CloudflareWARP','192.0.2.2/24'),(peer_ns,'rdb-peer-tun','192.0.2.80/24')]:
             run('ip','-n',ns,'address','add',address,'dev',name);run('ip','-n',ns,'link','set',name,'up')
         secret = {name+'_password': 'owned-tun-'+name+'-'+uuid.uuid4().hex for name in ('direct_xray','direct_gateway','warp_xray','warp_gateway')}
