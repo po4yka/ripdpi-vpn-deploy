@@ -106,6 +106,49 @@ def test_full_stack_scenarios_repeat_convergence_before_verification() -> None:
         assert sequence == expected
 
 
+def test_both_full_stack_prepare_entrypoints_require_genuine_credential_delivery() -> None:
+    shared = REPO_ROOT / "ansible/molecule/prepare-transport-credentials.yml"
+    for name in ("full-stack", "full-stack-published"):
+        directory = REPO_ROOT / "ansible/molecule" / name
+        scenario = yaml.safe_load((directory / "molecule.yml").read_text())
+        sequence = scenario["scenario"]["test_sequence"]
+        assert sequence.index("create") < sequence.index("prepare") < sequence.index("converge")
+        prepare = directory / "prepare.yml"
+        assert prepare.is_file(), f"{name}: declared preparation has no entrypoint"
+        plays = yaml.safe_load(prepare.read_text())
+        assert len(plays) == 1
+        assert plays[0]["ansible.builtin.import_playbook"] == "../prepare-transport-credentials.yml"
+        assert (directory / plays[0]["ansible.builtin.import_playbook"]).resolve() == shared
+    play = yaml.safe_load(shared.read_text())[0]
+    assert play["hosts"] == "all" and play["become"] is True
+    tasks = play["tasks"]
+    propagation = next(index for index, task in enumerate(tasks)
+                       if task.get("ansible.builtin.command", {}).get("argv") ==
+                       ["mount", "--make-rshared", "/run"])
+    source = next(task["ansible.builtin.copy"] for task in tasks
+                  if task.get("ansible.builtin.copy", {}).get("dest") == "/run/molecule-credential-source")
+    assert source["owner"] == source["group"] == "root" and source["mode"] == "0600"
+    assert source["content"] == "owned-fixture-source"
+    unit = next(task["ansible.builtin.copy"]["content"] for task in tasks
+                if task.get("ansible.builtin.copy", {}).get("dest") ==
+                "/etc/systemd/system/molecule-credential-probe.service")
+    assert "Type=oneshot" in unit and "User=root" in unit
+    assert "LoadCredential=probe:/run/molecule-credential-source" in unit
+    assert "ExecStart=/usr/bin/python3 /usr/local/libexec/molecule-credential-probe.py" in unit
+    verifier = next(task["ansible.builtin.copy"]["content"] for task in tasks
+                    if task.get("ansible.builtin.copy", {}).get("dest") ==
+                    "/usr/local/libexec/molecule-credential-probe.py")
+    assert "os.environ['CREDENTIALS_DIRECTORY']" in verifier
+    assert "path.read_text() == 'owned-fixture-source'" in verifier
+    activation = next(index for index, task in enumerate(tasks)
+                      if task.get("ansible.builtin.systemd_service", {}).get("name") ==
+                      "molecule-credential-probe.service")
+    assert propagation < activation
+    assert tasks[activation]["ansible.builtin.systemd_service"] == {
+        "name": "molecule-credential-probe.service", "daemon_reload": True, "state": "started",
+    }
+
+
 def test_hosted_full_stack_job_runs_both_idempotence_scenarios() -> None:
     workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text())
     job = workflow["jobs"]["molecule-full-stack"]

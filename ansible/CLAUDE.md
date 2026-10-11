@@ -6,6 +6,8 @@ The disposable P0/P1/Hysteria profile derives its canonical HTTPS origin from th
 
 Full-stack Molecule scenarios keep the default task/recap callback stream with JSON results. Structured YAML result bodies can resemble changed-task lines to the pinned idempotence reporter; genuine persistent changes must still be reported. The operator callback remains YAML.
 
+Both full-stack scenarios import `molecule/prepare-transport-credentials.yml` through their preparation entrypoints, establishing owned runtime mount propagation and proving genuine `LoadCredential` delivery before transport convergence.
+
 **Protected frontends share one egress generation** — site stages the normalizer, private native gateways and both enabled Xray/Hysteria frontends before activation. Protected transport tags select both frontend consumers so internal authority changes cannot leave one with stale credentials. Host and namespace guards precede listeners; subscription-only and disabled profiles retire consumers first. Hysteria-only hosts acquire the shared pinned Xray runtime without creating a REALITY frontend.
 
 Credential rotation stages enabled protected frontends through these same roles
