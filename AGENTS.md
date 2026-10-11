@@ -2,6 +2,10 @@
 
 Canonical instructions for every coding agent in this repository. The root `CLAUDE.md` imports this file, so edit this file rather than maintaining a second copy.
 
+## Conversation language
+
+Respond in the language of the user's message unless the user explicitly requests another language. Keep repository artifacts in their established language.
+
 ## Project
 
 Reproducible, layered IaC for a four-tier outbound connectivity stack:
