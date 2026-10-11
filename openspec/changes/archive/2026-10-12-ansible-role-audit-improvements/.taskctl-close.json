@@ -1,0 +1,11 @@
+{
+  "change": "ansible-role-audit-improvements",
+  "evidence_summary": "Integrated runtime source cf01f94a640913412f3316b5cb288881639712ce passed all 86 protected-main jobs in run 38134843683. Recorded requirement-specific verification and external qualifications are preserved. Complete local gate components passed: 6,340 portable tests, 22 subtests, 297 CLI tests, 206 baseline transfers and 57 shell tests. Every assertion and deadline is retained; production code is unchanged.",
+  "execution_sha256": "17cda9d1c23a7d9778af20c99fbe6f91dc1b60565edc7a2f58df145cd837967b",
+  "issue_sha256": "76c77eba2eb645133d3b3297300ac3a85ae5aba37106058535ab51c83027f522",
+  "outcome": "done",
+  "prepared_at": "2026-10-11T21:31:26Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "ANS-1791586652330612"
+}

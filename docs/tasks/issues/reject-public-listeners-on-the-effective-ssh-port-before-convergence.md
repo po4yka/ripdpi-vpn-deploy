@@ -2,7 +2,7 @@
 id: ANS-1790316250156031
 title: Reject public listeners on the effective SSH port before convergence
 kind: bug
-status: review
+status: done
 area: ansible
 priority: medium
 risk: standard
@@ -14,7 +14,10 @@ openspec_change: ans-1790316250156031-reject-public-listeners-on-the-effective-s
 created: 2026-09-25
 updated: 2026-10-12
 related_tasks: []
-status_detail: "Accepted integrated runtime source cf01f94a640913412f3316b5cb288881639712ce passed all 86 protected-main jobs in run 38134843683. Recorded verification results and external scope qualifications are preserved."
+status_detail: Accepted integrated runtime source cf01f94a640913412f3316b5cb288881639712ce passed all 86 protected-main jobs in run 38134843683. Recorded verification results and external scope qualifications are preserved.
+closed_at: "2026-10-11T22:09:35Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "Integrated runtime source cf01f94a640913412f3316b5cb288881639712ce passed all 86 protected-main jobs in run 38134843683. Recorded requirement-specific verification and external qualifications are preserved. Complete local gate components passed: 6,340 portable tests, 22 subtests, 297 CLI tests, 206 baseline transfers and 57 shell tests. Every assertion and deadline is retained; production code is unchanged."
 ---
 
 ## Goal

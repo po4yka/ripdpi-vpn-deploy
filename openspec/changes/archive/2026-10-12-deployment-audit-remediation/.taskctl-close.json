@@ -1,0 +1,11 @@
+{
+  "change": "deployment-audit-remediation",
+  "evidence_summary": "Integrated runtime source cf01f94a640913412f3316b5cb288881639712ce passed all 86 protected-main jobs in run 38134843683. Recorded requirement-specific verification and external qualifications are preserved. Complete local gate components passed: 6,340 portable tests, 22 subtests, 297 CLI tests, 206 baseline transfers and 57 shell tests. Every assertion and deadline is retained; production code is unchanged.",
+  "execution_sha256": "2f3d96d2b9bb6be9cf32154559e756fd30ac1b3e149de2e58ed03b29f8bd0a3d",
+  "issue_sha256": "09517093a67af69d075cc0b0e6d59c39d6e7e168e7e7b7aa996d374bcb5a2151",
+  "outcome": "done",
+  "prepared_at": "2026-10-11T22:16:06Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SEC-1791471757439452"
+}
