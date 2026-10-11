@@ -1,11 +1,11 @@
 ---
 task_id: ANS-1791586652330612
 change: ansible-role-audit-improvements
-commit_sha: 39e613244f281e639f499f0e806bb8440720b9af
+commit_sha: "cf01f94a640913412f3316b5cb288881639712ce"
 local: blocked
 local_evidence: Final make check passed controller validation and all 152 snapshots, then reported 5850 Python tests and 22 subtests passed with one existing Snell smoke fixture exceeding its 45-second Ansible deadline before cleanup. The fixture, playbook and Snell template are unchanged from origin/main. The complete 57-case module and exact normal/umask077 host and Linux cases pass unchanged; the stall cause is unproven. Remaining local ci-fast stages did not run. Latest helper proofs passed 62 portable tests and 33 runtime guard tests on the owned Linux VM. Before the descriptor-only follow-ups, unchanged TLS/rendering/Naive consumers also passed 48 native integration tests; independent reviews approve. Full local acceptance remains pending.
-remote_ci: passed
-remote_ci_evidence: All 83 hosted checks passed for 39e613244f281e639f499f0e806bb8440720b9af; CI run 38028589428 and auxiliary runs 38028589239, 38028589246 and 38028589257 completed successfully. CodeQL reported zero open findings on merge commit 5f38c91c9f1ef7dd6da095072ffbef4d3732ecd2 and automatically resolved all 22 review threads.
+remote_ci: "passed"
+remote_ci_evidence: "Protected-main CI run 38134843683 completed successfully on exact integrated source cf01f94a640913412f3316b5cb288881639712ce; all jobs succeeded, including portable, native, role, failure and full-stack checks. Scorecard, CodeQL and release-please completed successfully on the same source."
 dry_run: not_applicable
 dry_run_evidence: Source-only scope; no real inventory or controller SSH transaction.
 staging: not_applicable
@@ -91,3 +91,7 @@ before the intended stop failure; retained uncertain ownership was preserved.
 The complete unchanged 57-case module and normal/umask077 exact-case host/Linux
 proofs pass. The precise controller stall cause remains unproven; local gate
 acceptance is blocked, even though all 83 exact-source hosted checks pass.
+
+## Closure reconciliation (2026-10-11)
+
+The preceding sections retain their historical source and environment boundaries. The earlier verification SHA was `39e613244f281e639f499f0e806bb8440720b9af`. The accepted integrated source for this closure is `cf01f94a640913412f3316b5cb288881639712ce`; protected-main CI run `38134843683` completed with every job successful. This supersedes earlier pending PR/hosted-check observations without claiming a new deployment. Runtime and source files are unchanged by the closure increment.

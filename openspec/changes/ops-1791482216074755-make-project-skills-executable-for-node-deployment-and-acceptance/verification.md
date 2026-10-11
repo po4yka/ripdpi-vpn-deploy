@@ -1,11 +1,11 @@
 ---
 task_id: OPS-1791482216074755
 change: ops-1791482216074755-make-project-skills-executable-for-node-deployment-and-acceptance
-commit_sha: 265301c1b0371443176c0b36f676cf73ba15b92e
+commit_sha: "cf01f94a640913412f3316b5cb288881639712ce"
 local: passed
 local_evidence: Targeted preparer, instruction and promotion tests passed (97 tests); build-gate make check exited 0 with 5250 Python tests, 22 subtests, 55 Bats tests and 205 Rust release tests passed, plus release clippy, Terraform, lint, schema and snapshots.
-remote_ci: passed
-remote_ci_evidence: PR 280 source SHA 265301c1b0371443176c0b36f676cf73ba15b92e had 81 terminal latest checks (80 success, Trivy neutral), with no failed or pending checks; CI run 37835940541 and associated checks completed.
+remote_ci: "passed"
+remote_ci_evidence: "Protected-main CI run 38134843683 completed successfully on exact integrated source cf01f94a640913412f3316b5cb288881639712ce; all jobs succeeded, including portable, native, role, failure and full-stack checks. Scorecard, CodeQL and release-please completed successfully on the same source."
 dry_run: not_applicable
 dry_run_evidence: Local preparation and skill guidance only; no runtime or external capability changed.
 staging: not_applicable
@@ -59,3 +59,7 @@ not actual live execution, automatic-selection rates or future model reliability
 Generic skill validation passes the five new entrypoints. Its older frontmatter
 validator rejects the existing OpenSpec compatibility field; repository portable
 frontmatter checks remain authoritative and the metadata is retained.
+
+## Closure reconciliation (2026-10-11)
+
+The preceding sections retain their historical source and environment boundaries. The earlier verification SHA was `265301c1b0371443176c0b36f676cf73ba15b92e`. The accepted integrated source for this closure is `cf01f94a640913412f3316b5cb288881639712ce`; protected-main CI run `38134843683` completed with every job successful. This supersedes earlier pending PR/hosted-check observations without claiming a new deployment. Runtime and source files are unchanged by the closure increment.

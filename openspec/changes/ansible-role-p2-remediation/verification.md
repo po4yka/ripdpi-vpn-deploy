@@ -1,11 +1,11 @@
 ---
 task_id: ANS-1791562764586678
 change: ansible-role-p2-remediation
-commit_sha: cec0e7629061b6d638cd070a4699bbc06c9b9109
+commit_sha: "cf01f94a640913412f3316b5cb288881639712ce"
 local: passed
 local_evidence: Complete build-gated make check passed; 5703 portable tests, 22 subtests, 56 shell tests and 205 Rust tests passed; production lint, schema, policy and 150 snapshots pass. Scoped native runtime checks also pass.
-remote_ci: passed
-remote_ci_evidence: Exact source cec0e762 CI run 37998193161 completed success with all 78 jobs; four auxiliary jobs across CodeQL, markdown links and role notes also pass. All 82 selected hosted checks are terminal success.
+remote_ci: "passed"
+remote_ci_evidence: "Protected-main CI run 38134843683 completed successfully on exact integrated source cf01f94a640913412f3316b5cb288881639712ce; all jobs succeeded, including portable, native, role, failure and full-stack checks. Scorecard, CodeQL and release-please completed successfully on the same source."
 dry_run: not_applicable
 dry_run_evidence: Source-only remediation; no real inventory or SSH controller transaction.
 staging: not_applicable
@@ -154,3 +154,7 @@ acceptance, full morphology artifact behavior or vendor registration.
 
 The subsequent evidence commit changes only task/verification documentation;
 cec0e762 remains the tested runtime source revision.
+
+## Closure reconciliation (2026-10-11)
+
+The preceding sections retain their historical source and environment boundaries. The earlier verification SHA was `cec0e7629061b6d638cd070a4699bbc06c9b9109`. The accepted integrated source for this closure is `cf01f94a640913412f3316b5cb288881639712ce`; protected-main CI run `38134843683` completed with every job successful. This supersedes earlier pending PR/hosted-check observations without claiming a new deployment. Runtime and source files are unchanged by the closure increment.

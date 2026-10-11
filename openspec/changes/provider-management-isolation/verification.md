@@ -1,11 +1,11 @@
 ---
 task_id: TFR-1791523370274374
 change: provider-management-isolation
-commit_sha: 4c600d43536c2c1b1ab09b09fc9af4d5fafa1743
+commit_sha: "cf01f94a640913412f3316b5cb288881639712ce"
 local: passed
 local_evidence: Complete build-gated make check passed with pinned cached providers and enforced lock checksums; 5535 portable tests, 56 Bats tests, release Clippy and complete release Cargo tests passed. Native and targeted P2 suites also passed.
-remote_ci: required
-remote_ci_evidence: PR 281 P2 source head 4c600d43536c2c1b1ab09b09fc9af4d5fafa1743 is published; hosted checks running with no failures observed at recording time. Final metadata head requires terminal hosted results, reported on the PR. Historical P1 head completed 81 checks.
+remote_ci: "passed"
+remote_ci_evidence: "Protected-main CI run 38134843683 completed successfully on exact integrated source cf01f94a640913412f3316b5cb288881639712ce; all jobs succeeded, including portable, native, role, failure and full-stack checks. Scorecard, CodeQL and release-please completed successfully on the same source."
 dry_run: not_applicable
 dry_run_evidence: No provider access authorized for this source PR.
 staging: not_applicable
@@ -111,3 +111,7 @@ The following P1 evidence is historical and does not substitute for the P2 gate.
   release Cargo tests passed (no ignored tests); aggregate command exited zero.
 - Fresh exact-head hosted results remain required. No authenticated
   provider, guest reboot/convergence, deployment or client acceptance is claimed.
+
+## Closure reconciliation (2026-10-11)
+
+The preceding sections retain their historical source and environment boundaries. The earlier verification SHA was `4c600d43536c2c1b1ab09b09fc9af4d5fafa1743`. The accepted integrated source for this closure is `cf01f94a640913412f3316b5cb288881639712ce`; protected-main CI run `38134843683` completed with every job successful. This supersedes earlier pending PR/hosted-check observations without claiming a new deployment. Runtime and source files are unchanged by the closure increment.

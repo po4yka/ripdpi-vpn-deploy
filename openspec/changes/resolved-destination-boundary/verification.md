@@ -1,11 +1,11 @@
 ---
 task_id: SEC-1791617841911853
 change: resolved-destination-boundary
-commit_sha: f8055ff0c4624a0a4e504e0fd2bc3823718f455b
+commit_sha: "cf01f94a640913412f3316b5cb288881639712ce"
 local: required
 local_evidence: complete affected suites plus the named native positive/failure cases after implementation
-remote_ci: required
-remote_ci_evidence: terminal exact-SHA protected-source checks for this new capability
+remote_ci: "passed"
+remote_ci_evidence: "Protected-main CI run 38134843683 completed successfully on exact integrated source cf01f94a640913412f3316b5cb288881639712ce; all jobs succeeded, including portable, native, role, failure and full-stack checks. Scorecard, CodeQL and release-please completed successfully on the same source."
 dry_run: not_applicable
 dry_run_evidence: source capability is exercised in isolated local/native runtime; no real inventory run is part of this task
 staging: not_applicable
@@ -109,3 +109,9 @@ Earlier runs retain their diagnostic status: Docker unavailability and missing p
 Accepted route capture now exactly matches the controller’s managed paths and receipt, including absent private Hysteria hosts authority. The complete targeted role suite passed 55 cases with zero skips. The Nginx fixture preserves global hosts bytes through a private pre-convergence digest witness; all three actual localhost positive, mutation and nondisclosure cases passed. Ordinary Nginx publication recovers its validated pending journal under the writer lock before checking disk witnesses. Explicit already-absent removals and typed receipt-owned release-pair retirement still force active adoption; foreign bytes, undeclared missing paths, foreign receipts and site authority drift refuse.
 
 The frozen complete authority, worker and site bundle passed 102 cases with zero skips, including all five journal phases through the publication entrypoint. Independent review approved the source and regression boundaries. Portable runtime adapters prove branch selection and private file/receipt behavior only; the unchanged complete hosted native interruption and real TCP/UDP rollback scenarios remain the runtime acceptance gates. Individually approved CodeQL test-symlink dispositions retain regular target mode 0644 and alter only synthetic link metadata. No analysis rule, native assertion or safety gate was weakened.
+
+## Closure reconciliation (2026-10-11)
+
+The preceding sections retain their historical source and environment boundaries. The earlier verification SHA was `f8055ff0c4624a0a4e504e0fd2bc3823718f455b`. The accepted integrated source for this closure is `cf01f94a640913412f3316b5cb288881639712ce`; protected-main CI run `38134843683` completed with every job successful. This supersedes earlier pending PR/hosted-check observations without claiming a new deployment. Runtime and source files are unchanged by the closure increment.
+
+The owner confirmed on 2026-10-11 that the separately required registered WARP TCP/UDP acceptance had already been completed and requested completion of this task. This is owner-reported acceptance, not a new agent-observed vendor run. No registration, credentials, host access or production action was performed by this closure. The source/native gates above retain their exact-SHA evidence separately.

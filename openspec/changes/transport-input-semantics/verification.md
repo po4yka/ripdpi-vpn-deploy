@@ -1,11 +1,11 @@
 ---
 task_id: SCT-1791617687019287
 change: transport-input-semantics
-commit_sha: 6202c7ec93c075b6b5fd3b40065204e4f59d9461
+commit_sha: "cf01f94a640913412f3316b5cb288881639712ce"
 local: required
 local_evidence: complete affected tests, exact native cases and full source gates after implementation
-remote_ci: required
-remote_ci_evidence: terminal required checks on the exact integrated implementation SHA
+remote_ci: "passed"
+remote_ci_evidence: "Protected-main CI run 38134843683 completed successfully on exact integrated source cf01f94a640913412f3316b5cb288881639712ce; all jobs succeeded, including portable, native, role, failure and full-stack checks. Scorecard, CodeQL and release-please completed successfully on the same source."
 dry_run: not_applicable
 dry_run_evidence: source-only capability; no controller or provider execution in this task
 staging: not_applicable
@@ -55,3 +55,7 @@ CI credential generation now emits the served nginx HTTPS origin for Hysteria ra
 ## Final local gate
 
 The complete refreshed `build-gate -- make check` passed against the final runtime source and current task artifacts. Portable tests: 6,205 passed, 134 native cases assigned to their separately passed lane, 22 subtests passed, zero selected skips, 2,003.41 seconds. Python CLI: all 297 passed in 53.92 seconds; all 206 baseline transfer functions mapped to passing cases. All remaining task, schema, template, snapshot, dependency, secret, Terraform, Ansible, workflow, shell and package gates passed. The changes remain in review; no archive, deployment, registered vendor action or PR merge was performed.
+
+## Closure reconciliation (2026-10-11)
+
+The preceding sections retain their historical source and environment boundaries. The earlier verification SHA was `6202c7ec93c075b6b5fd3b40065204e4f59d9461`. The accepted integrated source for this closure is `cf01f94a640913412f3316b5cb288881639712ce`; protected-main CI run `38134843683` completed with every job successful. This supersedes earlier pending PR/hosted-check observations without claiming a new deployment. Runtime and source files are unchanged by the closure increment.
