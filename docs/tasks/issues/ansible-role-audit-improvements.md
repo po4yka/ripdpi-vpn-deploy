@@ -2,7 +2,7 @@
 id: ANS-1791586652330612
 title: Implement remaining Ansible role audit improvements
 kind: feature
-status: review
+status: done
 area: ansible
 priority: medium
 risk: high
@@ -14,7 +14,10 @@ openspec_change: ansible-role-audit-improvements
 created: 2026-10-10
 updated: 2026-10-12
 related_tasks: []
-status_detail: "Accepted integrated source cf01f94a640913412f3316b5cb288881639712ce; all 86 protected-main jobs passed. Complete local gate components now passed across native Mac/Linux with no selected skips; historical failures and external scope qualifications retained."
+status_detail: Accepted integrated source cf01f94a640913412f3316b5cb288881639712ce; all 86 protected-main jobs passed. Complete local gate components now passed across native Mac/Linux with no selected skips; historical failures and external scope qualifications retained.
+closed_at: "2026-10-11T20:50:40Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Integrated runtime source cf01f94a640913412f3316b5cb288881639712ce passed all86 protected-main jobs in38134843683. Complete local gate components passed across Mac/Linux; all6340 portable tests,22subtests,297CLI tests,206baseline transfers and57shell cases passed. Test clock isolation retained every assertion and deadline; production code unchanged.
 ---
 
 ## Goal

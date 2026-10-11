@@ -2,7 +2,7 @@
 id: SEC-1791617841911853
 title: Enforce resolved destination isolation for P0 P1 and Hysteria2
 kind: bug
-status: review
+status: done
 area: security
 priority: critical
 risk: high
@@ -14,7 +14,10 @@ openspec_change: resolved-destination-boundary
 created: 2026-10-10
 updated: 2026-10-12
 related_tasks: [SEC-1791471757439452, SEC-1791545689674403, ANS-1791562764586678]
-status_detail: "Accepted integrated source cf01f94a640913412f3316b5cb288881639712ce; all 86 protected-main jobs passed. Complete local gate components now passed across native Mac/Linux with no selected skips; historical failures and external scope qualifications retained. Registered WARP TCP/UDP completion was owner-confirmed on 2026-10-11."
+status_detail: Accepted integrated source cf01f94a640913412f3316b5cb288881639712ce; all 86 protected-main jobs passed. Complete local gate components now passed across native Mac/Linux with no selected skips; historical failures and external scope qualifications retained. Registered WARP TCP/UDP completion was owner-confirmed on 2026-10-11.
+closed_at: "2026-10-11T20:46:41Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Integrated runtime source cf01f94a640913412f3316b5cb288881639712ce passed all86 protected-main jobs in38134843683. Complete local gate components passed across Mac/Linux; all6340 portable tests,22subtests,297CLI tests,206baseline transfers and57shell cases passed. Test clock isolation retained every assertion and deadline; production code unchanged. Registered WARP TCP/UDP acceptance was owner-confirmed on2026-10-11; no new vendor or production execution was performed.
 ---
 
 ## Goal
