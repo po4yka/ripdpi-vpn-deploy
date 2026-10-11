@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-10-11T15:40:40Z",
+  "change": "sec-1791451917662060-normalize-the-packaged-cloud-image-ssh-fragment-before-bootstrap",
+  "commit_sha": "cf01f94a640913412f3316b5cb288881639712ce",
+  "outcome": "review",
+  "schema": 1,
+  "task_id": "SEC-1791451917662060"
+}

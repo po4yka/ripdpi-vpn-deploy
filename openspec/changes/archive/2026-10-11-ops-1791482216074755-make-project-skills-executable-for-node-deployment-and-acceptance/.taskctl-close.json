@@ -1,0 +1,11 @@
+{
+  "change": "ops-1791482216074755-make-project-skills-executable-for-node-deployment-and-acceptance",
+  "evidence_summary": "Protected integrated source cf01f94a640913412f3316b5cb288881639712ce passed all 86 CI jobs in run 38134843683. Recorded complete local source gates and independent reviews preserved; canonical requirement results resolved and OpenSpec synchronized. Source scope and all external qualifications retained.",
+  "execution_sha256": "3d3b5dae0fd587038fc68d859e13bfc3e1a3c0ad2f31b46b39fc7bb6898c79a7",
+  "issue_sha256": "474cf4a2eaed312cc1b3e08e5d623fcc8f1af223e00df62788696fc589d55723",
+  "outcome": "done",
+  "prepared_at": "2026-10-11T15:35:20Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "OPS-1791482216074755"
+}

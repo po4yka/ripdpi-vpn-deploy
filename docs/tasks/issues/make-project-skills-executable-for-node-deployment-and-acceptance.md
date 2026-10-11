@@ -2,7 +2,7 @@
 id: OPS-1791482216074755
 title: Make project skills executable for node deployment and acceptance
 kind: feature
-status: review
+status: done
 area: operations
 priority: high
 risk: standard
@@ -14,7 +14,10 @@ openspec_change: ops-1791482216074755-make-project-skills-executable-for-node-de
 created: 2026-10-08
 updated: 2026-10-11
 related_tasks: []
-status_detail: "Integrated source cf01f94a640913412f3316b5cb288881639712ce passed all protected-main hosted checks in run 38134843683; recorded source scope and external qualifications are preserved. Archive-readiness verification passed; authorized lifecycle completion is in progress."
+status_detail: Integrated source cf01f94a640913412f3316b5cb288881639712ce passed all protected-main hosted checks in run 38134843683; recorded source scope and external qualifications are preserved. Archive-readiness verification passed; authorized lifecycle completion is in progress.
+closed_at: "2026-10-11T15:35:20Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Protected integrated source cf01f94a640913412f3316b5cb288881639712ce passed all 86 CI jobs in run 38134843683. Recorded complete local source gates and independent reviews preserved; canonical requirement results resolved and OpenSpec synchronized. Source scope and all external qualifications retained.
 ---
 
 ## Goal

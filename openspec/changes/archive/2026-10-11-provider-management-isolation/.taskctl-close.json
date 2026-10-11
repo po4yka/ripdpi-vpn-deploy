@@ -1,0 +1,11 @@
+{
+  "change": "provider-management-isolation",
+  "evidence_summary": "Protected integrated source cf01f94a640913412f3316b5cb288881639712ce passed all 86 CI jobs in run 38134843683. Recorded complete local source gates and independent reviews preserved; canonical requirement results resolved and OpenSpec synchronized. Source scope and all external qualifications retained.",
+  "execution_sha256": "1b05bde8d2c4555a09c5c222317f18276c386c4bc27a5411ce1bdaba57762dd8",
+  "issue_sha256": "eedcc9a2fc6362d8be910903eb44568cecff32e79c0c29fefad07524953bd8ed",
+  "outcome": "done",
+  "prepared_at": "2026-10-11T15:24:05Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "TFR-1791523370274374"
+}
