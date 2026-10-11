@@ -5,7 +5,7 @@ commit_sha: e58e3de08fc250852cb437f7185a1ebca4fd4229
 local: blocked
 local_evidence: Focused runtime, operator, bootstrap and vpnd tests passed; all four Terraform providers validate, full production-profile Ansible lint and syntax pass, and staged/history secret scans pass. The full make check gate stops at cloud-init schema validation because Docker is unavailable. No complete local acceptance claim.
 remote_ci: required
-remote_ci_evidence: PR 290 hosted checks started; no complete remote acceptance result yet.
+remote_ci_evidence: PR 290 at 4e6b71f04bd4cfb2fbba74121c8a5582175571e6 completed 84 successful checks, but two pytest shards, both full-stack scenarios and CodeQL failed; updated-head acceptance remains required.
 dry_run: not_applicable
 dry_run_evidence: Source repair PR only; no real inventory or SSH transaction.
 staging: not_applicable
@@ -84,3 +84,28 @@ The final complete staged pre-commit run passed all applicable hooks. The final
 AWG, secrets-coverage and listener modules passed 64 tests; three additional
 AWG cases passed with inherited privilege escalation enabled. The three shared
 directory fixtures passed after setting their owned test group explicitly.
+
+## Hosted CI repair
+
+The first complete hosted run exposed a shared test basename, an incomplete
+strict defaults oracle, and literal Jinja keys in retirement owner maps. Both
+monitoring and honeypot now construct the full map as a Jinja expression. Actual
+localhost Ansible tests use the unchanged consumer declarations and real retirement
+stdin expression; the original map fails before the correction. The default and
+custom paths and account cases keep the ownership subset check intact.
+
+The CLI test has a unique module name for combined collection. The defaults
+assertion includes the deliberate empty owner map. The installer test drops an
+unused import, and the logrotate selector uses the canonical named renderer
+instead of a raw Jinja environment. The focused defaults and installer modules
+passed 85 cases; collection and CLI tests passed two cases; owner-map and
+logrotate tests passed 17 cases. Full-stack convergence remains a hosted check.
+
+The full vpnd suite passed 303 tests and all 206 mapped baseline functions.
+The scoped source review reported one custom-path test concern. It was rejected:
+`honeypot.textfile_dir` derives from `monitoring.node_exporter_textfile_dir` in
+the actual role defaults; a direct rerun passed all 13 owner tests. No accepted
+finding remains. All applicable staged pre-commit hooks passed. The repeated
+local full gate passed container-based cloud-init schema validation after Docker
+became available; its later stages and the next hosted run are still pending
+at publication. The PR remains the live source for updated-head CI results.

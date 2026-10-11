@@ -14,7 +14,7 @@ openspec_change: project-audit-repairs
 created: 2026-10-11
 updated: 2026-10-11
 related_tasks: []
-status_detail: Source repairs and focused regressions complete; local full gate blocked by unavailable Docker; exact-source hosted checks pending.
+status_detail: CI root causes and scanner findings repaired with local regressions; hosted confirmation pending on the updated PR head.
 ---
 
 ## Goal

@@ -12,6 +12,8 @@ Repair all sixteen REQ-AUDIT cases and publish source and validation evidence in
 - Primary: vpnd source/templates/tests, diagnostic script address support if required, task/spec artifacts, root tests/CLAUDE.md and integration.
 - Shared lane: scripts/CLAUDE.md additions from other workers go to primary after operator completes. Only primary updates task state and commits. Coordinate any additional overlapping path first.
 
+- CI repair ownership: runtime worker owns the retirement consumer mappings and logrotate renderer; operator worker owns the unique vpnd test-module name; infrastructure worker owns the runtime defaults contract assertion and installer-test import; primary owns shared notes, validation evidence and publication.
+
 ## Execution
 
 - [x] SEC-1791735997436813 Repair runtime recovery retirement IPv6 AWG and retention with regression tests #bug !high @item:SEC-1791735853691219
@@ -23,3 +25,4 @@ Repair all sixteen REQ-AUDIT cases and publish source and validation evidence in
 ## Verification
 
 Run focused behavior tests for each lane, snapshot-check, make check, independent source review and exact-source PR CI. Native Linux and provider/client evidence remain separate; this source PR does not authorize deployment.
+- [ ] SEC-1791740843514856 Repair hosted CI and scanner findings and verify the updated PR head #bug !high @item:SEC-1791735853691219

@@ -14,6 +14,9 @@
 
 ## Design decisions
 
+Pytest module basenames must be unique across `tests/unit`, `scripts/tests` and
+`vpnd/tests`: the full collection and shard-consistency checks import them together.
+
 Runtime audit regressions cover guarded and unguarded Xray log rotation, exact
 producer-owned metric files with foreign-owner, symlink, hardlink and ancestor
 refusal, and named AWG observers including a failed secondary instance. Native
@@ -23,6 +26,8 @@ these native systemd and packet checks.
 Local Ansible observer fixtures set `become: false` and isolate Ansible config.
 Task slices after AWG normalization supply its names-only output explicitly;
 the dedicated AWG test executes the actual normalization prerequisite.
+Retirement owner-map tests execute the actual consumer role variable declarations
+and stdin expression through Ansible; YAML mapping keys do not expand Jinja.
 
 **Project audit regressions cover operator boundaries** — synthetic Git histories
 isolate ambient Git configuration only in temporary repositories. SSH fixtures
