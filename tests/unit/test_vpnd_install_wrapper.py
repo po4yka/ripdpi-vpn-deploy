@@ -1,6 +1,5 @@
 """Exercise the download/checksum/provenance boundary before installer execution."""
 
-import hashlib
 import io
 import json
 import os

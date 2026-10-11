@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from scripts.template_render import merge_render_vars, render_template
+from scripts.template_render import merge_render_vars, render_fragment, render_template
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ROLE = REPO_ROOT / "ansible" / "roles" / "monitoring"
@@ -93,15 +93,12 @@ def test_guarded_xray_rotation_uses_admitted_recovery_without_direct_restart(tmp
 
 def test_xhttp_only_retains_xray_logs_and_subscription_only_has_no_xray_policy():
     import yaml
-    from jinja2 import Environment
 
     tasks = yaml.safe_load((ROLE / "tasks/enable.yml").read_text())
     selector = next(task for task in tasks if task["name"] == "Resolve whether Xray diagnostics are enabled")["ansible.builtin.set_fact"]["_monitoring_xray_stats_enabled"]
     policy = next(task for task in tasks if task["name"] == "Drop logrotate config for xray")
     assert policy["when"] == "_monitoring_xray_stats_enabled | bool"
     variables = {"vpn": {"enable_xray_reality": False, "enable_nginx_xhttp": True}, "vpn_subscription_only": False}
-    environment = Environment()
-    environment.filters["bool"] = bool
-    assert environment.from_string(selector).render(variables).strip() == "True"
+    assert render_fragment("xray-diagnostics-selector.txt.j2", selector, variables).strip() == "True"
     variables["vpn_subscription_only"] = True
-    assert environment.from_string(selector).render(variables).strip() == "False"
+    assert render_fragment("xray-diagnostics-selector.txt.j2", selector, variables).strip() == "False"
