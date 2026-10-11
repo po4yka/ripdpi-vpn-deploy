@@ -29,6 +29,151 @@
       ansible.builtin.set_fact:
         _transport_egress_transaction_started: false
   rescue:
+    - name: Record categorical generation failure without blocking rollback
+      block:
+        - name: Collect bounded categorical generation failure before rollback
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/timeout
+              - --signal=KILL
+              - 5s
+              - /usr/bin/python3
+              - -Es
+              - -c
+              - |
+                import itertools
+                import json
+                import os
+                import re
+                import selectors
+                import subprocess
+                import sys
+                import time
+
+                deadline = time.monotonic() + 4
+                categories = set('''private-authority-invalid generation-config-invalid
+                    generation-gateways-invalid generation-frontends-invalid generation-identity-invalid
+                    generation-deadline-invalid generation-unit-invalid generation-unit-unowned
+                    generation-process-identity generation-stop-unconfirmed generation-start-unconfirmed
+                    generation-not-active generation-normalizer-not-ready generation-readiness-failed
+                    generation-frontend-authority-invalid generation-frontend-credential-mismatch
+                    generation-tunnel-changed generation-process-changed generation-cleanup-unconfirmed
+                    generation-readiness-stale generation-frontend-not-ready generation-requires-root
+                    readiness-closed readiness-auth-method readiness-auth-refused readiness-association-refused
+                    readiness-input-oversize OSError FileNotFoundError PermissionError ProcessLookupError
+                    ValueError JSONDecodeError KeyError TypeError TimeoutExpired CalledProcessError'''.split())
+                operations = {'unknown', 'policy-apply', 'policy-verify', 'warp-refresh', 'readiness-journal'}
+                for action in ('show', 'stop', 'start', 'reset-failed'):
+                    operations.add('systemctl-' + action)
+                    operations.update('systemctl-' + action + '-' + unit
+                                      for unit in ('normalizer', 'direct', 'warp', 'xray', 'hysteria'))
+                categories.update('generation-command-failed-' + operation for operation in operations)
+                stages = {'process-state', 'journal-query', 'auth-direct-xray', 'auth-direct-hysteria',
+                          'auth-warp-xray', 'udp-control-direct', 'udp-control-warp', 'unknown-probe'}
+                stages.update('journal-message-{}-uid-{}-process-{}'.format(*bits)
+                              for bits in itertools.product((0, 1), repeat=3))
+                categories.update('generation-readiness-' + stage + suffix for stage in stages
+                                  for suffix in ('', '-timeout', '-child-failed'))
+
+                def category(text, prefix):
+                    return text[len(prefix):] if text.startswith(prefix) and text[len(prefix):] in categories else 'unclassified'
+
+                def read_bounded(stream, limit):
+                    data = bytearray()
+                    with selectors.DefaultSelector() as selector:
+                        selector.register(stream, selectors.EVENT_READ)
+                        while True:
+                            remaining = deadline - time.monotonic()
+                            if remaining <= 0 or not selector.select(remaining):
+                                raise TimeoutError()
+                            chunk = os.read(stream.fileno(), min(4096, limit + 1 - len(data)))
+                            if not chunk:
+                                return data.decode('utf-8', 'strict')
+                            data.extend(chunk)
+                            if len(data) > limit:
+                                raise ValueError()
+
+                def collect(argv):
+                    process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                    try:
+                        data = read_bounded(process.stdout, 65536)
+                        if process.wait(timeout=max(0.01, deadline - time.monotonic())):
+                            raise ValueError()
+                        return data
+                    finally:
+                        process.stdout.close()
+                        if process.poll() is None:
+                            process.kill()
+                        try:
+                            process.wait(timeout=0.1)
+                        except subprocess.TimeoutExpired:
+                            # The outer deadline kills this diagnostic's entire process group.
+                            pass
+
+                report = {'status_refusal': 'unclassified', 'controller_refusal': 'unclassified',
+                          'unit': {}, 'diagnostic': 'unavailable'}
+                try:
+                    report['status_refusal'] = category(read_bounded(sys.stdin.buffer, 16384).strip(),
+                                                       'transport-generation-refused:')
+                    properties = 'ActiveState,SubState,Result,MainPID,ExecMainStatus,InvocationID'
+                    output = collect(['/usr/bin/systemctl', 'show', 'ripdpi-transport-generation.service',
+                                      '--property=' + properties])
+                    fields = dict(line.split('=', 1) for line in output.splitlines() if '=' in line)
+                    for source, target, allowed in (
+                        ('ActiveState', 'active_state', {'active', 'inactive', 'failed', 'activating', 'deactivating', 'reloading'}),
+                        ('SubState', 'sub_state', {'running', 'dead', 'failed', 'start', 'start-pre', 'start-post',
+                                                  'auto-restart', 'stop', 'stop-sigterm', 'stop-sigkill', 'stop-post', 'exited'}),
+                        ('Result', 'result', {'success', 'exit-code', 'signal', 'core-dump', 'timeout', 'watchdog',
+                                              'start-limit-hit', 'resources', 'protocol', 'exec-condition', 'oom-kill'}),
+                    ):
+                        report['unit'][target] = fields.get(source) if fields.get(source) in allowed else 'unclassified'
+                    pid, status = fields.get('MainPID', ''), fields.get('ExecMainStatus', '')
+                    report['unit']['has_main_pid'] = bool(re.fullmatch(r'[0-9]{1,10}', pid) and int(pid) > 0)
+                    report['unit']['exec_main_status'] = int(status) if re.fullmatch(r'[0-9]{1,3}', status) and int(status) <= 255 else None
+                    invocation = fields.get('InvocationID', '')
+                    if not re.fullmatch(r'[0-9a-f]{32}', invocation):
+                        raise ValueError()
+                    output = collect(['/usr/bin/journalctl', '--unit=ripdpi-transport-generation.service',
+                                      '--boot', '--no-pager', '--lines=20', '--output=json',
+                                      '--output-fields=MESSAGE,_SYSTEMD_INVOCATION_ID',
+                                      '_SYSTEMD_INVOCATION_ID=' + invocation])
+                    lines = output.splitlines()
+                    if len(lines) > 20:
+                        raise ValueError()
+                    for line in lines:
+                        record = json.loads(line)
+                        if not isinstance(record, dict) or record.get('_SYSTEMD_INVOCATION_ID') != invocation:
+                            continue
+                        message = record.get('MESSAGE')
+                        if isinstance(message, str) and message.startswith('transport-generation-recovering:'):
+                            report['controller_refusal'] = category(message, 'transport-generation-recovering:')
+                    report['diagnostic'] = 'available'
+                except Exception:
+                    # Unknown or unavailable evidence must never replace the original refusal.
+                    pass
+                encoded = json.dumps(report, separators=(',', ':'))
+                print(encoded if len(encoded) <= 2048 else '{"diagnostic":"unavailable"}')
+            stdin: "{{ (_transport_egress_readiness.stderr | default(''))[:4096] }}"
+            stdin_add_newline: false
+          register: _transport_egress_failure_diagnostic
+          changed_when: false
+          failed_when: false
+          no_log: true
+          diff: false
+        - name: Decode categorical generation failure evidence privately
+          ansible.builtin.set_fact:
+            _transport_egress_safe_failure_diagnostic: >-
+              {{ (_transport_egress_failure_diagnostic.stdout | from_json)
+                 if (_transport_egress_failure_diagnostic.rc | default(1)) == 0
+                 else {'diagnostic': 'unavailable'} }}
+          no_log: true
+        - name: Publish only categorical generation failure evidence
+          ansible.builtin.debug:
+            msg: "{{ _transport_egress_safe_failure_diagnostic }}"
+      rescue:
+        - name: Preserve unavailable diagnostic without replacing readiness refusal
+          ansible.builtin.debug:
+            msg: {diagnostic: unavailable}
     - name: Restore the previous complete guarded route
       ansible.builtin.include_tasks: rollback.yml
     - name: Report candidate activation failure after bounded recovery
