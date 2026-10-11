@@ -289,8 +289,8 @@ def test_site_playbook_runs_xray_for_reality_or_xhttp() -> None:
 
 def test_rotation_playbook_updates_xhttp_only_xray() -> None:
     playbook = ROTATION_PLAYBOOK.read_text()
-    xray_task = playbook.split("- name: Re-render Xray config", 1)[1].split(
-        "- name: Re-render Hysteria config",
+    xray_task = playbook.split("- name: Stage rotated Xray credentials through the authoritative role", 1)[1].split(
+        "- name: Stage rotated Hysteria credentials through the authoritative role",
         1,
     )[0]
 
@@ -299,17 +299,15 @@ def test_rotation_playbook_updates_xhttp_only_xray() -> None:
     assert "xray_log_path: /var/log/xray" in playbook
 
 
-def test_xray_restart_chain_is_inert_in_check_mode() -> None:
+def test_xray_activation_has_one_guarded_owner_and_is_inert_in_check_mode() -> None:
     handlers = yaml.safe_load(
         (REPO_ROOT / "ansible" / "roles" / "xray" / "handlers" / "main.yml").read_text()
     )
-    restart_chain = [task for task in handlers if task.get("listen") == "Restart xray"]
-    assert len(restart_chain) == 3
-    assert all(
-        task.get("when")
-        == ["not (transport_egress_site_staging | default(false) | bool)", "not ansible_check_mode", "xray_role_enabled | default(true) | bool"]
-        for task in restart_chain
-    )
+    assert handlers == []
+    activation = yaml.safe_load((REPO_ROOT / "ansible/roles/transport-egress/tasks/activate.yml").read_text())[0]
+    assert activation["when"] == "not ansible_check_mode"
+    assert activation["block"][0]["ansible.builtin.systemd_service"]["name"] == "ripdpi-transport-generation.service"
+    assert "status" in activation["block"][1]["ansible.builtin.command"]["argv"]
 
 
 def test_p1_hostname_self_resolution_is_managed_and_verified() -> None:
@@ -540,8 +538,17 @@ def test_rollback_validates_before_runtime_change(
 def test_rotation_preserves_immediate_restore_point(
     tmp_path: Path, scenario: str
 ) -> None:
-    source = yaml.safe_load(ROTATION_PLAYBOOK.read_text())[0]
-    tasks = [task for task in source["tasks"] if "Xray" in task["name"]]
+    rotation = yaml.safe_load(ROTATION_PLAYBOOK.read_text())[0]
+    stages = next(task["block"] for task in rotation["tasks"] if task["name"] ==
+                  "Reconcile protected credential rotation through authoritative roles")
+    selected = next(task for task in stages if task.get("ansible.builtin.include_role") == {"name": "xray"})
+    role = yaml.safe_load((REPO_ROOT / "ansible/roles/xray/tasks/enable.yml").read_text())
+    names = {"Check if previous Xray config exists",
+             "Detect Xray config change before preserving rollback state",
+             "Validate Xray candidate before quiescing the accepted route",
+             "Backup previous Xray config if exists", "Render and validate Xray config"}
+    tasks = [copy.deepcopy(task) for task in role if task["name"] in names]
+    assert len(tasks) == len(names)
     current = tmp_path / "config.json"
     previous = tmp_path / "config.json.prev"
     old_bytes = guarded_xray_bytes('outgoing')
@@ -560,17 +567,24 @@ def test_rotation_preserves_immediate_restore_point(
     trace = tmp_path / "validated"
     binary = tmp_path / "xray"
     _validation_binary(binary, trace)
-    for task in tasks:
-        task.pop("notify", None)
-        module = task.get("ansible.builtin.template", task.get("ansible.builtin.copy"))
-        if module is not None:
-            module.update(owner=str(os.getuid()), group=str(os.getgid()))
-        if "ansible.builtin.template" in task:
-            module["src"] = str(template)
-    tasks = yaml.safe_load(yaml.safe_dump(tasks).replace("/etc/xray", str(tmp_path)))
+    def adapt(items):
+        for task in items:
+            for section in ("block", "always"):
+                if section in task:
+                    adapt(task[section])
+            module = task.get("ansible.builtin.template", task.get("ansible.builtin.copy"))
+            if module is not None:
+                module.update(owner=str(os.getuid()), group=str(os.getgid()))
+            if "ansible.builtin.template" in task:
+                module["src"] = str(template)
+    adapt(tasks)
     play = {
-        "tasks": tasks,
+        "tasks": [{"name": "Exercise canonical role restore point selected by rotation",
+                   "when": selected["when"], "block": tasks}],
         "vars": {
+            "role_path": str(tmp_path / "roles/xray"),
+            "xray_etc_dir": str(tmp_path), "xray_runtime_group": str(os.getgid()),
+            "xray_runtime_binary": str(binary), "xray_asset_dir": str(tmp_path / "runtime assets"),
             "vpn": {
                 "enable_xray_reality": scenario not in {"disabled", "xhttp-only"},
                 "enable_nginx_xhttp": scenario == "xhttp-only",
@@ -584,7 +598,7 @@ def test_rotation_preserves_immediate_restore_point(
         result.stdout + result.stderr
     )
     assert trace.exists() == (
-        scenario in {"changed", "first-config", "xhttp-only"}
+        scenario in {"changed", "unchanged", "first-config", "xhttp-only"}
     )
     if trace.exists():
         assert json.loads(trace.read_text())["assets"] == str(
@@ -595,7 +609,7 @@ def test_rotation_preserves_immediate_restore_point(
     )
     assert previous.read_text() == (
         old_bytes
-        if scenario in {"changed", "xhttp-only", "reject-config"}
+        if scenario in {"changed", "xhttp-only"}
         else "older restore point\n"
     )
     assert previous.stat().st_mode & 0o777 == 0o640

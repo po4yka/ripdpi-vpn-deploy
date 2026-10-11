@@ -264,20 +264,13 @@ def test_xray_publishes_required_geoip_as_a_pinned_read_only_runtime_asset() -> 
     handlers = yaml.safe_load(
         (ROOT / "ansible/roles/xray/handlers/main.yml").read_text(encoding="utf-8")
     )
-    validate_handler = next(
-        handler
-        for handler in handlers
-        if handler["name"] == "Test Xray config before restart"
-    )
-    assert validate_handler["ansible.builtin.command"]["argv"] == [
-        "/usr/bin/env",
-        "XRAY_LOCATION_ASSET={{ xray_asset_dir }}",
-        "{{ xray_runtime_binary }}",
-        "run",
-        "-test",
-        "-config",
-        "{{ xray_etc_dir }}/config.json",
-    ]
+    assert handlers == []
+    validate_candidate = next(task for task in _tasks("xray")
+                              if task["name"] == "Validate Xray candidate before quiescing the accepted route")
+    native = validate_candidate["block"][1]["ansible.builtin.template"]["validate"]
+    assert '--binary {{ xray_runtime_binary | quote }}' in native
+    assert '--asset-dir {{ xray_asset_dir | quote }}' in native
+    assert '--config %s' in native
 
     full_stack_verify = yaml.safe_load(
         (ROOT / "ansible/molecule/full-stack/verify.yml").read_text(encoding="utf-8")

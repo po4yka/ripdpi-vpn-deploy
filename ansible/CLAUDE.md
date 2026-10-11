@@ -6,6 +6,12 @@ Full-stack Molecule scenarios keep the default task/recap callback stream with J
 
 **Protected frontends share one egress generation** — site stages the normalizer, private native gateways and both enabled Xray/Hysteria frontends before activation. Protected transport tags select both frontend consumers so internal authority changes cannot leave one with stale credentials. Host and namespace guards precede listeners; subscription-only and disabled profiles retire consumers first. Hysteria-only hosts acquire the shared pinned Xray runtime without creating a REALITY frontend.
 
+Credential rotation stages enabled protected frontends through these same roles
+and activates their shared generation once. It reconciles their approved pinned
+runtime/configuration authority and uses the roles' candidate validation and
+whole-route rollback, rather than a second config publisher or direct restart
+handler. AWG, Snell and Naive retain their independent rotation flows.
+
 Complete-map rehearsal profiles explicitly retain `enable_transport_egress: true` with their enabled protected frontends because the controller replaces the canonical `vpn` map.
 
 **Transport semantic admission precedes mutation** — site and credential

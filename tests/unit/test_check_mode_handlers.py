@@ -14,13 +14,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
     ("role", "handler_names"),
     [
         (
-            "hysteria",
-            (
-                "Restart hysteria-server",
-                "Wait for hysteria-server to become active",
-            ),
-        ),
-        (
             "hysteria-realm",
             (
                 "Restart hysteria-realm",
@@ -81,3 +74,19 @@ def test_restart_handlers_skip_runtime_checks_in_check_mode(
             assert not selected(
                 check=False, enabled=False
             ), f"{role}:{name} can revive retired authority"
+
+
+@pytest.mark.parametrize("role", ["xray", "hysteria"])
+def test_protected_frontends_have_no_competing_handler_in_any_mode(role):
+    handlers = yaml.safe_load((REPO_ROOT / "ansible/roles" / role / "handlers/main.yml").read_text())
+    assert handlers == []
+    activate = yaml.safe_load((REPO_ROOT / "ansible/roles/transport-egress/tasks/activate.yml").read_text())[0]
+    environment = template_environment(DictLoader({}))
+    selected = environment.compile_expression(activate["when"])
+    assert selected(ansible_check_mode=False) is True
+    assert selected(ansible_check_mode=True) is False
+    start = activate["block"][0]["ansible.builtin.systemd_service"]
+    assert start["daemon_reload"] is True and start["name"] == "ripdpi-transport-generation.service"
+    readiness = activate["block"][1]
+    assert "status" in readiness["ansible.builtin.command"]["argv"]
+    assert readiness["until"] == "_transport_egress_readiness.rc == 0"

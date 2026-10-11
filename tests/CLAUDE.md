@@ -26,6 +26,12 @@ remain visible to the installed Molecule idempotence parser. The portable Xray
 candidate uses its real Python semantic admission function; this reporting test
 does not establish native parser, protocol, or TLS acceptance.
 
+**Protected frontend lifecycle has one owner** — rotation selects the canonical
+Xray/Hysteria roles under staging and invokes their guarded activation once.
+Changed units, configs and TLS authority retain validate/snapshot/rollback
+ordering. Actual localhost publication plus handler flush cannot dispatch a
+second frontend restart; native role scenarios retain final readiness proof.
+
 Native normalizer recovery also retains live authenticated TCP and UDP controls when killing the process. Both accepted TCP tuples must enter TIME_WAIT before one immediate restart with the original readiness deadline; fresh public TCP/UDP and zero forbidden contacts remain required. Closed-probe recovery alone cannot establish listener rebinding under active traffic. UDP tuple quarantine and gateway generation reset retain their separate authority.
 
 **Shared transport semantics use real boundaries** —

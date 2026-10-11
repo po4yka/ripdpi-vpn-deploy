@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+- The guarded generation is the sole frontend lifecycle owner. Candidate
+  validation and whole-route snapshot/quiescence precede changed publication;
+  activation reloads systemd and requires authenticated readiness. No delayed
+  frontend restart handler may change an admitted PID after that boundary.
+
 - Temporary candidate allocation, validation and cleanup run on every ordinary pass but report no accepted-runtime change. Persistent publication and predictive change flags retain their real results; idempotence must not skip validation or hide a changed accepted file.
 
 - The foreground service explicitly uses `Type=exec`. Successful manager startup must complete process setup and execution before strict runtime UID admission; journal and authenticated probes still establish application readiness.
@@ -77,8 +82,8 @@ helper exit, preserving the helper's original failure result.
 
 ## What's done well
 
-- **Idempotent inbound rebuild** — handler `restart xray` only fires when the
-  rendered config changed, not on every play.
+- **Idempotent inbound rebuild** — changed config or unit authority opens the
+  guarded transaction; unchanged passes retain the accepted generation.
 - **Multi-cohort support** — `vpn.xray_cohorts` is a list; each cohort gets
   its own inbound with its own `serverNames`, `shortIds`, flow_mode, and
   finalmask. See `docs/MULTI-COHORT.md`.

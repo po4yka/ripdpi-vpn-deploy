@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+- The guarded generation is the sole frontend lifecycle owner, including TLS
+  changes and credential rotation. It reloads systemd before startup and proves
+  authenticated readiness; delayed direct restart handlers cannot invalidate
+  the admitted PID snapshot after activation.
+
 - Temporary candidate allocation, validation and cleanup run on every ordinary pass but report no accepted-runtime change. Persistent publication and predictive change flags retain their real results; idempotence must not skip validation or hide a changed accepted file.
 
 - The foreground service explicitly uses `Type=exec`. Successful manager startup must complete process setup and execution before strict runtime UID admission; journal and authenticated probes still establish application readiness.
