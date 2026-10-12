@@ -37,8 +37,8 @@ if hashlib.sha256(pathlib.Path(artifact).read_bytes()).hexdigest() != found[0]:
     raise SystemExit('artifact checksum mismatch')
 PY
 if [[ -z "${VPND_SKIP_ATTESTATION:-}" ]] && command -v gh >/dev/null 2>&1; then
-  gh attestation verify "$scratch/$asset" --owner po4yka \
-    --signer-workflow .github/workflows/release-vpnd.yml
+  gh attestation verify "$scratch/$asset" --repo po4yka/ripdpi-vpn-deploy \
+    --signer-workflow po4yka/ripdpi-vpn-deploy/.github/workflows/release-vpnd.yml
 elif [[ -z "${VPND_SKIP_ATTESTATION:-}" ]]; then
   echo "warning: gh unavailable; build provenance was not verified" >&2
 fi

@@ -140,3 +140,57 @@ def test_token_trim_preserves_rejected_control_separators(tmp_path, monkeypatch)
         else:
             private(tmp_path / "token", WHITE_SPACE + "valid-token" + WHITE_SPACE)
         assert share.read_token(values) == "valid-token"
+
+
+@pytest.mark.parametrize('port', [8444, 9444])
+def test_share_resolves_default_and_profile_listener_port(tmp_path, port):
+    ctx = setup(tmp_path, SAMPLE + '\nsubscription:\n  server_name: sub.example.com\n')
+    (tmp_path / 'ansible/inventory/generated.ini').write_text('[vpn-profile]\nfixture-node\n')
+    (tmp_path / 'ansible/group_vars/vpn-profile.yml').write_text(f'subscription_port: {port}\n')
+    options = args(tmp_path)
+    options.qr = False
+    asyncio.run(share.run(ctx, options))
+    page = (tmp_path / 'share/phone/index.html').read_text()
+    assert f'https://sub.example.com:{port}/sub/test-token_123' in page
+    assert '<img ' not in page
+
+
+def test_explicit_port_wins_and_bad_port_refuses_before_emission(tmp_path):
+    ctx = setup(tmp_path, SAMPLE + '\nsubscription:\n  server_name: sub.example.com\n  port: 443\n')
+    (tmp_path / 'scripts/terraform-env.sh').unlink()
+    asyncio.run(share.run(ctx, args(tmp_path)))
+    assert 'https://sub.example.com/sub/test-token_123' in (tmp_path / 'share/phone/index.html').read_text()
+    private(ctx.secrets_file, SAMPLE + '\nsubscription:\n  server_name: sub.example.com\n  port: 65536\n')
+    (tmp_path / 'Makefile').write_text('emit-singbox:\n\t@touch emitted\n')
+    with pytest.raises(ValueError, match='1..65535'):
+        asyncio.run(share.run(ctx, args(tmp_path)))
+    assert not (tmp_path / 'emitted').exists()
+
+
+def test_refresh_without_qr_removes_old_token_images(tmp_path):
+    ctx = setup(tmp_path)
+    options = args(tmp_path)
+    asyncio.run(share.run(ctx, options))
+    out = tmp_path / 'share/phone'
+    assert (out / 'qr.svg').exists()
+    private(tmp_path / 'token', 'replacement-token')
+    options.qr = False
+    asyncio.run(share.run(ctx, options))
+    page = (out / 'index.html').read_text()
+    assert 'replacement-token' in page and 'test-token_123' not in page
+    assert '<img ' not in page
+    assert not (out / 'qr.svg').exists() and not (out / 'qr-ripdpi.svg').exists()
+
+
+def test_share_refuses_foreign_qr_symlink_without_deleting_target(tmp_path):
+    ctx = setup(tmp_path)
+    out = tmp_path / 'bundle'
+    out.mkdir()
+    target = private(tmp_path / 'retained.svg', 'retained')
+    (out / 'qr.svg').symlink_to(target)
+    options = args(tmp_path, out)
+    options.qr = False
+    with pytest.raises(ValueError, match='symlink'):
+        asyncio.run(share.run(ctx, options))
+    assert target.read_text() == 'retained'
+    assert not (out / 'index.html').exists()

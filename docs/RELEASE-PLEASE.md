@@ -2,7 +2,7 @@
 
 The `release-please` workflow runs on `main` by default. It maintains the
 release PR from conventional commits. Merging that PR creates the `vpnd-vX.Y.Z`
-tag and GitHub Release. Release PR approval and merge remain operator decisions.
+tag and a draft GitHub Release. Release PR approval and merge remain operator decisions.
 The version updater changes `vpnd/pyproject.toml` at `$.project.version`.
 Runtime dependency pins and hashes remain in `vpnd/requirements.in` and
 `vpnd/requirements.txt`; a release version bump does not refresh dependencies.
@@ -43,7 +43,9 @@ explicit handoff. No personal token or GitHub App is required.
 The downstream workflow validates the tag against its own `GITHUB_SHA`, builds
 one platform-neutral application wheel/source distribution plus four native
 wheel bundles, attests the archives, and attaches them with `SHA256SUMS` and
-the locked Python runtime SBOM. Each bundle installs offline with Python 3.12
+the locked Python runtime SBOM. The draft becomes public only after every asset
+upload succeeds. Forced tag creation keeps the draft tag available for dispatch
+and revision validation. Each bundle installs offline with Python 3.12
 and includes package templates/docs and all twenty generated man pages. Running on the tag keeps checkout, builds, attestations,
 and SBOM on the same revision even if `main` has advanced.
 
@@ -75,7 +77,8 @@ These gates describe required checks, not evidence that a particular run passed.
    After that PR is merged, check `dispatch vpnd binaries` and find the
    `release-vpnd` run on the created tag and SHA.
 3. Check all build, attestation, SBOM and asset-upload jobs before consuming
-   the release. The release metadata can exist before artifacts are attached.
+   the release. A failed build or upload leaves the release in draft and keeps
+   the preceding complete release available through the latest-release URL.
 
 If the dispatch failed after release creation, recover explicitly with the
 existing tag; rerunning release-please might not report it as newly created:
@@ -87,7 +90,10 @@ gh workflow run release-vpnd.yml --ref "$tag" -f "tag=$tag"
 
 Inspect any existing downstream run before retrying. Never dispatch on `main`
 with an older tag input: the downstream revision check rejects that mismatch.
-This handoff does not add a CI promotion gate or change asset overwrite policy.
+Retries may replace assets only while the release is a draft. The workflow
+refuses uploads to a published release, so a retry cannot expose a partial
+replacement of its archives and checksums. Use a new version for changes after
+publication. This handoff does not add a CI promotion gate.
 
 ## Pause
 

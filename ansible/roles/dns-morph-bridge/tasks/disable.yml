@@ -25,7 +25,7 @@
       - >-
         {{ lookup('ansible.builtin.file', role_path ~
           '/../runtime-release/files/validate_retirement.py') }}
-    stdin: "{{ ['/etc/unbound/unbound.conf.d/dns-morph-bridge-fwd.conf'] | to_json }}"
+    stdin: "{{ {'paths': ['/etc/unbound/unbound.conf.d/dns-morph-bridge-fwd.conf'], 'owners': {}} | to_json }}"
   changed_when: false
   check_mode: false
 

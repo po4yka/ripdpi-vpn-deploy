@@ -373,3 +373,14 @@ def test_strict_preserves_xhttp_only_and_snell_only_proxy_egress():
         chain = _output_chain(_render("strict", vpn=vpn))
         assert "\n    meta l4proto tcp accept\n" in chain
         assert "\n    meta l4proto udp accept\n" in chain
+
+
+def test_strict_egress_admits_untracked_ipv6_control_without_opening_other_protocols():
+    chain = _output_chain(_render("strict"))
+    assert "policy drop;" in chain
+    assert "meta l4proto ipv6-icmp icmpv6 type { nd-router-solicit, nd-neighbor-solicit, nd-neighbor-advert } ip6 hoplimit 255 accept" in chain
+    assert "meta l4proto ipv6-icmp icmpv6 type { destination-unreachable, packet-too-big, time-exceeded, parameter-problem } accept" in chain
+    assert "ipv6-icmp accept" not in chain
+    assert "echo-request" not in chain
+    assert "nd-router-advert" not in chain
+    assert chain.index("nd-neighbor-solicit") < chain.index("counter drop")

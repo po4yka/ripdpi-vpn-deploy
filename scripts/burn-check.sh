@@ -34,6 +34,7 @@
 #                                          (obfs mangles the probe) so it skips
 #   HYSTERIA_PORT       (default: 443)   — UDP port Hysteria2 listens on
 #   UDP_PROBE_TIMEOUT   (default: 5)     — seconds to wait for a QUIC reply
+# IP optionally selects an explicit public IPv4 address instead of the primary node.
 set -euo pipefail
 
 PROVIDER="${PROVIDER:-upcloud}"
@@ -124,11 +125,17 @@ finish() {
 }
 trap finish EXIT
 
-for tool in curl jq terraform; do
+for tool in curl jq; do
   command -v "$tool" >/dev/null 2>&1 || { echo "missing: $tool" >&2; exit 1; }
 done
 
-IP="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
+if [[ -z "${IP:-}" ]]; then
+  IP="$(PROVIDER="$PROVIDER" ENV="$ENV" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
+fi
+python3 - "$IP" <<'PY'
+import ipaddress, sys
+ipaddress.IPv4Address(sys.argv[1])
+PY
 
 # check-host.net rest API: GET /check-tcp?host=<ip>:<port>&node=<n1>&node=<n2>…
 # returns a request_id; results are polled at /check-result/<request_id>.

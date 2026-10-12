@@ -103,6 +103,16 @@ def test_shared_and_unknown_paths_force_every_check(path):
     assert all(selection.plan([path])["checks"].values())
 
 
+@pytest.fixture(autouse=True)
+def isolated_git_configuration(monkeypatch):
+    # Only synthetic repositories in this module create commits or tags.
+    for name in tuple(os.environ):
+        if name.startswith("GIT_CONFIG_"):
+            monkeypatch.delenv(name)
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+
+
 def test_an_unknown_path_after_300_files_cannot_be_truncated_away():
     paths = [f"docs/page-{i}.md" for i in range(350)] + ["unknown/input"]
     assert all(selection.plan(paths)["checks"].values())

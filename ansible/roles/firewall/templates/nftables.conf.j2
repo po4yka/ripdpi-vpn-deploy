@@ -213,6 +213,10 @@ table inet filter {
     ct state established,related accept
     ct state invalid drop
 
+    # Neighbour discovery is untracked; established/related cannot admit it.
+    meta l4proto ipv6-icmp icmpv6 type { nd-router-solicit, nd-neighbor-solicit, nd-neighbor-advert } ip6 hoplimit 255 accept
+    meta l4proto ipv6-icmp icmpv6 type { destination-unreachable, packet-too-big, time-exceeded, parameter-problem } accept
+
     # Host infrastructure egress: resolver, time sync, package updates,
     # geodata refresh, backup remotes, monitoring alerts, and HTTPS APIs.
     udp dport 53 accept

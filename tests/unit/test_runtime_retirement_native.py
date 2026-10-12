@@ -233,7 +233,7 @@ def test_retirement_validation_refuses_foreign_descendants_and_preserves_unit_ma
     os.chown(child, 65534, 65534)
     rejected = subprocess.run(
         [sys.executable, str(helper)],
-        input=json.dumps([str(directory)]),
+        input=json.dumps({"paths": [str(directory)], "owners": {}}),
         capture_output=True,
         text=True,
         timeout=5,
@@ -244,8 +244,52 @@ def test_retirement_validation_refuses_foreign_descendants_and_preserves_unit_ma
     assert not os.path.lexists(mask)
     mask.symlink_to("/dev/null")
     try:
-        accepted = run(sys.executable, str(helper), input=json.dumps([str(mask)]))
+        accepted = run(sys.executable, str(helper), input=json.dumps({"paths": [str(mask)], "owners": {}}))
         assert json.loads(accepted.stdout)["paths"] == []
         assert mask.readlink() == Path("/dev/null")
     finally:
         mask.unlink()
+
+
+@pytest.mark.parametrize("role,metric_name", [("monitoring", "vpn_xray.prom"), ("honeypot", "vpn_honeypot.prom")])
+def test_declared_producer_metric_retires_after_real_service_write(tmp_path, role, metric_name):
+    """Run the consumer's real retirement declaration with an isolated writer."""
+    import pwd
+    import uuid
+
+    account = pwd.getpwnam("nobody")
+    name = "audit-producer-" + uuid.uuid4().hex[:12]
+    unit = Path(f"/etc/systemd/system/{name}.service")
+    directory = Path("/var/lib") / name
+    metric = directory / metric_name
+    assert not unit.exists() and not directory.exists()
+    directory.mkdir(mode=0o1777)
+    directory.chmod(0o1777)
+    unit.write_text(
+        f"[Service]\nType=oneshot\nUser=nobody\nRemainAfterExit=true\nExecStart=/bin/sh -c 'echo audit_metric=1 > {metric}'\n"
+    )
+    try:
+        run("systemctl", "daemon-reload")
+        run("systemctl", "start", unit.name)
+        assert metric.stat().st_uid == account.pw_uid
+        tasks = yaml.safe_load((ROOT / f"ansible/roles/{role}/tasks/disable.yml").read_text())
+        retirement = next(task for task in tasks if task.get("ansible.builtin.include_role", {}).get("name") == "runtime-release")
+        # Isolate exact runtime paths and use the actual service account UID.
+        retirement["vars"].update({"runtime_retire_units": [unit.name],
+                                   "runtime_retire_paths": [str(metric), str(unit)],
+                                   "runtime_retire_file_owners": {str(metric): "nobody"}})
+        play = tmp_path / "retire.yml"
+        play.write_text(yaml.safe_dump([{"hosts": "localhost", "connection": "local", "gather_facts": False,
+                                       "vars": {"ansible_python_interpreter": sys.executable}, "tasks": [retirement]}]))
+        environment = {**os.environ, "ANSIBLE_ROLES_PATH": str(ROOT / "ansible/roles")}
+        result = subprocess.run(["ansible-playbook", "-i", "localhost,", str(play)], env=environment,
+                                capture_output=True, text=True, timeout=40)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert not metric.exists() and not unit.exists()
+        assert subprocess.run(["systemctl", "is-active", "--quiet", name], capture_output=True).returncode != 0
+    finally:
+        subprocess.run(["systemctl", "stop", name], capture_output=True)
+        unit.unlink(missing_ok=True)
+        metric.unlink(missing_ok=True)
+        directory.rmdir()
+        subprocess.run(["systemctl", "daemon-reload"], check=True)

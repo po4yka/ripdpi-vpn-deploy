@@ -52,6 +52,8 @@ class Fixture:
             "home/Library/Application Support/vpn-provision",
         ):
             (root / path / "hosts.toml").write_text(registry)
+        from artifact_helpers import subscription_fixture
+        subscription_fixture(root)
         self.executable(
             "make",
             """#!/bin/sh

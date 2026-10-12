@@ -176,8 +176,11 @@ if [[ "${ENABLE_HYSTERIA:-false}" == "true" ]]; then
 fi
 
 if [[ "${ENABLE_AMNEZIAWG:-false}" == "true" ]]; then
-  probe_unit "awg-quick@${AWG_INTERFACE:-awg0}.service" "AWG iface ${AWG_INTERFACE:-awg0} up" \
-    awg show "${AWG_INTERFACE:-awg0}"
+  IFS=',' read -r -a awg_interfaces <<< "${AWG_INTERFACES:?AWG_INTERFACES is required}"
+  for interface in "${awg_interfaces[@]}"; do
+    probe_unit "awg-quick@${interface}.service" "AWG iface ${interface} up" \
+      awg show "$interface"
+  done
 fi
 
 # Always check load + disk, soft signals

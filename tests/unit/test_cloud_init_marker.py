@@ -105,6 +105,8 @@ def ssh_config() -> Iterator[Path]:
         config = root / "etc" / "ssh"
         fragments = config / "sshd_config.d"
         fragments.mkdir(parents=True)
+        # BSD files inherit their parent group, which can differ from our EGID.
+        os.chown(fragments, -1, os.getegid())
         main = config / "sshd_config"
         main.write_bytes(b"# packaged main\nInclude /etc/ssh/sshd_config.d/*.conf\n")
         main.chmod(0o644)
@@ -1021,3 +1023,41 @@ def test_bootstrap_marker_depends_on_validated_successful_ssh_reload(
     )
     assert already_completed.returncode == 0
     assert marker.exists()
+
+
+@pytest.mark.parametrize("socket_active,failure", [(False, ""), (True, ""),
+                                                  (True, "daemon-reload"),
+                                                  (True, "restart ssh.socket"),
+                                                  (True, "restart ssh.service")])
+def test_bootstrap_rebinds_active_socket_before_readiness(tmp_path, socket_active, failure):
+    command = yaml.safe_load(TEMPLATE.read_text())["runcmd"][0][2]
+    marker = tmp_path / "ready"
+    log = tmp_path / "calls"
+    systemctl = tmp_path / "systemctl"
+    systemctl.write_text(
+        '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALL_LOG"\n'
+        'if [ "$*" = "$FAIL_COMMAND" ]; then exit 23; fi\n'
+        'if [ "$*" = "is-active --quiet ssh.socket" ]; then exit "$SOCKET_STATUS"; fi\n'
+        'exit 0\n'
+    )
+    systemctl.chmod(0o755)
+    command = command.replace("install -d -m 0755 /run/sshd", "true")
+    command = command.replace("/usr/bin/python3", "true").replace("/usr/sbin/sshd -t", "true")
+    command = command.replace("systemctl", str(systemctl)).replace(MARKER, str(marker))
+    result = subprocess.run(
+        ["sh", "-c", command], capture_output=True, text=True,
+        env={**os.environ, "CALL_LOG": str(log), "FAIL_COMMAND": failure,
+             "SOCKET_STATUS": "0" if socket_active else "3"}, check=False,
+    )
+    assert result.returncode == (23 if failure else 0), result.stderr
+    assert marker.exists() is (not failure)
+    calls = log.read_text().splitlines()
+    assert calls[0] == "daemon-reload"
+    if not failure:
+        expected = ["daemon-reload", "is-active --quiet ssh.socket"]
+        if socket_active:
+            expected.extend(["restart ssh.socket", "restart ssh.service"])
+        assert calls == [*expected, "enable --now ssh", "reload ssh"]
+    elif failure.startswith("restart "):
+        assert calls[-1] == failure
+        assert "enable --now ssh" not in calls

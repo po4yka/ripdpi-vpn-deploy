@@ -13,12 +13,24 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 
 
+@pytest.fixture(autouse=True)
+def isolated_git_configuration(monkeypatch):
+    # Only synthetic repositories in this module create commits or tags.
+    for name in tuple(os.environ):
+        if name.startswith("GIT_CONFIG_"):
+            monkeypatch.delenv(name)
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+
+
 def workflow():
     return yaml.safe_load((ROOT / ".github/workflows/release-please.yml").read_text())
 
 
 def test_release_version_updates_include_the_locked_root_package():
     config = json.loads((ROOT / ".github/release-please-config.json").read_text())
+    assert config["draft"] is True
+    assert config["force-tag-creation"] is True
     files = config["packages"]["."]["extra-files"]
     assert {
         "type": "toml",

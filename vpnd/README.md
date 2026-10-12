@@ -102,7 +102,9 @@ vpnd completions bash
 ```
 
 `share` requires exactly one token input: stdin or a current-owner private file.
-Bearer tokens never belong in argv. Use the command's `--help` for all flags.
+Bearer tokens never belong in argv. When the secrets omit a port, `share` resolves the listener port from the selected Terraform inventory host and its profile. Without `--qr`, the page omits QR images and removes prior owned QR files from the bundle.
+
+`doctor --host` and `probe --host` pass the registered address to host-specific checks. Fleet and local permission checks are global; configured target and path canaries are labeled separately. Use the command's `--help` for all flags.
 
 ## `--explain`
 

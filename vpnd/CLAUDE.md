@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+Explicit diagnostic hosts carry their validated public address through each host-specific script. Fleet and local permission checks remain labeled global; external target canaries do not claim host-specific evidence. Explicit ASN probes keep a separate address-bound baseline.
+
+Recipient URLs use the canonical inventory-host subscription port resolver when secrets omit a port. QR output is conditional in both rendering and publication; refreshing without QR removes only admitted owned QR files before publishing the page.
+
 **Make owns operations.** Python command handlers delegate infrastructure work
 to documented Make targets. Reconverge resolves exact inventory keys for the
 selected environment/provider before the deployment controller's dry-run,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import fcntl
 import os
 import stat
 import subprocess
@@ -70,6 +71,64 @@ def _run(script: Path, env: dict[str, str], *args: str) -> subprocess.CompletedP
     return subprocess.run(
         ["bash", str(script), *args], text=True, capture_output=True, env=env, check=False
     )
+
+
+def test_concurrent_promotions_cannot_share_an_approval(tmp_path):
+    env, decision, blue_green_log = _setup(tmp_path)
+    _decision(decision, "rotation_candidate", 3)
+    issued = _run(WATCHER, env)
+    assert issued.returncode == 0, issued.stderr
+    state = Path(env["VPN_SPARE_STATE_DIR"])
+    otp = (state / "pending-otp").read_text().split()[0]
+    entered, release = tmp_path / "entered", tmp_path / "release"
+    _exe(Path(env["PROTOCOL_LIVENESS"]), """#!/usr/bin/env python3
+import os, pathlib, time
+pathlib.Path(os.environ['ENTERED']).touch()
+deadline = time.monotonic() + 10
+while not pathlib.Path(os.environ['RELEASE']).exists():
+    if time.monotonic() >= deadline:
+        raise SystemExit(2)
+    time.sleep(0.01)
+print(pathlib.Path(os.environ['FAKE_DECISION']).read_text())
+""")
+    env.update(ENTERED=str(entered), RELEASE=str(release))
+    first = subprocess.Popen(
+        ["bash", str(PROMOTE), otp], env=env, text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    try:
+        deadline = time.monotonic() + 5
+        while not entered.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert entered.exists(), "first promoter did not reach liveness admission"
+        second = subprocess.run(
+            ["bash", str(PROMOTE), otp], env=env, text=True,
+            capture_output=True, timeout=3,
+        )
+        assert second.returncode != 0
+        assert "lock unavailable" in second.stderr
+        assert not blue_green_log.exists()
+    finally:
+        release.touch()
+        stdout, stderr = first.communicate(timeout=10)
+    assert first.returncode == 0, stderr + stdout
+    assert blue_green_log.read_text().splitlines() == ["called"]
+    assert not (state / "pending-otp").exists()
+
+
+def test_watcher_cannot_replace_an_approval_while_promotion_holds_lock(tmp_path):
+    env, decision, _ = _setup(tmp_path)
+    _decision(decision, "rotation_candidate", 3)
+    assert _run(WATCHER, env).returncode == 0
+    state = Path(env["VPN_SPARE_STATE_DIR"])
+    before = {name: (state / name).read_bytes() for name in ("pending-otp", "pending-otp-context.json")}
+    _decision(decision, "healthy", 0)
+    with (state / "promotion.lock").open("r+") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        result = _run(WATCHER, env)
+    assert result.returncode != 0
+    assert "lock unavailable" in result.stderr
+    assert all((state / name).read_bytes() == content for name, content in before.items())
 
 
 def test_otp_is_issued_only_after_sustained_quorum_failure(tmp_path: Path) -> None:

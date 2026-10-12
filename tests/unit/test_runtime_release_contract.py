@@ -75,6 +75,7 @@ def test_runtime_release_defaults_are_a_complete_prefixed_api() -> None:
         ),
         "runtime_release_storage_owner": "root",
         "runtime_release_storage_group": "root",
+        "runtime_retire_file_owners": {},
     }
 
 

@@ -13,6 +13,8 @@ async def run(ctx, args):
     )
     steps: list[Cmd] = []
     if args.profile in {"p0", "all"}:
+        if address is not None:
+            print("note: validate-target and tspu-canary check configured external targets; they are not host-specific", file=sys.stderr)
         steps.extend(
             target(ctx, name) for name in ("validate-target", "probing-summary", "tspu-canary")
         )
@@ -24,4 +26,6 @@ async def run(ctx, args):
     if args.profile in {"p2", "all"}:
         steps.extend(target(ctx, name) for name in ("burn-check", "asn-drift"))
     for command in steps:
+        if address is not None and command.argv[0] in {"probing-summary", "burn-check", "asn-drift"}:
+            command.env("IP", address)
         await command.run(ctx.explain)

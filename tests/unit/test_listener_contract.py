@@ -772,6 +772,8 @@ elif name not in ('nginx', 'python3', 'sing-box-snell', 'awg', 'nft'):
         "vpn_service_address": "192.0.2.7",
         "server_ipv6": "2001:db8::7",
         "snell": {"variants": [{"id": "v4-stream", "listen_port": 4443}]},
+        # This task slice starts after shared instance normalization.
+        "_awg_instances": [{"name": "awg0"}],
         "security_controls": {"ssh_strict": False},
     }
     result = _run_verify_task_slice(tmp_path, tasks, variables)

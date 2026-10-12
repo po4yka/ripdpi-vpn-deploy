@@ -708,6 +708,7 @@ def test_make_git_routing_cannot_run_identity_before_controller(tmp_path):
     assert not (tmp_path / "EARLY").exists()
 
 
+@pytest.mark.usefixtures("isolated_synthetic_git_config")
 def test_clean_source_ignores_other_git_directory(configure, tmp_path, monkeypatch):
     import shutil
     import subprocess

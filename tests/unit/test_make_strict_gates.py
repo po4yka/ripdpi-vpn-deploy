@@ -299,7 +299,8 @@ def test_live_ansible_targets_require_a_nonempty_generated_inventory():
     )[0]
 
     assert 'test -s "$(ANSIBLE_DIR)/inventory/generated.ini"' in guard
-    assert 'document.get("vpn", {}).get("hosts", [])' in guard
+    assert 'scripts/require-vpn-selection.py' in guard
+    assert '--limit "$(ANSIBLE_LIMIT)"' in guard
     for target in (
         "verify",
         "security-verify",

@@ -142,6 +142,27 @@ def test_refresh_unregistered_token_fails_closed(tmp_path: Path) -> None:
     assert not ssh_marker.exists()
 
 
+@pytest.mark.parametrize("ambiguous", [False, True])
+def test_refresh_refuses_foreign_or_ambiguous_client_before_publication(tmp_path, ambiguous):
+    env, payload_file, ssh_marker, secrets_file = _harness(tmp_path)
+    document = json.loads(secrets_file.read_text())
+    registry = document["client_registry"]
+    registry["other-device"] = dict(registry["phone"])
+    if not ambiguous:
+        del registry["phone"]
+    secrets_file.write_text(json.dumps(document))
+    before = secrets_file.read_bytes()
+
+    result = _run_issuer(env, "--refresh-token", REGISTERED_TOKEN)
+
+    assert result.returncode != 0
+    assert ("ambiguous" if ambiguous else "requested client") in result.stderr
+    assert "refresh payload format" not in result.stdout
+    assert not payload_file.exists()
+    assert not ssh_marker.exists()
+    assert secrets_file.read_bytes() == before
+
+
 @pytest.mark.parametrize("issuer", [ISSUER, BOOTSTRAP_ISSUER])
 def test_issuers_refuse_direct_write_when_mirror_generation_is_active(
     tmp_path: Path, issuer: Path

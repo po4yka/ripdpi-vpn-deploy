@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+AWG verification and watchdog use the same normalized instance list as convergence. Observers receive only interface names; private instance records remain under `no_log`.
+
 The disposable P0/P1/Hysteria profile derives its canonical HTTPS origin from the generated nginx server name, so server masquerade and the served certificate share one authority. Its watchdog canary endpoint remains independent.
 
 Full-stack Molecule scenarios keep the default task/recap callback stream with JSON results. Structured YAML result bodies can resemble changed-task lines to the pinned idempotence reporter; genuine persistent changes must still be reported. The operator callback remains YAML.

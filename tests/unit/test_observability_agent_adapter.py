@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 import importlib.util
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -249,6 +250,7 @@ def test_adapter_allows_only_a_setgid_sticky_shared_output_directory(
 ) -> None:
     output_parent = tmp_path / "textfile"
     output_parent.mkdir()
+    os.chown(output_parent, -1, os.getegid())
     output_parent.chmod(0o3770)
 
     result = _run(tmp_path, _manifest(), output_parent / "observability-agent.prom")

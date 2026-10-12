@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+Xray log retention follows the effective service, including XHTTP-only hosts. Guarded log rotation requests targeted recovery from the generation controller and propagates refusal; unguarded services retain direct restart. Retirement grants only the exact diagnostic textfile to the exporter account.
+Build the owner map as a complete Jinja dictionary expression. Ansible does not
+expand expressions inside YAML mapping keys.
+
 Xray rotation preserves the explicit 0640 writer/log-reader group contract.
 The capability-bounded policy service joins that group; logs have no other
 reader grant. Naive logs and watchdog budgets have no group reader and stay 0600.
@@ -28,10 +32,10 @@ runs as node_exporter's own account (`prometheus` by default,
 `monitoring.node_exporter_user`) so its atomic textfile can remain 0600
 instead of granting group or world read access.
 
-**Xray rotation uses active-service restart** — the pinned runtime has no
-supported HUP log-reopen contract. Rotation restarts only an active Xray and
-requires active state afterward; restart failure propagates from logrotate.
-This briefly interrupts existing connections while restoring writable logs.
+**Xray rotation requires admitted recovery** — the pinned runtime has no
+supported HUP log-reopen contract. Rotation recovers only an active Xray through
+the generation controller when guarded. Unguarded services restart directly and
+require active state afterward; either failure propagates from logrotate.
 
 ## What's done well
 

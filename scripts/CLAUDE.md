@@ -2,6 +2,34 @@
 
 ## Design decisions
 
+The canonical render fixture supplies watchdog AWG interface names from synthetic
+instances or the legacy interface. Snapshot rendering does not load real credentials
+or invoke deployment normalization.
+The secrets coverage checker declares this names-only role fact explicitly;
+the complete AWG secret instance objects remain outside the environment file.
+
+Subscription refresh binds the requested client name to the unique token-prefix
+registry match before credential emission or remote publication. Prefix-only
+registry compatibility remains unchanged; an ambiguous match refuses.
+
+Secret rotation and warm-spare approval writers retain a private descriptor lock
+in their parent shell. `private-operator-lock.py` validates its owner, inode,
+single-link file and directory authority before locking and hardening old owned
+locks to `0600`. Watcher publication and promotion consumption share one stable
+`promotion.lock`, held through orchestration; neither process deletes the lock.
+
+Verification admission passes the exact limit to Ansible inventory resolution.
+`require-vpn-selection.py` then requires a VPN member, including child groups,
+so a known observer-only limit cannot produce an empty successful play.
+
+The release installer verifies the exact repository and fully qualified signer
+workflow before installation. Cloud-init acceptance checks the actual loopback
+SSH banner before it accepts the configured listener.
+
+Explicit diagnostic addresses scope burn, probing and ASN checks to the selected
+host. ASN state is separate for each address, so an override cannot compare or
+replace another host's previous observation.
+
 Disposable CI generates distinct internal normalizer/gateway credentials for every enabled guarded path, validates them through effective profile admission and keeps them out of process diagnostics.
 
 CI credential generation uses the served `SERVER_NAME` HTTPS origin for Hysteria masquerade. The watchdog keeps its separate exact canary endpoint, including its path; a probe URL is not a masquerade origin.

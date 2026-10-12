@@ -14,6 +14,29 @@
 
 ## Design decisions
 
+Pytest module basenames must be unique across `tests/unit`, `scripts/tests` and
+`vpnd/tests`: the full collection and shard-consistency checks import them together.
+
+Runtime audit regressions cover guarded and unguarded Xray log rotation, exact
+producer-owned metric files with foreign-owner, symlink, hardlink and ancestor
+refusal, and named AWG observers including a failed secondary instance. Native
+Linux cases clear both IPv6 neighbor caches before strict-firewall exchanges and
+retire metrics written by a real service account. Portable checks do not replace
+these native systemd and packet checks.
+Local Ansible observer fixtures set `become: false` and isolate Ansible config.
+Task slices after AWG normalization supply its names-only output explicitly;
+the dedicated AWG test executes the actual normalization prerequisite.
+Retirement owner-map tests execute the actual consumer role variable declarations
+and stdin expression through Ansible; YAML mapping keys do not expand Jinja.
+
+**Project audit regressions cover operator boundaries** — synthetic Git histories
+isolate ambient Git configuration only in temporary repositories. SSH fixtures
+set their intended group explicitly. Installer tests reject invalid checksums
+and provenance before execution. Host-selection tests cross the actual CLI and
+shell boundaries; token refresh, private locks and promotion tests exercise
+rejection and concurrent callers. These checks do not establish live host,
+provider, release or Linux systemd acceptance.
+
 **Recovery clock tests isolate their time facade** — copy the adapter's time
 interface before patching sleep or clocks. Subprocess polling keeps real time,
 so candidate validation cannot advance synthetic worker timestamps.

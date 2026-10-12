@@ -271,7 +271,7 @@
     owner: root
     group: root
     mode: "0644"
-  when: vpn.enable_xray_reality | default(true)
+  when: _monitoring_xray_stats_enabled | bool
 
 - name: Drop logrotate config for nginx
   ansible.builtin.template:

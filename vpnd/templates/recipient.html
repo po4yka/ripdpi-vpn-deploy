@@ -61,7 +61,7 @@
     <div class="card">
       <h3>1. Add to RIPDPI</h3>
       <div class="row">
-        <div class="qr"><img src="qr-ripdpi.svg" alt="RIPDPI QR code"></div>
+        {% if include_qr %}<div class="qr"><img src="qr-ripdpi.svg" alt="RIPDPI QR code"></div>{% endif %}
         <div>
           <a class="btn" href="{{ ripdpi_deeplink }}">Add to RIPDPI</a>
           <details>
@@ -75,7 +75,7 @@
     <div class="card">
       <h3>2. Or use sing-box / subscription URL</h3>
       <div class="row">
-        <div class="qr"><img src="qr.svg" alt="QR code"></div>
+        {% if include_qr %}<div class="qr"><img src="qr.svg" alt="QR code"></div>{% endif %}
         <div>
           <a class="btn secondary" href="{{ singbox_deeplink }}">Open in sing-box</a>
           <div class="row">

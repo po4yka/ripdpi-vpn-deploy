@@ -17,6 +17,7 @@
 # silently triggering an unwanted swap — they would need both the topic
 # and the operator's local workstation to consume the OTP.
 set -euo pipefail
+umask 077
 
 # Portable bounded-run wrapper. macOS lacks `timeout` (coreutils ships it as
 # `gtimeout`); use that, or run without a limit if neither is present. On Linux
@@ -38,7 +39,13 @@ GREEN_ENV="${GREEN_ENV:-spare}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 STATE_DIR="${VPN_SPARE_STATE_DIR:-${HOME}/.cache/vpn-deploy/spare-state}"
 mkdir -p "$STATE_DIR"
+[[ -d "$STATE_DIR" && ! -L "$STATE_DIR" && -O "$STATE_DIR" ]] || {
+  echo 'unsafe promotion state directory' >&2; exit 1;
+}
 chmod 0700 "$STATE_DIR"
+[[ ! -L "${STATE_DIR}/promotion.lock" ]] || { echo 'unsafe promotion lock' >&2; exit 1; }
+exec 9<> "${STATE_DIR}/promotion.lock"
+python3 "$REPO_ROOT/scripts/private-operator-lock.py" "${STATE_DIR}/promotion.lock" 9
 
 notify_operator() {
   local title="$1" priority="$2" tags="$3" body="$4"

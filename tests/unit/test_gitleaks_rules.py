@@ -93,6 +93,7 @@ def _temporary_repo(tmp_path: Path) -> Path:
     return repo
 
 
+@pytest.mark.usefixtures("isolated_synthetic_git_config")
 def test_gitleaks_history_ignores_code_identifier_false_positive(tmp_path: Path) -> None:
     repo = _temporary_repo(tmp_path)
 
@@ -100,6 +101,7 @@ def test_gitleaks_history_ignores_code_identifier_false_positive(tmp_path: Path)
 
 
 @pytest.mark.parametrize("case", ["public-pin", "different-value", "different-path", "different-key"])
+@pytest.mark.usefixtures("isolated_synthetic_git_config")
 def test_xray_public_digest_exception_is_exact(tmp_path: Path, case: str) -> None:
     repo = _temporary_repo(tmp_path)
     pin = yaml.safe_load((REPO_ROOT / ".github/actions/install-xray/action.yml").read_text())
@@ -116,6 +118,7 @@ def test_xray_public_digest_exception_is_exact(tmp_path: Path, case: str) -> Non
     assert (_gitleaks(repo).returncode == 0) == (case == "public-pin")
 
 
+@pytest.mark.usefixtures("isolated_synthetic_git_config")
 def test_gitleaks_history_detects_committed_secret(tmp_path: Path) -> None:
     repo = _temporary_repo(tmp_path)
     secret = "A" * 32
@@ -129,6 +132,7 @@ def test_gitleaks_history_detects_committed_secret(tmp_path: Path) -> None:
     assert secret not in result.stdout + result.stderr
 
 
+@pytest.mark.usefixtures("isolated_synthetic_git_config")
 def test_gitleaks_ignores_untracked_local_operator_secret(tmp_path: Path) -> None:
     repo = _temporary_repo(tmp_path)
     secret_file = repo / "secrets" / "local" / "client.conf"
@@ -139,6 +143,7 @@ def test_gitleaks_ignores_untracked_local_operator_secret(tmp_path: Path) -> Non
     assert _gitleaks(repo, "--staged").returncode == 0
 
 
+@pytest.mark.usefixtures("isolated_synthetic_git_config")
 def test_gitleaks_staged_scan_detects_force_added_local_secret(tmp_path: Path) -> None:
     repo = _temporary_repo(tmp_path)
     secret_file = repo / "secrets" / "local" / "client.conf"

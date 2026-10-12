@@ -188,6 +188,8 @@ def test_actual_cloud_init_chain_cannot_bootstrap_after_seed_refusal(tmp_path, s
     base = base.replace("/var/lib/cloud-init-vpn-bootstrap.done", str(marker))
     base = base.replace("install -d -m 0755 /run/sshd", "true")
     base = base.replace("/usr/bin/python3", "true").replace("/usr/sbin/sshd -t", "true")
+    base = base.replace("systemctl daemon-reload", "true")
+    base = base.replace("systemctl is-active --quiet ssh.socket", "false")
     base = base.replace("systemctl enable --now ssh", f"touch {activation}")
     base = base.replace("systemctl reload ssh", "true")
     command = template_command.replace("${local.base_cloud_config.runcmd[0][2]}", base)

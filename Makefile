@@ -747,7 +747,8 @@ wait:
 
 require-inventory:
 	@test -s "$(ANSIBLE_DIR)/inventory/generated.ini" || { echo "missing generated inventory — run 'make inventory'"; exit 1; }
-	@ansible-inventory --list | python3 -c 'import json, sys; document = json.load(sys.stdin); hosts = document.get("vpn", {}).get("hosts", []); raise SystemExit(0 if hosts else 1)' || { echo "generated inventory has no vpn hosts — run 'make inventory'"; exit 1; }
+	@inventory=$$(ansible-inventory --list $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)")) && \
+	  printf '%s\n' "$$inventory" | python3 scripts/require-vpn-selection.py || { echo "inventory limit selects no VPN hosts or inventory is invalid"; exit 1; }
 
 require-clean-source:
 	@test -n "$(DEPLOY_SOURCE_REVISION)" && test -n "$(DEPLOYABLE_SOURCE_DIGEST)" || { echo "cannot derive deploy source identity"; exit 1; }

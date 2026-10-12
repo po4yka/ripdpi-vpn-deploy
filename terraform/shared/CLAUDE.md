@@ -60,4 +60,8 @@ dependency or custom guest image is introduced.
   first boot (Ubuntu 24.04 observed 2026-08), so a bare
   `systemctl reload ssh` in runcmd fails and the fail-closed marker never
   publishes. The bootstrap runs `systemctl enable --now ssh` before the
-  reload; keep that ordering if you touch the chain.
+  reload. It first reloads generated units and restarts an active `ssh.socket`
+  and then `ssh.service` so the daemon receives the new listener descriptors;
+  a reload can retain the old descriptors. Failure of either restart withholds
+  the marker. The restart acceptance harness also connects to the configured
+  loopback port and requires an SSH banner; `sshd -T` alone is not listener proof.
