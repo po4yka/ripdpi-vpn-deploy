@@ -2,7 +2,7 @@
 id: ANS-1791617913525586
 title: Commit transport runtimes only after complete configuration and readiness acceptance
 kind: bug
-status: review
+status: done
 area: ansible
 priority: high
 risk: high
@@ -15,6 +15,9 @@ created: 2026-10-10
 updated: 2026-10-13
 related_tasks: [SEC-1791471757439452, ANS-1791562764586678, ANS-1791586652330612]
 status_detail: Complete local gate and exact-source hosted checks passed at 8e58941a, including native transport forwarding and historical sender queue recovery; independent source and security review approved. No live rollout is claimed.
+closed_at: "2026-10-13T19:00:10Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Frozen source 8e58941a passed the complete local gate, all required hosted checks, actual native Xray/Hysteria forwarding and sender historical queue recovery. Independent source/security review approved; canonical archival completed without warnings.
 ---
 
 ## Goal
