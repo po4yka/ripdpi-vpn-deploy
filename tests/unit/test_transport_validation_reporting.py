@@ -152,8 +152,12 @@ def test_only_temporary_validation_tasks_suppress_changed_reporting():
             if task.get("check_mode") is True:
                 assert task.get("changed_when") is not False
     assert "--binary" in _named("xray", "Validate Xray candidate before quiescing the accepted route")["block"][1]["ansible.builtin.template"]["validate"]
-    for role, name in (("xray", "Render and validate Xray config"), ("hysteria", "Render Hysteria config")):
-        assert _named(role, name).get("changed_when") is not False
+    for role, label in (("xray", "Xray"), ("hysteria", "Hysteria")):
+        staged = _named(role, f"Stage complete {label} authority for guarded consumer acceptance")
+        assert "ansible.builtin.set_fact" in staged and staged["no_log"] is True and staged["diff"] is False
+    acceptance = yaml.safe_load((ROLES / "transport-egress/tasks/runtime-acceptance.yml").read_text())
+    publish = next(task for task in acceptance if "register" in task)
+    assert publish["changed_when"].endswith(".changed") and publish["no_log"] is True
 
 
 def test_actual_ansible_temporary_validation_twice_preserves_accepted_authority(tmp_path):

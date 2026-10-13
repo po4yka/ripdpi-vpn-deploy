@@ -42,6 +42,14 @@ def private_json(path):
         os.close(fd)
 
 
+def runtime_admission():
+    from transport_runtime_transaction import admission, Refusal as RuntimeRefusal
+    try:
+        admission('/var/lib/ripdpi/transport-runtime')
+    except RuntimeRefusal:
+        raise Refusal('generation-runtime-admission-refused') from None
+
+
 def validate(config, normalizer):
     if not isinstance(config, dict) or set(config) != {"schema_version", "gateway_units", "frontend_units", "normalizer_uid", "control_timeout_seconds", "recovery_seconds"}:
         raise Refusal("generation-config-invalid")
@@ -102,6 +110,7 @@ class Controller:
         self.frontend_requests.difference_update(targets)
         if not targets or not targets <= set(self.config["frontend_units"]):
             raise Refusal("generation-recovery-target-invalid")
+        runtime_admission()
         self.deadline = time.monotonic() + 3 * self.timeout
         try:
             # Only the requested frontend may change; paired UDP mapping
@@ -129,6 +138,7 @@ class Controller:
     def recover(self, unit):
         if unit not in self.config["frontend_units"] or unit not in RECOVERY_SIGNALS:
             raise Refusal("generation-recovery-target-invalid")
+        runtime_admission()
         self.deadline = time.monotonic() + 3 * self.timeout
         try:
             before = private_json(READY)
@@ -238,6 +248,7 @@ class Controller:
             self.stop(unit)
 
     def prepare(self):
+        runtime_admission()
         # Do not stop NORMALIZER: this path runs inside its ExecStartPre.
         self.stop_frontends()
         self.stop_gateways()
@@ -353,6 +364,7 @@ class Controller:
         global stopping
         while not stopping:
             try:
+                runtime_admission()
                 self.stop_frontends()
                 self.stop(NORMALIZER)
                 self.start(NORMALIZER)  # ExecStartPre resets both old gateways first.
@@ -366,6 +378,7 @@ class Controller:
                 self.publish_ready(generation)
                 print("transport-generation-ready", flush=True)
                 while not stopping:
+                    runtime_admission()
                     if self.frontend_requests:
                         generation = self.recover_frontends(generation)
                     if "warp" in self.normalizer["backends"] and time.monotonic() >= next_tunnel_check:

@@ -202,6 +202,38 @@ def recover(directory, pending):
     return True
 
 
+def stage_pair(directory, pending, desired):
+    """Cache both verified inputs without selecting files or restarting Xray."""
+    parent = directory / '.asset-candidates'
+    if not parent.exists():
+        parent.mkdir(mode=0o755)
+        sync_directory(directory)
+    inspect_directory(parent)
+    generation = hashlib.sha256(json.dumps(desired, sort_keys=True).encode()).hexdigest()
+    destination = parent / generation
+    if destination.exists():
+        inspect_directory(destination)
+        if {path.name for path in destination.iterdir()} != set(desired):
+            raise ValueError('candidate-set-invalid')
+        for name, expected in desired.items():
+            info = verify_file(destination / name)
+            if stat.S_IMODE(info.st_mode) != 0o644 or digest(destination / name) != expected:
+                raise ValueError('candidate-set-changed')
+        return {'changed': False, 'candidate_dir': str(destination), 'desired': desired}
+    temporary = Path(tempfile.mkdtemp(prefix='.asset-set-', dir=parent))
+    try:
+        for name in desired:
+            replace(pending / name, temporary / name, mode=0o644, uid=os.geteuid(), gid=os.getegid())
+        temporary.chmod(0o755)
+        sync_directory(temporary)
+        os.rename(temporary, destination)
+        sync_directory(parent)
+        return {'changed': True, 'candidate_dir': str(destination), 'desired': desired}
+    finally:
+        if temporary.exists():
+            shutil.rmtree(temporary)
+
+
 def _publish_locked(request):
     directory = Path(request["install_dir"])
     sources = request["sources"]
@@ -299,6 +331,8 @@ def _publish_locked(request):
                     uid=os.geteuid(),
                     gid=os.getegid(),
                 )
+        if request.get('stage_only', False):
+            return stage_pair(directory, pending, desired)
         changed = any(
             old != {**expected_metadata, "sha256": desired[name]}
             for name, old in previous.items()
@@ -374,6 +408,8 @@ def inspect_directory(directory, *, missing=False):
 
 
 def publish(request):
+    if type(request.get('stage_only', False)) is not bool:
+        raise ValueError('stage-mode')
     directory = Path(request["install_dir"])
     inspect_directory(directory)
     descriptor = os.open(

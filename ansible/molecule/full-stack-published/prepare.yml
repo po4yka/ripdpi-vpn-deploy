@@ -1,3 +1,6 @@
 ---
 - name: Prepare genuine isolated credential delivery
   ansible.builtin.import_playbook: ../prepare-transport-credentials.yml
+
+- name: Prepare the owned disconnected transport canary
+  ansible.builtin.import_playbook: ../prepare-transport-canary.yml

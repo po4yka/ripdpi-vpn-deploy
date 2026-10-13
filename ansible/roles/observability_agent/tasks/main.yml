@@ -21,6 +21,32 @@
         '/var/lib/vpn-backup/restore-drill-last-success.json'
     fail_msg: Observability agent may remove or publish only its fixed role-owned paths.
 
+- name: Admit sender helper authority before installation or retirement
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path ~ '/files/observability_runtime_authority.py') }}"
+    stdin: "{{ lookup('ansible.builtin.file', role_path ~ '/../runtime-release/files/transport_runtime_transaction.py') }}"
+  changed_when: false
+  check_mode: false
+
+- name: Inspect installed sender acceptance for predictive inspection
+  ansible.builtin.stat:
+    path: /usr/local/libexec/observability-runtime/observability_runtime_accept.py
+  register: _observability_agent_check_helper
+  when: ansible_check_mode
+
+- name: Inspect sender transaction without recovery in check mode
+  ansible.builtin.command:
+    argv: [python3, /usr/local/libexec/observability-runtime/observability_runtime_accept.py, check]
+  changed_when: false
+  check_mode: false
+  when:
+    - ansible_check_mode
+    - _observability_agent_check_helper.stat.exists
+  no_log: true
+
 - name: Disable observability agent when feature is disabled
   when: not (observability_agent.enabled | default(false) | bool)
   block:
@@ -30,6 +56,21 @@
         tasks_from: producers-disable
       vars:
         observability_push_disable_kinds: [node]
+
+    - name: Inspect sender acceptance helper before retirement
+      ansible.builtin.stat:
+        path: /usr/local/libexec/observability-runtime/observability_runtime_accept.py
+      register: _observability_agent_retirement_helper
+
+    - name: Retire accepted sender authority before removing its directories
+      ansible.builtin.command:
+        argv: [python3, /usr/local/libexec/observability-runtime/observability_runtime_accept.py, retire]
+      register: _observability_agent_retirement
+      changed_when: (_observability_agent_retirement.stdout | from_json).changed | bool
+      when:
+        - not ansible_check_mode
+        - _observability_agent_retirement_helper.stat.exists
+      no_log: true
 
     - name: Inspect observability agent owned units before disable
       ansible.builtin.stat:
@@ -56,6 +97,7 @@
         state: absent
       loop:
         - /etc/systemd/system/observability-agent.service
+        - /etc/systemd/system/observability-agent.service.d/acceptance.conf
         - /etc/systemd/system/observability-agent-adapter.service
         - /etc/systemd/system/observability-agent-adapter.timer
         - /etc/systemd/system/observability-agent-health-adapter.service
@@ -258,6 +300,67 @@
               group: observability-agent
               mode: "0700"
 
+        - name: Create private sender acceptance helper and state directories
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0700"
+          loop:
+            - /usr/local/libexec/observability-runtime
+            - /var/lib/observability-agent-activation
+
+        - name: Install the shared sender acceptance implementation
+          ansible.builtin.copy:
+            src: "{{ item.source }}"
+            dest: "/usr/local/libexec/observability-runtime/{{ item.name }}"
+            owner: root
+            group: root
+            mode: "0600"
+          loop:
+            - source: "{{ role_path }}/../runtime-release/files/transport_runtime_transaction.py"
+              name: transport_runtime_transaction.py
+            - source: "{{ role_path }}/files/observability_runtime_accept.py"
+              name: observability_runtime_accept.py
+            - source: "{{ role_path }}/files/observability_runtime_queue.py"
+              name: observability_runtime_queue.py
+            - source: "{{ role_path }}/files/observability-agent-readiness.py"
+              name: observability_agent_readiness.py
+            - source: "{{ role_path }}/files/observability-queue-boundary.py"
+              name: observability_queue_boundary.py
+
+        - name: Reconcile sender acceptance before acquiring another candidate
+          ansible.builtin.command:
+            argv: [python3, /usr/local/libexec/observability-runtime/observability_runtime_accept.py, recover]
+          register: _observability_agent_recovery
+          changed_when: (_observability_agent_recovery.stdout | from_json).changed | bool
+          no_log: true
+
+        - name: Create sender admission guard directory
+          ansible.builtin.file:
+            path: /etc/systemd/system/observability-agent.service.d
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Guard both previous and candidate sender starts during publication
+          ansible.builtin.copy:
+            content: |
+              [Service]
+              ExecStartPre=+/usr/bin/python3 /usr/local/libexec/observability-runtime/observability_runtime_accept.py guard
+            dest: /etc/systemd/system/observability-agent.service.d/acceptance.conf
+            owner: root
+            group: root
+            mode: "0644"
+          register: _observability_agent_guard
+
+        - name: Load sender admission guard before activation # noqa: no-handler -- admission must precede candidate start
+          ansible.builtin.systemd_service:
+            daemon_reload: true
+          when: _observability_agent_guard.changed
+
         - name: Bind the private retained queue to its one admitted receiver
           ansible.builtin.copy:
             content: "{{ observability_agent.receiver_origin }}/remote-write/v1/nodes/{{ observability_agent.node_id }}\n"
@@ -280,6 +383,7 @@
           ansible.builtin.include_role:
             name: runtime-release
           vars:
+            runtime_release_stage_only: true
             runtime_release_version: "{{ observability_agent.version }}"
             runtime_release_install_root: "{{ observability_agent.install_root }}"
             runtime_release_binary_name: vmagent-prod
@@ -303,6 +407,7 @@
         - name: Preserve the sender binary activation result
           ansible.builtin.set_fact:
             _observability_agent_runtime_changed: "{{ runtime_release_changed | bool }}"
+            _observability_agent_runtime_candidates: "{{ runtime_release_candidates }}"
 
         - name: Validate and publish observability credential bundle
           block:
@@ -423,7 +528,7 @@
             - name: Validate candidate observability configuration
               ansible.builtin.command:
                 argv:
-                  - /usr/local/bin/vmagent-observability-agent
+                  - "{{ observability_agent.install_root }}/releases/{{ observability_agent.version }}/vmagent-prod"
                   - -dryRun
                   - "-promscrape.config={{ _observability_agent_credential_candidate.path }}/prometheus.yml"
               changed_when: false
@@ -567,24 +672,6 @@
               changed_when: false
               no_log: true
 
-        - name: Install schema-2 manifest adapter
-          ansible.builtin.copy:
-            src: observability-agent-adapter.py
-            dest: /usr/local/libexec/observability-agent-adapter.py
-            owner: root
-            group: root
-            mode: "0755"
-          notify: Restart observability agent adapter timer
-
-        - name: Install watchdog and backup health adapter
-          ansible.builtin.copy:
-            src: observability-agent-health-adapter.py
-            dest: /usr/local/libexec/observability-agent-health-adapter.py
-            owner: root
-            group: root
-            mode: "0755"
-          notify: Restart observability agent health adapter timer
-
         - name: Install canonical observability metric manifest
           ansible.builtin.copy:
             src: "{{ role_path }}/../../../contract/observability-metric-manifest.example.json"
@@ -711,180 +798,81 @@
               {{ '/-/ready' if (_observability_agent_previous_runtimes | default([])) == ['prometheus']
               else '/ready' }}
 
-        - name: Activate and verify observability configuration generation
-          block:
-            - name: Install observability agent units
-              ansible.builtin.template:
-                src: "{{ item }}"
-                dest: "/etc/systemd/system/{{ item | regex_replace('\\.j2$', '') }}"
-                owner: root
-                group: root
-                mode: "0644"
-              loop:
-                - observability-agent.service.j2
-                - observability-agent-adapter.service.j2
-                - observability-agent-adapter.timer.j2
-                - observability-agent-health-adapter.service.j2
-                - observability-agent-health-adapter.timer.j2
-              register: _observability_agent_units
-              notify:
-                - Reload observability agent systemd
-                - Restart observability agent adapter timer
+        - name: Publish and accept the sender generation with retained queue compensation
+          ansible.builtin.command:
+            argv: [python3, /usr/local/libexec/observability-runtime/observability_runtime_accept.py, apply]
+            stdin: >-
+              {{ {'profile': {'install_root': observability_agent.install_root,
+                              'version': observability_agent.version,
+                              'receiver': observability_agent.receiver_origin ~ '/remote-write/v1/nodes/' ~ observability_agent.node_id},
+                  'candidates': _observability_agent_runtime_candidates + [
+                    {'path': '/etc/systemd/system/observability-agent.service',
+                     'data': lookup('ansible.builtin.template', 'observability-agent.service.j2') | b64encode,
+                     'mode': 420, 'gid': 0},
+                    {'path': observability_agent.credential_dir ~ '/current',
+                     'target': observability_agent.credential_dir ~ '/generations/'
+                               ~ _observability_agent_service_generation},
+                    {'path': '/var/lib/observability-agent-activation/parameters.json',
+                     'data': {'install_root': observability_agent.install_root,
+                              'version': observability_agent.version,
+                              'receiver': observability_agent.receiver_origin ~ '/remote-write/v1/nodes/'
+                                          ~ observability_agent.node_id} | to_json | b64encode,
+                     'mode': 384, 'gid': 0}]} | to_json }}
+          register: _observability_agent_acceptance
+          changed_when: >-
+            _observability_agent_acceptance.rc in [0, 2] and
+            (_observability_agent_acceptance.stdout | from_json).changed | bool
+          failed_when: _observability_agent_acceptance.rc not in [0, 2]
+          no_log: true
 
-            - name: Switch current observability credential generation
-              ansible.builtin.file:
-                src: "generations/{{ _observability_agent_credential_generation }}"
-                dest: "{{ observability_agent.credential_dir }}/current"
-                owner: root
-                group: root
-                state: link
-                force: true
-              register: _observability_agent_generation_switch
-              no_log: true
+        - name: Retain confirmed restored sender readiness
+          ansible.builtin.set_fact:
+            _observability_agent_restored_ready:
+              rc: "{{ 0 if (_observability_agent_acceptance.stdout | from_json).restored_ready | default(false) else 1 }}"
+          when: _observability_agent_acceptance.rc == 2
 
-            - name: Restart observability agent on the complete generation
-              ansible.builtin.systemd_service:
-                name: observability-agent.service
-                enabled: true
-                state: restarted
-                daemon_reload: true
-              when: >-
-                _observability_agent_generation_switch.changed or
-                _observability_agent_units.changed or
-                _observability_agent_runtime_changed or
-                _observability_agent_service_active.rc != 0
-
-            - name: Wait for observability agent local readiness
-              ansible.builtin.command:
-                argv:
-                  - python3
-                  - -c
-                  - "{{ lookup('ansible.builtin.file', role_path ~ '/files/observability-agent-readiness.py') }}"
-                  - "{{ observability_agent.web_listen }}"
-                  - vmagent
-              changed_when: false
-              register: _observability_agent_ready
-              retries: 15
-              delay: 1
-              until: _observability_agent_ready.rc == 0
-          rescue:
-            - name: Restore the previous sender binary after failed activation
-              ansible.builtin.file:
-                src: "{{ _observability_agent_previous_release.stat.lnk_source }}"
-                dest: "{{ observability_agent.install_root }}/current"
-                state: link
-                force: true
-              when:
-                - _observability_agent_runtime_changed | bool
-                - _observability_agent_previous_release.stat.islnk | default(false)
-
-            - name: Restore previous observability generation
-              ansible.builtin.file:
-                src: "generations/{{ _observability_agent_previous_generation_id }}"
-                dest: "{{ observability_agent.credential_dir }}/current"
-                owner: root
-                group: root
-                state: link
-                force: true
-              when: _observability_agent_previous_generation.stat.islnk | default(false)
-              no_log: true
-
-            - name: Bind restored service to the previous credential generation
-              ansible.builtin.set_fact:
-                _observability_agent_service_generation: >-
-                  {{ _observability_agent_previous_generation_id }}
-              when: _observability_agent_can_restore_runtime | bool
-              no_log: true
-
-            - name: Restore previous observability agent service unit
-              ansible.builtin.copy:
-                content: "{{ _observability_agent_previous_unit_bytes.content | b64decode }}"
-                dest: /etc/systemd/system/observability-agent.service
-                owner: root
-                group: root
-                mode: "0644"
-              when: _observability_agent_previous_unit.stat.exists
-              no_log: true
-
-            - name: Restore previous observability health adapter service unit
-              ansible.builtin.template:
-                src: observability-agent-health-adapter.service.j2
-                dest: /etc/systemd/system/observability-agent-health-adapter.service
-                owner: root
-                group: root
-                mode: "0644"
-              when: _observability_agent_can_restore_runtime | bool
-
-            - name: Stop and disable failed first observability agent activation
-              ansible.builtin.systemd_service:
-                name: observability-agent.service
-                enabled: false
-                state: stopped
-                daemon_reload: true
-              when: not (_observability_agent_can_restore_runtime | bool)
-
-            - name: Remove failed first observability generation activation
-              ansible.builtin.file:
-                path: "{{ observability_agent.credential_dir }}/current"
-                state: absent
-              when: not (_observability_agent_previous_generation.stat.islnk | default(false))
-              no_log: true
-
-            - name: Restart restored observability generation
-              ansible.builtin.systemd_service:
-                name: observability-agent.service
-                state: restarted
-                daemon_reload: true
-              when: _observability_agent_can_restore_runtime | bool
-
-            - name: Verify restored observability generation readiness
-              ansible.builtin.command:
-                argv:
-                  - python3
-                  - -c
-                  - "{{ lookup('ansible.builtin.file', role_path ~ '/files/observability-agent-readiness.py') }}"
-                  - "{{ _observability_agent_previous_listeners[0] }}"
-                  - "{{ _observability_agent_previous_runtimes[0] }}"
-              changed_when: false
-              register: _observability_agent_restored_ready
-              retries: 15
-              delay: 1
-              until: _observability_agent_restored_ready.rc == 0
-              when: _observability_agent_can_restore_runtime | bool
-
-            - name: Inspect failed first observability agent activation state
-              ansible.builtin.command:
-                argv:
-                  - /usr/bin/systemctl
-                  - show
-                  - observability-agent.service
-                  - --property=ActiveState
-                  - --value
-              register: _observability_agent_failed_first_state
-              changed_when: false
-              when: not (_observability_agent_can_restore_runtime | bool)
-
-            - name: Assert failed first observability agent activation is inactive
-              ansible.builtin.assert:
-                that:
-                  - _observability_agent_failed_first_state.stdout | trim == 'inactive'
-                fail_msg: Failed first observability agent activation did not stop cleanly.
-              when: not (_observability_agent_can_restore_runtime | bool)
-
-            - name: Refuse failed observability generation activation
-              ansible.builtin.fail:
-                msg: Observability agent generation failed readiness and was rolled back.
+        - name: Refuse failed observability generation activation
+          ansible.builtin.fail:
+            msg: Observability agent generation failed readiness and was rolled back with its retained queue.
+          when: _observability_agent_acceptance.rc == 2
 
         - name: Commit ready sender runtime activation
           ansible.builtin.set_fact:
             _observability_agent_runtime_ready: true
 
-        - name: Enable and start observability agent sender
-          ansible.builtin.systemd_service:
-            name: observability-agent.service
-            enabled: true
-            state: started
-            daemon_reload: true
+        - name: Install schema-2 manifest adapter
+          ansible.builtin.copy:
+            src: observability-agent-adapter.py
+            dest: /usr/local/libexec/observability-agent-adapter.py
+            owner: root
+            group: root
+            mode: "0755"
+          notify: Restart observability agent adapter timer
+
+        - name: Install watchdog and backup health adapter
+          ansible.builtin.copy:
+            src: observability-agent-health-adapter.py
+            dest: /usr/local/libexec/observability-agent-health-adapter.py
+            owner: root
+            group: root
+            mode: "0755"
+          notify: Restart observability agent health adapter timer
+
+        - name: Install observability agent adapter units after sender acceptance
+          ansible.builtin.template:
+            src: "{{ item }}"
+            dest: "/etc/systemd/system/{{ item | regex_replace('\\.j2$', '') }}"
+            owner: root
+            group: root
+            mode: "0644"
+          loop:
+            - observability-agent-adapter.service.j2
+            - observability-agent-adapter.timer.j2
+            - observability-agent-health-adapter.service.j2
+            - observability-agent-health-adapter.timer.j2
+          notify:
+            - Reload observability agent systemd
+            - Restart observability agent adapter timer
 
         - name: Enable and start observability agent adapter timer
           ansible.builtin.systemd_service:
@@ -910,24 +898,13 @@
         _observability_agent_failed_task_name: "{{ ansible_failed_task.name }}"
       no_log: true
 
-    - name: Restore sender binary after pre-activation validation failure
-      ansible.builtin.file:
-        src: "{{ _observability_agent_previous_release.stat.lnk_source }}"
-        dest: "{{ observability_agent.install_root }}/current"
-        state: link
-        force: true
+    - name: Publish only a fixed sender refusal category
+      ansible.builtin.debug:
+        msg: "{{ _observability_agent_acceptance.stderr | trim }}"
       when:
-        - not (_observability_agent_runtime_ready | default(false) | bool)
-        - _observability_agent_previous_release.stat.islnk | default(false)
-
-    - name: Remove an unaccepted first sender binary activation
-      ansible.builtin.file:
-        path: "{{ observability_agent.install_root }}/current"
-        state: absent
-      when:
-        - not (_observability_agent_runtime_ready | default(false) | bool)
-        - _observability_agent_previous_release is defined
-        - not (_observability_agent_previous_release.stat.exists | default(false))
+        - _observability_agent_acceptance is defined
+        - _observability_agent_acceptance.rc | default(0) == 1
+        - (_observability_agent_acceptance.stderr | default('') | trim) is match('^[a-z][a-z0-9-]{0,63}$')
 
     - name: Refuse incomplete observability agent convergence
       ansible.builtin.fail:

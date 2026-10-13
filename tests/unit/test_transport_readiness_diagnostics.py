@@ -18,7 +18,8 @@ MARKER = "synthetic-private-diagnostic-marker"
 
 
 def rescue_tasks():
-    return yaml.safe_load(ACTIVATE.read_text())[0]["rescue"]
+    return next(task for task in yaml.safe_load(ACTIVATE.read_text())
+                if task["name"] == "Activate only a ready guarded generation after frontend staging")["rescue"]
 
 
 def diagnostic_tasks():

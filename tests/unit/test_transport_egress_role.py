@@ -84,7 +84,7 @@ def test_role_transaction_precedes_publication_and_readiness_is_not_is_active():
     names = [task['name'] for task in publication]
     assert names.index('Validate every native gateway candidate before quiescence') < names.index('Capture and stop the previous whole-route generation') < names.index('Publish the complete validated candidate')
     activate = (ROLE / 'tasks/activate.yml').read_text()
-    active_tasks = yaml.safe_load(activate)[0]['block']
+    active_tasks = next(task['block'] for task in yaml.safe_load(activate) if task['name'] == 'Activate only a ready guarded generation after frontend staging')
     readiness = next(task for task in active_tasks if task['name'].startswith('Require current authenticated'))
     assert 'status' in readiness['ansible.builtin.command']['argv']
     assert 'is-active' not in activate

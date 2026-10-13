@@ -62,9 +62,39 @@
   ansible.builtin.include_role:
     name: xray-runtime
   vars:
+    xray_runtime_stage_only: true
     xray_runtime_publish_geoip: >-
       {{ not (vpn.enable_geodata | default(false) | bool) }}
     xray_runtime_asset_public_dir: "{{ xray_install_dir }}/bundled-assets"
+
+- name: Stage the selected geodata pair for standalone complete candidate admission
+  ansible.builtin.include_role:
+    name: geodata
+  when:
+    - vpn.enable_geodata | default(false) | bool
+    - transport_runtime_geodata_candidate_dir is not defined
+
+- name: Require staged geodata authority before ordinary Xray admission
+  ansible.builtin.assert:
+    that: transport_runtime_geodata_candidate_dir is defined
+    fail_msg: Ordinary Xray admission requires the complete staged geodata pair.
+  when:
+    - not ansible_check_mode
+    - vpn.enable_geodata | default(false) | bool
+
+- name: Report unverified future geodata bytes during predictive Xray convergence
+  ansible.builtin.debug:
+    msg: Staged geodata bytes and native candidate readiness remain unverified until ordinary convergence.
+  when:
+    - ansible_check_mode
+    - vpn.enable_geodata | default(false) | bool
+    - transport_runtime_geodata_candidate_dir is not defined
+
+- name: Select staged Xray validation asset authority
+  ansible.builtin.set_fact:
+    _xray_candidate_asset_dir: >-
+      {{ (transport_runtime_geodata_candidate_dir | default(xray_asset_dir))
+         if (vpn.enable_geodata | default(false) | bool) else xray_runtime_bundled_asset_dir }}
 
 - name: Pre-flight — REALITY target and serverNames must be set
   ansible.builtin.assert:
@@ -126,7 +156,7 @@
     validate: >-
       /usr/bin/python3 -c {{ lookup("ansible.builtin.file", role_path ~ "/files/xray_validate.py") | quote }}
       --binary {{ xray_runtime_binary | quote }}
-      --asset-dir {{ xray_asset_dir | quote }} --config %s
+      --asset-dir {{ _xray_candidate_asset_dir | quote }} --config %s
   check_mode: true
   register: _xray_config_change
   no_log: true
@@ -157,7 +187,7 @@
         validate: >-
           /usr/bin/python3 -c {{ lookup("ansible.builtin.file", role_path ~ "/files/xray_validate.py") | quote }}
           --binary {{ xray_runtime_binary | quote }}
-          --asset-dir {{ xray_asset_dir | quote }} --config %s
+          --asset-dir {{ _xray_candidate_asset_dir | quote }} --config %s
       no_log: true
       diff: false
       changed_when: false
@@ -192,73 +222,42 @@
   check_mode: true
   register: _xray_validator_change
 
-- name: Quiesce accepted topology before changed Xray publication
-  ansible.builtin.include_role:
-    name: transport-egress
-    tasks_from: begin
-  when:
-    - not ansible_check_mode
-    - >-
-      _xray_config_change.changed or _xray_unit_change.changed or
-      _xray_validator_change.changed or xray_runtime_changed | default(false) | bool
-
-- name: Install the shared Xray validation entry point
-  ansible.builtin.import_tasks: validation-helper.yml
-
-- name: Install xray systemd unit
-  ansible.builtin.template:
-    src: xray.service.j2
-    dest: /etc/systemd/system/xray.service
-    owner: root
-    group: root
-    mode: "0644"
-  register: _xray_unit_plan
-
-- name: Backup previous Xray config if exists
-  ansible.builtin.copy:
-    src: "{{ xray_etc_dir }}/config.json"
-    dest: "{{ xray_etc_dir }}/config.json.prev"
-    remote_src: true
-    owner: root
-    group: "{{ xray_runtime_group }}"
-    mode: "0640"
-  when:
-    - _xray_config_stat.stat.exists
-    - _xray_config_change.changed
-  changed_when: false
-
-- name: Render and validate Xray config
-  ansible.builtin.template:
-    src: config.json.j2
-    dest: "{{ xray_etc_dir }}/config.json"
-    owner: root
-    group: "{{ xray_runtime_group }}"
-    mode: "0640"
-    validate: >-
-      /usr/local/libexec/vpn-xray-validate --binary {{ xray_runtime_binary | quote }}
-      --asset-dir {{ xray_asset_dir | quote }} --config %s
+- name: Stage complete Xray authority for guarded consumer acceptance
+  ansible.builtin.set_fact:
+    transport_runtime_candidates: >-
+      {{ (transport_runtime_candidates | default([])) + [
+          {'path': xray_etc_dir ~ '/config.json', 'mode': 416,
+           'gid': transport_egress_frontend_gids.xray | int,
+           'data': lookup('ansible.builtin.template', 'config.json.j2') | b64encode},
+          {'path': '/etc/systemd/system/xray.service', 'mode': 420, 'gid': 0,
+           'data': lookup('ansible.builtin.template', 'xray.service.j2') | b64encode},
+          {'path': '/usr/local/libexec/vpn-xray-validate', 'mode': 493, 'gid': 0,
+           'data': lookup('ansible.builtin.file', role_path ~ '/files/xray_validate.py', rstrip=false) | b64encode}
+         ] }}
+  vars:
+    p0_reality_shape_template: "{{ role_path }}/../../templates/p0-reality-shape.json.j2"
   no_log: true
   diff: false
-  vars:
-    p0_reality_shape_template: >-
-      {{ role_path }}/../../templates/p0-reality-shape.json.j2
+  when: not (transport_egress_fresh_check_mode | default(false) | bool)
 
-- name: Inspect xray unit before check-mode activation
-  ansible.builtin.stat:
-    path: /etc/systemd/system/xray.service
-    follow: false
-  register: _xray_unit_before
-  changed_when: false
-  when: ansible_check_mode
-
-- name: Require planned xray unit on a fresh check-mode host
-  ansible.builtin.assert:
-    that:
-      - _xray_unit_plan.changed
-    fail_msg: Check mode found no xray unit and no planned installation.
+- name: Stage selected geodata files without publishing either active asset
+  ansible.builtin.set_fact:
+    transport_runtime_candidates: >-
+      {{ transport_runtime_candidates + [
+         {'path': geodata.install_dir ~ '/geoip.dat', 'source': transport_runtime_geodata_candidate_dir ~ '/geoip.dat',
+          'sha256': geodata.geoip_sha256 | lower, 'mode': 420, 'gid': 0},
+         {'path': geodata.install_dir ~ '/geosite.dat', 'source': transport_runtime_geodata_candidate_dir ~ '/geosite.dat',
+          'sha256': geodata.geosite_sha256 | lower, 'mode': 420, 'gid': 0},
+         {'path': geodata.install_dir ~ '/.geodata-activated.json', 'mode': 384, 'gid': 0, 'deferred': true,
+          'data': ({'schema': 1, 'desired': {'geoip.dat': geodata.geoip_sha256 | lower,
+                                          'geosite.dat': geodata.geosite_sha256 | lower},
+                    'metadata': {'mode': 420, 'uid': 0, 'gid': 0}} | to_json(sort_keys=true, separators=[',', ':'])) | b64encode}
+         ] }}
+  no_log: true
+  diff: false
   when:
-    - ansible_check_mode
-    - not (_xray_unit_before.stat.exists | default(false))
+    - not (transport_egress_fresh_check_mode | default(false) | bool)
+    - transport_runtime_geodata_candidate_dir is defined
 
 - name: Activate guarded standalone frontend generation
   ansible.builtin.import_tasks: "{{ role_path }}/../../playbooks/tasks/transport-egress-activate.yml"

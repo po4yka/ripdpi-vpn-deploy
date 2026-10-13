@@ -9,7 +9,8 @@ ExecStart=/usr/local/sbin/vpn-geodata-refresh.sh
 
 # Hardening floor for a root oneshot: strict read-only filesystem view,
 # private tmp, no privilege escalation or kernel surfaces. The only
-# writable surface is the geodata install directory.
+# writable surfaces are the selected assets and private acceptance journal.
+# The shared generation controller owns service/process and policy mutation.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
@@ -22,3 +23,10 @@ LockPersonality=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
 ReadWritePaths={{ geodata.install_dir }}
+{% if (vpn.enable_xray_reality | default(true) | bool) or (vpn.enable_nginx_xhttp | default(true) | bool) %}
+ReadWritePaths=/var/lib/ripdpi/transport-runtime
+# The exact native parser initializes its declared frontend-owned log file.
+ReadWritePaths=-/var/log/xray
+# Admission reads that UID's executable/log authority and verifies kernel policy.
+CapabilityBoundingSet=CAP_SYS_PTRACE CAP_DAC_OVERRIDE CAP_NET_ADMIN
+{% endif -%}

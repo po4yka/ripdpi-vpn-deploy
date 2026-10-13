@@ -23,7 +23,7 @@ xray template — say nftables), trigger the manual playbook:
 ansible-playbook ansible/playbooks/rollback-config.yml
 ```
 
-It restores `/etc/xray/config.json.prev` → validates → restarts.
+It stages `/etc/xray/config.json.prev`, validates the complete candidate, and commits only after loaded runtime identity and authenticated native forwarding succeed. Refusal restores the exact prior configuration and service state.
 
 ## Level 2 — binary rollback
 
@@ -39,11 +39,17 @@ ssh deploy@<vps> ls /opt/xray/releases
 make rollback-xray ROLLBACK_XRAY_VERSION=v26.3.27
 ```
 
-The playbook accepts only a pinned `vMAJOR.MINOR.PATCH` (or unprefixed)
-release with a regular executable binary and refuses the current release.
-It validates the existing config with the target binary **before** changing
-the runtime link, then restarts and verifies `is-active`. Check mode also
-runs this read-only binary validation; it does not change the link or restart.
+A semantic version selects its exact `<version>-archive` runtime identity.
+For source builds, supply `<version>-source-<full-commit>` explicitly; archive
+and source identities are never interchangeable. The corresponding immutable
+byte receipt and binary digest must match. Bundled assets retain the semantic
+version identity.
+
+The playbook validates staged configuration with the target binary and assets,
+then commits selection only after exact loaded executable identity and
+successful authenticated native forwarding. Refusal restores the complete
+previous generation. Check mode inspects ownership and predicts changes; it
+performs no publication, service restart or authenticated probe.
 
 To make the rollback permanent, also update `xray.version` and
 `xray.linux_*_sha256` in secrets back to the rolled-back version, so

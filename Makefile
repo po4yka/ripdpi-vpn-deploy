@@ -672,6 +672,7 @@ help:
 	@echo "  test-unit-shard            Run one balanced pytest group (PYTEST_GROUP=1..4)"
 	@echo "  test-unit-profile          Refresh durations with a complete portable run"
 	@echo "  test-native-runtime        Run native integration tests in disposable Linux root environment"
+	@echo "  test-transport-runtime-acceptance  Run complete consumer transactions in a separate fresh Linux root"
 	@echo "  test-probe-matrix-mtproto   Run the compiled Go helper tests"
 	@echo "  snapshot-check             Diff every Jinja render against tests/snapshot/golden/"
 	@echo "  snapshot-update            Refresh the goldens (run after intentional change)"
@@ -1077,10 +1078,19 @@ test-transport-destination-boundary:
 	  tests/unit/test_transport_classifier_boundary_native.py \
 	  tests/unit/test_transport_warp_tun_native.py --fail-on-skip -v
 
-# Explicit Linux-only lane; run as root in a disposable runner/container.
+# Complete native consumer upgrade/rollback lane; no inventory or real credentials.
+.PHONY: test-transport-runtime-acceptance
+test-transport-runtime-acceptance:
+	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 && test "$${TRANSPORT_NATIVE_ISOLATED:-}" = 1 || { echo "runtime acceptance requires an owned isolated Linux root environment" >&2; exit 1; }
+	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest \
+	  tests/unit/test_transport_runtime_acceptance_native.py --fail-on-skip --tb=short -v
+
+# Separate disposable roots retain the foreign-authority refusal of the complete
+# consumer transaction lab. CI requires this lane and its four-case target above.
 test-native-runtime:
 	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 || { echo "native runtime tests require a disposable Linux root environment" >&2; exit 1; }
-	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ -m native_runtime --fail-on-skip -v
+	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ -m native_runtime \
+	  --ignore=tests/unit/test_transport_runtime_acceptance_native.py --fail-on-skip -v
 
 test-probe-matrix-mtproto:
 	cd tools/probe-matrix-mtproto && go test -mod=readonly -count=1 -v -timeout=2m -p=2 ./...

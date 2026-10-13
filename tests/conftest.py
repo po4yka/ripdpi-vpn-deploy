@@ -10,6 +10,7 @@ import json
 import math
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+
+@pytest.fixture
+def private_authority_path():
+    """Own a private tree outside the globally writable Linux temporary ancestry."""
+    with tempfile.TemporaryDirectory(prefix='.ripdpi-authority-test-', dir=Path.home()) as directory:
+        yield Path(directory).resolve()
 
 
 @pytest.fixture

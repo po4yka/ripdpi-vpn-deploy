@@ -10,7 +10,8 @@ ROOT = Path(__file__).resolve().parents[2]
 SETUP = "./.github/actions/setup-ci-python"
 DISPOSABLE_SETUP = "./.github/actions/setup-disposable-ci"
 GALAXY_JOBS = {"ansible", "molecule", "molecule-failure-scenarios", "molecule-full-stack"}
-PYTHON_JOBS = GALAXY_JOBS | {"python-validators", "unit-tests", "native-runtime"}
+NATIVE_JOBS = {"native-runtime", "transport-runtime-acceptance"}
+PYTHON_JOBS = GALAXY_JOBS | {"python-validators", "unit-tests"} | NATIVE_JOBS
 VALIDATORS = {
     "yamllint -c .yamllint.yml .",
     "python3 scripts/check-secrets-coverage.py",
@@ -45,7 +46,7 @@ def test_all_ci_python_consumers_share_the_pinned_cached_install():
     for name in PYTHON_JOBS:
         assert len(consumers[name]) == 1
         assert consumers[name][0].get("with", {}).get("galaxy", "false") == (
-            "true" if name in GALAXY_JOBS | {"native-runtime"} else "false"
+            "true" if name in GALAXY_JOBS | NATIVE_JOBS else "false"
         )
         if name in GALAXY_JOBS:
             assert jobs[name]["env"]["ANSIBLE_COLLECTIONS_PATH"] == "${{ github.workspace }}/.ansible/collections"

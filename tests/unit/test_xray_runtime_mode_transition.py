@@ -149,6 +149,7 @@ def test_archive_source_archive_preserves_exact_receipt_bytes_and_current():
                     "xray_install_dir": str(install),
                     "_xray_runtime_release_identity": source_name,
                     "xray_runtime_build_from_source": True,
+                    "xray_runtime_stage_only": False,
                 },
                 "tasks": publish,
             }

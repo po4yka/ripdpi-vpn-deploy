@@ -188,6 +188,12 @@ def main():
         else:
             raise ValueError('rollback-invalid')
     for path, value in decoded:
+        # A consumer transaction may already have restored its exact inode.
+        # Preserve that authority rather than rewriting identical accepted bytes.
+        current = capture([str(path)])[str(path)]
+        wanted = None if value is None else {'data': base64.b64encode(value[0]).decode(), 'mode': value[1], 'gid': value[2]}
+        if current == wanted:
+            continue
         if value is None:
             path.unlink(missing_ok=True)
         else:

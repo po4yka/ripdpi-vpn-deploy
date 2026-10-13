@@ -1,4 +1,15 @@
 ---
+- name: Select standalone frontend retirement topology
+  ansible.builtin.set_fact:
+    vpn: "{{ vpn | combine({'enable_hysteria': false}) }}"
+  when: not (transport_egress_prepared | default(false) | bool)
+
+- name: Prepare remaining protected route before standalone retirement
+  ansible.builtin.include_role:
+    name: transport-egress
+    tasks_from: prepare-site
+  when: not (transport_egress_prepared | default(false) | bool)
+
 - name: Retire hysteria runtime authority
   ansible.builtin.include_role:
     name: runtime-release

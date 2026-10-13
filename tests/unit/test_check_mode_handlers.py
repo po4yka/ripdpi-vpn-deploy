@@ -80,7 +80,8 @@ def test_restart_handlers_skip_runtime_checks_in_check_mode(
 def test_protected_frontends_have_no_competing_handler_in_any_mode(role):
     handlers = yaml.safe_load((REPO_ROOT / "ansible/roles" / role / "handlers/main.yml").read_text())
     assert handlers == []
-    activate = yaml.safe_load((REPO_ROOT / "ansible/roles/transport-egress/tasks/activate.yml").read_text())[0]
+    activate = next(task for task in yaml.safe_load((REPO_ROOT / "ansible/roles/transport-egress/tasks/activate.yml").read_text())
+                    if task["name"] == "Activate only a ready guarded generation after frontend staging")
     environment = template_environment(DictLoader({}))
     selected = environment.compile_expression(activate["when"])
     assert selected(ansible_check_mode=False) is True

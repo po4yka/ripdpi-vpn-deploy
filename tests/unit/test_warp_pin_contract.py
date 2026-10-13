@@ -8,6 +8,7 @@ assert pair runs unconditionally under the install toggle.
 from __future__ import annotations
 
 import copy
+import errno
 import importlib.util
 import json
 from types import SimpleNamespace
@@ -128,7 +129,7 @@ def test_health_gate_requires_owned_actual_up_tun_identity(monkeypatch, present,
             namespace.tunnel()
 
 
-@pytest.mark.parametrize("process_state", ["exited", "live", "permission", "io"])
+@pytest.mark.parametrize("process_state", ["exited", "gone", "live", "permission", "io"])
 def test_retirement_tolerates_only_exited_process_namespace(tmp_path, monkeypatch, process_state):
     spec = importlib.util.spec_from_file_location("warp_retire_namespace", ROLE / "files/namespace.py")
     namespace = importlib.util.module_from_spec(spec)
@@ -138,8 +139,10 @@ def test_retirement_tolerates_only_exited_process_namespace(tmp_path, monkeypatc
     monkeypatch.setattr(namespace, "NSFILE", owned)
     monkeypatch.setattr(namespace, "inspect", lambda: {"present": True, "record": {"schema": 2}})
     namespace_path = owned if process_state == "live" else tmp_path / "exited"
-    if process_state in {"permission", "io"}:
+    if process_state in {"gone", "permission", "io"}:
         def stat_failure():
+            if process_state == "gone":
+                raise ProcessLookupError(errno.ESRCH, "process-gone")
             if process_state == "permission":
                 raise PermissionError("owned-stat-refused")
             raise OSError("owned-stat-failed")
@@ -164,7 +167,7 @@ def test_retirement_tolerates_only_exited_process_namespace(tmp_path, monkeypatc
     monkeypatch.setattr(namespace, "command", command)
     monkeypatch.setattr(namespace, "link", lambda name: None)
     monkeypatch.setattr(namespace, "publish", lambda path, value: publications.append((path, value)))
-    if process_state == "exited":
+    if process_state in {"exited", "gone"}:
         changed = namespace.retire()
         assert changed is True
         assert ["ip", "netns", "delete", namespace.NAMESPACE] in commands

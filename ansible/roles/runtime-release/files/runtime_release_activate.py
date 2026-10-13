@@ -1398,6 +1398,7 @@ def activate(
     stage_name: str | None = None,
     requires_artifact: bool = False,
     candidate_mode: int = 0o755,
+    stage_only: bool = False,
 ) -> dict[str, object]:
     _validate_absolute(install_root)
     _validate_absolute(public_link)
@@ -1589,6 +1590,15 @@ def activate(
             finally:
                 release_directory.close()
                 releases.close()
+        if stage_only:
+            # An immutable byte receipt proves acquisition, never transport adoption.
+            # Consumer validation/acceptance owns selecting these candidate paths.
+            return {"status": "staged", "changed": publication_changed,
+                    "candidate": str(install_root / "releases" / version / binary_name),
+                    "links": [{"path": str(path), "target": target} for path, target in (
+                        (install_root / "current", desired["current"]),
+                        (public_link, desired["public"]),
+                        (install_root / "previous", desired["previous"])) if target is not None]}
         changed = desired != before or publication_changed
         try:
             _set_link_state(
@@ -1702,6 +1712,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--candidate-sha256")
     parser.add_argument("--artifact-type")
     parser.add_argument("--candidate-mode", choices=("0644", "0755"), default="0755")
+    parser.add_argument("--stage-only", action="store_true")
     parser.add_argument("--arch-key")
     parser.add_argument("--arch-slug")
     parser.add_argument("--owner")
@@ -1825,6 +1836,7 @@ def main(argv: list[str] | None = None) -> int:
                 stage_name=args.stage_name,
                 requires_artifact=args.requires_artifact == "true",
                 candidate_mode=int(args.candidate_mode, 8),
+                stage_only=args.stage_only,
             )
     except CompensationIncomplete:
         print(json.dumps({"status": "compensation_incomplete", "changed": False}))

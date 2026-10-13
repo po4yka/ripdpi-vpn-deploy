@@ -167,6 +167,20 @@ required before rollout; small receiver tests do not prove seven-day capacity.
 rejections after their counters reach the collector. It means incomplete telemetry,
 not a VPN failure; a disconnected collector cannot report the event immediately.
 
+Candidate activation gracefully stops the old sender and retains a root-private
+copy of its complete native queue under the same publisher lock as binary,
+credential and primary-unit publication. Rejected or interrupted candidates
+restore queue bytes and read bookkeeping in place before the previous sender
+starts. The copy remains until the accepted receipt is durable; partial cleanup
+is recovered on the next convergence. Unfinished publication blocks unattended
+start without a live publisher. Working queue and retained copy each fit 1 GiB
+within the existing 2 GiB admission and filesystem reserve; unknown native
+layout, foreign ownership, nested mounts or insufficient capacity refuse before
+publication. This profile is bound to vmagent v1.153.0 and its single-worker,
+zero-memory-queue settings. Source/native acceptance requires actual delivery
+of the exact historical nonce after a rejected activation; source checks do not
+establish live fleet or host power-loss acceptance.
+
 The queue is bound to its single receiver before activation. A changed receiver
 or populated unbound queue refuses before mutation; do not delete it or the
 retired Prometheus WAL automatically. Retained WAL is not replayable by vmagent.

@@ -313,7 +313,7 @@ def test_xray_activation_has_one_guarded_owner_and_is_inert_in_check_mode() -> N
         (REPO_ROOT / "ansible" / "roles" / "xray" / "handlers" / "main.yml").read_text()
     )
     assert handlers == []
-    activation = yaml.safe_load((REPO_ROOT / "ansible/roles/transport-egress/tasks/activate.yml").read_text())[0]
+    activation = next(task for task in yaml.safe_load((REPO_ROOT / "ansible/roles/transport-egress/tasks/activate.yml").read_text()) if task["name"] == "Activate only a ready guarded generation after frontend staging")
     assert activation["when"] == "not ansible_check_mode"
     assert activation["block"][0]["ansible.builtin.systemd_service"]["name"] == "ripdpi-transport-generation.service"
     assert "status" in activation["block"][1]["ansible.builtin.command"]["argv"]
@@ -327,18 +327,11 @@ def test_private_masquerade_resolution_preserves_global_nss_authority() -> None:
     unit = (hysteria / 'templates/hysteria-server.service.j2').read_text()
     assert 'masquerade-hosts:/etc/hosts' in unit
     tasks = yaml.safe_load((hysteria / 'tasks/enable.yml').read_text())
-    publish = next(task for task in tasks if task['name'] == 'Publish private masquerade hosts after guarded quiescence')
-    assert publish['no_log'] is True and publish['diff'] is False
-    assert publish['ansible.builtin.copy']['mode'] == '0640'
-    names = [task['name'] for task in tasks]
-    assert names.index('Quiesce accepted topology before changed Hysteria publication') < names.index(publish['name'])
-    verify_tasks = yaml.safe_load(VERIFY_PLAYBOOK.read_text())[0]['tasks']
-    by_name = {task['name']: task for task in verify_tasks}
-    private = by_name['Verify Hysteria private origin resolution inside its actual mount namespace']
-    assert private['changed_when'] is False and private['no_log'] is True
-    assert 'nsenter' in private['ansible.builtin.command']['argv'][2]
-    for name in ('P1 public IPv4 hostname resolves through host NSS', 'P1 public IPv6 hostname resolves through host NSS'):
-        assert by_name[name]['changed_when'] is False and by_name[name]['no_log'] is True
+    staged = next(task for task in tasks if task['name'] == 'Stage complete Hysteria authority for guarded consumer acceptance')
+    expression = staged['ansible.builtin.set_fact']['transport_runtime_candidates']
+    assert "hysteria_masquerade_hosts.content | b64encode" in expression
+    assert staged['no_log'] and staged['diff'] is False
+    assert not any(task.get('ansible.builtin.copy', {}).get('dest') == '{{ hysteria_config_dir }}/masquerade-hosts' and task.get('check_mode') is not True for task in tasks)
 
 
 def _validation_binary(path: Path, trace: Path) -> None:
@@ -446,82 +439,17 @@ def _run_xray_tasks(
     )
 
 
-@pytest.mark.parametrize(
-    "scenario",
-    [
-        "reject-config",
-        "same-version",
-        "traversal",
-        "valid",
-        "check-reject",
-        "non-executable",
-        "symlink-binary",
-    ],
-)
-def test_rollback_validates_before_runtime_change(
-    tmp_path: Path, scenario: str
-) -> None:
-    play = yaml.safe_load(ROLLBACK_PLAYBOOK.read_text())[0]
-    runtime = tmp_path / "runtime"
-    current_release = runtime / "releases" / "v1.0.0"
-    candidate = runtime / "releases" / "v0.9.0"
-    current_release.mkdir(parents=True)
-    candidate.mkdir()
-    (runtime / "v0.9.0").symlink_to(candidate)
-    trace = tmp_path / "validated"
-    rejects = scenario in {"reject-config", "check-reject"}
-    for directory in (current_release, candidate):
-        _validation_binary(directory / "xray", trace)
-    (tmp_path / "config.json").write_text(
-        "{invalid candidate" if rejects else guarded_xray_bytes('outgoing')
-    )
-    if scenario == "non-executable":
-        (candidate / "xray").chmod(0o644)
-    if scenario == "symlink-binary":
-        (candidate / "xray").unlink()
-        (candidate / "xray").symlink_to(current_release / "xray")
-    link = runtime / "current"
-    link.symlink_to(current_release)
-    restart = tmp_path / "restarted"
-    version = {"same-version": "v1.0.0", "traversal": "../v0.9.0"}.get(
-        scenario, "v0.9.0"
-    )
-    play["vars"]["rollback_xray_version"] = version
-    for task in play["tasks"]:
-        if "ansible.builtin.systemd_service" in task:
-            task.pop("ansible.builtin.systemd_service")
-            task["ansible.builtin.copy"] = {
-                "content": "restarted",
-                "dest": str(restart),
-            }
-        if task["name"] == "Verify Xray active after rollback":
-            task["ansible.builtin.command"] = {"cmd": "/bin/echo active"}
-    # Keep the actual assertions, command ordering and link operation unchanged.
-    source = yaml.safe_dump(play).replace(
-        "/usr/local/bin/xray", str(runtime / "current" / "xray")
-    )
-    play = yaml.safe_load(
-        source.replace("/opt/xray", str(runtime)).replace("/etc/xray", str(tmp_path))
-    )
-    result = _run_xray_tasks(tmp_path, play, check=scenario == "check-reject")
-    if scenario == "valid":
-        assert result.returncode == 0, result.stdout + result.stderr
-        assert link.resolve() == candidate
-        assert trace.exists() and restart.exists()
-    else:
-        assert result.returncode != 0, result.stdout + result.stderr
-        assert link.resolve() == current_release
-        assert not restart.exists()
-        assert not trace.exists()  # Metadata refusal precedes native execution.
-    if trace.exists():
-        validation = json.loads(trace.read_text())
-        assert validation["assets"] == str(tmp_path / "runtime assets")
-        assert validation["argv"] == [
-            "run",
-            "-test",
-            "-config",
-            str(tmp_path / "config.json"),
-        ]
+@pytest.mark.parametrize("filename, action", [("rollback-config.yml", "config"), ("rollback-xray.yml", "runtime")])
+def test_operator_rollback_uses_the_same_native_acceptance_owner(filename, action):
+    play = yaml.safe_load((REPO_ROOT / "ansible/playbooks" / filename).read_text())[0]
+    command = play["tasks"][0]
+    assert len(play["tasks"]) == 1
+    assert "transport_runtime_rollback.py" in command["ansible.builtin.command"]["argv"]
+    assert repr(action) in command["ansible.builtin.command"]["argv"]
+    assert command["no_log"] is True and command["diff"] is False
+    assert command["check_mode"] is False
+    # Complete pinned native publication and recovery are exercised by the
+    # isolated transport acceptance suite, including these operator entry points.
 
 
 @pytest.mark.parametrize(
@@ -544,10 +472,10 @@ def test_rotation_preserves_immediate_restore_point(
                   "Reconcile protected credential rotation through authoritative roles")
     selected = next(task for task in stages if task.get("ansible.builtin.include_role") == {"name": "xray"})
     role = yaml.safe_load((REPO_ROOT / "ansible/roles/xray/tasks/enable.yml").read_text())
-    names = {"Check if previous Xray config exists",
+    names = {"Select staged Xray validation asset authority", "Check if previous Xray config exists",
              "Detect Xray config change before preserving rollback state",
              "Validate Xray candidate before quiescing the accepted route",
-             "Backup previous Xray config if exists", "Render and validate Xray config"}
+             "Stage complete Xray authority for guarded consumer acceptance"}
     tasks = [copy.deepcopy(task) for task in role if task["name"] in names]
     assert len(tasks) == len(names)
     current = tmp_path / "config.json"
@@ -579,13 +507,26 @@ def test_rotation_preserves_immediate_restore_point(
             if "ansible.builtin.template" in task:
                 module["src"] = str(template)
     adapt(tasks)
+    staged = next(task for task in tasks if task['name'].startswith('Stage complete Xray authority'))
+    expression = staged['ansible.builtin.set_fact']['transport_runtime_candidates']
+    expression = expression.replace("'config.json.j2'", repr(str(template)))
+    unit_template = tmp_path / 'unit.j2'
+    unit_template.write_text('ExecStart={{ xray_runtime_binary }} run -config {{ xray_etc_dir }}/config.json\n')
+    expression = expression.replace("'xray.service.j2'", repr(str(unit_template)))
+    staged['ansible.builtin.set_fact']['transport_runtime_candidates'] = expression
+    staged_result = tmp_path / 'staged-result.json'
+    tasks.append({'name': 'Retain private source-only staged candidate', 'ansible.builtin.copy': {
+        'content': '{{ transport_runtime_candidates | to_json }}', 'dest': str(staged_result), 'mode': '0600'},
+        'when': 'transport_runtime_candidates is defined', 'no_log': True, 'diff': False})
     play = {
         "tasks": [{"name": "Exercise canonical role restore point selected by rotation",
                    "when": selected["when"], "block": tasks}],
         "vars": {
             "role_path": str(tmp_path / "roles/xray"),
             "xray_etc_dir": str(tmp_path), "xray_runtime_group": str(os.getgid()),
+            "transport_egress_frontend_gids": {"xray": os.getgid()},
             "xray_runtime_binary": str(binary), "xray_asset_dir": str(tmp_path / "runtime assets"),
+            "xray_runtime_bundled_asset_dir": str(tmp_path / "runtime assets"),
             "vpn": {
                 "enable_xray_reality": scenario not in {"disabled", "xhttp-only"},
                 "enable_nginx_xhttp": scenario == "xhttp-only",
@@ -605,12 +546,63 @@ def test_rotation_preserves_immediate_restore_point(
         assert json.loads(trace.read_text())["assets"] == str(
             tmp_path / "runtime assets"
         )
-    assert current.read_text() == (
-        old_bytes if scenario in {"check", "disabled", "reject-config"} else desired
-    )
-    assert previous.read_text() == (
-        old_bytes
-        if scenario in {"changed", "xhttp-only"}
-        else "older restore point\n"
-    )
+    # Rendering and native admission stage authority without publishing it.
+    # Real service/protocol adoption is exercised in the separate native lane.
+    if scenario == 'first-config':
+        assert not current.exists()
+    else:
+        assert current.read_text() == old_bytes
+    assert previous.read_text() == 'older restore point\n'
+    if scenario in {'changed', 'unchanged', 'first-config', 'xhttp-only'}:
+        staged_candidates = json.loads(staged_result.read_text())
+        config = next(item for item in staged_candidates if item['path'] == str(current))
+        assert __import__('base64').b64decode(config['data']).decode() == desired
+        assert config['mode'] == 0o640 and config['gid'] == os.getgid()
     assert previous.stat().st_mode & 0o777 == 0o640
+
+
+@pytest.mark.parametrize('existing', [False, True])
+def test_geodata_check_mode_reports_unverified_future_assets_without_publication(tmp_path, existing):
+    role = yaml.safe_load((REPO_ROOT / 'ansible/roles/xray/tasks/enable.yml').read_text())
+    names = {'Require staged geodata authority before ordinary Xray admission',
+             'Report unverified future geodata bytes during predictive Xray convergence',
+             'Select staged Xray validation asset authority',
+             'Check if previous Xray config exists',
+             'Detect Xray config change before preserving rollback state',
+             'Validate Xray candidate before quiescing the accepted route'}
+    tasks = [copy.deepcopy(task) for task in role if task['name'] in names]
+    assert len(tasks) == len(names)
+    current, previous = tmp_path/'config.json', tmp_path/'config.json.prev'
+    if existing:
+        current.write_text(guarded_xray_bytes('outgoing')); current.chmod(0o640)
+        previous.write_text('preceding-private-authority'); previous.chmod(0o640)
+    before = {path: (path.read_bytes(), path.stat().st_ino) for path in (current,previous) if path.exists()}
+    template = tmp_path/'candidate.j2'
+    template.write_text(guarded_xray_bytes('incoming'))
+    def adapt(items):
+        for task in items:
+            for key in ('block','always'):
+                if key in task:
+                    adapt(task[key])
+            if 'ansible.builtin.template' in task:
+                module = task['ansible.builtin.template']
+                module.update(src=str(template), owner=str(os.getuid()), group=str(os.getgid()))
+    adapt(tasks)
+    assets = tmp_path/'selected-assets'
+    if existing:
+        assets.mkdir(); (assets/'geoip.dat').write_bytes(b'preceding-asset')
+    asset_before = (assets/'geoip.dat').read_bytes() if existing else None
+    tasks.append({'name':'Observe source-owned predictive asset selection', 'ansible.builtin.debug':{
+        'msg':'selected-authority={{ _xray_candidate_asset_dir }}'}})
+    play = {'tasks':tasks, 'vars':{'role_path':str(tmp_path/'roles/xray'),
+        'xray_etc_dir':str(tmp_path), 'xray_runtime_group':str(os.getgid()),
+        'xray_runtime_binary':str(tmp_path/'missing-future-runtime'), 'xray_asset_dir':str(assets),
+        'vpn':{'enable_geodata':True}}}
+    result = _run_xray_tasks(tmp_path, play, check=True)
+    assert result.returncode == 0, result.stdout+result.stderr
+    assert 'remain unverified until ordinary convergence' in result.stdout
+    assert 'selected-authority='+str(assets) in result.stdout
+    assert {path: (path.read_bytes(), path.stat().st_ino) for path in (current,previous) if path.exists()} == before
+    assert ((assets/'geoip.dat').read_bytes() if existing else None) == asset_before
+    assert not (tmp_path/'missing-future-runtime').exists()
+    assert not any(tmp_path.glob('*.xray.json'))

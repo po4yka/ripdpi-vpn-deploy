@@ -187,3 +187,28 @@ def test_malformed_activated_receipt_refuses_without_overwrite(
         publisher.publish(request)
     assert receipt.read_bytes() == raw and snapshot(installed) == before
     assert not (installed / ".geodata-pending").exists()
+
+
+def test_staged_pair_never_selects_assets_or_invokes_runtime(publisher, paths, monkeypatch):
+    root, installed, request = paths
+    before = {name: (installed / name).read_bytes() for name in request['sources']}
+    def forbidden():
+        pytest.fail('staging must never activate the public runtime')
+    monkeypatch.setattr(publisher, 'activate', forbidden)
+    result = publisher.publish({**request, 'stage_only': True})
+    candidate = Path(result['candidate_dir'])
+    for name, digest in result['desired'].items():
+        assert (installed / name).read_bytes() == before[name]
+        assert hashlib.sha256((candidate / name).read_bytes()).hexdigest() == digest
+        assert (candidate / name).stat().st_mode & 0o777 == 0o644
+    retry = publisher.publish({**request, 'stage_only': True})
+    assert not retry['changed'] and retry['candidate_dir'] == str(candidate)
+
+
+def test_second_staged_asset_failure_preserves_public_pair(publisher, paths):
+    root, installed, request = paths
+    before = {name: (installed / name).read_bytes() for name in request['sources']}
+    request['sources']['geoip.dat']['sha256'] = '0' * 64
+    with pytest.raises(ValueError, match='checksum'):
+        publisher.publish({**request, 'stage_only': True})
+    assert {name: (installed / name).read_bytes() for name in request['sources']} == before

@@ -147,6 +147,8 @@ count in `docs/TESTING.md`.
 - **Vault is not used** — SOPS owns secrets. `VPN_SECRETS_FILE` env is
   loaded through a play-level `vars_files:` entry in `playbooks/site.yml`.
 
+**Native acceptance fixture authority** — Protected native transport acceptance uses a disconnected owned canary fixture shared by Xray, Hysteria and full-stack Molecule. Dedicated probe client tuples are selected explicitly; native role fixtures omit pre-rendered runtime, identity and egress facts so ordinary Ansible resolves actual immutable candidates and service users.
+
 ## Pitfalls
 
 - **`changed_when:` on `command:` is mandatory** — otherwise it reports

@@ -11,6 +11,40 @@
                        (vpn.enable_nginx_xhttp | default(true) | bool)) else [])
          + (['hysteria'] if (vpn.enable_hysteria | default(true) | bool) else []) }}
 
+- name: Admit owned transport probe inputs before host mutation
+  ansible.builtin.assert:
+    that:
+      - _transport_acceptance_url is match('^https?://[^@\\s]+$')
+      - >-
+        not ((vpn.enable_xray_reality | default(true) | bool) or
+             (vpn.enable_nginx_xhttp | default(true) | bool)) or
+        (_transport_acceptance_clients.xray in (xray.clients | default([]) | map(attribute='name') | list))
+      - >-
+        not (vpn.enable_hysteria | default(true) | bool) or
+        (_transport_acceptance_clients.hysteria in (hysteria.clients | default([]) | map(attribute='name') | list))
+    fail_msg: Every enabled transport requires its configured probe client and an owned HTTP canary before mutation.
+  vars:
+    _transport_acceptance_url: "{{ transport_runtime_probe_url | default(watchdog_secrets.reality_probe_url | default('')) }}"
+    _transport_acceptance_clients: >-
+      {{ transport_runtime_probe_clients | default({'xray': watchdog.reality_probe_client | default('watchdog'),
+                                                   'hysteria': 'runtime-acceptance-hysteria'}) }}
+  when: transport_egress_role_enabled | bool
+  no_log: true
+
+- name: Admit probe membership in every enabled REALITY cohort before host mutation
+  ansible.builtin.assert:
+    that:
+      - _transport_acceptance_xray_client in item.clients
+    fail_msg: Each REALITY cohort requires the configured authenticated probe client before mutation.
+  loop: "{{ xray.cohorts | default([]) }}"
+  vars:
+    _transport_acceptance_xray_client: >-
+      {{ (transport_runtime_probe_clients | default({'xray': watchdog.reality_probe_client | default('watchdog')})).xray }}
+  when:
+    - transport_egress_role_enabled | bool
+    - vpn.enable_xray_reality | default(true) | bool
+  no_log: true
+
 - name: Require the fixed protected Xray identity before host mutation
   ansible.builtin.assert:
     that:
@@ -118,6 +152,33 @@
     name: transport-egress
     tasks_from: stage
   when: transport_egress_role_enabled | bool
+
+- name: Inspect consumer receipts and interrupted ownership before complete topology retirement
+  ansible.builtin.stat:
+    path: '/var/lib/ripdpi/transport-runtime/{{ item }}'
+    follow: false
+  loop: [accepted.json, pending.json, preparation.json, compensating.json, outer.json, validation.json]
+  register: _transport_runtime_retirement_authority
+  when: not (transport_egress_role_enabled | bool)
+
+- name: Retain complete-route ownership while retiring every accepted frontend
+  when:
+    - not (transport_egress_role_enabled | bool)
+    - (_transport_runtime_retirement_authority.results | default([]) | selectattr('stat.exists') | list | length) > 0
+  block:
+    - name: Recover interrupted accepted authority before complete retirement
+      ansible.builtin.include_role:
+        name: transport-egress
+        tasks_from: runtime-prepare
+      vars:
+        _transport_runtime_retirement: true
+    - name: Capture and quiesce the accepted route before complete retirement
+      ansible.builtin.include_role:
+        name: transport-egress
+        tasks_from: begin
+    - name: Retain retirement ownership through site commit
+      ansible.builtin.set_fact:
+        _transport_egress_full_retirement: true
 
 - name: Record prepared topology for standalone consumers
   ansible.builtin.set_fact:

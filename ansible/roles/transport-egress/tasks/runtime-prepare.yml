@@ -1,0 +1,95 @@
+---
+- name: Admit exact root-owned helper and journal ancestry before writes
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -Es
+      - -c
+      - |
+        import os, pathlib, stat
+        roots = [pathlib.Path('/var/lib/ripdpi'),
+                 pathlib.Path('/usr/local/libexec/ripdpi-transport-egress')]
+        for root in roots:
+            for path in [*reversed(root.parents), root]:
+                try:
+                    info = path.lstat()
+                except FileNotFoundError:
+                    continue
+                if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+                    raise SystemExit('consumer-helper-authority-refused')
+        for name in ('transaction', 'accept', 'probe', 'validate', 'outer', 'rollback'):
+            path = roots[1] / ('transport_runtime_' + name + '.py')
+            try:
+                info = path.lstat()
+            except FileNotFoundError:
+                continue
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_nlink != 1 or info.st_mode & 0o022:
+                raise SystemExit('consumer-helper-authority-refused')
+  changed_when: false
+  check_mode: false
+
+- name: Ensure trusted consumer acceptance state parent
+  ansible.builtin.file:
+    path: /var/lib/ripdpi
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Ensure trusted consumer acceptance helper directory
+  ansible.builtin.file:
+    path: '{{ transport_egress_libexec_dir }}'
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Install shared consumer acceptance source before staging
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../runtime-release/files/{{ item }}"
+    dest: "{{ transport_egress_libexec_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - transport_runtime_transaction.py
+    - transport_runtime_accept.py
+    - transport_runtime_probe.py
+    - transport_runtime_validate.py
+    - transport_runtime_outer.py
+    - transport_runtime_rollback.py
+
+- name: Inspect interrupted outer route ownership before consumer recovery
+  ansible.builtin.command:
+    argv: [/usr/bin/python3, -Es, '{{ transport_egress_libexec_dir }}/transport_runtime_outer.py', status]
+  register: _transport_runtime_outer
+  changed_when: false
+  no_log: true
+
+- name: Recover an interrupted complete route before staging another candidate
+  when: (_transport_runtime_outer.stdout | from_json).open
+  block:
+    - name: Retain existing recovery ownership
+      ansible.builtin.set_fact:
+        _transport_egress_transaction_started: true
+    - name: Restore the original complete route and its native frontend authority
+      ansible.builtin.include_tasks: rollback.yml
+
+- name: Reconcile known interrupted authority before staging another candidate
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -Es
+      - '{{ transport_egress_libexec_dir }}/transport_runtime_accept.py'
+      - "{{ '--recover' if (_transport_runtime_retirement | default(false) | bool) else '--bootstrap' }}"
+    stdin: >-
+      {{ ({} if (_transport_runtime_retirement | default(false) | bool) else
+         {'candidates': [], 'clients': transport_runtime_probe_clients, 'probe_url': transport_runtime_probe_url,
+          'asset_dir': transport_runtime_geodata_candidate_dir | default(none),
+          'expected_status': transport_runtime_probe_expected_status | int,
+          'timeout': transport_runtime_timeout_seconds | int}) | to_json }}
+    stdin_add_newline: false
+  register: _transport_runtime_recovery
+  changed_when: (_transport_runtime_recovery.stdout | from_json).changed
+  no_log: true
+  diff: false

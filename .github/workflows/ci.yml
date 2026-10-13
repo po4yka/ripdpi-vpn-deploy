@@ -560,12 +560,72 @@ jobs:
         run: |
           sudo env \
             "TRANSPORT_NATIVE_ISOLATED=1" \
+            "PYTEST_ADDOPTS=--tb=short" \
             "ALERTMANAGER_BIN=$RUNNER_TEMP/alertmanager-0.28.1.linux-amd64/alertmanager" \
             "NAIVE_NATIVE_BINARY=$GITHUB_WORKSPACE/.cache/p2-native-caddy/caddy" \
             "AWG_NATIVE_GO_SOURCE=$GITHUB_WORKSPACE/.cache/native-transport-semantics/amneziawg-go-2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf" \
             "AWG_NATIVE_TOOLS_SOURCE=$GITHUB_WORKSPACE/.cache/native-transport-semantics/amneziawg-tools-c0b400c6dfc046f5cae8f3051b14cb61686fcf55" \
             "PATH=$GITHUB_WORKSPACE/.cache/native-transport-semantics/bin:$PATH" \
             make test-native-runtime
+
+  transport-runtime-acceptance:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['transport-runtime-acceptance'] }}
+    name: native transport runtime acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-ci-python
+        with:
+          galaxy: "true"
+      - name: Create the isolated native transport systemd environment
+        env:
+          RTA_IMAGE: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-ubuntu2404@sha256:e9dfdf3cc37d8d098ef7e036e716abba78980333522ccbf7504a79189755a267
+          RTA_OWNER: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          RTA_PYTHON_PREFIX="$(python -c 'import sys; print(sys.prefix)')"
+          echo "RTA_PYTHON_PREFIX=$RTA_PYTHON_PREFIX" >> "$GITHUB_ENV"
+          docker pull "$RTA_IMAGE"
+          docker create --name transport-runtime-acceptance \
+            --label "ripdpi.rta.owner=$RTA_OWNER" \
+            --privileged --cgroupns=host --tmpfs /run --tmpfs /run/lock \
+            --volume /sys/fs/cgroup:/sys/fs/cgroup:rw \
+            --volume "$RTA_PYTHON_PREFIX:$RTA_PYTHON_PREFIX:ro" \
+            "$RTA_IMAGE" /lib/systemd/systemd
+          docker cp "$GITHUB_WORKSPACE/." transport-runtime-acceptance:/opt/rta
+          docker start transport-runtime-acceptance
+          docker exec transport-runtime-acceptance /bin/bash -eu -c '
+            apt-get update
+            apt-get install -y --no-install-recommends \
+              nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 \
+              iproute2 openssl curl ca-certificates openssh-server \
+              python3-yaml make unzip
+            chmod 0755 /var/log
+          '
+      - name: Execute complete transport acceptance in a fresh runner
+        run: |
+          docker exec --workdir /opt/rta \
+            --env TRANSPORT_NATIVE_ISOLATED=1 \
+            --env PYTEST_ADDOPTS=--tb=short \
+            --env ANSIBLE_COLLECTIONS_PATH=/opt/rta/.ansible/collections \
+            --env "PATH=$RTA_PYTHON_PREFIX/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+            transport-runtime-acceptance \
+            make test-transport-runtime-acceptance
+      - name: Retire the exact owned native environment
+        if: always()
+        env:
+          RTA_OWNER: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          owned="$(docker ps -aq --filter name='^/transport-runtime-acceptance$' \
+            --filter "label=ripdpi.rta.owner=$RTA_OWNER")"
+          if [[ -n "$owned" ]]; then
+            docker rm --force "$owned"
+          fi
 
   go-helper:
     needs: selection
@@ -803,6 +863,7 @@ jobs:
       - unit-tests
       - pytest-required
       - native-runtime
+      - transport-runtime-acceptance
       - go-helper
       - bats-test
       - tf-test

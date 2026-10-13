@@ -71,7 +71,11 @@
         mode: '0640'
         content: |-
           {{ {'log': {'loglevel': 'warning'}, 'inbounds': [{'listen': '127.0.0.1', 'port': 19080,
-          'protocol': 'socks', 'settings': {'auth': 'noauth', 'udp': true}}],     'routing':
+          'protocol': 'socks', 'settings': {'auth': 'noauth', 'udp': true}},
+          {'listen': '127.0.0.1', 'port': 19085, 'tag': 'vless-xhttp', 'protocol': 'vless',
+          'settings': {'decryption': 'none', 'clients': [{'id': '11111111-1111-1111-1111-111111111111',
+          'email': 'molecule-caller-xhttp'}]}, 'streamSettings': {'network': 'xhttp',
+          'xhttpSettings': {'path': '/owned-canary'}}}],     'routing':
           {'domainStrategy': 'AsIs', 'rules': [{'type': 'field', 'port': '65535', 'ip': ['geoip:private'],
           'outboundTag': 'block'}]}, 'outbounds': [{'tag': 'direct', 'protocol': 'socks', 'settings':
           {'servers': [{'address': '127.0.0.1',     'port': 12080, 'users': [{'user':
@@ -90,9 +94,8 @@
           Type=exec
           User=xray
           Group=xray
-          LoadCredential=config.json:/etc/xray/config.json
           Environment=XRAY_LOCATION_ASSET={{ xray_runtime_bundled_asset_dir }}
-          ExecStart={{ transport_egress_runtime_binary }} run -config %d/config.json
+          ExecStart={{ transport_egress_runtime_binary }} run -config /etc/xray/config.json
           CapabilityBoundingSet=
           NoNewPrivileges=true
           [Install]

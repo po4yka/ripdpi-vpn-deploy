@@ -1,84 +1,18 @@
 ---
-- name: Rollback Xray config to the previous version (.prev)
+- name: Rollback accepted Xray config through complete native acceptance
   hosts: vpn
   become: true
   gather_facts: false
 
   tasks:
-    - name: Install the shared Xray validation entry point
-      ansible.builtin.include_role:
-        name: xray
-        tasks_from: validation-helper
-
-    - name: Inspect the previous Xray config before rollback
-      ansible.builtin.stat:
-        path: /etc/xray/config.json.prev
-        follow: false
-      register: prev
-      failed_when: not (prev.stat.isreg | default(false))
-
-    - name: Validate the rollback candidate before publication
+    - name: Admit and verify the complete rollback candidate with exact compensation
       ansible.builtin.command:
-        cmd: /usr/local/libexec/vpn-xray-validate --config /etc/xray/config.json.prev
-      changed_when: false
+        argv: >-
+          {{ ['/usr/bin/python3', '-Es',
+              '/usr/local/libexec/ripdpi-transport-egress/transport_runtime_rollback.py', 'config']
+              + (['--check'] if ansible_check_mode else []) }}
+      register: transport_rollback
+      changed_when: transport_rollback.rc == 0 and (transport_rollback.stdout | from_json).changed
       check_mode: false
       no_log: true
-
-    - name: Preserve current Xray configuration for activation recovery
-      ansible.builtin.slurp:
-        src: /etc/xray/config.json
-      register: rollback_xray_current_config
-      no_log: true
-
-    - name: Publish and verify the validated rollback configuration
-      block:
-        - name: Restore previous Xray config
-          ansible.builtin.copy:
-            src: /etc/xray/config.json.prev
-            dest: /etc/xray/config.json
-            remote_src: true
-            owner: root
-            group: xray
-            mode: "0640"
-          no_log: true
-          diff: false
-
-        - name: Restart Xray
-          ansible.builtin.systemd_service:
-            name: xray
-            state: restarted
-
-        - name: Verify Xray active
-          ansible.builtin.command:
-            cmd: systemctl is-active xray
-          register: active
-          changed_when: false
-          failed_when: active.stdout != "active"
-          when: not ansible_check_mode
-      rescue:
-        - name: Restore the original config after rollback activation failure
-          ansible.builtin.copy:
-            content: "{{ rollback_xray_current_config.content | b64decode }}"
-            dest: /etc/xray/config.json
-            owner: root
-            group: xray
-            mode: "0640"
-          no_log: true
-          diff: false
-
-        - name: Restart Xray with the original config
-          ansible.builtin.systemd_service:
-            name: xray
-            state: restarted
-
-        - name: Verify the restored Xray service
-          ansible.builtin.command:
-            cmd: systemctl is-active xray
-          register: rollback_xray_restored
-          changed_when: false
-          failed_when: rollback_xray_restored.stdout != "active"
-          when: not ansible_check_mode
-
-        - name: Report rollback activation failure after recovery
-          ansible.builtin.fail:
-            msg: The rollback candidate failed activation; the original configuration was restored.
+      diff: false

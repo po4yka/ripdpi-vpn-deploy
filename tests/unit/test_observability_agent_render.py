@@ -6,6 +6,7 @@ import builtins
 import contextlib
 import io
 import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -265,8 +266,7 @@ def test_private_credentials_do_not_depend_on_system_credstore_traversal() -> No
             "Recheck queue capacity after publication before touching active units"
         )
         < tasks.index("Inspect prior sender unit before candidate publication")
-        < tasks.index("Install observability agent units")
-        < tasks.index("Switch current observability credential generation")
+        < tasks.index("Publish and accept the sender generation with retained queue compensation")
     )
 
 
@@ -312,7 +312,7 @@ def test_sender_is_fail_closed_and_uses_runtime_release() -> None:
     assert "Validate candidate observability configuration" in tasks
     assert (
         "not ansible_check_mode"
-        not in tasks.split("Assert exactly one node mTLS identity exists", 1)[0]
+        not in tasks.split("Configure observability agent when feature is enabled", 1)[1].split("Assert exactly one node mTLS identity exists", 1)[0]
     )
     assert "Assert observability agent owned path boundary" in tasks
     assert "'promtool_install_root', 'wal_dir', 'wal_max_time'" in tasks
@@ -523,7 +523,7 @@ def test_credentials_are_validated_as_a_bundle_before_atomic_generation_switch()
     verify_ca = tasks.index("Verify candidate sender certificate authority")
     verify_key = tasks.index("Verify candidate sender private key")
     publish = tasks.index("Atomically publish validated observability generation")
-    switch = tasks.index("Switch current observability credential generation")
+    switch = tasks.index("Publish and accept the sender generation with retained queue compensation")
     validate_config = tasks.index("Validate candidate observability configuration")
     assert candidate < verify_ca < publish < switch
     assert candidate < verify_key < publish < switch
@@ -534,7 +534,8 @@ def test_credentials_are_validated_as_a_bundle_before_atomic_generation_switch()
         'path: "{{ observability_agent.credential_dir }}/generations"'
         in tasks[:candidate]
     )
-    assert "state: link" in tasks[switch:]
+    assert "observability_agent.credential_dir ~ '/current'" in tasks[switch:]
+    assert "runtime_release_stage_only: true" in tasks[:switch]
     assert "Create observability configuration generation directory" not in tasks
     assert (
         "Reinspect complete observability configuration generation"
@@ -544,7 +545,7 @@ def test_credentials_are_validated_as_a_bundle_before_atomic_generation_switch()
     assert publish < always_cleanup < switch
     assert tasks.index(
         "Bind observability service to the candidate credential generation"
-    ) < tasks.index("Install observability agent units")
+    ) < tasks.index("Publish and accept the sender generation with retained queue compensation")
     assert "WorkingDirectory=%d" in unit
     for name in ("client.crt", "client.key", "receiver-ca.crt", "prometheus.yml"):
         assert (
@@ -562,40 +563,19 @@ def test_credentials_are_validated_as_a_bundle_before_atomic_generation_switch()
     service_activity = tasks.index("Inspect observability agent service activity")
     assert "stat.lnk_target" in tasks[active_target:service_activity]
     assert "stat.lnk_source" not in tasks[active_target:service_activity]
-    restore = tasks.index("Restore previous observability generation")
-    bind_previous = tasks.index(
-        "Bind restored service to the previous credential generation"
-    )
-    restore_unit = tasks.index("Restore previous observability agent service unit")
-    restore_health_unit = tasks.index(
-        "Restore previous observability health adapter service unit"
-    )
-    restart_previous = tasks.index("Restart restored observability generation")
-    assert (
-        restore < bind_previous < restore_unit < restore_health_unit < restart_previous
-    )
-    normalize = tasks.index("Normalize active observability credential generation")
-    rollback = tasks[restore:restart_previous]
-    assert "stat.lnk_target | basename" in tasks[active_target:service_activity]
-    assert normalize < service_activity
-    assert (
-        'src: "generations/{{ _observability_agent_previous_generation_id }}"'
-        in rollback
-    )
-    assert "{{ _observability_agent_previous_generation_id }}" in rollback
-    assert "stat.lnk_source" not in rollback
-    health_rollback = tasks[restore_health_unit:restart_previous]
-    assert "src: observability-agent-health-adapter.service.j2" in health_rollback
-    assert (
-        "dest: /etc/systemd/system/observability-agent-health-adapter.service"
-        in health_rollback
-    )
+    helper = (ROLE / "files/observability_runtime_accept.py").read_text()
+    assert "tx.apply(candidates, sender)" in helper
+    assert helper.index("self.snapshot.restore()") < helper.index("prior = baseline['service']")
+    assert "readiness.ready(listeners[0], kinds[0])" in helper
+    assert "self.target_active = prior['ActiveState'] == 'active'" in helper
+    assert "sender.snapshot.cleanup()" in helper
+    assert "_observability_agent_restored_ready" in tasks[switch:]
     assert "- -purpose\n                  - sslclient" in tasks
     assert "- x509\n                  - x509" not in tasks
     assert "prometheus.yml" in tasks[publish:switch]
     assert 'mode: "0711"' in tasks
     assert "'0644' if item.item == 'prometheus.yml' else '0600'" in tasks
-    assert "Wait for observability agent local readiness" in tasks[switch:]
+    assert "observability_runtime_accept.py, apply" in tasks[switch:]
     assert (
         "Link observability agent configuration to the active generation" not in tasks
     )
@@ -640,29 +620,16 @@ def test_agent_policy_bounds_and_first_activation_rollback_are_fail_closed() -> 
     assert "retried_samples_total" not in template
     assert "dropped_samples_total" not in template
 
-    rescue = tasks.index("Stop and disable failed first observability agent activation")
+    helper = (ROLE / "files/observability_runtime_accept.py").read_text()
+    assert "self.target_active = UNIT.exists()" in helper
+    assert "self.target_active = prior['ActiveState'] == 'active'" in helper
+    assert "sender-inactive-unconfirmed" in helper
+    assert "'enable' if prior['UnitFileState'] == 'enabled' else 'disable'" in helper
+    publish = tasks.index("Publish and accept the sender generation with retained queue compensation")
     refuse = tasks.index("Refuse failed observability generation activation")
-    first_activation_rescue = tasks[rescue:refuse]
-    assert (
-        "Stop and disable failed first observability agent activation"
-        in first_activation_rescue
-    )
-    assert "enabled: false" in first_activation_rescue
-    assert "state: stopped" in first_activation_rescue
-    assert first_activation_rescue.index(
-        "state: stopped"
-    ) < first_activation_rescue.index(
-        "Remove failed first observability generation activation"
-    )
-    assert "Assert failed first observability agent activation is inactive" in (
-        first_activation_rescue
-    )
-
-    switch = tasks.index("Switch current observability credential generation")
-    restart = tasks.index("Restart observability agent on the complete generation")
-    readiness = tasks.index("Wait for observability agent local readiness")
-    assert "register: _observability_agent_generation_switch" in tasks[switch:restart]
-    assert "_observability_agent_generation_switch.changed" in tasks[restart:readiness]
+    assert publish < refuse < tasks.index("Commit ready sender runtime activation")
+    assert "failed_when: _observability_agent_acceptance.rc not in [0, 2]" in tasks[publish:refuse]
+    assert "when: _observability_agent_acceptance.rc == 2" in tasks[refuse:]
 
 
 def test_self_scrape_follows_the_configured_loopback_listener_and_drops_endpoint_labels() -> (
@@ -1168,77 +1135,61 @@ def test_mtls_fixture_never_acknowledges_or_records_a_rejected_payload(
 
 @pytest.mark.parametrize(
     "case",
-    [
-        "exact",
-        "missing",
-        "ambiguous",
-        "wrong-node",
-        "wrong-value",
-        "before-outage",
-        "fresh",
-        "wrong-timestamp-node",
-        "failed-query",
-    ],
+    ["exact", "multiple-samples", "missing", "ambiguous", "wrong-node",
+     "wrong-metric", "wrong-value", "before-outage", "fresh", "nonfinite",
+     "empty-series", "failed-query", "instant-result", "invalid-window"],
 )
-def test_historical_rollback_proof_refuses_fresh_or_unrelated_samples(
-    monkeypatch, case
-):
+def test_historical_rollback_proof_refuses_fresh_or_unrelated_samples(monkeypatch, case):
     import copy
     import urllib.parse
 
     module = _fixture_proof_module()
     proof = {"nonce": 123456, "outage_at": 100, "outage_end": 200}
     sample = {
-        "metric": {
-            "__name__": module.METRIC,
-            "node": "node-fixture",
-            "job": "node-exporter",
-        },
-        "value": [200, "123456"],
+        "metric": {"__name__": module.METRIC, "node": "node-fixture", "job": "node-exporter"},
+        "values": [[150, "123456"]],
     }
-    timestamp = {
-        "metric": {"node": "node-fixture", "job": "node-exporter"},
-        "value": [200, "150"],
-    }
-    vectors = [[copy.deepcopy(sample)], [copy.deepcopy(timestamp)]]
+    matrix = [copy.deepcopy(sample)]
+    if case == "multiple-samples":
+        matrix[0]["values"].append([199, "123456"])
     if case == "missing":
-        vectors[0] = []
+        matrix = []
     if case == "ambiguous":
-        vectors[0].append(copy.deepcopy(sample))
+        matrix.append(copy.deepcopy(sample))
     if case == "wrong-node":
-        vectors[0][0]["metric"]["node"] = "other-node"
+        matrix[0]["metric"]["node"] = "other-node"
+    if case == "wrong-metric":
+        matrix[0]["metric"]["__name__"] = "other_metric"
     if case == "wrong-value":
-        vectors[0][0]["value"][1] = "123455"
+        matrix[0]["values"][0][1] = "123455"
     if case == "before-outage":
-        vectors[1][0]["value"][1] = "100"
+        matrix[0]["values"][0][0] = 100
     if case == "fresh":
-        vectors[1][0]["value"][1] = "201"
-    if case == "wrong-timestamp-node":
-        vectors[1][0]["metric"]["node"] = "other-node"
+        matrix[0]["values"][0][0] = 201
+    if case == "nonfinite":
+        matrix[0]["values"][0][0] = float("nan")
+    if case == "empty-series":
+        matrix[0]["values"] = []
+    if case == "invalid-window":
+        proof["outage_end"] = 701
     queries = []
 
     def query(url, timeout):
         assert timeout == 5
-        params = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)
-        queries.append(params)
+        queries.append(urllib.parse.parse_qs(urllib.parse.urlsplit(url).query))
         payload = {
             "status": "error" if case == "failed-query" else "success",
-            "data": {"resultType": "vector", "result": vectors[len(queries) - 1]},
+            "data": {"resultType": "vector" if case == "instant-result" else "matrix", "result": matrix},
         }
-        return contextlib.nullcontext(
-            SimpleNamespace(read=lambda _limit: json.dumps(payload).encode())
-        )
+        return contextlib.nullcontext(SimpleNamespace(read=lambda _limit: json.dumps(payload).encode()))
 
     monkeypatch.setattr(module.OPENER, "open", query)
-    if case == "exact":
+    if case in ("exact", "multiple-samples"):
         module.require_historical(proof)
-        assert queries == [
-            {"query": [module.METRIC + '{node="node-fixture"}'], "time": ["200"]},
-            {
-                "query": ["timestamp(" + module.METRIC + '{node="node-fixture"})'],
-                "time": ["200"],
-            },
-        ]
+        assert queries == [{
+            "query": [module.METRIC + '{node="node-fixture"}[100000ms]'],
+            "time": ["200.0"],
+        }]
     else:
         with pytest.raises(ValueError):
             module.require_historical(proof)
@@ -1274,6 +1225,28 @@ def test_historical_probe_uses_private_unique_files_and_preserves_foreign_replac
     module.remove_probe(proof)
     assert not path.exists()
     module.remove_probe(proof)
+
+
+
+
+def test_actual_ansible_preflight_invocation_executes_source_from_stdin(tmp_path):
+    import subprocess
+    import sys
+    rows = yaml.safe_load((ROLE / 'tasks/main.yml').read_text())
+    selected = next(task.copy() for task in rows if task['name'] ==
+                    'Admit sender helper authority before installation or retirement')
+    selected['failed_when'] = False
+    selected['register'] = 'preflight'
+    play = tmp_path / 'preflight.yml'
+    play.write_text(yaml.safe_dump([{'hosts': 'localhost', 'gather_facts': False,
+        'become': False, 'vars': {'role_path': str(ROLE), 'ansible_python_interpreter': sys.executable},
+        'tasks': [selected, {'ansible.builtin.assert': {'that': [
+            'preflight.rc in [0, 1]',
+            'preflight.stdout == ""',
+            'preflight.stderr == ("" if preflight.rc == 0 else "sender-helper-authority-refused")']}}]}]))
+    result = subprocess.run(['ansible-playbook', '-i', 'localhost,', '-c', 'local', str(play)],
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 @pytest.mark.parametrize("count", [0, 1, 2])
@@ -1512,3 +1485,12 @@ def test_receiver_error_diagnostics_accept_only_fixed_classification_fields(
         "stage": {"forward": 1},
     }
     assert "private-marker" not in json.dumps(result)
+
+
+def test_adapter_restart_notifications_follow_sender_acceptance():
+    tasks = (ROLE / "tasks/main.yml").read_text()
+    accepted = tasks.index("Commit ready sender runtime activation")
+    for handler in ("Restart observability agent adapter timer",
+                    "Restart observability agent health adapter timer"):
+        positions = [match.start() for match in re.finditer(handler, tasks)]
+        assert positions and all(position > accepted for position in positions)

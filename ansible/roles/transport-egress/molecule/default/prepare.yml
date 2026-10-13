@@ -2,6 +2,8 @@
 - name: Prepare controlled public recipient and frontend files
   hosts: all
   become: true
+  vars_files:
+    - vars/main.yml
   tasks:
     - name: Inspect owned fixture run mount propagation
       ansible.builtin.command:
@@ -100,6 +102,14 @@
         mode: '0755'
         content: |
           import socket, threading
+          from http.server import BaseHTTPRequestHandler, HTTPServer
+          class Canary(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  self.send_response(204); self.end_headers()
+              def log_message(self, *args): pass
+          def canary():
+              HTTPServer(("192.0.2.80", 18080), Canary).serve_forever()
+          threading.Thread(target=canary, daemon=True).start()
           def run(udp):
               s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM if udp else socket.SOCK_STREAM)
               s.bind(('192.0.2.80',9000))
@@ -134,6 +144,10 @@
         daemon_reload: true
         state: started
 
+    - name: Prepare canonical consumer authority before first guarded migration
+      ansible.builtin.include_role:
+        name: transport-egress
+        tasks_from: runtime-prepare
     - name: Create private snapshot state for the first guarded migration proof
       ansible.builtin.file:
         path: /var/lib/ripdpi/transport-egress

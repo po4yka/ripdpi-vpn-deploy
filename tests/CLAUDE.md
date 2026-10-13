@@ -14,6 +14,12 @@
 
 ## Design decisions
 
+Native Hysteria validation checks root-private transient unit permissions before forced publisher death; portable recovery rejects even an exact recorded public-unit claim before touching the service or lease resources.
+
+Sender queue regressions preserve the pinned atomic metadata and empty initial-chunk staging forms, reject invalid names/sizes, and bound live inode-change retries separately from foreign-authority refusal.
+
+Sender activation regressions include the handler-flush boundary after a rescued first cutover. Adapter timer notifications require durable sender acceptance before unit installation.
+
 **Monitoring regressions cross the real boundary** — consume actual private
 watchdog output, age frozen producer evidence with the pinned PromQL evaluator,
 and compare declared units to partially missing native series. Long generated
@@ -24,6 +30,8 @@ Observer termination tests execute the production backup/recovery helper;
 fixture-only signal cleanup cannot prove the installed service's restoration behavior.
 Pinned receiver readiness retries only expected startup HTTP 503 and refused or
 timed-out loopback connections within one deadline; unexpected errors propagate.
+
+Set fault-injection permissions explicitly when rejection depends on mode; restrictive CI umasks can otherwise create a safe node instead of the intended unsafe fixture.
 
 Pytest module basenames must be unique across `tests/unit`, `scripts/tests` and
 `vpnd/tests`: the full collection and shard-consistency checks import them together.
@@ -283,6 +291,8 @@ the runner's `ubuntu.sources` for both APT operations. An unrelated preinstalled
 repository cannot block this gate. Missing Ubuntu sources and failed updates
 remain fatal; package signatures and the real schema validator stay enforced.
 
+Runtime acceptance has a separate canonical-role Linux lab. It uses exact checksum-pinned runtimes, generated dedicated client/TLS authority and an owned routed namespace canary. Credential mount propagation is established before creating namespace references, so parent bind mounts cannot hide those references at cleanup. Upgrade, retry, check mode, failure compensation and real process-death cases must retain actual authenticated traffic and fail selected skips. Portable inode/state tests complement that lab and never claim service or client acceptance.
+
 ## What's done well
 
 - **Cloud-init encoding crosses the real Terraform boundary** — scalar tests
@@ -312,6 +322,10 @@ remain fatal; package signatures and the real schema validator stay enforced.
   requires an operator running `make snapshot-update` after an intentional
   template change. CI never auto-updates.
 - **`shellcheck` in CI** — every `.sh` file. Warnings break the build.
+
+**Native acceptance fixture authority** — Runtime acceptance tests use actual checksum-pinned clients, owned TLS peers and Linux systemd/network namespaces. Real SIGKILL tests run the publisher in a separate process and require authenticated positive forwarding after recovery. Canonical role fixtures keep only source inputs from the render fixture; computed runtime paths and numeric identity projections must not override real role discovery.
+
+Read-only sender admission is also executed through actual Ansible argv/stdin templating. Sender queue regression tests perform real private-file copies and in-place restoration across interruption checkpoints and partial cleanup; they assert historical bytes, original root inode, no-follow authority, exact backup identities and fail-before-mutation admission. Service mocks are portable orchestration evidence only. The enabled native Molecule scenario requires the exact historical nonce and pre-cutover timestamp to reach the authenticated receiver after an actual rejected candidate.
 
 ## Pitfalls
 
@@ -382,6 +396,16 @@ contract after mkdir: the shared build gate uses a restrictive umask, so
 mkdir's requested 0755 alone cannot establish the helper's ownership boundary.
 Task-source readers follow enabled task files and recursively inspect real
 publication blocks; dispatcher files cannot prove mutation or activation order.
+
+The shared Molecule transport canary serves HTTPS with an exact numeric SAN and
+container-local trust. Full-stack watchdog validation keeps requiring HTTPS;
+standalone rollback fixtures prepare canonical consumer recovery before `begin`.
+Portable publisher and validation-lease tests use private user-owned temporary
+ancestry; Linux `/tmp` is deliberately outside the production authority contract.
+Numeric canary startup bypasses reverse DNS inside its disconnected namespace.
+Complete consumer transactions run in a pinned fresh systemd container on a
+separate native runner, retaining refusal of foreign runtime and firewall
+authority from the runner host or other fixtures.
 
 The native policy lifecycle fixture requires a root-owned executable parent
 without group/world write permissions. A disposable runner may start with

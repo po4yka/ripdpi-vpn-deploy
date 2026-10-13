@@ -14,3 +14,9 @@ transport_native_hysteria_tls:
     | from_yaml).hysteria.cert_pem }}'
   key_pem: '{{ (lookup(''ansible.builtin.file'', playbook_dir ~ ''/../../../../molecule/full-stack/test-secrets.yaml'')
     | from_yaml).hysteria.key_pem }}'
+
+# Exact configured fixture credentials are used for authenticated admission.
+transport_runtime_probe_clients:
+  xray: alice
+  hysteria: alice
+transport_runtime_probe_url: https://192.0.2.80:18080/

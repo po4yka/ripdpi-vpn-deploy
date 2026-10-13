@@ -15,6 +15,16 @@
         tasks_from: activate
       when: transport_egress_role_enabled | default(false) | bool
 
+    - name: Accept all staged frontend retirements before retiring their route
+      ansible.builtin.include_role:
+        name: transport-egress
+        tasks_from: runtime-acceptance
+      vars:
+        _transport_runtime_retire_all: true
+      when:
+        - not (transport_egress_role_enabled | default(false) | bool)
+        - transport_runtime_candidates | default([]) | length > 0
+
     - name: Retire disabled protected topology after consumers
       ansible.builtin.include_role:
         name: transport-egress

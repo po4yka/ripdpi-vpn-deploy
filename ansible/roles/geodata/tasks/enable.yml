@@ -94,11 +94,19 @@
     argv: [python3, /usr/local/sbin/vpn-geodata-publish]
     stdin: >-
       {{ {'install_dir': geodata.install_dir,
+          'stage_only': ((vpn.enable_xray_reality | default(true) | bool) or (vpn.enable_nginx_xhttp | default(true) | bool)),
           'sources': {'geosite.dat': {'url': geodata.geosite_url, 'sha256': geodata.geosite_sha256},
                       'geoip.dat': {'url': geodata.geoip_url, 'sha256': geodata.geoip_sha256}}} | to_json }}
   register: _geodata_pair
   changed_when: _geodata_pair.rc == 0 and (_geodata_pair.stdout | from_json).changed
   when: not ansible_check_mode
+
+- name: Retain complete staged geodata authority for transport acceptance
+  ansible.builtin.set_fact:
+    transport_runtime_geodata_candidate_dir: "{{ (_geodata_pair.stdout | from_json).candidate_dir }}"
+  when:
+    - not ansible_check_mode
+    - (vpn.enable_xray_reality | default(true) | bool) or (vpn.enable_nginx_xhttp | default(true) | bool)
 
 - name: Drop refresh script
   ansible.builtin.template:

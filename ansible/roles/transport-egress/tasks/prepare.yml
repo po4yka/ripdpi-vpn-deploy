@@ -131,6 +131,8 @@
       }}'
     transport_egress_classifier_uid: >-
       {{ (_transport_egress_identity.stdout | from_json).uids.get(transport_egress_classifier_user) }}
+    transport_egress_frontend_gids: '{{ (_transport_egress_identity.stdout | from_json).gids | dict2items | selectattr(''key'',
+      ''in'', transport_egress_frontend_users) | items2dict }}'
     transport_egress_frontend_uids: '{{ (_transport_egress_identity.stdout | from_json).uids | dict2items | selectattr(''key'',
       ''in'', transport_egress_frontend_users) | items2dict }}'
     transport_egress_fresh_check_mode: '{{ ansible_check_mode and ((_transport_egress_identity.stdout | from_json).missing
@@ -150,7 +152,13 @@
     name:
       - nftables
       - iproute2
+      - curl
+      - openssl
     state: present
     update_cache: '{{ not ansible_check_mode }}'
     cache_valid_time: 3600
   when: transport_egress_role_enabled | bool
+
+- name: Reconcile complete consumer authority before protected staging
+  ansible.builtin.include_tasks: runtime-prepare.yml
+  when: not ansible_check_mode

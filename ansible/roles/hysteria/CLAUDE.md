@@ -49,6 +49,8 @@ rollback links to `runtime-release`.
 
 **Masquerade follows an owned site** — `hysteria.masquerade_url` is required in production secrets and must equal `public_site_canonical_url` exactly (asserted in `tasks/main.yml`). This keeps QUIC probes on the same public identity without coupling the UDP-only role to nginx state.
 
+Complete config, unit, origin hosts, TLS and runtime selections enter the private consumer plan. Native candidate admission runs the actual binary, unchanged protocol/listener/auth/outbound configuration and relocated TLS paths in an owned disconnected namespace under the consumer sandbox. Its exact native client must authenticate and forward before cleanup is confirmed; the namespace never pulls the live normalizer dependency. The configured dedicated probe client is also required for live process adoption. Shape validation alone cannot commit a runtime.
+
 ## What's done well
 
 - **Fresh-host check mode remains a plan** — the role requires a planned unit install when the Hysteria service does not yet exist, then leaves activation to the real converge.
@@ -56,6 +58,8 @@ rollback links to `runtime-release`.
   operator supplies the same PEM pair to `hysteria.cert_pem`/`key_pem` and
   `nginx_xhttp.cert_pem`/`key_pem`; each role writes its own copy (no shared
   mount).
+
+The staged runtime-release include returns generic `runtime_release_candidates`; this consumer appends them to its transport transaction before adding complete TLS and configuration authority.
 
 ## Pitfalls
 
