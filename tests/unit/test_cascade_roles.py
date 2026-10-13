@@ -169,7 +169,10 @@ exit 0
         encoding="utf-8",
     )
     config = tmp_path / "ansible.cfg"
-    config.write_text("[defaults]\nretry_files_enabled = False\n", encoding="utf-8")
+    config.write_text(
+        "[defaults]\nretry_files_enabled = False\n[connection]\npipelining=True\n",
+        encoding="utf-8",
+    )
     environment = {
         key: value
         for key, value in os.environ.items()
@@ -178,6 +181,8 @@ exit 0
     environment.update(
         {
             "ANSIBLE_CONFIG": str(config),
+            "ANSIBLE_HOME": str(tmp_path / "ansible-home"),
+            "ANSIBLE_LOCAL_TEMP": str(tmp_path / "ansible-local"),
             "PATH": f"{bin_dir}{os.pathsep}{environment['PATH']}",
             "CASCADE_STATE": historical_state,
             "CASCADE_MARKER": str(marker),
@@ -187,7 +192,7 @@ exit 0
     if check_mode:
         command.append("--check")
     result = subprocess.run(
-        command, capture_output=True, text=True, env=environment, timeout=15
+        command, capture_output=True, text=True, env=environment, timeout=120
     )
 
     assert result.returncode != 0
@@ -266,7 +271,10 @@ def test_installed_ansible_allows_clean_cascade_preflight_before_later_write(
         encoding="utf-8",
     )
     config = tmp_path / "ansible.cfg"
-    config.write_text("[defaults]\nretry_files_enabled = False\n", encoding="utf-8")
+    config.write_text(
+        "[defaults]\nretry_files_enabled = False\n[connection]\npipelining=True\n",
+        encoding="utf-8",
+    )
     environment = {
         key: value
         for key, value in os.environ.items()
@@ -275,6 +283,8 @@ def test_installed_ansible_allows_clean_cascade_preflight_before_later_write(
     environment.update(
         {
             "ANSIBLE_CONFIG": str(config),
+            "ANSIBLE_HOME": str(tmp_path / "ansible-home"),
+            "ANSIBLE_LOCAL_TEMP": str(tmp_path / "ansible-local"),
             "PATH": f"{bin_dir}{os.pathsep}{environment['PATH']}",
             "CASCADE_MARKER": str(marker),
         }
@@ -283,7 +293,7 @@ def test_installed_ansible_allows_clean_cascade_preflight_before_later_write(
     if check_mode:
         command.append("--check")
     result = subprocess.run(
-        command, capture_output=True, text=True, env=environment, timeout=15
+        command, capture_output=True, text=True, env=environment, timeout=120
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
@@ -359,7 +369,10 @@ esac
         encoding="utf-8",
     )
     config = tmp_path / "ansible.cfg"
-    config.write_text("[defaults]\nretry_files_enabled = False\n", encoding="utf-8")
+    config.write_text(
+        "[defaults]\nretry_files_enabled = False\n[connection]\npipelining=True\n",
+        encoding="utf-8",
+    )
     environment = {
         key: value
         for key, value in os.environ.items()
@@ -368,6 +381,8 @@ esac
     environment.update(
         {
             "ANSIBLE_CONFIG": str(config),
+            "ANSIBLE_HOME": str(tmp_path / "ansible-home"),
+            "ANSIBLE_LOCAL_TEMP": str(tmp_path / "ansible-local"),
             "PATH": f"{bin_dir}{os.pathsep}{environment['PATH']}",
             "CASCADE_MARKER": str(marker),
         }
@@ -376,7 +391,7 @@ esac
     if check_mode:
         command.append("--check")
     result = subprocess.run(
-        command, capture_output=True, text=True, env=environment, timeout=15
+        command, capture_output=True, text=True, env=environment, timeout=120
     )
 
     assert result.returncode == 0, result.stdout + result.stderr

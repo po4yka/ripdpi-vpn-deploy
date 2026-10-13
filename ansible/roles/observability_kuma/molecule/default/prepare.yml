@@ -89,7 +89,7 @@
         - restore-capabilities
         - active-backup-fixture
 
-    - name: Seed active backup fixture with a real observer restart finalizer
+    - name: Seed active backup fixture invoking the production lifecycle
       ansible.builtin.copy:
         dest: /etc/systemd/system/observability-kuma-backup.service
         content: |
@@ -98,6 +98,7 @@
           [Service]
           Type=simple
           ExecStart=/usr/bin/python3 /usr/local/libexec/observability-kuma-active-backup-fixture.py
+          ExecStopPost=/usr/bin/python3 /usr/local/libexec/observability-kuma-backup.py recover
           TimeoutStopSec=20
           NoNewPrivileges=true
           PrivateTmp=true
@@ -111,7 +112,10 @@
           RestrictRealtime=true
           RestrictSUIDSGID=true
           SystemCallArchitectures=native
-          ReadWritePaths=/var/lib/observability-kuma
+          RuntimeDirectory=observability-kuma-lifecycle
+          RuntimeDirectoryMode=0700
+          RuntimeDirectoryPreserve=yes
+          ReadWritePaths=/var/lib/observability-kuma /run/observability-kuma-lifecycle
         owner: root
         group: root
         mode: "0644"

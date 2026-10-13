@@ -156,6 +156,13 @@ queue setting is 512 MiB; the pinned upstream minimum rounds it to 512 MiB plus
 Admission reserves 2 GiB for segment overhead plus the filesystem reserve.
 Queue saturation discards oldest unsent blocks and must be reported as delivery
 loss. VPN units stay outside both slices.
+One sender worker does not guarantee replay order: an interrupted worker batch
+can return behind newer queued blocks. The collector accepts reordered samples
+within its configured seven-day window relative to the global TSDB maximum
+timestamp. The queue has no age limit; this window is not a wall-clock durability
+guarantee. Samples rejected outside the window are HTTP delivery loss. Exact
+in-window history and measured late-history replay resource admission are
+required before rollout; small receiver tests do not prove seven-day capacity.
 `ObservabilityAgentDeliveryLoss` reports queue/HTTP discards and native label-limit
 rejections after their counters reach the collector. It means incomplete telemetry,
 not a VPN failure; a disconnected collector cannot report the event immediately.
@@ -229,6 +236,13 @@ and templates together. A Prometheus query result proves central evaluation;
 it does not prove a sender captured current input or that Telegram delivered a
 message.
 
+Producer timestamps and bounded validity deadlines determine evidence freshness;
+a new exporter scrape cannot renew a frozen textfile. Adapter completion has
+its own freshness boundary. Missing or future timing evidence remains unavailable.
+Expected-target presence follows its reviewed required families, and required
+service expectations follow the enabled node profile. An absent required unit
+is missing evidence, separately from an observed inactive or failed service.
+
 ## Independent Kuma monitoring and Telegram evidence
 
 Kuma is pinned to stable 2.5.5 architecture-specific manifests in role defaults.
@@ -285,6 +299,12 @@ encrypts directly with age to separate existing owner-controlled storage and
 records the matching image digest and ciphertext checksum. Preserve the
 previous database and image before upgrades. Container rollback alone cannot
 roll back a database migration.
+
+Backup records private restart intent before quiescing an active observer.
+Graceful cleanup and the locked systemd post-stop recovery restore that prior
+state after interruption; failed recovery retains intent for inspection.
+Disable and rotation stop the backup timer and wait for backup recovery before
+their final observer action. A previously inactive observer stays inactive.
 
 The restore helper requires an explicitly provisioned systemd age-identity
 credential and a selected backup ID. It restores into a new private directory,
@@ -418,3 +438,5 @@ make observability-staging-cleanup \
   OBSERVABILITY_STAGING_CLEANUP_JOURNAL=/owner/private/run/journal.json \
   OBSERVABILITY_STAGING_CLEANUP_RECEIPT=/owner/private/run/cleanup-receipt.json
 ```
+
+Operator drills supply required node, evidence and verified controller-source fields. Each drill uses a unique technical policy nonce and waits for an authenticated, exact-start relay send receipt before resolution. The result `api-delivered` proves API acknowledgement, not human receipt. The receipt is memory-only and restart clears it; a missing receipt fails the bounded drill.

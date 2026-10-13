@@ -129,7 +129,7 @@ def _documents() -> tuple[dict, dict, dict]:
                 "samples": [
                     {
                         "family": "vpn_watchdog_collection_success",
-                        "labels": {"node": "vpn-p0", "role": "edge"},
+                        "labels": {"node": "vpn-p0", "role": "watchdog"},
                         "value": 1,
                     }
                 ],
@@ -355,11 +355,11 @@ def test_render_classifies_every_inventory_and_freshness_state(
     assert summary["targets"] == 1
     exposition = output.read_text(encoding="utf-8")
     assert (
-        f'vpn_observability_evidence_state{{node="vpn-p0",role="edge",state="{expected}"}} 1'
+        f'vpn_observability_evidence_state{{node="vpn-p0",role="watchdog",state="{expected}"}} 1'
         in exposition
     )
     assert (
-        'vpn_observability_expected_target{node="vpn-p0",role="edge"} 1' in exposition
+        'vpn_observability_expected_target{node="vpn-p0",role="watchdog"} 1' in exposition
     )
     assert ("vpn_watchdog_collection_success" in exposition) is (expected == "fresh")
 
@@ -465,7 +465,7 @@ def test_negative_gauge_remains_valid(
     assert stderr == ""
     assert json.loads(stdout)["states"] == {"fresh": 1}
     assert (
-        'vpn_watchdog_collection_success{node="vpn-p0",role="edge"} -1'
+        'vpn_watchdog_collection_success{node="vpn-p0",role="watchdog"} -1'
         in output.read_text()
     )
 
@@ -521,7 +521,7 @@ def test_duplicate_series_across_targets_is_malformed_and_not_published(
 ) -> None:
     manifest, inventory, evidence = _documents()
     manifest["families"][0]["labels"] = ["role"]
-    evidence["targets"][0]["samples"][0]["labels"] = {"role": "edge"}
+    evidence["targets"][0]["samples"][0]["labels"] = {"role": "watchdog"}
     second_target = copy.deepcopy(inventory["targets"][0])
     second_target["target"] = "vpn-p1"
     second_target["label_values"]["node"] = ["vpn-p1"]

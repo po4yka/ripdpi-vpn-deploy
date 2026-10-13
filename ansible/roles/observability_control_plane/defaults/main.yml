@@ -17,6 +17,7 @@ observability_control_plane:
   request_concurrency: 4
   request_rate: 20r/s
   request_rate_burst: 40
+  # The same finite window accepts persisted sender blocks after restart.
   tsdb_retention_time: 7d
   tsdb_retention_size: 1GB
   tsdb_required_bytes: 2147483648

@@ -1761,6 +1761,23 @@ else:
         )
     )
 
+    config = tmp_path / "ansible.cfg"
+    config.write_text(
+        "[defaults]\nretry_files_enabled = False\nstdout_callback = default\n"
+        f"log_path = {tmp_path / 'ansible-timing.log'}\n"
+        "[connection]\npipelining = True\n"
+    )
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("ANSIBLE_")
+    }
+    environment.update(
+        ANSIBLE_CONFIG=str(config),
+        ANSIBLE_HOME=str(tmp_path / "ansible-home"),
+        ANSIBLE_LOCAL_TEMP=str(tmp_path / "ansible-local"),
+    )
+
     def run(check=False):
         return subprocess.run(
             ["ansible-playbook", "-i", "localhost,", str(playbook)]
@@ -1768,7 +1785,10 @@ else:
             cwd=ROOT,
             capture_output=True,
             text=True,
-            timeout=40,
+            env=environment,
+            # This bounds the full Ansible transaction, including rollback.
+            # Per-helper and readiness deadlines remain those in the copied tasks.
+            timeout=120,
         )
 
     def request(token):

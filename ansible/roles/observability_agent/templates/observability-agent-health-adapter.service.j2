@@ -20,7 +20,22 @@ ExecStart=/usr/local/libexec/observability-agent-health-adapter.py \
   --restore-drill {{ observability_agent_restore_drill_path }} \
   --restore-drill-max-age-seconds {{ observability_agent_restore_drill_max_age_seconds }} \
   --backup-snapshot-max-age-seconds {{ (backup_snapshot_max_age_hours | default(36) | int) * 3600 }} \
-  --certificate %d/client.crt \
+{% set protocols = vpn | default({}) -%}
+{% set collector = observability_control_plane | default({}) -%}
+{% set transports = not (vpn_subscription_only | default(false)) -%}
+{% set services = {
+  'xray.service': transports and ((protocols.enable_xray_reality | default(true)) or (protocols.enable_nginx_xhttp | default(true))),
+  'nginx.service': (transports and (protocols.enable_nginx_xhttp | default(true))) or (protocols.enable_subscription_host | default(false)) or (vpn_subscription_only | default(false)),
+  'hysteria-server.service': transports and (protocols.enable_hysteria | default(true)),
+  'caddy-naive.service': transports and (protocols.enable_naive | default(false)),
+  'observability-agent.service': observability_agent.enabled | default(false),
+  'observability-alertmanager.service': collector.enabled | default(false),
+  'observability-disk-guard.service': collector.enabled | default(false),
+  'observability-ingress.service': collector.enabled | default(false),
+  'observability-prometheus.service': collector.enabled | default(false)
+} -%}
+{% for service, enabled in services | dictsort if enabled and service in observability_alert_policy.required_systemd_units %}  --required-service {{ service | replace('.service', '') }} \
+{% endfor %}  --certificate %d/client.crt \
   --output {{ monitoring.node_exporter_textfile_dir | default('/var/lib/node_exporter/textfile') }}/observability-health.prom
 UMask=0027
 NoNewPrivileges=true

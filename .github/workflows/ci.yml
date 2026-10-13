@@ -296,6 +296,7 @@ jobs:
           - observability_agent
           - observability_control_plane
           - observability_deadman
+          - observability_kuma
           - backup
           - subscription-host
           - amneziawg
@@ -429,7 +430,7 @@ jobs:
           sudo install -m 0755 "$bin_dir/gitleaks" /usr/local/bin/gitleaks
           gitleaks version
       - uses: ./.github/actions/setup-ci-python
-      - name: Install checksum-verified Prometheus rule parser
+      - name: Install checksum-verified Prometheus tools
         run: |
           set -euo pipefail
           asset="prometheus-${PROMTOOL_VERSION}.linux-amd64.tar.gz"
@@ -441,9 +442,11 @@ jobs:
           echo "${PROMETHEUS_LINUX_AMD64_SHA256}  ${archive}" | sha256sum -c -
           mkdir -p "$bin_dir"
           tar -xzf "$archive" -C "$bin_dir" --strip-components=1 \
-            "prometheus-${PROMTOOL_VERSION}.linux-amd64/promtool"
-          sudo install -m 0755 "$bin_dir/promtool" /usr/local/bin/promtool
+            "prometheus-${PROMTOOL_VERSION}.linux-amd64/promtool" \
+            "prometheus-${PROMTOOL_VERSION}.linux-amd64/prometheus"
+          sudo install -m 0755 "$bin_dir/promtool" "$bin_dir/prometheus" /usr/local/bin/
           promtool --version
+          prometheus --version
       - name: Install pinned sing-box client parser
         run: |
           version="${SING_BOX_CLIENT_VERSION}"

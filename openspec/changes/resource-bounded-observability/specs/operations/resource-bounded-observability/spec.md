@@ -20,12 +20,17 @@ The implementation MUST create no dedicated VPS, paid volume, paid monitor, or n
 
 ### Requirement: REQ-RBO-BOUNDS — Bounded shared-host consumption
 
-The implementation MUST enforce aggregate collector and agent cgroup limits, bounded scrape cardinality, a pinned vmagent sender with a size-bounded persistent queue, finite collector retention, and a tested disk-reserve safeguard. A retention-size or queue-size setting alone MUST NOT be described as a hard filesystem quota. VPN services MUST remain outside the observability slice. The sender replacement MUST preserve private mTLS, use one ordered remote-write worker, and reject obsolete Prometheus Agent options rather than retaining a compatibility runtime.
+The implementation MUST enforce aggregate collector and agent cgroup limits, bounded scrape cardinality, a pinned vmagent sender with a size-bounded persistent queue, finite collector retention, and a tested disk-reserve safeguard. A retention-size or queue-size setting alone MUST NOT be described as a hard filesystem quota. VPN services MUST remain outside the observability slice. The sender replacement MUST preserve private mTLS, use one remote-write worker without fresh-data bypass workers, and reject obsolete Prometheus Agent options rather than retaining a compatibility runtime. Interrupted worker batches MAY replay after newer batches; the collector MUST admit reordered samples within its configured seven-day window relative to its global TSDB maximum timestamp, preserving their original identity. This window MUST NOT be described as a wall-clock queue-age or durability guarantee.
 
 #### Scenario: Sender restart during collector outage
 
 - **WHEN** the collector is unavailable and the sender is restarted cleanly or terminated abruptly after unsent samples have reached its persistent queue
-- **THEN** the exact pre-restart samples are delivered after collector recovery within the existing resource limits; queue files or fresh post-restart samples alone do not satisfy recovery.
+- **THEN** the exact retained pre-restart samples within the collector's finite admission window are delivered after recovery within the existing resource limits; queue files or fresh post-restart samples alone do not satisfy recovery.
+
+#### Scenario: Retained history exceeds receiver admission
+
+- **WHEN** a retained batch is rejected outside the collector's finite admission window
+- **THEN** sender HTTP discards are reported as delivery loss when its counters reach the collector; retained queue files do not establish lossless recovery.
 
 #### Scenario: Persistent queue reaches its configured capacity
 

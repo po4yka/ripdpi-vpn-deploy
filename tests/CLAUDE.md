@@ -14,6 +14,15 @@
 
 ## Design decisions
 
+**Monitoring regressions cross the real boundary** — consume actual private
+watchdog output, age frozen producer evidence with the pinned PromQL evaluator,
+and compare declared units to partially missing native series. Long generated
+alert URLs and realistic returned Message bodies exercise relay limits. Observer
+termination tests execute the production backup/recovery helper; fixture-only
+signal cleanup cannot prove the installed service's restoration behavior.
+Pinned receiver readiness retries only expected startup HTTP 503 and refused or
+timed-out loopback connections within one deadline; unexpected errors propagate.
+
 Pytest module basenames must be unique across `tests/unit`, `scripts/tests` and
 `vpnd/tests`: the full collection and shard-consistency checks import them together.
 
@@ -28,11 +37,20 @@ Task slices after AWG normalization supply its names-only output explicitly;
 the dedicated AWG test executes the actual normalization prerequisite.
 Retirement owner-map tests execute the actual consumer role variable declarations
 and stdin expression through Ansible; YAML mapping keys do not expand Jinja.
+Collector authority rotation tests isolate Ansible settings and enable local
+connection pipelining. Their subprocess budget covers the complete Ansible
+transaction; production readiness deadlines and rollback assertions stay intact.
+Cascade and deploy parity fixtures use the same isolated local connection policy;
+their complete transaction budgets do not change explicit deadline tests.
+Bounded command tests exercise real pipe backpressure and exited-child cleanup
+without suppressing live-process or repeated signal permission failures.
 
 **Project audit regressions cover operator boundaries** — synthetic Git histories
-isolate ambient Git configuration only in temporary repositories. SSH fixtures
-set their intended group explicitly. Installer tests reject invalid checksums
-and provenance before execution. Host-selection tests cross the actual CLI and
+isolate ambient Git configuration only in temporary repositories. SSH and runtime
+release fixtures set their intended group explicitly. Runtime release fixtures
+set the group on their owned temporary root before they create child directories.
+Installer tests reject invalid checksums and provenance before execution.
+Host-selection tests cross the actual CLI and
 shell boundaries; token refresh, private locks and promotion tests exercise
 rejection and concurrent callers. These checks do not establish live host,
 provider, release or Linux systemd acceptance.
@@ -358,3 +376,5 @@ The native policy lifecycle fixture requires a root-owned executable parent
 without group/world write permissions. A disposable runner may start with
 0777, so the fixture saves the mode, establishes trusted ancestry and restores
 it in cleanup. Production retirement validation keeps rejecting unsafe ancestry.
+
+Alerting regressions cross operator payloads into the real relay parser and renderer, and match exact send receipts. Lost canary responses and interrupted receipt writes must leave freshness absent while the next attempted sequence advances. A pinned real Prometheus receiver checks reordered queue batches without relaxing historical sample assertions.

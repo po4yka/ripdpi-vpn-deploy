@@ -29,7 +29,10 @@
         - observability-push-node.timer
       register: stopped
       changed_when: false
-      failed_when: stopped.stdout | trim != 'inactive'
+      failed_when: >-
+        (item == 'observability-kuma-backup.service' and
+        stopped.stdout | trim not in ['inactive', 'failed']) or
+        (item != 'observability-kuma-backup.service' and stopped.stdout | trim != 'inactive')
 
     - name: Verify disabled observer and producer units cannot restart at boot
       ansible.builtin.command:
@@ -48,6 +51,134 @@
         src: /var/lib/observability-kuma/backup-finalizer-ran
       register: backup_finalizer
       failed_when: (backup_finalizer.content | b64decode | trim) != 'observer restarted by backup finalizer'
+
+    - name: Exercise forced death and production ExecStopPost recovery
+      block:
+        - name: Retire earlier archive-pause readiness marker
+          ansible.builtin.file:
+            path: /var/lib/observability-kuma/backup-fixture-ready
+            state: absent
+
+        - name: Start owned observer then paused production backup
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            state: started
+          loop:
+            - observability-kuma.service
+            - observability-kuma-backup.service
+
+        - name: Wait for production backup to quiesce the owned observer
+          ansible.builtin.wait_for:
+            path: /var/lib/observability-kuma/backup-fixture-ready
+            timeout: 20
+
+        - name: Force kill only the owned backup main process
+          ansible.builtin.command:
+            argv: [/usr/bin/systemctl, kill, --signal=KILL, --kill-whom=main, observability-kuma-backup.service]
+          changed_when: true
+
+        - name: Require production stop-post recovery to restart observer
+          ansible.builtin.command:
+            argv: [/usr/bin/systemctl, is-active, --quiet, observability-kuma.service]
+          register: recovered
+          until: recovered.rc == 0
+          retries: 20
+          delay: 1
+          changed_when: false
+
+        - name: Require completed recovery to retire restart intent
+          ansible.builtin.stat:
+            path: /run/observability-kuma-lifecycle/restart-intent
+          register: restart_intent
+          failed_when: restart_intent.stat.exists
+      always:
+        - name: Return owned observer and backup to disabled lifecycle state
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            state: stopped
+          loop:
+            - observability-kuma-backup.service
+            - observability-kuma.service
+
+    - name: Exercise actual systemd backup deadline and production recovery
+      block:
+        - name: Create owned disposable deadline override directory
+          ansible.builtin.file:
+            path: /etc/systemd/system/observability-kuma-backup.service.d
+            state: directory
+            mode: "0755"
+
+        - name: Bound the paused production backup with an actual start deadline
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/observability-kuma-backup.service.d/timeout-proof.conf
+            content: |
+              [Service]
+              Type=oneshot
+              TimeoutStartSec=20
+            mode: "0644"
+
+        - name: Retire earlier readiness marker before deadline proof
+          ansible.builtin.file:
+            path: /var/lib/observability-kuma/backup-fixture-ready
+            state: absent
+
+        - name: Start owned observer for deadline proof
+          ansible.builtin.systemd_service:
+            name: observability-kuma.service
+            state: started
+            daemon_reload: true
+
+        - name: Start the production backup asynchronously under its deadline
+          ansible.builtin.systemd_service:
+            name: observability-kuma-backup.service
+            state: started
+            no_block: true
+
+        - name: Require observer quiescence before the deadline expires
+          ansible.builtin.wait_for:
+            path: /var/lib/observability-kuma/backup-fixture-ready
+            timeout: 15
+
+        - name: Require systemd to classify the actual backup deadline failure
+          ansible.builtin.command:
+            argv: [/usr/bin/systemctl, show, observability-kuma-backup.service, --property=Result, --value]
+          register: deadline_result
+          until: deadline_result.stdout | trim == 'timeout'
+          retries: 30
+          delay: 1
+          changed_when: false
+
+        - name: Require production recovery after actual deadline expiry
+          ansible.builtin.command:
+            argv: [/usr/bin/systemctl, is-active, --quiet, observability-kuma.service]
+          register: deadline_recovery
+          until: deadline_recovery.rc == 0
+          retries: 20
+          delay: 1
+          changed_when: false
+
+        - name: Require deadline recovery to retire durable restart intent
+          ansible.builtin.stat:
+            path: /run/observability-kuma-lifecycle/restart-intent
+          register: deadline_intent
+          failed_when: deadline_intent.stat.exists
+      always:
+        - name: Stop owned backup then observer after deadline proof
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            state: stopped
+          loop:
+            - observability-kuma-backup.service
+            - observability-kuma.service
+
+        - name: Remove only the owned disposable deadline override
+          ansible.builtin.file:
+            path: /etc/systemd/system/observability-kuma-backup.service.d/timeout-proof.conf
+            state: absent
+
+        - name: Reload the restored owned backup unit
+          ansible.builtin.systemd_service:
+            daemon_reload: true
 
     - name: Exercise production restore extractor under its exact Linux capability boundary
       ansible.builtin.command:

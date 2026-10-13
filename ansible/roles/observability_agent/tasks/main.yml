@@ -154,7 +154,12 @@
     - name: Validate each required systemd selector
       ansible.builtin.assert:
         that:
-          - item is match('^[a-z0-9][a-z0-9@_-]{0,62}[.]service$')
+          - item is match('^[a-z0-9][a-z0-9_-]{0,62}[.]service$')
+          - >-
+            item in ['caddy-naive.service', 'hysteria-server.service', 'nginx.service',
+            'observability-agent.service', 'observability-alertmanager.service',
+            'observability-disk-guard.service', 'observability-ingress.service',
+            'observability-prometheus.service', 'xray.service']
       loop: "{{ observability_alert_policy.required_systemd_units }}"
 
     - name: Verify the receiver is a literal private IPv4 address

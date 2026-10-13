@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 import re
 import runpy
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -21,6 +22,7 @@ import uuid
 DATA = Path('/var/lib/observability-kuma')
 RESTORES = Path('/var/lib/observability-kuma-restores')
 MAX_DATA = 3 * 1024**3
+RESTART_INTENT = Path('/run/observability-kuma-lifecycle/restart-intent')
 private_directory = runpy.run_path(str(Path(__file__).with_name('observability-kuma-preflight.py')))['private_directory']
 
 
@@ -40,7 +42,56 @@ def archive_digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
+def sync_lifecycle_directory():
+    descriptor = os.open(RESTART_INTENT.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def record_restart_intent():
+    candidate = RESTART_INTENT.with_name('.restart-intent-' + uuid.uuid4().hex)
+    descriptor = os.open(candidate, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(descriptor, 'wb') as sink:
+            sink.write(b'observability-kuma.service\n')
+            sink.flush()
+            os.fsync(sink.fileno())
+        # The lifecycle lock serializes writers in this root-private directory.
+        # Refuse retained intent, including a dangling link, without replacing it.
+        try:
+            RESTART_INTENT.lstat()
+        except FileNotFoundError:
+            pass
+        else:
+            raise FileExistsError('restart-intent-exists')
+        os.rename(candidate, RESTART_INTENT)
+        sync_lifecycle_directory()
+    finally:
+        candidate.unlink(missing_ok=True)
+
+
+def recover():
+    # ExecStopPost needs neither backup configuration nor loaded credentials.
+    # Keep intent on failed restoration so the next locked recovery retries it.
+    try:
+        marker = private_regular(RESTART_INTENT)
+    except FileNotFoundError:
+        return
+    if marker.read_bytes() != b'observability-kuma.service\n':
+        raise ValueError('restart-intent-invalid')
+    command(['/usr/bin/systemctl', 'start', 'observability-kuma.service'])
+    marker.unlink()
+    sync_lifecycle_directory()
+
+
+def interrupt_backup(_signal, _frame):
+    raise InterruptedError('backup-interrupted')
+
+
 def backup(config, credentials):
+    recover()
     destination = private_directory(config['directory'])
     if destination.is_symlink() or not destination.is_dir() or destination.stat().st_dev == DATA.stat().st_dev:
         raise ValueError('separate-storage-required')
@@ -50,8 +101,11 @@ def backup(config, credentials):
     output = destination / (identity + '.tar.age')
     # Stop the service, not just docker pause: the app must flush SQLite/WAL.
     active = subprocess.run(['/usr/bin/systemctl', 'is-active', '--quiet', 'observability-kuma.service'], check=False).returncode == 0
-    command(['/usr/bin/systemctl', 'stop', 'observability-kuma.service'])
+    previous_handler = signal.signal(signal.SIGTERM, interrupt_backup)
     try:
+        if active:
+            record_restart_intent()
+        command(['/usr/bin/systemctl', 'stop', 'observability-kuma.service'])
         descriptor = os.open(output, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         with os.fdopen(descriptor, 'wb') as sink:
             tar = subprocess.Popen(['/usr/bin/tar', '-C', str(DATA), '-cf', '-', '.'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
@@ -74,10 +128,15 @@ def backup(config, credentials):
             json.dump(manifest, sink)
             sink.flush()
             os.fsync(sink.fileno())
-        print('encrypted backup completed: ' + identity)
     finally:
-        if active:
-            command(['/usr/bin/systemctl', 'start', 'observability-kuma.service'])
+        # Repeated TERM must not interrupt our own restoration; forced death is
+        # covered by the unit's separately executed, locked ExecStopPost.
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        try:
+            recover()
+        finally:
+            signal.signal(signal.SIGTERM, previous_handler)
+    print('encrypted backup completed: ' + identity)
 
 
 def extract_private(stream, destination):
@@ -154,16 +213,19 @@ def restore(config, credentials, identity):
 def main():
     try:
         os.umask(0o077)
-        config = json.loads(private_regular(Path('/etc/observability-kuma/backup.json')).read_text())
-        credentials = Path(os.environ['CREDENTIALS_DIRECTORY'])
         with open('/run/observability-kuma-lifecycle/lock', 'a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            if sys.argv[1:] == ['backup']:
-                backup(config, credentials)
-            elif len(sys.argv) == 3 and sys.argv[1] == 'restore':
-                restore(config, credentials, sys.argv[2])
+            if sys.argv[1:] == ['recover']:
+                recover()
             else:
-                raise ValueError('action')
+                config = json.loads(private_regular(Path('/etc/observability-kuma/backup.json')).read_text())
+                credentials = Path(os.environ['CREDENTIALS_DIRECTORY'])
+                if sys.argv[1:] == ['backup']:
+                    backup(config, credentials)
+                elif len(sys.argv) == 3 and sys.argv[1] == 'restore':
+                    restore(config, credentials, sys.argv[2])
+                else:
+                    raise ValueError('action')
         return 0
     except Exception:
         print('observer backup/restore failed; retained data requires inspection', file=sys.stderr)

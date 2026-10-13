@@ -61,6 +61,17 @@
   stop, so a backup cannot restart an intentionally disabled observer. Rotation
   also quiesces both backup units before changing image/configuration and only
   restarts the timer after successful convergence; failure leaves it stopped.
+  The production helper persists private restart intent before stopping inside
+  its cleanup boundary. SIGTERM runs restoration; credential-independent
+  `ExecStopPost` recovery under the same lifecycle lock covers forced death and
+  backup timeout. Intent is removed only after successful restoration and a
+  later backup resolves retained intent before quiescing again. Disable and
+  rotation wait for this recovery before their own final observer action.
+  Restart intent is fully written and fsynced in a unique private staging file,
+  then atomically renamed and its directory fsynced before observer stop. The
+  lifecycle lock serializes publication; retained canonical intent is refused,
+  never overwritten. Interrupted staging cannot poison recovery or a later
+  backup; forced death can retain a private staging file that recovery ignores.
 - Restore consumes an explicit backup ID and a systemd `age-identity`
   credential. It rejects archive traversal, links and special files, bounds
   extracted size to 3 GiB, creates a unique data directory, and starts a
@@ -80,6 +91,15 @@
 - Source tests, API acknowledgement and configured notification credentials do
   not prove human receipt, independent-host admission, VPN performance, or
   production delivery. A healthy process is not an alert evaluator witness.
+- The disable Molecule fixture pauses archive creation while invoking the
+  actual production backup helper; it must not supply its own signal handler
+  or restart finalizer. Failed recovery retains intent for inspection rather
+  than publishing backup success. Host reboot and live notification receipt
+  remain separate acceptance boundaries.
+  Its archive-pause subprocess facade preserves `PIPE` and `DEVNULL`, so the
+  actual production stop/start wrapper and archive setup keep their real call
+  contract. Portable boundary tests execute that fixture's facade assignment
+  rather than mocking away the service command wrapper.
 - Application database encryption is not provided by SOPS. Keep the live data
   directory and any isolated restore directory private; backup encryption
   protects only the backup. Never run both restored and original monitors with

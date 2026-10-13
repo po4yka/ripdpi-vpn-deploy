@@ -2,6 +2,18 @@
 
 ## Design decisions
 
+**Producer time owns freshness** — central evaluation expires producer and
+adapter completion timestamps even when node_exporter keeps serving a retained
+textfile. Required-target presence follows the reviewed actual metric families;
+it does not assume an unscheduled generic evidence-state publisher. Required
+service coverage compares profile-declared node/unit expectations individually,
+so another active service cannot hide missing evidence.
+
+**Relay bounds match its peers** — unused Prometheus generator URLs remain
+inside the bounded webhook body and never enter messages or requests. Telegram
+Message responses have a separate finite byte ceiling from message characters;
+large valid success replies are not delivery failures.
+
 **Binary upgrades participate in readiness** — preserve the Prometheus activation result before installing other runtimes. A binary-only upgrade restarts the collector; failed acceptance restores its previous release link before the previous configuration is restarted. Ingress changes retain their independent certificate/config/unit restart predicate.
 
 Prometheus binds only `127.0.0.1:9090`; an isolated unprivileged nginx master
@@ -17,6 +29,11 @@ receiver process uses the dedicated `observability-prometheus` account, never
 the distro node exporter's `prometheus` UID or home. Every
 dedicated collector service, including ingress, relay and adapters, belongs to
 `observability-collector.slice` (512 MiB, 20% CPU, IOWeight 10, no swap).
+Collector remote-write accepts reordered samples within the configured retention
+window relative to the global TSDB maximum timestamp. A single sender worker
+can replay an interrupted older block after newer blocks. Out-of-window HTTP
+discards are delivery loss; tiny receiver tests do not prove late-history replay
+resource admission or wall-clock queue durability.
 Blocks retain at most seven days/1 GiB; WAL/head remain subject to the separate
 2 GiB operational high-water guard, not a promised filesystem quota. Admission
 precedes account/package writes and requires 1 GiB MemAvailable, allowance plus
@@ -146,3 +163,5 @@ credential namespace inside a private mount namespace; failed validation or
 activation restores the complete prior ingress authority and service state.
 Read-only TLS preflight uses unnamed in-memory descriptors for chain, EKU,
 identity, key-pair and enrolled-client CRL checks, including fresh check mode.
+
+Delivery canaries reserve durable attempt sequences before upstream work. Failed or interrupted attempts do not publish edit freshness; gaps are valid and the next attempt uses new text. The relay retains only one authenticated synthetic drill send receipt in memory, clears it on restart and never records failed sends or resolutions.

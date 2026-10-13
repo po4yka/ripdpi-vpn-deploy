@@ -8,6 +8,10 @@ or invoke deployment normalization.
 The secrets coverage checker declares this names-only role fact explicitly;
 the complete AWG secret instance objects remain outside the environment file.
 
+Passive command collection retries transient nonblocking pipe backpressure
+within its original deadline and input/output budgets. Readiness is not a promise
+that the next read or write can complete; broken input pipes still refuse.
+
 Subscription refresh binds the requested client name to the unique token-prefix
 registry match before credential emission or remote publication. Prefix-only
 registry compatibility remains unchanged; an ambiguous match refuses.
@@ -440,6 +444,9 @@ Independent controller homes are not a supported shared-ownership mechanism.
   Remote deadline retries are distinct from an unresponsive SSH session; cloud-init
   exit codes 1 and 2 both refuse readiness even when the marker already exists.
   Keep raw cloud-init output suppressed and reclaim the owned SSH group on interruption.
+  A group-signal permission failure is retried only after the owned child exits
+  and is reaped. The retry still signals the whole group; only a missing group
+  is accepted. A live child or repeated permission failure remains an error.
 - **First-boot SSH uses only its selected key** — the wait adapter must ignore
   operator SSH config with `-F /dev/null`, disable the agent with
   `IdentityAgent=none`, and pass `IdentitiesOnly=yes` with its `-i` key.
@@ -503,3 +510,5 @@ Independent controller homes are not a supported shared-ownership mechanism.
 with repository-pinned Go and a separate scoped GOBIN/GOPATH/cache. It never
 substitutes stock Caddy. Local compilation uses the machine build gate; CI
 keeps compilation at two workers and passes the verified output explicitly.
+
+Operator alert drills bind the verified controller source and a unique technical policy nonce. They wait for an authenticated relay API receipt for that exact nonce and start time before resolution; submission and receiver selection alone cannot prove delivery. Human receipt remains separate.

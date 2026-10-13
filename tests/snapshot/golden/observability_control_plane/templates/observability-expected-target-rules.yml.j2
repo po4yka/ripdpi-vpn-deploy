@@ -6,7 +6,11 @@ groups:
         expr: >-
           vpn_observability_expected_target
           unless on (node, role)
-          max by (node, role) (vpn_observability_evidence_state)
+          (
+
+
+          vector(0)
+          )
         for: 3m
         labels:
           severity: warning
@@ -14,9 +18,9 @@ groups:
           environment: fleet
         annotations:
           incident_family: expected-target-absence
-          evidence_class: no-evidence-state
+          evidence_class: no-required-family
           source_generation: ""
-          summary: Expected observability target has no evidence state.
+          summary: Expected observability target has no required producer family.
           runbook: docs/RUNBOOK-incident.md
       - alert: ObservabilityTargetEvidenceStale
         expr: vpn_observability_evidence_state{state="stale"} == 1

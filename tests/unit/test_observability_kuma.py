@@ -1,10 +1,18 @@
 """Runtime boundary rendering and encrypted restore archive safety."""
 
+import ast
 import importlib.util
 import io
 import ipaddress
+import os
+import signal
+import stat
+import subprocess
+import sys
 from pathlib import Path
 import tarfile
+import textwrap
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -20,6 +28,316 @@ SPEC.loader.exec_module(backup)
 PREFLIGHT_SPEC = importlib.util.spec_from_file_location('kuma_preflight', ROLE / 'files/observability-kuma-preflight.py')
 preflight = importlib.util.module_from_spec(PREFLIGHT_SPEC)
 PREFLIGHT_SPEC.loader.exec_module(preflight)
+
+
+@pytest.fixture
+def backup_runtime(tmp_path, monkeypatch):
+    class Destination(type(tmp_path)):
+        def stat(self, *args, **kwargs):
+            return SimpleNamespace(st_dev=2, st_uid=0, st_mode=0o40700)
+
+    destination = Destination(tmp_path / 'archive')
+    destination.mkdir(mode=0o700)
+    monkeypatch.setattr(backup, 'private_directory', lambda path: destination)
+    def private_regular(path):
+        path.lstat()
+        return path
+
+    monkeypatch.setattr(backup, 'private_regular', private_regular)
+    monkeypatch.setattr(backup, 'DATA', SimpleNamespace(stat=lambda: SimpleNamespace(st_dev=1)))
+    marker = tmp_path / 'restart-intent'
+    monkeypatch.setattr(backup, 'RESTART_INTENT', marker, raising=False)
+    return {'directory': str(destination), 'image': 'fixture'}, tmp_path, marker
+
+
+@pytest.mark.parametrize('active', [True, False])
+def test_failed_observer_stop_restores_prior_running_state(backup_runtime, monkeypatch, active):
+    config, credentials, marker = backup_runtime
+    monkeypatch.setattr(backup.subprocess, 'run', lambda *a, **kw: SimpleNamespace(returncode=0 if active else 3))
+    calls = []
+
+    def command(argv):
+        calls.append(argv[1])
+        if argv[1] == 'stop':
+            raise OSError('stop failed after interruption')
+
+    monkeypatch.setattr(backup, 'command', command)
+    with pytest.raises(OSError, match='stop failed'):
+        backup.backup(config, credentials)
+    assert calls == (['stop', 'start'] if active else ['stop'])
+    assert not marker.exists()
+
+
+def test_failed_recovery_retains_private_restart_intent(backup_runtime, monkeypatch):
+    _config, _credentials, marker = backup_runtime
+    backup.record_restart_intent()
+    assert marker.stat().st_mode & 0o777 == 0o600
+    monkeypatch.setattr(backup, 'command', lambda argv: (_ for _ in ()).throw(OSError('start failed')))
+    with pytest.raises(OSError, match='start failed'):
+        backup.recover()
+    assert marker.exists()
+    started = []
+    monkeypatch.setattr(backup, 'command', started.append)
+    backup.recover()
+    backup.recover()
+    assert started == [['/usr/bin/systemctl', 'start', 'observability-kuma.service']]
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize('failure', ['partial-write', 'file-fsync', 'publication'])
+def test_restart_intent_failure_before_publication_does_not_poison_next_backup(backup_runtime, monkeypatch, failure):
+    config, credentials, marker = backup_runtime
+    calls = []
+    monkeypatch.setattr(backup.subprocess, 'run', lambda *a, **kw: SimpleNamespace(returncode=0))
+    monkeypatch.setattr(backup, 'command', lambda argv: calls.append(argv[1]))
+    monkeypatch.setattr(backup.subprocess, 'Popen', lambda *a, **kw: (_ for _ in ()).throw(ValueError('archive-retry')))
+    with monkeypatch.context() as fault:
+        if failure == 'partial-write':
+            original_fdopen = os.fdopen
+
+            class InterruptedSink:
+                def __init__(self, descriptor, mode):
+                    self.sink = original_fdopen(descriptor, mode)
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *args):
+                    self.sink.close()
+
+                def write(self, data):
+                    self.sink.write(data[:4])
+                    self.sink.flush()
+                    backup.interrupt_backup(signal.SIGTERM, None)
+
+            fault.setattr(backup.os, 'fdopen', InterruptedSink)
+        elif failure == 'file-fsync':
+            original_fsync = os.fsync
+
+            def fsync(descriptor):
+                if stat.S_ISREG(os.fstat(descriptor).st_mode):
+                    raise InterruptedError('intent-file-fsync')
+                original_fsync(descriptor)
+
+            fault.setattr(backup.os, 'fsync', fsync)
+        else:
+            fault.setattr(backup.os, 'rename', lambda *a: (_ for _ in ()).throw(InterruptedError('intent-publication')))
+        with pytest.raises(InterruptedError):
+            backup.backup(config, credentials)
+    assert calls == []
+    assert not marker.exists()
+    backup.recover()
+    assert calls == []
+    with pytest.raises(ValueError, match='archive-retry'):
+        backup.backup(config, credentials)
+    assert calls == ['stop', 'start']
+    assert not marker.exists()
+    assert not list(marker.parent.glob('.restart-intent-*'))
+
+
+def test_restart_intent_publication_preserves_retained_intent(backup_runtime):
+    _config, _credentials, marker = backup_runtime
+    backup.record_restart_intent()
+    before = marker.stat()
+    with pytest.raises(FileExistsError):
+        backup.record_restart_intent()
+    assert marker.read_bytes() == b'observability-kuma.service\n'
+    assert marker.stat().st_ino == before.st_ino
+    assert marker.stat().st_nlink == 1
+    assert not list(marker.parent.glob('.restart-intent-*'))
+
+
+def test_directory_fsync_failure_keeps_only_complete_recoverable_intent(backup_runtime, monkeypatch):
+    _config, _credentials, marker = backup_runtime
+    with monkeypatch.context() as fault:
+        fault.setattr(backup, 'sync_lifecycle_directory', lambda: (_ for _ in ()).throw(OSError('intent-directory-fsync')))
+        with pytest.raises(OSError, match='intent-directory-fsync'):
+            backup.record_restart_intent()
+    assert marker.read_bytes() == b'observability-kuma.service\n'
+    assert marker.stat().st_nlink == 1
+    calls = []
+    monkeypatch.setattr(backup, 'command', calls.append)
+    backup.recover()
+    assert calls == [['/usr/bin/systemctl', 'start', 'observability-kuma.service']]
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize('timeout', [False, True])
+def test_encryption_failure_or_timeout_restores_observer(backup_runtime, monkeypatch, capsys, timeout):
+    config, credentials, marker = backup_runtime
+    calls = []
+    killed = []
+    tar = SimpleNamespace(stdout=io.BytesIO(), wait=lambda **kw: 0, poll=lambda: None, kill=lambda: killed.append(True))
+
+    def run(argv, **kwargs):
+        if argv[0] == '/usr/bin/systemctl':
+            return SimpleNamespace(returncode=0)
+        if timeout:
+            raise subprocess.TimeoutExpired(argv, 300)
+        return SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr(backup.subprocess, 'run', run)
+    monkeypatch.setattr(backup.subprocess, 'Popen', lambda *a, **kw: tar)
+    monkeypatch.setattr(backup, 'command', lambda argv: calls.append(argv[1]))
+    with pytest.raises(subprocess.TimeoutExpired if timeout else ValueError):
+        backup.backup(config, credentials)
+    assert calls == ['stop', 'start']
+    assert killed == [True]
+    assert not marker.exists()
+    assert not list(Path(config['directory']).glob('*.json'))
+    assert 'completed' not in capsys.readouterr().out
+
+
+def test_archive_pause_fixture_preserves_actual_service_command_boundary(backup_runtime, monkeypatch):
+    config, credentials, marker = backup_runtime
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv[1])
+        if argv[1] in ['stop', 'start']:
+            assert kwargs['stdout'] == subprocess.DEVNULL
+            assert kwargs['stderr'] == subprocess.DEVNULL
+            assert kwargs['timeout'] == 120
+        return SimpleNamespace(returncode=0)
+
+    def paused_archive(*args, **kwargs):
+        assert kwargs['stdout'] == subprocess.PIPE
+        assert marker.exists()
+        raise InterruptedError('archive-pause interrupted')
+
+    tree = ast.parse((ROLE / 'molecule/runtime/active-backup-fixture.py').read_text())
+    assignment = next(node for node in tree.body if isinstance(node, ast.Assign) and any(isinstance(target, ast.Attribute) and target.attr == 'subprocess' for target in node.targets))
+    runtime = SimpleNamespace(run=run, PIPE=subprocess.PIPE, DEVNULL=subprocess.DEVNULL)
+    monkeypatch.setattr(backup, 'subprocess', runtime)
+    exec(compile(ast.Module(body=[assignment], type_ignores=[]), '<owned-archive-fixture>', 'exec'), {'backup': backup, 'subprocess': runtime, 'SimpleNamespace': SimpleNamespace, 'paused_archive': paused_archive})
+    with pytest.raises(InterruptedError, match='archive-pause interrupted'):
+        backup.backup(config, credentials)
+    assert calls == ['is-active', 'stop', 'start']
+    assert not marker.exists()
+    assert not list(Path(config['directory']).glob('*.json'))
+
+
+def test_backup_unit_recovers_forced_death_without_credentials():
+    unit = render('observability-kuma-backup.service.j2')
+    assert 'ExecStopPost=/usr/bin/python3 /usr/local/libexec/observability-kuma-backup.py recover' in unit
+    assert 'TimeoutStopSec=150' in unit
+
+
+def test_recover_entrypoint_needs_no_backup_configuration_or_credentials(backup_runtime, monkeypatch):
+    _config, root, marker = backup_runtime
+    backup.record_restart_intent()
+    calls = []
+    monkeypatch.setattr(backup, 'command', calls.append)
+    monkeypatch.setattr(backup, 'open', lambda *args, **kwargs: open(root / 'lock', 'a'), raising=False)
+    monkeypatch.setattr(backup.sys, 'argv', ['backup-helper', 'recover'])
+    monkeypatch.delenv('CREDENTIALS_DIRECTORY', raising=False)
+    assert backup.main() == 0
+    assert calls == [['/usr/bin/systemctl', 'start', 'observability-kuma.service']]
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize('termination', [signal.SIGTERM, signal.SIGKILL])
+@pytest.mark.parametrize('phase', ['archive', 'intent-write'])
+def test_production_backup_termination_and_separate_recovery(tmp_path, termination, phase):
+    runner = tmp_path / 'runner.py'
+    runner.write_text(textwrap.dedent(f'''
+        import importlib.util
+        import os
+        from pathlib import Path
+        import signal
+        import sys
+        from types import SimpleNamespace
+        spec = importlib.util.spec_from_file_location('backup', {str(ROLE / 'files/observability-kuma-backup.py')!r})
+        backup = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(backup)
+        root = Path({str(tmp_path)!r})
+        class Destination(type(root)):
+            def stat(self, *args, **kwargs):
+                return SimpleNamespace(st_dev=2, st_uid=0, st_mode=0o40700)
+        destination = Destination(root / 'archive')
+        destination.mkdir(mode=0o700, exist_ok=True)
+        backup.private_directory = lambda path: destination
+        def regular(path):
+            path.lstat()
+            return path
+        backup.private_regular = regular
+        backup.DATA = SimpleNamespace(stat=lambda: SimpleNamespace(st_dev=1))
+        backup.RESTART_INTENT = root / 'restart-intent'
+        backup.subprocess.run = lambda *a, **kw: SimpleNamespace(returncode=0)
+        def command(argv):
+            (root / 'state').write_text('inactive' if argv[1] == 'stop' else 'active')
+        backup.command = command
+        def paused_archive(*args, **kwargs):
+            (root / 'ready').write_text('quiesced')
+            signal.pause()
+            raise ValueError('archive interrupted')
+        backup.subprocess.Popen = paused_archive
+        if len(sys.argv) > 2 and sys.argv[2] == 'intent-write':
+            original_fdopen = os.fdopen
+            class PausedSink:
+                def __init__(self, descriptor, mode):
+                    self.sink = original_fdopen(descriptor, mode)
+                def __enter__(self):
+                    return self
+                def __exit__(self, *args):
+                    self.sink.close()
+                def write(self, data):
+                    self.sink.write(data[:4])
+                    self.sink.flush()
+                    (root / 'ready').write_text('partial-intent')
+                    signal.pause()
+                    raise ValueError('intent write interrupted')
+            backup.os.fdopen = PausedSink
+        if sys.argv[1] == 'recover':
+            backup.recover()
+        else:
+            (root / 'state').write_text('active')
+            backup.backup({{'directory': str(destination), 'image': 'fixture'}}, root)
+    '''))
+    process = subprocess.Popen([sys.executable, str(runner), 'backup', phase], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        deadline = time.monotonic() + 10
+        while not (tmp_path / 'ready').exists():
+            assert process.poll() is None
+            assert time.monotonic() < deadline
+            time.sleep(0.01)
+        assert (tmp_path / 'state').read_text() == ('inactive' if phase == 'archive' else 'active')
+        assert (tmp_path / 'restart-intent').exists() == (phase == 'archive')
+        if phase == 'intent-write':
+            staged = list(tmp_path.glob('.restart-intent-*'))
+            assert len(staged) == 1
+            assert staged[0].read_bytes() == b'obse'
+            assert staged[0].stat().st_mode & 0o777 == 0o600
+        process.send_signal(termination)
+        process.communicate(timeout=10)
+        assert process.returncode != 0
+        if termination == signal.SIGTERM or phase == 'intent-write':
+            assert (tmp_path / 'state').read_text() == 'active'
+            assert not (tmp_path / 'restart-intent').exists()
+        else:
+            assert (tmp_path / 'state').read_text() == 'inactive'
+            assert (tmp_path / 'restart-intent').exists()
+        subprocess.run([sys.executable, str(runner), 'recover'], check=True, timeout=10)
+        assert (tmp_path / 'state').read_text() == 'active'
+        assert not (tmp_path / 'restart-intent').exists()
+        assert not list((tmp_path / 'archive').glob('*.json'))
+        if phase == 'intent-write':
+            (tmp_path / 'ready').unlink()
+            process = subprocess.Popen([sys.executable, str(runner), 'backup', 'archive'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            deadline = time.monotonic() + 10
+            while not (tmp_path / 'ready').exists():
+                assert process.poll() is None
+                assert time.monotonic() < deadline
+                time.sleep(0.01)
+            assert (tmp_path / 'state').read_text() == 'inactive'
+            process.send_signal(signal.SIGTERM)
+            process.communicate(timeout=10)
+            assert (tmp_path / 'state').read_text() == 'active'
+            assert not (tmp_path / 'restart-intent').exists()
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.communicate(timeout=10)
 
 
 def render(name, **overrides):
@@ -142,9 +460,10 @@ def test_linux_regression_invokes_production_extractor_without_dac_override():
 
 def test_disable_scenario_exercises_real_running_backup_finalizer():
     fixture = (ROLE / 'molecule/runtime/active-backup-fixture.py').read_text()
-    assert "'stop', 'observability-kuma.service'" in fixture
-    assert "'start', 'observability-kuma.service'" in fixture
-    assert 'finally:' in fixture and 'signal.SIGTERM' in fixture
+    assert "'/usr/local/libexec/observability-kuma-backup.py'" in fixture
+    assert 'backup.backup(' in fixture
+    assert 'backup.subprocess = SimpleNamespace(run=subprocess.run, Popen=paused_archive,' in fixture
+    assert 'signal.signal' not in fixture and 'finally:' not in fixture
     verification = (ROLE / 'molecule/default/verify.yml').read_text()
     assert 'backup-finalizer-ran' in verification
     assert '- observability-kuma-backup.service' in verification

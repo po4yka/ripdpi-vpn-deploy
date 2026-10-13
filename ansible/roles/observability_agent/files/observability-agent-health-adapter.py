@@ -222,7 +222,7 @@ def _parse_timestamp(value: object, now: int) -> int:
 
 
 def _parse_watchdog(path: Path, maximum_age: int, now: int) -> WatchdogEvidence:
-    source = _secure_read(path, MAX_WATCHDOG_BYTES, {0o640})
+    source = _secure_read(path, MAX_WATCHDOG_BYTES, {0o600})
     try:
         text = source.content.decode("ascii")
     except UnicodeDecodeError as exc:
@@ -266,7 +266,12 @@ def _validate_stage(stage: object, now: int, updated_at: int) -> dict[str, objec
     }:
         raise HealthAdapterError("invalid evidence")
     result = stage.get("result")
-    if result not in {"pending", "success", "failed", "disabled"}:
+    if not isinstance(result, str) or result not in {
+        "pending",
+        "success",
+        "failed",
+        "disabled",
+    }:
         raise HealthAdapterError("invalid evidence")
     timestamps: dict[str, int] = {}
     for key in ("attempted_at", "succeeded_at", "failed_at"):
@@ -329,7 +334,10 @@ def _parse_restore(
         raise HealthAdapterError("invalid evidence")
     repository_source = payload["repository_source"]
     snapshot_id = payload["snapshot_id"]
-    if repository_source not in {"local", "remote"}:
+    if not isinstance(repository_source, str) or repository_source not in {
+        "local",
+        "remote",
+    }:
         raise HealthAdapterError("invalid evidence")
     if not isinstance(snapshot_id, str) or not SHA256.fullmatch(snapshot_id):
         raise HealthAdapterError("invalid evidence")
@@ -342,6 +350,22 @@ def _parse_restore(
         and now - snapshot_at <= maximum_age + snapshot_maximum_age
     )
     return RestoreEvidence(payload, verified_at, snapshot_at, fresh)
+
+
+def _deadline(
+    node: str, role: str, observed_at: int | None, maximum_age: int
+) -> list[str]:
+    labels = {"node": node, "role": role}
+    lines = [
+        _sample("vpn_observability_evidence_max_age_seconds", maximum_age, **labels)
+    ]
+    if observed_at is not None:
+        lines.append(
+            _sample(
+                "vpn_observability_evidence_timestamp_seconds", observed_at, **labels
+            )
+        )
+    return lines
 
 
 def _freshness(node: str, role: str, fresh: bool) -> str:
@@ -612,9 +636,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--backup-snapshot-max-age-seconds", type=int, required=True)
     parser.add_argument("--certificate", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--required-service", action="append", default=[])
     args = parser.parse_args(argv)
     if (
         not NODE_ID.fullmatch(args.node_id)
+        or len(args.required_service) > 64
+        or len(set(args.required_service)) != len(args.required_service)
+        or any(not NODE_ID.fullmatch(role) for role in args.required_service)
         or not 1 <= args.watchdog_fail_threshold <= 100
         or not 1 <= args.watchdog_alert_limit <= 100
         or not 1 <= args.watchdog_restart_limit <= 100
@@ -663,6 +691,37 @@ def main(argv: list[str] | None = None) -> int:
         failed = True
     lines = [
         "# Managed by observability-agent-health-adapter.",
+        *_deadline(args.node_id, "health-adapter", now, 180),
+        *_deadline(
+            args.node_id,
+            "watchdog",
+            watchdog.observed_at if watchdog else None,
+            args.watchdog_max_age_seconds,
+        ),
+        *_deadline(
+            args.node_id,
+            "stage-status",
+            backup.observed_at if backup else None,
+            args.backup_stage_max_age_seconds,
+        ),
+        *_deadline(
+            args.node_id,
+            "restore-drill",
+            restore.verified_at if restore else None,
+            args.restore_drill_max_age_seconds,
+        ),
+        *_deadline(
+            args.node_id,
+            "restore-snapshot",
+            restore.snapshot_at if restore else None,
+            args.restore_drill_max_age_seconds + args.backup_snapshot_max_age_seconds,
+        ),
+        *[
+            _sample(
+                "vpn_observability_required_service", 1, node=args.node_id, role=role
+            )
+            for role in args.required_service
+        ],
         *_render_watchdog(args.node_id, watchdog),
         *_render_backup_stage(args.node_id, backup),
         *_render_restore(args.node_id, restore),

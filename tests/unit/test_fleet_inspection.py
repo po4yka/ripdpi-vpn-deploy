@@ -1,6 +1,8 @@
 """Passive inspection contracts; fixture results are not live fleet proof."""
 from __future__ import annotations
 
+import errno
+import hashlib
 import importlib.util
 import json
 import os
@@ -335,6 +337,55 @@ def test_command_input_stderr_and_exit_are_bounded():
         m.bounded_command([sys.executable, "-c", "import sys;sys.stderr.write('x'*1024)"], limit=100)
     with pytest.raises(m.InspectionError, match="command-failed"):
         m.bounded_command([sys.executable, "-c", "raise SystemExit(2)"])
+
+
+@pytest.mark.parametrize("operation", ["read", "write"])
+def test_command_retries_transient_nonblocking_io(monkeypatch, operation):
+    m = module()
+    original = getattr(os, operation)
+    retried = False
+
+    def transient(fd, value):
+        nonlocal retried
+        if not retried and not os.get_blocking(fd):
+            retried = True
+            raise BlockingIOError(errno.EAGAIN, "temporary backpressure")
+        return original(fd, value)
+
+    monkeypatch.setattr(os, operation, transient)
+    payload = b"bounded input must survive a transient readiness race"
+    assert m.bounded_command(["/bin/cat"], input_bytes=payload) == payload
+    assert retried
+
+
+def test_command_drains_output_while_input_is_backpressured():
+    m = module()
+    payload = bytes(range(256)) * 512
+    preamble = b"ready" * 16384
+    child = (
+        "import hashlib, sys; "
+        "sys.stdout.buffer.write(b'ready' * 16384); sys.stdout.buffer.flush(); "
+        "value = sys.stdin.buffer.read(); "
+        "sys.stdout.buffer.write(hashlib.sha256(value).hexdigest().encode())"
+    )
+    expected = preamble + hashlib.sha256(payload).hexdigest().encode()
+    assert m.bounded_command(
+        [sys.executable, "-c", child], input_bytes=payload, limit=len(expected)
+    ) == expected
+
+
+def test_command_broken_input_pipe_still_refuses(monkeypatch):
+    m = module()
+    original = os.write
+
+    def broken(fd, value):
+        if not os.get_blocking(fd):
+            raise BrokenPipeError(errno.EPIPE, "closed input")
+        return original(fd, value)
+
+    monkeypatch.setattr(os, "write", broken)
+    with pytest.raises(m.InspectionError, match="command-failed"):
+        m.bounded_command(["/bin/cat"], input_bytes=b"bounded")
 
 
 def controller(monkeypatch):

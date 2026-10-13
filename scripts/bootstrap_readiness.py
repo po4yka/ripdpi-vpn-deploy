@@ -121,6 +121,17 @@ def run_command(command, *, timeout, environment=None, cwd=None, capture=False, 
         except ProcessLookupError:
             # The owned process group has already exited; nothing remains to kill.
             pass
+        except PermissionError:
+            # Darwin can refuse a group containing only the unreaped child.
+            # Reap only an exited child, then retry so descendants still receive
+            # the signal. A live child or another refusal remains an error.
+            if child.poll() is None:
+                raise
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                # The owned group disappeared after reaping; cleanup is complete.
+                pass
         child.wait()
         if input_stream is not None:
             input_stream.close()
