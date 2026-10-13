@@ -20,7 +20,7 @@ Repair the audited alerting defects with executable producer/consumer regression
 - [x] MON-1791825842898373 Repair Telegram payload and response boundaries with realistic regressions #bug !high @item:MON-1791825755591250
 - [x] MON-1791825843454772 Repair evidence parsing, producer freshness and expected coverage #bug !high @item:MON-1791825755591250
 - [x] MON-1791825844021163 Restore independent observer after backup interruptions #bug !high @item:MON-1791825755591250
-- [ ] MON-1791825844572081 Validate all fixes, independently review and prepare source-only PR #bug !high @item:MON-1791825755591250
+- [x] MON-1791825844572081 Validate all fixes, independently review and prepare source-only PR #bug !high @item:MON-1791825755591250
 
 ## Verification
 

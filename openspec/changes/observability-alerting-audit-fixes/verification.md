@@ -1,11 +1,11 @@
 ---
 task_id: MON-1791825755591250
 change: observability-alerting-audit-fixes
-commit_sha: 7530044cb24a9cf40197d55fe96b3d0ec61ed9ef
-local: required
-local_evidence: Current fixture and bounded-I/O repair requires a renewed complete gate. The recorded prior full pinned-toolchain build-gated make check at 7d3b74cbbfa8acc5bef0cf28698af4cbe4117d5e passed 6491 portable tests, 22 subtests, 57 Bats cases, 303 CLI tests, validation and lint/parity. All commit hooks passed. An initial registry-metadata network failure was followed by a successful five-package dependency check and the complete passing gate.
-remote_ci: required
-remote_ci_evidence: Current source requires exact-head checks. Recorded prior frozen source 7d3b74cbbfa8acc5bef0cf28698af4cbe4117d5e completed 92 successful checks and one neutral optional image scan; all nine current branch-required contexts passed. Selected native runtime, monitoring-role failure/recovery and full-stack checks passed.
+commit_sha: 8846bf2c0cee51e36f42eca3b49255e67f81ed09
+local: passed
+local_evidence: Full pinned-toolchain build-gated make check at 8846bf2c0cee51e36f42eca3b49255e67f81ed09 passed 6498 portable tests, 22 subtests, 57 Bats cases, 303 CLI tests, 215 Terraform cases, 59 policy tests, 163 snapshots, validation and lint/parity. Applicable source hooks and independent review passed. A provider registry timeout was followed by the complete passing gate without changing validation.
+remote_ci: passed
+remote_ci_evidence: Frozen repaired source 8846bf2c0cee51e36f42eca3b49255e67f81ed09 completed 92 successful checks and one neutral optional scan; all nine required contexts passed. Native runtime passed 138 tests, and affected-role failure/recovery and full-stack checks passed. The first native job exceeded its overall budget after tests passed; the unchanged-source retry succeeded.
 dry_run: not_applicable
 dry_run_evidence: No real inventory or SSH transaction is authorized.
 staging: not_applicable
@@ -35,7 +35,7 @@ artifact_evidence: Repository-local implementation, regression tests and frozen-
 | REQ-CANARY-ACK | MON-1791873973944403 | 53 portable relay tests include ambiguous edit, restart and preflight persistence regressions | passed |
 | REQ-OPERATOR-DRILL | MON-1791873974708567 | 97 operator tests include actual relay parser and exact receipt rejection paths | passed |
 | REQ-QUEUE-ORDER | MON-1791825843454772 | Seven pinned receiver/readiness regressions passed; exact historical identity, strict and finite-window rejection assertions remain intact; frozen-source native sender recovery passed | passed |
-| REQ-SOURCE-VALIDATION | MON-1791825844572081 | Prior frozen source passed; current fixture and bounded-I/O repair requires renewed full local and exact-head hosted checks | required |
+| REQ-SOURCE-VALIDATION | MON-1791825844572081 | Full local gate, source review and exact-source hosted checks passed at 8846bf2c0cee51e36f42eca3b49255e67f81ed09 | passed |
 
 ## Repository-local implementation evidence
 
@@ -69,4 +69,4 @@ The frozen source completed 92 successful hosted checks and one optional neutral
 
 ## Current local gate follow-up
 
-The first local rerun passed 6449 portable tests and 22 subtests; group ownership and isolated Ansible fixture repairs addressed its 38 failures. The next run passed 6480 portable tests and 22 subtests, including all 12 authority variants, but found seven failures. Complete focused reruns passed 83 release/transition, 159 cascade/deploy, 140 fleet/operator and 12 bootstrap I/O tests. The repairs preserve production deadlines, byte limits, ownership and signal refusals. Transient nonblocking pipe backpressure retries within the existing deadline; group cleanup retries permission refusal only after an exited child is reaped. Final structured and independent review passed. The complete renewed local gate and exact-head CI remain required for these changes. No deployment or real Telegram message was sent.
+The first local rerun passed 6449 portable tests and 22 subtests; group ownership and isolated Ansible fixture repairs addressed its 38 failures. The next run passed 6480 portable tests and 22 subtests, including all 12 authority variants, but found seven failures. Complete focused reruns passed 83 release/transition, 159 cascade/deploy, 140 fleet/operator and 12 bootstrap I/O tests. The repairs preserve production deadlines, byte limits, ownership and signal refusals. Transient nonblocking pipe backpressure retries within the existing deadline; group cleanup retries permission refusal only after an exited child is reaped. Final structured and independent review passed. The complete renewed local gate passed at frozen source `8846bf2c0cee51e36f42eca3b49255e67f81ed09`: 6498 portable tests, 22 subtests, 57 Bats cases, 303 CLI tests and all validation, lint and parity checks. All 12 authority variants passed in the complete suite. Exact-source hosted checks passed with 92 successful contexts and one neutral optional scan, including all nine required contexts. The first native job passed 138 tests but exceeded its overall 20-minute budget; the aggregate correctly refused the cancelled result, and the unchanged-source retry succeeded. No deployment or real Telegram message was sent.

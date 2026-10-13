@@ -2,7 +2,7 @@
 id: MON-1791825755591250
 title: Repair Telegram delivery and service monitoring audit defects
 kind: bug
-status: doing
+status: review
 area: monitoring
 priority: high
 risk: high
@@ -14,7 +14,7 @@ openspec_change: observability-alerting-audit-fixes
 created: 2026-10-12
 updated: 2026-10-13
 related_tasks: []
-status_detail: Fixture and bounded I/O follow-up passed focused checks and review; renewed full local gate and exact-head CI are pending.
+status_detail: Full pinned local gate, exact-source hosted checks and independent review passed at 8846bf2c0cee51e36f42eca3b49255e67f81ed09; deployment and real notifications remain excluded.
 ---
 
 ## Goal
