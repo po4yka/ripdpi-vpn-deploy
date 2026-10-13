@@ -107,6 +107,7 @@
   ansible.builtin.include_role:
     name: runtime-release
   vars:
+    runtime_release_stage_only: "{{ xray_runtime_stage_only | bool }}"
     runtime_release_version: "{{ _xray_runtime_release_identity }}"
     runtime_release_install_root: "{{ xray_install_dir }}"
     runtime_release_binary_name: xray
@@ -128,6 +129,12 @@
     runtime_release_archive_strip_components: 0
   when: not xray_runtime_build_from_source | bool
 
+- name: Retain staged Xray archive selection in the transport plan
+  ansible.builtin.set_fact:
+    transport_runtime_candidates: >-
+      {{ (transport_runtime_candidates | default([])) + runtime_release_candidates }}
+  when: xray_runtime_stage_only | bool and not (xray_runtime_build_from_source | bool)
+
 - name: Capture pinned Xray binary publication state
   ansible.builtin.set_fact:
     _xray_runtime_binary_changed: "{{ runtime_release_changed | bool }}"
@@ -146,6 +153,7 @@
   ansible.builtin.include_role:
     name: runtime-release
   vars:
+    runtime_release_stage_only: "{{ xray_runtime_stage_only | bool }}"
     runtime_release_version: "{{ xray.version }}"
     runtime_release_install_root: "{{ xray_install_dir }}/assets/geoip"
     runtime_release_binary_name: geoip.dat
@@ -168,6 +176,12 @@
     runtime_release_archive_strip_components: 0
   when: xray_runtime_publish_geoip | bool
 
+- name: Retain staged GeoIP selection in the transport plan
+  ansible.builtin.set_fact:
+    transport_runtime_candidates: >-
+      {{ (transport_runtime_candidates | default([])) + runtime_release_candidates }}
+  when: xray_runtime_stage_only | bool and xray_runtime_publish_geoip | bool
+
 - name: Capture bundled GeoIP publication state
   ansible.builtin.set_fact:
     _xray_runtime_geoip_changed: "{{ runtime_release_changed | bool }}"
@@ -188,7 +202,7 @@
     state: link
     force: true
   register: _xray_runtime_current
-  when: xray_runtime_build_from_source | bool
+  when: xray_runtime_build_from_source | bool and not (xray_runtime_stage_only | bool)
 
 - name: Expose pinned Xray runtime
   ansible.builtin.file:
@@ -196,7 +210,50 @@
     dest: /usr/local/bin/xray
     state: link
     force: true
-  when: xray_runtime_build_from_source | bool
+  when: xray_runtime_build_from_source | bool and not (xray_runtime_stage_only | bool)
+
+- name: Stage source-built Xray selection through the shared activation contract
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - '-'
+      - --install-root
+      - "{{ xray_install_dir }}"
+      - --version
+      - "{{ _xray_runtime_release_identity }}"
+      - --binary-name
+      - xray
+      - --public-link
+      - /usr/local/bin/xray
+      - --artifact-type
+      - binary
+      - --artifact-sha256
+      - '{{ xray_runtime_source_sha256 }}'
+      - --candidate-sha256
+      - '{{ xray_runtime_source_sha256 }}'
+      - --arch-key
+      - "{{ 'amd64' if ansible_facts['architecture'] == 'x86_64' else 'arm64' }}"
+      - --arch-slug
+      - '{{ xray_runtime_arch }}'
+      - --owner
+      - root
+      - --group
+      - root
+      - --stage-only
+      - "{{ '--check' if ansible_check_mode else '--apply' }}"
+    stdin: "{{ lookup('ansible.builtin.file', role_path ~ '/../runtime-release/files/runtime_release_activate.py') }}"
+    stdin_add_newline: false
+  register: _xray_source_selection
+  check_mode: false
+  changed_when: (_xray_source_selection.stdout | from_json).changed
+  when: xray_runtime_build_from_source | bool and xray_runtime_stage_only | bool
+
+- name: Retain source-built Xray selection for complete consumer acceptance
+  ansible.builtin.set_fact:
+    transport_runtime_candidates: >-
+      {{ (transport_runtime_candidates | default([])) +
+         ((_xray_source_selection.stdout | from_json).links | default([])) }}
+  when: xray_runtime_build_from_source | bool and xray_runtime_stage_only | bool
 
 - name: Publish Xray runtime change state
   ansible.builtin.set_fact:
@@ -206,7 +263,7 @@
       {{
         (xray_runtime_changed | default(false) | bool) or (
         (
-          (_xray_runtime_current.changed | bool)
+          (_xray_runtime_current.changed | default(false) | bool)
           or (
             (runtime_build_results | default({})).get('xray-core', {}).get('changed', false)
             | bool

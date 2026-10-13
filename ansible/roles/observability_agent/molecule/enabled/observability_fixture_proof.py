@@ -323,33 +323,41 @@ def diagnose(proof):
 
 
 def require_historical(proof):
-    expression = METRIC + '{node="node-fixture"}'
-    rows = []
-    for query in (expression, "timestamp(" + expression + ")"):
-        params = urllib.parse.urlencode({"query": query, "time": proof["outage_end"]})
-        with OPENER.open(SINK + "/api/v1/query?" + params, timeout=5) as response:
-            raw = response.read(65537)
-        if len(raw) > 65536:
-            raise ValueError("oversized_query_result")
-        result = json.loads(raw)
-        if result["status"] != "success" or result["data"]["resultType"] != "vector":
-            raise ValueError("query_did_not_succeed")
-        vector = result["data"]["result"]
-        if len(vector) != 1 or vector[0]["metric"].get("node") != "node-fixture":
-            raise ValueError("missing_or_ambiguous_historical_sample")
-        rows.append(vector[0])
-    labels = [
-        {k: v for k, v in row["metric"].items() if k != "__name__"} for row in rows
-    ]
-    value, timestamp = (float(row["value"][1]) for row in rows)
+    start, end = float(proof["outage_at"]), float(proof["outage_end"])
+    if not (math.isfinite(start) and math.isfinite(end) and 0 < end - start <= 600):
+        raise ValueError("invalid_historical_window")
+    # A concurrent scrape can mark the removed probe stale inside this window.
+    # Query raw historical samples; an instant selector hides them after a marker.
+    expression = METRIC + '{node="node-fixture"}[' + f"{math.ceil((end - start) * 1000)}ms]"
+    params = urllib.parse.urlencode({"query": expression, "time": end})
+    with OPENER.open(SINK + "/api/v1/query?" + params, timeout=5) as response:
+        raw = response.read(65537)
+    if len(raw) > 65536:
+        raise ValueError("oversized_query_result")
+    result = json.loads(raw)
+    if result["status"] != "success" or result["data"]["resultType"] != "matrix":
+        raise ValueError("query_did_not_succeed")
+    matrix = result["data"]["result"]
+    if not matrix:
+        raise ValueError("missing_historical_sample")
+    if len(matrix) != 1:
+        raise ValueError("ambiguous_historical_sample")
+    row = matrix[0]
     if (
-        rows[0]["metric"].get("__name__") != METRIC
-        or labels[0] != labels[1]
-        or not math.isfinite(value)
-        or value != proof["nonce"]
-        or not proof["outage_at"] < timestamp <= proof["outage_end"]
+        row["metric"].get("__name__") != METRIC
+        or row["metric"].get("node") != "node-fixture"
+        or not row["values"]
     ):
         raise ValueError("exact_historical_sample_not_recovered")
+    for sample in row["values"]:
+        timestamp, value = map(float, sample)
+        if not (
+            math.isfinite(value)
+            and value == proof["nonce"]
+            and math.isfinite(timestamp)
+            and start < timestamp <= end
+        ):
+            raise ValueError("exact_historical_sample_not_recovered")
 
 
 def main():

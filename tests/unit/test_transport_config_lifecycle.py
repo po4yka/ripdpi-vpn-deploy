@@ -142,9 +142,9 @@ def test_role_profiles_reject_wrong_types_and_missing_nested_fields(
 
 
 def test_transport_templates_use_format_specific_validation() -> None:
-    hysteria = _named(_tasks("hysteria"), "Render Hysteria config")[
-        "ansible.builtin.template"
-    ]
+    hysteria = next(task["ansible.builtin.template"] for task in
+        _named(_tasks("hysteria"), "Validate Hysteria candidate before quiescing the accepted route")["block"]
+        if "ansible.builtin.template" in task)
     realm = _named(_tasks("hysteria-realm"), "Render sing-box realm config")[
         "ansible.builtin.template"
     ]
@@ -187,14 +187,17 @@ def test_restart_only_handlers_wait_for_service_liveness() -> None:
 def test_hysteria_tls_rotation_enters_the_guarded_generation_transaction() -> None:
     """TLS changes must quiesce the accepted route before single-owner activation."""
     tasks = _tasks("hysteria")
-    tls = _named(tasks, "Drop TLS material")
     detect = _named(tasks, "Detect Hysteria TLS authority change before publication")
-    begin = _named(tasks, "Quiesce accepted topology before changed Hysteria publication")
+    staged = _named(tasks, "Stage complete Hysteria authority for guarded consumer acceptance")
     activate = _named(tasks, "Activate guarded standalone frontend generation")
-    assert detect["check_mode"] is True
-    assert "_hysteria_tls_change.changed" in begin["when"][1]
-    assert tasks.index(detect) < tasks.index(begin) < tasks.index(tls) < tasks.index(activate)
-    assert tls["no_log"] is True and tls["diff"] is False and "notify" not in tls
+    assert detect["check_mode"] is True and detect["no_log"] is True
+    assert tasks.index(detect) < tasks.index(staged) < tasks.index(activate)
+    plan = staged["ansible.builtin.set_fact"]["transport_runtime_candidates"]
+    for name in ("server.fullchain.pem", "server.key"):
+        assert name in plan
+    assert "hysteria.cert_pem | b64encode" in plan and "hysteria.key_pem | b64encode" in plan
+    assert "'mode': 416" in plan and "transport_egress_frontend_gids.hysteria" in plan
+    assert staged["no_log"] is True and staged["diff"] is False and "notify" not in staged
     assert _handlers("hysteria") == []
 
 

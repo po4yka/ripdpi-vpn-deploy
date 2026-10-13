@@ -26,11 +26,15 @@ archive's bundled `geoip.dat` as a hash-pinned read-only runtime asset below
 the Xray install root. The geodata role remains the sole owner of
 `/usr/local/share/xray`; toggling it cannot collide with a fallback symlink.
 
+Protected callers use `xray_runtime_stage_only` for archive, source and bundled asset acquisition. Candidate immutable paths are exposed for complete native validation; selecting current/public/previous links belongs to consumer acceptance. Standalone runtime users retain their acquisition-only lifecycle.
+
 ## What's done well
 
 - Release selection remains driven by the existing SOPS `xray.version` and architecture checksums.
 - Archive installation is idempotent and validates the resulting binary through
   the shared runtime receipt before exposing the symlink.
+
+Archive runtime and GeoIP staging append the generic `runtime_release_candidates` result explicitly to the complete transport plan. Source-build staging retains its own existing complete candidate selection.
 
 ## Pitfalls
 
@@ -44,3 +48,5 @@ the Xray install root. The geodata role remains the sole owner of
   binary identity through configuration rollback, including Hysteria-only use.
 
 - `xray_runtime_bundled_asset_dir` exposes the immutable archive-derived GeoIP release directory, distinct from its mutable public link. Frontend validation and runtime paths bind to this versioned authority; geodata remains an independently owned publication.
+
+Source-built staged releases publish the shared immutable byte receipt from the pinned compiled-binary digest. Operator rollback selects exact archive or source identities through that same ownership contract; bundled assets keep the unsuffixed semantic version.

@@ -1,0 +1,12 @@
+---
+- name: Prepare the owned transport canary for complete stack convergence
+  hosts: all
+  become: true
+  vars_files:
+    - full-stack/test-secrets.yaml
+  vars:
+    transport_native_hysteria_tls: '{{ hysteria }}'
+    transport_molecule_canary_source: '{{ playbook_dir }}/../../tests/integration/transport_runtime_acceptance/molecule_canary.py'
+  tasks:
+    - name: Prepare the shared owned native transport peer
+      ansible.builtin.import_tasks: tasks/transport-canary.yml

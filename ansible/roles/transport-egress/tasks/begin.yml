@@ -24,6 +24,11 @@
       register: _transport_egress_previous
       changed_when: false
       no_log: true
+    - name: Persist complete-route recovery intent before any candidate publication
+      ansible.builtin.command:
+        argv: [/usr/bin/python3, -Es, '{{ transport_egress_libexec_dir }}/transport_runtime_outer.py', begin]
+      changed_when: true
+      no_log: true
     - name: Stop the accepted owned controller before changing its credentials
       ansible.builtin.systemd_service:
         name: '{{ item }}'

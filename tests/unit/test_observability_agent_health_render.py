@@ -39,7 +39,7 @@ def test_role_installs_starts_and_convergently_removes_health_adapter() -> None:
     tasks = (ROLE / "tasks/main.yml").read_text()
 
     install = tasks.index("Install watchdog and backup health adapter")
-    units = tasks.index("Install observability agent units")
+    units = tasks.index("Install observability agent adapter units after sender acceptance")
     start = tasks.index("Enable and start observability agent health adapter timer")
     assert install < units < start
     for path in (

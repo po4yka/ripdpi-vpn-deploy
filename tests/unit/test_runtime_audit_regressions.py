@@ -415,70 +415,68 @@ def test_xray_candidate_validation_can_use_explicit_unpublished_assets(tmp_path)
     "valid,activation_success", [(False, False), (True, False), (True, True)]
 )
 def test_config_rollback_preserves_original_on_validation_or_activation_failure(
-    tmp_path,
+    private_authority_path,
     valid,
     activation_success,
+    monkeypatch,
 ):
-    current = tmp_path / "config.json"
-    previous = tmp_path / "config.json.prev"
-    current.write_text("original")
-    previous.write_text("candidate" if valid else "invalid")
-    validator = executable(
-        tmp_path / "validate",
-        f"""#!{sys.executable}
-from pathlib import Path
-import sys
-raise SystemExit(0 if Path(sys.argv[-1]).read_text() != 'invalid' else 1)
-""",
-    )
-    marker = tmp_path / "restarts"
-    restart = executable(
-        tmp_path / "restart",
-        f"""#!{sys.executable}
-from pathlib import Path
-p=Path({str(marker)!r})
-p.write_text((p.read_text() if p.exists() else '') + Path({str(current)!r}).read_text() + '\\n')
-raise SystemExit(0 if {activation_success!r} or Path({str(current)!r}).read_text() == 'original' else 1)
-""",
-    )
-    selected = tasks("playbooks/rollback-config.yml")[0]["tasks"][1:]
-    selected = relocate(
-        selected,
-        {
-            "/etc/xray/config.json": str(current),
-            "/usr/local/libexec/vpn-xray-validate": str(validator),
-        },
-    )
-
-    def replace_service_boundary(items):
-        for task in items:
-            if "ansible.builtin.systemd_service" in task:
-                task.pop("ansible.builtin.systemd_service")
-                task["ansible.builtin.command"] = {"argv": [str(restart)]}
-                task["changed_when"] = True
-            if (
-                task.get("ansible.builtin.command", {}).get("cmd")
-                == "systemctl is-active xray"
-            ):
-                task["ansible.builtin.command"] = {
-                    "argv": [sys.executable, "-c", 'print("active")']
-                }
-            for key in ("block", "rescue", "always"):
-                replace_service_boundary(task.get(key, []))
-
-    replace_service_boundary(selected)
-    result = run_play(tmp_path, selected, {})
-    assert (result.returncode == 0) is (valid and activation_success), (
-        result.stdout + result.stderr
-    )
-    assert current.read_text() == (
-        "candidate" if valid and activation_success else "original"
-    )
-    assert previous.read_text() == ("candidate" if valid else "invalid")
+    # Portable real journal/inode boundary model; vendor forwarding is exercised
+    # independently by the isolated native rollback lane.
+    tmp_path = private_authority_path
+    import base64
+    sys.path.insert(0, str(ANSIBLE/'roles/runtime-release/files'))
+    import transport_runtime_transaction as core
+    import transport_runtime_accept as accept
+    native_node = core.node
+    monkeypatch.setattr(core, 'node', lambda path, _uid, **options: native_node(path, os.getuid(), **options))
+    tmp_path.chmod(0o755)
+    current, previous = tmp_path/'config.json', tmp_path/'config.json.prev'
+    current.write_bytes(b'original'); current.chmod(0o640)
+    previous.write_bytes(b'candidate' if valid else b'invalid'); previous.chmod(0o640)
+    events = []
+    class Boundary:
+        def retained(self, _receipt): pass
+        def validate_units(self, units): assert units == {'running': True}
+        def validate(self):
+            events.append('validate')
+            if not valid: raise RuntimeError('model-validation-refused')
+        def inspect(self): return {'running': True}
+        def stop(self): events.append('stop')
+        def start(self): events.append('start')
+        def ensure(self): return False
+        def restore(self, units):
+            assert units == {'running': True}
+            events.append('restore')
+        def ready(self):
+            events.append(current.read_text())
+            if current.read_bytes() == b'candidate' and not activation_success:
+                raise RuntimeError('model-readiness-refused')
+    def plan(path, data):
+        return {'path':str(path),'data':base64.b64encode(data).decode(),'mode':0o640,'gid':os.getgid()}
+    owner = Boundary()
+    with core.Transaction(tmp_path/'state', uid=os.getuid()) as tx:
+        tx.record('accepted.json', {'schema':1,'nodes':{str(path):core.node(path,os.getuid()) for path in (current,previous)},
+                                   'previous':None,'units':owner.inspect()})
+    before = [(path.read_bytes(), path.stat().st_ino) for path in (current,previous)]
+    receipt = (tmp_path/'state/accepted.json').read_bytes()
+    candidate = accept.restore_points([plan(current,previous.read_bytes())])
+    with core.Transaction(tmp_path/'state',uid=os.getuid()) as tx:
+        if valid and activation_success:
+            tx.apply(candidate,owner)
+        else:
+            with pytest.raises(RuntimeError): tx.apply(candidate,owner)
+    if valid and activation_success:
+        assert current.read_bytes() == b'candidate' and previous.read_bytes() == b'original'
+    else:
+        assert [(path.read_bytes(),path.stat().st_ino) for path in (current,previous)] == before
+        assert (tmp_path/'state/accepted.json').read_bytes() == receipt
     if not valid:
-        assert not marker.exists()
+        assert events == ['validate']
     elif not activation_success:
-        assert marker.read_text().splitlines() == ["candidate", "original"]
+        assert events[-2:] == ['restore','original']
+    operator = tasks('playbooks/rollback-config.yml')[0]['tasks'][0]
+    assert "transport_runtime_rollback.py', 'config'" in operator['ansible.builtin.command']['argv']
+    assert operator['check_mode'] is False and operator['no_log'] is True and operator['diff'] is False
 
 
 @pytest.mark.parametrize(
@@ -530,23 +528,9 @@ def test_maintenance_selects_effective_services_and_every_awg_instance(
 
 
 @pytest.mark.parametrize("runtime_changed", [False, True])
-def test_binary_only_observability_updates_restart_the_selected_runtime(
+def test_binary_only_collector_updates_restart_the_selected_runtime(
     tmp_path, runtime_changed
 ):
-    agent = named(
-        tasks("roles/observability_agent/tasks/main.yml"),
-        "Configure observability agent when feature is enabled",
-    )["block"]
-    agent_activation = named(
-        agent, "Activate and verify observability configuration generation"
-    )
-    sender = named(
-        agent_activation["block"],
-        "Restart observability agent on the complete generation",
-    )
-    sender.pop("ansible.builtin.systemd_service")
-    sender["ansible.builtin.debug"] = {"msg": "restarted"}
-    sender["register"] = "sender_action"
     collector = named(
         tasks("roles/observability_control_plane/tasks/enable.yml"),
         "Activate complete validated Prometheus generation with rollback",
@@ -560,12 +544,10 @@ def test_binary_only_observability_updates_restart_the_selected_runtime(
     result = run_play(
         tmp_path,
         [
-            sender,
             receiver,
             {
                 "ansible.builtin.assert": {
                     "that": [
-                        "(sender_action.skipped | default(false)) == (not binary_changed)",
                         'collector_action.msg == ("restarted" if binary_changed else "started")',
                     ]
                 }
@@ -585,58 +567,24 @@ def test_binary_only_observability_updates_restart_the_selected_runtime(
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_observability_failed_upgrade_restores_the_old_binary_links(tmp_path):
-    agent = named(
-        tasks("roles/observability_agent/tasks/main.yml"),
-        "Configure observability agent when feature is enabled",
-    )["block"]
-    agent_activation = named(
-        agent, "Activate and verify observability configuration generation"
-    )
+def test_collector_failed_upgrade_restores_the_old_binary_link(tmp_path):
     collector = named(
         tasks("roles/observability_control_plane/tasks/enable.yml"),
         "Activate complete validated Prometheus generation with rollback",
     )
-    paths = {}
-    for name in ("sender", "collector"):
-        root = tmp_path / name
-        (root / "releases/old").mkdir(parents=True)
-        (root / "releases/new").mkdir()
-        (root / "current").symlink_to(root / "releases/new")
-        paths[name] = root
-    sender = named(
-        agent_activation["rescue"],
-        "Restore the previous sender binary after failed activation",
-    )
-    receiver = named(
-        collector["rescue"],
-        "Restore the previous collector binary after failed activation",
-    )
-    result = run_play(
-        tmp_path,
-        [sender, receiver],
-        {
-            "observability_agent": {"install_root": str(paths["sender"])},
-            "observability_control_plane": {"install_root": str(paths["collector"])},
-            "_observability_agent_runtime_changed": True,
-            "_observability_prometheus_runtime_changed": True,
-            "_observability_agent_previous_release": {
-                "stat": {
-                    "islnk": True,
-                    "lnk_source": str(paths["sender"] / "releases/old"),
-                }
-            },
-            "_observability_prometheus_previous_release": {
-                "stat": {
-                    "islnk": True,
-                    "lnk_source": str(paths["collector"] / "releases/old"),
-                }
-            },
-        },
-    )
+    root = tmp_path / "collector"
+    (root / "releases/old").mkdir(parents=True)
+    (root / "releases/new").mkdir()
+    (root / "current").symlink_to(root / "releases/new")
+    receiver = named(collector["rescue"], "Restore the previous collector binary after failed activation")
+    result = run_play(tmp_path, [receiver], {
+        "observability_control_plane": {"install_root": str(root)},
+        "_observability_prometheus_runtime_changed": True,
+        "_observability_prometheus_previous_release": {"stat": {
+            "islnk": True, "lnk_source": str(root / "releases/old")}},
+    })
     assert result.returncode == 0, result.stdout + result.stderr
-    for root in paths.values():
-        assert (root / "current").resolve() == root / "releases/old"
+    assert (root / "current").resolve() == root / "releases/old"
 
 
 def test_existing_ingress_complete_authority_uses_the_compensating_transaction():
@@ -696,8 +644,15 @@ def test_observability_early_validation_failure_reverts_binary_before_retry(
             "Reconcile control-plane lifecycle with runtime rollback",
         )
         role, prefix = "observability_control_plane", "_observability_prometheus"
-    # Fail before the activation block. The production outer rescue must restore
-    # the link even though no runtime_release_changed result was recorded yet.
+    # Sender acquisition stages without changing current. Collector acquisition
+    # still publishes before this boundary and requires its outer compensation.
+    if component == "sender":
+        (root / "current").unlink()
+        if had_previous:
+            (root / "current").symlink_to(root / "old")
+        role_source = (ANSIBLE / "roles/observability_agent/tasks/main.yml").read_text()
+        assert "runtime_release_stage_only: true" in role_source
+    before_inode = (root / "current").lstat().st_ino if (root / "current").is_symlink() else None
     outer["block"] = [
         {"ansible.builtin.fail": {"msg": "synthetic candidate validation failure"}}
     ]
@@ -717,6 +672,8 @@ def test_observability_early_validation_failure_reverts_binary_before_retry(
     assert result.returncode != 0
     if had_previous:
         assert (root / "current").resolve() == root / "old"
+        if component == "sender":
+            assert (root / "current").lstat().st_ino == before_inode
     else:
         assert not (root / "current").is_symlink()
 
@@ -882,12 +839,7 @@ def test_agent_molecule_distinguishes_activation_from_preflight_through_outer_re
         tasks("roles/observability_agent/tasks/main.yml"),
         "Configure observability agent when feature is enabled",
     )
-    activation = named(
-        outer["block"], "Activate and verify observability configuration generation"
-    )
-    inner_refusal = named(
-        activation["rescue"], "Refuse failed observability generation activation"
-    )
+    inner_refusal = named(outer["block"], "Refuse failed observability generation activation")
     # Only exercise exception propagation here; native systemd restoration stays
     # in Molecule. Stale readiness facts must never make preflight count as it.
     outer["block"] = [
@@ -923,6 +875,7 @@ def test_agent_molecule_distinguishes_activation_from_preflight_through_outer_re
             "_observability_agent_failed_task_name": inner_refusal["name"],
             "_observability_agent_can_restore_runtime": True,
             "_observability_agent_restored_ready": {"rc": 0},
+            "_observability_agent_acceptance": {"rc": 2},
         },
     )
     assert (result.returncode == 0) == activation_failure, result.stdout + result.stderr

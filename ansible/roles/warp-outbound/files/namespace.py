@@ -1,6 +1,8 @@
 """Own exactly one WARP namespace/veth pair; retain vendor registration state."""
 from __future__ import annotations
 import argparse
+import errno
+import re
 import json
 import os
 from pathlib import Path
@@ -197,10 +199,12 @@ def retire():
                 try:
                     if (process/'ns/net').stat().st_ino == inode:
                         raise Refusal('namespace-process-still-active')
-                except FileNotFoundError:
-                    # The process exited during /proc traversal. Other stat
-                    # failures remain fatal before namespace deletion.
-                    continue
+                except OSError as error:
+                    # A vanished or zombie process owns no inspectable namespace.
+                    # Permission, I/O and all other errors still refuse deletion.
+                    if error.errno in {errno.ENOENT, errno.ESRCH}:
+                        continue
+                    raise
         names = {value['ifname'] for value in json.loads(command(['ip', '-n', NAMESPACE, '-j', 'link', 'show']))}
         if names - {'lo', PEER, TUNNEL}:
             raise Refusal('namespace-foreign-link')
@@ -229,6 +233,12 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except (OSError, Refusal, ValueError, KeyError, TypeError, subprocess.SubprocessError):
-        print('warp-namespace-refused', file=sys.stderr)
+    except (OSError, Refusal, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
+        category = str(error) if isinstance(error, Refusal) else 'warp-namespace-refused'
+        if isinstance(error, OSError) and error.errno in {errno.ENOENT, errno.ESRCH, errno.EACCES, errno.EPERM, errno.EBUSY}:
+            category = 'namespace-os-error-' + str(error.errno)
+        if re.fullmatch('[a-z][a-z0-9-]{0,63}', category) is None:
+            category = 'warp-namespace-refused'
+        print(json.dumps({'status': 'refused', 'changed': False, 'category': category}, sort_keys=True))
+        print(category, file=sys.stderr)
         raise SystemExit(1)

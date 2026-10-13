@@ -94,6 +94,7 @@ matrix records coverage and commands rather than manually maintained totals.
 | **vpnd mutation testing (weekly)** | `make vpnd-mutants` (`.github/workflows/mutants.yml`) | real unmutated pytest baseline | full `pyproject.toml` mutation scope | Pinned mutmut 3.8 runs in a disposable tracked working-tree copy with sibling docs, fixtures and scripts; stage new inputs first. The wrapper rejects partial selections. Exit 2 means completed structured results contain survivors; empty, uncovered, interrupted, timed-out or technically failed results fail. Logs/reports are retained per run for 14 days. |
 | **vpnd release SBOM** | shared `.github/actions/vpnd-sbom` in required CI and release publication | exact hash-locked Python runtime inventory | pinned CycloneDX generation | Verifies package version, direct pins, runtime components and unchanged `vpnd/requirements.txt` before publishing `dist/sbom.json`. The five runtime packages have reviewed license-file/SPDX and official non-yanked source checks under `make vpnd-dependency-check`. Deployment inventories remain separate under `make emit-sbom`. |
 | **Native runtime integration** | required `native-runtime` CI lane; `make test-native-runtime` in disposable Linux root environment | Terraform 1.15.2 FD-backed commands and saved-plan lifecycle | Alertmanager 0.28.1 webhook timeout; supplementary-group metrics reader | `native_runtime` tests; SHA256-verified Alertmanager/amtool; missing tools or UID/GID capabilities fail. No cloud credentials or provider resources. |
+| **Complete transport runtime acceptance** | required `transport-runtime-acceptance` CI lane; `make test-transport-runtime-acceptance` in a separate fresh Linux root | canonical Xray/Hysteria adoption, retry, compensation, retirement and operator rollback | actual pinned clients, native parser/admission, HTTPS receiver and real publisher SIGKILL | Every complete scenario executes; foreign authority and selected skips fail. Together with the existing native lane, covers all native cases. |
 | **MTProxy Go helper** | required `go-helper` CI lane; `make test-probe-matrix-mtproto` in `ci-fast` | Go tests with locked module resolution and uncached execution | injected connector; no Telegram traffic | Go 1.27.1, dependency cache keyed by `go.sum`; native helper tests supplement Python driver coverage. |
 | **REALITY scanner wrapper** | pytest | installer, CSV filtering, ASN status, top limit, empty-output failure | offline scanner/WHOIS fixtures | Full public TLS scan remains an explicit operator integration (`scripts/scan-reality-targets.sh --seeds <file>`), not automated coverage. No placeholder or unconditional skipped test. |
 | **Python tests** | pytest (CI and local; `tests/unit/` + `scripts/tests/`) | n/a | n/a | Covers emit-singbox, SOPS round-trip, render-inventory including custom SSH ports, replacement safety, Vultr control-plane preflight and guest IPv4 convergence, rolling OS maintenance and recurring security-update policy, relay/fallback, subscription token revocation lifecycle, client registry refresh/drift contracts, probe-matrix drivers/contracts/provisioning, cascade attestation freshness, tri-state per-connection classification, authenticated per-leg probe state and health freshness, inert Terraform and role/profile guards, in-cohort rule-drift canary classification, Snell refinement classification, singbox kill-switch, policy-ratelimit ban logic, burn-check error metrics, listener-collision guard, node manifest source parity, receipt-owned transactional runtime releases and serialized publication, crash-recoverable source-build write-ahead journals, AmneziaWG check-mode build receipts and arm64 version-floor tracking, recurring real-VPS AWG/NAT source binding, generation transitions, transactional rotation, cleanup, and fail-closed evidence, cloud-init completion and restart acceptance, deployment profiles, strict live-inventory and extra-vars gates, injected-fact removal, watchdog bounded recovery, Xray StatsService and redacted exporter contracts, check-mode-safe service handlers, restricted Tailnet enrollment, fixed controller-loss and reboot recovery acceptance, deploy-controller credential isolation, exact-resource staging cleanup, Molecule dependency-path and driver-pin guards, honeypot log retention, calendar-window metrics, dual-stack binding, public-site behavior, P1 node-local hostname resolution, XHTTP-only backend rendering, REALITY self-steal contracts, repository symlink scanning, and protocol-liveness evaluation, sentinel cleanup, onboarding, and OTP rotation gates. (Shell orchestrator dry-runs migrated to bats — see below.) |
@@ -517,13 +518,21 @@ When you add a role, the checklist is:
 
 `make test-unit` and the four pytest CI groups select `not native_runtime` from
 `tests/unit/` and `scripts/tests/` (including taskctl regressions);
-`make test-native-runtime` selects the complementary `native_runtime` tests on an
-isolated Linux runner as root. Both fail if any selected test is skipped.
-The native lane is required by `required checks` and deliberately separate from
+The complementary `native_runtime` tests run as root in two separate disposable
+Linux environments: `make test-native-runtime` runs the existing integration
+suite, and `make test-transport-runtime-acceptance` runs every complete consumer
+transaction scenario in a fresh systemd container on its dedicated runner.
+The pinned container isolates host firewall topology and runtime authority.
+Both reject selected skips. Their
+combined selection covers all native tests; the transaction lab preserves its
+refusal of foreign runtime authority left by another fixture.
+Both native lanes are required by `required checks` and deliberately separate from
 the portable `ci-fast` / `check` bundle: never elevate the full local test suite.
 For local native verification, provide Terraform 1.15.2 on PATH and
 `ALERTMANAGER_BIN` pointing to Alertmanager 0.28.1 with sibling `amtool` inside
 a disposable Linux environment, then run `make test-native-runtime` there.
+Run `make test-transport-runtime-acceptance` in a separate fresh disposable root
+with `TRANSPORT_NATIVE_ISOLATED=1`, systemd, nftables, iproute2, OpenSSL and curl.
 
 To inspect the current Python inventory without executing tests:
 

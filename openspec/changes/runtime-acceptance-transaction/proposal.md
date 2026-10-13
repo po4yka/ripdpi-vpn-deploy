@@ -27,6 +27,10 @@ Audit coverage: A04; planning baseline `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3
 
 ## Impact
 
+- ansible/roles/warp-outbound/ (bounded process-disappearance retirement and CI refusal diagnostics)
+- tests/unit/test_warp_pin_contract.py
+- ansible/roles/observability_agent/ (sender activation and retained queue)
+- tests/unit/test_observability_runtime_queue.py
 - ansible/roles/runtime-release/tasks/main.yml
 - ansible/roles/runtime-release/files/runtime_release_activate.py
 - ansible/roles/runtime-release/CLAUDE.md
@@ -43,5 +47,19 @@ Audit coverage: A04; planning baseline `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3
 - tests/unit/test_hysteria_runtime_release.py
 - NEW: tests/unit/test_transport_runtime_acceptance.py
 - NEW: tests/integration/transport_runtime_acceptance/
-- Planning only: no implementation, private-input mutation, provider action or deployment is authorized by these artifacts.
+- ansible/roles/runtime-release/files/transport_runtime_*.py
+- ansible/roles/transport-egress/tasks/runtime-*.yml
+- ansible/roles/transport-egress/tasks/begin.yml
+- ansible/roles/transport-egress/tasks/rollback.yml
+- ansible/roles/transport-egress/files/snapshot.py
+- ansible/roles/geodata/
+- ansible/playbooks/rollback-config.yml
+- ansible/playbooks/rollback-xray.yml
+- ansible/playbooks/tasks/transport-ingress-commit.yml
+- ansible/molecule/
+- tests/unit/test_transport_runtime_acceptance_native.py
+- tests/unit/test_transport_runtime_adapter.py
+- Makefile
+- secrets/prod.secrets.example.yaml
+- Scope: source implementation, isolated native validation and PR integration. Provider actions and deployment remain outside scope.
 - Dependency and prerequisite ownership is recorded in the portfolio and design; source-fixed predecessor evidence stays intact.

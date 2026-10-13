@@ -180,7 +180,8 @@ def test_installed_ansible_rotation_uses_shared_shape_from_playbook_context(
                   if task["name"] == "Reconcile protected credential rotation through authoritative roles")
     assert any(task.get("ansible.builtin.include_role") == {"name": "xray"} for task in stages)
     role_tasks = yaml.safe_load((ROOT / "ansible/roles/xray/tasks/enable.yml").read_text())
-    task = next(task for task in role_tasks if task["name"] == "Render and validate Xray config")
+    validation = next(task for task in role_tasks if task["name"] == "Validate Xray candidate before quiescing the accepted route")
+    task = next(task for task in validation["block"] if "ansible.builtin.template" in task)
     task = deepcopy(task)
     destination = tmp_path / "xray-config.json"
     template_args = task["ansible.builtin.template"]

@@ -1,0 +1,134 @@
+---
+- name: Install owned native canary dependencies
+  ansible.builtin.apt:
+    name: [iproute2, openssl, ca-certificates]
+    state: present
+
+- name: Prepare SSH diagnostic runtime directory without starting SSH
+  ansible.builtin.file:
+    path: /run/sshd
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Allocate private Molecule canary authority
+  ansible.builtin.file:
+    path: /var/lib/molecule-transport-canary
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Install shared disconnected Molecule canary source
+  ansible.builtin.copy:
+    src: >-
+      {{ transport_molecule_canary_source | default(playbook_dir ~
+         '/../../../../../tests/integration/transport_runtime_acceptance/molecule_canary.py') }}
+    dest: /usr/local/libexec/molecule-transport-canary.py
+    owner: root
+    group: root
+    mode: '0755'
+  register: _molecule_canary_source
+
+- name: Install synthetic TLS peer authority
+  ansible.builtin.copy:
+    content: '{{ item.content }}'
+    dest: '/var/lib/molecule-transport-canary/{{ item.name }}'
+    owner: root
+    group: root
+    mode: '0600'
+  loop:
+    - {name: cert.pem, content: '{{ transport_native_hysteria_tls.cert_pem }}'}
+    - {name: key.pem, content: '{{ transport_native_hysteria_tls.key_pem }}'}
+  register: _molecule_canary_tls
+  no_log: true
+  diff: false
+
+- name: Generate disposable HTTPS canary authority with its exact numeric SAN
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - req
+      - -x509
+      - -newkey
+      - rsa:2048
+      - -nodes
+      - -days
+      - '2'
+      - -subj
+      - /CN=molecule-transport-canary
+      - -addext
+      - subjectAltName=IP:192.0.2.80
+      - -keyout
+      - /var/lib/molecule-transport-canary/canary.key
+      - -out
+      - /var/lib/molecule-transport-canary/canary.pem
+    creates: /var/lib/molecule-transport-canary/canary.pem
+  register: _molecule_canary_certificate
+  no_log: true
+
+- name: Keep generated canary private key sealed
+  ansible.builtin.file:
+    path: /var/lib/molecule-transport-canary/canary.key
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Trust only the disposable canary certificate in the owned container
+  ansible.builtin.copy:
+    remote_src: true
+    src: /var/lib/molecule-transport-canary/canary.pem
+    dest: /usr/local/share/ca-certificates/molecule-transport-canary.crt
+    owner: root
+    group: root
+    mode: '0644'
+  register: _molecule_canary_ca
+
+- name: Refresh the owned container trust store after canary publication
+  ansible.builtin.command:
+    argv: [update-ca-certificates]
+  environment:
+    LC_ALL: C
+  register: _molecule_canary_trust
+  changed_when: "'0 added, 0 removed' not in _molecule_canary_trust.stdout"
+
+- name: Prepare owned disconnected recipient namespace
+  ansible.builtin.command:
+    argv: [python3, /usr/local/libexec/molecule-transport-canary.py, --prepare]
+    creates: /run/netns/molecule-transport-canary
+
+- name: Install owned canary and REALITY TLS peer unit
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/molecule-transport-canary.service
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Owned disconnected Molecule transport peer
+      [Service]
+      ExecStart=/usr/sbin/ip netns exec molecule-transport-canary /usr/bin/python3 \
+        /usr/local/libexec/molecule-transport-canary.py /var/lib/molecule-transport-canary
+      KillMode=control-group
+  register: _molecule_canary_unit
+
+- name: Start owned native transport canary
+  ansible.builtin.systemd_service:
+    name: molecule-transport-canary.service
+    daemon_reload: true
+    state: >-
+      {{ 'restarted' if (_molecule_canary_source.changed or _molecule_canary_tls.changed
+                        or _molecule_canary_unit.changed or _molecule_canary_certificate.changed
+                        or _molecule_canary_ca.changed) else 'started' }}
+
+- name: Require authenticated HTTPS canary response before consumer convergence
+  ansible.builtin.uri:
+    url: https://192.0.2.80:18080/
+    validate_certs: true
+    status_code: 204
+  register: _molecule_canary_response
+  until: _molecule_canary_response.status | default(0) == 204
+  retries: 5
+  delay: 1
+  changed_when: false

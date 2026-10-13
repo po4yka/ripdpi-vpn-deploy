@@ -523,6 +523,7 @@
           - "{{ runtime_release_storage_group }}"
           - --requires-artifact
           - "{{ _runtime_release_needs_artifact | bool | lower }}"
+          - "{{ '--stage-only' if runtime_release_stage_only | bool else '--apply' }}"
           - "{{ '--check' if ansible_check_mode else '--apply' }}"
         stdin: >-
           {{ lookup('ansible.builtin.file',
@@ -578,3 +579,8 @@
     runtime_release_changed: >-
       {{ (_runtime_release_activation.stdout | from_json).changed }}
     runtime_release_arch_slug: "{{ runtime_release_arch_slug }}"
+
+- name: Retain staged runtime selection for its consumer
+  ansible.builtin.set_fact:
+    runtime_release_candidates: >-
+      {{ (_runtime_release_activation.stdout | from_json).links | default([]) }}

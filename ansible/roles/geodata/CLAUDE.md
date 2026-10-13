@@ -27,6 +27,8 @@ acknowledgement forces unchanged activation before success. Inactive
 Xray remains inactive and cannot earn an active adoption receipt. Disabling
 stops scheduling while retaining these recovery and data files.
 
+Protected frontend convergence and the refresh timer stage a complete verified pair in an immutable hash-selected asset candidate directory. Consumer acceptance validates Xray against that staged directory, publishes both served assets and commits the geodata adoption receipt only after authenticated frontend traffic. The timer uses stored root-only acceptance parameters and the same consumer journal/controller; it no longer bypasses transport acceptance with a direct Xray restart. Geodata-only profiles retain their paired publication lifecycle.
+
 ## What's done well
 
 - **Fail-closed on checksum mismatch** — the paired publisher checks both SHA256 digests and refuses

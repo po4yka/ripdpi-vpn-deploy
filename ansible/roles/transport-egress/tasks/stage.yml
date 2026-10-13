@@ -47,6 +47,8 @@
     - name: Install shared verified Xray runtime for private gateways
       ansible.builtin.include_role:
         name: xray-runtime
+      vars:
+        xray_runtime_stage_only: true
     - name: Obtain canonical forbidden sets on the controller
       ansible.builtin.command:
         argv:
@@ -272,8 +274,9 @@
             - apply
             - verify
           register: _transport_egress_host_policy
-          changed_when: item == 'apply' and (_transport_egress_host_policy.stdout | default('{}') | from_json).changed
-            | default(false) | bool
+          changed_when: >-
+            _transport_egress_host_policy.rc == 0 and item == 'apply' and
+            (_transport_egress_host_policy.stdout | from_json).changed | default(false) | bool
           no_log: true
         - name: Apply and verify deny-all namespace policy before vendor activation
           ansible.builtin.command:
@@ -288,8 +291,9 @@
             - apply
             - verify
           register: _transport_egress_namespace_policy
-          changed_when: item == 'apply' and (_transport_egress_namespace_policy.stdout | default('{}') | from_json).changed
-            | default(false) | bool
+          changed_when: >-
+            _transport_egress_namespace_policy.rc == 0 and item == 'apply' and
+            (_transport_egress_namespace_policy.stdout | from_json).changed | default(false) | bool
           no_log: true
           when: transport_egress_warp_enabled | bool
         - name: Verify actual published unit syntax

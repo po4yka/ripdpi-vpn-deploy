@@ -1,19 +1,20 @@
 ---
-id: "ANS-1791617913525586"
-title: "Commit transport runtimes only after complete configuration and readiness acceptance"
-kind: "bug"
-status: "backlog"
-area: "ansible"
-priority: "high"
-risk: "high"
-owner: "primary"
-parent: "EPC-1791618453830051"
+id: ANS-1791617913525586
+title: Commit transport runtimes only after complete configuration and readiness acceptance
+kind: bug
+status: review
+area: ansible
+priority: high
+risk: high
+owner: primary
+parent: EPC-1791618453830051
 blocked_by: []
-spec_mode: "required"
-openspec_change: "runtime-acceptance-transaction"
-created: "2026-10-10"
-updated: "2026-10-10"
-related_tasks: ["SEC-1791471757439452", "ANS-1791562764586678", "ANS-1791586652330612"]
+spec_mode: required
+openspec_change: runtime-acceptance-transaction
+created: 2026-10-10
+updated: 2026-10-13
+related_tasks: [SEC-1791471757439452, ANS-1791562764586678, ANS-1791586652330612]
+status_detail: Complete local gate and exact-source hosted checks passed at 8e58941a, including native transport forwarding and historical sender queue recovery; independent source and security review approved. No live rollout is claimed.
 ---
 
 ## Goal

@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+CI selects both native integration and complete transport acceptance together.
+Each has its own disposable runner; the consumer lab never adopts or removes
+another fixture's runtime authority. The required job graph checks both results.
+
 The canonical render fixture supplies watchdog AWG interface names from synthetic
 instances or the legacy interface. Snapshot rendering does not load real credentials
 or invoke deployment normalization.

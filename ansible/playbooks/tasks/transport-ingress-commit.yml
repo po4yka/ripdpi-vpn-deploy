@@ -13,6 +13,15 @@
   diff: false
   when: transport_site_transaction_active | default(false) | bool
 
+- name: Commit the complete native consumer recovery boundary
+  ansible.builtin.command:
+    argv: [/usr/bin/python3, -Es, /usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py, finish]
+  changed_when: false
+  no_log: true
+  when:
+    - not ansible_check_mode
+    - (transport_egress_role_enabled | default(false) | bool) or (_transport_egress_full_retirement | default(false) | bool)
+
 - name: Close the complete protected site transaction
   ansible.builtin.set_fact:
     transport_site_transaction_active: false

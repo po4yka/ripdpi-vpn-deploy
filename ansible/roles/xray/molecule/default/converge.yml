@@ -32,9 +32,9 @@
       linux_amd64_sha256: 23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae
       linux_arm64_sha256: 4d30283ae614e3057f730f67cd088a42be6fdf91f8639d82cb69e48cde80413c
       reality_private_key: 6MpEOecc4Vy3oLd7MWFEozYpJ61O6x98ULDrgYVJxV8
-      target: www.cloudflare.com:443
+      target: 192.0.2.90:8444
       server_names:
-        - www.cloudflare.com
+        - vpn.example.com
       xhttp_path: /test
       clients:
         - name: alice
@@ -44,6 +44,8 @@
           uuid: 22222222-2222-2222-2222-222222222222
           short_id: cafebabe
   pre_tasks:
+    - name: Prepare the shared owned transport canary
+      ansible.builtin.import_tasks: ../../../../molecule/tasks/transport-canary.yml
     - name: Create Xray runtime fixture directory
       ansible.builtin.file:
         path: /var/tmp/xray-molecule

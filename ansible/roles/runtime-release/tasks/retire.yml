@@ -31,6 +31,50 @@
   ansible.builtin.set_fact:
     _runtime_retire_effective_paths: "{{ (_runtime_retire_preflight.stdout | from_json).paths }}"
 
+- name: Inspect retained transport acceptance authority
+  ansible.builtin.stat:
+    path: /var/lib/ripdpi/transport-runtime/accepted.json
+    follow: false
+  register: _runtime_retire_transport_receipt
+  when: runtime_retire_units | intersect(['xray.service', 'hysteria-server.service']) | length > 0
+
+- name: Retain transactional retirement ownership after first-adoption recovery
+  ansible.builtin.set_fact:
+    _runtime_retire_consumer_owned: >-
+      {{ (runtime_retire_units | intersect(['xray.service', 'hysteria-server.service']) | length > 0)
+         and ((_runtime_retire_transport_receipt.stat.exists | default(false))
+              or (_transport_egress_full_retirement | default(false) | bool)) }}
+
+- name: Stage accepted frontend absence in the complete site candidate
+  ansible.builtin.set_fact:
+    transport_runtime_candidates: >-
+      {{ (transport_runtime_candidates | default([])) + [{'path': item, 'absent': true}] }}
+  loop: '{{ _runtime_retire_effective_paths }}'
+  no_log: true
+  when:
+    - _runtime_retire_consumer_owned | bool
+    - (transport_site_transaction_active | default(false) | bool) or (transport_egress_site_staging | default(false) | bool)
+
+- name: Retire accepted standalone frontend authority through its durable transaction
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -Es
+      - /usr/local/libexec/ripdpi-transport-egress/transport_runtime_accept.py
+      - --retire
+      - "{{ '--check' if ansible_check_mode else '--apply' }}"
+    stdin: "{{ {'paths': _runtime_retire_effective_paths} | to_json }}"
+    stdin_add_newline: false
+  register: _runtime_retire_transport
+  changed_when: (_runtime_retire_transport.stdout | from_json).changed
+  check_mode: false
+  no_log: true
+  diff: false
+  when:
+    - _runtime_retire_consumer_owned | bool
+    - not ((transport_site_transaction_active | default(false) | bool) or
+           (transport_egress_site_staging | default(false) | bool))
+
 - name: Stop and disable every declared owned runtime unit including runtime-enabled timers
   ansible.builtin.command:
     argv:
@@ -41,7 +85,9 @@
     stdin: "{{ runtime_retire_units | to_json }}"
   register: _runtime_retire_lifecycle
   changed_when: _runtime_retire_lifecycle.rc == 0 and (_runtime_retire_lifecycle.stdout | from_json).changed
-  when: not ansible_check_mode
+  when:
+    - not ansible_check_mode
+    - not (_runtime_retire_consumer_owned | bool)
 
 - name: Validate complete declared runtime authority after stopping producers
   ansible.builtin.command:
@@ -60,8 +106,24 @@
     state: absent
   loop: "{{ _runtime_retire_effective_paths }}"
   register: _runtime_retire_removed
+  when: not (_runtime_retire_consumer_owned | bool)
 
 - name: Reload systemd after runtime authority retirement
   ansible.builtin.systemd_service:
     daemon_reload: true
-  when: _runtime_retire_removed.changed and not ansible_check_mode
+  when: _runtime_retire_removed.changed | default(false) and not ansible_check_mode
+
+- name: Commit verified standalone frontend retirement before the next convergence
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -Es
+      - /usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py
+      - finish
+  changed_when: false
+  no_log: true
+  when:
+    - not ansible_check_mode
+    - _runtime_retire_consumer_owned | bool
+    - not (transport_site_transaction_active | default(false) | bool)
+    - not (transport_egress_site_staging | default(false) | bool)

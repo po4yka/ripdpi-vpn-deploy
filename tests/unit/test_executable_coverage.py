@@ -90,7 +90,29 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
         'pytest tests/unit/ scripts/tests/ -m "not native_runtime" --fail-on-skip'
         in makefile
     )
-    assert "pytest tests/unit/ -m native_runtime --fail-on-skip" in makefile
+    baseline = makefile.split('test-native-runtime:\n', 1)[1].split('\n\n', 1)[0]
+    consumer = makefile.split('test-transport-runtime-acceptance:\n', 1)[1].split('\n\n', 1)[0]
+    assert 'pytest tests/unit/ -m native_runtime' in baseline
+    assert '--ignore=tests/unit/test_transport_runtime_acceptance_native.py' in baseline
+    assert 'tests/unit/test_transport_runtime_acceptance_native.py' in consumer
+    assert '--fail-on-skip' in baseline and '--fail-on-skip' in consumer
+    assert '--ignore' not in consumer and ' -k ' not in baseline + consumer
+    import subprocess
+    import sys
+    commands = [
+        ['tests/unit/', '-m', 'native_runtime'],
+        ['tests/unit/', '-m', 'native_runtime', '--ignore=tests/unit/test_transport_runtime_acceptance_native.py'],
+        ['tests/unit/test_transport_runtime_acceptance_native.py'],
+    ]
+    selected = []
+    for arguments in commands:
+        result = subprocess.run([sys.executable, '-m', 'pytest', *arguments, '--collect-only', '-q'],
+            cwd=ROOT, text=True, capture_output=True, check=True, timeout=60)
+        selected.append({line for line in result.stdout.splitlines()
+                         if line.startswith('tests/unit/') and '::' in line})
+    all_native, existing, transactions = selected
+    assert all_native == existing | transactions and not existing & transactions
+    assert transactions and len(transactions) == 4
     assert "$(MAKE) test-probe-matrix-mtproto" in makefile.split("ci-fast:", 1)[1]
     assert "go test -mod=readonly -count=1" in makefile
     names = []

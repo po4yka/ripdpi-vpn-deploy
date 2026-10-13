@@ -12,6 +12,10 @@ Watchdog requests use fixed per-frontend signals delivered to the current root c
 
 Site compensation retains the open egress transaction until ingress compensation commits. Frontend and activation rescues defer to that one owner while a site transaction is active. The shared quiescence task stops only the exact owned units before ingress restoration, and ordinary standalone rollback reuses the same sequence.
 
+Site frontend retirements accumulate with the remaining candidates and commit once, before whole-route retirement when no frontend remains. External timer/operator acceptance operations cannot replace the outer owner's baseline during staging. Quiescence admits known transient process states solely to stop the owned candidate; accepted unit snapshots and readiness still require stable state.
+
+Protected runtime consumers stage acquisition and frontend authority before the shared acceptance entrypoint. The transaction publishes exact owned nodes under one root-only recovery journal, starts this role's existing generation controller and requires native authenticated frontend canary traffic plus loaded executable identity. Readiness-only and predictive passes do not publish candidates. An accepted consumer activation is retained by the following role activation instead of restarting the verified PID again. Snapshot restoration preserves already matching nodes so it cannot invalidate an exact consumer inode receipt.
+
 ## What's done well
 
 - Input and identity admission happen before package or account mutation; unresolved fresh check mode predicts changes without invented UIDs or sockets.
@@ -38,3 +42,7 @@ Site compensation retains the open egress transaction until ingress compensation
 - The root generation controller explicitly retains CAP_SETUID so its authenticated readiness child can drop to the admitted caller UID under the existing seccomp floor. Systemd otherwise removes that capability during sandbox setup. The child transition clears effective capabilities; recipient normalizer and gateway units retain empty capability sets.
 - Identity refusal fixtures build the non-UID preflight contract through the canonical input-only builder. A final published normalizer config contains runtime and frontend identities and must not be substituted for that earlier contract; the fixture must reach the actual account guard without weakening earlier admission.
 - Every controller-started foreground runtime explicitly uses Type=exec so service start completes after credential, sandbox, UID and executable setup. The initial start-state read checks ownership and reset metadata without admitting the transient systemd executor; the synchronous start is followed by unchanged strict active-state and process-UID admission. Status, ready and accepted snapshots remain strict throughout.
+
+The existing generation controller checks consumer admission before startup, preparation, recovery and every monitored cycle. Unfinished consumer publication or compensation permits runtime selection only while the canonical publisher retains its directory lock; after publisher death or reboot, unattended startup refuses until an authorized role retry restores the transaction.
+
+The outer route marker records exact consumer acceptance only after the native readiness gate, including unchanged retries. Before that proof, unattended startup refuses; afterward ordinary Ansible phase gaps retain admission. Pending publication or compensation retains its own guard until recovery completes.

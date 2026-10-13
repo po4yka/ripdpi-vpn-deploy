@@ -50,11 +50,23 @@ healthy service approve the missing pair.
 - Disable removes sender units and adapters but retains credentials, configuration, the persistent queue and historical WAL for explicit recovery, without taking ownership of node_exporter, watchdog, or producer files.
 - Disable inspects exact owned unit files and stops timers and in-flight adapter services before removing binaries; a stop failure aborts removal.
 
+Sender activation now uses the shared exact-inode publisher and staged runtime acquisition. Its private helper holds one activation lock through graceful stop, bounded native queue snapshot, selector publication, actual MainPID/executable/socket readiness and durable receipt commit. Failure or interruption restores queue bytes in place before the prior sender starts; repeated stops never overwrite the original copy. A root admission drop-in blocks unresolved publication without its live writer. Snapshot cleanup follows durable acceptance or confirmed compensation and records partial-cleanup debt. Working queue and snapshot share a filesystem and each fit 1 GiB under the existing 2 GiB admission; unknown layouts, mounts, foreign nodes and insufficient reserve refuse. The native budget profile is v1.153.0, one receiver, 512 MiB native queue, one worker, no memory queue and 1 MiB unpacked blocks. A future pin/profile change requires its budget derivation and native historical proof. Disable reconciles and retires accepted selectors before removing credential/release directories; queue and receiver binding remain retained.
+
+The staged selection includes its previous-runtime link when supplied by runtime-release. It participates in exact compensation with the other selectors. Refusals return fixed categorical JSON without exposing private requests; Ansible never parses success fields after an unsuccessful helper exit.
+
+- Staged executable admission has a distinct 128 MiB ceiling and requires a root-owned, single-link 0755 regular file. The shared publisher metadata-node ceiling is not an executable limit; applying it to vmagent rejects valid acquired binaries before activation.
+
 ## Pitfalls
+
+- Pinned atomic queue writes can leave `metainfo.json.tmp.<uint64>` (at most 16 KiB) or an empty `0000000000000000.tmp.<uint64>` initial chunk. Preserve these exact private native forms through compensation under the existing count/copy budget. Readiness retries only a live inode-change race within its deadline; quiescent snapshots and foreign-authority refusals remain strict.
+
+- Install adapter executables and queue their timer restart notifications only after durable sender acceptance. Ansible flushes notifications from rescued role attempts; a rejected first cutover must not restart adapters whose units have not been installed.
+
+- Read-only helper admission loads shared source from bounded trusted stdin. Concatenating escaped newlines inside an Ansible expression produces literal backslashes and can prevent every role invocation from reaching activation.
 
 - The outer failure boundary preserves the originating task name without exposing module output. Failure-injection acceptance requires the inner activation-refusal boundary plus successful restored-runtime readiness, so a preflight failure cannot impersonate a tested rollback.
 
-- Runtime activation remains uncommitted until readiness passes. The outer rescue restores the old binary link (or removes a failed first link) even when candidate validation fails before the service transaction; collector rollback also restores exact prior unit bytes before restart.
+- Runtime acquisition is staged. The shared publisher owns binary, credential selector and primary unit compensation; outer rescue reports the originating task without recreating exact restored selector inodes.
 
 - Failed-activation acceptance forwards bounded mTLS payloads to a separate
   loopback Prometheus fixture using the already verified historical binary.
@@ -63,7 +75,9 @@ healthy service approve the missing pair.
   persisted blocks. The fixture uses the same policy with its one-hour retention;
   production uses seven days. Older history remains outside that window.
   It removes its unique probe before cutover and requires the exact node,
-  nonce and pre-cutover sample timestamp after rollback; queued depth can be
+  nonce and pre-cutover sample timestamp from a bounded raw range vector after
+  rollback. An instant selector can hide retained samples behind a concurrent
+  stale marker when the probe is removed; queued depth can be
   zero while a retry worker holds an unsent block and is not delivery proof.
 - Historical rollback failure captures bounded fixture-only query cardinalities,
   node/job categories, nonce/window matches, native sender counters and receiver

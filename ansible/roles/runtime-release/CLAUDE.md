@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Ephemeral Hysteria validation units are root-private `0600`: only PID1 needs their assembled admission configuration. Exact lease inspection rejects a public unit even when its recorded inode and digest match; native process-death recovery verifies the private mode before cleanup.
+
 Retirement accepts `runtime_retire_file_owners` only for declared regular files. Root ownership stays valid; the named producer account is an additional exact-file owner. Root ancestry, mode and single-link checks remain mandatory. Revalidate after stopping producers before deletion. Direct validator callers send both `paths` and `owners`.
 
 **Hysteria candidates retain the destination boundary** — semantic YAML validation requires exactly the fixed guarded SOCKS outbound and rejects ACL or resolver substitutions. A parser-valid config cannot restore an unguarded direct route. Native runtime and full frontend tests remain separate from configuration shape checks.
@@ -57,6 +59,10 @@ create-if-absent write-ahead journal. Recovery classifies the receipt as the
 exact previous or next document, then performs only rollback or committed
 cleanup. A third receipt state refuses without mutating any inode.
 
+**Consumer acceptance is distinct from byte acquisition** — `runtime_release_stage_only` installs the verified immutable candidate and its byte receipt while leaving current/public/previous links unchanged. Protected frontends select complete link/config/TLS/asset plans through `transport_runtime_transaction.py`. Its retained directory descriptors, root-only inode journal and shared consumer lock bind publication to native parser and authenticated frontend traffic; the guarded-generation controller remains the only lifecycle owner. Interrupted intent compensates exact original inodes, while an exact committed receipt retries owned cleanup and readiness. Previous distinct authority survives unchanged retries.
+
+Site retirement contributes exact absence candidates to the final complete frontend plan, including when all frontends are disabled. Timer asset refresh and operator rollback refuse an open outer route owner before recovery or publication. Native admission leases bind the Linux boot identity: a proven reboot permits missing volatile unit/namespace authority only after the new manager confirms no same-named unit or process; durable private files still require their exact inode claims.
+
 ## What's done well
 
 - **Fail-closed input surface** — empty pins, unsupported architectures,
@@ -76,6 +82,10 @@ cleanup. A third receipt state refuses without mutating any inode.
   deletion, and compensation use no-follow dirfd-relative operations after
   rechecking the captured parent identity. A renamed public parent fails
   closed instead of redirecting a write.
+
+**Backup authority follows selected paths** — the private backup map binds retained original inodes independently of the previous full receipt. Partial plans keep untouched claims; preparation, cleanup and compensation accept only their recorded old/new map states. Existing bootstrap parameters participate in this ownership boundary even before the first accepted frontend.
+
+Staged includes return `runtime_release_candidates` for their own consumer. They never append to a global transport plan; Xray and Hysteria append their returned selections explicitly. Private publication-storage directories also hold a nonblocking shared inspection or exclusive writer lock across independent consumers. Exact legacy symlink preimages may be relative and are restored verbatim; all new candidate targets remain absolute.
 
 ## Pitfalls
 
@@ -145,3 +155,7 @@ Symlinks are never traversed during retirement, unsafe shared parents and
 foreign children refuse before lifecycle changes, and broad system roots are
 not retirement targets. Consumers should declare exact authority files while
 retaining unrelated configuration children and inactive evaluation payloads.
+
+Exact consumer backups and staged nodes live in root-only `.ripdpi-transport-runtime` directories beside each selected path. The central journal claims both the private directory and its live parent inode; mount admission refuses mounted leaf replacements. This keeps hardlinks and renames within the same systemd writable bind mount while preserving exact rollback inodes. Unknown directory replacements never authorize cleanup.
+
+Predictive and inspection transactions hold shared locks; only an exclusive live publisher lock permits unfinished generation admission. A reader never grants process-start authority to a pending candidate.

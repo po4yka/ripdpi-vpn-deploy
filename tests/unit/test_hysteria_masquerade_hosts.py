@@ -54,8 +54,11 @@ def test_actual_unit_binds_private_hosts_only_for_local_origin(enabled):
     assert ('BindReadOnlyPaths=/etc/hysteria/masquerade-hosts:/etc/hosts' in unit) is enabled
     tasks = yaml.safe_load((ROOT / 'ansible/roles/hysteria/tasks/enable.yml').read_text())
     detect = next(task for task in tasks if task['name'] == 'Detect private masquerade hosts change before publication')
-    quiesce = next(task for task in tasks if task['name'] == 'Quiesce accepted topology before changed Hysteria publication')
+    staged = next(task for task in tasks if task['name'] == 'Stage complete Hysteria authority for guarded consumer acceptance')
     assert detect['check_mode'] is True and detect['no_log'] is True
-    assert '_hysteria_hosts_change.changed' in quiesce['when'][1]
+    assert tasks.index(detect) < tasks.index(staged)
+    plan = staged['ansible.builtin.set_fact']['transport_runtime_candidates']
+    assert 'masquerade-hosts' in plan and 'hysteria_masquerade_hosts.content | b64encode' in plan
+    assert staged['no_log'] is True and staged['diff'] is False
     snapshot = (ROOT / 'ansible/roles/transport-egress/files/snapshot.py').read_text()
     assert "Path('/etc/hysteria/masquerade-hosts')" in snapshot

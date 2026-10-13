@@ -68,6 +68,7 @@ def test_runtime_release_defaults_are_a_complete_prefixed_api() -> None:
         "runtime_release_artifact_filename": "artifact",
         "runtime_release_artifact_type": "binary",
         "runtime_release_candidate_mode": "0755",
+        "runtime_release_stage_only": False,
         "runtime_release_archive_members": {"amd64": "", "arm64": ""},
         "runtime_release_archive_strip_components": 0,
         "runtime_release_download_dir": (
@@ -873,6 +874,7 @@ def _run_archive_member_role_slice(
                         "runtime_release_artifact_filename": artifact.name,
                         "runtime_release_artifact_type": "archive",
                         "runtime_release_candidate_mode": "0755",
+        "runtime_release_stage_only": False,
                         "runtime_release_archive_members": archive_members,
                         "runtime_release_archive_strip_components": 1,
                         "runtime_release_download_dir": str(

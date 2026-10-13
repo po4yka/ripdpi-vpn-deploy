@@ -1,8 +1,22 @@
 #!/usr/bin/env bash
-# Verify the complete pinned pair before ordinary-failure publication.
+# Stage pinned assets; protected consumers select them only through native acceptance.
 set -euo pipefail
+{% set _protected = (vpn.enable_xray_reality | default(true) | bool) or (vpn.enable_nginx_xhttp | default(true) | bool) %}
+{% if _protected %}
+publication="$(/usr/local/sbin/vpn-geodata-publish <<'JSON'
+{{ {'install_dir': geodata.install_dir, 'stage_only': true,
+    'sources': {'geosite.dat': {'url': geodata.geosite_url, 'sha256': geodata.geosite_sha256},
+                'geoip.dat': {'url': geodata.geoip_url, 'sha256': geodata.geoip_sha256}}} | to_json }}
+JSON
+)"
+printf '%s' "$publication" | /usr/bin/python3 -c \
+  'import json,sys;value=json.load(sys.stdin);print(json.dumps({"install_dir":sys.argv[1],"candidate_dir":value["candidate_dir"],"desired":value["desired"]}))' \
+  {{ geodata.install_dir | quote }} | /usr/bin/python3 -Es \
+  /usr/local/libexec/ripdpi-transport-egress/transport_runtime_accept.py --refresh-assets
+{% else %}
 exec /usr/local/sbin/vpn-geodata-publish <<'JSON'
 {{ {'install_dir': geodata.install_dir,
     'sources': {'geosite.dat': {'url': geodata.geosite_url, 'sha256': geodata.geosite_sha256},
                 'geoip.dat': {'url': geodata.geoip_url, 'sha256': geodata.geoip_sha256}}} | to_json }}
 JSON
+{% endif -%}

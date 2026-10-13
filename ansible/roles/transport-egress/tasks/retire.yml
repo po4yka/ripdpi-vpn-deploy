@@ -39,7 +39,6 @@
         - /etc/ripdpi/transport-egress/direct.json
         - /etc/ripdpi/transport-egress/warp.json
         - /var/lib/ripdpi/transport-egress/ready.json
-        - /var/lib/ripdpi/transport-egress/previous.json
         - /var/lib/ripdpi/transport-egress/accepted.json
     - name: Retain exact unit ownership for later guarded readmission
       ansible.builtin.debug:

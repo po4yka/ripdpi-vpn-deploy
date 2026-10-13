@@ -82,6 +82,8 @@ The command appends `--check` only in check mode; normal convergence sends no
 placeholder argument. JSON change reporting is evaluated only after a successful
 helper exit, preserving the helper's original failure result.
 
+Complete frontend authority is staged in the private `transport_runtime_candidates` plan. Native admission selects the staged asset directory; the unit retains the intended served asset directory, which is published with runtime links and config by consumer acceptance. Dedicated probe credentials must belong to the configured acceptance client in every enabled inbound/cohort. The owned canary supplies positive protocol traffic before the accepted receipt advances.
+
 ## What's done well
 
 - **Idempotent inbound rebuild** — changed config or unit authority opens the

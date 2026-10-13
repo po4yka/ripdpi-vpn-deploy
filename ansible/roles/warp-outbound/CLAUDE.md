@@ -22,6 +22,7 @@ Recipient WARP traffic uses a distinct native gateway identity. Namespace policy
 - Registration output may contain private identity details; CLI tasks stay under `no_log`.
 - The public package version comes from inventory or group vars, not SOPS. Same-pin redesign and fresh install are supported; a claimed different package identity refuses before mutation until its separate upgrade transaction is accepted.
 - Molecule exercises the actual namespace/veth/TUN lifecycle and recovery. It deliberately creates no vendor registration and provides no registered vendor traffic claim.
+- Its outer rollback fixture prepares the canonical consumer helper and private recovery inputs before `begin`; the disconnected HTTPS canary has disposable trusted authority.
 - The isolated vendor backend requires actual systemd 257 or newer before mutation. Older managers are unsupported because ignoring PrivatePIDs would expose host process authority; direct/normalizer operation does not inherit this vendor-only version floor.
 
 - Vendor admission reads only the canonical unit through one comma-separated property selector under `no_log`; extra positional property names would be interpreted as unrelated units and can falsely supply `LoadState=not-found`. Molecule requires actual unclaimed-unit refusal before ownership mutation.
@@ -29,4 +30,4 @@ Recipient WARP traffic uses a distinct native gateway identity. Namespace policy
 - Partial-install retirement reads exact current lifecycle unit metadata and skips only actual `not-found` units. Existing units must have canonical owned fragments; namespace removal still requires an empty actual process set.
 - Resolver comparison and publication consume one canonical rendered byte string, with each numeric nameserver and the options on separate lines. Identical input must compare unchanged; joining directives onto one line both changes resolver behavior and needlessly quiesces the accepted route.
 
-- Retirement tolerates only processes that disappear during `/proc` namespace inspection. Other stat errors and any still-active namespace process refuse before namespace deletion.
+- Retirement tolerates only ENOENT or ESRCH for processes that disappear or lose their namespace during `/proc` inspection. Refusals carry fixed categories, and failed retirement never parses success JSON. Other stat errors and any still-active namespace process refuse before namespace deletion.

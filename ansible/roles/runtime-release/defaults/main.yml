@@ -28,3 +28,5 @@ runtime_release_storage_group: root
 
 # Exact producer-owned regular files; all other retirement authority stays root-owned.
 runtime_retire_file_owners: {}
+# Byte acquisition is separate from consumer acceptance of a complete transport.
+runtime_release_stage_only: false

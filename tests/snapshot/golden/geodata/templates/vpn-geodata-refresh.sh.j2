@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
-# Verify the complete pinned pair before ordinary-failure publication.
+# Stage pinned assets; protected consumers select them only through native acceptance.
 set -euo pipefail
-exec /usr/local/sbin/vpn-geodata-publish <<'JSON'
-{"install_dir": "/usr/local/share/xray", "sources": {"geosite.dat": {"url": "REPLACE_WITH_PINNED_GEOSITE_RELEASE_URL", "sha256": "REPLACE_WITH_RELEASE_SHA256"}, "geoip.dat": {"url": "REPLACE_WITH_PINNED_GEOIP_RELEASE_URL", "sha256": "REPLACE_WITH_RELEASE_SHA256"}}}
+
+
+publication="$(/usr/local/sbin/vpn-geodata-publish <<'JSON'
+{"install_dir": "/usr/local/share/xray", "stage_only": true, "sources": {"geosite.dat": {"url": "REPLACE_WITH_PINNED_GEOSITE_RELEASE_URL", "sha256": "REPLACE_WITH_RELEASE_SHA256"}, "geoip.dat": {"url": "REPLACE_WITH_PINNED_GEOIP_RELEASE_URL", "sha256": "REPLACE_WITH_RELEASE_SHA256"}}}
 JSON
+)"
+printf '%s' "$publication" | /usr/bin/python3 -c \
+  'import json,sys;value=json.load(sys.stdin);print(json.dumps({"install_dir":sys.argv[1],"candidate_dir":value["candidate_dir"],"desired":value["desired"]}))' \
+  '/usr/local/share/xray' | /usr/bin/python3 -Es \
+  /usr/local/libexec/ripdpi-transport-egress/transport_runtime_accept.py --refresh-assets

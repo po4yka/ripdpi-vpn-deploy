@@ -5,6 +5,14 @@
   hosts: all
   become: true
 
+  vars:
+    # This lane exercises paired-byte publication; protected native adoption
+    # is covered by the transport_runtime_acceptance lab with actual runtimes.
+    vpn:
+      enable_xray_reality: false
+      enable_nginx_xhttp: false
+      enable_hysteria: false
+
   pre_tasks:
     - name: Read fixture checksums from prepare.yml
       ansible.builtin.slurp:

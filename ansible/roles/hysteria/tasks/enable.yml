@@ -86,6 +86,7 @@
   ansible.builtin.include_role:
     name: runtime-release
   vars:
+    runtime_release_stage_only: true
     runtime_release_version: "{{ hysteria.version }}"
     runtime_release_install_root: "{{ hysteria_install_root }}"
     runtime_release_binary_name: hysteria
@@ -101,6 +102,11 @@
       arm64: arm64
     runtime_release_artifact_filename: hysteria
     runtime_release_artifact_type: binary
+
+- name: Retain staged selection in the transport plan
+  ansible.builtin.set_fact:
+    transport_runtime_candidates: >-
+      {{ (transport_runtime_candidates | default([])) + runtime_release_candidates }}
 
 - name: Validate Hysteria candidate before quiescing the accepted route
   # Private candidates are removed below; accepted publication reports runtime changes.
@@ -205,125 +211,30 @@
   check_mode: true
   register: _hysteria_validator_change
 
-- name: Quiesce accepted topology before changed Hysteria publication
-  ansible.builtin.include_role:
-    name: transport-egress
-    tasks_from: begin
-  when:
-    - not ansible_check_mode
-    - >-
-      _hysteria_frontend_change.changed or _hysteria_tls_change.changed or
-      _hysteria_validator_change.changed or _hysteria_hosts_change.changed or runtime_release_changed | default(false) | bool
-
-- name: Install shared transport semantics beside the YAML validator
-  ansible.builtin.copy:
-    src: "{{ role_path }}/../../../scripts/transport_semantics.py"
-    dest: /usr/local/libexec/transport_semantics.py
-    owner: root
-    group: root
-    mode: "0644"
-
-- name: Install shared YAML mapping validator
-  ansible.builtin.copy:
-    src: "{{ role_path }}/../runtime-release/files/validate_yaml_mapping.py"
-    dest: /usr/local/libexec/ripdpi-validate-yaml-mapping
-    owner: root
-    group: root
-    mode: "0755"
-
-- name: Publish private masquerade hosts after guarded quiescence
-  ansible.builtin.copy:
-    content: '{{ hysteria_masquerade_hosts.content }}'
-    dest: '{{ hysteria_config_dir }}/masquerade-hosts'
-    owner: root
-    group: hysteria
-    mode: '0640'
+- name: Stage complete Hysteria authority for guarded consumer acceptance
+  ansible.builtin.set_fact:
+    transport_runtime_candidates: >-
+      {{ (transport_runtime_candidates | default([])) + [
+         {'path': hysteria_config_dir ~ '/config.yaml', 'mode': 416,
+          'gid': transport_egress_frontend_gids.hysteria | int,
+          'data': lookup('ansible.builtin.template', 'config.yaml.j2') | b64encode},
+         {'path': '/etc/systemd/system/hysteria-server.service', 'mode': 420, 'gid': 0,
+          'data': lookup('ansible.builtin.template', 'hysteria-server.service.j2') | b64encode},
+         {'path': hysteria_config_dir ~ '/masquerade-hosts', 'mode': 416,
+          'gid': transport_egress_frontend_gids.hysteria | int, 'data': hysteria_masquerade_hosts.content | b64encode},
+         {'path': hysteria_config_dir ~ '/server.fullchain.pem', 'mode': 416,
+          'gid': transport_egress_frontend_gids.hysteria | int, 'data': hysteria.cert_pem | b64encode},
+         {'path': hysteria_config_dir ~ '/server.key', 'mode': 416,
+          'gid': transport_egress_frontend_gids.hysteria | int, 'data': hysteria.key_pem | b64encode},
+         {'path': '/usr/local/libexec/transport_semantics.py', 'mode': 420, 'gid': 0,
+          'data': lookup('ansible.builtin.file', role_path ~ '/../../../scripts/transport_semantics.py', rstrip=false) | b64encode},
+         {'path': '/usr/local/libexec/ripdpi-validate-yaml-mapping', 'mode': 493, 'gid': 0,
+          'data': lookup('ansible.builtin.file',
+                         role_path ~ '/../runtime-release/files/validate_yaml_mapping.py', rstrip=false) | b64encode}
+         ] }}
   no_log: true
   diff: false
-
-- name: Drop TLS material
-  ansible.builtin.copy:
-    content: "{{ item.content }}"
-    dest: "{{ item.dest }}"
-    owner: root
-    group: hysteria
-    mode: "0640"
-  loop:
-    - content: "{{ hysteria.cert_pem }}"
-      dest: "{{ hysteria_config_dir }}/server.fullchain.pem"
-    - content: "{{ hysteria.key_pem }}"
-      dest: "{{ hysteria_config_dir }}/server.key"
-  no_log: true
-  diff: false
-
-- name: Check if previous Hysteria config exists
-  ansible.builtin.stat:
-    path: "{{ hysteria_config_dir }}/config.yaml"
-  register: _hysteria_config_stat
-
-- name: Detect Hysteria config change before preserving rollback state
-  ansible.builtin.template:
-    src: config.yaml.j2
-    dest: "{{ hysteria_config_dir }}/config.yaml"
-    owner: root
-    group: hysteria
-    mode: "0640"
-  check_mode: true
-  register: _hysteria_config_change
-  no_log: true
-  diff: false
-
-- name: Backup previous Hysteria config if exists
-  ansible.builtin.copy:
-    src: "{{ hysteria_config_dir }}/config.yaml"
-    dest: "{{ hysteria_config_dir }}/config.yaml.prev"
-    remote_src: true
-    owner: root
-    group: hysteria
-    mode: "0640"
-  when:
-    - _hysteria_config_stat.stat.exists
-    - _hysteria_config_change.changed
-  changed_when: false
-
-- name: Render Hysteria config
-  ansible.builtin.template:
-    src: config.yaml.j2
-    dest: "{{ hysteria_config_dir }}/config.yaml"
-    owner: root
-    group: hysteria
-    mode: "0640"
-    validate: >-
-      /usr/local/libexec/ripdpi-validate-yaml-mapping
-      --profile hysteria %s
-  no_log: true
-  diff: false
-
-- name: Install hysteria-server systemd unit
-  ansible.builtin.template:
-    src: hysteria-server.service.j2
-    dest: /etc/systemd/system/hysteria-server.service
-    owner: root
-    group: root
-    mode: "0644"
-  register: _hysteria_unit_plan
-
-- name: Inspect Hysteria unit before check-mode activation
-  ansible.builtin.stat:
-    path: /etc/systemd/system/hysteria-server.service
-    follow: false
-  register: _hysteria_unit_before
-  changed_when: false
-  when: ansible_check_mode
-
-- name: Require planned Hysteria unit on a fresh check-mode host
-  ansible.builtin.assert:
-    that:
-      - _hysteria_unit_plan.changed
-    fail_msg: Check mode found no Hysteria unit and no planned installation.
-  when:
-    - ansible_check_mode
-    - not (_hysteria_unit_before.stat.exists | default(false))
+  when: not (transport_egress_fresh_check_mode | default(false) | bool)
 
 - name: Activate guarded standalone frontend generation
   ansible.builtin.import_tasks: "{{ role_path }}/../../playbooks/tasks/transport-egress-activate.yml"

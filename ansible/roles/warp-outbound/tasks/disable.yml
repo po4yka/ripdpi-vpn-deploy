@@ -60,6 +60,20 @@
           - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/namespace.py'') }}'
           - retire
       register: _warp_namespace_retirement
-      changed_when: (_warp_namespace_retirement.stdout | from_json).changed | bool
+      changed_when: >-
+        _warp_namespace_retirement.rc == 0 and
+        (_warp_namespace_retirement.stdout | from_json).changed | bool
       no_log: true
       when: not ansible_check_mode
+
+  rescue:
+    - name: Publish only a fixed namespace retirement refusal category
+      ansible.builtin.debug:
+        msg: "{{ _warp_namespace_retirement.stderr | trim }}"
+      when:
+        - _warp_namespace_retirement is defined
+        - _warp_namespace_retirement.rc | default(0) == 1
+        - (_warp_namespace_retirement.stderr | default('') | trim) is match('^[a-z][a-z0-9-]{0,63}$')
+    - name: Refuse incomplete isolated vendor retirement
+      ansible.builtin.fail:
+        msg: Isolated vendor retirement refused; ownership and namespace authority remain retained.

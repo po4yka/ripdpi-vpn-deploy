@@ -8,7 +8,7 @@
     hysteria_log_dir: /var/log/hysteria
     hysteria_port: 443
     hysteria_port_range: ''
-    public_site_canonical_url: https://vpn.example.test
+    public_site_canonical_url: https://vpn.example.com
     hysteria_release_urls:
       amd64: file:///var/tmp/hysteria-molecule/hysteria-v2.8.2
       arm64: file:///var/tmp/hysteria-molecule/hysteria-v2.8.2-arm64
@@ -20,7 +20,7 @@
       key_pem: '{{ transport_native_hysteria_tls.key_pem }}'
       bandwidth_up: 100 mbps
       bandwidth_down: 200 mbps
-      masquerade_url: https://vpn.example.test
+      masquerade_url: https://vpn.example.com
       salamander_enabled: false
       clients:
         - name: alice
@@ -36,6 +36,8 @@
       enable_geodata: false
     xray: '{{ transport_native_xray_runtime }}'
   pre_tasks:
+    - name: Prepare the shared owned transport canary
+      ansible.builtin.import_tasks: ../../../../molecule/tasks/transport-canary.yml
     - name: Create deterministic Hysteria fixture artifacts
       ansible.builtin.file:
         path: /var/tmp/hysteria-molecule

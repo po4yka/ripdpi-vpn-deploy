@@ -55,6 +55,24 @@ def test_fresh_unit_is_planned_before_service_activation(
     tasks = yaml.safe_load(
         (ROOT / "ansible/roles" / role / "tasks/enable.yml").read_text(encoding="utf-8")
     )
+    if role == "hysteria":
+        by_name = {task["name"]: task for task in tasks}
+        predictive = by_name["Detect Hysteria frontend authority change before publication"]
+        unit = next(item for item in predictive["loop"] if item["destination"] == unit_path)
+        assert unit["group"] == "root" and unit["mode"] == "0644"
+        assert predictive["check_mode"] is True and predictive["register"] == "_hysteria_frontend_change"
+        staged = by_name["Stage complete Hysteria authority for guarded consumer acceptance"]
+        service = by_name[service_task]
+        assert tasks.index(predictive) < tasks.index(staged) < tasks.index(service)
+        assert "not (transport_egress_fresh_check_mode" in staged["when"]
+        assert unit_path in staged["ansible.builtin.set_fact"]["transport_runtime_candidates"]
+        assert staged["no_log"] is True and staged["diff"] is False
+        activation = next(task for task in yaml.safe_load(
+            (ROOT/"ansible/roles/transport-egress/tasks/activate.yml").read_text())
+            if task["name"] == "Activate only a ready guarded generation after frontend staging")
+        assert activation["when"] == "not ansible_check_mode"
+        assert activation["block"][0]["ansible.builtin.systemd_service"]["name"] == "ripdpi-transport-generation.service"
+        return
     by_name = {task["name"]: task for task in tasks}
     unit, stat, guard, service = (
         by_name[name] for name in (unit_task, stat_task, guard_task, service_task)

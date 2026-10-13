@@ -4,20 +4,34 @@ from pathlib import Path
 
 from jinja2 import Environment, StrictUndefined
 import yaml
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_xray_backup_requires_a_predicted_config_change():
-    content = (ROOT / "ansible/roles/xray/tasks/enable.yml").read_text()
-    assert "register: _xray_config_change" in content
-    assert "- _xray_config_change.changed" in content
-
-
-def test_hysteria_backup_requires_a_predicted_config_change():
-    content = (ROOT / "ansible/roles/hysteria/tasks/enable.yml").read_text()
-    assert "register: _hysteria_config_change" in content
-    assert "- _hysteria_config_change.changed" in content
+@pytest.mark.parametrize('filename', ['config.json', 'config.yaml'])
+def test_config_restore_point_requires_changed_bytes_and_preserves_unchanged_backup(tmp_path, monkeypatch, filename):
+    import base64
+    import os
+    import sys
+    sys.path.insert(0, str(ROOT/'ansible/roles/runtime-release/files'))
+    import transport_runtime_accept as accept
+    import transport_runtime_transaction as core
+    original_node = core.node
+    monkeypatch.setattr(core, 'node', lambda path, _uid, **options: original_node(path, os.getuid(), **options))
+    current, previous = tmp_path/filename, tmp_path/(filename+'.prev')
+    current.write_bytes(b'accepted-a'); current.chmod(0o640)
+    previous.write_bytes(b'older-distinct'); previous.chmod(0o640)
+    before = (current.stat().st_ino, previous.stat().st_ino, current.read_bytes(), previous.read_bytes())
+    def candidate(data):
+        return {'path':str(current),'data':base64.b64encode(data).decode(),'mode':0o640,'gid':os.getgid()}
+    assert accept.restore_points([candidate(b'accepted-a')]) == [candidate(b'accepted-a')]
+    changed = accept.restore_points([candidate(b'candidate-b')])
+    assert changed[1] == {**candidate(b'accepted-a'), 'path':str(previous)}
+    assert (current.stat().st_ino, previous.stat().st_ino, current.read_bytes(), previous.read_bytes()) == before
+    current.unlink()
+    assert accept.restore_points([candidate(b'fresh')]) == [candidate(b'fresh')]
+    assert previous.read_bytes() == b'older-distinct' and previous.stat().st_ino == before[1]
 
 
 def test_xray_molecule_requests_the_pinned_image_architecture():

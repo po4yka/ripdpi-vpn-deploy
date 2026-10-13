@@ -40,13 +40,14 @@ JOBS = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
                 "molecule-full-stack",
                 "molecule-failure-scenarios",
                 "native-runtime",
+                "transport-runtime-acceptance",
                 "image-scan",
             },
             {"vpnd-test", "tf-test"},
         ),
         (
             "terraform/shared/cloud-init.yaml.tftpl",
-            {"terraform", "tf-test", "tf-policy", "cloud-init", "native-runtime"},
+            {"terraform", "tf-test", "tf-policy", "cloud-init", "native-runtime", "transport-runtime-acceptance"},
             {"molecule", "vpnd-test"},
         ),
         (
@@ -61,12 +62,12 @@ JOBS = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
         ),
         (
             "secrets/prod.secrets.example.yaml",
-            {"reproducible-build", "molecule", "native-runtime", "vpnd-test"},
+            {"reproducible-build", "molecule", "native-runtime", "transport-runtime-acceptance", "vpnd-test"},
             {"go-helper"},
         ),
         (
             "tests/unit/test_example.py",
-            {"native-runtime"},
+            {"native-runtime", "transport-runtime-acceptance"},
             {"molecule", "vpnd-test", "tf-test"},
         ),
         ("tests/bats/example.bats", {"bats-test"}, {"molecule", "vpnd-test"}),

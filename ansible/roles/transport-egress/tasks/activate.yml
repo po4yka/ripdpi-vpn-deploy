@@ -1,4 +1,7 @@
 ---
+- name: Reconcile complete staged transport runtime authority
+  ansible.builtin.include_tasks: runtime-acceptance.yml
+
 - name: Activate only a ready guarded generation after frontend staging
   when: not ansible_check_mode
   block:
@@ -7,7 +10,10 @@
         name: ripdpi-transport-generation.service
         daemon_reload: true
         enabled: true
-        state: '{{ ''restarted'' if transport_egress_changed | default(false) | bool else ''started'' }}'
+        state: >-
+          {{ 'restarted' if (transport_egress_changed | default(false) | bool)
+             and (_transport_runtime_acceptance is not defined or _transport_runtime_acceptance.skipped | default(false))
+             else 'started' }}
     - name: Require current authenticated generation and owned frontend readiness
       ansible.builtin.command:
         argv:
@@ -25,6 +31,12 @@
       delay: 1
       changed_when: false
       no_log: true
+    - name: Commit the standalone complete-route recovery boundary
+      ansible.builtin.command:
+        argv: [/usr/bin/python3, -Es, '{{ transport_egress_libexec_dir }}/transport_runtime_outer.py', finish]
+      changed_when: false
+      no_log: true
+      when: not (transport_site_transaction_active | default(false) | bool)
     - name: Close the accepted candidate transaction
       ansible.builtin.set_fact:
         _transport_egress_transaction_started: false

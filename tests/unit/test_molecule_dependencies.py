@@ -118,7 +118,9 @@ def test_both_full_stack_prepare_entrypoints_require_genuine_credential_delivery
         prepare = directory / "prepare.yml"
         assert prepare.is_file(), f"{name}: declared preparation has no entrypoint"
         plays = yaml.safe_load(prepare.read_text())
-        assert len(plays) == 1
+        assert len(plays) == 2
+        assert plays[1]["ansible.builtin.import_playbook"] == "../prepare-transport-canary.yml"
+        assert (directory / plays[1]["ansible.builtin.import_playbook"]).resolve().is_file()
         assert plays[0]["ansible.builtin.import_playbook"] == "../prepare-transport-credentials.yml"
         assert (directory / plays[0]["ansible.builtin.import_playbook"]).resolve() == shared
     play = yaml.safe_load(shared.read_text())[0]

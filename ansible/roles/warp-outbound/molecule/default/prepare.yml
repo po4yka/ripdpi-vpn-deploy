@@ -2,6 +2,8 @@
 - name: Require native TUN device availability
   hosts: all
   become: true
+  vars_files:
+    - ../../../../molecule/vars/transport-native.yml
   tasks:
     - name: Inspect owned fixture run mount propagation
       ansible.builtin.command:
@@ -112,3 +114,9 @@
         - name: Reload after owned fixture removal
           ansible.builtin.systemd_service:
             daemon_reload: true
+    - name: Prepare owned native HTTPS canary for consumer recovery inputs
+      ansible.builtin.import_tasks: ../../../../molecule/tasks/transport-canary.yml
+    - name: Prepare canonical consumer authority before WARP rollback exercise
+      ansible.builtin.include_role:
+        name: transport-egress
+        tasks_from: runtime-prepare

@@ -249,11 +249,13 @@ def test_xray_publishes_required_geoip_as_a_pinned_read_only_runtime_asset() -> 
     ]
     expected = (
         "/usr/local/libexec/vpn-xray-validate "
-        "--binary {{ xray_runtime_binary | quote }} --asset-dir {{ xray_asset_dir | quote }} --config %s"
+        "--binary {{ xray_runtime_binary | quote }} --asset-dir {{ _xray_candidate_asset_dir | quote }} --config %s"
     )
     assert validation_commands[0].startswith('/usr/bin/python3 -c {{ lookup("ansible.builtin.file", role_path ~ "/files/xray_validate.py") | quote }}')
     assert validation_commands[0].endswith(expected.split(" ", 1)[1])
-    assert validation_commands[1] == expected
+    staged = _task("xray", "Stage complete Xray authority for guarded consumer acceptance")
+    assert "config.json.j2" in staged['ansible.builtin.set_fact']['transport_runtime_candidates']
+    assert not any(task.get('name') == 'Render and validate Xray config' for task in _tasks('xray'))
     service = (ROOT / "ansible/roles/xray/templates/xray.service.j2").read_text(
         encoding="utf-8"
     )
@@ -269,7 +271,7 @@ def test_xray_publishes_required_geoip_as_a_pinned_read_only_runtime_asset() -> 
                               if task["name"] == "Validate Xray candidate before quiescing the accepted route")
     native = validate_candidate["block"][1]["ansible.builtin.template"]["validate"]
     assert '--binary {{ xray_runtime_binary | quote }}' in native
-    assert '--asset-dir {{ xray_asset_dir | quote }}' in native
+    assert '--asset-dir {{ _xray_candidate_asset_dir | quote }}' in native
     assert '--config %s' in native
 
     full_stack_verify = yaml.safe_load(
@@ -297,8 +299,8 @@ def test_xray_source_publication_remains_separate_and_idempotent() -> None:
     publish = _task("xray-runtime", "Publish Xray runtime change state")
     expression = publish["ansible.builtin.set_fact"]["xray_runtime_changed"]
 
-    assert current["when"] == "xray_runtime_build_from_source | bool"
-    assert public["when"] == "xray_runtime_build_from_source | bool"
+    assert current["when"] == "xray_runtime_build_from_source | bool and not (xray_runtime_stage_only | bool)"
+    assert public["when"] == "xray_runtime_build_from_source | bool and not (xray_runtime_stage_only | bool)"
     assert "_xray_runtime_binary_changed | default(false)" in expression
     assert "_xray_runtime_geoip_changed | default(false)" in expression
     assert "runtime_build_results | default({})" in expression
