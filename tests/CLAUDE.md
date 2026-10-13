@@ -46,6 +46,11 @@ Cascade and deploy parity fixtures use the same isolated local connection policy
 their complete transaction budgets do not change explicit deadline tests.
 Bounded command tests exercise real pipe backpressure and exited-child cleanup
 without suppressing live-process or repeated signal permission failures.
+Schema-client regressions use real owned children and local Docker command
+adapters to test blocked input, partial-write integrity, one shared deadline,
+client shutdown before removal and uncertain cleanup refusal. The timeout
+fixture waits for client readiness before delivery; these tests do not contact
+Docker or prove daemon or provider acceptance.
 
 **Project audit regressions cover operator boundaries** — synthetic Git histories
 isolate ambient Git configuration only in temporary repositories. SSH and runtime

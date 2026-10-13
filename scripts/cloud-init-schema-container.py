@@ -9,10 +9,12 @@ import os
 from pathlib import Path
 import re
 import secrets
+import selectors
 import stat
 import subprocess
 import sys
 import tarfile
+import time
 
 MAX_CONFIG_BYTES = 4 * 1024 * 1024
 MAX_CA_BYTES = 2 * 1024 * 1024
@@ -138,29 +140,78 @@ def _archive(config: bytes, ca_bundle: bytes) -> bytes:
     return output.getvalue()
 
 
+def _feed_and_wait(
+    process: subprocess.Popen[bytes], payload: bytes, *, timeout: float
+) -> None:
+    """Feed input and wait without a blocking write escaping the shared deadline."""
+    deadline = time.monotonic() + timeout
+    assert process.stdin is not None
+    stream = process.stdin
+    try:
+        os.set_blocking(stream.fileno(), False)
+        with selectors.DefaultSelector() as selector:
+            selector.register(stream, selectors.EVENT_WRITE)
+            offset = 0
+            while offset < len(payload):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(process.args, timeout)
+                if not selector.select(remaining):
+                    continue
+                if time.monotonic() >= deadline:
+                    raise subprocess.TimeoutExpired(process.args, timeout)
+                try:
+                    written = os.write(
+                        stream.fileno(), payload[offset : offset + 65536]
+                    )
+                except BlockingIOError:
+                    continue
+                except BrokenPipeError:
+                    break  # Match communicate: the child may close its input early.
+                offset += written
+    finally:
+        try:
+            stream.close()
+        except BrokenPipeError:
+            pass
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise subprocess.TimeoutExpired(process.args, timeout)
+    process.wait(timeout=remaining)
+
+
 def _stop_container(name: str, process: subprocess.Popen[bytes]) -> bool:
     """Stop the named container and its client within fixed cleanup bounds."""
-    removed = False
+    signaled = True
     try:
-        removed = subprocess.run(
-            ["docker", "rm", "--force", "--volumes", name],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=15,
-            check=False,
-        ).returncode == 0
-    except (OSError, subprocess.TimeoutExpired):
-        removed = False  # The bounded inspect below must confirm uncertain cleanup.
-    process.kill()
+        process.kill()
+    except OSError:
+        signaled = False
+    reaped = True
     try:
         process.wait(timeout=5)
     except subprocess.TimeoutExpired:
-        return False
-    if removed:
-        return True
+        reaped = False
+    removed = False
     try:
-        inspected = subprocess.run(
+        removed = (
+            subprocess.run(
+                ["docker", "rm", "--force", "--volumes", name],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=15,
+                check=False,
+            ).returncode
+            == 0
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        # Inspect remains bounded; absence cannot confirm an in-flight request.
+        removed = False
+    if removed:
+        return signaled and reaped
+    try:
+        subprocess.run(
             ["docker", "container", "inspect", name],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
@@ -170,7 +221,8 @@ def _stop_container(name: str, process: subprocess.Popen[bytes]) -> bool:
         )
     except (OSError, subprocess.TimeoutExpired):
         return False
-    return inspected.returncode != 0 and b"No such" in inspected.stderr
+    # One absent lookup cannot exclude a creation already submitted to the daemon.
+    return False
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -226,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
         print("cloud-init schema fallback could not start Docker", file=sys.stderr)
         return 2
     try:
-        process.communicate(_archive(config, ca_bundle), timeout=args.timeout)
+        _feed_and_wait(process, _archive(config, ca_bundle), timeout=args.timeout)
     except subprocess.TimeoutExpired:
         if not _stop_container(name, process):
             print(
@@ -236,6 +288,18 @@ def main(argv: list[str] | None = None) -> int:
             return 125
         print("cloud-init schema fallback timed out and was stopped", file=sys.stderr)
         return 124
+    except OSError as exc:
+        if not _stop_container(name, process):
+            print(
+                f"cloud-init schema fallback client failed: {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+            )
+            print(
+                "cloud-init schema fallback container cleanup is uncertain",
+                file=sys.stderr,
+            )
+            return 125
+        raise
     return process.returncode
 
 

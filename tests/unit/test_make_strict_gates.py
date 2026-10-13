@@ -1,6 +1,7 @@
 """ci-fast and validate must not silently reduce their promised coverage."""
 
 from pathlib import Path
+import importlib.util
 import io
 import json
 import os
@@ -8,8 +9,278 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import time
 
 import pytest
+
+
+def _cloud_init_schema_module():
+    path = (
+        Path(__file__).resolve().parents[2] / "scripts/cloud-init-schema-container.py"
+    )
+    spec = importlib.util.spec_from_file_location("cloud_init_schema_container", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_cloud_init_schema_stops_client_before_container_removal(tmp_path, monkeypatch):
+    module = _cloud_init_schema_module()
+    gate, marker = tmp_path / "create", tmp_path / "container"
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import pathlib,sys,time; gate,marker=map(pathlib.Path,sys.argv[1:]); "
+            "deadline=time.monotonic()+5\n"
+            "while not gate.exists():\n"
+            " if time.monotonic()>deadline: raise SystemExit(2)\n"
+            " time.sleep(.005)\n"
+            "marker.write_text('late creation'); time.sleep(30)",
+            str(gate),
+            str(marker),
+        ],
+    )
+
+    def remove(argv, **kwargs):
+        assert argv == ["docker", "rm", "--force", "--volumes", "owned-name"]
+        marker.unlink(missing_ok=True)
+        if process.poll() is None:
+            gate.touch()
+            deadline = time.monotonic() + 5
+            while not marker.exists():
+                assert time.monotonic() < deadline, "client did not create its marker"
+                time.sleep(0.005)
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(module.subprocess, "run", remove)
+    try:
+        assert module._stop_container("owned-name", process)
+        assert process.returncode is not None
+        assert not marker.exists(), "client created a container after removal"
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=5)
+
+
+@pytest.fixture
+def schema_processes():
+    processes = []
+
+    def start(code, *arguments):
+        process = subprocess.Popen(
+            [sys.executable, "-c", code, *map(str, arguments)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        processes.append(process)
+        return process
+
+    yield start
+    for process in processes:
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=5)
+        if process.stdin is not None:
+            process.stdin.close()
+
+
+def test_cloud_init_schema_input_retries_backpressure_and_preserves_short_writes(
+    tmp_path, monkeypatch, schema_processes
+):
+    module = _cloud_init_schema_module()
+    output = tmp_path / "received"
+    process = schema_processes(
+        "import pathlib,sys; pathlib.Path(sys.argv[1]).write_bytes(sys.stdin.buffer.read())",
+        output,
+    )
+    original_write = os.write
+    writes = 0
+
+    def short_write(fd, data):
+        nonlocal writes
+        assert not os.get_blocking(fd)
+        writes += 1
+        if writes % 3 == 1:
+            raise BlockingIOError()
+        return original_write(fd, data[:7])
+
+    monkeypatch.setattr(module.os, "write", short_write)
+    payload = bytes(range(256)) * 16 + b"final byte"
+    module._feed_and_wait(process, payload, timeout=5)
+    assert process.returncode == 0
+    assert output.read_bytes() == payload
+    assert writes > 3
+
+
+def test_cloud_init_schema_blocked_input_has_a_deadline(tmp_path, schema_processes):
+    module = _cloud_init_schema_module()
+    ready = tmp_path / "ready"
+    process = schema_processes(
+        "import pathlib,sys,time; pathlib.Path(sys.argv[1]).touch(); time.sleep(30)",
+        ready,
+    )
+    startup_deadline = time.monotonic() + 5
+    while not ready.exists():
+        assert time.monotonic() < startup_deadline
+        time.sleep(0.005)
+    started = time.monotonic()
+    with pytest.raises(subprocess.TimeoutExpired) as error:
+        module._feed_and_wait(process, b"x" * (2 * 1024 * 1024), timeout=0.1)
+    assert error.value.timeout == 0.1
+    assert time.monotonic() - started < 2
+    assert process.stdin.closed
+    assert process.poll() is None
+
+
+def test_cloud_init_schema_child_may_close_input_early(schema_processes):
+    module = _cloud_init_schema_module()
+    process = schema_processes("raise SystemExit(7)")
+    process.wait(timeout=5)
+    module._feed_and_wait(process, b"ignored input", timeout=1)
+    assert process.returncode == 7
+    assert process.stdin.closed
+
+
+def test_cloud_init_schema_child_wait_uses_the_remaining_input_deadline(
+    tmp_path, monkeypatch, schema_processes
+):
+    module = _cloud_init_schema_module()
+    ready, received = tmp_path / "ready", tmp_path / "received"
+    process = schema_processes(
+        "import pathlib,sys,time; pathlib.Path(sys.argv[1]).touch(); "
+        "pathlib.Path(sys.argv[2]).write_bytes(sys.stdin.buffer.read()); time.sleep(30)",
+        ready,
+        received,
+    )
+    startup_deadline = time.monotonic() + 5
+    while not ready.exists():
+        assert time.monotonic() < startup_deadline
+        time.sleep(0.005)
+    original_write, original_wait = os.write, process.wait
+    wait_budgets = []
+
+    def delayed_write(fd, data):
+        time.sleep(0.05)
+        return original_write(fd, data)
+
+    def bounded_wait(*, timeout):
+        wait_budgets.append(timeout)
+        return original_wait(timeout=timeout)
+
+    monkeypatch.setattr(module.os, "write", delayed_write)
+    monkeypatch.setattr(process, "wait", bounded_wait)
+    try:
+        with pytest.raises(subprocess.TimeoutExpired):
+            module._feed_and_wait(process, b"exact input", timeout=0.2)
+        assert received.read_bytes() == b"exact input"
+        assert len(wait_budgets) == 1
+        assert 0 < wait_budgets[0] < 0.16
+    finally:
+        monkeypatch.setattr(process, "wait", original_wait)
+
+
+def test_cloud_init_schema_repeated_backpressure_keeps_the_deadline(
+    monkeypatch, schema_processes
+):
+    module = _cloud_init_schema_module()
+    process = schema_processes("import sys; sys.stdin.buffer.read()")
+    attempts = 0
+
+    def blocked_write(fd, data):
+        nonlocal attempts
+        assert not os.get_blocking(fd)
+        attempts += 1
+        raise BlockingIOError()
+
+    monkeypatch.setattr(module.os, "write", blocked_write)
+    started = time.monotonic()
+    with pytest.raises(subprocess.TimeoutExpired):
+        module._feed_and_wait(process, b"pending", timeout=0.1)
+    assert time.monotonic() - started < 2
+    assert attempts > 1
+
+
+def test_cloud_init_schema_unexpected_write_error_propagates(
+    monkeypatch, schema_processes
+):
+    module = _cloud_init_schema_module()
+    process = schema_processes("import sys; sys.stdin.buffer.read()")
+    failure = OSError("synthetic write refusal")
+
+    def refused_write(fd, data):
+        raise failure
+
+    monkeypatch.setattr(module.os, "write", refused_write)
+    with pytest.raises(OSError) as error:
+        module._feed_and_wait(process, b"pending", timeout=1)
+    assert error.value is failure
+    assert process.stdin.closed
+
+
+@pytest.mark.parametrize(
+    "inspect_result, expected",
+    [
+        ((1, b"No such container"), False),
+        ((0, b"container exists"), False),
+        ((1, b"daemon unavailable"), False),
+        ("unavailable", False),
+        ("timeout", False),
+    ],
+)
+def test_cloud_init_schema_uncertain_removal_requires_confirmed_absence(
+    monkeypatch, schema_processes, inspect_result, expected
+):
+    module = _cloud_init_schema_module()
+    process = schema_processes("import time; time.sleep(30)")
+    calls = []
+
+    def docker(argv, **kwargs):
+        assert process.returncode is not None
+        calls.append((argv, kwargs["timeout"]))
+        if argv[1] == "rm":
+            raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+        assert argv == ["docker", "container", "inspect", "owned-name"]
+        if inspect_result == "unavailable":
+            raise OSError("unavailable")
+        if inspect_result == "timeout":
+            raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+        return subprocess.CompletedProcess(
+            argv, inspect_result[0], stderr=inspect_result[1]
+        )
+
+    monkeypatch.setattr(module.subprocess, "run", docker)
+    assert module._stop_container("owned-name", process) is expected
+    assert [timeout for _argv, timeout in calls] == [15, 10]
+
+
+def test_cloud_init_schema_removal_still_runs_when_client_reap_is_uncertain(
+    monkeypatch, schema_processes
+):
+    module = _cloud_init_schema_module()
+    process = schema_processes("import time; time.sleep(30)")
+    original_wait = process.wait
+    calls = []
+
+    def uncertain_wait(*, timeout):
+        assert timeout == 5
+        raise subprocess.TimeoutExpired(process.args, timeout)
+
+    def remove(argv, **kwargs):
+        calls.append(argv)
+        assert kwargs["timeout"] == 15
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(process, "wait", uncertain_wait)
+    monkeypatch.setattr(module.subprocess, "run", remove)
+    try:
+        assert not module._stop_container("owned-name", process)
+        assert calls == [["docker", "rm", "--force", "--volumes", "owned-name"]]
+    finally:
+        monkeypatch.setattr(process, "wait", original_wait)
+        process.wait(timeout=5)
 
 
 def test_validate_checks_every_provider_and_ci_fast_has_no_tool_skips():
@@ -187,15 +458,15 @@ def test_cloud_init_schema_reports_the_conditional_certifi_prerequisite(tmp_path
     assert not capture.exists()
 
 
-def test_cloud_init_schema_timeout_removes_the_named_container(tmp_path):
-    root = Path(__file__).resolve().parents[2]
+@pytest.fixture
+def schema_docker(tmp_path, monkeypatch):
     tools = tmp_path / "bin"
     tools.mkdir()
     calls = tmp_path / "calls"
     marker = tmp_path / "container-running"
     docker = tools / "docker"
     docker.write_text(
-        "#!/usr/bin/env python3\n"
+        f"#!{sys.executable}\n"
         "import json, os, pathlib, sys, time\n"
         "calls = pathlib.Path(os.environ['FAKE_DOCKER_CALLS'])\n"
         "with calls.open('a') as stream: stream.write(json.dumps(sys.argv[1:]) + '\\n')\n"
@@ -204,42 +475,166 @@ def test_cloud_init_schema_timeout_removes_the_named_container(tmp_path):
         "    marker.write_text('running')\n"
         "    time.sleep(30)\n"
         "elif sys.argv[1] == 'rm':\n"
+        "    if os.environ.get('FAKE_DOCKER_UNCERTAIN') == '1': raise SystemExit(1)\n"
         "    marker.unlink(missing_ok=True)\n"
         "else:\n"
+        "    if os.environ.get('FAKE_DOCKER_NO_SUCH') == '1':\n"
+        "        print('No such container', file=sys.stderr); raise SystemExit(1)\n"
+        "    print('synthetic daemon refusal', file=sys.stderr)\n"
         "    raise SystemExit(1)\n"
     )
     docker.chmod(0o755)
     config = tmp_path / "cloud-config.yaml"
     config.write_text("#cloud-config\n")
-    completed = subprocess.run(
-        [
-            sys.executable,
-            str(root / "scripts/cloud-init-schema-container.py"),
+    module = _cloud_init_schema_module()
+    original_popen = subprocess.Popen
+    processes = []
+
+    def ready_client(*args, **kwargs):
+        process = original_popen(*args, **kwargs)
+        processes.append(process)
+        deadline = time.monotonic() + 5
+        while not marker.exists():
+            assert process.poll() is None, "fake Docker exited before readiness"
+            assert time.monotonic() < deadline, "fake Docker did not become ready"
+            time.sleep(0.005)
+        return process
+
+    monkeypatch.setenv("PATH", f"{tools}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("FAKE_DOCKER_CALLS", str(calls))
+    monkeypatch.setenv("FAKE_DOCKER_MARKER", str(marker))
+
+    # Only the actual docker-run client waits for readiness, not cleanup commands.
+    def popen(*args, **kwargs):
+        if args[0][1] == "run":
+            return ready_client(*args, **kwargs)
+        return original_popen(*args, **kwargs)
+
+    monkeypatch.setattr(module.subprocess, "Popen", popen)
+    try:
+        yield module, [
             "--image",
             "ubuntu:24.04@sha256:" + "a" * 64,
             "--config",
             str(config),
             "--timeout",
             "1",
-        ],
-        env={
-            **os.environ,
-            "PATH": f"{tools}{os.pathsep}{os.environ['PATH']}",
-            "FAKE_DOCKER_CALLS": str(calls),
-            "FAKE_DOCKER_MARKER": str(marker),
-        },
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    assert completed.returncode == 124
-    assert "timed out and was stopped" in completed.stderr
+        ], calls, marker, processes
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=5)
+
+
+def test_cloud_init_schema_timeout_removes_the_named_container(schema_docker, capsys):
+    module, arguments, calls, marker, processes = schema_docker
+    result = module.main(arguments)
+    assert result == 124
+    assert "timed out and was stopped" in capsys.readouterr().err
     assert not marker.exists()
+    assert processes[0].returncode is not None
     recorded = [json.loads(line) for line in calls.read_text().splitlines()]
     assert recorded[0][:4] == ["run", "--rm", "-i", "--name"]
     container_name = recorded[0][4]
     assert container_name.startswith("vpn-cloud-init-schema-")
     assert recorded[1] == ["rm", "--force", "--volumes", container_name]
+
+
+@pytest.mark.parametrize("phase", ["nonblocking", "selector", "write"])
+@pytest.mark.parametrize("uncertain", [False, True])
+def test_cloud_init_schema_io_failure_cleans_up_at_main_boundary(
+    schema_docker, monkeypatch, capsys, phase, uncertain
+):
+    module, arguments, calls, marker, processes = schema_docker
+    failure = OSError(f"synthetic {phase} failure")
+
+    def fail(*args, **kwargs):
+        raise failure
+
+    if phase == "nonblocking":
+        monkeypatch.setattr(module.os, "set_blocking", fail)
+    elif phase == "selector":
+        monkeypatch.setattr(module.selectors, "DefaultSelector", fail)
+    else:
+        monkeypatch.setattr(module.os, "write", fail)
+    if uncertain:
+        monkeypatch.setenv("FAKE_DOCKER_UNCERTAIN", "1")
+        assert module.main(arguments) == 125
+        diagnostic = capsys.readouterr().err
+        assert str(failure) in diagnostic
+        assert "cleanup is uncertain" in diagnostic
+    else:
+        with pytest.raises(OSError) as error:
+            module.main(arguments)
+        assert error.value is failure
+    assert processes[0].returncode is not None
+    assert processes[0].stdin.closed
+    assert marker.exists() is uncertain
+    recorded = [json.loads(line) for line in calls.read_text().splitlines()]
+    name = recorded[0][4]
+    assert recorded[1] == ["rm", "--force", "--volumes", name]
+    if uncertain:
+        assert recorded[2] == ["container", "inspect", name]
+
+
+def test_cloud_init_schema_absence_after_failed_removal_is_uncertain(
+    schema_docker, monkeypatch, capsys
+):
+    module, arguments, calls, _marker, processes = schema_docker
+    monkeypatch.setenv("FAKE_DOCKER_UNCERTAIN", "1")
+    monkeypatch.setenv("FAKE_DOCKER_NO_SUCH", "1")
+    assert module.main(arguments) == 125
+    assert "cleanup is uncertain" in capsys.readouterr().err
+    assert processes[0].returncode is not None
+    recorded = [json.loads(line) for line in calls.read_text().splitlines()]
+    assert [call[0] for call in recorded] == ["run", "rm", "container"]
+    assert recorded[2] == ["container", "inspect", recorded[0][4]]
+
+
+def test_cloud_init_schema_signal_refusal_still_attempts_named_removal(
+    schema_docker, monkeypatch, capsys
+):
+    module, arguments, calls, marker, processes = schema_docker
+    original_popen = module.subprocess.Popen
+    original_methods = []
+    wait_budgets = []
+
+    def refusing_client(*args, **kwargs):
+        process = original_popen(*args, **kwargs)
+        if args[0][1] == "run":
+            original_methods.append((process, process.kill, process.wait))
+            original_wait = process.wait
+
+            def refuse_signal():
+                raise PermissionError("synthetic signal refusal")
+
+            def bounded_wait(*, timeout):
+                wait_budgets.append(timeout)
+                return original_wait(timeout=timeout)
+
+            monkeypatch.setattr(process, "kill", refuse_signal)
+            monkeypatch.setattr(process, "wait", bounded_wait)
+        return process
+
+    def fail_setup(*args, **kwargs):
+        raise OSError("synthetic setup refusal")
+
+    monkeypatch.setattr(module.subprocess, "Popen", refusing_client)
+    monkeypatch.setattr(module.os, "set_blocking", fail_setup)
+    try:
+        assert module.main(arguments) == 125
+        assert "synthetic setup refusal" in capsys.readouterr().err
+        assert wait_budgets == [5]
+        assert processes[0].poll() is None
+        assert processes[0].stdin.closed
+        assert not marker.exists()
+        recorded = [json.loads(line) for line in calls.read_text().splitlines()]
+        assert recorded[1] == ["rm", "--force", "--volumes", recorded[0][4]]
+    finally:
+        for process, kill, wait in original_methods:
+            monkeypatch.setattr(process, "kill", kill)
+            monkeypatch.setattr(process, "wait", wait)
 
 
 def test_inventory_uses_the_local_fleet_profile_when_present():

@@ -12,6 +12,14 @@ Passive command collection retries transient nonblocking pipe backpressure
 within its original deadline and input/output budgets. Readiness is not a promise
 that the next read or write can complete; broken input pipes still refuse.
 
+The disposable cloud-init schema client uses one deadline for nonblocking tar
+delivery and child completion. Partial writes retain their offset. Timeout
+cleanup attempts to stop and reap the owned client before container removal.
+Confirmed cleanup requires successful client shutdown and removal. Uncertain
+shutdown still permits a bounded removal attempt for the owned name, but always
+returns status `125`. An earlier daemon request may still be in flight: failed
+removal remains uncertain even when inspection reports absence.
+
 Subscription refresh binds the requested client name to the unique token-prefix
 registry match before credential emission or remote publication. Prefix-only
 registry compatibility remains unchanged; an ambiguous match refuses.
