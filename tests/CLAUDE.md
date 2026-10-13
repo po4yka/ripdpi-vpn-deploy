@@ -17,9 +17,11 @@
 **Monitoring regressions cross the real boundary** — consume actual private
 watchdog output, age frozen producer evidence with the pinned PromQL evaluator,
 and compare declared units to partially missing native series. Long generated
-alert URLs and realistic returned Message bodies exercise relay limits. Observer
-termination tests execute the production backup/recovery helper; fixture-only
-signal cleanup cannot prove the installed service's restoration behavior.
+alert URLs and realistic returned Message bodies exercise relay limits.
+Grouped required-service failure and missing-evidence notifications retain each
+unit's validated role through firing, recovery and exact omission accounting.
+Observer termination tests execute the production backup/recovery helper;
+fixture-only signal cleanup cannot prove the installed service's restoration behavior.
 Pinned receiver readiness retries only expected startup HTTP 503 and refused or
 timed-out loopback connections within one deadline; unexpected errors propagate.
 

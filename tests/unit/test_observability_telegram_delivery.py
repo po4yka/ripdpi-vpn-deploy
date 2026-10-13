@@ -486,6 +486,100 @@ def test_relay_renders_escaped_capped_firing_and_resolved_messages(status: str) 
     assert len(message) <= 4096
 
 
+@pytest.mark.parametrize("status", ["firing", "resolved"])
+@pytest.mark.parametrize(
+    "alertname",
+    [
+        "ObservabilityRequiredServiceNotActive",
+        "ObservabilityRequiredServiceEvidenceMissing",
+    ],
+)
+def test_relay_distinguishes_grouped_service_roles(status: str, alertname: str) -> None:
+    relay = _relay()
+    rules = yaml.safe_load(
+        render_alert_rules(
+            ROLE / "templates/observability-alert-rules.yml.j2",
+            {
+                "observability_control_plane": complete_contract(),
+                "observability_alert_policy": _alert_policy(),
+            },
+        )
+    )
+    rule = next(
+        rule
+        for group in rules["groups"]
+        for rule in group["rules"]
+        if rule.get("alert") == alertname
+    )
+    payload = _payload(status, alerts=2)
+    common = {"alertname": alertname, "environment": "stage", "node": "node"}
+    common.update(rule["labels"])
+    payload["groupLabels"] = dict(common)
+    payload["commonLabels"] = dict(common)
+    payload["commonAnnotations"] = dict(rule["annotations"])
+    for alert, role in zip(payload["alerts"], ("xray", "nginx"), strict=True):
+        alert["labels"] = {**common, "role": role}
+        alert["annotations"] = dict(rule["annotations"])
+    message = relay.render_message(relay.parse_payload(json.dumps(payload).encode()))
+    assert "stage/node/service/xray:" in message
+    assert "stage/node/service/nginx:" in message
+    assert message.count(rule["annotations"]["summary"]) == 2
+    assert message.count("- recovered" if status == "resolved" else "\n- ") == 2
+
+
+@pytest.mark.parametrize(
+    "role",
+    ["", "x" * 65, "Xray", "xray.service", "xray/nginx", "xray nginx", "xray\n", "<xray>"],
+)
+def test_relay_refuses_roles_outside_the_technical_alias_contract(role: str) -> None:
+    relay = _relay()
+    payload = _payload()
+    payload["alerts"][0]["labels"]["role"] = role
+    with pytest.raises(relay.Refusal, match="^payload-contract$"):
+        relay.parse_payload(json.dumps(payload).encode())
+
+
+@pytest.mark.parametrize(
+    "alertname",
+    [
+        "ObservabilityRequiredServiceNotActive",
+        "ObservabilityRequiredServiceEvidenceMissing",
+    ],
+)
+@pytest.mark.parametrize("scope", ["common", "alert"])
+def test_relay_refuses_service_alerts_without_unit_identity(
+    alertname: str, scope: str
+) -> None:
+    relay = _relay()
+    payload = _payload()
+    labels = payload["commonLabels"] if scope == "common" else payload["alerts"][0]["labels"]
+    labels["alertname"] = alertname
+    with pytest.raises(relay.Refusal, match="^payload-contract$"):
+        relay.parse_payload(json.dumps(payload).encode())
+
+
+def test_relay_role_boundary_preserves_message_omission_and_redaction() -> None:
+    relay = _relay()
+    payload = _payload(alerts=5)
+    payload["truncatedAlerts"] = 2
+    role = "a_" + "b" * 62
+    for alert in payload["alerts"]:
+        alert["labels"]["role"] = role
+        for key in ("summary", "evidence_class", "runbook"):
+            alert["annotations"][key] = "<" * 160
+    message = relay.render_message(relay.parse_payload(json.dumps(payload).encode()))
+    rendered = message.count("\n- ")
+    assert 0 < rendered < 5
+    assert message.count("/" + role + ":") == rendered
+    assert message.endswith(f"... omitted {7 - rendered} alerts")
+    assert len(message) <= 4096
+    assert "must never be rendered" not in message
+    assert "<" not in message
+    # Alerts without this optional label retain their existing identity format.
+    unrelated = relay.render_message(relay.parse_payload(json.dumps(_payload()).encode()))
+    assert "stage0/node0/control0: summary" in unrelated
+
+
 def test_relay_requires_authenticated_loopback_webhook_before_delivery() -> None:
     relay = _relay()
     delivered: list[str] = []

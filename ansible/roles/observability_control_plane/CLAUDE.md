@@ -13,6 +13,10 @@ so another active service cannot hide missing evidence.
 inside the bounded webhook body and never enter messages or requests. Telegram
 Message responses have a separate finite byte ceiling from message characters;
 large valid success replies are not delivery failures.
+Each alert line includes its role when present, using the producer's lowercase
+technical alias contract (at most 64 characters). Required-service failure and
+missing-evidence alerts require that unit identity. Roles distinguish units
+within existing Alertmanager groups without increasing notification frequency.
 
 **Binary upgrades participate in readiness** — preserve the Prometheus activation result before installing other runtimes. A binary-only upgrade restarts the collector; failed acceptance restores its previous release link before the previous configuration is restarted. Ingress changes retain their independent certificate/config/unit restart predicate.
 

@@ -34,6 +34,11 @@ CHAT = re.compile(r"-?[0-9]{1,20}\Z")
 SOURCE_ID = re.compile(r"[a-f0-9]{40,64}\Z")
 FINGERPRINT = re.compile(r"[a-f0-9]{16,64}\Z")
 ALIAS = re.compile(r"[A-Za-z0-9_.:/ -]{1,160}\Z")
+ROLE = re.compile(r"[a-z][a-z0-9_-]{0,63}\Z")
+SERVICE_ALERTS = {
+    "ObservabilityRequiredServiceNotActive",
+    "ObservabilityRequiredServiceEvidenceMissing",
+}
 
 
 class Refusal(ValueError):
@@ -145,6 +150,12 @@ def parse_payload(raw: bytes, maximum: int = MAX_PAYLOAD_BYTES) -> dict[str, obj
         _bounded_mapping(alert["annotations"])
         for key in ("environment", "node", "component"):
             _bounded_string(alert["labels"].get(key), pattern=ALIAS)
+        if (
+            "role" in alert["labels"]
+            or common_labels["alertname"] in SERVICE_ALERTS
+            or alert["labels"].get("alertname") in SERVICE_ALERTS
+        ):
+            _bounded_string(alert["labels"].get("role"), pattern=ROLE, maximum=64)
         for key in ("summary", "evidence_class", "runbook"):
             _bounded_string(alert["annotations"].get(key))
         _bounded_string(alert["startsAt"])
@@ -165,6 +176,7 @@ def _line(alert: dict[str, object]) -> str:
     labels = alert["labels"]
     annotations = alert["annotations"]
     prefix = "-" if alert["status"] == "firing" else "- recovered"
+    role = "/" + _escaped(labels["role"]) if "role" in labels else ""
     timestamp = (
         "started=" + _escaped(alert["startsAt"])
         if alert["status"] == "firing"
@@ -172,7 +184,7 @@ def _line(alert: dict[str, object]) -> str:
     )
     return (
         f"{prefix} {_escaped(labels['environment'])}/{_escaped(labels['node'])}/"
-        f"{_escaped(labels['component'])}: {_escaped(annotations['summary'])} "
+        f"{_escaped(labels['component'])}{role}: {_escaped(annotations['summary'])} "
         f"[{_escaped(annotations['evidence_class'])}] "
         f"{_escaped(annotations['runbook'])} {timestamp}"
     )
