@@ -1,0 +1,11 @@
+{
+  "change": "runtime-acceptance-transaction",
+  "evidence_summary": "Frozen source 8e58941a passed the complete local gate, all required hosted checks, actual native Xray/Hysteria forwarding and sender historical queue recovery. Independent source/security review approved; canonical archival completed without warnings.",
+  "execution_sha256": "68cebe8ac49f141582bebb30e89adf59494ee2367a519bf6141844f7d9fa8d3d",
+  "issue_sha256": "2cb6cc1e1a0e2ac45769914fc54a30ec8c4e4517bc1eb1df0455ec88136d1018",
+  "outcome": "done",
+  "prepared_at": "2026-10-13T19:00:10Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "ANS-1791617913525586"
+}
