@@ -2,7 +2,7 @@
 id: MON-1791825755591250
 title: Repair Telegram delivery and service monitoring audit defects
 kind: bug
-status: review
+status: done
 area: monitoring
 priority: high
 risk: high
@@ -15,6 +15,9 @@ created: 2026-10-12
 updated: 2026-10-13
 related_tasks: []
 status_detail: Full pinned local gate, exact-source hosted checks and independent review passed at 8846bf2c0cee51e36f42eca3b49255e67f81ed09; deployment and real notifications remain excluded.
+closed_at: "2026-10-13T18:12:06Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Source 8846bf2c passed the complete local gate and hosted required checks; e9e8517e committed the reviewed acceptance snapshot. Canonical archival completed successfully.
 ---
 
 ## Goal

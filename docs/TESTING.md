@@ -279,9 +279,10 @@ The limits bound running jobs, not time waiting for a runner.
 | Final CI gate / selector | 3 |
 | Gitleaks, actionlint, shellcheck, pytest aggregate, contract sync, image enumeration, CLAUDE coverage | 5 |
 | Task contracts | 8 |
-| Terraform validation/tests, cloud-init, Bats, native runtime, Python validators, SBOM and Markdown links | 10 |
+| Terraform validation/tests, cloud-init, Bats, Python validators, SBOM and Markdown links | 10 |
 | Pytest groups, Ansible lint, Go helper, Terraform policy, image scans | 15 |
 | Role/failure Molecule scenarios, CodeQL | 20 |
+| Native runtime integration, including setup and cleanup | 30 |
 | Full-stack Molecule scenarios | 30 |
 | Shared Python vpnd test/lint/package/dependency job | 30 |
 
@@ -293,6 +294,11 @@ Rust limit accommodated cold cross-builds. This historical sample predates the
 Python migration and does not establish Python/platform or release-build runtime
 results. Existing bounded reproducible-build jobs retain their per-component
 limits of 20, 15 and 5 minutes.
+
+The current native runtime suite completed all 138 tests in about 17 minutes.
+Setup took up to 3.5 minutes, so a 20-minute job limit cancelled successful test
+runs. The 30-minute limit covers the complete job. Test selection, per-process
+deadlines and skip refusal remain unchanged.
 
 `markdown-link-check` and `claude-md-touch` use workflow/event/PR concurrency
 keys and cancel older runs of that PR. The run-ID fallback keeps scheduled
