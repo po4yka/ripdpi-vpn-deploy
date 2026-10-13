@@ -2,7 +2,7 @@
 id: MON-1791918647679583
 title: Render service identity in Telegram alerts
 kind: bug
-status: doing
+status: review
 area: monitoring
 priority: high
 risk: standard
@@ -15,6 +15,7 @@ created: 2026-10-13
 updated: 2026-10-13
 spec_reason: regression-tested-single-module
 related_tasks: [MON-1791825755591250]
+status_detail: Bounded service identity, full local gate, exact-source hosted checks and independent review passed at f03923dfca69c3fa229444747bbe6939a21b7a41; deployment and real notifications remain excluded.
 ---
 
 ## Goal
