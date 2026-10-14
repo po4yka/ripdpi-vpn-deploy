@@ -158,3 +158,7 @@ Existing, linked, shared or tracked output destinations refuse; ordinary stdout
 remains available for an explicitly selected recipient. Device addresses are
 unreserved IPv4 host prefixes inside the selected instance's subnet; broader
 or IPv6 peer routing requires explicit `address_kind: routed` ownership.
+
+`new-client.sh --emit-uri` requires `OUTPUT=<new private recipient file>`
+in a `0700` directory. The destination is reserved before enrollment and removed
+on transaction failure. URI passwords never enter metadata stdout.

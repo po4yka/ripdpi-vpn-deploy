@@ -44,8 +44,10 @@ AWG peers), generated from the same secrets file. Clients reconnect with
 their existing URIs (which encode UUIDs/passwords, not IPs — assuming
 you used DNS or floating IP).
 
-If clients used bare IP, reissue URIs with `scripts/new-client.sh
---emit-uri <name>` against each client name.
+If clients used bare IP, regenerate selected client exports with the canonical
+emitter and updated endpoint. New device issuance with `scripts/new-client.sh
+--emit-uri <name>` requires `OUTPUT=<new private recipient file>`; issuance
+refuses an existing client identity and does not serve as read-only recovery.
 
 ## Path B — restore from restic snapshot
 

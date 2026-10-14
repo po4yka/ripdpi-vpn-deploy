@@ -32,7 +32,26 @@ def private_file(descriptor):
     return info
 
 
-def operate(path, transform, *, runner=run_sops):
+class CommittedPublication(OSError):
+    """Authority changed; the caller must retain its completed recipient artifact."""
+
+    def __init__(self, metadata):
+        super().__init__("encrypted-document-committed-durability-uncertain")
+        self.metadata = metadata
+
+
+def operate(path, transform, *, runner=run_sops, before_publish=None):
+    publication = {}
+    try:
+        return _operate(path, transform, runner=runner, before_publish=before_publish,
+                        publication=publication)
+    except Exception as error:
+        if "committed" in publication:
+            raise CommittedPublication(publication["committed"]) from error
+        raise
+
+
+def _operate(path, transform, *, runner, before_publish, publication):
     path = Path(os.path.abspath(path))
     path = path.parent.resolve(strict=True) / path.name
     parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
@@ -94,7 +113,10 @@ def operate(path, transform, *, runner=run_sops):
             if (identity(os.stat(temporary, follow_symlinks=False)) != identity(candidate_info)
                     or identity(os.fstat(candidate)) != identity(candidate_info)):
                 raise ValueError("private-candidate-changed")
+            if before_publish is not None:
+                before_publish()
             os.replace(temporary, path)
+            publication["committed"] = metadata
             temporary = None
             os.fsync(parent)
         return metadata
@@ -105,8 +127,18 @@ def operate(path, transform, *, runner=run_sops):
                     if identity(os.stat(temporary, follow_symlinks=False)) == temporary_identity:
                         Path(temporary).unlink()
                 except FileNotFoundError:
-                    pass
+                    pass  # An absent owned encrypted stage needs no cleanup.
         finally:
-            for descriptor in (candidate, source, lock, parent):
-                if descriptor is not None:
-                    os.close(descriptor)
+            try:
+                if candidate is not None:
+                    os.close(candidate)
+            finally:
+                try:
+                    if source is not None:
+                        os.close(source)
+                finally:
+                    try:
+                        if lock is not None:
+                            os.close(lock)
+                    finally:
+                        os.close(parent)

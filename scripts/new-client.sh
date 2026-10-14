@@ -12,7 +12,10 @@ deploy_env="${ENV:-prod}"
 provider="${PROVIDER:-upcloud}"
 sops_file="${SOPS_FILE:-${HOME}/.config/vpn-provision/${deploy_env}.secrets.sops.yaml}"
 uri_args=()
-[[ "$emit_uri" == 0 ]] || uri_args+=(--emit-uri)
+if [[ "$emit_uri" == 1 ]]; then
+  [[ -n "${OUTPUT:-}" ]] || { echo "OUTPUT=<new private recipient file> required with --emit-uri" >&2; exit 2; }
+  uri_args+=(--emit-uri --output "$OUTPUT")
+fi
 python3 "${repo_root}/scripts/awg_client.py" enroll "$1" --host "${provider}:${deploy_env}" \
   --file "$sops_file" --all-profiles "${uri_args[@]}"
 ENV="$deploy_env" PROVIDER="$provider" "${repo_root}/scripts/audit-log.sh" append-best-effort \

@@ -15,7 +15,9 @@ refuse without emitting a partial payload. The public bundle shape/fingerprint
 algorithm are unchanged. RIPDPI bundles support AWG-only profiles through
 the direct carrier document; the official sing-box format still requires a
 supported proxy outbound. Private recipient output uses no-clobber `OUTPUT`
-publication in an owner-only directory.
+publication in an owner-only directory. URI issuance also requires a private
+new output reserved before source mutation; transaction failure removes only
+that owned artifact. Credential-bearing URIs never enter metadata stdout.
 
 CI selects both native integration and complete transport acceptance together.
 Each has its own disposable runner; the consumer lab never adopts or removes
@@ -110,7 +112,10 @@ credential readout. Selected readout requires an explicit new `0600` output in a
 private `0700` directory, outside tracked source or under ignored `secrets/local/`.
 Its stdout carries only metadata; linked/existing/shared output authority refuses.
 It shares `.new-client.lock`, uses encrypted sibling publication,
-refuses unsafe source authority, and preserves unrelated fields. `new-client.sh`
+refuses unsafe source authority, and preserves unrelated fields. Once ciphertext
+replacement commits, a sync or descriptor-close failure reports
+`committed-durability-uncertain` with exit 3 and retains the recipient artifact;
+inspect the enrolled state before retrying. `new-client.sh`
 includes optional Naive issuance inside its existing all-profile transaction.
 No scalar credential compatibility path or plaintext staging is supported.
 

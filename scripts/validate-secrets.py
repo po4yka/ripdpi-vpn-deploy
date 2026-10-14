@@ -100,6 +100,9 @@ def _registry_errors(doc: dict, *, allow_placeholders: bool = False) -> list[tup
                 errors.append((path, "absent AWG binding must have no recovery material"))
             continue
         try:
+            if not allow_placeholders and (PLACEHOLDER.fullmatch(private) or PLACEHOLDER.fullmatch(fingerprint)):
+                errors.append((path, "unfilled REPLACE_WITH_* recovery material"))
+                continue
             if allow_placeholders and PLACEHOLDER.fullmatch(private) and PLACEHOLDER.fullmatch(fingerprint):
                 instances = doc["amneziawg_secrets"]["instances"]
                 matches = [peer for item in instances if item["name"] == binding["instance"]

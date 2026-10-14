@@ -1,5 +1,4 @@
 """Real SOPS/age enrollment, revocation, isolation and failure preservation."""
-import copy
 import fcntl
 import json
 import os
@@ -181,3 +180,128 @@ def test_full_cleanup_handles_a_device_with_legitimately_revoked_awg(encrypted):
     assert final['xray']['clients'] == [] and final['hysteria']['clients'] == []
     assert final['amneziawg_secrets'] == doc['amneziawg_secrets']
     assert all('amneziawg_secrets' not in item for item in paths)
+
+
+def test_uri_issuance_publishes_private_templates_and_only_metadata(encrypted):
+    path, _ = encrypted
+    operate(path, lambda doc: ({**doc, 'hysteria': {'clients': [], 'masquerade_type': 'proxy', 'masquerade_url': 'https://owned.example'}}, {}))
+    directory = path.parent / 'recipient'; directory.mkdir(mode=0o700)
+    output = directory / 'uris.txt'
+    script = Path(__file__).resolve().parents[2] / 'scripts/new-client.sh'
+    result = subprocess.run(['bash', str(script), '--emit-uri', 'uri-device'],
+                            env={**os.environ, 'SOPS_FILE': str(path), 'AWG_INSTANCE': 'awg0', 'OUTPUT': str(output),
+                                 'HOME': str(path.parent), 'PROVIDER': 'upcloud', 'ENV': 'fixture'},
+                            capture_output=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    doc = decrypt(path)
+    password = doc['hysteria']['clients'][0]['password']
+    assert password in output.read_text() and password.encode() not in result.stdout + result.stderr
+    assert output.stat().st_mode & 0o777 == 0o600
+    assert json.loads(result.stdout)['output'] == str(output)
+
+
+def test_unsafe_uri_destination_refuses_before_enrollment(encrypted):
+    path, _ = encrypted
+    directory = path.parent / 'recipient'; directory.mkdir(mode=0o700)
+    output = directory / 'uris.txt'; output.write_text('prior recipient'); output.chmod(0o600)
+    before = path.read_bytes()
+    script = Path(__file__).resolve().parents[2] / 'scripts/new-client.sh'
+    result = subprocess.run(['bash', str(script), '--emit-uri', 'uri-device'],
+                            env={**os.environ, 'SOPS_FILE': str(path), 'AWG_INSTANCE': 'awg0', 'OUTPUT': str(output)},
+                            capture_output=True, timeout=30)
+    assert result.returncode != 0 and result.stdout == b''
+    assert path.read_bytes() == before and output.read_text() == 'prior recipient'
+
+
+def test_recipient_failure_rolls_back_output_and_encrypted_authority(encrypted):
+    from private_client_artifact import new_output
+    path, _ = encrypted
+    before = path.read_bytes()
+    directory = path.parent / 'recipient'; directory.mkdir(mode=0o700)
+    output = directory / 'uris.txt'
+    def failure(args, *, data=None):
+        if args[0] == 'set':
+            raise ValueError('encryption-refused')
+        return run_sops(args, data=data)
+    with pytest.raises(ValueError, match='encryption-refused'):
+        with new_output(output) as (write, validate):
+            def transaction(doc):
+                changed, metadata = enroll(doc, {}, 'uri-device', 'upcloud:fixture', 'awg0')
+                write('synthetic-selected-recipient-material')
+                return changed, metadata
+            operate(path, transaction, runner=failure, before_publish=validate)
+    assert not output.exists() and path.read_bytes() == before
+
+
+@pytest.mark.parametrize('fault', ['directory-sync', 'descriptor-close'])
+def test_post_commit_failure_retains_enrolled_device_and_recipient(encrypted, monkeypatch, fault):
+    import encrypted_client_document as publisher
+    from private_client_artifact import new_output
+    path, _ = encrypted
+    directory = path.parent / 'recipient'; directory.mkdir(mode=0o700)
+    output = directory / 'uris.txt'
+    real_replace, real_sync, real_close = os.replace, os.fsync, os.close
+    committed = False
+    failed = False
+
+    def replace(source, destination):
+        nonlocal committed
+        real_replace(source, destination)
+        committed = True
+
+    def sync(descriptor):
+        nonlocal failed
+        if committed and fault == 'directory-sync' and not failed:
+            failed = True
+            raise OSError('injected-directory-sync')
+        return real_sync(descriptor)
+
+    def close(descriptor):
+        nonlocal failed
+        real_close(descriptor)
+        if committed and fault == 'descriptor-close' and not failed:
+            failed = True
+            raise OSError('injected-descriptor-close')
+
+    monkeypatch.setattr(publisher.os, 'replace', replace)
+    monkeypatch.setattr(publisher.os, 'fsync', sync)
+    monkeypatch.setattr(publisher.os, 'close', close)
+    with pytest.raises(publisher.CommittedPublication) as observed:
+        with new_output(output) as (write, validate):
+            def transaction(doc):
+                changed, metadata = enroll(doc, {}, 'uri-device', 'upcloud:fixture', 'awg0')
+                write('synthetic-selected-recipient-material')
+                return changed, metadata
+            operate(path, transaction, before_publish=validate)
+    assert observed.value.metadata['client'] == 'uri-device'
+    assert output.read_text() == 'synthetic-selected-recipient-material'
+    assert 'uri-device' in decrypt(path)['client_registry']
+    assert not list(path.parent.glob('.devices.sops.yaml.client.*'))
+
+
+def test_cli_recipient_close_failure_reports_committed_state(encrypted, monkeypatch, capsys):
+    import awg_client
+    path, _ = encrypted
+    operate(path, lambda doc: ({**doc, 'hysteria': {'clients': [], 'masquerade_type': 'proxy', 'masquerade_url': 'https://owned.example'}}, {}))
+    directory = path.parent / 'recipient'; directory.mkdir(mode=0o700)
+    output = directory / 'uris.txt'
+    real_close = os.close
+    failed = False
+
+    def close(descriptor):
+        nonlocal failed
+        recipient = os.fstat(descriptor).st_ino == output.stat().st_ino
+        real_close(descriptor)
+        if recipient and not failed:
+            failed = True
+            raise OSError('injected-recipient-close')
+
+    monkeypatch.setattr(os, 'close', close)
+    monkeypatch.setattr(sys, 'argv', ['awg_client.py', 'enroll', 'uri-device', '--host', 'upcloud:fixture',
+                                     '--instance', 'awg0', '--file', str(path), '--all-profiles', '--emit-uri', '--output', str(output)])
+    assert awg_client.main() == 3
+    observed = capsys.readouterr()
+    assert json.loads(observed.out)['publication'] == 'committed-durability-uncertain'
+    doc = decrypt(path)
+    password = doc['hysteria']['clients'][0]['password']
+    assert password in output.read_text() and password not in observed.out + observed.err

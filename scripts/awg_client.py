@@ -20,8 +20,8 @@ import uuid
 
 import yaml
 
-from awg_device_binding import BindingError, allocate_address, public_key, resolve_binding
-from encrypted_client_document import operate
+from awg_device_binding import NAME, BindingError, allocate_address, public_key, resolve_binding
+from encrypted_client_document import CommittedPublication, operate
 from ripdpi_cohort_fingerprint import cohort_fingerprint
 from transport_semantics import transport_errors, selected_context
 
@@ -126,6 +126,12 @@ def config(block):
     return '\n'.join(fields) + '\n'
 
 
+def committed_result(metadata):
+    print(json.dumps({**metadata, 'publication': 'committed-durability-uncertain'}))
+    print('awg-device-publication-committed-durability-uncertain', file=sys.stderr)
+    return 3
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['enroll', 'revoke', 'bundle', 'config'])
@@ -139,6 +145,10 @@ def main():
     parser.add_argument('--all-profiles', action='store_true')
     parser.add_argument('--emit-uri', action='store_true')
     args = parser.parse_args()
+    if NAME.fullmatch(args.name) is None:
+        print('client name must contain 1-64 ASCII letters, digits, underscores or hyphens', file=sys.stderr)
+        return 2
+    committed_metadata = None
     try:
         context = host_context(args.cohort)
         if args.action in ('enroll', 'revoke'):
@@ -146,15 +156,23 @@ def main():
                 raise BindingError('missing-encrypted-document')
             transform = lambda doc: (enroll(doc, context, args.name, args.host, args.instance, all_profiles=args.all_profiles)
                                      if args.action == 'enroll' else revoke(doc, context, args.name, args.host, args.instance))
-            def transaction(doc):
-                updated, metadata = transform(doc)
-                if args.emit_uri:
-                    xray = next(item for item in updated['xray']['clients'] if item['name'] == args.name)
-                    hy = next(item for item in updated['hysteria']['clients'] if item['name'] == args.name)
-                    metadata['uris'] = [f"vless://{xray['uuid']}@<SERVER_IP>:443?type=raw&security=reality&flow=xtls-rprx-vision&sni=<SNI>&pbk=<REALITY_PUBLIC_KEY>&sid={xray['short_id']}#{args.name}",
-                                        f"hysteria2://{args.name}:{hy['password']}@<SERVER_IP>:443/?sni=<SERVER_HOSTNAME>#{args.name}"]
-                return updated, metadata
-            result = operate(args.file, transaction)
+            if args.emit_uri:
+                if args.action != 'enroll' or not args.all_profiles or not args.output:
+                    raise BindingError('private-uri-output-required')
+                from private_client_artifact import new_output
+                with new_output(args.output) as (write, validate):
+                    def transaction(doc):
+                        updated, metadata = transform(doc)
+                        xray = next(item for item in updated['xray']['clients'] if item['name'] == args.name)
+                        hy = next(item for item in updated['hysteria']['clients'] if item['name'] == args.name)
+                        uris = [f"vless://{xray['uuid']}@<SERVER_IP>:443?type=raw&security=reality&flow=xtls-rprx-vision&sni=<SNI>&pbk=<REALITY_PUBLIC_KEY>&sid={xray['short_id']}#{args.name}",
+                                f"hysteria2://{args.name}:{hy['password']}@<SERVER_IP>:443/?sni=<SERVER_HOSTNAME>#{args.name}"]
+                        write('\n'.join(uris) + '\n')
+                        return updated, {**metadata, 'output': args.output}
+                    result = operate(args.file, transaction, before_publish=validate)
+                    committed_metadata = result
+            else:
+                result = operate(args.file, transform)
             print(json.dumps(result))
         else:
             payload = sys.stdin.buffer.read(4 * 1024 * 1024 + 1)
@@ -169,7 +187,14 @@ def main():
             else:
                 print(rendered, end='')
         return 0
-    except (ValueError, OSError, KeyError, TypeError, AttributeError, RecursionError, subprocess.TimeoutExpired):
+    except CommittedPublication as error:
+        return committed_result(error.metadata)
+    except OSError:
+        if committed_metadata is not None:
+            return committed_result(committed_metadata)
+        print('awg-device-operation-refused', file=sys.stderr)
+        return 2
+    except (ValueError, KeyError, TypeError, AttributeError, RecursionError, subprocess.TimeoutExpired):
         print('awg-device-operation-refused', file=sys.stderr)
         return 2
 

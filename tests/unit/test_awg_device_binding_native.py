@@ -1,7 +1,6 @@
 """Exact pinned AWG TUN traffic exercises real encrypted device transactions."""
 from __future__ import annotations
 
-import copy
 import json
 import os
 from pathlib import Path
@@ -12,12 +11,12 @@ import uuid
 
 import pytest
 
-from awg_client import config, export, public_key, revoke
+from awg_client import config, export, public_key
 from awg_device_binding import resolve_binding
 from encrypted_client_document import operate
 from liveness_profiles import _awg
 from template_render import merge_render_vars, render_template
-from test_awg_encrypted_transactions import decrypt, encrypted, issue
+from test_awg_encrypted_transactions import decrypt, encrypted
 from test_transport_semantics_native import command, exact_awg_sources
 
 pytestmark = pytest.mark.native_runtime

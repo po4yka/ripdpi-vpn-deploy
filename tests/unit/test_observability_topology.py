@@ -226,6 +226,7 @@ def _inventory_repo(tmp_path: Path) -> tuple[Path, dict[str, str]]:
         "observability-contract.py",
         "validate-secrets.py",
         "transport_semantics.py",
+        "awg_device_binding.py",
     ):
         shutil.copyfile(ROOT / "scripts" / name, root / "scripts" / name)
         (root / "scripts" / name).chmod(0o700)
