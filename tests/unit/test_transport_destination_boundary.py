@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import copy
+import errno
 import json
 import os
 from pathlib import Path
@@ -184,13 +185,27 @@ class WireGateway:
     """Real sockets with an explicit fixture protocol peer, not Xray evidence."""
     def __init__(self):
         self.stop = threading.Event()
-        self.tcp = socket.socket()
-        self.tcp.bind(("127.0.0.1", 0))
-        self.port = self.tcp.getsockname()[1]
+        for _ in range(32):
+            tcp = socket.socket()
+            udp = None
+            try:
+                udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                tcp.bind(("127.0.0.1", 0))
+                port = tcp.getsockname()[1]
+                udp.bind(("127.0.0.1", port))
+            except OSError as error:
+                tcp.close()
+                if udp is not None:
+                    udp.close()
+                if error.errno != errno.EADDRINUSE:
+                    raise
+            else:
+                self.tcp, self.udp, self.port = tcp, udp, port
+                break
+        else:
+            raise RuntimeError("fixture-gateway-port-exhausted")
         self.tcp.listen()
         self.tcp.settimeout(0.1)
-        self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.udp.bind(("127.0.0.1", self.port))
         self.udp.settimeout(0.1)
         self.records = []
         self.source = None
@@ -254,6 +269,41 @@ class WireGateway:
         self.udp.close()
         for worker in self.workers:
             worker.join(0.2)
+
+
+def test_gateway_reserves_tcp_and_udp_on_one_unoccupied_port(monkeypatch):
+    original_bind = socket.socket.bind
+    owned = []
+    blocked = []
+
+    def occupy_udp_after_tcp_bind(stream, address):
+        owned.append(stream)
+        original_bind(stream, address)
+        if (stream.type == socket.SOCK_STREAM and address == ("127.0.0.1", 0)
+                and not blocked):
+            blocked.append(stream.getsockname()[1])
+            occupied = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            owned.append(occupied)
+            try:
+                original_bind(occupied, stream.getsockname())
+            except OSError as error:
+                # A pre-existing UDP lease already supplies the collision.
+                occupied.close()
+                if error.errno != errno.EADDRINUSE:
+                    raise
+
+    monkeypatch.setattr(socket.socket, "bind", occupy_udp_after_tcp_bind)
+    gateway = None
+    try:
+        gateway = WireGateway()
+        assert gateway.port != blocked[0]
+        assert gateway.tcp.getsockname()[1] == gateway.udp.getsockname()[1]
+        assert owned[0].fileno() == -1
+    finally:
+        if gateway is not None:
+            gateway.close()
+        for stream in owned:
+            stream.close()
 
 
 def auth(port, listener):

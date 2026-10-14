@@ -14,6 +14,11 @@
 
 ## Design decisions
 
+Destination fixture gateways claim both TCP and UDP sockets on the same native
+gateway port before accepting a candidate. Cross-protocol address collisions
+release both candidate sockets within a finite allocation bound; other errors
+propagate. The regression creates a real conflicting UDP lease.
+
 Native Hysteria validation checks root-private transient unit permissions before forced publisher death; portable recovery rejects even an exact recorded public-unit claim before touching the service or lease resources.
 
 Sender queue regressions preserve the pinned atomic metadata and empty initial-chunk staging forms, reject invalid names/sizes, and bound live inode-change retries separately from foreign-authority refusal.
