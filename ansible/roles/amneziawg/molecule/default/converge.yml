@@ -22,8 +22,13 @@
     vpn:
       awg_cohort: narrow-junk-sequential
     amneziawg_secrets:
-      server_private_key: "CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg="
-      peers: []
+      instances:
+        - name: awg0
+          listen_port: 51820
+          address_v4: "10.66.66.1/24"
+          address_v6: "fd42:42:42::1/64"
+          server_private_key: "CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg="
+          peers: []
   pre_tasks:
     - name: Read the synthetic AmneziaWG Go source pin
       ansible.builtin.command:

@@ -113,7 +113,9 @@ def merge_render_vars() -> dict:
     )
     merged["watchdog_awg_interfaces"] = [
         instance["name"] for instance in merged["amneziawg_secrets"].get("instances", [])
-    ] or [merged["amneziawg"]["interface"]]
+    ]
+    from transport_semantics import effective_awg_instances
+    merged["_inst"] = effective_awg_instances(merged["amneziawg_secrets"], merged["amneziawg"], merged.get("amneziawg_cohort", {}))[0]
     merged.setdefault(
         "watchdog_reality_probes",
         [

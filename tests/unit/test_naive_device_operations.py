@@ -38,9 +38,9 @@ def encrypted(tmp_path, monkeypatch):
         "naive_secrets": {"server_name": "proxy.example.test", "clients": []},
         "xray": {"clients": []},
         "hysteria": {"masquerade_type": "proxy", "masquerade_url": "https://owned.example", "clients": []},
-        "amneziawg_secrets": {"server_private_key": base64.b64encode(bytes([8]) * 32).decode(),
+        "amneziawg_secrets": {"instances": [{"name": "awg0", "listen_port": 51820, "address_v4": "10.66.66.1/24", "address_v6": "fd42:42:42::1/64", "server_private_key": base64.b64encode(bytes([8]) * 32).decode(),
                               "jc": 4, "jmin": 40, "jmax": 70, "s1": 50, "s2": 100,
-                              "h1": 11, "h2": 12, "h3": 13, "h4": 14, "peers": []},
+                              "h1": 11, "h2": 12, "h3": 13, "h4": 14, "peers": []}]},
         "client_registry": {},
     }
     path = tmp_path / "devices.sops.yaml"
@@ -207,7 +207,7 @@ def test_all_profile_issuer_includes_optional_naive_in_same_encrypted_commit(enc
         for block in (
             document["xray"]["clients"],
             document["hysteria"]["clients"],
-            document["amneziawg_secrets"]["peers"],
+            document["amneziawg_secrets"]["instances"][0]["peers"],
         )
     )
     assert document["client_registry"]["first"]["status"] == "issued"

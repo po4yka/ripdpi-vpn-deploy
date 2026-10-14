@@ -175,10 +175,11 @@ def test_declared_runtime_port_defaults_render_with_no_consumer_numeric_fallback
         "nginx_xhttp_port": 11085,
         "nginx_xhttp_fallback_port": 12083,
         "hysteria_port": 1443,
-        "amneziawg_listen_port": 151820,
+        "amneziawg_listen_port": 51821,
     }
     variables.update(overrides)
     variables["amneziawg"]["listen_port"] = overrides["amneziawg_listen_port"]
+    variables["amneziawg_secrets"]["instances"][0]["listen_port"] = overrides["amneziawg_listen_port"]
     rendered = json.loads(renderer.render_template(MANIFEST_TEMPLATE, variables))
     ports = {
         item["role"]: item.get("port")

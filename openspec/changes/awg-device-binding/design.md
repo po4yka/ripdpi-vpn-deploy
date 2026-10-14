@@ -2,18 +2,19 @@
 
 The deployed role treats a nonempty instance collection as authoritative, while enrollment and public emitters still write or read the legacy top-level peer collection and fixed address pool. Issuance can therefore succeed with a peer absent from the deployed server, emit the wrong endpoint and parameters, or silently omit an enabled AWG profile.
 
-Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Revalidate source and current task ownership before implementation. This request creates plans only.
+Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Revalidate source and current task ownership before implementation. Current implementation is authorized against the freshly verified main checkout.
 
 ## Goals / Non-Goals
 
 - Goal: deliver authoritative amneziawg device enrollment and client bindings with positive capability and meaningful negative, security, lifecycle and privacy tests.
-- Non-goal: implementation in this session, provider mutation, production deployment, actual credentials, unrelated cleanup, compatibility shims or revival of cancelled acceptance.
+- Non-goal: provider mutation, production deployment, actual credentials, unrelated cleanup, compatibility shims or revival of cancelled acceptance.
 
 ## Decisions
 
 - The schema remediation owns baseline AWG relationship validation. Reuse that completed contract rather than implementing duplicate preflight rules; this change owns authoritative device-binding and enrollment consumer integration.
 - Binding identity comprises technical host identity, effective instance name and device name; select it explicitly when more than one instance can match. Every selected result must be unique.
-- Replace the conflicting published source contract and update every repository caller. Do not retain top-level legacy peer and instance code paths solely for backward compatibility.
+- Replace the conflicting published source contract with `amneziawg_secrets.instances` as the only peer authority, including singleton hosts. Update every repository caller; reject the old top-level peer form. A shared effective resolver combines role/profile policy with each explicit instance.
+- Registry recovery carries an explicit instance binding beside its private device material. The existing bundle wire shape and cohort fingerprint algorithm remain unchanged; this consumer correction does not require a new cross-repository wire contract.
 - Enrollment allocates a host identity in the effective pool and excludes server, reserved and already assigned addresses. Routed peer prefixes are a separate explicit contract and are not silently treated as device addresses.
 - Use one semantic validator for header distinctness, ordered junk bounds, instance names, peer prefix collisions and exact key shape; preserve the existing S3/S4 zero policy.
 - Private recovery material stays in encrypted storage; normalization, handler loops, error diagnostics and exports cannot expose keys or PSKs.

@@ -1,6 +1,6 @@
 # AmneziaWG cohort obfuscation profiles
 
-The `amneziawg_secrets.{jc,jmin,jmax,s1,s2,h1,h2,h3,h4}` block is what
+The `amneziawg_secrets.instances[].{jc,jmin,jmax,s1,s2,h1,h2,h3,h4}` block is what
 turns plain WireGuard into AmneziaWG. The role's broad defaults work
 on most networks, but some DPI deployments apply WireGuard-shaped
 rules that need cohort-specific tuning. This file lists the shipped
@@ -55,17 +55,15 @@ Cohort profiles ship as YAML files under
 setting `vpn.awg_cohort: <slug>` in `ansible/group_vars/all.yml` (or
 a host-specific group_vars file). The role reads the cohort file at
 runtime and uses its `jc/jmin/jmax/s1/s2/h1..h4` as defaults;
-explicit values in `amneziawg_secrets` still win, so the cohort file
+explicit values in each `amneziawg_secrets.instances[]` still win, so the cohort file
 sets the profile and SOPS overrides anything per-deployment.
 
 Leaving `vpn.awg_cohort` empty keeps the broad-rule baseline baked
 into the role defaults — that is the right starting point on any
 network without a documented profile.
 
-`vpn.awg_cohort` is ignored when `amneziawg_secrets.instances` is
-non-empty: multi-instance layouts carry their own per-instance
-obfuscation parameters and choose the profile inline (see
-"Operational notes" below for the multi-instance pattern).
+`vpn.awg_cohort` supplies defaults for every instance; explicit per-instance
+parameters win. A single instance uses the same nonempty list contract.
 
 H1..H4 should be **random integers per peer** outside the
 `narrow-junk-sequential` profile — using the literal sequential set
@@ -126,12 +124,37 @@ Before setting a verified floor, test the candidate on physical Android arm64 ha
 
 - The same H1..H4 set must be deployed on both server and client. If
   you rotate H values on the server, push the new client config (the
-  `new-client.sh` flow handles this when `amneziawg_secrets.h*` is
+  `new-client.sh` flow handles this when `amneziawg_secrets.instances[].h*` is
   bumped).
 - A single host can run several AmneziaWG instances at once — one
   `awg-quick@<name>.service` per entry under
   `amneziawg_secrets.instances`. Each instance has its own listen
   port + address pool + Jc/H1..H4 set, so you can serve the
   `narrow-junk-sequential` profile and a broad-rule profile from the
-  same VPS without cross-contaminating fingerprints. Empty / missing
-  `instances` keeps the legacy single-instance behaviour.
+  same VPS without cross-contaminating fingerprints. Empty/missing instances
+  and top-level shadow keys/peers refuse admission.
+
+## Device issuance and revocation
+
+Use `AWG_INSTANCE=<name> PROVIDER=<provider> ENV=<environment>` with
+`scripts/new-client.sh <device>` for the all-profile transaction. Issuance uses
+the selected server subnet, reserves server/network/broadcast and peer claims,
+and stores distinct device keys plus the exact `awg_binding` in the encrypted
+registry. It never stages plaintext on disk or emits recovery/server keys.
+
+`make awg-issue CLIENT=<device> SOPS_FILE=<private-encrypted-file> PROVIDER=… ENV=… AWG_INSTANCE=…`
+issues AWG alone. The corresponding `make awg-revoke` removes only that AWG peer
+and recovery binding, preserving other transport identities and registry state.
+The encrypted file must be owner-only `0600` in a private directory. Both verbs
+share the canonical device writer lock and retain the prior document on failure.
+
+Existing encrypted documents must be migrated explicitly to the instance list
+and exact registry binding before issuance/export. There is no dual authority or
+automatic migration of private operator documents.
+
+Standalone export supports `OUTPUT=<new-file> scripts/emit-awg.sh <device>`
+for a no-clobber owner-only recipient artifact in a private `0700` directory.
+Existing, linked, shared or tracked output destinations refuse; ordinary stdout
+remains available for an explicitly selected recipient. Device addresses are
+unreserved IPv4 host prefixes inside the selected instance's subnet; broader
+or IPv6 peer routing requires explicit `address_kind: routed` ownership.

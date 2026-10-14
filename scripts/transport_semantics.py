@@ -180,28 +180,58 @@ def parameter_errors(raw: dict, path: str, *, allow_placeholders: bool = False) 
     return errors
 
 
+def awg_dns_valid(value):
+    if not isinstance(value, list) or not 1 <= len(value) <= 4:
+        return False
+    try:
+        return (len(set(value)) == len(value)
+                and all(isinstance(server, str) and ipaddress.IPv4Address(server).is_global
+                        and str(ipaddress.IPv4Address(server)) == server for server in value))
+    except (ValueError, TypeError):
+        return False
+
+
+def effective_awg_instances(raw: object, defaults: object = None, cohort: object = None) -> list[dict]:
+    """Resolve the sole instance authority without repairing old peer layouts."""
+    if not isinstance(raw, dict) or set(raw) != {"instances"}:
+        raise ValueError("invalid-awg-contract")
+    instances = raw["instances"]
+    if not isinstance(instances, list) or not instances or any(not isinstance(item, dict) for item in instances):
+        raise ValueError("invalid-awg-contract")
+    fields = {"name", "listen_port", "address_v4", "address_v6", "server_private_key", "peers",
+              "s3", "s4", *AWG_PARAMETERS, "h1", "h2", "h3", "h4"}
+    if any(set(item) - fields for item in instances):
+        raise ValueError("invalid-awg-contract")
+    defaults = defaults if isinstance(defaults, dict) else {}
+    cohort = cohort if isinstance(cohort, dict) else {}
+    return [{**AWG_PARAMETERS, "dns_servers": ["1.1.1.1", "1.0.0.1"], **{key: value for key, value in cohort.items() if key in fields - {"name"}},
+             **{key: value for key, value in defaults.items() if key in (
+                 "listen_port", "address_v4", "address_v6", "dns_servers")},
+             **item} for item in instances]
+
+
 def awg_errors(raw: object, defaults: object = None, cohort: object = None, *,
                allow_placeholders: bool = False) -> list[tuple[str, str]]:
     if not isinstance(raw, dict):
         return [("amneziawg_secrets", "must be a mapping")]
     defaults = defaults if isinstance(defaults, dict) else {}
     cohort = cohort if isinstance(cohort, dict) else {}
-    instances = raw.get("instances", [])
-    if not isinstance(instances, list) or any(not isinstance(item, dict) for item in instances):
-        return [("amneziawg_secrets.instances", "must be an instance collection")]
+    try:
+        instances = effective_awg_instances(raw, defaults, cohort)
+    except ValueError:
+        return [("amneziawg_secrets.instances", "must be the sole nonempty instance authority")]
     errors = []
     # Preserve the existing forward guard across every declared source.
     for source in [raw, cohort, *instances]:
         for name in ("s3", "s4"):
             if type(source.get(name, 0)) is not int or source.get(name, 0) != 0:
                 errors.append(("amneziawg_secrets", "S3/S4 must remain zero"))
-    if instances:
-        selected = [(f"amneziawg_secrets.instances.{index}", item) for index, item in enumerate(instances)]
-    else:
-        selected = [("amneziawg_secrets", {**cohort, **raw, "name": defaults.get("interface", "awg0")})]
+    selected = [(f"amneziawg_secrets.instances.{index}", item) for index, item in enumerate(instances)]
     names, ports, claims = set(), set(), []
     key_owners: dict[str, str] = {}
     for path, item in selected:
+        if not awg_dns_valid(item["dns_servers"]):
+            errors.append(("amneziawg.dns_servers", "requires one to four distinct global IPv4 DNS addresses"))
         name = item.get("name")
         if not isinstance(name, str) or not INTERFACE.fullmatch(name):
             errors.append((f"{path}.name", "invalid interface name"))
@@ -274,8 +304,15 @@ def awg_errors(raw: object, defaults: object = None, cohort: object = None, *,
             except (ValueError, TypeError):
                 errors.append((f"{peer_path}.allowed_ips", "must be a valid IPv4 or IPv6 CIDR"))
                 continue
-            if kind == "device" and network.prefixlen != network.max_prefixlen:
-                errors.append((f"{peer_path}.allowed_ips", "device address must be a host prefix; routed prefixes require explicit address_kind"))
+            if kind == "device":
+                try:
+                    server = ipaddress.IPv4Interface(item["address_v4"])
+                    if (network.version != 4 or network.prefixlen != 32
+                            or network.network_address not in server.network
+                            or network.network_address in (server.ip, server.network.network_address, server.network.broadcast_address)):
+                        raise ValueError
+                except (ValueError, TypeError, KeyError):
+                    errors.append((f"{peer_path}.allowed_ips", "device requires an unreserved IPv4 host inside its instance pool; other prefixes require explicit routed ownership"))
             claims.append((network.version, int(network.network_address),
                            int(network.broadcast_address), f"{peer_path}.allowed_ips"))
     family, previous_end = 0, -1
@@ -337,7 +374,7 @@ def egress_errors(raw: object, vpn: object = None, *, required: bool = False,
 
 
 def transport_errors(doc: object, context: object = None, *, sections: list[str] | None = None,
-                     allow_placeholders: bool = False, check_top_level_awg: bool = False) -> list[tuple[str, str]]:
+                     allow_placeholders: bool = False) -> list[tuple[str, str]]:
     if not isinstance(doc, dict):
         return [("transport", "must be a mapping")]
     context = context if isinstance(context, dict) else {}
@@ -375,11 +412,6 @@ def transport_errors(doc: object, context: object = None, *, sections: list[str]
         errors.extend(xhttp_errors(doc, context))
     if "awg" in sections:
         errors.extend(awg_errors(doc.get("amneziawg_secrets"), context.get("amneziawg"), context.get("amneziawg_cohort"), allow_placeholders=allow_placeholders))
-        if check_top_level_awg and isinstance(doc.get("amneziawg_secrets"), dict):
-            # These caller-owned fields are actually consumed by enrollment and
-            # current device emitters; an unused instance must not validate them.
-            consumed = {key: value for key, value in doc["amneziawg_secrets"].items() if key != "instances"}
-            errors.extend(awg_errors(consumed, context.get("amneziawg"), context.get("amneziawg_cohort"), allow_placeholders=allow_placeholders))
 
     if "hysteria" in sections:
         errors.extend(hysteria_errors(doc.get("hysteria"), context.get("public_site_canonical_url")))
@@ -424,7 +456,6 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--section", action="append", choices=("xray", "xhttp", "awg", "hysteria", "egress"))
     parser.add_argument("--allow-placeholders", action="store_true")
-    parser.add_argument("--check-top-level-awg", action="store_true")
     args = parser.parse_args()
     try:
         payload = sys.stdin.buffer.read(MAX_INPUT_BYTES + 1)
@@ -435,7 +466,7 @@ def main() -> int:
             raise ValueError
         doc = request.get("secrets", request)
         context = selected_context(request.get("context"), args.section)
-        errors = transport_errors(doc, context if "context" in request or context else None, sections=args.section, allow_placeholders=args.allow_placeholders, check_top_level_awg=args.check_top_level_awg)
+        errors = transport_errors(doc, context if "context" in request or context else None, sections=args.section, allow_placeholders=args.allow_placeholders)
     except (ValueError, TypeError, UnicodeError, RecursionError):
         print("transport: invalid bounded JSON input", file=sys.stderr)
         return 1

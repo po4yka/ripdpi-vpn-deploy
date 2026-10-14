@@ -1,19 +1,19 @@
 ---
-id: "SCR-1791618039091425"
-title: "Deliver authoritative AmneziaWG device enrollment and client bindings"
-kind: "feature"
-status: "backlog"
-area: "scripts"
-priority: "high"
-risk: "high"
-owner: "primary"
-parent: "EPC-1791618453830051"
-blocked_by: ["SCT-1791617687019287"]
-spec_mode: "required"
-openspec_change: "awg-device-binding"
-created: "2026-10-10"
-updated: "2026-10-10"
-related_tasks: ["ANS-1791562764586678", "SEC-1791471757439452"]
+id: SCR-1791618039091425
+title: Deliver authoritative AmneziaWG device enrollment and client bindings
+kind: feature
+status: doing
+area: scripts
+priority: high
+risk: high
+owner: primary
+parent: EPC-1791618453830051
+blocked_by: [SCT-1791617687019287]
+spec_mode: required
+openspec_change: awg-device-binding
+created: 2026-10-10
+updated: 2026-10-14
+related_tasks: [ANS-1791562764586678, SEC-1791471757439452]
 ---
 
 ## Goal

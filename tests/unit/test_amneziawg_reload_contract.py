@@ -60,14 +60,17 @@ def test_rotation_uses_the_role_instance_normalization_for_every_instance():
     assert "state: restarted" in handler
     assert "state: reloaded" not in handler
     assert (
-        "loop: \"{{ _awg_instances | default([{'name': amneziawg.interface}]) }}\""
+        "loop: \"{{ _awg_instances | default([]) }}\""
         in handler
     )
 
 
 def test_instance_normalization_remains_role_owned():
-    """Deploy and rotation share one canonical multi-instance fallback."""
+    """Deploy and rotation share one admitted instance resolver."""
     content = INSTANCES.read_text()
 
-    assert "amneziawg_secrets.instances" in content
-    assert "'name': amneziawg.interface" in content
+    tasks = yaml.safe_load(content)
+    resolver = next(task for task in tasks if "ansible.builtin.command" in task)
+    assert resolver["ansible.builtin.command"]["argv"][-2].endswith("scripts/awg_device_binding.py")
+    assert resolver["no_log"] is True and resolver["check_mode"] is False
+    assert "amneziawg_secrets" in resolver["ansible.builtin.command"]["stdin"]

@@ -2,10 +2,11 @@
 
 ## Objective
 
-Deliver authoritative AmneziaWG device enrollment and client bindings. All execution checkboxes remain open; this is planning, not implementation or deployment approval.
+Deliver authoritative AmneziaWG device enrollment and client bindings. Implementation is authorized in the isolated worktree; checked steps require observed source and native evidence. Real credentials and deployment remain separately authorized.
 
 ## Ownership
 
+- scripts/awg_device_binding.py and encrypted enrollment/instance resolver entrypoints
 - scripts/new-client.sh
 - scripts/rotate-secrets.sh
 - scripts/emit-awg.sh
@@ -27,13 +28,13 @@ Deliver authoritative AmneziaWG device enrollment and client bindings. All execu
 - ansible/roles/amneziawg/CLAUDE.md
 - Primary integration owns all shared schema, profile, Makefile, CI/snapshot and portfolio edits; explicitly assign disjoint paths before future parallel implementation.
 - Preserve unrelated work, existing review records and private operator files. Use a dedicated implementation worktree only after authorization.
-- This planning session has one serialized repository writer; delegated plan drafts do not alter runtime source.
+- Primary is the sole source writer. Shared schema, profile, CI, snapshot and portfolio edits remain serialized.
 
 ## Execution
 
-- [ ] SCR-1791618044456243 Implement the canonical effective AWG binding and coherent schema and caller migration #feature !high @item:SCR-1791618039091425
-- [ ] SCR-1791618045140064 Deliver selected-instance pool enrollment and revocation with encrypted transaction regressions #feature !high @item:SCR-1791618039091425
-- [ ] SCR-1791618045793096 Emit and resolve exact bound configurations across standalone bundle and liveness consumers #feature !high @item:SCR-1791618039091425
+- [x] SCR-1791618044456243 Implement the canonical effective AWG binding and coherent schema and caller migration #feature !high @item:SCR-1791618039091425
+- [x] SCR-1791618045140064 Deliver selected-instance pool enrollment and revocation with encrypted transaction regressions #feature !high @item:SCR-1791618039091425
+- [x] SCR-1791618045793096 Emit and resolve exact bound configurations across standalone bundle and liveness consumers #feature !high @item:SCR-1791618039091425
 - [ ] SCR-1791618046582572 Prove authenticated two-instance traffic and failure preservation then complete source review gates #feature !high @item:SCR-1791618039091425
 
 ## Verification

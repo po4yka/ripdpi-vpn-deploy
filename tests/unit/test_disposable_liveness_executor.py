@@ -125,9 +125,9 @@ class Runner:
                 for root, field in (
                     ("xray", "clients"),
                     ("hysteria", "clients"),
-                    ("amneziawg_secrets", "peers"),
                 ):
                     value[root][field] = []
+                value["amneziawg_secrets"]["instances"][0]["peers"] = []
                 value["snell_secrets"]["variants"][0]["users"] = []
                 value["client_registry"] = {}
             return yaml.safe_dump(value).encode()
@@ -563,7 +563,7 @@ def test_deonboard_refuses_partial_secret_state_with_only_snell_remaining(setup)
     partial = {
         "xray": {"clients": []},
         "hysteria": {"clients": []},
-        "amneziawg_secrets": {"peers": []},
+        "amneziawg_secrets": {"instances": [{"name": "awg0", "peers": []}]},
         "snell_secrets": {"variants": [{"users": [{"name": "liveness-a"}]}]},
         "client_registry": {},
     }
@@ -606,9 +606,9 @@ def test_deonboard_removes_only_exact_bound_local_executor_after_absence(setup):
     runner.secrets = {
         "xray": {"clients": [{"name": "liveness-a"}]},
         "hysteria": {"clients": [{"name": "liveness-a"}]},
-        "amneziawg_secrets": {"peers": [{"name": "liveness-a"}]},
+        "amneziawg_secrets": {"instances": [{"name": "awg0", "peers": [{"name": "liveness-a"}]}]},
         "snell_secrets": {"variants": [{"users": [{"name": "liveness-a"}]}]},
-        "client_registry": {"liveness-a": {"status": "active"}},
+        "client_registry": {"liveness-a": {"status": "active", "hosts": ["upcloud:fixture"], "awg_binding": {"provider": "upcloud", "environment": "fixture", "instance": "awg0"}}},
     }
     module.prepare_executor(
         profile="vpn-liveness-one-shot",

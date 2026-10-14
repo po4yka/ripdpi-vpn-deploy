@@ -55,7 +55,11 @@ equals the version they support.
 ## `ripdpi.amneziawg`
 
 Array of AWG device-VPN entries.  Empty array (`[]`) when AmneziaWG is not
-enabled for the cohort (no `amneziawg_secrets.peers` entry for this client).
+enabled for the selected profiles. Enabled AWG requires a unique bound device
+under `amneziawg_secrets.instances[].peers`; absence refuses the whole payload.
+Use `AWG_HOST=provider:env` for multiple enabled hosts and `AWG_INSTANCE=name`
+for multiple matching instances. The endpoint and parameters come from that
+instance, using the same resolver as the standalone and liveness clients.
 
 ### AWGEntry fields
 

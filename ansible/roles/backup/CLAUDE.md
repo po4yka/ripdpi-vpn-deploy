@@ -2,6 +2,9 @@
 
 ## Design decisions
 
+AWG interface names come only from the nonempty canonical instance list; no
+legacy `awg0` fallback grants forwarding or backup authority.
+
 **restic + optional rclone remote** — restic encrypts the repository and
 rclone mirrors its opaque contents to the configured offsite backend. The
 restic password remains separate from the SOPS/age recovery key.

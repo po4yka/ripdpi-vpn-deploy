@@ -7,6 +7,24 @@ endif
 .PHONY: workspace-status
 workspace-status:
 	@python3 scripts/workspace-status.py
+else ifneq ($(filter awg-issue awg-revoke,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error AWG device operations require exactly one make goal)
+endif
+override AWG_CLIENT_LITERAL := $(value CLIENT)
+override AWG_SOPS_FILE_LITERAL := $(value SOPS_FILE)
+override AWG_PROVIDER_LITERAL := $(value PROVIDER)
+override AWG_ENV_LITERAL := $(value ENV)
+override AWG_INSTANCE_LITERAL := $(value AWG_INSTANCE)
+override AWG_COHORT_LITERAL := $(value COHORT)
+export AWG_CLIENT_LITERAL AWG_SOPS_FILE_LITERAL AWG_PROVIDER_LITERAL AWG_ENV_LITERAL AWG_INSTANCE_LITERAL AWG_COHORT_LITERAL
+unexport MAKEFLAGS MFLAGS
+.PHONY: awg-issue awg-revoke
+awg-issue awg-revoke:
+	@test -n "$${AWG_CLIENT_LITERAL:-}" && test -n "$${AWG_SOPS_FILE_LITERAL:-}" && test -n "$${AWG_INSTANCE_LITERAL:-}" || { echo "CLIENT, SOPS_FILE and AWG_INSTANCE are required" >&2; exit 1; }
+	@python3 scripts/awg_client.py $(if $(filter awg-issue,$(MAKECMDGOALS)),enroll,revoke) "$${AWG_CLIENT_LITERAL}" \
+	  --file "$${AWG_SOPS_FILE_LITERAL}" --host "$${AWG_PROVIDER_LITERAL}:$${AWG_ENV_LITERAL}" \
+	  --instance "$${AWG_INSTANCE_LITERAL}" --cohort "$${AWG_COHORT_LITERAL}"
 else ifneq ($(filter prepare-disposable-promotion-intent,$(MAKECMDGOALS)),)
 ifneq ($(MAKECMDGOALS),prepare-disposable-promotion-intent)
 $(error promotion intent preparation requires exactly one make goal)
@@ -1095,6 +1113,12 @@ test-transport-runtime-acceptance:
 # Separate disposable roots retain the foreign-authority refusal of the complete
 # consumer transaction lab. CI requires this lane and its four-case target above.
 # Endpoint contract cases run through their named target in the same native job.
+.PHONY: test-awg-device-binding-runtime
+test-awg-device-binding-runtime:
+	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 && test "$${TRANSPORT_NATIVE_ISOLATED:-}" = 1 || { echo "AWG binding tests require an owned isolated Linux root environment" >&2; exit 1; }
+	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest \
+	  tests/unit/test_awg_device_binding_native.py --fail-on-skip -v
+
 .PHONY: test-xhttp-endpoint-contract
 test-xhttp-endpoint-contract:
 	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 && test "$${TRANSPORT_NATIVE_ISOLATED:-}" = 1 || { echo "XHTTP endpoint tests require an owned isolated Linux root environment" >&2; exit 1; }
@@ -1105,7 +1129,8 @@ test-native-runtime:
 	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 || { echo "native runtime tests require a disposable Linux root environment" >&2; exit 1; }
 	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ -m native_runtime \
 	  --ignore=tests/unit/test_transport_runtime_acceptance_native.py \
-	  --ignore=tests/unit/test_xhttp_endpoint_contract_native.py --fail-on-skip -v
+	  --ignore=tests/unit/test_xhttp_endpoint_contract_native.py \
+	  --ignore=tests/unit/test_awg_device_binding_native.py --fail-on-skip -v
 
 test-probe-matrix-mtproto:
 	cd tools/probe-matrix-mtproto && go test -mod=readonly -count=1 -v -timeout=2m -p=2 ./...

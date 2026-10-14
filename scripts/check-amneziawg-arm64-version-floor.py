@@ -105,7 +105,6 @@ def _repo_errors(repo_root: Path = REPO_ROOT) -> list[str]:
     schema = _load_json(repo_root / "secrets" / "schema.json")
     awg = schema["properties"]["amneziawg_secrets"]
     for location, node in (
-        ("amneziawg_secrets", awg),
         ("amneziawg_secrets.instances[]", awg["properties"]["instances"]["items"]),
     ):
         for field in ("s3", "s4"):

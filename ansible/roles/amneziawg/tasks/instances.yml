@@ -1,35 +1,37 @@
 ---
-# Keep the effective instance shape shared by convergence and credential
-# rotation. Multi-instance secrets are authoritative; legacy fields become one
-# instance only when the list is empty.
+# One private instance authority serves convergence, observers and issuance.
+
+- name: Admit the repository-owned AmneziaWG cohort slug
+  ansible.builtin.assert:
+    that:
+      - vpn.awg_cohort | default('') == '' or vpn.awg_cohort is match('^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$')
+    quiet: true
+  no_log: true
 
 - name: Load AmneziaWG cohort profile
   ansible.builtin.include_vars:
     file: "{{ role_path }}/vars/cohorts/{{ vpn.awg_cohort }}.yml"
   when:
     - vpn.awg_cohort | default('') | length > 0
-    - amneziawg_secrets.instances | default([]) | length == 0
+
+- name: Resolve admitted effective AmneziaWG instances on the controller
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - "{{ role_path }}/../../../scripts/awg_device_binding.py"
+      - normalize
+    stdin: >-
+      {{ {'secrets': {'amneziawg_secrets': amneziawg_secrets},
+          'context': {'amneziawg': amneziawg, 'amneziawg_cohort': amneziawg_cohort}} | to_json }}
+    stdin_add_newline: false
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+  register: _awg_effective
+  no_log: true
 
 - name: Compute effective AmneziaWG instances
   ansible.builtin.set_fact:
-    _awg_instances: >-
-      {{ (amneziawg_secrets.instances | default([])) if
-         (amneziawg_secrets.instances | default([])) | length > 0
-         else [{
-           'name': amneziawg.interface,
-           'listen_port': amneziawg.listen_port,
-           'address_v4': amneziawg.address_v4,
-           'address_v6': amneziawg.address_v6,
-           'server_private_key': amneziawg_secrets.server_private_key,
-           'jc': amneziawg_secrets.jc | default(amneziawg_cohort.jc | default(4)),
-           'jmin': amneziawg_secrets.jmin | default(amneziawg_cohort.jmin | default(40)),
-           'jmax': amneziawg_secrets.jmax | default(amneziawg_cohort.jmax | default(70)),
-           's1': amneziawg_secrets.s1 | default(amneziawg_cohort.s1 | default(50)),
-           's2': amneziawg_secrets.s2 | default(amneziawg_cohort.s2 | default(100)),
-           'h1': amneziawg_secrets.h1 | default(amneziawg_cohort.h1),
-           'h2': amneziawg_secrets.h2 | default(amneziawg_cohort.h2),
-           'h3': amneziawg_secrets.h3 | default(amneziawg_cohort.h3),
-           'h4': amneziawg_secrets.h4 | default(amneziawg_cohort.h4),
-           'peers': amneziawg_secrets.peers,
-         }] }}
+    _awg_instances: "{{ _awg_effective.stdout | from_json }}"
   no_log: true

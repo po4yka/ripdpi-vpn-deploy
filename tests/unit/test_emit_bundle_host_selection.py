@@ -48,6 +48,11 @@ def test_bundle_uses_feature_host_and_emits_ingress_topology(
         REPO_ROOT / "scripts" / "ripdpi_cohort_fingerprint.py",
         scripts / "ripdpi_cohort_fingerprint.py",
     )
+    for name in ('awg_client.py', 'awg_device_binding.py', 'encrypted_client_document.py', 'private_client_artifact.py'):
+        shutil.copy2(REPO_ROOT / 'scripts' / name, scripts / name)
+    defaults = repo / 'ansible/roles/amneziawg/defaults'
+    defaults.mkdir(parents=True)
+    shutil.copy2(REPO_ROOT / 'ansible/roles/amneziawg/defaults/main.yml', defaults / 'main.yml')
     (scripts / "emit-singbox.sh").write_text("#!/bin/sh\nprintf '{\"outbounds\":[]}'\n")
     (scripts / "terraform-env.sh").write_text(
         "#!/bin/sh\n"
@@ -77,7 +82,7 @@ def test_bundle_uses_feature_host_and_emits_ingress_topology(
     secrets.write_text(
         json.dumps(
             {
-                "amneziawg_secrets": {
+                "amneziawg_secrets": {"instances": [{"name": "awg0", "address_v4": "10.66.66.1/24", "address_v6": "fd42:42:42::1/64",
                     "server_private_key": base64.b64encode(bytes([8]) * 32).decode(),
                     "listen_port": 51820,
                     "jc": 4,
@@ -97,7 +102,7 @@ def test_bundle_uses_feature_host_and_emits_ingress_topology(
                             "allowed_ips": "10.66.66.4/32",
                         }
                     ],
-                }
+                }]},
             }
         )
     )
@@ -149,13 +154,13 @@ def test_actual_consumed_top_level_awg_view_cannot_hide_behind_valid_instance(tm
     secrets_path = tmp_path / "secrets.json"
     payload = json.loads(secrets_path.read_text())
     source = payload["amneziawg_secrets"]
-    instance = copy.deepcopy(source)
+    instance = copy.deepcopy(source["instances"][0])
     instance.update(name="awg-selected", listen_port=52999)
     source["instances"] = [instance]
-    source["jmin"] = source["jmax"] + 1
+    source["jmin"] = instance["jmax"] + 1
     # The runtime-effective declaration remains valid; the existing consumer
     # actually reads the now-invalid top-level values and must check that view.
-    assert not transport_errors(payload, sections=["awg"])
+    assert transport_errors(payload, sections=["awg"])
     secrets_path.write_text(json.dumps(payload))
     before = secrets_path.read_bytes()
     target = repo / "scripts" / script
@@ -170,6 +175,6 @@ def test_actual_consumed_top_level_awg_view_cannot_hide_behind_valid_instance(tm
     result = subprocess.run(["bash", str(target), "android-ripdpi"], cwd=repo,
                             env=environment, capture_output=True, text=True, timeout=20)
     assert result.returncode != 0
-    assert "junk bounds must be ordered" in result.stderr
+    assert "refused" in result.stderr or "sole nonempty instance authority" in result.stderr or "unsafe" in result.stderr
     assert not result.stdout
     assert secrets_path.read_bytes() == before and not marker.exists()

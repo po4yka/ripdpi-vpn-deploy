@@ -534,7 +534,6 @@ def _secret_plan(
     xray, xray_index = collection("xray", "clients")
     cohort_references = _xray_cohort_references(document, client)
     hysteria, hysteria_index = collection("hysteria", "clients")
-    awg, awg_index = collection("amneziawg_secrets", "peers")
     registry = document.get("client_registry")
     entry = registry.get(client) if isinstance(registry, dict) else None
     if (
@@ -543,6 +542,22 @@ def _secret_plan(
         or entry.get("hosts") != [host]
     ):
         raise RetirementError("retirement-secrets")
+    from awg_device_binding import resolve_binding
+    awg_revoked = (entry.get("awg_binding") is None and not entry.get("awg_private_key")
+                   and not entry.get("awg_public_key_fingerprint"))
+    try:
+        if awg_revoked:
+            if any(peer.get("name") == client for instance in document["amneziawg_secrets"]["instances"] for peer in instance["peers"]):
+                raise ValueError
+        else:
+            binding = entry["awg_binding"]
+            selected = resolve_binding({"amneziawg_secrets": document["amneziawg_secrets"]}, {}, client, host, binding["instance"])
+            if binding != selected.identity:
+                raise ValueError
+            awg_instance = selected.index
+            awg_index = next(index for index, peer in enumerate(selected.instance["peers"]) if peer["name"] == client)
+    except (ValueError, KeyError, TypeError, StopIteration):
+        raise RetirementError("retirement-secrets") from None
     variants_parent = document.get("snell_secrets")
     variants = (
         variants_parent.get("variants") if isinstance(variants_parent, dict) else None
@@ -575,9 +590,10 @@ def _secret_plan(
         [
             f'["xray"]["clients"][{xray_index}]',
             f'["hysteria"]["clients"][{hysteria_index}]',
-            f'["amneziawg_secrets"]["peers"][{awg_index}]',
         ]
     )
+    if not awg_revoked:
+        paths.append(f'["amneziawg_secrets"]["instances"][{awg_instance}]["peers"][{awg_index}]')
     paths.extend(
         f'["snell_secrets"]["variants"][{variant}]["users"][{user}]'
         for variant, user in reversed(snell)
@@ -588,7 +604,8 @@ def _secret_plan(
         expected["xray"]["cohorts"][cohort]["clients"].pop(reference)
     expected["xray"]["clients"].pop(xray_index)
     expected["hysteria"]["clients"].pop(hysteria_index)
-    expected["amneziawg_secrets"]["peers"].pop(awg_index)
+    if not awg_revoked:
+        expected["amneziawg_secrets"]["instances"][awg_instance]["peers"].pop(awg_index)
     for variant, user in reversed(snell):
         expected["snell_secrets"]["variants"][variant]["users"].pop(user)
     expected["client_registry"].pop(client)

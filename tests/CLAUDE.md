@@ -14,6 +14,12 @@
 
 ## Design decisions
 
+AWG device tests use real SOPS/age round trips for selected pool issuance,
+revocation and interrupted/unsafe publication. The named native binding target
+owns isolated namespaces and exact pinned AWG builds; it proves two devices'
+TCP/UDP traffic, wrong keys/headers and selected revocation with the other
+instance still working. Portable mocks never stand in for this runtime proof.
+
 XHTTP endpoint acceptance is a separate complete target within the native job.
 Its cases and the existing native/RTA lanes form a disjoint complete collection,
 with selected skips fatal. Both served ports exercise actual pinned clients,

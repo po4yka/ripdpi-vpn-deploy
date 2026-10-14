@@ -1258,11 +1258,25 @@ def _client_secret_paths(value: Any, client: str) -> list[str]:
     primary = {
         ("xray", "clients"): indexes("xray", "clients"),
         ("hysteria", "clients"): indexes("hysteria", "clients"),
-        ("amneziawg_secrets", "peers"): indexes("amneziawg_secrets", "peers"),
     }
     registry = value.get("client_registry")
     if not isinstance(registry, dict):
         raise ExecutorError("deonboard-secrets")
+    instances = value.get("amneziawg_secrets", {}).get("instances")
+    if not isinstance(instances, list) or any(not isinstance(item, dict) or not isinstance(item.get("peers"), list) for item in instances):
+        raise ExecutorError("deonboard-secrets")
+    awg_matches = [(i, j) for i, item in enumerate(instances) for j, peer in enumerate(item["peers"])
+                   if isinstance(peer, dict) and peer.get("name") == client]
+    awg_revoked = False
+    if client in registry:
+        entry = registry[client]
+        binding = entry.get("awg_binding")
+        awg_revoked = binding is None and not entry.get("awg_private_key") and not entry.get("awg_public_key_fingerprint") and not awg_matches
+        if not awg_revoked and (not isinstance(binding, dict) or len(awg_matches) != 1
+                or instances[awg_matches[0][0]]["name"] != binding.get("instance")):
+            raise ExecutorError("deonboard-secrets")
+    if not awg_revoked:
+        primary[("amneziawg_secrets", "instances")] = awg_matches
     snell_paths = []
     variants = (
         value.get("snell_secrets", {}).get("variants", [])
@@ -1297,8 +1311,9 @@ def _client_secret_paths(value: Any, client: str) -> list[str]:
     paths = [
         f'["xray"]["clients"][{primary[("xray", "clients")][0]}]',
         f'["hysteria"]["clients"][{primary[("hysteria", "clients")][0]}]',
-        f'["amneziawg_secrets"]["peers"][{primary[("amneziawg_secrets", "peers")][0]}]',
     ]
+    if not awg_revoked:
+        paths.append(f'["amneziawg_secrets"]["instances"][{awg_matches[0][0]}]["peers"][{awg_matches[0][1]}]')
     paths.extend(snell_paths)
     paths.append(f'["client_registry"][{json.dumps(client)}]')
     return paths

@@ -15,6 +15,10 @@ import subprocess
 import sys
 
 import pytest
+
+from test_awg_device_binding import key
+
+from test_awg_device_binding import key
 import staging_lifecycle
 import yaml
 
@@ -224,9 +228,12 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             ],
         },
         "hysteria": {"clients": [{"name": client, "password": "private-hy"}]},
-        "amneziawg_secrets": {
-            "peers": [{"name": client, "preshared_key": "private-awg"}]
-        },
+        "amneziawg_secrets": {"instances": [{
+            "name": "awg0", "listen_port": 51820, "address_v4": "10.66.66.1/24", "address_v6": "fd42:42:42::1/64",
+            "server_private_key": key(1),
+            "h1": 1, "h2": 2, "h3": 3, "h4": 4,
+            "peers": [{"name": client, "public_key": "CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk=",
+                       "preshared_key": "CgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgo=", "allowed_ips": "10.66.66.2/32"}]}]},
         "snell_secrets": {
             "variants": [
                 {"id": "one", "users": [{"name": client, "userkey": "private-1"}]},
@@ -244,6 +251,7 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
                 "token_expires": "",
                 "awg_public_key_fingerprint": "sha256:0123456789abcdef",
                 "awg_private_key": "private-client-key",
+                "awg_binding": {"provider": "upcloud", "environment": environment, "instance": "awg0"},
                 "last_payload_identity": {"source": "", "outputs": ""},
             }
         },
@@ -472,7 +480,7 @@ def test_retirement_removes_exact_issued_client_and_is_idempotent(setup):
     assert final["xray"]["clients"] == []
     assert all(cohort["clients"] == [] for cohort in final["xray"]["cohorts"])
     assert final["hysteria"]["clients"] == []
-    assert final["amneziawg_secrets"]["peers"] == []
+    assert final["amneziawg_secrets"]["instances"][0]["peers"] == []
     assert all(variant["users"] == [] for variant in final["snell_secrets"]["variants"])
     assert final["client_registry"] == {}
     assert stat.S_IMODE(setup["paths"]["journal_path"].stat().st_mode) == 0o600
@@ -537,7 +545,7 @@ def test_retirement_round_trips_real_sops_ciphertext(setup, monkeypatch, configu
     final = roundtrip._sops_decrypt(setup["paths"]["sops_file"], roundtrip.AGE_KEY)
     assert final["xray"]["clients"] == []
     assert final["hysteria"]["clients"] == []
-    assert final["amneziawg_secrets"]["peers"] == []
+    assert final["amneziawg_secrets"]["instances"][0]["peers"] == []
     if configured_snell:
         assert all(variant["users"] == [] for variant in final["snell_secrets"]["variants"])
     else:
@@ -619,7 +627,7 @@ def test_retirement_refuses_partial_duplicate_or_foreign_client_state(setup, cas
     elif case == "hysteria-duplicate":
         document["hysteria"]["clients"].append({"name": client})
     elif case == "awg-missing":
-        document["amneziawg_secrets"]["peers"] = []
+        document["amneziawg_secrets"]["instances"][0]["peers"] = []
     elif case == "snell-missing":
         document["snell_secrets"]["variants"][0]["users"] = []
     elif case == "snell-duplicate":
@@ -894,8 +902,8 @@ def test_retirement_interlocks_the_canonical_sops_writer_lock(setup):
     project, _client = module.lock_paths(setup["paths"]["sops_file"], setup["client"])
     assert project == canonical
     assert (
-        'SOPS_LOCK="${SOPS_FILE}.new-client.lock"'
-        in (ROOT / "scripts/new-client.sh").read_text()
+        'str(path) + ".new-client.lock"'
+        in (ROOT / "scripts/encrypted_client_document.py").read_text()
     )
     assert (
         'REGISTRY_LOCK="${sops_file}.new-client.lock"'
@@ -982,7 +990,8 @@ def test_new_client_controller_cannot_cross_an_active_retirement(setup):
         )
 
     assert result.returncode != 0
-    assert "another new-client transaction is active" in result.stderr
+    assert "awg-device-operation-refused" in result.stderr
+    assert result.stdout == ""
     assert setup["paths"]["sops_file"].read_bytes() == before
     assert setup["runner"].calls == []
 

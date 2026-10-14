@@ -2,6 +2,12 @@
 
 ## Design decisions
 
+`amneziawg_secrets.instances` is the only server/peer authority, including one
+instance. Controller normalization shares `effective_awg_instances` with
+issuance, emission and liveness; instance values override cohort and role
+network defaults. Top-level shadow peers/keys and an empty instance list refuse.
+Private command stdin/output and complete instance facts stay under `no_log`.
+
 The normalization entrypoint also supplies verification and watchdog. These consumers must inspect every configured instance and must not assume an `awg0` instance exists.
 
 **Effective inputs are admitted before build or retirement** — shared

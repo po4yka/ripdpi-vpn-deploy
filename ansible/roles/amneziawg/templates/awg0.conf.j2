@@ -1,25 +1,18 @@
-{# The template is shared between the legacy single-instance path
-   (rendered with `_inst = amneziawg_secrets`, top-level fields) and
-   the multi-instance loop in tasks/main.yml (rendered with
-   `_inst = <one entry of amneziawg_secrets.instances>`). Both shapes
-   carry the same field names — server_private_key, jc/jmin/jmax,
-   s1/s2, h1..h4, peers. Multi-instance entries add `listen_port`,
-   `address_v4`, `address_v6`. #}
-{%- set _inst = _inst | default(amneziawg_secrets) %}
-{%- set _listen_port = _inst.listen_port | default(amneziawg.listen_port) %}
-{%- set _addr_v4 = _inst.address_v4 | default(amneziawg.address_v4) %}
-{%- set _addr_v6 = _inst.address_v6 | default(amneziawg.address_v6) %}
+{# `_inst` is the shared admitted effective instance, never an independent legacy peer collection. #}
+{%- set _listen_port = _inst.listen_port %}
+{%- set _addr_v4 = _inst.address_v4 %}
+{%- set _addr_v6 = _inst.address_v6 %}
 [Interface]
 PrivateKey = {{ _inst.server_private_key }}
 Address    = {{ _addr_v4 }}, {{ _addr_v6 }}
 ListenPort = {{ _listen_port }}
 
 # AmneziaWG obfuscation parameters (mandatory; not standard WireGuard).
-Jc = {{ _inst.jc | default(4) }}
-Jmin = {{ _inst.jmin | default(40) }}
-Jmax = {{ _inst.jmax | default(70) }}
-S1 = {{ _inst.s1 | default(50) }}
-S2 = {{ _inst.s2 | default(100) }}
+Jc = {{ _inst.jc }}
+Jmin = {{ _inst.jmin }}
+Jmax = {{ _inst.jmax }}
+S1 = {{ _inst.s1 }}
+S2 = {{ _inst.s2 }}
 H1 = {{ _inst.h1 }}
 H2 = {{ _inst.h2 }}
 H3 = {{ _inst.h3 }}
@@ -30,5 +23,5 @@ H4 = {{ _inst.h4 }}
 # {{ peer.name }}
 PublicKey  = {{ peer.public_key }}
 PresharedKey = {{ peer.preshared_key }}
-AllowedIPs = {{ peer.allowed_ips | default("10.66.66." ~ (loop.index + 1) ~ "/32") }}
+AllowedIPs = {{ peer.allowed_ips }}
 {% endfor %}

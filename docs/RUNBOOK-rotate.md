@@ -18,7 +18,7 @@ Remove the leaked client from:
 
 - `xray.clients[*]` (matching `name`)
 - `hysteria.clients[*]` (matching `name`)
-- `amneziawg_secrets.peers[*]` (matching `name`)
+- `amneziawg_secrets.instances[*].peers[*]` (matching `name`)
 - `naive_secrets.clients[*]`, when configured (matching `name`; `make naive-revoke` removes only this transport)
 - `snell_secrets.variants[*].users[*]`, when configured (matching `name`)
 

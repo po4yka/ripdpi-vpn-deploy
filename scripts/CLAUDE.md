@@ -2,13 +2,28 @@
 
 ## Design decisions
 
+AWG device issuance, revocation, export and recovery bind provider/environment,
+instance and device through `awg_device_binding.py`. Only the nonempty instance
+list owns peers and server keys. `awg_client.py` allocates from the selected
+subnet and shares the private stable `.new-client.lock` with Naive/retirement.
+`encrypted_client_document.py` stages ciphertext, verifies the entire decrypted
+result in memory and atomically publishes only after original authority checks.
+AWG revocation clears only the selected peer and its AWG recovery fields.
+Bundle multi-host selection requires `AWG_HOST` when more than one enabled host
+can bind; `AWG_INSTANCE` selects within that host. Missing enabled bindings
+refuse without emitting a partial payload. The public bundle shape/fingerprint
+algorithm are unchanged. RIPDPI bundles support AWG-only profiles through
+the direct carrier document; the official sing-box format still requires a
+supported proxy outbound. Private recipient output uses no-clobber `OUTPUT`
+publication in an owner-only directory.
+
 CI selects both native integration and complete transport acceptance together.
 Each has its own disposable runner; the consumer lab never adopts or removes
 another fixture's runtime authority. The required job graph checks both results.
 
 The canonical render fixture supplies watchdog AWG interface names from synthetic
-instances or the legacy interface. Snapshot rendering does not load real credentials
-or invoke deployment normalization.
+instances. Snapshot rendering uses the same pure effective-instance resolver
+and never loads real credentials.
 The secrets coverage checker declares this names-only role fact explicitly;
 the complete AWG secret instance objects remain outside the environment file.
 

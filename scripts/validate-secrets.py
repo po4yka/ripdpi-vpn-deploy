@@ -79,42 +79,46 @@ def _observability_selector_enabled(environments: list[str] | None) -> bool:
         raise ValueError("invalid tracked observability selector") from exc
 
 
-def _awg_peer_pubkeys(doc: dict) -> dict[str, str]:
-    """Map peer name -> public key across all AmneziaWG collections."""
-    peers: dict[str, str] = {}
-    sections = [doc.get("amneziawg_secrets") or {}]
-    sections += (doc.get("amneziawg_secrets") or {}).get("instances") or []
-    for section in sections:
-        for peer in section.get("peers") or []:
-            if isinstance(peer, dict) and peer.get("name") and peer.get("public_key"):
-                peers[peer["name"]] = peer["public_key"]
-    return peers
-
-
-def _registry_errors(doc: dict) -> list[tuple[str, str]]:
-    """Validate client_registry relationships JSON Schema cannot express."""
-    errors: list[tuple[str, str]] = []
+def _registry_errors(doc: dict, *, allow_placeholders: bool = False) -> list[tuple[str, str]]:
+    """Bind each recovery key and fingerprint to its named device instance."""
+    from awg_device_binding import public_key
+    from awg_device_binding import resolve_binding
+    from transport_semantics import PLACEHOLDER
+    errors = []
     registry = doc.get("client_registry") or {}
     if not isinstance(registry, dict):
-        return [("client_registry", "must be a mapping of device name to entry")]
-    awg_peers = _awg_peer_pubkeys(doc)
+        return [("client_registry", "must be a device mapping")]
     for device, entry in registry.items():
         if not isinstance(entry, dict):
             continue
-        fingerprint = entry.get("awg_public_key_fingerprint") or ""
-        match = AWG_FINGERPRINT.match(fingerprint)
-        if match:
-            expected = {
-                __import__("hashlib").sha256(key.encode()).hexdigest()[:16]
-                for key in awg_peers.values()
-            }
-            if match.group(1).lower() not in expected:
-                errors.append(
-                    (
-                        f"client_registry.{device}.awg_public_key_fingerprint",
-                        "does not match any amneziawg_secrets peer public key",
-                    )
-                )
+        binding = entry.get("awg_binding")
+        private = entry.get("awg_private_key", "")
+        fingerprint = entry.get("awg_public_key_fingerprint", "")
+        path = f"client_registry.{device}.awg_binding"
+        if binding is None:
+            if private or fingerprint:
+                errors.append((path, "absent AWG binding must have no recovery material"))
+            continue
+        try:
+            if allow_placeholders and PLACEHOLDER.fullmatch(private) and PLACEHOLDER.fullmatch(fingerprint):
+                instances = doc["amneziawg_secrets"]["instances"]
+                matches = [peer for item in instances if item["name"] == binding["instance"]
+                           for peer in item["peers"] if peer["name"] == device]
+                if len(matches) != 1:
+                    raise ValueError
+                continue
+            selected = resolve_binding(doc, {}, device, binding["provider"] + ":" + binding["environment"], binding["instance"])
+            if selected.identity != binding:
+                raise ValueError
+            peer_public = selected.peer["public_key"]
+            if not PLACEHOLDER.fullmatch(fingerprint):
+                expected = "sha256:" + __import__("hashlib").sha256(peer_public.encode()).hexdigest()[:16]
+                if fingerprint.lower() != expected:
+                    raise ValueError
+            if not PLACEHOLDER.fullmatch(private) and public_key(private) != peer_public:
+                raise ValueError
+        except (ValueError, KeyError, TypeError, AttributeError):
+            errors.append((path, "must match the named instance peer and recovery key"))
     return errors
 
 
@@ -533,7 +537,7 @@ def main() -> int:
     semantic_errors = _semantic_errors(
         doc,
         observability_enabled=observability_enabled,
-    ) + _registry_errors(doc)
+    ) + _registry_errors(doc, allow_placeholders=not args.strict)
     if args.observability_topology is not None:
         semantic_errors += _observability_topology_errors(
             doc, args.observability_topology, args.environment

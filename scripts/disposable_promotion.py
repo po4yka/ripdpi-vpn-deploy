@@ -326,6 +326,11 @@ def prepare_intent(intent, host, memberships, directory, deployed_secrets, envir
         if enrollment.get("status") not in ("issued", "delivered", "active"):
             raise ValueError
         if "awg_key_file" in value["inputs"]:
+            from awg_device_binding import resolve_binding
+            binding = enrollment.get("awg_binding")
+            selected = resolve_binding(secrets, {}, value["client"], value["host"], binding["instance"])
+            if selected.identity != binding:
+                raise ValueError
             private = guard._private_read(Path(value["inputs"]["awg_key_file"]), "onboarding input", max_bytes=128)
             if (not isinstance(enrollment.get("awg_private_key"), str)
                     or re.fullmatch(rb"[A-Za-z0-9+/]{43}=\n?", private) is None

@@ -347,4 +347,4 @@ def test_ci_generator_real_crypto_passes_secret_schema(tmp_path):
     assert registry["cohorts"] == ["ci-p0p1p2"]
     public = subprocess.run(["wg", "pubkey"], input=registry["awg_private_key"].encode(), capture_output=True, timeout=10)
     assert public.returncode == 0
-    assert public.stdout.decode().strip() == value["amneziawg_secrets"]["peers"][0]["public_key"]
+    assert public.stdout.decode().strip() == value["amneziawg_secrets"]["instances"][0]["peers"][0]["public_key"]

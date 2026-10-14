@@ -19,7 +19,7 @@
 #   HOSTS="upcloud:p0,upcloud:full" COHORTS="p0-minimal,device-full" scripts/emit-bundle.sh laptop
 #
 # AWG obfuscation parameter precedence (identical to emit-awg.sh):
-#   amneziawg_secrets.{jc,jmin,jmax,s1,s2,h1..h4}  (SOPS — highest)
+#   amneziawg_secrets.instances[].{jc,jmin,jmax,s1,s2,h1..h4}  (SOPS — highest)
 #   amneziawg_cohort.{…}  from vars/cohorts/<AWG_COHORT>.yml (if AWG_COHORT set)
 #   hard defaults: jc=4 jmin=40 jmax=70 s1=50 s2=100
 #
@@ -51,17 +51,6 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 for tool in sops terraform jq python3; do
   command -v "$tool" >/dev/null 2>&1 || { echo "missing: $tool" >&2; exit 1; }
 done
-
-# awg or wg — prefer awg (AmneziaWG tools), fall back to wg (standard WireGuard)
-AWG_PUBKEY_CMD=""
-if command -v awg >/dev/null 2>&1; then
-  AWG_PUBKEY_CMD="awg pubkey"
-elif command -v wg >/dev/null 2>&1; then
-  AWG_PUBKEY_CMD="wg pubkey"
-else
-  echo "missing: awg or wg (needed to derive server public key from private key)" >&2
-  exit 1
-fi
 
 # ---------------------------------------------------------------------------
 # Resolve host pairs (same logic as emit-singbox.sh)
@@ -148,51 +137,6 @@ PY
 }
 
 # ---------------------------------------------------------------------------
-# Helper: resolve one AWG obfuscation parameter with three-level precedence
-# (mirrors emit-awg.sh resolve_param exactly)
-# ---------------------------------------------------------------------------
-resolve_awg_param() {
-  local param="$1"
-  local default="$2"
-  local secrets_file="$3"
-  local cohort_yml="$4"
-
-  # Level 1: amneziawg_secrets.<param> from SOPS
-  local val
-  val="$(jq -r --arg p "$param" '.amneziawg_secrets[$p] // empty' "$secrets_file")"
-  if [[ -n "$val" ]]; then
-    echo "$val"
-    return
-  fi
-
-  # Level 2: amneziawg_cohort.<param> from cohort YAML
-  if [[ -n "$cohort_yml" ]]; then
-    val="$(python3 - "$cohort_yml" "$param" <<'PY'
-import sys
-import yaml
-data = yaml.safe_load(open(sys.argv[1], encoding="utf-8")) or {}
-cohort = data.get("amneziawg_cohort") or {}
-v = cohort.get(sys.argv[2])
-if v is not None:
-    print(v)
-PY
-)"
-    if [[ -n "$val" ]]; then
-      echo "$val"
-      return
-    fi
-  fi
-
-  # Level 3: hard default
-  if [[ -n "$default" ]]; then
-    echo "$default"
-    return
-  fi
-
-  echo ""
-}
-
-# ---------------------------------------------------------------------------
 # Step 2: resolve the AWG block and Hysteria extras from each host's secrets.
 # For multi-host setups AWG is typically a single server; we use the first
 # host that has AWG enabled.  Hysteria extras likewise come from the first
@@ -272,120 +216,17 @@ for i in "${!host_pairs[@]}"; do
   enable_amneziawg="$(jq -r \
     'if has("enable_amneziawg") then .enable_amneziawg else false end | tostring | ascii_downcase' \
     <<< "$vpn_json")"
-  if [[ "$AWG_BLOCK" == '[]' && "$enable_amneziawg" == "true" ]]; then
-    python3 "${REPO_ROOT}/scripts/transport_semantics.py" --section awg --check-top-level-awg < "$secrets_tmp"
-
-    # Check if AWG secrets exist for this client
-    peer_json="$(jq --arg name "$CLIENT_NAME" \
-      '.amneziawg_secrets.peers[]? | select(.name == $name)' "$secrets_tmp")"
-
-    if [[ -n "$peer_json" && "$peer_json" != "null" ]]; then
-      if [[ "$(jq -r '.address_kind // "device"' <<< "$peer_json")" != "device" ]]; then
-        echo "selected routed peer is not a device profile" >&2
+  if [[ "$enable_amneziawg" == "true" ]]; then
+    # A host may be selected explicitly; every selected enabled host must bind.
+    selected_host="${AWG_HOST:-}"
+    if [[ -z "$selected_host" || "$selected_host" == "${prov}:${env_name}" ]]; then
+      if [[ "$AWG_BLOCK" != '[]' ]]; then
+        echo 'ambiguous-device-binding' >&2
         exit 1
       fi
-
       server_ip="$(PROVIDER="$prov" ENV="$env_name" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
-
-      # Derive server public key
-      server_priv="$(jq -r '.amneziawg_secrets.server_private_key // empty' "$secrets_tmp")"
-      if [[ -z "$server_priv" ]]; then
-        echo "amneziawg_secrets.server_private_key missing in ${sops_file}" >&2
-        exit 1
-      fi
-      server_pub_file="${WORK}/server-${i}.pub"
-      printf '%s' "$server_priv" | $AWG_PUBKEY_CMD > "$server_pub_file"
-      server_pubkey="$(cat "$server_pub_file")"
-
-      listen_port="$(jq -r '.amneziawg_secrets.listen_port // empty' "$secrets_tmp")"
-      [[ -z "$listen_port" ]] && listen_port=51820
-
-      peer_psk="$(jq -r    '.preshared_key' <<< "$peer_json")"
-      peer_addr="$(jq -r   '.allowed_ips'   <<< "$peer_json")"
-
-      # Resolve AWG cohort file for obfuscation defaults
-      AWG_COHORT="${AWG_COHORT:-}"
-      cohort_yml_path=""
-      if [[ -n "$AWG_COHORT" ]]; then
-        cohort_file="${REPO_ROOT}/ansible/roles/amneziawg/vars/cohorts/${AWG_COHORT}.yml"
-        if [[ ! -f "$cohort_file" ]]; then
-          echo "cohort file not found: $cohort_file" >&2
-          exit 1
-        fi
-        cohort_yml_path="$cohort_file"
-      fi
-
-      # Resolve obfuscation parameters (three-level precedence)
-      jc="$(resolve_awg_param jc 4 "$secrets_tmp" "$cohort_yml_path")"
-      jmin="$(resolve_awg_param jmin 40 "$secrets_tmp" "$cohort_yml_path")"
-      jmax="$(resolve_awg_param jmax 70 "$secrets_tmp" "$cohort_yml_path")"
-      s1="$(resolve_awg_param s1 50 "$secrets_tmp" "$cohort_yml_path")"
-      s2="$(resolve_awg_param s2 100 "$secrets_tmp" "$cohort_yml_path")"
-      h1="$(resolve_awg_param h1 "" "$secrets_tmp" "$cohort_yml_path")"
-      h2="$(resolve_awg_param h2 "" "$secrets_tmp" "$cohort_yml_path")"
-      h3="$(resolve_awg_param h3 "" "$secrets_tmp" "$cohort_yml_path")"
-      h4="$(resolve_awg_param h4 "" "$secrets_tmp" "$cohort_yml_path")"
-
-      if [[ -z "$h1" || -z "$h2" || -z "$h3" || -z "$h4" ]]; then
-        echo "H1..H4 are required but could not be resolved from secrets or cohort." >&2
-        echo "Set amneziawg_secrets.h1..h4 in SOPS or specify AWG_COHORT=<slug>." >&2
-        exit 1
-      fi
-
-      # Build the AWG JSON object; conditionally include i1..i5
-      # S3/S4 are intentionally absent: amneziawg-go#110 causes silent packet
-      # drop on arm64-Android clients when S3/S4 are non-zero; this repo pins
-      # S3=S4=0 for the whole arm64-Android family, enforced by the amneziawg role guard.
-      awg_obj="$(jq -n \
-        --arg tag "p2-awg-${CLIENT_NAME}" \
-        --argjson addr "$(jq -nc --arg a "$peer_addr" '[$a]')" \
-        --argjson mtu 1420 \
-        --argjson jc "$jc" --argjson jmin "$jmin" --argjson jmax "$jmax" \
-        --argjson s1 "$s1" --argjson s2 "$s2" \
-        --argjson h1 "$h1" --argjson h2 "$h2" \
-        --argjson h3 "$h3" --argjson h4 "$h4" \
-        --arg pub "$server_pubkey" --arg psk "$peer_psk" \
-        --arg endpoint "${server_ip}:${listen_port}" \
-        '{
-          tag: $tag,
-          address: $addr,
-          dns: ["1.1.1.1","1.0.0.1"],
-          mtu: $mtu,
-          jc: $jc, jmin: $jmin, jmax: $jmax,
-          s1: $s1, s2: $s2,
-          h1: $h1, h2: $h2, h3: $h3, h4: $h4,
-          private_key_placeholder: true,
-          peer: {
-            public_key: $pub,
-            preshared_key: $psk,
-            endpoint: $endpoint,
-            allowed_ips: ["0.0.0.0/0","::/0"],
-            persistent_keepalive: 25
-          }
-        }')"
-
-      # Splice in i1..i5 only when present. These are lowercase-hex strings
-      # (e.g. "deadbeef"), so emit them with --arg (string), not --argjson:
-      # the client parses them as strings and the bundle schema types them as
-      # `^[0-9a-f]+$`. --argjson would crash on a hex value that isn't valid
-      # JSON, or coerce a digit-only value to a number that fails the schema.
-      for i_param in i1 i2 i3 i4 i5; do
-        i_val="$(resolve_awg_param "$i_param" "" "$secrets_tmp" "$cohort_yml_path")"
-        if [[ -n "$i_val" ]]; then
-          awg_obj="$(jq --arg k "$i_param" --arg v "$i_val" '. + {($k): $v}' <<< "$awg_obj")"
-        fi
-      done
-
-      # Stamp the cohort fingerprint: a SHA-256 over the now-fully-resolved
-      # obfuscation params (jc..h4 + any i1..i5). The client recomputes it and
-      # warns "profile outdated, refresh subscription" on a mismatch instead of
-      # letting the AWG handshake stall silently. Algorithm is the single
-      # implementation in ripdpi_cohort_fingerprint.py (same one the contract
-      # test pins), so emit and verify can never disagree.
-      cohort_fp="$(jq -c '{jc,jmin,jmax,s1,s2,h1,h2,h3,h4,i1,i2,i3,i4,i5}' <<< "$awg_obj" \
-        | python3 "${REPO_ROOT}/scripts/ripdpi_cohort_fingerprint.py" -)"
-      awg_obj="$(jq --arg fp "$cohort_fp" '. + {cohort_fingerprint: $fp}' <<< "$awg_obj")"
-
+      awg_obj="$(python3 "${REPO_ROOT}/scripts/awg_client.py" bundle "$CLIENT_NAME" \
+        --host "${prov}:${env_name}" --cohort "$cohort" --endpoint "$server_ip" < "$secrets_tmp")"
       AWG_BLOCK="$(jq -nc --argjson obj "$awg_obj" '[$obj]')"
     fi
   fi
@@ -452,6 +293,11 @@ for i in "${!host_pairs[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
+if [[ -n "${AWG_HOST:-}" && "$AWG_BLOCK" == '[]' ]]; then
+  echo 'missing-device-binding' >&2
+  exit 1
+fi
+
 # Step 3: assemble the ripdpi object and merge onto the base sing-box JSON
 # ---------------------------------------------------------------------------
 [[ -z "$TOPOLOGY_JSON" ]] && TOPOLOGY_JSON='{"split_hop_egress":false,"hysteria_realm":null}'
