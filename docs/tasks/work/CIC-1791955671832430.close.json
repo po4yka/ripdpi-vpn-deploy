@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "The real UDP collision regression reproduced the old EADDRINUSE failure in 0.60 seconds. Bounded paired-socket admission, rejected-socket cleanup and all 83 affected portable cases passed in 40.09 seconds at source 8a81b042a03634fface48be5e61ab748588e36c1. The exact native gateway-port contract, production behavior and every test deadline are retained. Applicable hooks passed.",
+  "execution_sha256": "9048101d6ca6012dcee609e99df5599b1017d5f16d01bc1089ecebb77a8ee202",
+  "issue_sha256": "c224c8d8d7211c0155e93d723c1ec632330217a6f915e0bce5f15f0b34423c35",
+  "outcome": "done",
+  "prepared_at": "2026-10-14T05:44:15Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1791955671832430"
+}

@@ -2,7 +2,7 @@
 id: CIC-1791955671832430
 title: Reserve independent destination fixture endpoints
 kind: bug
-status: review
+status: done
 area: ci
 priority: high
 risk: standard
@@ -16,6 +16,9 @@ updated: 2026-10-14
 spec_reason: test-only
 related_tasks: []
 status_detail: A real UDP collision reproduced the old failure; bounded paired-socket admission and all 83 affected portable cases now pass without changing production contracts or deadlines.
+closed_at: "2026-10-14T05:44:15Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: The real UDP collision regression reproduced the old EADDRINUSE failure in 0.60 seconds. Bounded paired-socket admission, rejected-socket cleanup and all 83 affected portable cases passed in 40.09 seconds at source 8a81b042a03634fface48be5e61ab748588e36c1. The exact native gateway-port contract, production behavior and every test deadline are retained. Applicable hooks passed.
 ---
 
 ## Goal
