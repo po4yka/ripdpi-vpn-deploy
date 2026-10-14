@@ -14,6 +14,10 @@
 
 ## Design decisions
 
+Payload-classification fixtures control elapsed time independently of curl
+completion. Uniform and spiking RTT scenarios execute the real classifier;
+the clock shim delegates every other Python invocation to the pinned interpreter.
+
 Destination fixture gateways claim both TCP and UDP sockets on the same native
 gateway port before accepting a candidate. Cross-protocol address collisions
 release both candidate sockets within a finite allocation bound; other errors
