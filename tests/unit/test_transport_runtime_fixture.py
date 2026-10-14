@@ -42,3 +42,8 @@ def test_failure_diagnostics_are_bounded(tmp_path):
     lab.log = tmp_path/'ansible.log'
     lab.log.write_text('\n'.join('transport-runtime-frame:ready:1' for _ in range(100)))
     assert len(lab.failure_categories()['categories']) == 9
+
+
+def test_native_lab_origin_is_admitted_without_hidden_normalization():
+    from transport_semantics import origin_valid
+    assert origin_valid(fixture.OWNED_ORIGIN)

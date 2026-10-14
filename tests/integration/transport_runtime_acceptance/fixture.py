@@ -25,6 +25,7 @@ from scripts.template_render import merge_render_vars
 
 ROOT = Path(__file__).resolve().parents[3]
 LIBRARY = ROOT / 'ansible/roles/runtime-release/files'
+OWNED_ORIGIN = 'https://owned.example'
 XRAY_PINS = {
     'v26.3.27': '23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae',
     'v26.5.3': 'f9d7dd7492791430d48a9828fb36f32663577af787e8b363a1548dece21a7897',
@@ -122,7 +123,7 @@ class Lab:
                             transport_runtime_probe_url='https://192.0.2.80:18080/',
                             transport_runtime_probe_expected_status=204, transport_runtime_timeout_seconds=60,
                             transport_runtime_probe_clients={'xray':'native-device', 'hysteria':'native-device-h'},
-                            public_site_canonical_url='https://owned.example/',
+                            public_site_canonical_url=OWNED_ORIGIN,
                             ansible_port=22, vpn_service_address='')
         self.context['transport_egress_secrets'] = {name + '_password': 'synthetic-' + secrets.token_hex(24)
             for name in ('direct_xray', 'direct_hysteria', 'direct_gateway', 'warp_xray', 'warp_gateway')}
@@ -234,7 +235,7 @@ server.serve_forever()
         self.context['xray']['reality_private_key'] = key_fields['PrivateKey']
         self.context['hysteria'].update(version='v2.8.2', linux_amd64_sha256=HYSTERIA_PINS['v2.8.2'],
             linux_arm64_sha256=HYSTERIA_PINS['v2.8.2'], cert_pem=self.cert.read_text(), key_pem=self.key.read_text(),
-            masquerade_url='https://owned.example/', clients=[{'name': 'native-device-h', 'password': secrets.token_hex(24)}])
+            masquerade_url=OWNED_ORIGIN, clients=[{'name': 'native-device-h', 'password': secrets.token_hex(24)}])
         self.context['hysteria_release_urls'] = {'amd64': 'file://' + str(self.artifacts / 'hysteria-v2.8.2'),
                                                'arm64': 'file://' + str(self.artifacts / 'hysteria-v2.8.2')}
         return self

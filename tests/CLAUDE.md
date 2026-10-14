@@ -20,7 +20,9 @@ with selected skips fatal. Both served ports exercise actual pinned clients,
 conflicting forwarding headers, private backend peer observations, discovery,
 complete native candidate refusal and Hysteria's owned TLS proxy. ARM64
 native runs require the repository-pinned base and exact ARM64 runtime checksums;
-emulated executable identities cannot stand in for native authority.
+emulated executable identities cannot stand in for native authority. Runtime
+upgrade fixtures share one admitted path-free origin between canonical identity
+and Hysteria input; a trailing slash is a path and refuses before acquisition.
 
 Payload-classification fixtures control elapsed time independently of curl
 completion. Uniform and spiking RTT scenarios execute the real classifier;

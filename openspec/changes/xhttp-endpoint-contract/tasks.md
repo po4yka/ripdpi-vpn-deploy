@@ -31,6 +31,7 @@ Align XHTTP endpoint paths forwarded attribution and served origins in an isolat
 - ansible/playbooks/tasks/transport-input-preflight.yml and group_vars origin defaults
 - ansible/roles/cdn-front/templates/cdn-front.conf.j2 and its role notes (shared backend authority)
 - tests/integration/transport_destination_boundary/fixture.py
+- tests/integration/transport_runtime_acceptance/fixture.py and its portable input regression
 - Makefile, .github/workflows/ci.yml, tests/unit/test_executable_coverage.py
 - Primary integration owns all shared schema, profile, Makefile, CI/snapshot and portfolio edits; explicitly assign disjoint paths before future parallel implementation.
 - Preserve unrelated work, existing review records and private operator files. Use a dedicated implementation worktree only after authorization.
