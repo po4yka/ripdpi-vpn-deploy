@@ -42,7 +42,7 @@ Align XHTTP endpoint paths forwarded attribution and served origins in an isolat
 - [x] XRY-1791617961367849 Define strict path and port-aware origin inputs and update all validators renderers and profile exporters with boundary tests #bug !high @item:XRY-1791617955392712
 - [x] XRY-1791617962188506 Correct direct frontend source attribution and prove actual peer identity under supplied header conflicts #bug !high @item:XRY-1791617955392712
 - [x] XRY-1791617963780756 Exercise exact supported client requests discovery masquerade and failed endpoint rollback across served ports #bug !high @item:XRY-1791617955392712
-- [ ] XRY-1791617971846326 Review serialized snapshots run contract and full gates and document the breaking input redistribution boundary #bug !high @item:XRY-1791617955392712
+- [x] XRY-1791617971846326 Review serialized snapshots run contract and full gates and document the breaking input redistribution boundary #bug !high @item:XRY-1791617955392712
 
 ## Verification
 
