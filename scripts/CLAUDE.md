@@ -53,7 +53,9 @@ CI credential generation uses the served `SERVER_NAME` HTTPS origin for Hysteria
 XHTTP path and HTTPS origin admission live in `transport_semantics.py`, shared
 by controller preflight, secret validation, emission and liveness. Canonical
 origins include nondefault ports and omit 443; bootstrap exposes `--xhttp-port`
-and CI generation uses `XHTTP_PUBLIC_PORT`. The only evaluated profile expression
+and CI generation uses `XHTTP_PUBLIC_PORT`. Make captures the port literally
+and passes it through a quoted environment field before validation, never as
+interpolated shell syntax. The only evaluated profile expression
 is the exact repository-owned served-origin expression; arbitrary Jinja and
 private operator origins are never rewritten or normalized.
 

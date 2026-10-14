@@ -35,6 +35,13 @@ else
 PROVIDER ?= upcloud
 ENV      ?= prod
 
+ifneq ($(filter bootstrap-secrets,$(MAKECMDGOALS)),)
+override BOOTSTRAP_XHTTP_PORT_LITERAL := $(value XHTTP_PORT)
+override XHTTP_PORT := $(value XHTTP_PORT)
+export BOOTSTRAP_XHTTP_PORT_LITERAL
+unexport XHTTP_PORT
+endif
+
 ifneq ($(filter naive-issue naive-revoke naive-readout,$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error Naive device operations require exactly one make goal)
@@ -1319,7 +1326,7 @@ bootstrap-secrets:
 	  $(if $(CLIENTS),--clients $(CLIENTS)) \
 	  --target $(TARGET) --server-name $(SERVER_NAME) \
 	  $(if $(XHTTP_HOST),--xhttp-host $(XHTTP_HOST)) \
-	  $(if $(XHTTP_PORT),--xhttp-port "$(XHTTP_PORT)")
+	  --xhttp-port "$${BOOTSTRAP_XHTTP_PORT_LITERAL:-8443}"
 
 spot-check-secrets:
 	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run 'make decrypt'"; exit 1; }

@@ -149,3 +149,33 @@ def test_site_metadata_keeps_hostname_identity_and_port_aware_urls(port):
     page = render_template(ROOT / "ansible/roles/nginx-xhttp/templates/public-site/index.html.j2", variables)
     assert '"alternateName": ["edge.example.test"]' in page
     assert f'"url": "{origin}/"' in page and f'"url": "{origin}/logo.svg"' in page
+
+
+@pytest.mark.parametrize("port", ["8443", "443", "`touch injected`", '8443"; touch injected; : "',
+                                  "$(shell touch injected)", "$(touch injected)"])
+def test_make_bootstrap_transports_port_literally_before_validation(tmp_path, port):
+    (tmp_path / "Makefile").write_bytes((ROOT / "Makefile").read_bytes())
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    recorder = scripts / "bootstrap-secrets.sh"
+    recorder.write_text("#!/bin/sh\nexec python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' \"$@\"\n")
+    recorder.chmod(0o700)
+    environment = {key: value for key, value in os.environ.items()
+                   if key not in {"MAKEFILES", "MAKEFLAGS", "GNUMAKEFLAGS", "MFLAGS"}}
+    result = subprocess.run(["make", "--no-print-directory", "bootstrap-secrets", "TARGET=mirror.example.test:443",
+                             "SERVER_NAME=mirror.example.test", "XHTTP_PORT=" + port], cwd=tmp_path,
+                            env=environment, capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stderr
+    arguments = json.loads(result.stdout.splitlines()[-1])
+    assert arguments[-2:] == ["--xhttp-port", port]
+    assert not (tmp_path / "injected").exists()
+
+
+@pytest.mark.parametrize("scenario", ["full-stack", "full-stack-published"])
+def test_full_stack_origins_pass_the_real_transport_admission(scenario):
+    document = yaml.safe_load((ROOT / "ansible/molecule/full-stack/test-secrets.yaml").read_text())
+    inventory = yaml.safe_load((ROOT / f"ansible/molecule/{scenario}/molecule.yml").read_text())
+    groups = inventory["provisioner"]["inventory"]["group_vars"]
+    context = {**yaml.safe_load((ROOT / "ansible/group_vars/all.yml").read_text()),
+               **groups["all"], **groups["vpn"]}
+    assert not transport_errors(document, context, sections=["xhttp", "hysteria"])
