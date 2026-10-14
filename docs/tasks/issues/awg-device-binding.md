@@ -2,7 +2,7 @@
 id: SCR-1791618039091425
 title: Deliver authoritative AmneziaWG device enrollment and client bindings
 kind: feature
-status: doing
+status: review
 area: scripts
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: awg-device-binding
 created: 2026-10-10
 updated: 2026-10-14
 related_tasks: [ANS-1791562764586678, SEC-1791471757439452]
+status_detail: "Authoritative AWG binding and encrypted transactions verified by complete local and exact-source hosted/native gates; prepared PR #298."
 ---
 
 ## Goal
