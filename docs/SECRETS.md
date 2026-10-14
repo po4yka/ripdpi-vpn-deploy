@@ -146,6 +146,23 @@ after the operation that needs plaintext.
 
 ## What's in the secrets file
 
+XHTTP endpoint inputs are canonical: `xray.xhttp_path` has a leading slash and
+one or more nonempty segments containing only ASCII letters, digits, underscores
+and dashes, with at most 256 bytes. Root, trailing slash, encoded separators,
+dot segments, queries, fragments and whitespace are rejected before mutation.
+`public_site_canonical_url` and `hysteria.masquerade_url` must agree with the
+served primary HTTPS hostname and port. Port 443 is omitted; a listener on 8443
+uses `https://vpn.example.com:8443`. Origins have lowercase hostnames and no
+credentials, paths, query or fragment. Alternate frontends retain the primary
+canonical identity.
+
+This intentionally rejects older accepted inputs. Before rollout, validate the
+private configuration categorically, correct its endpoint/origin fields without
+printing them, regenerate recipient and liveness artifacts, and converge Xray
+and Nginx together. Secrets bootstrap accepts `--xhttp-port` (Make:
+`XHTTP_PORT`), defaulting to 8443; direct-only port 443 must be selected explicitly.
+This source change does not migrate private configuration or authorize rollout.
+
 See `secrets/prod.secrets.example.yaml` for the full schema. High-level:
 
 ```

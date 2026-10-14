@@ -147,6 +147,13 @@ official sing-box P0/P2 syntax and must pass the pinned upstream parser. Only
 `emit-bundle.sh` selects the RIPDPI format that carries P1 XHTTP; never leak an
 XHTTP outbound into the standard subscription.
 
+Client emission excludes the neutral profile's public-site origin from its
+semantic context: that placeholder does not represent the deployed private
+override and is not part of a client socket contract. Controller preflight
+admits the concrete served origin before host mutation. Emission still checks
+the shared path grammar, selected transport relationships and actual endpoint
+hostname/port policy; it never rewrites private origin inputs.
+
 **Share emission reuses authoritative plaintext** — `emit-singbox.sh` reads
 explicit `VPN_SECRETS_FILE` once through a no-follow, nonblocking descriptor
 with current-owner/private-mode checks, then shares its JSON snapshot across

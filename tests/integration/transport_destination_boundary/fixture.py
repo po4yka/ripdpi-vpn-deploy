@@ -1,6 +1,7 @@
 """Owned disconnected native fixture; never registers a vendor or reads inventory."""
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -40,6 +41,7 @@ class NativeStack:
         self.units = []
         self.created_users = []
         self.processes = []
+        self.client_count = 0
         self.created_namespace = False
         self.unit_files = []
         self.xray = shutil.which("xray")
@@ -112,7 +114,10 @@ class NativeStack:
             # Copy the exact bytes into this owned executable directory.
             target = self.library / "hysteria"
             shutil.copyfile(self.hysteria, target);target.chmod(0o555)
-            if hashlib.sha256(target.read_bytes()).hexdigest() != "8225c8380f1ae8122921d4986c2b70976e9c6e6f87a977e7d0498a813f4f3e37":
+            expected = ("a3ccc0a3e791b85710ef63d22304a6f7dea210259be71bcd70cf9a210a385454"
+                        if os.uname().machine == "aarch64" else
+                        "8225c8380f1ae8122921d4986c2b70976e9c6e6f87a977e7d0498a813f4f3e37")
+            if hashlib.sha256(target.read_bytes()).hexdigest() != expected:
                 raise RuntimeError("native-hysteria-digest-mismatch")
             self.hysteria = str(target)
         self.state.mkdir(mode=0o700)
@@ -208,7 +213,7 @@ class NativeStack:
         self.short = secrets.token_hex(8)
         self.hys_password = "synthetic-native-hysteria-secret-" + secrets.token_hex(12)
 
-    def start_frontend(self, profile):
+    def start_frontend(self, profile, *, primary_port=8443, path="/native-sync", fallback=False):
         values = self.values
         values["vpn"].update(enable_xray_reality=profile == "p0", enable_nginx_xhttp=profile == "p1",
                               enable_warp_outbound=False, enable_cascade_ingress=False)
@@ -219,14 +224,14 @@ class NativeStack:
         self.diagnostic_logs = {"frontend": logs / "error.log"}
         values.update(xray_port=443, xray_fallback_port=0, xray_api_listen="127.0.0.1:10086",
                       xray_log_path=str(logs), xray_log_dir=str(logs), nginx_xhttp_port=10085,
-                      nginx_xhttp_public_port=8443, xray_block_quic_outbound=False)
+                      nginx_xhttp_public_port=primary_port, xray_block_quic_outbound=False)
         pair = command([self.xray, "x25519"])
         fields = {line.split(":", 1)[0]: line.split(":", 1)[1].strip() for line in pair.splitlines() if ":" in line}
         assert "PrivateKey" in fields and "Password (PublicKey)" in fields
         self.reality_password = fields["Password (PublicKey)"]
         values["xray"].update(target="192.0.2.90:8444", server_names=["owned.example"], reality_private_key=fields["PrivateKey"],
                               clients=[{"name": "native-device", "uuid": self.uuid, "short_id": self.short}],
-                              cohorts=[], xhttp_path="/native-sync", xhttp_mode="auto")
+                              cohorts=[], xhttp_path=path, xhttp_mode="auto")
         if profile in ("p0", "p1"):
             path = self.file("frontend.json", render_template(ROOT / "ansible/roles/xray/templates/config.json.j2", values), "x")
             listener = next(item for item in self.config["listeners"] if item["name"] == "direct_xray")
@@ -246,30 +251,58 @@ class NativeStack:
             self.unit("target", ["openssl", "s_server", "-accept", "192.0.2.90:8444", "-tls1_3", "-alpn", "h2",
                                   "-cert", str(self.cert), "-key", str(self.key), "-quiet"])
         elif profile == "p1":
-            values["nginx_xhttp"].update(server_name="owned.example", fallback_enabled=False)
+            values["nginx_xhttp"].update(server_name="owned.example", fallback_enabled=fallback)
+            values["public_site_canonical_url"] = "https://owned.example" + ("" if primary_port == 443 else ":" + str(primary_port))
+            self.ingress = self.library / "ingress"
+            self.ingress.mkdir(mode=0o755);self.ingress.chmod(0o755)
+            self.site = self.ingress / "site"
+            shutil.copytree(ROOT / "ansible/roles/nginx-xhttp/files/public-site", self.site)
+            for item in [self.site, *self.site.rglob("*")]:
+                item.chmod(0o755 if item.is_dir() else 0o644)
+            for template in (ROOT / "ansible/roles/nginx-xhttp/templates/public-site").glob("*.j2"):
+                if template.name.startswith("_"):
+                    continue
+                target = self.site / template.name.removesuffix(".j2")
+                target.write_text(render_template(template, values));target.chmod(0o644)
+            for name, source in (("certificate.pem", self.cert), ("private.pem", self.key)):
+                shutil.copyfile(source, self.ingress / name)
+                (self.ingress / name).chmod(0o644 if name == "certificate.pem" else 0o600)
             body = render_template(ROOT / "ansible/roles/nginx-xhttp/templates/site.conf.j2", values)
-            body = body.replace("/etc/nginx/tls/owned.example.fullchain.pem", str(self.cert)).replace(
-                "/etc/nginx/tls/owned.example.key", str(self.key)).replace("/var/log/nginx/", str(self.library) + "/")
-            nginx = self.file("nginx.conf", "worker_processes 1;\npid " + str(self.library / "nginx.pid") +
-                              ";\nevents { worker_connections 128; }\nhttp {\n" + body + "\n}\n")
+            body = body.replace("/etc/nginx/tls/owned.example.fullchain.pem", str(self.ingress / "certificate.pem")).replace(
+                "/etc/nginx/tls/owned.example.key", str(self.ingress / "private.pem")).replace("/var/log/nginx/", str(self.library) + "/")
+            body = body.replace("/var/www/public-site", str(self.site))
+            nginx = self.ingress / "nginx.conf"
+            nginx.write_text("worker_processes 1;\npid " + str(self.library / "nginx.pid") +
+                             ";\nevents { worker_connections 128; }\nhttp {\n" + body + "\n}\n")
+            nginx.chmod(0o600)
+            self.nginx_config = nginx
             command(["nginx", "-t", "-c", str(nginx), "-p", str(self.library)])
-            self.unit("nginx", ["nginx", "-c", str(nginx), "-p", str(self.library), "-g", "daemon off;"])
+            self.unit("nginx", ["nginx", "-c", str(nginx), "-p", str(self.library), "-g", "daemon off;"],
+                      properties=("ExecReload=/bin/kill -HUP $MAINPID",))
         else:
-            values["hysteria"].update(clients=[{"name": "native-device", "password": self.hys_password}],
-                                      masquerade_type="proxy", masquerade_url="https://owned.example",
-                                      salamander_enabled=False)
-            values.update(hysteria_port=443, hysteria_config_dir=str(self.library))
-            shutil.copyfile(self.cert, self.library / "server.fullchain.pem")
-            shutil.copyfile(self.key, self.library / "server.key")
-            for name in ("server.fullchain.pem", "server.key"):
-                (self.library / name).chmod(0o640);os.chown(self.library / name, 0, self.gids["h"])
-            path = self.file("hysteria-server.yaml", render_template(ROOT / "ansible/roles/hysteria/templates/config.yaml.j2", values), "h")
-            self.unit("hysteria", [self.hysteria, "server", "--config", str(path)], "h",
-                      ("AmbientCapabilities=CAP_NET_BIND_SERVICE", "CapabilityBoundingSet=CAP_NET_BIND_SERVICE"))
+            self.start_hysteria()
 
-    def start_client(self, profile, invalid=False):
-        port = 18181 if invalid else 18180
-        suffix = "invalid" if invalid else "valid"
+    def start_hysteria(self, *, masquerade_origin="https://owned.example", hosts=None):
+        values = self.values
+        values["hysteria"].update(clients=[{"name": "native-device", "password": self.hys_password}],
+                                  masquerade_type="proxy", masquerade_url=masquerade_origin,
+                                  salamander_enabled=False)
+        values.update(hysteria_port=443, hysteria_config_dir=str(self.library))
+        shutil.copyfile(self.cert, self.library / "server.fullchain.pem")
+        shutil.copyfile(self.key, self.library / "server.key")
+        for name in ("server.fullchain.pem", "server.key"):
+            (self.library / name).chmod(0o640);os.chown(self.library / name, 0, self.gids["h"])
+        path = self.file("hysteria-server.yaml", render_template(ROOT / "ansible/roles/hysteria/templates/config.yaml.j2", values), "h")
+        properties = ["AmbientCapabilities=CAP_NET_BIND_SERVICE", "CapabilityBoundingSet=CAP_NET_BIND_SERVICE"]
+        if hosts:
+            properties += ["BindReadOnlyPaths=" + str(hosts) + ":/etc/hosts", "Environment=SSL_CERT_FILE=" + str(self.cert)]
+        self.unit("hysteria", [self.hysteria, "server", "--config", str(path)], "h",
+                  properties)
+
+    def start_client(self, profile, invalid=False, *, endpoint_port=None, headers=None, source_address=None, outbound=None):
+        port = 18180 + self.client_count
+        self.client_count += 1
+        suffix = ("invalid" if invalid else "valid") + "-" + str(self.client_count)
         if profile in ("p0", "p1"):
             user = {"id": str(uuid.uuid4()) if invalid else self.uuid, "encryption": "none"}
             if profile == "p0":
@@ -280,7 +313,9 @@ class NativeStack:
             else:
                 stream = {"network": "xhttp", "security": "tls", "tlsSettings": {"serverName": "owned.example",
                           "allowInsecure": False, "certificates": [{"certificateFile": str(self.cert), "usage": "verify"}]},
-                          "xhttpSettings": {"host": "owned.example", "path": "/native-sync", "mode": "auto"}}
+                          "xhttpSettings": {"host": "owned.example", "path": self.values["xray"]["xhttp_path"], "mode": "auto"}}
+                if headers:
+                    stream["xhttpSettings"]["headers"] = headers
             logs = self.library / ("client-logs-" + suffix)
             logs.mkdir(mode=0o750)
             command([sys.executable, str(ROOT / "ansible/roles/xray/files/xray_log_setup.py"),
@@ -289,7 +324,19 @@ class NativeStack:
             document = {"log": {"loglevel": "warning", "error": str(logs / "error.log")}, "inbounds": [{"listen": "127.0.0.1", "port": port,
                         "protocol": "socks", "settings": {"udp": True}}],
                         "outbounds": [{"protocol": "vless", "settings": {"vnext": [{"address": "192.0.2.90",
-                        "port": 443 if profile == "p0" else 8443, "users": [user]}]}, "streamSettings": stream}]}
+                        "port": 443 if profile == "p0" else (endpoint_port or self.values["nginx_xhttp_public_port"]), "users": [user]}]}, "streamSettings": stream}]}
+            if outbound is not None:
+                document["outbounds"] = [copy.deepcopy(outbound)]
+                selected = document["outbounds"][0]
+                selected["streamSettings"]["tlsSettings"]["certificates"] = [
+                    {"certificateFile": str(self.cert), "usage": "verify"}]
+                assert selected["streamSettings"]["tlsSettings"]["allowInsecure"] is False
+                if headers:
+                    selected["streamSettings"]["xhttpSettings"]["headers"] = headers
+                if invalid:
+                    selected["settings"]["vnext"][0]["users"][0]["id"] = user["id"]
+            if source_address:
+                document["outbounds"][0]["sendThrough"] = source_address
             path = self.file("client-" + suffix + ".json", json.dumps(document), "x")
             command([self.xray, "run", "-test", "-config", str(path)])
             self.unit("client-" + suffix, [self.xray, "run", "-config", str(path)], "x")

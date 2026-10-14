@@ -46,7 +46,6 @@
 - name: Pre-flight — masquerade must use an owned HTTPS origin
   ansible.builtin.assert:
     that:
-      - hysteria.masquerade_url | default('') is match('^https://[^/]+(?:/.*)?$')
       - hysteria.masquerade_url == public_site_canonical_url
     fail_msg: Set hysteria.masquerade_url to public_site_canonical_url so probes see the owned public site.
 

@@ -518,7 +518,7 @@ def test_hysteria_masquerade_uses_the_owned_site_identity() -> None:
     rendered = renderer.render_template(HYSTERIA_TEMPLATE, variables)
     # Scalar strings render JSON-quoted (to_json) so fragment-bearing
     # URLs cannot break YAML structure.
-    assert f'url: "https://{variables["nginx_xhttp"]["server_name"]}"' in rendered
+    assert f'url: "https://{variables["nginx_xhttp"]["server_name"]}:8443"' in rendered
     assert "bing.com" not in rendered
 
 
@@ -662,7 +662,7 @@ def test_transport_profiles_share_one_canonical_site_identity() -> None:
     )
 
     assert p1["public_site_canonical_url"] == p2["public_site_canonical_url"]
-    assert secrets["hysteria"]["masquerade_url"] == "https://vpn.example.com"
+    assert secrets["hysteria"]["masquerade_url"] == "https://vpn.example.com:8443"
     tasks = (
         REPO_ROOT / "ansible" / "roles" / "hysteria" / "tasks" / "enable.yml"
     ).read_text()
@@ -670,9 +670,10 @@ def test_transport_profiles_share_one_canonical_site_identity() -> None:
 
 
 def _neutral_committed_origin(profile: str, url: str) -> bool:
-    return url == "https://vpn.example.com" or (
+    from transport_semantics import PUBLIC_ORIGIN_TEMPLATE
+    return url == ("https://vpn.example.com:8443" if profile == "all.yml" else "https://vpn.example.com") or (
         profile == "vpn-ci-p0p1p2.yml"
-        and url == "https://{{ nginx_xhttp.server_name }}"
+        and url == PUBLIC_ORIGIN_TEMPLATE
     )
 
 
@@ -689,16 +690,16 @@ def test_committed_profiles_carry_only_the_neutral_placeholder_origin() -> None:
         )
 
 
-def test_allowed_ci_origin_renders_only_its_runtime_hostname() -> None:
+@pytest.mark.parametrize("port", [443, 8443, 2083])
+def test_allowed_ci_origin_renders_only_its_runtime_hostname_and_port(port) -> None:
     from template_render import render_fragment
 
     profile = yaml.safe_load((REPO_ROOT / "ansible/group_vars/vpn-ci-p0p1p2.yml").read_text())
     url = profile["public_site_canonical_url"]
     assert _neutral_committed_origin("vpn-ci-p0p1p2.yml", url)
-    assert url == "https://{{ nginx_xhttp.server_name }}"
     assert render_fragment("neutral-ci-origin.txt", url, {
-        "nginx_xhttp": {"server_name": "vpn.example.com"}
-    }) == "https://vpn.example.com"
+        "nginx_xhttp": {"server_name": "vpn.example.com"}, "nginx_xhttp_public_port": port,
+    }) == "https://vpn.example.com" + ("" if port == 443 else f":{port}")
 
 
 @pytest.mark.parametrize("profile,url", [

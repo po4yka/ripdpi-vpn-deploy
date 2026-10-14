@@ -59,9 +59,9 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
     assert terraform["with"]["terraform_wrapper"] is False
     command = shlex.split(native[-1]["run"].replace("\\\n", ""))
     assert command[:2] == ["sudo", "env"]
-    assert command[-2:] == ["make", "test-native-runtime"]
+    assert command[-3:] == ["make", "test-native-runtime", "test-xhttp-endpoint-contract"]
     environment = {}
-    for assignment in command[2:-2]:
+    for assignment in command[2:-3]:
         name, value = assignment.split("=", 1)
         assert name not in environment, f"duplicate native environment override: {name}"
         environment[name] = value
@@ -92,17 +92,20 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
     )
     baseline = makefile.split('test-native-runtime:\n', 1)[1].split('\n\n', 1)[0]
     consumer = makefile.split('test-transport-runtime-acceptance:\n', 1)[1].split('\n\n', 1)[0]
+    endpoints = makefile.split('test-xhttp-endpoint-contract:\n', 1)[1].split('\n\n', 1)[0]
     assert 'pytest tests/unit/ -m native_runtime' in baseline
     assert '--ignore=tests/unit/test_transport_runtime_acceptance_native.py' in baseline
     assert 'tests/unit/test_transport_runtime_acceptance_native.py' in consumer
-    assert '--fail-on-skip' in baseline and '--fail-on-skip' in consumer
-    assert '--ignore' not in consumer and ' -k ' not in baseline + consumer
+    assert '--fail-on-skip' in baseline and '--fail-on-skip' in consumer and '--fail-on-skip' in endpoints
+    assert '--ignore' not in consumer + endpoints and ' -k ' not in baseline + consumer + endpoints
     import subprocess
     import sys
     commands = [
         ['tests/unit/', '-m', 'native_runtime'],
-        ['tests/unit/', '-m', 'native_runtime', '--ignore=tests/unit/test_transport_runtime_acceptance_native.py'],
+        ['tests/unit/', '-m', 'native_runtime', '--ignore=tests/unit/test_transport_runtime_acceptance_native.py',
+         '--ignore=tests/unit/test_xhttp_endpoint_contract_native.py'],
         ['tests/unit/test_transport_runtime_acceptance_native.py'],
+        ['tests/unit/test_xhttp_endpoint_contract_native.py'],
     ]
     selected = []
     for arguments in commands:
@@ -110,9 +113,11 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
             cwd=ROOT, text=True, capture_output=True, check=True, timeout=60)
         selected.append({line for line in result.stdout.splitlines()
                          if line.startswith('tests/unit/') and '::' in line})
-    all_native, existing, transactions = selected
-    assert all_native == existing | transactions and not existing & transactions
+    all_native, existing, transactions, endpoint_cases = selected
+    assert all_native == existing | transactions | endpoint_cases
+    assert not existing & transactions and not existing & endpoint_cases and not transactions & endpoint_cases
     assert transactions and len(transactions) == 4
+    assert endpoint_cases and len(endpoint_cases) == 2
     assert "$(MAKE) test-probe-matrix-mtproto" in makefile.split("ci-fast:", 1)[1]
     assert "go test -mod=readonly -count=1" in makefile
     names = []

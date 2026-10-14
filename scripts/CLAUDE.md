@@ -50,6 +50,15 @@ Disposable CI generates distinct internal normalizer/gateway credentials for eve
 
 CI credential generation uses the served `SERVER_NAME` HTTPS origin for Hysteria masquerade. The watchdog keeps its separate exact canary endpoint, including its path; a probe URL is not a masquerade origin.
 
+XHTTP path and HTTPS origin admission live in `transport_semantics.py`, shared
+by controller preflight, secret validation, emission and liveness. Canonical
+origins include nondefault ports and omit 443; bootstrap exposes `--xhttp-port`
+and CI generation uses `XHTTP_PUBLIC_PORT`. Make captures the port literally
+and passes it through a quoted environment field before validation, never as
+interpolated shell syntax. The only evaluated profile expression
+is the exact repository-owned served-origin expression; arbitrary Jinja and
+private operator origins are never rewritten or normalized.
+
 - `transport_private_authority.py` reads bounded private configuration and the observed systemd credential ACL contract. Its credential exception is restricted to the exact private per-unit directory on a read-only mount, with effective read authority only for root and the service UID; ordinary files remain owner-only. Install that companion beside normalizer and classifier consumers.
 
 **Recipient metadata has a fixed exit authority** — `transport_egress_config.py` constructs private fixed listeners and literal-only native gateways from admitted credentials and actual service UIDs. `transport_egress_host_context.py` reads kernel addresses and effective SSH/recovery ownership; `transport_egress_kernel.py` owns an atomic nft table and private receipt. The final output guard runs after earlier ACCEPT and destination rewrites. Unknown late hooks, packet duplication, TC/XDP and flow offload refuse admission. Resolver inputs remain numeric and sealed; no recipient domain is forwarded to a gateway.

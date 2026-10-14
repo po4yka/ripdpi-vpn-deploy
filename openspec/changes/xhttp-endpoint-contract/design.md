@@ -2,21 +2,23 @@
 
 The XHTTP backend treats an IP address as a trusted forwarded-header name, nginx and Xray disagree on schema-valid trailing-slash paths, and the public canonical origin excludes nginx's nondefault served port. These contracts cross server, proxy, validation, recipient output, liveness and Hysteria masquerade. Existing transactional nginx and fallback-log repairs are already implemented and must remain preserved.
 
-Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Revalidate source and current task ownership before implementation. This request creates plans only.
+Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Implementation baseline: `18d9ea59f2fde04baf0701a0e802b3224898165d`. The canonical prerequisite is completed; the current source implementation is separately authorized in a dedicated worktree.
 
 ## Goals / Non-Goals
 
 - Goal: align xhttp endpoint paths forwarded attribution and served origins with positive capability and meaningful negative, security, lifecycle and privacy tests.
-- Non-goal: implementation in this session, provider mutation, production deployment, actual credentials, unrelated cleanup, compatibility shims or revival of cancelled acceptance.
+- Non-goal: provider mutation, production deployment, actual credentials, unrelated cleanup, compatibility shims or revival of cancelled acceptance.
 
 ## Decisions
 
-- Choose a canonical slashless nonroot path with a leading slash and constrained segments; reject trailing slash, root, query, fragment, whitespace and directive control characters before mutation. Update every producer and consumer rather than preserving a second path grammar.
+- Choose a canonical slashless nonroot path of at most 256 bytes, with a leading slash and nonempty ASCII letter/digit/underscore/dash segments; reject trailing slash, root, encoded separators, dot segments, query, fragment, whitespace and directive control characters before mutation. Update every producer and consumer rather than preserving a second path grammar.
 - The trusted direct proxy overwrites the backend source header with its actual peer address; incoming client forwarding headers never grant source authority. Use the exact pinned Xray header-name semantics and prove attribution through the runtime.
 - Canonical HTTPS origin equals the actual primary served origin including a nondefault port; ordinary port 443 omits its default port. Explicitly review alternate-host canonical identity rather than treating canonical metadata as a socket test.
 - Update nginx preflight and extra-vars validation together with Hysteria masquerade validation; never silently rewrite private operator inputs.
 - Preserve complete nginx candidate transaction, bearer-log privacy, TLS floor and ordinary site behavior from integrated review changes.
 - Official sing-box still receives only supported transports; RIPDPI/Xray-specific XHTTP output is validated using its exact supported engine, not the official sing-box parser.
+- The optional CDN consumer must overwrite its incoming forwarding chain with the server-scoped restored peer because it shares the corrected backend header contract; its default remains disabled. Transport error logs must not leak endpoint/session values when an upstream rejects traffic.
+- Native endpoint cases execute through `make test-xhttp-endpoint-contract`, disjoint from the baseline native and complete runtime-transaction lanes. Admission executes actual localhost Ansible in normal/check mode. Native fixtures use pinned runtime bytes and owned namespaces; architecture emulation is not executable-identity proof.
 
 ## Contracts and ownership
 
@@ -39,9 +41,10 @@ Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Reva
 - tests/unit/test_relay_fallback.py
 - tests/unit/test_public_site_contract.py
 - tests/unit/test_liveness_profiles.py
-- NEW: tests/unit/test_xhttp_endpoint_contract.py
+- NEW: tests/unit/test_xhttp_endpoint_contract.py and test_xhttp_endpoint_contract_native.py
+- Shared transport semantics, endpoint producers, optional CDN header consumer, profile defaults, native fixture and CI/Make target partition (owned paths in tasks.md).
 - Dependencies: schema. Exact IDs and hard edges are stored in portfolio frontmatter; related source-fixed tasks are traceability, not a new implementation blocker.
-- Implementation starts only after separate authorization in a dedicated worktree; read nearest role/script/test guidance first.
+- Implementation stays in the authorized dedicated worktree; read nearest role/script/test guidance before modifying each consumer.
 - A single integration owner serializes schemas/examples, shared effective profile helpers, group variables, Makefile, CI selectors, snapshots and task metadata. Workers request shared-lane edits and preserve all concurrent work.
 - Terraform owns provider objects, cloud-init owns bootstrap, Ansible owns runtime and SOPS owns private authority; no layer shortcut is introduced.
 
@@ -55,7 +58,7 @@ Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Reva
 
 ## Migration Plan
 
-Planning only; future implementation requires separate approval. Change the endpoint contract and every call site together without compatibility shims. At rollout review, identify private configurations violating the path/origin contract through categorical validation without printing their values, regenerate supported recipient and liveness artifacts, converge server and proxy together and prove exact authenticated traffic. Preserve fallback logging and nginx transaction guarantees. Existing review tasks and evidence are related references, not reopened work. Fallback export and advanced tuning belong to the dependent feature change.
+Change the endpoint contract and every call site together without compatibility shims. At rollout review, identify private configurations violating the path/origin contract through categorical validation without printing their values, regenerate supported recipient and liveness artifacts, converge server and proxy together and prove exact authenticated traffic. Preserve fallback logging and nginx transaction guarantees. Existing review tasks and evidence are related references, not reopened work. Fallback export and advanced tuning belong to the dependent feature change.
 
 Implementation order follows the dependency DAG. Run each complete affected test suite; use `build-gate` once around heavy top-level builds and never bypass pinned tools or safety hooks. Archive/closure remains unavailable while any requirement or required evidence category is unresolved.
 

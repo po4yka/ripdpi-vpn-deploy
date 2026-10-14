@@ -3,6 +3,11 @@
 # inbound on 127.0.0.1:{{ nginx_xhttp_port }}. RU baseline = direct foreign
 # VPS, no CDN. See docs/CDN-DECISION.md.
 
+- name: Preflight direct XHTTP endpoint semantics
+  ansible.builtin.import_tasks: "{{ role_path }}/../../playbooks/tasks/transport-input-preflight.yml"
+  vars:
+    transport_input_sections: [xhttp]
+
 - name: Pre-flight — nginx public listener must not collide with REALITY
   ansible.builtin.assert:
     that:
@@ -20,8 +25,10 @@
 - name: Pre-flight — public site hostname matches the canonical URL
   ansible.builtin.assert:
     that:
-      - public_site_canonical_url == 'https://' ~ nginx_xhttp.server_name
-    fail_msg: public_site_canonical_url must equal the HTTPS URL for nginx_xhttp.server_name.
+      - >-
+        public_site_canonical_url == 'https://' ~ nginx_xhttp.server_name ~
+        ((':' ~ nginx_xhttp_public_port) if (nginx_xhttp_public_port | int) != 443 else '')
+    fail_msg: public_site_canonical_url must equal the served primary HTTPS host and port.
 
 - name: Pre-flight — fallback frontend port must not collide with other listeners
   ansible.builtin.assert:

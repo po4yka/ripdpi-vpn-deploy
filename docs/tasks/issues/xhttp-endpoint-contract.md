@@ -1,19 +1,20 @@
 ---
-id: "XRY-1791617955392712"
-title: "Align XHTTP endpoint paths forwarded attribution and served origins"
-kind: "bug"
-status: "backlog"
-area: "xray-config"
-priority: "high"
-risk: "high"
-owner: "primary"
-parent: "EPC-1791618453830051"
-blocked_by: ["SCT-1791617687019287"]
-spec_mode: "required"
-openspec_change: "xhttp-endpoint-contract"
-created: "2026-10-10"
-updated: "2026-10-10"
-related_tasks: ["ANS-1791562764586678", "ANS-1791586652330612"]
+id: XRY-1791617955392712
+title: Align XHTTP endpoint paths forwarded attribution and served origins
+kind: bug
+status: review
+area: xray-config
+priority: high
+risk: high
+owner: primary
+parent: EPC-1791618453830051
+blocked_by: [SCT-1791617687019287]
+spec_mode: required
+openspec_change: xhttp-endpoint-contract
+created: 2026-10-10
+updated: 2026-10-14
+related_tasks: [ANS-1791562764586678, ANS-1791586652330612]
+status_detail: "Implementation, independent review and exact-source checks passed; PR #297 prepared for owner review."
 ---
 
 ## Goal

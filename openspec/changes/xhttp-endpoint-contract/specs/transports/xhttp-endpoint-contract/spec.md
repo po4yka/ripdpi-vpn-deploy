@@ -34,7 +34,7 @@ The direct nginx frontend MUST provide only a sanitized actual peer source to th
 
 ### Requirement: REQ-PROTO-XEC-ORIGIN — Public identity names a served origin
 
-The implementation MUST Primary canonical origin MUST include the effective nondefault HTTPS port and agree across extra-vars nginx preflight discovery metadata redirects and Hysteria masquerade. Unsupported schemes credentials paths fragments and mismatching host or port MUST refuse before activation.
+The primary canonical origin MUST include the effective nondefault HTTPS port and agree across extra-vars nginx preflight discovery metadata redirects and Hysteria masquerade. Unsupported schemes credentials paths fragments and mismatching host or port MUST refuse before activation.
 
 #### Scenario: Default and nondefault HTTPS ports work
 
@@ -48,7 +48,7 @@ The implementation MUST Primary canonical origin MUST include the effective nond
 
 ### Requirement: REQ-PROTO-XEC-PRESERVATION — Keep transactions privacy and exact client support
 
-The implementation MUST Endpoint contract changes MUST preserve integrated nginx validation compensation and transport log privacy. Failed candidate activation MUST restore the prior served authority. Generated artifacts MUST contain only selected device material and MUST use an exact client that supports XHTTP.
+Endpoint contract changes MUST preserve integrated nginx validation compensation and transport log privacy. Failed candidate activation MUST restore the prior served authority. Generated artifacts MUST contain only selected device material and MUST use an exact client that supports XHTTP.
 
 #### Scenario: Invalid endpoint candidate preserves service
 

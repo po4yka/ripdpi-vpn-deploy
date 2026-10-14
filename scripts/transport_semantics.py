@@ -25,6 +25,22 @@ EGRESS_CREDENTIALS = (
     "direct_xray_password", "direct_hysteria_password", "warp_xray_password",
     "direct_gateway_password", "warp_gateway_password",
 )
+XHTTP_PATH = re.compile(r"/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\Z")
+DNS_NAME = re.compile(
+    r"(?=^.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*"
+    r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\Z")
+PUBLIC_ORIGIN_TEMPLATE = "https://{{ nginx_xhttp.server_name }}{{ ':' ~ nginx_xhttp_public_port if nginx_xhttp_public_port | int != 443 else '' }}"
+
+
+def xhttp_path_valid(value: object) -> bool:
+    return isinstance(value, str) and len(value) <= 256 and XHTTP_PATH.fullmatch(value) is not None
+
+
+def served_origin(host: object, port: object) -> str:
+    if (not isinstance(host, str) or DNS_NAME.fullmatch(host) is None
+            or type(port) is not int or not 1 <= port <= 65535):
+        raise ValueError("invalid-primary-origin")
+    return "https://" + host + ("" if port == 443 else ":" + str(port))
 
 
 def key_valid(value: object, *, allow_placeholders: bool = False) -> bool:
@@ -42,13 +58,40 @@ def origin_valid(value: object) -> bool:
         return False
     try:
         url = urlsplit(value)
-        return (url.scheme == "https" and bool(url.hostname)
-                and url.username is None and url.password is None
-                and url.path in ("", "/") and not url.query and not url.fragment
-                and (url.port is None or 1 <= url.port <= 65535)
-                and re.fullmatch(r"[A-Za-z0-9.:-]+", url.hostname) is not None)
+        host = url.hostname
+        if not host:
+            return False
+        try:
+            address = ipaddress.ip_address(host)
+            authority = "[" + str(address) + "]" if address.version == 6 else str(address)
+        except ValueError:
+            if DNS_NAME.fullmatch(host) is None:
+                return False
+            authority = host
+        port = url.port
+        return (url.scheme == "https" and url.username is None and url.password is None
+                and not url.path and not url.query and not url.fragment
+                and (port is None or 1 <= port <= 65535)
+                and value == "https://" + authority + ("" if port in (None, 443) else ":" + str(port)))
     except ValueError:
         return False
+
+
+def xhttp_errors(doc: dict, context: dict) -> list[tuple[str, str]]:
+    raw = doc.get("xray", {})
+    errors = []
+    if not isinstance(raw, dict) or not xhttp_path_valid(raw.get("xhttp_path", "/app-sync")):
+        errors.append(("xray.xhttp_path", "must be a bounded nonroot path of slash-separated alphanumeric underscore or dash segments"))
+    origin = context.get("public_site_canonical_url")
+    if origin is not None:
+        frontend = doc.get("nginx_xhttp", {})
+        try:
+            expected = served_origin(frontend.get("server_name"), context.get("nginx_xhttp_public_port", 8443))
+        except (AttributeError, ValueError):
+            expected = None
+        if expected is None or not origin_valid(origin) or origin != expected:
+            errors.append(("public_site_canonical_url", "must match the served primary HTTPS host and port"))
+    return errors
 
 
 def hysteria_errors(raw: object, canonical_origin: object = None) -> list[tuple[str, str]]:
@@ -298,6 +341,14 @@ def transport_errors(doc: object, context: object = None, *, sections: list[str]
     if not isinstance(doc, dict):
         return [("transport", "must be a mapping")]
     context = context if isinstance(context, dict) else {}
+    # Resolve only the repository's named profile expression, never arbitrary
+    # Jinja or an operator-supplied origin. Ansible supplies an already resolved value.
+    if context.get("public_site_canonical_url") == PUBLIC_ORIGIN_TEMPLATE:
+        try:
+            context = {**context, "public_site_canonical_url": served_origin(
+                doc.get("nginx_xhttp", {}).get("server_name"), context.get("nginx_xhttp_public_port", 8443))}
+        except (AttributeError, ValueError):
+            return [("public_site_canonical_url", "invalid served primary origin")]
     require_egress = bool(context.get("require_transport_egress",
                                     sections is not None and "egress" in sections))
     if sections is None:
@@ -317,6 +368,11 @@ def transport_errors(doc: object, context: object = None, *, sections: list[str]
     errors = []
     if "xray" in sections:
         errors.extend(cohort_errors(doc.get("xray")))
+    vpn = context.get("vpn")
+    if ("xhttp" in sections
+            or ("xray" in sections and (not isinstance(vpn, dict) or vpn.get("enable_nginx_xhttp", False)))
+            or ("hysteria" in sections and isinstance(vpn, dict) and vpn.get("enable_nginx_xhttp", False))):
+        errors.extend(xhttp_errors(doc, context))
     if "awg" in sections:
         errors.extend(awg_errors(doc.get("amneziawg_secrets"), context.get("amneziawg"), context.get("amneziawg_cohort"), allow_placeholders=allow_placeholders))
         if check_top_level_awg and isinstance(doc.get("amneziawg_secrets"), dict):
@@ -366,7 +422,7 @@ def selected_context(context: object, sections: list[str] | None) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--section", action="append", choices=("xray", "awg", "hysteria", "egress"))
+    parser.add_argument("--section", action="append", choices=("xray", "xhttp", "awg", "hysteria", "egress"))
     parser.add_argument("--allow-placeholders", action="store_true")
     parser.add_argument("--check-top-level-awg", action="store_true")
     args = parser.parse_args()

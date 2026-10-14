@@ -18,6 +18,8 @@ import uuid
 import pytest
 import yaml
 
+from transport_semantics import served_origin
+
 ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.native_runtime
 
@@ -259,7 +261,7 @@ def test_actual_disabled_self_steal_then_enabled_xhttp_converges_twice():
             vpn={"enable_xray_reality": False, "enable_snell": False},
             vpn_service_address="127.0.0.1",
             nginx_xhttp_public_port=port,
-            public_site_canonical_url="https://" + hostname,
+            public_site_canonical_url=served_origin(hostname, port),
             reality_self_steal_site_root=str(absent_site),
             reality_self_steal_tls_dir=str(absent_tls),
             nginx_xhttp={

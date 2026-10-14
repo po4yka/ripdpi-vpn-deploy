@@ -15,6 +15,16 @@ listening on `nginx_xhttp_public_port` (default 8443), reverse-proxying the
 XHTTP path to Xray on `127.0.0.1:10085`. No `set_real_ip_from`, no
 `CF-Connecting-IP`, no Origin CA. Rationale: `docs/CDN-DECISION.md`.
 
+Endpoint admission runs on the controller before role mutation, including check
+mode. Paths contain 2–256 bytes with a leading slash and nonempty ASCII
+alphanumeric/underscore/dash segments; root, trailing slash and URL control
+syntax refuse. Nginx adds the protocol suffix separator used by pinned Xray.
+Both direct frontends overwrite `X-Forwarded-For` with the actual socket peer,
+overwrite `X-Real-IP` and remove `Forwarded`. Transport access/error records
+cannot enter ordinary public logs; native backend observations remain private.
+The canonical origin names the primary HTTPS hostname and effective port,
+omitting 443. Alternate pages retain that primary canonical identity.
+
 **Origin resolution is scoped to its consumer** — the role never edits global `/etc/hosts`. Hysteria binds a private accepted hosts file for a matching node-local origin; public hostname resolution and external DNS remain separately verified acceptance. Hostname-bound pages/assets and their removals publish through the same typed owner transaction as TLS/vhosts, so site compensation restores complete accepted ingress content.
 
 **Ordinary paths are a real static site** — the role publishes repository-owned content to `/var/www/public-site`, serves it on the primary and alternate HTTPS vhosts, and redirects TCP/80 to the configured HTTPS port. Identity pages are rendered from `templates/public-site/` so canonical metadata follows `public_site_canonical_url`; reusable CSS, favicon, search logo, and the host-neutral 404 remain static files. The secret XHTTP path remains a separate exact transport seam. Keep admin, metrics, status, and health endpoints off the public vhost.

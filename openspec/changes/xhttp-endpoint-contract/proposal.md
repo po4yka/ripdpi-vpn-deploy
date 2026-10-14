@@ -47,5 +47,6 @@ Audit coverage: A11, A13, A15; planning baseline `605ae0be18dcbe1c55e3e7d8658131
 - tests/unit/test_public_site_contract.py
 - tests/unit/test_liveness_profiles.py
 - NEW: tests/unit/test_xhttp_endpoint_contract.py
-- Planning only: no implementation, private-input mutation, provider action or deployment is authorized by these artifacts.
+- Implementation is scoped to source and isolated local/native/CI evidence. Private-input mutation, provider action and deployment remain separately authorized.
+- Shared header consumers, origin producers, native target wiring and fixture ownership are recorded in design.md and tasks.md.
 - Dependency and prerequisite ownership is recorded in the portfolio and design; source-fixed predecessor evidence stays intact.

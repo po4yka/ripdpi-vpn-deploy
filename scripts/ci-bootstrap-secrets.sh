@@ -73,6 +73,22 @@ fi
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 EXAMPLE="${REPO_ROOT}/secrets/prod.secrets.example.yaml"
 [[ -f "$EXAMPLE" ]] || { echo "missing $EXAMPLE" >&2; exit 2; }
+XHTTP_ORIGIN="$(SERVER_NAME="$SERVER_NAME" XHTTP_PUBLIC_PORT="${XHTTP_PUBLIC_PORT:-8443}" \
+  python3 - "$REPO_ROOT" <<'PY'
+import os
+import re
+import sys
+sys.path.insert(0, sys.argv[1] + "/scripts")
+from transport_semantics import served_origin
+port = os.environ["XHTTP_PUBLIC_PORT"]
+if not re.fullmatch(r"[1-9][0-9]{0,4}", port):
+    raise SystemExit("ci-bootstrap-secrets: invalid primary HTTPS port")
+try:
+    print(served_origin(os.environ["SERVER_NAME"], int(port)))
+except ValueError:
+    raise SystemExit("ci-bootstrap-secrets: invalid primary HTTPS origin") from None
+PY
+)"
 
 for tool in openssl python3 curl sha256sum uuidgen wg; do
   command -v "$tool" >/dev/null 2>&1 || {
@@ -217,7 +233,7 @@ $(echo "$cert_pem")
 $(echo "$key_pem")
   bandwidth_up: "100 mbps"
   bandwidth_down: "200 mbps"
-  masquerade_url: "https://${SERVER_NAME}"
+  masquerade_url: "${XHTTP_ORIGIN}"
   salamander_enabled: false
   salamander_password: ""
   clients:
