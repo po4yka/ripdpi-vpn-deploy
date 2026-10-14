@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "The exact immutable Ubuntu image passed the unchanged security policy in publication run 38509685515. All five consumers use e287225b506f48360e5cb185c9ef8d8af690ad07da5b3856a2ea4c7656febe7a. All 29 local consumer regressions, applicable hooks and exact-source hosted checks passed at 3da2e91ef73c654b75c9ed7a70b39b54062de273: 92 successful checks, one optional neutral scan and 138 native tests.",
+  "execution_sha256": "3770a756989f77484def2ade71d6f87bb69a51a1dbf13186a5aeb8bf7652d9fc",
+  "issue_sha256": "a2cf4fd9b55d54afea585752eb01f5479dee5b0b55efa1982df9244112dacc09",
+  "outcome": "done",
+  "prepared_at": "2026-10-14T04:46:34Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1791950809934804"
+}
