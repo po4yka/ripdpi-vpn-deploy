@@ -62,13 +62,18 @@ def bounded_command(command, *, timeout=5, limit=LIMIT, input_bytes=b"", environ
                     if events & selectors.EVENT_WRITE:
                         try:
                             position += os.write(key.fd, input_bytes[position:position + 4096])
+                        except BlockingIOError:
+                            continue
                         except BrokenPipeError:
                             raise InspectionError("command-failed") from None
                         if position == len(input_bytes):
                             selector.unregister(key.fileobj)
                             key.fileobj.close()
                     else:
-                        chunk = os.read(key.fd, 4096)
+                        try:
+                            chunk = os.read(key.fd, 4096)
+                        except BlockingIOError:
+                            continue
                         if not chunk:
                             selector.unregister(key.fileobj)
                             continue

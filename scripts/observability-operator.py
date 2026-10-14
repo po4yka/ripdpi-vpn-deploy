@@ -790,21 +790,40 @@ print(json.dumps({{"schema_version": 1, "component": COMPONENT, "state": "health
     return source.encode("utf-8")
 
 
-def _drill_program(owner: str) -> bytes:
-    source = _gateway_program(owner) + """import datetime
+def _drill_program(owner: str, source_generation: str) -> bytes:
+    if re.fullmatch(r"[0-9a-f]{40,64}", source_generation) is None:
+        raise OperatorError("drill source rejected")
+    source = (
+        _gateway_program(owner)
+        + f"source_generation = {source_generation!r}\n"
+        + """import datetime
 import json
 import time
 import urllib.request
+import uuid
 
 now = datetime.datetime.now(datetime.timezone.utc)
-labels = {"alertname": "ObservabilitySyntheticDrill", "component": "control-plane", "environment": "staging", "severity": "warning"}
-base = {"labels": labels, "annotations": {"summary": "operator synthetic delivery drill", "runbook": "docs/OBSERVABILITY-OPERATIONS.md"}, "startsAt": now.isoformat()}
+policy = "drill-" + uuid.uuid4().hex
+labels = {"alertname": "ObservabilitySyntheticDrill", "component": "control-plane", "environment": "staging", "node": "collector", "policy": policy, "severity": "warning"}
+base = {"labels": labels, "annotations": {"summary": "operator synthetic delivery drill", "evidence_class": "synthetic-pipeline", "source_generation": source_generation, "runbook": "docs/OBSERVABILITY-OPERATIONS.md"}, "startsAt": now.isoformat()}
+relay_token = read_gateway_token("/etc/observability-control-plane/credentials", "telegram-relay-auth-token")
+def receipt():
+    outbound = urllib.request.Request("http://127.0.0.1:19095/v1/drill-receipt", headers={"Authorization": "Bearer " + relay_token})
+    with gateway_opener.open(outbound, timeout=5) as response:
+        raw = response.read(1025)
+        if response.status != 200 or len(raw) > 1024:
+            raise RuntimeError("delivery receipt rejected")
+    value = json.loads(raw)
+    if not isinstance(value, dict):
+        raise RuntimeError("delivery receipt rejected")
+    return value
 def send(alert):
     with gateway_request("/api/v2/alerts", data=json.dumps([alert]).encode("utf-8"), method="POST") as response:
         if response.status not in (200, 202):
             raise RuntimeError("delivery rejected")
 send(base)
-deadline = time.monotonic() + 31
+# Fixed 30-second grouping plus the bounded relay request/retry budget.
+deadline = time.monotonic() + 65
 fingerprint = json.dumps(labels, sort_keys=True, separators=(",", ":"))
 while True:
     with gateway_request("/api/v2/alerts") as response:
@@ -817,14 +836,28 @@ while True:
         for item in observed
     ):
         raise RuntimeError("receiver routing evidence missing")
-    if time.monotonic() >= deadline:
+    delivered = receipt()
+    try:
+        started = datetime.datetime.fromisoformat(delivered.get("starts_at", "").replace("Z", "+00:00"))
+    except (ValueError, TypeError, AttributeError):
+        started = None
+    delivered_at = delivered.get("delivered_at")
+    if (set(delivered) == {"policy", "starts_at", "source_generation", "delivered_at"}
+        and delivered.get("policy") == policy
+        and delivered.get("source_generation") == source_generation
+        and started == now
+        and type(delivered_at) is int
+        and int(now.timestamp()) <= delivered_at <= int(datetime.datetime.now(datetime.timezone.utc).timestamp()) + 5):
         break
+    if time.monotonic() >= deadline:
+        raise RuntimeError("delivery receipt missing")
     time.sleep(min(1, max(0, deadline - time.monotonic())))
 resolved = dict(base)
-resolved["endsAt"] = (now + datetime.timedelta(seconds=1)).isoformat()
+resolved["endsAt"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
 send(resolved)
-print(json.dumps({"schema_version": 1, "component": "control-plane", "receiver": "telegram-primary", "state": "submitted"}, sort_keys=True))
+print(json.dumps({"schema_version": 1, "component": "control-plane", "receiver": "telegram-primary", "state": "api-delivered"}, sort_keys=True))
 """
+    )
     return source.encode("utf-8")
 
 
@@ -880,7 +913,7 @@ def _remote(
         command = fleet_inspection.ssh_command(host, args.known_hosts)
         raw = fleet_inspection.bounded_command(
             command,
-            timeout=45,
+            timeout=90 if operation == "drill" else 45,
             limit=16384,
             input_bytes=payload,
             environment=_environment(),
@@ -922,7 +955,7 @@ def _remote(
         ):
             raise OperatorError("remote report rejected")
     elif operation == "drill":
-        expected_state = "submitted"
+        expected_state = "api-delivered"
         if (
             set(value) != {"schema_version", "component", "receiver", "state"}
             or value.get("state") != expected_state
@@ -1171,7 +1204,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         if args.command == "drill":
             result = _remote(
-                args, host, _drill_program(args.silence_owner), operation="drill"
+                args, host, _drill_program(args.silence_owner, source_revision), operation="drill"
             )
         elif args.command in {"silence-create", "silence-delete"}:
             result = _remote(

@@ -119,6 +119,8 @@ tests:
             exp_annotations: {incident_family: node-disk, evidence_class: disk-available-low, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Root filesystem available space crossed the configured warning threshold., runbook: docs/RUNBOOK-incident.md}
   - interval: 1m
     input_series:
+      - series: 'vpn_observability_required_service{environment="staging",node="vpn-p0",role="nginx"}'
+        values: '1x5'
       - series: 'node_systemd_unit_state{environment="staging",node="vpn-p0",name="nginx.service",state="active"}'
         values: '0x5'
       - series: 'node_systemd_unit_state{environment="staging",node="vpn-p0",name="nginx.service",state="failed"}'
@@ -127,7 +129,7 @@ tests:
       - eval_time: 4m
         alertname: ObservabilityRequiredServiceNotActive
         exp_alerts:
-          - exp_labels: {component: service, environment: staging, node: vpn-p0, severity: critical}
+          - exp_labels: {component: service, environment: staging, node: vpn-p0, role: nginx, severity: critical}
             exp_annotations: {incident_family: required-service, evidence_class: observed-service-not-active, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Fresh node telemetry reports a required systemd service is not active., runbook: docs/RUNBOOK-incident.md}
   - interval: 1m
     alert_rule_test:

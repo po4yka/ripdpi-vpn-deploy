@@ -187,12 +187,23 @@ groups:
         annotations: {incident_family: node-inodes, evidence_class: inode-available-critical, source_generation: "", summary: Root filesystem free inodes crossed the configured critical threshold., runbook: docs/RUNBOOK-incident.md}
       - alert: ObservabilityRequiredServiceNotActive
         expr: >-
-          min by (environment, node) (node_systemd_unit_state{name=~"^(caddy-naive[.]service|hysteria-server[.]service|nginx[.]service|observability-agent[.]service|observability-alertmanager[.]service|observability-disk-guard[.]service|observability-ingress[.]service|observability-prometheus[.]service|xray[.]service)$",state="active"}) == 0
-          or max by (environment, node) (node_systemd_unit_state{name=~"^(caddy-naive[.]service|hysteria-server[.]service|nginx[.]service|observability-agent[.]service|observability-alertmanager[.]service|observability-disk-guard[.]service|observability-ingress[.]service|observability-prometheus[.]service|xray[.]service)$",state="failed"}) == 1
+          max by (environment, node, role) (
+            label_replace(node_systemd_unit_state{name=~"^(caddy-naive[.]service|hysteria-server[.]service|nginx[.]service|observability-agent[.]service|observability-alertmanager[.]service|observability-disk-guard[.]service|observability-ingress[.]service|observability-prometheus[.]service|xray[.]service)$",state="active"} == 0, "role", "$1", "name", "^(.*)[.]service$")
+            or label_replace(node_systemd_unit_state{state="failed"} == 1, "role", "$1", "name", "^(.*)[.]service$"))
+          and on (environment, node, role) (vpn_observability_required_service == 1)
         for: 3m
         keep_firing_for: 3m
         labels: {severity: "critical", component: service}
         annotations: {incident_family: required-service, evidence_class: observed-service-not-active, source_generation: "", summary: Fresh node telemetry reports a required systemd service is not active., runbook: docs/RUNBOOK-incident.md}
+      - alert: ObservabilityRequiredServiceEvidenceMissing
+        expr: >-
+          (vpn_observability_required_service == 1)
+          unless on (environment, node, role)
+          max by (environment, node, role) (label_replace(node_systemd_unit_state{state="active"}, "role", "$1", "name", "^(.*)[.]service$"))
+        for: 3m
+        keep_firing_for: 3m
+        labels: {severity: "warning", component: service}
+        annotations: {incident_family: required-service-evidence, evidence_class: service-evidence-absent, source_generation: "", summary: A profile-required service has no systemd evidence; its health is unknown., runbook: docs/RUNBOOK-incident.md}
       - alert: ObservabilityNodeClockSkew
         expr: max by (environment, node) (abs(node_time_seconds - time())) > 60
         for: 3m
@@ -285,6 +296,48 @@ groups:
         keep_firing_for: 3m
         labels: {severity: "warning", component: detector}
         annotations: {incident_family: detector-events, evidence_class: event-threshold, source_generation: "", summary: A security or reachability detector crossed its event threshold., runbook: docs/RUNBOOK-incident.md}
+  - name: observability_producer_deadlines
+    rules:
+
+      - alert: ObservabilityAdapterCompletionMissing
+        expr: >-
+          max by (node) (absent(vpn_observability_evidence_timestamp_seconds{node="node-01",role="health-adapter"})
+          or absent(vpn_observability_adapter_collected_timestamp_seconds{node="node-01"}))
+        for: 3m
+        keep_firing_for: 3m
+        labels: {severity: warning, component: producer-evidence, node: "node-01", environment: ""}
+        annotations: {incident_family: producer-evidence, evidence_class: required-adapter-never-published, source_generation: "", summary: A required node adapter has no completion clock; monitoring health is unknown., runbook: docs/RUNBOOK-incident.md}
+
+      - alert: ObservabilityAdapterCompletionMissing
+        expr: >-
+          max by (node) (absent(vpn_observability_evidence_timestamp_seconds{node="node-02",role="health-adapter"})
+          or absent(vpn_observability_adapter_collected_timestamp_seconds{node="node-02"}))
+        for: 3m
+        keep_firing_for: 3m
+        labels: {severity: warning, component: producer-evidence, node: "node-02", environment: ""}
+        annotations: {incident_family: producer-evidence, evidence_class: required-adapter-never-published, source_generation: "", summary: A required node adapter has no completion clock; monitoring health is unknown., runbook: docs/RUNBOOK-incident.md}
+
+
+      - alert: ObservabilityProducerEvidenceUnavailable
+        expr: >-
+          (time() - vpn_observability_evidence_timestamp_seconds > on (environment, node, role) vpn_observability_evidence_max_age_seconds)
+          or (vpn_observability_evidence_timestamp_seconds > time() + 30)
+          or (vpn_observability_evidence_max_age_seconds unless on (environment, node, role) vpn_observability_evidence_timestamp_seconds)
+          or (vpn_observability_evidence_timestamp_seconds unless on (environment, node, role) vpn_observability_evidence_max_age_seconds)
+          or (vpn_observability_evidence_max_age_seconds <= 0)
+          or (vpn_observability_evidence_max_age_seconds > 4492800)
+        for: 3m
+        keep_firing_for: 3m
+        labels: {severity: warning, component: producer-evidence}
+        annotations: {incident_family: producer-evidence, evidence_class: stale-future-or-incomplete-deadline, source_generation: "", summary: Producer evidence expired or has an invalid deadline; monitoring health is unknown., runbook: docs/RUNBOOK-incident.md}
+      - alert: ObservabilityManifestAdapterStalled
+        expr: >-
+          (time() - vpn_observability_adapter_collected_timestamp_seconds > 180)
+          or (vpn_observability_adapter_collected_timestamp_seconds > time() + 30)
+        for: 3m
+        keep_firing_for: 3m
+        labels: {severity: warning, component: producer-evidence}
+        annotations: {incident_family: producer-evidence, evidence_class: manifest-adapter-stalled, source_generation: "", summary: Node manifest adapter completion is expired or future dated., runbook: docs/RUNBOOK-incident.md}
   - name: observability_watchdog_backup
     rules:
       - alert: ObservabilityWatchdogEvidenceStale

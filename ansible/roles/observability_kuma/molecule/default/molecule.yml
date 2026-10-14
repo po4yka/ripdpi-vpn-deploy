@@ -14,6 +14,9 @@ platforms:
     command: /lib/systemd/systemd
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    # The production backup admission requires a distinct archive filesystem.
+    tmpfs:
+      - /run:rw,rshared,mode=0755
     cgroupns_mode: host
 provisioner:
   name: ansible

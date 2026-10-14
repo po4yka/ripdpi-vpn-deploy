@@ -624,19 +624,42 @@
           delay: 1
           until: _rollback_delivered.rc == 0
       always:
-        - name: Retire only the owned probe and always restore its receiver
+        - name: Preserve rollback fixture retirement after diagnostic failures
           block:
-            - name: Remove only this invocation's historical probe on failure
+            - name: Capture bounded historical delivery failure evidence
               ansible.builtin.command:
                 argv:
                   - python3
                   - /usr/local/libexec/observability_fixture_proof.py
-                  - cleanup
-                  - "{{ _rollback_probe.stdout }}"
-              when: _rollback_probe is defined and _rollback_probe is succeeded
+                  - diagnose
+                  - "{{ _rollback_historical.stdout }}"
+              register: _rollback_failure_diagnostic
               changed_when: false
+              when:
+                - _rollback_delivered is defined
+                - _rollback_delivered is failed
+
+            - name: Report bounded historical delivery failure evidence
+              ansible.builtin.debug:
+                msg: "{{ _rollback_failure_diagnostic.stdout | from_json }}"
+              when:
+                - _rollback_failure_diagnostic is defined
+                - not (_rollback_failure_diagnostic.skipped | default(false))
+
           always:
-            - name: Restore only the owned fixture receiver after the rollback proof
-              ansible.builtin.systemd_service:
-                name: observability-receiver-fixture.service
-                state: started
+            - name: Retire only the owned probe and always restore its receiver
+              block:
+                - name: Remove only this invocation's historical probe on failure
+                  ansible.builtin.command:
+                    argv:
+                      - python3
+                      - /usr/local/libexec/observability_fixture_proof.py
+                      - cleanup
+                      - "{{ _rollback_probe.stdout }}"
+                  when: _rollback_probe is defined and _rollback_probe is succeeded
+                  changed_when: false
+              always:
+                - name: Restore only the owned fixture receiver after the rollback proof
+                  ansible.builtin.systemd_service:
+                    name: observability-receiver-fixture.service
+                    state: started

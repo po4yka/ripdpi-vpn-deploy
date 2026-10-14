@@ -3,6 +3,10 @@ global:
   external_labels:
     component: observability-control-plane
 
+storage:
+  tsdb:
+    out_of_order_time_window: {{ observability_control_plane.tsdb_retention_time | default('7d') }}
+
 {% if (observability_control_plane.expected_targets | default({'enabled': false}, true)).enabled | default(false) or (observability_control_plane.alerting | default({'enabled': false}, true)).enabled | default(false) %}
 rule_files:
 {% if (observability_control_plane.expected_targets | default({'enabled': false}, true)).enabled | default(false) %}

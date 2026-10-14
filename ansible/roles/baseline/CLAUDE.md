@@ -89,6 +89,10 @@ when optional congestion tuning and a mandatory setting fail together.
 
 ## Pitfalls
 
+- Ubuntu Molecule consumers use one immutable digest from the repository-owned,
+  security-gated publication. Refresh every consumer and pin regression together;
+  never waive fixable HIGH or CRITICAL image findings.
+
 - **Congestion tuning is optional, hardening is mandatory** — only `net.core.default_qdisc` and `net.ipv4.tcp_congestion_control` are marked optional in the role policy. Network namespaces may omit the global qdisc setting; unsupported FQ/BBR cannot conceal any later mandatory security-setting failure. Supported settings still apply in policy order.
 
 - **Shadowed root-login declarations need policy proof** — ownership migration

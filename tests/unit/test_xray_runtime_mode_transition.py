@@ -35,6 +35,8 @@ def test_archive_source_archive_preserves_exact_receipt_bytes_and_current():
     directory = Path(tempfile.mkdtemp(prefix=".p2-xray-mode-", dir=Path.home()))
     directory.chmod(0o700)
     try:
+        # Bind this owned fixture to the group expected by the release helper.
+        os.chown(directory, -1, os.getgid())
         tasks = yaml.safe_load(
             (ROOT / "ansible/roles/xray-runtime/tasks/main.yml").read_text()
         )

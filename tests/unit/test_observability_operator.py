@@ -135,7 +135,7 @@ if entry['program'] == 'ssh':
     elif '/v1/silences' in payload:
         print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'state': 'deleted' if 'DELETE' in payload else 'created', 'silence_id': '12345678-1234-4234-8234-1234567890ab'}}))
     elif '/api/v2/alerts' in payload:
-        print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'receiver': 'telegram-primary', 'state': 'submitted'}}))
+        print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'receiver': 'telegram-primary', 'state': 'api-delivered'}}))
     else:
         print(json.dumps({{'schema_version': 1, 'component': 'control-plane', 'state': 'healthy', 'units': {{'observability-ingress.service': 'active', 'observability-prometheus.service': 'active', 'observability-alertmanager.service': 'active', 'observability-telegram-relay.service': 'active', 'observability-silence-gateway.service': 'active', 'observability-control-plane-adapter.timer': 'active', 'observability-protocol-liveness-adapter.timer': 'active', 'observability-disk-guard.service': 'active', 'observability-push-pipeline.timer': 'active', 'observability-push-delivery.timer': 'active'}}}}))
 """
@@ -1160,22 +1160,60 @@ class _DrillResponse:
 
 
 def _run_drill_program(
-    monkeypatch: pytest.MonkeyPatch, alerts: list[dict[str, object]]
+    monkeypatch: pytest.MonkeyPatch,
+    alerts: list[dict[str, object]],
+    *,
+    deliver=True,
+    receipt_change=None,
 ) -> list[object]:
     import time
     import urllib.request
 
     calls: list[object] = []
-    monotonic = iter((0.0, 31.0))
+    monotonic = iter((0.0, 65.0))
+
+    from tests.unit.test_observability_telegram_delivery import _payload, _relay
+    import datetime
+
+    relay = _relay()
+    receipts = relay.DrillReceipt()
+    posted = []
 
     def urlopen(request: object, *, timeout: int) -> _DrillResponse:
         assert timeout == 5
         calls.append(request)
         assert isinstance(request, urllib.request.Request)
-        assert request.full_url == "http://127.0.0.1:19094/api/v2/alerts"
         assert request.get_header("Authorization") == "Bearer " + "a" * 64
+        if request.full_url.endswith("/v1/drill-receipt"):
+            value = receipts.snapshot()
+            if value and receipt_change:
+                value.update(receipt_change)
+            return _DrillResponse(200, value)
+        assert request.full_url == "http://127.0.0.1:19094/api/v2/alerts"
         if request.get_method() == "POST":
+            alert = json.loads(request.data)[0]
+            posted.append(alert)
+            payload = _payload()
+            payload["commonLabels"] = dict(alert["labels"])
+            payload["commonAnnotations"] = dict(alert["annotations"])
+            payload["alerts"][0].update(
+                labels=alert["labels"],
+                annotations=alert["annotations"],
+                startsAt=alert["startsAt"],
+            )
+            parsed = relay.parse_payload(json.dumps(payload).encode())
+            relay.render_message(parsed)
+            if deliver and "endsAt" not in alert:
+                parsed["alerts"][0]["startsAt"] = alert["startsAt"].replace(
+                    "+00:00", "Z"
+                )
+                receipts.record(
+                    parsed,
+                    int(datetime.datetime.now(datetime.timezone.utc).timestamp()),
+                )
             return _DrillResponse(202, {})
+        for alert in alerts:
+            alert["labels"] = posted[0]["labels"]
         return _DrillResponse(200, alerts)
 
     from types import SimpleNamespace
@@ -1194,25 +1232,25 @@ def _run_drill_program(
     end = source.index("def _remote", start)
     gateway_start = source.index("def _gateway_program")
     gateway_end = source.index("def _status_program", gateway_start)
-    namespace: dict[str, object] = {}
+    namespace: dict[str, object] = {"re": re, "OperatorError": RuntimeError}
     exec(compile(source[gateway_start:gateway_end], str(SCRIPT), "exec"), namespace)
     gateway = namespace["_gateway_program"]("operator")
     # Credential reader has separate filesystem tests; keep this routing test hermetic.
     gateway = (
         gateway[: gateway.index("gateway_token =")]
-        + "gateway_token = '"
+        + "read_gateway_token = lambda *args: '"
         + "a" * 64
-        + "'\n"
+        + "'\ngateway_token = read_gateway_token()\n"
         + gateway[gateway.index("gateway_opener =") :]
     )
     namespace["_gateway_program"] = lambda owner: gateway
     exec(compile(source[start:end], str(SCRIPT), "exec"), namespace)
-    program = namespace["_drill_program"]("operator")
+    program = namespace["_drill_program"]("operator", "c" * 40)
     exec(compile(program, "drill-program", "exec"), {})
     return calls
 
 
-def test_drill_waits_past_group_wait_and_proves_receiver_before_resolve(
+def test_drill_proves_exact_api_receipt_and_payload_contract_before_resolve(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     labels = {
@@ -1237,12 +1275,13 @@ def test_drill_waits_past_group_wait_and_proves_receiver_before_resolve(
         "component": "control-plane",
         "receiver": "telegram-primary",
         "schema_version": 1,
-        "state": "submitted",
+        "state": "api-delivered",
     }
-    assert len(calls) == 3
+    assert len(calls) == 4
     assert isinstance(calls[0], __import__("urllib.request").request.Request)
     assert calls[1].get_method() == "GET"
-    assert isinstance(calls[2], __import__("urllib.request").request.Request)
+    assert isinstance(calls[-1], __import__("urllib.request").request.Request)
+    assert calls[2].full_url.endswith("/v1/drill-receipt")
 
 
 def test_drill_refuses_active_alert_without_expected_receiver_evidence(
@@ -1267,6 +1306,41 @@ def test_drill_refuses_active_alert_without_expected_receiver_evidence(
         )
     # The resolve POST is unreachable when routing evidence is absent.
     # The helper raises before returning its local call list.
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"policy": "other-drill"},
+        {"source_generation": "d" * 40},
+        {"starts_at": "2026-01-01T00:00:00Z"},
+        {"delivered_at": 0},
+        {"delivered_at": True},
+        {"delivered_at": 99999999999},
+    ],
+)
+def test_drill_rejects_other_stale_or_malformed_receipt(monkeypatch, change):
+    alerts = [
+        {
+            "labels": {},
+            "status": {"state": "active"},
+            "receivers": [{"name": "telegram-primary"}],
+        }
+    ]
+    with pytest.raises(RuntimeError, match="delivery receipt missing"):
+        _run_drill_program(monkeypatch, alerts, receipt_change=change)
+
+
+def test_drill_cannot_succeed_when_gateway_accepts_but_relay_send_fails(monkeypatch):
+    alerts = [
+        {
+            "labels": {},
+            "status": {"state": "active"},
+            "receivers": [{"name": "telegram-primary"}],
+        }
+    ]
+    with pytest.raises(RuntimeError, match="delivery receipt missing"):
+        _run_drill_program(monkeypatch, alerts, deliver=False)
 
 
 def test_rollback_program_refuses_same_basename_outside_expected_generation(

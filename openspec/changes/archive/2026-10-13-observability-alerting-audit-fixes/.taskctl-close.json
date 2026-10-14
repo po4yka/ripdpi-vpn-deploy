@@ -1,0 +1,11 @@
+{
+  "change": "observability-alerting-audit-fixes",
+  "evidence_summary": "Source 8846bf2c passed the complete local gate and hosted required checks; e9e8517e committed the reviewed acceptance snapshot. Canonical archival completed successfully.",
+  "execution_sha256": "16e83d47c853fefe8132a9975dc03520cbe3704e50f619e0a3ed82785d2de87a",
+  "issue_sha256": "ec02c130822d17ef9954c89dcdac98a75e7e7e7d22969d57555a4dcc1e615c4c",
+  "outcome": "done",
+  "prepared_at": "2026-10-13T18:12:06Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "MON-1791825755591250"
+}

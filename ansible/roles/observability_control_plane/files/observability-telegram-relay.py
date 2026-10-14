@@ -20,7 +20,9 @@ from typing import Callable
 from urllib import error, parse, request
 
 MAX_PAYLOAD_BYTES = 65536
-MAX_RESPONSE_BYTES = 4096
+# A returned Message includes UTF-8/JSON text plus Telegram metadata. Escaped
+# supplementary characters alone can consume twelve bytes per message character.
+MAX_RESPONSE_BYTES = 65536
 MAX_ALERTS = 5
 REQUEST_TIMEOUT_SECONDS = 5
 RETRY_ATTEMPTS = 2
@@ -32,6 +34,11 @@ CHAT = re.compile(r"-?[0-9]{1,20}\Z")
 SOURCE_ID = re.compile(r"[a-f0-9]{40,64}\Z")
 FINGERPRINT = re.compile(r"[a-f0-9]{16,64}\Z")
 ALIAS = re.compile(r"[A-Za-z0-9_.:/ -]{1,160}\Z")
+ROLE = re.compile(r"[a-z][a-z0-9_-]{0,63}\Z")
+SERVICE_ALERTS = {
+    "ObservabilityRequiredServiceNotActive",
+    "ObservabilityRequiredServiceEvidenceMissing",
+}
 
 
 class Refusal(ValueError):
@@ -143,14 +150,19 @@ def parse_payload(raw: bytes, maximum: int = MAX_PAYLOAD_BYTES) -> dict[str, obj
         _bounded_mapping(alert["annotations"])
         for key in ("environment", "node", "component"):
             _bounded_string(alert["labels"].get(key), pattern=ALIAS)
+        if (
+            "role" in alert["labels"]
+            or common_labels["alertname"] in SERVICE_ALERTS
+            or alert["labels"].get("alertname") in SERVICE_ALERTS
+        ):
+            _bounded_string(alert["labels"].get("role"), pattern=ROLE, maximum=64)
         for key in ("summary", "evidence_class", "runbook"):
             _bounded_string(alert["annotations"].get(key))
         _bounded_string(alert["startsAt"])
         _bounded_string(alert["endsAt"])
-        if (
-            not isinstance(alert["generatorURL"], str)
-            or len(alert["generatorURL"]) > 256
-        ):
+        # Prometheus embeds the complete rule expression. The request-wide
+        # byte ceiling bounds this unused field; never render or fetch the URL.
+        if not isinstance(alert["generatorURL"], str):
             raise Refusal("payload-contract")
         _bounded_string(alert["fingerprint"], pattern=FINGERPRINT)
     return value
@@ -164,6 +176,7 @@ def _line(alert: dict[str, object]) -> str:
     labels = alert["labels"]
     annotations = alert["annotations"]
     prefix = "-" if alert["status"] == "firing" else "- recovered"
+    role = "/" + _escaped(labels["role"]) if "role" in labels else ""
     timestamp = (
         "started=" + _escaped(alert["startsAt"])
         if alert["status"] == "firing"
@@ -171,7 +184,7 @@ def _line(alert: dict[str, object]) -> str:
     )
     return (
         f"{prefix} {_escaped(labels['environment'])}/{_escaped(labels['node'])}/"
-        f"{_escaped(labels['component'])}: {_escaped(annotations['summary'])} "
+        f"{_escaped(labels['component'])}{role}: {_escaped(annotations['summary'])} "
         f"[{_escaped(annotations['evidence_class'])}] "
         f"{_escaped(annotations['runbook'])} {timestamp}"
     )
@@ -357,10 +370,11 @@ class Receipts:
 
     def canary(self, config, now):
         with self.lock:
-            # Revoke prior freshness before attempting the real API calls.
+            # Reserve new text before an edit can succeed without a receipt.
+            sequence = self.value["edit_sequence"] + 1
+            self.value["edit_sequence"] = sequence
             self.value["edit_at"] = 0
             self.save()
-            sequence = self.value["edit_sequence"] + 1
             kwargs = dict(
                 api_url=str(config["api_url"]),
                 token=str(config["bot_token"]),
@@ -396,8 +410,46 @@ class Receipts:
                 or receipt.get("message_id") != self.value["message_id"]
             ):
                 raise DeliveryFailure("canary-edit-receipt")
-            self.value.update(edit_sequence=sequence, edit_at=now)
-            self.save()
+            self.value["edit_at"] = now
+            try:
+                self.save()
+            except OSError:
+                self.value["edit_at"] = 0
+                raise
+
+
+class DrillReceipt:
+    """Retain one successful drill identity in memory; restart clears it."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.value: dict[str, object] = {}
+
+    def record(self, payload, now):
+        if payload["status"] != "firing" or len(payload["alerts"]) != 1:
+            return
+        alert = payload["alerts"][0]
+        labels = alert["labels"]
+        policy = labels.get("policy")
+        if (
+            alert["status"] != "firing"
+            or labels.get("alertname") != "ObservabilitySyntheticDrill"
+            or labels.get("node") != "collector"
+            or not isinstance(policy, str)
+            or re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", policy) is None
+        ):
+            return
+        with self.lock:
+            self.value = {
+                "policy": policy,
+                "starts_at": alert["startsAt"],
+                "source_generation": payload["commonAnnotations"]["source_generation"],
+                "delivered_at": now,
+            }
+
+    def snapshot(self):
+        with self.lock:
+            return dict(self.value)
 
 
 def _credential(name: str) -> str:
@@ -426,6 +478,8 @@ def validate_delivery_contract(
 
 
 def handler(config: dict[str, object]):  # type: ignore[no-untyped-def]
+    drill_receipt = DrillReceipt()
+
     class RelayHandler(BaseHTTPRequestHandler):
         server_version = "observability-telegram-relay"
         sys_version = ""
@@ -448,6 +502,19 @@ def handler(config: dict[str, object]):  # type: ignore[no-untyped-def]
             self.wfile.write(body)
 
         def do_GET(self) -> None:  # noqa: N802
+            if self.path == "/v1/drill-receipt":
+                if not self._authorized():
+                    self._reply(401, "refused")
+                    return
+                body = json.dumps(
+                    drill_receipt.snapshot(), separators=(",", ":")
+                ).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
             if self.path == "/v1/receipts" and self._authorized():
                 body = json.dumps(
                     config["receipts"].snapshot(), separators=(",", ":")
@@ -506,6 +573,7 @@ def handler(config: dict[str, object]):  # type: ignore[no-untyped-def]
                     topic_id=int(config["topic_id"]),
                     message=message,
                 )
+                drill_receipt.record(payload, int(time.time()))
             except (OSError, Refusal):
                 self._reply(400, "refused")
                 return
