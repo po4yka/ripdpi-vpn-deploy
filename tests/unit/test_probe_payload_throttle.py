@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -55,6 +57,7 @@ def _run(
     whois_body: str | None = None,
     extra_args: list[str] | None = None,
     drop_whois: bool = False,
+    rtt_ms: list[int] | None = None,
 ) -> subprocess.CompletedProcess:
     """Run the probe with a hermetic stub environment."""
     stub_bin = tmp_path / "bin"
@@ -65,6 +68,33 @@ def _run(
         _make_stub(stub_bin, "whois", whois_body or _whois_stub_body())
     # getent is only hit for non-IP hosts; provide a no-op for safety.
     _make_stub(stub_bin, "getent", "exit 0")
+
+    # Completion and elapsed time are independent classifier inputs. Host
+    # scheduling must not supply an accidental RTT spike to a unit scenario.
+    durations = rtt_ms if rtt_ms is not None else [10] * len(sizes.split(","))
+    assert len(durations) == len(sizes.split(","))
+    ticks, cursor = [], 0
+    for duration in durations:
+        ticks.extend((cursor, cursor + duration))
+        cursor += duration + 1
+    clock_data = tmp_path / "clock.json"
+    clock_data.write_text(json.dumps({"ticks": ticks, "next": 0}))
+    clock_script = tmp_path / "clock.py"
+    clock_script.write_text(
+        "import json,sys\nfrom pathlib import Path\n"
+        "path=Path(sys.argv[1]); state=json.loads(path.read_text())\n"
+        "value=state['ticks'][state['next']]; state['next']+=1\n"
+        "path.write_text(json.dumps(state)); print(value)\n"
+    )
+    clock_command = "import time; print(int(time.time()*1000))"
+    _make_stub(
+        stub_bin,
+        "python3",
+        f'if [ "$1" = "-c" ] && [ "$2" = {shlex.quote(clock_command)} ]; then\n'
+        f"  exec {shlex.quote(sys.executable)} {shlex.quote(str(clock_script))} "
+        f"{shlex.quote(str(clock_data))}\nfi\n"
+        f'exec {shlex.quote(sys.executable)} "$@"',
+    )
 
     env = os.environ.copy()
     # Hermetic PATH but keep python3 reachable via the inherited tail.
@@ -128,6 +158,16 @@ def test_all_sizes_complete_is_ok(tmp_path):
     v = _verdict(result)
     assert v["verdict"] == "ok", v
     assert all(s["completed"] for s in v["sizes"])
+    assert [s["rtt_ms"] for s in v["sizes"]] == [10, 10, 10, 10]
+
+
+def test_completed_sizes_with_an_rtt_spike_are_throttled(tmp_path):
+    result = _run(tmp_path, "exit 0", rtt_ms=[10, 10, 100, 100])
+    v = _verdict(result)
+    assert all(s["completed"] for s in v["sizes"])
+    assert [s["rtt_ms"] for s in v["sizes"]] == [10, 10, 100, 100]
+    assert v["verdict"] == "throttled", v
+    assert v["threshold_bytes"] == 16384, v
 
 
 def test_cliff_at_16k_is_throttled(tmp_path):
