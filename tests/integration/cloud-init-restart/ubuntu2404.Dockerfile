@@ -1,4 +1,4 @@
-FROM ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-ubuntu2404@sha256:e9dfdf3cc37d8d098ef7e036e716abba78980333522ccbf7504a79189755a267
+FROM ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-ubuntu2404@sha256:e287225b506f48360e5cb185c9ef8d8af690ad07da5b3856a2ea4c7656febe7a
 
 SHELL ["/bin/sh", "-euxc"]
 

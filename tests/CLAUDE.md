@@ -315,6 +315,10 @@ remain fatal; package signatures and the real schema validator stay enforced.
 
 ## Pitfalls
 
+- Ubuntu Molecule consumers use one immutable digest from the repository-owned,
+  security-gated publication. Refresh every consumer and pin regression together;
+  never waive fixable HIGH or CRITICAL image findings.
+
 - **Selected skips fail required pytest lanes** — portable tests use
   `make test-unit` (both `tests/unit/` and `scripts/tests/`);
   `native_runtime` tests run separately with pinned

@@ -387,6 +387,10 @@ Independent controller homes are not a supported shared-ownership mechanism.
 
 ## Pitfalls
 
+- Ubuntu Molecule consumers use one immutable digest from the repository-owned,
+  security-gated publication. Refresh every consumer and pin regression together;
+  never waive fixable HIGH or CRITICAL image findings.
+
 - **Cloud-init CI bindings are fixed** — render-cloud-init-ci.py encodes the
   shared template's scalar expressions for synthetic fixtures and refuses unknown
   expressions. Real Terraform serialization tests prove parsed parity; keep both
