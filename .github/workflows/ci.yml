@@ -653,8 +653,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - name: Install bats
-        run: sudo apt-get update && sudo apt-get install -y bats ssss
+      - uses: ./.github/actions/setup-ci-python
+      - name: Install bats and encrypted transaction tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats ssss age
+          curl -fsSL "https://github.com/getsops/sops/releases/download/v3.13.3/sops-v3.13.3.linux.amd64" -o /tmp/sops
+          echo "e5bec3346a873ae91d871550f3e698c1aad962aff462a080e40f25fde17fef6b  /tmp/sops" | sha256sum -c -
+          sudo install -m 0755 /tmp/sops /usr/local/bin/sops
       - name: bats tests/bats/
         run: bats tests/bats/
 

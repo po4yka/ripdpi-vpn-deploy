@@ -19,6 +19,8 @@ revocation and interrupted/unsafe publication. The named native binding target
 owns isolated namespaces and exact pinned AWG builds; it proves two devices'
 TCP/UDP traffic, wrong keys/headers and selected revocation with the other
 instance still working. Portable mocks never stand in for this runtime proof.
+Atomic enrollment Bats cases run actual encrypted transactions too; their CI lane
+installs the pinned Python environment and checksum-verified SOPS with age.
 
 XHTTP endpoint acceptance is a separate complete target within the native job.
 Its cases and the existing native/RTA lanes form a disjoint complete collection,
