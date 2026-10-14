@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "All 10 payload-classification cases passed in 12.23 seconds at repaired source 447b8453a46cf47805153f862d46fda279eb255a. Uniform elapsed times produce ok; a completed ladder with an actual modeled RTT spike remains throttled at 16384 bytes. Other Python invocations use the pinned interpreter. Production measurement and thresholds are unchanged; applicable hooks passed.",
+  "execution_sha256": "46c3a0acc1444e830137f883e75b17591455931d969bc720cca0e0ee39223704",
+  "issue_sha256": "89a3c1716953709e5c3d16b21ac64ce7e43cc462dd17497f5fe857ee557a9848",
+  "outcome": "done",
+  "prepared_at": "2026-10-14T07:38:58Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1791962806189740"
+}
