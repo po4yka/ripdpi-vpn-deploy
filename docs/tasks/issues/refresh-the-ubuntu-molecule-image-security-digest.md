@@ -2,7 +2,7 @@
 id: CIC-1791950809934804
 title: Refresh the Ubuntu Molecule image security digest
 kind: bug
-status: doing
+status: review
 area: ci
 priority: high
 risk: standard
@@ -15,7 +15,7 @@ created: 2026-10-14
 updated: 2026-10-14
 spec_reason: dependency-only
 related_tasks: []
-status_detail: Refresh the immutable Ubuntu test dependency to clear exact-source Trivy findings blocking runtime and observability acceptance.
+status_detail: The scanned immutable Ubuntu dependency, all five consumer pins, 29 local regressions and exact-source hosted checks passed at 3da2e91ef73c654b75c9ed7a70b39b54062de273.
 ---
 
 ## Goal
