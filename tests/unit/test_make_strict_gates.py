@@ -27,16 +27,19 @@ def _cloud_init_schema_module():
 def test_cloud_init_schema_stops_client_before_container_removal(tmp_path, monkeypatch):
     module = _cloud_init_schema_module()
     gate, marker = tmp_path / "create", tmp_path / "container"
+    client_code = (
+        "import pathlib,sys,time; gate,marker=map(pathlib.Path,sys.argv[1:]); "
+        "deadline=time.monotonic()+5\n"
+        "while not gate.exists():\n"
+        " if time.monotonic()>deadline: raise SystemExit(2)\n"
+        " time.sleep(.005)\n"
+        "marker.write_text('late creation'); time.sleep(30)"
+    )
     process = subprocess.Popen(
         [
             sys.executable,
             "-c",
-            "import pathlib,sys,time; gate,marker=map(pathlib.Path,sys.argv[1:]); "
-            "deadline=time.monotonic()+5\n"
-            "while not gate.exists():\n"
-            " if time.monotonic()>deadline: raise SystemExit(2)\n"
-            " time.sleep(.005)\n"
-            "marker.write_text('late creation'); time.sleep(30)",
+            client_code,
             str(gate),
             str(marker),
         ],

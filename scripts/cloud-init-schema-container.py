@@ -173,6 +173,7 @@ def _feed_and_wait(
         try:
             stream.close()
         except BrokenPipeError:
+            # The child may close stdin early; preserve its exit status after cleanup.
             pass
     remaining = deadline - time.monotonic()
     if remaining <= 0:
