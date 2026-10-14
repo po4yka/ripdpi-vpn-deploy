@@ -13,14 +13,16 @@ import socket
 import subprocess
 import threading
 import time
-from urllib import error, request
+from urllib import error, parse, request
 
 import pytest
 import yaml
 
 from scripts.template_render import render_template
 from tests.unit.test_observability_control_plane_alerting import (
+    _alert_policy,
     _contract as complete_contract,
+    render_template as render_alert_rules,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -121,7 +123,72 @@ def test_failed_deleted_message_edit_revokes_freshness_without_fabricated_send(
         )
     assert receipts.snapshot()["edit_at"] == 0
     assert relay.Receipts(tmp_path / "receipts.json").snapshot()["edit_at"] == 0
-    assert receipts.snapshot()["edit_sequence"] == 1
+    assert receipts.snapshot()["edit_sequence"] == 2
+
+
+@pytest.mark.parametrize("failure", ["lost-response", "receipt-write"])
+def test_canary_recovers_after_accepted_edit_without_durable_success(
+    tmp_path, monkeypatch, failure
+):
+    relay = _relay()
+    path = tmp_path / "receipts.json"
+    receipts = relay.Receipts(path)
+    receipts.value.update(
+        message_id=42, send_at=100000, edit_at=100000, edit_sequence=1
+    )
+    receipts.save()
+    edits = []
+
+    def upstream(**kwargs):
+        assert kwargs["method"] == "editMessageText"
+        assert kwargs["message"] not in edits
+        edits.append(kwargs["message"])
+        if failure == "lost-response" and len(edits) == 1:
+            raise relay.DeliveryFailure("upstream-failure")
+        return {"ok": True, "result": {"message_id": 42}}
+
+    original_save = receipts.save
+
+    def save():
+        if failure == "receipt-write" and receipts.value["edit_at"]:
+            raise OSError("fixture receipt write failure")
+        original_save()
+
+    monkeypatch.setattr(relay, "deliver", upstream)
+    monkeypatch.setattr(receipts, "save", save)
+    config = dict(api_url="unused", bot_token="unused", chat_id="1", topic_id=0)
+    with pytest.raises((OSError, relay.DeliveryFailure)):
+        receipts.canary(config, 100300)
+    assert receipts.snapshot()["edit_at"] == 0
+    restarted = relay.Receipts(path)
+    assert restarted.snapshot()["edit_sequence"] == 2
+    assert restarted.snapshot()["edit_at"] == 0
+    restarted.canary(config, 100600)
+    assert edits == [
+        "Monitoring delivery canary sequence 2",
+        "Monitoring delivery canary sequence 3",
+    ]
+    assert relay.Receipts(path).snapshot() == dict(
+        rule_to_relay_at=0, edit_sequence=3, edit_at=100600, send_at=100000
+    )
+
+
+def test_canary_reservation_failure_precedes_any_upstream_call(tmp_path, monkeypatch):
+    relay = _relay()
+    receipts = relay.Receipts(tmp_path / "receipts.json")
+    calls = []
+    monkeypatch.setattr(relay, "deliver", lambda **kwargs: calls.append(kwargs))
+
+    def fail():
+        raise OSError("fixture reservation failure")
+
+    monkeypatch.setattr(receipts, "save", fail)
+    with pytest.raises(OSError):
+        receipts.canary(
+            dict(api_url="unused", bot_token="unused", chat_id="1", topic_id=0), 100000
+        )
+    assert calls == []
+    assert receipts.snapshot()["edit_at"] == 0
 
 
 def test_pipeline_receipt_requires_fresh_evaluation_and_rejects_replay(tmp_path):
@@ -198,6 +265,152 @@ def _payload(status: str = "firing", alerts: int = 1) -> dict[str, object]:
     }
 
 
+def _drill_payload(status="firing", policy="drill-fixture-a"):
+    payload = _payload(status)
+    labels = {
+        "alertname": "ObservabilitySyntheticDrill",
+        "environment": "staging",
+        "node": "collector",
+        "component": "control-plane",
+        "policy": policy,
+    }
+    payload["alerts"][0]["labels"] = labels
+    payload["groupLabels"] = dict(labels)
+    payload["commonLabels"] = dict(labels)
+    return payload
+
+
+@pytest.fixture
+def drill_relay():
+    relay = _relay()
+    authorization = {"Authorization": "Bearer " + "a" * 64}
+    server = relay.RelayServer(
+        ("127.0.0.1", 0),
+        relay.handler(
+            dict(
+                api_url="https://api.telegram.org",
+                bot_token="123456789:fixture-token-not-real",
+                auth_token="a" * 64,
+                chat_id="1",
+                topic_id=0,
+            )
+        ),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield relay, f"http://127.0.0.1:{server.server_port}", authorization
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def _drill_request(origin, authorization, payload=None):
+    if payload is None:
+        outbound = request.Request(origin + "/v1/drill-receipt", headers=authorization)
+    else:
+        outbound = request.Request(
+            origin + "/alert",
+            data=json.dumps(payload).encode(),
+            headers={**authorization, "Content-Type": "application/json"},
+        )
+    with request.urlopen(outbound, timeout=2) as response:
+        return json.loads(response.read())
+
+
+def test_drill_receipt_requires_authentication_and_a_successful_send(
+    drill_relay, monkeypatch
+):
+    relay, origin, authorization = drill_relay
+    assert _drill_request(origin, authorization) == {}
+    for headers in ({}, {"Authorization": "Bearer wrong"}):
+        with pytest.raises(error.HTTPError) as refused:
+            _drill_request(origin, headers)
+        assert refused.value.code == 401
+
+    def fail(**kwargs):
+        raise relay.DeliveryFailure("upstream-failure")
+
+    monkeypatch.setattr(relay, "deliver", fail)
+    payload = _drill_payload()
+    with pytest.raises(error.HTTPError) as failed:
+        _drill_request(origin, authorization, payload)
+    assert failed.value.code == 502
+    assert _drill_request(origin, authorization) == {}
+    monkeypatch.setattr(relay, "deliver", lambda **kwargs: {"ok": True})
+    monkeypatch.setattr(relay.time, "time", lambda: 100000)
+    assert _drill_request(origin, authorization, payload) == {"status": "delivered"}
+    receipt = _drill_request(origin, authorization)
+    assert receipt == dict(
+        policy="drill-fixture-a",
+        starts_at=payload["alerts"][0]["startsAt"],
+        source_generation="a" * 40,
+        delivered_at=100000,
+    )
+    # Ordinary alerts and drill resolutions cannot replace the firing receipt.
+    for ignored in (_payload(), _drill_payload("resolved")):
+        _drill_request(origin, authorization, ignored)
+        assert _drill_request(origin, authorization) == receipt
+    replacement = _drill_payload(policy="drill-fixture-b")
+    _drill_request(origin, authorization, replacement)
+    assert _drill_request(origin, authorization)["policy"] == "drill-fixture-b"
+
+
+@pytest.mark.parametrize("invalid", ["node", "policy", "batch"])
+def test_drill_receipt_ignores_unscoped_synthetic_alerts(
+    drill_relay, monkeypatch, invalid
+):
+    relay, origin, authorization = drill_relay
+    monkeypatch.setattr(relay, "deliver", lambda **kwargs: {"ok": True})
+    payload = _drill_payload()
+    if invalid == "node":
+        payload["alerts"][0]["labels"]["node"] = "other-node"
+    elif invalid == "policy":
+        del payload["alerts"][0]["labels"]["policy"]
+    else:
+        payload["alerts"].append(payload["alerts"][0])
+    _drill_request(origin, authorization, payload)
+    assert _drill_request(origin, authorization) == {}
+
+
+def test_drill_receipt_is_atomic_bounded_and_empty_after_restart():
+    relay = _relay()
+    receipt = relay.DrillReceipt()
+    barrier = threading.Barrier(3)
+    snapshots = []
+
+    def record(index):
+        payload = _drill_payload(policy=f"drill-fixture-{index}")
+        payload["alerts"][0]["startsAt"] = str(index)
+        payload["commonAnnotations"]["source_generation"] = str(index) * 40
+        barrier.wait(timeout=2)
+        for _ in range(100):
+            receipt.record(payload, index)
+            snapshots.append(receipt.snapshot())
+
+    threads = [threading.Thread(target=record, args=(index,)) for index in (1, 2)]
+    for thread in threads:
+        thread.start()
+    barrier.wait(timeout=2)
+    for thread in threads:
+        thread.join(timeout=2)
+        assert not thread.is_alive()
+    assert len(snapshots) == 200
+    for snapshot in snapshots:
+        index = snapshot["delivered_at"]
+        assert snapshot == dict(
+            policy=f"drill-fixture-{index}",
+            starts_at=str(index),
+            source_generation=str(index) * 40,
+            delivered_at=index,
+        )
+    snapshot = receipt.snapshot()
+    snapshot.clear()
+    assert receipt.snapshot()
+    assert relay.DrillReceipt().snapshot() == {}
+
+
 def test_alertmanager_routes_to_authenticated_bounded_webhooks() -> None:
     rendered = render_template(
         ROLE / "templates/observability-alertmanager.yml.j2",
@@ -271,6 +484,100 @@ def test_relay_renders_escaped_capped_firing_and_resolved_messages(status: str) 
     assert "stage&lt;&amp;" in message
     assert "must never be rendered" not in message
     assert len(message) <= 4096
+
+
+@pytest.mark.parametrize("status", ["firing", "resolved"])
+@pytest.mark.parametrize(
+    "alertname",
+    [
+        "ObservabilityRequiredServiceNotActive",
+        "ObservabilityRequiredServiceEvidenceMissing",
+    ],
+)
+def test_relay_distinguishes_grouped_service_roles(status: str, alertname: str) -> None:
+    relay = _relay()
+    rules = yaml.safe_load(
+        render_alert_rules(
+            ROLE / "templates/observability-alert-rules.yml.j2",
+            {
+                "observability_control_plane": complete_contract(),
+                "observability_alert_policy": _alert_policy(),
+            },
+        )
+    )
+    rule = next(
+        rule
+        for group in rules["groups"]
+        for rule in group["rules"]
+        if rule.get("alert") == alertname
+    )
+    payload = _payload(status, alerts=2)
+    common = {"alertname": alertname, "environment": "stage", "node": "node"}
+    common.update(rule["labels"])
+    payload["groupLabels"] = dict(common)
+    payload["commonLabels"] = dict(common)
+    payload["commonAnnotations"] = dict(rule["annotations"])
+    for alert, role in zip(payload["alerts"], ("xray", "nginx"), strict=True):
+        alert["labels"] = {**common, "role": role}
+        alert["annotations"] = dict(rule["annotations"])
+    message = relay.render_message(relay.parse_payload(json.dumps(payload).encode()))
+    assert "stage/node/service/xray:" in message
+    assert "stage/node/service/nginx:" in message
+    assert message.count(rule["annotations"]["summary"]) == 2
+    assert message.count("- recovered" if status == "resolved" else "\n- ") == 2
+
+
+@pytest.mark.parametrize(
+    "role",
+    ["", "x" * 65, "Xray", "xray.service", "xray/nginx", "xray nginx", "xray\n", "<xray>"],
+)
+def test_relay_refuses_roles_outside_the_technical_alias_contract(role: str) -> None:
+    relay = _relay()
+    payload = _payload()
+    payload["alerts"][0]["labels"]["role"] = role
+    with pytest.raises(relay.Refusal, match="^payload-contract$"):
+        relay.parse_payload(json.dumps(payload).encode())
+
+
+@pytest.mark.parametrize(
+    "alertname",
+    [
+        "ObservabilityRequiredServiceNotActive",
+        "ObservabilityRequiredServiceEvidenceMissing",
+    ],
+)
+@pytest.mark.parametrize("scope", ["common", "alert"])
+def test_relay_refuses_service_alerts_without_unit_identity(
+    alertname: str, scope: str
+) -> None:
+    relay = _relay()
+    payload = _payload()
+    labels = payload["commonLabels"] if scope == "common" else payload["alerts"][0]["labels"]
+    labels["alertname"] = alertname
+    with pytest.raises(relay.Refusal, match="^payload-contract$"):
+        relay.parse_payload(json.dumps(payload).encode())
+
+
+def test_relay_role_boundary_preserves_message_omission_and_redaction() -> None:
+    relay = _relay()
+    payload = _payload(alerts=5)
+    payload["truncatedAlerts"] = 2
+    role = "a_" + "b" * 62
+    for alert in payload["alerts"]:
+        alert["labels"]["role"] = role
+        for key in ("summary", "evidence_class", "runbook"):
+            alert["annotations"][key] = "<" * 160
+    message = relay.render_message(relay.parse_payload(json.dumps(payload).encode()))
+    rendered = message.count("\n- ")
+    assert 0 < rendered < 5
+    assert message.count("/" + role + ":") == rendered
+    assert message.endswith(f"... omitted {7 - rendered} alerts")
+    assert len(message) <= 4096
+    assert "must never be rendered" not in message
+    assert "<" not in message
+    # Alerts without this optional label retain their existing identity format.
+    unrelated = relay.render_message(relay.parse_payload(json.dumps(_payload()).encode()))
+    assert "stage0/node0/control0: summary" in unrelated
 
 
 def test_relay_requires_authenticated_loopback_webhook_before_delivery() -> None:
@@ -442,6 +749,84 @@ class _Response:
 
     def __exit__(self, *_args: object) -> None:
         return None
+
+
+@pytest.mark.parametrize("status", ["firing", "resolved"])
+def test_relay_accepts_actual_long_expression_urls_without_rendering(
+    status: str,
+) -> None:
+    relay = _relay()
+    payload = _payload(status)
+    # Prometheus serializes the complete expression into its graph link.
+    rules = yaml.safe_load(
+        render_alert_rules(
+            ROLE / "templates/observability-alert-rules.yml.j2",
+            {
+                "observability_control_plane": complete_contract(),
+                "observability_alert_policy": _alert_policy(),
+            },
+        )
+    )
+    expression = next(
+        rule["expr"]
+        for group in rules["groups"]
+        for rule in group["rules"]
+        if rule.get("alert") == "ObservabilityExternalCoverageUnavailable"
+    )
+    url = "http://127.0.0.1:9090/graph?g0.expr=" + parse.quote(expression)
+    assert len(url) > 256
+    payload["alerts"][0]["generatorURL"] = url
+    parsed = relay.parse_payload(json.dumps(payload).encode())
+    assert url not in relay.render_message(parsed)
+    payload["alerts"][0]["generatorURL"] = "x" * relay.MAX_PAYLOAD_BYTES
+    with pytest.raises(relay.Refusal, match="payload-size"):
+        relay.parse_payload(json.dumps(payload).encode())
+
+
+@pytest.mark.parametrize("character", ["a", "Ж", "😀"])
+def test_relay_accepts_returned_message_encoding_overhead(character: str) -> None:
+    relay = _relay()
+    message = character * 4096
+    body = json.dumps(
+        {"ok": True, "result": {"message_id": 1, "text": message}}
+    ).encode()
+    assert len(body) > 4096
+    calls = []
+
+    def opener(outbound, timeout):
+        calls.append(outbound)
+        return _Response(200, body)
+
+    result = relay.deliver(
+        api_url="https://api.telegram.org",
+        token="123456789:fixture-token-not-real",
+        chat_id="-100000000001",
+        topic_id=0,
+        message=message,
+        opener=opener,
+    )
+    assert result["result"]["text"] == message
+    assert len(calls) == 1
+
+
+def test_relay_refuses_response_above_finite_ceiling_once() -> None:
+    relay = _relay()
+    calls = []
+
+    def opener(outbound, timeout):
+        calls.append(outbound)
+        return _Response(200, b" " * (relay.MAX_RESPONSE_BYTES + 1))
+
+    with pytest.raises(relay.DeliveryFailure, match="upstream-response"):
+        relay.deliver(
+            api_url="https://api.telegram.org",
+            token="123456789:fixture-token-not-real",
+            chat_id="-100000000001",
+            topic_id=0,
+            message="bounded",
+            opener=opener,
+        )
+    assert len(calls) == 1
 
 
 def _http_error(status: int, retry_after: str | None = None) -> error.HTTPError:

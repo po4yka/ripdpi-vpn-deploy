@@ -20,6 +20,9 @@ ExecStart=/usr/local/libexec/observability-agent-health-adapter.py \
   --restore-drill /var/lib/vpn-backup/restore-drill-last-success.json \
   --restore-drill-max-age-seconds 3024000 \
   --backup-snapshot-max-age-seconds 129600 \
+  --required-service hysteria-server \
+  --required-service nginx \
+  --required-service xray \
   --certificate %d/client.crt \
   --output /var/lib/node_exporter/textfile/observability-health.prom
 UMask=0027

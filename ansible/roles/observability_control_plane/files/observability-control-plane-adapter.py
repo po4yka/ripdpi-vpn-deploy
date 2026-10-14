@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import time
 
 ROLE = Path(__file__).resolve().parent
 RENDERER_PATH = ROLE / "observability-expected-target-renderer.py"
@@ -57,7 +58,12 @@ def render(args: argparse.Namespace) -> bytes:
         ("tsdb-capacity", capacity),
         ("expected-target-pipeline", "fresh"),
     )
-    lines = ["# TYPE vpn_observability_evidence_state gauge"]
+    lines = [
+        "# TYPE vpn_observability_evidence_state gauge",
+        'vpn_observability_evidence_timestamp_seconds{node="observability-control-plane",role="control-plane-adapter"} '
+        + str(int(time.time())),
+        'vpn_observability_evidence_max_age_seconds{node="observability-control-plane",role="control-plane-adapter"} 180',
+    ]
     lines.extend(
         "vpn_observability_evidence_state"
         f'{{node="observability-control-plane",role="{role}",state="{state}"}} 1'
@@ -69,6 +75,7 @@ def render(args: argparse.Namespace) -> bytes:
 def _render_failure() -> bytes:
     return (
         "# TYPE vpn_observability_evidence_state gauge\n"
+        'vpn_observability_evidence_max_age_seconds{node="observability-control-plane",role="control-plane-adapter"} 180\n'
         'vpn_observability_evidence_state{node="observability-control-plane",role="expected-target-pipeline",state="stale"} 1\n'
     ).encode("utf-8")
 

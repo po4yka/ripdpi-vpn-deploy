@@ -966,7 +966,7 @@ def test_enabled_receiver_records_only_categorical_failure_phases() -> None:
     assert 'record_event("length_rejected")' in prepare
     assert 'record_event("short_body")' in prepare
     assert 'record_event("accepted")' in prepare
-    assert 'record_event("handler_error")' in prepare
+    assert 'record_event("handler_error", classify_handler_error(error, self.headers, stage))' in prepare
     assert 'record_event("tls_handshake_rejected")' in prepare
     assert 'record_event("tls_handshake_" + category)' in prepare
     assert "class Server(http.server.ThreadingHTTPServer)" in prepare
@@ -983,7 +983,7 @@ def test_enabled_receiver_records_only_categorical_failure_phases() -> None:
         assert f'"{reason}"' in prepare
     assert "str(error)" not in prepare
     assert "verify_message" not in prepare
-    assert 'json.dumps({"phase": phase})' in prepare
+    assert 'json.dumps({"phase": phase, **(fields or {})})' in prepare
     assert "if len(body) != length" in prepare
 
 
@@ -1161,6 +1161,9 @@ def test_mtls_fixture_never_acknowledges_or_records_a_rejected_payload(
         json.loads(x)["phase"]
         for x in (tmp_path / "events.log").read_text().splitlines()
     ] == ["headers", "handler_error"]
+    failure = json.loads((tmp_path / "events.log").read_text().splitlines()[-1])
+    assert failure["category"] == "forward_contract"
+    assert failure["stage"] == "forward"
 
 
 @pytest.mark.parametrize(
@@ -1271,3 +1274,241 @@ def test_historical_probe_uses_private_unique_files_and_preserves_foreign_replac
     module.remove_probe(proof)
     assert not path.exists()
     module.remove_probe(proof)
+
+
+@pytest.mark.parametrize("count", [0, 1, 2])
+def test_rollback_failure_diagnostics_bound_and_redact_query_evidence(
+    monkeypatch, count
+):
+    module = _fixture_proof_module()
+    proof = {"nonce": 123456, "outage_at": 100, "outage_end": 200}
+    vectors = [
+        {
+            "metric": {
+                "node": "node-fixture",
+                "job": "node-exporter",
+                "endpoint": "private-marker",
+            },
+            "value": [200, "123456"],
+        }
+        for _ in range(count)
+    ]
+
+    def query(url, timeout):
+        assert timeout == 5
+        if url.endswith("/metrics"):
+            payload = b'vmagent_remotewrite_pending_data_bytes{url="private-marker"} 12\nvmagent_remotewrite_samples_dropped_total 0\nprivate_metric 99\n'
+        else:
+            payload = json.dumps(
+                {
+                    "status": "success",
+                    "data": {"resultType": "vector", "result": vectors},
+                }
+            ).encode()
+        return contextlib.nullcontext(SimpleNamespace(read=lambda _limit: payload))
+
+    monkeypatch.setattr(module.OPENER, "open", query)
+    result = module.diagnose(proof)
+    assert result["historical_value"]["count"] == count
+    assert result["sender_counters"]["vmagent_remotewrite_pending_data_bytes"] == 12
+    assert "private-marker" not in json.dumps(result)
+    assert "private_metric" not in json.dumps(result)
+
+
+def test_rollback_failure_diagnostics_keep_backend_errors_categorical(monkeypatch):
+    module = _fixture_proof_module()
+
+    def unavailable(*_args, **_kwargs):
+        raise OSError("private-marker")
+
+    monkeypatch.setattr(module.OPENER, "open", unavailable)
+    result = module.diagnose({"nonce": 123456, "outage_at": 100, "outage_end": 200})
+    assert result["historical_value"]["state"] == "unavailable"
+    assert "private-marker" not in json.dumps(result)
+
+
+def test_historical_failure_diagnostics_precede_fixture_retirement():
+    source = (ROLE / "molecule/enabled/verify.yml").read_text()
+    capture = source.index("Capture bounded historical delivery failure evidence")
+    publish = source.index("Report bounded historical delivery failure evidence")
+    cleanup = source.index("Remove only this invocation's historical probe on failure")
+    assert capture < publish < cleanup
+    assert "_rollback_delivered is failed" in source[capture:publish]
+
+
+@pytest.mark.parametrize("oversized", ["query", "metrics", "vector"])
+def test_rollback_failure_diagnostics_enforce_byte_and_row_bounds(
+    monkeypatch, oversized
+):
+    module = _fixture_proof_module()
+
+    def query(url, timeout):
+        if url.endswith("/metrics"):
+            payload = b"x" * 262145 if oversized == "metrics" else b""
+        elif oversized == "query":
+            payload = b"x" * 65537
+        else:
+            payload = json.dumps(
+                {
+                    "status": "success",
+                    "data": {
+                        "resultType": "vector",
+                        "result": [
+                            {
+                                "metric": {
+                                    "node": "node-fixture",
+                                    "job": "private-marker",
+                                },
+                                "value": [200, "123456"],
+                            }
+                            for _ in range(20)
+                        ],
+                    },
+                }
+            ).encode()
+        return contextlib.nullcontext(SimpleNamespace(read=lambda _limit: payload))
+
+    monkeypatch.setattr(module.OPENER, "open", query)
+    result = module.diagnose({"nonce": 123456, "outage_at": 100, "outage_end": 200})
+    if oversized == "query":
+        assert result["historical_value"] == {"state": "oversized"}
+    elif oversized == "metrics":
+        assert result["sender_state"] == "unavailable"
+        assert result["sender_counters"] == {}
+    else:
+        assert result["historical_value"]["count"] == 20
+        assert len(result["historical_value"]["samples"]) == 16
+        assert result["historical_value"]["truncated"] is True
+    assert "private-marker" not in json.dumps(result)
+
+
+def test_rollback_failure_diagnostics_bound_receiver_log_tail(monkeypatch, tmp_path):
+    module = _fixture_proof_module()
+    monkeypatch.setattr(module, "FIXTURE", tmp_path)
+    (tmp_path / "receiver-events.log").write_text(
+        "private-marker" * 6000
+        + '\n{"phase":"accepted","credential":"private-marker"}\n'
+    )
+    monkeypatch.setattr(
+        module.OPENER,
+        "open",
+        lambda *_args, **_kwargs: contextlib.nullcontext(
+            SimpleNamespace(
+                read=lambda _limit: (
+                    b'{"status":"success","data":{"resultType":"vector","result":[]}}'
+                )
+            )
+        ),
+    )
+    result = module.diagnose({"nonce": 123456, "outage_at": 100, "outage_end": 200})
+    assert result["receiver_tail_truncated"] is True
+    assert result["receiver_phases"] == {"accepted": 1}
+    assert "private-marker" not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    "body,expected",
+    [
+        (b"out of order sample: private-marker", "out_of_order"),
+        (b"unsupported content type private-marker", "unsupported_format"),
+        (b"snappy decode error private-marker", "snappy_decode"),
+        (b"private-marker", "other"),
+        (b"x" * 4097, "oversized_response"),
+    ],
+    ids=["out-of-order", "unsupported-format", "snappy", "other", "oversized"],
+)
+def test_fixture_handler_error_categories_bound_and_redact_backend_response(
+    body, expected
+):
+    import urllib.error
+
+    module = _fixture_proof_module()
+    error = urllib.error.HTTPError(
+        "http://private-marker", 400, "private-marker", {}, io.BytesIO(body)
+    )
+    result = module.classify_handler_error(
+        error,
+        {
+            "Content-Type": "application/x-protobuf",
+            "Content-Encoding": "snappy",
+            "X-Prometheus-Remote-Write-Version": "0.1.0",
+            "Authorization": "private-marker",
+        },
+        "forward",
+    )
+    assert result["category"] == "sink_http_400"
+    assert result["detail"] == expected
+    assert result["encoding"] == "snappy"
+    assert result["write_version"] == "v1"
+    assert "private-marker" not in json.dumps(result)
+
+
+def test_fixture_handler_error_categories_redact_missing_headers_and_exceptions():
+    module = _fixture_proof_module()
+    result = module.classify_handler_error(TypeError("private-marker"), {}, "forward")
+    assert result["category"] == "forward_headers"
+    assert result["encoding"] == "absent"
+    assert result["write_version"] == "absent"
+    assert "private-marker" not in json.dumps(result)
+
+
+def test_fixture_handler_error_categories_reduce_unrecognized_large_headers():
+    module = _fixture_proof_module()
+    private = "private-marker" * 1000
+    result = module.classify_handler_error(
+        TypeError(private),
+        {
+            "Content-Type": private,
+            "Content-Encoding": private,
+            "X-Prometheus-Remote-Write-Version": private,
+        },
+        "forward",
+    )
+    assert result["encoding"] == "other"
+    assert result["write_version"] == "other"
+    assert result["content_type"] == "other"
+    serialized = json.dumps(result)
+    assert len(serialized) < 256
+    assert "private-marker" not in serialized
+
+
+def test_receiver_error_diagnostics_accept_only_fixed_classification_fields(
+    monkeypatch, tmp_path
+):
+    module = _fixture_proof_module()
+    monkeypatch.setattr(module, "FIXTURE", tmp_path)
+    events = [
+        {
+            "phase": "handler_error",
+            "category": "sink_http_400",
+            "detail": "out_of_order",
+            "encoding": "snappy",
+            "write_version": "v1",
+            "stage": "forward",
+        },
+        {
+            "phase": "handler_error",
+            "category": "private-marker",
+            "detail": "private-marker",
+            "encoding": "private-marker",
+            "write_version": "private-marker",
+            "stage": "private-marker",
+        },
+    ]
+    (tmp_path / "receiver-events.log").write_text(
+        "\n".join(json.dumps(event) for event in events)
+    )
+
+    def unavailable(*_args, **_kwargs):
+        raise OSError("private-marker")
+
+    monkeypatch.setattr(module.OPENER, "open", unavailable)
+    result = module.diagnose({"nonce": 123456, "outage_at": 100, "outage_end": 200})
+    assert result["handler_errors"] == {
+        "category": {"sink_http_400": 1},
+        "detail": {"out_of_order": 1},
+        "encoding": {"snappy": 1},
+        "write_version": {"v1": 1},
+        "stage": {"forward": 1},
+    }
+    assert "private-marker" not in json.dumps(result)

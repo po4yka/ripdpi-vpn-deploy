@@ -91,7 +91,7 @@
         dest: /var/lib/vpn-watchdog/state
         owner: root
         group: root
-        mode: "0640"
+        mode: "0600"
         content: |
           consecutive_fails=0
           last_alert_epoch=0
@@ -279,33 +279,38 @@
           import http.server
           import json
           import ssl
-          from observability_fixture_proof import forward_payload
+          from observability_fixture_proof import classify_handler_error, forward_payload
 
           LOG = "/var/lib/observability-fixture/receiver.log"
           EVENTS = "/var/lib/observability-fixture/receiver-events.log"
 
-          def record_event(phase):
+          def record_event(phase, fields=None):
               with open(EVENTS, "a", encoding="utf-8") as handle:
-                  handle.write(json.dumps({"phase": phase}) + "\n")
+                  handle.write(json.dumps({"phase": phase, **(fields or {})}) + "\n")
 
           class Handler(http.server.BaseHTTPRequestHandler):
               def do_POST(self):
                   record_event("headers")
+                  stage = "length"
                   try:
                       length = int(self.headers.get("Content-Length", "0"))
                       if length < 1 or length > 8 * 1024 * 1024:
                           record_event("length_rejected")
                           self.send_error(413)
                           return
+                      stage = "body"
                       body = self.rfile.read(length)
                       if len(body) != length:
                           record_event("short_body")
                           self.send_error(400)
                           return
+                      stage = "peer"
                       subject = dict(
                           item[0] for item in self.connection.getpeercert()["subject"]
                       )
+                      stage = "forward"
                       forward_payload(body, self.headers)
+                      stage = "receipt"
                       with open(LOG, "a", encoding="utf-8") as handle:
                           handle.write(
                               json.dumps({
@@ -314,10 +319,11 @@
                               }) + "\n"
                           )
                       record_event("accepted")
+                      stage = "response"
                       self.send_response(200)
                       self.end_headers()
-                  except Exception:
-                      record_event("handler_error")
+                  except Exception as error:
+                      record_event("handler_error", classify_handler_error(error, self.headers, stage))
                       raise
 
               def log_message(self, *_args):
@@ -569,6 +575,9 @@
         mode: "0600"
         content: |
           global: {scrape_interval: 60s}
+          storage:
+            tsdb:
+              out_of_order_time_window: 1h
           scrape_configs: []
 
     - name: Install isolated sink using the already verified previous Prometheus binary

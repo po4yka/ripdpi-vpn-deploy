@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-12
+goal: MON-1791825755591250 Repair Telegram delivery and service monitoring audit
+  defects

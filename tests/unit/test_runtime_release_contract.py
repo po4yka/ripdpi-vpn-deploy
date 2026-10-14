@@ -391,6 +391,9 @@ def _trusted_temporary_path() -> Iterator[Path]:
     original: os.stat_result | None = None
     try:
         original = trusted_root.lstat()
+        # macOS directories inherit their parent's group. Bind this owned
+        # fixture to the helper's process group before creating descendants.
+        os.chown(trusted_root, -1, os.getgid())
         trusted_root.chmod(0o700)
         helper = _activator_module()
         helper._validate_storage_ancestors(

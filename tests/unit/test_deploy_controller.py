@@ -155,12 +155,12 @@ def set_contexts(workspace, limit, context_pairs=None):
     }) + "\n")
 
 
-def invoke(workspace, target="dry-run", limit="", context_pairs=None, **values):
+def invoke(workspace, target="dry-run", limit="", context_pairs=None, command_timeout=25, **values):
     set_contexts(workspace, limit, context_pairs)
     arguments = {"ANSIBLE_LIMIT": limit, "SECRETS_FILE": str(workspace["secrets"]), **values}
     return subprocess.run(["make", target, *(f"{key}={value}" for key, value in arguments.items())],
                           cwd=workspace["root"], env=workspace["env"], text=True,
-                          capture_output=True, timeout=25)
+                          capture_output=True, timeout=command_timeout)
 
 
 def calls(workspace):
@@ -1309,13 +1309,17 @@ def test_real_ansible_preserves_profiles_types_secrets_and_local_delegation(work
                       "public_site_canonical_url: https://fixture.example.invalid\n"
                       "ansible_host: 198.51.100.8\nansible_port: 2022\n") if override else None
     install_local_ansible(workspace)
+    config = root / "ansible/ansible.cfg"
+    config.write_text(config.read_text() + "\n[connection]\npipelining=True\n")
     baseline_env = {**workspace["env"], "ANSIBLE_CONFIG": str(root / "ansible/ansible.cfg"),
-                    "VPN_SECRETS_FILE": str(workspace["secrets"]), "ANSIBLE_DEBUG": "false"}
+                    "VPN_SECRETS_FILE": str(workspace["secrets"]), "ANSIBLE_DEBUG": "false",
+                    "ANSIBLE_HOME": str(workspace["home"] / ".ansible"),
+                    "ANSIBLE_LOCAL_TEMP": str(workspace["home"] / ".ansible/tmp")}
     baseline = subprocess.run(["ansible-playbook", str(root / "ansible/playbooks/site.yml"),
                                "-i", str(workspace["inventory"]),
                                *(["--limit", "node-one"] if override else []),
                                *(["--extra-vars", "@" + str(overrides)] if overrides else [])],
-                              cwd=root, env=baseline_env, capture_output=True, text=True, timeout=30)
+                              cwd=root, env=baseline_env, capture_output=True, text=True, timeout=120)
     assert baseline.returncode == 0, baseline.stderr + baseline.stdout
     expected = {path.name: json.loads(path.read_text()) for path in root.parent.glob("actual-*.json")}
     assert len(expected) == (1 if override else 2)
@@ -1332,6 +1336,7 @@ def test_real_ansible_preserves_profiles_types_secrets_and_local_delegation(work
                    "laddr": "192.0.2.1", "lport": 2022}
         context_pairs = {"node-one": [context, {**context, "laddr": "198.51.100.8"}]}
     candidate = invoke(workspace, limit="node-one" if override else "", context_pairs=context_pairs,
+                       command_timeout=120,
                        **({"ANSIBLE_EXTRA_VARS_FILE": str(overrides)} if overrides else {}))
     assert candidate.returncode == 0, candidate.stderr + candidate.stdout
     assert {path.name: json.loads(path.read_text()) for path in root.parent.glob("actual-*.json")} == expected

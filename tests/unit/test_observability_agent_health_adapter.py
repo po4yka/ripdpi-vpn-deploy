@@ -136,7 +136,7 @@ def _write_inputs(
     ):
         directory.mkdir(mode=0o700, exist_ok=True)
     watchdog_path.write_text(watchdog if watchdog is not None else _watchdog_state())
-    watchdog_path.chmod(0o640)
+    watchdog_path.chmod(0o600)
     stage_payload = _backup_stage() if stage is None else stage
     stage_path.write_text(
         stage_payload if isinstance(stage_payload, str) else json.dumps(stage_payload)

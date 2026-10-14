@@ -186,9 +186,10 @@ def _metric(node: str, role: str, state: str, value: int) -> str:
     return f'vpn_observability_evidence_state{{node="{node}",role="{role}",state="{state}"}} {value}'
 
 
-def _failure(state: str) -> bytes:
+def _failure(state: str, stale_after: int) -> bytes:
     return (
         "# TYPE vpn_observability_evidence_state gauge\n"
+        + f'vpn_observability_evidence_max_age_seconds{{node="protocol-liveness",role="liveness-published-evidence"}} {stale_after}\n'
         + _metric("protocol-liveness", "liveness-published-evidence", state, 1)
         + "\n"
     ).encode("utf-8")
@@ -202,7 +203,11 @@ def render(
         raise AdapterError("future evidence")
     if now - evaluated_at > stale_after:
         raise AdapterError("stale evidence")
-    lines = ["# TYPE vpn_observability_evidence_state gauge"]
+    lines = [
+        "# TYPE vpn_observability_evidence_state gauge",
+        f'vpn_observability_evidence_timestamp_seconds{{node="protocol-liveness",role="liveness-published-evidence"}} {evaluated_at}',
+        f'vpn_observability_evidence_max_age_seconds{{node="protocol-liveness",role="liveness-published-evidence"}} {stale_after}',
+    ]
     lines.append(
         _metric(
             "protocol-liveness",
@@ -356,10 +361,12 @@ def main(argv: list[str] | None = None) -> int:
         state = (
             "future"
             if str(exc) == "future evidence"
-            else "stale" if str(exc) == "stale evidence" else "malformed"
+            else "stale"
+            if str(exc) == "stale evidence"
+            else "malformed"
         )
         try:
-            _atomic_write(args.output, _failure(state))
+            _atomic_write(args.output, _failure(state, args.stale_after))
         except AdapterError:
             # Preserve the original invalid-evidence result if failure exposition fails.
             pass
