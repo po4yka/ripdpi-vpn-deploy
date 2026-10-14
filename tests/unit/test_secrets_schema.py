@@ -725,7 +725,7 @@ def test_hysteria_masquerade_requires_https(filled, tmp_path):
 def test_plaintext_secrets_fixture_covers_required_hysteria_masquerade_url():
     fixture = yaml.safe_load(PLAIN_FIXTURE.read_text())
 
-    assert fixture["hysteria"]["masquerade_url"] == "https://vpn.example.com"
+    assert fixture["hysteria"]["masquerade_url"] == "https://vpn.example.com:8443"
     assert list(_validator().iter_errors(fixture)) == []
 
 

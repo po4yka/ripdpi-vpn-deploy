@@ -1087,10 +1087,18 @@ test-transport-runtime-acceptance:
 
 # Separate disposable roots retain the foreign-authority refusal of the complete
 # consumer transaction lab. CI requires this lane and its four-case target above.
+# Endpoint contract cases run through their named target in the same native job.
+.PHONY: test-xhttp-endpoint-contract
+test-xhttp-endpoint-contract:
+	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 && test "$${TRANSPORT_NATIVE_ISOLATED:-}" = 1 || { echo "XHTTP endpoint tests require an owned isolated Linux root environment" >&2; exit 1; }
+	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest \
+	  tests/unit/test_xhttp_endpoint_contract_native.py --fail-on-skip -v
+
 test-native-runtime:
 	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 || { echo "native runtime tests require a disposable Linux root environment" >&2; exit 1; }
 	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ -m native_runtime \
-	  --ignore=tests/unit/test_transport_runtime_acceptance_native.py --fail-on-skip -v
+	  --ignore=tests/unit/test_transport_runtime_acceptance_native.py \
+	  --ignore=tests/unit/test_xhttp_endpoint_contract_native.py --fail-on-skip -v
 
 test-probe-matrix-mtproto:
 	cd tools/probe-matrix-mtproto && go test -mod=readonly -count=1 -v -timeout=2m -p=2 ./...
@@ -1304,13 +1312,14 @@ probe-sni-survival:
 bootstrap-secrets:
 	@test -n "$(TARGET)$(SERVER_NAME)" || { \
 	  echo "usage: make bootstrap-secrets TARGET=mirror.example.com:443 SERVER_NAME=mirror.example.com"; \
-	  echo "  optional: CLIENTS=phone,laptop ENV=prod XHTTP_HOST=vpn.example.com"; \
+	  echo "  optional: CLIENTS=phone,laptop ENV=prod XHTTP_HOST=vpn.example.com XHTTP_PORT=8443"; \
 	  exit 1; }
 	./scripts/bootstrap-secrets.sh \
 	  $(if $(ENV),--env $(ENV)) \
 	  $(if $(CLIENTS),--clients $(CLIENTS)) \
 	  --target $(TARGET) --server-name $(SERVER_NAME) \
-	  $(if $(XHTTP_HOST),--xhttp-host $(XHTTP_HOST))
+	  $(if $(XHTTP_HOST),--xhttp-host $(XHTTP_HOST)) \
+	  $(if $(XHTTP_PORT),--xhttp-port "$(XHTTP_PORT)")
 
 spot-check-secrets:
 	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run 'make decrypt'"; exit 1; }

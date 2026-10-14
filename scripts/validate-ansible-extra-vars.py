@@ -10,6 +10,8 @@ from pathlib import Path
 
 import yaml
 
+from transport_semantics import origin_valid
+
 ALLOWED_KEYS = {
     "ansible_host",
     "ansible_port",
@@ -121,19 +123,8 @@ def validate(path: Path) -> None:
 
     if "public_site_canonical_url" in document:
         url = document["public_site_canonical_url"]
-        # Origin only: the nginx-xhttp assert pins this value to
-        # https://<nginx_xhttp.server_name>, so a path would never converge.
-        if (
-            not isinstance(url, str)
-            or not url.startswith("https://")
-            or "/" in url[len("https://"):]
-        ):
-            raise ValueError(
-                "public_site_canonical_url must be an https origin (https://<host>)"
-            )
-        host = url[len("https://"):]
-        if DNS_NAME.fullmatch(host) is None:
-            raise ValueError("public_site_canonical_url host is not a valid DNS name")
+        if not origin_valid(url):
+            raise ValueError("public_site_canonical_url must be a canonical HTTPS origin")
 
     if "firewall_forward_interface_contract" in document:
         contracts = document["firewall_forward_interface_contract"]

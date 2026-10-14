@@ -27,6 +27,11 @@ HTTPS proxy origin. The exact same `scripts/transport_semantics.py` is installed
 beside the server YAML validator; keep the companion source together with that
 consumer. Unsupported modes and origin disagreement fail before host changes.
 
+Origins have no path, query, fragment, credentials or explicit default port.
+When the local direct frontend is enabled, the origin must include its effective
+nondefault HTTPS port. Scoped hosts resolution changes only the hostname lookup;
+it never drops the port or changes global NSS authority.
+
 
 **Port hopping keeps one unprivileged socket** — the config always binds `hysteria_port`; firewall-owned NAT redirects `hysteria_port_range` onto it. Do not pass a port union to Hysteria or grant it `CAP_NET_ADMIN`.
 

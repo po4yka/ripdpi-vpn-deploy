@@ -23,6 +23,8 @@ CLIENTS=phone
 TARGET=""
 SERVER_NAME=""
 XHTTP_HOST=""
+XHTTP_PORT=8443
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FORCE=0
 AWG_GO_VERSION="v0.2.12"
 AWG_GO_COMMIT="2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf"
@@ -37,6 +39,7 @@ usage: $0 --target HOST:PORT --server-name HOST [options]
   --target SNI:PORT REALITY target (host:port)
   --server-name H   REALITY serverName (single hostname; SAN-covered)
   --xhttp-host H    nginx-xhttp server_name (defaults to --server-name)
+  --xhttp-port P    primary HTTPS port (default: 8443; use 443 for direct-only)
   --force           overwrite existing files
 
 Generates: age key (if missing), REALITY x25519 keypair, per-client
@@ -54,6 +57,7 @@ while [[ $# -gt 0 ]]; do
     --target) TARGET="$2"; shift 2 ;;
     --server-name) SERVER_NAME="$2"; shift 2 ;;
     --xhttp-host) XHTTP_HOST="$2"; shift 2 ;;
+    --xhttp-port) XHTTP_PORT="$2"; shift 2 ;;
     --force) FORCE=1; shift ;;
     -h|--help) usage ;;
     *) echo "unknown arg: $1" >&2; usage ;;
@@ -64,21 +68,27 @@ done
 [[ -z "$XHTTP_HOST" ]] && XHTTP_HOST="$SERVER_NAME"
 command -v python3 >/dev/null 2>&1 || { echo "missing tool: python3" >&2; exit 1; }
 
-BOOTSTRAP_ENV="$ENV" \
+XHTTP_ORIGIN="$(BOOTSTRAP_ENV="$ENV" \
 BOOTSTRAP_CLIENTS="$CLIENTS" \
 BOOTSTRAP_TARGET="$TARGET" \
 BOOTSTRAP_SERVER_NAME="$SERVER_NAME" \
 BOOTSTRAP_XHTTP_HOST="$XHTTP_HOST" \
-python3 - <<'PY'
+BOOTSTRAP_XHTTP_PORT="$XHTTP_PORT" \
+python3 - "$REPO_ROOT" <<'PY'
 import ipaddress
 import os
 import re
+import sys
+
+sys.path.insert(0, sys.argv[1] + "/scripts")
+from transport_semantics import served_origin
 
 environment = os.environ["BOOTSTRAP_ENV"]
 clients_raw = os.environ["BOOTSTRAP_CLIENTS"]
 target = os.environ["BOOTSTRAP_TARGET"]
 server_name = os.environ["BOOTSTRAP_SERVER_NAME"]
 xhttp_host = os.environ["BOOTSTRAP_XHTTP_HOST"]
+xhttp_port = os.environ["BOOTSTRAP_XHTTP_PORT"]
 slug_pattern = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
 label_pattern = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
 
@@ -111,6 +121,12 @@ if not valid_dns_hostname(server_name):
     fail("invalid server name: expected a DNS hostname")
 if not valid_dns_hostname(xhttp_host):
     fail("invalid xhttp hostname: expected a DNS hostname")
+if not re.fullmatch(r"[1-9][0-9]{0,4}", xhttp_port):
+    fail("invalid xhttp port")
+try:
+    origin = served_origin(xhttp_host, int(xhttp_port))
+except ValueError:
+    fail("invalid xhttp origin")
 
 if target.count(":") != 1:
     fail("invalid target: expected DNS_OR_IPV4:PORT")
@@ -126,7 +142,9 @@ if not valid_host:
 port = int(port_text)
 if not 1 <= port <= 65535:
     fail("invalid target: port must be between 1 and 65535")
+print(origin)
 PY
+)"
 
 yaml_scalar() {
   python3 -c 'import json, sys; print(json.dumps(sys.stdin.read()))'
@@ -313,7 +331,7 @@ hysteria:
     -----END PRIVATE KEY-----
   bandwidth_up: "100 mbps"
   bandwidth_down: "200 mbps"
-  masquerade_url: "https://${XHTTP_HOST}"
+  masquerade_url: "${XHTTP_ORIGIN}"
   salamander_enabled: false
   salamander_password: ""
   clients:

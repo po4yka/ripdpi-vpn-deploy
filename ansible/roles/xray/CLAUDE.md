@@ -68,6 +68,11 @@ role's regular file with the other role's symlink.
 
 **XHTTP can run without REALITY** — the role runs when either transport is enabled. The XHTTP inbound binds only to `127.0.0.1`; when `vpn.enable_xray_reality` is false, no public REALITY inbound or REALITY target validation is emitted.
 
+`trustedXForwardedFor` contains the `X-Forwarded-For` header name, not a proxy
+address. Every shared frontend overwrites that header with its admitted peer;
+never append a supplied chain. The input path shares controller admission with
+Nginx and liveness emission, so unsupported endpoint syntax fails before staging.
+
 **StatsService is local-only** — traffic and online-user counters are enabled
 for redacted diagnostics, but the gRPC API binds only to
 `xray_api_listen=127.0.0.1:10086`. The monitoring role owns export and

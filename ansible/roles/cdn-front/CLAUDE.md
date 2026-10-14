@@ -22,6 +22,11 @@ must reload successfully; they retain transactional rollback on failure.
 
 **Real-IP trust is server-scoped** — only the CDN vhost includes the prefix/header restoration file. Refresh validates the generated include inside a server context, so co-resident direct and delivery listeners never inherit CDN attribution.
 
+The shared Xray backend consumes `X-Forwarded-For`. This frontend overwrites it
+with the server-scoped restored peer, removes `Forwarded`, and never appends an
+incoming chain. Transport access/error logging stays separate from ordinary
+public logs so failed requests cannot disclose the bearer endpoint or session.
+
 ## What's done well
 
 - **Origin CA is generated locally, not pulled from CF** — avoids a

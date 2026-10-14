@@ -9,7 +9,8 @@ _run_bootstrap() {
     --clients "${TEST_CLIENTS-phone}" \
     --target "${TEST_TARGET-mirror.example.com:443}" \
     --server-name "${TEST_SERVER_NAME-mirror.example.com}" \
-    --xhttp-host "${TEST_XHTTP_HOST-vpn.example.com}"
+    --xhttp-host "${TEST_XHTTP_HOST-vpn.example.com}" \
+    --xhttp-port "${TEST_XHTTP_PORT-8443}"
 }
 
 _install_bootstrap_stubs() {
@@ -86,6 +87,16 @@ EOF
   [[ "$output" == *"invalid environment name"* ]]
   [ ! -e "${BATS_TEST_TMPDIR}/.config" ]
   [ ! -e "${BATS_TEST_TMPDIR}/escape.secrets.yaml" ]
+}
+
+@test "bootstrap rejects invalid primary ports before filesystem changes" {
+  local port
+  for port in 0 65536 08443 '443;true'; do
+    TEST_XHTTP_PORT="$port"
+    _run_bootstrap
+    [ "$status" -ne 0 ]
+    [ ! -e "${BATS_TEST_TMPDIR}/.config" ]
+  done
 }
 
 @test "bootstrap rejects invalid and duplicate client names" {
@@ -207,6 +218,16 @@ PY
   [ "$(grep -Fc '  source_commit:' "$encrypted")" -eq 1 ]
   [ "$(grep -Fc '  source_linux_amd64_sha256:' "$encrypted")" -eq 1 ]
   [ "$(grep -Fc '  source_linux_arm64_sha256:' "$encrypted")" -eq 1 ]
+  [ "$(grep -Fc '  masquerade_url: "https://vpn.example.com:8443"' "$encrypted")" -eq 1 ]
+}
+
+@test "bootstrap renders port 443 without an explicit default port" {
+  _install_bootstrap_stubs
+  run env PATH="${FAKE_BIN}:${PATH}" UUID_STATE="$UUID_STATE" OPENSSL_STATE="$OPENSSL_STATE" HOME="$BATS_TEST_TMPDIR" \
+    bash "$SCRIPT" --env canonical --target mirror.example.com:443 --server-name mirror.example.com \
+    --xhttp-host vpn.example.com --xhttp-port 443
+  [ "$status" -eq 0 ]
+  [ "$(grep -Fc '  masquerade_url: "https://vpn.example.com"' "${BATS_TEST_TMPDIR}/.config/vpn-provision/canonical.secrets.sops.yaml")" -eq 1 ]
 }
 
 @test "bootstrap honors a repo-local provisioning directory" {

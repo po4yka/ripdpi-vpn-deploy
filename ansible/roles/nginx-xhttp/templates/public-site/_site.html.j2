@@ -1,5 +1,5 @@
 {% macro head(title, description, path, page_type="website", schema_type=none, headline=none, date_published=none, date_modified=none) -%}
-{%- set site_host = public_site_canonical_url | replace("https://", "") | replace("http://", "") | trim("/") -%}
+{%- set site_host = public_site_canonical_url | urlsplit("hostname") -%}
 {%- set organization = {
   "@type": "Organization",
   "@id": public_site_canonical_url ~ "/#organization",

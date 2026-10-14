@@ -14,6 +14,14 @@
 
 ## Design decisions
 
+XHTTP endpoint acceptance is a separate complete target within the native job.
+Its cases and the existing native/RTA lanes form a disjoint complete collection,
+with selected skips fatal. Both served ports exercise actual pinned clients,
+conflicting forwarding headers, private backend peer observations, discovery,
+complete native candidate refusal and Hysteria's owned TLS proxy. ARM64
+native runs require the repository-pinned base and exact ARM64 runtime checksums;
+emulated executable identities cannot stand in for native authority.
+
 Payload-classification fixtures control elapsed time independently of curl
 completion. Uniform and spiking RTT scenarios execute the real classifier;
 the clock shim delegates every other Python invocation to the pinned interpreter.
@@ -324,9 +332,9 @@ Runtime acceptance has a separate canonical-role Linux lab. It uses exact checks
   example includes the default nginx HTTP redirect, so a copied environment
   reaches the same fail-closed runtime contract as the provider roots.
 
-- **Quirk-named tests** — `test_xhttp_path_matches_both_slash_and_unslashed`,
-  `test_relay_sni_fails_closed_when_local_sni_missing`. The name *is* the
-  doc.
+- **Contract-named tests** — `test_xhttp_endpoint_contract.py` rejects old
+  trailing-slash paths and origin disagreement; its native companion exercises
+  the admitted endpoints rather than asserting renderer text alone.
 - **`snapshot-update` is explicit** — never updates on assertion failure;
   requires an operator running `make snapshot-update` after an intentional
   template change. CI never auto-updates.

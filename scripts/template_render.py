@@ -290,6 +290,7 @@ def _to_json(context, value):
 def template_environment(loader) -> Environment:
     """Build a named environment using the rendered artifact's file type."""
     from ansible.plugins.filter.core import FilterModule
+    from ansible.plugins.filter.urlsplit import FilterModule as UrlFilters
 
     env = Environment(
         loader=loader,
@@ -303,6 +304,7 @@ def template_environment(loader) -> Environment:
         # Keep Jinja's default filter paired with StrictUndefined; Ansible's
         # default expects its own Undefined implementation instead.
         env.filters.setdefault(name, filter_)
+    env.filters.update(UrlFilters().filters())
     env.filters["hash"] = _sha256
     env.filters["to_json"] = _to_json
     env.filters["b64encode"] = lambda value: base64.b64encode(

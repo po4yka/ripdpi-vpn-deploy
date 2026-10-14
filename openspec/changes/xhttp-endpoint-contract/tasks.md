@@ -2,7 +2,7 @@
 
 ## Objective
 
-Align XHTTP endpoint paths forwarded attribution and served origins. All execution checkboxes remain open; this is planning, not implementation or deployment approval.
+Align XHTTP endpoint paths forwarded attribution and served origins in an isolated source implementation. Execution states record observed checks; deployment and private-input migration remain outside this task's authorized scope.
 
 ## Ownership
 
@@ -26,15 +26,21 @@ Align XHTTP endpoint paths forwarded attribution and served origins. All executi
 - tests/unit/test_public_site_contract.py
 - tests/unit/test_liveness_profiles.py
 - NEW: tests/unit/test_xhttp_endpoint_contract.py
+- tests/unit/test_xhttp_endpoint_contract_native.py
+- scripts/transport_semantics.py, bootstrap-secrets.sh, ci-bootstrap-secrets.sh
+- ansible/playbooks/tasks/transport-input-preflight.yml and group_vars origin defaults
+- ansible/roles/cdn-front/templates/cdn-front.conf.j2 and its role notes (shared backend authority)
+- tests/integration/transport_destination_boundary/fixture.py
+- Makefile, .github/workflows/ci.yml, tests/unit/test_executable_coverage.py
 - Primary integration owns all shared schema, profile, Makefile, CI/snapshot and portfolio edits; explicitly assign disjoint paths before future parallel implementation.
 - Preserve unrelated work, existing review records and private operator files. Use a dedicated implementation worktree only after authorization.
-- This planning session has one serialized repository writer; delegated plan drafts do not alter runtime source.
+- Primary owns all source and test paths above, schema/examples, snapshots and portfolio updates as one serialized writer. No parallel writer lane is active.
 
 ## Execution
 
-- [ ] XRY-1791617961367849 Define strict path and port-aware origin inputs and update all validators renderers and profile exporters with boundary tests #bug !high @item:XRY-1791617955392712
-- [ ] XRY-1791617962188506 Correct direct frontend source attribution and prove actual peer identity under supplied header conflicts #bug !high @item:XRY-1791617955392712
-- [ ] XRY-1791617963780756 Exercise exact supported client requests discovery masquerade and failed endpoint rollback across served ports #bug !high @item:XRY-1791617955392712
+- [x] XRY-1791617961367849 Define strict path and port-aware origin inputs and update all validators renderers and profile exporters with boundary tests #bug !high @item:XRY-1791617955392712
+- [x] XRY-1791617962188506 Correct direct frontend source attribution and prove actual peer identity under supplied header conflicts #bug !high @item:XRY-1791617955392712
+- [x] XRY-1791617963780756 Exercise exact supported client requests discovery masquerade and failed endpoint rollback across served ports #bug !high @item:XRY-1791617955392712
 - [ ] XRY-1791617971846326 Review serialized snapshots run contract and full gates and document the breaking input redistribution boundary #bug !high @item:XRY-1791617955392712
 
 ## Verification

@@ -159,6 +159,9 @@ deep_merge(merged, load_group("vpn"))
 if cohort:
     deep_merge(merged, load_group(f"vpn-{cohort}", required=True))
 
+# Client emission knows protocol policy, not the deployed site's private origin
+# override. That authority is admitted by the controller before server mutation.
+merged.pop("public_site_canonical_url", None)
 print(json.dumps(merged))
 PY
 }

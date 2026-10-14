@@ -15,7 +15,7 @@ from pathlib import PurePosixPath
 import re
 import uuid
 
-from transport_semantics import awg_errors, cohort_errors, hysteria_errors, key_valid, parameter_errors
+from transport_semantics import awg_errors, cohort_errors, hysteria_errors, key_valid, parameter_errors, xhttp_path_valid
 
 PROFILES = {"p0-reality", "p1-xhttp", "p2-hysteria2", "p2-amneziawg"}
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}\Z")
@@ -301,7 +301,7 @@ def build_profiles(standard_doc, ripdpi_doc, secrets_doc, client, required_profi
                 transport = outbound.get("transport")
                 if (not isinstance(transport, dict) or set(transport) != {"type", "host", "path"}
                         or transport["type"] != "xhttp" or _host(transport["host"]) != tls["server_name"]
-                        or not re.fullmatch(r"/[A-Za-z0-9/_~.%+-]*", _text(transport["path"]))
+                        or not xhttp_path_valid(transport["path"])
                         or "flow" in outbound or "multiplex" in outbound):
                     raise ProfileError("invalid-xhttp-transport")
                 expected_path = secrets_doc["xray"].get("xhttp_path")
