@@ -336,6 +336,21 @@ jobs:
           ANSIBLE_FORCE_COLOR: "1"
           NAIVE_NATIVE_BINARY: ${{ github.workspace }}/.cache/p2-native-caddy/caddy
 
+      - name: Verify pinned Kuma push timing persistence and encrypted restore
+        if: matrix.role == 'observability_kuma'
+        run: |
+          test "$(uname -m)" = x86_64
+          age_dir="$(mktemp -d "$RUNNER_TEMP/kuma-age.XXXXXX")"
+          curl --fail --location --retry 3 --connect-timeout 10 --max-time 120 \
+            https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-linux-amd64.tar.gz \
+            --output "$age_dir/archive.tar.gz"
+          printf '%s  %s\n' cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10 \
+            "$age_dir/archive.tar.gz" | sha256sum --check --strict
+          tar -xzf "$age_dir/archive.tar.gz" -C "$age_dir" age/age age/age-keygen
+          export PATH="$age_dir/age:$PATH"
+          test "$(age --version)" = v1.3.2
+          python3 ansible/roles/observability_kuma/molecule/runtime/run.py
+
   shellcheck:
     timeout-minutes: 5
     name: shellcheck
