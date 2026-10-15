@@ -15,7 +15,7 @@ created: 2026-10-13
 updated: 2026-10-13
 spec_reason: regression-tested-single-module
 related_tasks: [MON-1791825755591250]
-status_detail: Bounded service identity, full local gate, exact-source hosted checks and independent review passed at f03923dfca69c3fa229444747bbe6939a21b7a41; deployment and real notifications remain excluded.
+status_detail: "Integrated main source 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8 passed all 88 source/native CI jobs in 38792726270 and both CodeQL analyses; focused local evidence and the unsuccessful monolithic local attempt are recorded. No external rollout or real notification receipt claimed."
 ---
 
 ## Goal

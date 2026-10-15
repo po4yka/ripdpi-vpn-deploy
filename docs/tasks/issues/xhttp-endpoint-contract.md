@@ -14,7 +14,7 @@ openspec_change: xhttp-endpoint-contract
 created: 2026-10-10
 updated: 2026-10-14
 related_tasks: [ANS-1791562764586678, ANS-1791586652330612]
-status_detail: "Implementation, independent review and exact-source checks passed; PR #297 prepared for owner review."
+status_detail: "Integrated main source 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8 passed all 88 source/native CI jobs in 38792726270 and both CodeQL analyses; focused local evidence and the unsuccessful monolithic local attempt are recorded. No external rollout or real notification receipt claimed."
 ---
 
 ## Goal
