@@ -404,6 +404,8 @@ Runtime acceptance has a separate canonical-role Linux lab. It uses exact checks
 AWG reconnect fixtures restore the same tunnel identities and both default routes after Linux link-down removes IPv6 addresses and routes. Server-compensation probes preserve the original client session and allow the pinned protocol's 15-second handshake recovery plus TCP retransmission within one bounded socket invocation.
 Constrained-path acceptance observes the initial connection and three subsequent
 reconnects for every member and both families.
+Revocation keeps the original IPv4 and IPv6 UDP sockets open across claim removal
+and key removal, requiring positive echoes first and no datagram delivery afterward.
 
 Read-only sender admission is also executed through actual Ansible argv/stdin templating. Sender queue regression tests perform real private-file copies and in-place restoration across interruption checkpoints and partial cleanup; they assert historical bytes, original root inode, no-follow authority, exact backup identities and fail-before-mutation admission. Service mocks are portable orchestration evidence only. The enabled native Molecule scenario requires the exact historical nonce and pre-cutover timestamp to reach the authenticated receiver after an actual rejected candidate.
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import select
 import subprocess
 import sys
 import time
@@ -72,6 +73,20 @@ for qtype in (1,28):
         value=socket.inet_pton(socket.AF_INET6 if qtype==28 else socket.AF_INET,'fd88::2' if qtype==28 else '198.18.1.2')
         assert response[:2]==query[:2] and response[6:8]==b'\x00\x01' and response.endswith(value)
 print(json.dumps({'bytes':received,'seconds':time.monotonic()-started,'udp_sent':24,'udp_received':24,'dns_types':[1,28]}))
+'''
+RETAINED_UDP = r'''
+import json, os, socket, sys
+address=sys.argv[1]
+with socket.socket(socket.AF_INET6 if ':' in address else socket.AF_INET, socket.SOCK_DGRAM) as s:
+    s.settimeout(2); s.connect((address,32000))
+    for line in sys.stdin:
+        payload=os.urandom(256); received=None
+        try:
+            s.send(payload); received=s.recv(65535)
+        except OSError:
+            pass
+        print(json.dumps({'port':s.getsockname()[1], 'delivered':received is not None,
+                          'echo':received==payload}),flush=True)
 '''
 
 
@@ -159,6 +174,21 @@ def test_owned_uplink_nat_mtu_dns_reconnect_revocation_and_no_native_bypass(tmp_
             assert measured['bytes']==24*(4096+1200) and measured['seconds']>0
             assert measured['udp_sent']==measured['udp_received'] and measured['dns_types']==[1,28]
             print(json.dumps({'members':members,'client':i,'family':6 if ':' in address else 4,'mtu':1280,**measured}))
+    def retained_udp(address):
+        process=subprocess.Popen(['ip','netns','exec',clients[0],sys.executable,'-c',RETAINED_UDP,address],
+                                 stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True)
+        processes.append(process)
+        return process
+    def retained_probe(process, port=None):
+        process.stdin.write('probe\n'); process.stdin.flush()
+        assert select.select([process.stdout],[],[],4)[0], 'retained UDP probe did not return within its deadline'
+        observed=json.loads(process.stdout.readline())
+        if port is None:
+            assert observed['delivered'] and observed['echo'], 'retained UDP flow needs a positive echo before revocation'
+        else:
+            assert observed['port']==port, 'revocation probe must retain the original UDP tuple'
+            assert not observed['delivered'], 'revoked retained UDP flow delivered a datagram'
+        return observed['port']
     try:
         for ns in (server,uplink,*clients):
             command(['ip','netns','add',ns]); namespaces.append(ns)
@@ -253,12 +283,17 @@ def test_owned_uplink_nat_mtu_dns_reconnect_revocation_and_no_native_bypass(tmp_
                 probe(1,address)
                 probe(0,address,accepted=False)
             for address in ('198.18.1.2','fd88::2'): probe(1,address)
-        # Removing a key and both source claims denies both families even with retained conntrack.
+        # Keep both UDP sockets and their established conntrack tuples across
+        # claim removal and key revocation; a fresh socket cannot prove this.
+        retained=[retained_udp(address) for address in ('198.18.1.2','fd88::2')]
+        ports=[retained_probe(process) for process in retained]
         revoked_key=doc['amneziawg_secrets']['instances'][0]['peers'][0]['public_key']
         values['amneziawg_secrets']['instances'][0]['peers']=[]
         publish()
+        for process,port in zip(retained,ports,strict=True): retained_probe(process,port)
         for address in ('198.18.1.2','fd88::2'): probe(0,address,accepted=False)
         run(server,[tools,'set',interfaces[0],'peer',revoked_key,'remove'])
+        for process,port in zip(retained,ports,strict=True): retained_probe(process,port)
         for address in ('198.18.1.2','fd88::2'): probe(0,address,accepted=False)
         if members==2:
             for address in ('198.18.1.2','fd88::2'): probe(1,address)

@@ -209,7 +209,7 @@ def test_firewall_retention_restores_owned_generation_or_fresh_closed_baseline(t
             assert nft_file.read_text()==accepted
             assert '10.66.66.2' in live and 'fd42:42:42::2' in live
         else:
-            assert 'policy drop;' in live and 'awg-nat-' not in live
+            assert 'policy drop;' in live and 'awg-nat-' not in live, result.stdout+result.stderr
             assert 'flush ruleset' not in nft_file.read_text()
     finally:
         if original is None: nft_file.unlink(missing_ok=True)
