@@ -3,7 +3,7 @@ task_id: "SCR-1791618188806822"
 change: "client-consumed-payload-identity"
 commit_sha: null
 local: "required"
-local_evidence: "127 final drift/registry/emitter/expiry cases, 279 transaction regressions and 49 caller/gate cases passed without selected skips; full source gate remains in progress"
+local_evidence: "135 complete drift/registry/emitter/expiry cases, 45 registry/QR cases, 279 transaction regressions and 49 caller/gate cases passed without selected skips; local broad run found known pre-fix failures and two unchanged Ansible timeouts"
 remote_ci: "required"
 remote_ci_evidence: "Initial source e08957b987d5dd4c49e3c4cf33420f846deb8c84 exposed same-second refresh and obsolete shell-reader fixtures; corrected exact-source checks remain required"
 dry_run: "not_applicable"
@@ -49,3 +49,17 @@ host-selection and expiry cases without selected skips. Real SOPS cases retain
 leading-dash device names through both emitters, issuance and Make inspection;
 a leading-dash bearer remains one literal refresh value. Dispatchers preserve
 the client-first shell surface and delimit data before Python parsing.
+
+Malformed consumed-authority regressions restore the former renderer's
+nonempty typed REALITY SNI/key, XHTTP host, Hysteria password/host and Snell
+credential admission. Invalid private input yields unknown/refusal with no
+partial artifact, traceback or marker disclosure. The complete affected run
+passed 135 cases; the registry/QR contract run passed 45 cases, including the
+machine-token early exit and optional missing-encoder behavior. Failure
+fixtures explicitly isolate HOME and SOPS paths from operator configuration.
+
+The broad local retry completed 7207 cases and 22 subtests before reporting
+six now-corrected pre-fix assertions/issuance cases and two unchanged Ansible
+wall-clock timeouts (30 and 45 seconds). Both original timeout cases are
+queued for a gated focused recheck with their original bounds. No timeout or
+assertion was relaxed. Exact final-source hosted acceptance remains required.

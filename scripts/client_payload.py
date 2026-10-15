@@ -79,13 +79,19 @@ def options(format, *, hosts=None, cohorts=None, awg_host=None, expires='', utls
 
 def validate_options(o):
     if (not isinstance(o, dict) or set(o) != {'format', 'hosts', 'cohorts', 'awg_host', 'expires', 'utls'}
-            or o['format'] not in ('singbox', 'ripdpi') or not isinstance(o['hosts'], list) or not 1 <= len(o['hosts']) <= 16
+            or o['format'] not in ('singbox', 'ripdpi') or not isinstance(o['hosts'], list) or not o['hosts']
             or any(not isinstance(h, str) or not HOST.fullmatch(h) for h in o['hosts'])
             or not isinstance(o['cohorts'], list) or (o['cohorts'] and len(o['cohorts']) != len(o['hosts']))
             or any(not isinstance(c, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,62}', c) for c in o['cohorts'])
             or not isinstance(o['awg_host'], str) or (o['awg_host'] and o['awg_host'] not in o['hosts'])
             or not isinstance(o['expires'], str) or not isinstance(o['utls'], str)):
         raise ValueError('invalid-delivery-options')
+
+
+def required_text(value):
+    if not isinstance(value, str) or not value:
+        raise ValueError('missing-consumed-authority')
+    return value
 
 
 def context(cohort):
@@ -166,6 +172,12 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
                 raise ValueError('missing-selected-xray-client')
         credential = selected[0] if selected else {}
         if enabled('enable_xray_reality', True):
+            server_names = x.get('server_names')
+            reality_key = x.get('reality_public_key')
+            if (not isinstance(server_names, list) or not server_names
+                    or not isinstance(server_names[0], str) or not server_names[0]
+                    or not isinstance(reality_key, str) or not reality_key):
+                raise ValueError('missing-selected-reality-authority')
             flow = vpn.get('xray_flow_mode') or c.get('p0_reality_flow_mode', 'vision')
             shapes = c.get('p0_reality_shapes', {})
             finalmask = vpn.get('xray_finalmask', shapes[flow]['finalmask'])
@@ -184,15 +196,15 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
                     raise ValueError('P0 REALITY finalmask requires an Xray client')
                 reality = dict(type='vless', tag='p0-reality-' + tag + ('-' + member['name'] if member['name'] else ''), server=ip,
                                server_port=member['port'], uuid=credential['uuid'],
-                               tls=dict(enabled=True, server_name=x['server_names'][0], utls=dict(enabled=True, fingerprint=fp),
-                                        reality=dict(enabled=True, public_key=x['reality_public_key'], short_id=credential['short_id'])))
+                               tls=dict(enabled=True, server_name=server_names[0], utls=dict(enabled=True, fingerprint=fp),
+                                        reality=dict(enabled=True, public_key=reality_key, short_id=credential['short_id'])))
                 if shape['client_mux']:
                     reality['multiplex'] = dict(enabled=True, protocol='smux', max_streams=8)
                 elif shape['client_flow']:
                     reality['flow'] = shape['client_flow']
                 out.append(reality)
         if o['format'] == 'ripdpi' and enabled('enable_nginx_xhttp', True):
-            server_name = d['nginx_xhttp']['server_name']
+            server_name = required_text(d['nginx_xhttp'].get('server_name'))
             out.append(dict(type='vless', tag='p1-xhttp-' + tag, server=ip, server_port=c.get('nginx_xhttp_public_port', 443), uuid=credential['uuid'],
                             tls=dict(enabled=True, server_name=server_name, utls=dict(enabled=True, fingerprint=fp)),
                             transport=dict(type='xhttp', host=server_name, path=x.get('xhttp_path', '/app-sync'))))
@@ -202,7 +214,7 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
             if len(matches) != 1:
                 raise ValueError('missing-selected-hysteria-client')
             hyout = dict(type='hysteria2', tag='p2-hysteria2-' + tag, server=ip, server_port=c.get('hysteria_port', 443),
-                         password=client + ':' + matches[0]['password'], tls=dict(enabled=True, server_name=hy.get('server_name') or d['nginx_xhttp']['server_name']))
+                         password=client + ':' + required_text(matches[0].get('password')), tls=dict(enabled=True, server_name=required_text(hy.get('server_name') or (d.get('nginx_xhttp') or {}).get('server_name'))))
             extra = dict(insecure=False)
             if hy.get('salamander_enabled') and hy.get('salamander_password'):
                 hyout['obfs'] = dict(type='salamander', password=hy['salamander_password'])
@@ -226,7 +238,7 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
                 for reuse in (False, True):
                     snell_tag = 'p3-snell-' + variant['id'] + ('-reuse-' if reuse else '-fresh-') + tag
                     entry = dict(type='snell', tag=snell_tag, server=ip, server_port=variant['listen_port'], version=variant['client_version'],
-                                 psk=secret['psk'], userkey=user['userkey'], reuse=reuse, network='tcp')
+                                 psk=required_text(secret.get('psk')), userkey=required_text(user.get('userkey')), reuse=reuse, network='tcp')
                     entry.update(dict(obfs_mode='none') if variant['client_version'] == 4 else dict(mode=variant.get('mode', 'default')))
                     out.append(entry)
                     snell.append(snell_tag)

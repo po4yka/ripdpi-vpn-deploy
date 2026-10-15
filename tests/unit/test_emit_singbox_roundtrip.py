@@ -169,7 +169,7 @@ def _run_bundle(
 
 
 def _run_snell_only_script(
-    tmp_path: Path, *, omit_variant: str | None = None
+    tmp_path: Path, *, omit_variant: str | None = None, empty_credential: str | None = None
 ) -> subprocess.CompletedProcess:
     repo = tmp_path / "snell-repo"
     (repo / "scripts").mkdir(parents=True)
@@ -216,6 +216,10 @@ def _run_snell_only_script(
             "users": [{"name": "laptop", "userkey": "v6-unshaped-user"}],
         },
     ]
+    if empty_credential == 'psk':
+        variants[0]['psk'] = ''
+    elif empty_credential == 'userkey':
+        variants[0]['users'][0]['userkey'] = ''
     if omit_variant:
         variants = [variant for variant in variants if variant["id"] != omit_variant]
     secrets = tmp_path / "snell-secrets.json"
@@ -910,3 +914,11 @@ def test_emit_singbox_missing_client_exits_nonzero(tmp_path):
     assert (
         result.returncode != 0
     ), "script should exit non-zero for an unknown client name"
+
+
+@pytest.mark.parametrize('credential', ['psk', 'userkey'])
+def test_snell_empty_consumed_credentials_refuse_without_partial_output(tmp_path, credential):
+    result = _run_snell_only_script(tmp_path, empty_credential=credential)
+    assert result.returncode != 0
+    assert not result.stdout
+    assert 'materialization refused' in result.stderr

@@ -433,7 +433,7 @@ def test_subscription_directory_rejected_before_external_commands(
     )
     result = subprocess.run(
         ["bash", str(script), "phone"],
-        env={**os.environ, "SUBSCRIPTION_DIR": directory},
+        env={**os.environ, "SUBSCRIPTION_DIR": directory, "HOME": str(tmp_path), "SOPS_FILE": str(tmp_path / "absent.sops.yaml")},
         capture_output=True,
         text=True,
         timeout=5,
@@ -458,7 +458,7 @@ def test_safe_subscription_directory_reaches_next_stage(tmp_path, script_name):
     )
     result = subprocess.run(
         ["bash", str(script), "phone"],
-        env={**os.environ, "SUBSCRIPTION_DIR": "/var/lib/vpn-subscription"},
+        env={**os.environ, "SUBSCRIPTION_DIR": "/var/lib/vpn-subscription", "HOME": str(tmp_path), "SOPS_FILE": str(tmp_path / "absent.sops.yaml")},
         capture_output=True,
         text=True,
         timeout=5,

@@ -631,3 +631,8 @@ refresh must redeliver without manufacturing an encrypted state change.
 Profile and subscription dispatchers put the selected device after `--` while
 retaining the client-first shell interface. Leading-dash device names stay
 literal data through Python argument parsing; Make drift uses the same delimiter.
+
+Enabled transport authority must contain nonempty typed credentials and SNI
+before publication. Malformed consumed authority returns a categorical refusal;
+missing optional QR tooling retains the committed delivery and machine-token
+mode keeps its early exit without QR side effects.

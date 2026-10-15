@@ -375,3 +375,68 @@ def test_refresh_bearer_with_leading_dash_remains_a_literal_value(lab, monkeypat
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == token
     assert capture.read_bytes() == before
+
+
+@pytest.mark.parametrize('invalid', ['empty-sni', 'scalar-sni', 'missing-key'])
+def test_invalid_consumed_reality_authority_is_categorical_unknown(lab, invalid, capsys):
+    path, _capture, drift = lab
+    deliver()
+    capsys.readouterr()
+    def mutate(doc):
+        if invalid == 'empty-sni':
+            doc['xray']['server_names'] = []
+        elif invalid == 'scalar-sni':
+            doc['xray']['server_names'] = MARKER
+        else:
+            doc['xray']['reality_public_key'] = ''
+    change(path, mutate)
+    before = path.read_bytes()
+    assert drift._verdict('phone') == ('unknown', 'private input or materialization unavailable')
+    checked = subprocess.run([sys.executable, str(ROOT / 'scripts/client-drift.py'), 'phone'], capture_output=True, text=True, timeout=30)
+    assert checked.returncode == 2
+    assert checked.stdout.startswith('unknown:') and not checked.stderr
+    assert MARKER not in checked.stdout
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize('field,format', [('xhttp-host', 'ripdpi'), ('hysteria-password', 'singbox'), ('hysteria-host', 'singbox')])
+def test_empty_consumed_transport_authority_refuses(lab, field, format, capsys):
+    path, _capture, drift = lab
+    args = issuer.argparse.Namespace(client='phone', format=format, expires=None, refresh_token=None, print_token_only=True, qr=False)
+    issuer.issue(args)
+    capsys.readouterr()
+    def mutate(doc):
+        if field == 'hysteria-password':
+            doc['hysteria']['clients'][0]['password'] = ''
+        else:
+            doc['nginx_xhttp']['server_name'] = ''
+            if field == 'hysteria-host':
+                doc['hysteria']['server_name'] = ''
+    change(path, mutate)
+    before = path.read_bytes()
+    assert drift._verdict('phone')[0] == 'unknown'
+    assert path.read_bytes() == before
+
+
+def test_machine_token_mode_retains_early_exit_without_qr_side_effects(lab, monkeypatch, capsys):
+    path, capture, drift = lab
+    command = issuer.command
+    def observe(argv, **kwargs):
+        assert argv[0] != 'qrencode'
+        return command(argv, **kwargs)
+    monkeypatch.setattr(issuer, 'command', observe)
+    args = issuer.argparse.Namespace(client='phone', format='ripdpi', expires=None, refresh_token=None, print_token_only=True, qr=True)
+    assert issuer.issue(args) == 0
+    out = capsys.readouterr()
+    assert len(out.out.strip()) == 43 and not out.err
+    assert capture.exists() and drift._verdict('phone')[0] == 'current'
+
+
+def test_missing_optional_qr_encoder_retains_committed_delivery(lab, monkeypatch, capsys):
+    _path, capture, drift = lab
+    monkeypatch.setattr(issuer.shutil, 'which', lambda name: None)
+    args = issuer.argparse.Namespace(client='phone', format='ripdpi', expires=None, refresh_token=None, print_token_only=False, qr=True)
+    assert issuer.issue(args) == 0
+    out = capsys.readouterr()
+    assert 'skip --qr' in out.err and MARKER not in out.out + out.err
+    assert capture.exists() and drift._verdict('phone')[0] == 'current'

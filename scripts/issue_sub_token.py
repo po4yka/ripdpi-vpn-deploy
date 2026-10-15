@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shutil
 import subprocess
 import sys
 
@@ -111,6 +112,7 @@ def issue(args):
         print('subscription-delivery: audit unavailable after committed delivery', file=sys.stderr)
     if args.print_token_only:
         print(token)
+        return 0
     else:
         if args.refresh_token:
             print('refresh options — reused: format,expires; overridden: ' + ('format' if args.format is not None else 'none'))
@@ -119,6 +121,9 @@ def issue(args):
         print('Subscription URL (long-lived, refresh-able):\n  ' + publication['url'])
         print('Revoke: append the token hash to subscription.revoked_tokens and re-deploy.')
     if args.qr:
+        if shutil.which('qrencode') is None:
+            print('qrencode not installed; skip --qr', file=sys.stderr)
+            return 0
         # Recipient QR output remains private and never receives the URL in argv.
         import tempfile
         descriptor, temporary = tempfile.mkstemp(prefix='.' + args.client + '.qr.', dir=Path.cwd())
