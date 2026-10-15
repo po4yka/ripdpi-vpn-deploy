@@ -14,6 +14,8 @@
 
 ## Design decisions
 
+ECH native traffic stays in a private netns. Host-wide UDP ceilings are observed, tuned and restored before entering that namespace because Linux 6.8 does not expose them there. Packet decoding explicitly selects QUIC for the allocated test port.
+
 Native frontend fixtures verify the same upgraded Hysteria bytes as the builder. Smoke control-flow fixtures load the deployed CA directory from shared group variables; encrypted synthetic fixtures must track the plaintext runtime selection.
 
 ECH unit cases check wire framing, private/public key agreement, identity/generation matching, strict emitter routing and root-only systemd credential wiring. They are source evidence; exact native ECH negotiation, packet identity, traffic and generation compensation have a separately selected Linux lane.

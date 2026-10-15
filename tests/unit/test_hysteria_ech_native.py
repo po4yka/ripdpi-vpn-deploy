@@ -36,7 +36,10 @@ def runtimes(pytestconfig):
 def test_actual_ech_clients_traffic_privacy_trust_and_resources(
     tmp_path, runtimes, profile
 ):
-    with lab.namespace(), ExitStack() as resources:
+    baseline = merge_render_vars()
+    with lab.socket_ceilings(
+        baseline["baseline_udp_receive_buffer_max"], baseline["baseline_udp_send_buffer_max"]
+    ) as socket_ceilings, lab.namespace(), ExitStack() as resources:
 
         def receive_errors():
             rows = Path("/proc/net/snmp").read_text().splitlines()
@@ -50,32 +53,6 @@ def test_actual_ech_clients_traffic_privacy_trust_and_resources(
             raise AssertionError("UDP-drop-observation-unavailable")
 
         initial_drops = receive_errors()
-        original_ceilings = (
-            lab.command(["sysctl", "-n", "net.core.rmem_max", "net.core.wmem_max"])
-            .decode()
-            .split()
-        )
-        assert len(original_ceilings) == 2 and all(
-            value.isdigit() for value in original_ceilings
-        )
-        resources.callback(
-            lab.command,
-            [
-                "sysctl",
-                "-w",
-                "net.core.rmem_max=" + original_ceilings[0],
-                "net.core.wmem_max=" + original_ceilings[1],
-            ],
-        )
-        baseline = merge_render_vars()
-        lab.command(
-            [
-                "sysctl",
-                "-w",
-                "net.core.rmem_max=" + str(baseline["baseline_udp_receive_buffer_max"]),
-                "net.core.wmem_max=" + str(baseline["baseline_udp_send_buffer_max"]),
-            ]
-        )
         payload = b"native-authenticated-payload-" * 32768
 
         class HTTP(socketserver.BaseRequestHandler):
@@ -287,11 +264,6 @@ def test_actual_ech_clients_traffic_privacy_trust_and_resources(
                 local, payload
             )  # A new native stream after the concurrent transfer.
         assert receive_errors() == initial_drops, "UDP-receive-drop-regression"
-        socket_ceilings = (
-            lab.command(["sysctl", "-n", "net.core.rmem_max", "net.core.wmem_max"])
-            .decode()
-            .split()
-        )
         assert [int(value) for value in socket_ceilings] == [
             baseline["baseline_udp_receive_buffer_max"],
             baseline["baseline_udp_send_buffer_max"],
@@ -420,6 +392,8 @@ def test_actual_ech_clients_traffic_privacy_trust_and_resources(
                 "tshark",
                 "-r",
                 str(capture),
+                "-d",
+                "udp.port==" + str(port) + ",quic",
                 "-Y",
                 "tls.handshake.type == 1",
                 "-T",

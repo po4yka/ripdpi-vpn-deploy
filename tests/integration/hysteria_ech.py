@@ -78,6 +78,25 @@ def binaries(cache):
 
 
 @contextmanager
+def socket_ceilings(receive, send):
+    # Linux 6.8 exposes these host-wide bounds only in the initial netns.
+    assert (os.uname().sysname == "Linux" and os.geteuid() == 0
+            and os.environ.get("TRANSPORT_NATIVE_ISOLATED") == "1"), "isolated-linux-root-required"
+    keys = ("net.core.rmem_max", "net.core.wmem_max")
+    original = command(["sysctl", "-n", *keys]).decode().split()
+    assert len(original) == 2 and all(value.isdigit() for value in original)
+    try:
+        command(["sysctl", "-w", *[key + "=" + str(value)
+                                 for key, value in zip(keys, (receive, send))]])
+        observed = [int(value) for value in command(["sysctl", "-n", *keys]).split()]
+        assert observed == [receive, send], "socket-ceiling-application-unconfirmed"
+        yield observed
+    finally:
+        command(["sysctl", "-w", *[key + "=" + value for key, value in zip(keys, original)]])
+        assert command(["sysctl", "-n", *keys]).decode().split() == original, "socket-ceiling-restoration-unconfirmed"
+
+
+@contextmanager
 def namespace():
     assert (
         os.uname().sysname == "Linux"
