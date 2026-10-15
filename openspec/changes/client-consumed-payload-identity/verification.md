@@ -3,7 +3,7 @@ task_id: "SCR-1791618188806822"
 change: "client-consumed-payload-identity"
 commit_sha: null
 local: "required"
-local_evidence: "279 affected transaction/issuance cases, 49 caller/gate cases and 38 emitter cases passed without selected skips; full source gate remains in progress"
+local_evidence: "127 final drift/registry/emitter/expiry cases, 279 transaction regressions and 49 caller/gate cases passed without selected skips; full source gate remains in progress"
 remote_ci: "required"
 remote_ci_evidence: "Initial source e08957b987d5dd4c49e3c4cf33420f846deb8c84 exposed same-second refresh and obsolete shell-reader fixtures; corrected exact-source checks remain required"
 dry_run: "not_applicable"
@@ -43,3 +43,9 @@ Audit, SOPS-selection and retirement assertions follow the actual Python writer;
 the expiry fixture now supports encrypted registry staging and verification.
 The affected suites passed 279 cases, the caller/gate suite passed 49 cases,
 and the explicit same-second/atomic-failure rerun passed both cases.
+
+Final dispatcher validation passed 127 complete drift, registry, emitter,
+host-selection and expiry cases without selected skips. Real SOPS cases retain
+leading-dash device names through both emitters, issuance and Make inspection;
+a leading-dash bearer remains one literal refresh value. Dispatchers preserve
+the client-first shell surface and delimit data before Python parsing.

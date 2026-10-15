@@ -333,3 +333,45 @@ def test_same_second_refresh_republishes_with_unchanged_encrypted_registry(lab, 
     assert path.read_bytes() == before
     assert capture.read_bytes() == delivered
     assert drift._verdict('phone')[0] == 'current'
+
+
+@pytest.mark.parametrize('device', ['-phone', '--device'])
+def test_dispatchers_keep_leading_dash_device_names_literal(lab, device):
+    path, capture, _drift = lab
+    def rename(value):
+        if isinstance(value, dict):
+            return {device if key == 'phone' else key: rename(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [rename(item) for item in value]
+        return device if value == 'phone' else value
+    def replace(doc):
+        new = rename(doc)
+        doc.clear()
+        doc.update(new)
+    change(path, replace)
+    result = subprocess.run(['bash', str(ROOT / 'scripts/issue-sub-token.sh'), device, '--format', 'ripdpi', '--print-token-only'], capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    delivered = json.loads(capture.read_bytes())
+    for script in ('emit-singbox.sh', 'emit-bundle.sh'):
+        emitted = subprocess.run(['bash', str(ROOT / 'scripts' / script), device], capture_output=True, text=True, timeout=30)
+        assert emitted.returncode == 0, emitted.stderr
+        assert json.loads(emitted.stdout)['outbounds']
+        assert MARKER not in emitted.stderr
+        if script == 'emit-bundle.sh':
+            assert json.loads(emitted.stdout) == delivered
+    checked = subprocess.run(['make', '--silent', '--no-print-directory', 'client-drift', 'CLIENT=' + device, 'SOPS_FILE=' + str(path)], cwd=ROOT, capture_output=True, text=True, timeout=30)
+    assert checked.returncode == 0, checked.stderr
+    assert checked.stdout.startswith('current:')
+
+
+def test_refresh_bearer_with_leading_dash_remains_a_literal_value(lab, monkeypatch, capsys):
+    _path, capture, _drift = lab
+    token = '-' + 'A' * 42
+    monkeypatch.setattr(issuer.secrets, 'token_urlsafe', lambda size: token)
+    deliver()
+    assert capsys.readouterr().out.strip() == token
+    before = capture.read_bytes()
+    result = subprocess.run(['bash', str(ROOT / 'scripts/issue-sub-token.sh'), 'phone', '--refresh-token', token, '--print-token-only'], capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == token
+    assert capture.read_bytes() == before
