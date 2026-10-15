@@ -204,6 +204,11 @@ def hysteria_client(document, port, ca, client_name):
     client = {'server': host + ':' + server_port, 'auth': name + ':' + password,
               'tls': {'sni': sni, 'ca': str(ca), 'insecure': False},
               'socks5': {'listen': '127.0.0.1:' + str(port)}}
+    if 'ech' in document:
+        from transport_semantics import ech_keys_config
+        client['tls']['ech'] = ech_keys_config(Path(document['ech']['keyPath']).read_text())
+    if 'congestion' in document:
+        client['congestion'] = document['congestion']
     if 'obfs' in document:
         client['obfs'] = document['obfs']
     return client

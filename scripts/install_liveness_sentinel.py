@@ -686,7 +686,10 @@ def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, st
             for fmt, profiles_for_format in (("sing-box", {"p0-reality", "p2-hysteria2"}),
                                              ("ripdpi", {"p1-xhttp"})):
                 if set(required) & profiles_for_format:
-                    emitted[fmt] = _json(_run([str(REPO / "scripts/emit-singbox.sh"), client, "--profile-format", fmt],
+                    # XHTTP is consumed by Xray, independently of the official
+                    # sing-box ECH recipient. Select that intermediate explicitly.
+                    selection = ["--xhttp-only"] if fmt == "ripdpi" and secrets.get("hysteria", {}).get("ech") else []
+                    emitted[fmt] = _json(_run([str(REPO / "scripts/emit-singbox.sh"), client, *selection, "--profile-format", fmt],
                                              environment=emit_env, timeout=120))
             defaults, cohort, endpoint = {}, {}, None
             if "p2-amneziawg" in required:

@@ -56,7 +56,7 @@ def inspect_lease(tx):
     directory_name = value['directory']['name']
     if (not isinstance(directory_name, str) or Path(directory_name).name != directory_name
             or not directory_name.startswith(namespace + '-') or value['directory']['identity'][4] != 0o750
-            or not isinstance(value['files'], dict) or set(value['files']) != FILES):
+            or not isinstance(value['files'], dict) or set(value['files']) not in (FILES, FILES | {'ech.key'})):
         raise Refusal('validation-lease-invalid')
     validate_claim({key: value['unit'][key] for key in ('identity', 'sha256')}, tx.uid)
     unit_path = UNIT_ROOT / value['unit']['name']
@@ -83,7 +83,7 @@ def inspect_lease(tx):
     if directory.exists():
         tx.parent(directory)
         names = set(os.listdir(directory))
-        if names - FILES or value['phase'] == 'prepared' and names != FILES:
+        if names - set(value['files']) or value['phase'] == 'prepared' and names != set(value['files']):
             raise Refusal('validation-foreign-file')
     for name, claimed in value['files'].items():
         validate_claim(claimed, tx.uid)
@@ -176,11 +176,11 @@ def recover_validation(tx):
     return True
 
 
-def validate_hysteria(binary, raw, certificate, key, unit, timeout, client_name, *, transaction=None, checkpoint=lambda _stage: None):
+def validate_hysteria(binary, raw, certificate, key, unit, timeout, client_name, *, transaction=None, ech_key=None, checkpoint=lambda _stage: None):
     if transaction is None:
         with Transaction(STATE) as tx:
             validate_hysteria(binary, raw, certificate, key, unit, timeout, client_name,
-                              transaction=tx, checkpoint=checkpoint)
+                              transaction=tx, ech_key=ech_key, checkpoint=checkpoint)
         return
     tx = transaction
     recover_validation(tx)
@@ -202,6 +202,13 @@ def validate_hysteria(binary, raw, certificate, key, unit, timeout, client_name,
             cert = private_file(directory, 'server.fullchain.pem', certificate)
             private = private_file(directory, 'server.key', key)
             document['tls']['cert'], document['tls']['key'] = str(cert), str(private)
+            files = FILES.copy()
+            if 'ech' in document:
+                if ech_key is None:
+                    raise Refusal('ech-authority-required')
+                ech = private_file(directory, 'ech.key', ech_key)
+                files.add('ech.key')
+                document['ech']['keyPath'] = '/run/credentials/' + token + '.service/hysteria-ech'
             server = private_file(directory, 'server.yaml', yaml.safe_dump(document))
             for path in (cert, private, server):
                 os.chown(path, 0, gid)
@@ -240,6 +247,9 @@ HTTPServer(('192.0.2.80', 18080), Canary).serve_forever()
                                        if not line.startswith(dependencies))
             validation_unit += '\n[Service]\nNetworkNamespacePath=' + str(NAMESPACE_ROOT / token)
             validation_unit += '\nExecStart=\nExecStart=' + binary + ' server -c ' + str(server)
+            validation_unit += '\nLoadCredential=\n'
+            if 'ech' in document:
+                validation_unit += 'LoadCredential=hysteria-ech:' + str(ech) + '\n'
             validation_unit += '\nBindReadOnlyPaths=\nRestart=no\nRuntimeMaxSec=' + str(timeout + 5)
             validation_unit += '\nTimeoutStopSec=5\nKillMode=control-group'
             validation_unit += '\nStandardOutput=null\nStandardError=null\n'
@@ -254,10 +264,10 @@ HTTPServer(('192.0.2.80', 18080), Canary).serve_forever()
                      'unit': {'name': unit_path.name, 'identity': unit_info['identity']},
                      'namespace': {'name': token, 'identity': identity((NAMESPACE_ROOT / token).lstat())},
                      'directory': {'name': directory.name, 'identity': identity(directory.lstat())},
-                     'files': {name: node(directory / name, tx.uid) for name in FILES}}
+                     'files': {name: node(directory / name, tx.uid) for name in files}}
             # Unit content is independently checked through its SHA256 authority.
             claim['unit']['sha256'] = unit_info['sha256']
-            for name in FILES:
+            for name in files:
                 fd = os.open(directory / name, os.O_RDONLY | os.O_NOFOLLOW)
                 try:
                     os.fsync(fd)

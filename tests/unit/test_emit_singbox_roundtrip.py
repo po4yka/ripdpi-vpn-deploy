@@ -833,7 +833,7 @@ def test_emit_bundle_roundtrip_preserves_singbox_args_and_extension(tmp_path):
                 "type": "salamander",
                 "password": "fixture-salamander-password-not-real",
             },
-            "salamander_upstream_tag": "v2.9.0",
+            "salamander_upstream_tag": "v2.13.0",
         }
     }
     assert ripdpi["topology"] == {

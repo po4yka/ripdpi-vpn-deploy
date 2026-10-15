@@ -94,10 +94,135 @@ def xhttp_errors(doc: dict, context: dict) -> list[tuple[str, str]]:
     return errors
 
 
+
+def hostname_valid(value):
+    return isinstance(value, str) and DNS_NAME.fullmatch(value) is not None
+
+
+def ech_config(raw):
+    """Parse the supported X25519/HKDF-SHA256 ECHConfigList wire contract."""
+    import base64
+    if not isinstance(raw, str) or not 1 <= len(raw) <= 16384:
+        raise ValueError("invalid-ech-config")
+    try:
+        data = base64.b64decode(raw, validate=True)
+        if base64.b64encode(data).decode() != raw:
+            raise ValueError()
+        def vector(blob, width=2):
+            if len(blob) < width:
+                raise ValueError()
+            size = int.from_bytes(blob[:width], 'big')
+            if size > len(blob) - width:
+                raise ValueError()
+            return blob[width:width+size], blob[width+size:]
+        configs, rest = vector(data)
+        if rest or not configs:
+            raise ValueError()
+        result, ids = [], set()
+        while configs:
+            version, configs = configs[:2], configs[2:]
+            body, configs = vector(configs)
+            if version != b'\xfe\x0d' or len(body) < 3 or body[0] in ids or body[1:3] != b'\x00\x20':
+                raise ValueError()
+            ids.add(body[0])
+            public, body = vector(body[3:])
+            suites, body = vector(body)
+            if len(public) != 32 or not suites or len(suites) % 4 or not body:
+                raise ValueError()
+            if any(suites[i:i+2] != b'\x00\x01' or suites[i+2:i+4] not in (b'\x00\x01', b'\x00\x02', b'\x00\x03') for i in range(0, len(suites), 4)):
+                raise ValueError()
+            name, body = vector(body[1:], 1)
+            extensions, body = vector(body)
+            name = name.decode('ascii')
+            if body or extensions or not hostname_valid(name) or len(result) >= 4:
+                raise ValueError()
+            result.append(name)
+        return result
+    except (ValueError, UnicodeError, IndexError):
+        raise ValueError("invalid-ech-config") from None
+
+
+def ech_keys_config(pem, *, verify_private=False):
+    """Return only public bytes derived from bounded Hysteria ECH KEYS PEM."""
+    import base64
+    if not isinstance(pem, str) or len(pem) > 32768:
+        raise ValueError("invalid-ech-authority")
+    blocks = re.findall(r'-----BEGIN (ECH KEYS|ECH CONFIGS)-----\s*([A-Za-z0-9+/=\s]+?)\s*-----END \1-----', pem)
+    if [kind for kind, _ in blocks] not in (['ECH KEYS'], ['ECH KEYS', 'ECH CONFIGS']):
+        raise ValueError("invalid-ech-authority")
+    remainder = re.sub(r'-----BEGIN (ECH KEYS|ECH CONFIGS)-----\s*[A-Za-z0-9+/=\s]+?\s*-----END \1-----', '', pem)
+    if remainder.strip():
+        raise ValueError("invalid-ech-authority")
+    try:
+        raw = base64.b64decode(''.join(blocks[0][1].split()), validate=True)
+        configs = b''
+        count = 0
+        while raw:
+            if len(raw) < 38 or raw[:2] != b'\x00\x20':
+                raise ValueError()
+            size = int.from_bytes(raw[34:36], 'big')
+            if size < 4 or 36+size > len(raw) or count >= 4:
+                raise ValueError()
+            if verify_private:
+                from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+                public = X25519PrivateKey.from_private_bytes(raw[2:34]).public_key().public_bytes_raw()
+                if raw[45:77] != public:
+                    raise ValueError()
+            configs += raw[36:36+size]
+            raw = raw[36+size:]
+            count += 1
+        if not configs:
+            raise ValueError()
+        config = len(configs).to_bytes(2, 'big') + configs
+        encoded = base64.b64encode(config).decode()
+        ech_config(encoded)
+        if len(blocks) == 2 and base64.b64decode(''.join(blocks[1][1].split()), validate=True) != config:
+            raise ValueError()
+        return encoded
+    except (ValueError, IndexError, OverflowError):
+        raise ValueError("invalid-ech-authority") from None
+
+
+def hysteria_profile_errors(raw):
+    import hashlib
+    import base64
+    errors = []
+    tuning = raw.get('resource_profile')
+    if 'resource_profile' in raw and tuning not in ('bandwidth-capped', 'bbr-conservative', 'bbr-standard'):
+        errors.append(('hysteria.resource_profile', 'unsupported resource profile'))
+    if tuning is not None and raw.get('version') != 'v2.13.0':
+        errors.append(('hysteria.resource_profile', 'exact supported runtime required'))
+    for field in ('bandwidth_up', 'bandwidth_down'):
+        value = raw.get(field)
+        if value is not None:
+            match = re.fullmatch(r'([1-9][0-9]*)\s*(bps|kbps|mbps|gbps)', value) if isinstance(value, str) else None
+            if not match or int(match[1]) * {'bps':1,'kbps':1000,'mbps':1000000,'gbps':1000000000}[match[2]] > 1000000000:
+                errors.append(('hysteria.' + field, 'bandwidth must be positive and at most 1 Gbps'))
+    if 'ech' not in raw:
+        return errors
+    ech = raw['ech']
+    fields = {'profile', 'generation', 'inner_name', 'public_name', 'config_list', 'keys_pem'}
+    try:
+        if not isinstance(ech, dict) or set(ech) != fields or ech['profile'] != 'ech-required':
+            raise ValueError()
+        if raw.get('version') != 'v2.13.0' or raw.get('salamander_enabled', False) is not False:
+            raise ValueError()
+        names = ech_config(ech['config_list'])
+        if (not hostname_valid(ech['inner_name']) or ech['inner_name'] == ech['public_name']
+                or any(name != ech['public_name'] for name in names)
+                or ech_keys_config(ech['keys_pem'], verify_private=True) != ech['config_list']
+                or hashlib.sha256(base64.b64decode(ech['config_list'])).hexdigest() != ech['generation']
+                or urlsplit(raw.get('masquerade_url', '')).hostname != ech['inner_name']
+                or raw.get('server_name', ech['inner_name']) != ech['inner_name']):
+            raise ValueError()
+    except (ValueError, TypeError, KeyError):
+        errors.append(('hysteria.ech', 'invalid coordinated ECH authority or profile'))
+    return errors
+
 def hysteria_errors(raw: object, canonical_origin: object = None) -> list[tuple[str, str]]:
     if not isinstance(raw, dict):
         return [("hysteria", "must be a mapping")]
-    errors = []
+    errors = hysteria_profile_errors(raw)
     if raw.get("masquerade_type", "proxy") != "proxy":
         errors.append(("hysteria.masquerade_type", "only owned HTTPS proxy is supported"))
     if not origin_valid(raw.get("masquerade_url")):

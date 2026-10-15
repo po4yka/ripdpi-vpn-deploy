@@ -2,7 +2,7 @@
 
 ## Objective
 
-Upgrade Hysteria with validated congestion and UDP resource profiles. All execution checkboxes remain open; this is planning, not implementation or deployment approval.
+Upgrade Hysteria with validated congestion and UDP resource profiles. Source implementation and PR preparation are authorized. Execution steps remain open until their complete named native and acceptance checks are observed.
 
 ## Ownership
 
@@ -50,4 +50,4 @@ Requirement-to-step mapping and unfulfilled evidence categories live in verifica
 
 Native `make test-native-runtime` and the dependency-provided native acceptance targets run only on the explicitly isolated Linux root/systemd/TUN host. macOS or missing privileges are prerequisite failures, never silent skips or mocked substitutes.
 
-Implementation starts only after the canonical portfolio prerequisites are satisfied and separately authorized. Planning alone neither starts work nor checks an execution step.
+Source preparation is authorized in a dedicated worktree. Promotion and acceptance still follow the canonical dependency graph; source changes alone do not check an execution step.

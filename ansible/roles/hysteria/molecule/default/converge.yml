@@ -68,17 +68,17 @@
         mode: '0755'
     - name: Fetch verified Hysteria 2.9.0 amd64 fixture
       ansible.builtin.get_url:
-        url: https://github.com/HyNetworks/hysteria/releases/download/app/v2.9.0/hysteria-linux-amd64
-        dest: /var/tmp/hysteria-molecule/hysteria-v2.9.0
-        checksum: sha256:8225c8380f1ae8122921d4986c2b70976e9c6e6f87a977e7d0498a813f4f3e37
+        url: https://github.com/HyNetworks/hysteria/releases/download/app/v2.13.0/hysteria-linux-amd64
+        dest: /var/tmp/hysteria-molecule/hysteria-v2.13.0
+        checksum: sha256:907ba8c9693edb104b20582681fb7dc15639d5b64a9cbb616a7b539190a86691
         owner: root
         group: root
         mode: '0755'
     - name: Fetch verified Hysteria 2.9.0 arm64 fixture
       ansible.builtin.get_url:
-        url: https://github.com/HyNetworks/hysteria/releases/download/app/v2.9.0/hysteria-linux-arm64
-        dest: /var/tmp/hysteria-molecule/hysteria-v2.9.0-arm64
-        checksum: sha256:a3ccc0a3e791b85710ef63d22304a6f7dea210259be71bcd70cf9a210a385454
+        url: https://github.com/HyNetworks/hysteria/releases/download/app/v2.13.0/hysteria-linux-arm64
+        dest: /var/tmp/hysteria-molecule/hysteria-v2.13.0-arm64
+        checksum: sha256:a68a61a84452ca250ce0368202521965ca9cc9d801a404f1dc9008ac6cf677a7
         owner: root
         group: root
         mode: '0755'

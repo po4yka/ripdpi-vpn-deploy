@@ -58,8 +58,9 @@ def render_profiles(directory: Path) -> dict[str, Path]:
     outputs = []
     for profile_format in ("sing-box", "ripdpi"):
         try:
+            selection = ["--xhttp-only"] if profile_format == "ripdpi" and document.get("hysteria", {}).get("ech") else []
             outputs.append(json.loads(run(["bash", str(ROOT / "scripts/emit-singbox.sh"),
-                                           "laptop", "--profile-format", profile_format], environment)))
+                                           "laptop", *selection, "--profile-format", profile_format], environment)))
         except json.JSONDecodeError:
             raise CompatibilityError("emitter returned malformed JSON") from None
 

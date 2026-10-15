@@ -132,7 +132,7 @@ def test_native_site_retirement_and_remaining_upgrade_commit_once():
         assert lab.converge('hysteria', site=True) == 0
         accepted = json.loads((state / 'accepted.json').read_bytes())
         assert accepted['nodes']['/etc/systemd/system/xray.service'] is None
-        assert os.readlink('/opt/hysteria/current').endswith('/v2.9.0')
+        assert os.readlink('/opt/hysteria/current').endswith('/v2.13.0')
         assert json.loads((state / 'last.json').read_bytes())['before_receipt'] == initial
         assert not (state / 'outer.json').exists()
         baseline = (state / 'accepted.json').read_bytes()
@@ -421,3 +421,37 @@ with Transaction(STATE) as tx:
                 os.kill(process.pid, signal.SIGKILL)
                 process.wait(timeout=10)
             process.stdout.close()
+
+
+def test_native_ech_rotation_idempotence_and_complete_compensation():
+    from hysteria_ech import generate
+    from transport_runtime_accept import fields
+    with fixture.Lab() as lab:
+        assert lab.converge('hysteria') == 0
+        lab.upgrade('hysteria')
+        binary = lab.artifacts / 'hysteria-v2.13.0'
+        ech = generate(binary, 'outer.example', 'owned.example')
+        lab.context['hysteria']['ech'] = ech
+        assert lab.converge('hysteria') == 0
+        key = Path('/etc/hysteria/ech.key')
+        assert key.read_text() == ech['keys_pem'] and key.stat().st_mode & 0o777 == 0o600
+        assert key.stat().st_uid == 0 and key.stat().st_gid == 0
+        before = fields('hysteria-server.service')['MainPID']
+        receipt = Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_bytes()
+        assert lab.converge('hysteria') == 0
+        assert fields('hysteria-server.service')['MainPID'] == before
+        assert Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_bytes() == receipt
+        # Existing native failure/kill matrix now runs with ECH credential authority.
+        exercise_native_refusals_and_process_death(lab, 'hysteria')
+        assert key.read_text() == ech['keys_pem']
+        rotated = generate(binary, 'outer.example', 'owned.example')
+        lab.context['hysteria']['ech'] = rotated
+        assert lab.converge('hysteria', site=True, fail_after_acceptance=True, allow_failure=True) != 0
+        assert key.read_text() == ech['keys_pem']
+        assert lab.converge('hysteria') == 0
+        assert key.read_text() == rotated['keys_pem']
+        assert fields('hysteria-server.service')['MainPID'] != before
+        del lab.context['hysteria']['ech']
+        assert lab.converge('hysteria') == 0
+        assert not key.exists()
+        assert lab.converge('hysteria', retire=True) == 0

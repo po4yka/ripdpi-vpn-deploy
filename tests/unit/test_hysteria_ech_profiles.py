@@ -1,0 +1,332 @@
+"""Typed public/private ECH boundaries; native acceptance is a separate lane."""
+
+from __future__ import annotations
+import base64
+import copy
+import hashlib
+import json
+import os
+from pathlib import Path
+
+from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+import pytest
+import yaml
+
+from transport_semantics import ech_config, ech_keys_config, hysteria_errors
+from template_render import merge_render_vars, render_template
+from test_emit_singbox_roundtrip import (
+    _secrets_as_json,
+    _build_env,
+    SCRIPT,
+    BUNDLE_SCRIPT,
+)
+import subprocess
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def authority(public_name="outer.example", inner_name="vpn.example.com"):
+    private = X25519PrivateKey.generate()
+
+    def vector(raw):
+        return len(raw).to_bytes(2, "big") + raw
+
+    body = b"\x01\x00\x20" + vector(private.public_key().public_bytes_raw())
+    body += (
+        vector(b"\x00\x01\x00\x01")
+        + b"\x00"
+        + bytes([len(public_name)])
+        + public_name.encode()
+        + b"\x00\x00"
+    )
+    config = b"\xfe\x0d" + vector(body)
+    config_list = vector(config)
+    pem = (
+        "-----BEGIN ECH KEYS-----\n"
+        + base64.b64encode(
+            vector(private.private_bytes_raw()) + vector(config)
+        ).decode()
+        + "\n-----END ECH KEYS-----\n"
+    )
+    return {
+        "profile": "ech-required",
+        "generation": hashlib.sha256(config_list).hexdigest(),
+        "inner_name": inner_name,
+        "public_name": public_name,
+        "config_list": base64.b64encode(config_list).decode(),
+        "keys_pem": pem,
+    }
+
+
+def hysteria(ech):
+    return {
+        "version": "v2.13.0",
+        "masquerade_url": "https://vpn.example.com",
+        "ech": ech,
+    }
+
+
+def test_real_key_agreement_and_public_generation():
+    ech = authority()
+    assert ech_keys_config(ech["keys_pem"], verify_private=True) == ech["config_list"]
+    assert ech_config(ech["config_list"]) == ["outer.example"]
+    assert not hysteria_errors(hysteria(ech))
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "key",
+        "config",
+        "generation",
+        "inner",
+        "outer",
+        "same-name",
+        "version",
+        "obfs",
+        "profile",
+        "unknown",
+    ],
+)
+def test_mismatched_or_unsafe_ech_authority_refuses(mutation):
+    ech = authority()
+    doc = hysteria(ech)
+    if mutation == "key":
+        ech["keys_pem"] = authority()["keys_pem"]
+    elif mutation == "config":
+        ech["config_list"] += "AAAA"
+    elif mutation == "generation":
+        ech["generation"] = "0" * 64
+    elif mutation == "inner":
+        ech["inner_name"] = "wrong.example"
+    elif mutation == "outer":
+        ech["public_name"] = "wrong.example"
+    elif mutation == "same-name":
+        ech["inner_name"] = ech["public_name"]
+    elif mutation == "version":
+        doc["version"] = "v2.9.0"
+    elif mutation == "obfs":
+        doc["salamander_enabled"] = True
+    elif mutation == "profile":
+        ech["profile"] = "opportunistic"
+    elif mutation == "unknown":
+        ech["private_path"] = "/etc/foreign"
+    assert hysteria_errors(doc)
+
+
+@pytest.mark.parametrize("raw", ["", "AAAA", "../private", "====", "A" * 16385])
+def test_invalid_public_config_never_becomes_a_path(raw):
+    with pytest.raises(ValueError, match="invalid-ech-config"):
+        ech_config(raw)
+
+
+def test_render_private_key_uses_root_systemd_credential():
+    variables = merge_render_vars()
+    ech = authority()
+    variables["hysteria"]["ech"] = ech
+    rendered = render_template(
+        ROOT / "ansible/roles/hysteria/templates/config.yaml.j2", variables
+    )
+    unit = render_template(
+        ROOT / "ansible/roles/hysteria/templates/hysteria-server.service.j2", variables
+    )
+    assert yaml.safe_load(rendered)["ech"] == {
+        "keyPath": "/run/credentials/hysteria-server.service/hysteria-ech"
+    }
+    assert "LoadCredential=hysteria-ech:/etc/hysteria/ech.key" in unit
+    assert ech["keys_pem"] not in rendered + unit
+
+
+@pytest.mark.parametrize(
+    "profile", ["bandwidth-capped", "bbr-conservative", "bbr-standard"]
+)
+def test_resource_profiles_render_exact_native_api(profile):
+    variables = merge_render_vars()
+    variables["hysteria"]["resource_profile"] = profile
+    doc = yaml.safe_load(
+        render_template(
+            ROOT / "ansible/roles/hysteria/templates/config.yaml.j2", variables
+        )
+    )
+    if profile.startswith("bbr-"):
+        assert doc["congestion"] == {"type": "bbr", "bbrProfile": profile[4:]}
+        assert doc["ignoreClientBandwidth"] is True
+    else:
+        assert "congestion" not in doc
+    assert doc["quic"]["maxConnReceiveWindow"] == 20971520
+
+
+def test_emitter_keeps_ech_and_refuses_unqualified_bundle(tmp_path):
+    source = _secrets_as_json(tmp_path)
+    document = json.loads(source.read_text())
+    inner = document["nginx_xhttp"]["server_name"]
+    ech = authority(inner_name=inner)
+    document["hysteria"].update(
+        version="v2.13.0", ech=ech, masquerade_url="https://" + inner
+    )
+    document["client_registry"] = {"laptop": {"status": "active"}}
+    source.write_text(json.dumps(document))
+    env = _build_env(tmp_path, source)
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "laptop"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    outbound = next(
+        x for x in json.loads(result.stdout)["outbounds"] if x["type"] == "hysteria2"
+    )
+    assert outbound["tls"]["ech"]["config"][1] == ech["config_list"]
+    assert "ECH KEYS" not in result.stdout + result.stderr
+    bundle = subprocess.run(
+        ["bash", str(BUNDLE_SCRIPT), "laptop"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert bundle.returncode != 0 and not bundle.stdout
+    assert "RIPDPI export is unsupported" in bundle.stderr
+    xhttp = subprocess.run(
+        ["bash", str(SCRIPT), "laptop", "--xhttp-only", "--profile-format", "ripdpi"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert xhttp.returncode == 0, xhttp.stderr
+    intermediate = json.loads(xhttp.stdout)
+    assert not any(x["type"] == "hysteria2" for x in intermediate["outbounds"])
+    from liveness_profiles import build_profiles, ProfileError
+
+    arguments = (
+        json.loads(result.stdout),
+        intermediate,
+        document,
+        "laptop",
+        ["p1-xhttp", "p2-hysteria2"],
+        None,
+        None,
+        None,
+        lambda _key: None,
+        "/private/profiles",
+    )
+    profiles = build_profiles(*arguments, awg_defaults={}, awg_cohort={})
+    retained = next(
+        x
+        for x in profiles["files"]["sing-box.json"]["outbounds"]
+        if x["type"] == "hysteria2"
+    )
+    assert retained["tls"]["ech"] == outbound["tls"]["ech"]
+    del next(x for x in arguments[0]["outbounds"] if x["type"] == "hysteria2")["tls"][
+        "ech"
+    ]
+    with pytest.raises(ProfileError, match="wrong-hysteria-ech-generation"):
+        build_profiles(*arguments, awg_defaults={}, awg_cohort={})
+
+
+def test_wrong_private_scalar_with_same_public_metadata_refuses():
+    ech = authority()
+    raw = bytearray(base64.b64decode(ech["keys_pem"].splitlines()[1]))
+    raw[2] ^= 1
+    # Change a non-clamped scalar bit to alter its public key.
+    raw[3] ^= 1
+    ech["keys_pem"] = (
+        "-----BEGIN ECH KEYS-----\n"
+        + base64.b64encode(raw).decode()
+        + "\n-----END ECH KEYS-----\n"
+    )
+    assert hysteria_errors(hysteria(ech))
+
+
+def test_publication_age_channel_hash_and_unknown_advisories():
+    from datetime import datetime, timezone, timedelta
+    from hysteria_release import publication_eligible
+
+    now = datetime.now(timezone.utc)
+    release = {
+        "tag_name": "v1.14.3",
+        "draft": False,
+        "prerelease": False,
+        "published_at": (now - timedelta(hours=48)).isoformat(),
+        "assets": [{"name": "asset", "digest": "sha256:" + "a" * 64}],
+    }
+    assert publication_eligible(release, "v1.14.3", {"asset": "a" * 64}, [], now)
+    assert not publication_eligible(release, "v1.14.3", {"asset": "a" * 64}, None, now)
+    assert not publication_eligible(
+        release, "v1.14.3", {"asset": "a" * 64}, [{"severity": "high"}], now
+    )
+    for field, value in [
+        ("prerelease", True),
+        ("draft", True),
+        ("published_at", (now - timedelta(hours=47)).isoformat()),
+        ("tag_name", "v1.14.4"),
+    ]:
+        bad = copy.deepcopy(release)
+        bad[field] = value
+        assert not publication_eligible(bad, "v1.14.3", {"asset": "a" * 64}, [], now)
+    assert not publication_eligible(release, "v1.14.3", {"asset": "b" * 64}, [], now)
+
+
+def test_make_issuance_captures_literal_inputs_without_operator_configuration(tmp_path):
+    marker = tmp_path / "must-not-execute"
+    hostile = "$(shell touch " + str(marker) + ")"
+    environment = dict(
+        os.environ,
+        SOPS_FILE=hostile,
+        HYSTERIA_ECH_PUBLIC_NAME=hostile,
+        HYSTERIA_ECH_INNER_NAME=hostile,
+        HYSTERIA_BINARY=hostile,
+    )
+    result = subprocess.run(
+        ["make", "-n", "issue-hysteria-ech"],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0 and not marker.exists()
+    assert "$(shell touch" not in result.stdout
+    refused = subprocess.run(
+        ["make", "-n", "issue-hysteria-ech", "deploy"],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert refused.returncode != 0 and not marker.exists()
+
+
+def test_exact_runtime_contract_matches_current_pins_and_all_architectures():
+    pins = json.loads((ROOT / "contract/hysteria-runtimes.json").read_text())
+    example = yaml.safe_load((ROOT / "secrets/prod.secrets.example.yaml").read_text())
+    assert pins["hysteria"]["version"] == example["hysteria"]["version"] == "v2.13.0"
+    for name in ("hysteria", "sing_box"):
+        assert set(pins[name]["sha256"]) == {
+            "linux-amd64",
+            "linux-arm64",
+            "darwin-arm64",
+        }
+        assert all(len(digest) == 64 for digest in pins[name]["sha256"].values())
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+    unit = next(
+        job
+        for job in workflow["jobs"].values()
+        if "SING_BOX_CLIENT_VERSION" in job.get("env", {})
+    )
+    assert unit["env"]["SING_BOX_CLIENT_VERSION"] == pins["sing_box"]["version"]
+    assert (
+        unit["env"]["SING_BOX_CLIENT_LINUX_AMD64_SHA256"]
+        == pins["sing_box"]["sha256"]["linux-amd64"]
+    )
+
+
+@pytest.mark.parametrize("field", ["ech", "resource_profile"])
+def test_explicit_null_profile_cannot_silently_select_classical_tls(field):
+    assert hysteria_errors(
+        {"version": "v2.13.0", "masquerade_url": "https://vpn.example.com", field: None}
+    )

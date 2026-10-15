@@ -191,11 +191,11 @@ class Adapter:
                 raw = self.candidate(config_path)
                 document = yaml.safe_load(raw)
                 tls = document['tls']
-                hysteria_client(document, 1080, tls['cert'], self.clients['hysteria'])
                 validate_hysteria(binary, raw, self.candidate(tls['cert']),
                                   self.candidate(tls['key']),
                                   self.candidate(path).decode(), self.timeout, self.clients['hysteria'],
-                                  transaction=getattr(self, 'transaction', None))
+                                  transaction=getattr(self, 'transaction', None),
+                                  ech_key=self.candidate('/etc/hysteria/ech.key') if 'ech' in document else None)
 
     def retained(self, receipt):
         self.known = (receipt or {}).get('nodes', {})
@@ -364,7 +364,7 @@ def main():
             allowed = {'/etc/systemd/system/xray.service', '/etc/systemd/system/hysteria-server.service',
                 '/etc/xray/config.json', '/etc/xray/config.json.prev', '/etc/hysteria/config.yaml',
                 '/etc/hysteria/config.yaml.prev', '/etc/hysteria/server.fullchain.pem',
-                '/etc/hysteria/server.key', '/etc/hysteria/masquerade-hosts'}
+                '/etc/hysteria/server.key', '/etc/hysteria/ech.key', '/etc/hysteria/masquerade-hosts'}
             if not 1 <= len(request['paths']) <= len(allowed) or any(path not in allowed for path in request['paths']):
                 raise Refusal('retirement-path-invalid')
             value['candidates'] = [{'path': path, 'absent': True} for path in request['paths']]
@@ -447,7 +447,7 @@ def main():
                     # native frontend traffic and loaded executable identity proof.
                     adapter.ready()
                     paths = [Path(raw) for raw in managed_paths() if Path(raw).name in {
-                        'config.json', 'config.yaml', 'server.key', 'server.fullchain.pem',
+                        'config.json', 'config.yaml', 'server.key', 'ech.key', 'server.fullchain.pem',
                         'masquerade-hosts', 'xray.service', 'hysteria-server.service'}]
                     paths += [Path(raw) for raw in (
                         '/opt/xray/current', '/opt/xray/previous', '/usr/local/bin/xray',

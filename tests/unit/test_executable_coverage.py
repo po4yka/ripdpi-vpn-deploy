@@ -59,9 +59,9 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
     assert terraform["with"]["terraform_wrapper"] is False
     command = shlex.split(native[-1]["run"].replace("\\\n", ""))
     assert command[:2] == ["sudo", "env"]
-    assert command[-4:] == ["make", "test-native-runtime", "test-xhttp-endpoint-contract", "test-awg-device-binding-runtime"]
+    assert command[-5:] == ["make", "test-native-runtime", "test-xhttp-endpoint-contract", "test-awg-device-binding-runtime", "test-hysteria-ech-runtime"]
     environment = {}
-    for assignment in command[2:-4]:
+    for assignment in command[2:-5]:
         name, value = assignment.split("=", 1)
         assert name not in environment, f"duplicate native environment override: {name}"
         environment[name] = value
@@ -103,9 +103,12 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
     commands = [
         ['tests/unit/', '-m', 'native_runtime'],
         ['tests/unit/', '-m', 'native_runtime', '--ignore=tests/unit/test_transport_runtime_acceptance_native.py',
-         '--ignore=tests/unit/test_xhttp_endpoint_contract_native.py'],
+         '--ignore=tests/unit/test_xhttp_endpoint_contract_native.py',
+         '--ignore=tests/unit/test_awg_device_binding_native.py', '--ignore=tests/unit/test_hysteria_ech_native.py'],
         ['tests/unit/test_transport_runtime_acceptance_native.py'],
         ['tests/unit/test_xhttp_endpoint_contract_native.py'],
+        ['tests/unit/test_awg_device_binding_native.py'],
+        ['tests/unit/test_hysteria_ech_native.py'],
     ]
     selected = []
     for arguments in commands:
@@ -113,10 +116,12 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
             cwd=ROOT, text=True, capture_output=True, check=True, timeout=60)
         selected.append({line for line in result.stdout.splitlines()
                          if line.startswith('tests/unit/') and '::' in line})
-    all_native, existing, transactions, endpoint_cases = selected
-    assert all_native == existing | transactions | endpoint_cases
-    assert not existing & transactions and not existing & endpoint_cases and not transactions & endpoint_cases
-    assert transactions and len(transactions) == 4
+    all_native, existing, transactions, endpoint_cases, awg_cases, ech_cases = selected
+    assert all_native == existing | transactions | endpoint_cases | awg_cases | ech_cases
+    groups = [existing, transactions, endpoint_cases, awg_cases, ech_cases]
+    assert all(not left & right for index,left in enumerate(groups) for right in groups[index+1:])
+    assert transactions and len(transactions) == 5
+    assert awg_cases and len(ech_cases) == 3
     assert endpoint_cases and len(endpoint_cases) == 2
     assert "$(MAKE) test-probe-matrix-mtproto" in makefile.split("ci-fast:", 1)[1]
     assert "go test -mod=readonly -count=1" in makefile

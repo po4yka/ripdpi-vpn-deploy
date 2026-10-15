@@ -166,3 +166,65 @@ transport into a single selector + urltest group, which matters for the
 home-ISP TLS policing failure mode. P1 XHTTP requires an Xray-family profile
 or the RIPDPI-specific bundle; never copy that unsupported outbound into the
 standard document.
+
+## Hysteria ECH-required profiles
+
+The supported pair is Hysteria 2.13.0 and official sing-box 1.14.3. An explicit
+`hysteria.ech` object binds `profile: ech-required`, `inner_name`, `public_name`,
+`config_list`, `keys_pem` and `generation` (SHA256 of the decoded public list).
+The inner name equals the owned masquerade/certificate identity. The distinct
+outer name is the visible SNI; choose an operator-owned DNS name. Public ECH
+configuration is distributed inline, with no DNS discovery or automatic fallback.
+Salamander and ECH cannot be selected together in this technical profile.
+
+Use the reviewed exact Hysteria executable for generation. The following command
+mutates only the named encrypted source; it does not deploy or redistribute it:
+
+```bash
+SOPS_FILE=/private/config/staging.secrets.sops.yaml \
+HYSTERIA_BINARY=/private/tools/hysteria \
+HYSTERIA_ECH_PUBLIC_NAME=outer.example.com \
+HYSTERIA_ECH_INNER_NAME=vpn.example.com \
+make issue-hysteria-ech
+```
+
+Issuance verifies the executable checksum, generates within an owned private
+directory, validates private/public key agreement and publishes through the
+existing locked SOPS transaction. Only the generation identity reaches stdout.
+Fresh bootstrap also accepts `--ech-public-name` with the same verified binary.
+
+The role stages the complete root-only key, config, unit and TLS generation.
+`LoadCredential` gives the unprivileged service its private key. Native admission
+relocates that credential into its owned candidate unit before authentication;
+activation failure restores the previous complete authority. Removing `ech`
+selects classical TLS and retires only the managed ECH key.
+
+Rotation replaces the entire ECH generation without an overlap window. Prepare
+new recipient artifacts privately, activate the new server generation and then
+distribute the matching public profile. Existing clients with only the old list
+fail after activation; no plaintext retry is allowed. A failed activation retains
+the old generation. A successful rotation therefore needs a coordinated recipient
+cutover or a separately named endpoint. Keep prior encrypted source authority for
+an explicitly requested rollback after a committed cutover.
+
+RIPDPI bundles are outside this ECH support set and refuse export before producing
+an artifact. Classical profiles remain supported separately. Liveness keeps the
+exact ECH public list and refuses stripped or mismatched generations. For paired
+XHTTP monitoring, `--profile-format ripdpi --xhttp-only` explicitly emits only
+the XHTTP intermediate consumed by Xray; it never emits an ECH Hysteria profile.
+
+Resource profiles are `bandwidth-capped` (the existing bounded receive windows and
+operator bandwidth caps), `bbr-conservative` and `bbr-standard`. BBR profiles set
+both runtime congestion and recipient BBR policy; the server ignores advertised
+client bandwidth for its BBR selection. Kernel UDP ceilings belong to baseline,
+are bounded between 1 MiB and 64 MiB, and default to 7,500,000 bytes. TCP BBR is
+independent of QUIC behavior. Measurements must establish any performance claim.
+
+Before promotion, refresh stable channel, asset and advisory metadata with
+`python3 scripts/hysteria_release.py`. Unknown metadata blocks publication-age
+eligibility. Passing this check proves neither the required 48-hour staging soak
+nor authorization to deploy. Run `make test-hysteria-ech-runtime` and
+`make test-hysteria-resource-profiles` in the isolated Linux root environment;
+packet capture, actual recipient traffic and full transaction compensation remain
+required. Production promotion follows a separately authorized bounded 48-hour
+staging soak, reconnect checks and exact-generation rollback rehearsal.

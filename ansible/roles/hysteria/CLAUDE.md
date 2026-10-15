@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+ECH-required profiles bind the exact 2.13.0 runtime, owned inner identity and explicit outer name to a public SHA256 generation. The root-only ech.key enters the complete guarded transaction and LoadCredential; disabling ECH contributes exact absence authority. Candidate namespaces relocate the credential and prove a real ECH handshake. Resource profiles select fixed receive windows and explicit BBR settings; unsupported engines refuse before export.
+
 - Matching node-local masquerade origins use a typed private hosts file bound read-only into this service. It maps the owned Nginx hostname to the provider IPv4 address only while that local frontend is enabled. External owned origins retain ordinary NSS. The file participates in guarded comparison, quiescence, publication and accepted rollback; global `/etc/hosts` is untouched.
 
 - Site staging defers frontend rescue to the protected site transaction, which restores matching ingress before accepted frontend recovery. Standalone role reconciliation keeps its own guarded rollback.

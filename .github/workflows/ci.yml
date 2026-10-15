@@ -397,8 +397,8 @@ jobs:
       matrix:
         group: [1, 2, 3, 4]
     env:
-      SING_BOX_CLIENT_VERSION: "1.13.16"
-      SING_BOX_CLIENT_LINUX_AMD64_SHA256: "e37c312859dfa84cba148f41072ff6369f08361ae91d622dc1fd3aab49611a8d"
+      SING_BOX_CLIENT_VERSION: "1.14.3"
+      SING_BOX_CLIENT_LINUX_AMD64_SHA256: "e2bdf179c15a3652955dc44867e33ca0965c9c9b91b34267dcc5a5d639a5feee"
       PROMTOOL_VERSION: "3.14.0"
       PROMETHEUS_LINUX_AMD64_SHA256: "f665c6da19eb7ba399c915d30c7d9793c9b417bf8a749b504bc470678631478d"
     steps:
@@ -454,6 +454,8 @@ jobs:
           curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/v${version}/${archive}" -o "/tmp/${archive}"
           echo "${SING_BOX_CLIENT_LINUX_AMD64_SHA256}  /tmp/${archive}" | sha256sum -c -
           tar -xzf "/tmp/${archive}" -C /tmp
+          python3 scripts/check-singbox-client-compatibility.py \
+            --expected-version "$version" --binary "/tmp/sing-box-${version}-linux-amd64/sing-box"
           sudo install -m 0755 "/tmp/sing-box-${version}-linux-amd64/sing-box" /usr/local/bin/sing-box
       - name: Install checksum-verified Conftest for policy regression tests
         env:
@@ -555,7 +557,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 openssh-server e2fsprogs util-linux mount nginx iproute2 openssl wireguard-tools unbound lynis prometheus-node-exporter
+            nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 openssh-server e2fsprogs util-linux mount nginx iproute2 openssl wireguard-tools unbound lynis prometheus-node-exporter tcpdump tshark
       - name: Execute native tests with UID and GID capabilities
         run: |
           sudo env \
@@ -566,7 +568,7 @@ jobs:
             "AWG_NATIVE_GO_SOURCE=$GITHUB_WORKSPACE/.cache/native-transport-semantics/amneziawg-go-2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf" \
             "AWG_NATIVE_TOOLS_SOURCE=$GITHUB_WORKSPACE/.cache/native-transport-semantics/amneziawg-tools-c0b400c6dfc046f5cae8f3051b14cb61686fcf55" \
             "PATH=$GITHUB_WORKSPACE/.cache/native-transport-semantics/bin:$PATH" \
-            make test-native-runtime test-xhttp-endpoint-contract test-awg-device-binding-runtime
+            make test-native-runtime test-xhttp-endpoint-contract test-awg-device-binding-runtime test-hysteria-ech-runtime
 
   transport-runtime-acceptance:
     needs: selection

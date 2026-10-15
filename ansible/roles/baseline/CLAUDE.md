@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+UDP receive/send socket ceilings are integer role inputs bounded from 1 MiB to 64 MiB before host mutation. Their optional performance application uses the existing per-setting exception boundary; it cannot mask mandatory hardening failure and does not demonstrate QUIC congestion behavior.
+
 The bounded Molecule sysctl diagnostic assigns successful replay status only
 after the real replay completes; failure categories contain no setting values.
 

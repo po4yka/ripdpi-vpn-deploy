@@ -29,7 +29,7 @@ set -euo pipefail
 
 CLIENT_NAME="${1:-}"
 if [[ -z "$CLIENT_NAME" ]]; then
-  echo "usage: $0 <client_name> [--profile-format sing-box|ripdpi] [--per-app-bypass pkg1,pkg2…] [--per-app-via-tun pkg1,pkg2…]" >&2
+  echo "usage: $0 <client_name> [--profile-format sing-box|ripdpi] [--xhttp-only] [--per-app-bypass pkg1,pkg2…] [--per-app-via-tun pkg1,pkg2…]" >&2
   exit 1
 fi
 shift
@@ -41,6 +41,7 @@ shift
 PER_APP_BYPASS=""
 PER_APP_VIA_TUN=""
 PROFILE_FORMAT="sing-box"
+XHTTP_ONLY=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --profile-format)
@@ -51,11 +52,17 @@ while [[ $# -gt 0 ]]; do
       esac
       shift 2
       ;;
+    --xhttp-only) XHTTP_ONLY=true; shift ;;
     --per-app-bypass)  PER_APP_BYPASS="$2"; shift 2 ;;
     --per-app-via-tun) PER_APP_VIA_TUN="$2"; shift 2 ;;
     *) echo "unknown arg: $1" >&2; exit 1 ;;
   esac
 done
+
+if [[ "$XHTTP_ONLY" == true && "$PROFILE_FORMAT" != ripdpi ]]; then
+  echo "--xhttp-only requires --profile-format ripdpi" >&2
+  exit 1
+fi
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -282,6 +289,11 @@ for i in "${!host_pairs[@]}"; do
   [[ -z "$utls_fp" || "$utls_fp" == "null" ]] && utls_fp="chrome"
 
   emit_xhttp=false
+  if [[ "$XHTTP_ONLY" == true ]]; then
+    enable_reality=false
+    enable_hysteria=false
+    enable_snell=false
+  fi
   if [[ "$enable_xhttp" == "true" && "$PROFILE_FORMAT" == "ripdpi" ]]; then
     emit_xhttp=true
   fi
@@ -431,6 +443,13 @@ for i in "${!host_pairs[@]}"; do
 
   # P2 Hysteria2
   if [[ "$enable_hysteria" == "true" ]]; then
+    hy_ech="$(jq -c '.hysteria.ech // null' "$secrets_tmp")"
+    if [[ "$hy_ech" != null && "$PROFILE_FORMAT" != sing-box ]]; then
+      echo "ECH requires the verified official sing-box engine; RIPDPI export is unsupported" >&2
+      exit 1
+    fi
+    hy_tls_ech="$(jq -c 'if .hysteria.ech then {enabled:true,config:["-----BEGIN ECH CONFIGS-----",.hysteria.ech.config_list,"-----END ECH CONFIGS-----"]} else null end' "$secrets_tmp")"
+    hy_resource="$(jq -r '.hysteria.resource_profile // "bandwidth-capped"' "$secrets_tmp")"
     hy_pw="$(jq --arg n "$CLIENT_NAME" -r '.hysteria.clients[]? | select(.name==$n) | .password // empty' "$secrets_tmp")"
     hy_host="$(jq -r '.hysteria.server_name // .nginx_xhttp.server_name // empty' "$secrets_tmp")"
     hy_obfs_enabled="$(jq -r '.hysteria.salamander_enabled // false' "$secrets_tmp")"
@@ -461,12 +480,14 @@ for i in "${!host_pairs[@]}"; do
       --arg tag "p2-hysteria2-${tag_prefix}" \
       --arg ip "$server_ip" --arg host "$hy_host" --arg pw "$hy_auth" \
       --argjson obfs "$obfs_arg" \
+      --argjson ech "$hy_tls_ech" --arg resource "$hy_resource" \
       --argjson port "$hysteria_server_port" \
       --argjson hop_ports "$hop_ports_arg" \
       --argjson hop_interval "$hop_interval_arg" \
       '. += [{type:"hysteria2", tag:$tag, server:$ip, server_port:$port,
               server_ports:$hop_ports, hop_interval:$hop_interval,
-              password:$pw, tls:{enabled:true, server_name:$host}, obfs:$obfs}
+              password:$pw, tls:({enabled:true, server_name:$host} + (if $ech != null then {ech:$ech} else {} end)), obfs:$obfs}
+             + (if $resource != "bandwidth-capped" then {bbr_profile:($resource|ltrimstr("bbr-"))} else {} end)
              | with_entries(select(.value != null))]')"
   fi
 

@@ -32,7 +32,7 @@ XRAY_PINS = {
 }
 HYSTERIA_PINS = {
     'v2.8.2': 'b11bf0fb5f84a3f5c6baff3696e899539e68af4cee868c9203cfb896784ad3b0',
-    'v2.9.0': '8225c8380f1ae8122921d4986c2b70976e9c6e6f87a977e7d0498a813f4f3e37',
+    'v2.13.0': '907ba8c9693edb104b20582681fb7dc15639d5b64a9cbb616a7b539190a86691',
 }
 
 ARM_XRAY_PINS = {
@@ -41,7 +41,7 @@ ARM_XRAY_PINS = {
 }
 ARM_HYSTERIA_PINS = {
     'v2.8.2': '802d77ae3ca37bdc235ec848edfaaa7cb9109007d9044f50b0746239269cb8cf',
-    'v2.9.0': 'a3ccc0a3e791b85710ef63d22304a6f7dea210259be71bcd70cf9a210a385454',
+    'v2.13.0': 'a68a61a84452ca250ce0368202521965ca9cc9d801a404f1dc9008ac6cf677a7',
 }
 ARCH = 'arm64' if os.uname().machine == 'aarch64' else 'amd64'
 XRAY_PINS = ARM_XRAY_PINS if ARCH == 'arm64' else XRAY_PINS
@@ -233,6 +233,7 @@ server.serve_forever()
         command(['unzip', '-q', str(self.artifacts / 'xray-v26.3.27.zip'), '-d', str(runtime)])
         key_fields = dict(line.split(': ', 1) for line in command([str(runtime / 'xray'), 'x25519']).splitlines() if ': ' in line)
         self.context['xray']['reality_private_key'] = key_fields['PrivateKey']
+        self.context['hysteria'].pop('resource_profile', None)
         self.context['hysteria'].update(version='v2.8.2', linux_amd64_sha256=HYSTERIA_PINS['v2.8.2'],
             linux_arm64_sha256=HYSTERIA_PINS['v2.8.2'], cert_pem=self.cert.read_text(), key_pem=self.key.read_text(),
             masquerade_url=OWNED_ORIGIN, clients=[{'name': 'native-device-h', 'password': secrets.token_hex(24)}])
@@ -361,9 +362,9 @@ server.serve_forever()
                                         linux_arm64_sha256=XRAY_PINS['v26.5.3'])
             self.context['xray_runtime_release_urls'] = dict.fromkeys(('amd64','arm64'), 'file://' + str(self.artifacts / 'xray-v26.5.3.zip'))
         else:
-            self.context['hysteria'].update(version='v2.9.0', linux_amd64_sha256=HYSTERIA_PINS['v2.9.0'],
-                                           linux_arm64_sha256=HYSTERIA_PINS['v2.9.0'])
-            self.context['hysteria_release_urls'] = dict.fromkeys(('amd64','arm64'), 'file://' + str(self.artifacts / 'hysteria-v2.9.0'))
+            self.context['hysteria'].update(version='v2.13.0', linux_amd64_sha256=HYSTERIA_PINS['v2.13.0'],
+                                           linux_arm64_sha256=HYSTERIA_PINS['v2.13.0'])
+            self.context['hysteria_release_urls'] = dict.fromkeys(('amd64','arm64'), 'file://' + str(self.artifacts / 'hysteria-v2.13.0'))
 
     def geodata(self):
         for raw in ('/etc/systemd/system/vpn-geodata-refresh.timer',

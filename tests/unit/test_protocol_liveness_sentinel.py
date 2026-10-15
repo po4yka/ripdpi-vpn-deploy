@@ -371,7 +371,7 @@ def test_sentinel_reports_authenticated_data_plane_success_without_secrets(
     assert subprocess.run(["ps", "-p", awg_pid], capture_output=True).returncode != 0
 
 
-@pytest.mark.parametrize("code,stdout,stderr", [(1, "sing-box version 1.13.16", ""), (0, "", "amneziawg-tools v1.0.0")])
+@pytest.mark.parametrize("code,stdout,stderr", [(1, "sing-box version 1.14.3", ""), (0, "", "amneziawg-tools v1.0.0")])
 def test_runtime_version_requires_successful_stdout(monkeypatch, code, stdout, stderr):
     spec = importlib.util.spec_from_file_location("sentinel_version", SCRIPT)
     module = importlib.util.module_from_spec(spec)

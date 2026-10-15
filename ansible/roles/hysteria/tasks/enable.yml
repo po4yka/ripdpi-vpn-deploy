@@ -193,6 +193,18 @@
   no_log: true
   diff: false
 
+- name: Detect Hysteria ECH authority change without publication
+  ansible.builtin.copy:
+    content: "{{ hysteria.ech.keys_pem }}"
+    dest: "{{ hysteria_config_dir }}/ech.key"
+    owner: root
+    group: root
+    mode: '0600'
+  check_mode: true
+  no_log: true
+  diff: false
+  when: hysteria.ech is defined
+
 - name: Detect Hysteria validator authority changes without publication
   ansible.builtin.copy:
     src: "{{ item.source }}"
@@ -230,7 +242,9 @@
          {'path': '/usr/local/libexec/ripdpi-validate-yaml-mapping', 'mode': 493, 'gid': 0,
           'data': lookup('ansible.builtin.file',
                          role_path ~ '/../runtime-release/files/validate_yaml_mapping.py', rstrip=false) | b64encode}
-         ] }}
+         ] + ([{'path': hysteria_config_dir ~ '/ech.key', 'mode': 384, 'gid': 0,
+                 'data': hysteria.ech.keys_pem | b64encode}] if hysteria.ech is defined
+                 else [{'path': hysteria_config_dir ~ '/ech.key', 'absent': true}]) }}
   no_log: true
   diff: false
   when: not (transport_egress_fresh_check_mode | default(false) | bool)

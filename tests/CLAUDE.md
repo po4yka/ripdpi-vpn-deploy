@@ -14,6 +14,8 @@
 
 ## Design decisions
 
+ECH unit cases check wire framing, private/public key agreement, identity/generation matching, strict emitter routing and root-only systemd credential wiring. They are source evidence; exact native ECH negotiation, packet identity, traffic and generation compensation have a separately selected Linux lane.
+
 Runtime publisher tests verify retained directory descriptors remain valid
 inside normal and predictive transactions and close after success, exceptions,
 interrupts and failed entry or lock acquisition.

@@ -17,13 +17,15 @@ def test_baseline_reconciles_sysctls_without_change_notifications():
     assert "name: Apply sysctl" not in handlers
 
 
-def test_only_optional_congestion_tuning_can_ignore_native_setting_failure():
+def test_only_explicit_optional_performance_settings_can_ignore_native_failure():
     config = (ROOT / "ansible/roles/baseline/templates/sysctl-vpn.conf.j2").read_text()
     tasks = (ROOT / "ansible/roles/baseline/tasks/forwarding.yml").read_text()
     optional = [line for line in config.splitlines() if line.startswith("-")]
     assert optional == [
         "-net.core.default_qdisc = fq",
         "-net.ipv4.tcp_congestion_control = bbr",
+        "-net.core.rmem_max = {{ baseline_udp_receive_buffer_max }}",
+        "-net.core.wmem_max = {{ baseline_udp_send_buffer_max }}",
     ]
     assert "failed_when:" not in tasks
     assert "/usr/local/libexec/vpn-baseline-sysctl" in tasks

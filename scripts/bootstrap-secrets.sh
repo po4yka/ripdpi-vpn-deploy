@@ -24,6 +24,7 @@ TARGET=""
 SERVER_NAME=""
 XHTTP_HOST=""
 XHTTP_PORT=8443
+ECH_PUBLIC_NAME=""
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FORCE=0
 AWG_GO_VERSION="v0.2.12"
@@ -40,6 +41,7 @@ usage: $0 --target HOST:PORT --server-name HOST [options]
   --server-name H   REALITY serverName (single hostname; SAN-covered)
   --xhttp-host H    nginx-xhttp server_name (defaults to --server-name)
   --xhttp-port P    primary HTTPS port (default: 8443; use 443 for direct-only)
+  --ech-public-name H  optional explicit ECH outer SNI (requires verified Hysteria 2.13.0)
   --force           overwrite existing files
 
 Generates: age key (if missing), REALITY x25519 keypair, per-client
@@ -58,6 +60,7 @@ while [[ $# -gt 0 ]]; do
     --server-name) SERVER_NAME="$2"; shift 2 ;;
     --xhttp-host) XHTTP_HOST="$2"; shift 2 ;;
     --xhttp-port) XHTTP_PORT="$2"; shift 2 ;;
+    --ech-public-name) ECH_PUBLIC_NAME="$2"; shift 2 ;;
     --force) FORCE=1; shift ;;
     -h|--help) usage ;;
     *) echo "unknown arg: $1" >&2; usage ;;
@@ -318,7 +321,7 @@ reality_self_steal:
     -----END PRIVATE KEY-----
 
 hysteria:
-  version: "v2.9.0"
+  version: "v2.13.0"
   linux_amd64_sha256: "REPLACE_WITH_RELEASE_SHA256"
   linux_arm64_sha256: "REPLACE_WITH_RELEASE_SHA256"
   cert_pem: |
@@ -412,6 +415,29 @@ echo ">>> wrote plaintext: $PLAINTEXT"
 # ---------------------------------------------------------------------------
 # SOPS-encrypt and shred the plaintext
 # ---------------------------------------------------------------------------
+if [[ -n "$ECH_PUBLIC_NAME" ]]; then
+  # Generated authority is written only to the private source being encrypted.
+  BOOTSTRAP_ECH_PUBLIC="$ECH_PUBLIC_NAME" BOOTSTRAP_ECH_INNER="$XHTTP_HOST" \
+    python3 - "$REPO_ROOT" "$PLAINTEXT" <<'PY_ECH'
+import os
+from pathlib import Path
+import shutil
+import sys
+import yaml
+sys.path.insert(0, sys.argv[1] + '/scripts')
+from hysteria_ech import generate
+path = Path(sys.argv[2])
+document = yaml.safe_load(path.read_text())
+binary = os.environ.get('HYSTERIA_BINARY') or shutil.which('hysteria')
+try:
+    if not binary:
+        raise ValueError()
+    document['hysteria']['ech'] = generate(binary, os.environ['BOOTSTRAP_ECH_PUBLIC'], os.environ['BOOTSTRAP_ECH_INNER'])
+except (OSError, ValueError):
+    raise SystemExit('ECH bootstrap refused; exact verified runtime and distinct DNS identities required') from None
+path.write_text(yaml.safe_dump(document, sort_keys=False))
+PY_ECH
+fi
 sops --encrypt --age "$AGE_RECIPIENT" "$PLAINTEXT" > "$ENCRYPTED"
 chmod 0600 "$ENCRYPTED"
 shred -u "$PLAINTEXT" 2>/dev/null || rm -f "$PLAINTEXT"
