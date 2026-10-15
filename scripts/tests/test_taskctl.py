@@ -3722,6 +3722,36 @@ class TaskctlFederationTest(TaskctlFixture):
                 original, self.peer, config, revision, task_id="CIC-1786234567890999"
             )
 
+    def test_export_refuses_ignored_inputs_and_hidden_source_edits(self) -> None:
+        self.add_task(self.peer, "CIC-1786234567890001")
+        self.commit(self.peer, "add peer task")
+        ignored = self.peer / "docs/tasks/issues/ignored.md"
+        (self.peer / ".git/info/exclude").write_text("docs/tasks/issues/ignored.md\n")
+        ignored.write_text("uncommitted native input\n")
+        with self.assertRaisesRegex(taskctl.ContractError, "requires committed"):
+            taskctl.export_payload(self.peer)
+        ignored.unlink()
+        source = self.peer / "taskctl"
+        subprocess.run(("git", "update-index", "--assume-unchanged", "taskctl"), cwd=self.peer, check=True)
+        source.write_text(source.read_text() + "# hidden edit\n")
+        self.assertEqual("", subprocess.run(
+            ("git", "status", "--porcelain"), cwd=self.peer,
+            text=True, capture_output=True, check=True,
+        ).stdout)
+        with self.assertRaisesRegex(taskctl.ContractError, "matching committed HEAD"):
+            taskctl.export_payload(self.peer)
+
+    def test_export_refuses_nonregular_discovered_task_input(self) -> None:
+        self.add_task(self.peer, "CIC-1786234567890001")
+        self.commit(self.peer, "add peer task")
+        path = self.peer / "docs/tasks/issues/ignored.md"
+        (self.peer / ".git/info/exclude").write_text("docs/tasks/issues/ignored.md\n")
+        for create, remove in ((path.mkdir, path.rmdir), (lambda: os.mkfifo(path), path.unlink)):
+            create()
+            with self.assertRaisesRegex(taskctl.ContractError, "regular committed inputs"):
+                taskctl.export_payload(self.peer)
+            remove()
+
     def test_export_is_deterministic_and_omits_body_and_evidence(self) -> None:
         self.add_task(self.root, "CIC-1786234567890001")
         self.commit(self.root, "add task")

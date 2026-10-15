@@ -13,7 +13,9 @@ the exact uplink before established conntrack acceptance. Each NAT rule matches
 that same uplink; a stale connection cannot authorize cross-instance forwarding.
 Empty peer families drop explicitly. Missing IPv6 uplink authority refuses
 before firewall publication. Scenario-only public-family routes are confined to
-each disposable Molecule namespace.
+each disposable Molecule namespace. The firewall scenario supplies explicit
+typed peer claims on awg7 and checks its exact synthetic uplink; it cannot
+fall back to an implicit awg0.
 
 
 AWG interface names come only from the nonempty canonical instance list; no

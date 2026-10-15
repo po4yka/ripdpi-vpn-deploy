@@ -23,6 +23,13 @@
     firewall_awg_uplink_interface: awg-test-up
     amneziawg:
       listen_port: 51820
+    amneziawg_secrets:
+      instances:
+        - name: awg7
+          peers:
+            - allowed_ips:
+                ipv4: 10.66.66.2/32
+                ipv6: fd42:42:42::2/128
     public_listener_contract:
       - {name: xray, protocol: tcp, port: 443, port_range: null}
       - {name: xray-fallback, protocol: tcp, port: 2053, port_range: null}

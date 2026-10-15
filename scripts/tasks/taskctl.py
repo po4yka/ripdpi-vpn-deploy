@@ -1503,36 +1503,52 @@ def federation_contract_hash(root: Path) -> str:
 
 
 def validate_export_checkout(root: Path) -> None:
+    paths = (
+        "docs/tasks/issues", "docs/tasks/work", "openspec/changes", "taskctl",
+        "scripts/tasks/taskctl.py", str(PROJECT_CONFIG_PATH), str(FEDERATION_CONTRACT_PATH),
+    )
+    for relative in paths:
+        base = root / relative
+        if base.is_symlink():
+            fail("task export requires regular committed inputs")
+        candidates = [base, *base.rglob("*")] if base.is_dir() else [base]
+        for path in candidates:
+            if not path.exists() and not path.is_symlink():
+                continue
+            if path.is_dir() and not path.is_symlink() and path.suffix not in {".md", ".json", ".yaml", ".yml", ".py"}:
+                continue
+            if path.is_symlink() or not path.is_file():
+                fail("task export requires regular committed inputs")
     result = run_command(
-        (
-            "git",
-            "status",
-            "--porcelain=v1",
-            "--untracked-files=all",
-            "--",
-            "docs/tasks/issues",
-            "docs/tasks/work",
-            "openspec/changes",
-            "taskctl",
-            "scripts/tasks/taskctl.py",
-            str(PROJECT_CONFIG_PATH),
-            str(FEDERATION_CONTRACT_PATH),
-        ),
-        root=root,
+        ("git", "status", "--porcelain=v1", "--ignored=matching",
+         "--untracked-files=all", "--", *paths), root=root,
     )
     if result.returncode != 0:
         fail(f"cannot inspect export checkout state in {root}")
-    dirty = (result.stdout or "").strip()
-    if dirty:
-        fail(
-            "task export requires committed portfolio, OpenSpec, exporter, project config, and federation contract state"
-        )
+    if (result.stdout or "").strip():
+        fail("task export requires committed portfolio, OpenSpec, exporter, project config, and federation contract state")
+    # Status alone hides ignored additions and assume-unchanged/skip-worktree
+    # edits. Bind every tracked input to HEAD, not the mutable index.
+    tree = run_command(("git", "ls-tree", "-r", "-z", "HEAD", "--", *paths), root=root)
+    if tree.returncode != 0:
+        fail("cannot inspect committed export inputs")
+    for entry in filter(None, (tree.stdout or "").split("\0")):
+        metadata, relative = entry.split("\t", 1)
+        mode, kind, expected = metadata.split(" ")
+        path = root / relative
+        if kind != "blob" or mode not in {"100644", "100755"} or path.is_symlink() or not path.is_file():
+            fail("task export requires regular committed inputs")
+        data = path.read_bytes()
+        actual = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+        if actual != expected:
+            fail("task export requires inputs matching committed HEAD")
 
 
 def export_payload(
     root: Path,
     history_resolver: TerminalHistoryResolver | None = None,
 ) -> dict[str, Any]:
+    revision = git_revision(root)
     validate_export_checkout(root)
     config = load_project_config(root)
     history_resolver = history_resolver or TerminalHistoryResolver(root, config)
@@ -1570,11 +1586,15 @@ def export_payload(
                 "historical": False,
             }
         )
+    contract_hash = federation_contract_hash(root)
+    validate_export_checkout(root)
+    if git_revision(root) != revision:
+        fail("revision changed during task export")
     return {
         "contract_version": config.federation_contract,
-        "contract_sha256": federation_contract_hash(root),
+        "contract_sha256": contract_hash,
         "project": config.project,
-        "revision": git_revision(root),
+        "revision": revision,
         "tasks": tasks,
     }
 
@@ -4035,6 +4055,9 @@ def command_export(args: argparse.Namespace) -> int:
                 fail(f"missing federated task {config.project}#{args.resolve_task}")
             nodes = [{key: value for key, value in historical.items() if not key.startswith("_")}]
         payload["tasks"] = nodes
+    validate_export_checkout(args.root)
+    if git_revision(args.root) != payload["revision"]:
+        fail("revision changed during task resolution")
     print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
     return 0
 
