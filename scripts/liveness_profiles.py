@@ -253,8 +253,9 @@ def build_profiles(standard_doc, ripdpi_doc, secrets_doc, client, required_profi
                 if not isinstance(frontend, dict):
                     raise ProfileError("missing-frontend-sni")
                 expected_sni = frontend.get("server_name")
-                if profile == "p2-hysteria2" and secrets_doc["hysteria"].get("server_name") is not None:
-                    expected_sni = secrets_doc["hysteria"]["server_name"]
+                if profile == "p2-hysteria2":
+                    hysteria = secrets_doc["hysteria"]
+                    expected_sni = hysteria.get("server_name", hysteria.get("ech", {}).get("inner_name", expected_sni))
             if tls["server_name"] != _host(expected_sni):
                 raise ProfileError("wrong-server-sni")
             metadata = {"profile": profile, "variant": index, "server": server, "port": port, "tls": tls}

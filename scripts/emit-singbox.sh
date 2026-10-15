@@ -455,7 +455,7 @@ for i in "${!host_pairs[@]}"; do
       exit 1
     fi
     hy_pw="$(jq --arg n "$CLIENT_NAME" -r '.hysteria.clients[]? | select(.name==$n) | .password // empty' "$secrets_tmp")"
-    hy_host="$(jq -r '.hysteria.server_name // .nginx_xhttp.server_name // empty' "$secrets_tmp")"
+    hy_host="$(jq -r '.hysteria.server_name // .hysteria.ech.inner_name // .nginx_xhttp.server_name // empty' "$secrets_tmp")"
     hy_obfs_enabled="$(jq -r '.hysteria.salamander_enabled // false' "$secrets_tmp")"
     hy_obfs_pw="$(jq -r '.hysteria.salamander_password // empty' "$secrets_tmp")"
     if [[ -z "$hy_pw" ]]; then

@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+ECH smoke clients use the declared inner identity even when the nginx frontend has a different hostname; certificate verification stays enabled.
+
 AWG singleton and multi-instance deployments both use the nonempty encrypted
 instance list. Observer checks and role normalization never synthesize a
 legacy `awg0` peer/key authority.

@@ -27,12 +27,12 @@ Each requirement row remains open until its complete named evidence is observed.
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
 | REQ-PROTO-ECH-CONTRACT | ANS-1791618091815754 | Exact native server and recipient parser/connection matrix, schema boundaries and qualified RIPDPI integration if included; placeholders and refusal-only tests are insufficient. | passed: source contract and exact Linux recipient matrix at 237b622f |
-| REQ-PROTO-ECH-CONTRACT | ANS-1791618093172970 | Exact native server and recipient parser/connection matrix, schema boundaries and qualified RIPDPI integration if included; placeholders and refusal-only tests are insufficient. | passed: source contract and exact Linux recipient matrix at 237b622f |
+| REQ-PROTO-ECH-CONTRACT | ANS-1791618093172970 | Exact native server and recipient parser/connection matrix, schema boundaries and qualified RIPDPI integration if included; placeholders and refusal-only tests are insufficient. | passed: exact native privacy and complete authority transactions at 4b546833 |
 | REQ-PROTO-ECH-CONTRACT | ANS-1791618095149688 | Exact native server and recipient parser/connection matrix, schema boundaries and qualified RIPDPI integration if included; placeholders and refusal-only tests are insufficient. | required |
-| REQ-PROTO-ECH-PRIVATE | ANS-1791618093172970 | Packet capture and exact client telemetry establish negotiated ECH; real wrong-SAN/untrusted certificate cases and verbose synthetic-key leak regressions enforce privacy. | required |
-| REQ-PROTO-ECH-PRIVATE | ANS-1791618094259404 | Packet capture and exact client telemetry establish negotiated ECH; real wrong-SAN/untrusted certificate cases and verbose synthetic-key leak regressions enforce privacy. | required |
+| REQ-PROTO-ECH-PRIVATE | ANS-1791618093172970 | Packet capture and exact client telemetry establish negotiated ECH; real wrong-SAN/untrusted certificate cases and verbose synthetic-key leak regressions enforce privacy. | passed: exact native privacy and complete authority transactions at 4b546833 |
+| REQ-PROTO-ECH-PRIVATE | ANS-1791618094259404 | Packet capture and exact client telemetry establish negotiated ECH; real wrong-SAN/untrusted certificate cases and verbose synthetic-key leak regressions enforce privacy. | passed: exact native privacy and complete authority transactions at 4b546833 |
 | REQ-PROTO-ECH-PRIVATE | ANS-1791618095149688 | Packet capture and exact client telemetry establish negotiated ECH; real wrong-SAN/untrusted certificate cases and verbose synthetic-key leak regressions enforce privacy. | required |
-| REQ-PROTO-ECH-ACTIVATE | ANS-1791618094259404 | Real private-file and systemd compensation/intent tests with exact Hysteria connections; wrong-key, unsafe-path and interrupted-publication cases preserve prior generation. | required |
+| REQ-PROTO-ECH-ACTIVATE | ANS-1791618094259404 | Real private-file and systemd compensation/intent tests with exact Hysteria connections; wrong-key, unsafe-path and interrupted-publication cases preserve prior generation. | passed: exact native privacy and complete authority transactions at 4b546833 |
 | REQ-PROTO-ECH-ACTIVATE | ANS-1791618095149688 | Real private-file and systemd compensation/intent tests with exact Hysteria connections; wrong-key, unsafe-path and interrupted-publication cases preserve prior generation. | required |
 | REQ-PROTO-ECH-ACCEPT | ANS-1791618095149688 | NEW exact ECH native target plus separately authorized supported-recipient staging procedure, negotiated packet observations and guarded cleanup evidence. | required |
 
@@ -92,3 +92,39 @@ Each requirement row remains open until its complete named evidence is observed.
   Hysteria release eligibility refreshed successfully; the combined refresh
   still refuses when sing-box release metadata is unavailable. No staging,
   production deployment or real credential issuance occurred.
+
+## Integrated native continuation (2026-10-15)
+
+- Integrated source `4b5468333d7bfdf76f8cbe97a434aa59811d7541`, CI run
+  `38794509169`: native transaction job `116628420233` passed both selected
+  cases in 600.73 seconds. These execute actual systemd credential activation,
+  unchanged convergence, admission SIGKILL/lease recovery, the complete ECH
+  failure/death matrix, rotation, exact whole-route key/receipt compensation,
+  both BBR profiles, classical transition and retirement. No selected case skipped.
+- The ECH step in native integration job `116628420264` also passed all three
+  resource profiles with debug-level key-leak assertions, real Hysteria 2.13.0
+  and official sing-box 1.14.3 TCP/UDP/DNS, required-ECH/trust/auth failures and
+  decoded outer-SNI captures. The complete job subsequently passed all 138
+  native cases, both XHTTP cases and the AWG device-binding case. Warm-upgrade job
+  `116628420272` subsequently passed its three cases in 1,658.81 seconds,
+  including real Salamander and observed multi-port traffic before/after adoption
+  and compensation. The integrated CI run completed with all 89 jobs successful.
+- Whole-route authority now captures the private ECH key, and frontend-only
+  changes open that recovery boundary before candidate staging. Isolated inline
+  probe imports use the controller-prepared semantic companion. Focused regressions
+  passed 180, 160 and 76 tests in overlapping suites; merged CI wiring passed 87.
+- Parser adoption regressions now execute both actual CI installation fragments
+  against an owned destination, preserving real prior parser usability after
+  tampered/truncated, wrong-version or incompatible executable refusal. Their
+  native execution remains required on the subsequent source revision.
+- Current release channel and asset metadata refreshed; the direct combined
+  advisory refresh still refused unavailable metadata. Publication eligibility
+  therefore remains unconfirmed. The full local gate acquired a machine-wide slot after queueing; its
+  complete result remains pending. Waiting is not a passing validation result.
+- No staging soak, production deployment, real authority issuance or recipient
+  redistribution ran. The 48-hour staging and dependency acceptance gates remain
+  open; source/native observations do not close them.
+
+The final identity correction selects the declared ECH inner name independently
+of the nginx frontend in export, liveness and smoke probing. Its source and native
+regressions retain distinct hostnames; subsequent exact-head validation is required.

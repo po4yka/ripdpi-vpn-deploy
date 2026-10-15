@@ -12,6 +12,7 @@ import shutil
 import sys
 
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+from jinja2 import Environment, StrictUndefined
 import pytest
 import yaml
 
@@ -191,6 +192,36 @@ def test_render_private_key_uses_root_systemd_credential():
     assert ech["keys_pem"] not in rendered + unit
 
 
+@pytest.mark.parametrize("identity", ["ech", "explicit", "frontend"])
+def test_smoke_client_retains_exact_verified_tls_identity(identity):
+    def tasks(value):
+        if isinstance(value, dict):
+            yield value
+            for child in value.values():
+                yield from tasks(child)
+        elif isinstance(value, list):
+            for child in value:
+                yield from tasks(child)
+    source = yaml.safe_load((ROOT / "ansible/playbooks/smoke-test.yml").read_text())
+    task = next(task for task in tasks(source) if task.get("name") == "Render Hysteria client config")
+    variables = merge_render_vars()
+    expected = variables["nginx_xhttp"]["server_name"]
+    if identity == "ech":
+        expected = "separate.example"
+        variables["hysteria"]["ech"] = authority(inner_name=expected)
+    elif identity == "explicit":
+        expected = "explicit.example"
+        variables["hysteria"]["server_name"] = expected
+    environment = Environment(undefined=StrictUndefined)
+    environment.filters["to_json"] = json.dumps
+    rendered = environment.from_string(task["ansible.builtin.copy"]["content"]).render(variables)
+    client = yaml.safe_load(rendered)
+    assert client["tls"]["sni"] == expected
+    assert client["tls"]["insecure"] is False
+    assert ("ech" in client["tls"]) is (identity == "ech")
+    assert client["tls"]["ca"] == variables["hysteria_config_dir"] + "/server.fullchain.pem"
+
+
 @pytest.mark.parametrize(
     "profile", ["bandwidth-capped", "bbr-conservative", "bbr-standard"]
 )
@@ -210,10 +241,11 @@ def test_resource_profiles_render_exact_native_api(profile):
     assert doc["quic"]["maxConnReceiveWindow"] == 20971520
 
 
-def test_emitter_keeps_ech_and_refuses_unqualified_bundle(tmp_path):
+@pytest.mark.parametrize("identity", ["frontend", "separate-ech"])
+def test_emitter_keeps_ech_and_refuses_unqualified_bundle(tmp_path, identity):
     source = _secrets_as_json(tmp_path)
     document = json.loads(source.read_text())
-    inner = document["nginx_xhttp"]["server_name"]
+    inner = document["nginx_xhttp"]["server_name"] if identity == "frontend" else "separate.example"
     ech = authority(inner_name=inner)
     document["hysteria"].update(
         version="v2.13.0", ech=ech, masquerade_url="https://" + inner
@@ -233,6 +265,7 @@ def test_emitter_keeps_ech_and_refuses_unqualified_bundle(tmp_path):
         x for x in json.loads(result.stdout)["outbounds"] if x["type"] == "hysteria2"
     )
     assert outbound["tls"]["ech"]["config"][1] == ech["config_list"]
+    assert outbound["tls"]["server_name"] == inner
     assert "ECH KEYS" not in result.stdout + result.stderr
     bundle = subprocess.run(
         ["bash", str(BUNDLE_SCRIPT), "laptop"],

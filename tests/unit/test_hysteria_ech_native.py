@@ -331,7 +331,6 @@ def test_actual_ech_clients_traffic_privacy_trust_and_resources(
         source = _secrets_as_json(tmp_path)
         secret = json.loads(source.read_text())
         secret["hysteria"].update(variables["hysteria"])
-        secret["nginx_xhttp"]["server_name"] = "inner.example"
         source.write_text(json.dumps(secret))
         emitted = subprocess.run(
             ["bash", str(SCRIPT), "laptop"],

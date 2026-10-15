@@ -14,6 +14,8 @@
 
 ## Design decisions
 
+ECH export and sentinel cases keep distinct nginx and ECH inner identities. The real native recipient matrix also retains that distinction, so hostname fallback cannot silently bind ECH to the unrelated frontend.
+
 Parser adoption regressions execute both CI installation fragments with checksum-verified real sing-box bytes and an owned destination. Local acquisition supplies verified, tampered, truncated, wrong-version and incompatible-executable archives. Refusal must retain the prior inode and an actually usable parser; successful full-profile acceptance must atomically replace it and clean staging.
 
 Guidance coverage exercises the workflow's actual Git collection against an advanced base branch. Preserve full history for three-dot comparisons; a shallow fetch can hide the merge base after checkout.

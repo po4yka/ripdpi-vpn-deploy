@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+ECH recipients and liveness derive their default TLS identity from the declared inner name, independently of the nginx frontend hostname. An explicit Hysteria server_name must agree through semantic admission.
+
 BBR resource profiles, like ECH, target the qualified official sing-box recipient. Unqualified RIPDPI export refuses before output; paired XHTTP monitoring requests only its explicit Xray intermediate.
 
 Release eligibility evaluates high/critical advisories against the exact selected version and repository-owned module ranges. Historical fixed ranges may clear; unknown modules, missing ranges or unsupported syntax keep promotion blocked.
