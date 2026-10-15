@@ -162,3 +162,67 @@ or IPv6 peer routing requires explicit `address_kind: routed` ownership.
 `new-client.sh --emit-uri` requires `OUTPUT=<new private recipient file>`
 in a `0700` directory. The destination is reserved before enrollment and removed
 on transaction failure. URI passwords never enter metadata stdout.
+
+## Device addresses and MTU
+
+Every device peer has both host identities in its instance pools:
+
+```yaml
+allowed_ips:
+  ipv4: "10.66.66.2/32"
+  ipv6: "fd42:42:42::2/128"
+```
+
+An explicitly routed peer uses `address_kind: routed` with a typed map of its
+owned prefixes. Scalar CIDRs are no longer accepted. Existing encrypted inputs
+must be migrated deliberately under credential authorization before use;
+regenerate device configurations after migration. Revocation removes both
+families with the selected peer key.
+
+`instances[].mtu` overrides `amneziawg_cohort.mtu`, which overrides
+`amneziawg.mtu` (default 1420). Values must be integers from 1280 through 1420.
+The lower bound retains IPv6 link support and the upper bound retains the
+established tunnel ceiling; this is a supported configuration range, not a claim
+that 1420 is optimal on every path. Server, standalone, bundle and liveness use
+the same value. A constrained path can explicitly select 1280.
+
+The approved uplink must have a usable IPv6 default route and a global source
+address. An RA-derived route requires `net.ipv6.conf.<uplink>.accept_ra=2` so it
+survives router forwarding mode; establish that through the host's network
+configuration before deployment. The AWG role validates this prerequisite and
+does not rewrite provider routing. NAT and forwarding are scoped to that uplink.
+
+Run `make test-awg-dualstack-runtime` only in the explicitly isolated Linux
+root/TUN native lab. Positive Linux results and Android native-core emulator
+results are separate from physical Android VPN kill-switch acceptance.
+
+## Android baseline procedure
+
+Use the RIPDPI consumer task's isolated Android JNI interop runner with a clean
+consumer source commit, the exact pinned baseline AWG peer checkout and an
+explicitly leased arm64 emulator. The current baseline keeps S3=S4=0. Generate a
+fresh invocation nonce and an owner-only evidence directory, then run:
+
+```bash
+python3 "$PEER_ROOT/scripts/tests/run-android-awg-interop.py" \
+  --peer-source "$AWG_PEER_SOURCE" --api 32 \
+  --output-dir "$EVIDENCE_DIR" --nonce "$AWG_CLIENT_NONCE"
+export AWG_CLIENT_EVIDENCE="$EVIDENCE_DIR/evidence.json"
+export AWG_CLIENT_SOURCE_SHA="$(git -C "$PEER_ROOT" rev-parse HEAD)"
+export PEER_ROOT AWG_CLIENT_NONCE AWG_CLIENT_EVIDENCE AWG_CLIENT_SOURCE_SHA
+make verify-awg-dualstack-client-evidence
+```
+
+The evidence validator binds the invocation and exact client source to the
+packaged native-library/APK digests, ABI/OS and measured IPv4/IPv6 TCP/UDP/DNS
+records. Three native reconnect cycles run at each MTU endpoint, 1280 and 1420.
+Missing or substituted logs/artifacts refuse; hand-written success records do
+not establish acceptance.
+
+This procedure produces **emulator/native-core** evidence. The full physical
+Android baseline additionally records exact device/core/interface MTU, three
+VPN reconnects, sustained bidirectional TCP/UDP, both DNS families and IPv6-only
+targets, one-device server revocation, and packet observations proving no native
+IPv4/IPv6 bypass after tunnel death and disconnection. The Linux native lane
+proves its own kernel forwarding/revocation/lockdown boundaries. Neither the
+emulator JNI lane nor Linux namespaces establish physical Android VPN policy.

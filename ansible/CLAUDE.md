@@ -2,6 +2,12 @@
 
 ## Design decisions
 
+AWG device source claims are typed by family. The firewall and standalone AWG
+role admit the exact IPv6-capable uplink before their runtime mutations; network
+routing remains operator/provider authority. AWG candidates retain whole prior
+configurations until all instance activations succeed.
+
+
 AWG singleton and multi-instance deployments both use the nonempty encrypted
 instance list. Observer checks and role normalization never synthesize a
 legacy `awg0` peer/key authority.

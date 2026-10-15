@@ -2,7 +2,7 @@
 
 ## Objective
 
-Deliver interface-correct dual-stack AmneziaWG forwarding and configurable MTU. All execution checkboxes remain open; this is planning, not implementation or deployment approval.
+Deliver interface-correct dual-stack AmneziaWG forwarding and configurable MTU. Implementation is authorized in the dedicated worktree. Checkboxes require their named observed evidence; source, native, emulator, physical-client and fleet results remain distinct.
 
 ## Ownership
 

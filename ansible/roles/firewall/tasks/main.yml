@@ -1,4 +1,7 @@
 ---
+- name: Admit AmneziaWG dual-stack forwarding prerequisites before mutation
+  ansible.builtin.import_tasks: awg-uplink.yml
+
 - name: Resolve effective firewall check-mode context
   ansible.builtin.set_fact:
     _firewall_effective_check_mode: >-

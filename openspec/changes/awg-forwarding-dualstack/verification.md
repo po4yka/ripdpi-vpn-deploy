@@ -37,3 +37,58 @@ All rows name planned acceptance, not observed implementation evidence. Planning
 | REQ-PROTO-AWG-NOLEAK | ANS-1791618053810186 | Linux routing/nft packet capture plus supported physical recipient tests, failed activation compensation and prior-address/profile preservation assertions. | required |
 | REQ-PROTO-AWG-NOLEAK | ANS-1791618054450509 | Linux routing/nft packet capture plus supported physical recipient tests, failed activation compensation and prior-address/profile preservation assertions. | required |
 | REQ-PROTO-AWG-NOLEAK | ANS-1791618055065632 | Linux routing/nft packet capture plus supported physical recipient tests, failed activation compensation and prior-address/profile preservation assertions. | required |
+
+## Implementation checks (2026-10-15)
+
+The implementation and coordinated consumer are prepared for source review;
+requirement rows above remain required until their complete named evidence is
+observed. Consumer work is `po4yka/RIPDPI#DAT-1792081130689287`, proposed in
+RIPDPI PR #616. No deployment or actual operator-secret migration occurred.
+
+Observed focused checks:
+
+- Shared device/transport/liveness suite: 155 passed.
+- Combined firewall, bundle, sentinel, semantics and dual-stack boundaries: 255 passed.
+- Real SOPS/age transactions, fixture round trip, selected consumer generation
+  and retirement: 261 passed using real local binaries instead of HOME-sensitive
+  tool-manager shims.
+- New dual-stack identity, precedence, MTU and uplink boundaries: 42 passed.
+- Final schema/transport/profile regression run: 263 passed; related caller
+  regression run: 241 passed. Final firewall policy run: 23 passed, including
+  both source and destination claim guards before retained conntrack acceptance.
+- Role activation and fresh check-mode contracts: 49 passed; dispatch and
+  liveness policy guard follow-up: 91 passed.
+- Dual-family liveness policy/sentinel boundaries: 85 passed. A complete
+  liveness run had one unrelated Xray-startup failure among 151 cases; all three
+  affected Xray cases passed unchanged on their focused rerun. This does not
+  erase the failed aggregate run.
+- All 163 templates rendered, and all 163 snapshots matched after reviewing
+  and refreshing only AWG and firewall outputs. Secrets schema and coverage
+  validation passed. Affected roles and rotation play passed ansible-lint.
+
+The full `build-gate -- mise exec -- make check` and exact-source native build
+are queued behind other machine-wide heavy jobs; these are pending, not passed.
+The exact upstream Go checkout initially failed after a partial filtered fetch;
+a no-filter refetch repaired the same pinned commit. No runtime or checksum pin
+was relaxed. A dedicated root/systemd/TUN container and hash-pinned Python
+requirements are prepared for the complete native lane.
+
+Consumer JVM and Android emulator/native-core tests are also gate-queued. The
+new evidence target validates that component evidence and does not claim
+physical Android VPN leak prevention. Physical baseline evidence remains
+required for its separate scope.
+
+Federation validation was attempted and failed because the client checkout
+lacks the deployment federation's `tools/tasking/project.json` contract. A
+qualified task reference does not stand in for successful federation. Hosted
+contract-sync compares the client default branch and remains dependent on the
+reviewed client contract integration; the gate is retained.
+
+The all-files pre-commit run reached Terraform provider initialization and
+failed on registry connection deadlines for the pinned hcloud/Vultr packages.
+No Terraform source or pins changed. That aggregate run also encountered a
+Galaxy dependency-download stall and baseline vendored-shell/placeholder and
+formatting failures. Its formatting edits outside this change were removed;
+only owned paths belong in the commit. The actual lint hook is rerun against
+the installed exact collection versions. This is a failed aggregate check,
+not a waiver; normal commit hooks still apply to every changed path.

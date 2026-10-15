@@ -25,7 +25,7 @@ def key(value):
 
 def inputs():
     xray = {"name": "sentinel", "uuid": "00000000-0000-4000-8000-000000000001", "short_id": "0011223344556677"}
-    peer = {"name": "sentinel", "public_key": key(2), "preshared_key": key(3), "allowed_ips": "10.66.66.2/32"}
+    peer = {"name": "sentinel", "public_key": key(2), "preshared_key": key(3), "allowed_ips": {"ipv4": "10.66.66.2/32", "ipv6": "fd42:42:42::2/128"}}
     secrets = {
         "client_registry": {"sentinel": {"status": "active", "hosts": ["vultr:probe"], "awg_binding": {"provider": "vultr", "environment": "probe", "instance": "awg0"}}},
         "xray": {"clients": [xray], "reality_public_key": "public-reality-key", "server_names": ["cover.example"], "xhttp_path": "/sync"},
@@ -77,7 +77,7 @@ def test_four_profiles_are_materialized_with_only_named_client_material():
     assert f"PresharedKey = {key(3)}" in awg and key(4) not in awg
     assert "Jc = 0" in awg and "Jmin = 21" in awg and "Jmax = 70" in awg
     assert "Endpoint = 192.0.2.3:51820" in awg
-    assert built["runtime"]["amneziawg"]["address"] == "10.66.66.2/32"
+    assert built["runtime"]["amneziawg"]["addresses"] == ["10.66.66.2/32", "fd42:42:42::2/128"]
     assert built["runtime"]["amneziawg"]["dns_servers"] == ["1.1.1.1", "1.0.0.1"]
     assert before == {k: v for k, v in args.items() if k != "derive_public_key"}
     public = json.dumps(built["public_profiles"])
@@ -176,7 +176,7 @@ def test_wrong_client_private_key_does_not_emit_or_derive_server_material():
 def test_awg_client_requires_unique_host_address_inside_selected_subnet(address):
     module = load()
     args = inputs()
-    args["secrets_doc"]["amneziawg_secrets"]["instances"][0]["peers"][0]["allowed_ips"] = address
+    args["secrets_doc"]["amneziawg_secrets"]["instances"][0]["peers"][0]["allowed_ips"]["ipv4"] = address
     with pytest.raises(module.ProfileError, match="invalid-awg-contract|invalid-device-address"):
         module.build_profiles(**args)
 
@@ -291,7 +291,7 @@ def test_equivalent_awg_peer_address_is_not_a_second_identity():
     module = load()
     args = inputs()
     args["secrets_doc"]["amneziawg_secrets"]["instances"][0]["peers"].append({
-        "name": "other", "public_key": key(99), "preshared_key": key(98), "allowed_ips": "10.66.66.2/255.255.255.255",
+        "name": "other", "public_key": key(99), "preshared_key": key(98), "allowed_ips": {"ipv4": "10.66.66.2/255.255.255.255", "ipv6": "fd42:42:42::2/128"},
     })
     with pytest.raises(module.ProfileError, match="duplicate|invalid-awg-contract|transport-input-semantics"):
         module.build_profiles(**args)
@@ -353,7 +353,7 @@ def test_other_clients_never_reach_runtime_files_or_public_report():
     args["secrets_doc"]["xray"]["clients"].append({"name": "other", "uuid": other_uuid, "short_id": other_short})
     args["secrets_doc"]["hysteria"]["clients"].append({"name": "other", "password": "other-password-do-not-emit"})
     args["secrets_doc"]["amneziawg_secrets"]["instances"][0]["peers"].append({
-        "name": "other", "public_key": key(98), "preshared_key": key(99), "allowed_ips": "10.66.66.3/32",
+        "name": "other", "public_key": key(98), "preshared_key": key(99), "allowed_ips": {"ipv4": "10.66.66.3/32", "ipv6": "fd42:42:42::3/128"},
     })
     result = json.dumps(module.build_profiles(**args))
     for private in (other_uuid, other_short, "other-password-do-not-emit", key(98), key(99), key(4)):

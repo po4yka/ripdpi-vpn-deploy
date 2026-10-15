@@ -101,7 +101,7 @@ def test_bundle_uses_feature_host_and_emits_ingress_topology(
                             "name": "android-ripdpi",
                             "public_key": "CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk=",
                             "preshared_key": "CgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgo=",
-                            "allowed_ips": "10.66.66.4/32",
+                            "allowed_ips": {"ipv4": "10.66.66.4/32", "ipv6": "fd42:42:42::4/128"},
                         }
                     ],
                 }]},

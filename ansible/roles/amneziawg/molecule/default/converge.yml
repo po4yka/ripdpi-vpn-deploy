@@ -13,6 +13,7 @@
     amneziawg_go_commit: "{{ molecule_awg_go_head.stdout | trim }}"
     amneziawg_tools_version: molecule-fixture-v1
     amneziawg_tools_commit: "{{ molecule_awg_tools_head.stdout | trim }}"
+    firewall_awg_uplink_interface: awg-test-up
     amneziawg_config_dir: /etc/amneziawg
     amneziawg:
       listen_port: 51820
@@ -41,6 +42,9 @@
         argv: [git, -C, /opt/molecule-awg-fixture/amneziawg-tools, rev-parse, HEAD]
       register: molecule_awg_tools_head
       changed_when: false
+
+    - name: Prepare isolated dual-stack AWG uplink admission
+      ansible.builtin.import_tasks: ../../../../molecule/prepare-awg-uplink.yml
 
   tasks:
     - name: Execute the AmneziaWG role

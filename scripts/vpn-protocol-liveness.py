@@ -172,9 +172,20 @@ def awg_probe_url(config: dict):
     if (parsed.scheme != "https" or not parsed.hostname or parsed.port not in (None, 443)
             or parsed.username is not None or parsed.password is not None or parsed.fragment
             or ":" in parsed.hostname):
-        raise ValueError("AWG requires IPv4 HTTPS port 443")
-    if ipaddress.ip_interface(config["amneziawg"]["address"]).version != 4:
-        raise ValueError("AWG requires IPv4 client address")
+        raise ValueError("AWG requires a dual-stack HTTPS hostname on port 443")
+    try:
+        ipaddress.ip_address(parsed.hostname)
+    except ValueError:
+        pass
+    else:
+        raise ValueError("AWG requires a dual-stack HTTPS hostname on port 443")
+    settings = config["amneziawg"]
+    addresses = settings.get("addresses")
+    if (not isinstance(addresses, list) or len(addresses) != 2
+            or [ipaddress.ip_interface(value).version for value in addresses] != [4, 6]
+            or [ipaddress.ip_interface(value).network.prefixlen for value in addresses] != [32, 128]
+            or type(settings.get("mtu")) is not int or not 1280 <= settings["mtu"] <= 1420):
+        raise ValueError("AWG requires dual-stack host addresses and bounded MTU")
     return parsed
 
 
@@ -279,7 +290,7 @@ def curl_probe(config: dict, extra: list[str] | None = None, prefix: list[str] |
     return classify_curl(result, config)
 
 
-def parallel_curl_probes(config: dict, extras: list[list[str]]) -> list[dict]:
+def parallel_curl_probes(config: dict, extras: list[list[str]], prefix: list[str] | None = None) -> list[dict]:
     processes: list[subprocess.Popen[str] | None] = []
     results: list[dict | None] = []
     deadline = time.monotonic() + config["timeout_seconds"] + 2
@@ -287,7 +298,7 @@ def parallel_curl_probes(config: dict, extras: list[list[str]]) -> list[dict]:
         for extra in extras:
             try:
                 process = subprocess.Popen(
-                    curl_command(config, extra),
+                    curl_command(config, extra, prefix),
                     text=True,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
@@ -399,6 +410,18 @@ def aggregate_variants(profile: str, variants: list[dict]) -> dict:
         **process_result(profile, {"verdict": "error", "duration_ms": None, "error_kind": "no_variants"}),
         "variants": evidence,
     }
+
+
+def aggregate_awg_families(results: list[dict]) -> dict:
+    """Both families must deliver; one successful family cannot hide the other."""
+    if len(results) != 2:
+        raise ValueError("AWG requires both family observations")
+    failures = [item for item in results if item["verdict"] not in {"ok", "throttled"}]
+    selected = failures[0] if failures else max(results, key=lambda item: item.get("duration_ms") or 0)
+    verdict = selected["verdict"] if failures else ("throttled" if any(item["verdict"] == "throttled" for item in results) else "ok")
+    return {**selected, "verdict": verdict, "family_results": {
+        family: {key: item[key] for key in ("verdict", "duration_ms", "payload_transport", "error_kind") if key in item}
+        for family, item in zip(("ipv4", "ipv6"), results)}}
 
 
 def probe_runtime_profiles(runtime: str, settings: dict, config: dict, control_alive: bool) -> list[dict]:
@@ -543,7 +566,6 @@ def probe_awg(config: dict, control_alive: bool, toolchain: dict) -> dict:
     try:
         awg_probe_url(config)
         dns_servers = awg_dns_servers(config)
-        address_family = "ipv4"
         existing = subprocess.run(["ip", "link", "show", interface], timeout=2, check=False, capture_output=True)
         if existing.returncode != 1:
             raise RuntimeError("AWG interface is not available")
@@ -609,15 +631,15 @@ def probe_awg(config: dict, control_alive: bool, toolchain: dict) -> dict:
         # The interface is created in the host namespace so the userspace UDP socket keeps the sentinel's underlay after the interface moves; addresses and routes exist only in the disposable namespace.
         subprocess.run(["ip", "link", "set", interface, "netns", namespace], timeout=5, check=True, capture_output=True)
         interface_location = "namespace"
-        subprocess.run(["ip", "-n", namespace, "address", "add", config["amneziawg"]["address"], "dev", interface], timeout=5, check=True, capture_output=True)
-        subprocess.run(["ip", "-n", namespace, "link", "set", interface, "up"], timeout=5, check=True, capture_output=True)
+        for address in config["amneziawg"]["addresses"]:
+            subprocess.run(["ip", "-n", namespace, "address", "add", address, "dev", interface], timeout=5, check=True, capture_output=True)
+        subprocess.run(["ip", "-n", namespace, "link", "set", interface, "mtu", str(config["amneziawg"]["mtu"]), "up"], timeout=5, check=True, capture_output=True)
         subprocess.run(["ip", "-n", namespace, "route", "add", "default", "dev", interface], timeout=5, check=True, capture_output=True)
+        subprocess.run(["ip", "-n", namespace, "-6", "route", "add", "default", "dev", interface], timeout=5, check=True, capture_output=True)
         started = int(time.time())
-        result = curl_probe(
-            config,
-            ["--ipv4"],
-            ["ip", "netns", "exec", namespace],
-        )
+        result = aggregate_awg_families(parallel_curl_probes(
+            config, [["--ipv4"], ["--ipv6"]], ["ip", "netns", "exec", namespace]))
+        address_family = "dualstack"
         handshake = subprocess.run(
             ["ip", "netns", "exec", namespace, toolchain["binaries"]["awg"], "show", interface, "latest-handshakes"],
             text=True,
@@ -730,7 +752,7 @@ def main() -> int:
             awg_dns_servers(config)
             toolchain = verify_awg_toolchain(config.get("expected_runtime", {}).get("awg_toolchain"))
         except (OSError, ValueError, TypeError, KeyError):
-            print("vpn-protocol-liveness: invalid AWG toolchain or IPv4 HTTPS profile", file=sys.stderr)
+            print("vpn-protocol-liveness: invalid AWG toolchain or dual-stack HTTPS profile", file=sys.stderr)
             return 2
 
     lock_path = Path(os.environ.get("VPN_LIVENESS_LOCK", DEFAULT_LOCK))

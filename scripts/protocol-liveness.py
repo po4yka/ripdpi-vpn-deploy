@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -131,8 +132,15 @@ def semantic_errors(config: dict) -> list[str]:
                              and not url.fragment)
             except ValueError:
                 valid_url = False
+            if valid_url:
+                try:
+                    ipaddress.ip_address(url.hostname)
+                except ValueError:
+                    pass
+                else:
+                    valid_url = False
             if not valid_url:
-                messages.append("AWG probe requires IPv4 HTTPS port 443 without credentials or fragment")
+                messages.append("AWG probe requires a dual-stack HTTPS hostname on port 443 without credentials or fragment")
     return messages
 
 
@@ -248,15 +256,21 @@ def validate_report(raw: str, sentinel: dict, config: dict, now: int) -> tuple[d
         family = profile.get("target_address_family", "unknown")
         if transport not in ("tcp-https", "unknown") or (transport == "unknown" and verdict != "error"):
             return None, f"{sentinel['id']}: invalid payload transport evidence"
-        if family not in (("ipv4", "unknown") if name == "p2-amneziawg" else ("unknown",)):
+        if family not in (("dualstack", "unknown") if name == "p2-amneziawg" else ("unknown",)):
             return None, f"{sentinel['id']}: invalid target address family evidence"
         if type(profile.get("dns_through_tunnel")) is not bool or type(profile.get("authenticated_handshake")) is not bool:
             return None, f"{sentinel['id']}: invalid positive proof evidence"
         if verdict in ALIVE and (profile["dns_through_tunnel"] is not True or profile["authenticated_handshake"] is not True):
             return None, f"{sentinel['id']}: missing positive proof evidence"
+        if name == "p2-amneziawg" and verdict in ALIVE:
+            families = profile.get("family_results")
+            if (family != "dualstack" or not isinstance(families, dict) or set(families) != {"ipv4", "ipv6"}
+                    or any(not isinstance(item, dict) or item.get("verdict") not in ALIVE
+                           or item.get("payload_transport") != "tcp-https" for item in families.values())):
+                return None, f"{sentinel['id']}: missing dual-stack family proof"
         if "fresh_handshake" in profile and (name != "p2-amneziawg" or type(profile["fresh_handshake"]) is not bool):
             return None, f"{sentinel['id']}: invalid handshake evidence"
-        if name == "p2-amneziawg" and verdict in ALIVE and (family != "ipv4" or profile.get("fresh_handshake") is not True):
+        if name == "p2-amneziawg" and verdict in ALIVE and (family != "dualstack" or profile.get("fresh_handshake") is not True):
             return None, f"{sentinel['id']}: missing authenticated AWG evidence"
         variants = profile.get("variants")
         if name != "p2-amneziawg" and verdict != "error" and not variants:

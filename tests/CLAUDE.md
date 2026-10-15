@@ -14,6 +14,14 @@
 
 ## Design decisions
 
+The AWG dual-stack native lane uses exact pinned AWG TUN peers and the complete
+canonical nftables render. Its owned namespaces exercise nondefault and multiple
+instances, constrained MTU, DNS A/AAAA, bidirectional TCP/UDP, source spoofing,
+cross-instance denial, revocation and native fallback denial. Measured counters
+and traffic distinguish that Linux proof from Android emulator/native-core,
+physical-client and fleet acceptance.
+
+
 Runtime publisher tests verify retained directory descriptors remain valid
 inside normal and predictive transactions and close after success, exceptions,
 interrupts and failed entry or lock acquisition.

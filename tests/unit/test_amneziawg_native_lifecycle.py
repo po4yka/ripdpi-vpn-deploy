@@ -44,9 +44,10 @@ def test_recorded_two_to_one_rename_and_repeated_disable_preserve_foreign_unit(
         for task in selections
         if task["name"] == "Select obsolete recorded AmneziaWG instances"
     )
+    transaction = next(task for task in yaml.safe_load((ROLE / "tasks/configure.yml").read_text()) if "block" in task)
     publish = next(
         task
-        for task in selections
+        for task in transaction["block"]
         if task["name"] == "Record the converged AmneziaWG instance ownership set"
     )
 
@@ -73,6 +74,7 @@ def test_recorded_two_to_one_rename_and_repeated_disable_preserve_foreign_unit(
                     "ansible_become": False,
                     "ansible_python_interpreter": sys.executable,
                     "amneziawg_config_dir": str(configs),
+                    "_awg_configuration_owns_lifecycle": True,
                     "_awg_instances": [{"name": name} for name in current],
                 },
                 "tasks": [
@@ -157,6 +159,7 @@ def test_recorded_two_to_one_rename_and_repeated_disable_preserve_foreign_unit(
                         "vars": {
                             "ansible_python_interpreter": sys.executable,
                             "amneziawg_config_dir": str(configs),
+                    "_awg_configuration_owns_lifecycle": True,
                             "amneziawg_role_enabled": False,
                         },
                         "roles": [{"role": "amneziawg"}],

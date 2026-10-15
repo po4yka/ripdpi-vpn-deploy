@@ -2,6 +2,16 @@
 
 ## Design decisions
 
+AWG peer `allowed_ips` is a typed IPv4/IPv6 mapping. Issuance allocates both
+host identities before publishing ciphertext; exhaustion in either pool leaves
+the prior generation intact. Address allocation jumps claimed intervals, so an
+IPv6 /64 is bounded by peer count. Standalone and bundle emission share instance
+MTU resolution with liveness; runner settings carry `addresses` and `mtu` and
+install both default routes in the owned namespace. Public uplink admission is
+read-only, requires the selected IPv6 default route, and refuses RA ownership
+that would expire after forwarding enables.
+
+
 AWG device issuance, revocation, export and recovery bind provider/environment,
 instance and device through `awg_device_binding.py`. Only the nonempty instance
 list owns peers and server keys. `awg_client.py` allocates from the selected
@@ -33,8 +43,8 @@ First-time subscription registry entries initialize a null AWG binding and
 empty recovery fields; existing AWG authority survives delivery metadata updates.
 Bundle multi-host selection requires `AWG_HOST` when more than one enabled host
 can bind; `AWG_INSTANCE` selects within that host. Missing enabled bindings
-refuse without emitting a partial payload. The public bundle shape/fingerprint
-algorithm are unchanged. RIPDPI bundles support AWG-only profiles through
+refuse without emitting a partial payload. The bundle retains the address array and fingerprint algorithm;
+its admitted device address pair and MTU bounds are stricter. RIPDPI bundles support AWG-only profiles through
 the direct carrier document; the official sing-box format still requires a
 supported proxy outbound. Private recipient output uses no-clobber `OUTPUT`
 publication in an owner-only directory. URI issuance also requires a private

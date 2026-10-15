@@ -53,7 +53,7 @@ def host_context(cohort=''):
 
 def enroll(document, context, name, host, instance=None, *, all_profiles=False):
     binding = resolve_binding(document, context, name, host, instance, enrollment=True)
-    address = allocate_address(binding.instance)
+    addresses = {f'ipv{version}': allocate_address(binding.instance, version) for version in (4, 6)}
     registry = document.setdefault('client_registry', {})
     if not isinstance(registry, dict):
         raise BindingError('invalid-registry-binding')
@@ -65,7 +65,7 @@ def enroll(document, context, name, host, instance=None, *, all_profiles=False):
         raise BindingError('device-already-enrolled')
     private = base64.b64encode(secrets.token_bytes(32)).decode()
     public = public_key(private)
-    peer = {'name': name, 'public_key': public, 'preshared_key': base64.b64encode(secrets.token_bytes(32)).decode(), 'allowed_ips': address}
+    peer = {'name': name, 'public_key': public, 'preshared_key': base64.b64encode(secrets.token_bytes(32)).decode(), 'allowed_ips': addresses}
     document['amneziawg_secrets']['instances'][binding.index]['peers'].append(peer)
     if all_profiles:
         for root, credential in (('xray', {'uuid': str(uuid.uuid4()), 'short_id': secrets.token_hex(4)}),
@@ -95,7 +95,7 @@ def enroll(document, context, name, host, instance=None, *, all_profiles=False):
     if (transport_errors(document, context, sections=["xray", "hysteria", "awg"] if all_profiles else ["awg"])
             or registry_errors(document, context=context)):
         raise BindingError('invalid-enrollment-contract')
-    return document, {'client': name, 'binding': binding.identity, 'allowed_ips': address}
+    return document, {'client': name, 'binding': binding.identity, 'allowed_ips': addresses}
 
 
 def revoke(document, context, name, host, instance=None):
@@ -119,8 +119,8 @@ def export(document, context, name, host, instance, endpoint):
     server, peer = binding.instance, binding.peer
     endpoint = ('[' + endpoint + ']' if ':' in endpoint else endpoint) + ':' + str(server['listen_port'])
     params = {name: server[name] for name in PARAMS}
-    block = {'tag': 'p2-awg-' + name, 'address': [peer['allowed_ips']],
-             'dns': server.get('dns_servers', ['1.1.1.1', '1.0.0.1']), 'mtu': 1420, **params,
+    block = {'tag': 'p2-awg-' + name, 'address': [peer['allowed_ips'][family] for family in ('ipv4', 'ipv6')],
+             'dns': server['dns_servers'], 'mtu': server['mtu'], **params,
              'private_key_placeholder': True, 'peer': {'public_key': public_key(server['server_private_key']),
              'preshared_key': peer['preshared_key'], 'endpoint': endpoint,
              'allowed_ips': ['0.0.0.0/0', '::/0'], 'persistent_keepalive': 25},

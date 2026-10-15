@@ -51,7 +51,7 @@ def test_distinct_enrollment_export_and_selected_revocation(encrypted):
     assert one['awg_private_key'] != two['awg_private_key']
     for index, name in enumerate(('first', 'second')):
         peer = issued['amneziawg_secrets']['instances'][index]['peers'][-1]
-        assert peer['allowed_ips'] == f'10.{70 + index}.0.3/32'
+        assert peer['allowed_ips'] == {'ipv4': f'10.{70 + index}.0.3/32', 'ipv6': f'fd42:{index + 10}::3/128'}
         assert public_key(issued['client_registry'][name]['awg_private_key']) == peer['public_key']
         block = export(issued, {}, name, 'upcloud:fixture', f'awg{index}', '192.0.2.1')
         assert block['peer']['endpoint'] == f'192.0.2.1:{51820 + index}'

@@ -2,12 +2,12 @@
 
 The single-instance firewall still forwards and masquerades only awg0 even when the supported role interface differs. Ordinary issued peers have one IPv4 identity while recipient configurations capture the IPv6 default route without provisioning or authorizing an IPv6 source. Independent fixed MTU values prevent an explicit constrained-path configuration.
 
-Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Revalidate source and current task ownership before implementation. This request creates plans only.
+Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Revalidate source and current task ownership before implementation.
 
 ## Goals / Non-Goals
 
 - Goal: deliver interface-correct dual-stack amneziawg forwarding and configurable mtu with positive capability and meaningful negative, security, lifecycle and privacy tests.
-- Non-goal: implementation in this session, provider mutation, production deployment, actual credentials, unrelated cleanup, compatibility shims or revival of cancelled acceptance.
+- Non-goal: provider mutation, production deployment, actual operator credentials, unrelated cleanup, compatibility shims or revival of cancelled acceptance.
 
 ## Decisions
 
@@ -89,3 +89,24 @@ Native `make test-native-runtime` and the dependency-provided native acceptance 
 - `SCR-1791618039091425` — `awg-device-binding`.
 
 These are canonical `blocked_by` edges; child requirements can be prepared and characterized before a blocker closes, but promotion/acceptance follows the graph. Existing integrated review records are preserved as related evidence and do not imply a new fleet acceptance.
+
+## Implementation contract
+
+Device `allowed_ips` is a family-typed map with required `ipv4` /32 and `ipv6`
+/128 host identities. Routed peers retain explicit ownership through
+`address_kind: routed` and family-typed subnet claims. All input, enrollment,
+render, export and liveness callers use the shared resolver. The bundle retains
+its existing address array with exactly two ordered canonical host identities;
+consumer work is `po4yka/RIPDPI#DAT-1792081130689287`.
+
+MTU resolves instance > technical cohort > role default > 1420, bounded to
+integer 1280–1420. IPv6 uplink admission requires a global source and default
+route; RA requires `accept_ra=2` on the exact uplink. The role fails before
+publication rather than changing provider networking. Failed configuration
+activation restores prior complete private configs and active/boot states;
+obsolete recorded interfaces retire after candidate acceptance.
+
+The implementation request authorizes source work and PR preparation. The user
+selected the RIPDPI client source and a Mac Android emulator for client checks.
+Emulator/native-core results must retain that evidence class; physical Android
+VPN and fleet acceptance remain distinct and are not inferred from them.

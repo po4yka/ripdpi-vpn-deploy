@@ -206,6 +206,11 @@ def test_awg_forwarding_is_default_drop_with_only_uplink_egress():
     assert "policy accept;" not in forward
     assert 'iifname "awg0" accept' not in forward
     assert 'oifname "awg0" accept' not in forward
+    established = forward.index("ct state established,related accept")
+    for family, protocol in (("ipv4", "ip"), ("ipv6", "ip6")):
+        for direction, field in (("iifname", "saddr"), ("oifname", "daddr")):
+            guard = f'{direction} "awg0" meta nfproto {family} {protocol} {field} != '
+            assert forward.index(guard) < established
 
 
 def test_additive_forward_contract_stays_inside_canonical_drop_chain():
@@ -233,7 +238,7 @@ def test_firewall_exclusively_owns_awg_masquerade_rule():
     rendered = ctr.render_template(TEMPLATE, vars_)
 
     assert (
-        'iifname "awg0" oifname != "awg0" counter masquerade comment "awg-nat-awg0"'
+        'iifname "awg0" oifname "eth0" counter masquerade comment "awg-nat-awg0"'
         in rendered
     )
     assert 'counter comment "awg-nat-awg0" masquerade' not in rendered

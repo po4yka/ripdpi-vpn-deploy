@@ -19,11 +19,11 @@ def document():
     def instance(index):
         return {
             "name": f"awg{index}", "listen_port": 51820 + index,
-            "address_v4": f"10.{70 + index}.0.1/29", "address_v6": f"fd42:{index}::1/64",
+            "address_v4": f"10.{70 + index}.0.1/29", "address_v6": f"fd42:{index + 10}::1/64",
             "server_private_key": key(index + 1), "jc": 4, "jmin": 10, "jmax": 50,
             "s1": 0, "s2": 0, **{f"h{i}": index * 10 + i for i in range(1, 5)},
             "peers": [{"name": f"device{index}", "public_key": public_key(key(index + 10)),
-                       "preshared_key": key(index + 20), "allowed_ips": f"10.{70 + index}.0.2/32"}],
+                       "preshared_key": key(index + 20), "allowed_ips": {"ipv4": f"10.{70 + index}.0.2/32", "ipv6": f"fd42:{index + 10}::2/128"}}],
         }
     return {"amneziawg_secrets": {"instances": [instance(0), instance(1)]},
             "client_registry": {f"device{i}": {
@@ -42,7 +42,7 @@ def test_binding_uses_only_the_selected_effective_instance(index):
     selected = resolve_binding(source, {}, f"device{index}", "upcloud:fixture", f"awg{index}")
     assert selected.instance["listen_port"] == 51820 + index
     assert selected.instance["server_private_key"] == key(index + 1)
-    assert selected.peer["allowed_ips"] == f"10.{70 + index}.0.2/32"
+    assert selected.peer["allowed_ips"] == {"ipv4": f"10.{70 + index}.0.2/32", "ipv6": f"fd42:{index + 10}::2/128"}
     assert source == before
 
 
@@ -69,15 +69,15 @@ def test_legacy_top_level_peer_authority_is_rejected():
 
 def test_pool_allocation_excludes_server_network_broadcast_and_peers():
     selected = resolve_binding(document(), {}, "device0", "upcloud:fixture")
-    assert allocate_address(selected.instance) == "10.70.0.3/32"
-    assert ipaddress.ip_interface(allocate_address(selected.instance)).ip in ipaddress.ip_interface(
+    assert allocate_address(selected.instance, 4) == "10.70.0.3/32"
+    assert ipaddress.ip_interface(allocate_address(selected.instance, 4)).ip in ipaddress.ip_interface(
         selected.instance["address_v4"]).network
 
 
 def test_routed_claims_reserve_the_complete_interval():
     instance = document()["amneziawg_secrets"]["instances"][0]
-    instance["peers"] = [{"allowed_ips": "10.70.0.0/30", "address_kind": "routed"}]
-    assert allocate_address(instance) == "10.70.0.4/32"
+    instance["peers"] = [{"allowed_ips": {"ipv4": "10.70.0.0/30"}, "address_kind": "routed"}]
+    assert allocate_address(instance, 4) == "10.70.0.4/32"
 
 
 def test_exhausted_pool_refuses_without_mutation():
@@ -85,7 +85,7 @@ def test_exhausted_pool_refuses_without_mutation():
     instance["address_v4"] = "10.70.0.1/30"
     before = copy.deepcopy(instance)
     with pytest.raises(BindingError, match="address-pool-exhausted"):
-        allocate_address(instance)
+        allocate_address(instance, 4)
     assert instance == before
 
 

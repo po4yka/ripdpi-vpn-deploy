@@ -2,6 +2,14 @@
 
 ## Design decisions
 
+AWG forwarding checks both typed source families and denies movement outside
+the exact uplink before established conntrack acceptance. Each NAT rule matches
+that same uplink; a stale connection cannot authorize cross-instance forwarding.
+Empty peer families drop explicitly. Missing IPv6 uplink authority refuses
+before firewall publication. Scenario-only public-family routes are confined to
+each disposable Molecule namespace.
+
+
 AWG interface names come only from the nonempty canonical instance list; no
 legacy `awg0` fallback grants forwarding or backup authority.
 
