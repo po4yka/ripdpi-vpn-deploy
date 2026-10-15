@@ -471,28 +471,142 @@ def test_operator_rollback_rejects_ambiguous_identity(raw):
         release_versions(raw)
 
 
-def test_operator_release_digest_is_verified_before_selection(parameter_area):
+def retained_release(base, version, name, mode, data):
     import hashlib
+    release = base / 'releases' / version
+    release.mkdir(parents=True)
+    artifact = release / name
+    artifact.write_bytes(data)
+    artifact.chmod(mode)
+    digest = hashlib.sha256(data).hexdigest()
+    byte_receipt = release / '.runtime-release.json'
+    byte_receipt.write_text(json.dumps({'schema_version':1,'version':version,
+        'arch_key':'arm64','arch_slug':'arm64-v8a','binary_name':name,
+        'artifact_sha256':digest,'binary_sha256':digest}))
+    byte_receipt.chmod(0o644)
+    return release
+
+
+def test_operator_release_digest_is_verified_before_selection(parameter_area):
     import transport_runtime_transaction as core
     from transport_runtime_rollback import verified_release
     root, state, _actual, uid, _gid = parameter_area
     version = 'v26.3.27-source-' + 'a' * 40
-    release = root / 'releases' / version
-    release.mkdir(parents=True)
+    release = retained_release(root, version, 'xray', 0o755, b'exact-private-byte-ownership-contract')
     binary = release / 'xray'
-    binary.write_bytes(b'exact-private-byte-ownership-contract')
-    binary.chmod(0o755)
-    digest = hashlib.sha256(binary.read_bytes()).hexdigest()
-    byte_receipt = release / '.runtime-release.json'
-    byte_receipt.write_text(json.dumps({'schema_version':1,'version':version,
-        'arch_key':'arm64','arch_slug':'arm64-v8a','binary_name':'xray',
-        'artifact_sha256':digest,'binary_sha256':digest}))
-    byte_receipt.chmod(0o644)
     with core.Transaction(state, uid=uid) as tx:
         assert verified_release(tx, root, version, 'xray', 0o755) == release
         binary.write_bytes(b'changed-binary')
         with pytest.raises(core.Refusal, match='rollback-release-changed'):
             verified_release(tx, root, version, 'xray', 0o755)
+
+
+SELECTED_RELEASE, RETAINED_RELEASE = 'v26.5.3-archive', 'v26.3.27-archive'
+
+
+def unit_text(release, assets, config):
+    return ('[Service]\nEnvironment=XRAY_LOCATION_ASSET=' + str(assets) + '\nEnvironment=XRAY_RUNTIME_BINARY='
+            + str(release / 'xray') + '\nExecStart=' + str(release / 'xray') + ' run -config ' + str(config) + '\n')
+
+
+def runtime_tree(root, *, bundled=True):
+    """An /opt/xray analogue with the newer release selected and the older one retained."""
+    selected = retained_release(root, SELECTED_RELEASE, 'xray', 0o755, b'selected-xray')
+    retained = retained_release(root, RETAINED_RELEASE, 'xray', 0o755, b'retained-xray')
+    (root / 'current').symlink_to(selected)
+    assets = root / 'assets/geoip'
+    selected_assets = retained_release(assets, 'v26.5.3', 'geoip.dat', 0o644, b'selected-geoip')
+    retained_release(assets, 'v26.3.27', 'geoip.dat', 0o644, b'retained-geoip')
+    (assets / 'current').symlink_to(selected_assets)
+    config = root / 'etc/config.json'
+    config.parent.mkdir()
+    config.write_bytes(b'{"log": {}}')
+    unit = root / 'units/xray.service'
+    unit.parent.mkdir()
+    unit.write_text(unit_text(selected, selected_assets if bundled else root / 'unmanaged-assets', config))
+    return unit, config, selected, retained, assets
+
+
+@pytest.mark.parametrize('bundled', [True, False])
+def test_operator_runtime_rollback_retargets_unit_text_and_exact_link_set(parameter_area, bundled):
+    import base64
+    import transport_runtime_transaction as core
+    from transport_runtime_rollback import runtime_candidates
+    root, state, _actual, uid, gid = parameter_area
+    unit, config, selected, retained, assets = runtime_tree(root, bundled=bundled)
+    with core.Transaction(state, uid=uid) as tx:
+        plan = runtime_candidates(tx, 'v26.3.27', unit, config, gid, root=root)
+    files = [item for item in plan if 'data' in item]
+    assert [(item['path'], item['gid'], item['mode']) for item in files] == [
+        (str(unit), 0, 0o644), (str(config), gid, 0o640)]
+    rolled_back_assets = assets / 'releases/v26.3.27' if bundled else root / 'unmanaged-assets'
+    # Both the environment and ExecStart name the retained release; the selected one is gone.
+    assert base64.b64decode(files[0]['data']).decode() == unit_text(retained, rolled_back_assets, config)
+    assert str(selected) not in base64.b64decode(files[0]['data']).decode()
+    assert base64.b64decode(files[1]['data']) == b'{"log": {}}'
+    links = [{'path': str(root / 'current'), 'target': str(retained)},
+             {'path': str(root / 'previous'), 'target': str(selected)},
+             {'path': '/usr/local/bin/xray', 'target': str(root / 'current/xray')}]
+    if bundled:
+        links = [{'path': str(assets / 'current'), 'target': str(assets / 'releases/v26.3.27')},
+                 {'path': str(assets / 'previous'), 'target': str(assets / 'releases/v26.5.3')},
+                 {'path': str(root / 'bundled-assets/geoip.dat'), 'target': str(assets / 'current/geoip.dat')}] + links
+    assert [item for item in plan if 'target' in item] == links
+    assert len({item['path'] for item in plan}) == len(plan)
+
+
+def test_operator_runtime_rollback_refuses_the_selected_release(parameter_area):
+    import transport_runtime_transaction as core
+    from transport_runtime_rollback import runtime_candidates
+    root, state, _actual, uid, gid = parameter_area
+    unit, config, _selected, _retained, _assets = runtime_tree(root)
+    with core.Transaction(state, uid=uid) as tx:
+        with pytest.raises(core.Refusal, match='rollback-no-change'):
+            runtime_candidates(tx, 'v26.5.3', unit, config, gid, root=root)
+
+
+@pytest.mark.parametrize('damage,category', [
+    ('xray-binary', 'rollback-release-changed'),
+    ('geoip-binary', 'rollback-release-changed'),
+    ('xray-receipt', 'rollback-release-unowned'),
+])
+def test_operator_runtime_rollback_plans_nothing_from_an_unverified_release(parameter_area, damage, category):
+    import transport_runtime_transaction as core
+    from transport_runtime_rollback import runtime_candidates
+    root, state, _actual, uid, gid = parameter_area
+    unit, config, _selected, retained, assets = runtime_tree(root)
+    if damage == 'xray-binary':
+        (retained / 'xray').write_bytes(b'tampered-xray')
+    elif damage == 'geoip-binary':
+        (assets / 'releases/v26.3.27/geoip.dat').write_bytes(b'tampered-geoip')
+    else:
+        (retained / '.runtime-release.json').unlink()
+    before = unit.read_bytes()
+    with core.Transaction(state, uid=uid) as tx:
+        with pytest.raises(core.Refusal, match=category):
+            runtime_candidates(tx, 'v26.3.27', unit, config, gid, root=root)
+    assert unit.read_bytes() == before
+
+
+def test_operator_runtime_rollback_never_plans_egress_owned_gateway_units(parameter_area):
+    import transport_runtime_transaction as core
+    from transport_runtime_rollback import runtime_candidates
+    spec = importlib.util.spec_from_file_location(
+        'transport_egress_generation_owner_test', ROOT / 'ansible/roles/transport-egress/files/generation.py')
+    generation = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(generation)
+    root, state, _actual, uid, gid = parameter_area
+    unit, config, selected, _retained, _assets = runtime_tree(root)
+    gateways = [unit.parent / name for name in generation.GATEWAYS.values()]
+    for gateway in gateways:
+        gateway.write_text('[Service]\nExecStart=' + str(selected / 'xray') + ' run -config /etc/ripdpi/transport-egress/gateway.json\n')
+    with core.Transaction(state, uid=uid) as tx:
+        plan = runtime_candidates(tx, 'v26.3.27', unit, config, gid, root=root)
+    # The accepted receipt claims candidates by inode; the egress transaction rewrites these units on the next converge.
+    assert len(gateways) == 2
+    assert not [item for item in plan if Path(item['path']).name in generation.GATEWAYS.values()]
+    assert [item['path'] for item in plan if item['path'].endswith('.service')] == [str(unit)]
+    assert all(gateway.read_text().count(str(selected / 'xray')) == 1 for gateway in gateways)
 
 
 def test_absent_parent_retirement_is_verified_without_manufacturing_storage(parameter_area):

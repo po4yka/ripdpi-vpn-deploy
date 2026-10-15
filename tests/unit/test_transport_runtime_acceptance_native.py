@@ -88,6 +88,21 @@ def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(
                 'runtime', '--version', 'v26.3.27'], capture_output=True, timeout=90)
             assert result.returncode == 0, 'native-runtime-rollback-refused'
             assert os.readlink(root / 'current') == previous
+            # Retargeted links do not prove what runs: the unit text and the live main process
+            # must both name the rolled-back release binary.
+            from transport_runtime_accept import fields, unit_binary
+            rolled_back = str(Path(previous) / 'xray')
+            unit_text = Path('/etc/systemd/system/xray.service').read_text()
+            assert unit_binary(unit_text)[0] == rolled_back
+            assert 'Environment=XRAY_RUNTIME_BINARY=' + rolled_back in unit_text.splitlines()
+            observed = fields('xray.service')
+            assert observed['ActiveState'] == 'active' and int(observed['MainPID']) > 0
+            assert os.path.samefile('/proc/' + observed['MainPID'] + '/exe', rolled_back), 'native-runtime-rollback-process-unchanged'
+            # The next ordinary converge with the newer pin must still be accepted and move
+            # the unit and links forward again.
+            assert lab.converge(profile) == 0
+            assert os.readlink(root / 'current') != previous
+            assert unit_binary(Path('/etc/systemd/system/xray.service').read_text())[0] == os.readlink(root / 'current') + '/xray'
         assert lab.converge(profile, retire=True) == 0
         retired_unit = '/etc/systemd/system/' + ('xray.service' if profile == 'xray' else 'hysteria-server.service')
         assert not os.path.lexists(retired_unit)
