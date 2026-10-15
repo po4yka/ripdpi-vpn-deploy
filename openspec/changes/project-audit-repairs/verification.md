@@ -24,22 +24,22 @@ artifact_evidence: "All 163 golden snapshots match; source schemas contracts and
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-AUDIT-GENERATION | SEC-1791735997436813 | Targeted guarded recovery and unguarded restart tests; runtime lane 104 passed | local regression passed; native or live acceptance separate |
-| REQ-AUDIT-RETIRE | SEC-1791735997436813 | Exact producer-file grants and unsafe ownership refusal tests; runtime lane 104 passed; native service-write test added | local regression passed; native or live acceptance separate |
-| REQ-AUDIT-IPV6 | SEC-1791735997436813 | Strict IPv6 render and policy regression tests; native empty-neighbour-cache test added | local regression passed; native or live acceptance separate |
-| REQ-AUDIT-AWG | SEC-1791735997436813 | Actual localhost Ansible verifies configured instance names; secondary watchdog failure recovers its exact unit | local regression passed; native or live acceptance separate |
-| REQ-AUDIT-RETENTION | SEC-1791735997436813 | XHTTP-only logrotate regression; all 163 template snapshots match | local regression passed; native or live acceptance separate |
-| REQ-AUDIT-CLIENT | SEC-1791735998160729 | Exact client and ambiguous token-prefix refusal tests; operator lane 96 passed | local regression passed; native or live acceptance separate |
-| REQ-AUDIT-SELECTION | SEC-1791735998160729 | Real Ansible limited inventory and canonical Make admission tests; observer-only and empty selections refuse | local regression passed; native or live acceptance separate |
-| REQ-AUDIT-PROMOTION | SEC-1791735998160729 | Concurrent promotion and watcher publication regression tests; final operator subset 39 passed | local regression passed; native or live acceptance separate |
-| REQ-AUDIT-LOCK | SEC-1791735998160729 | Held-writer exclusion, owned legacy 0644 repair and unsafe-file refusal tests | local regression passed; native or live acceptance separate |
-| REQ-AUDIT-INSTALL | SEC-1791735998967800 | Executable installer accepts exact verified provenance and rejects bad provenance or checksum before execution | local regression passed; native or live acceptance separate |
-| REQ-AUDIT-RELEASE | SEC-1791735998967800 | Draft-only mutation, immutable published reruns, upload-before-publication and tag handoff; final release subset 14 passed | local regression passed; native or live acceptance separate |
-| REQ-AUDIT-FIXTURES | SEC-1791735998967800 | Synthetic Git configuration and explicit group ownership; taskctl 106 passed; five fixture modules 174 passed under hostile signing configuration | local regression passed; native or live acceptance separate |
-| REQ-AUDIT-SSH | SEC-1791735998967800 | Active socket then service restart; failure withholds marker; loopback banner and closed-port refusal tests; final SSH subset 123 passed | local regressions passed; native activation separate |
-| REQ-AUDIT-HOST | SEC-1791735999672160 | Actual CLI and shell IP propagation; full vpnd suite 303 passed; isolated per-address ASN baseline | local regression passed; native or live acceptance separate |
-| REQ-AUDIT-PORT | SEC-1791735999672160 | Default 8444, cohort override, explicit port and invalid-port refusal tests | local regression passed; native or live acceptance separate |
-| REQ-AUDIT-QR | SEC-1791735999672160 | QR refresh and no-QR stale artifact removal tests; both synthetic page variants inspected in a browser | local regression passed; native or live acceptance separate |
+| REQ-AUDIT-GENERATION | SEC-1791735997436813 |Targeted guarded recovery and unguarded restart tests; runtime lane 104 passed; complete exact-source CI 38768887914 and native/full-stack cases passed| passed |
+| REQ-AUDIT-RETIRE | SEC-1791735997436813 |Exact producer-file grants and unsafe ownership refusal tests; runtime lane 104 passed; native service-write test added; complete exact-source CI 38768887914 and native/full-stack cases passed| passed |
+| REQ-AUDIT-IPV6 | SEC-1791735997436813 |Strict IPv6 render and policy regression tests; native empty-neighbour-cache test added; complete exact-source CI 38768887914 and native/full-stack cases passed| passed |
+| REQ-AUDIT-AWG | SEC-1791735997436813 |Actual localhost Ansible verifies configured instance names; secondary watchdog failure recovers its exact unit; complete exact-source CI 38768887914 and native/full-stack cases passed| passed |
+| REQ-AUDIT-RETENTION | SEC-1791735997436813 |XHTTP-only logrotate regression; all 163 template snapshots match; complete exact-source CI 38768887914 and native/full-stack cases passed| passed |
+| REQ-AUDIT-CLIENT | SEC-1791735998160729 |Exact client and ambiguous token-prefix refusal tests; operator lane 96 passed; complete exact-source CI 38768887914 and native/full-stack cases passed| passed |
+| REQ-AUDIT-SELECTION | SEC-1791735998160729 |Real Ansible limited inventory and canonical Make admission tests; observer-only and empty selections refuse; complete exact-source CI 38768887914 and native/full-stack cases passed| passed |
+| REQ-AUDIT-PROMOTION | SEC-1791735998160729 |Concurrent promotion and watcher publication regression tests; final operator subset 39 passed; complete exact-source CI 38768887914 and native/full-stack cases passed| passed |
+| REQ-AUDIT-LOCK | SEC-1791735998160729 |Held-writer exclusion, owned legacy 0644 repair and unsafe-file refusal tests; complete exact-source CI 38768887914 and native/full-stack cases passed| passed |
+| REQ-AUDIT-INSTALL | SEC-1791735998967800 |Executable installer accepts exact verified provenance and rejects bad provenance or checksum before execution; complete exact-source CI 38768887914 and native/full-stack cases passed| passed |
+| REQ-AUDIT-RELEASE | SEC-1791735998967800 |Draft-only mutation, immutable published reruns, upload-before-publication and tag handoff; final release subset 14 passed; complete exact-source CI 38768887914 and native/full-stack cases passed| passed |
+| REQ-AUDIT-FIXTURES | SEC-1791735998967800 |Synthetic Git configuration and explicit group ownership; taskctl 106 passed; five fixture modules 174 passed under hostile signing configuration; complete exact-source CI 38768887914 and native/full-stack cases passed| passed |
+| REQ-AUDIT-SSH | SEC-1791735998967800 |Active socket then service restart; failure withholds marker; loopback banner and closed-port refusal tests; final SSH subset 123 passed; complete exact-source CI 38768887914 and native/full-stack cases passed| passed |
+| REQ-AUDIT-HOST | SEC-1791735999672160 |Actual CLI and shell IP propagation; full vpnd suite 303 passed; isolated per-address ASN baseline; complete exact-source CI 38768887914 and native/full-stack cases passed| passed |
+| REQ-AUDIT-PORT | SEC-1791735999672160 |Default 8444, cohort override, explicit port and invalid-port refusal tests; complete exact-source CI 38768887914 and native/full-stack cases passed| passed |
+| REQ-AUDIT-QR | SEC-1791735999672160 |QR refresh and no-QR stale artifact removal tests; both synthetic page variants inspected in a browser; complete exact-source CI 38768887914 and native/full-stack cases passed| passed |
 
 ## Validation scope
 
