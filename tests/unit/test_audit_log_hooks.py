@@ -92,7 +92,7 @@ def test_append_best_effort_writes_json_record(tmp_path: Path):
 def test_lifecycle_hooks_call_best_effort_append():
     expected = {
         "scripts/issue-bootstrap.sh": "--action issue-bootstrap",
-        "scripts/issue-sub-token.sh": "--action issue-sub-token",
+        "scripts/issue_sub_token.py": "'--action', 'issue-sub-token'",
         "scripts/new-client.sh": "--action new-client",
         "scripts/rotate-secrets.sh": "--action rotate-secrets",
         "scripts/fleet-rotate.sh": "--action fleet-rotate-step",

@@ -2,18 +2,14 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
-import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 NORMALIZER = REPO_ROOT / "scripts" / "normalize-subscription-expiry.py"
 ISSUER = REPO_ROOT / "scripts" / "issue-sub-token.sh"
-FIXTURE = REPO_ROOT / "tests" / "fixtures" / "secrets-sample.yml"
-STUBS_BIN = REPO_ROOT / "tests" / "stubs" / "bin"
 
 
 @pytest.mark.parametrize(
@@ -61,39 +57,9 @@ def _write_executable(path: Path, contents: str) -> None:
 
 
 def _issuer_env(tmp_path: Path) -> tuple[dict[str, str], Path, Path]:
-    if not shutil.which("jq"):
-        pytest.skip("jq is required")
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    secrets_file = tmp_path / "secrets.json"
-    secrets_file.write_text(json.dumps(yaml.safe_load(FIXTURE.read_text())))
-    payload_file = tmp_path / "payload.json"
-    meta_file = tmp_path / "meta.json"
-    _write_executable(
-        bin_dir / "sops",
-        f"#!/bin/sh\ncat {secrets_file}\n",
-    )
-    _write_executable(
-        bin_dir / "wg",
-        "#!/bin/sh\ncat >/dev/null\nprintf 'fixture-server-public-key'\n",
-    )
-    _write_executable(
-        bin_dir / "ssh",
-        f"#!/bin/sh\ncase \"$*\" in *.meta*) cat > {meta_file} ;; *) cat > {payload_file} ;; esac\n",
-    )
-    env = os.environ.copy()
-    tool_path = os.pathsep.join(
-        entry for entry in env["PATH"].split(os.pathsep) if not entry.endswith("/mise/shims")
-    )
-    env.update(
-        {
-            "PATH": f"{bin_dir}:{STUBS_BIN}:{tool_path}",
-            "HOME": str(tmp_path),
-            "SOPS_FILE": str(secrets_file),
-            "STUB_LOG": str(tmp_path / "stub.log"),
-        }
-    )
-    return env, payload_file, meta_file
+    from test_client_registry import _harness
+    env, payload, _marker, _source = _harness(tmp_path)
+    return env, payload, tmp_path / 'meta.json'
 
 
 @pytest.mark.parametrize("format_name", ["singbox", "ripdpi"])

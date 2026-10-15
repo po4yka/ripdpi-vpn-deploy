@@ -105,6 +105,11 @@ def test_current_real_delivery_matches_private_artifact_and_ciphertext_rewrap(la
     change(path, lambda d: None)
     assert drift._verdict('phone')[0] == 'current'
     assert MARKER.encode() not in path.read_bytes()
+    audit = subprocess.run(['age', '--decrypt', '-i', os.environ['AGE_KEY'], str(path.parent / 'audit.age')], capture_output=True, check=True).stdout
+    record = json.loads(audit)
+    assert record['action'] == 'issue-sub-token' and record['client'] == 'phone'
+    for value in (MARKER, document['client_delivery_identity']['key'], entry['last_payload_identity']['digest']):
+        assert value.encode() not in audit
 
 
 @pytest.mark.parametrize('field', ['password', 'uuid', 'sni', 'path', 'peer', 'instance', 'parameter', 'expiry'])
@@ -195,7 +200,10 @@ def test_authority_or_reader_failure_is_unknown_without_mutation(lab, fault, cap
 
 def test_registry_encryption_failure_preserves_original_authority_and_remote(lab, monkeypatch, capsys):
     path, capture, _ = lab
+    deliver()
+    capsys.readouterr()
     before = path.read_bytes()
+    before_payload = capture.read_bytes()
     original = encrypted.run_sops
     def fail(args, **kwargs):
         if args[0] == 'set':
@@ -208,7 +216,7 @@ def test_registry_encryption_failure_preserves_original_authority_and_remote(lab
     with pytest.raises(ValueError):
         deliver()
     assert path.read_bytes() == before
-    assert not capture.exists()
+    assert capture.read_bytes() == before_payload
     assert not list(path.parent.glob('.devices.sops.yaml.client.*'))
     assert MARKER not in repr(capsys.readouterr())
 
@@ -306,4 +314,22 @@ def test_real_multi_host_delivery_preserves_exact_awg_and_private_sources(lab, m
     issuer.issue(args)
     capsys.readouterr()
     assert capture.read_bytes() == before
+    assert drift._verdict('phone')[0] == 'current'
+
+
+def test_same_second_refresh_republishes_with_unchanged_encrypted_registry(lab, monkeypatch, capsys):
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    path, capture, drift = lab
+    fixed = datetime(2026, 10, 15, tzinfo=timezone.utc)
+    monkeypatch.setattr(issuer, 'datetime', SimpleNamespace(now=lambda tz: fixed))
+    deliver()
+    token = capsys.readouterr().out.strip()
+    before, delivered = path.read_bytes(), capture.read_bytes()
+    capture.unlink()
+    args = issuer.argparse.Namespace(client='phone', format=None, expires=None, refresh_token=token, print_token_only=True, qr=False)
+    issuer.issue(args)
+    capsys.readouterr()
+    assert path.read_bytes() == before
+    assert capture.read_bytes() == delivered
     assert drift._verdict('phone')[0] == 'current'

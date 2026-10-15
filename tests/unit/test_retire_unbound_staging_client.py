@@ -906,8 +906,12 @@ def test_retirement_interlocks_the_canonical_sops_writer_lock(setup):
         in (ROOT / "scripts/encrypted_client_document.py").read_text()
     )
     assert (
-        'REGISTRY_LOCK="${sops_file}.new-client.lock"'
-        in (ROOT / "scripts/issue-sub-token.sh").read_text()
+        'from encrypted_client_document import CommittedPublication, operate'
+        in (ROOT / "scripts/issue_sub_token.py").read_text()
+    )
+    assert (
+        'operate(path, transform, before_publish=publish)'
+        in (ROOT / "scripts/issue_sub_token.py").read_text()
     )
     assert (
         'SOPS_LOCK="${SOPS_FILE}.new-client.lock"'

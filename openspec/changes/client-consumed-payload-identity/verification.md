@@ -3,9 +3,9 @@ task_id: "SCR-1791618188806822"
 change: "client-consumed-payload-identity"
 commit_sha: null
 local: "required"
-local_evidence: "73 drift/registry cases, 38 emitter cases and 44 final issuance cases passed without selected skips; make check retry pending after provider checksum download timeout"
+local_evidence: "279 affected transaction/issuance cases, 49 caller/gate cases and 38 emitter cases passed without selected skips; full source gate remains in progress"
 remote_ci: "required"
-remote_ci_evidence: "terminal required checks on the exact integrated implementation SHA"
+remote_ci_evidence: "Initial source e08957b987d5dd4c49e3c4cf33420f846deb8c84 exposed same-second refresh and obsolete shell-reader fixtures; corrected exact-source checks remain required"
 dry_run: "not_applicable"
 dry_run_evidence: "source-only capability; no controller or provider execution in this task"
 staging: "not_applicable"
@@ -30,3 +30,16 @@ The named local tests below were observed on the implementation worktree. Exact 
 | REQ-PROTO-IDENTITY-ISSUANCE | SCR-1791618349798761 | Real test-only SOPS issuance/refresh compares exact canonical delivery, selected AWG host and persisted private per-host sources; candidate encryption failure preserves original authority before remote publication. | passed locally |
 | REQ-PROTO-IDENTITY-PRIVACY | SCR-1791618352269556 | Private marker checks cover subprocess argv/environment and diagnostics; unsafe modes, links, FIFOs, malformed reads and a real child deadline refuse categorically. Authority lifecycle is documented in docs/SECRETS.md. | passed locally |
 | REQ-PROTO-IDENTITY-AUTHORITY | SCR-1791618352269556 | Actual SOPS authority creation, loss, valid rotation, mismatched generation, malformed key/version and ciphertext-only re-encryption are exercised. Inspection retains ciphertext and creates no authority. | passed locally |
+
+## CI follow-up
+
+The first hosted unit run exposed an idempotent refresh boundary: when the
+registry is identical within the same timestamp second, encrypted publication
+has no candidate but delivery still needs its verified callback. The callback
+now runs under the stable lock for unchanged state, with a real SOPS fixed-clock
+regression that proves ciphertext retention and actual redelivery. Candidate
+write failure also retains existing authority and the previous delivered bytes.
+Audit, SOPS-selection and retirement assertions follow the actual Python writer;
+the expiry fixture now supports encrypted registry staging and verification.
+The affected suites passed 279 cases, the caller/gate suite passed 49 cases,
+and the explicit same-second/atomic-failure rerun passed both cases.

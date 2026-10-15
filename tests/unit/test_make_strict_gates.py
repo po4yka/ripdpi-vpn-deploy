@@ -667,9 +667,10 @@ def test_client_emitters_receive_the_local_fleet_profile():
 
 def test_subscription_issuers_honor_the_explicit_sops_file():
     root = Path(__file__).resolve().parents[2]
-    for script in ("issue-bootstrap.sh", "issue-sub-token.sh"):
-        source = (root / "scripts" / script).read_text()
-        assert 'sops_file="${SOPS_FILE:-' in source
+    bootstrap = (root / "scripts/issue-bootstrap.sh").read_text()
+    assert 'sops_file="${SOPS_FILE:-' in bootstrap
+    subscription = (root / "scripts/issue_sub_token.py").read_text()
+    assert "Path(os.environ.get('SOPS_FILE') or" in subscription
 
 
 def test_yamllint_excludes_git_ignored_local_state():

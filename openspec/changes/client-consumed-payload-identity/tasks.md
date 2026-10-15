@@ -9,6 +9,7 @@ Detect client payload drift from every consumed private input. Source implementa
 - scripts/client_payload.py
 - scripts/client_delivery_identity.py
 - scripts/issue_sub_token.py
+- scripts/encrypted_client_document.py
 - scripts/client-drift.py
 - scripts/issue-sub-token.sh
 - scripts/emit-bundle.sh

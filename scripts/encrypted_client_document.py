@@ -113,8 +113,11 @@ def _operate(path, transform, *, runner, before_publish, publication):
             if (identity(os.stat(temporary, follow_symlinks=False)) != identity(candidate_info)
                     or identity(os.fstat(candidate)) != identity(candidate_info)):
                 raise ValueError("private-candidate-changed")
-            if before_publish is not None:
-                before_publish()
+        # An unchanged encrypted document still has a verified, locked source;
+        # delivery callbacks must run even for an idempotent refresh.
+        if before_publish is not None:
+            before_publish()
+        if temporary is not None:
             os.replace(temporary, path)
             publication["committed"] = metadata
             temporary = None
