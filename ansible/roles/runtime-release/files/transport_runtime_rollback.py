@@ -127,14 +127,13 @@ def main():
         config_path = Path('/etc/xray/config.json')
         if not receipt['nodes'].get(str(unit_path)) or not receipt['nodes'].get(str(config_path)):
             raise Refusal('accepted-xray-required')
-        candidates = [file_candidate(unit_path, unit_path.read_bytes(), 0, 0o644)]
         gid = receipt['nodes'][str(config_path)]['identity'][3]
         if args.action == 'config':
             previous = config_path.with_name('config.json.prev')
             if not receipt['nodes'].get(str(previous)):
                 raise Refusal('accepted-previous-config-required')
-            candidates.append(file_candidate(config_path, previous.read_bytes(), gid))
-            candidates = restore_points(candidates)
+            candidates = restore_points([file_candidate(unit_path, unit_path.read_bytes(), 0, 0o644),
+                                         file_candidate(config_path, previous.read_bytes(), gid)])
         else:
             candidates = runtime_candidates(tx, args.version, unit_path, config_path, gid)
         candidates.append(parameter_candidate(parameters))
