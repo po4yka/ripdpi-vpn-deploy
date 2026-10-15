@@ -352,3 +352,13 @@ def test_ech_origin_type_refuses_without_loading_or_printing_authority(origin):
     document = hysteria(authority())
     document["masquerade_url"] = origin
     assert hysteria_errors(document)
+
+
+@pytest.mark.parametrize("field", ["bandwidth_up", "bandwidth_down"])
+@pytest.mark.parametrize("value,valid", [
+    ("1 bps", True), ("1 gbps", True), ("1000000001 bps", False),
+    ("0 bps", False), ("9" * 5000 + " bps", False), (True, False),
+])
+def test_bandwidth_bounds_refuse_without_integer_conversion_failure(field, value, valid):
+    document = {"version": "v2.13.0", "masquerade_url": "https://vpn.example.com", field: value}
+    assert bool(hysteria_errors(document)) is not valid

@@ -310,6 +310,8 @@ def test_actual_ech_clients_traffic_privacy_trust_and_resources(
             lab.process(
                 [
                     "tcpdump",
+                    "-Z",
+                    "root",
                     "-i",
                     "lo",
                     "-U",

@@ -195,7 +195,7 @@ def hysteria_profile_errors(raw):
     for field in ('bandwidth_up', 'bandwidth_down'):
         value = raw.get(field)
         if value is not None:
-            match = re.fullmatch(r'([1-9][0-9]*)\s*(bps|kbps|mbps|gbps)', value) if isinstance(value, str) else None
+            match = re.fullmatch(r'([1-9][0-9]*)\s*(bps|kbps|mbps|gbps)', value) if isinstance(value, str) and len(value) <= 32 else None
             if not match or int(match[1]) * {'bps':1,'kbps':1000,'mbps':1000000,'gbps':1000000000}[match[2]] > 1000000000:
                 errors.append(('hysteria.' + field, 'bandwidth must be positive and at most 1 Gbps'))
     if 'ech' not in raw:
