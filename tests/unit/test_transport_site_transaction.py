@@ -15,7 +15,9 @@ ROOT = Path(__file__).resolve().parents[2]
 SITE = ROOT / 'ansible/playbooks/site.yml'
 BEGIN = ROOT / 'ansible/playbooks/tasks/transport-ingress-begin.yml'
 HELPER = ROOT / 'ansible/roles/nginx-xhttp/files/nginx_transaction.py'
+EGRESS_TASKS = ROOT / 'ansible/roles/transport-egress/tasks'
 JOURNAL = '/var/lib/vpn-nginx-publication/nginx.service/site.json'
+PENDING = '/var/lib/vpn-nginx-publication/nginx.service/pending.json'
 OUTER_HELPER = '/usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py'
 DECLARE = 'Declare bounded desired ingress paths without reading runtime secrets'
 CAPTURE = 'Capture or check protected ingress under its existing shared unit lock'
@@ -106,7 +108,8 @@ def _prestep(root):
     source = yaml.safe_load(BEGIN.read_text())
     names = [value['name'] for value in source]
     steps = copy.deepcopy(source[names.index(DECLARE) + 1:names.index(CAPTURE)])
-    stat_paths = {JOURNAL: str(root / 'nginx-state/nginx.service/site.json'), OUTER_HELPER: str(root / 'outer-helper')}
+    stat_paths = {JOURNAL: str(root / 'nginx-state/nginx.service/site.json'), PENDING: str(root / 'nginx-state/nginx.service/pending.json'),
+                  OUTER_HELPER: str(root / 'libexec/transport_runtime_outer.py')}
     for step in steps:
         if 'ansible.builtin.stat' in step:
             step['ansible.builtin.stat']['path'] = stat_paths[step['ansible.builtin.stat']['path']]
@@ -114,6 +117,21 @@ def _prestep(root):
             assert step['ansible.builtin.command']['argv'] == ['/usr/bin/python3', '-Es', OUTER_HELPER, 'status']
             step['ansible.builtin.command']['argv'] = [sys.executable, str(root / 'outer_status.py'), str(root)]
     return steps
+
+
+def _helper_authority(root):
+    """The production admission task, retargeted at the harness tree and the test user's ownership."""
+    task = copy.deepcopy(yaml.safe_load((EGRESS_TASKS / 'helper-authority.yml').read_text())[0])
+    argv = task['ansible.builtin.command']['argv']
+    argv[0] = sys.executable
+    for old, new, count in [
+            ("pathlib.Path('/var/lib/ripdpi')", f"pathlib.Path('{root}/ripdpi-state')", 1),
+            ("pathlib.Path('/usr/local/libexec/ripdpi-transport-egress')", f"pathlib.Path('{root}/libexec')", 1),
+            ('[*reversed(root.parents), root]', f"[*[p for p in reversed(root.parents) if p.is_relative_to('{root}')], root]", 1),
+            ('info.st_uid != 0', f'info.st_uid != {os.geteuid()}', 2)]:
+        assert argv[3].count(old) == count and 'consumer-helper-authority-refused' in argv[3]
+        argv[3] = argv[3].replace(old, new)
+    return [task]
 
 
 def _fixture(tmp_path, failure):
@@ -161,6 +179,12 @@ def write(owner,payload):
 if action=='seed':
  for owner in tx.SITE_OWNERS:write(owner,b'accepted ingress')
 elif action=='publish':write(sys.argv[4],b'changed ingress')
+elif action=='pend':
+ value=next(v for v in tx.site_request(context) if v['owner']=='nginx-xhttp')
+ value['files']=[dict(path=value['files'][0]['path'],kind='file',uid=os.geteuid(),gid=os.getegid(),mode=0o640,content_b64=base64.b64encode(b'changed ingress').decode())]
+ path=Path(value['files'][0]['path'])
+ tx.persist(state/'pending.json',dict(schema=2,phase='prepared',candidate='candidate-'+'0'*32,request=value,files={str(path):tx.capture(path)},active=False,
+  service=dict(active=False,exists=True,unit_file_state='disabled'),owner='nginx-xhttp',receipt=tx.capture(state/'nginx-xhttp.activated.json'),next_receipt=tx.receipt_row(tx.owned_receipt(value))))
 else:tx.site_transaction(action,context)
 with (root/'events').open('a') as stream:stream.write('ingress-'+action+'\\n')
 ''')
@@ -170,7 +194,8 @@ with (root/'events').open('a') as stream:stream.write('ingress-'+action+'\\n')
     assert result.returncode == 0, result.stderr
     (root / 'events').write_text('')
     def event(value):
-        return {'ansible.builtin.command': {'argv': [sys.executable, '-c', 'from pathlib import Path;import sys;p=Path(sys.argv[1]);p.write_text(p.read_text()+sys.argv[2]+"\\n")', str(root / 'events'), value]}, 'changed_when': False}
+        return {'ansible.builtin.command': {'argv': [sys.executable, '-c', 'from pathlib import Path;import sys;p=Path(sys.argv[1]);p.write_text(p.read_text()+sys.argv[2]+"\\n")', str(root / 'events'), value]},
+                'changed_when': False, 'check_mode': False}
     def invoke(action, owner=None):
         args = [sys.executable, str(driver), str(root), action, str(script)] + ([owner] if owner else [])
         return {'ansible.builtin.command': {'argv': args}, 'no_log': True, 'changed_when': False}
@@ -190,11 +215,16 @@ with (root/'events').open('a') as stream:stream.write('ingress-'+action+'\\n')
     _write(roles / 'transport-egress/tasks/quiesce.yml', [event('quiesce'), {'ansible.builtin.copy': {'content': 'stopped', 'dest': str(root / 'state'), 'mode': '0600'}}])
     _write(roles / 'transport-egress/tasks/rollback.yml', [event('resume'), {'ansible.builtin.copy': {'src': str(root / 'previous.conf'), 'dest': str(accepted), 'mode': '0640'}},
         {'ansible.builtin.copy': {'content': 'accepted-running', 'dest': str(root / 'state'), 'mode': '0600'}}, {'ansible.builtin.set_fact': {'_transport_egress_transaction_started': False}}])
-    # Only the two host-facing stat paths and the outer-route status command are
-    # replaced; the production detection, adoption and refusal tasks run verbatim.
+    # Only the host-facing stat paths, the outer-route status command and the
+    # helper admission's root-owned ancestry are replaced; the production detection,
+    # admission, adoption and refusal tasks run verbatim.
+    (root / 'libexec').mkdir(mode=0o755)
+    (root / 'libexec').chmod(0o755)
+    _write(roles / 'transport-egress/tasks/helper-authority.yml', _helper_authority(root))
     (root / 'outer_status.py').write_text('''import sys
 from pathlib import Path
 root = Path(sys.argv[1])
+(root / 'status-ran').write_text('')
 if (root / 'outer-fail').exists():
     print('transport-runtime-refused:acceptance-parameters-required', file=sys.stderr)
     print('private-detail-that-must-not-be-echoed', file=sys.stderr)
@@ -235,7 +265,9 @@ def _interrupt(root, outer):
         assert result.returncode == 0, result.stderr
     (root / 'events').write_text('')
     if outer != 'no-helper':
-        (root / 'outer-helper').write_text('')
+        helper = root / 'libexec/transport_runtime_outer.py'
+        helper.write_text('')
+        helper.chmod(0o755)
     if outer == 'open':
         # Egress began and candidate frontends were published before the kill.
         (root / 'outer-open').write_text('')
@@ -288,6 +320,7 @@ def test_interrupted_prior_site_transaction_is_compensated_in_rescue_order_then_
     assert result.returncode != 0
     assert 'interrupted-protected-ingress-transaction' in result.stdout
     assert 'accepted-generation recovery was attempted when available' in result.stdout
+    assert (root / 'status-ran').exists() == (outer != 'no-helper')
     for owner in context['owners']:
         assert Path(owner['paths'][0]).read_bytes() == b'accepted ingress'
     assert {path: data for path, data in _journal_state(root).items() if path.name.endswith('.activated.json')} == receipts
@@ -317,6 +350,61 @@ def test_check_mode_refuses_an_interrupted_prior_site_transaction_without_mutati
     assert (_journal_state(root), (root / 'frontend.conf').read_bytes(), (root / 'state').read_text()) == before
     assert (root / 'nginx-state/nginx.service/site.json').exists()
     assert all(Path(value['paths'][0]).read_bytes() == b'changed ingress' for value in context['owners'])
+    # Adoption alone records no event, so the message above catches it; these catch the outer helper or quiesce running in check mode.
+    assert not (root / 'status-ran').exists() and (root / 'events').read_text() == ''
+
+
+def test_pending_only_journal_refuses_dry_run_with_its_own_category_and_one_deploy_recovers_it(tmp_path):
+    root, context = _fixture(tmp_path, 'none')
+    pending = root / 'nginx-state/nginx.service/pending.json'
+    result = subprocess.run([sys.executable, str(root / 'ingress_driver.py'), str(root), 'pend', str(HELPER)], capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stderr
+    (root / 'events').write_text('')
+    before = (_journal_state(root), (root / 'frontend.conf').read_bytes(), (root / 'state').read_text())
+    dry = _run(root, check=True)
+    assert dry.returncode != 0
+    assert 'interrupted-nginx-publication' in dry.stdout and 'interrupted-protected-ingress-transaction' not in dry.stdout
+    assert 'recovery was attempted when available' not in dry.stdout
+    # The refusal tells the operator the recovery deploy converges the whole graph unpreviewed.
+    assert 'cannot preview' in dry.stdout and 'make source-drift passes' in dry.stdout
+    assert (_journal_state(root), (root / 'frontend.conf').read_bytes(), (root / 'state').read_text()) == before
+    assert not (root / 'status-ran').exists() and (root / 'events').read_text() == ''
+    # A deploy continues: the helper's begin recovers the recognized journal, then the block converges.
+    deploy = _run(root)
+    assert deploy.returncode == 0, deploy.stdout + deploy.stderr
+    assert 'interrupted-nginx-publication' not in deploy.stdout
+    assert not pending.exists() and not (root / 'nginx-state/nginx.service/site.json').exists()
+    events = (root / 'events').read_text().splitlines()
+    assert events.count('activate') == 1 and events[-1] == 'ingress-commit'
+    assert all(Path(value['paths'][0]).read_bytes() == b'changed ingress' for value in context['owners'])
+
+
+@pytest.mark.parametrize('tamper', ['symlink', 'group-writable', 'hardlink', 'writable-directory'])
+def test_unsafe_outer_helper_is_refused_before_status_runs_and_the_journal_is_retained(tmp_path, tamper):
+    root, context = _fixture(tmp_path, 'none')
+    _interrupt(root, 'open')
+    helper = root / 'libexec/transport_runtime_outer.py'
+    if tamper == 'symlink':
+        target = root / 'outer-target.py'
+        target.write_text('')
+        target.chmod(0o755)
+        helper.unlink()
+        helper.symlink_to(target)
+    elif tamper == 'group-writable':
+        helper.chmod(0o775)
+    elif tamper == 'hardlink':
+        os.link(helper, root / 'outer-alias.py')
+    else:
+        (root / 'libexec').chmod(0o775)
+    before = (_journal_state(root), (root / 'frontend.conf').read_bytes(), (root / 'state').read_text())
+    result = _run(root)
+    assert result.returncode != 0
+    assert 'consumer-helper-authority-refused' in result.stdout
+    assert 'no accepted-generation recovery was attempted' in result.stdout
+    assert not (root / 'status-ran').exists()
+    assert (_journal_state(root), (root / 'frontend.conf').read_bytes(), (root / 'state').read_text()) == before
+    assert (root / 'nginx-state/nginx.service/site.json').exists()
+    assert all(Path(value['paths'][0]).read_bytes() == b'changed ingress' for value in context['owners'])
     assert (root / 'events').read_text() == ''
 
 
@@ -335,9 +423,10 @@ def test_unreadable_outer_route_refuses_categorically_and_retains_the_journal(tm
     assert (root / 'events').read_text() == ''
 
 
-def test_malformed_prior_site_journal_fails_closed_before_capture_and_is_retained(tmp_path):
+@pytest.mark.parametrize('outer', ['no-helper', 'open'])
+def test_malformed_prior_site_journal_fails_closed_before_capture_and_is_retained(tmp_path, outer):
     root, context = _fixture(tmp_path, 'none')
-    _interrupt(root, 'no-helper')
+    _interrupt(root, outer)
     journal = root / 'nginx-state/nginx.service/site.json'
     journal.write_text('{"schema": 99}')
     before = _journal_state(root)
@@ -347,6 +436,9 @@ def test_malformed_prior_site_journal_fails_closed_before_capture_and_is_retaine
     assert all(Path(value['paths'][0]).read_bytes() == b'changed ingress' for value in context['owners'])
     events = (root / 'events').read_text().splitlines()
     assert 'ingress-restore' not in events and 'ingress-begin' not in events and 'stage' not in events
+    # With the outer route open the rescue stops the candidates, cannot restore, and never resumes the accepted generation.
+    assert events == (['quiesce'] if outer == 'open' else [])
+    assert (root / 'state').read_text() == ('stopped' if outer == 'open' else 'accepted-running')
 
 
 def test_interrupted_transaction_detection_matches_the_production_contract():
@@ -355,23 +447,39 @@ def test_interrupted_transaction_detection_matches_the_production_contract():
     steps = source[names.index(DECLARE) + 1:names.index(CAPTURE)]
     assert [value['name'] for value in steps] == [
         'Detect an interrupted protected ingress transaction before capturing a new one',
+        'Detect an interrupted ordinary nginx publication before capturing a new transaction',
+        'Refuse dry-run while an interrupted ordinary nginx publication awaits recovery',
+        'Admit exact root-owned egress helper authority before running it for interrupted transaction adoption',
         'Locate the egress outer route helper for interrupted transaction adoption',
         'Read the interrupted egress outer route ownership',
         'Refuse adoption when the egress outer route ownership cannot be read',
         "Adopt the interrupted transaction as this block's sole compensation owner",
         'Refuse to capture while an interrupted protected ingress transaction awaits compensation']
-    detect, locate, outer, unreadable, adopt, refuse = steps
+    detect, pending, pending_refuse, admit, locate, outer, unreadable, adopt, refuse = steps
     # The playbook-side journal path must stay the helper's own state root.
     spec = importlib.util.spec_from_file_location('site_nginx_contract', HELPER)
     helper = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(helper)
     assert detect['ansible.builtin.stat'] == {'path': str(helper.STATE_ROOT / 'nginx.service' / 'site.json'), 'follow': False}
     assert detect['ansible.builtin.stat']['path'] == JOURNAL and 'when' not in detect
+    assert pending['ansible.builtin.stat'] == {'path': str(helper.STATE_ROOT / 'nginx.service' / 'pending.json'), 'follow': False}
+    assert pending['ansible.builtin.stat']['path'] == PENDING and 'when' not in pending
+    # A pending-only journal refuses dry-run with its own category; deploys continue to the helper's begin.
+    assert pending_refuse['when'] == ['ansible_check_mode', 'not _transport_ingress_interrupted.stat.exists', '_transport_ingress_pending.stat.exists']
+    assert pending_refuse['ansible.builtin.fail']['msg'].startswith('interrupted-nginx-publication:') and 'no_log' not in pending_refuse
     # The outer route helper is the one the commit task already addresses.
     commit = yaml.safe_load((ROOT / 'ansible/playbooks/tasks/transport-ingress-commit.yml').read_text())
     finish = next(value for value in commit if value['name'].startswith('Commit the complete native consumer'))
     assert finish['ansible.builtin.command']['argv'][2] == OUTER_HELPER
     assert locate['ansible.builtin.stat'] == {'path': OUTER_HELPER, 'follow': False}
+    # The status helper runs as root only after the role's one shared admission of its ancestry and file.
+    assert admit['ansible.builtin.include_role'] == {'name': 'transport-egress', 'tasks_from': 'helper-authority'}
+    assert admit['when'] == ['_transport_ingress_interrupted.stat.exists', 'not ansible_check_mode']
+    prepare = yaml.safe_load((EGRESS_TASKS / 'runtime-prepare.yml').read_text())
+    assert prepare[0]['ansible.builtin.import_tasks'] == 'helper-authority.yml' and 'consumer-helper-authority-refused' not in (EGRESS_TASKS / 'runtime-prepare.yml').read_text()
+    shared = yaml.safe_load((EGRESS_TASKS / 'helper-authority.yml').read_text())
+    assert len(shared) == 1 and shared[0]['check_mode'] is False and shared[0]['changed_when'] is False
+    assert any('transport_runtime_' in part and "'outer'" in part for part in shared[0]['ansible.builtin.command']['argv'])
     assert outer['ansible.builtin.command']['argv'] == ['/usr/bin/python3', '-Es', OUTER_HELPER, 'status']
     assert outer['no_log'] is True and outer['failed_when'] is False and outer['changed_when'] is False
     for step in (locate, outer, adopt):

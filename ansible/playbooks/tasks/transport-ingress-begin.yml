@@ -69,6 +69,34 @@
     follow: false
   register: _transport_ingress_interrupted
 
+- name: Detect an interrupted ordinary nginx publication before capturing a new transaction
+  ansible.builtin.stat:
+    path: /var/lib/vpn-nginx-publication/nginx.service/pending.json
+    follow: false
+  register: _transport_ingress_pending
+
+- name: Refuse dry-run while an interrupted ordinary nginx publication awaits recovery
+  ansible.builtin.fail:
+    msg: >-
+      interrupted-nginx-publication: a previous nginx publication on this node was interrupted and its recovery journal is still present.
+      Dry-run changes nothing; one deploy recovers a recognized journal before protected ingress capture,
+      while an unrecognized journal fails closed and is retained.
+      That deploy then converges the complete graph, which this dry-run cannot preview,
+      so run it only while make source-drift passes for this node and with the secrets last deployed.
+      Repeat dry-run after that deploy.
+  when:
+    - ansible_check_mode
+    - not _transport_ingress_interrupted.stat.exists
+    - _transport_ingress_pending.stat.exists
+
+- name: Admit exact root-owned egress helper authority before running it for interrupted transaction adoption
+  ansible.builtin.include_role:
+    name: transport-egress
+    tasks_from: helper-authority
+  when:
+    - _transport_ingress_interrupted.stat.exists
+    - not ansible_check_mode
+
 - name: Locate the egress outer route helper for interrupted transaction adoption
   ansible.builtin.stat:
     path: /usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py

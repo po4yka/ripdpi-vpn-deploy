@@ -16,6 +16,8 @@ Site frontend retirements accumulate with the remaining candidates and commit on
 
 Protected runtime consumers stage acquisition and frontend authority before the shared acceptance entrypoint. The transaction publishes exact owned nodes under one root-only recovery journal, starts this role's existing generation controller and requires native authenticated frontend canary traffic plus loaded executable identity. Readiness-only and predictive passes do not publish candidates. An accepted consumer activation is retained by the following role activation instead of restarting the verified PID again. Snapshot restoration preserves already matching nodes so it cannot invalidate an exact consumer inode receipt.
 
+Root-owned ancestry and single-link regular-file admission of the acceptance helpers is one shared task file, `helper-authority.yml`, refusing with `consumer-helper-authority-refused`. `runtime-prepare.yml` runs it before any write, and `playbooks/tasks/transport-ingress-begin.yml` runs it before executing `transport_runtime_outer.py status` as root while adopting an interrupted protected ingress journal, so a symlinked, multiply linked or group- or world-writable helper (or ancestor) fails closed with the journal retained before adoption. Keep one copy of that check.
+
 ## What's done well
 
 - Input and identity admission happen before package or account mutation; unresolved fresh check mode predicts changes without invented UIDs or sockets.

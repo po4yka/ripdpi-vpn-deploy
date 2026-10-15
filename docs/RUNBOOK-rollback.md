@@ -2,8 +2,8 @@
 
 Three rollback levels. Pick the smallest one that fixes the failure.
 A deploy that was killed mid-run is not a rollback case: if `make dry-run`
-reports `interrupted-protected-ingress-transaction`, follow the single deploy
-exception in the
+reports `interrupted-protected-ingress-transaction` or
+`interrupted-nginx-publication`, follow the single deploy exception in the
 [ordinary re-deploy recipe](RUNBOOK-deploy.md#ordinary-re-deploy-recipe)
 instead of the levels below.
 
