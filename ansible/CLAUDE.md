@@ -28,7 +28,11 @@ Credential rotation stages enabled protected frontends through these same roles
 and activates their shared generation once. It reconciles their approved pinned
 runtime/configuration authority and uses the roles' candidate validation and
 whole-route rollback, rather than a second config publisher or direct restart
-handler. AWG, Snell and Naive retain their independent rotation flows.
+handler. AWG rotation republishes the complete canonical firewall before activating its
+complete role lifecycle, so newly assigned typed addresses are admitted, removed
+claims disappear and obsolete instances retire. Deployment and AWG rotation share provider/runtime listener admission
+before mutation. Rotation retains the prior firewall through AWG activation and
+restores it on any refusal. Snell and Naive retain independent rotation flows.
 
 Complete-map rehearsal profiles explicitly retain `enable_transport_egress: true` with their enabled protected frontends because the controller replaces the canonical `vpn` map.
 

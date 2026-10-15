@@ -1,6 +1,7 @@
 """Operator incident verbs act on exactly one named inventory alias."""
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -12,6 +13,8 @@ from pathlib import Path
 
 import pytest
 import yaml
+
+from template_render import render_template
 
 ROOT = Path(__file__).resolve().parents[2]
 PLAYBOOKS = ROOT / "ansible/playbooks"
@@ -49,13 +52,32 @@ def run_play(tmp_path: Path, verb: str, limit: str | None, *, hosts: str = "", e
     real = yaml.safe_load((PLAYBOOKS / f"{verb}.yml").read_text())[0]
     marker = tmp_path / "mutation"
     play = {key: real[key] for key in ("hosts", "serial", "any_errors_fatal", "pre_tasks") if key in real}
+    variables = yaml.safe_load((ROOT / "ansible/group_vars/all.yml").read_text())
+    variables.update(ansible_python_interpreter=sys.executable,
+                     amneziawg_secrets={"instances": [{"name": "awg7", "listen_port": 51820}]})
+    actual = json.loads(render_template(ROOT / "ansible/templates/listener-manifest.json.j2", variables))
+    expected = [{"name": item["role"], "protocol": item["protocol"],
+                 "port": item.get("port"), "port_range": item.get("range")}
+                for item in actual if item["enabled"]]
+    variables["terraform_public_listeners_b64"] = base64.b64encode(json.dumps(expected).encode()).decode()
     play.update(name=real["name"], become=False, gather_facts=False,
-                vars={"ansible_python_interpreter": sys.executable},
+                vars=variables,
                 tasks=[{"name": "Publish mutation marker",
                         "ansible.builtin.copy": {"dest": str(marker), "content": "mutated"}}])
-    (tmp_path / "tasks").mkdir()
-    shutil.copy(PLAYBOOKS / "tasks/exact-node.yml", tmp_path / "tasks/exact-node.yml")
-    (tmp_path / "play.yml").write_text(yaml.safe_dump([play]))
+    controller = tmp_path / "controller"
+    playbooks = controller / "ansible/playbooks"
+    tasks = playbooks / "tasks"
+    tasks.mkdir(parents=True)
+    for filename in ("exact-node.yml", "public-listener-preflight.yml"):
+        shutil.copy(PLAYBOOKS / "tasks" / filename, tasks / filename)
+    templates = playbooks.parent / "templates"
+    templates.mkdir()
+    shutil.copy(ROOT / "ansible/templates/listener-manifest.json.j2", templates / "listener-manifest.json.j2")
+    scripts = controller / "scripts"
+    scripts.mkdir()
+    shutil.copy(ROOT / "scripts/check-listener-contract.py", scripts / "check-listener-contract.py")
+    playbook = playbooks / "play.yml"
+    playbook.write_text(yaml.safe_dump([play]))
     (tmp_path / "hosts.ini").write_text(hosts or inventory())
     (tmp_path / "ansible.cfg").write_text("[defaults]\nhost_key_checking = False\nretry_files_enabled = False\n")
     env = {key: value for key, value in os.environ.items() if not key.startswith("ANSIBLE_") and key != "ENV"}
@@ -63,7 +85,7 @@ def run_play(tmp_path: Path, verb: str, limit: str | None, *, hosts: str = "", e
     if environment is not None:
         env["ENV"] = environment
     env.update(extra_env or {})
-    argv = ["ansible-playbook", "-i", "hosts.ini", "play.yml"] + ([] if limit is None else ["--limit", limit])
+    argv = ["ansible-playbook", "-i", "hosts.ini", str(playbook)] + ([] if limit is None else ["--limit", limit])
     result = subprocess.run(argv, cwd=tmp_path, env=env, capture_output=True, text=True, timeout=90)
     return result, result.stdout + result.stderr, marker
 

@@ -78,7 +78,7 @@ RETAINED_UDP = r'''
 import json, os, socket, sys
 address=sys.argv[1]
 with socket.socket(socket.AF_INET6 if ':' in address else socket.AF_INET, socket.SOCK_DGRAM) as s:
-    s.settimeout(2); s.connect((address,32000))
+    s.settimeout(2); s.bind((sys.argv[2],0)); s.connect((address,32000))
     for line in sys.stdin:
         payload=os.urandom(256); received=None
         try:
@@ -175,7 +175,10 @@ def test_owned_uplink_nat_mtu_dns_reconnect_revocation_and_no_native_bypass(tmp_
             assert measured['udp_sent']==measured['udp_received'] and measured['dns_types']==[1,28]
             print(json.dumps({'members':members,'client':i,'family':6 if ':' in address else 4,'mtu':1280,**measured}))
     def retained_udp(address):
-        process=subprocess.Popen(['ip','netns','exec',clients[0],sys.executable,'-c',RETAINED_UDP,address],
+        # Earlier spoof tests deliberately add aliases; bind the admitted identity
+        # rather than allowing IPv6 source selection to choose the spoof alias.
+        source=client_addresses[clients[0]][1 if ':' in address else 0].split('/')[0]
+        process=subprocess.Popen(['ip','netns','exec',clients[0],sys.executable,'-c',RETAINED_UDP,address,source],
                                  stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True)
         processes.append(process)
         return process

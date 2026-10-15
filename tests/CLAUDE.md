@@ -20,6 +20,13 @@ configuration transaction and its private loops; the removed restart handler
 cannot stand in for complete failure compensation. Native CI coverage includes
 the dedicated dual-stack lane alongside binding and general runtime targets.
 
+Tagged deployment and AWG rotation execute the same real listener admission;
+mismatched or missing provider contracts must refuse before a mutation sentinel.
+AWG rotation publishes canonical firewall claims before the complete peer
+role lifecycle and retains prior firewall authority through refusal.
+Exact-node fixtures supply valid public listener inputs to the unchanged play
+heads; listener admission has separate positive and mismatch regressions.
+
 AWG failure tests change both peer claims and MTU, publish the real canonical
 firewall candidate, then verify real nft restoration before authenticated prior
 traffic resumes. The nft adapter only enters the owned network namespace.
