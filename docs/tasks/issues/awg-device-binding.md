@@ -2,7 +2,7 @@
 id: SCR-1791618039091425
 title: Deliver authoritative AmneziaWG device enrollment and client bindings
 kind: feature
-status: doing
+status: review
 area: scripts
 priority: high
 risk: high

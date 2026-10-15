@@ -336,6 +336,13 @@ jobs:
           ANSIBLE_FORCE_COLOR: "1"
           NAIVE_NATIVE_BINARY: ${{ github.workspace }}/.cache/p2-native-caddy/caddy
 
+      - name: Verify pinned Kuma push timing persistence and encrypted restore
+        if: matrix.role == 'observability_kuma'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y age
+          python3 ansible/roles/observability_kuma/molecule/runtime/run.py
+
   shellcheck:
     timeout-minutes: 5
     name: shellcheck

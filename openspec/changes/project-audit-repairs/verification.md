@@ -1,11 +1,11 @@
 ---
 task_id: SEC-1791735853691219
 change: project-audit-repairs
-commit_sha: e58e3de08fc250852cb437f7185a1ebca4fd4229
-local: blocked
-local_evidence: Focused runtime, operator, bootstrap and vpnd tests passed; all four Terraform providers validate, full production-profile Ansible lint and syntax pass, and staged/history secret scans pass. The full make check gate stops at cloud-init schema validation because Docker is unavailable. No complete local acceptance claim.
-remote_ci: required
-remote_ci_evidence: PR 290 at 4e6b71f04bd4cfb2fbba74121c8a5582175571e6 completed 84 successful checks, but two pytest shards, both full-stack scenarios and CodeQL failed; updated-head acceptance remains required.
+commit_sha: 923304729f6bdd32edce6a9b6ceada1d51c7d011
+local: required
+local_evidence: "Focused recovery suite passed 517 and schema/Telegram portable suite 116 cases; complete local make check pending."
+remote_ci: passed
+remote_ci_evidence: "Exact main CI 38759230876 and CodeQL 38759230898 succeeded; all 7193 portable cases and 22 subtests and native runtime suites passed; open CodeQL alerts count zero."
 dry_run: not_applicable
 dry_run_evidence: Source repair PR only; no real inventory or SSH transaction.
 staging: not_applicable
@@ -109,3 +109,7 @@ finding remains. All applicable staged pre-commit hooks passed. The repeated
 local full gate passed container-based cloud-init schema validation after Docker
 became available; its later stages and the next hosted run are still pending
 at publication. The PR remains the live source for updated-head CI results.
+
+## Integrated source verification (2026-10-15)
+
+Exact main CI 38759230876 and CodeQL 38759230898 succeeded; all 7193 portable cases and 22 subtests and native runtime suites passed; open CodeQL alerts count zero. Source is `923304729f6bdd32edce6a9b6ceada1d51c7d011`; hosted logs were inspected directly. Focused recovery suite passed 517 and schema/Telegram portable suite 116 cases; complete local make check pending. No external infrastructure or real notification action occurred.

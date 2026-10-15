@@ -25,4 +25,4 @@ Repair all sixteen REQ-AUDIT cases and publish source and validation evidence in
 ## Verification
 
 Run focused behavior tests for each lane, snapshot-check, make check, independent source review and exact-source PR CI. Native Linux and provider/client evidence remain separate; this source PR does not authorize deployment.
-- [ ] SEC-1791740843514856 Repair hosted CI and scanner findings and verify the updated PR head #bug !high @item:SEC-1791735853691219
+- [x] SEC-1791740843514856 Repair hosted CI and scanner findings and verify the updated PR head #bug !high @item:SEC-1791735853691219

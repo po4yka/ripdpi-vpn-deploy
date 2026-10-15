@@ -2,7 +2,7 @@
 id: ANS-1791996027408136
 title: Recover interrupted ingress deploys and bind operator verbs to one node
 kind: bug
-status: doing
+status: review
 area: ansible
 priority: high
 risk: high
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: ans-1791996027408136-operator-recovery-paths
 created: 2026-10-14
-updated: 2026-10-14
+updated: 2026-10-15
 related_tasks: []
 ---
 
