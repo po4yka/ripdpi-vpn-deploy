@@ -94,3 +94,9 @@ Four further reviewed boundaries remain pending final gates: canonical lowercase
 host names, complete first-token AWG defaults, success-only encrypted Make audit
 and nonblocking unsafe-source refusal. Their regressions reproduced the failures
 before the fixes. Earlier accepted commits above are historical evidence.
+
+The final registry follow-up also rejects device peers without persisted registry
+authority, while exempting routed peers. Shared encrypted/native fixtures now
+carry actual matching recovery keys and complete authority for all device peers.
+The earlier in-flight local suite collected its fixtures before this rule;
+complete final-source validation must run again with the updated fixtures.

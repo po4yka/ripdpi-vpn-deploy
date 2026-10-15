@@ -4,10 +4,11 @@ from __future__ import annotations
 import base64
 import copy
 import ipaddress
+import hashlib
 
 import pytest
 
-from awg_device_binding import BindingError, allocate_address, resolve_binding
+from awg_device_binding import BindingError, allocate_address, public_key, resolve_binding
 
 
 def key(number):
@@ -21,12 +22,17 @@ def document():
             "address_v4": f"10.{70 + index}.0.1/29", "address_v6": f"fd42:{index}::1/64",
             "server_private_key": key(index + 1), "jc": 4, "jmin": 10, "jmax": 50,
             "s1": 0, "s2": 0, **{f"h{i}": index * 10 + i for i in range(1, 5)},
-            "peers": [{"name": f"device{index}", "public_key": key(index + 10),
+            "peers": [{"name": f"device{index}", "public_key": public_key(key(index + 10)),
                        "preshared_key": key(index + 20), "allowed_ips": f"10.{70 + index}.0.2/32"}],
         }
     return {"amneziawg_secrets": {"instances": [instance(0), instance(1)]},
-            "client_registry": {f"device{i}": {"status": "issued", "awg_binding": {
-                "provider": "upcloud", "environment": "fixture", "instance": f"awg{i}"}} for i in range(2)}}
+            "client_registry": {f"device{i}": {
+                "status": "issued", "issued_at": "2026-10-10T00:00:00Z", "formats": [],
+                "hosts": ["upcloud:fixture"], "cohorts": [], "token_hash_prefix": "", "token_expires": "",
+                "awg_private_key": key(i + 10),
+                "awg_public_key_fingerprint": "sha256:" + hashlib.sha256(public_key(key(i + 10)).encode()).hexdigest()[:16],
+                "awg_binding": {"provider": "upcloud", "environment": "fixture", "instance": f"awg{i}"},
+                "last_payload_identity": {"source": "", "outputs": ""}} for i in range(2)}}
 
 
 @pytest.mark.parametrize("index", [0, 1])

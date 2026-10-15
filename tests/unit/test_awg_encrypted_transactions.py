@@ -25,7 +25,7 @@ def encrypted(tmp_path, monkeypatch):
     monkeypatch.setenv('AUDIT_LOG_FILE', str(tmp_path / 'audit.log.age'))
     monkeypatch.setenv('AUDIT_ACTOR', 'fixture')
     original = document()
-    original.update(unrelated={'private': 'must-stay-encrypted'}, xray={'clients': [{'name': 'keep', 'uuid': 'other'}]}, client_registry={})
+    original.update(unrelated={'private': 'must-stay-encrypted'}, xray={'clients': [{'name': 'keep', 'uuid': 'other'}]})
     ciphertext = subprocess.run(['sops', '--encrypt', '--age', recipient, '--input-type', 'json', '--output-type', 'yaml', '/dev/stdin'],
                                 input=json.dumps(original).encode(), check=True, capture_output=True).stdout
     path = tmp_path / 'devices.sops.yaml'

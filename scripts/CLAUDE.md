@@ -9,7 +9,9 @@ subnet and shares the private stable `.new-client.lock` with Naive/retirement.
 `encrypted_client_document.py` stages ciphertext, verifies the entire decrypted
 result in memory and atomically publishes only after original authority checks.
 AWG revocation clears only the selected peer and its AWG recovery fields.
-Existing-device resolution always requires the persisted registry binding;
+Secret validation checks both registry-to-peer and device-peer-to-registry authority;
+routed peers are exempt from the device registry. Existing-device resolution
+always requires the persisted registry binding;
 device names are unique across all instances, including explicit selection.
 AWG-only reissuance accepts a valid null binding with empty recovery fields and
 preserves non-AWG metadata; globally revoked entries and all-profile reissuance refuse.

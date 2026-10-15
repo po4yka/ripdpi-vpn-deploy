@@ -124,7 +124,7 @@ def filled():
         + ("X" * 64 + "\n") * 4
         + "-----END CERTIFICATE-----\n"
     )
-    return {
+    document = {
         "xray": {
             "version": "v26.3.27",
             "linux_amd64_sha256": sha,
@@ -189,6 +189,16 @@ def filled():
         "backup": {"restic_password": "longrandomrestcpw" + "x" * 20},
         "watchdog_secrets": {"ntfy_topic": "ci-topic-aaaa1111"},
     }
+
+    import hashlib
+    from awg_client import public_key
+    private = base64.b64encode(bytes([9]) * 32).decode()
+    public = public_key(private)
+    document['amneziawg_secrets']['instances'][0]['peers'][0]['public_key'] = public
+    document['client_registry'] = {'phone': _registry_entry(
+        awg_private_key=private,
+        awg_public_key_fingerprint='sha256:' + hashlib.sha256(public.encode()).hexdigest()[:16])}
+    return document
 
 
 def _validator():
@@ -1119,3 +1129,26 @@ def test_instance_binding_name_boundaries_are_shared(filled, name):
     paths = [tuple(error.absolute_path) for error in _validator().iter_errors(filled)]
     assert ('client_registry', 'phone', 'awg_binding') in paths
     assert ('amneziawg_secrets', 'instances', 0, 'name') in paths
+
+
+@pytest.mark.parametrize('registry', ['absent', 'empty', 'other'])
+@pytest.mark.parametrize('kind', ['device', 'routed'])
+def test_every_device_peer_requires_registry_authority(filled, tmp_path, registry, kind):
+    filled.pop('client_registry', None)
+    filled['amneziawg_secrets']['instances'][0]['peers'][0]['address_kind'] = kind
+    if registry == 'empty':
+        filled['client_registry'] = {}
+    elif registry == 'other':
+        filled['client_registry'] = {'other': _registry_entry(awg_binding=None, awg_private_key='', awg_public_key_fingerprint='')}
+    result = _run_validator_on(filled, tmp_path)
+    assert result.returncode == (1 if kind == 'device' else 0), result.stderr
+    if kind == 'device':
+        assert 'device peer requires registry binding' in result.stderr
+
+
+def test_encrypted_native_fixture_has_complete_device_authority():
+    from test_awg_device_binding import document
+    spec = importlib.util.spec_from_file_location('fixture_registry_validator', VALIDATOR)
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    assert validator._registry_errors(document()) == []

@@ -25,7 +25,8 @@ URI QR boundary tests consume actual encrypted issuance and inspect the exact
 codec input; failure retains the private URI for recovery. Dash-prefixed device
 names exercise both the shell wrapper and Make issuance/revocation surfaces.
 Binding cases reject absent registry authority and cross-instance duplicate
-devices. Real encrypted Make defaults and AWG-only revoke/reissue cases preserve
+devices. Shared encrypted/native fixtures contain complete matching recovery
+keys and registry bindings for every device. Real encrypted Make defaults and AWG-only revoke/reissue cases preserve
 non-AWG registry fields; schema tests share runtime interface-name boundaries.
 FIFO sources must refuse promptly and release the writer lock. Make audit
 regressions decrypt actual age envelopes and require no event for failed

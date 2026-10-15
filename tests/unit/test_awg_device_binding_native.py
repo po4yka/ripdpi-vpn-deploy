@@ -56,12 +56,18 @@ def test_encrypted_two_instance_tcp_udp_export_revocation_and_rejection(encrypte
     # Use owned unique IPC/interface names; no fixture can adopt another daemon.
     def rename(doc):
         for item, name in zip(doc['amneziawg_secrets']['instances'], names):
+            previous_name = item['name']
             item['name'] = name
+            for entry in doc['client_registry'].values():
+                if entry['awg_binding'] and entry['awg_binding']['instance'] == previous_name:
+                    entry['awg_binding']['instance'] = name
         return doc, {}
     operate(path, rename)
     for i, name in enumerate(names):
         command([sys.executable, str(ROOT / "scripts/awg_client.py"), "enroll", f"new{i}", "--host", "upcloud:fixture", "--instance", name, "--file", str(path)])
     issued = decrypt(path)
+    for client, entry in issued['client_registry'].items():
+        resolve_binding(issued, {}, client, 'upcloud:fixture', entry['awg_binding']['instance'])
     bin_dir = tmp_path / 'bin'; bin_dir.mkdir(mode=0o700)
     terraform = bin_dir / 'terraform'
     terraform.write_text('#!/bin/sh\ncase "$*" in *"workspace select"*) exit 0;; *"output -raw server_ipv4"*) printf "%s" "$AWG_NATIVE_ENDPOINT";; *) exit 2;; esac\n')

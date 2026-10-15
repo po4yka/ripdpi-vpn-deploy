@@ -88,6 +88,15 @@ def _registry_errors(doc: dict, *, allow_placeholders: bool = False) -> list[tup
     registry = doc.get("client_registry") or {}
     if not isinstance(registry, dict):
         return [("client_registry", "must be a device mapping")]
+    for index, instance in enumerate(doc.get("amneziawg_secrets", {}).get("instances", [])):
+        for peer_index, peer in enumerate(instance.get("peers", [])):
+            if peer.get("address_kind", "device") != "device":
+                continue
+            entry = registry.get(peer["name"])
+            binding = entry.get("awg_binding") if isinstance(entry, dict) else None
+            if not isinstance(binding, dict) or binding.get("instance") != instance["name"]:
+                errors.append((f"amneziawg_secrets.instances.{index}.peers.{peer_index}",
+                               "device peer requires registry binding"))
     for device, entry in registry.items():
         if not isinstance(entry, dict):
             continue
