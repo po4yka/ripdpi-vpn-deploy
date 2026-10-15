@@ -311,7 +311,43 @@ def test_site_uses_site_playbook():
 
 # Rust test: vpnd/src/runner/ansible.rs::rotate_uses_rotate_credentials_playbook
 def test_rotate_uses_rotate_credentials_playbook():
-    assert "rotate-credentials.yml" in ansible.rotate(fake_ctx()).explain()
+    s = ansible.rotate(fake_ctx(), "node-a").explain()
+    assert "rotate-credentials.yml" in s and "--limit node-a" in s and "ENV=prod" in s
+
+
+@pytest.mark.parametrize("alias", ["node-a", "A", "9.x_y-z", "n" * 128])
+def test_rotate_accepts_one_exact_alias(alias):
+    assert f"--limit {alias}" in ansible.rotate(fake_ctx(), alias).explain()
+
+
+# The alias grammar is a copy of the play guard's; tests/unit/test_operator_verb_scope.py compares them.
+@pytest.mark.parametrize(
+    "alias",
+    ["", "node-a,node-b", "node-a node-b", "-node-a", ".node", "_node", "node-a:&vpn", "vpn*", "node/b",
+     "node-a\n", "n\u00e9ud", "n" * 129],
+)
+def test_rotate_requires_one_exact_alias(alias):
+    with pytest.raises(ValueError, match="one exact inventory alias"):
+        ansible.rotate(fake_ctx(), alias)
+
+
+def test_rotate_runs_with_its_environment_and_without_inherited_tag_selection(tmp_path, monkeypatch):
+    tool = tmp_path / "bin"
+    tool.mkdir()
+    program = tool / "ansible-playbook"
+    program.write_text(
+        '#!/bin/sh\nprintf "%s|%s|%s|%s\\n" "$*" "${ANSIBLE_SKIP_TAGS-unset}" "${ANSIBLE_RUN_TAGS-unset}" "${ENV-unset}"\n'
+    )
+    program.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tool}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("ANSIBLE_SKIP_TAGS", "always")
+    monkeypatch.setenv("ANSIBLE_RUN_TAGS", "never")
+    monkeypatch.setenv("ENV", "staging")
+
+    output = asyncio.run(ansible.rotate(fake_ctx(tmp_path), "node-a").capture())
+
+    assert output.rc == 0
+    assert output.stdout.strip().endswith("--limit node-a|unset|unset|prod")
 
 
 def inventory():

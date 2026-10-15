@@ -26,13 +26,57 @@ Keep the encrypted device registry lifecycle and subscription token revocation i
 sync with complete device retirement. Naive uses independent per-device passwords;
 removing its last client keeps the decoy site and disables proxy forwarding.
 
-Save and exit (sops re-encrypts automatically). Then:
+Save and exit (sops re-encrypts automatically). `rotate-credentials`
+re-renders configs and reloads services on exactly one inventory alias per run.
+`ANSIBLE_LIMIT` must be that plain alias (letters, digits, `_`, `.` and `-`,
+starting with a letter or digit, at most 128 characters); Make refuses anything
+else before it starts `ansible-playbook`. The play refuses a missing limit, a
+group, a pattern, a list, and a host whose inventory `env` is not the selected
+`ENV`, so run it with the `ENV` and secrets file of that node. The verb starts
+`ansible-playbook` without an inherited `ANSIBLE_SKIP_TAGS` or `ANSIBLE_RUN_TAGS`,
+which could skip that guard. It also requires a clean checkout and the deploy
+pre-checks (`SKIP_PRECHECK=1` skips only the secrets validation and certificate
+checks).
+The refusal is the first task, after fact gathering and the controller-side load
+of the decrypted secrets file, so a refused run may have gathered facts from the
+first selected host but changes nothing on any node.
+
+Revocation is incomplete until every node of the environment has been rotated
+and verified: a node you skip keeps accepting the removed credential. The aliases
+are the host names in the `[vpn]` section of `ansible/inventory/generated.ini`.
+Decrypt once, run the pair once per alias with the same `ENV` and stop at the
+first failure, then shred the decrypted file. A failed decrypt must not reach the
+loop: a plaintext file left by an earlier session would be deployed instead of
+your edit, so the loop runs only after a successful decrypt. The sequence runs in
+a subshell, so nothing stays set in your shell, and it names the environment once
+(`e=prod`); every command reads `$e`, so adapting the block for another
+environment changes that one line. It installs the `make clean` cleanup before it
+decrypts and turns an interrupt (Ctrl-C), a quit (`Ctrl-\`), a termination or a
+hangup into an exit, so the decrypted file is shredded on every exit path the
+shell can catch. The cleanup ignores those four signals while it runs, so a
+second interrupt cannot cut the shred short. The subshell exits with the status of
+the failing step, and the cleanup does not mask it; when only `make clean` fails
+after a successful run, the subshell exits 1 and stderr shows "failed to remove
+decrypted secrets". A signal sent only to the subshell takes effect once the
+running `make` finishes. Cleanup cannot run if the shell is killed outright
+(SIGKILL) or the machine loses power; after that, or whenever `make clean` reports
+a failure, run `make clean` yourself with the same `ENV`:
 
 ```bash
-make decrypt
-make rotate-credentials      # re-renders configs, reloads services
-make verify
-make clean
+(
+  e=prod
+  trap 'rc=$?; trap "" INT QUIT TERM HUP; make clean ENV="$e" || [ "$rc" -ne 0 ] || rc=1; exit "$rc"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  trap 'exit 129' HUP
+  trap 'exit 131' QUIT
+  make decrypt ENV="$e" || { rc=$?; echo "decrypt failed; nothing rotated" >&2; exit "$rc"; }
+  for node in <alias-1> <alias-2>; do
+    make rotate-credentials ENV="$e" ANSIBLE_LIMIT="$node" &&
+      make verify ENV="$e" ANSIBLE_LIMIT="$node" ||
+      { rc=$?; echo "stopped at $node" >&2; exit "$rc"; }
+  done
+)
 ```
 
 Credential rotation enters the authoritative Naive role when enabled, including
@@ -65,11 +109,20 @@ sops ~/.config/vpn-provision/prod.secrets.sops.yaml
 sops ~/.config/vpn-provision/prod.secrets.sops.yaml
 # For each xray.clients[*], replace short_id with `openssl rand -hex 4`
 
-make decrypt
-make deploy                  # full deploy — REALITY change is server-wide
-make verify
-make clean
+(
+  trap 'rc=$?; trap "" INT QUIT TERM HUP; make clean || [ "$rc" -ne 0 ] || rc=1; exit "$rc"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  trap 'exit 129' HUP
+  trap 'exit 131' QUIT
+  # full deploy — REALITY change is server-wide
+  make decrypt &&
+    make deploy &&
+    make verify
+)
 ```
+
+The deploy sequence runs in the guarded subshell described in [section 1](#1-single-client-leak): the decrypted file is shredded on every exit the shell can catch, and deploy and verify run only after a successful decrypt.
 
 Every existing client URI is now invalid. Reissue URIs to every device
 through `OUTPUT=<new private recipient file> scripts/new-client.sh --emit-uri <name>`
@@ -108,11 +161,18 @@ ssh deploy@<vps>
 sudo rm -rf /var/backups/vpn-restic
 exit
 
-# Run the role; it will re-init and take the first new snapshot
-make decrypt
-make deploy
-make verify
-make clean
+# Run the role; it will re-init and take the first new snapshot.
+# The subshell shreds the decrypted file on every exit (see section 1).
+(
+  trap 'rc=$?; trap "" INT QUIT TERM HUP; make clean || [ "$rc" -ne 0 ] || rc=1; exit "$rc"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  trap 'exit 129' HUP
+  trap 'exit 131' QUIT
+  make decrypt &&
+    make deploy &&
+    make verify
+)
 
 # Take the first snapshot under the NEW password and verify it by real restore
 ssh deploy@<vps> sudo systemctl start vpn-backup.service

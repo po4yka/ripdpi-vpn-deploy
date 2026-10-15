@@ -111,8 +111,18 @@ def smoke(ctx):
     return playbook(ctx, "smoke-test")
 
 
-def rotate(ctx):
-    return playbook(ctx, "rotate-credentials")
+def rotate(ctx, alias):
+    """Rotation acts on one exact inventory alias; the play refuses every other limit."""
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", alias):
+        raise ValueError("rotate-credentials requires one exact inventory alias")
+    # The play refuses a host whose inventory env differs from ENV, and its guard is always-tagged,
+    # so the selected environment is passed explicitly and inherited tag selection must not reach it.
+    return (
+        playbook(ctx, "rotate-credentials")
+        .args(["--limit", alias])
+        .env("ENV", ctx.env)
+        .env_remove("ANSIBLE_SKIP_TAGS", "ANSIBLE_RUN_TAGS")
+    )
 
 
 def dry_run(ctx):

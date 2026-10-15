@@ -63,6 +63,131 @@
                      and not (vpn_subscription_only | default(false) | bool)) else none }}
   no_log: true
 
+- name: Detect an interrupted protected ingress transaction before capturing a new one
+  ansible.builtin.stat:
+    path: /var/lib/vpn-nginx-publication/nginx.service/site.json
+    follow: false
+  register: _transport_ingress_interrupted
+
+- name: Detect an interrupted ordinary nginx publication before capturing a new transaction
+  ansible.builtin.stat:
+    path: /var/lib/vpn-nginx-publication/nginx.service/pending.json
+    follow: false
+  register: _transport_ingress_pending
+
+- name: Refuse dry-run while an interrupted ordinary nginx publication awaits recovery
+  ansible.builtin.fail:
+    msg: >-
+      interrupted-nginx-publication: a previous nginx publication on this node was interrupted and its recovery journal is still present.
+      Dry-run changes nothing; one deploy recovers a recognized journal before protected ingress capture,
+      while an unrecognized journal fails closed and is retained.
+      That deploy then converges the complete graph, which this dry-run cannot preview,
+      so run it only while make source-drift passes for this node and with the secrets last deployed.
+      Repeat dry-run after that deploy.
+  when:
+    - ansible_check_mode
+    - not _transport_ingress_interrupted.stat.exists
+    - _transport_ingress_pending.stat.exists
+
+- name: Admit exact root-owned egress helper authority before running it for interrupted transaction adoption
+  ansible.builtin.include_role:
+    name: transport-egress
+    tasks_from: helper-authority
+  when:
+    - _transport_ingress_interrupted.stat.exists
+    - not ansible_check_mode
+
+- name: Locate the egress outer route helper for interrupted transaction adoption
+  ansible.builtin.stat:
+    path: /usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py
+    follow: false
+  register: _transport_ingress_interrupted_helper
+  when:
+    - _transport_ingress_interrupted.stat.exists
+    - not ansible_check_mode
+
+- name: Read the interrupted egress outer route ownership
+  ansible.builtin.command:
+    argv: [/usr/bin/python3, -Es, /usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py, status]
+  register: _transport_ingress_interrupted_outer
+  failed_when: false
+  changed_when: false
+  no_log: true
+  diff: false
+  when:
+    - _transport_ingress_interrupted.stat.exists
+    - not ansible_check_mode
+    - _transport_ingress_interrupted_helper.stat.exists
+
+- name: Refuse adoption when the egress outer route ownership cannot be read
+  ansible.builtin.fail:
+    msg: >-
+      The egress outer route of an interrupted protected ingress transaction could not be read; the journal is retained.
+      An incomplete helper set fails here too: restore every transport_runtime_*.py in /usr/local/libexec/ripdpi-transport-egress
+      or recreate the node:
+      {{ (_transport_ingress_interrupted_outer.stderr | default('') |
+           regex_findall('transport-runtime-(?:refused:[a-z][a-z0-9-]{0,96}|frame:[A-Za-z_][A-Za-z_0-9]*:[0-9]{1,6})'))[:9] }}
+  when: _transport_ingress_interrupted_outer.rc | default(0) != 0
+
+- name: Locate the egress outer route state directory when its helper is missing
+  ansible.builtin.stat:
+    path: /var/lib/ripdpi/transport-runtime
+    follow: false
+  register: _transport_ingress_interrupted_outer_state
+  when:
+    - _transport_ingress_interrupted.stat.exists
+    - not ansible_check_mode
+    - not _transport_ingress_interrupted_helper.stat.exists
+
+- name: Locate the egress outer route intent record when its helper is missing
+  ansible.builtin.stat:
+    path: /var/lib/ripdpi/transport-runtime/outer.json
+    follow: false
+  register: _transport_ingress_interrupted_outer_record
+  when:
+    - _transport_ingress_interrupted.stat.exists
+    - not ansible_check_mode
+    - not _transport_ingress_interrupted_helper.stat.exists
+    - _transport_ingress_interrupted_outer_state.stat.exists
+    - _transport_ingress_interrupted_outer_state.stat.isdir
+
+- name: Refuse adoption when a missing egress outer route helper leaves the route state unproven
+  ansible.builtin.fail:
+    msg: >-
+      egress-outer-helper-missing: the egress outer route helper of an interrupted protected ingress transaction is missing
+      while the route's durable state is present, unsafe or cannot be judged;
+      the journal is retained and nothing was adopted or compensated.
+      Restore the complete transport_runtime_*.py helper set in /usr/local/libexec/ripdpi-transport-egress from the deployed revision,
+      each a root-owned regular file with one link, not group- or world-writable,
+      under root-owned directories that are not group- or world-writable,
+      or recreate the node.
+  when:
+    - _transport_ingress_interrupted.stat.exists
+    - not ansible_check_mode
+    - not _transport_ingress_interrupted_helper.stat.exists
+    - _transport_ingress_interrupted_outer_state.stat.exists
+    - >-
+      not (_transport_ingress_interrupted_outer_state.stat.isdir and _transport_ingress_interrupted_outer_state.stat.uid == 0
+      and _transport_ingress_interrupted_outer_state.stat.mode == '0700')
+      or _transport_ingress_interrupted_outer_record.stat.exists
+
+- name: Adopt the interrupted transaction as this block's sole compensation owner
+  ansible.builtin.set_fact:
+    transport_site_transaction_active: true
+    _transport_egress_transaction_started: >-
+      {{ (_transport_ingress_interrupted_outer.stdout | default('{"open": false}') | from_json).open }}
+  when:
+    - _transport_ingress_interrupted.stat.exists
+    - not ansible_check_mode
+
+- name: Refuse to capture while an interrupted protected ingress transaction awaits compensation
+  ansible.builtin.fail:
+    msg: >-
+      interrupted-protected-ingress-transaction: a previous deploy left an open protected ingress journal on this node.
+      Dry-run changes nothing; a deploy compensates the accepted ingress and egress generation and then stops,
+      after which dry-run and deploy must be repeated.
+  when: _transport_ingress_interrupted.stat.exists
+
 - name: Capture or check protected ingress under its existing shared unit lock
   ansible.builtin.command:
     argv:

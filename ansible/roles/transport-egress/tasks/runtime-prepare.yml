@@ -1,32 +1,6 @@
 ---
-- name: Admit exact root-owned helper and journal ancestry before writes
-  ansible.builtin.command:
-    argv:
-      - /usr/bin/python3
-      - -Es
-      - -c
-      - |
-        import os, pathlib, stat
-        roots = [pathlib.Path('/var/lib/ripdpi'),
-                 pathlib.Path('/usr/local/libexec/ripdpi-transport-egress')]
-        for root in roots:
-            for path in [*reversed(root.parents), root]:
-                try:
-                    info = path.lstat()
-                except FileNotFoundError:
-                    continue
-                if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
-                    raise SystemExit('consumer-helper-authority-refused')
-        for name in ('transaction', 'accept', 'probe', 'validate', 'outer', 'rollback'):
-            path = roots[1] / ('transport_runtime_' + name + '.py')
-            try:
-                info = path.lstat()
-            except FileNotFoundError:
-                continue
-            if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_nlink != 1 or info.st_mode & 0o022:
-                raise SystemExit('consumer-helper-authority-refused')
-  changed_when: false
-  check_mode: false
+- name: Admit exact root-owned helper and journal ancestry before writes or helper execution
+  ansible.builtin.import_tasks: helper-authority.yml
 
 - name: Ensure trusted consumer acceptance state parent
   ansible.builtin.file:

@@ -144,7 +144,7 @@ Common patterns:
 | `xray_flow_mode` cohort flip | yes, before and after |
 | AmneziaWG cohort change | yes, before and after |
 | Nginx-XHTTP path rotation | yes, before and after |
-| `make rotate-credentials` | optional — credentials do not affect verdicts |
+| `make rotate-credentials ANSIBLE_LIMIT=<alias>`, once per node | optional — credentials do not affect verdicts |
 | Provider switch (UpCloud ↔ Hetzner) | yes — ASN reputation drives a lot of the verdicts |
 | Cohort URL set quarterly review | yes — captures the rotation |
 

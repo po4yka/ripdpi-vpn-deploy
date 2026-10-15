@@ -153,10 +153,16 @@ def test_early_controller_preflight_precedes_every_mutation_boundary(tmp_path):
     assert task["delegate_to"] == "localhost" and task["become"] is False
     assert task["check_mode"] is False and task["no_log"] is True
     assert "always" in task["tags"] and "stdin" in task["ansible.builtin.command"]
-    for name in ("site.yml", "rotate-credentials.yml"):
-        play = yaml.safe_load((ROOT / "ansible/playbooks" / name).read_text())[0]
-        first = (play.get("pre_tasks") or play["tasks"])[0]
-        assert first["ansible.builtin.import_tasks"] == "tasks/transport-input-preflight.yml"
+    site = yaml.safe_load((ROOT / "ansible/playbooks/site.yml").read_text())[0]
+    assert site["pre_tasks"][0]["ansible.builtin.import_tasks"] == "tasks/transport-input-preflight.yml"
+    # Rotation binds its one exact node and environment with read-only assertions only, then validates inputs
+    # before any other task. Roles run between pre_tasks and tasks, so the play has none.
+    rotation = yaml.safe_load((ROOT / "ansible/playbooks/rotate-credentials.yml").read_text())[0]
+    assert rotation["pre_tasks"][0]["ansible.builtin.import_tasks"] == "tasks/exact-node.yml"
+    assert all(task.get("ansible.builtin.import_tasks") == "tasks/exact-node.yml" or "ansible.builtin.assert" in task
+               for task in rotation["pre_tasks"])
+    assert not rotation.get("roles")
+    assert rotation["tasks"][0]["ansible.builtin.import_tasks"] == "tasks/transport-input-preflight.yml"
     for role in ("xray", "hysteria", "amneziawg"):
         tasks = yaml.safe_load((ROOT / "ansible/roles" / role / "tasks/enable.yml").read_text())
         assert "transport-input-preflight.yml" in tasks[0]["ansible.builtin.import_tasks"]

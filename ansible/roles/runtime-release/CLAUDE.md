@@ -63,6 +63,8 @@ cleanup. A third receipt state refuses without mutating any inode.
 
 Site retirement contributes exact absence candidates to the final complete frontend plan, including when all frontends are disabled. Timer asset refresh and operator rollback refuse an open outer route owner before recovery or publication. Native admission leases bind the Linux boot identity: a proven reboot permits missing volatile unit/namespace authority only after the new manager confirms no same-named unit or process; durable private files still require their exact inode claims.
 
+**Operator runtime rollback plans only runtime-publisher-owned nodes** — `runtime_candidates` in `transport_runtime_rollback.py` retargets both `XRAY_RUNTIME_BINARY` and `ExecStart` of `xray.service` (and the bundled GeoIP release when the unit uses it) together with the release, asset and public links and the config, after verifying each retained release receipt and digest. The accepted receipt claims every candidate by inode and digest, so the egress-owned private gateway units are never candidates: claiming a unit the egress transaction rewrites would make the next ordinary converge refuse with `accepted-authority-changed`. Gateways keep the pinned release until the pin changes and a deploy re-renders them. Portable tests pin the candidate set and that boundary; the native lane asserts the rolled-back unit text, the live `MainPID` executable, that the published receipt claims no `ripdpi-transport-*.service` node, and that a following converge with the newer pin restores the upgraded release and `MainPID` executable, with the rolled-back release as `previous`.
+
 ## What's done well
 
 - **Fail-closed input surface** — empty pins, unsupported architectures,

@@ -83,6 +83,38 @@ Verification admission passes the exact limit to Ansible inventory resolution.
 `require-vpn-selection.py` then requires a VPN member, including child groups,
 so a known observer-only limit cannot produce an empty successful play.
 
+`rotate-credentials`, `rollback-xray` and `rollback-config` are exact-node verbs:
+Make captures `ANSIBLE_LIMIT` as literal data into the `EXACT_NODE_ALIAS`
+environment variable, `require-exact-node` checks it against the play's alias
+pattern, and `ANSIBLE_LIMIT` then expands to the shell reference
+`$EXACT_NODE_ALIAS`, so no recipe, including the shared `require-inventory`,
+interpolates the alias into shell code (`ENV`, `PROVIDER`, `SECRETS_FILE`,
+`ROLLBACK_XRAY_VERSION`, `SKIP_PRECHECK` and `ANSIBLE_DIR` are still expanded as
+Make and shell syntax; SCR-1792057680449496 tracks them). That reference is not
+an alias: the verbs refuse to share an invocation with any other goal, run one
+after another (`.NOTPARALLEL`) when they share one, and `ANSIBLE_LIMIT` is
+unexported so no recipe receives it. They start `ansible-playbook` without inherited
+`ANSIBLE_SKIP_TAGS` or `ANSIBLE_RUN_TAGS`, which could skip the `always`-tagged
+guard. The play asserts the one selected alias through
+`ansible/playbooks/tasks/exact-node.yml`; that binding, not the `ENV` check, is
+why each run acts on one node, so revoking a client is complete only after one run
+per node. Rotation separately refuses a host whose inventory `env` differs from
+`ENV`. `RUNBOOK-rotate.md` and `RUNBOOK-deploy.md` print the revocation
+sequence as a subshell that names the environment once (`e=prod`), installs a
+`make clean` EXIT trap before `make decrypt` and turns INT, QUIT, TERM and HUP
+into exits: the per-node rotate and verify loop runs only after a successful
+`make decrypt`, because a failed decrypt leaves an older plaintext file in place
+that the loop would then deploy, and `make clean` runs on every exit path a shell
+can catch (success, failure or interruption, but not SIGKILL or power loss, after
+which the operator runs it by hand). The EXIT trap ignores those four signals
+while `make clean` runs, so a second one cannot cut the shred short. The subshell
+exits with the failing step's status, which the cleanup does not mask, and with 1
+when only `make clean` fails, as the cleanup blocks in `docs/QUICKSTART.md` leave
+the block unsuccessful. The REALITY keypair and restic password sections of
+`RUNBOOK-rotate.md` print the same guard around their `decrypt`, `deploy` and
+`verify` calls; `test_operator_verb_scope.py` runs all four blocks, including
+interruption.
+
 The release installer verifies the exact repository and fully qualified signer
 workflow before installation. Cloud-init acceptance checks the actual loopback
 SSH banner before it accepts the configured listener.

@@ -8,7 +8,6 @@ import signal
 import re
 import socket
 import subprocess
-import yaml
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -54,7 +53,8 @@ def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(
         assert lab.converge(profile) == 0
         root = Path('/opt/xray' if profile == 'xray' else '/opt/hysteria')
         previous = os.readlink(root / 'current')
-        before = json.loads(Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_text())
+        # The accepted receipt exists and parses before the upgrade.
+        json.loads(Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_text())
         lab.upgrade(profile)
         assert lab.converge(profile) == 0
         assert os.readlink(root / 'current') != previous
@@ -83,11 +83,36 @@ def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(
                 '/usr/local/libexec/ripdpi-transport-egress/transport_runtime_rollback.py',
                 'config'], capture_output=True, timeout=90)
             assert result.returncode == 0, 'native-config-rollback-refused'
+            upgraded = os.readlink(root / 'current')
             result = subprocess.run(['/usr/bin/python3', '-Es',
                 '/usr/local/libexec/ripdpi-transport-egress/transport_runtime_rollback.py',
                 'runtime', '--version', 'v26.3.27'], capture_output=True, timeout=90)
             assert result.returncode == 0, 'native-runtime-rollback-refused'
             assert os.readlink(root / 'current') == previous
+            # The published receipt claims runtime-publisher nodes only; the egress-owned gateway
+            # units are never candidates, or the next converge would refuse their rewrite.
+            published = json.loads((state / 'accepted.json').read_text())
+            assert not [raw for raw in published['nodes'] if Path(raw).match('ripdpi-transport-*.service')], 'native-runtime-rollback-claimed-gateway-unit'
+            # Retargeted links do not prove what runs: the unit text and the live main process
+            # must both name the rolled-back release binary.
+            from transport_runtime_accept import fields, unit_binary
+            rolled_back = str(Path(previous) / 'xray')
+            unit_text = Path('/etc/systemd/system/xray.service').read_text()
+            assert unit_binary(unit_text)[0] == rolled_back
+            assert 'Environment=XRAY_RUNTIME_BINARY=' + rolled_back in unit_text.splitlines()
+            observed = fields('xray.service')
+            assert observed['ActiveState'] == 'active' and int(observed['MainPID']) > 0
+            assert os.path.samefile('/proc/' + observed['MainPID'] + '/exe', rolled_back), 'native-runtime-rollback-process-unchanged'
+            # The next ordinary converge with the newer pin must still be accepted and move the
+            # unit, the links and the running process forward again, keeping the rolled-back release as previous.
+            assert lab.converge(profile) == 0
+            assert os.readlink(root / 'current') == upgraded
+            assert os.readlink(root / 'previous') == previous
+            upgraded_binary = str(Path(upgraded) / 'xray')
+            assert unit_binary(Path('/etc/systemd/system/xray.service').read_text())[0] == upgraded_binary
+            observed = fields('xray.service')
+            assert observed['ActiveState'] == 'active' and int(observed['MainPID']) > 0
+            assert os.path.samefile('/proc/' + observed['MainPID'] + '/exe', upgraded_binary), 'native-runtime-upgrade-process-unchanged'
         assert lab.converge(profile, retire=True) == 0
         retired_unit = '/etc/systemd/system/' + ('xray.service' if profile == 'xray' else 'hysteria-server.service')
         assert not os.path.lexists(retired_unit)

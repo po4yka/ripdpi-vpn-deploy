@@ -1,6 +1,11 @@
 # Runbook — rollback
 
 Three rollback levels. Pick the smallest one that fixes the failure.
+A deploy that was killed mid-run is not a rollback case: if `make dry-run`
+reports `interrupted-protected-ingress-transaction` or
+`interrupted-nginx-publication`, follow the single deploy exception in the
+[ordinary re-deploy recipe](RUNBOOK-deploy.md#ordinary-re-deploy-recipe)
+instead of the levels below.
 
 ## Level 1 — config rollback (handler rescue, automatic)
 
@@ -17,26 +22,30 @@ available.` in the Ansible output. The host is back on the previous
 config. Investigate the bad template, fix it, re-deploy.
 
 If automatic rescue didn't fire (e.g., the bad change was outside the
-xray template — say nftables), trigger the manual playbook:
+xray template — say nftables), trigger the manual rollback on the affected node:
 
 ```bash
-ansible-playbook ansible/playbooks/rollback-config.yml
+make rollback-config ANSIBLE_LIMIT=<alias>
 ```
 
 It stages `/etc/xray/config.json.prev`, validates the complete candidate, and commits only after loaded runtime identity and authenticated native forwarding succeed. Refusal restores the exact prior configuration and service state.
 
+Both rollback verbs act on exactly one inventory alias per run and refuse a missing limit, a group, a pattern or a list; run them once per affected node.
+
 ## Level 2 — binary rollback
 
 Use when a new Xray pinned version misbehaves (slow, leaks, crashes).
-Previous releases stay in `/opt/xray/releases/<version>/`; only the
-`current` symlink points at the active one.
+Previous releases stay in `/opt/xray/releases/<version>/`. The paths in
+the `xray.service` `Environment=XRAY_RUNTIME_BINARY=` and `ExecStart=`
+lines decide which release runs; `current`, `previous` and
+`/usr/local/bin/xray` follow them.
 
 ```bash
 # Find the previous release
 ssh deploy@<vps> ls /opt/xray/releases
 
-# Roll the symlink back
-make rollback-xray ROLLBACK_XRAY_VERSION=v26.3.27
+# Roll xray.service back to a retained release (one node per run)
+make rollback-xray ANSIBLE_LIMIT=<alias> ROLLBACK_XRAY_VERSION=v26.3.27
 ```
 
 A semantic version selects its exact `<version>-archive` runtime identity.
@@ -50,6 +59,13 @@ then commits selection only after exact loaded executable identity and
 successful authenticated native forwarding. Refusal restores the complete
 previous generation. Check mode inspects ownership and predicts changes; it
 performs no publication, service restart or authenticated probe.
+
+Level 2 moves `xray.service` only. The private gateway units
+(`ripdpi-transport-direct.service`, `ripdpi-transport-warp.service`) are
+owned by the egress transaction and keep running the pinned release until
+`xray.version` is changed and `make deploy` re-renders them, so the egress
+leg of proxied connections stays on that release after this command. A
+later `make deploy` with the newer pin moves `xray.service` forward again.
 
 To make the rollback permanent, also update `xray.version` and
 `xray.linux_*_sha256` in secrets back to the rolled-back version, so

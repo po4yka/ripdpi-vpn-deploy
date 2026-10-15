@@ -241,6 +241,80 @@ The exported mapping paths are consumed by both controller commands;
 The empty command-line `ANSIBLE_TAGS=` forces the full graph even if the shell
 or `.fleet.mk` selects tags; preserve it on both commands.
 
+One exception to "do not run the deploy block after a failed preflight": when
+`make dry-run` stops with `interrupted-protected-ingress-transaction` or
+`interrupted-nginx-publication`, the node still holds a recovery journal, and
+dry-run refuses and changes nothing until a deploy compensates it. The first
+category means a previous deploy was killed (Ctrl-C, lost SSH or the
+controller timeout) after protected ingress capture and before commit, leaving
+the open site journal. The second means an ordinary nginx publication was
+interrupted and only its pending journal remains. Before recovering, review
+every change the refused dry-run reported before the refusal (baseline,
+package updates, firewall, intrusion prevention, geodata, tailnet management),
+because the deploy applies them first. Confirm that no other deploy targets the
+node (there is no deploy-level lock, and compensation assumes exclusive use).
+For `interrupted-nginx-publication`, first run
+`make source-drift ANSIBLE_LIMIT='<exact-alias>'`: it must pass, and the
+decrypted secrets must be the ones last deployed, because that recovery
+converges the complete graph from the checked-out source. If it reports drift,
+check out the revision it names as deployed for this recovery, confirm
+`make source-drift` passes there, and rerun
+`make dry-run ANSIBLE_LIMIT='<exact-alias>' ANSIBLE_TAGS=` at that revision.
+That revision can recover the journal only if it already contains the
+pending-journal recovery, which shows as the same
+`interrupted-nginx-publication` refusal. A revision from before that recovery
+fails with the older helper's generic refusal instead, and its deploy cannot
+recover the journal: do not deploy there. Escalate to the owner, who either
+recovers the journal by hand or approves reviewing the deployable difference
+between the deployed and current revisions in place of the preview the dry-run
+cannot give, followed by the recovery from the current revision. When the refusal matches, the changes it reports before the
+refusal are the pre-block changes this recovery applies: review those, because
+the refused dry-run you reviewed above came from the newer revision. Then run,
+with the same exported inputs as the deploy block, for that exact alias:
+
+```bash
+make deploy ANSIBLE_LIMIT='<exact-alias>' ANSIBLE_TAGS=
+```
+
+The explicit empty `ANSIBLE_TAGS=` is required: an operator `.fleet.mk` may
+select tags that skip the protected block, and the recovery lives in that
+block. This is a mutating run: the ordinary pre-block roles run first. For
+`interrupted-protected-ingress-transaction` the protected block then restores
+the accepted ingress; when the egress outer route is open it first quiesces
+candidate transports and afterwards rolls the egress generation back. That run
+ends non-zero with `interrupted-protected-ingress-transaction` followed by the
+protected-staging failure message, which is the expected recovery result. For
+`interrupted-nginx-publication` the deploy recovers the recognized pending
+journal under the nginx unit lock before capturing ingress and then converges
+the complete graph: protected staging, activation and commit and every later
+role run in the same deploy, and the refused dry-run could not preview any of
+them, which is why the source-drift check above comes first. After either
+recovery, repeat the complete preflight block and deploy block above, from the
+new revision when there is one. Any other failed dry-run keeps the rule: do
+not deploy.
+
+Recovery fails closed with the journal retained for manual recovery when the
+pending journal is unrecognized or foreign, the site journal is malformed, the
+egress route status cannot be read, the egress helper fails the root-owned
+ancestry and single-link regular-file admission
+(`consumer-helper-authority-refused`; the helper is not run in that case), or
+the egress helper is missing while the route's own durable state
+(`/var/lib/ripdpi/transport-runtime/outer.json`, or a state directory that is
+not a root-owned 0700 directory) is present or cannot be judged
+(`egress-outer-helper-missing`; nothing is adopted or compensated, so restore
+the complete set of `transport_runtime_*.py` helpers in
+`/usr/local/libexec/ripdpi-transport-egress` from the deployed revision, each
+a root-owned regular file with one link, not group- or world-writable, under
+root-owned directories that are not group- or world-writable, as the next
+deploy's admission requires,
+or recreate the node). A missing helper with that state provably absent (no
+state directory, or a root-owned 0700 one without `outer.json`) is the only
+missing-helper case that adopts the journal, with the egress route treated as
+closed. A malformed site journal together with an open egress route is the
+sharpest case: the rescue quiesces the candidate transports, cannot restore the
+ingress and stops, so the protected transports stay stopped until manual
+recovery.
+
 Readiness, convergence and the automatic source-drift check use the same
 private inventory and transport snapshots. Canonical all/vpn/cohort variables
 are loaded per host before runtime metadata, secrets and approved overrides;
@@ -287,11 +361,38 @@ OUTPUT=secrets/local/clients/laptop/uris.txt \
 SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml \
 ./scripts/new-client.sh --emit-uri laptop
 
-make decrypt
-make rotate-credentials      # re-renders xray/hysteria/awg configs
-make verify
-make clean
+(
+  e=prod
+  trap 'rc=$?; trap "" INT QUIT TERM HUP; make clean ENV="$e" || [ "$rc" -ne 0 ] || rc=1; exit "$rc"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  trap 'exit 129' HUP
+  trap 'exit 131' QUIT
+  make decrypt ENV="$e" || { rc=$?; echo "decrypt failed; nothing rotated" >&2; exit "$rc"; }
+  for node in <alias-1> <alias-2>; do   # every node of the environment
+    make rotate-credentials ENV="$e" ANSIBLE_LIMIT="$node" &&
+      make verify ENV="$e" ANSIBLE_LIMIT="$node" ||
+      { rc=$?; echo "stopped at $node" >&2; exit "$rc"; }
+  done
+)
 ```
+
+`rotate-credentials` re-renders the xray, hysteria and awg configs and acts on
+exactly one inventory alias per run, so run the rotate and verify pair with the
+same alias for every node of the environment; the new device works on every
+node, and any client removed from the secrets is revoked, only after all nodes
+are rotated and verified. A failed decrypt must not reach the loop: a plaintext
+file left by an earlier session would be deployed instead of your edit, so the
+loop runs only after a successful decrypt. The sequence runs in a subshell that
+names the environment once (`e=prod`) and installs the `make clean` cleanup before
+it decrypts. It turns an interrupt, a quit, a termination or a hangup into an exit
+and the cleanup ignores a second one while it runs, so the decrypted file is
+shredded on every exit path the shell can catch. The subshell exits with the status
+of the failing step, or 1 when only `make clean` fails. After SIGKILL or a power
+loss, or whenever `make clean` reports a failure, run `make clean` yourself with
+the same `ENV`. When adapting the block for another environment, change both the
+`SOPS_FILE` path of the `new-client.sh` step and `e=`. The refusal conditions and the
+limits of the cleanup are in [RUNBOOK-rotate.md](RUNBOOK-rotate.md#1-single-client-leak).
 
 Hand the AmneziaWG private key (printed by the script) to the device
 through a secure channel. Wipe it from your terminal scrollback.

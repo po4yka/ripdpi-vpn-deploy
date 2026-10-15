@@ -1014,6 +1014,12 @@ def site_transaction(action, document):
                 validate_receipt(receipt, value["owner"], "nginx.service")
                 verify_witnesses(receipt["files"])
         return {"status": "validated", "changed": False}
+    if action == "begin" and not os.path.lexists(state / "site.json") and os.path.lexists(state / "pending.json"):
+        # An ordinary publication interrupted outside a site transaction is
+        # recovered as its next publisher would, before receipt admission can see
+        # bytes that disagree with the prior witnesses. Unknown journals refuse.
+        with unit_lock(state):
+            recover(state / "pending.json", "nginx.service")
     if action == "begin":
         # Legacy/foreign receipt authority is refused before even lock creation.
         for value in requests:

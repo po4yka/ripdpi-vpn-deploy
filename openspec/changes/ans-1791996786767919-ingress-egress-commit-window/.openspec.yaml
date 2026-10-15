@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-14
+goal: ANS-1791996786767919 Close the window between protected ingress commit and
+  egress finish

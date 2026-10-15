@@ -67,6 +67,32 @@ def verified_release(tx, root, version, name, mode):
     return directory
 
 
+def runtime_candidates(tx, raw_version, unit_path, config_path, gid, *, root=Path('/opt/xray')):
+    # The accepted receipt claims every candidate by inode and digest, so only runtime-publisher-owned paths belong here.
+    # The private gateway units are egress-owned and rewritten by the next converge; they are never candidates.
+    runtime_version, asset_version = release_versions(raw_version)
+    release = verified_release(tx, root, runtime_version, 'xray', 0o755)
+    unit = unit_path.read_text()
+    binary, assets, _config = unit_binary(unit)
+    selected = os.readlink(root / 'current')
+    if selected == str(release):
+        raise Refusal('rollback-no-change')
+    rendered = unit.replace(binary, str(release / 'xray'))
+    asset_root = root / 'assets/geoip'
+    links = []
+    if assets.startswith(str(asset_root / 'releases') + '/'):
+        asset_release = verified_release(tx, asset_root, asset_version, 'geoip.dat', 0o644)
+        rendered = rendered.replace(assets, str(asset_release))
+        links += [{'path': str(asset_root / 'current'), 'target': str(asset_release)},
+                  {'path': str(asset_root / 'previous'), 'target': os.readlink(asset_root / 'current')},
+                  {'path': str(root / 'bundled-assets/geoip.dat'), 'target': str(asset_root / 'current/geoip.dat')}]
+    links += [{'path': str(root / 'current'), 'target': str(release)},
+              {'path': str(root / 'previous'), 'target': selected},
+              {'path': '/usr/local/bin/xray', 'target': str(root / 'current/xray')}]
+    return [file_candidate(unit_path, rendered.encode(), 0, 0o644), *links,
+            file_candidate(config_path, config_path.read_bytes(), gid)]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('action', choices=['config', 'runtime'])
@@ -101,35 +127,15 @@ def main():
         config_path = Path('/etc/xray/config.json')
         if not receipt['nodes'].get(str(unit_path)) or not receipt['nodes'].get(str(config_path)):
             raise Refusal('accepted-xray-required')
-        candidates = [file_candidate(unit_path, unit_path.read_bytes(), 0, 0o644)]
         gid = receipt['nodes'][str(config_path)]['identity'][3]
         if args.action == 'config':
             previous = config_path.with_name('config.json.prev')
             if not receipt['nodes'].get(str(previous)):
                 raise Refusal('accepted-previous-config-required')
-            candidates.append(file_candidate(config_path, previous.read_bytes(), gid))
-            candidates = restore_points(candidates)
+            candidates = restore_points([file_candidate(unit_path, unit_path.read_bytes(), 0, 0o644),
+                                         file_candidate(config_path, previous.read_bytes(), gid)])
         else:
-            runtime_version, asset_version = release_versions(args.version)
-            root = Path('/opt/xray')
-            release = verified_release(tx, root, runtime_version, 'xray', 0o755)
-            binary, assets, _config = unit_binary(unit_path.read_text())
-            selected = os.readlink(root / 'current')
-            if selected == str(release):
-                raise Refusal('rollback-no-change')
-            rendered = unit_path.read_text().replace(binary, str(release / 'xray'))
-            if assets.startswith('/opt/xray/assets/geoip/releases/'):
-                asset_root = root / 'assets/geoip'
-                asset_release = verified_release(tx, asset_root, asset_version, 'geoip.dat', 0o644)
-                rendered = rendered.replace(assets, str(asset_release))
-                candidates += [{'path': str(asset_root / 'current'), 'target': str(asset_release)},
-                               {'path': str(asset_root / 'previous'), 'target': os.readlink(asset_root / 'current')},
-                               {'path': str(root / 'bundled-assets/geoip.dat'), 'target': str(asset_root / 'current/geoip.dat')}]
-            candidates[0] = file_candidate(unit_path, rendered.encode(), 0, 0o644)
-            candidates += [{'path': str(root / 'current'), 'target': str(release)},
-                           {'path': str(root / 'previous'), 'target': selected},
-                           {'path': '/usr/local/bin/xray', 'target': str(root / 'current/xray')},
-                           file_candidate(config_path, config_path.read_bytes(), gid)]
+            candidates = runtime_candidates(tx, args.version, unit_path, config_path, gid)
         candidates.append(parameter_candidate(parameters))
         owner.candidates = candidates
         result = tx.apply(candidates, owner, check=args.check)

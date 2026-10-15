@@ -10,6 +10,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 LIBRARY = ROOT / 'ansible/roles/runtime-release/files'
 sys.path.insert(0, str(LIBRARY))
+import transport_runtime_transaction as core
 spec = importlib.util.spec_from_file_location('runtime_acceptance_adapter_test', LIBRARY / 'transport_runtime_accept.py')
 accept = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(accept)
@@ -105,18 +106,16 @@ def parameter_area(tmp_path, monkeypatch):
 
 
 def test_actual_parameters_precede_bootstrap_intent_and_missing_authority_refuses(parameter_area):
-    from transport_runtime_transaction import Transaction, node
-    root, state_root, actual, uid, gid = parameter_area
+    _root, state_root, actual, uid, _gid = parameter_area
     initial, desired = parameters('context-a'), parameters('context-b')
-    with Transaction(state_root, uid=uid) as tx:
+    with core.Transaction(state_root, uid=uid) as tx:
         tx.record('parameters.json', initial)
     assert accept.read_parameters(uid=uid) == initial
     actual.write_text(json.dumps(desired))
     actual.chmod(0o600)
     assert accept.read_parameters(uid=uid) == desired
-    before = (state_root / 'parameters.json').read_bytes()
-    with Transaction(state_root, uid=uid) as tx:
-        tx.record('accepted.json', {'schema': 1, 'nodes': {str(actual): node(actual, uid)},
+    with core.Transaction(state_root, uid=uid) as tx:
+        tx.record('accepted.json', {'schema': 1, 'nodes': {str(actual): core.node(actual, uid)},
                                    'previous': None, 'units': {}})
     actual.unlink()
     with pytest.raises(accept.Refusal, match='accepted-parameters-absent'):
@@ -125,9 +124,8 @@ def test_actual_parameters_precede_bootstrap_intent_and_missing_authority_refuse
 
 
 def test_unsafe_published_parameters_never_fall_back_to_bootstrap(parameter_area):
-    from transport_runtime_transaction import Transaction
     _root, state_root, actual, uid, _gid = parameter_area
-    with Transaction(state_root, uid=uid) as tx:
+    with core.Transaction(state_root, uid=uid) as tx:
         tx.record('parameters.json', parameters('context-a'))
     actual.write_text(json.dumps(parameters('context-b')))
     actual.chmod(0o644)
@@ -181,18 +179,17 @@ def parameter_plan(value, gid):
 
 
 def test_context_b_publication_and_compensation_probe_restored_context_a(parameter_area, monkeypatch):
-    from transport_runtime_transaction import Transaction
     _root, state_root, actual, uid, gid = parameter_area
     initial, desired = parameters('context-a'), parameters('context-b', timeout=12, expected=202)
     captured = []
     owner = parameter_adapter(parameter_area, monkeypatch, desired, captured)
-    with Transaction(state_root, uid=uid) as tx:
+    with core.Transaction(state_root, uid=uid) as tx:
         tx.apply(parameter_plan(initial, gid), owner)
     original_receipt = (state_root / 'accepted.json').read_bytes()
     original_inode = actual.stat().st_ino
-    with Transaction(state_root, uid=uid) as tx:
+    with core.Transaction(state_root, uid=uid) as tx:
         assert tx.apply(parameter_plan(desired, gid), owner)['published']
-    with Transaction(state_root, uid=uid) as tx:
+    with core.Transaction(state_root, uid=uid) as tx:
         tx.compensate_latest(owner)
     assert captured == [
         {'url': initial['probe_url'], 'expected': 204, 'client_name': 'context-a'},
@@ -207,16 +204,15 @@ def test_context_b_publication_and_compensation_probe_restored_context_a(paramet
 
 
 def test_failed_context_b_probe_recovers_with_context_a_not_candidate_options(parameter_area, monkeypatch):
-    from transport_runtime_transaction import Transaction
     _root, state_root, actual, uid, gid = parameter_area
     initial, desired = parameters('context-a'), parameters('context-b', expected=202)
     captured = []
     owner = parameter_adapter(parameter_area, monkeypatch, desired, captured, reject='context-b')
-    with Transaction(state_root, uid=uid) as tx:
+    with core.Transaction(state_root, uid=uid) as tx:
         tx.apply(parameter_plan(initial, gid), owner)
     before = (state_root / 'accepted.json').read_bytes()
     inode = actual.stat().st_ino
-    with Transaction(state_root, uid=uid) as tx:
+    with core.Transaction(state_root, uid=uid) as tx:
         with pytest.raises(accept.Refusal, match='candidate-refused'):
             tx.apply(parameter_plan(desired, gid), owner)
     assert [value['client_name'] for value in captured] == ['context-a', 'context-b', 'context-a']
@@ -228,22 +224,21 @@ def test_failed_context_b_probe_recovers_with_context_a_not_candidate_options(pa
 
 def test_linked_parameter_backup_requires_exact_durable_claim(parameter_area, monkeypatch):
     import os
-    from transport_runtime_transaction import Transaction
     _root, state_root, actual, uid, gid = parameter_area
     initial, desired = parameters('context-a'), parameters('context-b')
     captured = []
     owner = parameter_adapter(parameter_area, monkeypatch, desired, captured)
-    with Transaction(state_root, uid=uid) as tx:
+    with core.Transaction(state_root, uid=uid) as tx:
         tx.apply(parameter_plan(initial, gid), owner)
     def interrupted(stage):
         if stage == 'materialized-0':
             raise SystemExit(99)
-    with Transaction(state_root, uid=uid) as tx:
+    with core.Transaction(state_root, uid=uid) as tx:
         with pytest.raises(SystemExit):
             tx.apply(parameter_plan(desired, gid), owner, checkpoint=interrupted)
     assert actual.stat().st_nlink == 2
     assert accept.read_parameters() == initial
-    with Transaction(state_root, uid=uid) as tx:
+    with core.Transaction(state_root, uid=uid) as tx:
         assert tx.recover(owner)
     foreign = state_root / 'foreign-backup'
     os.link(actual, foreign)
@@ -253,9 +248,8 @@ def test_linked_parameter_backup_requires_exact_durable_claim(parameter_area, mo
 
 
 def test_only_reserved_parameters_are_selectable_inside_state(parameter_area):
-    from transport_runtime_transaction import Transaction
     _root, state_root, _actual, uid, gid = parameter_area
-    with Transaction(state_root, uid=uid) as tx:
+    with core.Transaction(state_root, uid=uid) as tx:
         tx.validate(parameter_plan(parameters('context-a'), gid))
         for name in ('accepted.json', 'pending.json', 'last.json', 'outer.json', 'arbitrary.json'):
             candidate = parameter_plan(parameters('context-a'), gid)[0]
@@ -265,8 +259,6 @@ def test_only_reserved_parameters_are_selectable_inside_state(parameter_area):
 
 
 def outer_module(parameter_area, monkeypatch):
-    import os
-    import transport_runtime_transaction as core
     _root, state_root, _actual, uid, _gid = parameter_area
     spec = importlib.util.spec_from_file_location('runtime_outer_adapter_test', LIBRARY / 'transport_runtime_outer.py')
     outer = importlib.util.module_from_spec(spec)
@@ -289,7 +281,6 @@ def receipt(units=None, nodes=None):
     receipt(units={unit: {**state(), 'MainPID': 0} for unit in (accept.CONTROLLER, *accept.UNITS)}),
     receipt(nodes={'relative-authority': None})])
 def test_outer_finish_preserves_malformed_embedded_receipt(parameter_area, monkeypatch, baseline):
-    import transport_runtime_transaction as core
     _root, state_root, _actual, uid, _gid = parameter_area
     outer = outer_module(parameter_area, monkeypatch)
     with core.Transaction(state_root, uid=uid) as tx:
@@ -303,7 +294,6 @@ def test_outer_finish_preserves_malformed_embedded_receipt(parameter_area, monke
 
 
 def test_outer_finish_preserves_typed_unknown_baseline_without_known_transition(parameter_area, monkeypatch):
-    import transport_runtime_transaction as core
     _root, state_root, _actual, uid, _gid = parameter_area
     outer = outer_module(parameter_area, monkeypatch)
     baseline = receipt()
@@ -319,7 +309,6 @@ def test_outer_finish_preserves_typed_unknown_baseline_without_known_transition(
 
 
 def test_outer_finish_accepts_only_exact_current_or_typed_known_transition(parameter_area, monkeypatch):
-    import transport_runtime_transaction as core
     root, state_root, _actual, uid, _gid = parameter_area
     outer = outer_module(parameter_area, monkeypatch)
     baseline = receipt()
@@ -353,17 +342,15 @@ def test_outer_finish_accepts_only_exact_current_or_typed_known_transition(param
     lambda claim: claim.__setitem__('sha256', 'unverified'),
 ])
 def test_embedded_node_claims_have_bounded_scalar_types(parameter_area, mutation):
-    from transport_runtime_transaction import validate_receipt
     root, state_root, _actual, uid, gid = parameter_area
     claim = {'identity': [1, 1, uid, gid, 0o600], 'sha256': 'a' * 64}
     mutation(claim)
     with pytest.raises(accept.Refusal, match='node-claim-invalid'):
-        validate_receipt(receipt(nodes={str(root / 'owned'): claim}), root=state_root, uid=uid)
+        core.validate_receipt(receipt(nodes={str(root / 'owned'): claim}), root=state_root, uid=uid)
 
 
 def test_failed_transaction_entry_closes_acquired_directory_descriptors(parameter_area, monkeypatch):
     import os
-    import transport_runtime_transaction as core
     _root, state_root, _actual, uid, _gid = parameter_area
     state_root.mkdir(mode=0o755)
     state_root.chmod(0o755)
@@ -386,10 +373,8 @@ def test_failed_transaction_entry_closes_acquired_directory_descriptors(paramete
 @pytest.mark.parametrize('operation', ['refresh', 'rollback'])
 def test_external_acceptance_operation_preserves_open_outer_owner(parameter_area, monkeypatch, operation):
     import io
-    import os
-    import transport_runtime_transaction as core
     import transport_runtime_validate as validation
-    _root, state_root, _actual, uid, gid = parameter_area
+    _root, state_root, _actual, uid, _gid = parameter_area
     current = parameters('context-a')
     with core.Transaction(state_root, uid=uid) as tx:
         tx.record('parameters.json', current)
@@ -428,7 +413,6 @@ def test_transient_owned_candidate_can_be_quiesced_but_never_journaled_as_accept
 
 @pytest.mark.parametrize('refused', [False, True])
 def test_outer_recovery_without_inner_journal_still_requires_restored_native_boundary(parameter_area, monkeypatch, refused):
-    import transport_runtime_transaction as core
     _root, state_root, _actual, uid, _gid = parameter_area
     outer = outer_module(parameter_area, monkeypatch)
     baseline = receipt()
@@ -471,23 +455,36 @@ def test_operator_rollback_rejects_ambiguous_identity(raw):
         release_versions(raw)
 
 
-def test_operator_release_digest_is_verified_before_selection(parameter_area):
+def make_directories(path):
+    # mkdir honours the umask, and the ownership contract refuses group-writable ancestry.
+    created = [directory for directory in (path, *path.parents) if not directory.exists()]
+    path.mkdir(parents=True)
+    for directory in created:
+        directory.chmod(0o755)
+
+
+def retained_release(base, version, name, mode, data):
     import hashlib
-    import transport_runtime_transaction as core
+    release = base / 'releases' / version
+    make_directories(release)
+    artifact = release / name
+    artifact.write_bytes(data)
+    artifact.chmod(mode)
+    digest = hashlib.sha256(data).hexdigest()
+    byte_receipt = release / '.runtime-release.json'
+    byte_receipt.write_text(json.dumps({'schema_version':1,'version':version,
+        'arch_key':'arm64','arch_slug':'arm64-v8a','binary_name':name,
+        'artifact_sha256':digest,'binary_sha256':digest}))
+    byte_receipt.chmod(0o644)
+    return release
+
+
+def test_operator_release_digest_is_verified_before_selection(parameter_area):
     from transport_runtime_rollback import verified_release
     root, state, _actual, uid, _gid = parameter_area
     version = 'v26.3.27-source-' + 'a' * 40
-    release = root / 'releases' / version
-    release.mkdir(parents=True)
+    release = retained_release(root, version, 'xray', 0o755, b'exact-private-byte-ownership-contract')
     binary = release / 'xray'
-    binary.write_bytes(b'exact-private-byte-ownership-contract')
-    binary.chmod(0o755)
-    digest = hashlib.sha256(binary.read_bytes()).hexdigest()
-    byte_receipt = release / '.runtime-release.json'
-    byte_receipt.write_text(json.dumps({'schema_version':1,'version':version,
-        'arch_key':'arm64','arch_slug':'arm64-v8a','binary_name':'xray',
-        'artifact_sha256':digest,'binary_sha256':digest}))
-    byte_receipt.chmod(0o644)
     with core.Transaction(state, uid=uid) as tx:
         assert verified_release(tx, root, version, 'xray', 0o755) == release
         binary.write_bytes(b'changed-binary')
@@ -495,8 +492,126 @@ def test_operator_release_digest_is_verified_before_selection(parameter_area):
             verified_release(tx, root, version, 'xray', 0o755)
 
 
+SELECTED_RELEASE, RETAINED_RELEASE = 'v26.5.3-archive', 'v26.3.27-archive'
+
+
+def unit_text(release, assets, config):
+    return ('[Service]\nEnvironment=XRAY_LOCATION_ASSET=' + str(assets) + '\nEnvironment=XRAY_RUNTIME_BINARY='
+            + str(release / 'xray') + '\nExecStart=' + str(release / 'xray') + ' run -config ' + str(config) + '\n')
+
+
+def runtime_tree(root, *, bundled=True):
+    """An /opt/xray analogue with the newer release selected and the older one retained."""
+    selected = retained_release(root, SELECTED_RELEASE, 'xray', 0o755, b'selected-xray')
+    retained = retained_release(root, RETAINED_RELEASE, 'xray', 0o755, b'retained-xray')
+    (root / 'current').symlink_to(selected)
+    assets = root / 'assets/geoip'
+    selected_assets = retained_release(assets, 'v26.5.3', 'geoip.dat', 0o644, b'selected-geoip')
+    retained_release(assets, 'v26.3.27', 'geoip.dat', 0o644, b'retained-geoip')
+    (assets / 'current').symlink_to(selected_assets)
+    config = root / 'etc/config.json'
+    make_directories(config.parent)
+    config.write_bytes(b'{"log": {}}')
+    unit = root / 'units/xray.service'
+    make_directories(unit.parent)
+    unit.write_text(unit_text(selected, selected_assets if bundled else root / 'unmanaged-assets', config))
+    return unit, config, selected, retained, assets
+
+
+def tree_snapshot(root):
+    # The accepted receipt claims nodes by inode, so a same-bytes replacement is a change too.
+    def entry(path):
+        status = path.lstat()
+        content = path.readlink() if path.is_symlink() else path.read_bytes() if path.is_file() else None
+        return (status.st_ino, status.st_mode, status.st_uid, status.st_gid, status.st_nlink, content)
+    return {path: entry(path) for path in root.rglob('*')}
+
+
+@pytest.mark.parametrize('bundled', [True, False])
+def test_operator_runtime_rollback_retargets_unit_text_and_exact_link_set(parameter_area, bundled):
+    import base64
+    from transport_runtime_rollback import runtime_candidates
+    root, state, _actual, uid, gid = parameter_area
+    unit, config, selected, retained, assets = runtime_tree(root, bundled=bundled)
+    with core.Transaction(state, uid=uid) as tx:
+        before = tree_snapshot(root)
+        plan = runtime_candidates(tx, 'v26.3.27', unit, config, gid, root=root)
+        # Planning publishes nothing: the candidates are only a plan until the transaction applies them.
+        assert tree_snapshot(root) == before
+    files = [item for item in plan if 'data' in item]
+    assert [(item['path'], item['gid'], item['mode']) for item in files] == [
+        (str(unit), 0, 0o644), (str(config), gid, 0o640)]
+    rolled_back_assets = assets / 'releases/v26.3.27' if bundled else root / 'unmanaged-assets'
+    # Both the environment and ExecStart name the retained release; the selected one is gone.
+    assert base64.b64decode(files[0]['data']).decode() == unit_text(retained, rolled_back_assets, config)
+    assert str(selected) not in base64.b64decode(files[0]['data']).decode()
+    assert base64.b64decode(files[1]['data']) == b'{"log": {}}'
+    links = [{'path': str(root / 'current'), 'target': str(retained)},
+             {'path': str(root / 'previous'), 'target': str(selected)},
+             {'path': '/usr/local/bin/xray', 'target': str(root / 'current/xray')}]
+    if bundled:
+        links = [{'path': str(assets / 'current'), 'target': str(assets / 'releases/v26.3.27')},
+                 {'path': str(assets / 'previous'), 'target': str(assets / 'releases/v26.5.3')},
+                 {'path': str(root / 'bundled-assets/geoip.dat'), 'target': str(assets / 'current/geoip.dat')}] + links
+    assert [item for item in plan if 'target' in item] == links
+    assert len({item['path'] for item in plan}) == len(plan)
+
+
+def test_operator_runtime_rollback_refuses_the_selected_release(parameter_area):
+    from transport_runtime_rollback import runtime_candidates
+    root, state, _actual, uid, gid = parameter_area
+    unit, config, _selected, _retained, _assets = runtime_tree(root)
+    with core.Transaction(state, uid=uid) as tx:
+        with pytest.raises(core.Refusal, match='rollback-no-change'):
+            runtime_candidates(tx, 'v26.5.3', unit, config, gid, root=root)
+
+
+@pytest.mark.parametrize('damage,category', [
+    ('xray-binary', 'rollback-release-changed'),
+    ('geoip-binary', 'rollback-release-changed'),
+    ('xray-receipt', 'rollback-release-unowned'),
+])
+def test_operator_runtime_rollback_plans_nothing_from_an_unverified_release(parameter_area, damage, category):
+    from transport_runtime_rollback import runtime_candidates
+    root, state, _actual, uid, gid = parameter_area
+    unit, config, _selected, retained, assets = runtime_tree(root)
+    if damage == 'xray-binary':
+        (retained / 'xray').write_bytes(b'tampered-xray')
+    elif damage == 'geoip-binary':
+        (assets / 'releases/v26.3.27/geoip.dat').write_bytes(b'tampered-geoip')
+    else:
+        (retained / '.runtime-release.json').unlink()
+    with core.Transaction(state, uid=uid) as tx:
+        before = tree_snapshot(root)
+        with pytest.raises(core.Refusal, match=category):
+            runtime_candidates(tx, 'v26.3.27', unit, config, gid, root=root)
+        # Refusal publishes nothing: the runtime tree and the transaction state are untouched.
+        assert tree_snapshot(root) == before
+
+
+def test_operator_runtime_rollback_never_plans_egress_owned_gateway_units(parameter_area):
+    from transport_runtime_rollback import runtime_candidates
+    spec = importlib.util.spec_from_file_location(
+        'transport_egress_generation_owner_test', ROOT / 'ansible/roles/transport-egress/files/generation.py')
+    generation = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(generation)
+    root, state, _actual, uid, gid = parameter_area
+    unit, config, selected, _retained, _assets = runtime_tree(root)
+    gateways = [unit.parent / name for name in generation.GATEWAYS.values()]
+    for gateway in gateways:
+        gateway.write_text('[Service]\nExecStart=' + str(selected / 'xray') + ' run -config /etc/ripdpi/transport-egress/gateway.json\n')
+    with core.Transaction(state, uid=uid) as tx:
+        before = tree_snapshot(root)
+        plan = runtime_candidates(tx, 'v26.3.27', unit, config, gid, root=root)
+        # Neither the gateway units nor any live unit is rewritten on disk while planning.
+        assert tree_snapshot(root) == before
+    # The accepted receipt claims candidates by inode; the egress transaction rewrites these units on the next converge.
+    assert len(gateways) == 2
+    assert not [item for item in plan if Path(item['path']).name in generation.GATEWAYS.values()]
+    assert [item['path'] for item in plan if item['path'].endswith('.service')] == [str(unit)]
+
+
 def test_absent_parent_retirement_is_verified_without_manufacturing_storage(parameter_area):
-    import transport_runtime_transaction as core
     root, state_root, _actual, uid, _gid = parameter_area
     path = root / 'missing-frontend' / 'config.yaml'
     plan = [{'path':str(path), 'absent':True}, {'path':str(root / 'existing-parent-unit'), 'absent':True}]
@@ -507,7 +622,6 @@ def test_absent_parent_retirement_is_verified_without_manufacturing_storage(para
 
 
 def test_retirement_never_omits_a_dangling_symlink_parent(parameter_area):
-    import transport_runtime_transaction as core
     root, state_root, _actual, uid, _gid = parameter_area
     parent = root / 'foreign-parent'
     parent.symlink_to(root / 'missing-target', target_is_directory=True)
@@ -526,7 +640,6 @@ def test_retirement_never_omits_a_dangling_symlink_parent(parameter_area):
     ('/missing-frontend/.ripdpi-transport-runtime/private', {}),
 ])
 def test_absent_subtree_cannot_hide_invalid_candidate_authority(parameter_area, path, extra):
-    import transport_runtime_transaction as core
     _root, state_root, _actual, uid, _gid = parameter_area
     with core.Transaction(state_root, uid=uid) as tx:
         with pytest.raises(core.Refusal):

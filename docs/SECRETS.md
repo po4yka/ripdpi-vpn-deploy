@@ -221,7 +221,9 @@ Three rotation scopes:
 1. **Per-client** (one device leaks): regenerate that one client's
    `uuid`+`shortId` (Xray), password (Hysteria), or peer keypair (AWG).
    Use `scripts/new-client.sh` to add the replacement, edit secrets to
-   remove the old entry, then `make rotate-credentials`.
+   remove the old entry, then `make rotate-credentials ANSIBLE_LIMIT=<alias>`
+   once per node of the environment; revocation is incomplete until every node
+   is rotated and verified (`RUNBOOK-rotate.md` §1).
 2. **Server-wide REALITY keypair**: regenerate via `xray x25519`, update
    `xray.reality_private_key` + `xray.reality_public_key`, redistribute
    the new public key + shortIds to clients, run `make deploy`. All

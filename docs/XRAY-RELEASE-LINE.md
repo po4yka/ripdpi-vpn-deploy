@@ -145,9 +145,12 @@ guards:
 3. Run on a staging cohort for ≥48 hours before fleet rollout.
 4. Capture `xray test -config` output in the deploy log; refuse to
    restart xray on a host where the new config fails parse.
-5. Keep the previous binary at `/opt/xray/bin/xray.prev` for
-   single-flag rollback (`make rollback-xray
-   ROLLBACK_XRAY_VERSION=vX.Y.Z`).
+5. Keep the previous release under `/opt/xray/releases/<version>-archive`
+   (or `<version>-source-<full-commit>`) for single-flag rollback of
+   `xray.service` (`make rollback-xray ANSIBLE_LIMIT=<alias>
+   ROLLBACK_XRAY_VERSION=vX.Y.Z`, one node per run); private gateways keep
+   the pinned release, see
+   [RUNBOOK-rollback.md](RUNBOOK-rollback.md#level-2--binary-rollback).
 
 VLESS Encryption over REALITY has additional client-compatibility and evidence gates. The general Xray rollout steps above do not override the HOLD decision in `PQ-REALITY-ADOPTION.md`.
 
