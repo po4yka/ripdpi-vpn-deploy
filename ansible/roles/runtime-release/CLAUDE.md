@@ -2,7 +2,7 @@
 
 ## Design decisions
 
-Directory traversal is a context manager: transactions retain its scopes with
+`TrustedDirectory` owns directory traversal: transactions retain its scopes with
 `ExitStack.enter_context` until publication and compensation finish. Borrowed
 parent descriptors stay open for the whole transaction; callers never close them.
 

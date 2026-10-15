@@ -35,6 +35,6 @@ if __name__ == '__main__':
             raise ValueError('sender-authority-source-budget')
         namespace = {'__name__': 'sender_authority_library'}
         exec(source, namespace)
-        validate(namespace['ancestors'])
+        validate(namespace['TrustedDirectory'])
     except Exception:
         raise SystemExit('sender-helper-authority-refused') from None

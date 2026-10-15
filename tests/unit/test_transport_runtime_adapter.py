@@ -355,13 +355,13 @@ def test_embedded_node_claims_have_bounded_scalar_types(parameter_area, mutation
 @pytest.fixture
 def directory_descriptors(monkeypatch):
     acquired = []
-    original = core.ancestors
+    original = core.TrustedDirectory
     @contextmanager
     def observe(path, owner):
         with original(path, owner) as fd:
             acquired.append(fd)
             yield fd
-    monkeypatch.setattr(core, 'ancestors', observe)
+    monkeypatch.setattr(core, 'TrustedDirectory', observe)
     return acquired
 
 
