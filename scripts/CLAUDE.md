@@ -2,7 +2,7 @@
 
 ## Design decisions
 
-ECH issuance uses the exact checksum-verified Hysteria generator and encrypted_client_document publication lock. Only public generation identity reaches stdout. The supported ECH recipient is official sing-box 1.14.3; RIPDPI bundle export refuses the profile until its real consumer is qualified. Liveness retains exact public ECH material and refuses a different or stripped generation.
+Generator acquisition rejects nonregular sources through a bounded nonblocking descriptor before bytes are trusted. ECH issuance uses the exact checksum-verified Hysteria generator and encrypted_client_document publication lock. Only public generation identity reaches stdout. The supported ECH recipient is official sing-box 1.14.3; RIPDPI bundle export refuses the profile until its real consumer is qualified. Liveness retains exact public ECH material and refuses a different or stripped generation.
 
 AWG device issuance, revocation, export and recovery bind provider/environment,
 instance and device through `awg_device_binding.py`. Only the nonempty instance

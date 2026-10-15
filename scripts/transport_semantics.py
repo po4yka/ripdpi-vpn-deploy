@@ -212,7 +212,8 @@ def hysteria_profile_errors(raw):
                 or any(name != ech['public_name'] for name in names)
                 or ech_keys_config(ech['keys_pem'], verify_private=True) != ech['config_list']
                 or hashlib.sha256(base64.b64decode(ech['config_list'])).hexdigest() != ech['generation']
-                or urlsplit(raw.get('masquerade_url', '')).hostname != ech['inner_name']
+                or not origin_valid(raw.get('masquerade_url'))
+                or urlsplit(raw['masquerade_url']).hostname != ech['inner_name']
                 or raw.get('server_name', ech['inner_name']) != ech['inner_name']):
             raise ValueError()
     except (ValueError, TypeError, KeyError):

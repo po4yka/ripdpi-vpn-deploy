@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import platform
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -27,9 +28,15 @@ def verified_binary(binary):
         platform.machine()
     )
     digest = PINS["hysteria"]["sha256"].get(sys.platform + "-" + str(architecture))
-    if path.stat().st_size > 50000000:
-        raise ValueError("unverified-hysteria-runtime")
-    data = path.read_bytes()
+    descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= 50000000:
+            raise ValueError("unverified-hysteria-runtime")
+        with os.fdopen(descriptor, "rb", closefd=False) as source:
+            data = source.read(50000001)
+    finally:
+        os.close(descriptor)
     if digest is None or hashlib.sha256(data).hexdigest() != digest:
         raise ValueError("unverified-hysteria-runtime")
     return data

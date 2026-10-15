@@ -330,3 +330,25 @@ def test_explicit_null_profile_cannot_silently_select_classical_tls(field):
     assert hysteria_errors(
         {"version": "v2.13.0", "masquerade_url": "https://vpn.example.com", field: None}
     )
+
+
+@pytest.mark.parametrize("kind", ["fifo", "directory", "tampered"])
+def test_generator_refuses_nonregular_or_unverified_executables(tmp_path, kind):
+    from hysteria_ech import verified_binary
+
+    path = tmp_path / "candidate"
+    if kind == "fifo":
+        os.mkfifo(path)
+    elif kind == "directory":
+        path.mkdir()
+    else:
+        path.write_bytes(b"unverified-executable")
+    with pytest.raises(ValueError, match="unverified-hysteria-runtime"):
+        verified_binary(path)
+
+
+@pytest.mark.parametrize("origin", [None, 42, {}, "http://inner.example"])
+def test_ech_origin_type_refuses_without_loading_or_printing_authority(origin):
+    document = hysteria(authority())
+    document["masquerade_url"] = origin
+    assert hysteria_errors(document)
