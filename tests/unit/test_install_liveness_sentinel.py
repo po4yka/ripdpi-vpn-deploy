@@ -55,7 +55,7 @@ def setup(tmp_path, monkeypatch):
         for outbound in document["outbounds"]:
             if outbound.get("tag", "").startswith(("p0-reality-", "p1-xhttp-", "p2-hysteria2-")):
                 outbound["server"] = "192.0.2.3"
-    config = {"schema_version": 2, "probe_url": "https://192.0.2.9/health", "expected_status": 204,
+    config = {"schema_version": 2, "probe_url": "https://probe.example/health", "expected_status": 204,
               "expected_runtime": {"sing_box": "1.14.0", "xray": "26.3.27", "awg": "1.0.0", "awg_toolchain": "d" * 64},
               "policies": [{"id": "fullstack", "required_profiles": values["required_profiles"], "min_failed_vantages": 1}],
               "sentinels": [{"id": "probe-a", "ssh_target": "sentinel-a", "ssh_transport_host": "sentinel-direct",

@@ -2,6 +2,14 @@
 
 ## Design decisions
 
+Federation reads the peer's own committed `taskctl export --json` contract;
+it never parses another project's portfolio through this project's schema.
+The shared graph validator checks exact identity, revision, contract hash,
+relations, progress and terminal provenance. Purged references are resolved
+by the owning exporter's `--resolve-task` with native receipt/history checks.
+An unassessed peer risk remains null; no task records or receipts are rewritten.
+Peer failure diagnostics stay categorical and bounded.
+
 AWG peer `allowed_ips` is a typed IPv4/IPv6 mapping. Issuance allocates both
 host identities before publishing ciphertext; exhaustion in either pool leaves
 the prior generation intact. Address allocation jumps claimed intervals, so an

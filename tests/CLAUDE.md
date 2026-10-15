@@ -14,6 +14,12 @@
 
 ## Design decisions
 
+AWG onboarding fixtures use an HTTPS hostname so the real dual-family probe
+validator admits the positive path. Rotation tests follow the canonical
+configuration transaction and its private loops; the removed restart handler
+cannot stand in for complete failure compensation. Native CI coverage includes
+the dedicated dual-stack lane alongside binding and general runtime targets.
+
 AWG failure tests change both peer claims and MTU, publish the real canonical
 firewall candidate, then verify real nft restoration before authenticated prior
 traffic resumes. The nft adapter only enters the owned network namespace.

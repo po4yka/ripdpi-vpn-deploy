@@ -1513,6 +1513,8 @@ def validate_export_checkout(root: Path) -> None:
             "docs/tasks/issues",
             "docs/tasks/work",
             "openspec/changes",
+            "taskctl",
+            "scripts/tasks/taskctl.py",
             str(PROJECT_CONFIG_PATH),
             str(FEDERATION_CONTRACT_PATH),
         ),
@@ -1523,7 +1525,7 @@ def validate_export_checkout(root: Path) -> None:
     dirty = (result.stdout or "").strip()
     if dirty:
         fail(
-            "task export requires committed portfolio, OpenSpec, project config, and federation contract state"
+            "task export requires committed portfolio, OpenSpec, exporter, project config, and federation contract state"
         )
 
 
@@ -2790,6 +2792,136 @@ def resolve_terminal_task(
     return None
 
 
+def peer_export_payload(
+    root: Path, config: ProjectConfig, *, task_id: str | None = None
+) -> dict[str, Any]:
+    """Read a peer-owned export without interpreting its native task schema."""
+    validate_export_checkout(root)
+    revision = git_revision(root)
+    command = [str(root / "taskctl"), "export", "--json"]
+    if task_id is not None:
+        command.extend(("--resolve-task", task_id))
+    try:
+        with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
+            result = subprocess.run(
+                command, cwd=root, stdout=output, stderr=errors, timeout=60, check=False
+            )
+            if result.returncode != 0:
+                fail(f"{config.project}: peer task export failed")
+            if output.tell() > 8 * 1024 * 1024:
+                fail(f"{config.project}: peer task export exceeds size limit")
+            output.seek(0)
+            payload = json.load(output)
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        fail(f"{config.project}: cannot read peer task export")
+    validate_export_checkout(root)
+    if git_revision(root) != revision:
+        fail(f"{config.project}: peer revision changed during export")
+    validate_federation_export(payload, root, config, revision, task_id=task_id)
+    return payload
+
+
+def validate_federation_export(
+    payload: Any,
+    root: Path,
+    config: ProjectConfig,
+    revision: str,
+    *,
+    task_id: str | None = None,
+) -> None:
+    """Validate the shared graph wire contract, not project-native evidence."""
+    fields = {"contract_version", "contract_sha256", "project", "revision", "tasks"}
+    if not isinstance(payload, dict) or payload.keys() != fields:
+        fail(f"{config.project}: invalid peer export envelope")
+    if (
+        type(payload["contract_version"]) is not int
+        or payload["contract_version"] != FEDERATION_CONTRACT_VERSION
+        or payload["contract_sha256"] != federation_contract_hash(root)
+        or payload["project"] != config.project
+        or payload["revision"] != revision
+    ):
+        fail(f"{config.project}: peer export identity or contract mismatch")
+    tasks = payload["tasks"]
+    if not isinstance(tasks, list) or len(tasks) > 10000:
+        fail(f"{config.project}: invalid peer task collection")
+    node_fields = {
+        "id", "task_id", "path", "kind", "risk", "status", "progress",
+        "parent", "blocked_by", "related_tasks", "openspec_change", "historical",
+    }
+    identities: set[str] = set()
+    for node in tasks:
+        if (
+            not isinstance(node, dict) or not node_fields <= node.keys()
+            or node.keys() - node_fields - {"terminal_revision", "deletion_revision"}
+        ):
+            fail(f"{config.project}: invalid peer task fields")
+        identity = node["id"]
+        local_id = node["task_id"]
+        if (
+            not isinstance(local_id, str) or not ID_RE.fullmatch(local_id)
+            or identity != f"{config.project}#{local_id}" or identity in identities
+        ):
+            fail(f"{config.project}: invalid or duplicate peer task identity")
+        identities.add(identity)
+        path = node["path"]
+        if (
+            not isinstance(path, str) or not path.startswith("docs/tasks/issues/")
+            or not path.endswith(".md") or "\\" in path
+            or any(part in {"", ".", ".."} for part in path.split("/"))
+        ):
+            fail(f"{identity}: invalid peer task path")
+        if (
+            not isinstance(node["kind"], str) or node["kind"] not in KINDS
+            or not isinstance(node["status"], str) or node["status"] not in STATUSES
+            or node["risk"] not in (None, "standard", "high")
+            or type(node["historical"]) is not bool
+            or (node["historical"] and node["status"] not in {"done", "dropped"})
+        ):
+            fail(f"{identity}: invalid peer task state")
+        for field in ("terminal_revision", "deletion_revision"):
+            if field in node and (
+                not node["historical"]
+                or not (
+                    (field == "deletion_revision" and node[field] is None)
+                    or (isinstance(node[field], str) and SHA_RE.fullmatch(node[field]))
+                )
+            ):
+                fail(f"{identity}: invalid peer terminal provenance")
+        progress = node["progress"]
+        if (
+            not isinstance(progress, dict) or progress.keys() != {"done", "total"}
+            or type(progress["done"]) is not int or type(progress["total"]) is not int
+            or not 0 <= progress["done"] <= progress["total"]
+            or (node["status"] == "done" and progress["done"] != progress["total"])
+        ):
+            fail(f"{identity}: invalid peer task progress")
+        change = node["openspec_change"]
+        if change is not None and (not isinstance(change, str) or not CHANGE_RE.fullmatch(change)):
+            fail(f"{identity}: invalid peer change name")
+        relations = []
+        for field in ("blocked_by", "related_tasks"):
+            references = node[field]
+            if (
+                not isinstance(references, list)
+                or not all(isinstance(value, str) for value in references)
+                or len(references) != len(set(references))
+            ):
+                fail(f"{identity}: invalid peer relation collection")
+            relations.extend(references)
+        if node["parent"] is not None:
+            relations.append(node["parent"])
+        for reference in relations:
+            match = QUALIFIED_REF_RE.fullmatch(reference) if isinstance(reference, str) else None
+            if match is None or match.group(1) not in {config.project, *config.allowed_peers}:
+                fail(f"{identity}: invalid peer task reference")
+        if task_id is None and node["historical"]:
+            fail(f"{identity}: historical task requires explicit resolution")
+    if task_id is not None and (
+        len(tasks) != 1 or tasks[0]["task_id"] != task_id
+    ):
+        fail(f"{config.project}: peer task resolution identity mismatch")
+
+
 def federation_payload(root: Path, peer_root: Path) -> dict[str, Any]:
     roots = {root.resolve(), peer_root.resolve()}
     if len(roots) != 2:
@@ -2801,12 +2933,12 @@ def federation_payload(root: Path, peer_root: Path) -> dict[str, Any]:
     }
     if len(configs) != 2:
         fail("federation projects must have distinct identities")
-    history_resolvers = {
-        project: TerminalHistoryResolver(roots_by_project[project], config)
-        for project, config in configs.items()
-    }
+    local_config = configs_by_root[root.resolve()]
+    local_history = TerminalHistoryResolver(root.resolve(), local_config)
     exports = [
-        export_payload(candidate, history_resolvers[configs_by_root[candidate].project])
+        export_payload(candidate, local_history)
+        if candidate == root.resolve()
+        else peer_export_payload(candidate, configs_by_root[candidate])
         for candidate in sorted(roots, key=str)
     ]
     for payload in exports:
@@ -2837,9 +2969,19 @@ def federation_payload(root: Path, peer_root: Path) -> dict[str, Any]:
             if match is None or match.group(1) not in roots_by_project:
                 fail(f"unknown federated task reference {reference!r}")
             project, task_id = match.groups()
-            historical = history_resolvers[project].resolve(task_id)
-            if historical is None:
-                fail(f"missing federated task {reference}")
+            if project == local_config.project:
+                historical = local_history.resolve(task_id)
+                if historical is None:
+                    fail(f"missing federated task {reference}")
+            else:
+                resolved = peer_export_payload(
+                    roots_by_project[project], configs[project], task_id=task_id
+                )
+                if resolved["revision"] != next(
+                    payload["revision"] for payload in exports if payload["project"] == project
+                ):
+                    fail(f"{project}: peer revision changed during federation")
+                historical = resolved["tasks"][0]
             nodes[reference] = {
                 key: value
                 for key, value in historical.items()
@@ -2887,6 +3029,11 @@ def federation_payload(root: Path, peer_root: Path) -> dict[str, Any]:
         and node["status"] in {"backlog", "todo"}
         and all(nodes[blocker]["status"] == "done" for blocker in node["blocked_by"])
     ]
+    for payload in exports:
+        candidate = roots_by_project[payload["project"]]
+        validate_export_checkout(candidate)
+        if git_revision(candidate) != payload["revision"]:
+            fail(f"{payload['project']}: revision changed during federation")
     return {
         "contract_version": FEDERATION_CONTRACT_VERSION,
         "projects": sorted(configs),
@@ -3876,7 +4023,19 @@ def command_graph(args: argparse.Namespace) -> int:
 
 
 def command_export(args: argparse.Namespace) -> int:
-    print(json.dumps(export_payload(args.root), ensure_ascii=False, sort_keys=True))
+    payload = export_payload(args.root)
+    if args.resolve_task is not None:
+        config = load_project_config(args.root)
+        if not ID_RE.fullmatch(args.resolve_task):
+            fail("invalid task resolution ID")
+        nodes = [node for node in payload["tasks"] if node["task_id"] == args.resolve_task]
+        if not nodes:
+            historical = TerminalHistoryResolver(args.root, config).resolve(args.resolve_task)
+            if historical is None:
+                fail(f"missing federated task {config.project}#{args.resolve_task}")
+            nodes = [{key: value for key, value in historical.items() if not key.startswith("_")}]
+        payload["tasks"] = nodes
+    print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
     return 0
 
 
@@ -4661,6 +4820,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     export = subparsers.add_parser("export")
     export.add_argument("--json", action="store_true")
+    export.add_argument("--resolve-task", help="resolve one active or proven terminal task")
     export.set_defaults(handler=command_export)
 
     federation = subparsers.add_parser("federation")

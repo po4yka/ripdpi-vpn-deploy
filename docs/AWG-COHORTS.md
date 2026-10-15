@@ -194,7 +194,8 @@ does not rewrite provider routing. NAT and forwarding are scoped to that uplink.
 
 Run `make test-awg-dualstack-runtime` only in the explicitly isolated Linux
 root/TUN native lab. Positive Linux results and Android native-core emulator
-results are separate from physical Android VPN kill-switch acceptance.
+results retain their own evidence classes. Android acceptance for this change
+is limited to the authorized arm64 emulator/native-core procedure below.
 
 ## Android baseline procedure
 
@@ -219,10 +220,9 @@ records. Three native reconnect cycles run at each MTU endpoint, 1280 and 1420.
 Missing or substituted logs/artifacts refuse; hand-written success records do
 not establish acceptance.
 
-This procedure produces **emulator/native-core** evidence. The full physical
-Android baseline additionally records exact device/core/interface MTU, three
-VPN reconnects, sustained bidirectional TCP/UDP, both DNS families and IPv6-only
-targets, one-device server revocation, and packet observations proving no native
-IPv4/IPv6 bypass after tunnel death and disconnection. The Linux native lane
-proves its own kernel forwarding/revocation/lockdown boundaries. Neither the
-emulator JNI lane nor Linux namespaces establish physical Android VPN policy.
+This procedure produces **emulator/native-core** evidence. The owner removed
+physical-device and Android VpnService/TUN acceptance from this change. The
+Linux native lane separately proves kernel forwarding, per-device revocation,
+tunnel-death lockdown and complete activation compensation. Emulator evidence
+does not establish production Android VPN policy. The separate hardware policy
+for upgrading the non-zero S3/S4 version floor remains unchanged.

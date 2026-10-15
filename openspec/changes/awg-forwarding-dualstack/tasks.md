@@ -2,7 +2,7 @@
 
 ## Objective
 
-Deliver interface-correct dual-stack AmneziaWG forwarding and configurable MTU. Implementation is authorized in the dedicated worktree. Checkboxes require their named observed evidence; source, native, emulator, physical-client and fleet results remain distinct.
+Deliver interface-correct dual-stack AmneziaWG forwarding and configurable MTU. Implementation is authorized in the dedicated worktree. Checkboxes require their named observed evidence; source, native, emulator, Android native-core and fleet results remain distinct.
 
 ## Ownership
 
@@ -47,9 +47,9 @@ Deliver interface-correct dual-stack AmneziaWG forwarding and configurable MTU. 
 
 Requirement-to-step mapping and unfulfilled evidence categories live in verification.md. No fixture, refusal-only result or skipped selected case satisfies positive capability. Future external acceptance requires current authorization and exact scope; no existing cancelled task is revived.
 
-### Physical baseline gate
+### Android emulator gate
 
-Physical baseline acceptance uses the currently supported exact Android arm64 core with S3=S4=0; it does not depend on the later candidate upgrade. Record exact client/core/ABI/OS and interface MTU, perform three reconnect cycles, validate IPv4 and IPv6 DNS plus bidirectional TCP/UDP and IPv6-only targets, revoke the device and prove traffic stops, then disconnect and prove no traffic escapes the tunnel policy. A manually typed success record or fixture is not proof. This procedure and its bounded private evidence validator must be named in the operator acceptance surface; actual execution needs separate client/resource authorization.
+Android acceptance for this change uses the exact supported arm64 core with S3=S4=0 on an authorized emulator. Record exact client/core/ABI/OS and invocation-bound APK/library evidence; exercise authenticated IPv4/IPv6 TCP, UDP and DNS at MTU 1280 and 1420 through three reconnect cycles each. Physical-device and Android VpnService/TUN acceptance are outside this change, as explicitly requested by the owner. Linux native tests retain forwarding, revocation, tunnel-death lockdown and complete activation compensation requirements. Fixtures or hand-written success records cannot satisfy runtime acceptance.
 
 Native `make test-native-runtime` and the dependency-provided native acceptance targets run only on the explicitly isolated Linux root/systemd/TUN host. macOS or missing privileges are prerequisite failures, never silent skips or mocked substitutes.
 

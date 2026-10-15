@@ -13,7 +13,7 @@ staging_evidence: "source contract uses isolated native acceptance; actual fleet
 live: "not_applicable"
 live_evidence: "no production rollout belongs to this source or disabled-default candidate task"
 client: "required"
-client_evidence: "actual supported recipient parser and real authenticated protocol behavior; physical Android arm64 must establish the exact currently supported baseline core, three reconnects, DNS and sustained bidirectional transfer; S3/S4 floor remains unchanged"
+client_evidence: "actual supported recipient parser plus authorized arm64 emulator/native-core authenticated IPv4/IPv6 TCP/UDP/DNS at MTU 1280 and 1420 through three reconnects each; physical-device and Android VpnService/TUN gates removed by owner; S3/S4 floor unchanged"
 artifact: "required"
 artifact_evidence: "private rendered outputs and redacted exact-source requirement-specific evidence after implementation"
 ---
@@ -34,9 +34,9 @@ All rows name planned acceptance, not observed implementation evidence. Planning
 | REQ-PROTO-AWG-MTU | ANS-1791618053112824 | Shared resolution boundary tests, exact client parser tests and controlled link-MTU namespace transfers; record throughput and loss instead of claiming an arbitrary preset optimal. | required |
 | REQ-PROTO-AWG-MTU | ANS-1791618054450509 | Shared resolution boundary tests, exact client parser tests and controlled link-MTU namespace transfers; record throughput and loss instead of claiming an arbitrary preset optimal. | required |
 | REQ-PROTO-AWG-MTU | ANS-1791618055065632 | Shared resolution boundary tests, exact client parser tests and controlled link-MTU namespace transfers; record throughput and loss instead of claiming an arbitrary preset optimal. | required |
-| REQ-PROTO-AWG-NOLEAK | ANS-1791618053810186 | Linux routing/nft packet capture plus supported physical recipient tests, failed activation compensation and prior-address/profile preservation assertions. | required |
-| REQ-PROTO-AWG-NOLEAK | ANS-1791618054450509 | Linux routing/nft packet capture plus supported physical recipient tests, failed activation compensation and prior-address/profile preservation assertions. | required |
-| REQ-PROTO-AWG-NOLEAK | ANS-1791618055065632 | Linux routing/nft packet capture plus supported physical recipient tests, failed activation compensation and prior-address/profile preservation assertions. | required |
+| REQ-PROTO-AWG-NOLEAK | ANS-1791618053810186 | Linux routing/nft enforcement and packet observations, failed activation compensation and prior-address/profile preservation assertions. | required |
+| REQ-PROTO-AWG-NOLEAK | ANS-1791618054450509 | Linux routing/nft enforcement and packet observations, failed activation compensation and prior-address/profile preservation assertions. | required |
+| REQ-PROTO-AWG-NOLEAK | ANS-1791618055065632 | Linux routing/nft enforcement and packet observations, failed activation compensation and prior-address/profile preservation assertions. | required |
 
 ## Implementation checks (2026-10-15)
 
@@ -66,8 +66,11 @@ Observed focused checks:
   and refreshing only AWG and firewall outputs. Secrets schema and coverage
   validation passed. Affected roles and rotation play passed ansible-lint.
 
-The full `build-gate -- mise exec -- make check` and exact-source native build
-are queued behind other machine-wide heavy jobs; these are pending, not passed.
+The resumed full `build-gate -- mise exec -- make check` acquired a slot and
+failed while downloading exact pinned Terraform providers: the UpCloud registry
+request and hcloud checksum request timed out. Hosted Terraform validation and
+mock-provider tests passed for that source; the local aggregate remains failed.
+The exact-source native build remains queued behind machine-wide heavy jobs.
 The exact upstream Go checkout initially failed after a partial filtered fetch;
 a no-filter refetch repaired the same pinned commit. No runtime or checksum pin
 was relaxed. A dedicated root/systemd/TUN container and hash-pinned Python
@@ -75,14 +78,24 @@ requirements are prepared for the complete native lane.
 
 Consumer JVM and Android emulator/native-core tests are also gate-queued. The
 new evidence target validates that component evidence and does not claim
-physical Android VPN leak prevention. Physical baseline evidence remains
-required for its separate scope.
+physical Android VPN leak prevention. The owner explicitly removed physical-device
+and Android VpnService/TUN acceptance from this change; the required Android
+acceptance is the authorized arm64 emulator/native-core procedure.
 
-Federation validation was attempted and failed because the client checkout
-lacks the deployment federation's `tools/tasking/project.json` contract. A
-qualified task reference does not stand in for successful federation. Hosted
-contract-sync compares the client default branch and remains dependent on the
-reviewed client contract integration; the gate is retained.
+Federation originally failed because the client lacked a native shared-contract
+export and the deployment tool reparsed peer records using its own risk schema.
+The paired changes now add a client-owned validated export and bounded producer
+wire validation, preserving all native task records and historical receipts.
+The federation/history regression suite passed 141 tests and 43 subtests;
+real paired-checkout validation still requires clean committed source in both
+repositories. A qualified reference alone is not successful federation. Hosted
+contract-sync retains its reviewed consumer integration requirement.
+
+Hosted source CI exposed remaining test callers of the former AWG contracts.
+The onboarding positive fixture now uses the required dual-stack HTTPS hostname;
+rotation and lifecycle tests follow complete configuration compensation and
+retained firewall authority, and the native job assertion includes the new
+six-case lane. These changes retain the actual failure/security assertions.
 
 The all-files pre-commit run reached Terraform provider initialization and
 failed on registry connection deadlines for the pinned hcloud/Vultr packages.

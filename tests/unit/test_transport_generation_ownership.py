@@ -71,7 +71,13 @@ def test_rotation_selects_canonical_roles_then_one_shared_activation(reality, xh
     assert not any(task.get("name") in {"Restart xray", "Restart hysteria"} for task in play["handlers"])
     assert all("ansible.builtin.template" not in task for task in stages)
     assert play["tasks"][0]["ansible.builtin.import_tasks"] == "tasks/transport-input-preflight.yml"
-    assert any(task.get("name") == "Re-render AmneziaWG peers" for task in play["tasks"])
+    awg = next(task for task in play["tasks"] if task.get("ansible.builtin.include_role") ==
+               {"name": "amneziawg", "tasks_from": "configure.yml"})
+    uplink = next(task for task in play["tasks"] if task.get("ansible.builtin.include_role") ==
+                  {"name": "firewall", "tasks_from": "awg-uplink.yml"})
+    assert play["tasks"].index(uplink) < play["tasks"].index(awg)
+    assert awg["when"] == uplink["when"] == "vpn.enable_amneziawg | default(true) | bool"
+    assert not any(task.get("name") == "Restart amneziawg" for task in play["handlers"])
     assert any(task.get("name") == "Re-render Snell users" for task in play["tasks"])
     assert any(task.get("ansible.builtin.include_role") == {"name": "naive"} for task in play["tasks"])
     values["vpn_subscription_only"] = True
