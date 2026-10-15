@@ -6,7 +6,7 @@ Guarantee that operator incident paths cannot wedge or widen: an interrupted pro
 
 ### Requirement: REQ-OPS-ORP-INGRESS-ADOPT — Adopt an interrupted protected ingress transaction
 
-A deploy that finds an open protected ingress site journal on the target node MUST, before capturing a new transaction, adopt that journal as the protected block's compensation owner, run the existing compensation sequence (quiesce candidate transports, restore the accepted ingress, roll back the egress generation when its outer route is open), and then fail with a categorical, non-secret message instructing the operator to repeat dry-run and deploy. Adoption MUST NOT execute the egress outer route helper as root before the transport-egress role's root-owned ancestry and single-link regular-file admission accepts it. Check mode MUST refuse with the same category and MUST NOT mutate node state. A malformed journal, or a helper that fails the admission, MUST fail closed with the journal retained.
+A deploy that finds an open protected ingress site journal on the target node MUST, before capturing a new transaction, adopt that journal as the protected block's compensation owner, run the existing compensation sequence (quiesce candidate transports, restore the accepted ingress, roll back the egress generation when its outer route is open), and then fail with a categorical, non-secret message instructing the operator to repeat dry-run and deploy. Adoption MUST NOT execute the egress outer route helper as root before the transport-egress role's root-owned ancestry and single-link regular-file admission accepts it. Check mode MUST refuse with the same category and MUST NOT mutate node state. When the helper is missing, adoption MUST treat the outer route as closed only when the route's own durable state is provably absent: no `outer.json` in a root-owned `0700` state directory, the only state directory the helper's own status accepts, or no state directory. A malformed journal, a helper that fails the admission, or a missing helper while that state is present or cannot be judged, MUST fail closed with the journal retained. The missing-helper refusal MUST name the complete root-owned `transport_runtime_*.py` helper set to restore from the deployed revision, or recreating the node, because the helper's status imports its siblings and the next deploy's admission requires every present one to be a root-owned, single-link regular file that is not group- or world-writable, under root-owned ancestry that is not group- or world-writable.
 
 #### Scenario: Deploy after an interrupted protected ingress transaction
 
@@ -32,6 +32,16 @@ A deploy that finds an open protected ingress site journal on the target node MU
 
 - **WHEN** the site journal exists and the egress outer route helper is a symlink, has more than one link or is group- or world-writable, or its root-owned ancestry is writable by others
 - **THEN** the deploy refuses with the helper-authority category before executing the helper, does not adopt the journal, attempts no compensation and retains the journal
+
+#### Scenario: Missing egress outer route helper with route state present
+
+- **WHEN** the site journal exists, the egress outer route helper is missing, and the outer route's `outer.json` exists in any form (regular file, symlink or directory) or its state directory exists but is not a root-owned `0700` directory (a symlink, a file, or a directory with another owner or mode)
+- **THEN** the deploy refuses with the `egress-outer-helper-missing` category before adopting the journal, runs no helper, attempts no compensation, retains the journal and names the complete helper set to restore
+
+#### Scenario: Missing egress outer route helper with no route state
+
+- **WHEN** the site journal exists, the egress outer route helper is missing, and the outer route's state directory is absent or a root-owned `0700` directory without `outer.json`
+- **THEN** the deploy adopts the journal with the outer route closed and compensates the accepted ingress as for any closed route
 
 ### Requirement: REQ-OPS-ORP-PENDING-RECOVER — Recover a pending-only publication journal at capture
 

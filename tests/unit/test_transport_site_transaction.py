@@ -1,10 +1,12 @@
 """Actual localhost Ansible composition failures; no native runtime claim."""
+import ast
 import copy
 from html.parser import HTMLParser
 import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 
@@ -19,6 +21,9 @@ EGRESS_TASKS = ROOT / 'ansible/roles/transport-egress/tasks'
 JOURNAL = '/var/lib/vpn-nginx-publication/nginx.service/site.json'
 PENDING = '/var/lib/vpn-nginx-publication/nginx.service/pending.json'
 OUTER_HELPER = '/usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py'
+OUTER_STATE = '/var/lib/ripdpi/transport-runtime'
+OUTER_RECORD = OUTER_STATE + '/outer.json'
+RUNTIME_FILES = ROOT / 'ansible/roles/runtime-release/files'
 DECLARE = 'Declare bounded desired ingress paths without reading runtime secrets'
 CAPTURE = 'Capture or check protected ingress under its existing shared unit lock'
 
@@ -104,18 +109,28 @@ def _write(path, value):
     path.write_text(yaml.safe_dump(value, sort_keys=False))
 
 
-def _prestep(root):
+def _prestep(root, state_owner):
     source = yaml.safe_load(BEGIN.read_text())
     names = [value['name'] for value in source]
     steps = copy.deepcopy(source[names.index(DECLARE) + 1:names.index(CAPTURE)])
     stat_paths = {JOURNAL: str(root / 'nginx-state/nginx.service/site.json'), PENDING: str(root / 'nginx-state/nginx.service/pending.json'),
-                  OUTER_HELPER: str(root / 'libexec/transport_runtime_outer.py')}
+                  OUTER_HELPER: str(root / 'libexec/transport_runtime_outer.py'), OUTER_STATE: str(root / 'ripdpi-state/transport-runtime'),
+                  OUTER_RECORD: str(root / 'ripdpi-state/transport-runtime/outer.json')}
     for step in steps:
         if 'ansible.builtin.stat' in step:
             step['ansible.builtin.stat']['path'] = stat_paths[step['ansible.builtin.stat']['path']]
         elif 'ansible.builtin.command' in step:
             assert step['ansible.builtin.command']['argv'] == ['/usr/bin/python3', '-Es', OUTER_HELPER, 'status']
             step['ansible.builtin.command']['argv'] = [sys.executable, str(root / 'outer_status.py'), str(root)]
+    # The production judgement of the outer route's state directory expects a root owner; the harness expects the test user, like the helper admission.
+    retargeted = 0
+    for step in steps:
+        if isinstance(step.get('when'), list):
+            conditions = [value.replace('.stat.uid == 0', f'.stat.uid == {state_owner}') for value in step['when']]
+            retargeted += conditions != step['when']
+            step['when'] = conditions
+    # Under root the expected owner is already 0, so nothing is rewritten.
+    assert retargeted == (0 if state_owner == 0 else 1)
     return steps
 
 
@@ -134,7 +149,7 @@ def _helper_authority(root):
     return [task]
 
 
-def _fixture(tmp_path, failure):
+def _fixture(tmp_path, failure, state_owner=None):
     root = tmp_path.resolve()
     root.chmod(0o700)
     accepted = root / 'frontend.conf'
@@ -231,7 +246,7 @@ if (root / 'outer-fail').exists():
     raise SystemExit(1)
 print('{"open": %s}' % ('true' if (root / 'outer-open').exists() else 'false'))
 ''')
-    _write(root / 'tasks/transport-ingress-begin.yml', _prestep(root) + [invoke('begin'), {'ansible.builtin.set_fact': {'transport_site_transaction_active': True}}])
+    _write(root / 'tasks/transport-ingress-begin.yml', _prestep(root, os.geteuid() if state_owner is None else state_owner) + [invoke('begin'), {'ansible.builtin.set_fact': {'transport_site_transaction_active': True}}])
     _write(root / 'tasks/transport-ingress-restore.yml', [{**invoke('restore'), 'when': 'transport_site_transaction_active | default(false) | bool'}])
     _write(root / 'tasks/transport-ingress-commit.yml', [invoke('commit'), {'ansible.builtin.set_fact': {'transport_site_transaction_active': False, '_transport_egress_transaction_started': False}}])
     (root / 'tasks/transport-egress-activate.yml').write_bytes((ROOT / 'ansible/playbooks/tasks/transport-egress-activate.yml').read_bytes())
@@ -256,6 +271,14 @@ def _run(root, tags=None, check=False):
     return subprocess.run(argv, env=env, capture_output=True, text=True, timeout=90)
 
 
+def _outer_state(root):
+    """The egress outer route's private state directory under the harness ancestry, with explicit modes under any umask."""
+    for path in (root / 'ripdpi-state', root / 'ripdpi-state/transport-runtime'):
+        path.mkdir(exist_ok=True)
+        path.chmod(0o700)
+    return root / 'ripdpi-state/transport-runtime'
+
+
 def _interrupt(root, outer):
     """Leave the on-node state of a protected deploy killed after staging began."""
     driver = root / 'ingress_driver.py'
@@ -264,10 +287,15 @@ def _interrupt(root, outer):
         result = subprocess.run(argv, capture_output=True, text=True, timeout=10)
         assert result.returncode == 0, result.stderr
     (root / 'events').write_text('')
-    if outer != 'no-helper':
+    if not outer.startswith('no-helper'):
         helper = root / 'libexec/transport_runtime_outer.py'
         helper.write_text('')
         helper.chmod(0o755)
+    if outer in ('no-helper-empty-state', 'no-helper-populated-state'):
+        state = _outer_state(root)
+        if outer == 'no-helper-populated-state':
+            # A real node's state directory holds the accepted receipt; only outer.json records an open route.
+            (state / 'accepted.json').write_text('{}')
     if outer == 'open':
         # Egress began and candidate frontends were published before the kill.
         (root / 'outer-open').write_text('')
@@ -310,7 +338,7 @@ def _journal_state(root):
     return {path: path.read_bytes() for path in sorted(state.glob('*.json'))}
 
 
-@pytest.mark.parametrize('outer', ['open', 'closed', 'no-helper'])
+@pytest.mark.parametrize('outer', ['open', 'closed', 'no-helper', 'no-helper-empty-state', 'no-helper-populated-state'])
 def test_interrupted_prior_site_transaction_is_compensated_in_rescue_order_then_next_run_converges(tmp_path, outer):
     root, context = _fixture(tmp_path, 'none')
     receipts = {path: data for path, data in _journal_state(root).items() if path.name.endswith('.activated.json')}
@@ -320,7 +348,7 @@ def test_interrupted_prior_site_transaction_is_compensated_in_rescue_order_then_
     assert result.returncode != 0
     assert 'interrupted-protected-ingress-transaction' in result.stdout
     assert 'accepted-generation recovery was attempted when available' in result.stdout
-    assert (root / 'status-ran').exists() == (outer != 'no-helper')
+    assert (root / 'status-ran').exists() == (not outer.startswith('no-helper'))
     for owner in context['owners']:
         assert Path(owner['paths'][0]).read_bytes() == b'accepted ingress'
     assert {path: data for path, data in _journal_state(root).items() if path.name.endswith('.activated.json')} == receipts
@@ -408,6 +436,52 @@ def test_unsafe_outer_helper_is_refused_before_status_runs_and_the_journal_is_re
     assert (root / 'events').read_text() == ''
 
 
+@pytest.mark.parametrize('state', ['record', 'dangling-record', 'record-directory', 'state-symlink', 'state-file',
+                                   'state-mode-755', 'state-mode-777', 'state-foreign-owner'])
+def test_missing_outer_helper_with_route_state_present_or_unjudgeable_refuses_before_adoption_and_retains_the_journal(tmp_path, state):
+    # The helper's own status refuses a state directory that is not a root-owned 0700 directory, so such a directory cannot prove the route closed.
+    root, context = _fixture(tmp_path, 'none', state_owner=os.geteuid() + 1 if state == 'state-foreign-owner' else None)
+    _interrupt(root, 'open')
+    # The helper was deleted after egress began, so the outer route's own durable state is the only evidence of an open route.
+    (root / 'libexec/transport_runtime_outer.py').unlink()
+    runtime = root / 'ripdpi-state/transport-runtime'
+    if state == 'state-symlink':
+        _outer_state(root)
+        runtime.rmdir()
+        (root / 'elsewhere').mkdir(mode=0o700)
+        runtime.symlink_to(root / 'elsewhere')
+    elif state == 'state-file':
+        _outer_state(root)
+        runtime.rmdir()
+        runtime.write_text('')
+    elif state == 'state-foreign-owner':
+        # Owned by the test user while the retargeted judgement expects another owner, as a directory not owned by root would be.
+        _outer_state(root)
+    elif state.startswith('state-mode-'):
+        _outer_state(root).chmod(int(state.rsplit('-', 1)[1], 8))
+    else:
+        record = _outer_state(root) / 'outer.json'
+        if state == 'record':
+            record.write_text('{}')
+            record.chmod(0o600)
+        elif state == 'dangling-record':
+            record.symlink_to(root / 'absent-target')
+        else:
+            record.mkdir(mode=0o700)
+    before = (_journal_state(root), (root / 'frontend.conf').read_bytes(), (root / 'state').read_text())
+    result = _run(root)
+    assert result.returncode != 0
+    assert 'egress-outer-helper-missing' in result.stdout
+    # The refusal names the helper set and its directory, not one helper.
+    assert 'transport_runtime_*.py' in result.stdout and '/usr/local/libexec/ripdpi-transport-egress' in result.stdout
+    # No status helper ran, nothing was adopted and so no compensation of any kind was attempted.
+    assert 'no accepted-generation recovery was attempted' in result.stdout
+    assert not (root / 'status-ran').exists() and (root / 'events').read_text() == ''
+    assert (_journal_state(root), (root / 'frontend.conf').read_bytes(), (root / 'state').read_text()) == before
+    assert (root / 'nginx-state/nginx.service/site.json').exists()
+    assert all(Path(value['paths'][0]).read_bytes() == b'changed ingress' for value in context['owners'])
+
+
 def test_unreadable_outer_route_refuses_categorically_and_retains_the_journal(tmp_path):
     root, context = _fixture(tmp_path, 'none')
     _interrupt(root, 'open')
@@ -453,9 +527,12 @@ def test_interrupted_transaction_detection_matches_the_production_contract():
         'Locate the egress outer route helper for interrupted transaction adoption',
         'Read the interrupted egress outer route ownership',
         'Refuse adoption when the egress outer route ownership cannot be read',
+        'Locate the egress outer route state directory when its helper is missing',
+        'Locate the egress outer route intent record when its helper is missing',
+        'Refuse adoption when a missing egress outer route helper leaves the route state unproven',
         "Adopt the interrupted transaction as this block's sole compensation owner",
         'Refuse to capture while an interrupted protected ingress transaction awaits compensation']
-    detect, pending, pending_refuse, admit, locate, outer, unreadable, adopt, refuse = steps
+    detect, pending, pending_refuse, admit, locate, outer, unreadable, state_dir, record, missing, adopt, refuse = steps
     # The playbook-side journal path must stay the helper's own state root.
     spec = importlib.util.spec_from_file_location('site_nginx_contract', HELPER)
     helper = importlib.util.module_from_spec(spec)
@@ -488,6 +565,32 @@ def test_interrupted_transaction_detection_matches_the_production_contract():
     assert set(adopt['ansible.builtin.set_fact']) == {'transport_site_transaction_active', '_transport_egress_transaction_started'}
     assert unreadable['when'] == '_transport_ingress_interrupted_outer.rc | default(0) != 0'
     assert 'regex_findall' in unreadable['ansible.builtin.fail']['msg'] and 'no_log' not in unreadable
+    # A skipped status must never read as a closed route: with the helper missing, only the outer route's own durable state may prove it closed.
+    # That state is the helper's own, and its sole open-route record is outer.json.
+    assert re.search(r"^STATE = Path\('([^']+)'\)", (RUNTIME_FILES / 'transport_runtime_accept.py').read_text(), re.M).group(1) == OUTER_STATE
+    transaction = (RUNTIME_FILES / 'transport_runtime_transaction.py').read_text()
+    assert "read_private(root / 'outer.json', uid)" in transaction
+    # The helper's own status runs as root and refuses any state directory that is not a root-owned 0700 directory, so only such a directory may be judged.
+    assert 'def __init__(self, root, *, uid=0, check=False):' in transaction
+    assert 'info.st_uid != self.uid or stat.S_IMODE(info.st_mode) != 0o700' in transaction
+    assert "with Transaction(STATE, check=args.action == 'status') as tx:" in (RUNTIME_FILES / 'transport_runtime_outer.py').read_text()
+    assert state_dir['ansible.builtin.stat'] == {'path': OUTER_STATE, 'follow': False}
+    assert record['ansible.builtin.stat'] == {'path': OUTER_RECORD, 'follow': False}
+    absent_helper = ['_transport_ingress_interrupted.stat.exists', 'not ansible_check_mode', 'not _transport_ingress_interrupted_helper.stat.exists']
+    assert state_dir['when'] == absent_helper
+    assert record['when'] == absent_helper + ['_transport_ingress_interrupted_outer_state.stat.exists', '_transport_ingress_interrupted_outer_state.stat.isdir']
+    stat_state = '_transport_ingress_interrupted_outer_state.stat'
+    assert missing['when'] == absent_helper + [stat_state + '.exists',
+        f"not ({stat_state}.isdir and {stat_state}.uid == 0 and {stat_state}.mode == '0700') or _transport_ingress_interrupted_outer_record.stat.exists"]
+    assert missing['ansible.builtin.fail']['msg'].startswith('egress-outer-helper-missing:') and 'no_log' not in missing
+    # The remedy names the whole helper set the next deploy's admission checks, its directory and the admission contract, not one helper.
+    admitted = ast.literal_eval(re.search(r'for name in (\([^)]*\)):', (EGRESS_TASKS / 'helper-authority.yml').read_text()).group(1))
+    assert sorted(path.name for path in RUNTIME_FILES.glob('transport_runtime_*.py')) == sorted(f'transport_runtime_{name}.py' for name in admitted)
+    for text in ('transport_runtime_*.py', str(Path(OUTER_HELPER).parent), 'deployed revision', 'root-owned regular file with one link, not group- or world-writable',
+                 'under root-owned directories that are not group- or world-writable', 'recreate the node'):
+        assert text in missing['ansible.builtin.fail']['msg']
+    assert 'root-owned helper' not in missing['ansible.builtin.fail']['msg']
+    assert all('failed_when' not in step and 'ignore_errors' not in step for step in (state_dir, record, missing))
     assert refuse['when'] == '_transport_ingress_interrupted.stat.exists' and 'no_log' not in refuse
     assert steps[-1] is refuse
     # The rescue's ingress restore is itself gated on adoption, so a refused dry-run never restores.

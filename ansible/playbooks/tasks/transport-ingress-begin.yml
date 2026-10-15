@@ -122,10 +122,54 @@
 - name: Refuse adoption when the egress outer route ownership cannot be read
   ansible.builtin.fail:
     msg: >-
-      The egress outer route of an interrupted protected ingress transaction could not be read; the journal is retained:
+      The egress outer route of an interrupted protected ingress transaction could not be read; the journal is retained.
+      An incomplete helper set fails here too: restore every transport_runtime_*.py in /usr/local/libexec/ripdpi-transport-egress
+      or recreate the node:
       {{ (_transport_ingress_interrupted_outer.stderr | default('') |
            regex_findall('transport-runtime-(?:refused:[a-z][a-z0-9-]{0,96}|frame:[A-Za-z_][A-Za-z_0-9]*:[0-9]{1,6})'))[:9] }}
   when: _transport_ingress_interrupted_outer.rc | default(0) != 0
+
+- name: Locate the egress outer route state directory when its helper is missing
+  ansible.builtin.stat:
+    path: /var/lib/ripdpi/transport-runtime
+    follow: false
+  register: _transport_ingress_interrupted_outer_state
+  when:
+    - _transport_ingress_interrupted.stat.exists
+    - not ansible_check_mode
+    - not _transport_ingress_interrupted_helper.stat.exists
+
+- name: Locate the egress outer route intent record when its helper is missing
+  ansible.builtin.stat:
+    path: /var/lib/ripdpi/transport-runtime/outer.json
+    follow: false
+  register: _transport_ingress_interrupted_outer_record
+  when:
+    - _transport_ingress_interrupted.stat.exists
+    - not ansible_check_mode
+    - not _transport_ingress_interrupted_helper.stat.exists
+    - _transport_ingress_interrupted_outer_state.stat.exists
+    - _transport_ingress_interrupted_outer_state.stat.isdir
+
+- name: Refuse adoption when a missing egress outer route helper leaves the route state unproven
+  ansible.builtin.fail:
+    msg: >-
+      egress-outer-helper-missing: the egress outer route helper of an interrupted protected ingress transaction is missing
+      while the route's durable state is present, unsafe or cannot be judged;
+      the journal is retained and nothing was adopted or compensated.
+      Restore the complete transport_runtime_*.py helper set in /usr/local/libexec/ripdpi-transport-egress from the deployed revision,
+      each a root-owned regular file with one link, not group- or world-writable,
+      under root-owned directories that are not group- or world-writable,
+      or recreate the node.
+  when:
+    - _transport_ingress_interrupted.stat.exists
+    - not ansible_check_mode
+    - not _transport_ingress_interrupted_helper.stat.exists
+    - _transport_ingress_interrupted_outer_state.stat.exists
+    - >-
+      not (_transport_ingress_interrupted_outer_state.stat.isdir and _transport_ingress_interrupted_outer_state.stat.uid == 0
+      and _transport_ingress_interrupted_outer_state.stat.mode == '0700')
+      or _transport_ingress_interrupted_outer_record.stat.exists
 
 - name: Adopt the interrupted transaction as this block's sole compensation owner
   ansible.builtin.set_fact:
