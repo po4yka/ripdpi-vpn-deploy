@@ -2,7 +2,7 @@
 id: ANS-1791996027408136
 title: Recover interrupted ingress deploys and bind operator verbs to one node
 kind: bug
-status: review
+status: done
 area: ansible
 priority: high
 risk: high
@@ -12,9 +12,12 @@ blocked_by: []
 spec_mode: required
 openspec_change: ans-1791996027408136-operator-recovery-paths
 created: 2026-10-14
-updated: 2026-10-15
+updated: 2026-10-16
 related_tasks: []
-status_detail: "Integrated main source 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8 passed all 88 source/native CI jobs in 38792726270 and both CodeQL analyses; focused local evidence and the unsuccessful monolithic local attempt are recorded. No external rollout or real notification receipt claimed."
+status_detail: Integrated main source 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8 passed all 88 source/native CI jobs in 38792726270 and both CodeQL analyses; focused local evidence and the unsuccessful monolithic local attempt are recorded. No external rollout or real notification receipt claimed.
+closed_at: "2026-10-15T20:36:36Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Integrated main source 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8 passed all 88 CI jobs in 38792726270 and both CodeQL analyses with zero open alerts. Actual native integration 138+2 XHTTP+1 AWG and four real recovery cases passed; enabled collector/agent and pinned Kuma isolated runtimes passed. Approved focused Mac and complete unchanged hosted source gate verified; local monolithic timeout and queued cancellation remain recorded. No external deployment or real notification receipt.
 ---
 
 ## Goal
