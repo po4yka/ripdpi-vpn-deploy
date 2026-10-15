@@ -92,3 +92,8 @@ formatting failures. Its formatting edits outside this change were removed;
 only owned paths belong in the commit. The actual lint hook is rerun against
 the installed exact collection versions. This is a failed aggregate check,
 not a waiver; normal commit hooks still apply to every changed path.
+
+The deployment source commit passed every applicable normal commit hook,
+including full Ansible lint (696 files), ShellCheck, task contracts, secret
+coverage/schema, template rendering and snapshots. The clean branch was pushed
+for draft PR review; no hook was bypassed.

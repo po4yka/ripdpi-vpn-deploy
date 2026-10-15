@@ -156,8 +156,8 @@ Standalone export supports `OUTPUT=<new-file> scripts/emit-awg.sh <device>`
 for a no-clobber owner-only recipient artifact in a private `0700` directory.
 Existing, linked, shared or tracked output destinations refuse; ordinary stdout
 remains available for an explicitly selected recipient. Device addresses are
-unreserved IPv4 host prefixes inside the selected instance's subnet; broader
-or IPv6 peer routing requires explicit `address_kind: routed` ownership.
+unreserved IPv4 /32 and IPv6 /128 identities inside the selected instance's
+pools; broader prefix routing requires explicit `address_kind: routed` ownership.
 
 `new-client.sh --emit-uri` requires `OUTPUT=<new private recipient file>`
 in a `0700` directory. The destination is reserved before enrollment and removed
