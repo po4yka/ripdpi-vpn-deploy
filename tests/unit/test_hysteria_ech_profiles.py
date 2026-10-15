@@ -81,7 +81,18 @@ def test_ech_probe_resolves_installed_authority_without_repository_python_path(t
     shutil.copyfile(ROOT / "ansible/roles/runtime-release/files/transport_runtime_probe.py",
                     library / "transport_runtime_probe.py")
     shutil.copyfile(ROOT / "scripts/transport_semantics.py",
-                    library.parent / "transport_semantics.py")
+                    library / "transport_semantics.py")
+    (library.parent / "transport_semantics.py").write_text(
+        "raise RuntimeError('previous frontend semantic helper must not be loaded')\n")
+    preparation = yaml.safe_load((ROOT / "ansible/roles/transport-egress/tasks/runtime-prepare.yml").read_text())
+    companion = next(task for task in preparation if task["name"] ==
+                     "Install the exact semantic companion before consumer admission")
+    assert companion["ansible.builtin.copy"] == {
+        "src": "{{ role_path }}/../../../scripts/transport_semantics.py",
+        "dest": "{{ transport_egress_libexec_dir }}/transport_semantics.py",
+        "owner": "root", "group": "root", "mode": "0644"}
+    assert preparation.index(companion) < next(i for i, task in enumerate(preparation)
+                                              if "ansible.builtin.command" in task)
     ech = authority()
     key = tmp_path / "ech.key"
     key.write_text(ech["keys_pem"])

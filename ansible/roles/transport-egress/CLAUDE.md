@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Controller preparation installs its exact semantic companion alongside native probe helpers before recovery or candidate admission. Shared helper admission includes that root-owned, single-link file. The frontend validator's companion remains part of its own guarded generation and may still be older while a candidate is being validated.
+
 Private normalizer and native Xray gateways form one generation. The normalizer has sealed DNS-only NSS, authenticated fixed frontend listeners and no capabilities. Only normalized admitted literals reach native gateways; final kernel policy remains authoritative for TCP and every UDP packet. Dedicated gateway identities isolate recipient traffic from trusted frontend plumbing.
 
 Candidate files are compared and parsed before publication. `begin` captures all fixed accepted configuration, helper, policy and frontend paths before definitively stopping the accepted controller and mapping processes. Frontend consumers invoke the same entrypoint before their changed publication. `rollback` restores original bytes, modes and groups, reapplies kernel policy and requires authenticated generation readiness. Immutable runtime paths survive publication changes. The role snapshot list must equal the helper’s complete managed path set plus the accepted receipt, including absent private Hysteria hosts authority; an omitted absent path still invalidates exact receipt parity and suppresses accepted rollback recovery.

@@ -205,16 +205,8 @@ def hysteria_client(document, port, ca, client_name):
               'tls': {'sni': sni, 'ca': str(ca), 'insecure': False},
               'socks5': {'listen': '127.0.0.1:' + str(port)}}
     if 'ech' in document:
-        import importlib.util
-        # The consumer installs this authority beside the shared YAML validator,
-        # one directory above the runtime library. Do not depend on caller PATH.
-        shared = Path(__file__).resolve().parent.parent / 'transport_semantics.py'
-        if not shared.is_file():
-            shared = Path(__file__).resolve().parents[4] / 'scripts/transport_semantics.py'
-        spec = importlib.util.spec_from_file_location('transport_semantics', shared)
-        semantics = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(semantics)
-        client['tls']['ech'] = semantics.ech_keys_config(Path(document['ech']['keyPath']).read_text())
+        from transport_semantics import ech_keys_config
+        client['tls']['ech'] = ech_keys_config(Path(document['ech']['keyPath']).read_text())
     if 'congestion' in document:
         client['congestion'] = document['congestion']
     if 'obfs' in document:
