@@ -1,0 +1,10 @@
+---
+- name: Require one exact controller-selected inventory alias
+  ansible.builtin.assert:
+    that:
+      - ansible_play_hosts_all | length == 1
+      - ansible_limit is defined
+      - ansible_limit is match('^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$')
+      - ansible_limit == inventory_hostname
+    fail_msg: One exact inventory alias required; pass it as ANSIBLE_LIMIT to the Make verb
+  tags: [always]

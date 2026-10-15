@@ -26,12 +26,27 @@ Keep the encrypted device registry lifecycle and subscription token revocation i
 sync with complete device retirement. Naive uses independent per-device passwords;
 removing its last client keeps the decoy site and disables proxy forwarding.
 
-Save and exit (sops re-encrypts automatically). Then:
+Save and exit (sops re-encrypts automatically). `rotate-credentials`
+re-renders configs and reloads services on exactly one inventory alias per run.
+It refuses a missing limit, a group, a pattern, a list, and a host whose
+inventory `env` is not the selected `ENV`, so run it with the `ENV` and secrets
+file of that node. It also requires a clean checkout and the deploy pre-checks
+(`SKIP_PRECHECK=1` skips only the secrets validation and certificate checks).
+The refusal is the first task, after fact gathering and the controller-side load
+of the decrypted secrets file, so a refused run may have gathered facts from the
+first selected host but changes nothing on any node.
+
+Revocation is incomplete until every node of the environment has been rotated
+and verified: a node you skip keeps accepting the removed credential. The aliases
+are the host names in the `[vpn]` section of `ansible/inventory/generated.ini`.
+Decrypt once, run the pair once per alias and stop at the first failure, then
+shred the decrypted file:
 
 ```bash
 make decrypt
-make rotate-credentials      # re-renders configs, reloads services
-make verify
+for node in <alias-1> <alias-2>; do
+  make rotate-credentials ANSIBLE_LIMIT="$node" && make verify ANSIBLE_LIMIT="$node" || break
+done
 make clean
 ```
 

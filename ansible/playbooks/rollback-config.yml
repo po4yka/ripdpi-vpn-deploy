@@ -3,6 +3,13 @@
   hosts: vpn
   become: true
   gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+
+  pre_tasks:
+    - name: Bind rollback to one exact inventory alias
+      ansible.builtin.import_tasks: tasks/exact-node.yml
+      tags: [always]
 
   tasks:
     - name: Admit and verify the complete rollback candidate with exact compensation

@@ -263,8 +263,13 @@ in xray.clients / hysteria.clients / amneziawg_secrets.peers /
 client_registry, plus snell_secrets.variants[].users and naive_secrets.clients
 when those optional transports are configured. Naive-only removal is available
 through make naive-revoke CLIENT=${NAME} SOPS_FILE=... . Then run the reviewed
-credential deployment:
-  make rotate-credentials.
+credential deployment once per node of the environment (aliases: the [vpn] host
+names in ansible/inventory/generated.ini). Revocation is incomplete until every
+node has been rotated and verified; a skipped node keeps accepting the removed
+credential:
+  for node in <alias-1> <alias-2>; do
+    make rotate-credentials ENV=${ENV} ANSIBLE_LIMIT="\$node" && make verify ENV=${ENV} ANSIBLE_LIMIT="\$node" || break
+  done
 EOF
 
 ENV="$ENV" PROVIDER="$PROVIDER" \

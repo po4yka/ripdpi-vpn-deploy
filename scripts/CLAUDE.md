@@ -38,6 +38,13 @@ Verification admission passes the exact limit to Ansible inventory resolution.
 `require-vpn-selection.py` then requires a VPN member, including child groups,
 so a known observer-only limit cannot produce an empty successful play.
 
+`rotate-credentials`, `rollback-xray` and `rollback-config` are exact-node verbs:
+Make requires `ANSIBLE_LIMIT`, passes it as `--limit`, and the play asserts the one
+selected alias through `ansible/playbooks/tasks/exact-node.yml`. Rotation also
+refuses a host whose inventory `env` differs from `ENV`. Because each run rotates
+one node, revoking a client is complete only after one run per node;
+`new-client.sh` prints that loop.
+
 The release installer verifies the exact repository and fully qualified signer
 workflow before installation. Cloud-init acceptance checks the actual loopback
 SSH banner before it accepts the configured listener.

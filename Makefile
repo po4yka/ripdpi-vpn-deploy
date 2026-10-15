@@ -520,7 +520,7 @@ INSPECT_INVENTORY ?= $(ANSIBLE_DIR)/inventory/generated.ini
 INSPECT_KNOWN_HOSTS ?= $(HOME)/.ssh/known_hosts
 export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
 
-.PHONY: help init validate plan apply inventory wait decrypt require-inventory require-clean-source validate-ansible-extra-vars dry-run deploy tailnet-network-promote backup-configure deploy-canary os-maintenance verify source-drift security-verify security-audit clean \
+.PHONY: help init validate plan apply inventory wait decrypt require-inventory require-exact-node require-clean-source validate-ansible-extra-vars dry-run deploy tailnet-network-promote backup-configure deploy-canary os-maintenance verify source-drift security-verify security-audit clean \
         pre-deploy-check network-exposure-review \
         rollback-xray rollback-config rotate-credentials check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
@@ -553,7 +553,7 @@ help:
 	@echo "Variables (override on command line):"
 	@echo "  PROVIDER  current: $(PROVIDER)  (upcloud | hetzner | vultr | scaleway)"
 	@echo "  ENV       current: $(ENV)       (prod | staging)"
-	@echo "  ANSIBLE_LIMIT             Optional host/group limit for live Ansible targets"
+	@echo "  ANSIBLE_LIMIT             Host/group limit for live Ansible targets; exactly one alias for rotate-credentials and rollback-*"
 	@echo "  ANSIBLE_EXTRA_VARS_FILE   Optional limited same-owner mode-0600 YAML; requires ANSIBLE_LIMIT"
 	@echo "  DEPLOY_SSH_CONTEXTS_FILE  Required mode-0600 JSON mapping: exact alias → 2–8 SSH contexts"
 	@echo "  DEPLOY_PROMOTION_CONFIG_FILE  Deploy-only mode-0600 JSON mapping: exact alias → promotion proof config"
@@ -605,9 +605,9 @@ help:
 	@echo "  clean                      shred $(SECRETS_FILE)"
 	@echo ""
 	@echo "── ROLLBACK / RECOVERY ────────────────────────────────────────────────"
-	@echo "  rollback-xray ROLLBACK_XRAY_VERSION=vX.Y.Z"
-	@echo "  rollback-config            Revert Xray to .prev config"
-	@echo "  rotate-credentials         Rotate per-client UUIDs / passwords / peer keys"
+	@echo "  rollback-xray              Roll Xray back to ROLLBACK_XRAY_VERSION=vX.Y.Z on one node (ANSIBLE_LIMIT=<alias>)"
+	@echo "  rollback-config            Revert Xray to .prev config on one node (ANSIBLE_LIMIT=<alias>)"
+	@echo "  rotate-credentials         Rotate per-client UUIDs / passwords / peer keys on one node (ANSIBLE_LIMIT=<alias>, repeat per node)"
 	@echo "  destroy                    Safe terraform destroy (double confirmation)"
 	@echo "  backup-state               age-encrypt the local terraform state"
 	@echo "  drift-since-tag            Diff fleet against last vpn-deploy-known-good-* tag"
@@ -752,6 +752,9 @@ network-exposure-review:
 
 wait:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/wait-cloud-init.sh
+
+require-exact-node:
+	@test -n "$(strip $(ANSIBLE_LIMIT))" || { echo "this live operator verb requires ANSIBLE_LIMIT=<exact inventory alias>"; exit 1; }
 
 require-inventory:
 	@test -s "$(ANSIBLE_DIR)/inventory/generated.ini" || { echo "missing generated inventory — run 'make inventory'"; exit 1; }
@@ -978,22 +981,22 @@ install-ssh-recovery:
 migrate-ssh-ownership:
 	@python3 ./scripts/ssh-ownership.py
 
-rollback-xray:
+rollback-xray: require-exact-node require-inventory
 	@test -n "$(ROLLBACK_XRAY_VERSION)" || { echo "ROLLBACK_XRAY_VERSION required"; exit 1; }
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
 	ROLLBACK_XRAY_VERSION=$(ROLLBACK_XRAY_VERSION) \
-	ansible-playbook $(ANSIBLE_DIR)/playbooks/rollback-xray.yml
+	ansible-playbook $(ANSIBLE_DIR)/playbooks/rollback-xray.yml --limit "$(ANSIBLE_LIMIT)"
 
-rollback-config:
+rollback-config: require-exact-node require-inventory
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
-	ansible-playbook $(ANSIBLE_DIR)/playbooks/rollback-config.yml
+	ansible-playbook $(ANSIBLE_DIR)/playbooks/rollback-config.yml --limit "$(ANSIBLE_LIMIT)"
 
-rotate-credentials:
+rotate-credentials: require-exact-node require-clean-source require-inventory pre-deploy-check
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
-	ansible-playbook $(ANSIBLE_DIR)/playbooks/rotate-credentials.yml
+	ansible-playbook $(ANSIBLE_DIR)/playbooks/rotate-credentials.yml --limit "$(ANSIBLE_LIMIT)"
 	@ENV=$(ENV) PROVIDER=$(PROVIDER) ./scripts/audit-log.sh append-best-effort \
 	  --action rotate-credentials \
-	  --note "playbook=rotate-credentials.yml secrets_file=$(notdir $(SECRETS_FILE))"
+	  --note "playbook=rotate-credentials.yml node=$(ANSIBLE_LIMIT) secrets_file=$(notdir $(SECRETS_FILE))"
 
 DESTROY_ARGS ?=
 

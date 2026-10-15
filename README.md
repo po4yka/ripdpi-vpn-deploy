@@ -234,10 +234,10 @@ make source-drift # deployable-content parity against live node manifests
 make security-verify # host hardening verification playbook
 make clean       # shred decrypted secrets
 
-# Rollback / rotation
-make rollback-xray ROLLBACK_XRAY_VERSION=vX.Y.Z
-make rollback-config
-make rotate-credentials
+# Rollback / rotation: each verb acts on exactly one inventory alias, one run per node
+make rollback-xray ANSIBLE_LIMIT=<alias> ROLLBACK_XRAY_VERSION=vX.Y.Z
+make rollback-config ANSIBLE_LIMIT=<alias>
+make rotate-credentials ANSIBLE_LIMIT=<alias>
 
 # Operations
 make destroy                              # safe, double-confirmation destroy
