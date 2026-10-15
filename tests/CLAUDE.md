@@ -20,6 +20,7 @@ The complete native transaction suite is split into two disjoint CI groups in in
 Each case imports installed runtime helpers only after its own lab has established the module path; isolated partitions must not depend on earlier cases initializing the interpreter.
 
 Warm Hysteria upgrades retain Salamander and exercise the canonical firewall redirect through the lab veth. Per-port counters must observe an actual five-second client hop before and after upgrade and compensation; a datagram outside the range remains unchanged.
+The native client may randomly choose its current destination again. Keep authenticated traffic running within one finite observation deadline until counters prove two distinct destinations, then require a fresh authenticated request before accepting the hop.
 
 ECH native traffic stays in a private netns. Host-wide UDP ceilings are observed, tuned and restored before entering that namespace because Linux 6.8 does not expose them there. Packet decoding explicitly selects QUIC for the allocated test port. Capture only supported-recipient traffic and trust failures, outside the throughput measurement interval. Root CI steps preserve the pinned Python PATH.
 The controlled 0.1% random loss applies only to concurrent throughput measurements. Single-datagram UDP/DNS functional assertions retain the same five-millisecond path without injected loss, so expected UDP loss cannot randomly invalidate acceptance.

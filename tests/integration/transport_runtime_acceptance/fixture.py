@@ -368,7 +368,7 @@ server.serve_forever()
 
     def enable_hysteria_hopping(self):
         self.context['vpn']['enable_hysteria'] = True
-        self.context['hysteria_port_range'] = '46000-46002'
+        self.context['hysteria_port_range'] = '46000-46015'
         self.context['hysteria'].update(salamander_enabled=True,
             salamander_password='synthetic-' + secrets.token_hex(24))
         rendered = render_template(ROOT / 'ansible/roles/firewall/templates/nftables.conf.j2', self.context)
@@ -380,22 +380,24 @@ server.serve_forever()
         # Instrument the exact rendered redirect without adopting the host firewall.
         rules = ('add chain inet ' + self.hopping_table + ' prerouting { type nat hook prerouting priority dstnat; }\n'
                  + ''.join('add rule inet ' + self.hopping_table + ' prerouting udp dport ' + str(port) + ' counter\n'
-                           for port in range(46000, 46003))
+                           for port in range(46000, 46016))
                  + 'add rule inet ' + self.hopping_table + ' prerouting ' + redirects[0] + '\n')
         command(['nft', '-f', '-'], input=rules.encode())
 
     def assert_hysteria_hopping(self):
+        from transport_runtime_probe import child
         def counters():
             document = json.loads(command(['nft', '-j', 'list', 'chain', 'inet', self.hopping_table, 'prerouting']))
             return [expression['counter']['packets'] for item in document['nftables'] if 'rule' in item
-                    for expression in item['rule']['expr'] if 'counter' in expression][:3]
+                    for expression in item['rule']['expr'] if 'counter' in expression][:16]
         before = counters()
-        assert len(before) == 3
+        assert len(before) == 16
         document = yaml.safe_load(Path('/etc/hysteria/config.yaml').read_bytes())
-        document['listen'] = '10.247.0.1:46000-46002'
+        document['listen'] = '10.247.0.1:46000-46015'
         configuration = self.private / 'hopped-authority.yaml'
         configuration.write_text(yaml.safe_dump(document));configuration.chmod(0o600)
         script = self.private / 'hopped-client.py'
+        observed = self.private / ('hopped-observed-' + secrets.token_hex(8))
         script.write_text("""import json,sys,tempfile,time
 from pathlib import Path
 import yaml
@@ -408,24 +410,40 @@ client['transport']={'udp':{'hopInterval':'5s'}}
 with tempfile.TemporaryDirectory(prefix='native-hopped-client-') as temporary:
     path=private_file(Path(temporary),'client.yaml',yaml.safe_dump(client))
     with child([sys.argv[2],'client','-c',str(path)]) as process:
-        deadline=time.monotonic()+40
-        request(port,'https://192.0.2.80:18080/',204,process,deadline)
-        until=time.monotonic()+7
-        while time.monotonic()<until:
+        deadline=time.monotonic()+35
+        while time.monotonic()<deadline:
             request(port,'https://192.0.2.80:18080/',204,process,deadline)
+            if Path(sys.argv[4]).exists():
+                # Require fresh authenticated delivery after observed multi-port traffic.
+                request(port,'https://192.0.2.80:18080/',204,process,deadline)
+                break
             time.sleep(.25)
+        else:
+            raise RuntimeError('actual-port-hop-unobserved')
 """)
         script.chmod(0o600)
-        command(['ip', 'netns', 'exec', self.namespace, sys.executable, str(script),
-                 str(LIBRARY), '/usr/local/bin/hysteria', str(configuration)], timeout=60)
-        after = counters()
-        assert sum(right > left for left, right in zip(before, after)) >= 2, 'actual-port-hop-unobserved'
+        # Upstream deliberately permits reselecting the same remote port. Observe
+        # two actual destinations, rather than assuming one timer event changes it.
+        with child(['ip', 'netns', 'exec', self.namespace, sys.executable, str(script),
+                    str(LIBRARY), '/usr/local/bin/hysteria', str(configuration), str(observed)]) as process:
+            deadline = time.monotonic() + 40
+            while time.monotonic() < deadline:
+                assert process.poll() is None, 'hopped-client-exited-before-observation'
+                after = counters()
+                if sum(right > left for left, right in zip(before, after)) >= 2:
+                    observed.write_text('two-destinations-observed')
+                    observed.chmod(0o600)
+                    assert process.wait(timeout=max(.1, deadline-time.monotonic())) == 0, 'post-hop-authentication-refused'
+                    break
+                time.sleep(.2)
+            else:
+                raise AssertionError('actual-port-hop-unobserved')
         # A control datagram outside the hop range must remain an ordinary UDP flow.
         import threading
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as control:
-            control.bind(('10.247.0.1', 46003));control.settimeout(5)
+            control.bind(('10.247.0.1', 46016));control.settimeout(5)
             destination = control.getsockname()[1]
-            assert not 46000 <= destination <= 46002
+            assert not 46000 <= destination <= 46015
             def echo():
                 packet, peer = control.recvfrom(1024)
                 control.sendto(packet, peer)
