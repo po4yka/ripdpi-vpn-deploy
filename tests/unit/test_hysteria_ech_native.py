@@ -174,27 +174,6 @@ def test_actual_ech_clients_traffic_privacy_trust_and_resources(
                 "server",
             )
         )
-        capture = tmp_path / "handshake.pcap"
-        lab.private(capture, "")
-        cap, _ = resources.enter_context(
-            lab.process(
-                [
-                    "tcpdump",
-                    "-i",
-                    "lo",
-                    "-U",
-                    "-w",
-                    str(capture),
-                    "udp",
-                    "port",
-                    str(port),
-                ],
-                tmp_path,
-                "capture",
-            )
-        )
-        time.sleep(0.2)
-        assert cap.poll() is None
         socks_ports = []
         for i, name in enumerate(("device-a", "device-b")):
             local, local_udp = (
@@ -325,6 +304,27 @@ def test_actual_ech_clients_traffic_privacy_trust_and_resources(
             "outbounds": [outbound],
         }
         path = lab.private(tmp_path / "recipient.json", json.dumps(recipient))
+        capture = tmp_path / "handshake.pcap"
+        lab.private(capture, "")
+        cap, _ = resources.enter_context(
+            lab.process(
+                [
+                    "tcpdump",
+                    "-i",
+                    "lo",
+                    "-U",
+                    "-w",
+                    str(capture),
+                    "udp",
+                    "port",
+                    str(port),
+                ],
+                tmp_path,
+                "capture",
+            )
+        )
+        time.sleep(0.2)
+        assert cap.poll() is None
         resources.enter_context(
             lab.process(
                 [str(runtimes["sing_box"]), "run", "-c", str(path)],

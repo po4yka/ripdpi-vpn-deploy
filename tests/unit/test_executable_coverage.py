@@ -57,7 +57,8 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
         s for s in setup["runs"]["steps"] if "setup-terraform@" in s.get("uses", "")
     )
     assert terraform["with"]["terraform_wrapper"] is False
-    assert any("make test-hysteria-ech-runtime" in step.get("run", "") for step in native)
+    ech_step = next(step["run"] for step in native if "make test-hysteria-ech-runtime" in step.get("run", ""))
+    assert "PATH=$PATH" in shlex.split(ech_step.replace("\\\n", ""))
     command = shlex.split(native[-1]["run"].replace("\\\n", ""))
     assert command[:2] == ["sudo", "env"]
     assert command[-4:] == ["make", "test-native-runtime", "test-xhttp-endpoint-contract", "test-awg-device-binding-runtime"]

@@ -423,7 +423,7 @@ with tempfile.TemporaryDirectory(prefix='native-hopped-client-') as temporary:
         # A control datagram outside the hop range must remain an ordinary UDP flow.
         import threading
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as control:
-            control.bind(('10.247.0.1', 0));control.settimeout(5)
+            control.bind(('10.247.0.1', 46003));control.settimeout(5)
             destination = control.getsockname()[1]
             assert not 46000 <= destination <= 46002
             def echo():

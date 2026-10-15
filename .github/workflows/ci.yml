@@ -560,7 +560,7 @@ jobs:
             nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 openssh-server e2fsprogs util-linux mount nginx iproute2 openssl wireguard-tools unbound lynis prometheus-node-exporter tcpdump tshark
       - name: Exercise ECH recipients, privacy and resource profiles
         run: |
-          sudo env TRANSPORT_NATIVE_ISOLATED=1 PYTEST_ADDOPTS=--tb=short \
+          sudo env "PATH=$PATH" TRANSPORT_NATIVE_ISOLATED=1 PYTEST_ADDOPTS=--tb=short \
             make test-hysteria-ech-runtime
       - name: Execute native tests with UID and GID capabilities
         run: |

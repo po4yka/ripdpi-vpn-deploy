@@ -18,7 +18,7 @@ The complete native transaction suite is split into two disjoint CI groups in in
 
 Warm Hysteria upgrades retain Salamander and exercise the canonical firewall redirect through the lab veth. Per-port counters must observe an actual five-second client hop before and after upgrade and compensation; a datagram outside the range remains unchanged.
 
-ECH native traffic stays in a private netns. Host-wide UDP ceilings are observed, tuned and restored before entering that namespace because Linux 6.8 does not expose them there. Packet decoding explicitly selects QUIC for the allocated test port.
+ECH native traffic stays in a private netns. Host-wide UDP ceilings are observed, tuned and restored before entering that namespace because Linux 6.8 does not expose them there. Packet decoding explicitly selects QUIC for the allocated test port. Capture only supported-recipient traffic and trust failures, outside the throughput measurement interval. Root CI steps preserve the pinned Python PATH.
 
 Native frontend fixtures verify the same upgraded Hysteria bytes as the builder. Smoke control-flow fixtures load the deployed CA directory from shared group variables; encrypted synthetic fixtures must track the plaintext runtime selection.
 
