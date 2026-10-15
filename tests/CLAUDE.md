@@ -14,6 +14,10 @@
 
 ## Design decisions
 
+AWG failure tests change both peer claims and MTU, publish the real canonical
+firewall candidate, then verify real nft restoration before authenticated prior
+traffic resumes. The nft adapter only enters the owned network namespace.
+
 The AWG dual-stack native lane uses exact pinned AWG TUN peers and the complete
 canonical nftables render. Its owned namespaces exercise nondefault and multiple
 instances, constrained MTU, DNS A/AAAA, bidirectional TCP/UDP, source spoofing,

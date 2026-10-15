@@ -475,32 +475,51 @@
   no_log: true
   when: not ((_firewall_effective_check_mode | bool) and (_firewall_tailnet_ssh_sets_was_absent | bool))
 
-- name: Render nftables config
-  ansible.builtin.template:
-    src: nftables.conf.j2
-    dest: /etc/nftables.conf
-    owner: root
-    group: root
-    mode: "0644"
-    validate: "nft -c -f %s"
-  # Removed rules can contain reviewed addresses even when the new plan is empty.
-  no_log: true
-  diff: false
-  register: _firewall_nftables_config
+- name: Reset retained AWG firewall generation
+  ansible.builtin.set_fact:
+    _firewall_awg_restore: {}
 
-- name: Ensure nftables service is enabled and started
-  ansible.builtin.systemd_service:
-    name: nftables
-    enabled: true
-    state: started
-  when: ansible_facts.get('virtualization_type', '') != 'docker'
+- name: Retain firewall generation before AWG publication
+  ansible.builtin.import_tasks: awg-retain.yml
+  when: vpn.enable_amneziawg | default(false) | bool
 
-# policy-ratelimit verifies firewall-owned sets in the same play. Reload only
-# nftables here rather than flushing the global handler queue, which can
-# execute unrelated role handlers before their intended lifecycle point.
-- name: Reload nftables before dependent roles run # noqa no-handler
-  ansible.builtin.systemd_service:
-    name: nftables
-    state: reloaded
-  when: _firewall_nftables_config.changed
-  changed_when: false
+- name: Publish firewall generation with AWG compensation
+  block:
+    - name: Render nftables config
+      ansible.builtin.template:
+        src: nftables.conf.j2
+        dest: /etc/nftables.conf
+        owner: root
+        group: root
+        mode: "0644"
+        validate: "nft -c -f %s"
+      # Removed rules can contain reviewed addresses even when the new plan is empty.
+      no_log: true
+      diff: false
+      register: _firewall_nftables_config
+
+    - name: Ensure nftables service is enabled and started
+      ansible.builtin.systemd_service:
+        name: nftables
+        enabled: true
+        state: started
+      when: ansible_facts.get('virtualization_type', '') != 'docker'
+
+    # policy-ratelimit verifies firewall-owned sets in the same play. Reload only
+    # nftables here rather than flushing the global handler queue, which can
+    # execute unrelated role handlers before their intended lifecycle point.
+    - name: Reload nftables before dependent roles run # noqa no-handler
+      ansible.builtin.systemd_service:
+        name: nftables
+        state: reloaded
+      when: _firewall_nftables_config.changed
+      changed_when: false
+
+  rescue:
+    - name: Compensate failed AWG firewall publication
+      ansible.builtin.import_tasks: awg-restore.yml
+      when: _firewall_awg_restore.content is defined
+
+    - name: Refuse failed firewall publication
+      ansible.builtin.fail:
+        msg: firewall-activation-failed

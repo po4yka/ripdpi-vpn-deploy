@@ -97,3 +97,13 @@ The deployment source commit passed every applicable normal commit hook,
 including full Ansible lint (696 files), ShellCheck, task contracts, secret
 coverage/schema, template rendering and snapshots. The clean branch was pushed
 for draft PR review; no hook was bypassed.
+
+Final source review found and fixed a mixed-generation failure: AWG activation
+now retains the accepted firewall file through complete service acceptance and
+restores it before prior tunnels restart. Fresh unowned distro configurations
+use a canonical default-drop baseline with AWG forwarding disabled; global-flush
+recovery authority is refused. Two actual Linux nft/Ansible retention cases
+passed (owned generation and fresh baseline), preserving a foreign table. The
+four authenticated native cases remain unobserved while the build gate waits;
+the complete target now includes all six cases. The corresponding portable
+firewall/activation/check-mode/semantic regression run passed 133 cases.

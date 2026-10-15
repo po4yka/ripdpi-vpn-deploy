@@ -131,7 +131,7 @@ def test_owned_uplink_nat_mtu_dns_reconnect_revocation_and_no_native_bypass(tmp_
         for name,value in (('net.ipv4.ip_forward','1'),('net.ipv6.conf.all.forwarding','1')):
             run(server,['sysctl','-qw',name+'='+value])
         # Preserve a foreign table through both canonical publication and revocation.
-        run(server,['nft','-f','-'],'table inet foreign_owned { chain retained { counter comment "foreign-retained"; } }\n')
+        run(server,['nft','-f','-'],'table inet foreign_owned {\n chain retained {\n counter comment "foreign-retained";\n }\n}\n')
         for i,ns in enumerate(clients):
             left,right='us'+str(i),'uc'+str(i)
             veth(server,ns,left,right)
@@ -161,7 +161,7 @@ def test_owned_uplink_nat_mtu_dns_reconnect_revocation_and_no_native_bypass(tmp_
               oifname "{right}" ip daddr {endpoint} udp dport {selected.instance['listen_port']} accept
               meta l4proto ipv6-icmp icmpv6 type {{ nd-neighbor-solicit, nd-neighbor-advert }} ip6 hoplimit 255 accept
               counter drop comment "native-bypass-denied"
-            }} }}\n''')
+            }}\n }}\n''')
         values=merge_render_vars()
         values.update(amneziawg_secrets=doc['amneziawg_secrets'],firewall_awg_uplink_interface='up0',
                       security_controls={'fail2ban':False},public_listener_contract=[

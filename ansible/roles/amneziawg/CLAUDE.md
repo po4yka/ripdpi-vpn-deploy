@@ -2,6 +2,12 @@
 
 ## Design decisions
 
+AWG candidate activation retains the prior complete firewall file through service
+acceptance. Failure restores it atomically before prior tunnels restart, so
+changed peer claims cannot strand the restored addresses. A fresh host retains
+a canonical default-drop baseline with AWG forwarding disabled. Foreign nft
+tables and named timed-set membership remain outside this rollback.
+
 Device peers carry typed `allowed_ips.ipv4` /32 and `allowed_ips.ipv6` /128
 identities; routed peers declare `address_kind: routed` and explicit family
 prefixes. Shared normalization rejects old scalar claims and family collisions.

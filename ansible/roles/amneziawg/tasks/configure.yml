@@ -156,6 +156,10 @@
       no_log: true
       when: _awg_configuration_owns_lifecycle | default(false) | bool
 
+    - name: Release retained firewall generation after complete AWG acceptance
+      ansible.builtin.set_fact:
+        _firewall_awg_restore: {}
+
   rescue:
     - name: Prevent queued restarts of refused AmneziaWG candidates
       ansible.builtin.set_fact:
@@ -187,6 +191,10 @@
       loop: "{{ _awg_config_before.results }}"
       when: not item.stat.exists
       no_log: true
+
+    - name: Restore accepted AWG firewall generation before prior activation
+      ansible.builtin.import_tasks: "{{ role_path }}/../firewall/tasks/awg-restore.yml"
+      when: _firewall_awg_restore.content is defined
 
     - name: Restore previously active AmneziaWG instances
       ansible.builtin.systemd_service:

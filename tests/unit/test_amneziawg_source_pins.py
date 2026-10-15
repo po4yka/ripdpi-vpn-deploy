@@ -152,6 +152,7 @@ def test_amneziawg_scenario_dispatches_real_role_tasks(tmp_path):
     uplink = fixture_root / "ansible/roles/firewall/tasks/awg-uplink.yml"
     uplink.parent.mkdir(parents=True)
     shutil.copyfile(REPO_ROOT / "ansible/roles/firewall/tasks/awg-uplink.yml", uplink)
+    shutil.copyfile(REPO_ROOT / "ansible/roles/firewall/tasks/awg-restore.yml", uplink.parent / "awg-restore.yml")
     (fixture_root / "scripts").mkdir()
     shutil.copyfile(REPO_ROOT / "scripts/transport_semantics.py", fixture_root / "scripts/transport_semantics.py")
     tasks_path = copied_role / "tasks/enable.yml"

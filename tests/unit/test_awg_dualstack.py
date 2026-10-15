@@ -103,3 +103,22 @@ def test_public_dualstack_uplink_admission(version, source):
 def test_missing_private_wrong_family_or_wrong_uplink_refuses(routes):
     with pytest.raises((ValueError, KeyError)):
         admit(routes, 'eth7', 6)
+
+
+@pytest.mark.parametrize("tail,safe", [("table inet filter {}\n", True),
+                                       ("flush ruleset\n", False),
+                                       ("\tflush\truleset;\n", False)])
+def test_firewall_compensation_recognizes_owned_bytes_and_refuses_global_flush(tail, safe):
+    import base64
+    import yaml
+    from ansible.parsing.dataloader import DataLoader
+    from ansible.template import Templar, trust_as_template
+    tasks = yaml.safe_load((ROOT / "ansible/roles/firewall/tasks/awg-retain.yml").read_text())
+    identify = next(task for task in tasks if task["name"] == "Identify accepted role-owned firewall generation")
+    guard = next(task for task in tasks if task["name"] == "Refuse unsafe global-flush firewall recovery authority")
+    text = "#!/usr/sbin/nft -f\n# Managed by Ansible role `firewall`. Hand edits will be overwritten.\n" + tail
+    templar = Templar(loader=DataLoader(), variables={
+        "_firewall_awg_owned": True, "_firewall_awg_before": {"stat": {"exists": True}},
+        "_firewall_awg_bytes": {"content": base64.b64encode(text.encode()).decode()}})
+    assert templar.template(trust_as_template(identify["ansible.builtin.set_fact"]["_firewall_awg_owned"])) is True
+    assert templar.template(trust_as_template("{{ " + guard["ansible.builtin.assert"]["that"][0] + " }}")) is safe

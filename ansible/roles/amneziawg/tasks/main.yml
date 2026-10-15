@@ -1,3 +1,13 @@
 ---
-- name: Reconcile amneziawg runtime lifecycle
-  ansible.builtin.include_tasks: "{{ 'enable.yml' if amneziawg_role_enabled | bool else 'disable.yml' }}"
+- name: Reconcile amneziawg runtime lifecycle with retained firewall authority
+  block:
+    - name: Reconcile amneziawg runtime lifecycle
+      ansible.builtin.include_tasks: "{{ 'enable.yml' if amneziawg_role_enabled | bool else 'disable.yml' }}"
+  rescue:
+    - name: Restore firewall generation after AmneziaWG lifecycle refusal
+      ansible.builtin.import_tasks: "{{ role_path }}/../firewall/tasks/awg-restore.yml"
+      when: _firewall_awg_restore.content is defined
+
+    - name: Refuse failed AmneziaWG lifecycle
+      ansible.builtin.fail:
+        msg: awg-runtime-activation-failed
