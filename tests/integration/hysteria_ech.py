@@ -121,7 +121,7 @@ def namespace():
                 "delay",
                 "5ms",
                 "loss",
-                "0.1%",
+                "0%",
             ]
         )
         yield
@@ -129,6 +129,19 @@ def namespace():
         restored = libc.setns(original, 0x40000000)
         os.close(original)
         assert restored == 0, "native-network-restoration-unconfirmed"
+
+
+@contextmanager
+def lossy_measurement():
+    # UDP delivers datagrams without retransmission. Random loss is a throughput
+    # input, not a deterministic single-datagram functional acceptance condition.
+    command(["tc", "qdisc", "change", "dev", "lo", "root", "netem",
+             "delay", "5ms", "loss", "0.1%"])
+    try:
+        yield
+    finally:
+        command(["tc", "qdisc", "change", "dev", "lo", "root", "netem",
+                 "delay", "5ms", "loss", "0%"])
 
 
 def free_port(kind=socket.SOCK_STREAM):

@@ -40,7 +40,10 @@ runs:
         tar -xzf "$work/sing-box.tar.gz" -C "$work"
         python3 scripts/check-singbox-client-compatibility.py \
           --expected-version "$SING_BOX_VERSION" --binary "$work/sing-box-${SING_BOX_VERSION}-linux-amd64/sing-box"
-        sudo install -m 0755 "$work/sing-box-${SING_BOX_VERSION}-linux-amd64/sing-box" /usr/local/bin/sing-box
+        stage="$(sudo mktemp -d /usr/local/bin/.sing-box.XXXXXXXX)"
+        trap 'sudo rm -rf -- "$stage"; rm -rf -- "$work"' EXIT
+        sudo install -m 0755 "$work/sing-box-${SING_BOX_VERSION}-linux-amd64/sing-box" "$stage/sing-box"
+        sudo mv -T "$stage/sing-box" /usr/local/bin/sing-box
         curl -fsSL --connect-timeout 10 --max-time 120 \
           "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_amd64.tgz" -o "$work/tailscale.tgz"
         echo "${TAILSCALE_SHA256}  $work/tailscale.tgz" | sha256sum -c -

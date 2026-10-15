@@ -233,7 +233,7 @@ def test_actual_ech_clients_traffic_privacy_trust_and_resources(
                 transferred += len(payload)
             return transferred / (time.monotonic() - start)
 
-        with ThreadPoolExecutor(max_workers=2) as pool:
+        with lab.lossy_measurement(), ThreadPoolExecutor(max_workers=2) as pool:
             rates = list(pool.map(measured, socks_ports))
         assert min(rates) > 0 and max(rates) / min(rates) < 10, (
             "multi-client-fairness-regression"

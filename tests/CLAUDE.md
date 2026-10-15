@@ -17,10 +17,12 @@
 Baseline resource tests execute its real first Ansible assertion and require an invalid value to stop before the next mutating task. ECH native leak checks run Hysteria with debug logging as well as secure positive/negative recipient traffic. The systemd generation case adopts both BBR profiles under the actual credential sandbox.
 
 The complete native transaction suite is split into two disjoint CI groups in independent fresh systemd containers; both are required and a collection test proves their complete union. Keep the full local Make target unchanged.
+Each case imports installed runtime helpers only after its own lab has established the module path; isolated partitions must not depend on earlier cases initializing the interpreter.
 
 Warm Hysteria upgrades retain Salamander and exercise the canonical firewall redirect through the lab veth. Per-port counters must observe an actual five-second client hop before and after upgrade and compensation; a datagram outside the range remains unchanged.
 
 ECH native traffic stays in a private netns. Host-wide UDP ceilings are observed, tuned and restored before entering that namespace because Linux 6.8 does not expose them there. Packet decoding explicitly selects QUIC for the allocated test port. Capture only supported-recipient traffic and trust failures, outside the throughput measurement interval. Root CI steps preserve the pinned Python PATH.
+The controlled 0.1% random loss applies only to concurrent throughput measurements. Single-datagram UDP/DNS functional assertions retain the same five-millisecond path without injected loss, so expected UDP loss cannot randomly invalidate acceptance.
 
 Native frontend fixtures verify the same upgraded Hysteria bytes as the builder. Smoke control-flow fixtures load the deployed CA directory from shared group variables; encrypted synthetic fixtures must track the plaintext runtime selection.
 

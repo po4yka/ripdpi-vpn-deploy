@@ -7,6 +7,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
+import sys
 
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 import pytest
@@ -71,6 +73,32 @@ def test_real_key_agreement_and_public_generation():
     assert ech_keys_config(ech["keys_pem"], verify_private=True) == ech["config_list"]
     assert ech_config(ech["config_list"]) == ["outer.example"]
     assert not hysteria_errors(hysteria(ech))
+
+
+def test_ech_probe_resolves_installed_authority_without_repository_python_path(tmp_path):
+    library = tmp_path / "libexec" / "ripdpi-transport-egress"
+    library.mkdir(parents=True)
+    shutil.copyfile(ROOT / "ansible/roles/runtime-release/files/transport_runtime_probe.py",
+                    library / "transport_runtime_probe.py")
+    shutil.copyfile(ROOT / "scripts/transport_semantics.py",
+                    library.parent / "transport_semantics.py")
+    ech = authority()
+    key = tmp_path / "ech.key"
+    key.write_text(ech["keys_pem"])
+    key.chmod(0o600)
+    document = {"auth": {"type": "userpass", "userpass": {"probe": "synthetic-password"}},
+                "listen": ":443", "masquerade": {"proxy": {"url": "https://vpn.example.com"}},
+                "ech": {"keyPath": str(key)}}
+    source = ("import json,sys;sys.path.insert(0,sys.argv[1]);"
+              "from transport_runtime_probe import hysteria_client;"
+              "print(json.dumps(hysteria_client(json.load(sys.stdin),1080,'owned-ca.pem','probe')))")
+    result = subprocess.run([sys.executable, "-I", "-c", source, str(library)],
+                            input=json.dumps(document), cwd=tmp_path,
+                            capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stderr
+    client = json.loads(result.stdout)
+    assert client["tls"] == {"sni": "vpn.example.com", "ca": "owned-ca.pem",
+                             "insecure": False, "ech": ech["config_list"]}
 
 
 @pytest.mark.parametrize(

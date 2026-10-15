@@ -449,6 +449,7 @@ jobs:
           prometheus --version
       - name: Install pinned sing-box client parser
         run: |
+          set -euo pipefail
           version="${SING_BOX_CLIENT_VERSION}"
           archive="sing-box-${version}-linux-amd64.tar.gz"
           curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/v${version}/${archive}" -o "/tmp/${archive}"
@@ -456,7 +457,10 @@ jobs:
           tar -xzf "/tmp/${archive}" -C /tmp
           python3 scripts/check-singbox-client-compatibility.py \
             --expected-version "$version" --binary "/tmp/sing-box-${version}-linux-amd64/sing-box"
-          sudo install -m 0755 "/tmp/sing-box-${version}-linux-amd64/sing-box" /usr/local/bin/sing-box
+          stage="$(sudo mktemp -d /usr/local/bin/.sing-box.XXXXXXXX)"
+          trap 'sudo rm -rf -- "$stage"' EXIT
+          sudo install -m 0755 "/tmp/sing-box-${version}-linux-amd64/sing-box" "$stage/sing-box"
+          sudo mv -T "$stage/sing-box" /usr/local/bin/sing-box
       - name: Install checksum-verified Conftest for policy regression tests
         env:
           CONFTEST_VERSION: "0.57.0"

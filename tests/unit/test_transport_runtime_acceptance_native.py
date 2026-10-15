@@ -372,8 +372,8 @@ except Exception as error:
 
 def test_hysteria_admission_sigkill_reconciles_exact_validation_lease():
     import selectors
-    from transport_runtime_accept import Adapter, STATE, read_parameters
     with fixture.Lab() as lab:
+        from transport_runtime_accept import Adapter, STATE, read_parameters
         assert lab.converge('hysteria') == 0
         original = (STATE / 'accepted.json').read_bytes()
         parameters = read_parameters()
@@ -436,8 +436,8 @@ with Transaction(STATE) as tx:
 
 def test_native_ech_rotation_idempotence_and_complete_compensation():
     from hysteria_ech import generate
-    from transport_runtime_accept import fields
     with fixture.Lab() as lab:
+        from transport_runtime_accept import fields
         assert lab.converge('hysteria') == 0
         lab.upgrade('hysteria')
         binary = lab.artifacts / 'hysteria-v2.13.0'
