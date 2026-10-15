@@ -117,8 +117,10 @@ def test_awg_normalization_never_prints_private_material_under_verbose_callback(
                 assert task.get("no_log") is True
     rotation = tasks("playbooks/rotate-credentials.yml")[0]
     assert not any(task["name"] == "Restart amneziawg" for task in rotation["handlers"])
-    activation = named(rotation["tasks"], "Activate rotated AmneziaWG peers through complete configuration compensation")
-    assert activation["ansible.builtin.include_role"] == {"name": "amneziawg", "tasks_from": "configure.yml"}
+    activation = named(rotation["tasks"], "Activate rotated AmneziaWG peers and firewall claims together")
+    assert activation["ansible.builtin.import_tasks"] == "tasks/awg-rotate.yml"
+    lifecycle = tasks("playbooks/tasks/awg-rotate.yml")[0]
+    assert lifecycle["block"][1]["ansible.builtin.include_role"] == {"name": "amneziawg"}
     def flatten(rows):
         for row in rows:
             yield row

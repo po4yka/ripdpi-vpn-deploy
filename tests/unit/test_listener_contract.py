@@ -847,10 +847,11 @@ def test_verify_hostclass_preserves_shared_hardening_checks(tmp_path, bad_sysctl
 
 @pytest.mark.parametrize("caller", ["site", "rotate-credentials"])
 @pytest.mark.parametrize("admission", ["match", "drift", "missing", "disabled", "subscription"])
-def test_shared_listener_admission_precedes_tagged_mutation(tmp_path, caller, admission):
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_shared_listener_admission_precedes_tagged_mutation(tmp_path, caller, admission, check_mode):
     """Execute the real shared guard in both callers before a mutation sentinel."""
     source = yaml.safe_load((REPO_ROOT / f"ansible/playbooks/{caller}.yml").read_text())[0]
-    guard = next(task for task in source["pre_tasks"]
+    guard = next(task for task in [*source.get("pre_tasks", []), *source.get("tasks", [])]
                  if task.get("ansible.builtin.import_tasks") == "tasks/public-listener-preflight.yml")
     variables = renderer.merge_render_vars()
     variables["ansible_python_interpreter"] = sys.executable
@@ -884,9 +885,12 @@ def test_shared_listener_admission_precedes_tagged_mutation(tmp_path, caller, ad
     playbook.write_text(yaml.safe_dump([play], sort_keys=False))
     config = tmp_path / "ansible.cfg"
     config.write_text("[defaults]\nfact_caching=memory\n")
-    result = subprocess.run(["ansible-playbook", "-i", "localhost,", str(playbook), "--tags", "p2"],
+    argv = ["ansible-playbook", "-i", "localhost,", str(playbook), "--tags", "p2"]
+    if check_mode:
+        argv.append("--check")
+    result = subprocess.run(argv,
                             capture_output=True, text=True, timeout=30,
                             env={**os.environ, "ANSIBLE_CONFIG": str(config)})
     admitted = admission == "match" or (caller == "rotate-credentials" and admission in {"disabled", "subscription"})
     assert (result.returncode == 0) is admitted, result.stdout + result.stderr
-    assert marker.exists() is admitted
+    assert marker.exists() is (admitted and not check_mode)

@@ -31,7 +31,8 @@ whole-route rollback, rather than a second config publisher or direct restart
 handler. AWG rotation republishes the complete canonical firewall before activating its
 complete role lifecycle, so newly assigned typed addresses are admitted, removed
 claims disappear and obsolete instances retire. Deployment and AWG rotation share provider/runtime listener admission
-before mutation. Rotation retains the prior firewall through AWG activation and
+before mutation, including read-only comparison in check mode. Rotation performs
+transport semantic admission first and retains the prior firewall through AWG activation and
 restores it on any refusal. Snell and Naive retain independent rotation flows.
 
 Complete-map rehearsal profiles explicitly retain `enable_transport_egress: true` with their enabled protected frontends because the controller replaces the canonical `vpn` map.

@@ -174,6 +174,9 @@ Xray/Hysteria roles under staging and invokes their guarded activation once.
 Changed units, configs and TLS authority retain validate/snapshot/rollback
 ordering. Actual localhost publication plus handler flush cannot dispatch a
 second frontend restart; native role scenarios retain final readiness proof.
+AWG rotation source checks follow the complete firewall/role lifecycle. Actual
+Ansible listener admission covers both callers, matching and missing/drifted
+contracts, disabled/subscription selection and check mode before mutation.
 
 Native normalizer recovery also retains live authenticated TCP and UDP controls when killing the process. Both accepted TCP tuples must enter TIME_WAIT before one immediate restart with the original readiness deadline; fresh public TCP/UDP and zero forbidden contacts remain required. Closed-probe recovery alone cannot establish listener rebinding under active traffic. UDP tuple quarantine and gateway generation reset retain their separate authority.
 

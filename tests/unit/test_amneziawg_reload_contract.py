@@ -57,9 +57,10 @@ def test_rotation_uses_the_role_instance_normalization_for_every_instance():
     assert rotation["rescue"][0]["ansible.builtin.include_role"] == {"name": "firewall", "tasks_from": "awg-restore.yml"}
     assert rotation["rescue"][-1]["ansible.builtin.fail"]["msg"] == "awg-rotation-activation-failed"
     play = yaml.safe_load(content)[0]
-    admission = next(task for task in play["pre_tasks"] if task.get("ansible.builtin.import_tasks") == "tasks/public-listener-preflight.yml")
+    admission = next(task for task in play["tasks"] if task.get("ansible.builtin.import_tasks") == "tasks/public-listener-preflight.yml")
     activation = next(task for task in play["tasks"] if task.get("ansible.builtin.import_tasks") == "tasks/awg-rotate.yml")
     assert admission["when"] == activation["when"]
+    assert 0 < play["tasks"].index(admission) < play["tasks"].index(activation)
     assert "Re-render AmneziaWG peers" not in content
     assert "Restart amneziawg" not in content
     tasks = yaml.safe_load((ROLE_DIR / "tasks/configure.yml").read_text())
