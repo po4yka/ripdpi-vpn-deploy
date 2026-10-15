@@ -89,6 +89,8 @@ shell boundaries; token refresh, private locks and promotion tests exercise
 rejection and concurrent callers. These checks do not establish live host,
 provider, release or Linux systemd acceptance.
 
+**Operator incident verbs run real Ansible guards** — `test_operator_verb_scope.py` derives each play head (hosts, serial, any_errors_fatal, pre_tasks) from the shipped playbook and runs it with real `ansible-playbook` against a local inventory for no limit, a node list, a one-host group and a one-host pattern, asserting the marker task never runs on refusal. It also checks rotation against an inventory `env` that differs from `ENV`, uses the real `make require-exact-node` recipe and `make -n` wiring. This establishes source behaviour only, not live host selection or SSH reachability.
+
 **Recovery clock tests isolate their time facade** — copy the adapter's time
 interface before patching sleep or clocks. Subprocess polling keeps real time,
 so candidate validation cannot advance synthetic worker timestamps.
@@ -104,6 +106,8 @@ publication. Predictive check-mode changes and a genuine persistent change must
 remain visible to the installed Molecule idempotence parser. The portable Xray
 candidate uses its real Python semantic admission function; this reporting test
 does not establish native parser, protocol, or TLS acceptance.
+
+**Interrupted protected ingress runs through the production tasks** — `test_transport_site_transaction.py` splices the real detection, adoption and refusal tasks from `transport-ingress-begin.yml` into the localhost harness, replacing only the journal and outer-helper `stat` paths and the outer status command, and drives the real nginx publication helper. It proves compensation order for an open, closed and absent egress outer route, next-run convergence, check-mode refusal without mutation, categorical outer-status refusal and a retained malformed journal. The egress quiesce and rollback tasks are stubbed there; their real behavior remains native and Molecule evidence.
 
 **Protected frontend lifecycle has one owner** — rotation selects the canonical
 Xray/Hysteria roles under staging and invokes their guarded activation once.
@@ -310,7 +314,7 @@ the runner's `ubuntu.sources` for both APT operations. An unrelated preinstalled
 repository cannot block this gate. Missing Ubuntu sources and failed updates
 remain fatal; package signatures and the real schema validator stay enforced.
 
-Runtime acceptance has a separate canonical-role Linux lab. It uses exact checksum-pinned runtimes, generated dedicated client/TLS authority and an owned routed namespace canary. Credential mount propagation is established before creating namespace references, so parent bind mounts cannot hide those references at cleanup. Upgrade, retry, check mode, failure compensation and real process-death cases must retain actual authenticated traffic and fail selected skips. Portable inode/state tests complement that lab and never claim service or client acceptance.
+Runtime acceptance has a separate canonical-role Linux lab. It uses exact checksum-pinned runtimes, generated dedicated client/TLS authority and an owned routed namespace canary. Credential mount propagation is established before creating namespace references, so parent bind mounts cannot hide those references at cleanup. Upgrade, retry, check mode, failure compensation and real process-death cases must retain actual authenticated traffic and fail selected skips. Portable inode/state tests complement that lab and never claim service or client acceptance. The operator runtime rollback case asserts the rolled-back `xray.service` unit text, the live `MainPID` executable and a following ordinary converge with the newer pin; portable tests pin its candidate set and that no egress-owned gateway unit is a candidate.
 
 ## What's done well
 

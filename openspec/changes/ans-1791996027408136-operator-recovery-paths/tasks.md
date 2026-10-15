@@ -15,8 +15,8 @@ Code lanes own disjoint paths and may run concurrently in one worktree; shared d
 
 ## Execution
 
-- [ ] ANS-1791996166387223 Adopt interrupted protected ingress journals into the existing rescue and recover pending-only publication journals at capture, with helper and Ansible harness tests #bug !high @item:ANS-1791996027408136
-- [ ] ANS-1791996166966887 Bind rotate-credentials, rollback-xray and rollback-config to one exact inventory alias and the selected environment, with real-Ansible and Make surface tests and updated operator docs #bug !high @item:ANS-1791996027408136
+- [x] ANS-1791996166387223 Adopt interrupted protected ingress journals into the existing rescue and recover pending-only publication journals at capture, with helper and Ansible harness tests #bug !high @item:ANS-1791996027408136
+- [x] ANS-1791996166966887 Bind rotate-credentials, rollback-xray and rollback-config to one exact inventory alias and the selected environment, with real-Ansible and Make surface tests and updated operator docs #bug !high @item:ANS-1791996027408136
 - [ ] ANS-1791996167525402 Pin the operator runtime rollback candidate set and ownership boundary with portable and native tests and correct the rollback documentation #bug !high @item:ANS-1791996027408136
 
 ## Verification

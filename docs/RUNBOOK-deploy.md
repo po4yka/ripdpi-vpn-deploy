@@ -241,6 +241,26 @@ The exported mapping paths are consumed by both controller commands;
 The empty command-line `ANSIBLE_TAGS=` forces the full graph even if the shell
 or `.fleet.mk` selects tags; preserve it on both commands.
 
+One exception to "do not run the deploy block after a failed preflight": when
+`make dry-run` stops with `interrupted-protected-ingress-transaction`, a
+previous deploy was killed (Ctrl-C, lost SSH or the controller timeout) after
+protected ingress capture and before commit, and the node still holds the open
+ingress journal. Dry-run refuses and changes nothing until that journal is
+compensated. Confirm that no other deploy targets the node (there is no
+deploy-level lock, and compensation assumes exclusive use), then run the
+deploy block once for that exact alias; its `set -e` stops it at the expected
+failure. This is a mutating run: the ordinary pre-block roles (baseline,
+package updates, firewall and others) run first, then the protected block
+restores the accepted ingress; when the egress outer route is open it first
+quiesces candidate transports and afterwards rolls the egress generation
+back. The run ends non-zero with
+`interrupted-protected-ingress-transaction` followed by the
+protected-staging failure message; that is the expected recovery result. Then
+repeat the complete preflight block and deploy block above. Any other failed
+dry-run keeps the rule: do not deploy. A malformed journal, or an egress route
+status that cannot be read, fails closed with the journal retained for manual
+recovery.
+
 Readiness, convergence and the automatic source-drift check use the same
 private inventory and transport snapshots. Canonical all/vpn/cohort variables
 are loaded per host before runtime metadata, secrets and approved overrides;
@@ -286,10 +306,15 @@ SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml \
 ./scripts/new-client.sh --emit-uri laptop
 
 make decrypt
-make rotate-credentials      # re-renders xray/hysteria/awg configs
+make rotate-credentials ANSIBLE_LIMIT=<alias>   # re-renders xray/hysteria/awg configs; repeat once per node of the environment
 make verify
 make clean
 ```
+
+`rotate-credentials` acts on exactly one inventory alias per run, so repeat the
+rotate and verify pair for every node of the environment; the per-node loop and
+the refusal conditions are in
+[RUNBOOK-rotate.md](RUNBOOK-rotate.md#1-single-client-leak).
 
 Hand the AmneziaWG private key (printed by the script) to the device
 through a secure channel. Wipe it from your terminal scrollback.
