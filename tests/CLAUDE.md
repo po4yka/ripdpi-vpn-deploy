@@ -14,6 +14,8 @@
 
 ## Design decisions
 
+Baseline resource tests execute its real first Ansible assertion and require an invalid value to stop before the next mutating task. ECH native leak checks run Hysteria with debug logging as well as secure positive/negative recipient traffic. The systemd generation case adopts both BBR profiles under the actual credential sandbox.
+
 The complete native transaction suite is split into two disjoint CI groups in independent fresh systemd containers; both are required and a collection test proves their complete union. Keep the full local Make target unchanged.
 
 Warm Hysteria upgrades retain Salamander and exercise the canonical firewall redirect through the lab veth. Per-port counters must observe an actual five-second client hop before and after upgrade and compensation; a datagram outside the range remains unchanged.

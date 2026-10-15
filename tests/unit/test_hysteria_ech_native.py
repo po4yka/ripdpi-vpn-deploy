@@ -169,7 +169,7 @@ def test_actual_ech_clients_traffic_privacy_trust_and_resources(
         )
         server, server_log = resources.enter_context(
             lab.process(
-                [str(runtimes["hysteria"]), "server", "-c", str(server_path)],
+                [str(runtimes["hysteria"]), "--log-level", "debug", "server", "-c", str(server_path)],
                 tmp_path,
                 "server",
             )
@@ -207,7 +207,7 @@ def test_actual_ech_clients_traffic_privacy_trust_and_resources(
             path = lab.private(tmp_path / (name + ".yaml"), yaml.safe_dump(client))
             process, log = resources.enter_context(
                 lab.process(
-                    [str(runtimes["hysteria"]), "client", "-c", str(path)],
+                    [str(runtimes["hysteria"]), "--log-level", "debug", "client", "-c", str(path)],
                     tmp_path,
                     name,
                 )
@@ -347,7 +347,7 @@ def test_actual_ech_clients_traffic_privacy_trust_and_resources(
         bare_path = lab.private(tmp_path / "server-no-ech.yaml", yaml.safe_dump(bare))
         resources.enter_context(
             lab.process(
-                [str(runtimes["hysteria"]), "server", "-c", str(bare_path)],
+                [str(runtimes["hysteria"]), "--log-level", "debug", "server", "-c", str(bare_path)],
                 tmp_path,
                 "server-no-ech",
             )

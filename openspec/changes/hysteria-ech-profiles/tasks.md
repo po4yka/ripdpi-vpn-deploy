@@ -32,7 +32,7 @@ Deliver coordinated Hysteria ECH server and recipient profiles. Source implement
 
 ## Execution
 
-- [ ] ANS-1791618091815754 Confirm exact ECH capability and implement the coordinated typed server recipient contract #feature @item:ANS-1791618083683925
+- [x] ANS-1791618091815754 Confirm exact ECH capability and implement the coordinated typed server recipient contract #feature @item:ANS-1791618083683925
 - [ ] ANS-1791618093172970 Deliver private authority generation secure emission and actual supported recipient integration #feature @item:ANS-1791618083683925
 - [ ] ANS-1791618094259404 Implement complete activation rotation and compensating failure behavior #feature @item:ANS-1791618083683925
 - [ ] ANS-1791618095149688 Prove negotiated ECH authenticated delivery and negative cases then complete eligible source and staging gates #feature @item:ANS-1791618083683925

@@ -59,3 +59,15 @@ The requirement rows remain open until their complete named evidence is observed
   checks and the separately authorized 48-hour staging soak remain required.
   Runtime downloads and Linux test dependency preparation were blocked by
   network timeouts. No deployment, real issuance or recipient redistribution ran.
+
+## PR 303 continuation observations (2026-10-15)
+
+Official sing-box 1.14.3 completed the exact Linux ECH parser, TCP/UDP/DNS,
+trust/negotiation failure and outer-SNI packet matrix at source
+`237b622f672629cbfecb53e010632af0c2e52273` (native job `116572820157`). Its
+checksum-verified Darwin ARM64 release and Xray 26.3.27 also parsed complete
+canonical liveness artifacts locally. The four portable shards at `87a52b6b`
+reported 7,227 passed tests; final-head aggregate/native gates and complete
+parser adoption/rollback acceptance remain required. Combined release
+eligibility still refuses unavailable sing-box metadata; no production
+recipient redistribution occurred.

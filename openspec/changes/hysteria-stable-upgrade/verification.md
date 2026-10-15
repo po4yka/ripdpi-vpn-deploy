@@ -63,3 +63,15 @@ The requirement rows remain open until their complete named evidence is observed
   checks and the separately authorized 48-hour staging soak remain required.
   Runtime downloads and Linux test dependency preparation were blocked by
   network timeouts. No deployment, real issuance or recipient redistribution ran.
+
+## PR 303 continuation observations (2026-10-15)
+
+The three exact Linux profiles passed in native job `116572820157` at source
+`237b622f672629cbfecb53e010632af0c2e52273`: authenticated TCP/UDP/DNS, paired
+client measurements, zero receive drops, 7,500,000-byte socket ceilings and
+33,144–33,396 KiB server RSS. The baseline source assertion's accepted integer
+boundaries and refusal-before-mutation cases passed eight tests. Both BBR modes
+in the actual systemd sandbox, warm Salamander/hopping upgrade and compensation
+remain required; the execution step stays open until those observations exist.
+The refreshed Hysteria release/advisory check cleared; the combined pair check
+still refuses unavailable sing-box metadata. The 48-hour staging soak is pending.

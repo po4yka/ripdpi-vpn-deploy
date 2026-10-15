@@ -442,7 +442,7 @@ def test_native_ech_rotation_idempotence_and_complete_compensation():
         lab.upgrade('hysteria')
         binary = lab.artifacts / 'hysteria-v2.13.0'
         ech = generate(binary, 'outer.example', 'owned.example')
-        lab.context['hysteria']['ech'] = ech
+        lab.context['hysteria'].update(ech=ech, resource_profile='bbr-conservative')
         assert lab.converge('hysteria') == 0
         key = Path('/etc/hysteria/ech.key')
         assert key.read_text() == ech['keys_pem'] and key.stat().st_mode & 0o777 == 0o600
@@ -462,6 +462,10 @@ def test_native_ech_rotation_idempotence_and_complete_compensation():
         assert lab.converge('hysteria') == 0
         assert key.read_text() == rotated['keys_pem']
         assert fields('hysteria-server.service')['MainPID'] != before
+        lab.context['hysteria']['resource_profile'] = 'bbr-standard'
+        assert lab.converge('hysteria') == 0
+        import yaml
+        assert yaml.safe_load(Path('/etc/hysteria/config.yaml').read_bytes())['congestion']['bbrProfile'] == 'standard'
         del lab.context['hysteria']['ech']
         assert lab.converge('hysteria') == 0
         assert not key.exists()
