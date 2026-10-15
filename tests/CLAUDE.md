@@ -14,6 +14,8 @@
 
 ## Design decisions
 
+Parser adoption regressions execute both CI installation fragments with checksum-verified real sing-box bytes and an owned destination. Local acquisition supplies verified, tampered, truncated, wrong-version and incompatible-executable archives. Refusal must retain the prior inode and an actually usable parser; successful full-profile acceptance must atomically replace it and clean staging.
+
 Guidance coverage exercises the workflow's actual Git collection against an advanced base branch. Preserve full history for three-dot comparisons; a shallow fetch can hide the merge base after checkout.
 
 Baseline resource tests execute its real first Ansible assertion and require an invalid value to stop before the next mutating task. ECH native leak checks run Hysteria with debug logging as well as secure positive/negative recipient traffic. The systemd generation case adopts both BBR profiles under the actual credential sandbox.

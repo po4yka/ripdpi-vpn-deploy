@@ -3,10 +3,14 @@
 from contextlib import ExitStack
 from concurrent.futures import ThreadPoolExecutor
 import importlib.util
+import hashlib
+import io
 import json
+import os
 from pathlib import Path
 import socketserver
 import subprocess
+import tarfile
 import threading
 import time
 
@@ -28,6 +32,72 @@ pytestmark = pytest.mark.native_runtime
 @pytest.fixture(scope="module")
 def runtimes(pytestconfig):
     return lab.binaries(Path(str(pytestconfig.cache.makedir("hysteria-ech-artifacts"))))
+
+
+@pytest.mark.parametrize("caller", ["portable", "disposable"])
+@pytest.mark.parametrize("candidate", ["verified", "tampered", "truncated", "wrong-version", "invalid-executable"])
+def test_actual_parser_adoption_retains_usable_prior_on_refusal(tmp_path, runtimes, caller, candidate):
+    """Execute each real CI install fragment against owned files and real parsers."""
+    if caller == "portable":
+        workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+        steps = workflow["jobs"]["unit-tests"]["steps"]
+        step = next(step for step in steps if step.get("name") == "Install pinned sing-box client parser")
+    else:
+        workflow = yaml.safe_load((ROOT / ".github/actions/setup-disposable-ci/action.yml").read_text())
+        steps = workflow["runs"]["steps"]
+        step = next(step for step in steps if step.get("name") == "Install verified deployment clients")
+    lines = step["run"].splitlines()
+    adoption = next(i for i, line in enumerate(lines) if line.startswith("sudo mv -T "))
+    script = "\n".join(lines[:adoption + 1])
+    assert script.count("/usr/local/bin") == 2
+    destination = tmp_path / "installed"
+    destination.mkdir(mode=0o700)
+    installed = destination / "sing-box"
+    executable = runtimes["sing_box"].read_bytes()
+    installed.write_bytes(executable)
+    installed.chmod(0o755)
+    before = installed.stat().st_ino
+    version = "0.0.1" if candidate == "wrong-version" else "1.14.3"
+    contents = b"incompatible executable\n" if candidate == "invalid-executable" else executable
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        member = tarfile.TarInfo("sing-box-" + version + "-linux-amd64/sing-box")
+        member.size, member.mode = len(contents), 0o755
+        archive.addfile(member, io.BytesIO(contents))
+    data = buffer.getvalue()
+    digest = hashlib.sha256(data).hexdigest()
+    if candidate == "tampered":
+        data = bytes([data[0] ^ 1]) + data[1:]
+    elif candidate == "truncated":
+        data = data[:64]
+    source = tmp_path / "download.tar.gz"
+    source.write_bytes(data)
+    downloads = tmp_path / "downloads"
+    downloads.mkdir(mode=0o700)
+    # Acquisition is a local byte source; checksum, extraction, version/full
+    # parser execution and atomic publication are the unchanged workflow code.
+    script = script.replace("/tmp", str(downloads)).replace("/usr/local/bin", str(destination))
+    functions = '''sudo() { "$@"; }
+curl() {
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = -o ]; then cp "$PARSER_ARCHIVE" "$2"; return; fi
+    shift
+  done
+  return 2
+}
+'''
+    result = subprocess.run(["bash", "-euo", "pipefail", "-c", functions + script], cwd=ROOT,
+        env={**os.environ, "RUNNER_TEMP": str(downloads), "PARSER_ARCHIVE": str(source),
+             "SING_BOX_VERSION": version, "SING_BOX_CLIENT_VERSION": version,
+             "SING_BOX_SHA256": digest, "SING_BOX_CLIENT_LINUX_AMD64_SHA256": digest},
+        capture_output=True, text=True, timeout=60)
+    assert (result.returncode == 0) is (candidate == "verified"), result.stdout + result.stderr
+    assert installed.read_bytes() == executable
+    assert (installed.stat().st_ino != before) is (candidate == "verified")
+    assert not list(destination.glob(".sing-box.*"))
+    # A refused candidate must leave the prior complete parser usable, not
+    # merely leave a file with the expected name or version string.
+    lab.command([str(installed), "check", "-c", str(lab.private(tmp_path / "prior.json", '{"outbounds":[{"type":"direct"}]}'))])
 
 
 @pytest.mark.parametrize(
