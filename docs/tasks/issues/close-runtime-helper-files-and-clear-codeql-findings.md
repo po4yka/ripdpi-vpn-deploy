@@ -2,7 +2,7 @@
 id: ANS-1792073622616697
 title: Close runtime helper files and clear CodeQL findings
 kind: bug
-status: doing
+status: review
 area: ansible
 priority: medium
 risk: standard
@@ -15,6 +15,7 @@ created: 2026-10-15
 updated: 2026-10-15
 spec_reason: mechanical-refactor
 related_tasks: []
+status_detail: "All 59 alerts reviewed; CodeQL reports zero findings and focused regressions pass. PR #300 carries full-gate and hosted runtime evidence; no live actions."
 ---
 
 ## Goal
