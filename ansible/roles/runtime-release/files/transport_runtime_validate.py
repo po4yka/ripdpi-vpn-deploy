@@ -203,6 +203,7 @@ def validate_hysteria(binary, raw, certificate, key, unit, timeout, client_name,
             private = private_file(directory, 'server.key', key)
             document['tls']['cert'], document['tls']['key'] = str(cert), str(private)
             files = FILES.copy()
+            ech = None
             if 'ech' in document:
                 if ech_key is None:
                     raise Refusal('ech-authority-required')
@@ -248,7 +249,7 @@ HTTPServer(('192.0.2.80', 18080), Canary).serve_forever()
             validation_unit += '\n[Service]\nNetworkNamespacePath=' + str(NAMESPACE_ROOT / token)
             validation_unit += '\nExecStart=\nExecStart=' + binary + ' server -c ' + str(server)
             validation_unit += '\nLoadCredential=\n'
-            if 'ech' in document:
+            if ech is not None:
                 validation_unit += 'LoadCredential=hysteria-ech:' + str(ech) + '\n'
             validation_unit += '\nBindReadOnlyPaths=\nRestart=no\nRuntimeMaxSec=' + str(timeout + 5)
             validation_unit += '\nTimeoutStopSec=5\nKillMode=control-group'

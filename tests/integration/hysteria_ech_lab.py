@@ -190,6 +190,8 @@ def tcp_transfer(port, expected, timeout=8):
                 if result.split(b"\r\n\r\n", 1)[-1] == expected:
                     return
         except OSError:
+            # Owned clients may still be starting; the finite deadline below
+            # still requires the complete authenticated response payload.
             pass
         time.sleep(0.05)
     raise AssertionError("authenticated-tcp-delivery-refused")

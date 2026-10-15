@@ -433,8 +433,8 @@ with tempfile.TemporaryDirectory(prefix='native-hopped-client-') as temporary:
             worker.start()
             try:
                 command(['ip', 'netns', 'exec', self.namespace, sys.executable, '-c',
-                    "import socket,sys; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.settimeout(3);"
-                    "s.sendto(b'unrelated-udp',('10.247.0.1',int(sys.argv[1])));"
+                    "import socket,sys; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.settimeout(3);" +
+                    "s.sendto(b'unrelated-udp',('10.247.0.1',int(sys.argv[1])));" +
                     "assert s.recv(1024)==b'unrelated-udp'", str(destination)], timeout=10)
             finally:
                 worker.join(timeout=6)

@@ -18,7 +18,7 @@ from test_emit_singbox_roundtrip import _secrets_as_json, _build_env, SCRIPT
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location(
-    "ech_native_lab", ROOT / "tests/integration/hysteria_ech.py"
+    "ech_native_lab", ROOT / "tests/integration/hysteria_ech_lab.py"
 )
 lab = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(lab)
