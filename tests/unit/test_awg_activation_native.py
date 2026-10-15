@@ -139,9 +139,13 @@ def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes
             assert command(['systemctl','is-active',unit.name]).strip()=='active'
             link=json.loads(command(['ip','-n',server,'-j','link','show',iface]))[0]
             assert link['mtu']==1420
+            # Keep the original client session: the restored server has lost its
+            # old session keys. Pinned AWG starts a new handshake after 10+5s
+            # without replies; allow that and the original TCP socket's retransmit.
+            # This is one probe invocation, without resetting the client or retrying.
             for address in ('198.18.1.2','fd88::2'):
-                observed = subprocess.run(['ip', 'netns', 'exec', client, sys.executable, '-c', PROBE, address],
-                                          capture_output=True, text=True, timeout=12)
+                observed = subprocess.run(['ip', 'netns', 'exec', client, sys.executable, '-c', PROBE, address, '', '40'],
+                                          capture_output=True, text=True, timeout=55)
                 if observed.returncode != 0:
                     pytest.fail('authenticated activation path failed: ' + json.dumps(path_evidence(
                         (client, server, uplink), ((client, ci), (server, iface)), tools, address)))

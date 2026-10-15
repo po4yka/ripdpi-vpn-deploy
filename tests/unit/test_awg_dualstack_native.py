@@ -47,11 +47,12 @@ while True:
 PROBE = r'''
 import json, os, socket, struct, sys, time
 address = sys.argv[1]; family = socket.AF_INET6 if ':' in address else socket.AF_INET
-bind = sys.argv[2] if len(sys.argv)>2 else None
+bind = (sys.argv[2] or None) if len(sys.argv)>2 else None
+timeout = float(sys.argv[3]) if len(sys.argv)>3 else 2
 started=time.monotonic(); received=0
 for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM):
     with socket.socket(family,kind) as s:
-        s.settimeout(2)
+        s.settimeout(timeout)
         if bind: s.bind((bind,0))
         s.connect((address,32000))
         for i in range(24):
@@ -65,7 +66,7 @@ for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM):
             received+=len(response)
 for qtype in (1,28):
     with socket.socket(family,socket.SOCK_DGRAM) as s:
-        s.settimeout(2); s.connect((address,53))
+        s.settimeout(timeout); s.connect((address,53))
         query=b'\x17\x42\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x05owned\x07example\x00'+struct.pack('!HH',qtype,1)
         s.send(query); response=s.recv(4096)
         value=socket.inet_pton(socket.AF_INET6 if qtype==28 else socket.AF_INET,'fd88::2' if qtype==28 else '198.18.1.2')
@@ -221,6 +222,13 @@ def test_owned_uplink_nat_mtu_dns_reconnect_revocation_and_no_native_bypass(tmp_
                 if cycle:
                     command(['ip','-n',ns,'link','set',ci,'down'])
                     command(['ip','-n',ns,'link','set',ci,'up'])
+                    # Linux removes the tunnel defaults on link-down. A reconnect
+                    # must publish them again before testing authenticated traffic.
+                    for family in ('-4','-6'):
+                        command(['ip','-n',ns,family,'route','replace','default','dev',ci,'metric','10'])
+                for address in ('198.18.1.2','fd88::2'):
+                    route=json.loads(command(['ip','-n',ns,'-j','route','get',address]))
+                    assert route[0]['dev']==ci
                 for address in ('198.18.1.2','fd88::2'): probe(i,address)
         counters=json.loads(run(server,['nft','-j','list','chain','inet','nat','postrouting']))
         for iface in interfaces:
