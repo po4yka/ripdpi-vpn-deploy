@@ -12,6 +12,10 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / 'ansible/roles/transport-egress'
 
+@pytest.fixture(autouse=True)
+def runtime_library(monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT / 'ansible/roles/runtime-release/files'))
+
 def load(name):
     path = ROLE / 'files' / (name + '.py')
     spec = importlib.util.spec_from_file_location('egress_' + name, path)
@@ -179,6 +183,7 @@ def test_accepted_receipt_covers_frontend_bytes_and_permissions(tmp_path, monkey
 
 def test_role_capture_paths_match_controller_accepted_authority():
     mod = load('snapshot')
+    assert Path('/etc/hysteria/ech.key') in mod.FRONTEND_FILES
     paths = yaml.safe_load((ROLE / 'defaults/main.yml').read_text())['transport_egress_snapshot_paths']
     assert len(paths) == len(set(paths))
     assert set(paths) == set(mod.managed_paths()) | {str(mod.ACCEPTED)}
@@ -188,16 +193,17 @@ def test_role_capture_paths_match_controller_accepted_authority():
 
 
 @pytest.mark.parametrize('present', [False, True])
-def test_optional_hosts_file_retains_accepted_capture_and_restores_bytes(tmp_path, monkeypatch, present):
+@pytest.mark.parametrize('filename,mode', [('masquerade-hosts', 0o640), ('ech.key', 0o600)])
+def test_optional_frontend_authority_retains_accepted_capture_and_restores_bytes(tmp_path, monkeypatch, present, filename, mode):
     import io
     import os
     mod = load('snapshot')
-    hosts = tmp_path / 'masquerade-hosts'
+    hosts = tmp_path / filename
     mod.ACCEPTED = tmp_path / 'accepted.json'
     mod.STATE = tmp_path / 'previous.json'
     if present:
         hosts.write_bytes(b'127.0.0.1 owned-origin.invalid\n')
-        hosts.chmod(0o640)
+        hosts.chmod(mode)
     # The portable actor owns these exact temporary files; this exercises real
     # serialization/publication/restore, not production root-ancestry admission.
     owned = {hosts, mod.ACCEPTED, mod.STATE}
@@ -227,7 +233,7 @@ def test_optional_hosts_file_retains_accepted_capture_and_restores_bytes(tmp_pat
     assert mod.is_accepted(mod.capture([str(hosts)]))
     if present:
         assert hosts.read_bytes() == b'127.0.0.1 owned-origin.invalid\n'
-        assert hosts.stat().st_mode & 0o777 == 0o640
+        assert hosts.stat().st_mode & 0o777 == mode
         assert hosts.stat().st_gid == prior['files'][str(hosts)]['gid']
     else:
         assert not hosts.exists()

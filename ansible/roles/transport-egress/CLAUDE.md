@@ -3,6 +3,7 @@
 ## Design decisions
 
 Controller preparation installs its exact semantic companion alongside native probe helpers before recovery or candidate admission. Shared helper admission includes that root-owned, single-link file. The frontend validator's companion remains part of its own guarded generation and may still be older while a candidate is being validated.
+Whole-route snapshots include the ECH key's exact bytes, mode, group and absence alongside its config and unit. Consumer-only journaling cannot replace outer site compensation authority.
 
 Private normalizer and native Xray gateways form one generation. The normalizer has sealed DNS-only NSS, authenticated fixed frontend listeners and no capabilities. Only normalized admitted literals reach native gateways; final kernel policy remains authoritative for TCP and every UDP packet. Dedicated gateway identities isolate recipient traffic from trusted frontend plumbing.
 

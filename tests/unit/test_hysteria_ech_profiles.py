@@ -75,7 +75,8 @@ def test_real_key_agreement_and_public_generation():
     assert not hysteria_errors(hysteria(ech))
 
 
-def test_ech_probe_resolves_installed_authority_without_repository_python_path(tmp_path):
+@pytest.mark.parametrize('invocation', ['import', 'inline'])
+def test_ech_probe_resolves_installed_authority_without_repository_python_path(tmp_path, invocation):
     library = tmp_path / "libexec" / "ripdpi-transport-egress"
     library.mkdir(parents=True)
     shutil.copyfile(ROOT / "ansible/roles/runtime-release/files/transport_runtime_probe.py",
@@ -100,8 +101,12 @@ def test_ech_probe_resolves_installed_authority_without_repository_python_path(t
     document = {"auth": {"type": "userpass", "userpass": {"probe": "synthetic-password"}},
                 "listen": ":443", "masquerade": {"proxy": {"url": "https://vpn.example.com"}},
                 "ech": {"keyPath": str(key)}}
-    source = ("import json,sys;sys.path.insert(0,sys.argv[1]);"
-              "from transport_runtime_probe import hysteria_client;"
+    loading = ("sys.path.insert(0,sys.argv[1]);from transport_runtime_probe import hysteria_client;"
+               if invocation == 'import' else
+               "import types;from pathlib import Path;module=types.ModuleType('transport_runtime_probe');"
+               "module.__file__=str(Path(sys.argv[1])/'transport_runtime_probe.py');"
+               "exec(Path(module.__file__).read_text(),module.__dict__);hysteria_client=module.hysteria_client;")
+    source = ("import json,sys;" + loading +
               "print(json.dumps(hysteria_client(json.load(sys.stdin),1080,'owned-ca.pem','probe')))")
     result = subprocess.run([sys.executable, "-I", "-c", source, str(library)],
                             input=json.dumps(document), cwd=tmp_path,
