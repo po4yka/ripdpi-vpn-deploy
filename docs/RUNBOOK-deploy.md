@@ -295,11 +295,23 @@ not deploy.
 
 Recovery fails closed with the journal retained for manual recovery when the
 pending journal is unrecognized or foreign, the site journal is malformed, the
-egress route status cannot be read, or the egress helper fails the root-owned
+egress route status cannot be read, the egress helper fails the root-owned
 ancestry and single-link regular-file admission
-(`consumer-helper-authority-refused`); the helper is not run in that case. A
-malformed site journal together with an open egress route is the sharpest
-case: the rescue quiesces the candidate transports, cannot restore the
+(`consumer-helper-authority-refused`; the helper is not run in that case), or
+the egress helper is missing while the route's own durable state
+(`/var/lib/ripdpi/transport-runtime/outer.json`, or a state directory that is
+not a root-owned 0700 directory) is present or cannot be judged
+(`egress-outer-helper-missing`; nothing is adopted or compensated, so restore
+the complete set of `transport_runtime_*.py` helpers in
+`/usr/local/libexec/ripdpi-transport-egress` from the deployed revision, each
+a root-owned regular file with one link, not group- or world-writable, under
+root-owned directories that are not group- or world-writable, as the next
+deploy's admission requires,
+or recreate the node). A missing helper with that state provably absent (no
+state directory, or a root-owned 0700 one without `outer.json`) is the only
+missing-helper case that adopts the journal, with the egress route treated as
+closed. A malformed site journal together with an open egress route is the
+sharpest case: the rescue quiesces the candidate transports, cannot restore the
 ingress and stops, so the protected transports stay stopped until manual
 recovery.
 
@@ -349,16 +361,20 @@ OUTPUT=secrets/local/clients/laptop/uris.txt \
 SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml \
 ./scripts/new-client.sh --emit-uri laptop
 
-if make decrypt ENV=prod; then
+(
+  e=prod
+  trap 'rc=$?; trap "" INT QUIT TERM HUP; make clean ENV="$e" || [ "$rc" -ne 0 ] || rc=1; exit "$rc"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  trap 'exit 129' HUP
+  trap 'exit 131' QUIT
+  make decrypt ENV="$e" || { rc=$?; echo "decrypt failed; nothing rotated" >&2; exit "$rc"; }
   for node in <alias-1> <alias-2>; do   # every node of the environment
-    make rotate-credentials ENV=prod ANSIBLE_LIMIT="$node" &&
-      make verify ENV=prod ANSIBLE_LIMIT="$node" ||
-      { echo "stopped at $node" >&2; break; }
+    make rotate-credentials ENV="$e" ANSIBLE_LIMIT="$node" &&
+      make verify ENV="$e" ANSIBLE_LIMIT="$node" ||
+      { rc=$?; echo "stopped at $node" >&2; exit "$rc"; }
   done
-else
-  echo "decrypt failed; nothing rotated" >&2
-fi
-make clean ENV=prod
+)
 ```
 
 `rotate-credentials` re-renders the xray, hysteria and awg configs and acts on
@@ -367,9 +383,16 @@ same alias for every node of the environment; the new device works on every
 node, and any client removed from the secrets is revoked, only after all nodes
 are rotated and verified. A failed decrypt must not reach the loop: a plaintext
 file left by an earlier session would be deployed instead of your edit, so the
-loop runs only after a successful decrypt and `make clean` runs in every case.
-The refusal conditions are in
-[RUNBOOK-rotate.md](RUNBOOK-rotate.md#1-single-client-leak).
+loop runs only after a successful decrypt. The sequence runs in a subshell that
+names the environment once (`e=prod`) and installs the `make clean` cleanup before
+it decrypts. It turns an interrupt, a quit, a termination or a hangup into an exit
+and the cleanup ignores a second one while it runs, so the decrypted file is
+shredded on every exit path the shell can catch. The subshell exits with the status
+of the failing step, or 1 when only `make clean` fails. After SIGKILL or a power
+loss, or whenever `make clean` reports a failure, run `make clean` yourself with
+the same `ENV`. When adapting the block for another environment, change both the
+`SOPS_FILE` path of the `new-client.sh` step and `e=`. The refusal conditions and the
+limits of the cleanup are in [RUNBOOK-rotate.md](RUNBOOK-rotate.md#1-single-client-leak).
 
 Hand the AmneziaWG private key (printed by the script) to the device
 through a secure channel. Wipe it from your terminal scrollback.

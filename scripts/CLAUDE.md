@@ -100,10 +100,20 @@ guard. The play asserts the one selected alias through
 why each run acts on one node, so revoking a client is complete only after one run
 per node. Rotation separately refuses a host whose inventory `env` differs from
 `ENV`. `RUNBOOK-rotate.md` and `RUNBOOK-deploy.md` print the revocation
-sequence: the per-node rotate and verify loop runs only after a successful
+sequence as a subshell that names the environment once (`e=prod`), installs a
+`make clean` EXIT trap before `make decrypt` and turns INT, QUIT, TERM and HUP
+into exits: the per-node rotate and verify loop runs only after a successful
 `make decrypt`, because a failed decrypt leaves an older plaintext file in place
-that the loop would then deploy, and `make clean` runs in every case;
-`test_operator_verb_scope.py` runs both runbook blocks.
+that the loop would then deploy, and `make clean` runs on every exit path a shell
+can catch (success, failure or interruption, but not SIGKILL or power loss, after
+which the operator runs it by hand). The EXIT trap ignores those four signals
+while `make clean` runs, so a second one cannot cut the shred short. The subshell
+exits with the failing step's status, which the cleanup does not mask, and with 1
+when only `make clean` fails, as the cleanup blocks in `docs/QUICKSTART.md` leave
+the block unsuccessful. The REALITY keypair and restic password sections of
+`RUNBOOK-rotate.md` print the same guard around their `decrypt`, `deploy` and
+`verify` calls; `test_operator_verb_scope.py` runs all four blocks, including
+interruption.
 
 The release installer verifies the exact repository and fully qualified signer
 workflow before installation. Cloud-init acceptance checks the actual loopback

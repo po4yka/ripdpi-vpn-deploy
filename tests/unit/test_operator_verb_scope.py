@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -308,20 +309,54 @@ def test_make_rollbacks_stay_usable_without_clean_source_or_decrypted_secrets(ve
     assert "clean git checkout" not in text and "validate-secrets.py" not in text
 
 
-# The runbooks that print the revocation sequence, with the heading of the section that holds it.
-RUNBOOK_SECTIONS = {"RUNBOOK-rotate.md": "## 1. Single client leak", "RUNBOOK-deploy.md": "## Add a new client device"}
+# Every guarded sequence the runbooks print: its runbook, the heading of its section and the step that faults it midway,
+# the last `make` call before cleanup. The revocation sequences rotate and verify every node; the others deploy once.
+GUARDED_SEQUENCES = {
+    "rotate-revocation": ("RUNBOOK-rotate.md", "## 1. Single client leak", "rotate-credentials:node-a"),
+    "deploy-add-client": ("RUNBOOK-deploy.md", "## Add a new client device", "rotate-credentials:node-a"),
+    "reality-keypair": ("RUNBOOK-rotate.md", "## 2. Server-wide REALITY keypair", "deploy:"),
+    "restic-password": ("RUNBOOK-rotate.md", "## 4. Restic password", "deploy:"),
+}
+REVOCATION_SEQUENCES = ("rotate-revocation", "deploy-add-client")
+DEPLOY_SEQUENCES = ("reality-keypair", "restic-password")
+# The exit statuses of the `make` stand-in at the step it is told to fail and when it runs `make clean`; the file it
+# creates once `make clean` has completed.
+STAND_IN_FAILURE = 7
+CLEAN_FAILURE = 9
+SHREDDED = "shredded"
 
 
-def runbook_revocation_commands(runbook: str) -> str:
-    """The same sequence as the named runbook's section prints it."""
-    section = (ROOT / "docs" / runbook).read_text().split(RUNBOOK_SECTIONS[runbook], 1)[1].split("\n## ", 1)[0]
-    block = re.search(r"^(if make decrypt.*?)^```$", section, re.S | re.M)
-    assert block, f"{runbook} no longer prints the guarded revocation loop under {RUNBOOK_SECTIONS[runbook]!r}"
-    return block.group(1)
+def guarded_sequence(sequence: str) -> str:
+    """The same subshell as the named runbook section prints it."""
+    runbook, heading, _ = GUARDED_SEQUENCES[sequence]
+    section = (ROOT / "docs" / runbook).read_text().split(heading, 1)[1].split("\n## ", 1)[0]
+    block = re.search(r"^\(\n.*?^\)$", section, re.S | re.M)
+    assert block, f"{runbook} no longer prints a guarded subshell under {heading!r}"
+    return block.group(0)
 
 
-def run_revocation(commands: str, tmp_path: Path, failing: str | None) -> tuple[list[tuple[str, dict[str, str]]], str]:
-    """Run printed commands against a recording `make` stand-in that fails the step named `target:node`."""
+# The signals an operator can send from the terminal or the system, with their numbers.
+SIGNALS = (("INT", signal.SIGINT), ("QUIT", signal.SIGQUIT), ("TERM", signal.SIGTERM), ("HUP", signal.SIGHUP))
+
+
+def reset_signal_dispositions() -> None:
+    """Undo SIGINT/SIGQUIT/SIGHUP ignoring inherited from a background or `nohup` run, which a shell cannot trap."""
+    for _, number in SIGNALS:
+        signal.signal(number, signal.SIG_DFL)
+
+
+def run_guarded_sequence(commands: str, tmp_path: Path, fault: str | None, signal_name: str | None = None,
+                         whole_group: bool = False, *, clean_fails: bool = False, clean_signal: str | None = None,
+                         environment: str = "prod") -> tuple[list[tuple[str, dict[str, str]]], str, int]:
+    """Run printed commands against a recording `make` stand-in that faults the step named `target:node`.
+
+    The stand-in exits with STAND_IN_FAILURE at that step or, when `signal_name` is given, delivers that signal to the
+    shell running it and exits cleanly, as an operator interrupting a long rotation would. With `whole_group` the
+    signal goes to the whole process group instead, as a terminal delivers it, so the stand-in `make` dies of it too.
+    `make clean` creates SHREDDED when it completes, unless `clean_fails` makes it exit with CLEAN_FAILURE; with
+    `clean_signal` it first delivers that signal to the whole process group, as a second Ctrl-C does.
+    `environment` replaces the value the block assigns to its one `e` variable.
+    """
     tools = tmp_path / "bin"
     tools.mkdir()
     calls = tmp_path / "calls"
@@ -332,38 +367,60 @@ node=
 for argument in "$@"; do
   case "$argument" in ANSIBLE_LIMIT=*) node=${{argument#ANSIBLE_LIMIT=}} ;; esac
 done
-[ "$1:$node" = "$FAILING" ] && exit 1
+if [ "$1" = clean ]; then
+  [ -n "$CLEAN_SIGNAL" ] && kill -s "$CLEAN_SIGNAL" 0
+  [ -n "$CLEAN_FAILS" ] && exit {CLEAN_FAILURE}
+  : > "{tmp_path / SHREDDED}"
+  exit 0
+fi
+if [ "$1:$node" = "$FAULT" ]; then
+  [ -n "$SIGNAL" ] && {{ kill -s "$SIGNAL" "${{SIGNAL_TARGET:-$PPID}}"; exit 0; }}
+  exit {STAND_IN_FAILURE}
+fi
 exit 0
 """)
     (tools / "make").chmod(0o755)
-    result = subprocess.run(["bash", "-c", commands.replace("<alias-1> <alias-2>", "node-a node-b")], capture_output=True,
-                            text=True, timeout=10, env={**os.environ, "PATH": f"{tools}{os.pathsep}{os.environ['PATH']}",
-                                                        "FAILING": failing or "none"})
-    assert result.returncode == 0, result.stderr
+    # The outer shell stands for the operator's interactive one, which survives the terminal's signal and reports the
+    # status of the sequence; it needs its own session so that a group-wide signal reaches nothing else.
+    commands = commands.replace("<alias-1> <alias-2>", "node-a node-b").replace("  e=prod\n", f"  e={environment}\n")
+    result = subprocess.run(["bash", "-c", f"trap : INT QUIT TERM HUP\n{commands}\nexit $?"], capture_output=True,
+                            text=True, timeout=10, preexec_fn=reset_signal_dispositions, start_new_session=True, cwd=tmp_path,
+                            env={**os.environ, "PATH": f"{tools}{os.pathsep}{os.environ['PATH']}", "FAULT": fault or "none",
+                                 "SIGNAL": signal_name or "", "CLEAN_SIGNAL": clean_signal or "",
+                                 "CLEAN_FAILS": "1" if clean_fails else "",
+                                 **({"SIGNAL_TARGET": "0"} if whole_group else {})})
     steps = []
     for line in calls.read_text().splitlines():
         target, *assignments = line.rstrip("\x1f").split("\x1f")
         steps.append((target, dict(item.split("=", 1) for item in assignments)))
-    return steps, result.stderr
+    return steps, result.stderr, result.returncode
 
 
 def pair(node: str) -> list[tuple[str, str]]:
     return [("rotate-credentials", node), ("verify", node)]
 
 
-# A failing step as `target:node`, the (target, node) steps that must run between decrypt and clean, and the stop message.
+# A faulted step as `target:node`, the signal delivered there (None: the step fails), the (target, node) steps that must
+# run between decrypt and clean, the stop message, and the exit status of the whole sequence.
 REVOCATION_CASES = [
-    pytest.param(None, pair("node-a") + pair("node-b"), None, id="every-node-is-rotated-and-verified"),
-    pytest.param("decrypt:", [], "decrypt failed; nothing rotated", id="a-failed-decrypt-never-reaches-the-loop"),
-    pytest.param("rotate-credentials:node-a", pair("node-a")[:1], "stopped at node-a", id="rotate-fails-on-the-first-node"),
-    pytest.param("rotate-credentials:node-b", pair("node-a") + pair("node-b")[:1], "stopped at node-b",
-                 id="rotate-fails-on-the-second-node"),
-    pytest.param("verify:node-a", pair("node-a"), "stopped at node-a", id="verify-fails-after-a-successful-rotate"),
+    pytest.param(None, None, pair("node-a") + pair("node-b"), None, 0, id="every-node-is-rotated-and-verified"),
+    pytest.param("decrypt:", None, [], "decrypt failed; nothing rotated", STAND_IN_FAILURE,
+                 id="a-failed-decrypt-never-reaches-the-loop"),
+    pytest.param("rotate-credentials:node-a", None, pair("node-a")[:1], "stopped at node-a", STAND_IN_FAILURE,
+                 id="rotate-fails-on-the-first-node"),
+    pytest.param("rotate-credentials:node-b", None, pair("node-a") + pair("node-b")[:1], "stopped at node-b",
+                 STAND_IN_FAILURE, id="rotate-fails-on-the-second-node"),
+    pytest.param("verify:node-a", None, pair("node-a"), "stopped at node-a", STAND_IN_FAILURE,
+                 id="verify-fails-after-a-successful-rotate"),
+    *(pytest.param("rotate-credentials:node-a", name, pair("node-a")[:1], None, 128 + number,
+                   id=f"sig{name.lower()}-during-a-rotation-stops-the-loop-and-cleans-up")
+      for name, number in SIGNALS),
+    pytest.param("decrypt:", "INT", [], None, 128 + signal.SIGINT, id="sigint-during-decrypt-still-cleans-up"),
 ]
 
 
 def assert_revocation_sequence(steps, stderr, environment, rotated, message):
-    # The decrypted file is created first and shredded last, even when decrypt or the loop fails.
+    # The decrypted file is created first and shredded last, even when decrypt, the loop or the operator interrupts it.
     assert steps[0][0] == "decrypt" and steps[0][1]["ENV"] == environment
     assert steps[-1] == ("clean", {"ENV": environment})
     assert [(target, assignments["ANSIBLE_LIMIT"]) for target, assignments in steps[1:-1]] == rotated
@@ -374,8 +431,74 @@ def assert_revocation_sequence(steps, stderr, environment, rotated, message):
         assert message in stderr
 
 
-@pytest.mark.parametrize("failing, rotated, message", REVOCATION_CASES)
-@pytest.mark.parametrize("runbook", RUNBOOK_SECTIONS)
-def test_runbook_revocation_loop_covers_every_node_cleans_up_and_stops_visibly(tmp_path, runbook, failing, rotated, message):
-    steps, stderr = run_revocation(runbook_revocation_commands(runbook), tmp_path, failing)
+@pytest.mark.parametrize("fault, signal_name, rotated, message, status", REVOCATION_CASES)
+@pytest.mark.parametrize("sequence", REVOCATION_SEQUENCES)
+def test_runbook_revocation_sequence_cleans_up_on_every_exit_and_keeps_the_failing_status(
+        tmp_path, sequence, fault, signal_name, rotated, message, status):
+    steps, stderr, returncode = run_guarded_sequence(guarded_sequence(sequence), tmp_path, fault, signal_name)
     assert_revocation_sequence(steps, stderr, "prod", rotated, message)
+    # Cleanup succeeds in every case, so a failed or interrupted sequence keeps its own status instead of clean's zero.
+    assert returncode == status, stderr
+
+
+@pytest.mark.parametrize("name, number", SIGNALS)
+@pytest.mark.parametrize("sequence", REVOCATION_SEQUENCES)
+def test_runbook_revocation_sequence_cleans_up_when_a_terminal_signals_the_whole_process_group(
+        tmp_path, sequence, name, number):
+    """Ctrl-C, Ctrl-\\ and a hangup reach `make` and the subshell together, so `make` dies of the signal as well."""
+    steps, stderr, returncode = run_guarded_sequence(guarded_sequence(sequence), tmp_path, "rotate-credentials:node-a",
+                                                     name, whole_group=True)
+    assert_revocation_sequence(steps, stderr, "prod", pair("node-a")[:1], None)
+    assert returncode == 128 + number, stderr
+
+
+@pytest.mark.parametrize("sequence", REVOCATION_SEQUENCES)
+def test_runbook_revocation_sequence_takes_its_environment_from_one_variable(tmp_path, sequence):
+    """Adapting the block for another environment changes one line; a missed literal would shred the wrong file."""
+    steps, stderr, returncode = run_guarded_sequence(guarded_sequence(sequence), tmp_path, None, environment="staging")
+    assert_revocation_sequence(steps, stderr, "staging", pair("node-a") + pair("node-b"), None)
+    assert returncode == 0, stderr
+
+
+# A faulted step as `target:`, the signal delivered there (None: the step fails), the make targets that must run before
+# clean, and the exit status of the whole sequence.
+DEPLOY_CASES = [
+    pytest.param(None, None, ["decrypt", "deploy", "verify"], 0, id="every-step-runs-in-order"),
+    pytest.param("decrypt:", None, ["decrypt"], STAND_IN_FAILURE, id="a-failed-decrypt-never-reaches-deploy"),
+    pytest.param("deploy:", None, ["decrypt", "deploy"], STAND_IN_FAILURE, id="a-failed-deploy-skips-verify"),
+    pytest.param("verify:", None, ["decrypt", "deploy", "verify"], STAND_IN_FAILURE, id="a-failed-verify-still-cleans-up"),
+    *(pytest.param("deploy:", name, ["decrypt", "deploy"], 128 + number,
+                   id=f"sig{name.lower()}-during-deploy-stops-the-sequence-and-cleans-up")
+      for name, number in SIGNALS),
+]
+
+
+@pytest.mark.parametrize("fault, signal_name, ran, status", DEPLOY_CASES)
+@pytest.mark.parametrize("sequence", DEPLOY_SEQUENCES)
+def test_runbook_deploy_sequences_clean_up_last_and_keep_the_failing_status(tmp_path, sequence, fault, signal_name, ran,
+                                                                          status):
+    steps, stderr, returncode = run_guarded_sequence(guarded_sequence(sequence), tmp_path, fault, signal_name)
+    # Nothing selects an environment here, so every call runs with the Makefile's own default.
+    assert steps == [(target, {}) for target in [*ran, "clean"]], stderr
+    assert returncode == status, stderr
+
+
+@pytest.mark.parametrize("fails_midway, status", [(False, 1), (True, STAND_IN_FAILURE)],
+                         ids=["after-success-exits-nonzero", "after-a-failed-step-keeps-its-status"])
+@pytest.mark.parametrize("sequence", GUARDED_SEQUENCES)
+def test_runbook_failed_cleanup_makes_a_successful_sequence_fail_and_keeps_a_failing_status(
+        tmp_path, sequence, fails_midway, status):
+    fault = GUARDED_SEQUENCES[sequence][2] if fails_midway else None
+    steps, stderr, returncode = run_guarded_sequence(guarded_sequence(sequence), tmp_path, fault, clean_fails=True)
+    assert steps[-1][0] == "clean" and not (tmp_path / SHREDDED).exists(), stderr
+    assert returncode == status, stderr
+
+
+@pytest.mark.parametrize("name", [name for name, _ in SIGNALS])
+@pytest.mark.parametrize("sequence", GUARDED_SEQUENCES)
+def test_runbook_second_signal_during_cleanup_does_not_cut_the_shred_short(tmp_path, sequence, name):
+    """The interrupt that ends the sequence is followed by a second signal that reaches `make clean` with the group."""
+    steps, stderr, returncode = run_guarded_sequence(guarded_sequence(sequence), tmp_path, GUARDED_SEQUENCES[sequence][2],
+                                                     "INT", clean_signal=name)
+    assert steps[-1][0] == "clean" and (tmp_path / SHREDDED).exists(), stderr
+    assert returncode == 128 + signal.SIGINT, stderr
