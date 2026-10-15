@@ -71,6 +71,14 @@ Sender queue regressions preserve the pinned atomic metadata and empty initial-c
 
 Sender activation regressions include the handler-flush boundary after a rescued first cutover. Adapter timer notifications require durable sender acceptance before unit installation.
 
+The enabled collector scenario verifies 42,000 current, 24-hour historical and
+churn samples from ten fixture node labels through the managed sender, including
+exact values/timestamps after durable-queue restart and unchanged resource/public
+nginx boundaries. It is a bounded cardinality workload, not ten enrolled hosts or
+seven-day capacity. The Kuma CI role job also runs its pinned upstream image
+with network disabled, verifying missing-signal timing, restart persistence and
+age-encrypted isolated restore. External notification receipt remains unverified.
+
 **Monitoring regressions cross the real boundary** — consume actual private
 watchdog output, age frozen producer evidence with the pinned PromQL evaluator,
 and compare declared units to partially missing native series. Long generated

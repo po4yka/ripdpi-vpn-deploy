@@ -76,6 +76,12 @@ not treated as equivalent to Docker or automatically completed.
   the separate real AWG source-candidate lab passed in full, and this does not
   claim execution of every unrelated native suite. The held build-gate shell
   was exited after the complete gate returned zero.
+- After integrating upstream `3010dfb5`, the only conflict was the generated
+  task board, which was regenerated through taskctl. All executable AWG lab
+  inputs remain byte-identical to the source commit above. Post-integration
+  checks passed: 77 focused AWG/observability tests, workflow actionlint/zizmor,
+  163 snapshots, task contracts and task verification. The complete make check
+  above ran before this upstream/documentation integration.
 - Security review: APPROVE for this local candidate lab. No private inputs,
   public listeners, production pins or per-device production material changed.
   Privileged local Docker remains the documented lab isolation boundary.

@@ -38,6 +38,12 @@ window relative to the global TSDB maximum timestamp. A single sender worker
 can replay an interrupted older block after newer blocks. Out-of-window HTTP
 discards are delivery loss; tiny receiver tests do not prove late-history replay
 resource admission or wall-clock queue durability.
+The enabled scenario separately replays a bounded ten-node cardinality workload:
+20,000 base series with current and 24-hour historical values and 2,000 churn
+series, preserving exact values/timestamps through receiver outage and sender
+restart. It retains production cgroup ceilings and checks collector memory
+events, public nginx identity and allocated storage. This is one managed sender
+and 42,000 samples, not ten enrolled identities or seven-day capacity.
 Blocks retain at most seven days/1 GiB; WAL/head remain subject to the separate
 2 GiB operational high-water guard, not a promised filesystem quota. Admission
 precedes account/package writes and requires 1 GiB MemAvailable, allowance plus

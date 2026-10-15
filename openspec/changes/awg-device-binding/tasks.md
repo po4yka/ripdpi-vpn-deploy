@@ -35,7 +35,7 @@ Deliver authoritative AmneziaWG device enrollment and client bindings. Implement
 - [x] SCR-1791618044456243 Implement the canonical effective AWG binding and coherent schema and caller migration #feature !high @item:SCR-1791618039091425
 - [x] SCR-1791618045140064 Deliver selected-instance pool enrollment and revocation with encrypted transaction regressions #feature !high @item:SCR-1791618039091425
 - [x] SCR-1791618045793096 Emit and resolve exact bound configurations across standalone bundle and liveness consumers #feature !high @item:SCR-1791618039091425
-- [ ] SCR-1791618046582572 Prove authenticated two-instance traffic and failure preservation then complete source review gates #feature !high @item:SCR-1791618039091425
+- [x] SCR-1791618046582572 Prove authenticated two-instance traffic and failure preservation then complete source review gates #feature !high @item:SCR-1791618039091425
 
 ## Verification
 
@@ -49,3 +49,11 @@ Deliver authoritative AmneziaWG device enrollment and client bindings. Implement
 Requirement-to-step mapping and unfulfilled evidence categories live in verification.md. No fixture, refusal-only result or skipped selected case satisfies positive capability. Future external acceptance requires current authorization and exact scope; no existing cancelled task is revived.
 
 Implementation starts only after the canonical portfolio prerequisites are satisfied and separately authorized. Planning alone neither starts work nor checks an execution step.
+
+## Source acceptance scope (2026-10-15)
+
+Per the owner-approved criteria revision, source acceptance requires focused Mac
+regressions, snapshots, full-history/staged gitleaks and complete unchanged
+exact-SHA hosted source/native checks. The local monolithic attempt failed on a
+registry timeout; its retry was cancelled after 32 minutes still queued. No full
+local success is claimed; global and deployment gates remain unchanged.
