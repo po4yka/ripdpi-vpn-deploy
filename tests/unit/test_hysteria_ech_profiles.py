@@ -12,12 +12,11 @@ import shutil
 import sys
 
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
-from jinja2 import Environment, StrictUndefined
 import pytest
 import yaml
 
 from transport_semantics import ech_config, ech_keys_config, hysteria_errors
-from template_render import merge_render_vars, render_template
+from template_render import merge_render_vars, render_fragment, render_template
 from test_emit_singbox_roundtrip import (
     _secrets_as_json,
     _build_env,
@@ -212,9 +211,7 @@ def test_smoke_client_retains_exact_verified_tls_identity(identity):
     elif identity == "explicit":
         expected = "explicit.example"
         variables["hysteria"]["server_name"] = expected
-    environment = Environment(undefined=StrictUndefined)
-    environment.filters["to_json"] = json.dumps
-    rendered = environment.from_string(task["ansible.builtin.copy"]["content"]).render(variables)
+    rendered = render_fragment("hysteria-smoke-client.yaml", task["ansible.builtin.copy"]["content"], variables)
     client = yaml.safe_load(rendered)
     assert client["tls"]["sni"] == expected
     assert client["tls"]["insecure"] is False
