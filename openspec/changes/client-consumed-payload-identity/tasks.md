@@ -27,7 +27,7 @@ Detect client payload drift from every consumed private input. Source implementa
 
 - [x] SCR-1791618347514825 Implement consumed-input canonical identity and every drift verdict boundary #bug !high @item:SCR-1791618188806822
 - [x] SCR-1791618349798761 Bind issuance and refresh to exact private artifact identity with atomic-failure regressions #bug !high @item:SCR-1791618188806822
-- [ ] SCR-1791618352269556 Enforce private authority and diagnostic boundaries and pass complete source gates #bug !high @item:SCR-1791618188806822
+- [x] SCR-1791618352269556 Enforce private authority and diagnostic boundaries and pass complete source gates #bug !high @item:SCR-1791618188806822
 
 ## Verification
 
