@@ -198,6 +198,13 @@ global device lifecycle status are preserved. Existing private documents need
 an explicit migration and validation before rollout; source updates never
 rewrite them automatically.
 
+AWG device names must be unique across all instances. Export and liveness require
+an existing matching registry binding even when a document omits the optional
+registry section. After AWG-only revocation, `make awg-issue` can replace that
+device's AWG key and binding while preserving its non-AWG registry metadata.
+This requires a null binding, empty AWG recovery fields, and an active global
+device lifecycle; a globally revoked entry cannot be reissued this way.
+
 ## Rotation
 
 Three rotation scopes:

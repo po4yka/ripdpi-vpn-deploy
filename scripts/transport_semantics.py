@@ -229,6 +229,7 @@ def awg_errors(raw: object, defaults: object = None, cohort: object = None, *,
     selected = [(f"amneziawg_secrets.instances.{index}", item) for index, item in enumerate(instances)]
     names, ports, claims = set(), set(), []
     key_owners: dict[str, str] = {}
+    device_names = set()
     for path, item in selected:
         if not awg_dns_valid(item["dns_servers"]):
             errors.append(("amneziawg.dns_servers", "requires one to four distinct global IPv4 DNS addresses"))
@@ -275,6 +276,10 @@ def awg_errors(raw: object, defaults: object = None, cohort: object = None, *,
                 errors.append((f"{path}.peers", "duplicate name"))
             else:
                 local_names.add(peer_name)
+            if peer.get("address_kind", "device") == "device" and isinstance(peer_name, str):
+                if peer_name in device_names:
+                    errors.append((f"{path}.peers", "duplicate device name across instances"))
+                device_names.add(peer_name)
             for field, seen in (("public_key", local_keys), ("preshared_key", local_psks)):
                 value = peer.get(field)
                 if not key_valid(value, allow_placeholders=allow_placeholders):

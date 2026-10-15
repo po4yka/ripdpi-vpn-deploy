@@ -24,7 +24,9 @@ def document():
             "peers": [{"name": f"device{index}", "public_key": key(index + 10),
                        "preshared_key": key(index + 20), "allowed_ips": f"10.{70 + index}.0.2/32"}],
         }
-    return {"amneziawg_secrets": {"instances": [instance(0), instance(1)]}}
+    return {"amneziawg_secrets": {"instances": [instance(0), instance(1)]},
+            "client_registry": {f"device{i}": {"status": "issued", "awg_binding": {
+                "provider": "upcloud", "environment": "fixture", "instance": f"awg{i}"}} for i in range(2)}}
 
 
 @pytest.mark.parametrize("index", [0, 1])
@@ -43,13 +45,13 @@ def test_missing_peer_cannot_become_a_successful_partial_profile():
         resolve_binding(document(), {}, "absent", "upcloud:fixture", "awg0")
 
 
-def test_ambiguous_instance_selection_requires_an_explicit_binding():
+def test_duplicate_device_names_refuse_every_instance_selection():
     source = document()
     for instance in source["amneziawg_secrets"]["instances"]:
         instance["peers"][0]["name"] = "device"
-    with pytest.raises(BindingError, match="ambiguous-device-binding"):
-        resolve_binding(source, {}, "device", "upcloud:fixture")
-    assert resolve_binding(source, {}, "device", "upcloud:fixture", "awg1").instance["name"] == "awg1"
+    for selected in (None, 'awg0', 'awg1'):
+        with pytest.raises(BindingError, match="invalid-awg-contract"):
+            resolve_binding(source, {}, "device", "upcloud:fixture", selected)
 
 
 def test_legacy_top_level_peer_authority_is_rejected():
@@ -89,3 +91,35 @@ def test_parameter_refusal_is_shared_and_contains_no_private_input(field, value)
         resolve_binding(source, {}, "device0", "upcloud:fixture")
     assert str(failure.value) == "invalid-awg-contract"
     assert key(1) not in str(failure.value)
+
+
+@pytest.mark.parametrize('registry', [None, {}, {'other': {}}, {'device0': None}])
+def test_existing_device_requires_persisted_registry_authority(registry):
+    source = document()
+    if registry is None:
+        source.pop('client_registry', None)
+    else:
+        source['client_registry'] = registry
+    with pytest.raises(BindingError, match='invalid-registry-binding'):
+        resolve_binding(source, {}, 'device0', 'upcloud:fixture', 'awg0')
+
+
+@pytest.mark.parametrize('instance', [None, 'awg0', 'awg1'])
+@pytest.mark.parametrize('enrollment', [False, True])
+@pytest.mark.parametrize('kind', ['device', 'routed'])
+def test_duplicate_device_refuses_even_with_explicit_instance(instance, enrollment, kind):
+    source = document()
+    source['amneziawg_secrets']['instances'][1]['peers'][0].update(name='device0', address_kind=kind)
+    with pytest.raises(BindingError):
+        resolve_binding(source, {}, 'device0', 'upcloud:fixture', instance, enrollment=enrollment)
+
+
+def test_existing_name_on_another_instance_cannot_be_enrolled_again():
+    with pytest.raises(BindingError, match='device-already-enrolled'):
+        resolve_binding(document(), {}, 'device0', 'upcloud:fixture', 'awg1', enrollment=True)
+
+
+@pytest.mark.parametrize('host', ['upcloud:other', 'scaleway:fixture'])
+def test_caller_host_cannot_replace_persisted_authority(host):
+    with pytest.raises(BindingError, match='invalid-registry-binding'):
+        resolve_binding(document(), {}, 'device0', host, 'awg0')

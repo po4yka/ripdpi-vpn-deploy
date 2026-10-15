@@ -1,10 +1,10 @@
 ---
 task_id: SCR-1791618039091425
 change: awg-device-binding
-commit_sha: 447b8db214f9c31601675a4d6dd9668ac1c05bf2
-local: passed
+commit_sha: null
+local: required
 local_evidence: '6872 portable tests, 22 subtests, 59 Bats cases and 163 snapshots passed; initial make check hit a local CLI lifecycle failure; complete CLI rerun passed 303 cases and transfer parity'
-remote_ci: passed
+remote_ci: required
 remote_ci_evidence: exact source 447b8db214f9c31601675a4d6dd9668ac1c05bf2 passed CI run 38686110763 and CodeQL run 38686110633; 93 successful checks and one optional neutral Trivy context
 dry_run: not_applicable
 dry_run_evidence: source capability uses isolated native proof; real inventory/controller rehearsal needs separate authorization
@@ -12,9 +12,9 @@ staging: not_applicable
 staging_evidence: source contract uses isolated native acceptance; actual fleet rehearsal is separately authorized
 live: not_applicable
 live_evidence: no production rollout belongs to this source or disabled-default candidate task
-client: passed
+client: required
 client_evidence: exact-source hosted native lanes passed 138 baseline cases, two endpoint cases, the AWG binding case and four runtime acceptance cases; real local QR encode/decode passed
-artifact: passed
+artifact: required
 artifact_evidence: real SOPS/age issuance and qrencode/zbar roundtrip passed; private cleanup, committed-error URI retention and credential exclusion passed
 ---
 
@@ -82,3 +82,10 @@ are fixed in source `447b8db214f9c31601675a4d6dd9668ac1c05bf2`.
   follow-up is APPROVE: no actionable finding remains in the diff; real operator
   credentials, deployment and physical-device acceptance remain outside scope.
   All applicable normal commit hooks passed without a bypass.
+
+## Additional review follow-up
+
+Five further findings require persisted registry authority, global device-name
+uniqueness, consistent interface-name grammar, AWG Make defaults and AWG-only
+reissuance after revocation. Final acceptance is reopened for their fixes and
+exact-source verification; earlier results above remain historical evidence.

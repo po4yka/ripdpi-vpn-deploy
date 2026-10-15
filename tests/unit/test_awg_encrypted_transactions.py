@@ -369,3 +369,83 @@ def test_uri_qr_uses_private_uri_and_preserves_committed_failure(encrypted, faul
         assert selected['uuid'] in output.read_text()
         assert output.stat().st_mode & 0o777 == 0o600
         assert not stages
+
+
+@pytest.mark.parametrize('target', ['awg1', '0awg', 'awg.0'])
+def test_awg_only_reissuance_preserves_other_device_state(encrypted, target):
+    path, _ = encrypted
+    def rename(doc):
+        doc['amneziawg_secrets']['instances'][1]['name'] = target
+        return doc, {}
+    publisher.operate(path, rename)
+    issue(path, 'first', 'awg0')
+    def metadata(doc):
+        doc['client_registry']['first'].update(status='active', formats=['ripdpi'],
+            token_hash_prefix='9f86d081', token_expires='2026-12-31',
+            last_payload_identity={'source': 'a' * 64, 'outputs': 'b' * 64})
+        return doc, {}
+    publisher.operate(path, metadata)
+    issued = decrypt(path)
+    old_private = issued['client_registry']['first']['awg_private_key']
+    publisher.operate(path, lambda doc: revoke(doc, {}, 'first', 'upcloud:fixture', 'awg0'))
+    revoked = decrypt(path)
+    issue(path, 'first', target)
+    final = decrypt(path)
+    entry = final['client_registry']['first']
+    assert entry['awg_private_key'] != old_private
+    assert public_key(entry['awg_private_key']) == final['amneziawg_secrets']['instances'][1]['peers'][-1]['public_key']
+    assert entry['awg_binding']['instance'] == target
+    retained = {k: v for k, v in revoked['client_registry']['first'].items() if not k.startswith('awg_')}
+    assert {k: v for k, v in entry.items() if not k.startswith('awg_')} == retained
+    assert final['xray'] == issued['xray'] and final['unrelated'] == issued['unrelated']
+    assert final['amneziawg_secrets']['instances'][0] == revoked['amneziawg_secrets']['instances'][0]
+    assert export(final, {}, 'first', 'upcloud:fixture', target, '192.0.2.1')['peer']['endpoint'].endswith(':51821')
+
+
+def test_make_awg_defaults_are_real_enrollment_and_revocation(encrypted):
+    path, _ = encrypted
+    root = Path(__file__).resolve().parents[2]
+    environment = {k: v for k, v in os.environ.items() if k not in ('PROVIDER', 'ENV', 'MAKEFILES', 'MAKEFLAGS', 'GNUMAKEFLAGS', 'MFLAGS')}
+    for action in ('awg-issue', 'awg-revoke'):
+        result = subprocess.run(['make', action, 'CLIENT=default-device', f'SOPS_FILE={path}', 'AWG_INSTANCE=awg0'],
+                                cwd=root, env=environment, capture_output=True, timeout=30)
+        assert result.returncode == 0, result.stderr
+        entry = decrypt(path)['client_registry']['default-device']
+        assert entry['awg_binding'] == ({'provider': 'upcloud', 'environment': 'prod', 'instance': 'awg0'} if action == 'awg-issue' else None)
+
+
+@pytest.mark.parametrize('fault', ['private', 'fingerprint', 'binding-missing', 'global-revoked', 'all-profiles'])
+def test_invalid_reissuance_preserves_encrypted_authority(encrypted, fault):
+    path, _ = encrypted
+    issue(path, 'first', 'awg0')
+    publisher.operate(path, lambda doc: revoke(doc, {}, 'first', 'upcloud:fixture', 'awg0'))
+    def corrupt(doc):
+        entry = doc['client_registry']['first']
+        if fault == 'private':
+            entry['awg_private_key'] = 'retained-private-material'
+        elif fault == 'fingerprint':
+            entry['awg_public_key_fingerprint'] = 'retained-fingerprint'
+        elif fault == 'binding-missing':
+            del entry['awg_binding']
+        elif fault == 'global-revoked':
+            entry['status'] = 'revoked'
+        return doc, {}
+    publisher.operate(path, corrupt)
+    before = path.read_bytes()
+    with pytest.raises(ValueError, match='device-already-enrolled'):
+        publisher.operate(path, lambda doc: enroll(doc, {}, 'first', 'upcloud:fixture', 'awg1', all_profiles=fault == 'all-profiles'))
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize('variable', ['CLIENT', 'SOPS_FILE', 'PROVIDER', 'ENV', 'AWG_INSTANCE', 'COHORT'])
+def test_awg_make_inputs_cannot_expand_make_functions(encrypted, variable):
+    path, _ = encrypted
+    marker = path.parent / 'make-function-expanded'
+    values = {'CLIENT': 'literal-device', 'SOPS_FILE': str(path), 'PROVIDER': 'upcloud',
+              'ENV': 'fixture', 'AWG_INSTANCE': 'awg0', 'COHORT': ''}
+    values[variable] = '$(shell touch ' + str(marker) + ')'
+    before = path.read_bytes()
+    result = subprocess.run(['make', 'awg-issue', *[key + '=' + value for key, value in values.items()]],
+                            cwd=Path(__file__).resolve().parents[2], capture_output=True, timeout=30)
+    assert result.returncode != 0
+    assert not marker.exists() and path.read_bytes() == before

@@ -35,7 +35,7 @@ Deliver authoritative AmneziaWG device enrollment and client bindings. Implement
 - [x] SCR-1791618044456243 Implement the canonical effective AWG binding and coherent schema and caller migration #feature !high @item:SCR-1791618039091425
 - [x] SCR-1791618045140064 Deliver selected-instance pool enrollment and revocation with encrypted transaction regressions #feature !high @item:SCR-1791618039091425
 - [x] SCR-1791618045793096 Emit and resolve exact bound configurations across standalone bundle and liveness consumers #feature !high @item:SCR-1791618039091425
-- [x] SCR-1791618046582572 Prove authenticated two-instance traffic and failure preservation then complete source review gates #feature !high @item:SCR-1791618039091425
+- [ ] SCR-1791618046582572 Prove authenticated two-instance traffic and failure preservation then complete source review gates #feature !high @item:SCR-1791618039091425
 
 ## Verification
 

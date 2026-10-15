@@ -24,6 +24,9 @@ installs the pinned Python environment and checksum-verified SOPS with age.
 URI QR boundary tests consume actual encrypted issuance and inspect the exact
 codec input; failure retains the private URI for recovery. Dash-prefixed device
 names exercise both the shell wrapper and Make issuance/revocation surfaces.
+Binding cases reject absent registry authority and cross-instance duplicate
+devices. Real encrypted Make defaults and AWG-only revoke/reissue cases preserve
+non-AWG registry fields; schema tests share runtime interface-name boundaries.
 
 XHTTP endpoint acceptance is a separate complete target within the native job.
 Its cases and the existing native/RTA lanes form a disjoint complete collection,

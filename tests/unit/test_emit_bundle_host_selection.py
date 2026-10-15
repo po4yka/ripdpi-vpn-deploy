@@ -82,6 +82,8 @@ def test_bundle_uses_feature_host_and_emits_ingress_topology(
     secrets.write_text(
         json.dumps(
             {
+                "client_registry": {"android-ripdpi": {"status": "active", "awg_binding": {
+                    "provider": "vultr", "environment": "p2", "instance": "awg0"}}},
                 "amneziawg_secrets": {"instances": [{"name": "awg0", "address_v4": "10.66.66.1/24", "address_v6": "fd42:42:42::1/64",
                     "server_private_key": base64.b64encode(bytes([8]) * 32).decode(),
                     "listen_port": 51820,

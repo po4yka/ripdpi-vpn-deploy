@@ -47,14 +47,18 @@ def resolve_binding(document, context, client, host, instance=None, *, enrollmen
     defaults, cohort = context.get("amneziawg", {}), context.get("amneziawg_cohort", {})
     if awg_errors(raw, defaults, cohort):
         raise BindingError("invalid-awg-contract")
+    instances = effective_awg_instances(raw, defaults, cohort)
+    peer_count = sum(peer["name"] == client for item in instances for peer in item["peers"])
+    if enrollment and peer_count:
+        raise BindingError("device-already-enrolled")
+    if peer_count > 1:
+        raise BindingError("ambiguous-device-binding")
     matches = []
-    for index, effective in enumerate(effective_awg_instances(raw, defaults, cohort)):
+    for index, effective in enumerate(instances):
         if instance is not None and effective["name"] != instance:
             continue
         peers = [peer for peer in effective["peers"] if peer["name"] == client]
         if enrollment:
-            if peers:
-                raise BindingError("device-already-enrolled")
             matches.append(DeviceBinding(provider, environment, index, effective, {}))
         elif peers:
             if peers[0].get("address_kind", "device") != "device":
@@ -73,12 +77,11 @@ def resolve_binding(document, context, client, host, instance=None, *, enrollmen
     if len(matches) != 1:
         raise BindingError("ambiguous-device-binding")
     result = matches[0]
-    if not enrollment and "client_registry" in document:
+    if not enrollment:
         try:
             entry = document["client_registry"][client]
             if (entry["awg_binding"] != result.identity
-                    or entry["status"] not in ("issued", "delivered", "active", "stale")
-):
+                    or entry["status"] not in ("issued", "delivered", "active", "stale")):
                 raise ValueError
         except (ValueError, KeyError, TypeError):
             raise BindingError("invalid-registry-binding") from None

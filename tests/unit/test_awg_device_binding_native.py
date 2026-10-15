@@ -153,6 +153,21 @@ def test_encrypted_two_instance_tcp_udp_export_revocation_and_rejection(encrypte
         candidate.write_text(native_config(render_template(ROOT / 'ansible/roles/amneziawg/templates/awg0.conf.j2', values)))
         command(['ip', 'netns', 'exec', f'awgs-{token}-0', str(tools), 'setconf', names[0], str(candidate)])
         assert probe(0) != 0 and probe(1) == 0, 'revocation must remove only the selected authenticated device'
+        # Reissue the same device without replacing its other transport/registry state.
+        command([sys.executable, str(ROOT / "scripts/awg_client.py"), "enroll", "new0", "--host", "upcloud:fixture", "--instance", names[0], "--file", str(path)])
+        reissued = decrypt(path)
+        assert reissued['amneziawg_secrets']['instances'][1] == issued['amneziawg_secrets']['instances'][1]
+        refreshed = reissued['client_registry']['new0']
+        assert refreshed['awg_private_key'] != issued['client_registry']['new0']['awg_private_key']
+        values['_inst'] = reissued['amneziawg_secrets']['instances'][0]
+        candidate.write_text(native_config(render_template(ROOT / 'ansible/roles/amneziawg/templates/awg0.conf.j2', values)))
+        command(['ip', 'netns', 'exec', f'awgs-{token}-0', str(tools), 'setconf', names[0], str(candidate)])
+        assert probe(0) != 0 and probe(1) == 0, 'reissuance must not admit the previous device key'
+        block = export(reissued, {}, 'new0', 'upcloud:fixture', names[0], '192.0.2.1')
+        client_candidate = tmp_path / f'c{token}0.conf'
+        client_candidate.write_text(native_config(config(block).replace('<CLIENT_PRIVATE_KEY>', refreshed['awg_private_key'])))
+        command(['ip', 'netns', 'exec', f'awgc-{token}-0', str(tools), 'setconf', f'c{token}0', str(client_candidate)])
+        assert probe(0) == 0 and probe(1) == 0, 'fresh reissued keys must restore TCP/UDP without affecting the other device'
     finally:
         profile.unlink(missing_ok=True)
         for process in reversed(processes):

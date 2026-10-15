@@ -1093,3 +1093,29 @@ def test_unbound_awg_registry_requires_device_absent_from_every_instance(filled,
     if retained_instance is not None:
         assert 'client_registry.phone.awg_binding' in result.stderr
         assert 'retained' in result.stderr
+
+
+@pytest.mark.parametrize('name', ['0awg', 'awg.0', 'a' * 15])
+def test_binding_accepts_same_instance_names_as_runtime(filled, tmp_path, name):
+    import hashlib
+    from awg_client import public_key
+    private = base64.b64encode(bytes([8]) * 32).decode()
+    pubkey = public_key(private)
+    instance = filled['amneziawg_secrets']['instances'][0]
+    instance['name'] = name
+    instance['peers'][0]['public_key'] = pubkey
+    filled['client_registry'] = {'phone': _registry_entry(
+        awg_binding={'provider': 'upcloud', 'environment': 'prod', 'instance': name},
+        awg_public_key_fingerprint='sha256:' + hashlib.sha256(pubkey.encode()).hexdigest()[:16])}
+    result = _run_validator_on(filled, tmp_path)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize('name', ['-awg', '.awg', 'a' * 16, 'awg0\n'])
+def test_instance_binding_name_boundaries_are_shared(filled, name):
+    filled['amneziawg_secrets']['instances'][0]['name'] = name
+    filled['client_registry'] = {'phone': _registry_entry(
+        awg_binding={'provider': 'upcloud', 'environment': 'prod', 'instance': name})}
+    paths = [tuple(error.absolute_path) for error in _validator().iter_errors(filled)]
+    assert ('client_registry', 'phone', 'awg_binding') in paths
+    assert ('amneziawg_secrets', 'instances', 0, 'name') in paths

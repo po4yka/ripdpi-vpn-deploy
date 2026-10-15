@@ -551,7 +551,7 @@ def _secret_plan(
                 raise ValueError
         else:
             binding = entry["awg_binding"]
-            selected = resolve_binding({"amneziawg_secrets": document["amneziawg_secrets"]}, {}, client, host, binding["instance"])
+            selected = resolve_binding(document, {}, client, host, binding["instance"])
             if binding != selected.identity:
                 raise ValueError
             awg_instance = selected.index

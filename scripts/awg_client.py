@@ -55,7 +55,13 @@ def enroll(document, context, name, host, instance=None, *, all_profiles=False):
     binding = resolve_binding(document, context, name, host, instance, enrollment=True)
     address = allocate_address(binding.instance)
     registry = document.setdefault('client_registry', {})
-    if not isinstance(registry, dict) or name in registry:
+    if not isinstance(registry, dict):
+        raise BindingError('invalid-registry-binding')
+    previous = registry.get(name)
+    if name in registry and (all_profiles or not isinstance(previous, dict)
+            or 'awg_binding' not in previous or previous['awg_binding'] is not None
+            or previous.get('awg_private_key') != '' or previous.get('awg_public_key_fingerprint') != ''
+            or previous.get('status') not in ('issued', 'delivered', 'active', 'stale')):
         raise BindingError('device-already-enrolled')
     private = base64.b64encode(secrets.token_bytes(32)).decode()
     public = public_key(private)
@@ -83,6 +89,9 @@ def enroll(document, context, name, host, instance=None, *, all_profiles=False):
                       'awg_public_key_fingerprint': 'sha256:' + hashlib.sha256(public.encode()).hexdigest()[:16],
                       'awg_private_key': private, 'awg_binding': binding.identity,
                       'last_payload_identity': {'source': '', 'outputs': ''}}
+    if previous is not None:
+        refreshed = {key: registry[name][key] for key in ('awg_binding', 'awg_private_key', 'awg_public_key_fingerprint')}
+        registry[name] = {**previous, **refreshed}
     if transport_errors(document, context, sections=["xray", "hysteria", "awg"] if all_profiles else ["awg"]):
         raise BindingError('invalid-enrollment-contract')
     return document, {'client': name, 'binding': binding.identity, 'allowed_ips': address}

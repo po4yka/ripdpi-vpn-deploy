@@ -11,6 +11,8 @@ else ifneq ($(filter awg-issue awg-revoke,$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error AWG device operations require exactly one make goal)
 endif
+PROVIDER ?= upcloud
+ENV ?= prod
 override AWG_CLIENT_LITERAL := $(value CLIENT)
 override AWG_SOPS_FILE_LITERAL := $(value SOPS_FILE)
 override AWG_PROVIDER_LITERAL := $(value PROVIDER)
@@ -18,7 +20,8 @@ override AWG_ENV_LITERAL := $(value ENV)
 override AWG_INSTANCE_LITERAL := $(value AWG_INSTANCE)
 override AWG_COHORT_LITERAL := $(value COHORT)
 export AWG_CLIENT_LITERAL AWG_SOPS_FILE_LITERAL AWG_PROVIDER_LITERAL AWG_ENV_LITERAL AWG_INSTANCE_LITERAL AWG_COHORT_LITERAL
-unexport MAKEFLAGS MFLAGS
+unexport CLIENT SOPS_FILE PROVIDER ENV AWG_INSTANCE COHORT MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
 .PHONY: awg-issue awg-revoke
 awg-issue awg-revoke:
 	@test -n "$${AWG_CLIENT_LITERAL:-}" && test -n "$${AWG_SOPS_FILE_LITERAL:-}" && test -n "$${AWG_INSTANCE_LITERAL:-}" || { echo "CLIENT, SOPS_FILE and AWG_INSTANCE are required" >&2; exit 1; }
