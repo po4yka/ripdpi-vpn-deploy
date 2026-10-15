@@ -98,6 +98,10 @@ def _registry_errors(doc: dict, *, allow_placeholders: bool = False) -> list[tup
         if binding is None:
             if private or fingerprint:
                 errors.append((path, "absent AWG binding must have no recovery material"))
+            if any(peer.get("name") == device
+                   for instance in doc.get("amneziawg_secrets", {}).get("instances", [])
+                   for peer in instance.get("peers", [])):
+                errors.append((path, "absent AWG binding has a retained device peer"))
             continue
         try:
             if not allow_placeholders and (PLACEHOLDER.fullmatch(private) or PLACEHOLDER.fullmatch(fingerprint)):

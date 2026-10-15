@@ -10,4 +10,4 @@ server_ip="$(PROVIDER="$provider" ENV="$deploy_env" "${repo_root}/scripts/terraf
 output_args=()
 [[ -z "${OUTPUT:-}" ]] || output_args+=(--output "$OUTPUT")
 sops --decrypt --output-type json "$sops_file" 2>/dev/null | \
-  python3 "${repo_root}/scripts/awg_client.py" config "$1" --host "${provider}:${deploy_env}" --endpoint "$server_ip" "${output_args[@]}"
+  python3 "${repo_root}/scripts/awg_client.py" config --host "${provider}:${deploy_env}" --endpoint "$server_ip" "${output_args[@]}" -- "$1"

@@ -171,9 +171,9 @@ nginx_xhttp.{server_name, cert_pem, key_pem}
 hysteria.{version, linux_*_sha256, cert_pem, key_pem, bandwidth_*, salamander_*, clients[*]}
 geodata.{geosite_url, geoip_url, geosite_sha256, geoip_sha256, install_dir, refresh_interval}
 amneziawg_go_version + amneziawg_go_commit / amneziawg_tools_version + amneziawg_tools_commit
-amneziawg_secrets.{server_private_key, jc/jmin/jmax/s1/s2/h1-h4, peers[*]}
+amneziawg_secrets.instances[*].{name, listen_port, address_v4, address_v6, server_private_key, jc/jmin/jmax/s1-s4/h1-h4, peers[*]}
 backup.restic_password
-client_registry.<device>.{status, issued_at, formats, hosts, cohorts, token_hash_prefix, token_expires, awg_public_key_fingerprint, awg_private_key, last_payload_identity}
+client_registry.<device>.{status, issued_at, formats, hosts, cohorts, token_hash_prefix, token_expires, awg_binding, awg_public_key_fingerprint, awg_private_key, last_payload_identity}
 subscription.{port, server_name}     # optional
 ```
 
@@ -185,6 +185,18 @@ revoked | burned`), the AWG client private key as a recovery copy (the
 device-local key stays primary), and the payload identity
 (`deploy-source-identity` digest + Terraform outputs hash) recorded at last
 delivery for `make client-drift CLIENT=<device>`.
+
+AWG uses a nonempty `instances` list as its sole server and peer authority,
+including single-instance hosts. Top-level server keys, parameters and peers
+are rejected. Each AWG device registry entry has an explicit
+`awg_binding: {provider: upcloud, environment: prod, instance: awg0}` identifying
+the instance containing its uniquely named peer. Its recovery private key and
+public-key fingerprint must match that peer. After AWG-only revocation,
+`awg_binding` is `null`, both recovery fields are empty strings, and no instance
+may retain a peer with that device name. Other transport credentials and the
+global device lifecycle status are preserved. Existing private documents need
+an explicit migration and validation before rollout; source updates never
+rewrite them automatically.
 
 ## Rotation
 

@@ -17,7 +17,12 @@ the direct carrier document; the official sing-box format still requires a
 supported proxy outbound. Private recipient output uses no-clobber `OUTPUT`
 publication in an owner-only directory. URI issuance also requires a private
 new output reserved before source mutation; transaction failure removes only
-that owned artifact. Credential-bearing URIs never enter metadata stdout.
+that owned artifact. Credential-bearing URIs never enter metadata stdout. URI QR generation reserves
+its own private recipient file, reads the VLESS URI from that file, and retains
+it if QR rendering fails after enrollment. AWG CLI callers put the device name
+after `--`, so dash-prefixed identifiers cannot become options or audit-only
+successes. A null AWG registry binding also requires absence of that device
+from every instance peer collection.
 
 CI selects both native integration and complete transport acceptance together.
 Each has its own disposable runner; the consumer lab never adopts or removes

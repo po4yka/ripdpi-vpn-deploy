@@ -16,7 +16,7 @@ if [[ "$emit_uri" == 1 ]]; then
   [[ -n "${OUTPUT:-}" ]] || { echo "OUTPUT=<new private recipient file> required with --emit-uri" >&2; exit 2; }
   uri_args+=(--emit-uri --output "$OUTPUT")
 fi
-python3 "${repo_root}/scripts/awg_client.py" enroll "$1" --host "${provider}:${deploy_env}" \
-  --file "$sops_file" --all-profiles "${uri_args[@]}"
+python3 "${repo_root}/scripts/awg_client.py" enroll --host "${provider}:${deploy_env}" \
+  --file "$sops_file" --all-profiles "${uri_args[@]}" -- "$1"
 ENV="$deploy_env" PROVIDER="$provider" "${repo_root}/scripts/audit-log.sh" append-best-effort \
   --action new-client --client "$1" --note "emit_uri=${emit_uri}"

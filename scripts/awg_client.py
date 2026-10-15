@@ -133,7 +133,7 @@ def committed_result(metadata):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, epilog="Put -- before a device name that begins with a dash.")
     parser.add_argument('action', choices=['enroll', 'revoke', 'bundle', 'config'])
     parser.add_argument('name')
     parser.add_argument('--host', required=True)

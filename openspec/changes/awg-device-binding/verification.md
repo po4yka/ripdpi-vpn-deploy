@@ -1,29 +1,30 @@
 ---
 task_id: SCR-1791618039091425
 change: awg-device-binding
-commit_sha: 7656701b080753f5e84c8fce74ab080441d13be6
-local: passed
-local_evidence: 'make check passed: 6859 portable tests, 22 subtests, 59 shell cases, 303 CLI cases; 163 snapshots and pinned client parsers passed'
-remote_ci: passed
-remote_ci_evidence: 'CI run 38600990479 and CodeQL run 38600990502 succeeded on the recorded source: 93 successful checks and one optional neutral check; 138 baseline native, two endpoint native, one AWG binding and four runtime acceptance cases passed'
+commit_sha: null
+local: required
+local_evidence: 'review follow-up: run all affected and complete local gates after URI QR, positional-name, retained-peer and documentation fixes'
+remote_ci: required
+remote_ci_evidence: review follow-up requires terminal exact-source hosted checks; initial accepted source and runs remain documented below
 dry_run: not_applicable
 dry_run_evidence: source capability uses isolated native proof; real inventory/controller rehearsal needs separate authorization
 staging: not_applicable
 staging_evidence: source contract uses isolated native acceptance; actual fleet rehearsal is separately authorized
 live: not_applicable
 live_evidence: no production rollout belongs to this source or disabled-default candidate task
-client: passed
-client_evidence: Exact pinned AWG Go v0.2.12 and tools v1.0.20241018 completed selected canonical CLI exports, two-instance authenticated TCP/UDP, wrong-key/header rejection and isolated revocation on hosted AMD64; additional local ARM64 native acceptance passed
-artifact: passed
-artifact_evidence: Private recipient publication, original ciphertext retention, safe post-commit uncertainty and metadata-only URI output passed real SOPS/age regressions; 163 snapshots match
+client: required
+client_evidence: repeat exact native/client lanes after the caller argument-boundary corrections and verify real QR codec output
+artifact: required
+artifact_evidence: verify private URI/QR output, committed-error retention and no metadata credential leakage after review fixes
 ---
+
 
 
 # Verification
 
 ## Requirement evidence
 
-The recorded source passed the complete local gate, independent spec and standards/security reviews, and terminal exact-source hosted checks. Acceptance covers source and isolated native clients; no real inventory, private operator migration or deployment is claimed.
+Initial implementation source `7656701b080753f5e84c8fce74ab080441d13be6` passed the gates documented below. Review follow-up is in progress; its final gates remain required. Acceptance covers source and isolated native clients; no real inventory, private operator migration or deployment is claimed.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
@@ -48,3 +49,10 @@ The recorded source passed the complete local gate, independent spec and standar
 - An additional isolated local ARM64 AWG case passed in 8.60 seconds using the same exact AWG source commits; its owned container and staging copy were retired. Local emulated Molecule preparation could not establish its temporary-directory prerequisite; the complete hosted role and full-stack lanes subsequently passed on the recorded source.
 - Independent spec and standards/security reviews approved the final implementation with no remaining actionable findings. Normal commit hooks passed; no gate was bypassed. No deployment, real credential issuance, physical-device acceptance or live fleet claim belongs to this source task.
 - The public bundle schema and cohort fingerprint algorithm are unchanged. Conditional consumer federation could not run because available client checkouts lack `tools/tasking/project.json`; no new cross-repository wire contract is introduced.
+
+## Review follow-up
+
+PR #298 identified the URI QR caller missing private output, dash-prefixed names
+being interpreted as options, null bindings retaining live device peers, stale
+secrets-shape documentation, and a mixed-import CodeQL note. The final acceptance
+step is reopened until fixes and their affected/full source gates complete.

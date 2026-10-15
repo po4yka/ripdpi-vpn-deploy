@@ -225,8 +225,8 @@ for i in "${!host_pairs[@]}"; do
         exit 1
       fi
       server_ip="$(PROVIDER="$prov" ENV="$env_name" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw server_ipv4)"
-      awg_obj="$(python3 "${REPO_ROOT}/scripts/awg_client.py" bundle "$CLIENT_NAME" \
-        --host "${prov}:${env_name}" --cohort "$cohort" --endpoint "$server_ip" < "$secrets_tmp")"
+      awg_obj="$(python3 "${REPO_ROOT}/scripts/awg_client.py" bundle \
+        --host "${prov}:${env_name}" --cohort "$cohort" --endpoint "$server_ip" -- "$CLIENT_NAME" < "$secrets_tmp")"
       AWG_BLOCK="$(jq -nc --argjson obj "$awg_obj" '[$obj]')"
     fi
   fi

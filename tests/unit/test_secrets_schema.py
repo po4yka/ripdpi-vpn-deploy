@@ -1074,3 +1074,22 @@ def test_coverage_checker_requires_client_registry():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     assert "client_registry" in module.EXPECTED_SECRET_TOPLEVEL
+
+
+@pytest.mark.parametrize('retained_instance', [None, 0, 1])
+def test_unbound_awg_registry_requires_device_absent_from_every_instance(filled, tmp_path, retained_instance):
+    instances = filled['amneziawg_secrets']['instances']
+    extra = deepcopy(instances[0])
+    extra.update(name='awg1', listen_port=51821, address_v4='10.67.67.1/24',
+                 address_v6='fd42:43::1/64', server_private_key=base64.b64encode(bytes([77]) * 32).decode(), peers=[])
+    instances.append(extra)
+    peer = instances[0]['peers'].pop(0)
+    if retained_instance is not None:
+        peer['allowed_ips'] = ('10.66.66.2/32', '10.67.67.2/32')[retained_instance]
+        instances[retained_instance]['peers'].append(peer)
+    filled['client_registry'] = {'phone': _registry_entry(awg_binding=None, awg_private_key='', awg_public_key_fingerprint='')}
+    result = _run_validator_on(filled, tmp_path)
+    assert result.returncode == (0 if retained_instance is None else 1), result.stderr
+    if retained_instance is not None:
+        assert 'client_registry.phone.awg_binding' in result.stderr
+        assert 'retained' in result.stderr

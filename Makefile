@@ -22,9 +22,9 @@ unexport MAKEFLAGS MFLAGS
 .PHONY: awg-issue awg-revoke
 awg-issue awg-revoke:
 	@test -n "$${AWG_CLIENT_LITERAL:-}" && test -n "$${AWG_SOPS_FILE_LITERAL:-}" && test -n "$${AWG_INSTANCE_LITERAL:-}" || { echo "CLIENT, SOPS_FILE and AWG_INSTANCE are required" >&2; exit 1; }
-	@python3 scripts/awg_client.py $(if $(filter awg-issue,$(MAKECMDGOALS)),enroll,revoke) "$${AWG_CLIENT_LITERAL}" \
+	@python3 scripts/awg_client.py $(if $(filter awg-issue,$(MAKECMDGOALS)),enroll,revoke) \
 	  --file "$${AWG_SOPS_FILE_LITERAL}" --host "$${AWG_PROVIDER_LITERAL}:$${AWG_ENV_LITERAL}" \
-	  --instance "$${AWG_INSTANCE_LITERAL}" --cohort "$${AWG_COHORT_LITERAL}"
+	  --instance "$${AWG_INSTANCE_LITERAL}" --cohort "$${AWG_COHORT_LITERAL}" -- "$${AWG_CLIENT_LITERAL}"
 else ifneq ($(filter prepare-disposable-promotion-intent,$(MAKECMDGOALS)),)
 ifneq ($(MAKECMDGOALS),prepare-disposable-promotion-intent)
 $(error promotion intent preparation requires exactly one make goal)
@@ -1393,12 +1393,18 @@ snell-refinement:
 	@test -n "$(BUNDLE)" -a -n "$(CONFIG)" -a -n "$(VANTAGE)" || { echo "usage: make snell-refinement BUNDLE=sing-box.json CONFIG=snell-refinement.yaml VANTAGE=technical-id"; exit 1; }
 	python3 ./scripts/snell-refinement.py --bundle "$(BUNDLE)" --config "$(CONFIG)" --vantage "$(VANTAGE)" --state-dir "$${XDG_STATE_HOME:-$${HOME}/.local/state}/vpn-deploy/snell-refinement"
 
+ifneq ($(filter emit-qr,$(MAKECMDGOALS)),)
+override QR_CLIENT_LITERAL := $(value CLIENT)
+override QR_TYPE_LITERAL := $(value TYPE)
+override QR_OUT_LITERAL := $(value OUT)
+export QR_CLIENT_LITERAL QR_TYPE_LITERAL QR_OUT_LITERAL
+endif
+
 emit-qr:
-	@test -n "$(CLIENT)" || { echo "usage: make emit-qr CLIENT=phone [TYPE=singbox|uri] [OUT=phone.png]"; exit 1; }
+	@test -n "$${QR_CLIENT_LITERAL}" || { echo "usage: make emit-qr CLIENT=phone [TYPE=singbox|uri] [OUT=phone.png]"; exit 1; }
 	HOSTS="$(HOSTS)" COHORTS="$(COHORTS)" SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" \
-	./scripts/emit-qr.sh $(CLIENT) \
-	  $(if $(TYPE),--type $(TYPE)) \
-	  $(if $(OUT),--out $(OUT))
+	./scripts/emit-qr.sh "$${QR_CLIENT_LITERAL}" \
+	  --type "$${QR_TYPE_LITERAL:-singbox}" --out "$${QR_OUT_LITERAL}"
 
 check-certs:
 	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run 'make decrypt'"; exit 1; }

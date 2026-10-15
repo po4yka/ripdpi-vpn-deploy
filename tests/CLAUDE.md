@@ -21,6 +21,9 @@ TCP/UDP traffic, wrong keys/headers and selected revocation with the other
 instance still working. Portable mocks never stand in for this runtime proof.
 Atomic enrollment Bats cases run actual encrypted transactions too; their CI lane
 installs the pinned Python environment and checksum-verified SOPS with age.
+URI QR boundary tests consume actual encrypted issuance and inspect the exact
+codec input; failure retains the private URI for recovery. Dash-prefixed device
+names exercise both the shell wrapper and Make issuance/revocation surfaces.
 
 XHTTP endpoint acceptance is a separate complete target within the native job.
 Its cases and the existing native/RTA lanes form a disjoint complete collection,
