@@ -29,7 +29,7 @@ awg-issue awg-revoke:
 	  --file "$${AWG_SOPS_FILE_LITERAL}" --host "$${AWG_PROVIDER_LITERAL}:$${AWG_ENV_LITERAL}" \
 	  --instance "$${AWG_INSTANCE_LITERAL}" --cohort "$${AWG_COHORT_LITERAL}" -- "$${AWG_CLIENT_LITERAL}"
 	@./scripts/audit-log.sh append-best-effort --action "$(MAKECMDGOALS)" --client "$${AWG_CLIENT_LITERAL}" \
-	  --provider "$${AWG_PROVIDER_LITERAL}" --env "$${AWG_ENV_LITERAL}" --note "instance=$${AWG_INSTANCE_LITERAL}"
+	  --provider "$${AWG_PROVIDER_LITERAL}" --env "$${AWG_ENV_LITERAL}" --note "instance=$${AWG_INSTANCE_LITERAL}" >&2
 else ifneq ($(filter prepare-disposable-promotion-intent,$(MAKECMDGOALS)),)
 ifneq ($(MAKECMDGOALS),prepare-disposable-promotion-intent)
 $(error promotion intent preparation requires exactly one make goal)

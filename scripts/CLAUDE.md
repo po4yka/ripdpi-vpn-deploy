@@ -17,7 +17,8 @@ AWG Make targets apply normal host defaults and unexport original inputs after
 literal capture, preventing Make function expansion during environment export.
 Host environments follow the lowercase, alphanumeric-leading registry grammar.
 Make AWG operations append best-effort encrypted audit records only after a
-successful transaction. Encrypted source, lock and candidate opens are
+successful transaction; audit status stays on stderr so stdout remains JSON.
+Encrypted source, lock and candidate opens are
 nonblocking before regular-file validation, so a FIFO cannot hold the writer lock.
 First-time subscription registry entries initialize a null AWG binding and
 empty recovery fields; existing AWG authority survives delivery metadata updates.

@@ -19,4 +19,4 @@ fi
 python3 "${repo_root}/scripts/awg_client.py" enroll --host "${provider}:${deploy_env}" \
   --file "$sops_file" --all-profiles "${uri_args[@]}" -- "$1"
 ENV="$deploy_env" PROVIDER="$provider" "${repo_root}/scripts/audit-log.sh" append-best-effort \
-  --action new-client --client "$1" --note "emit_uri=${emit_uri}"
+  --action new-client --client "$1" --note "emit_uri=${emit_uri}" >&2

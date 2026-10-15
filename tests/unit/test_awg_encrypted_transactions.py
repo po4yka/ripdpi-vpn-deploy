@@ -490,8 +490,10 @@ def test_make_audits_successful_awg_transactions_only(encrypted):
     def invoke(action):
         return subprocess.run(['make', action, 'CLIENT=audited', f'SOPS_FILE={path}', 'AWG_INSTANCE=awg0',
                                'PROVIDER=upcloud', 'ENV=fixture'], cwd=root, env=environment, capture_output=True, timeout=30)
-    assert invoke('awg-issue').returncode == 0
-    assert invoke('awg-revoke').returncode == 0
+    for action in ('awg-issue', 'awg-revoke'):
+        result = invoke(action)
+        assert result.returncode == 0, result.stderr
+        assert json.loads(result.stdout)['client'] == 'audited'
     assert log.exists()
     records = subprocess.run(['bash', str(root / 'scripts/audit-log.sh'), 'read'], cwd=root,
                              env=environment, capture_output=True, check=True).stdout.splitlines()
