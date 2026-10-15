@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+Post-activation retirement removes recorded obsolete configuration paths but
+stops only names absent from the accepted instance set. Moving a configuration
+directory must not stop a newly accepted unit with the same instance name.
+
 AWG candidate activation retains the prior complete firewall file through service
 acceptance. Failure restores it atomically before prior tunnels restart, so
 changed peer claims cannot strand the restored addresses. A fresh host retains

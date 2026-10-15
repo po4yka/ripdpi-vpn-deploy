@@ -60,9 +60,9 @@ def test_recorded_two_to_one_rename_and_repeated_disable_preserve_foreign_unit(
             timeout=10,
         )
 
-    def converge(previous, current):
+    def converge(previous, current, previous_configs=None):
         record.write_text(
-            json.dumps({"schema": 1, "config_dir": str(configs), "instances": previous})
+            json.dumps({"schema": 1, "config_dir": str(previous_configs or configs), "instances": previous})
         )
         record.chmod(0o600)
         play = [
@@ -123,6 +123,15 @@ def test_recorded_two_to_one_rename_and_repeated_disable_preserve_foreign_unit(
         assert ctl("is-active", units[1], check=False).returncode != 0
         assert ctl("is-enabled", units[1], check=False).stdout.strip() == "disabled"
         assert not (configs / (b + ".conf")).exists(), output
+        old_configs = tmp_path / "previous-configs"
+        old_configs.mkdir()
+        old_path = old_configs / (a + ".conf")
+        old_path.write_text("previous owned configuration\n")
+        output = converge([a], [a], previous_configs=old_configs)
+        assert not old_path.exists(), output
+        assert (configs / (a + ".conf")).exists()
+        assert ctl("is-active", units[0]).stdout.strip() == "active"
+        assert ctl("is-enabled", units[0]).stdout.strip() == "enabled"
         converge([a], [c])
         assert ctl("is-active", units[0], check=False).returncode != 0
         assert not (configs / (a + ".conf")).exists()
