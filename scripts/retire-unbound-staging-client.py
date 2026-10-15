@@ -1010,7 +1010,7 @@ def _retire_registered(
 
         final_document = _decrypt(paths["sops_file"], runner)
         try:
-            remaining = executor._client_secret_paths(final_document, client)
+            remaining = executor._client_secret_paths(final_document, client, intent["host"])
         except Exception as exc:
             raise RetirementError("retirement-secrets") from exc
         if remaining or _xray_cohort_references(final_document, client):

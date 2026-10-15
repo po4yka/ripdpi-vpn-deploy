@@ -313,6 +313,7 @@ client_registry:
     awg_public_key_fingerprint: "sha256:$(printf '%s' "$peer_pub" | sha256sum | cut -c1-16)"
     awg_binding: {provider: "${PROVIDER:?}", environment: "${ENV:?}", instance: awg0}
     awg_private_key: "${peer_priv}"
+    awg_delivery_host: ""
     last_payload_identity: {source: "", outputs: ""}
 YAML
 chmod 0600 "$OUT"

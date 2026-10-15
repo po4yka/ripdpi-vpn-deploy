@@ -984,6 +984,7 @@ def _registry_entry(**overrides):
         "token_expires": "2026-12-31",
         "awg_public_key_fingerprint": "REPLACE_" + "WITH_AWG_KEY_FINGERPRINT",
         "awg_private_key": base64.b64encode(bytes([8]) * 32).decode(),
+        "awg_delivery_host": "",
         "awg_binding": {"provider": "upcloud", "environment": "prod", "instance": "awg0"},
         "last_payload_identity": {"source": "", "outputs": ""},
     }
@@ -1151,4 +1152,4 @@ def test_encrypted_native_fixture_has_complete_device_authority():
     spec = importlib.util.spec_from_file_location('fixture_registry_validator', VALIDATOR)
     validator = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(validator)
-    assert validator._registry_errors(document()) == []
+    assert validator.registry_errors(document()) == []

@@ -178,7 +178,7 @@ def test_full_cleanup_handles_a_device_with_legitimately_revoked_awg(encrypted):
     doc = decrypt(path)
     doc['xray'] = {'clients': [{'name': 'first'}], 'cohorts': []}
     doc['hysteria'] = {'clients': [{'name': 'first'}]}
-    paths = executor_module()._client_secret_paths(doc, 'first')
+    paths = executor_module()._client_secret_paths(doc, 'first', 'upcloud:fixture')
     assert all('amneziawg_secrets' not in item for item in paths)
     paths, final = retirement_module()._secret_plan(doc, 'first', 'upcloud:fixture')
     assert final['xray']['clients'] == [] and final['hysteria']['clients'] == []
@@ -379,7 +379,11 @@ def test_uri_qr_uses_private_uri_and_preserves_committed_failure(encrypted, faul
 def test_awg_only_reissuance_preserves_other_device_state(encrypted, target):
     path, _ = encrypted
     def rename(doc):
+        previous_name = doc['amneziawg_secrets']['instances'][1]['name']
         doc['amneziawg_secrets']['instances'][1]['name'] = target
+        for entry in doc['client_registry'].values():
+            if entry['awg_binding'] and entry['awg_binding']['instance'] == previous_name:
+                entry['awg_binding']['instance'] = target
         return doc, {}
     publisher.operate(path, rename)
     issue(path, 'first', 'awg0')
@@ -503,3 +507,28 @@ def test_make_audits_successful_awg_transactions_only(encrypted):
     before = log.read_bytes()
     assert invoke('awg-revoke').returncode != 0
     assert log.read_bytes() == before
+
+
+@pytest.mark.parametrize('action', ['enroll', 'revoke'])
+@pytest.mark.parametrize('fault', ['entry-missing', 'wrong-key', 'wrong-fingerprint', 'wrong-instance'])
+def test_awg_mutations_refuse_unrelated_broken_registry_relationships(encrypted, action, fault):
+    path, _ = encrypted
+    if action == 'revoke':
+        issue(path, 'first', 'awg0')
+    def corrupt(doc):
+        entry = doc['client_registry']['device0']
+        if fault == 'entry-missing':
+            del doc['client_registry']['device0']
+        elif fault == 'wrong-key':
+            entry['awg_private_key'] = doc['amneziawg_secrets']['instances'][0]['server_private_key']
+        elif fault == 'wrong-fingerprint':
+            entry['awg_public_key_fingerprint'] = 'sha256:' + '0' * 16
+        else:
+            entry['awg_binding']['instance'] = 'awg1'
+        return doc, {}
+    publisher.operate(path, corrupt)
+    before = path.read_bytes()
+    with pytest.raises(ValueError, match='invalid-.*contract'):
+        publisher.operate(path, lambda doc: (enroll(doc, {}, 'first', 'upcloud:fixture', 'awg0')
+                                            if action == 'enroll' else revoke(doc, {}, 'first', 'upcloud:fixture', 'awg0')))
+    assert path.read_bytes() == before

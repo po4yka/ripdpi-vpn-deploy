@@ -54,7 +54,7 @@ def _retired_client(module, paths, runner):
         raise module.RetirementError("retirement-executor-client")
     document = module._decrypt(paths["sops_file"], runner)
     if executor._client_secret_paths(
-        document, intent["client"]
+        document, intent["client"], intent["host"]
     ) or module._xray_cohort_references(document, intent["client"]):
         raise module.RetirementError("retirement-executor-client")
     return intent, base, payload, journal

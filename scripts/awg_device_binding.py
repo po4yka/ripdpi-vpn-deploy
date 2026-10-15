@@ -34,14 +34,19 @@ class DeviceBinding:
                 "instance": self.instance["name"]}
 
 
-def resolve_binding(document, context, client, host, instance=None, *, enrollment=False):
-    if not isinstance(client, str) or NAME.fullmatch(client) is None:
-        raise BindingError("invalid-device-name")
+def host_identity(host):
     if not isinstance(host, str) or host.count(":") != 1:
         raise BindingError("invalid-host-binding")
     provider, environment = host.split(":")
     if provider not in PROVIDERS or ENVIRONMENT.fullmatch(environment) is None:
         raise BindingError("invalid-host-binding")
+    return provider, environment
+
+
+def resolve_binding(document, context, client, host, instance=None, *, enrollment=False):
+    if not isinstance(client, str) or NAME.fullmatch(client) is None:
+        raise BindingError("invalid-device-name")
+    provider, environment = host_identity(host)
     if not isinstance(document, dict) or not isinstance(context, dict):
         raise BindingError("invalid-awg-contract")
     raw = document.get("amneziawg_secrets")
@@ -123,6 +128,78 @@ def public_key(private):
         return base64.b64encode(result).decode()
     except (ValueError, TypeError):
         raise BindingError('invalid-awg-key') from None
+
+
+def registry_errors(doc: dict, *, allow_placeholders: bool = False, context: dict | None = None) -> list[tuple[str, str]]:
+    """Bind each recovery key and fingerprint to its named device instance."""
+    from transport_semantics import PLACEHOLDER
+    errors = []
+    registry = doc.get("client_registry") or {}
+    if not isinstance(registry, dict):
+        return [("client_registry", "must be a device mapping")]
+    for index, instance in enumerate(doc.get("amneziawg_secrets", {}).get("instances", [])):
+        for peer_index, peer in enumerate(instance.get("peers", [])):
+            if peer.get("address_kind", "device") != "device":
+                continue
+            entry = registry.get(peer["name"])
+            binding = entry.get("awg_binding") if isinstance(entry, dict) else None
+            if not isinstance(binding, dict) or binding.get("instance") != instance["name"]:
+                errors.append((f"amneziawg_secrets.instances.{index}.peers.{peer_index}",
+                               "device peer requires registry binding"))
+    for device, entry in registry.items():
+        if (not isinstance(entry, dict) or not {
+                "awg_binding", "awg_private_key", "awg_public_key_fingerprint", "awg_delivery_host"} <= entry.keys()):
+            errors.append((f"client_registry.{device}", "incomplete AWG registry entry"))
+            continue
+        delivery_host = entry["awg_delivery_host"]
+        if not isinstance(delivery_host, str):
+            errors.append((f"client_registry.{device}.awg_delivery_host", "invalid AWG delivery host"))
+        elif delivery_host:
+            try:
+                host_identity(delivery_host)
+                if not isinstance(entry.get("hosts"), list) or delivery_host not in entry["hosts"]:
+                    raise BindingError("invalid-host-binding")
+            except BindingError:
+                errors.append((f"client_registry.{device}.awg_delivery_host", "invalid AWG delivery host"))
+        binding = entry.get("awg_binding")
+        private = entry.get("awg_private_key", "")
+        fingerprint = entry.get("awg_public_key_fingerprint", "")
+        path = f"client_registry.{device}.awg_binding"
+        if not isinstance(private, str) or not isinstance(fingerprint, str):
+            errors.append((path, "invalid AWG recovery material"))
+            continue
+        if binding is None:
+            if private or fingerprint:
+                errors.append((path, "absent AWG binding must have no recovery material"))
+            if any(peer.get("name") == device
+                   for instance in doc.get("amneziawg_secrets", {}).get("instances", [])
+                   for peer in instance.get("peers", [])):
+                errors.append((path, "absent AWG binding has a retained device peer"))
+            continue
+        try:
+            if not allow_placeholders and (PLACEHOLDER.fullmatch(private) or PLACEHOLDER.fullmatch(fingerprint)):
+                errors.append((path, "unfilled REPLACE_WITH_* recovery material"))
+                continue
+            if allow_placeholders and PLACEHOLDER.fullmatch(private) and PLACEHOLDER.fullmatch(fingerprint):
+                instances = doc["amneziawg_secrets"]["instances"]
+                matches = [peer for item in instances if item["name"] == binding["instance"]
+                           for peer in item["peers"] if peer["name"] == device]
+                if len(matches) != 1:
+                    raise ValueError
+                continue
+            selected = resolve_binding(doc, context or {}, device, binding["provider"] + ":" + binding["environment"], binding["instance"])
+            if selected.identity != binding:
+                raise ValueError
+            peer_public = selected.peer["public_key"]
+            if not PLACEHOLDER.fullmatch(fingerprint):
+                expected = "sha256:" + __import__("hashlib").sha256(peer_public.encode()).hexdigest()[:16]
+                if fingerprint.lower() != expected:
+                    raise ValueError
+            if not PLACEHOLDER.fullmatch(private) and public_key(private) != peer_public:
+                raise ValueError
+        except (ValueError, KeyError, TypeError, AttributeError):
+            errors.append((path, "must match the named instance peer and recovery key"))
+    return errors
 
 
 def main():

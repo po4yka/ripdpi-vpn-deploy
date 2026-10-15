@@ -173,7 +173,7 @@ geodata.{geosite_url, geoip_url, geosite_sha256, geoip_sha256, install_dir, refr
 amneziawg_go_version + amneziawg_go_commit / amneziawg_tools_version + amneziawg_tools_commit
 amneziawg_secrets.instances[*].{name, listen_port, address_v4, address_v6, server_private_key, jc/jmin/jmax/s1-s4/h1-h4, peers[*]}
 backup.restic_password
-client_registry.<device>.{status, issued_at, formats, hosts, cohorts, token_hash_prefix, token_expires, awg_binding, awg_public_key_fingerprint, awg_private_key, last_payload_identity}
+client_registry.<device>.{status, issued_at, formats, hosts, cohorts, token_hash_prefix, token_expires, awg_binding, awg_delivery_host, awg_public_key_fingerprint, awg_private_key, last_payload_identity}
 subscription.{port, server_name}     # optional
 ```
 
@@ -205,6 +205,14 @@ registry section. After AWG-only revocation, `make awg-issue` can replace that
 device's AWG key and binding while preserving its non-AWG registry metadata.
 This requires a null binding, empty AWG recovery fields, and an active global
 device lifecycle; a globally revoked entry cannot be reissued this way.
+
+`client_registry.*.awg_delivery_host` records the last subscription issuance's
+explicit AWG host option; an empty string means automatic selection. It is
+separate from `awg_binding`, which owns device credentials. Refresh restores the
+recorded delivery choice instead of ambient `AWG_HOST`. Existing entries require
+this field; reissue a token with the intended selection rather than guessing a
+missing historical value. Preflight and enrollment/revocation use the same
+complete registry relationship validator before encrypted publication.
 
 ## Rotation
 

@@ -204,6 +204,8 @@ def effective_awg_instances(raw: object, defaults: object = None, cohort: object
         raise ValueError("invalid-awg-contract")
     defaults = defaults if isinstance(defaults, dict) else {}
     cohort = cohort if isinstance(cohort, dict) else {}
+    if set(cohort) - fields or any(f"i{index}" in defaults for index in range(1, 6)):
+        raise ValueError("unsupported-awg-policy")
     return [{**AWG_PARAMETERS, "dns_servers": ["1.1.1.1", "1.0.0.1"], **{key: value for key, value in cohort.items() if key in fields - {"name"}},
              **{key: value for key, value in defaults.items() if key in (
                  "listen_port", "address_v4", "address_v6", "dns_servers")},
@@ -222,7 +224,7 @@ def awg_errors(raw: object, defaults: object = None, cohort: object = None, *,
         return [("amneziawg_secrets.instances", "must be the sole nonempty instance authority")]
     errors = []
     # Preserve the existing forward guard across every declared source.
-    for source in [raw, cohort, *instances]:
+    for source in [raw, defaults, cohort, *instances]:
         for name in ("s3", "s4"):
             if type(source.get(name, 0)) is not int or source.get(name, 0) != 0:
                 errors.append(("amneziawg_secrets", "S3/S4 must remain zero"))

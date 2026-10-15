@@ -216,3 +216,28 @@ def test_native_provisioning_is_version_pinned_and_precedes_selected_tests():
     assert script.index("git -C \"$destination\" rev-parse HEAD") < script.index('make -C "${native_root}/amneziawg-go-')
     for field in ("amneziawg_go_commit", "amneziawg_tools_commit"):
         assert yaml.safe_load((ROOT / "secrets/prod.secrets.example.yaml").read_text())[field] in steps[run]["run"]
+
+
+@pytest.mark.parametrize('layer', ['amneziawg', 'amneziawg_cohort'])
+@pytest.mark.parametrize('parameter', ['i1', 'i2', 'i3', 'i4', 'i5'])
+def test_policy_i_parameters_refuse_before_effective_normalization(layer, parameter):
+    from awg_device_binding import BindingError, resolve_binding
+    from test_awg_device_binding import document
+    from transport_semantics import effective_awg_instances
+    doc = document()
+    context = {layer: {parameter: '<b 0x01>'}}
+    with pytest.raises(ValueError):
+        effective_awg_instances(doc['amneziawg_secrets'], context.get('amneziawg'), context.get('amneziawg_cohort'))
+    with pytest.raises(BindingError, match='invalid-awg-contract'):
+        resolve_binding(doc, context, 'device0', 'upcloud:fixture', 'awg0')
+
+
+@pytest.mark.parametrize('parameter', ['s3', 's4'])
+def test_role_default_nonzero_arm64_unsupported_parameters_refuse(parameter):
+    assert awg_errors({'instances': [awg()]}, {parameter: 1})
+
+
+def test_unknown_cohort_fields_are_not_silently_discarded():
+    from transport_semantics import effective_awg_instances
+    with pytest.raises(ValueError, match='unsupported-awg-policy'):
+        effective_awg_instances({'instances': [awg()]}, cohort={'unknown_wire_field': 1})

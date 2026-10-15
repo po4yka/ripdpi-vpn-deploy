@@ -100,3 +100,8 @@ authority, while exempting routed peers. Shared encrypted/native fixtures now
 carry actual matching recovery keys and complete authority for all device peers.
 The earlier in-flight local suite collected its fixtures before this rule;
 complete final-source validation must run again with the updated fixtures.
+
+Final closeout also shares registry admission between preflight and mutations,
+rejects unsupported policy fields, scopes de-onboarding to the verified host,
+and records required AWG delivery selection independently of credential binding.
+The closeout worktree preserves the unchanged baseline while final gates run.

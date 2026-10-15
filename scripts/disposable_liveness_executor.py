@@ -32,6 +32,8 @@ from typing import Any, Callable
 from uuid import UUID, uuid4
 
 import yaml
+
+from awg_device_binding import BindingError, ENVIRONMENT, host_identity
 import staging_lifecycle as lifecycle
 
 LIMIT = 256 * 1024
@@ -975,6 +977,8 @@ def _verified_absence(path: Path) -> dict[str, Any]:
     if (
         value.get("schema_version") != 3
         or value.get("provider") != "upcloud"
+        or not isinstance(value.get("environment"), str)
+        or ENVIRONMENT.fullmatch(value["environment"]) is None
         or value.get("status") not in ("verified", "verified_after_expiry")
         or value.get("server_status") != "absent"
         or value.get("root_storage_status") != "absent"
@@ -1148,7 +1152,8 @@ def _deonboard_locked(
         secrets = yaml.safe_load(secret_bytes)
     except yaml.YAMLError as exc:
         raise ExecutorError("deonboard-secrets") from exc
-    paths = _client_secret_paths(secrets, client)
+    cleanup_host = f"{absence['provider']}:{absence['environment']}"
+    paths = _client_secret_paths(secrets, client, cleanup_host)
     if paths:
         temporary_fd, temporary_name = tempfile.mkstemp(
             prefix=f".{sops_file.name}.deonboard.",
@@ -1177,7 +1182,7 @@ def _deonboard_locked(
                 confirmed = yaml.safe_load(confirmed_bytes)
             except yaml.YAMLError as exc:
                 raise ExecutorError("deonboard-secrets") from exc
-            if _client_secret_paths(confirmed, client):
+            if _client_secret_paths(confirmed, client, cleanup_host):
                 raise ExecutorError("deonboard-secrets")
             os.replace(temporary, sops_file)
             _fsync_dir(sops_file.parent)
@@ -1237,9 +1242,13 @@ def _deonboard_locked(
     return result
 
 
-def _client_secret_paths(value: Any, client: str) -> list[str]:
+def _client_secret_paths(value: Any, client: str, host: str) -> list[str]:
     if not isinstance(value, dict):
         raise ExecutorError("deonboard-secrets")
+    try:
+        provider, environment = host_identity(host)
+    except BindingError as exc:
+        raise ExecutorError("deonboard-secrets") from exc
 
     def indexes(root: str, field: str) -> list[int]:
         collection = (
@@ -1270,10 +1279,13 @@ def _client_secret_paths(value: Any, client: str) -> list[str]:
     awg_revoked = False
     if client in registry:
         entry = registry[client]
+        if not isinstance(entry, dict) or entry.get("hosts") != [host]:
+            raise ExecutorError("deonboard-secrets")
         binding = entry.get("awg_binding")
         awg_revoked = binding is None and not entry.get("awg_private_key") and not entry.get("awg_public_key_fingerprint") and not awg_matches
         if not awg_revoked and (not isinstance(binding, dict) or len(awg_matches) != 1
-                or instances[awg_matches[0][0]]["name"] != binding.get("instance")):
+                or binding != {"provider": provider, "environment": environment,
+                               "instance": instances[awg_matches[0][0]]["name"]}):
             raise ExecutorError("deonboard-secrets")
     if not awg_revoked:
         primary[("amneziawg_secrets", "instances")] = awg_matches

@@ -34,7 +34,7 @@ def _write_executable(path: Path, contents: str) -> None:
     path.chmod(0o755)
 
 
-def _sops_stub(secrets_file: Path) -> str:
+def _sops_stub() -> str:
     body = """#!/bin/sh
 set -eu
 if [ "${ARG1:-}" = "set" ]; then
@@ -55,15 +55,14 @@ open(file, "w").write(json.dumps(doc))
 PY
   exit 0
 fi
+for source_file do :; done
 if [ "${3:-}" = '["client_registry"]' ]; then
-  python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("client_registry", {})))' < @SECRETS_FILE@
+  python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("client_registry", {})))' < "$source_file"
 else
-  cat @SECRETS_FILE@
+  cat "$source_file"
 fi
 """
-    return body.replace("${ARG1:-}", "${1:-}").replace(
-        "@SECRETS_FILE@", str(secrets_file)
-    )
+    return body.replace("${ARG1:-}", "${1:-}")
 
 
 def _harness(tmp_path: Path) -> tuple[dict[str, str], Path, Path, Path]:
@@ -76,7 +75,7 @@ def _harness(tmp_path: Path) -> tuple[dict[str, str], Path, Path, Path]:
     payload_file = tmp_path / "payload.json"
     meta_file = tmp_path / "meta.json"
     ssh_marker = tmp_path / "ssh-called"
-    _write_executable(bin_dir / "sops", _sops_stub(secrets_file))
+    _write_executable(bin_dir / "sops", _sops_stub())
     _write_executable(
         bin_dir / "wg",
         "#!/bin/sh\ncat >/dev/null\nprintf 'fixture-server-public-key'\n",
@@ -107,6 +106,7 @@ case "$*" in *.meta*) cat > {meta_file} ;; *) cat > {payload_file} ;; esac
             "AGE_KEY": str(tmp_path / "age.key"),
             "AUDIT_LOG_FILE": str(tmp_path / "audit.log.age"),
             "AUDIT_ACTOR": "fixture",
+            "AWG_HOST": "",
             "SOPS_FILE": str(secrets_file),
             "STUB_LOG": str(tmp_path / "stub.log"),
         }
@@ -487,3 +487,64 @@ def test_token_delivery_preserves_existing_awg_authority(tmp_path):
     assert result.returncode == 0, result.stderr
     actual = json.loads(secrets_file.read_text())['client_registry']['phone']
     assert {key: value for key, value in actual.items() if key.startswith('awg_')} == expected
+
+
+@pytest.mark.parametrize('selected_host', ['upcloud:prod', 'vultr:prod'])
+@pytest.mark.parametrize('ambient', [None, 'conflicting'])
+def test_refresh_restores_persisted_awg_host_across_multiple_enabled_hosts(tmp_path, selected_host, ambient):
+    env, payload_file, _, secrets_file = _harness(tmp_path)
+    document = json.loads(secrets_file.read_text())
+    document['hysteria']['masquerade_url'] = 'https://vpn.example.com'
+    secrets_file.write_text(json.dumps(document))
+    from copy import deepcopy
+    from awg_device_binding import public_key
+    import base64
+    other = deepcopy(document)
+    private = base64.b64encode(bytes([9]) * 32).decode()
+    public = public_key(private)
+    other['amneziawg_secrets']['instances'][0].update(
+        listen_port=51821, server_private_key=base64.b64encode(bytes([55]) * 32).decode())
+    other['amneziawg_secrets']['instances'][0]['peers'][0]['public_key'] = public
+    other['client_registry']['phone'].update(
+        hosts=['vultr:prod'], awg_private_key=private,
+        awg_public_key_fingerprint='sha256:' + hashlib.sha256(public.encode()).hexdigest()[:16],
+        awg_binding={'provider': 'vultr', 'environment': 'prod', 'instance': 'awg0'})
+    other_file = tmp_path / 'other.json'
+    other_file.write_text(json.dumps(other))
+    env.update(HOSTS='upcloud:prod,vultr:prod', COHORTS='p2-udp,p2-udp', AWG_HOST=selected_host,
+               SOPS_FILES=str(secrets_file) + ',' + str(other_file))
+    initial = _run_issuer(env, '--format', 'ripdpi', '--print-token-only')
+    assert initial.returncode == 0, initial.stderr
+    original = json.loads(payload_file.read_text())['ripdpi']['amneziawg']
+    assert len(original) == 1
+    assert original[0]['peer']['endpoint'].endswith(':51821' if selected_host == 'vultr:prod' else ':51820')
+    token = initial.stdout.strip().splitlines()[-1]
+    for name in ('HOSTS', 'COHORTS', 'AWG_HOST'):
+        env.pop(name, None)
+    if ambient:
+        env['AWG_HOST'] = 'vultr:prod' if selected_host == 'upcloud:prod' else 'upcloud:prod'
+    refreshed = _run_issuer(env, '--refresh-token', token)
+    assert refreshed.returncode == 0, refreshed.stderr
+    assert json.loads(payload_file.read_text())['ripdpi']['amneziawg'] == original
+    assert json.loads(secrets_file.read_text())['client_registry']['phone']['awg_delivery_host'] == selected_host
+
+
+def test_refresh_requires_recorded_delivery_selection(tmp_path):
+    env, _, ssh_marker, secrets_file = _harness(tmp_path)
+    document = json.loads(secrets_file.read_text())
+    del document['client_registry']['phone']['awg_delivery_host']
+    secrets_file.write_text(json.dumps(document))
+    result = _run_issuer(env, '--refresh-token', REGISTERED_TOKEN)
+    assert result.returncode != 0 and 'delivery selection' in result.stderr
+    assert not ssh_marker.exists()
+
+
+@pytest.mark.parametrize("selector", ["invalid", "upcloud:Prod", "vultr:prod"])
+def test_invalid_delivery_selector_refuses_before_publication(tmp_path, selector):
+    env, _, ssh_marker, secrets_file = _harness(tmp_path)
+    before = secrets_file.read_bytes()
+    env.update(AWG_HOST=selector, HOSTS="upcloud:prod")
+    result = _run_issuer(env, "--print-token-only")
+    assert result.returncode != 0 and "invalid AWG delivery host" in result.stderr
+    assert not ssh_marker.exists()
+    assert secrets_file.read_bytes() == before

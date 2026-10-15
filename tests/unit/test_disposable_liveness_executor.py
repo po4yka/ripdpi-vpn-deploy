@@ -530,6 +530,7 @@ def test_deonboard_refuses_without_exact_provider_absence_before_mutation(setup)
             {
                 "billing_status": "no-active-owned-resources",
                 "provider": "upcloud",
+                "environment": "ci-staging-fixture",
                 "root_storage_status": "absent",
                 "schema_version": 3,
                 "server_status": "absent",
@@ -569,10 +570,11 @@ def test_deonboard_refuses_partial_secret_state_with_only_snell_remaining(setup)
     }
 
     with pytest.raises(module.ExecutorError, match="deonboard-secrets"):
-        module._client_secret_paths(partial, "liveness-a")
+        module._client_secret_paths(partial, "liveness-a", "upcloud:fixture")
 
 
-def test_deonboard_removes_only_exact_bound_local_executor_after_absence(setup):
+@pytest.mark.parametrize('rebound', [None, 'provider', 'environment'])
+def test_deonboard_removes_only_exact_bound_local_executor_after_absence(setup, rebound):
     module, home, evidence, runner = setup
     manifest = evidence / "executor.json"
     binding = evidence / "binding.json"
@@ -608,7 +610,7 @@ def test_deonboard_removes_only_exact_bound_local_executor_after_absence(setup):
         "hysteria": {"clients": [{"name": "liveness-a"}]},
         "amneziawg_secrets": {"instances": [{"name": "awg0", "peers": [{"name": "liveness-a"}]}]},
         "snell_secrets": {"variants": [{"users": [{"name": "liveness-a"}]}]},
-        "client_registry": {"liveness-a": {"status": "active", "hosts": ["upcloud:fixture"], "awg_binding": {"provider": "upcloud", "environment": "fixture", "instance": "awg0"}}},
+        "client_registry": {"liveness-a": {"status": "active", "hosts": ["upcloud:ci-staging-fixture"], "awg_binding": {"provider": "upcloud", "environment": "ci-staging-fixture", "instance": "awg0"}}},
     }
     module.prepare_executor(
         profile="vpn-liveness-one-shot",
@@ -659,6 +661,7 @@ def test_deonboard_removes_only_exact_bound_local_executor_after_absence(setup):
                 "billing_status": "no-active-owned-resources",
                 "manifest_sha256": bound["cleanup_manifest_sha256"],
                 "provider": "upcloud",
+                "environment": "ci-staging-fixture",
                 "root_storage_status": "absent",
                 "schema_version": 3,
                 "server_status": "absent",
@@ -761,6 +764,20 @@ def test_deonboard_removes_only_exact_bound_local_executor_after_absence(setup):
     absence.write_text(
         json.dumps(reissued_absence, sort_keys=True, separators=(",", ":")) + "\n"
     )
+
+    if rebound:
+        entry = runner.secrets['client_registry']['liveness-a']
+        entry['awg_binding'][rebound] = 'vultr' if rebound == 'provider' else 'other'
+        before = {path: path.read_bytes() for path in (registry, config, sops_file)}
+        with pytest.raises(module.ExecutorError, match='deonboard-secrets'):
+            module.deonboard(
+                binding_path=binding, manifest_path=manifest, absence_evidence_path=absence,
+                registry_path=registry, config_path=config, sops_file=sops_file,
+                output_path=output, home=home, runner=runner,
+                bound_cleanup_manifest_path=cleanup, reissued_cleanup_manifest_path=reissued)
+        assert {path: path.read_bytes() for path in before} == before
+        assert not [call for call in runner.calls if call[:2] == ('sops', 'unset')]
+        return
 
     runner.delete_fail_once = True
     with pytest.raises(RuntimeError, match="fixture delete failure"):

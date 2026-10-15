@@ -29,7 +29,7 @@ def document():
             "client_registry": {f"device{i}": {
                 "status": "issued", "issued_at": "2026-10-10T00:00:00Z", "formats": [],
                 "hosts": ["upcloud:fixture"], "cohorts": [], "token_hash_prefix": "", "token_expires": "",
-                "awg_private_key": key(i + 10),
+                "awg_private_key": key(i + 10), "awg_delivery_host": "",
                 "awg_public_key_fingerprint": "sha256:" + hashlib.sha256(public_key(key(i + 10)).encode()).hexdigest()[:16],
                 "awg_binding": {"provider": "upcloud", "environment": "fixture", "instance": f"awg{i}"},
                 "last_payload_identity": {"source": "", "outputs": ""}} for i in range(2)}}

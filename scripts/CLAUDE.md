@@ -9,7 +9,8 @@ subnet and shares the private stable `.new-client.lock` with Naive/retirement.
 `encrypted_client_document.py` stages ciphertext, verifies the entire decrypted
 result in memory and atomically publishes only after original authority checks.
 AWG revocation clears only the selected peer and its AWG recovery fields.
-Secret validation checks both registry-to-peer and device-peer-to-registry authority;
+Preflight and credential mutations share registry validation in
+`awg_device_binding.py`, checking both registry-to-peer and device-peer-to-registry authority;
 routed peers are exempt from the device registry. Existing-device resolution
 always requires the persisted registry binding;
 device names are unique across all instances, including explicit selection.
@@ -22,6 +23,12 @@ Make AWG operations append best-effort encrypted audit records only after a
 successful transaction; audit status stays on stderr so stdout remains JSON.
 Encrypted source, lock and candidate opens are
 nonblocking before regular-file validation, so a FIFO cannot hold the writer lock.
+Subscription delivery records `awg_delivery_host` independently of device
+authority; refresh restores this selector, including automatic selection,
+instead of inheriting ambient host overrides. Missing delivery state refuses
+refresh and requires reissuance. De-onboarding deletion paths require the
+verified cleanup provider/environment and exact persisted instance; rebinding
+a client to another host cannot authorize deletion through the old receipt.
 First-time subscription registry entries initialize a null AWG binding and
 empty recovery fields; existing AWG authority survives delivery metadata updates.
 Bundle multi-host selection requires `AWG_HOST` when more than one enabled host
@@ -45,7 +52,8 @@ another fixture's runtime authority. The required job graph checks both results.
 
 The canonical render fixture supplies watchdog AWG interface names from synthetic
 instances. Snapshot rendering uses the same pure effective-instance resolver
-and never loads real credentials.
+and never loads real credentials. Unsupported I1-I5 policy fields and nonzero
+S3/S4 role defaults refuse before normalization rather than being discarded.
 The secrets coverage checker declares this names-only role fact explicitly;
 the complete AWG secret instance objects remain outside the environment file.
 

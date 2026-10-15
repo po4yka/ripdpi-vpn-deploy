@@ -20,7 +20,7 @@ import uuid
 
 import yaml
 
-from awg_device_binding import NAME, BindingError, allocate_address, public_key, resolve_binding
+from awg_device_binding import NAME, BindingError, allocate_address, public_key, registry_errors, resolve_binding
 from encrypted_client_document import CommittedPublication, operate
 from ripdpi_cohort_fingerprint import cohort_fingerprint
 from transport_semantics import transport_errors, selected_context
@@ -87,12 +87,13 @@ def enroll(document, context, name, host, instance=None, *, all_profiles=False):
     registry[name] = {'status': 'issued', 'issued_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
                       'formats': [], 'hosts': [host], 'cohorts': [], 'token_hash_prefix': '', 'token_expires': '',
                       'awg_public_key_fingerprint': 'sha256:' + hashlib.sha256(public.encode()).hexdigest()[:16],
-                      'awg_private_key': private, 'awg_binding': binding.identity,
+                      'awg_private_key': private, 'awg_binding': binding.identity, 'awg_delivery_host': '',
                       'last_payload_identity': {'source': '', 'outputs': ''}}
     if previous is not None:
         refreshed = {key: registry[name][key] for key in ('awg_binding', 'awg_private_key', 'awg_public_key_fingerprint')}
         registry[name] = {**previous, **refreshed}
-    if transport_errors(document, context, sections=["xray", "hysteria", "awg"] if all_profiles else ["awg"]):
+    if (transport_errors(document, context, sections=["xray", "hysteria", "awg"] if all_profiles else ["awg"])
+            or registry_errors(document, context=context)):
         raise BindingError('invalid-enrollment-contract')
     return document, {'client': name, 'binding': binding.identity, 'allowed_ips': address}
 
@@ -104,6 +105,8 @@ def revoke(document, context, name, host, instance=None):
         raise BindingError('invalid-registry-binding')
     document['amneziawg_secrets']['instances'][binding.index]['peers'].remove(binding.peer)
     entry.update(awg_binding=None, awg_private_key='', awg_public_key_fingerprint='')
+    if registry_errors(document, context=context):
+        raise BindingError('invalid-revocation-contract')
     return document, {'client': name, 'binding': binding.identity, 'awg_status': 'revoked'}
 
 
