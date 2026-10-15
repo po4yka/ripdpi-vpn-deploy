@@ -546,7 +546,7 @@ def _isolated_inventory_repo(tmp_path):
     root = tmp_path / "repo"
     (root / "scripts").mkdir(parents=True)
     for script in ("render-inventory.sh", "terraform-env.sh", "validate-secrets.py",
-                   "transport_semantics.py"):
+                   "transport_semantics.py", "awg_device_binding.py"):
         shutil.copy(REPO_ROOT / "scripts" / script, root / "scripts" / script)
     for provider in ("upcloud", "hetzner"):
         envdir = root / "terraform" / "providers" / provider / "environments"

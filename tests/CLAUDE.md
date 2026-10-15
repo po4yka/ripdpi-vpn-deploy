@@ -34,7 +34,8 @@ transactions; first-time token entries must satisfy the complete secrets schema.
 Multi-host refresh tests use distinct per-host documents and keys, retaining
 explicit AWG delivery selection despite missing or conflicting ambient input.
 Mutation tests preserve ciphertext when any unrelated registry relationship is
-broken; de-onboarding rejects rebound provider/environment identities.
+broken; de-onboarding rejects rebound provider/environment identities. Isolated
+inventory fixtures copy the shared AWG registry module with the secrets validator.
 
 XHTTP endpoint acceptance is a separate complete target within the native job.
 Its cases and the existing native/RTA lanes form a disjoint complete collection,
