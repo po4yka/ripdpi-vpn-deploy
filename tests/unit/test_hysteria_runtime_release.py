@@ -1,7 +1,11 @@
 """Consumer contract for Hysteria's shared runtime-release activation."""
 
 from pathlib import Path
+import os
+import subprocess
+import sys
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -19,6 +23,37 @@ SIDE_EFFECT = (
 MOLECULE = (
     ROOT / "ansible" / "roles" / "hysteria" / "molecule" / "default" / "molecule.yml"
 )
+
+
+@pytest.mark.parametrize('changed,check', [(True, False), (False, False), (True, True)])
+def test_ech_only_changes_retain_outer_recovery_and_unchanged_retry_stays_idle(tmp_path, changed, check):
+    tasks = yaml.safe_load(ROLE_TASKS.read_text())
+    detection = next(task for task in tasks if task['name'] == 'Detect Hysteria ECH authority change without publication')
+    assert detection['register'] == '_hysteria_ech_change'
+    boundary = next(task for task in tasks if task['name'] == 'Retain whole-route recovery for changed Hysteria authority')
+    stage = next(task for task in tasks if task['name'] == 'Stage complete Hysteria authority for guarded consumer acceptance')
+    assert tasks.index(detection) < tasks.index(boundary) < tasks.index(stage)
+    role = tmp_path / 'roles/transport-egress/tasks'
+    role.mkdir(parents=True)
+    marker = tmp_path / 'outer-owner-requested'
+    (role / 'begin.yml').write_text(yaml.safe_dump([{
+        'name': 'Observe the requested whole-route owner',
+        'ansible.builtin.copy': {'dest': str(marker), 'content': 'requested', 'mode': '0600'}}]))
+    variables = {name: {'changed': False} for name in (
+        '_hysteria_frontend_change', '_hysteria_hosts_change', '_hysteria_tls_change',
+        '_hysteria_ech_change', '_hysteria_validator_change')}
+    variables['_hysteria_ech_change']['changed'] = changed
+    variables['ansible_python_interpreter'] = sys.executable
+    play = tmp_path / 'boundary.yml'
+    play.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local',
+        'gather_facts': False, 'become': False, 'vars': variables, 'tasks': [boundary]}]))
+    result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(play), *(['--check'] if check else [])],
+        env={**os.environ, 'ANSIBLE_CONFIG': str(ROOT / 'ansible/ansible.cfg'),
+             'ANSIBLE_ROLES_PATH': str(tmp_path / 'roles')}, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
+    expected = changed and not check
+    assert marker.exists() is expected
+    assert ('Observe the requested whole-route owner' in result.stdout) is expected
 
 
 def test_hysteria_delegates_pinned_binary_activation_to_runtime_release() -> None:

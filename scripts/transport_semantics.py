@@ -96,7 +96,13 @@ def xhttp_errors(doc: dict, context: dict) -> list[tuple[str, str]]:
 
 
 def hostname_valid(value):
-    return isinstance(value, str) and DNS_NAME.fullmatch(value) is not None
+    if not isinstance(value, str) or DNS_NAME.fullmatch(value) is None:
+        return False
+    try:
+        ipaddress.ip_address(value)
+    except ValueError:
+        return True
+    return False
 
 
 def ech_config(raw):

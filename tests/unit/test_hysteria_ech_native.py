@@ -114,7 +114,7 @@ def test_actual_ech_clients_traffic_privacy_trust_and_resources(
         ech = generate(runtimes["hysteria"], "outer.example", "inner.example")
         authority = lab.private(tmp_path / "ech.key", ech["keys_pem"])
         variables = merge_render_vars()
-        port = lab.free_port()
+        port = lab.free_port(socketserver.socket.SOCK_DGRAM)
         variables["hysteria_port"] = port
         variables["hysteria"].update(
             version="v2.13.0",
@@ -342,7 +342,7 @@ def test_actual_ech_clients_traffic_privacy_trust_and_resources(
         assert lab.udp_transfer(official_udp, dns) == dns[:2] + b"\x81\x80" + dns[4:]
         bare = dict(doc)
         bare.pop("ech")
-        bare_port = lab.free_port()
+        bare_port = lab.free_port(socketserver.socket.SOCK_DGRAM)
         bare["listen"] = ":" + str(bare_port)
         bare_path = lab.private(tmp_path / "server-no-ech.yaml", yaml.safe_dump(bare))
         resources.enter_context(

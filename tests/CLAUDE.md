@@ -19,6 +19,7 @@ Baseline resource tests execute its real first Ansible assertion and require an 
 The complete native transaction suite is split into two disjoint CI groups in independent fresh systemd containers; both are required and a collection test proves their complete union. Keep the full local Make target unchanged.
 Each case imports installed runtime helpers only after its own lab has established the module path; isolated partitions must not depend on earlier cases initializing the interpreter.
 ECH probe regressions exercise both isolated import and Ansible's inline loading. Whole-route snapshot cases retain private ECH bytes, permissions, group and exact absence; generation helper unit cases establish their own runtime library path.
+ECH identity admission excludes literal IPs before executable acquisition. Native UDP listeners probe the UDP port space; BBR recipient tests retain the paired XHTTP intermediate while refusing unqualified engine output.
 
 Warm Hysteria upgrades retain Salamander and exercise the canonical firewall redirect through the lab veth. Per-port counters must observe an actual five-second client hop before and after upgrade and compensation; a datagram outside the range remains unchanged.
 The native client may randomly choose its current destination again. Keep authenticated traffic running within one finite observation deadline until counters prove two distinct destinations, then require a fresh authenticated request before accepting the hop.

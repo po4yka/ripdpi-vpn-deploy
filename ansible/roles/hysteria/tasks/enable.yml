@@ -201,6 +201,7 @@
     group: root
     mode: '0600'
   check_mode: true
+  register: _hysteria_ech_change
   no_log: true
   diff: false
   when: hysteria.ech is defined
@@ -221,6 +222,20 @@
       mode: '0755'
   check_mode: true
   register: _hysteria_validator_change
+
+- name: Retain whole-route recovery for changed Hysteria authority
+  ansible.builtin.include_role:
+    name: transport-egress
+    tasks_from: begin
+  when:
+    - not ansible_check_mode
+    - not (transport_egress_fresh_check_mode | default(false) | bool)
+    - >-
+      (_hysteria_frontend_change.changed | bool) or
+      (_hysteria_hosts_change.changed | bool) or
+      (_hysteria_tls_change.changed | bool) or
+      (_hysteria_ech_change.changed | default(false) | bool) or
+      (_hysteria_validator_change.changed | bool)
 
 - name: Stage complete Hysteria authority for guarded consumer acceptance
   ansible.builtin.set_fact:

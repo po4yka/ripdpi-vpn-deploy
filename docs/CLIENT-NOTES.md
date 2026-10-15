@@ -219,6 +219,9 @@ both runtime congestion and recipient BBR policy; the server ignores advertised
 client bandwidth for its BBR selection. Kernel UDP ceilings belong to baseline,
 are bounded between 1 MiB and 64 MiB, and default to 7,500,000 bytes. TCP BBR is
 independent of QUIC behavior. Measurements must establish any performance claim.
+BBR recipient profiles are qualified for official sing-box only; RIPDPI export
+refuses them. Bandwidth inputs must be positive integer rates of at most 1 Gbps;
+previous values above that ceiling now refuse before mutation.
 
 Before promotion, refresh stable channel, asset and advisory metadata with
 `python3 scripts/hysteria_release.py`. Unknown metadata blocks publication-age

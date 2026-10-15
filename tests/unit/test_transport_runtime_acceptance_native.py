@@ -445,7 +445,11 @@ def test_native_ech_rotation_idempotence_and_complete_compensation():
         lab.context['hysteria'].update(ech=ech, resource_profile='bbr-conservative')
         assert lab.converge('hysteria') == 0
         key = Path('/etc/hysteria/ech.key')
-        assert key.read_text() == ech['keys_pem'] and key.stat().st_mode & 0o777 == 0o600
+        def assert_key(expected):
+            matched = key.read_text() == expected['keys_pem']
+            assert matched, 'native-ech-private-generation-mismatch'
+        assert_key(ech)
+        assert key.stat().st_mode & 0o777 == 0o600
         assert key.stat().st_uid == 0 and key.stat().st_gid == 0
         before = fields('hysteria-server.service')['MainPID']
         receipt = Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_bytes()
@@ -454,14 +458,21 @@ def test_native_ech_rotation_idempotence_and_complete_compensation():
         assert Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_bytes() == receipt
         # Existing native failure/kill matrix now runs with ECH credential authority.
         exercise_native_refusals_and_process_death(lab, 'hysteria')
-        assert key.read_text() == ech['keys_pem']
+        assert_key(ech)
         rotated = generate(binary, 'outer.example', 'owned.example')
+        baseline_receipt = Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_bytes()
         lab.context['hysteria']['ech'] = rotated
         assert lab.converge('hysteria', site=True, fail_after_acceptance=True, allow_failure=True) != 0
-        assert key.read_text() == ech['keys_pem']
+        failures = lab.failure_categories()
+        assert 'Inject failure after native consumer acceptance' in failures['failed_tasks'], failures
+        assert_key(ech)
+        receipt_restored = Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_bytes() == baseline_receipt
+        assert receipt_restored, 'native-ech-receipt-compensation-mismatch'
+        assert not Path('/var/lib/ripdpi/transport-runtime/outer.json').exists()
+        rotation_pid = fields('hysteria-server.service')['MainPID']
         assert lab.converge('hysteria') == 0
-        assert key.read_text() == rotated['keys_pem']
-        assert fields('hysteria-server.service')['MainPID'] != before
+        assert_key(rotated)
+        assert fields('hysteria-server.service')['MainPID'] != rotation_pid
         lab.context['hysteria']['resource_profile'] = 'bbr-standard'
         assert lab.converge('hysteria') == 0
         import yaml

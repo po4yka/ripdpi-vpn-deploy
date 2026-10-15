@@ -315,7 +315,7 @@ scripts/emit-bundle.sh phone --per-app-via-tun com.example.private
 The output is written to stdout so the caller can redirect it, pipe it through a
 QR encoder, or POST it to a subscription host.
 
-### Hysteria ECH recipient boundary
+### Hysteria ECH and BBR recipient boundary
 
 ECH-required Hysteria profiles currently target official sing-box 1.14.3 only.
 `emit-bundle` refuses them before output because the RIPDPI consumer has no
@@ -323,3 +323,5 @@ qualified ECH parser/connection contract. The existing bundle schema/version is
 unchanged; public ECH configuration is never silently stripped. Use the canonical
 `emit-singbox` format for the supported ECH recipient. Private ECH keys never
 belong in either artifact.
+The new BBR recipient profiles use the same qualified official engine and also
+refuse RIPDPI export. The bandwidth-capped classical profile remains supported.

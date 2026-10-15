@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+BBR resource profiles, like ECH, target the qualified official sing-box recipient. Unqualified RIPDPI export refuses before output; paired XHTTP monitoring requests only its explicit Xray intermediate.
+
 Release eligibility evaluates high/critical advisories against the exact selected version and repository-owned module ranges. Historical fixed ranges may clear; unknown modules, missing ranges or unsupported syntax keep promotion blocked.
 
 Bound bandwidth scalar length before integer conversion, so oversized numeric inputs refuse categorically within the supported 1 Gbps policy.

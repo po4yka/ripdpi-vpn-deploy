@@ -450,6 +450,10 @@ for i in "${!host_pairs[@]}"; do
     fi
     hy_tls_ech="$(jq -c 'if .hysteria.ech then {enabled:true,config:["-----BEGIN ECH CONFIGS-----",.hysteria.ech.config_list,"-----END ECH CONFIGS-----"]} else null end' "$secrets_tmp")"
     hy_resource="$(jq -r '.hysteria.resource_profile // "bandwidth-capped"' "$secrets_tmp")"
+    if [[ "$hy_resource" != bandwidth-capped && "$PROFILE_FORMAT" != sing-box ]]; then
+      echo "BBR resource profiles require the verified official sing-box engine; RIPDPI export is unsupported" >&2
+      exit 1
+    fi
     hy_pw="$(jq --arg n "$CLIENT_NAME" -r '.hysteria.clients[]? | select(.name==$n) | .password // empty' "$secrets_tmp")"
     hy_host="$(jq -r '.hysteria.server_name // .nginx_xhttp.server_name // empty' "$secrets_tmp")"
     hy_obfs_enabled="$(jq -r '.hysteria.salamander_enabled // false' "$secrets_tmp")"

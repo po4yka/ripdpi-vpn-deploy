@@ -3,6 +3,7 @@
 from __future__ import annotations
 import base64
 import copy
+import importlib.util
 import hashlib
 import json
 import os
@@ -73,6 +74,15 @@ def test_real_key_agreement_and_public_generation():
     assert ech_keys_config(ech["keys_pem"], verify_private=True) == ech["config_list"]
     assert ech_config(ech["config_list"]) == ["outer.example"]
     assert not hysteria_errors(hysteria(ech))
+
+
+@pytest.mark.parametrize('name', ['192.0.2.1', '2001:db8::1'])
+@pytest.mark.parametrize('field', ['public', 'inner'])
+def test_ech_generation_refuses_literal_ip_identities_before_binary_acquisition(tmp_path, name, field):
+    from hysteria_ech import generate
+    public, inner = (name, 'vpn.example.com') if field == 'public' else ('outer.example', name)
+    with pytest.raises(ValueError, match='invalid-ech-identities'):
+        generate(tmp_path / 'not-acquired', public, inner)
 
 
 @pytest.mark.parametrize('invocation', ['import', 'inline'])
@@ -283,6 +293,37 @@ def test_wrong_private_scalar_with_same_public_metadata_refuses():
         + "\n-----END ECH KEYS-----\n"
     )
     assert hysteria_errors(hysteria(ech))
+
+
+@pytest.mark.parametrize('profile', ['bbr-conservative', 'bbr-standard'])
+def test_bbr_recipient_requires_qualified_engine_and_retains_paired_xhttp(tmp_path, profile):
+    source = _secrets_as_json(tmp_path)
+    document = json.loads(source.read_text())
+    document['hysteria'].update(version='v2.13.0', resource_profile=profile)
+    source.write_text(json.dumps(document))
+    environment = _build_env(tmp_path, source)
+    def emit(*arguments):
+        return subprocess.run(['bash', str(SCRIPT), 'laptop', *arguments],
+                              env=environment, capture_output=True, text=True, timeout=30)
+    supported = emit()
+    assert supported.returncode == 0, supported.stderr
+    outbound = next(value for value in json.loads(supported.stdout)['outbounds'] if value['type'] == 'hysteria2')
+    assert outbound['bbr_profile'] == profile.removeprefix('bbr-')
+    refused = emit('--profile-format', 'ripdpi')
+    assert refused.returncode != 0 and not refused.stdout
+    assert 'BBR resource profiles require' in refused.stderr
+    paired = emit('--profile-format', 'ripdpi', '--xhttp-only')
+    assert paired.returncode == 0, paired.stderr
+    assert not any(value['type'] == 'hysteria2' for value in json.loads(paired.stdout)['outbounds'])
+    spec = importlib.util.spec_from_file_location('bbr_liveness_check', ROOT / 'scripts/check-liveness-profile-compatibility.py')
+    checker = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(checker)
+    directory = tmp_path / 'liveness'
+    directory.mkdir(mode=0o700)
+    paths = checker.render_profiles(directory, document=document)
+    sentinel = json.loads(paths['sing-box.json'].read_text())
+    assert next(value for value in sentinel['outbounds'] if value['type'] == 'hysteria2')['bbr_profile'] == profile.removeprefix('bbr-')
+    assert paths['xray.json'].is_file()
 
 
 def test_publication_age_channel_hash_and_unknown_advisories():

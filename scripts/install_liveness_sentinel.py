@@ -687,8 +687,10 @@ def install(config_path, sid, client, registry_path, *, read_awg_stdin=False, st
                                              ("ripdpi", {"p1-xhttp"})):
                 if set(required) & profiles_for_format:
                     # XHTTP is consumed by Xray, independently of the official
-                    # sing-box ECH recipient. Select that intermediate explicitly.
-                    selection = ["--xhttp-only"] if fmt == "ripdpi" and secrets.get("hysteria", {}).get("ech") else []
+                    # sing-box ECH/BBR recipient. Select that intermediate explicitly.
+                    hysteria = secrets.get("hysteria", {})
+                    official = hysteria.get("ech") or hysteria.get("resource_profile", "bandwidth-capped") != "bandwidth-capped"
+                    selection = ["--xhttp-only"] if fmt == "ripdpi" and official else []
                     emitted[fmt] = _json(_run([str(REPO / "scripts/emit-singbox.sh"), client, *selection, "--profile-format", fmt],
                                              environment=emit_env, timeout=120))
             defaults, cohort, endpoint = {}, {}, None
