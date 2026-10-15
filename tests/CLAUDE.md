@@ -27,6 +27,9 @@ names exercise both the shell wrapper and Make issuance/revocation surfaces.
 Binding cases reject absent registry authority and cross-instance duplicate
 devices. Real encrypted Make defaults and AWG-only revoke/reissue cases preserve
 non-AWG registry fields; schema tests share runtime interface-name boundaries.
+FIFO sources must refuse promptly and release the writer lock. Make audit
+regressions decrypt actual age envelopes and require no event for failed
+transactions; first-time token entries must satisfy the complete secrets schema.
 
 XHTTP endpoint acceptance is a separate complete target within the native job.
 Its cases and the existing native/RTA lanes form a disjoint complete collection,

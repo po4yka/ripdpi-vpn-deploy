@@ -54,7 +54,7 @@ def operate(path, transform, *, runner=run_sops, before_publish=None):
 def _operate(path, transform, *, runner, before_publish, publication):
     path = Path(os.path.abspath(path))
     path = path.parent.resolve(strict=True) / path.name
-    parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    parent = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK)
     lock = source = candidate = None
     temporary = None
     temporary_identity = None
@@ -62,10 +62,10 @@ def _operate(path, transform, *, runner, before_publish, publication):
         directory = os.fstat(parent)
         if directory.st_uid != os.getuid() or directory.st_mode & 0o022:
             raise ValueError("unsafe-private-document-directory")
-        lock = os.open(str(path) + ".new-client.lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+        lock = os.open(str(path) + ".new-client.lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK, 0o600)
         lock_info = private_file(lock)
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        source = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        source = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK)
         before = private_file(source)
         if before.st_size > MAX_BYTES:
             raise ValueError("private-document-too-large")
@@ -91,7 +91,7 @@ def _operate(path, transform, *, runner, before_publish, publication):
                     runner(["set", "--value-stdin", temporary, "[" + json.dumps(name) + "]"],
                            data=json.dumps(value).encode())
                     temporary_identity = identity(os.stat(temporary, follow_symlinks=False))
-            candidate = os.open(temporary, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            candidate = os.open(temporary, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK)
             candidate_info = private_file(candidate)
             if identity(candidate_info) != temporary_identity:
                 raise ValueError("private-candidate-changed")

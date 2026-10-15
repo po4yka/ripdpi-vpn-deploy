@@ -12,6 +12,7 @@ import sys
 from transport_semantics import awg_errors, effective_awg_instances
 
 NAME = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
+ENVIRONMENT = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}\Z")
 PROVIDERS = {"upcloud", "vultr", "scaleway", "hetzner"}
 
 
@@ -39,7 +40,7 @@ def resolve_binding(document, context, client, host, instance=None, *, enrollmen
     if not isinstance(host, str) or host.count(":") != 1:
         raise BindingError("invalid-host-binding")
     provider, environment = host.split(":")
-    if provider not in PROVIDERS or NAME.fullmatch(environment) is None:
+    if provider not in PROVIDERS or ENVIRONMENT.fullmatch(environment) is None:
         raise BindingError("invalid-host-binding")
     if not isinstance(document, dict) or not isinstance(context, dict):
         raise BindingError("invalid-awg-contract")

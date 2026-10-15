@@ -20,6 +20,10 @@ def encrypted(tmp_path, monkeypatch):
     subprocess.run(['age-keygen', '-o', str(identity)], check=True, capture_output=True)
     recipient = subprocess.check_output(['age-keygen', '-y', str(identity)], text=True).strip()
     monkeypatch.setenv('SOPS_AGE_KEY_FILE', str(identity))
+    monkeypatch.setenv('AGE_KEY', str(identity))
+    monkeypatch.setenv('HOME', str(tmp_path))
+    monkeypatch.setenv('AUDIT_LOG_FILE', str(tmp_path / 'audit.log.age'))
+    monkeypatch.setenv('AUDIT_ACTOR', 'fixture')
     original = document()
     original.update(unrelated={'private': 'must-stay-encrypted'}, xray={'clients': [{'name': 'keep', 'uuid': 'other'}]}, client_registry={})
     ciphertext = subprocess.run(['sops', '--encrypt', '--age', recipient, '--input-type', 'json', '--output-type', 'yaml', '/dev/stdin'],
@@ -449,3 +453,51 @@ def test_awg_make_inputs_cannot_expand_make_functions(encrypted, variable):
                             cwd=Path(__file__).resolve().parents[2], capture_output=True, timeout=30)
     assert result.returncode != 0
     assert not marker.exists() and path.read_bytes() == before
+
+
+@pytest.mark.parametrize('environment', ['Prod', '-staging', '_staging', 'prod\n'])
+def test_noncanonical_host_refuses_before_encrypted_publication(encrypted, environment):
+    path, _ = encrypted
+    before = path.read_bytes()
+    with pytest.raises(ValueError, match='invalid-host-binding'):
+        publisher.operate(path, lambda doc: enroll(doc, {}, 'first', 'upcloud:' + environment, 'awg0'))
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize('position', ['source', 'lock'])
+def test_fifo_authority_refuses_promptly_and_releases_writer_lock(encrypted, position):
+    path, _ = encrypted
+    if position == 'source':
+        path.unlink()
+        os.mkfifo(path, mode=0o600)
+    else:
+        os.mkfifo(str(path) + '.new-client.lock', mode=0o600)
+    script = Path(__file__).resolve().parents[2] / 'scripts/awg_client.py'
+    result = subprocess.run([sys.executable, str(script), 'enroll', 'first', '--host', 'upcloud:fixture',
+                             '--instance', 'awg0', '--file', str(path)], capture_output=True, timeout=3)
+    assert result.returncode == 2 and b'awg-device-operation-refused' in result.stderr
+    if position == 'source':
+        with open(str(path) + '.new-client.lock', 'r+b') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def test_make_audits_successful_awg_transactions_only(encrypted):
+    path, _ = encrypted
+    log = path.parent / 'audit.log.age'
+    environment = {**os.environ, 'HOME': str(path.parent), 'AGE_KEY': str(path.parent / 'age.key'),
+                   'AUDIT_LOG_FILE': str(log), 'AUDIT_ACTOR': 'fixture'}
+    root = Path(__file__).resolve().parents[2]
+    def invoke(action):
+        return subprocess.run(['make', action, 'CLIENT=audited', f'SOPS_FILE={path}', 'AWG_INSTANCE=awg0',
+                               'PROVIDER=upcloud', 'ENV=fixture'], cwd=root, env=environment, capture_output=True, timeout=30)
+    assert invoke('awg-issue').returncode == 0
+    assert invoke('awg-revoke').returncode == 0
+    assert log.exists()
+    records = subprocess.run(['bash', str(root / 'scripts/audit-log.sh'), 'read'], cwd=root,
+                             env=environment, capture_output=True, check=True).stdout.splitlines()
+    events = [json.loads(record) for record in records]
+    assert [event['action'] for event in events] == ['awg-issue', 'awg-revoke']
+    assert all(event['client'] == 'audited' and event['env'] == 'fixture' and event['provider'] == 'upcloud' for event in events)
+    before = log.read_bytes()
+    assert invoke('awg-revoke').returncode != 0
+    assert log.read_bytes() == before

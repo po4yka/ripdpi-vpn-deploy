@@ -28,6 +28,8 @@ awg-issue awg-revoke:
 	@python3 scripts/awg_client.py $(if $(filter awg-issue,$(MAKECMDGOALS)),enroll,revoke) \
 	  --file "$${AWG_SOPS_FILE_LITERAL}" --host "$${AWG_PROVIDER_LITERAL}:$${AWG_ENV_LITERAL}" \
 	  --instance "$${AWG_INSTANCE_LITERAL}" --cohort "$${AWG_COHORT_LITERAL}" -- "$${AWG_CLIENT_LITERAL}"
+	@./scripts/audit-log.sh append-best-effort --action "$(MAKECMDGOALS)" --client "$${AWG_CLIENT_LITERAL}" \
+	  --provider "$${AWG_PROVIDER_LITERAL}" --env "$${AWG_ENV_LITERAL}" --note "instance=$${AWG_INSTANCE_LITERAL}"
 else ifneq ($(filter prepare-disposable-promotion-intent,$(MAKECMDGOALS)),)
 ifneq ($(MAKECMDGOALS),prepare-disposable-promotion-intent)
 $(error promotion intent preparation requires exactly one make goal)

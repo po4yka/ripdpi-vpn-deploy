@@ -15,6 +15,12 @@ AWG-only reissuance accepts a valid null binding with empty recovery fields and
 preserves non-AWG metadata; globally revoked entries and all-profile reissuance refuse.
 AWG Make targets apply normal host defaults and unexport original inputs after
 literal capture, preventing Make function expansion during environment export.
+Host environments follow the lowercase, alphanumeric-leading registry grammar.
+Make AWG operations append best-effort encrypted audit records only after a
+successful transaction. Encrypted source, lock and candidate opens are
+nonblocking before regular-file validation, so a FIFO cannot hold the writer lock.
+First-time subscription registry entries initialize a null AWG binding and
+empty recovery fields; existing AWG authority survives delivery metadata updates.
 Bundle multi-host selection requires `AWG_HOST` when more than one enabled host
 can bind; `AWG_INSTANCE` selects within that host. Missing enabled bindings
 refuse without emitting a partial payload. The public bundle shape/fingerprint

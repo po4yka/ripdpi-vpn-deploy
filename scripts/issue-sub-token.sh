@@ -294,7 +294,8 @@ if registry_read.returncode != 0:
         sys.stderr.write(stderr)
         raise SystemExit("issue-sub-token: secrets unavailable: sops decrypt of client_registry failed")
 existing = (json.loads(registry_read.stdout) if registry_read.stdout.strip() else {}).get("$CLIENT") or {}
-merged = {**existing, **{k: v for k, v in entry.items()}}
+merged = {"awg_binding": None, "awg_private_key": "", "awg_public_key_fingerprint": "",
+          **existing, **entry}
 # Preserve prior formats when refreshing with a reused format.
 if existing.get("formats") and os.environ["FORMAT"] in existing["formats"]:
     merged["formats"] = existing["formats"]

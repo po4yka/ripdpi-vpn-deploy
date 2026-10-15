@@ -89,3 +89,8 @@ Five further findings require persisted registry authority, global device-name
 uniqueness, consistent interface-name grammar, AWG Make defaults and AWG-only
 reissuance after revocation. Final acceptance is reopened for their fixes and
 exact-source verification; earlier results above remain historical evidence.
+
+Four further reviewed boundaries remain pending final gates: canonical lowercase
+host names, complete first-token AWG defaults, success-only encrypted Make audit
+and nonblocking unsafe-source refusal. Their regressions reproduced the failures
+before the fixes. Earlier accepted commits above are historical evidence.

@@ -55,7 +55,11 @@ open(file, "w").write(json.dumps(doc))
 PY
   exit 0
 fi
-cat @SECRETS_FILE@
+if [ "${3:-}" = '["client_registry"]' ]; then
+  python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("client_registry", {})))' < @SECRETS_FILE@
+else
+  cat @SECRETS_FILE@
+fi
 """
     return body.replace("${ARG1:-}", "${1:-}").replace(
         "@SECRETS_FILE@", str(secrets_file)
@@ -100,6 +104,9 @@ case "$*" in *.meta*) cat > {meta_file} ;; *) cat > {payload_file} ;; esac
         {
             "PATH": f"{bin_dir}:{STUBS_BIN}:{tool_path}",
             "HOME": str(tmp_path),
+            "AGE_KEY": str(tmp_path / "age.key"),
+            "AUDIT_LOG_FILE": str(tmp_path / "audit.log.age"),
+            "AUDIT_ACTOR": "fixture",
             "SOPS_FILE": str(secrets_file),
             "STUB_LOG": str(tmp_path / "stub.log"),
         }
@@ -451,3 +458,32 @@ def test_safe_subscription_directory_reaches_next_stage(tmp_path, script_name):
     )
     assert result.returncode == 73, result.stderr
     assert marker.exists()
+
+
+def test_first_token_initializes_schema_valid_no_awg_state(tmp_path):
+    import jsonschema
+    env, _, _, secrets_file = _harness(tmp_path)
+    document = json.loads(secrets_file.read_text())
+    document.pop('client_registry', None)
+    for instance in document['amneziawg_secrets']['instances']:
+        instance['peers'] = [peer for peer in instance['peers'] if peer['name'] != 'phone']
+    secrets_file.write_text(json.dumps(document))
+    result = _run_issuer(env, '--format', 'singbox', '--print-token-only')
+    assert result.returncode == 0, result.stderr
+    document = json.loads(secrets_file.read_text())
+    entry = document['client_registry']['phone']
+    assert entry['awg_binding'] is None
+    assert entry['awg_private_key'] == entry['awg_public_key_fingerprint'] == ''
+    schema = json.loads((REPO_ROOT / 'secrets/schema.json').read_text())
+    assert not list(jsonschema.Draft202012Validator(schema).iter_errors(document))
+
+
+def test_token_delivery_preserves_existing_awg_authority(tmp_path):
+    env, _, _, secrets_file = _harness(tmp_path)
+    document = json.loads(secrets_file.read_text())
+    expected = {key: value for key, value in document['client_registry']['phone'].items() if key.startswith('awg_')}
+    assert expected['awg_binding'] is not None
+    result = _run_issuer(env, '--format', 'singbox', '--print-token-only')
+    assert result.returncode == 0, result.stderr
+    actual = json.loads(secrets_file.read_text())['client_registry']['phone']
+    assert {key: value for key, value in actual.items() if key.startswith('awg_')} == expected
