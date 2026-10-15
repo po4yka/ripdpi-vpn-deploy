@@ -10,7 +10,7 @@ from urllib.request import Request, urlopen
 
 PINS = json.loads(
     (
-        Path(__file__).resolve().parent.parent / "contract/hysteria-runtimes.json"
+        Path(__file__).resolve().parent.parent / "scripts/hysteria-runtimes.json"
     ).read_text()
 )
 

@@ -66,7 +66,7 @@
         owner: root
         group: root
         mode: '0755'
-    - name: Fetch verified Hysteria 2.9.0 amd64 fixture
+    - name: Fetch verified Hysteria 2.13.0 amd64 fixture
       ansible.builtin.get_url:
         url: https://github.com/HyNetworks/hysteria/releases/download/app/v2.13.0/hysteria-linux-amd64
         dest: /var/tmp/hysteria-molecule/hysteria-v2.13.0
@@ -74,7 +74,7 @@
         owner: root
         group: root
         mode: '0755'
-    - name: Fetch verified Hysteria 2.9.0 arm64 fixture
+    - name: Fetch verified Hysteria 2.13.0 arm64 fixture
       ansible.builtin.get_url:
         url: https://github.com/HyNetworks/hysteria/releases/download/app/v2.13.0/hysteria-linux-arm64
         dest: /var/tmp/hysteria-molecule/hysteria-v2.13.0-arm64

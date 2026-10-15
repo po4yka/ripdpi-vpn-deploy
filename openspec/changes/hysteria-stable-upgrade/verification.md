@@ -38,7 +38,7 @@ The requirement rows remain open until their complete named evidence is observed
 ## Source implementation observations (2026-10-15)
 
 - Candidate inputs: Hysteria 2.13.0 and official sing-box 1.14.3, with exact
-  architecture digests in `contract/hysteria-runtimes.json`. Release channel,
+  architecture digests in `scripts/hysteria-runtimes.json`. Release channel,
   publication timestamps and asset digests were retrieved at execution time;
   the subsequent advisory refresh was unavailable, so promotion eligibility
   remains unconfirmed.

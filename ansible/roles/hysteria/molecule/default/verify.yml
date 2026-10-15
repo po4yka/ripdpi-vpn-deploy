@@ -114,7 +114,7 @@
     - name: Assert upgraded fixture version and active Hysteria service
       ansible.builtin.assert:
         that:
-          - '''2.9.0'' in upgraded_hysteria_version.stdout'
+          - '''2.13.0'' in upgraded_hysteria_version.stdout'
           - upgraded_hysteria_service.stdout == 'active'
     - name: Inspect upgraded runtime-release links and receipts
       ansible.builtin.stat:

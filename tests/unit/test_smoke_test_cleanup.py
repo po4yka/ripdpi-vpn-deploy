@@ -201,6 +201,7 @@ def smoke_run(tmp_path):
         source['vars']['p0_reality_shapes'] = shared_vars['p0_reality_shapes']
         source['vars']['xray_port'] = shared_vars['xray_port']
         source['vars']['hysteria_port'] = shared_vars['hysteria_port']
+        source['vars']['hysteria_config_dir'] = shared_vars['hysteria_config_dir']
         source['vars']['p0_reality_shape_template'] = str(
             ROOT / 'ansible/templates/p0-reality-shape.json.j2'
         )

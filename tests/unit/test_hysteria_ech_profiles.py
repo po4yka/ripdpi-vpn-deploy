@@ -302,7 +302,7 @@ def test_make_issuance_captures_literal_inputs_without_operator_configuration(tm
 
 
 def test_exact_runtime_contract_matches_current_pins_and_all_architectures():
-    pins = json.loads((ROOT / "contract/hysteria-runtimes.json").read_text())
+    pins = json.loads((ROOT / "scripts/hysteria-runtimes.json").read_text())
     example = yaml.safe_load((ROOT / "secrets/prod.secrets.example.yaml").read_text())
     assert pins["hysteria"]["version"] == example["hysteria"]["version"] == "v2.13.0"
     for name in ("hysteria", "sing_box"):

@@ -19,7 +19,7 @@ from encrypted_client_document import CommittedPublication, operate
 from transport_semantics import ech_keys_config, hostname_valid, hysteria_errors
 
 ROOT = Path(__file__).resolve().parent.parent
-PINS = json.loads((ROOT / "contract/hysteria-runtimes.json").read_text())
+PINS = json.loads((ROOT / "scripts/hysteria-runtimes.json").read_text())
 
 
 def verified_binary(binary):
