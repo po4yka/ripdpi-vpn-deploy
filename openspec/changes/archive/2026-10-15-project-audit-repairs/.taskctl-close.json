@@ -1,0 +1,11 @@
+{
+  "change": "project-audit-repairs",
+  "evidence_summary": "Exact source f6ad803e97237d8d8ec3839284d84db974ea986c passed 88 CI jobs and required CodeQL checks. Full portable native full-stack and source gates plus targeted Mac regressions and full-history/staged secret scans passed. All 16 requirement rows are resolved. Source-only acceptance excludes deployment and records the failed monolithic Mac invocation.",
+  "execution_sha256": "c79f15b98069ccfa74704d168cc40a10fc562882956a7196a72cdcfa6eac24a5",
+  "issue_sha256": "dfa3925435dcb7c0959eeec46d099b670560079a25d0986e08f4d8585510c0cb",
+  "outcome": "done",
+  "prepared_at": "2026-10-15T17:20:19Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SEC-1791735853691219"
+}

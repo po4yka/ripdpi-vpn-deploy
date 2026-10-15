@@ -2,7 +2,7 @@
 id: SCR-1791618039091425
 title: Deliver authoritative AmneziaWG device enrollment and client bindings
 kind: feature
-status: review
+status: done
 area: scripts
 priority: high
 risk: high
@@ -15,6 +15,9 @@ created: 2026-10-10
 updated: 2026-10-15
 related_tasks: [ANS-1791562764586678, SEC-1791471757439452]
 status_detail: "Address five additional PR #298 review findings in binding authority, interface names, duplicate devices, Make defaults and AWG reissuance."
+closed_at: "2026-10-15T17:20:19Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "Exact source f6ad803e97237d8d8ec3839284d84db974ea986c passed CI 38768887914: 88 successful jobs and 93 successful checks. Actual two-instance AWG traffic export rejection and revocation plus 61 encrypted Mac regressions passed. Approved source gate and honest failed local monolithic outcome are recorded; no deployment or private-input migration."
 ---
 
 ## Goal

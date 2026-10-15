@@ -1,0 +1,11 @@
+{
+  "change": "awg-device-binding",
+  "evidence_summary": "Exact source f6ad803e97237d8d8ec3839284d84db974ea986c passed CI 38768887914: 88 successful jobs and 93 successful checks. Actual two-instance AWG traffic export rejection and revocation plus 61 encrypted Mac regressions passed. Approved source gate and honest failed local monolithic outcome are recorded; no deployment or private-input migration.",
+  "execution_sha256": "5870119dfae390881fcd0b25586c083bd3afbf823674f7ca36c739ec3d0792e1",
+  "issue_sha256": "73db577d934bb36578b23a6888552189646592d1dfd024adf7bc645093902246",
+  "outcome": "done",
+  "prepared_at": "2026-10-15T17:20:19Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SCR-1791618039091425"
+}

@@ -2,7 +2,7 @@
 id: SEC-1791735853691219
 title: Repair project audit security and lifecycle defects
 kind: bug
-status: review
+status: done
 area: security
 priority: high
 risk: high
@@ -12,9 +12,12 @@ blocked_by: []
 spec_mode: required
 openspec_change: project-audit-repairs
 created: 2026-10-11
-updated: 2026-10-11
+updated: 2026-10-15
 related_tasks: []
 status_detail: CI root causes and scanner findings repaired with local regressions; hosted confirmation pending on the updated PR head.
+closed_at: "2026-10-15T17:20:19Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Exact source f6ad803e97237d8d8ec3839284d84db974ea986c passed 88 CI jobs and required CodeQL checks. Full portable native full-stack and source gates plus targeted Mac regressions and full-history/staged secret scans passed. All 16 requirement rows are resolved. Source-only acceptance excludes deployment and records the failed monolithic Mac invocation.
 ---
 
 ## Goal

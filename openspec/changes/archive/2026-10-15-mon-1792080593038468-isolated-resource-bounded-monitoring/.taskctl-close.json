@@ -1,0 +1,11 @@
+{
+  "change": "mon-1792080593038468-isolated-resource-bounded-monitoring",
+  "evidence_summary": "Exact source f6ad803e97237d8d8ec3839284d84db974ea986c passed all 88 CI jobs in 38768887914: actual bounded collector replay and outage, historical delivery after native agent rollback, and isolated real Kuma timing, persistence and encrypted restore. No external infrastructure or human receipt claimed. Local focused checks passed; monolithic check limitation is preserved in committed acceptance.",
+  "execution_sha256": "61ed1819752e1685cefe1b2a03089465e46f87b349accd7986eac23d1a36a39f",
+  "issue_sha256": "ae04e31934c7da6c08b7763b40133b5325d68e1fa8796e5b5a8f2bf35599490c",
+  "outcome": "done",
+  "prepared_at": "2026-10-15T17:33:32Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "MON-1792080593038468"
+}

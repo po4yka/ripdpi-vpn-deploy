@@ -2,7 +2,7 @@
 id: ANS-1791996027408136
 title: Recover interrupted ingress deploys and bind operator verbs to one node
 kind: bug
-status: review
+status: done
 area: ansible
 priority: high
 risk: high
@@ -14,6 +14,9 @@ openspec_change: ans-1791996027408136-operator-recovery-paths
 created: 2026-10-14
 updated: 2026-10-15
 related_tasks: []
+closed_at: "2026-10-15T17:24:55Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Exact source f6ad803e97237d8d8ec3839284d84db974ea986c passed complete CI 38768887914 including real native recovery runtime acceptance. Focused local tests passed; monolithic local make check was network-blocked and its queued retry cancelled, as recorded in committed Review acceptance.
 ---
 
 ## Goal

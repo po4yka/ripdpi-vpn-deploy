@@ -2,7 +2,7 @@
 id: MON-1792080593038468
 title: Deliver isolated resource-bounded monitoring acceptance
 kind: feature
-status: review
+status: done
 area: monitoring
 priority: high
 risk: high
@@ -14,6 +14,9 @@ openspec_change: mon-1792080593038468-isolated-resource-bounded-monitoring
 created: 2026-10-15
 updated: 2026-10-15
 related_tasks: [MON-1790835036464962]
+closed_at: "2026-10-15T17:33:32Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "Exact source f6ad803e97237d8d8ec3839284d84db974ea986c passed all 88 CI jobs in 38768887914: actual bounded collector replay and outage, historical delivery after native agent rollback, and isolated real Kuma timing, persistence and encrypted restore. No external infrastructure or human receipt claimed. Local focused checks passed; monolithic check limitation is preserved in committed acceptance."
 ---
 
 ## Goal

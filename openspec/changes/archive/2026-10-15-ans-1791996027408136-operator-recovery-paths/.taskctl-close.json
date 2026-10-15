@@ -1,0 +1,11 @@
+{
+  "change": "ans-1791996027408136-operator-recovery-paths",
+  "evidence_summary": "Exact source f6ad803e97237d8d8ec3839284d84db974ea986c passed complete CI 38768887914 including real native recovery runtime acceptance. Focused local tests passed; monolithic local make check was network-blocked and its queued retry cancelled, as recorded in committed Review acceptance.",
+  "execution_sha256": "0e238b6a7a5f686cbcd0761e851e53582cb55fae683fd701af3445cfaa75915e",
+  "issue_sha256": "3faf1c0eb58a7d6649e735d12f84d224ff5e29434f8ed730b3965f96bcf26633",
+  "outcome": "done",
+  "prepared_at": "2026-10-15T17:24:55Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "ANS-1791996027408136"
+}
