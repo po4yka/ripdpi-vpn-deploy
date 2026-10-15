@@ -14,6 +14,29 @@
 
 ## Design decisions
 
+AWG device tests use real SOPS/age round trips for selected pool issuance,
+revocation and interrupted/unsafe publication. The named native binding target
+owns isolated namespaces and exact pinned AWG builds; it proves two devices'
+TCP/UDP traffic, wrong keys/headers and selected revocation with the other
+instance still working. Portable mocks never stand in for this runtime proof.
+Atomic enrollment Bats cases run actual encrypted transactions too; their CI lane
+installs the pinned Python environment and checksum-verified SOPS with age.
+URI QR boundary tests consume actual encrypted issuance and inspect the exact
+codec input; failure retains the private URI for recovery. Dash-prefixed device
+names exercise both the shell wrapper and Make issuance/revocation surfaces.
+Binding cases reject absent registry authority and cross-instance duplicate
+devices. Shared encrypted/native fixtures contain complete matching recovery
+keys and registry bindings for every device. Real encrypted Make defaults and AWG-only revoke/reissue cases preserve
+non-AWG registry fields; schema tests share runtime interface-name boundaries.
+FIFO sources must refuse promptly and release the writer lock. Make audit
+regressions decrypt actual age envelopes and require no event for failed
+transactions; first-time token entries must satisfy the complete secrets schema.
+Multi-host refresh tests use distinct per-host documents and keys, retaining
+explicit AWG delivery selection despite missing or conflicting ambient input.
+Mutation tests preserve ciphertext when any unrelated registry relationship is
+broken; de-onboarding rejects rebound provider/environment identities. Isolated
+inventory fixtures copy the shared AWG registry module with the secrets validator.
+
 XHTTP endpoint acceptance is a separate complete target within the native job.
 Its cases and the existing native/RTA lanes form a disjoint complete collection,
 with selected skips fatal. Both served ports exercise actual pinned clients,

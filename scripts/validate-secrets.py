@@ -33,6 +33,7 @@ from pathlib import Path
 import yaml
 
 from transport_semantics import transport_errors
+from awg_device_binding import registry_errors
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = REPO_ROOT / "secrets" / "schema.json"
@@ -78,44 +79,6 @@ def _observability_selector_enabled(environments: list[str] | None) -> bool:
     except (KeyError, OSError, TypeError, ValueError, yaml.YAMLError) as exc:
         raise ValueError("invalid tracked observability selector") from exc
 
-
-def _awg_peer_pubkeys(doc: dict) -> dict[str, str]:
-    """Map peer name -> public key across all AmneziaWG collections."""
-    peers: dict[str, str] = {}
-    sections = [doc.get("amneziawg_secrets") or {}]
-    sections += (doc.get("amneziawg_secrets") or {}).get("instances") or []
-    for section in sections:
-        for peer in section.get("peers") or []:
-            if isinstance(peer, dict) and peer.get("name") and peer.get("public_key"):
-                peers[peer["name"]] = peer["public_key"]
-    return peers
-
-
-def _registry_errors(doc: dict) -> list[tuple[str, str]]:
-    """Validate client_registry relationships JSON Schema cannot express."""
-    errors: list[tuple[str, str]] = []
-    registry = doc.get("client_registry") or {}
-    if not isinstance(registry, dict):
-        return [("client_registry", "must be a mapping of device name to entry")]
-    awg_peers = _awg_peer_pubkeys(doc)
-    for device, entry in registry.items():
-        if not isinstance(entry, dict):
-            continue
-        fingerprint = entry.get("awg_public_key_fingerprint") or ""
-        match = AWG_FINGERPRINT.match(fingerprint)
-        if match:
-            expected = {
-                __import__("hashlib").sha256(key.encode()).hexdigest()[:16]
-                for key in awg_peers.values()
-            }
-            if match.group(1).lower() not in expected:
-                errors.append(
-                    (
-                        f"client_registry.{device}.awg_public_key_fingerprint",
-                        "does not match any amneziawg_secrets peer public key",
-                    )
-                )
-    return errors
 
 
 def _walk_strings(node, path=""):
@@ -533,7 +496,7 @@ def main() -> int:
     semantic_errors = _semantic_errors(
         doc,
         observability_enabled=observability_enabled,
-    ) + _registry_errors(doc)
+    ) + registry_errors(doc, allow_placeholders=not args.strict)
     if args.observability_topology is not None:
         semantic_errors += _observability_topology_errors(
             doc, args.observability_topology, args.environment

@@ -132,6 +132,7 @@ table inet filter {
     ct state established,related accept
 
 
+    # New client traffic may leave only via the configured uplink; replies use conntrack above.
     ct state new iifname "awg0" oifname "eth0" accept
 
 

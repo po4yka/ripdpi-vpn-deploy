@@ -241,13 +241,9 @@ REQUIRED_FILES=(
   /etc/snell/config.json
 {% endif %}
 {% if primary and vpn.enable_amneziawg | default(true) %}
-{% if (amneziawg_secrets | default({})).instances | default([]) | length > 0 %}
 {% for instance in amneziawg_secrets.instances %}
   "{{ amneziawg_config_dir | default('/etc/amnezia/amneziawg') }}/{{ instance.name }}.conf"
 {% endfor %}
-{% else %}
-  "{{ amneziawg_config_dir | default('/etc/amnezia/amneziawg') }}/{{ (amneziawg | default({})).interface | default('awg0') }}.conf"
-{% endif %}
 {% endif %}
 {% if primary and vpn.enable_nginx_xhttp | default(true) %}
   /etc/nginx/sites-available/vpn-xhttp.conf

@@ -1,5 +1,6 @@
 """Local Ansible verification and watchdog rendering use normalized AWG names."""
 
+import copy
 import os
 from pathlib import Path
 import subprocess
@@ -25,12 +26,16 @@ def test_real_verify_tasks_check_every_named_instance(tmp_path, failed):
     binary.chmod(0o755)
     # Preserve the production argv and replace only executable discovery.
     selected[-1]["ansible.builtin.command"]["argv"][0] = str(binary)
+    from test_awg_device_binding import document
+    awg = copy.deepcopy(document()["amneziawg_secrets"])
+    for index, item in enumerate(awg["instances"], 1):
+        item["name"] = f"awg{index}"
     play = [{
         "hosts": "localhost", "connection": "local", "gather_facts": False,
         "become": False,
         "vars": {"ansible_python_interpreter": sys.executable,
                  "vpn": {"enable_amneziawg": True},
-                 "amneziawg_secrets": {"instances": [{"name": "awg1"}, {"name": "awg2"}]}},
+                 "amneziawg_listen_port": 51820, "amneziawg_secrets": awg},
         "tasks": selected,
         "environment": {"AWG_LOG": str(log), "FAILED_AWG": failed},
     }]

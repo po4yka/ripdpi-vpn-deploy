@@ -79,14 +79,6 @@
   "reason": "P2 AmneziaWG instance " ~ (inst.name | default(loop.index))
 }) %}
 {% endfor %}
-{% else %}
-{% set _ = ns.listeners.append({
-  "role": "amneziawg",
-  "protocol": "udp",
-  "port": (amneziawg | default({})).listen_port | default(amneziawg_listen_port) | int,
-  "enabled": (vpn.enable_amneziawg | default(false)) and not subscription_only,
-  "reason": "P2 AmneziaWG listener"
-}) %}
 {% endif %}
 {% set _awg_evidence_mode = real_vps_awg_nat_mode | default('fail_closed') %}
 {% set _ = ns.listeners.append({

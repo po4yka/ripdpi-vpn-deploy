@@ -100,6 +100,7 @@ fi
 # ---------------------------------------------------------------------------
 REGISTRY_HOSTS="${HOSTS:-}"
 REGISTRY_COHORTS="${COHORTS:-}"
+REGISTRY_AWG_HOST="${AWG_HOST:-}"
 OVERRIDDEN=""
 REUSED=""
 if [[ -n "$REFRESH_TOKEN" ]]; then
@@ -139,6 +140,9 @@ if not formats or not hosts:
 print(formats[-1])
 print(",".join(hosts))
 print(",".join(cohorts))
+if "awg_delivery_host" not in entry or not isinstance(entry["awg_delivery_host"], str):
+    raise SystemExit("error: registry lacks AWG delivery selection; re-issue the token")
+print(entry["awg_delivery_host"])
 ' 2>&1 <<<"$registry_state")" || {
     echo "$resolved" >&2
     exit 1
@@ -147,6 +151,7 @@ print(",".join(cohorts))
     IFS= read -r registry_format || true
     IFS= read -r registry_hosts || true
     IFS= read -r registry_cohorts || true
+    IFS= read -r registry_awg_host || true
   } <<<"$resolved"
 
   if (( FORMAT_SET )); then
@@ -169,11 +174,26 @@ print(",".join(cohorts))
   fi
   REGISTRY_HOSTS="$registry_hosts"
   REGISTRY_COHORTS="$registry_cohorts"
+  REGISTRY_AWG_HOST="$registry_awg_host"
   echo "refresh options — reused: ${REUSED:-none}; overridden: ${OVERRIDDEN:-none}"
   echo "refresh payload format: ${FORMAT}; hosts: ${REGISTRY_HOSTS}${REGISTRY_COHORTS:+; cohorts: ${REGISTRY_COHORTS}}"
 fi
 
-EMITTER_ENV=()
+if [[ -n "$REGISTRY_AWG_HOST" ]]; then
+  python3 - "${REPO_ROOT}/scripts" "$REGISTRY_AWG_HOST" "${REGISTRY_HOSTS:-${PROVIDER}:${ENV}}" <<'PYHOST'
+import sys
+sys.path.insert(0, sys.argv[1])
+from awg_device_binding import BindingError, host_identity
+try:
+    host_identity(sys.argv[2])
+    if sys.argv[2] not in sys.argv[3].split(","):
+        raise BindingError("invalid-host-binding")
+except BindingError:
+    raise SystemExit("error: invalid AWG delivery host selection") from None
+PYHOST
+fi
+
+EMITTER_ENV=(AWG_HOST="$REGISTRY_AWG_HOST")
 if [[ -n "$REGISTRY_HOSTS" ]]; then
   EMITTER_ENV+=(HOSTS="$REGISTRY_HOSTS")
 fi
@@ -260,7 +280,7 @@ read -r source_id outputs_id <<<"$identity_line"
 
 entry_json="$(FORMAT="$FORMAT" HOSTS="${REGISTRY_HOSTS:-${PROVIDER}:${ENV}}" \
   COHORTS="$REGISTRY_COHORTS" HASH_PREFIX="$hash_prefix" EXPIRY="$EXPIRES" \
-  SOURCE_ID="$source_id" OUTPUTS_ID="$outputs_id" \
+  SOURCE_ID="$source_id" OUTPUTS_ID="$outputs_id" AWG_DELIVERY_HOST="$REGISTRY_AWG_HOST" \
   python3 <<PYEOF
 import json, os, sys
 from datetime import datetime, timezone
@@ -274,6 +294,7 @@ entry = {
     "cohorts": [c for c in os.environ["COHORTS"].split(",") if c],
     "token_hash_prefix": os.environ["HASH_PREFIX"],
     "token_expires": os.environ["EXPIRY"],
+    "awg_delivery_host": os.environ["AWG_DELIVERY_HOST"],
     "last_payload_identity": {
         "source": os.environ["SOURCE_ID"],
         "outputs": os.environ["OUTPUTS_ID"],
@@ -294,7 +315,8 @@ if registry_read.returncode != 0:
         sys.stderr.write(stderr)
         raise SystemExit("issue-sub-token: secrets unavailable: sops decrypt of client_registry failed")
 existing = (json.loads(registry_read.stdout) if registry_read.stdout.strip() else {}).get("$CLIENT") or {}
-merged = {**existing, **{k: v for k, v in entry.items()}}
+merged = {"awg_binding": None, "awg_private_key": "", "awg_public_key_fingerprint": "",
+          **existing, **entry}
 # Preserve prior formats when refreshing with a reused format.
 if existing.get("formats") and os.environ["FORMAT"] in existing["formats"]:
     merged["formats"] = existing["formats"]

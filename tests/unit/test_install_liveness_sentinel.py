@@ -146,7 +146,7 @@ def test_four_profiles_use_one_decrypt_and_receipt_before_assignment(setup):
     assert not any(p.exists() for p in s["plaintexts"])
     assert set(bundle["files"]) == {"runner.py", "config.json", "metadata.json", "profiles/sing-box.json", "profiles/xray.json", "profiles/awg.conf"}
     contents = b"\n".join(base64.b64decode(v) for v in bundle["files"].values())
-    assert s["values"]["secrets_doc"]["amneziawg_secrets"]["server_private_key"].encode() not in contents
+    assert s["values"]["secrets_doc"]["amneziawg_secrets"]["instances"][0]["server_private_key"].encode() not in contents
     assert b"client_registry" not in contents
     config = json.loads(base64.b64decode(bundle["files"]["config.json"]))
     assert config["xray"]["config"].endswith("/profiles/xray.json")
@@ -157,7 +157,7 @@ def test_four_profiles_use_one_decrypt_and_receipt_before_assignment(setup):
     for command, environment, _stdin in calls:
         exposed = json.dumps([command, environment])
         assert s["values"]["private_key"] not in exposed
-        assert s["values"]["secrets_doc"]["amneziawg_secrets"]["server_private_key"] not in exposed
+        assert s["values"]["secrets_doc"]["amneziawg_secrets"]["instances"][0]["server_private_key"] not in exposed
     ssh = [c[0] for c in calls if c[0][0] == "ssh"]
     assert all("StrictHostKeyChecking=yes" in c and "BatchMode=yes" in c and "ProxyCommand=none" in c for c in ssh)
     assert not any("scp" == Path(c[0][0]).name for c in calls)

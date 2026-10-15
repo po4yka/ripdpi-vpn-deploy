@@ -213,6 +213,7 @@ PY
 fi
 
 OUTBOUNDS='[]'
+AWG_ENABLED=false
 SNELL_TAGS='[]'
 
 for i in "${!host_pairs[@]}"; do
@@ -259,6 +260,7 @@ for i in "${!host_pairs[@]}"; do
     '{secrets:$secrets[0], context:$context}' |
     python3 "${REPO_ROOT}/scripts/transport_semantics.py"
 
+  if [[ "$(toggle_enabled "$vpn_json" enable_amneziawg false)" == true ]]; then AWG_ENABLED=true; fi
   enable_reality="$(toggle_enabled "$vpn_json" enable_xray_reality true)"
   enable_xhttp="$(toggle_enabled "$vpn_json" enable_nginx_xhttp true)"
   enable_hysteria="$(toggle_enabled "$vpn_json" enable_hysteria false)"
@@ -501,7 +503,7 @@ done
 # ---------------------------------------------------------------------------
 # Add selector + urltest + boilerplate
 # ---------------------------------------------------------------------------
-if [[ "$(jq 'length' <<< "$OUTBOUNDS")" -eq 0 ]]; then
+if [[ "$(jq 'length' <<< "$OUTBOUNDS")" -eq 0 && ! ( "$PROFILE_FORMAT" == ripdpi && "$AWG_ENABLED" == true ) ]]; then
   echo "no enabled ${PROFILE_FORMAT} outbounds resolved from Ansible profile toggles" >&2
   exit 1
 fi

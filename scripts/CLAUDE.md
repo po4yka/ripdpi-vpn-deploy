@@ -2,13 +2,58 @@
 
 ## Design decisions
 
+AWG device issuance, revocation, export and recovery bind provider/environment,
+instance and device through `awg_device_binding.py`. Only the nonempty instance
+list owns peers and server keys. `awg_client.py` allocates from the selected
+subnet and shares the private stable `.new-client.lock` with Naive/retirement.
+`encrypted_client_document.py` stages ciphertext, verifies the entire decrypted
+result in memory and atomically publishes only after original authority checks.
+AWG revocation clears only the selected peer and its AWG recovery fields.
+Preflight and credential mutations share registry validation in
+`awg_device_binding.py`, checking both registry-to-peer and device-peer-to-registry authority;
+routed peers are exempt from the device registry. Existing-device resolution
+always requires the persisted registry binding;
+device names are unique across all instances, including explicit selection.
+AWG-only reissuance accepts a valid null binding with empty recovery fields and
+preserves non-AWG metadata; globally revoked entries and all-profile reissuance refuse.
+AWG Make targets apply normal host defaults and unexport original inputs after
+literal capture, preventing Make function expansion during environment export.
+Host environments follow the lowercase, alphanumeric-leading registry grammar.
+Make AWG operations append best-effort encrypted audit records only after a
+successful transaction; audit status stays on stderr so stdout remains JSON.
+Encrypted source, lock and candidate opens are
+nonblocking before regular-file validation, so a FIFO cannot hold the writer lock.
+Subscription delivery records `awg_delivery_host` independently of device
+authority; refresh restores this selector, including automatic selection,
+instead of inheriting ambient host overrides. Missing delivery state refuses
+refresh and requires reissuance. De-onboarding deletion paths require the
+verified cleanup provider/environment and exact persisted instance; rebinding
+a client to another host cannot authorize deletion through the old receipt.
+First-time subscription registry entries initialize a null AWG binding and
+empty recovery fields; existing AWG authority survives delivery metadata updates.
+Bundle multi-host selection requires `AWG_HOST` when more than one enabled host
+can bind; `AWG_INSTANCE` selects within that host. Missing enabled bindings
+refuse without emitting a partial payload. The public bundle shape/fingerprint
+algorithm are unchanged. RIPDPI bundles support AWG-only profiles through
+the direct carrier document; the official sing-box format still requires a
+supported proxy outbound. Private recipient output uses no-clobber `OUTPUT`
+publication in an owner-only directory. URI issuance also requires a private
+new output reserved before source mutation; transaction failure removes only
+that owned artifact. Credential-bearing URIs never enter metadata stdout. URI QR generation reserves
+its own private recipient file, reads the VLESS URI from that file, and retains
+it if QR rendering fails after enrollment. AWG CLI callers put the device name
+after `--`, so dash-prefixed identifiers cannot become options or audit-only
+successes. A null AWG registry binding also requires absence of that device
+from every instance peer collection.
+
 CI selects both native integration and complete transport acceptance together.
 Each has its own disposable runner; the consumer lab never adopts or removes
 another fixture's runtime authority. The required job graph checks both results.
 
 The canonical render fixture supplies watchdog AWG interface names from synthetic
-instances or the legacy interface. Snapshot rendering does not load real credentials
-or invoke deployment normalization.
+instances. Snapshot rendering uses the same pure effective-instance resolver
+and never loads real credentials. Unsupported I1-I5 policy fields and nonzero
+S3/S4 role defaults refuse before normalization rather than being discarded.
 The secrets coverage checker declares this names-only role fact explicitly;
 the complete AWG secret instance objects remain outside the environment file.
 
@@ -95,7 +140,10 @@ credential readout. Selected readout requires an explicit new `0600` output in a
 private `0700` directory, outside tracked source or under ignored `secrets/local/`.
 Its stdout carries only metadata; linked/existing/shared output authority refuses.
 It shares `.new-client.lock`, uses encrypted sibling publication,
-refuses unsafe source authority, and preserves unrelated fields. `new-client.sh`
+refuses unsafe source authority, and preserves unrelated fields. Once ciphertext
+replacement commits, a sync or descriptor-close failure reports
+`committed-durability-uncertain` with exit 3 and retains the recipient artifact;
+inspect the enrolled state before retrying. `new-client.sh`
 includes optional Naive issuance inside its existing all-profile transaction.
 No scalar credential compatibility path or plaintext staging is supported.
 

@@ -59,9 +59,9 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
     assert terraform["with"]["terraform_wrapper"] is False
     command = shlex.split(native[-1]["run"].replace("\\\n", ""))
     assert command[:2] == ["sudo", "env"]
-    assert command[-3:] == ["make", "test-native-runtime", "test-xhttp-endpoint-contract"]
+    assert command[-4:] == ["make", "test-native-runtime", "test-xhttp-endpoint-contract", "test-awg-device-binding-runtime"]
     environment = {}
-    for assignment in command[2:-3]:
+    for assignment in command[2:-4]:
         name, value = assignment.split("=", 1)
         assert name not in environment, f"duplicate native environment override: {name}"
         environment[name] = value

@@ -27,12 +27,14 @@ def inputs():
     xray = {"name": "sentinel", "uuid": "00000000-0000-4000-8000-000000000001", "short_id": "0011223344556677"}
     peer = {"name": "sentinel", "public_key": key(2), "preshared_key": key(3), "allowed_ips": "10.66.66.2/32"}
     secrets = {
-        "client_registry": {"sentinel": {"status": "active", "hosts": ["vultr:probe"]}},
+        "client_registry": {"sentinel": {"status": "active", "hosts": ["vultr:probe"], "awg_binding": {"provider": "vultr", "environment": "probe", "instance": "awg0"}}},
         "xray": {"clients": [xray], "reality_public_key": "public-reality-key", "server_names": ["cover.example"], "xhttp_path": "/sync"},
         "nginx_xhttp": {"server_name": "origin.example"},
         "hysteria": {"masquerade_url": "https://origin.example", "clients": [{"name": "sentinel", "password": "private-password"}]},
-        "amneziawg_secrets": {"server_private_key": key(4), "peers": [peer], "instances": [],
-                              "jc": 0, "h1": 11, "h2": 12, "h3": 13, "h4": 14},
+        "amneziawg_secrets": {"instances": [{"name": "awg0", "listen_port": 51820,
+                              "address_v4": "10.66.66.1/24", "address_v6": "fd42:42:42::1/64",
+                              "server_private_key": key(4), "peers": [peer],
+                              "jc": 0, "h1": 11, "h2": 12, "h3": 13, "h4": 14}]},
     }
     p0 = {"type": "vless", "tag": "p0-reality-upcloud-probe", "server": "192.0.2.1", "server_port": 443,
           "uuid": xray["uuid"], "flow": "xtls-rprx-vision", "tls": {"enabled": True, "server_name": "cover.example",
@@ -174,8 +176,8 @@ def test_wrong_client_private_key_does_not_emit_or_derive_server_material():
 def test_awg_client_requires_unique_host_address_inside_selected_subnet(address):
     module = load()
     args = inputs()
-    args["secrets_doc"]["amneziawg_secrets"]["peers"][0]["allowed_ips"] = address
-    with pytest.raises(module.ProfileError, match="awg-input-semantics|awg-address"):
+    args["secrets_doc"]["amneziawg_secrets"]["instances"][0]["peers"][0]["allowed_ips"] = address
+    with pytest.raises(module.ProfileError, match="invalid-awg-contract|invalid-device-address"):
         module.build_profiles(**args)
 
 
@@ -192,26 +194,25 @@ def test_duplicate_client_identity_is_rejected(kind):
         peers = args["secrets_doc"]["hysteria"]["clients"]
         duplicate = copy.deepcopy(peers[0])
     else:
-        peers = args["secrets_doc"]["amneziawg_secrets"]["peers"]
+        peers = args["secrets_doc"]["amneziawg_secrets"]["instances"][0]["peers"]
         duplicate = copy.deepcopy(peers[0])
         if kind != "awg-name":
             duplicate["name"] = "other"
         if kind == "awg-address":
             duplicate["public_key"] = key(99)
     peers.append(duplicate)
-    with pytest.raises(module.ProfileError, match="duplicate|awg-input-semantics|transport-input-semantics"):
+    with pytest.raises(module.ProfileError, match="duplicate|invalid-awg-contract|transport-input-semantics"):
         module.build_profiles(**args)
 
 
-def test_multi_instance_binding_uses_only_selected_instance_not_cohort_or_top_level():
+def test_multi_instance_binding_uses_selected_instance_over_cohort():
     module = load()
     args = inputs()
     awg = args["secrets_doc"]["amneziawg_secrets"]
-    instance = {**awg, "name": "awg-selected", "listen_port": 51999, "address_v4": "10.66.66.1/24"}
-    del instance["instances"]
-    instance.pop("jc")
+    instance = {**awg["instances"][0], "name": "awg-selected", "listen_port": 51999, "jc": 4}
     awg["instances"] = [{**instance, "name": "awg-other", "listen_port": 51998, "peers": []}, instance]
     args["awg_binding"]["instance"] = "awg-selected"
+    args["secrets_doc"]["client_registry"]["sentinel"]["awg_binding"]["instance"] = "awg-selected"
     built = module.build_profiles(**args)
     assert "Endpoint = 192.0.2.3:51999" in built["files"]["awg.conf"]
     assert "Jc = 4" in built["files"]["awg.conf"]
@@ -221,8 +222,8 @@ def test_multi_instance_binding_uses_only_selected_instance_not_cohort_or_top_le
 def test_unsupported_or_ambiguous_awg_parameters_fail_closed(parameter, value):
     module = load()
     args = inputs()
-    args["secrets_doc"]["amneziawg_secrets"][parameter] = value
-    with pytest.raises(module.ProfileError, match="awg-parameters|awg-input-semantics"):
+    args["secrets_doc"]["amneziawg_secrets"]["instances"][0][parameter] = value
+    with pytest.raises(module.ProfileError, match="invalid-awg-contract"):
         module.build_profiles(**args)
 
 
@@ -278,21 +279,21 @@ def test_hysteria_hop_ports_are_preserved_and_bound_in_public_digest():
     assert first["public_profile_digest"] != module.build_profiles(**args)["public_profile_digest"]
 
 
-def test_awg_single_network_defaults_override_top_level_secret_listen_port():
+def test_awg_instance_listen_port_overrides_role_defaults():
     module = load()
     args = inputs()
-    args["secrets_doc"]["amneziawg_secrets"]["listen_port"] = 60000
+    args["secrets_doc"]["amneziawg_secrets"]["instances"][0]["listen_port"] = 60000
     args["awg_defaults"]["listen_port"] = 51999
-    assert "Endpoint = 192.0.2.3:51999" in module.build_profiles(**args)["files"]["awg.conf"]
+    assert "Endpoint = 192.0.2.3:60000" in module.build_profiles(**args)["files"]["awg.conf"]
 
 
 def test_equivalent_awg_peer_address_is_not_a_second_identity():
     module = load()
     args = inputs()
-    args["secrets_doc"]["amneziawg_secrets"]["peers"].append({
+    args["secrets_doc"]["amneziawg_secrets"]["instances"][0]["peers"].append({
         "name": "other", "public_key": key(99), "preshared_key": key(98), "allowed_ips": "10.66.66.2/255.255.255.255",
     })
-    with pytest.raises(module.ProfileError, match="duplicate|awg-input-semantics|transport-input-semantics"):
+    with pytest.raises(module.ProfileError, match="duplicate|invalid-awg-contract|transport-input-semantics"):
         module.build_profiles(**args)
 
 
@@ -351,7 +352,7 @@ def test_other_clients_never_reach_runtime_files_or_public_report():
     other_uuid, other_short = "00000000-0000-4000-8000-000000000002", "aabbccddeeff0011"
     args["secrets_doc"]["xray"]["clients"].append({"name": "other", "uuid": other_uuid, "short_id": other_short})
     args["secrets_doc"]["hysteria"]["clients"].append({"name": "other", "password": "other-password-do-not-emit"})
-    args["secrets_doc"]["amneziawg_secrets"]["peers"].append({
+    args["secrets_doc"]["amneziawg_secrets"]["instances"][0]["peers"].append({
         "name": "other", "public_key": key(98), "preshared_key": key(99), "allowed_ips": "10.66.66.3/32",
     })
     result = json.dumps(module.build_profiles(**args))

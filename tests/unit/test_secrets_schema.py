@@ -124,7 +124,7 @@ def filled():
         + ("X" * 64 + "\n") * 4
         + "-----END CERTIFICATE-----\n"
     )
-    return {
+    document = {
         "xray": {
             "version": "v26.3.27",
             "linux_amd64_sha256": sha,
@@ -165,7 +165,8 @@ def filled():
         "amneziawg_go_commit": "2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf",
         "amneziawg_tools_version": "v1.0.20241018",
         "amneziawg_tools_commit": "c0b400c6dfc046f5cae8f3051b14cb61686fcf55",
-        "amneziawg_secrets": {
+        "amneziawg_secrets": {"instances": [{"name": "awg0", "listen_port": 51820,
+            "address_v4": "10.66.66.1/24", "address_v6": "fd42:42:42::1/64",
             "server_private_key": base64.b64encode(bytes([8]) * 32).decode(),
             "jc": 4,
             "jmin": 40,
@@ -184,11 +185,20 @@ def filled():
                     "allowed_ips": "10.66.66.2/32",
                 }
             ],
-            "instances": [],
-        },
+        }]},
         "backup": {"restic_password": "longrandomrestcpw" + "x" * 20},
         "watchdog_secrets": {"ntfy_topic": "ci-topic-aaaa1111"},
     }
+
+    import hashlib
+    from awg_client import public_key
+    private = base64.b64encode(bytes([9]) * 32).decode()
+    public = public_key(private)
+    document['amneziawg_secrets']['instances'][0]['peers'][0]['public_key'] = public
+    document['client_registry'] = {'phone': _registry_entry(
+        awg_private_key=private,
+        awg_public_key_fingerprint='sha256:' + hashlib.sha256(public.encode()).hexdigest()[:16])}
+    return document
 
 
 def _validator():
@@ -760,7 +770,7 @@ def test_dropping_required_top_level_fails(filled, drop_path):
         target = target[k]
     del target[drop_path[-1]]
     errs = list(v.iter_errors(doc))
-    assert errs, f"dropping {'.'.join(drop_path)} must fail validation"
+    assert errs, f"dropping {'.'.join(map(str, drop_path))} must fail validation"
 
 
 @pytest.mark.parametrize(
@@ -771,8 +781,8 @@ def test_dropping_required_top_level_fails(filled, drop_path):
         ("xray", "target"),
         ("xray", "clients"),
         ("hysteria", "linux_amd64_sha256"),
-        ("amneziawg_secrets", "h1"),
-        ("amneziawg_secrets", "peers"),
+        ("amneziawg_secrets", "instances", 0, "h1"),
+        ("amneziawg_secrets", "instances", 0, "peers"),
         ("backup", "restic_password"),
         ("watchdog_secrets", "ntfy_topic"),
     ],
@@ -785,7 +795,7 @@ def test_dropping_required_nested_fails(filled, drop_path):
         target = target[k]
     del target[drop_path[-1]]
     errs = list(v.iter_errors(doc))
-    assert errs, f"dropping {'.'.join(drop_path)} must fail validation"
+    assert errs, f"dropping {'.'.join(map(str, drop_path))} must fail validation"
 
 
 # ---------------------------------------------------------------------------
@@ -828,7 +838,7 @@ def test_bandwidth_unit_required(filled):
 
 def test_allowed_ips_must_be_cidrish(filled):
     v = _validator()
-    filled["amneziawg_secrets"]["peers"][0]["allowed_ips"] = "wat"
+    filled["amneziawg_secrets"]["instances"][0]["peers"][0]["allowed_ips"] = "wat"
     errs = list(v.iter_errors(filled))
     assert errs
 
@@ -850,6 +860,7 @@ def _validate_cli_with_selector(doc, tmp_path, *, enabled):
     (root / "ansible" / "group_vars").mkdir(parents=True)
     shutil.copyfile(VALIDATOR, root / "scripts" / "validate-secrets.py")
     shutil.copyfile(REPO_ROOT / "scripts" / "transport_semantics.py", root / "scripts" / "transport_semantics.py")
+    shutil.copyfile(REPO_ROOT / "scripts" / "awg_device_binding.py", root / "scripts" / "awg_device_binding.py")
     shutil.copyfile(SCHEMA, root / "secrets" / "schema.json")
     (root / "ansible" / "group_vars" / "all.yml").write_text(
         yaml.safe_dump(
@@ -915,7 +926,7 @@ def test_cohort_client_reference_must_exist(filled, tmp_path):
 
 def test_invalid_numeric_cidr_is_rejected_semantically(filled, tmp_path):
     doc = deepcopy(filled)
-    doc["amneziawg_secrets"]["peers"][0]["allowed_ips"] = "999.66.66.2/32"
+    doc["amneziawg_secrets"]["instances"][0]["peers"][0]["allowed_ips"] = "999.66.66.2/32"
 
     proc = _validate_cli(doc, tmp_path)
 
@@ -925,10 +936,10 @@ def test_invalid_numeric_cidr_is_rejected_semantically(filled, tmp_path):
 
 def test_awg_peer_public_keys_must_be_unique(filled, tmp_path):
     doc = deepcopy(filled)
-    peer = deepcopy(doc["amneziawg_secrets"]["peers"][0])
+    peer = deepcopy(doc["amneziawg_secrets"]["instances"][0]["peers"][0])
     peer["name"] = "laptop"
     peer["allowed_ips"] = "10.66.66.3/32"
-    doc["amneziawg_secrets"]["peers"].append(peer)
+    doc["amneziawg_secrets"]["instances"][0]["peers"].append(peer)
 
     proc = _validate_cli(doc, tmp_path)
 
@@ -939,7 +950,7 @@ def test_awg_peer_public_keys_must_be_unique(filled, tmp_path):
 
 def test_awg_instance_cidr_is_validated_semantically(filled, tmp_path):
     doc = deepcopy(filled)
-    source = doc["amneziawg_secrets"]
+    source = doc["amneziawg_secrets"]["instances"][0]
     doc["amneziawg_secrets"]["instances"] = [{
         "name": "awg1",
         "listen_port": 51820,
@@ -973,6 +984,8 @@ def _registry_entry(**overrides):
         "token_expires": "2026-12-31",
         "awg_public_key_fingerprint": "REPLACE_" + "WITH_AWG_KEY_FINGERPRINT",
         "awg_private_key": base64.b64encode(bytes([8]) * 32).decode(),
+        "awg_delivery_host": "",
+        "awg_binding": {"provider": "upcloud", "environment": "prod", "instance": "awg0"},
         "last_payload_identity": {"source": "", "outputs": ""},
     }
     entry.update(overrides)
@@ -1042,13 +1055,15 @@ def test_registry_semantic_mismatch_fails_naming_device(filled, tmp_path):
     }
     result = _run_validator_on(filled, tmp_path)
     assert result.returncode == 1
-    assert "client_registry.phone.awg_public_key_fingerprint" in result.stderr
+    assert "client_registry.phone.awg_binding" in result.stderr
 
 
 def test_registry_semantic_match_passes(filled, tmp_path):
     import hashlib
 
-    pubkey = 'CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk='
+    from awg_client import public_key
+    pubkey = public_key(base64.b64encode(bytes([8]) * 32).decode())
+    filled['amneziawg_secrets']['instances'][0]['peers'][0]['public_key'] = pubkey
     good = "sha256:" + hashlib.sha256(pubkey.encode()).hexdigest()[:16]
     filled["client_registry"] = {
         "phone": _registry_entry(awg_public_key_fingerprint=good)
@@ -1070,3 +1085,71 @@ def test_coverage_checker_requires_client_registry():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     assert "client_registry" in module.EXPECTED_SECRET_TOPLEVEL
+
+
+@pytest.mark.parametrize('retained_instance', [None, 0, 1])
+def test_unbound_awg_registry_requires_device_absent_from_every_instance(filled, tmp_path, retained_instance):
+    instances = filled['amneziawg_secrets']['instances']
+    extra = deepcopy(instances[0])
+    extra.update(name='awg1', listen_port=51821, address_v4='10.67.67.1/24',
+                 address_v6='fd42:43::1/64', server_private_key=base64.b64encode(bytes([77]) * 32).decode(), peers=[])
+    instances.append(extra)
+    peer = instances[0]['peers'].pop(0)
+    if retained_instance is not None:
+        peer['allowed_ips'] = ('10.66.66.2/32', '10.67.67.2/32')[retained_instance]
+        instances[retained_instance]['peers'].append(peer)
+    filled['client_registry'] = {'phone': _registry_entry(awg_binding=None, awg_private_key='', awg_public_key_fingerprint='')}
+    result = _run_validator_on(filled, tmp_path)
+    assert result.returncode == (0 if retained_instance is None else 1), result.stderr
+    if retained_instance is not None:
+        assert 'client_registry.phone.awg_binding' in result.stderr
+        assert 'retained' in result.stderr
+
+
+@pytest.mark.parametrize('name', ['0awg', 'awg.0', 'a' * 15])
+def test_binding_accepts_same_instance_names_as_runtime(filled, tmp_path, name):
+    import hashlib
+    from awg_client import public_key
+    private = base64.b64encode(bytes([8]) * 32).decode()
+    pubkey = public_key(private)
+    instance = filled['amneziawg_secrets']['instances'][0]
+    instance['name'] = name
+    instance['peers'][0]['public_key'] = pubkey
+    filled['client_registry'] = {'phone': _registry_entry(
+        awg_binding={'provider': 'upcloud', 'environment': 'prod', 'instance': name},
+        awg_public_key_fingerprint='sha256:' + hashlib.sha256(pubkey.encode()).hexdigest()[:16])}
+    result = _run_validator_on(filled, tmp_path)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize('name', ['-awg', '.awg', 'a' * 16, 'awg0\n'])
+def test_instance_binding_name_boundaries_are_shared(filled, name):
+    filled['amneziawg_secrets']['instances'][0]['name'] = name
+    filled['client_registry'] = {'phone': _registry_entry(
+        awg_binding={'provider': 'upcloud', 'environment': 'prod', 'instance': name})}
+    paths = [tuple(error.absolute_path) for error in _validator().iter_errors(filled)]
+    assert ('client_registry', 'phone', 'awg_binding') in paths
+    assert ('amneziawg_secrets', 'instances', 0, 'name') in paths
+
+
+@pytest.mark.parametrize('registry', ['absent', 'empty', 'other'])
+@pytest.mark.parametrize('kind', ['device', 'routed'])
+def test_every_device_peer_requires_registry_authority(filled, tmp_path, registry, kind):
+    filled.pop('client_registry', None)
+    filled['amneziawg_secrets']['instances'][0]['peers'][0]['address_kind'] = kind
+    if registry == 'empty':
+        filled['client_registry'] = {}
+    elif registry == 'other':
+        filled['client_registry'] = {'other': _registry_entry(awg_binding=None, awg_private_key='', awg_public_key_fingerprint='')}
+    result = _run_validator_on(filled, tmp_path)
+    assert result.returncode == (1 if kind == 'device' else 0), result.stderr
+    if kind == 'device':
+        assert 'device peer requires registry binding' in result.stderr
+
+
+def test_encrypted_native_fixture_has_complete_device_authority():
+    from test_awg_device_binding import document
+    spec = importlib.util.spec_from_file_location('fixture_registry_validator', VALIDATOR)
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+    assert validator.registry_errors(document()) == []

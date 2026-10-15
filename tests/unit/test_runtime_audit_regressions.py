@@ -95,24 +95,16 @@ def relocate(value, replacements: dict[str, str]):
 def test_awg_normalization_never_prints_private_material_under_verbose_callback(
     tmp_path,
 ):
-    private = "SYNTHETIC_AWG_PRIVATE_SENTINEL"
-    preshared_material = "SYNTHETIC_AWG_PSK_SENTINEL"
-    result = run_play(
-        tmp_path,
-        tasks("roles/amneziawg/tasks/instances.yml"),
-        {
-            "vpn": {"awg_cohort": ""},
-            "amneziawg_secrets": {
-                "instances": [
-                    {
-                        "name": "awg-private",
-                        "server_private_key": private,
-                        "peers": [{"preshared_key": preshared_material}],
-                    }
-                ]
-            },
-        },
-    )
+    from test_awg_device_binding import document
+    instance = document()["amneziawg_secrets"]["instances"][0]
+    private = instance["server_private_key"]
+    preshared_material = instance["peers"][0]["preshared_key"]
+    result = run_play(tmp_path, tasks("roles/amneziawg/tasks/instances.yml"), {
+        "vpn": {"awg_cohort": ""}, "amneziawg_listen_port": 51820,
+        "amneziawg": {"listen_port": 51820}, "amneziawg_cohort": {},
+        "amneziawg_secrets": {"instances": [instance]},
+        "role_path": str(ROOT / "ansible/roles/amneziawg"),
+    })
     assert result.returncode == 0, result.stdout + result.stderr
     assert private not in result.stdout + result.stderr
     assert preshared_material not in result.stdout + result.stderr

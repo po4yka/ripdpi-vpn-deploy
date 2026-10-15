@@ -84,6 +84,7 @@ NON_SECRET_TOPLEVEL = {
     "_transport_egress_forbidden",
     # Role-internal compute (set_fact)
     "watchdog_awg_interfaces",  # normalized interface names only, without peer credentials
+    "_inst",  # admitted private per-loop AWG instance; never emitted into environment files
     # Validated provider address and interface from honeypot secondary-address tasks.
     "_honeypot_secondary_address",
     "_honeypot_secondary_interface",
