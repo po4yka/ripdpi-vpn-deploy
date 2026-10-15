@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Release eligibility evaluates high/critical advisories against the exact selected version and repository-owned module ranges. Historical fixed ranges may clear; unknown modules, missing ranges or unsupported syntax keep promotion blocked.
+
 Bound bandwidth scalar length before integer conversion, so oversized numeric inputs refuse categorically within the supported 1 Gbps policy.
 
 Hysteria release acquisition and ECH generation share scripts/hysteria-runtimes.json. These deployment-only pins are outside the client-mirrored contract directory.

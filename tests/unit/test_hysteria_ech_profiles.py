@@ -362,3 +362,60 @@ def test_ech_origin_type_refuses_without_loading_or_printing_authority(origin):
 def test_bandwidth_bounds_refuse_without_integer_conversion_failure(field, value, valid):
     document = {"version": "v2.13.0", "masquerade_url": "https://vpn.example.com", field: value}
     assert bool(hysteria_errors(document)) is not valid
+
+
+@pytest.mark.parametrize("expression,allowed", [
+    ("<1.5.0-rc.5", True), ("<1.5.0 || >=1.14.0, <1.14.3", True),
+    ("<=1.14.3", False), (">=1.14.0, <1.15.0", False),
+    ("unknown", False), ("", False), ("<1.5.0 ||", False),
+])
+def test_release_advisories_apply_to_the_exact_candidate(expression, allowed):
+    from datetime import datetime, timezone, timedelta
+    from hysteria_release import publication_eligible
+    now = datetime.now(timezone.utc)
+    release = {"tag_name": "v1.14.3", "draft": False, "prerelease": False,
+               "published_at": (now-timedelta(hours=49)).isoformat(),
+               "assets": [{"name": "asset", "digest": "sha256:"+"a"*64}]}
+    advisory = {"severity": "critical", "vulnerabilities": [{
+        "package": {"ecosystem": "go", "name": "github.com/sagernet/sing-box"},
+        "vulnerable_version_range": expression}]}
+    assert publication_eligible(release, "v1.14.3", {"asset":"a"*64}, [advisory], now) is allowed
+    advisory["vulnerabilities"][0]["package"]["name"] = "unreviewed-dependency"
+    assert not publication_eligible(release, "v1.14.3", {"asset":"a"*64}, [advisory], now)
+
+
+def test_release_advisory_without_a_named_package_retains_repository_version_scope():
+    from datetime import datetime, timezone, timedelta
+    from hysteria_release import publication_eligible
+    now = datetime.now(timezone.utc)
+    release = {"tag_name": "app/v2.13.0", "draft": False, "prerelease": False,
+               "published_at": (now-timedelta(hours=49)).isoformat(),
+               "assets": [{"name": "asset", "digest": "sha256:"+"a"*64}]}
+    advisory = {"severity": "high", "vulnerabilities": [{
+        "package": {"ecosystem": "", "name": ""}, "vulnerable_version_range": "<2.9.2"}]}
+    assert publication_eligible(release, "app/v2.13.0", {"asset":"a"*64}, [advisory], now)
+    advisory["vulnerabilities"][0]["vulnerable_version_range"] = ">=2.9.2"
+    assert not publication_eligible(release, "app/v2.13.0", {"asset":"a"*64}, [advisory], now)
+
+
+def test_release_pair_never_reports_partial_eligibility(monkeypatch, capsys):
+    from datetime import datetime, timezone, timedelta
+    import hysteria_release as release
+    def fetch(url):
+        if "/SagerNet/" in url and "/security-advisories" in url:
+            raise OSError("unavailable")
+        if "/security-advisories" in url:
+            return []
+        name = "hysteria" if "/HyNetworks/" in url else "sing_box"
+        pin = release.PINS[name]
+        prefix = "hysteria-" if name == "hysteria" else "sing-box-" + pin["version"] + "-"
+        return {"tag_name": ("app/" if name == "hysteria" else "v") + pin["version"],
+                "draft": False, "prerelease": False,
+                "published_at": (datetime.now(timezone.utc)-timedelta(hours=72)).isoformat(),
+                "assets": [{"name": prefix+arch+("" if name == "hysteria" else ".tar.gz"),
+                            "digest": "sha256:"+digest} for arch,digest in pin["sha256"].items()]}
+    monkeypatch.setattr(release, "fetch", fetch)
+    assert release.main() == 1
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert "sing_box advisory metadata" in captured.err
