@@ -15,7 +15,8 @@ from pathlib import PurePosixPath
 import re
 import uuid
 
-from transport_semantics import awg_errors, cohort_errors, hysteria_errors, key_valid, parameter_errors, xhttp_path_valid
+from awg_device_binding import BindingError, resolve_binding
+from transport_semantics import awg_dns_valid, cohort_errors, hysteria_errors, key_valid, parameter_errors, xhttp_path_valid
 
 PROFILES = {"p0-reality", "p1-xhttp", "p2-hysteria2", "p2-amneziawg"}
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}\Z")
@@ -139,42 +140,16 @@ def _hysteria_options(outbound, secrets):
     return public
 
 
-def _selected_awg(secrets, binding, defaults, cohort):
-    if (not isinstance(binding, dict) or set(binding) != {"provider", "environment", "instance"}
-            or any(not isinstance(v, str) or not NAME.fullmatch(v) for v in binding.values())
-            or binding["provider"] not in {"upcloud", "vultr", "scaleway", "hetzner"}):
-        raise ProfileError("awg-binding")
-    raw = secrets.get("amneziawg_secrets")
-    if not isinstance(raw, dict) or not isinstance(defaults, dict) or not isinstance(cohort, dict):
-        raise ProfileError("invalid-awg-config")
-    instances = raw.get("instances", [])
-    if not isinstance(instances, list) or any(not isinstance(i, dict) for i in instances):
-        raise ProfileError("invalid-awg-instances")
-    if awg_errors(raw, defaults, cohort):
-        raise ProfileError("awg-input-semantics")
-    for source in (raw, cohort, *instances):
-        if any(p in source for p in ("i1", "i2", "i3", "i4", "i5")):
-            raise ProfileError("awg-parameters-unsupported")
-    if instances:
-        matches = [i for i in instances if i["name"] == binding["instance"]]
-        if len(matches) != 1:
-            raise ProfileError("awg-binding")
-        chosen = matches[0]
-        effective = {**PARAM_DEFAULTS, **chosen}
-    else:
-        if binding["instance"] != defaults.get("interface", "awg0"):
-            raise ProfileError("awg-binding")
-        chosen = raw
-        effective = {**PARAM_DEFAULTS, **cohort, **raw}
-    # Single-instance network fields come from role variables, unlike the old
-    # emit-awg helper's top-level secret listen_port fallback.
-    network = chosen if instances else defaults
-    return effective, network.get("listen_port", defaults.get("listen_port", 51820)), network.get(
-        "address_v4", defaults.get("address_v4", "10.66.66.1/24"))
-
-
 def _awg(secrets, client, binding, endpoint, private_key, derive, defaults, cohort):
-    chosen, port, address = _selected_awg(secrets, binding, defaults, cohort)
+    if not isinstance(binding, dict) or set(binding) != {"provider", "environment", "instance"}:
+        raise ProfileError("awg-binding")
+    try:
+        selected = resolve_binding(secrets, {"amneziawg": defaults, "amneziawg_cohort": cohort},
+                                   client, binding["provider"] + ":" + binding["environment"], binding["instance"])
+    except (BindingError, TypeError) as failure:
+        raise ProfileError(str(failure) if isinstance(failure, BindingError) else "awg-binding") from None
+    chosen = selected.instance
+    port, address = chosen["listen_port"], chosen["address_v4"]
     peer = _client(chosen.get("peers"), client, ("public_key", "preshared_key", "allowed_ips"))
     try:
         server = ipaddress.IPv4Interface(address)
@@ -327,18 +302,11 @@ def build_profiles(standard_doc, ripdpi_doc, secrets_doc, client, required_profi
             files[filename] = document
             runtime[engine] = {"config": str(root / filename), "profiles": maps[engine]}
     if "p2-amneziawg" in needed:
+        dns_servers = awg_defaults.get("dns_servers") if isinstance(awg_defaults, dict) else None
+        if not awg_dns_valid(dns_servers):
+            raise ProfileError("invalid-awg-dns")
         awg, address, metadata = _awg(secrets_doc, client, awg_binding, endpoint, private_key,
                                      derive_public_key, awg_defaults, awg_cohort)
-        dns_servers = awg_defaults.get("dns_servers") if isinstance(awg_defaults, dict) else None
-        if not isinstance(dns_servers, list) or not 1 <= len(dns_servers) <= 4:
-            raise ProfileError("invalid-awg-dns")
-        try:
-            valid_dns = all(isinstance(server, str) and ipaddress.IPv4Address(server).is_global
-                            and str(ipaddress.IPv4Address(server)) == server for server in dns_servers)
-        except ipaddress.AddressValueError:
-            valid_dns = False
-        if not valid_dns or len(set(dns_servers)) != len(dns_servers):
-            raise ProfileError("invalid-awg-dns")
         files["awg.conf"] = awg
         runtime["amneziawg"] = {"config": str(root / "awg.conf"), "address": address,
                                  "dns_servers": list(dns_servers)}

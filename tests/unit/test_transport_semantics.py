@@ -22,7 +22,8 @@ def key(value):
 
 
 def awg():
-    return {"server_private_key": key(1), "jc": 4, "jmin": 40, "jmax": 70,
+    return {"name": "awg0", "listen_port": 51820, "address_v4": "10.66.66.1/24",
+            "address_v6": "fd42:42:42::1/64", "server_private_key": key(1), "jc": 4, "jmin": 40, "jmax": 70,
             "s1": 50, "s2": 100, "h1": 11, "h2": 12, "h3": 13, "h4": 14,
             "peers": [{"name": "device", "public_key": key(2), "preshared_key": key(3),
                        "allowed_ips": "10.66.66.2/32"}]}
@@ -61,13 +62,15 @@ def test_duplicate_client_names_cannot_resolve_an_ambiguous_cohort():
 def test_awg_parameter_and_key_failures_are_categorical(field, value):
     raw = awg()
     raw[field] = value
-    errors = awg_errors(raw)
+    errors = awg_errors({"instances": [raw]})
     assert errors and "sensitive-marker" not in json.dumps(errors)
 
 
 @pytest.mark.parametrize("name", ["a" * 16, "../private-marker", "bad/name", "", {"private-marker": True}])
 def test_effective_interface_name_uses_runtime_grammar(name):
-    errors = awg_errors(awg(), {"interface": name})
+    raw = awg()
+    raw["name"] = name
+    errors = awg_errors({"instances": [raw]})
     assert errors and "private-marker" not in json.dumps(errors)
 
 
@@ -88,23 +91,23 @@ def test_peer_claim_and_key_relationship_failures(mutation):
         field = mutation.replace("-", "_")
         peer[field] = raw["peers"][0][field]
     raw["peers"].append(peer)
-    errors = awg_errors(raw)
+    errors = awg_errors({"instances": [raw]})
     assert errors and "private-marker" not in json.dumps(errors)
 
 
 def test_explicit_routed_prefix_is_legal_but_colliding_device_is_not():
     raw = awg()
     raw["peers"][0].update(address_kind="routed", allowed_ips="10.77.0.0/24")
-    assert not awg_errors(raw)
+    assert not awg_errors({"instances": [raw]})
     raw["peers"].append({"name": "other", "public_key": key(4), "preshared_key": key(5),
                          "allowed_ips": "10.77.0.2/32"})
-    assert any("conflicting" in message for _, message in awg_errors(raw))
+    assert any("conflicting" in message for _, message in awg_errors({"instances": [raw]}))
 
 
 def test_distinct_multi_instances_accept_the_same_effective_validation():
     first = {**awg(), "name": "awg-first", "listen_port": 51900}
     second = copy.deepcopy(first)
-    second.update(name="awg-second", listen_port=51901, server_private_key=key(6))
+    second.update(name="awg-second", listen_port=51901, server_private_key=key(6), address_v4="10.77.0.1/24")
     second["peers"][0].update(name="other", public_key=key(4), preshared_key=key(5), allowed_ips="10.77.0.2/32")
     assert not awg_errors({"instances": [first, second]})
     second["peers"][0]["allowed_ips"] = first["peers"][0]["allowed_ips"]
@@ -137,10 +140,10 @@ def test_shared_cli_consumes_stdin_only_and_reports_categorical_fields():
     raw = awg()
     raw["peers"][0]["public_key"] = "sensitive-marker"
     result = subprocess.run([sys.executable, str(SCRIPT), "--section", "awg"],
-                            input=json.dumps({"amneziawg_secrets": raw}), text=True,
+                            input=json.dumps({"amneziawg_secrets": {"instances": [raw]}}), text=True,
                             capture_output=True, timeout=10)
     assert result.returncode == 1
-    assert "amneziawg_secrets.peers.0.public_key" in result.stderr
+    assert "amneziawg_secrets.instances.0.peers.0.public_key" in result.stderr
     assert "sensitive-marker" not in result.stdout + result.stderr
 
 
@@ -197,7 +200,7 @@ def test_actual_controller_preflight_preserves_before_mutation_and_check_mode(tm
 def test_peer_cidr_types_refuse_before_native_render(prefix):
     raw = awg()
     raw["peers"][0]["allowed_ips"] = prefix
-    errors = awg_errors(raw)
+    errors = awg_errors({"instances": [raw]})
     assert errors and "sensitive-marker" not in json.dumps(errors)
 
 
@@ -219,3 +222,28 @@ def test_native_provisioning_is_version_pinned_and_precedes_selected_tests():
     assert script.index("git -C \"$destination\" rev-parse HEAD") < script.index('make -C "${native_root}/amneziawg-go-')
     for field in ("amneziawg_go_commit", "amneziawg_tools_commit"):
         assert yaml.safe_load((ROOT / "secrets/prod.secrets.example.yaml").read_text())[field] in steps[run]["run"]
+
+
+@pytest.mark.parametrize('layer', ['amneziawg', 'amneziawg_cohort'])
+@pytest.mark.parametrize('parameter', ['i1', 'i2', 'i3', 'i4', 'i5'])
+def test_policy_i_parameters_refuse_before_effective_normalization(layer, parameter):
+    from awg_device_binding import BindingError, resolve_binding
+    from test_awg_device_binding import document
+    from transport_semantics import effective_awg_instances
+    doc = document()
+    context = {layer: {parameter: '<b 0x01>'}}
+    with pytest.raises(ValueError):
+        effective_awg_instances(doc['amneziawg_secrets'], context.get('amneziawg'), context.get('amneziawg_cohort'))
+    with pytest.raises(BindingError, match='invalid-awg-contract'):
+        resolve_binding(doc, context, 'device0', 'upcloud:fixture', 'awg0')
+
+
+@pytest.mark.parametrize('parameter', ['s3', 's4'])
+def test_role_default_nonzero_arm64_unsupported_parameters_refuse(parameter):
+    assert awg_errors({'instances': [awg()]}, {parameter: 1})
+
+
+def test_unknown_cohort_fields_are_not_silently_discarded():
+    from transport_semantics import effective_awg_instances
+    with pytest.raises(ValueError, match='unsupported-awg-policy'):
+        effective_awg_instances({'instances': [awg()]}, cohort={'unknown_wire_field': 1})

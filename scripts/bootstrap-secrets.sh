@@ -370,17 +370,22 @@ amneziawg_tools_version: "${AWG_TOOLS_VERSION}"
 amneziawg_tools_commit: "${AWG_TOOLS_COMMIT}"
 
 amneziawg_secrets:
-  server_private_key: "${AWG_SERVER_PRIV}"
-  jc: 4
-  jmin: 40
-  jmax: 70
-  s1: 50
-  s2: 100
-  h1: ${H1}
-  h2: ${H2}
-  h3: ${H3}
-  h4: ${H4}
-  peers: []
+  instances:
+    - name: awg0
+      listen_port: 51820
+      address_v4: "10.66.66.1/24"
+      address_v6: "fd42:42:42::1/64"
+      server_private_key: "${AWG_SERVER_PRIV}"
+      jc: 4
+      jmin: 40
+      jmax: 70
+      s1: 50
+      s2: 100
+      h1: ${H1}
+      h2: ${H2}
+      h3: ${H3}
+      h4: ${H4}
+      peers: []
 NAIVE
 
   cat <<TAIL

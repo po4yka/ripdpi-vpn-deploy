@@ -18,7 +18,7 @@ Remove the leaked client from:
 
 - `xray.clients[*]` (matching `name`)
 - `hysteria.clients[*]` (matching `name`)
-- `amneziawg_secrets.peers[*]` (matching `name`)
+- `amneziawg_secrets.instances[*].peers[*]` (matching `name`)
 - `naive_secrets.clients[*]`, when configured (matching `name`; `make naive-revoke` removes only this transport)
 - `snell_secrets.variants[*].users[*]`, when configured (matching `name`)
 
@@ -100,8 +100,9 @@ make clean
 ```
 
 Every existing client URI is now invalid. Reissue URIs to every device
-through `scripts/new-client.sh --emit-uri <name>` (the script reads the
-new public key from secrets) and redistribute.
+through `OUTPUT=<new private recipient file> scripts/new-client.sh --emit-uri <name>`
+and redistribute through the approved private channel. Stdout carries metadata
+only; the output requires a new file in a private `0700` directory.
 
 ## 3. Hysteria server-wide / AmneziaWG server-wide
 

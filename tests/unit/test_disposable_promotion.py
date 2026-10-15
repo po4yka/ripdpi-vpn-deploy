@@ -192,11 +192,13 @@ def capabilities(intent, tmp_path, monkeypatch):
     intent["target_identity"]["public_service_address_sha256"] = hashlib.sha256(
         b"192.0.2.10"
     ).hexdigest()
-    secrets = {
-        "client_registry": {
-            "staging-client": {"status": "issued", "awg_private_key": "A" * 43 + "="}
-        }
-    }
+    from test_awg_device_binding import document
+    secrets = document()
+    instance = secrets['amneziawg_secrets']['instances'][0]
+    instance['peers'][0]['name'] = 'staging-client'
+    secrets['client_registry'] = {
+        'staging-client': {'status': 'issued', 'awg_private_key': 'A' * 43 + '=',
+                          'awg_binding': {'provider': 'upcloud', 'environment': 'ci-staging-fixture', 'instance': 'awg0'}}}
     for name in intent["inputs"]:
         path = private / name
         raw = (

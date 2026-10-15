@@ -344,6 +344,8 @@ the tracked source stays clean.
 ## Add a new client device
 
 ```bash
+install -d -m 0700 secrets/local/clients/laptop
+OUTPUT=secrets/local/clients/laptop/uris.txt \
 SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml \
 ./scripts/new-client.sh --emit-uri laptop
 

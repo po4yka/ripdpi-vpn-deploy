@@ -177,14 +177,10 @@ table inet filter {
 {% endfor %}
 {% endif %}    ct state established,related accept
 {% if vpn.enable_amneziawg | default(false) %}
-{% if _awg_inst | length > 0 %}
 {% for inst in _awg_inst %}
     # New client traffic may leave only via the configured uplink; replies use conntrack above.
     ct state new iifname "{{ inst.name }}" oifname "{{ awg_uplink_interface }}" accept
 {% endfor %}
-{% else %}
-    ct state new iifname "awg0" oifname "{{ awg_uplink_interface }}" accept
-{% endif %}
 {% endif %}
 {% if vpn.enable_split_hop_egress | default(false) %}
     # Node B forwards decapsulated traffic from the B-initiated split-hop flow.
@@ -260,13 +256,9 @@ table inet nat {
 {% if vpn.enable_amneziawg | default(false) %}
   chain postrouting {
     type nat hook postrouting priority 100;
-{% if _awg_inst | length > 0 %}
 {% for inst in _awg_inst %}
     iifname "{{ inst.name }}" oifname != "{{ inst.name }}" counter masquerade comment "awg-nat-{{ inst.name }}"
 {% endfor %}
-{% else %}
-    iifname "awg0" oifname != "awg0" counter masquerade comment "awg-nat-awg0"
-{% endif %}
   }
 {% endif %}
 }

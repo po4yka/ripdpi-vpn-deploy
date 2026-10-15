@@ -11,7 +11,7 @@ SETUP = "./.github/actions/setup-ci-python"
 DISPOSABLE_SETUP = "./.github/actions/setup-disposable-ci"
 GALAXY_JOBS = {"ansible", "molecule", "molecule-failure-scenarios", "molecule-full-stack"}
 NATIVE_JOBS = {"native-runtime", "transport-runtime-acceptance"}
-PYTHON_JOBS = GALAXY_JOBS | {"python-validators", "unit-tests"} | NATIVE_JOBS
+PYTHON_JOBS = GALAXY_JOBS | {"python-validators", "unit-tests", "bats-test"} | NATIVE_JOBS
 VALIDATORS = {
     "yamllint -c .yamllint.yml .",
     "python3 scripts/check-secrets-coverage.py",

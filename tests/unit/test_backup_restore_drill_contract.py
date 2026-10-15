@@ -99,10 +99,10 @@ def test_drill_requires_baseline_and_enabled_transport_artifacts() -> None:
     assert 'python3 -m json.tool "$restore_target/etc/xray/config.json"' in script
 
 
-def test_drill_requires_legacy_amneziawg_interface_in_the_config_directory() -> None:
+def test_drill_does_not_invent_a_legacy_awg_interface() -> None:
     script = _render(remote_enabled=False, awg_instances=[])
 
-    assert "etc/amnezia/amneziawg/awg0.conf" in script
+    assert "etc/amnezia/amneziawg/awg0.conf" not in script
     assert "etc/amnezia/amneziawg/awg-test.conf" not in script
 
 

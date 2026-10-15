@@ -266,23 +266,26 @@ amneziawg_tools_version: "v1.0.20241018"
 amneziawg_tools_commit: "c0b400c6dfc046f5cae8f3051b14cb61686fcf55"
 
 amneziawg_secrets:
-  server_private_key: "${awg_priv}"
-  jc: 4
-  jmin: 40
-  jmax: 70
-  s1: 50
-  s2: 100
-  h1: ${H1}
-  h2: ${H2}
-  h3: ${H3}
-  h4: ${H4}
-  peers:
-    - name: ${CLIENT_NAME}
-      public_key: "${peer_pub}"
-      preshared_key: "${peer_psk}"
-      allowed_ips: "10.66.66.2/32"
-  instances: []
-
+  instances:
+    - name: awg0
+      listen_port: 51820
+      address_v4: "10.66.66.1/24"
+      address_v6: "fd42:42:42::1/64"
+      server_private_key: "${awg_priv}"
+      jc: 4
+      jmin: 40
+      jmax: 70
+      s1: 50
+      s2: 100
+      h1: ${H1}
+      h2: ${H2}
+      h3: ${H3}
+      h4: ${H4}
+      peers:
+        - name: ${CLIENT_NAME}
+          public_key: "${peer_pub}"
+          preshared_key: "${peer_psk}"
+          allowed_ips: "10.66.66.2/32"
 backup:
   restic_password: "${restic_pw}"
   remote:
@@ -308,7 +311,9 @@ client_registry:
     token_hash_prefix: ""
     token_expires: ""
     awg_public_key_fingerprint: "sha256:$(printf '%s' "$peer_pub" | sha256sum | cut -c1-16)"
+    awg_binding: {provider: "${PROVIDER:?}", environment: "${ENV:?}", instance: awg0}
     awg_private_key: "${peer_priv}"
+    awg_delivery_host: ""
     last_payload_identity: {source: "", outputs: ""}
 YAML
 chmod 0600 "$OUT"

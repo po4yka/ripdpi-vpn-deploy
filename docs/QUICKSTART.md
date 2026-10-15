@@ -274,12 +274,15 @@ both the non-standard `ripdpi` object and an XHTTP outbound.
 For just URI strings (v2rayN and simpler clients):
 
 ```bash
+install -d -m 0700 secrets/local/clients/laptop
+OUTPUT=secrets/local/clients/laptop/uris.txt \
 SOPS_FILE=~/.config/vpn-provision/prod.secrets.sops.yaml \
 ./scripts/new-client.sh --emit-uri laptop
 ```
 
-For AmneziaWG, `new-client.sh` prints a private key — hand it to the
-device through a secure channel and put it on the device, then forget it.
+URI templates are written only to the new private recipient file; stdout
+contains metadata. AmneziaWG recovery keys remain in the encrypted registry.
+Deliver the selected device material through a secure channel.
 For P1 XHTTP client profiles, use the nginx public port
 `nginx_xhttp_public_port` (`8443` by default), not the localhost Xray inbound
 port `nginx_xhttp_port`.

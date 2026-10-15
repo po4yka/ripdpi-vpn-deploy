@@ -308,16 +308,6 @@ def test_make_rollbacks_stay_usable_without_clean_source_or_decrypted_secrets(ve
     assert "clean git checkout" not in text and "validate-secrets.py" not in text
 
 
-def printed_revocation_commands(environment: str, provider: str, sops_file: str) -> str:
-    """Render the revocation guidance exactly as new-client.sh prints it, without issuing a client."""
-    script = (ROOT / "scripts/new-client.sh").read_text()
-    guidance = re.search(r"^  if make decrypt.*?^(?=EOF$)", script, re.S | re.M).group(0)
-    rendered = subprocess.run(["bash", "-c", f"cat <<EOF\n{guidance}EOF\n"], capture_output=True, text=True, timeout=10,
-                              env={**os.environ, "ENV": environment, "PROVIDER": provider, "SOPS_FILE": sops_file})
-    assert rendered.returncode == 0, rendered.stderr
-    return rendered.stdout
-
-
 # The runbooks that print the revocation sequence, with the heading of the section that holds it.
 RUNBOOK_SECTIONS = {"RUNBOOK-rotate.md": "## 1. Single client leak", "RUNBOOK-deploy.md": "## Add a new client device"}
 
@@ -385,20 +375,7 @@ def assert_revocation_sequence(steps, stderr, environment, rotated, message):
 
 
 @pytest.mark.parametrize("failing, rotated, message", REVOCATION_CASES)
-def test_printed_revocation_loop_covers_every_node_cleans_up_and_stops_visibly(tmp_path, failing, rotated, message):
-    sops_file = str(tmp_path / "sops dir" / "staging.secrets.sops.yaml")
-    # Operator-supplied spellings with a space, a separator and a command substitution must reach Make as one argument each.
-    environment, provider = "stag ing", f"het;zner $(touch {tmp_path}/executed)"
-    steps, stderr = run_revocation(printed_revocation_commands(environment, provider, sops_file), tmp_path, failing)
-    assert_revocation_sequence(steps, stderr, environment, rotated, message)
-    # Decrypt reads the document the client was issued against, whatever its path.
-    assert steps[0][1] == {"ENV": environment, "SOPS_FILE": sops_file}
-    assert all(assignments["PROVIDER"] == provider for _, assignments in steps[1:-1])
-    assert not (tmp_path / "executed").exists()
-
-
-@pytest.mark.parametrize("failing, rotated, message", REVOCATION_CASES)
 @pytest.mark.parametrize("runbook", RUNBOOK_SECTIONS)
-def test_runbook_revocation_loop_stops_and_cleans_up_like_the_printed_one(tmp_path, runbook, failing, rotated, message):
+def test_runbook_revocation_loop_covers_every_node_cleans_up_and_stops_visibly(tmp_path, runbook, failing, rotated, message):
     steps, stderr = run_revocation(runbook_revocation_commands(runbook), tmp_path, failing)
     assert_revocation_sequence(steps, stderr, "prod", rotated, message)

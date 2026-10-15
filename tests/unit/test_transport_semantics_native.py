@@ -73,11 +73,11 @@ def test_exact_awg_parser_accepts_host_and_explicit_routed_peers(tmp_path):
     client_private = command([str(tools), "genkey"]).strip()
     public = command([str(tools), "pubkey"], data=client_private).strip()
     psk = command([str(tools), "genpsk"]).strip()
-    raw = {"server_private_key": private, "jc": 4, "jmin": 40, "jmax": 70,
+    raw = {"name": interface, "listen_port": 51999, "address_v4": "10.66.66.1/24", "address_v6": "fd42:42:42::1/64", "server_private_key": private, "jc": 4, "jmin": 40, "jmax": 70,
            "s1": 50, "s2": 100, "h1": 11, "h2": 12, "h3": 13, "h4": 14,
            "peers": [{"name": "device", "public_key": public,
                       "preshared_key": psk, "allowed_ips": "10.66.66.2/32"}]}
-    if awg_errors(raw, {"interface": interface}):
+    if awg_errors({"instances": [raw]}):
         pytest.fail("shared semantics refused valid generated native keys")
     process = subprocess.Popen([str(go), "-f", interface], stdout=subprocess.DEVNULL,
                                stderr=subprocess.DEVNULL)
@@ -92,7 +92,7 @@ def test_exact_awg_parser_accepts_host_and_explicit_routed_peers(tmp_path):
             time.sleep(0.05)
         for kind, prefix in (("device", "10.66.66.2/32"), ("routed", "10.77.0.0/24")):
             raw["peers"][0].update(address_kind=kind, allowed_ips=prefix)
-            if awg_errors(raw):
+            if awg_errors({"instances": [raw]}):
                 pytest.fail("shared semantics refused a supported explicit native peer")
             config = tmp_path / "awg.conf"
             config.write_text("[Interface]\nPrivateKey = " + private + "\nListenPort = 51999\n" +

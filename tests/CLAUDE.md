@@ -14,6 +14,29 @@
 
 ## Design decisions
 
+AWG device tests use real SOPS/age round trips for selected pool issuance,
+revocation and interrupted/unsafe publication. The named native binding target
+owns isolated namespaces and exact pinned AWG builds; it proves two devices'
+TCP/UDP traffic, wrong keys/headers and selected revocation with the other
+instance still working. Portable mocks never stand in for this runtime proof.
+Atomic enrollment Bats cases run actual encrypted transactions too; their CI lane
+installs the pinned Python environment and checksum-verified SOPS with age.
+URI QR boundary tests consume actual encrypted issuance and inspect the exact
+codec input; failure retains the private URI for recovery. Dash-prefixed device
+names exercise both the shell wrapper and Make issuance/revocation surfaces.
+Binding cases reject absent registry authority and cross-instance duplicate
+devices. Shared encrypted/native fixtures contain complete matching recovery
+keys and registry bindings for every device. Real encrypted Make defaults and AWG-only revoke/reissue cases preserve
+non-AWG registry fields; schema tests share runtime interface-name boundaries.
+FIFO sources must refuse promptly and release the writer lock. Make audit
+regressions decrypt actual age envelopes and require no event for failed
+transactions; first-time token entries must satisfy the complete secrets schema.
+Multi-host refresh tests use distinct per-host documents and keys, retaining
+explicit AWG delivery selection despite missing or conflicting ambient input.
+Mutation tests preserve ciphertext when any unrelated registry relationship is
+broken; de-onboarding rejects rebound provider/environment identities. Isolated
+inventory fixtures copy the shared AWG registry module with the secrets validator.
+
 XHTTP endpoint acceptance is a separate complete target within the native job.
 Its cases and the existing native/RTA lanes form a disjoint complete collection,
 with selected skips fatal. Both served ports exercise actual pinned clients,
@@ -89,7 +112,7 @@ shell boundaries; token refresh, private locks and promotion tests exercise
 rejection and concurrent callers. These checks do not establish live host,
 provider, release or Linux systemd acceptance.
 
-**Operator incident verbs run real Ansible guards** — `test_operator_verb_scope.py` derives each play head (hosts, serial, any_errors_fatal, pre_tasks) from the shipped playbook and runs it with real `ansible-playbook` against a local inventory for no limit, a node list, a one-host group and a one-host pattern, asserting the marker task never runs on refusal. It also checks rotation against an inventory `env` that differs from `ENV`, uses the real `make require-exact-node` recipe and `make -n` wiring, and compares the alias grammar of both the Make guard and the vpnd rotation builder (`vpnd.runner.ansible.rotate`) with the play guard's, which cannot be tested from `vpnd/tests` because mutation copies lack `ansible/`. It also covers hostile `ANSIBLE_LIMIT` spellings (the marker is never created and the text never appears in `make -n` output) and refusal of any other goal in the same invocation. Recording `ansible-playbook` and `ansible-inventory` stand-ins show that inherited `ANSIBLE_SKIP_TAGS` and `ANSIBLE_RUN_TAGS` are scrubbed and that verbs sharing an invocation run one at a time under `-j4`, and a recording `make` stand-in runs the per-node revocation sequence as `new-client.sh`, `RUNBOOK-rotate.md` and `RUNBOOK-deploy.md` print it. This establishes source behaviour only, not live host selection or SSH reachability.
+**Operator incident verbs run real Ansible guards** — `test_operator_verb_scope.py` derives each play head (hosts, serial, any_errors_fatal, pre_tasks) from the shipped playbook and runs it with real `ansible-playbook` against a local inventory for no limit, a node list, a one-host group and a one-host pattern, asserting the marker task never runs on refusal. It also checks rotation against an inventory `env` that differs from `ENV`, uses the real `make require-exact-node` recipe and `make -n` wiring, and compares the alias grammar of both the Make guard and the vpnd rotation builder (`vpnd.runner.ansible.rotate`) with the play guard's, which cannot be tested from `vpnd/tests` because mutation copies lack `ansible/`. It also covers hostile `ANSIBLE_LIMIT` spellings (the marker is never created and the text never appears in `make -n` output) and refusal of any other goal in the same invocation. Recording `ansible-playbook` and `ansible-inventory` stand-ins show that inherited `ANSIBLE_SKIP_TAGS` and `ANSIBLE_RUN_TAGS` are scrubbed and that verbs sharing an invocation run one at a time under `-j4`, and a recording `make` stand-in runs the per-node revocation sequence as `RUNBOOK-rotate.md` and `RUNBOOK-deploy.md` print it. This establishes source behaviour only, not live host selection or SSH reachability.
 
 **Recovery clock tests isolate their time facade** — copy the adapter's time
 interface before patching sleep or clocks. Subprocess polling keeps real time,
