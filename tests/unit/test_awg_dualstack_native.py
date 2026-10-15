@@ -112,6 +112,7 @@ def test_owned_uplink_nat_mtu_dns_reconnect_revocation_and_no_native_bypass(tmp_
     go, tools = exact_awg_sources()
     token = uuid.uuid4().hex[:7]
     namespaces, processes = [], []
+    client_addresses = {}
     server, uplink = 'as'+token, 'au'+token
     clients = ['ac'+token+str(i) for i in range(members)]
     interfaces = ['a7'+token, 'a9'+token][:members]
@@ -187,6 +188,7 @@ def test_owned_uplink_nat_mtu_dns_reconnect_revocation_and_no_native_bypass(tmp_
                     time.sleep(.05)
             selected=resolve_binding(doc,{},f'device{i}','upcloud:fixture',interfaces[i])
             block=export(doc,{},f'device{i}','upcloud:fixture',interfaces[i],endpoint)
+            client_addresses[ns]=block['address']
             values=merge_render_vars(); values['_inst']=selected.instance
             configure(server,interfaces[i],render_template(ROOT/'ansible/roles/amneziawg/templates/awg0.conf.j2',values),
                       [selected.instance['address_v4'],selected.instance['address_v6']])
@@ -222,8 +224,11 @@ def test_owned_uplink_nat_mtu_dns_reconnect_revocation_and_no_native_bypass(tmp_
                 if cycle:
                     command(['ip','-n',ns,'link','set',ci,'down'])
                     command(['ip','-n',ns,'link','set',ci,'up'])
-                    # Linux removes the tunnel defaults on link-down. A reconnect
-                    # must publish them again before testing authenticated traffic.
+                    # Linux removes IPv6 addresses and tunnel defaults on down.
+                    # Reconnect republishes the same identities and both routes.
+                    for address in client_addresses[ns]:
+                        command(['ip','-n',ns,'address','replace',address,'dev',ci,
+                                 *(['nodad'] if ':' in address else [])])
                     for family in ('-4','-6'):
                         command(['ip','-n',ns,family,'route','replace','default','dev',ci,'metric','10'])
                 for address in ('198.18.1.2','fd88::2'):

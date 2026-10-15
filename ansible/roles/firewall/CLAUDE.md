@@ -7,6 +7,9 @@ acceptance. Failure restores it atomically before prior tunnels restart, so
 changed peer claims cannot strand the restored addresses. A fresh host retains
 a canonical default-drop baseline with AWG forwarding disabled. Foreign nft
 tables and named timed-set membership remain outside this rollback.
+The root-owned executable distro starter is admissible for replacement; its
+bytes never become recovery authority. Role-owned retained files must remain
+nonexecutable, with mode 0600 or 0644.
 
 AWG forwarding checks both typed source families and denies movement outside
 the exact uplink before established conntrack acceptance. Each NAT rule matches

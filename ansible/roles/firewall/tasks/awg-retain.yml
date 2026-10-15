@@ -12,7 +12,7 @@
       - >-
         not _firewall_awg_before.stat.exists or
         (_firewall_awg_before.stat.isreg and _firewall_awg_before.stat.uid == 0 and
-         _firewall_awg_before.stat.nlink == 1 and _firewall_awg_before.stat.mode in ['0600', '0644'] and
+         _firewall_awg_before.stat.nlink == 1 and _firewall_awg_before.stat.mode in ['0600', '0644', '0755'] and
          _firewall_awg_before.stat.size <= 4194304)
   no_log: true
 
@@ -29,6 +29,12 @@
       {{ _firewall_awg_before.stat.exists and
          (_firewall_awg_bytes.content | b64decode).splitlines()[:2] ==
          ['#!/usr/sbin/nft -f', '# Managed by Ansible role `firewall`. Hand edits will be overwritten.'] }}
+  no_log: true
+
+- name: Require nonexecutable role-owned firewall recovery authority
+  ansible.builtin.assert:
+    that:
+      - not _firewall_awg_owned or _firewall_awg_before.stat.mode in ['0600', '0644']
   no_log: true
 
 - name: Refuse unsafe global-flush firewall recovery authority

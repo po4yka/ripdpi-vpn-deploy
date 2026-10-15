@@ -189,7 +189,7 @@ def test_firewall_retention_restores_owned_generation_or_fresh_closed_baseline(t
         nft('-f','-',data='table inet foreign_owned {\n chain retained {\n counter comment "foreign-retained";\n }\n}\n')
         # An unowned distro starter must not restore its global flush ruleset.
         nft_file.write_text(accepted if previous else '#!/usr/sbin/nft -f\nflush ruleset\n')
-        nft_file.chmod(0o644)
+        nft_file.chmod(0o644 if previous else 0o755)
         if previous: nft('-f',nft_file)
         target=tmp_path/'candidate.nft'; target.write_text(candidate)
         play=tmp_path/'firewall.yml'

@@ -122,3 +122,26 @@ def test_firewall_compensation_recognizes_owned_bytes_and_refuses_global_flush(t
         "_firewall_awg_bytes": {"content": base64.b64encode(text.encode()).decode()}})
     assert templar.template(trust_as_template(identify["ansible.builtin.set_fact"]["_firewall_awg_owned"])) is True
     assert templar.template(trust_as_template("{{ " + guard["ansible.builtin.assert"]["that"][0] + " }}")) is safe
+
+
+@pytest.mark.parametrize('mode,owned,admitted', [
+    ('0600', True, True), ('0644', True, True), ('0755', False, True),
+    ('0755', True, False), ('0664', False, False), ('0775', False, False),
+])
+def test_firewall_retention_admits_distro_starter_without_executable_owned_authority(mode, owned, admitted):
+    import yaml
+    from ansible.parsing.dataloader import DataLoader
+    from ansible.template import Templar, trust_as_template
+    tasks = yaml.safe_load((ROOT / 'ansible/roles/firewall/tasks/awg-retain.yml').read_text())
+    names = ('Require bounded owned firewall configuration before AWG publication',
+             'Require nonexecutable role-owned firewall recovery authority')
+    templar = Templar(loader=DataLoader(), variables={
+        '_firewall_awg_owned': owned,
+        '_firewall_awg_before': {'stat': {'exists': True, 'isreg': True, 'uid': 0,
+                                        'nlink': 1, 'mode': mode, 'size': 243}},
+    })
+    conditions = [condition for task in tasks if task['name'] in names
+                  for condition in task['ansible.builtin.assert']['that']]
+    assert len(conditions) == 2
+    assert all(templar.template(trust_as_template('{{ ' + condition + ' }}'))
+               for condition in conditions) is admitted

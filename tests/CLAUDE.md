@@ -393,7 +393,7 @@ Runtime acceptance has a separate canonical-role Linux lab. It uses exact checks
 
 **Native acceptance fixture authority** — Runtime acceptance tests use actual checksum-pinned clients, owned TLS peers and Linux systemd/network namespaces. Real SIGKILL tests run the publisher in a separate process and require authenticated positive forwarding after recovery. Canonical role fixtures keep only source inputs from the render fixture; computed runtime paths and numeric identity projections must not override real role discovery.
 
-AWG reconnect fixtures restore both tunnel default routes after Linux link-down removes them. Server-compensation probes preserve the original client session and allow the pinned protocol's 15-second handshake recovery plus TCP retransmission within one bounded socket invocation.
+AWG reconnect fixtures restore the same tunnel identities and both default routes after Linux link-down removes IPv6 addresses and routes. Server-compensation probes preserve the original client session and allow the pinned protocol's 15-second handshake recovery plus TCP retransmission within one bounded socket invocation.
 
 Read-only sender admission is also executed through actual Ansible argv/stdin templating. Sender queue regression tests perform real private-file copies and in-place restoration across interruption checkpoints and partial cleanup; they assert historical bytes, original root inode, no-follow authority, exact backup identities and fail-before-mutation admission. Service mocks are portable orchestration evidence only. The enabled native Molecule scenario requires the exact historical nonce and pre-cutover timestamp to reach the authenticated receiver after an actual rejected candidate.
 
