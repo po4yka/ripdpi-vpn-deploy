@@ -97,7 +97,7 @@ key remains the primary copy; the SOPS entry is the recovery path.
 
 A `make client-drift CLIENT=<name>` target MUST re-render the device payload
 from current git + SOPS + Terraform outputs and compare its identity
-(embedded source-identity hash and Terraform outputs hash) against the
+(a versioned private HMAC over canonical selected-device payload and exact delivery options) against the
 identity recorded at last delivery, reporting `stale`, `current`, or
 `unknown` without requiring the delivered file to be stored locally.
 
@@ -105,7 +105,7 @@ identity recorded at last delivery, reporting `stale`, `current`, or
 
 - **WHEN** a node IP changes after payload delivery and the operator runs
   `make client-drift CLIENT=<device>`
-- **THEN** the check reports `stale` and prints the identity delta.
+- **THEN** the check reports `stale` and prints a categorical consumed-payload change without exposing a digest.
 
 #### Scenario: Unchanged fleet reports current
 
@@ -169,4 +169,3 @@ transaction MUST use the same project lock as every supported SOPS writer.
   or unknown client references, or target evidence mismatches
 - **THEN** the command exits non-zero before changing the SOPS ciphertext and
   prints no plaintext or secret value
-

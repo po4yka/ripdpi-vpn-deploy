@@ -59,6 +59,7 @@ def _secrets_as_json(tmp_path: Path) -> Path:
 
     out = tmp_path / "secrets-fixture.json"
     out.write_text(json.dumps(raw))
+    out.chmod(0o600)
     return out
 
 
@@ -95,6 +96,7 @@ def _make_sops_stub(bin_dir: Path, sops_file: Path) -> None:
 
 def _build_env(tmp_path: Path, sops_file: Path) -> dict[str, str]:
     """Build subprocess env: custom sops stub on PATH, SOPS_FILE set."""
+    sops_file.chmod(0o600)
     # Create a per-test bin dir with a custom sops stub.
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -175,6 +177,8 @@ def _run_snell_only_script(
     (repo / "ansible/roles/snell/defaults").mkdir(parents=True)
     (repo / "terraform/providers/upcloud").mkdir(parents=True)
     shutil.copy2(SCRIPT, repo / "scripts/emit-singbox.sh")
+    for module in ("client_payload.py", "fleet_inspection.py", "awg_client.py", "awg_device_binding.py", "encrypted_client_document.py", "ripdpi_cohort_fingerprint.py"):
+        shutil.copy2(REPO_ROOT / "scripts" / module, repo / "scripts" / module)
     shutil.copy2(REPO_ROOT / "scripts/transport_semantics.py", repo / "scripts/transport_semantics.py")
     shutil.copy2(
         REPO_ROOT / "scripts/terraform-env.sh", repo / "scripts/terraform-env.sh"
@@ -216,6 +220,7 @@ def _run_snell_only_script(
         variants = [variant for variant in variants if variant["id"] != omit_variant]
     secrets = tmp_path / "snell-secrets.json"
     secrets.write_text(json.dumps({"snell_secrets": {"variants": variants}}))
+    secrets.chmod(0o600)
     fake_bin = tmp_path / "snell-bin"
     fake_bin.mkdir()
     (fake_bin / "sops").write_text('#!/bin/sh\ncat "$SOPS_FILE"\n')
@@ -264,6 +269,8 @@ def _run_shape_only_emitter(
     (repo / "ansible/roles/snell/defaults").mkdir(parents=True)
     (repo / "terraform/providers/upcloud").mkdir(parents=True)
     shutil.copy2(SCRIPT, repo / "scripts/emit-singbox.sh")
+    for module in ("client_payload.py", "fleet_inspection.py", "awg_client.py", "awg_device_binding.py", "encrypted_client_document.py", "ripdpi_cohort_fingerprint.py"):
+        shutil.copy2(REPO_ROOT / "scripts" / module, repo / "scripts" / module)
     shutil.copy2(REPO_ROOT / "scripts/transport_semantics.py", repo / "scripts/transport_semantics.py")
     shutil.copy2(
         REPO_ROOT / "scripts/terraform-env.sh", repo / "scripts/terraform-env.sh"
@@ -706,7 +713,7 @@ def test_emit_singbox_snell_missing_variant_credentials_fails(tmp_path):
     _require_tool("jq")
     result = _run_snell_only_script(tmp_path, omit_variant="v6-unshaped")
     assert result.returncode != 0
-    assert "v6-unshaped' is missing from secrets" in result.stderr
+    assert "missing-snell-variant" in result.stderr
 
 
 def test_emit_singbox_dns_non_empty_and_detour(tmp_path):
@@ -853,7 +860,7 @@ def test_emit_bundle_rejects_unknown_singbox_arg(tmp_path):
     )
 
     assert result.returncode != 0
-    assert "unknown arg: --not-a-singbox-option" in result.stderr
+    assert "unrecognized arguments: --not-a-singbox-option" in result.stderr
 
 
 def test_emit_singbox_no_placeholder_leaks(tmp_path):

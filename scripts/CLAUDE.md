@@ -617,3 +617,9 @@ substitutes stock Caddy. Local compilation uses the machine build gate; CI
 keeps compilation at two workers and passes the verified output explicitly.
 
 Operator alert drills bind the verified controller source and a unique technical policy nonce. They wait for an authenticated relay API receipt for that exact nonce and start time before resolution; submission and receiver selection alone cannot prove delivery. Human receipt remains separate.
+
+Client delivery/drift changes must preserve the in-memory renderer and private
+HMAC authority lifecycle described in [Private client delivery identity](DESIGN-NOTES.md#private-client-delivery-identity).
+Issuance verifies staged ciphertext before remote publication under the shared
+lock. Local SOPS and remote delivery are separate systems: after interruption
+or a post-publication failure, reconcile the delivered artifact before retrying.

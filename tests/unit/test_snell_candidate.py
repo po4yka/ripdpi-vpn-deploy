@@ -111,11 +111,9 @@ def test_backup_restore_drill_requires_valid_snell_config() -> None:
 
 
 def test_client_emitter_keeps_snell_out_of_automatic_selection() -> None:
-    source = (ROOT / "scripts/emit-singbox.sh").read_text()
-    assert 'tag:"snell-evaluation"' in source
-    assert "SNELL_TAGS=" in source
-    assert "p3-snell-${variant_id}-${reuse_label}" in source
-    assert "($snell | index($tag) | not)" in source
+    source = (ROOT / "scripts/client_payload.py").read_text()
+    assert "tag='snell-evaluation'" in source
+    assert "if v['tag'] not in snell" in source
     liveness = json.loads((ROOT / "contract/protocol-liveness.schema.json").read_text())
     assert not any(
         profile.startswith("p3-snell")

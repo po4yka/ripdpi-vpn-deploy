@@ -986,7 +986,7 @@ def _registry_entry(**overrides):
         "awg_private_key": base64.b64encode(bytes([8]) * 32).decode(),
         "awg_delivery_host": "",
         "awg_binding": {"provider": "upcloud", "environment": "prod", "instance": "awg0"},
-        "last_payload_identity": {"source": "", "outputs": ""},
+        "last_payload_identity": {},
     }
     entry.update(overrides)
     return entry

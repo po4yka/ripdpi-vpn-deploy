@@ -88,7 +88,7 @@ def enroll(document, context, name, host, instance=None, *, all_profiles=False):
                       'formats': [], 'hosts': [host], 'cohorts': [], 'token_hash_prefix': '', 'token_expires': '',
                       'awg_public_key_fingerprint': 'sha256:' + hashlib.sha256(public.encode()).hexdigest()[:16],
                       'awg_private_key': private, 'awg_binding': binding.identity, 'awg_delivery_host': '',
-                      'last_payload_identity': {'source': '', 'outputs': ''}}
+                      'last_payload_identity': {}}
     if previous is not None:
         refreshed = {key: registry[name][key] for key in ('awg_binding', 'awg_private_key', 'awg_public_key_fingerprint')}
         registry[name] = {**previous, **refreshed}

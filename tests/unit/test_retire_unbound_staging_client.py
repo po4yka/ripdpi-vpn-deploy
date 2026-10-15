@@ -252,7 +252,7 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
                 "awg_public_key_fingerprint": "sha256:0123456789abcdef",
                 "awg_private_key": "private-client-key",
                 "awg_binding": {"provider": "upcloud", "environment": environment, "instance": "awg0"},
-                "last_payload_identity": {"source": "", "outputs": ""},
+                "last_payload_identity": {},
             }
         },
         "unrelated": {"value": "preserve"},

@@ -72,6 +72,7 @@ def _harness(tmp_path: Path) -> tuple[dict[str, str], Path, Path, Path]:
     bin_dir.mkdir(exist_ok=True)
     secrets_file = tmp_path / "secrets.json"
     secrets_file.write_text(json.dumps(yaml.safe_load(FIXTURE.read_text())))
+    secrets_file.chmod(0o600)
     payload_file = tmp_path / "payload.json"
     meta_file = tmp_path / "meta.json"
     ssh_marker = tmp_path / "ssh-called"
@@ -366,7 +367,7 @@ def test_issuer_revoke_hint_names_the_key_the_role_consumes() -> None:
     iterated = set(re.findall(r"for \w+ in subscription\.(\w+)", role_tasks))
     assert iterated == {"revoked_tokens"}
     assert (
-        set(re.findall(r"subscription\.(revoked_\w+)", ISSUER.read_text())) == iterated
+        set(re.findall(r"subscription\.(revoked_\w+)", (REPO_ROOT / "scripts/issue_sub_token.py").read_text())) == iterated
     )
 
 
@@ -423,6 +424,9 @@ def test_subscription_directory_rejected_before_external_commands(
     scripts.mkdir()
     script = scripts / script_name
     script.write_text((REPO_ROOT / "scripts" / script_name).read_text())
+    if script_name == "issue-sub-token.sh":
+        for module in ("issue_sub_token.py", "client_payload.py", "fleet_inspection.py", "client_delivery_identity.py", "awg_client.py", "awg_device_binding.py", "encrypted_client_document.py", "transport_semantics.py", "ripdpi_cohort_fingerprint.py"):
+            (scripts / module).write_text((REPO_ROOT / "scripts" / module).read_text())
     marker = tmp_path / "external-call"
     _write_executable(
         scripts / "terraform-env.sh", f"#!/bin/sh\ntouch {marker}\nexit 73\n"
@@ -435,7 +439,7 @@ def test_subscription_directory_rejected_before_external_commands(
         timeout=5,
     )
     assert result.returncode == 2, result.stderr
-    assert "SUBSCRIPTION_DIR must be" in result.stderr
+    assert ("private transaction refused" if script_name == "issue-sub-token.sh" else "SUBSCRIPTION_DIR must be") in result.stderr
     assert not marker.exists()
 
 
@@ -445,6 +449,9 @@ def test_safe_subscription_directory_reaches_next_stage(tmp_path, script_name):
     scripts.mkdir()
     script = scripts / script_name
     script.write_text((REPO_ROOT / "scripts" / script_name).read_text())
+    if script_name == "issue-sub-token.sh":
+        for module in ("issue_sub_token.py", "client_payload.py", "fleet_inspection.py", "client_delivery_identity.py", "awg_client.py", "awg_device_binding.py", "encrypted_client_document.py", "transport_semantics.py", "ripdpi_cohort_fingerprint.py"):
+            (scripts / module).write_text((REPO_ROOT / "scripts" / module).read_text())
     marker = tmp_path / "external-call"
     _write_executable(
         scripts / "terraform-env.sh", f"#!/bin/sh\ntouch {marker}\nexit 73\n"
@@ -456,8 +463,13 @@ def test_safe_subscription_directory_reaches_next_stage(tmp_path, script_name):
         text=True,
         timeout=5,
     )
-    assert result.returncode == 73, result.stderr
-    assert marker.exists()
+    if script_name == "issue-sub-token.sh":
+        # Encrypted authority is now admitted before endpoint lookup.
+        assert result.returncode == 2 and "private transaction unavailable" in result.stderr
+        assert not marker.exists()
+    else:
+        assert result.returncode == 73, result.stderr
+        assert marker.exists()
 
 
 def test_first_token_initializes_schema_valid_no_awg_state(tmp_path):
@@ -511,6 +523,7 @@ def test_refresh_restores_persisted_awg_host_across_multiple_enabled_hosts(tmp_p
         awg_binding={'provider': 'vultr', 'environment': 'prod', 'instance': 'awg0'})
     other_file = tmp_path / 'other.json'
     other_file.write_text(json.dumps(other))
+    other_file.chmod(0o600)
     env.update(HOSTS='upcloud:prod,vultr:prod', COHORTS='p2-udp,p2-udp', AWG_HOST=selected_host,
                SOPS_FILES=str(secrets_file) + ',' + str(other_file))
     initial = _run_issuer(env, '--format', 'ripdpi', '--print-token-only')
@@ -545,6 +558,6 @@ def test_invalid_delivery_selector_refuses_before_publication(tmp_path, selector
     before = secrets_file.read_bytes()
     env.update(AWG_HOST=selector, HOSTS="upcloud:prod")
     result = _run_issuer(env, "--print-token-only")
-    assert result.returncode != 0 and "invalid AWG delivery host" in result.stderr
+    assert result.returncode != 0 and "private transaction refused" in result.stderr
     assert not ssh_marker.exists()
     assert secrets_file.read_bytes() == before

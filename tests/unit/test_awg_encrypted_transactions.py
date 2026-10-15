@@ -390,7 +390,7 @@ def test_awg_only_reissuance_preserves_other_device_state(encrypted, target):
     def metadata(doc):
         doc['client_registry']['first'].update(status='active', formats=['ripdpi'],
             token_hash_prefix='9f86d081', token_expires='2026-12-31',
-            last_payload_identity={'source': 'a' * 64, 'outputs': 'b' * 64})
+            last_payload_identity={'version': 1, 'generation': 'a' * 32, 'digest': 'b' * 64})
         return doc, {}
     publisher.operate(path, metadata)
     issued = decrypt(path)
