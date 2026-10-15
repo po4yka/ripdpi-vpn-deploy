@@ -2,6 +2,14 @@
 
 ## Design decisions
 
+The AWG source-candidate runner admits only a local Unix-socket Docker daemon,
+copies an explicit public-file build context and removes only its own
+container ID (or its preallocated unique name after a startup timeout). It binds
+BuildKit and runtime calls to the admitted local engine context. Public sources
+arrive as exact-commit Git bundles fetched over GitHub SSH port 22; credentials
+and the agent stay on the workstation. Runtime execution has no external network
+or published ports; compilation belongs under the machine-wide build gate.
+
 AWG device issuance, revocation, export and recovery bind provider/environment,
 instance and device through `awg_device_binding.py`. Only the nonempty instance
 list owns peers and server keys. `awg_client.py` allocates from the selected

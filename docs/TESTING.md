@@ -576,3 +576,27 @@ composite through `make native-naive-build` before testing its actual parser,
 TCP listener set, UDP absence and authenticated CONNECT behavior. It also uses
 real nginx/systemd credential publication, WireGuard namespaces and Unbound;
 portable template fixtures do not substitute for these runtime gates.
+
+## Local AWG source candidate
+
+`build-gate -- make test-awg-source-candidate` builds real baseline and candidate
+Go/tools pairs using checksum-pinned Go with two jobs. The runner requires a
+local Docker Unix socket and uses a pinned Ubuntu image. Package/source retrieval
+happens during image construction; runtime acceptance uses `--network=none`.
+Only explicit public inputs enter the build context, and the uniquely named owned
+container is removed on success or failure, including uncertain startup. The
+image remains in the build cache. Public sources use existing GitHub SSH access
+on port 22 and immutable local Git bundles; the build receives no credentials.
+Both BuildKit and runtime calls bind the admitted local Docker engine context.
+
+The complete lab exercises both scalar-header shapes across all three mixed/new
+source pairings, real bidirectional sustained TCP/UDP/DNS and three reconnects,
+captured H1/H2/H4 header bytes/offsets, two warm owned daemons, complete
+pair receipt publication, build/readiness failure compensation, sandbox adoption,
+unchanged PIDs and an unrelated third tunnel. Missing prerequisites fail instead
+of skipping cases. Portable launcher/contract tests are
+`tests/unit/test_awg_source_candidate.py`; they do not substitute for that lab.
+
+This is local Linux evidence, including Linux arm64 when run natively on that
+architecture. It is neither physical Android evidence nor a production pin
+promotion, production-role readiness transaction or external staging soak.

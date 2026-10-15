@@ -14,6 +14,11 @@
 
 ## Design decisions
 
+The AWG source-candidate lab compiles exact upstream baseline/candidate pairs
+and exercises real systemd/TUN traffic in a disconnected local container.
+Packet captures and mixed-version TCP/UDP/DNS are Linux runtime evidence only.
+Production-role readiness and physical Android acceptance are separate claims.
+
 Runtime publisher tests verify retained directory descriptors remain valid
 inside normal and predictive transactions and close after success, exceptions,
 interrupts and failed entry or lock acquisition.

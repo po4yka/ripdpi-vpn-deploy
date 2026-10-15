@@ -702,6 +702,7 @@ help:
 	@echo "  test-unit-shard            Run one balanced pytest group (PYTEST_GROUP=1..4)"
 	@echo "  test-unit-profile          Refresh durations with a complete portable run"
 	@echo "  test-native-runtime        Run native integration tests in disposable Linux root environment"
+	@echo "  test-awg-source-candidate  Build and exercise exact AWG source pairs in local Docker (build-gate required)"
 	@echo "  test-transport-runtime-acceptance  Run complete consumer transactions in a separate fresh Linux root"
 	@echo "  test-probe-matrix-mtproto   Run the compiled Go helper tests"
 	@echo "  snapshot-check             Diff every Jinja render against tests/snapshot/golden/"
@@ -1160,6 +1161,10 @@ test-xhttp-endpoint-contract:
 	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 && test "$${TRANSPORT_NATIVE_ISOLATED:-}" = 1 || { echo "XHTTP endpoint tests require an owned isolated Linux root environment" >&2; exit 1; }
 	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest \
 	  tests/unit/test_xhttp_endpoint_contract_native.py --fail-on-skip -v
+
+.PHONY: test-awg-source-candidate
+test-awg-source-candidate:
+	python3 scripts/test-awg-source-candidate.py
 
 test-native-runtime:
 	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 || { echo "native runtime tests require a disposable Linux root environment" >&2; exit 1; }
