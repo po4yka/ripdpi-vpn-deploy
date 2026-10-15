@@ -19,7 +19,7 @@ from awg_device_binding import resolve_binding
 from template_render import merge_render_vars, render_template
 from test_awg_device_binding import document
 from test_awg_device_binding_native import native_config
-from test_awg_dualstack_native import ECHO, PROBE
+from test_awg_dualstack_native import ECHO, PROBE, path_evidence
 from test_transport_semantics_native import command, exact_awg_sources
 
 pytestmark = pytest.mark.native_runtime
@@ -104,7 +104,12 @@ def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes
             for address in ('198.18.1.2','fd88::2'):
                 processes.append(subprocess.Popen(['ip','netns','exec',uplink,sys.executable,'-c',ECHO,address],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL))
             time.sleep(.2)
-            for address in ('198.18.1.2','fd88::2'): run(client,[sys.executable,'-c',PROBE,address])
+            for address in ('198.18.1.2','fd88::2'):
+                observed = subprocess.run(['ip', 'netns', 'exec', client, sys.executable, '-c', PROBE, address],
+                                          capture_output=True, text=True, timeout=12)
+                if observed.returncode != 0:
+                    pytest.fail('authenticated activation path failed: ' + json.dumps(path_evidence(
+                        (client, server, uplink), ((client, ci), (server, iface)), tools, address)))
         candidate=copy.deepcopy(effective)
         candidate['mtu']=1280
         candidate['peers'][0]['allowed_ips']={'ipv4':'10.70.0.9/32','ipv6':'fd42:10::9/128'}
@@ -134,7 +139,12 @@ def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes
             assert command(['systemctl','is-active',unit.name]).strip()=='active'
             link=json.loads(command(['ip','-n',server,'-j','link','show',iface]))[0]
             assert link['mtu']==1420
-            for address in ('198.18.1.2','fd88::2'): run(client,[sys.executable,'-c',PROBE,address])
+            for address in ('198.18.1.2','fd88::2'):
+                observed = subprocess.run(['ip', 'netns', 'exec', client, sys.executable, '-c', PROBE, address],
+                                          capture_output=True, text=True, timeout=12)
+                if observed.returncode != 0:
+                    pytest.fail('authenticated activation path failed: ' + json.dumps(path_evidence(
+                        (client, server, uplink), ((client, ci), (server, iface)), tools, address)))
         else:
             assert not path.exists()
             assert subprocess.run(['systemctl','is-active',unit.name],capture_output=True).returncode!=0

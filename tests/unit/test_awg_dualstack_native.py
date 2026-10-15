@@ -74,6 +74,38 @@ print(json.dumps({'bytes':received,'seconds':time.monotonic()-started,'udp_sent'
 '''
 
 
+def path_evidence(spaces, peers, tools, address):
+    """Bounded owned-namespace diagnostics; never include AWG key material."""
+    result = {}
+    for space in spaces:
+        rows = {}
+        for label, argv in (
+            ('route', ['ip', '-j', 'route', 'get', address]),
+            ('links', ['ip', '-s', '-j', 'link', 'show']),
+            ('firewall', ['nft', '-j', 'list', 'ruleset']),
+            ('listeners', ['ss', '-lntu']),
+        ):
+            observed = subprocess.run(
+                ['ip', 'netns', 'exec', space, *argv], capture_output=True,
+                text=True, timeout=4,
+            )
+            rows[label] = observed.stdout[:12000] if observed.returncode == 0 else {'rc': observed.returncode}
+        result[space] = rows
+    for space, interface in peers:
+        for field in ('latest-handshakes', 'transfer'):
+            observed = subprocess.run(
+                ['ip', 'netns', 'exec', space, str(tools), 'show', interface, field],
+                capture_output=True, text=True, timeout=4,
+            )
+            # First column is a public key; retain only numeric evidence.
+            numbers = [line.split()[1:] for line in observed.stdout.splitlines()]
+            result[space][interface + '-' + field] = [
+                [int(value) for value in row] for row in numbers
+                if all(value.isdecimal() for value in row)
+            ]
+    return result
+
+
 @pytest.mark.parametrize('members', [1, 2])
 def test_owned_uplink_nat_mtu_dns_reconnect_revocation_and_no_native_bypass(tmp_path, members):
     go, tools = exact_awg_sources()
@@ -114,7 +146,12 @@ def test_owned_uplink_nat_mtu_dns_reconnect_revocation_and_no_native_bypass(tmp_
     def probe(i, address, *, source=None, accepted=True):
         result=subprocess.run(['ip','netns','exec',clients[i],sys.executable,'-c',PROBE,address,
                                *([source] if source else [])],capture_output=True,text=True,timeout=12)
-        assert (result.returncode==0)==accepted, 'authenticated constrained-path result disagrees with policy'
+        if (result.returncode == 0) != accepted:
+            evidence = path_evidence(
+                (clients[i], server, uplink),
+                ((clients[i], 'c'+token+str(i)), (server, interfaces[i])), tools, address,
+            )
+            pytest.fail('authenticated constrained-path result disagrees with policy: ' + json.dumps(evidence))
         if accepted:
             measured=json.loads(result.stdout)
             assert measured['bytes']==24*(4096+1200) and measured['seconds']>0
