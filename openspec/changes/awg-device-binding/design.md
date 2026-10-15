@@ -84,3 +84,11 @@ Commands marked NEW are implementation deliverables and must exist, execute comp
 - `SCT-1791617687019287` — `transport-input-semantics`.
 
 These are canonical `blocked_by` edges; child requirements can be prepared and characterized before a blocker closes, but promotion/acceptance follows the graph. Existing integrated review records are preserved as related evidence and do not imply a new fleet acceptance.
+
+## Source acceptance scope (2026-10-15)
+
+Per the owner-approved criteria revision, source acceptance requires focused Mac
+regressions, snapshots, full-history/staged gitleaks and complete unchanged
+exact-SHA hosted source/native checks. The local monolithic attempt failed on a
+registry timeout; its retry was cancelled after 32 minutes still queued. No full
+local success is claimed; global and deployment gates remain unchanged.

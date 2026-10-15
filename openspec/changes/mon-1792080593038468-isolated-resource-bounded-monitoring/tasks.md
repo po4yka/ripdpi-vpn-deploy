@@ -12,9 +12,9 @@ Accept the working monitoring implementation through real isolated processes and
 
 ## Execution
 
-- [ ] MON-1792080763077431 Verify bounded sender and collector replay private ingress resource isolation and rollback #feature !high @item:MON-1792080593038468
-- [ ] MON-1792080764176275 Verify observer push persistence encrypted restore and honest delivery states #feature !high @item:MON-1792080593038468
-- [ ] MON-1792080765681879 Integrate monitoring contracts and complete isolated runtime and source acceptance #feature !high @item:MON-1792080593038468
+- [x] MON-1792080763077431 Verify bounded sender and collector replay private ingress resource isolation and rollback #feature !high @item:MON-1792080593038468
+- [x] MON-1792080764176275 Verify observer push persistence encrypted restore and honest delivery states #feature !high @item:MON-1792080593038468
+- [x] MON-1792080765681879 Integrate monitoring contracts and complete isolated runtime and source acceptance #feature !high @item:MON-1792080593038468
 
 ## Verification
 
@@ -26,3 +26,11 @@ Accept the working monitoring implementation through real isolated processes and
 ## Verification
 
 Run focused sender/collector/resource and observer/push/relay tests, scenario lint, snapshots, full source gate and task/OpenSpec validation. Require exact-revision hosted canonical enabled collector/agent scenarios and pinned observer timing/persistence/isolated restore evidence. Record observed local, hosted, staging and artifact evidence separately. External-host dry-run, live deployment and live client acceptance are not applicable from task creation; they remain future deployment prerequisites. Planning or portable fixtures alone cannot close these steps.
+
+## Source acceptance scope (2026-10-15)
+
+Per the owner-approved criteria revision, source acceptance requires focused Mac
+regressions, snapshots, full-history/staged gitleaks and complete unchanged
+exact-SHA hosted source/native checks. The local monolithic attempt failed on a
+registry timeout; its retry was cancelled after 32 minutes still queued. No full
+local success is claimed; global and deployment gates remain unchanged.

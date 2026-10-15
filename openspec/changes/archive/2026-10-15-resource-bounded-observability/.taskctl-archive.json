@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-10-15T16:25:15Z",
+  "change": "resource-bounded-observability",
+  "commit_sha": "f6ad803e97237d8d8ec3839284d84db974ea986c",
+  "outcome": "dropped",
+  "schema": 1,
+  "task_id": "MON-1790835036464962"
+}

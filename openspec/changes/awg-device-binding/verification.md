@@ -1,11 +1,11 @@
 ---
 task_id: SCR-1791618039091425
 change: awg-device-binding
-commit_sha: 923304729f6bdd32edce6a9b6ceada1d51c7d011
-local: required
-local_evidence: "61 encrypted transaction tests passed with actual SOPS and age; exact-main portable/native suites passed. Complete local make check pending."
-remote_ci: passed
-remote_ci_evidence: "Exact main CI 38759230876 and CodeQL 38759230898 succeeded; native integration 138, XHTTP 2, AWG binding 1 and runtime acceptance 4 cases passed."
+commit_sha: "f6ad803e97237d8d8ec3839284d84db974ea986c"
+local: "passed"
+local_evidence: "61 real encrypted AWG transaction cases passed on Mac; source-specific emitter/schema cases, source lint and snapshots passed. Full local make check failed on registry timeout; queued retry cancelled. Complete unchanged source CI supplies the approved full gate."
+remote_ci: "passed"
+remote_ci_evidence: "CI 38768887914 completed all 88 jobs successfully on f6ad803e97237d8d8ec3839284d84db974ea986c; complete native integration, AWG, XHTTP, runtime rollback and canonical monitoring scenarios passed. Required CodeQL checks succeeded on this source."
 dry_run: not_applicable
 dry_run_evidence: source capability uses isolated native proof; real inventory/controller rehearsal needs separate authorization
 staging: not_applicable
@@ -13,9 +13,9 @@ staging_evidence: source contract uses isolated native acceptance; actual fleet 
 live: not_applicable
 live_evidence: no production rollout belongs to this source or disabled-default candidate task
 client: passed
-client_evidence: exact-source hosted native lanes passed 138 baseline cases, two endpoint cases, the AWG binding case and four runtime acceptance cases; real local QR encode/decode passed
-artifact: passed
-artifact_evidence: real SOPS/age issuance and qrencode/zbar roundtrip passed; private cleanup, committed-error URI retention and credential exclusion passed
+client_evidence: "Exact-source native integration passed the complete AWG two-instance TCP/UDP issuance export rejection and isolated revocation case, plus baseline and endpoint native traffic."
+artifact: "passed"
+artifact_evidence: "All 163 golden snapshots match; source schemas contracts and redacted exact-runtime acceptance artifacts passed."
 ---
 
 
@@ -109,3 +109,15 @@ The closeout worktree preserves the unchanged baseline while final gates run.
 ## Integrated source verification (2026-10-15)
 
 Exact main CI 38759230876 and CodeQL 38759230898 succeeded; native integration 138, XHTTP 2, AWG binding 1 and runtime acceptance 4 cases passed. Source is `923304729f6bdd32edce6a9b6ceada1d51c7d011`; hosted logs were inspected directly. 61 encrypted transaction tests passed with actual SOPS and age; exact-main portable/native suites passed. Complete local make check pending. No external infrastructure or real notification action occurred.
+
+## Source acceptance scope (2026-10-15)
+
+Per the owner-approved criteria revision, source acceptance requires focused Mac
+regressions, snapshots, full-history/staged gitleaks and complete unchanged
+exact-SHA hosted source/native checks. The local monolithic attempt failed on a
+registry timeout; its retry was cancelled after 32 minutes still queued. No full
+local success is claimed; global and deployment gates remain unchanged.
+
+## Final source acceptance (2026-10-15)
+
+All unchanged hosted source consumers and native acceptance passed in CI 38768887914 on `f6ad803e97237d8d8ec3839284d84db974ea986c`. Focused Mac validation, snapshots and full-history secret scanning passed as recorded above. The owner-approved task scope accepts this combined source gate; the failed monolithic Mac invocation is not reclassified as passing. No external infrastructure or human notification receipt is claimed.

@@ -1,0 +1,11 @@
+{
+  "change": "xhttp-endpoint-contract",
+  "evidence_summary": "Source 7a08fcd7052351ef968988c2b79a0c57a33060aa passed complete local gates and exact-source hosted native/client acceptance recorded in verification. Integrated main 923304729f6bdd32edce6a9b6ceada1d51c7d011 revalidated both actual native endpoint cases plus all 138 baseline and four runtime acceptance cases in CI 38759230876. No external rollout or private-input migration claimed.",
+  "execution_sha256": "09a66a2ff136fde680474acf43b42e632852e1c2f242ce87dda84cd20e843246",
+  "issue_sha256": "c052e02f1c6cd06e64e7cf9bea1ec98647db03e9fdb9e944ceb154020cdc2deb",
+  "outcome": "done",
+  "prepared_at": "2026-10-15T16:37:25Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "XRY-1791617955392712"
+}

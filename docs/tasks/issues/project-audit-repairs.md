@@ -27,3 +27,11 @@ Repair the sixteen audit cases with exact identity, resource scope and complete 
 - Focused tests, reviewed snapshots, make check and independent review have recorded outcomes.
 - The PR contains only owned repair changes; exact-source CI is recorded separately.
 - No live deployment or credential operation is part of source acceptance.
+
+## Source acceptance scope (2026-10-15)
+
+Per the owner-approved criteria revision, source acceptance requires focused Mac
+regressions, snapshots, full-history/staged gitleaks and complete unchanged
+exact-SHA hosted source/native checks. The local monolithic attempt failed on a
+registry timeout; its retry was cancelled after 32 minutes still queued. No full
+local success is claimed; global and deployment gates remain unchanged.

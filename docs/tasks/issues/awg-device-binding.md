@@ -28,3 +28,11 @@ Deliver authoritative AmneziaWG device enrollment and client bindings.
 - Preserve inherited source fixes and all unrelated work; implementation and external execution need separate authorization.
 - Audit coverage: A05, A06; baseline `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3`.
 - Dependency and acceptance details: linked design.md and verification.md.
+
+## Source acceptance scope (2026-10-15)
+
+Per the owner-approved criteria revision, source acceptance requires focused Mac
+regressions, snapshots, full-history/staged gitleaks and complete unchanged
+exact-SHA hosted source/native checks. The local monolithic attempt failed on a
+registry timeout; its retry was cancelled after 32 minutes still queued. No full
+local success is claimed; global and deployment gates remain unchanged.

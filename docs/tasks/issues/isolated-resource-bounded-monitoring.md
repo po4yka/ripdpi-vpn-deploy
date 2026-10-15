@@ -2,7 +2,7 @@
 id: MON-1792080593038468
 title: Deliver isolated resource-bounded monitoring acceptance
 kind: feature
-status: doing
+status: review
 area: monitoring
 priority: high
 risk: high
@@ -27,3 +27,11 @@ Deliver the implemented private collector, bounded vmagent sender and independen
 - Pinned Kuma accepts qualified pushes, detects missing signals, preserves monitor state and restores encrypted backups in isolation; relay states remain honest about failed or absent external delivery.
 - Full source checks, snapshots, independent security review and exact-source selected hosted CI pass. Every stated native test must run without selected skips.
 - Provider access, real-host rollout, real Telegram delivery, human receipts, live client performance and cutover are excluded. Deployment safeguards remain mandatory for any future rollout; this task does not accept it.
+
+## Source acceptance scope (2026-10-15)
+
+Per the owner-approved criteria revision, source acceptance requires focused Mac
+regressions, snapshots, full-history/staged gitleaks and complete unchanged
+exact-SHA hosted source/native checks. The local monolithic attempt failed on a
+registry timeout; its retry was cancelled after 32 minutes still queued. No full
+local success is claimed; global and deployment gates remain unchanged.

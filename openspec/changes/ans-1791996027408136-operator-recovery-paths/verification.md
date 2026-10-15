@@ -1,11 +1,11 @@
 ---
 task_id: ANS-1791996027408136
 change: ans-1791996027408136-operator-recovery-paths
-commit_sha: 923304729f6bdd32edce6a9b6ceada1d51c7d011
-local: required
-local_evidence: "Full targeted real-Ansible/helper/operator suite passed 517 cases with no skips; standalone adapter 58 passed. Complete local make check pending."
-remote_ci: passed
-remote_ci_evidence: "Exact main CI 38759230876 native transport job 116505845756 passed all 4 cases including rollback MainPID unit candidate-scope and reconvergence assertions."
+commit_sha: "f6ad803e97237d8d8ec3839284d84db974ea986c"
+local: "passed"
+local_evidence: "517 targeted recovery/operator/real-Ansible cases and 58 standalone adapter cases passed on Mac; snapshots and source lint passed. Full local make check failed on registry timeout; queued retry cancelled. Complete unchanged source CI supplies the approved full gate."
+remote_ci: "passed"
+remote_ci_evidence: "CI 38768887914 completed all 88 jobs successfully on f6ad803e97237d8d8ec3839284d84db974ea986c; complete native integration, AWG, XHTTP, runtime rollback and canonical monitoring scenarios passed. Required CodeQL checks succeeded on this source."
 dry_run: not_applicable
 dry_run_evidence: No real inventory or SSH transaction is authorized or included.
 staging: not_applicable
@@ -14,8 +14,8 @@ live: not_applicable
 live_evidence: No production deployment is authorized or claimed.
 client: not_applicable
 client_evidence: No client payload, bundle or recipient surface changes.
-artifact: passed
-artifact_evidence: Targeted source contracts and governed rollback documentation passed within the 517-case suite.
+artifact: "passed"
+artifact_evidence: "All 163 golden snapshots match; source schemas contracts and redacted exact-runtime acceptance artifacts passed."
 ---
 
 # Verification
@@ -33,3 +33,15 @@ artifact_evidence: Targeted source contracts and governed rollback documentation
 ## Integrated source verification (2026-10-15)
 
 Exact main CI 38759230876 native transport job 116505845756 passed all 4 cases including rollback MainPID unit candidate-scope and reconvergence assertions. Source is `923304729f6bdd32edce6a9b6ceada1d51c7d011`; hosted logs were inspected directly. Full targeted real-Ansible/helper/operator suite passed 517 cases with no skips; standalone adapter 58 passed. Complete local make check pending. No external infrastructure or real notification action occurred.
+
+## Source acceptance scope (2026-10-15)
+
+Per the owner-approved criteria revision, source acceptance requires focused Mac
+regressions, snapshots, full-history/staged gitleaks and complete unchanged
+exact-SHA hosted source/native checks. The local monolithic attempt failed on a
+registry timeout; its retry was cancelled after 32 minutes still queued. No full
+local success is claimed; global and deployment gates remain unchanged.
+
+## Final source acceptance (2026-10-15)
+
+All unchanged hosted source consumers and native acceptance passed in CI 38768887914 on `f6ad803e97237d8d8ec3839284d84db974ea986c`. Focused Mac validation, snapshots and full-history secret scanning passed as recorded above. The owner-approved task scope accepts this combined source gate; the failed monolithic Mac invocation is not reclassified as passing. No external infrastructure or human notification receipt is claimed.

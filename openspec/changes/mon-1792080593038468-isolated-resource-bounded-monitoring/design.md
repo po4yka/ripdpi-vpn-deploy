@@ -38,3 +38,11 @@ The current roles already implement co-hosted private Prometheus/Alertmanager/re
 3. Run focused tests, snapshots, lint, task/OpenSpec validation and the full source gate. Publish the exact SHA and require all selected hosted CI, including enabled collector/agent scenarios and real observer runtime evidence.
 4. Record exact observed source/isolated-runtime artifacts and close only after their required gates pass. Dry-run against external hosts, live and live-client categories are not applicable from task creation.
 5. Future deployment remains a separate authorized operation. Monitoring-only rollback preserves queue/data/credentials and public VPN configuration; Kuma rollback uses its matched database/image backup.
+
+## Source acceptance scope (2026-10-15)
+
+Per the owner-approved criteria revision, source acceptance requires focused Mac
+regressions, snapshots, full-history/staged gitleaks and complete unchanged
+exact-SHA hosted source/native checks. The local monolithic attempt failed on a
+registry timeout; its retry was cancelled after 32 minutes still queued. No full
+local success is claimed; global and deployment gates remain unchanged.

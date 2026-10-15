@@ -2,7 +2,7 @@
 id: SCR-1791922948501055
 title: Bound disposable schema client I/O and cleanup
 kind: bug
-status: review
+status: done
 area: scripts
 priority: medium
 risk: standard
@@ -12,10 +12,13 @@ blocked_by: []
 spec_mode: not-required
 openspec_change: null
 created: 2026-10-14
-updated: 2026-10-14
+updated: 2026-10-15
 spec_reason: regression-tested-single-module
 related_tasks: [MON-1791918647679583]
 status_detail: 46 complete regression tests and independent source review passed. Full pinned local and exact-source hosted gates remain required before handoff; uncertain cleanup fails closed.
+closed_at: "2026-10-15T16:25:34Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Integrated source 923304729f6bdd32edce6a9b6ceada1d51c7d011 passed CI 38759230876 including 7193 portable tests and 22 subtests. Current schema and Telegram portable suite passed 116 cases without skips; independent review approved bounded I/O and cleanup. No provider or notification action.
 ---
 
 ## Goal
