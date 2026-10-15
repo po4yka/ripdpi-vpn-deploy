@@ -4,6 +4,8 @@
 
 Protected site compensation uses the shared unit lock and bounded private journal to retain exact prior ingress paths and owner receipts. Schema 2 receipts bind owner, unit, roots and digest-only path witnesses; old receipts/journals refuse before mutation because their ownership evidence is incomplete. Fresh publication and schema 2 warm reconvergence remain supported. Rollback restores the previous receipt alongside its files so interrupted publication cannot leave a stale witness.
 
+`begin` refuses an open site journal with `recovery-required`, check mode included. A journal left by a killed deploy is instead adopted by `transport-ingress-begin.yml` (read-only `stat` of `site.json`), which fails with `interrupted-protected-ingress-transaction` so the protected block's single rescue quiesces candidates, runs `--site restore` and rolls the egress generation back; this assumes no other live deploy targets the node, because no deploy-level lock exists. A pending-only journal left by an ordinary publisher that shares `nginx.service` (`cdn-front`, `subscription-host`, the probe target) is recovered by non-check `begin` itself under the unit lock, before receipt admission; unknown or foreign journals still refuse.
+
 
 Publication change reporting compares recaptured authority under the writer
 lock. The preliminary snapshot validates recoverability; check mode computes

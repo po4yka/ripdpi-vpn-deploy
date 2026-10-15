@@ -348,7 +348,10 @@
             - _transport_egress_transaction_started | default(false) | bool
         - name: Report protected site staging refusal after bounded recovery
           ansible.builtin.fail:
-            msg: Protected transport staging failed; accepted-generation recovery was attempted when available.
+            msg: >-
+              Protected transport staging failed; {{ 'accepted-generation recovery was attempted when available.'
+              if (transport_site_transaction_active | default(false) | bool)
+              else 'no accepted-generation recovery was attempted.' }}
     - name: Reconcile cdn-front runtime
       ansible.builtin.import_role:
         name: cdn-front

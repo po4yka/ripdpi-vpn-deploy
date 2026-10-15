@@ -1,6 +1,7 @@
 """Portable real-file compensation/authority proof; runtime adoption stays native."""
 import base64
 import copy
+import fcntl
 import importlib.util
 import json
 import os
@@ -511,6 +512,77 @@ def test_check_mode_owned_pending_refuses_without_recovery_or_publication(fixtur
     with pytest.raises(tx.TransactionError, match='^recovery-required$'):
         tx.publish(document)
     assert (tx.capture(path), tx.capture(receipt), tx.capture(state / 'pending.json')) == before
+    assert not commands
+
+
+@pytest.mark.parametrize('phase,receipt_state', [
+    ('prepared', 'prior'), ('publishing', 'prior'), ('activated', 'prior'), ('activated', 'next'),
+])
+def test_begin_recovers_a_pending_only_publication_under_the_unit_lock_then_captures(fixture, monkeypatch, phase, receipt_state):
+    tx, context, _ = fixture
+    state, _, path, receipt = interrupted_publication(tx, context, phase, receipt_state)
+    prior_receipt = tx.private_json(state / 'pending.json')['receipt']
+    held = []
+    recover = tx.recover
+    def under_lock(pending, unit):
+        # A second descriptor cannot take the exclusive lock while begin holds it.
+        descriptor = os.open(state / 'lock', os.O_RDWR)
+        try:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            held.append(True)
+        finally:
+            os.close(descriptor)
+        return recover(pending, unit)
+    monkeypatch.setattr(tx, 'recover', under_lock)
+    assert tx.site_transaction('begin', context) == {'status': 'captured', 'changed': False}
+    assert held == [True]
+    assert path.read_bytes() == b'accepted' and tx.capture(receipt) == prior_receipt
+    assert not (state / 'pending.json').exists() and not list(state.glob('candidate-*'))
+    assert tx.read_site(state) is not None
+
+
+def test_check_mode_begin_refuses_a_pending_only_journal_without_recovery(fixture):
+    tx, context, commands = fixture
+    state, _, path, receipt = interrupted_publication(tx, context, 'activated')
+    before = (tx.capture(path), tx.capture(receipt), tx.capture(state / 'pending.json'))
+    with pytest.raises(tx.TransactionError, match='^recovery-required$'):
+        tx.site_transaction('begin', {**context, 'check': True})
+    assert (tx.capture(path), tx.capture(receipt), tx.capture(state / 'pending.json')) == before
+    assert not commands and not (state / 'site.json').exists()
+
+
+@pytest.mark.parametrize('case,refusal', [
+    ('unrecognized', 'manual-recovery-required'), ('foreign-file', 'foreign-publication'), ('foreign-receipt', 'foreign-receipt'),
+])
+def test_begin_retains_unrecognized_or_foreign_pending_journals_without_mutation(fixture, case, refusal):
+    tx, context, commands = fixture
+    state, document, path, receipt = interrupted_publication(tx, context, 'activated')
+    if case == 'unrecognized':
+        tx.persist(state / 'pending.json', {'request': document})
+    elif case == 'foreign-file':
+        path.write_bytes(b'foreign actual bytes')
+    else:
+        value = tx.private_json(receipt)
+        value['fingerprint'] = '0' * 64
+        tx.persist(receipt, value)
+    before = (tx.capture(path), tx.capture(receipt), receipt.stat().st_ino, tx.capture(state / 'pending.json'))
+    with pytest.raises(tx.TransactionError, match='^' + refusal + '$'):
+        tx.site_transaction('begin', context)
+    assert (tx.capture(path), tx.capture(receipt), receipt.stat().st_ino, tx.capture(state / 'pending.json')) == before
+    assert not commands and not (state / 'site.json').exists()
+
+
+def test_begin_with_an_open_site_journal_never_recovers_a_pending_journal(fixture):
+    tx, context, commands = fixture
+    state = install_accepted(tx, context)
+    tx.site_transaction('begin', context)
+    # Recovery of this unrecognized journal would raise manual-recovery-required.
+    tx.persist(state / 'pending.json', {'request': desired(tx, context)})
+    before = {p: tx.capture(p) for p in state.iterdir() if p.name != 'lock'}
+    with pytest.raises(tx.TransactionError, match='^recovery-required$'):
+        tx.site_transaction('begin', context)
+    assert {p: tx.capture(p) for p in state.iterdir() if p.name != 'lock'} == before
     assert not commands
 
 

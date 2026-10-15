@@ -63,6 +63,59 @@
                      and not (vpn_subscription_only | default(false) | bool)) else none }}
   no_log: true
 
+- name: Detect an interrupted protected ingress transaction before capturing a new one
+  ansible.builtin.stat:
+    path: /var/lib/vpn-nginx-publication/nginx.service/site.json
+    follow: false
+  register: _transport_ingress_interrupted
+
+- name: Locate the egress outer route helper for interrupted transaction adoption
+  ansible.builtin.stat:
+    path: /usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py
+    follow: false
+  register: _transport_ingress_interrupted_helper
+  when:
+    - _transport_ingress_interrupted.stat.exists
+    - not ansible_check_mode
+
+- name: Read the interrupted egress outer route ownership
+  ansible.builtin.command:
+    argv: [/usr/bin/python3, -Es, /usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py, status]
+  register: _transport_ingress_interrupted_outer
+  failed_when: false
+  changed_when: false
+  no_log: true
+  diff: false
+  when:
+    - _transport_ingress_interrupted.stat.exists
+    - not ansible_check_mode
+    - _transport_ingress_interrupted_helper.stat.exists
+
+- name: Refuse adoption when the egress outer route ownership cannot be read
+  ansible.builtin.fail:
+    msg: >-
+      The egress outer route of an interrupted protected ingress transaction could not be read; the journal is retained:
+      {{ (_transport_ingress_interrupted_outer.stderr | default('') |
+           regex_findall('transport-runtime-(?:refused:[a-z][a-z0-9-]{0,96}|frame:[A-Za-z_][A-Za-z_0-9]*:[0-9]{1,6})'))[:9] }}
+  when: _transport_ingress_interrupted_outer.rc | default(0) != 0
+
+- name: Adopt the interrupted transaction as this block's sole compensation owner
+  ansible.builtin.set_fact:
+    transport_site_transaction_active: true
+    _transport_egress_transaction_started: >-
+      {{ (_transport_ingress_interrupted_outer.stdout | default('{"open": false}') | from_json).open }}
+  when:
+    - _transport_ingress_interrupted.stat.exists
+    - not ansible_check_mode
+
+- name: Refuse to capture while an interrupted protected ingress transaction awaits compensation
+  ansible.builtin.fail:
+    msg: >-
+      interrupted-protected-ingress-transaction: a previous deploy left an open protected ingress journal on this node.
+      Dry-run changes nothing; a deploy compensates the accepted ingress and egress generation and then stops,
+      after which dry-run and deploy must be repeated.
+  when: _transport_ingress_interrupted.stat.exists
+
 - name: Capture or check protected ingress under its existing shared unit lock
   ansible.builtin.command:
     argv:
