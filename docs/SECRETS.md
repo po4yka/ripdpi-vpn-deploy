@@ -185,7 +185,7 @@ to defaults, the lifecycle status (`issued → delivered → active → stale |
 revoked | burned`), the AWG client private key as a recovery copy (the
 device-local key stays primary), and the payload identity
 (versioned private HMAC-SHA256 over the canonical selected-device payload,
-format, exact options and AWG binding) recorded at last delivery for
+format, exact options and AWG binding including the enrolled peer public key) recorded at last delivery for
 `make client-drift CLIENT=<device>`. Inspection re-renders in memory and emits
 only `current`, `stale` or `unknown`; it never prints the digest or creates
 identity authority. The encrypted authority has a 256-bit random key and a

@@ -440,3 +440,24 @@ def test_missing_optional_qr_encoder_retains_committed_delivery(lab, monkeypatch
     out = capsys.readouterr()
     assert 'skip --qr' in out.err and MARKER not in out.out + out.err
     assert capture.exists() and drift._verdict('phone')[0] == 'current'
+
+
+def test_peer_public_key_rotation_is_stale_even_with_identical_export(lab, capsys):
+    import base64
+    import hashlib
+    from awg_device_binding import public_key
+    path, capture, drift = lab
+    deliver()
+    capsys.readouterr()
+    delivered = json.loads(capture.read_bytes())
+    def rotate(doc):
+        private = base64.b64encode(bytes([9]) * 32).decode()
+        public = public_key(private)
+        doc['amneziawg_secrets']['instances'][0]['peers'][0]['public_key'] = public
+        doc['client_registry']['phone']['awg_private_key'] = private
+        doc['client_registry']['phone']['awg_public_key_fingerprint'] = 'sha256:' + hashlib.sha256(public.encode()).hexdigest()[:16]
+    change(path, rotate)
+    entry = payload.read_document(path)['client_registry']['phone']
+    current, _binding = payload.materialize('phone', entry['delivery_options'], extended=True)
+    assert current == delivered
+    assert drift._verdict('phone')[0] == 'stale'

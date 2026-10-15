@@ -431,7 +431,8 @@ accepts a readout output flag.
 The renderer is `client_payload.py`; `emit-singbox.sh` and `emit-bundle.sh`
 dispatch without staging plaintext. Issuance hashes the same canonical JSON it
 publishes. HMAC-SHA256 is domain-separated by version, device, format, recorded
-options and exact AWG bindings. The 256-bit key and 128-bit key-bound generation
+options and exact AWG bindings, including the full enrolled peer public key
+even when export uses a device-private-key placeholder. The 256-bit key and 128-bit key-bound generation
 live in `client_delivery_identity` inside SOPS; neither the key nor keyed digest
 is printed. Only issuance creates missing authority. Explicitly rotating both
 key and generation invalidates prior comparisons until redelivery; inspection

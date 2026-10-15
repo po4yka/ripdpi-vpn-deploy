@@ -3,7 +3,7 @@ task_id: "SCR-1791618188806822"
 change: "client-consumed-payload-identity"
 commit_sha: null
 local: "required"
-local_evidence: "135 complete drift/registry/emitter/expiry cases, 45 registry/QR cases, 279 transaction regressions and 49 caller/gate cases passed without selected skips; local broad run found known pre-fix failures and two unchanged Ansible timeouts"
+local_evidence: "138 complete drift/registry/emitter/expiry cases, 45 registry/QR cases, 279 transaction regressions and 49 caller/gate cases passed without selected skips; local broad run found known pre-fix failures and two unchanged Ansible timeouts"
 remote_ci: "required"
 remote_ci_evidence: "Initial source e08957b987d5dd4c49e3c4cf33420f846deb8c84 exposed same-second refresh and obsolete shell-reader fixtures; corrected exact-source checks remain required"
 dry_run: "not_applicable"
@@ -60,6 +60,11 @@ fixtures explicitly isolate HOME and SOPS paths from operator configuration.
 
 The broad local retry completed 7207 cases and 22 subtests before reporting
 six now-corrected pre-fix assertions/issuance cases and two unchanged Ansible
-wall-clock timeouts (30 and 45 seconds). Both original timeout cases are
-queued for a gated focused recheck with their original bounds. No timeout or
-assertion was relaxed. Exact final-source hosted acceptance remains required.
+wall-clock timeouts (30 and 45 seconds). Both original timeout cases passed on focused recheck in 5.18 seconds with
+their original bounds. No timeout or assertion was relaxed. Exact final-source hosted acceptance remains required.
+
+The final affected run passed 138 cases without selected skips. A coherent
+AWG peer/recovery-key rotation first reproduced an incorrect current verdict
+with byte-identical exported JSON; binding the enrolled peer public key in the
+private identity now produces stale. Minimal valid host-selection fixtures
+continue to work without requiring an extra recovery-key copy.

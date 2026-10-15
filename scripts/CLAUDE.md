@@ -636,3 +636,7 @@ Enabled transport authority must contain nonempty typed credentials and SNI
 before publication. Malformed consumed authority returns a categorical refusal;
 missing optional QR tooling retains the committed delivery and machine-token
 mode keeps its early exit without QR side effects.
+
+The private identity binds the full enrolled AWG peer public key as well as its
+instance. A coherent peer/recovery-key rotation can leave placeholder-based
+exported JSON unchanged; it must still report stale without publishing key metadata.

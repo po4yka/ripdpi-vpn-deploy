@@ -13,6 +13,7 @@ import time
 import yaml
 
 from awg_client import export as awg_export, host_context
+from awg_device_binding import resolve_binding
 from encrypted_client_document import MAX_BYTES, private_file, identity
 from transport_semantics import transport_errors
 from fleet_inspection import bounded_command, InspectionError
@@ -249,8 +250,11 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
                 raise ValueError('conflicting vpn.hysteria_realm values across HOSTS')
             topology['hysteria_realm'] = topology['hysteria_realm'] or realm
             if enabled('enable_amneziawg') and (not o['awg_host'] or o['awg_host'] == host):
-                awg.append(awg_export(d, host_context(cohort), client, host, None, ip))
-                bindings.append(d['client_registry'][client]['awg_binding'])
+                awg_context = host_context(cohort)
+                awg.append(awg_export(d, awg_context, client, host, None, ip))
+                binding = resolve_binding(d, awg_context, client, host)
+                # A placeholder export still consumes the enrolled peer identity.
+                bindings.append({**binding.identity, 'peer_public_key': binding.peer['public_key']})
     if not out and not (o['format'] == 'ripdpi' and awg_enabled):
         raise ValueError('no enabled outbounds resolved from Ansible profile toggles')
     automatic = [v['tag'] for v in out if v['tag'] not in snell]
