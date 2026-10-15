@@ -577,9 +577,13 @@ jobs:
   transport-runtime-acceptance:
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['transport-runtime-acceptance'] }}
-    name: native transport runtime acceptance
+    name: native transport runtime acceptance (${{ matrix.group }}/2)
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [1, 2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -612,11 +616,13 @@ jobs:
               python3-yaml make unzip
             chmod 0755 /var/log
           '
-      - name: Execute complete transport acceptance in a fresh runner
+      - name: Execute complete transport acceptance in fresh partitioned runners
+        env:
+          PYTEST_NATIVE_GROUP: ${{ matrix.group }}
         run: |
           docker exec --workdir /opt/rta \
             --env TRANSPORT_NATIVE_ISOLATED=1 \
-            --env PYTEST_ADDOPTS=--tb=short \
+            --env "PYTEST_ADDOPTS=--tb=short --splits 2 --group $PYTEST_NATIVE_GROUP --splitting-algorithm duration_based_chunks" \
             --env ANSIBLE_COLLECTIONS_PATH=/opt/rta/.ansible/collections \
             --env "PATH=$RTA_PYTHON_PREFIX/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
             transport-runtime-acceptance \

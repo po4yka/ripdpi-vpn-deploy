@@ -21,7 +21,7 @@ import uuid
 
 import yaml
 
-from scripts.template_render import merge_render_vars
+from scripts.template_render import merge_render_vars, render_template
 
 ROOT = Path(__file__).resolve().parents[3]
 LIBRARY = ROOT / 'ansible/roles/runtime-release/files'
@@ -365,6 +365,80 @@ server.serve_forever()
             self.context['hysteria'].update(version='v2.13.0', linux_amd64_sha256=HYSTERIA_PINS['v2.13.0'],
                                            linux_arm64_sha256=HYSTERIA_PINS['v2.13.0'])
             self.context['hysteria_release_urls'] = dict.fromkeys(('amd64','arm64'), 'file://' + str(self.artifacts / 'hysteria-v2.13.0'))
+
+    def enable_hysteria_hopping(self):
+        self.context['vpn']['enable_hysteria'] = True
+        self.context['hysteria_port_range'] = '46000-46002'
+        self.context['hysteria'].update(salamander_enabled=True,
+            salamander_password='synthetic-' + secrets.token_hex(24))
+        rendered = render_template(ROOT / 'ansible/roles/firewall/templates/nftables.conf.j2', self.context)
+        redirects = [line.strip() for line in rendered.splitlines() if 'comment "hysteria-port-hopping"' in line]
+        assert len(redirects) == 1
+        self.hopping_table = self.token + 'hops'
+        command(['nft', 'add', 'table', 'inet', self.hopping_table])
+        self.resources.callback(command, ['nft', 'delete', 'table', 'inet', self.hopping_table])
+        # Instrument the exact rendered redirect without adopting the host firewall.
+        rules = ('add chain inet ' + self.hopping_table + ' prerouting { type nat hook prerouting priority dstnat; }\n'
+                 + ''.join('add rule inet ' + self.hopping_table + ' prerouting udp dport ' + str(port) + ' counter\n'
+                           for port in range(46000, 46003))
+                 + 'add rule inet ' + self.hopping_table + ' prerouting ' + redirects[0] + '\n')
+        command(['nft', '-f', '-'], input=rules.encode())
+
+    def assert_hysteria_hopping(self):
+        def counters():
+            document = json.loads(command(['nft', '-j', 'list', 'chain', 'inet', self.hopping_table, 'prerouting']))
+            return [expression['counter']['packets'] for item in document['nftables'] if 'rule' in item
+                    for expression in item['rule']['expr'] if 'counter' in expression][:3]
+        before = counters()
+        assert len(before) == 3
+        document = yaml.safe_load(Path('/etc/hysteria/config.yaml').read_bytes())
+        document['listen'] = '10.247.0.1:46000-46002'
+        configuration = self.private / 'hopped-authority.yaml'
+        configuration.write_text(yaml.safe_dump(document));configuration.chmod(0o600)
+        script = self.private / 'hopped-client.py'
+        script.write_text("""import json,sys,tempfile,time
+from pathlib import Path
+import yaml
+sys.path.insert(0,sys.argv[1])
+from transport_runtime_probe import child,free_port,hysteria_client,private_file,request
+source=yaml.safe_load(Path(sys.argv[3]).read_bytes())
+port=free_port()
+client=hysteria_client(source,port,source['tls']['cert'],'native-device-h')
+client['transport']={'udp':{'hopInterval':'5s'}}
+with tempfile.TemporaryDirectory(prefix='native-hopped-client-') as temporary:
+    path=private_file(Path(temporary),'client.yaml',yaml.safe_dump(client))
+    with child([sys.argv[2],'client','-c',str(path)]) as process:
+        deadline=time.monotonic()+40
+        request(port,'https://192.0.2.80:18080/',204,process,deadline)
+        until=time.monotonic()+7
+        while time.monotonic()<until:
+            request(port,'https://192.0.2.80:18080/',204,process,deadline)
+            time.sleep(.25)
+""")
+        script.chmod(0o600)
+        command(['ip', 'netns', 'exec', self.namespace, sys.executable, str(script),
+                 str(LIBRARY), '/usr/local/bin/hysteria', str(configuration)], timeout=60)
+        after = counters()
+        assert sum(right > left for left, right in zip(before, after)) >= 2, 'actual-port-hop-unobserved'
+        # A control datagram outside the hop range must remain an ordinary UDP flow.
+        import threading
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as control:
+            control.bind(('10.247.0.1', 0));control.settimeout(5)
+            destination = control.getsockname()[1]
+            assert not 46000 <= destination <= 46002
+            def echo():
+                packet, peer = control.recvfrom(1024)
+                control.sendto(packet, peer)
+            worker = threading.Thread(target=echo)
+            worker.start()
+            try:
+                command(['ip', 'netns', 'exec', self.namespace, sys.executable, '-c',
+                    "import socket,sys; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.settimeout(3);"
+                    "s.sendto(b'unrelated-udp',('10.247.0.1',int(sys.argv[1])));"
+                    "assert s.recv(1024)==b'unrelated-udp'", str(destination)], timeout=10)
+            finally:
+                worker.join(timeout=6)
+                assert not worker.is_alive(), 'control-udp-cleanup-unconfirmed'
 
     def geodata(self):
         for raw in ('/etc/systemd/system/vpn-geodata-refresh.timer',

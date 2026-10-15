@@ -110,6 +110,8 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
         ['tests/unit/test_xhttp_endpoint_contract_native.py'],
         ['tests/unit/test_awg_device_binding_native.py'],
         ['tests/unit/test_hysteria_ech_native.py'],
+        *[['tests/unit/test_transport_runtime_acceptance_native.py', '--splits', '2', '--group', str(group),
+           '--splitting-algorithm', 'duration_based_chunks'] for group in (1, 2)],
     ]
     selected = []
     for arguments in commands:
@@ -117,7 +119,13 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
             cwd=ROOT, text=True, capture_output=True, check=True, timeout=60)
         selected.append({line for line in result.stdout.splitlines()
                          if line.startswith('tests/unit/') and '::' in line})
-    all_native, existing, transactions, endpoint_cases, awg_cases, ech_cases = selected
+    all_native, existing, transactions, endpoint_cases, awg_cases, ech_cases = selected[:6]
+    first, second = selected[6:]
+    assert transactions == first | second and not first & second
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]["transport-runtime-acceptance"]
+    assert workflow["strategy"]["matrix"]["group"] == [1, 2]
+    assert workflow["strategy"]["fail-fast"] is False
+    assert any("--splits 2 --group $PYTEST_NATIVE_GROUP --splitting-algorithm duration_based_chunks" in s.get("run", "") for s in workflow["steps"])
     assert all_native == existing | transactions | endpoint_cases | awg_cases | ech_cases
     groups = [existing, transactions, endpoint_cases, awg_cases, ech_cases]
     assert all(not left & right for index,left in enumerate(groups) for right in groups[index+1:])

@@ -20,6 +20,8 @@ pytestmark = pytest.mark.native_runtime
 @pytest.mark.parametrize('profile', ['xray', 'hysteria'])
 def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(profile):
     with fixture.Lab() as lab:
+        if profile == 'hysteria':
+            lab.enable_hysteria_hopping()
         # Successful byte acquisition must not admit an unready first install.
         if profile == 'xray':
             original = lab.context['xray']['target']
@@ -53,12 +55,19 @@ def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(
         assert lab.converge(profile) == 0
         root = Path('/opt/xray' if profile == 'xray' else '/opt/hysteria')
         previous = os.readlink(root / 'current')
+        if profile == 'hysteria':
+            lab.assert_hysteria_hopping()
         # The accepted receipt exists and parses before the upgrade.
         json.loads(Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_text())
         lab.upgrade(profile)
         assert lab.converge(profile) == 0
         assert os.readlink(root / 'current') != previous
         assert os.readlink(root / 'previous') == previous
+        if profile == 'hysteria':
+            from transport_runtime_accept import fields
+            observed = fields('hysteria-server.service')
+            assert os.path.samefile('/proc/' + observed['MainPID'] + '/exe', str(root / 'current' / 'hysteria'))
+            lab.assert_hysteria_hopping()
         receipt = Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_bytes()
         assert not Path('/var/lib/ripdpi/transport-runtime/pending.json').exists()
         assert lab.converge(profile) == 0
@@ -78,6 +87,8 @@ def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(
             assert result.returncode == 0, 'protected-native-geodata-timer-refused'
             assert Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_bytes() == before_timer
         exercise_native_refusals_and_process_death(lab, profile)
+        if profile == 'hysteria':
+            lab.assert_hysteria_hopping()
         if profile == 'xray':
             result = subprocess.run(['/usr/bin/python3', '-Es',
                 '/usr/local/libexec/ripdpi-transport-egress/transport_runtime_rollback.py',

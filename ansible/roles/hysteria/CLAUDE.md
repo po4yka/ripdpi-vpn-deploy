@@ -74,9 +74,9 @@ The staged runtime-release include returns generic `runtime_release_candidates`;
 
 - **UDP/443 is heavily policed in RU** — some carriers QUIC-throttle on UDP/443
   but not UDP/8443. Have `--port` flexibility ready; don't assume 443.
-- **UDP buffer sizes are not tuned** — no role sets `net.core.rmem_max` or
-  `wmem_max`; if Hysteria shows receive-buffer drops, add the tuning to
-  baseline's sysctl template rather than to this role.
+- **UDP ceilings belong to baseline** — its bounded `rmem_max`/`wmem_max` inputs
+  are optional performance settings. Observe effective values and receive drops;
+  a rendered value alone does not prove that the kernel applied it.
 - **systemd unit `LimitNOFILE` matters** — default 1024 caps concurrent
   flows. The unit template sets `LimitNOFILE=1048576`.
 - **No JSON API surface** — Hysteria's optional traffic API would be a

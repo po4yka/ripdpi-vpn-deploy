@@ -586,3 +586,10 @@ Missing tools or selected skips fail the lane. The separate complete consumer
 transaction suite includes root-only ECH credential activation, unchanged retry,
 rotation, process death and compensating rollback. Portable tests do not establish
 these Linux results or a staging soak.
+
+The complete transport transaction suite runs in two disjoint CI partitions,
+each with its own fresh systemd runner. Both groups are required; collection
+regressions verify their union equals the complete native transaction suite.
+This keeps ECH compensation and the earlier upgrade/failure cases within the
+per-runner budget. Salamander upgrade cases exercise real firewall-owned hops
+and an unaffected UDP control before/after adoption and compensation.
