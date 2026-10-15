@@ -55,6 +55,7 @@ def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes
     nft=bin_dir/'nft'
     nft.write_text(f'#!/bin/sh\nexec /usr/sbin/ip netns exec {server} /usr/sbin/nft "$@"\n')
     nft.chmod(0o700)
+    assert os.access(nft, os.X_OK), "AWG namespace adapters require executable pytest scratch space"
     def firewall_text(item, enabled=True):
         values=merge_render_vars()
         values.update(amneziawg_secrets={'instances':[item]},firewall_awg_uplink_interface='up0',
@@ -177,6 +178,7 @@ def test_firewall_retention_restores_owned_generation_or_fresh_closed_baseline(t
     wrapper=bin_dir/'nft'
     wrapper.write_text(f'#!/bin/sh\nexec /usr/sbin/ip netns exec {namespace} /usr/sbin/nft "$@"\n')
     wrapper.chmod(0o700)
+    assert os.access(wrapper, os.X_OK), "AWG namespace adapters require executable pytest scratch space"
     values=merge_render_vars()
     values.update(_firewall_effective_check_mode=True,_firewall_tailnet_ssh_sets_was_absent=True,
                   _firewall_tailnet_initial_fragment=(ROOT/'ansible/roles/firewall/files/vpn-tailnet-ssh-sets.empty.nft').read_text())

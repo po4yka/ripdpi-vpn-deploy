@@ -24,12 +24,15 @@ Tagged deployment and AWG rotation execute the same real listener admission;
 mismatched or missing provider contracts must refuse before a mutation sentinel.
 AWG rotation publishes canonical firewall claims before the complete peer
 role lifecycle and retains prior firewall authority through refusal.
-Exact-node fixtures supply valid public listener inputs to the unchanged play
-heads; listener admission has separate positive and mismatch regressions.
+Exact-node fixtures execute only the node/environment play heads; separate
+listener admission regressions cover positive, mismatch and check-mode paths.
 
 AWG failure tests change both peer claims and MTU, publish the real canonical
 firewall candidate, then verify real nft restoration before authenticated prior
-traffic resumes. The nft adapter only enters the owned network namespace.
+traffic resumes. The nft adapter only enters the owned network namespace. Adapters must be
+executable before any mutation, because PATH lookup skips a noexec mount and
+could otherwise select the global nft binary. The canonical AWG target owns
+private executable scratch under /var/tmp and removes it on exit.
 
 The AWG dual-stack native lane uses exact pinned AWG TUN peers and the complete
 canonical nftables render. Its owned namespaces exercise nondefault and multiple

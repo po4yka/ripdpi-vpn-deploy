@@ -1166,8 +1166,12 @@ test-xhttp-endpoint-contract:
 .PHONY: test-awg-dualstack-runtime
 test-awg-dualstack-runtime:
 	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 && test "$${TRANSPORT_NATIVE_ISOLATED:-}" = 1 || { echo "AWG dual-stack tests require an owned isolated Linux root environment" >&2; exit 1; }
-	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest \
-	  tests/unit/test_awg_dualstack_native.py tests/unit/test_awg_activation_native.py --fail-on-skip -v -s
+	@set -eu; \
+	  native_tmp=$$(mktemp -d /var/tmp/ripdpi-awg-native.XXXXXXXX); \
+	  trap 'rm -rf "$$native_tmp"' EXIT; \
+	  env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest \
+	    tests/unit/test_awg_dualstack_native.py tests/unit/test_awg_activation_native.py \
+	    --basetemp "$$native_tmp" --fail-on-skip -v -s
 
 # These inputs are inherited environment data; recipe expansion never evaluates them.
 .PHONY: verify-awg-dualstack-client-evidence
