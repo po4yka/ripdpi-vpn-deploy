@@ -95,6 +95,7 @@ def cleanup_process(process):
     try:
         os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:
+        # An already-exited process group needs no signal; still reap the child.
         pass
     process.wait(timeout=5)
     try:

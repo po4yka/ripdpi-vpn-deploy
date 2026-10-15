@@ -295,7 +295,6 @@ def test_preparation_rejects_foreign_identical_inode_before_any_cleanup(area):
     apply(area, 'A')
     killed_child(area, 'prepared')
     intent = json.loads((state / 'preparation.json').read_text())
-    directory = state / intent['directory']
     staged = transaction.staged_path(intent, 0, intent['intent']['entries'][0])
     foreign = staged.parent / 'foreign'
     foreign.write_bytes(staged.read_bytes())

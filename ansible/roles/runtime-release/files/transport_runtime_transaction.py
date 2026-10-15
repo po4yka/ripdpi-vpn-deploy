@@ -107,21 +107,30 @@ def sync(path):
         os.close(fd)
 
 
-def ancestors(path, uid):
-    # Descriptor traversal is retained by Transaction while nodes are replaced.
-    fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
-    try:
-        for part in path.parts[1:]:
-            nxt = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
-            os.close(fd)
-            fd = nxt
-            info = os.fstat(fd)
-            if info.st_uid not in {0, uid} or info.st_mode & 0o022:
-                raise Refusal('unsafe-parent')
-        return fd
-    except BaseException:
-        os.close(fd)
-        raise
+class TrustedDirectory:
+    """Own a no-follow directory descriptor for one retained context scope."""
+
+    def __init__(self, path, uid):
+        self.path = path
+        self.uid = uid
+
+    def __enter__(self):
+        self.fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            for part in self.path.parts[1:]:
+                nxt = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=self.fd)
+                os.close(self.fd)
+                self.fd = nxt
+                info = os.fstat(self.fd)
+                if info.st_uid not in {0, self.uid} or info.st_mode & 0o022:
+                    raise Refusal('unsafe-parent')
+            return self.fd
+        except BaseException:
+            os.close(self.fd)
+            raise
+
+    def __exit__(self, *args):
+        os.close(self.fd)
 
 
 def node(path, uid, *, links=1):
@@ -205,8 +214,7 @@ def admission(root, *, uid=0):
     root = Path(root)
     if not os.path.lexists(root):
         return
-    fd = ancestors(root, uid)
-    try:
+    with TrustedDirectory(root, uid) as fd:
         info = os.fstat(fd)
         if identity(info)[2:] != [uid, os.getgid(), 0o700]:
             raise Refusal('unsafe-state-directory')
@@ -229,8 +237,6 @@ def admission(root, *, uid=0):
             except BlockingIOError:
                 return
             raise Refusal('unfinished-runtime-without-publisher')
-    finally:
-        os.close(fd)
 
 
 class Transaction:
@@ -263,8 +269,7 @@ class Transaction:
         info = self.root.lstat()
         if not stat.S_ISDIR(info.st_mode) or info.st_uid != self.uid or stat.S_IMODE(info.st_mode) != 0o700:
             raise Refusal('unsafe-state-directory')
-        fd = ancestors(self.root, self.uid)
-        self.resources.callback(os.close, fd)
+        fd = self.resources.enter_context(TrustedDirectory(self.root, self.uid))
         if identity(os.fstat(fd)) != identity(info):
             raise Refusal('state-directory-changed')
         fcntl.flock(fd, (fcntl.LOCK_SH if self.check else fcntl.LOCK_EX) | fcntl.LOCK_NB)
@@ -283,12 +288,9 @@ class Transaction:
             nearest = path.parent
             while not nearest.exists():
                 nearest = nearest.parent
-            fd = ancestors(nearest, self.uid)
-            self.resources.callback(os.close, fd)
-            return fd
+            return self.resources.enter_context(TrustedDirectory(nearest, self.uid))
         if path not in self.parents:
-            fd = ancestors(path, self.uid)
-            self.resources.callback(os.close, fd)
+            fd = self.resources.enter_context(TrustedDirectory(path, self.uid))
             self.parents[path] = (fd, identity(os.fstat(fd)))
         fd, expected = self.parents[path]
         if identity(path.lstat()) != expected or identity(os.fstat(fd)) != expected:

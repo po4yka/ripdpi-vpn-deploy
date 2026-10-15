@@ -225,7 +225,7 @@ def test_preflight_rejects_foreign_helper_before_chmod_or_replacement(private_au
     helper.chmod(0o755)
     original = helper.stat()
     with pytest.raises(ValueError, match='directory-authority'):
-        authority.validate(core.ancestors, uid=os.getuid(), helper=helper,
+        authority.validate(core.TrustedDirectory, uid=os.getuid(), helper=helper,
                            state=root / 'state', guard=root / 'guard')
     assert helper.stat() == original
 

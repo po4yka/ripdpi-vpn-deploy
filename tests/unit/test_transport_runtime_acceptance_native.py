@@ -262,7 +262,8 @@ def exercise_native_refusals_and_process_death(lab, profile):
 
         def ready(self):
             if read_parameters()['probe_url'] != closed_canary:
-                return super().ready()
+                super().ready()
+                return
             self.generation_ready(__import__('time').monotonic() + self.timeout)
             observed = fields('xray.service' if profile == 'xray' else 'hysteria-server.service')
             assert observed['ActiveState'] == 'active' and int(observed['MainPID']) > 0

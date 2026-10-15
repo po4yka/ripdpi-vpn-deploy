@@ -15,12 +15,11 @@ def validate(ancestor_check, *, uid=0, helper=Path('/usr/local/libexec/observabi
         nearest = path
         while not os.path.lexists(nearest):
             nearest = nearest.parent
-        fd = ancestor_check(nearest, uid)
-        os.close(fd)
-        if os.path.lexists(path):
-            info = path.lstat()
-            if not stat.S_ISDIR(info.st_mode) or info.st_uid != uid or stat.S_IMODE(info.st_mode) != mode:
-                raise ValueError('sender-directory-authority')
+        with ancestor_check(nearest, uid):
+            if os.path.lexists(path):
+                info = path.lstat()
+                if not stat.S_ISDIR(info.st_mode) or info.st_uid != uid or stat.S_IMODE(info.st_mode) != mode:
+                    raise ValueError('sender-directory-authority')
     for path, mode in [(helper / name, 0o600) for name in files] + [(guard / 'acceptance.conf', 0o644)]:
         if os.path.lexists(path):
             info = path.lstat()
@@ -36,6 +35,6 @@ if __name__ == '__main__':
             raise ValueError('sender-authority-source-budget')
         namespace = {'__name__': 'sender_authority_library'}
         exec(source, namespace)
-        validate(namespace['ancestors'])
+        validate(namespace['TrustedDirectory'])
     except Exception:
         raise SystemExit('sender-helper-authority-refused') from None
