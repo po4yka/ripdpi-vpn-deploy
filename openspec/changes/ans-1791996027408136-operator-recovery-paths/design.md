@@ -54,3 +54,11 @@ Forward: merge the source change; no node migration is required. Existing nodes 
 Rollback: revert the commit; behaviour returns to fail-closed refusal on journals and unscoped verbs.
 
 Gates: focused unit tests for the helper, the Ansible harness, the operator verb scope and the runtime rollback adapter; `ansible-lint` on changed playbooks; `make shellcheck`; `make check`; the native runtime lane in CI for the strengthened native assertions.
+
+## Source acceptance scope (2026-10-15)
+
+Per the owner-approved criteria revision, source acceptance requires focused Mac
+regressions, snapshots, full-history/staged gitleaks and complete unchanged
+exact-SHA hosted source/native checks. The local monolithic attempt failed on a
+registry timeout; its retry was cancelled after 32 minutes still queued. No full
+local success is claimed; global and deployment gates remain unchanged.
