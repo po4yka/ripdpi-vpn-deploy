@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-10-15
+goal: MON-1792080593038468 Deliver isolated resource-bounded monitoring acceptance

@@ -2,7 +2,7 @@
 id: ANS-1791996027408136
 title: Recover interrupted ingress deploys and bind operator verbs to one node
 kind: bug
-status: doing
+status: review
 area: ansible
 priority: high
 risk: high
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: ans-1791996027408136-operator-recovery-paths
 created: 2026-10-14
-updated: 2026-10-14
+updated: 2026-10-15
 related_tasks: []
 ---
 
@@ -26,3 +26,11 @@ An interrupted protected ingress deploy no longer wedges the node: the next depl
 - The three operator verbs refuse without an exact `ANSIBLE_LIMIT`, and operator docs show the per-node form.
 - `make check` passes locally (environment-only failures reported as such) and required CI checks pass on the PR head.
 - Gateway runtime rollback and the ingress-commit versus egress-finish window are filed as separate tasks.
+
+## Source acceptance scope (2026-10-15)
+
+Per the owner-approved criteria revision, source acceptance requires focused Mac
+regressions, snapshots, full-history/staged gitleaks and complete unchanged
+exact-SHA hosted source/native checks. The local monolithic attempt failed on a
+registry timeout; its retry was cancelled after 32 minutes still queued. No full
+local success is claimed; global and deployment gates remain unchanged.

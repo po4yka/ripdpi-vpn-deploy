@@ -1,0 +1,15 @@
+{
+  "change": "resource-bounded-observability",
+  "dropped_step_ids": [
+    "MON-1790835428068030",
+    "MON-1790835428600254",
+    "MON-1790835429142513",
+    "MON-1790835429687617",
+    "MON-1790835430228619"
+  ],
+  "outcome": "dropped",
+  "prepared_at": "2026-10-15T16:18:48Z",
+  "reason": "Owner excluded all external infrastructure from completion on 2026-10-15; source and isolated runtime capability is owned by MON-1792080593038468.",
+  "schema": 1,
+  "task_id": "MON-1790835036464962"
+}

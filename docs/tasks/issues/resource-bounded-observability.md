@@ -2,7 +2,7 @@
 id: MON-1790835036464962
 title: Deliver resource-bounded monitoring without dedicated VPS nodes
 kind: feature
-status: doing
+status: dropped
 area: monitoring
 priority: high
 risk: high
@@ -12,8 +12,11 @@ blocked_by: []
 spec_mode: required
 openspec_change: resource-bounded-observability
 created: 2026-10-01
-updated: 2026-10-01
+updated: 2026-10-15
 related_tasks: []
+closed_at: "2026-10-15T16:18:48Z"
+closed_reason: Owner excluded all external infrastructure from completion on 2026-10-15; source and isolated runtime capability is owned by MON-1792080593038468.
+evidence_summary: External host admission, live VPN performance, real Telegram delivery and human receipts are cancelled, not passed. Existing implementation and historical local observations are preserved; MON-1792080593038468 owns source-only positive runtime acceptance.
 ---
 
 ## Goal

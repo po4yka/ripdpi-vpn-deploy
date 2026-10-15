@@ -379,3 +379,89 @@ def test_agent_boundary_entrypoint_precedes_binary_and_account_mutation():
     assert producers.index("tasks_from: resource-boundary") < producers.index(
         "Create dedicated heartbeat user"
     )
+
+
+def replay_fixture():
+    """Load the native scenario's producer/verifier without starting services."""
+    tasks = yaml.safe_load(
+        (ROLE / "molecule/enabled/tasks/bounded-runtime.yml").read_text()
+    )
+    task = next(
+        task for task in tasks
+        if task["name"] == "Replay a bounded ten-node cardinality fixture through the real managed sender"
+    )
+    source = task["ansible.builtin.command"]["argv"][-1]
+    compile(source, "native_cardinality_replay", "exec")
+    definitions = source.split("units = ['observability-prometheus'", 1)[0]
+    namespace = {}
+    exec(compile(definitions, "native_cardinality_replay_helpers", "exec"), namespace)
+    return namespace
+
+
+def test_native_replay_workload_has_exact_declared_nodes_series_and_timestamps():
+    fixture = replay_fixture()
+    bodies = []
+
+    class Response:
+        status = 204
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    class Receiver:
+        def open(self, request, timeout):
+            assert request.full_url == "http://127.0.0.1:19090/api/v1/import/prometheus"
+            assert timeout == 30
+            bodies.append(request.data.decode().splitlines())
+            return Response()
+
+    fixture["opener"] = Receiver()
+    fixture["publish"](fixture["historical_ms"], 1)
+    assert len(bodies) == 10
+    for node, rows in enumerate(bodies):
+        assert len(rows) == 2000
+        assert len(set(rows)) == 2000
+        assert rows[0] == (
+            'vpn_observability_cardinality_replay{fixture_node="node-%d",'
+            'slot="0",generation="base"} %d %d' %
+            (node, node + 1, fixture["historical_ms"])
+        )
+        assert rows[-1].endswith(
+            'slot="1999",generation="base"} %d %d' %
+            (node + 1, fixture["historical_ms"])
+        )
+    assert fixture["current_ms"] - fixture["historical_ms"] == 86400000
+    bodies.clear()
+    fixture["publish"](fixture["current_ms"] + 1000, 201, 200, "churn")
+    assert sum(map(len, bodies)) == 2000
+
+
+@pytest.mark.parametrize("corrupt", ["count", "sum", "value", "timestamp", None])
+def test_native_replay_verifier_rejects_missing_values_or_changed_timestamps(corrupt):
+    fixture = replay_fixture()
+    timestamp_ms = fixture["historical_ms"]
+    calls = []
+
+    def scalar(expression, at):
+        calls.append(expression)
+        assert at == timestamp_ms / 1000 + 1
+        node = int(expression.split('fixture_node="node-')[1].split('"')[0])
+        if expression.startswith("sum("):
+            kind, value = "sum", 2000 * (node + 1)
+        elif expression.startswith("count(timestamp("):
+            kind, value = "timestamp", 2000
+            assert expression.endswith(" == %d)" % (timestamp_ms // 1000))
+        elif " == " in expression:
+            kind, value = "value", 2000
+            assert expression.endswith(" == %d)" % (node + 1))
+        else:
+            kind, value = "count", 2000
+        return None if node == 9 and kind == corrupt else value
+
+    fixture["scalar"] = scalar
+    assert fixture["exact"](timestamp_ms, 1) is (corrupt is None)
+    if corrupt is None:
+        assert len(calls) == 40

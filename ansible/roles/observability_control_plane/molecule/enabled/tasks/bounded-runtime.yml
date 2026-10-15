@@ -204,6 +204,126 @@
   ansible.builtin.debug:
     msg: "{{ queue_recovery_runtime.stdout_lines }}"
 
+- name: Replay a bounded ten-node cardinality fixture through the real managed sender
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import json, pathlib, re, subprocess, time, urllib.error, urllib.parse, urllib.request
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        nodes, series_per_node = 10, 2000
+        current_ms = int(time.time()) * 1000
+        historical_ms = current_ms - 24 * 60 * 60 * 1000
+        metric = 'vpn_observability_cardinality_replay'
+        def prop(unit, name):
+            return subprocess.check_output(['systemctl', 'show', unit, '-p', name, '--value'], text=True).strip()
+        def query(expression, at):
+            url = 'http://127.0.0.1:9090/api/v1/query?' + urllib.parse.urlencode({'query': expression, 'time': at})
+            with opener.open(url, timeout=15) as response:
+                payload = json.load(response)
+            assert payload['status'] == 'success', payload
+            return payload['data']['result']
+        def scalar(expression, at):
+            rows = query(expression, at)
+            return float(rows[0]['value'][1]) if len(rows) == 1 else None
+        def pending():
+            with opener.open('http://127.0.0.1:19090/metrics', timeout=10) as response:
+                text = response.read().decode()
+            values = {}
+            for name in ['vmagent_remotewrite_pending_data_bytes', 'vmagent_remotewrite_pending_inmemory_blocks',
+                         'vm_persistentqueue_bytes_written_total', 'vm_persistentqueue_bytes_dropped_total']:
+                rows = re.findall(r'^' + re.escape(name) + r'(?:\{[^\n]*\})? ([0-9.eE+-]+)$', text, re.M)
+                assert len(rows) == 1, name
+                values[name] = float(rows[0])
+            return values
+        def publish(timestamp_ms, offset, slots=series_per_node, churn='base'):
+            # This is a ten-node cardinality workload using one managed sender,
+            # not ten enrolled identities or a production scrape-limit bypass.
+            for node in range(nodes):
+                body = ''.join(metric + '{fixture_node="node-%d",slot="%d",generation="%s"} %d %d\n' %
+                               (node, slot, churn, node + offset, timestamp_ms) for slot in range(slots)).encode()
+                request = urllib.request.Request('http://127.0.0.1:19090/api/v1/import/prometheus',
+                                                 data=body, method='POST')
+                with opener.open(request, timeout=30) as response:
+                    assert response.status == 204
+        def exact(timestamp_ms, offset, slots=series_per_node, churn='base'):
+            at = timestamp_ms / 1000 + 1
+            for node in range(nodes):
+                selector = metric + '{fixture_node="node-%d",generation="%s"}' % (node, churn)
+                if scalar('count(' + selector + ')', at) != slots:
+                    return False
+                if scalar('sum(' + selector + ')', at) != slots * (node + offset):
+                    return False
+                if scalar('count(' + selector + ' == %d)' % (node + offset), at) != slots:
+                    return False
+                if scalar('count(timestamp(' + selector + ') == %d)' % (timestamp_ms // 1000), at) != slots:
+                    return False
+            return True
+        def await_exact(timestamp_ms, offset, slots=series_per_node, churn='base'):
+            deadline = time.monotonic() + 180
+            while time.monotonic() < deadline:
+                if exact(timestamp_ms, offset, slots, churn):
+                    return
+                time.sleep(2)
+            raise RuntimeError('exact_ten_node_replay_missing_' + churn)
+        units = ['observability-prometheus', 'observability-agent', 'nginx']
+        original = {unit: prop(unit, 'MainPID') for unit in units}
+        collector_cgroup = pathlib.Path('/sys/fs/cgroup') / prop('observability-collector.slice', 'ControlGroup').lstrip('/')
+        agent_cgroup = pathlib.Path('/sys/fs/cgroup') / prop('observability-agent.slice', 'ControlGroup').lstrip('/')
+        events = collector_cgroup / 'memory.events'
+        before_events = events.read_text()
+        agent_events = agent_cgroup / 'memory.events'
+        before_agent_events = agent_events.read_text()
+        publish(current_ms, 101)
+        await_exact(current_ms, 101)
+        baseline = pending()
+        started = time.monotonic()
+        subprocess.run(['systemctl', 'stop', 'observability-ingress'], check=True, capture_output=True)
+        try:
+            publish(historical_ms, 1)
+            deadline = time.monotonic() + 90
+            while time.monotonic() < deadline:
+                current = pending()
+                if (current['vmagent_remotewrite_pending_data_bytes'] > 0 and
+                    current['vmagent_remotewrite_pending_inmemory_blocks'] == 0 and
+                    current['vm_persistentqueue_bytes_written_total'] > baseline['vm_persistentqueue_bytes_written_total']):
+                    break
+                time.sleep(2)
+            else:
+                raise RuntimeError('ten_node_history_not_durable')
+            subprocess.run(['systemctl', 'restart', 'observability-agent'], check=True, capture_output=True)
+            restarted_pid = prop('observability-agent', 'MainPID')
+            assert restarted_pid not in ['0', original['observability-agent']]
+        finally:
+            subprocess.run(['systemctl', 'start', 'observability-ingress'], check=True, capture_output=True)
+        await_exact(historical_ms, 1)
+        await_exact(current_ms, 101)
+        publish(current_ms + 1000, 201, 200, 'churn')
+        await_exact(current_ms + 1000, 201, 200, 'churn')
+        assert pending()['vm_persistentqueue_bytes_dropped_total'] == baseline['vm_persistentqueue_bytes_dropped_total']
+        assert prop('observability-prometheus', 'MainPID') == original['observability-prometheus']
+        assert prop('nginx', 'MainPID') == original['nginx']
+        assert events.read_text() == before_events, 'collector_memory_pressure_or_oom'
+        assert agent_events.read_text() == before_agent_events, 'sender_memory_pressure_or_oom'
+        assert prop('observability-agent', 'MainPID') == restarted_pid, 'unexpected_sender_restart'
+        storage = sum(path.lstat().st_blocks * 512 for path in pathlib.Path('/var/lib/observability-prometheus').rglob('*'))
+        assert storage < 2 * 1024**3
+        assert prop('observability-collector.slice', 'MemoryMax') == '536870912'
+        assert prop('observability-collector.slice', 'CPUQuotaPerSecUSec') == '200ms'
+        print(json.dumps({'fixture_nodes': nodes, 'series_per_node': series_per_node,
+                          'samples': 42000, 'history_seconds': 86400, 'storage_bytes': storage,
+                          'replay_seconds': time.monotonic() - started,
+                          'memory_peak': prop('observability-collector.slice', 'MemoryPeak'),
+                          'cpu_stat': (collector_cgroup / 'cpu.stat').read_text(),
+                          'scope': 'bounded_fixture_not_seven_day_capacity_or_live_admission'}, sort_keys=True))
+  changed_when: false
+  register: cardinality_replay_runtime
+
+- name: Report bounded ten-node exact replay and resource observations
+  ansible.builtin.debug:
+    msg: "{{ cardinality_replay_runtime.stdout }}"
+
 - name: Exercise actual-filesystem high-water latch without altering VPN services
   ansible.builtin.command:
     argv:

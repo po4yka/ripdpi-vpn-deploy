@@ -17,7 +17,7 @@ Code lanes own disjoint paths and may run concurrently in one worktree; shared d
 
 - [x] ANS-1791996166387223 Adopt interrupted protected ingress journals into the existing rescue and recover pending-only publication journals at capture, with helper and Ansible harness tests #bug !high @item:ANS-1791996027408136
 - [x] ANS-1791996166966887 Bind rotate-credentials, rollback-xray and rollback-config to one exact inventory alias and the selected environment, with real-Ansible and Make surface tests and updated operator docs #bug !high @item:ANS-1791996027408136
-- [ ] ANS-1791996167525402 Pin the operator runtime rollback candidate set and ownership boundary with portable and native tests and correct the rollback documentation #bug !high @item:ANS-1791996027408136
+- [x] ANS-1791996167525402 Pin the operator runtime rollback candidate set and ownership boundary with portable and native tests and correct the rollback documentation #bug !high @item:ANS-1791996027408136
 
 ## Verification
 
@@ -25,3 +25,11 @@ Code lanes own disjoint paths and may run concurrently in one worktree; shared d
 - Remote CI: required checks on the PR head, including the native runtime lane for the strengthened rollback assertions.
 - Dry-run, staging, live, client: not applicable; no inventory, SSH or provider action is authorized.
 - Artifacts: rendered snapshots and task/OpenSpec contracts pass at the frozen source.
+
+## Source acceptance scope (2026-10-15)
+
+Per the owner-approved criteria revision, source acceptance requires focused Mac
+regressions, snapshots, full-history/staged gitleaks and complete unchanged
+exact-SHA hosted source/native checks. The local monolithic attempt failed on a
+registry timeout; its retry was cancelled after 32 minutes still queued. No full
+local success is claimed; global and deployment gates remain unchanged.

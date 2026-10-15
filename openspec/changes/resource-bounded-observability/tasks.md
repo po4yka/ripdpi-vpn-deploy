@@ -29,11 +29,11 @@ and their alerting unit test for explicit sender delivery-loss reporting.
 ## Execution
 
 - [x] MON-1790835427523974 Migrate observability inventory and secrets contracts to co-hosted capabilities and a typed Uptime Kuma observer; update scripts, Make and affected vpnd callers with positive and obsolete-input tests #feature !high @item:MON-1790835036464962
-- [ ] MON-1790835428068030 Implement bounded co-hosted collector and agent slices, ingestion budgets and latched disk-reserve guard; test load, WAL recovery, overload and VPN isolation #feature !high @item:MON-1790835036464962
-- [ ] MON-1790835428600254 Implement private-IP SAN mTLS ingress and safe shared-nginx ownership; test trusted ingestion, revocation, wrong SAN and unchanged public VPN listeners #feature !high @item:MON-1790835036464962
-- [ ] MON-1790835429142513 Implement pinned private Uptime Kuma runtime and scoped node/pipeline push producers with real-relay canaries; test stale receipts, credential rotation, observer loss, encrypted backup and isolated restore #feature !high @item:MON-1790835036464962
-- [ ] MON-1790835429687617 Integrate rules, honest client-evidence states and reversible monitoring-only rollback; update role guidance, runbooks and snapshots and pass full source gates #feature !high @item:MON-1790835036464962
-- [ ] MON-1790835430228619 After exact-host and credential authorization, admit collector and independent observer capacity, configure Kuma push monitors and verify human notifications, VPN non-regression, observer recovery and safe cutover #feature !high @item:MON-1790835036464962
+- MON-1790835428068030 DROPPED: Implement bounded co-hosted collector and agent slices, ingestion budgets and latched disk-reserve guard; test load, WAL recovery, overload and VPN isolation #feature !high @item:MON-1790835036464962
+- MON-1790835428600254 DROPPED: Implement private-IP SAN mTLS ingress and safe shared-nginx ownership; test trusted ingestion, revocation, wrong SAN and unchanged public VPN listeners #feature !high @item:MON-1790835036464962
+- MON-1790835429142513 DROPPED: Implement pinned private Uptime Kuma runtime and scoped node/pipeline push producers with real-relay canaries; test stale receipts, credential rotation, observer loss, encrypted backup and isolated restore #feature !high @item:MON-1790835036464962
+- MON-1790835429687617 DROPPED: Integrate rules, honest client-evidence states and reversible monitoring-only rollback; update role guidance, runbooks and snapshots and pass full source gates #feature !high @item:MON-1790835036464962
+- MON-1790835430228619 DROPPED: After exact-host and credential authorization, admit collector and independent observer capacity, configure Kuma push monitors and verify human notifications, VPN non-regression, observer recovery and safe cutover #feature !high @item:MON-1790835036464962
 
 ## Verification
 
