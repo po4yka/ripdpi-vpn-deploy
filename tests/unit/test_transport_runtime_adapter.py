@@ -1,7 +1,10 @@
 """The actual consumer adapter preserves enable/active state and rejects missing authentication."""
 import base64
+from contextlib import contextmanager, nullcontext
+import errno
 import importlib.util
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -349,25 +352,64 @@ def test_embedded_node_claims_have_bounded_scalar_types(parameter_area, mutation
         core.validate_receipt(receipt(nodes={str(root / 'owned'): claim}), root=state_root, uid=uid)
 
 
-def test_failed_transaction_entry_closes_acquired_directory_descriptors(parameter_area, monkeypatch):
-    import os
+@pytest.fixture
+def directory_descriptors(monkeypatch):
+    acquired = []
+    original = core.ancestors
+    @contextmanager
+    def observe(path, owner):
+        with original(path, owner) as fd:
+            acquired.append(fd)
+            yield fd
+    monkeypatch.setattr(core, 'ancestors', observe)
+    return acquired
+
+
+def assert_descriptors_closed(acquired):
+    assert acquired
+    for fd in acquired:
+        with pytest.raises(OSError) as error:
+            os.fstat(fd)
+        assert error.value.errno == errno.EBADF
+
+
+def test_failed_transaction_entry_closes_acquired_directory_descriptors(parameter_area, directory_descriptors):
     _root, state_root, _actual, uid, _gid = parameter_area
     state_root.mkdir(mode=0o755)
     state_root.chmod(0o755)
-    acquired = []
-    original = core.ancestors
-    def observe(path, owner):
-        fd = original(path, owner)
-        acquired.append(fd)
-        return fd
-    monkeypatch.setattr(core, 'ancestors', observe)
     with pytest.raises(accept.Refusal, match='unsafe-state-directory'):
         with core.Transaction(state_root, uid=uid):
             pytest.fail('unsafe entry was admitted')
-    assert acquired
-    for fd in acquired:
-        with pytest.raises(OSError):
-            os.fstat(fd)
+    assert_descriptors_closed(directory_descriptors)
+
+
+@pytest.mark.parametrize('check', [False, True])
+@pytest.mark.parametrize('failure', [None, RuntimeError, KeyboardInterrupt])
+def test_transaction_retains_descriptors_until_scope_exit(parameter_area, directory_descriptors, check, failure):
+    root, state_root, _actual, uid, _gid = parameter_area
+    with pytest.raises(failure) if failure else nullcontext():
+        with core.Transaction(state_root, uid=uid, check=check) as tx:
+            fd = tx.parent(root)
+            assert tx.parent(root) == fd
+            if check:
+                tx.parent(root / 'missing')
+                assert not state_root.exists()
+            for retained in directory_descriptors:
+                os.fstat(retained)
+            if failure:
+                raise failure('scope-exit')
+    assert_descriptors_closed(directory_descriptors)
+
+
+def test_failed_lock_acquisition_closes_all_directory_descriptors(parameter_area, directory_descriptors, monkeypatch):
+    _root, state_root, _actual, uid, _gid = parameter_area
+    def busy(_fd, _flags):
+        raise BlockingIOError('publisher-busy')
+    monkeypatch.setattr(core.fcntl, 'flock', busy)
+    with pytest.raises(BlockingIOError, match='publisher-busy'):
+        with core.Transaction(state_root, uid=uid):
+            pytest.fail('busy publisher lock was acquired')
+    assert_descriptors_closed(directory_descriptors)
 
 
 @pytest.mark.parametrize('operation', ['refresh', 'rollback'])

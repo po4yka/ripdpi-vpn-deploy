@@ -14,7 +14,7 @@ import sys
 import time
 
 from transport_runtime_transaction import Transaction, Refusal, admission, node, read_private, ancestors
-from observability_runtime_queue import QueueSnapshot, tree, directory
+from observability_runtime_queue import QueueSnapshot, tree
 import observability_agent_readiness as readiness
 
 STATE = Path('/var/lib/observability-agent-activation')
@@ -127,10 +127,9 @@ class Sender:
                     ' -remoteWrite.maxRowsPerBlock=1000', ' -remoteWrite.forcePromProto=true']
         if any(part not in content for part in required):
             raise Refusal('sender-native-budget-contract')
-        fd = ancestors(Path(release), self.transaction.uid)
-        os.close(fd)
+        with ancestors(Path(release), self.transaction.uid):
+            validate_binary(Path(release) / 'vmagent-prod', self.transaction.uid)
         binary = Path(release) / 'vmagent-prod'
-        validate_binary(binary, self.transaction.uid)
         run([str(binary), '-promscrape.config=' + generation + '/prometheus.yml',
              '-dryRun'])
 

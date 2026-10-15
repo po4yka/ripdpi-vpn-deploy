@@ -6,7 +6,7 @@ those nodes; the existing guarded-generation controller owns process lifecycle.
 from __future__ import annotations
 
 import base64
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 import fcntl
 import hashlib
 import json
@@ -107,8 +107,9 @@ def sync(path):
         os.close(fd)
 
 
+@contextmanager
 def ancestors(path, uid):
-    # Descriptor traversal is retained by Transaction while nodes are replaced.
+    """Hold a trusted directory descriptor until its owning scope exits."""
     fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
     try:
         for part in path.parts[1:]:
@@ -118,10 +119,9 @@ def ancestors(path, uid):
             info = os.fstat(fd)
             if info.st_uid not in {0, uid} or info.st_mode & 0o022:
                 raise Refusal('unsafe-parent')
-        return fd
-    except BaseException:
+        yield fd
+    finally:
         os.close(fd)
-        raise
 
 
 def node(path, uid, *, links=1):
@@ -205,8 +205,7 @@ def admission(root, *, uid=0):
     root = Path(root)
     if not os.path.lexists(root):
         return
-    fd = ancestors(root, uid)
-    try:
+    with ancestors(root, uid) as fd:
         info = os.fstat(fd)
         if identity(info)[2:] != [uid, os.getgid(), 0o700]:
             raise Refusal('unsafe-state-directory')
@@ -229,8 +228,6 @@ def admission(root, *, uid=0):
             except BlockingIOError:
                 return
             raise Refusal('unfinished-runtime-without-publisher')
-    finally:
-        os.close(fd)
 
 
 class Transaction:
@@ -263,8 +260,7 @@ class Transaction:
         info = self.root.lstat()
         if not stat.S_ISDIR(info.st_mode) or info.st_uid != self.uid or stat.S_IMODE(info.st_mode) != 0o700:
             raise Refusal('unsafe-state-directory')
-        fd = ancestors(self.root, self.uid)
-        self.resources.callback(os.close, fd)
+        fd = self.resources.enter_context(ancestors(self.root, self.uid))
         if identity(os.fstat(fd)) != identity(info):
             raise Refusal('state-directory-changed')
         fcntl.flock(fd, (fcntl.LOCK_SH if self.check else fcntl.LOCK_EX) | fcntl.LOCK_NB)
@@ -283,12 +279,9 @@ class Transaction:
             nearest = path.parent
             while not nearest.exists():
                 nearest = nearest.parent
-            fd = ancestors(nearest, self.uid)
-            self.resources.callback(os.close, fd)
-            return fd
+            return self.resources.enter_context(ancestors(nearest, self.uid))
         if path not in self.parents:
-            fd = ancestors(path, self.uid)
-            self.resources.callback(os.close, fd)
+            fd = self.resources.enter_context(ancestors(path, self.uid))
             self.parents[path] = (fd, identity(os.fstat(fd)))
         fd, expected = self.parents[path]
         if identity(path.lstat()) != expected or identity(os.fstat(fd)) != expected:

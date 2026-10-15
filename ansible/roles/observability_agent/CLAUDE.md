@@ -2,6 +2,9 @@
 
 ## Design decisions
 
+Sender release ancestry uses the shared scoped directory traversal. The ancestry
+descriptor closes after binary admission, including when admission refuses.
+
 **Exporter installation and scrape consumers share one endpoint guard** — the
 monitoring role's literal private-address validator runs before standalone sender
 mutation too. Both node-exporter jobs consume its normalized endpoint, including

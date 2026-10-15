@@ -14,6 +14,10 @@
 
 ## Design decisions
 
+Runtime publisher tests verify retained directory descriptors remain valid
+inside normal and predictive transactions and close after success, exceptions,
+interrupts and failed entry or lock acquisition.
+
 AWG device tests use real SOPS/age round trips for selected pool issuance,
 revocation and interrupted/unsafe publication. The named native binding target
 owns isolated namespaces and exact pinned AWG builds; it proves two devices'

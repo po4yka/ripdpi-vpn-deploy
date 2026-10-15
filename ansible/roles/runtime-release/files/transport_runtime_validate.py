@@ -179,8 +179,9 @@ def recover_validation(tx):
 def validate_hysteria(binary, raw, certificate, key, unit, timeout, client_name, *, transaction=None, checkpoint=lambda _stage: None):
     if transaction is None:
         with Transaction(STATE) as tx:
-            return validate_hysteria(binary, raw, certificate, key, unit, timeout, client_name,
-                                     transaction=tx, checkpoint=checkpoint)
+            validate_hysteria(binary, raw, certificate, key, unit, timeout, client_name,
+                              transaction=tx, checkpoint=checkpoint)
+        return
     tx = transaction
     recover_validation(tx)
     import yaml

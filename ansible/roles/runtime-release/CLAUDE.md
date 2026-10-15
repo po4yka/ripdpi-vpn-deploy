@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+Directory traversal is a context manager: transactions retain its scopes with
+`ExitStack.enter_context` until publication and compensation finish. Borrowed
+parent descriptors stay open for the whole transaction; callers never close them.
+
 Ephemeral Hysteria validation units are root-private `0600`: only PID1 needs their assembled admission configuration. Exact lease inspection rejects a public unit even when its recorded inode and digest match; native process-death recovery verifies the private mode before cleanup.
 
 Retirement accepts `runtime_retire_file_owners` only for declared regular files. Root ownership stays valid; the named producer account is an additional exact-file owner. Root ancestry, mode and single-link checks remain mandatory. Revalidate after stopping producers before deletion. Direct validator callers send both `paths` and `owners`.
