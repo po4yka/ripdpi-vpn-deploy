@@ -155,8 +155,8 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
         provider, environment = host.split(':')
         env = dict(os.environ, PROVIDER=provider, ENV=environment)
         ip = command([str(ROOT / 'scripts/terraform-env.sh'), 'output', '-raw', 'server_ipv4'], env=env).decode().strip()
-        hostname = command([str(ROOT / 'scripts/terraform-env.sh'), 'output', '-raw', 'server_hostname'], env=env).decode().strip()
-        cohort = o['cohorts'][i] if o['cohorts'] else inventory_cohort(hostname)
+        cohort = o['cohorts'][i] if o['cohorts'] else inventory_cohort(command(
+            [str(ROOT / 'scripts/terraform-env.sh'), 'output', '-raw', 'server_hostname'], env=env).decode().strip())
         c = context(cohort)
         errors = transport_errors(d, c)
         if errors:

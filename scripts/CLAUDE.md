@@ -640,3 +640,6 @@ mode keeps its early exit without QR side effects.
 The private identity binds the full enrolled AWG peer public key as well as its
 instance. A coherent peer/recovery-key rotation can leave placeholder-based
 exported JSON unchanged; it must still report stale without publishing key metadata.
+
+An explicit per-host cohort bypasses inventory hostname lookup: endpoint-only
+AWG callers do not consume a hostname and must retain their export path.

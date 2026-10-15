@@ -461,3 +461,10 @@ def test_peer_public_key_rotation_is_stale_even_with_identical_export(lab, capsy
     current, _binding = payload.materialize('phone', entry['delivery_options'], extended=True)
     assert current == delivered
     assert drift._verdict('phone')[0] == 'stale'
+
+
+def test_explicit_cohort_needs_only_endpoint(lab):
+    terraform = Path(os.environ['PATH'].split(os.pathsep)[0]) / 'terraform'
+    terraform.write_text('#!/bin/sh\ncase "$*" in *workspace*) exit 0;; *server_ipv4) printf 192.0.2.10;; *) exit 2;; esac\n')
+    artifact, bindings = payload.materialize('phone', payload.options('ripdpi', cohorts=['p2-udp']), extended=True)
+    assert artifact['ripdpi']['amneziawg'] and bindings
