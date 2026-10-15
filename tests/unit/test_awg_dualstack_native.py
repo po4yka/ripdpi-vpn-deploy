@@ -218,7 +218,8 @@ def test_owned_uplink_nat_mtu_dns_reconnect_revocation_and_no_native_bypass(tmp_
         publish()
         for address in ('198.18.1.2','fd88::2'): start(uplink,[sys.executable,'-c',ECHO,address])
         time.sleep(.2)
-        for cycle in range(3):
+        # Initial connection plus three complete reconnects in both families.
+        for cycle in range(4):
             for i,ns in enumerate(clients):
                 ci='c'+token+str(i)
                 if cycle:
