@@ -12,9 +12,9 @@ Accept the working monitoring implementation through real isolated processes and
 
 ## Execution
 
-- [ ] MON-1792080763077431 Verify bounded sender and collector replay private ingress resource isolation and rollback #feature !high @item:MON-1792080593038468
-- [ ] MON-1792080764176275 Verify observer push persistence encrypted restore and honest delivery states #feature !high @item:MON-1792080593038468
-- [ ] MON-1792080765681879 Integrate monitoring contracts and complete isolated runtime and source acceptance #feature !high @item:MON-1792080593038468
+- [x] MON-1792080763077431 Verify bounded sender and collector replay private ingress resource isolation and rollback #feature !high @item:MON-1792080593038468
+- [x] MON-1792080764176275 Verify observer push persistence encrypted restore and honest delivery states #feature !high @item:MON-1792080593038468
+- [x] MON-1792080765681879 Integrate monitoring contracts and complete isolated runtime and source acceptance #feature !high @item:MON-1792080593038468
 
 ## Verification
 

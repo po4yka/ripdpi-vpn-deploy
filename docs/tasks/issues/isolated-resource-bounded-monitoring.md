@@ -2,7 +2,7 @@
 id: MON-1792080593038468
 title: Deliver isolated resource-bounded monitoring acceptance
 kind: feature
-status: doing
+status: done
 area: monitoring
 priority: high
 risk: high
@@ -12,8 +12,12 @@ blocked_by: []
 spec_mode: required
 openspec_change: mon-1792080593038468-isolated-resource-bounded-monitoring
 created: 2026-10-15
-updated: 2026-10-15
+updated: 2026-10-16
 related_tasks: [MON-1790835036464962]
+status_detail: Integrated main source 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8 passed all 88 jobs in CI 38792726270 and both CodeQL analyses. Actual isolated collector sender and Kuma runtimes passed; no external rollout or human receipt claimed.
+closed_at: "2026-10-15T20:36:36Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Integrated main source 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8 passed all 88 CI jobs in 38792726270 and both CodeQL analyses with zero open alerts. Actual native integration 138+2 XHTTP+1 AWG and four real recovery cases passed; enabled collector/agent and pinned Kuma isolated runtimes passed. Approved focused Mac and complete unchanged hosted source gate verified; local monolithic timeout and queued cancellation remain recorded. No external deployment or real notification receipt.
 ---
 
 ## Goal

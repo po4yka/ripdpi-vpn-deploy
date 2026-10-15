@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "Service identity rendering and failure boundaries pass focused tests and complete source/native CI 38792726270 on integrated main 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8. Actual isolated relay and monitoring acceptance passed; no real Telegram or human receipt claimed.",
+  "execution_sha256": "e8a0532e6b650094788c7995cbbb71f1f43021083651a4bd0f4a9fbbf34fc717",
+  "issue_sha256": "ee22b6894226c58d779dfecacd916a4201f887c80e0d765406ce859875a29bf5",
+  "outcome": "done",
+  "prepared_at": "2026-10-15T20:06:17Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "MON-1791918647679583"
+}
