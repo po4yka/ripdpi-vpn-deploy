@@ -1,24 +1,32 @@
 ---
-task_id: ANS-1791996027408136
-change: ans-1791996027408136-operator-recovery-paths
-commit_sha: 923304729f6bdd32edce6a9b6ceada1d51c7d011
-local: required
-local_evidence: "Full targeted real-Ansible/helper/operator suite passed 517 cases with no skips; standalone adapter 58 passed. Complete local make check pending."
-remote_ci: passed
-remote_ci_evidence: "Exact main CI 38759230876 native transport job 116505845756 passed all 4 cases including rollback MainPID unit candidate-scope and reconvergence assertions."
-dry_run: not_applicable
-dry_run_evidence: No real inventory or SSH transaction is authorized or included.
-staging: not_applicable
-staging_evidence: Source and isolated test validation does not establish a staging rollout.
-live: not_applicable
-live_evidence: No production deployment is authorized or claimed.
-client: not_applicable
-client_evidence: No client payload, bundle or recipient surface changes.
-artifact: passed
-artifact_evidence: Targeted source contracts and governed rollback documentation passed within the 517-case suite.
+task_id: "ANS-1791996027408136"
+change: "ans-1791996027408136-operator-recovery-paths"
+commit_sha: "3010dfb517b84cd7fbe9c3512b30b87d63b64fe8"
+local: "passed"
+local_evidence: "Recorded focused Mac evidence: 517 real-Ansible/helper/operator cases and 58 standalone adapter cases passed, with snapshots and lint. The monolithic local gate failed on registry timeout and its queued retry was cancelled; no complete new local success is claimed. Owner-approved full source coverage passed in actual M1 hosted CI; the failed monolithic local run is not reclassified as passing."
+remote_ci: "passed"
+remote_ci_evidence: "Actual integrated main source 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8: CI 38792726270 completed all 88 jobs successfully with zero failed, cancelled, skipped or pending jobs. CodeQL 38792726004 completed both jobs successfully with zero open repository alerts. Native integration 116621390880, collector 116621391330, agent 116621391025, Kuma 116621392357 and transport runtime acceptance 116621390735 all passed."
+dry_run: "not_applicable"
+dry_run_evidence: "No real inventory or SSH transaction is authorized or included."
+staging: "not_applicable"
+staging_evidence: "Source and isolated test validation does not establish a staging rollout."
+live: "not_applicable"
+live_evidence: "No production deployment is authorized or claimed."
+client: "not_applicable"
+client_evidence: "No client payload, bundle or recipient surface changes."
+artifact: "passed"
+artifact_evidence: "Actual M1 main CI 38792726270 passed all source schemas, contracts, snapshots and isolated runtime acceptance artifacts. Positive canonical collector/agent/Kuma and native client/runtime results are recorded below; no external rollout or notification receipt is inferred."
 ---
 
 # Verification
+
+## Current integrated main acceptance (passed)
+
+Primary source is `3010dfb517b84cd7fbe9c3512b30b87d63b64fe8`. Main CI `38792726270` completed all 88 jobs successfully with zero failed, cancelled, skipped or pending jobs. CodeQL `38792726004` completed both jobs successfully with zero open repository alerts. All current mapped requirements and applicable source/client/artifact gates passed; external categories retain their original not-applicable scope. Prior numeric measurements are not reused as M1 observations.
+
+## Historical evidence boundary
+
+All requirement rows, commands, outcomes and numeric runtime observations in the following retained sections describe f6ad803e97237d8d8ec3839284d84db974ea986c and its recorded premerge/baseline runs. Their original source/run IDs remain unchanged. They are historical evidence, not current M1 acceptance. Statements that acceptance passed or remained pending apply to their original snapshot. Current integrated acceptance is recorded above and in Observed integrated M1 results below.
 
 ## Requirement evidence
 
@@ -33,3 +41,38 @@ artifact_evidence: Targeted source contracts and governed rollback documentation
 ## Integrated source verification (2026-10-15)
 
 Exact main CI 38759230876 native transport job 116505845756 passed all 4 cases including rollback MainPID unit candidate-scope and reconvergence assertions. Source is `923304729f6bdd32edce6a9b6ceada1d51c7d011`; hosted logs were inspected directly. Full targeted real-Ansible/helper/operator suite passed 517 cases with no skips; standalone adapter 58 passed. Complete local make check pending. No external infrastructure or real notification action occurred.
+
+## Source acceptance scope (2026-10-15)
+
+Per the owner-approved criteria revision, source acceptance requires focused Mac
+regressions, snapshots, full-history/staged gitleaks and complete unchanged
+exact-SHA hosted source/native checks. The local monolithic attempt failed on a
+registry timeout; its retry was cancelled after 32 minutes still queued. No full
+local success is claimed; global and deployment gates remain unchanged.
+
+## Final source acceptance (2026-10-15)
+
+All unchanged hosted source consumers and native acceptance passed in CI 38768887914 on `f6ad803e97237d8d8ec3839284d84db974ea986c`. Focused Mac validation, snapshots and full-history secret scanning passed as recorded above. The owner-approved task scope accepts this combined source gate; the failed monolithic Mac invocation is not reclassified as passing. No external infrastructure or human notification receipt is claimed.
+
+## Observed integrated M1 results (2026-10-15; passed)
+
+The following are actual observations from main CI `38792726270` on
+`3010dfb517b84cd7fbe9c3512b30b87d63b64fe8`, separate from the retained
+premerge evidence. All 88 CI jobs passed without failed, cancelled, skipped
+or pending jobs. CodeQL run `38792726004` passed both jobs with zero open
+repository alerts. Transport runtime acceptance job `116621390735` and the
+final aggregate passed; complete current source acceptance is observed.
+
+Enabled agent job `116621391025` recovered the exact historical sample after
+a real rejected activation and rollback. Verification completed 136 tasks,
+14 changes, zero failures and two expected rescues; conditional Ansible
+skips are ordinary scenario branches, not omitted native pytest cases.
+Native integration job `116621390880` passed 138 baseline cases, two XHTTP
+endpoint cases and the AWG two-instance case. The separate strengthened
+transport runtime acceptance job `116621390735` also passed.
+
+Transport runtime job `116621390735` passed all four complete cases in
+1704.49 seconds on M1: Xray upgrade/retry, operator rollback with exact
+unit/MainPID/candidate checks and reconvergence; Hysteria upgrade/retry;
+site retirement with the remaining upgrade; and Hysteria SIGKILL validation
+lease recovery. These are actual isolated Linux runtime observations.

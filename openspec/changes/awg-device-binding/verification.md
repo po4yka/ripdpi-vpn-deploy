@@ -1,26 +1,32 @@
 ---
-task_id: SCR-1791618039091425
-change: awg-device-binding
-commit_sha: 923304729f6bdd32edce6a9b6ceada1d51c7d011
-local: required
-local_evidence: "61 encrypted transaction tests passed with actual SOPS and age; exact-main portable/native suites passed. Complete local make check pending."
-remote_ci: passed
-remote_ci_evidence: "Exact main CI 38759230876 and CodeQL 38759230898 succeeded; native integration 138, XHTTP 2, AWG binding 1 and runtime acceptance 4 cases passed."
-dry_run: not_applicable
-dry_run_evidence: source capability uses isolated native proof; real inventory/controller rehearsal needs separate authorization
-staging: not_applicable
-staging_evidence: source contract uses isolated native acceptance; actual fleet rehearsal is separately authorized
-live: not_applicable
-live_evidence: no production rollout belongs to this source or disabled-default candidate task
-client: passed
-client_evidence: exact-source hosted native lanes passed 138 baseline cases, two endpoint cases, the AWG binding case and four runtime acceptance cases; real local QR encode/decode passed
-artifact: passed
-artifact_evidence: real SOPS/age issuance and qrencode/zbar roundtrip passed; private cleanup, committed-error URI retention and credential exclusion passed
+task_id: "SCR-1791618039091425"
+change: "awg-device-binding"
+commit_sha: "3010dfb517b84cd7fbe9c3512b30b87d63b64fe8"
+local: "passed"
+local_evidence: "Recorded focused Mac evidence: 61 actual SOPS/age transaction cases, QR encode/decode, snapshots and secret scans passed. The monolithic local gate failed on registry timeout and its queued retry was cancelled; no complete new local success is claimed. Owner-approved full source coverage passed in actual M1 hosted CI; the failed monolithic local run is not reclassified as passing."
+remote_ci: "passed"
+remote_ci_evidence: "Actual integrated main source 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8: CI 38792726270 completed all 88 jobs successfully with zero failed, cancelled, skipped or pending jobs. CodeQL 38792726004 completed both jobs successfully with zero open repository alerts. Native integration 116621390880, collector 116621391330, agent 116621391025, Kuma 116621392357 and transport runtime acceptance 116621390735 all passed."
+dry_run: "not_applicable"
+dry_run_evidence: "source capability uses isolated native proof; real inventory/controller rehearsal needs separate authorization"
+staging: "not_applicable"
+staging_evidence: "source contract uses isolated native acceptance; actual fleet rehearsal is separately authorized"
+live: "not_applicable"
+live_evidence: "no production rollout belongs to this source or disabled-default candidate task"
+client: "passed"
+client_evidence: "Actual M1 native integration job 116621390880 passed 138 baseline cases, two pinned XHTTP endpoint cases and the real two-instance AWG TCP/UDP export, revocation and rejection case; transport runtime acceptance job 116621390735 also passed. These are isolated positive client/runtime proofs, not live client or fleet acceptance."
+artifact: "passed"
+artifact_evidence: "Actual M1 main CI 38792726270 passed all source schemas, contracts, snapshots and isolated runtime acceptance artifacts. Positive canonical collector/agent/Kuma and native client/runtime results are recorded below; no external rollout or notification receipt is inferred."
 ---
 
-
-
 # Verification
+
+## Current integrated main acceptance (passed)
+
+Primary source is `3010dfb517b84cd7fbe9c3512b30b87d63b64fe8`. Main CI `38792726270` completed all 88 jobs successfully with zero failed, cancelled, skipped or pending jobs. CodeQL `38792726004` completed both jobs successfully with zero open repository alerts. All current mapped requirements and applicable source/client/artifact gates passed; external categories retain their original not-applicable scope. Prior numeric measurements are not reused as M1 observations.
+
+## Historical evidence boundary
+
+All requirement rows, commands, outcomes and numeric runtime observations in the following retained sections describe f6ad803e97237d8d8ec3839284d84db974ea986c and its recorded premerge/baseline runs. Their original source/run IDs remain unchanged. They are historical evidence, not current M1 acceptance. Statements that acceptance passed or remained pending apply to their original snapshot. Current integrated acceptance is recorded above and in Observed integrated M1 results below.
 
 ## Requirement evidence
 
@@ -109,3 +115,30 @@ The closeout worktree preserves the unchanged baseline while final gates run.
 ## Integrated source verification (2026-10-15)
 
 Exact main CI 38759230876 and CodeQL 38759230898 succeeded; native integration 138, XHTTP 2, AWG binding 1 and runtime acceptance 4 cases passed. Source is `923304729f6bdd32edce6a9b6ceada1d51c7d011`; hosted logs were inspected directly. 61 encrypted transaction tests passed with actual SOPS and age; exact-main portable/native suites passed. Complete local make check pending. No external infrastructure or real notification action occurred.
+
+## Source acceptance scope (2026-10-15)
+
+Per the owner-approved criteria revision, source acceptance requires focused Mac
+regressions, snapshots, full-history/staged gitleaks and complete unchanged
+exact-SHA hosted source/native checks. The local monolithic attempt failed on a
+registry timeout; its retry was cancelled after 32 minutes still queued. No full
+local success is claimed; global and deployment gates remain unchanged.
+
+## Final source acceptance (2026-10-15)
+
+All unchanged hosted source consumers and native acceptance passed in CI 38768887914 on `f6ad803e97237d8d8ec3839284d84db974ea986c`. Focused Mac validation, snapshots and full-history secret scanning passed as recorded above. The owner-approved task scope accepts this combined source gate; the failed monolithic Mac invocation is not reclassified as passing. No external infrastructure or human notification receipt is claimed.
+
+## Observed integrated M1 results (2026-10-15; passed)
+
+The following are actual observations from main CI `38792726270` on
+`3010dfb517b84cd7fbe9c3512b30b87d63b64fe8`, separate from the retained
+premerge evidence. All 88 CI jobs passed without failed, cancelled, skipped
+or pending jobs. CodeQL run `38792726004` passed both jobs with zero open
+repository alerts. Transport runtime acceptance job `116621390735` and the
+final aggregate passed; complete current source acceptance is observed.
+
+Native integration job `116621390880` passed all 138 baseline cases, both
+XHTTP endpoint cases and the actual two-instance AWG case. The AWG case
+exercised TCP/UDP traffic, canonical selected-device export, revocation and
+negative identity/parameter cases. This is positive isolated client proof,
+not a real-host rollout. Final M1 client/source acceptance passed with the complete main run.

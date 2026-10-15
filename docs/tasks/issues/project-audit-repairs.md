@@ -14,7 +14,7 @@ openspec_change: project-audit-repairs
 created: 2026-10-11
 updated: 2026-10-11
 related_tasks: []
-status_detail: Integrated baseline 923304729f6bdd32edce6a9b6ceada1d51c7d011 passed complete hosted CI and CodeQL; final updated-source acceptance remains pending.
+status_detail: "Integrated main source 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8 passed all 88 source/native CI jobs in 38792726270 and both CodeQL analyses; focused local evidence and the unsuccessful monolithic local attempt are recorded. No external rollout or real notification receipt claimed."
 ---
 
 ## Goal
