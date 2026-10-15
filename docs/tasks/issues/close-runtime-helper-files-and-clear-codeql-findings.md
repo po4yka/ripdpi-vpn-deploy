@@ -2,7 +2,7 @@
 id: ANS-1792073622616697
 title: Close runtime helper files and clear CodeQL findings
 kind: bug
-status: review
+status: done
 area: ansible
 priority: medium
 risk: standard
@@ -12,10 +12,13 @@ blocked_by: []
 spec_mode: not-required
 openspec_change: null
 created: 2026-10-15
-updated: 2026-10-15
+updated: 2026-10-16
 spec_reason: mechanical-refactor
 related_tasks: []
-status_detail: "Integrated main source 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8 passed all 88 source/native CI jobs in 38792726270 and both CodeQL analyses; focused local evidence and the unsuccessful monolithic local attempt are recorded. No external rollout or real notification receipt claimed."
+status_detail: Integrated main source 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8 passed all 88 source/native CI jobs in 38792726270 and both CodeQL analyses; focused local evidence and the unsuccessful monolithic local attempt are recorded. No external rollout or real notification receipt claimed.
+closed_at: "2026-10-15T20:06:17Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Integrated main source 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8 passed all 88 source/native CI jobs and both CodeQL analyses; open code-scanning alerts are zero. Real native rollback cleanup and focused descriptor regressions passed. Approved source gate and honest local monolithic limitation recorded; no live actions.
 ---
 
 ## Goal

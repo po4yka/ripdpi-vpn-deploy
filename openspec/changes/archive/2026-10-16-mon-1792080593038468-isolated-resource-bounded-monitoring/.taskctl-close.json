@@ -1,0 +1,11 @@
+{
+  "change": "mon-1792080593038468-isolated-resource-bounded-monitoring",
+  "evidence_summary": "Integrated main source 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8 passed all 88 CI jobs in 38792726270 and both CodeQL analyses with zero open alerts. Actual native integration 138+2 XHTTP+1 AWG and four real recovery cases passed; enabled collector/agent and pinned Kuma isolated runtimes passed. Approved focused Mac and complete unchanged hosted source gate verified; local monolithic timeout and queued cancellation remain recorded. No external deployment or real notification receipt.",
+  "execution_sha256": "7d69efe6bb7d339344b65b0e6f2d6c1a7f91f0fea6fbd320661ec66c1aae236c",
+  "issue_sha256": "e3838560162919e1ba8510ebc727fbe728c281d5baba07cee1faaf3696845db7",
+  "outcome": "done",
+  "prepared_at": "2026-10-15T20:36:36Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "MON-1792080593038468"
+}

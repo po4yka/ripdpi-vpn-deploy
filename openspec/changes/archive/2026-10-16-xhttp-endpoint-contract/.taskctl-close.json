@@ -1,0 +1,11 @@
+{
+  "change": "xhttp-endpoint-contract",
+  "evidence_summary": "Integrated main source 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8 passed all 88 CI jobs in 38792726270 and both CodeQL analyses with zero open alerts. Actual native integration 138+2 XHTTP+1 AWG and four real recovery cases passed; enabled collector/agent and pinned Kuma isolated runtimes passed. Approved focused Mac and complete unchanged hosted source gate verified; local monolithic timeout and queued cancellation remain recorded. No external deployment or real notification receipt.",
+  "execution_sha256": "09a66a2ff136fde680474acf43b42e632852e1c2f242ce87dda84cd20e843246",
+  "issue_sha256": "574518d7bdbe13354f539c6f18c4f20bce5162797e4bccc5ccd62573e6f269e6",
+  "outcome": "done",
+  "prepared_at": "2026-10-15T20:36:38Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "XRY-1791617955392712"
+}

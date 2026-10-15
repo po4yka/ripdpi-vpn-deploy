@@ -1,0 +1,11 @@
+{
+  "change": "awg-device-binding",
+  "evidence_summary": "Integrated main source 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8 passed all 88 CI jobs in 38792726270 and both CodeQL analyses with zero open alerts. Actual native integration 138+2 XHTTP+1 AWG and four real recovery cases passed; enabled collector/agent and pinned Kuma isolated runtimes passed. Approved focused Mac and complete unchanged hosted source gate verified; local monolithic timeout and queued cancellation remain recorded. No external deployment or real notification receipt.",
+  "execution_sha256": "5870119dfae390881fcd0b25586c083bd3afbf823674f7ca36c739ec3d0792e1",
+  "issue_sha256": "323a2a8c0c9b2f857c81f70eb6db8d0c3a8c59cc88c6fa049eebfd857dfc4aab",
+  "outcome": "done",
+  "prepared_at": "2026-10-15T20:36:38Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SCR-1791618039091425"
+}
