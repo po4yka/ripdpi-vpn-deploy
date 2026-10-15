@@ -234,7 +234,7 @@ make source-drift # deployable-content parity against live node manifests
 make security-verify # host hardening verification playbook
 make clean       # shred decrypted secrets
 
-# Rollback / rotation: each verb acts on exactly one inventory alias, one run per node
+# Rollback / rotation: each verb acts on exactly one inventory alias, one run per node; only these verbs may share a make invocation, and they then run in sequence
 make rollback-xray ANSIBLE_LIMIT=<alias> ROLLBACK_XRAY_VERSION=vX.Y.Z
 make rollback-config ANSIBLE_LIMIT=<alias>
 make rotate-credentials ANSIBLE_LIMIT=<alias>

@@ -753,8 +753,31 @@ network-exposure-review:
 wait:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) ./scripts/wait-cloud-init.sh
 
+# The incident verbs bind one inventory alias. Capture it as literal data
+# before recipes expand and hand it to them through the environment.
+# ANSIBLE_LIMIT then expands to that environment reference, so no recipe,
+# including the shared require-inventory, interpolates the alias into shell
+# code. That reference is not an alias, so no other goal may share the
+# invocation, and recipes never receive it. Verbs that do share one run in
+# sequence, not concurrently under an inherited -j, because they act on the
+# same node. The other operator variables (ENV, PROVIDER, SECRETS_FILE and
+# the rest) are still expanded as Make and shell syntax; SCR-1792057680449496
+# tracks them.
+ifneq ($(filter rotate-credentials rollback-xray rollback-config require-exact-node,$(MAKECMDGOALS)),)
+ifneq ($(filter-out rotate-credentials rollback-xray rollback-config require-exact-node,$(MAKECMDGOALS)),)
+$(error the exact-node verbs cannot share an invocation with other Make goals)
+endif
+.NOTPARALLEL:
+override EXACT_NODE_ALIAS := $(value ANSIBLE_LIMIT)
+export EXACT_NODE_ALIAS
+override ANSIBLE_LIMIT := $$EXACT_NODE_ALIAS
+unexport ANSIBLE_LIMIT
+endif
+
+# The pattern matches the alias assertion in
+# ansible/playbooks/tasks/exact-node.yml.
 require-exact-node:
-	@test -n "$(strip $(ANSIBLE_LIMIT))" || { echo "this live operator verb requires ANSIBLE_LIMIT=<exact inventory alias>"; exit 1; }
+	@python3 -c 'import os, re; raise SystemExit(0 if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", os.environ.get("EXACT_NODE_ALIAS", "")) else 1)' || { echo "this live operator verb requires ANSIBLE_LIMIT=<exact inventory alias> ([A-Za-z0-9][A-Za-z0-9_.-]{0,127})"; exit 1; }
 
 require-inventory:
 	@test -s "$(ANSIBLE_DIR)/inventory/generated.ini" || { echo "missing generated inventory — run 'make inventory'"; exit 1; }
@@ -981,17 +1004,22 @@ install-ssh-recovery:
 migrate-ssh-ownership:
 	@python3 ./scripts/ssh-ownership.py
 
+# The exact-node guard runs under the always tag, so inherited tag selection
+# is dropped for these verbs.
 rollback-xray: require-exact-node require-inventory
 	@test -n "$(ROLLBACK_XRAY_VERSION)" || { echo "ROLLBACK_XRAY_VERSION required"; exit 1; }
+	env -u ANSIBLE_SKIP_TAGS -u ANSIBLE_RUN_TAGS \
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
 	ROLLBACK_XRAY_VERSION=$(ROLLBACK_XRAY_VERSION) \
 	ansible-playbook $(ANSIBLE_DIR)/playbooks/rollback-xray.yml --limit "$(ANSIBLE_LIMIT)"
 
 rollback-config: require-exact-node require-inventory
+	env -u ANSIBLE_SKIP_TAGS -u ANSIBLE_RUN_TAGS \
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
 	ansible-playbook $(ANSIBLE_DIR)/playbooks/rollback-config.yml --limit "$(ANSIBLE_LIMIT)"
 
 rotate-credentials: require-exact-node require-clean-source require-inventory pre-deploy-check
+	env -u ANSIBLE_SKIP_TAGS -u ANSIBLE_RUN_TAGS \
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
 	ansible-playbook $(ANSIBLE_DIR)/playbooks/rotate-credentials.yml --limit "$(ANSIBLE_LIMIT)"
 	@ENV=$(ENV) PROVIDER=$(PROVIDER) ./scripts/audit-log.sh append-best-effort \

@@ -28,10 +28,15 @@ removing its last client keeps the decoy site and disables proxy forwarding.
 
 Save and exit (sops re-encrypts automatically). `rotate-credentials`
 re-renders configs and reloads services on exactly one inventory alias per run.
-It refuses a missing limit, a group, a pattern, a list, and a host whose
-inventory `env` is not the selected `ENV`, so run it with the `ENV` and secrets
-file of that node. It also requires a clean checkout and the deploy pre-checks
-(`SKIP_PRECHECK=1` skips only the secrets validation and certificate checks).
+`ANSIBLE_LIMIT` must be that plain alias (letters, digits, `_`, `.` and `-`,
+starting with a letter or digit, at most 128 characters); Make refuses anything
+else before it starts `ansible-playbook`. The play refuses a missing limit, a
+group, a pattern, a list, and a host whose inventory `env` is not the selected
+`ENV`, so run it with the `ENV` and secrets file of that node. The verb starts
+`ansible-playbook` without an inherited `ANSIBLE_SKIP_TAGS` or `ANSIBLE_RUN_TAGS`,
+which could skip that guard. It also requires a clean checkout and the deploy
+pre-checks (`SKIP_PRECHECK=1` skips only the secrets validation and certificate
+checks).
 The refusal is the first task, after fact gathering and the controller-side load
 of the decrypted secrets file, so a refused run may have gathered facts from the
 first selected host but changes nothing on any node.
@@ -39,15 +44,23 @@ first selected host but changes nothing on any node.
 Revocation is incomplete until every node of the environment has been rotated
 and verified: a node you skip keeps accepting the removed credential. The aliases
 are the host names in the `[vpn]` section of `ansible/inventory/generated.ini`.
-Decrypt once, run the pair once per alias and stop at the first failure, then
-shred the decrypted file:
+Decrypt once, run the pair once per alias with the same `ENV` and stop at the
+first failure, then shred the decrypted file. A failed decrypt must not reach the
+loop: a plaintext file left by an earlier session would be deployed instead of
+your edit, so the loop runs only after a successful decrypt and the shred runs in
+every case:
 
 ```bash
-make decrypt
-for node in <alias-1> <alias-2>; do
-  make rotate-credentials ANSIBLE_LIMIT="$node" && make verify ANSIBLE_LIMIT="$node" || break
-done
-make clean
+if make decrypt ENV=prod; then
+  for node in <alias-1> <alias-2>; do
+    make rotate-credentials ENV=prod ANSIBLE_LIMIT="$node" &&
+      make verify ENV=prod ANSIBLE_LIMIT="$node" ||
+      { echo "stopped at $node" >&2; break; }
+  done
+else
+  echo "decrypt failed; nothing rotated" >&2
+fi
+make clean ENV=prod
 ```
 
 Credential rotation enters the authoritative Naive role when enabled, including

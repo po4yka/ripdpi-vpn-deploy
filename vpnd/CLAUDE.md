@@ -104,6 +104,17 @@ a complete prior verified environment, without migrating operator state.
 - **Limits are inventory keys.** Match the `vpn` group, env/provider and
   `vpn_service_address`; reject absent, ambiguous or pattern-shaped matches.
   A cleanup failure fails success but never replaces a primary pipeline error.
+- **Rotation names one alias.** `runner.ansible.rotate` takes one exact alias,
+  passes it as `--limit` with `ENV` (the play refuses a host whose inventory env
+  differs from it) and drops inherited `ANSIBLE_SKIP_TAGS`/`ANSIBLE_RUN_TAGS`;
+  the play's `always`-tagged guard refuses a group, pattern or list, so a
+  fleet-wide rotate is never built here. Its alias grammar is a copy of the
+  guard's in `ansible/playbooks/tasks/exact-node.yml`;
+  `tests/unit/test_operator_verb_scope.py` compares them, so a drift fails there
+  (`vpnd/tests` cannot read the playbook: mutation copies have no `ansible/`).
+  The builder exists for the permanent parity baseline and has no command
+  caller; it skips the Make verb's clean-source, pre-check and inventory gates,
+  so a real command must route through `make rotate-credentials`.
 - **Respect capture lifetimes.** Doctor/matrix need group ownership and signal
   owners. Share/reconverge retain foreground captures and default signals during
   token input and confirmation. Kill before reaping; await cleanup rather than

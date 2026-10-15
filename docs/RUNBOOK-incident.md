@@ -57,8 +57,10 @@ approved resource/cost limits; ask again only when that scope is exceeded.
 If retaining the existing node is required, explicitly choose provider rescue
 or console recovery within its emergency authorization. Install a reviewed SSH
 public key through that provider's recovery procedure, retire temporary access,
-and prove a fresh strictly pinned connection. `make rotate-credentials` only
-rerenders per-device VPN configs; it does not rotate the administrator SSH key.
+and prove a fresh strictly pinned connection.
+`make rotate-credentials ANSIBLE_LIMIT=<alias>` acts on one node per run and only
+rerenders that node's per-device VPN configs; it does not rotate the administrator
+SSH key.
 
 ## Lost age key
 

@@ -266,10 +266,18 @@ through make naive-revoke CLIENT=${NAME} SOPS_FILE=... . Then run the reviewed
 credential deployment once per node of the environment (aliases: the [vpn] host
 names in ansible/inventory/generated.ini). Revocation is incomplete until every
 node has been rotated and verified; a skipped node keeps accepting the removed
-credential:
-  for node in <alias-1> <alias-2>; do
-    make rotate-credentials ENV=${ENV} ANSIBLE_LIMIT="\$node" && make verify ENV=${ENV} ANSIBLE_LIMIT="\$node" || break
-  done
+credential. A failed decrypt must not reach the loop: a plaintext file left by an
+earlier session would be deployed instead of this edit:
+  if make decrypt ENV=$(printf %q "$ENV") SOPS_FILE=$(printf %q "$SOPS_FILE"); then
+    for node in <alias-1> <alias-2>; do
+      make rotate-credentials ENV=$(printf %q "$ENV") PROVIDER=$(printf %q "$PROVIDER") ANSIBLE_LIMIT="\$node" &&
+        make verify ENV=$(printf %q "$ENV") PROVIDER=$(printf %q "$PROVIDER") ANSIBLE_LIMIT="\$node" ||
+        { echo "stopped at \$node" >&2; break; }
+    done
+  else
+    echo "decrypt failed; nothing rotated" >&2
+  fi
+  make clean ENV=$(printf %q "$ENV")
 EOF
 
 ENV="$ENV" PROVIDER="$PROVIDER" \

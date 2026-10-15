@@ -153,10 +153,12 @@ def test_early_controller_preflight_precedes_every_mutation_boundary(tmp_path):
     site = yaml.safe_load((ROOT / "ansible/playbooks/site.yml").read_text())[0]
     assert site["pre_tasks"][0]["ansible.builtin.import_tasks"] == "tasks/transport-input-preflight.yml"
     # Rotation binds its one exact node and environment with read-only assertions only, then validates inputs
-    # before any other task.
+    # before any other task. Roles run between pre_tasks and tasks, so the play has none.
     rotation = yaml.safe_load((ROOT / "ansible/playbooks/rotate-credentials.yml").read_text())[0]
     assert rotation["pre_tasks"][0]["ansible.builtin.import_tasks"] == "tasks/exact-node.yml"
-    assert all("ansible.builtin.assert" in task for task in rotation["pre_tasks"][1:])
+    assert all(task.get("ansible.builtin.import_tasks") == "tasks/exact-node.yml" or "ansible.builtin.assert" in task
+               for task in rotation["pre_tasks"])
+    assert not rotation.get("roles")
     assert rotation["tasks"][0]["ansible.builtin.import_tasks"] == "tasks/transport-input-preflight.yml"
     for role in ("xray", "hysteria", "amneziawg"):
         tasks = yaml.safe_load((ROOT / "ansible/roles" / role / "tasks/enable.yml").read_text())

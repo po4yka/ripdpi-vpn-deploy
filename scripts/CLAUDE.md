@@ -39,11 +39,29 @@ Verification admission passes the exact limit to Ansible inventory resolution.
 so a known observer-only limit cannot produce an empty successful play.
 
 `rotate-credentials`, `rollback-xray` and `rollback-config` are exact-node verbs:
-Make requires `ANSIBLE_LIMIT`, passes it as `--limit`, and the play asserts the one
-selected alias through `ansible/playbooks/tasks/exact-node.yml`. Rotation also
-refuses a host whose inventory `env` differs from `ENV`. Because each run rotates
-one node, revoking a client is complete only after one run per node;
-`new-client.sh` prints that loop.
+Make captures `ANSIBLE_LIMIT` as literal data into the `EXACT_NODE_ALIAS`
+environment variable, `require-exact-node` checks it against the play's alias
+pattern, and `ANSIBLE_LIMIT` then expands to the shell reference
+`$EXACT_NODE_ALIAS`, so no recipe, including the shared `require-inventory`,
+interpolates the alias into shell code (`ENV`, `PROVIDER`, `SECRETS_FILE`,
+`ROLLBACK_XRAY_VERSION`, `SKIP_PRECHECK` and `ANSIBLE_DIR` are still expanded as
+Make and shell syntax; SCR-1792057680449496 tracks them). That reference is not
+an alias: the verbs refuse to share an invocation with any other goal, run one
+after another (`.NOTPARALLEL`) when they share one, and `ANSIBLE_LIMIT` is
+unexported so no recipe receives it. They start `ansible-playbook` without inherited
+`ANSIBLE_SKIP_TAGS` or `ANSIBLE_RUN_TAGS`, which could skip the `always`-tagged
+guard. The play asserts the one selected alias through
+`ansible/playbooks/tasks/exact-node.yml`; that binding, not the `ENV` check, is
+why each run acts on one node, so revoking a client is complete only after one run
+per node. Rotation separately refuses a host whose inventory `env` differs from
+`ENV`. `new-client.sh` prints the revocation sequence: the per-node rotate and
+verify loop runs only after a successful `make decrypt` of the `SOPS_FILE` the
+script used, because a failed decrypt leaves an older plaintext file in place that
+the loop would then deploy, and `make clean` runs in every case. The script
+quotes `ENV`, `PROVIDER` and `SOPS_FILE` with `printf %q`, so a spelling with a
+space or shell syntax reaches Make as one argument. `RUNBOOK-rotate.md` and
+`RUNBOOK-deploy.md` print the same sequence; `test_operator_verb_scope.py` runs
+the script's output and both runbook blocks.
 
 The release installer verifies the exact repository and fully qualified signer
 workflow before installation. Cloud-init acceptance checks the actual loopback
