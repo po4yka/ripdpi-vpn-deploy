@@ -6,7 +6,7 @@ Guarantee that operator incident paths cannot wedge or widen: an interrupted pro
 
 ### Requirement: REQ-OPS-ORP-INGRESS-ADOPT — Adopt an interrupted protected ingress transaction
 
-A deploy that finds an open protected ingress site journal on the target node MUST, before capturing a new transaction, adopt that journal as the protected block's compensation owner, run the existing compensation sequence (quiesce candidate transports, restore the accepted ingress, roll back the egress generation when its outer route is open), and then fail with a categorical, non-secret message instructing the operator to repeat dry-run and deploy. Check mode MUST refuse with the same category and MUST NOT mutate node state. A malformed journal MUST fail closed with the journal retained.
+A deploy that finds an open protected ingress site journal on the target node MUST, before capturing a new transaction, adopt that journal as the protected block's compensation owner, run the existing compensation sequence (quiesce candidate transports, restore the accepted ingress, roll back the egress generation when its outer route is open), and then fail with a categorical, non-secret message instructing the operator to repeat dry-run and deploy. Adoption MUST NOT execute the egress outer route helper as root before the transport-egress role's root-owned ancestry and single-link regular-file admission accepts it. Check mode MUST refuse with the same category and MUST NOT mutate node state. A malformed journal, or a helper that fails the admission, MUST fail closed with the journal retained.
 
 #### Scenario: Deploy after an interrupted protected ingress transaction
 
@@ -28,14 +28,24 @@ A deploy that finds an open protected ingress site journal on the target node MU
 - **WHEN** the site journal exists but fails validation
 - **THEN** the deploy fails closed before capture and the journal is retained for manual recovery
 
+#### Scenario: Unsafe egress outer route helper
+
+- **WHEN** the site journal exists and the egress outer route helper is a symlink, has more than one link or is group- or world-writable, or its root-owned ancestry is writable by others
+- **THEN** the deploy refuses with the helper-authority category before executing the helper, does not adopt the journal, attempts no compensation and retains the journal
+
 ### Requirement: REQ-OPS-ORP-PENDING-RECOVER — Recover a pending-only publication journal at capture
 
-When a non-check site capture finds an ordinary publication journal for the shared nginx unit without a site journal, it MUST recover that journal under the unit lock with the same recovery the ordinary publisher uses, before receipt admission, and then capture. Unknown, foreign or unsafe journals MUST still refuse. Check-mode admission MUST continue to refuse on either journal.
+When a non-check site capture finds an ordinary publication journal for the shared nginx unit without a site journal, it MUST recover that journal under the unit lock with the same recovery the ordinary publisher uses, before receipt admission, and then capture. Unknown, foreign or unsafe journals MUST still refuse. Check mode MUST NOT recover and the helper's check-mode admission MUST continue to refuse on either journal; when only the publication journal exists, the playbook MUST refuse check mode first with the distinct non-secret category `interrupted-nginx-publication` stating that one deploy recovers a recognized journal and then converges the complete graph, which that dry-run cannot preview, without mutating node state. Operator documentation MUST restrict that deploy to the source revision and secrets already live on the node, verified by a passing source-parity check.
 
 #### Scenario: Interrupted ordinary publication before the protected block
 
 - **WHEN** an ordinary nginx publication was interrupted and only its pending journal remains
 - **THEN** the next site capture restores the prior files and receipt, removes the pending journal and captures normally
+
+#### Scenario: Dry-run sees a pending-only journal
+
+- **WHEN** check mode runs against a node that holds an ordinary publication journal and no site journal
+- **THEN** it refuses with the `interrupted-nginx-publication` category instead of the helper's generic failure, leaves every journal, file and service unchanged, and a following deploy, which the runbook allows only while source parity holds, recovers the journal and converges the complete graph
 
 #### Scenario: Foreign pending journal
 
