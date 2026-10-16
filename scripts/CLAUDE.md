@@ -292,7 +292,10 @@ startup. Active content filters and tracked submodules are rejected before
 status, because dirty detection can execute external commands there; disabling
 filters would invent differences against normalized index blobs. Configured but
 unused filters remain supported. Optional `--task` pointers come from the canonical
-`taskctl show` API; explicitly empty selections fail.
+`taskctl show` API; explicitly empty selections fail. Task queries have a bounded
+five-minute deadline for committed closure-history audits; ordinary Git metadata
+calls retain their independent 30-second deadline. Failures expose only the
+categorical discovery diagnostic, never captured task output.
 The documented entry clears inherited Make inputs before Make starts; Git status
 uses explicit unlimited rename detection and lossless path decoding; lazy object
 fetching is disabled, so missing required blobs fail locally. Text paths are
