@@ -120,3 +120,29 @@ def test_supported_host_preflight_failure_keeps_private_categorical_evidence(
     )
     assert "private-authority" not in output.read_text()
     assert output.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize("symlink", [False, True])
+def test_failure_diagnostics_preserve_foreign_sibling_file_and_symlink(tmp_path, symlink):
+    source = tmp_path / "private.log"
+    source.write_bytes(b"generated-private-diagnostics")
+    foreign = tmp_path / "foreign.log"
+    foreign.write_bytes(b"foreign-authority")
+    foreign.chmod(0o640)
+    destination = tmp_path / "evidence.lifecycle.log" if symlink else foreign
+    if symlink:
+        destination.symlink_to(foreign)
+    before = (foreign.stat().st_ino, foreign.stat().st_mode, foreign.read_bytes())
+    with pytest.raises(FileExistsError):
+        runner.retain_diagnostic(source, destination)
+    assert (foreign.stat().st_ino, foreign.stat().st_mode, foreign.read_bytes()) == before
+    assert destination.is_symlink() is symlink
+
+
+def test_new_failure_diagnostic_is_private_and_byte_complete(tmp_path):
+    source = tmp_path / "source.log"
+    source.write_bytes(b"generated-private-diagnostics")
+    destination = tmp_path / "evidence.lifecycle.log"
+    runner.retain_diagnostic(source, destination)
+    assert destination.read_bytes() == source.read_bytes()
+    assert destination.stat().st_mode & 0o777 == 0o600

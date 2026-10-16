@@ -259,8 +259,7 @@ def main():
                             )
                         )
                     diagnostic = output.with_suffix("." + name + ".log")
-                    shutil.copyfile(Path(private) / (name + ".log"), diagnostic)
-                    diagnostic.chmod(0o600)
+                    retain_diagnostic(Path(private) / (name + ".log"), diagnostic)
                     raise RuntimeError("native-suite-failed:" + name)
                 evidence["suites"][name] = cases(report)
                 print("native-suite-passed:" + name, flush=True)
@@ -311,10 +310,18 @@ def preflight(evidence):
     return resources()
 
 
+def retain_diagnostic(source, destination):
+    """Create only new private diagnostics; a foreign sibling is never adopted."""
+    with destination.open("xb") as stream:
+        os.fchmod(stream.fileno(), 0o600)
+        with source.open("rb") as original:
+            shutil.copyfileobj(original, stream)
+
+
 def publish(evidence, output):
     with output.open("x") as stream:
+        os.fchmod(stream.fileno(), 0o600)
         json.dump(evidence, stream, sort_keys=True, indent=2)
-    output.chmod(0o600)
 
 
 def finish(evidence, before, output):
