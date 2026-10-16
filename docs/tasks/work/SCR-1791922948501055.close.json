@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "Integrated main source 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8 passed all 88 CI jobs in 38792726270 and both CodeQL analyses. Full bounded-I/O cleanup regressions plus observed focused Mac coverage and unchanged hosted source gate satisfy approved source acceptance; monolithic local failure and queued cancellation remain recorded. No external infrastructure.",
+  "execution_sha256": "65ddafc762ba43bb07db89db256c7d973f2dc08f4e4800a46c96471fdf785c02",
+  "issue_sha256": "c19e8ceb73348779a6bf9cacc3c2544e4f5f549bc554d3bd6c18c6b3970315fd",
+  "outcome": "done",
+  "prepared_at": "2026-10-15T20:06:17Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SCR-1791922948501055"
+}

@@ -12,6 +12,9 @@ verify a checksum-pinned compiler, build real Go and tools binaries with bounded
 jobs and readonly modules, and reject moved tags. Candidate provenance MUST
 state unknown release eligibility explicitly. Deployment defaults MUST remain
 unchanged until separately eligible for promotion.
+Distribution package inputs MUST use a fixed signed archive snapshot. Each run
+MUST compare current upstream lightweight or peeled annotated tags to reviewed
+commits before accepting either freshly fetched or cached source bundles.
 
 #### Scenario: Exact pairs build
 
@@ -62,6 +65,9 @@ The target MUST admit only a local Docker daemon, run the runtime lab without
 external networking or published ports, copy only explicit public inputs, clean
 up its own container on success/failure, and fail on unavailable prerequisites.
 Linux arm64 evidence MUST NOT claim physical Android acceptance or relax S3/S4.
+After a startup timeout, cleanup MUST poll the owned name within a bounded
+deadline and either confirm removal of the observed container or explicitly
+report unconfirmed cleanup. An absent name alone MUST NOT count as success.
 
 #### Scenario: Disconnected local execution
 
@@ -73,3 +79,9 @@ Linux arm64 evidence MUST NOT claim physical Android acceptance or relax S3/S4.
 
 - **WHEN** Docker is remote or systemd/TUN is unavailable
 - **THEN** the target fails explicitly without a skipped or synthetic success
+
+#### Scenario: Container appears after startup timeout
+
+- **WHEN** the daemon creates the owned name after the initial cleanup lookup
+- **THEN** bounded polling observes and removes it, or the failed run explicitly
+  identifies unconfirmed cleanup when the deadline is exhausted

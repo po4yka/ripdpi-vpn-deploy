@@ -2,8 +2,8 @@
 task_id: SCR-1791618073850409
 change: awg-source-upgrade
 commit_sha: 99f730fbcae34134cedcc22cd80694c1c707f760
-local: passed
-local_evidence: Full make check passed (7206 portable tests, 320 vpnd tests, 59 Bats cases, four Terraform providers), plus 45 focused tests, Ruff, 163 snapshots and complete ARM64 source-candidate lab.
+local: required
+local_evidence: Historical full make check passed (7206 portable tests, 320 vpnd tests, 59 Bats cases, four Terraform providers), plus 45 focused tests, Ruff, 163 snapshots and complete ARM64 source-candidate lab.
 remote_ci: not_applicable
 remote_ci_evidence: Owner requires implementation acceptance without external infrastructure; PR checks remain supplementary.
 dry_run: not_applicable
@@ -12,10 +12,10 @@ staging: not_applicable
 staging_evidence: External 48-hour soak explicitly excluded from this revised local candidate task.
 live: not_applicable
 live_evidence: Production defaults remain unchanged; no rollout is part of this task.
-client: passed
-client_evidence: Exact real baseline and candidate Linux cores with generated local keys and authenticated bidirectional traffic; physical Android is excluded and unclaimed.
-artifact: passed
-artifact_evidence: Both exact source pairs built with checksum-pinned Go 1.27.1; full disconnected Linux ARM64 lab passed with owned container removal.
+client: required
+client_evidence: Historical exact real baseline and candidate Linux cores with generated local keys and authenticated bidirectional traffic; physical Android is excluded and unclaimed.
+artifact: required
+artifact_evidence: Historical exact source pairs built with checksum-pinned Go 1.27.1; full disconnected Linux ARM64 lab passed with owned container removal.
 ---
 
 # Verification
@@ -87,3 +87,10 @@ not treated as equivalent to Docker or automatically completed.
   Privileged local Docker remains the documented lab isolation boundary.
 - Production eligibility remains false. Captures cover H1/H2/H4 on the bounded
   IPv4 Linux matrix; physical Android and external-path acceptance are unclaimed.
+
+## PR review follow-up
+
+Three review findings are being validated: delayed Docker visibility after
+startup timeout, immutable signed APT inputs, and upstream ref revalidation for
+warm source bundles. Historical passing evidence above predates these changes.
+Focused regressions: 50 passed; Ruff passed. Updated native and full gates pending.

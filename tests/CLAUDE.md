@@ -16,6 +16,9 @@
 
 The AWG source-candidate lab compiles exact upstream baseline/candidate pairs
 and exercises real systemd/TUN traffic in a disconnected local container.
+APT inputs use a dated signed Ubuntu snapshot; the minimal base bootstraps TLS
+from a checksum-pinned public CA package. Portable regressions exercise delayed
+container visibility, explicitly unknown cleanup and moved refs with warm bundles.
 Packet captures and mixed-version TCP/UDP/DNS are Linux runtime evidence only.
 Production-role readiness and physical Android acceptance are separate claims.
 

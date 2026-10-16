@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -150,11 +151,53 @@ def test_startup_timeout_retains_unique_cleanup_identity(monkeypatch):
     monkeypatch.setattr(module.subprocess, "check_output", output)
     monkeypatch.setattr(module, "prepare_sources", lambda work: None)
     calls = []
-    monkeypatch.setattr(module, "run", lambda *args, **kwargs: calls.append(args))
+    monkeypatch.setattr(module, "run", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "cleanup_container", lambda *args: calls.append(args))
     with pytest.raises(subprocess.TimeoutExpired):
         module.main()
-    assert calls[-1][:5] == ("docker", "--context", "fixture", "rm", "-f")
-    assert calls[-1][5].startswith("ripdpi-awg-source-")
+    assert calls[-1][0] == ("docker", "--context", "fixture")
+    assert calls[-1][1].startswith("ripdpi-awg-source-")
+    assert calls[-1][2] is True
+
+
+@pytest.mark.parametrize(
+    "appears,remove_failure", [(True, False), (True, True), (False, False)]
+)
+def test_uncertain_start_cleanup_observes_late_creation_or_reports_unknown(
+    tmp_path, appears, remove_failure
+):
+    module = runner()
+    state = tmp_path / "state.json"
+    state.write_text(json.dumps({"inspect": 0, "remove_attempts": 0, "removed": False}))
+    cli = tmp_path / "docker.py"
+    cli.write_text(
+        "import json, sys\nfrom pathlib import Path\n"
+        f"state = Path({str(state)!r})\n"
+        "data = json.loads(state.read_text())\n"
+        "assert sys.argv[-1] == 'ripdpi-awg-source-owned'\n"
+        "if sys.argv[1:3] == ['container', 'inspect']:\n"
+        "    data['inspect'] += 1\n"
+        "    state.write_text(json.dumps(data))\n"
+        f"    raise SystemExit(0 if {appears!r} and data['inspect'] >= 2 else 1)\n"
+        "assert sys.argv[1:3] == ['rm', '-f']\n"
+        "assert data['inspect'] >= 2\n"
+        "data['remove_attempts'] += 1\nstate.write_text(json.dumps(data))\n"
+        f"if {remove_failure!r} and data['remove_attempts'] == 1: raise SystemExit(1)\n"
+        "data['removed'] = True\nstate.write_text(json.dumps(data))\n"
+    )
+    docker = (sys.executable, str(cli))
+    if appears:
+        module.cleanup_container(docker, "ripdpi-awg-source-owned", True, timeout=2)
+        assert json.loads(state.read_text())["removed"] is True
+        assert json.loads(state.read_text())["remove_attempts"] == (
+            2 if remove_failure else 1
+        )
+    else:
+        with pytest.raises(RuntimeError, match="cleanup is unconfirmed.*owned"):
+            module.cleanup_container(
+                docker, "ripdpi-awg-source-owned", True, timeout=0.1
+            )
+        assert json.loads(state.read_text())["removed"] is False
 
 
 def test_candidate_is_separate_from_deployment_and_physical_policy():
@@ -191,6 +234,34 @@ def test_explicit_public_build_context_excludes_private_inputs():
     assert "COPY . " not in dockerfile
 
 
+def test_package_inputs_are_bound_to_one_signed_immutable_snapshot():
+    directory = ROOT / "tests/integration/awg_source_candidate"
+    fields = dict(
+        line.split(": ", 1)
+        for line in (directory / "ubuntu.sources").read_text().splitlines()
+    )
+    assert fields == {
+        "Types": "deb",
+        "URIs": "https://snapshot.ubuntu.com/ubuntu/20261015T000000Z/",
+        "Suites": "noble noble-updates noble-security",
+        "Components": "main universe",
+        "Signed-By": "/usr/share/keyrings/ubuntu-archive-keyring.gpg",
+    }
+    assert "tests/integration/awg_source_candidate/ubuntu.sources" in runner().FILES
+    dockerfile = (directory / "Dockerfile").read_text()
+    assert (
+        "ADD --checksum=sha256:641de77d8f142cfd62a1a6f964ba67b20754d3337c480efb529d086075a06c9a"
+        in dockerfile
+    )
+    assert (
+        "https://snapshot.ubuntu.com/ubuntu/20261015T000000Z/pool/main/c/ca-certificates/ca-certificates_20240203_all.deb"
+        in dockerfile
+    )
+    assert dockerfile.index(
+        "/etc/apt/sources.list.d/ubuntu.sources"
+    ) < dockerfile.index("apt-get update")
+
+
 def test_source_cache_symlink_refuses_before_context_copy(monkeypatch, tmp_path):
     module = runner()
     pins = json.loads((ROOT / "contract/awg-source-candidate.json").read_text())
@@ -204,6 +275,7 @@ def test_source_cache_symlink_refuses_before_context_copy(monkeypatch, tmp_path)
     work = tmp_path / "context"
     work.mkdir()
     monkeypatch.setattr(module, "ROOT", tmp_path)
+    monkeypatch.setattr(module, "verify_upstream_sources", lambda *args: None)
     monkeypatch.setattr(
         module,
         "run",
@@ -213,6 +285,55 @@ def test_source_cache_symlink_refuses_before_context_copy(monkeypatch, tmp_path)
         module.prepare_sources(work)
     assert not list((work / "sources").iterdir())
     assert foreign.read_text() == "unrelated private fixture bytes"
+
+
+def test_warm_bundle_cache_revalidates_current_lightweight_and_annotated_tags(
+    tmp_path, monkeypatch, isolated_synthetic_git_config
+):
+    module = runner()
+    repository = tmp_path / "remote"
+    repository.mkdir()
+
+    def git(*args):
+        return subprocess.check_output(
+            ["git", "-C", str(repository), *args], text=True, stderr=subprocess.PIPE
+        ).strip()
+
+    git("init")
+    git("config", "user.name", "Fixture")
+    git("config", "user.email", "fixture@example.invalid")
+    source = repository / "source"
+    source.write_text("reviewed")
+    git("add", "source")
+    git("commit", "-m", "fixture")
+    reviewed = git("rev-parse", "HEAD")
+    git("tag", "baseline")
+    git("tag", "-a", "candidate", "-m", "annotated fixture")
+    root = tmp_path / "workspace"
+    (root / "contract").mkdir(parents=True)
+    pins = {
+        pair: {part: {"tag": pair, "commit": reviewed} for part in ("go", "tools")}
+        for pair in ("baseline", "candidate")
+    }
+    (root / "contract/awg-source-candidate.json").write_text(json.dumps(pins))
+    cache = root / ".cache/awg-source-candidate"
+    cache.mkdir(parents=True, mode=0o700)
+    for component in ("go", "tools"):
+        git("bundle", "create", str(cache / f"{component}-{reviewed}.bundle"), "--all")
+    monkeypatch.setattr(module, "ROOT", root)
+    monkeypatch.setattr(module, "source_repository", lambda component: str(repository))
+    first = tmp_path / "first"
+    first.mkdir()
+    module.prepare_sources(first)
+    assert len(list((first / "sources").glob("*.bundle"))) == 4
+    source.write_text("moved")
+    git("commit", "-am", "move fixture ref")
+    git("tag", "-f", "candidate")
+    second = tmp_path / "second"
+    second.mkdir()
+    with pytest.raises(RuntimeError, match="upstream tag moved"):
+        module.prepare_sources(second)
+    assert not (second / "sources").exists()
 
 
 def builder():

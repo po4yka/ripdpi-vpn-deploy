@@ -55,6 +55,7 @@ def descriptor(pair):
             "pair": PINS[pair],
             "go_toolchain": PINS["go_toolchain"],
             "go_module_proxy": PINS["go_module_proxy"],
+            "package_sources_sha256": digest("/etc/apt/sources.list.d/ubuntu.sources"),
         },
         "steps": [
             {

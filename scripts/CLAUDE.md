@@ -4,10 +4,14 @@
 
 The AWG source-candidate runner admits only a local Unix-socket Docker daemon,
 copies an explicit public-file build context and removes only its own
-container ID (or its preallocated unique name after a startup timeout). It binds
+container ID. After an uncertain startup it polls the preallocated name for
+30 seconds, removes it once observed, and fails with an explicit unconfirmed
+cleanup diagnostic if the daemon outcome remains unknown. It binds
 BuildKit and runtime calls to the admitted local engine context. Public sources
 arrive as exact-commit Git bundles fetched over GitHub SSH port 22; credentials
-and the agent stay on the workstation. Runtime execution has no external network
+and the agent stay on the workstation. Every invocation revalidates current
+lightweight/peeled annotated upstream refs before accepting cached bundles.
+Runtime execution has no external network
 or published ports; compilation belongs under the machine-wide build gate.
 
 AWG device issuance, revocation, export and recovery bind provider/environment,

@@ -581,12 +581,18 @@ portable template fixtures do not substitute for these runtime gates.
 
 `build-gate -- make test-awg-source-candidate` builds real baseline and candidate
 Go/tools pairs using checksum-pinned Go with two jobs. The runner requires a
-local Docker Unix socket and uses a pinned Ubuntu image. Package/source retrieval
+local Docker Unix socket and uses a pinned Ubuntu image with a fixed signed
+Ubuntu archive snapshot. A checksum-pinned CA package bootstraps snapshot HTTPS
+without relaxing TLS or repository signatures. Package/source retrieval
 happens during image construction; runtime acceptance uses `--network=none`.
 Only explicit public inputs enter the build context, and the uniquely named owned
-container is removed on success or failure, including uncertain startup. The
-image remains in the build cache. Public sources use existing GitHub SSH access
-on port 22 and immutable local Git bundles; the build receives no credentials.
+container is removed on success or failure. After uncertain startup, the runner
+polls its preallocated name for 30 seconds and removes the container once
+visible; deadline exhaustion explicitly reports unconfirmed cleanup and the
+owned name rather than treating absence as success. The image remains in the build cache. Public sources use existing GitHub SSH access
+on port 22 and immutable local Git bundles; every invocation checks the current
+upstream tags, including peeled annotated tags, before using a warm bundle.
+The build receives no credentials.
 Both BuildKit and runtime calls bind the admitted local Docker engine context.
 
 The complete lab exercises both scalar-header shapes across all three mixed/new

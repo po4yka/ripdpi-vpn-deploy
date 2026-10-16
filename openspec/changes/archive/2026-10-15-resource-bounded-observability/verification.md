@@ -1,7 +1,7 @@
 ---
 task_id: MON-1790835036464962
 change: resource-bounded-observability
-commit_sha: null
+commit_sha: 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8
 local: not_applicable
 local_evidence: "Task dropped: Owner excluded all external infrastructure from completion on 2026-10-15; source and isolated runtime capability is owned by MON-1792080593038468."
 remote_ci: not_applicable

@@ -10,6 +10,7 @@ import shutil
 import stat
 import subprocess
 import tempfile
+import time
 import uuid
 from pathlib import Path
 
@@ -17,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FILES = (
     "contract/awg-source-candidate.json",
     "tests/integration/awg_source_candidate/Dockerfile",
+    "tests/integration/awg_source_candidate/ubuntu.sources",
     "tests/integration/awg_source_candidate/build.py",
     "tests/integration/awg_source_candidate/acceptance.py",
     "ansible/roles/runtime-release/files/runtime_build_receipt.py",
@@ -42,9 +44,71 @@ def run(*args, timeout=3600, **kwargs):
     return subprocess.run(args, check=True, timeout=timeout, **kwargs)
 
 
+def source_repository(component):
+    return f"git@github.com:amnezia-vpn/amneziawg-{component}"
+
+
+def verify_upstream_sources(pins, env):
+    """Observe current remote refs even when immutable bundles are already cached."""
+    for component in ("go", "tools"):
+        sources = [pins[pair][component] for pair in ("baseline", "candidate")]
+        refs = [f"refs/tags/{source['tag']}" for source in sources]
+        output = subprocess.check_output(
+            [
+                "git",
+                "ls-remote",
+                "--exit-code",
+                source_repository(component),
+                *[ref for tag in refs for ref in (tag, tag + "^{}")],
+            ],
+            env=env,
+            text=True,
+            timeout=60,
+        )
+        observed = dict(line.split()[::-1] for line in output.splitlines())
+        for source, ref in zip(sources, refs):
+            if observed.get(ref + "^{}", observed.get(ref)) != source["commit"]:
+                raise RuntimeError("upstream tag moved from its reviewed commit")
+
+
+def cleanup_container(docker, container, uncertain, timeout=30):
+    if not uncertain:
+        run(*docker, "rm", "-f", container, timeout=60)
+        return
+    # A timed-out create request may still be in flight at the daemon. Absence
+    # at one instant cannot establish cleanup; wait for the owned name to appear.
+    deadline = time.monotonic() + timeout
+    while (remaining := deadline - time.monotonic()) > 0:
+        try:
+            result = subprocess.run(
+                [*docker, "container", "inspect", container],
+                check=False,
+                capture_output=True,
+                timeout=min(5, remaining),
+            )
+            if result.returncode == 0:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                run(*docker, "rm", "-f", container, timeout=min(5, remaining))
+                return
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+            pass  # Retry only the owned cleanup, within its single deadline.
+        time.sleep(min(0.25, max(0, deadline - time.monotonic())))
+    raise RuntimeError(
+        f"Container startup outcome is unknown; cleanup is unconfirmed for {container}. "
+        "Inspect and remove this owned name in the admitted Docker context."
+    )
+
+
 def prepare_sources(work):
     """Transfer only public Git objects, never the workstation's SSH authority."""
     pins = json.loads((ROOT / FILES[0]).read_text())
+    env = {
+        **os.environ,
+        "GIT_SSH_COMMAND": "ssh -oHostName=github.com -p22 -oBatchMode=yes -oConnectTimeout=20 -oStrictHostKeyChecking=yes -oForwardAgent=no",
+    }
+    verify_upstream_sources(pins, env)
     cache = ROOT / ".cache/awg-source-candidate"
     cache.mkdir(parents=True, exist_ok=True, mode=0o700)
     info = cache.lstat()
@@ -72,12 +136,9 @@ def prepare_sources(work):
                         "--single-branch",
                         "--branch",
                         source["tag"],
-                        f"git@github.com:amnezia-vpn/amneziawg-{component}",
+                        source_repository(component),
                         str(checkout),
-                        env={
-                            **os.environ,
-                            "GIT_SSH_COMMAND": "ssh -oHostName=github.com -p22 -oBatchMode=yes -oConnectTimeout=20 -oStrictHostKeyChecking=yes -oForwardAgent=no",
-                        },
+                        env=env,
                         timeout=300,
                     )
                     actual = subprocess.check_output(
@@ -181,6 +242,7 @@ def main():
         )
     # Retain an owned identity even if startup times out before returning its ID.
     container = "ripdpi-awg-source-" + uuid.uuid4().hex
+    uncertain = True
     try:
         allocated = subprocess.check_output(
             [
@@ -206,6 +268,7 @@ def main():
         if not allocated:
             raise RuntimeError("Docker startup returned no owned container identity")
         container = allocated
+        uncertain = False
         # systemctl --wait handles boot states only after its bus is listening.
         run(*docker, "exec", container, "python3", "-c", WAIT_SYSTEMD, timeout=45)
         run(
@@ -219,7 +282,7 @@ def main():
         )
         run(*docker, "exec", container, "python3", "-u", "/lab/acceptance.py")
     finally:
-        run(*docker, "rm", "-f", container, timeout=60)
+        cleanup_container(docker, container, uncertain)
 
 
 if __name__ == "__main__":

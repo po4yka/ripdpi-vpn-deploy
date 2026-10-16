@@ -20,7 +20,7 @@ Production defaults and physical client safe floors remain unchanged.
 - [x] SCR-1791618078367215 Bind exact candidate and control source pairs and toolchain without promoting production defaults #feature @item:SCR-1791618073850409
 - [x] SCR-1791618079169597 Deliver local real candidate builds and unchanged-wire authenticated interoperability #feature @item:SCR-1791618073850409
 - [x] SCR-1791618080142425 Prove local warm pair and unit adoption failure compensation and unrelated tunnel preservation #feature @item:SCR-1791618073850409
-- [x] SCR-1791618081446678 Complete disconnected local source gates and document excluded physical and fleet claims #feature @item:SCR-1791618073850409
+- [ ] SCR-1791618081446678 Complete disconnected local source gates and document excluded physical and fleet claims #feature @item:SCR-1791618073850409
 
 ## Verification
 

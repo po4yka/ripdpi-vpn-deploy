@@ -20,7 +20,8 @@ retrieval is allowed; no external runtime or application endpoint is involved.
   module graph fails the build. `GOTOOLCHAIN=local`, readonly modules and two-job
   limits prevent hidden toolchain upgrades and unbounded compilation.
 - Fetch public source Git objects on the workstation through standard GitHub
-  SSH port 22, verify the exact tag commit, and cache immutable Git bundles under
+  SSH port 22, revalidate the current remote tags on every run (peeling annotated
+  tags even for a warm cache), verify the exact tag commit, and cache bundles under
   `.cache/awg-source-candidate/`. Only these public objects enter the build;
   neither the SSH agent nor credentials are mounted or copied into Docker.
   The build verifies each checked-out commit again before compiling.
@@ -36,8 +37,13 @@ retrieval is allowed; no external runtime or application endpoint is involved.
   container without network access, host workspace mounts or published ports.
   The systemd cgroup mount belongs to the local Linux VM. Only the owned
   container identity is removed, including its preallocated unique name when
-  startup fails before returning an ID.
-- A checksum-pinned Ubuntu image supplies package dependencies. Build both real
+  startup fails before returning an ID. Uncertain startup polls for 30 seconds;
+  observation permits removal, while exhaustion explicitly reports unknown
+  cleanup with the owned identity for inspection.
+- A checksum-pinned Ubuntu image and the signed Ubuntu archive snapshot at
+  `20261015T000000Z` supply package dependencies. A checksum-pinned public
+  ca-certificates archive bootstraps HTTPS in the minimal base; TLS and APT
+  signature/hash checks remain enabled. Build both real
   source pairs with repository-pinned Go 1.27.1. The contract explicitly selects
   the reachable module cache; original `go.sum`, readonly modules and the standard
   signed checksum database remain enabled. This changes artifact delivery, not
@@ -72,8 +78,9 @@ retrieval is allowed; no external runtime or application endpoint is involved.
 
 - Privileged containers are required for TUN, namespaces and service sandboxing;
   the local Docker VM is the isolation boundary, not a production host.
-- Distribution package versions follow the pinned image's signed repositories;
-  AWG source/module inputs and the compiler are pinned independently.
+- Package versions and transitive dependencies resolve from the fixed signed
+  archive snapshot. Moving to another snapshot is a reviewed input change;
+  snapshot unavailability fails the build rather than selecting current packages.
 - Local Linux arm64 cannot establish Android's embedded-core or physical path
   behavior. Existing physical S3/S4 guards remain fail-closed.
 - Unknown upstream release eligibility and advisory reachability cannot be
