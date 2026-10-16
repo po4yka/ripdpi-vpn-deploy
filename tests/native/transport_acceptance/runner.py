@@ -140,7 +140,12 @@ def engines():
     sys.path.insert(0, str(ROOT / "tests/unit"))
     from test_transport_semantics_native import exact_awg_sources
 
-    go, tools = exact_awg_sources()
+    import pytest
+
+    try:
+        go, tools = exact_awg_sources()
+    except pytest.fail.Exception:
+        raise RuntimeError("exact-AWG-build-prerequisite-refused") from None
     result = {}
     for name, path in [
         ("xray", shutil.which("xray")),
@@ -278,7 +283,7 @@ def finish(evidence, before, output):
                 ["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT
             ).strip()
         )
-    except BaseException as error:
+    except Exception as error:
         evidence["cleanup"] = False
         evidence["cleanup_error"] = type(error).__name__
     evidence["success"] = evidence["success"] and evidence["cleanup"]
