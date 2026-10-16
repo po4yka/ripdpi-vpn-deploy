@@ -14,6 +14,12 @@
 
 ## Design decisions
 
+Controller interruption fixtures release their synthetic workers through an
+owned stop marker and retained subprocess handles. Never signal recorded
+process-group numbers after the controller exits: group ownership may already
+have ended. Cleanup runs after the unchanged timeout, privacy and descendant
+termination assertions.
+
 AWG onboarding fixtures use an HTTPS hostname so the real dual-family probe
 validator admits the positive path. Rotation tests follow the canonical
 configuration transaction and its private loops; the removed restart handler
