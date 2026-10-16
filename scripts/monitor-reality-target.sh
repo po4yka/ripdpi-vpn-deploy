@@ -159,11 +159,12 @@ while IFS= read -r ip; do
     tls_out="$("$TIMEOUT_BIN" "$PROBE_TIMEOUT" openssl s_client -connect "${ip}:${PORT}" -servername "$sni" -tls1_3 -alpn h2 -showcerts -verify_return_error -verify_hostname "$sni" </dev/null 2>/dev/null)"
     tls_result=$?
     set -e
-    if ! printf '%s' "$tls_out" | grep -q -- '-----BEGIN CERTIFICATE-----'; then
+    # Early pipeline readers can SIGPIPE a valid large transcript under pipefail.
+    if [[ "$tls_out" != *"-----BEGIN CERTIFICATE-----"* ]]; then
       echo "tls_handshake_failed" >> "$REASONS_FILE"; pair_failed=1
     else
       (( tls_result == 0 )) || { echo "certificate_validation_failed" >> "$REASONS_FILE"; pair_failed=1; }
-      printf '%s' "$tls_out" | grep -q 'ALPN protocol: h2' || { echo "h2_unavailable" >> "$REASONS_FILE"; pair_failed=1; }
+      [[ "$tls_out" == *"ALPN protocol: h2"* ]] || { echo "h2_unavailable" >> "$REASONS_FILE"; pair_failed=1; }
       san_blob="$(printf '%s' "$tls_out" | openssl x509 -noout -ext subjectAltName 2>/dev/null | grep 'DNS:' | tr ',' '\n' | sed -E 's/.*DNS://; s/[[:space:]]//g' || true)"
       san_covers "$sni" "$san_blob" || { echo "certificate_san_mismatch" >> "$REASONS_FILE"; pair_failed=1; }
     fi

@@ -16,7 +16,7 @@ import re
 import uuid
 
 from awg_device_binding import BindingError, resolve_binding
-from transport_semantics import awg_dns_valid, cohort_errors, hysteria_errors, key_valid, parameter_errors, xhttp_path_valid
+from transport_semantics import awg_dns_valid, cohort_errors, hysteria_errors, key_valid, parameter_errors, xhttp_path_valid, xhttp_tuning
 
 PROFILES = {"p0-reality", "p1-xhttp", "p2-hysteria2", "p2-amneziawg"}
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}\Z")
@@ -246,7 +246,8 @@ def build_profiles(standard_doc, ripdpi_doc, secrets_doc, client, required_profi
                 frontend = secrets_doc.get("nginx_xhttp")
                 if not isinstance(frontend, dict):
                     raise ProfileError("missing-frontend-sni")
-                expected_sni = frontend.get("server_name")
+                alternate = profile == "p1-xhttp" and outbound["tag"].endswith(":alternate")
+                expected_sni = frontend.get("fallback_server_name", frontend.get("server_name")) if alternate else frontend.get("server_name")
                 if profile == "p2-hysteria2":
                     hysteria = secrets_doc["hysteria"]
                     expected_sni = hysteria.get("server_name", hysteria.get("ech", {}).get("inner_name", expected_sni))
@@ -281,11 +282,21 @@ def build_profiles(standard_doc, ripdpi_doc, secrets_doc, client, required_profi
                 standard["route"]["rules"].append({"inbound": [inbound_tag], "action": "route", "outbound": outbound["tag"]})
             else:
                 transport = outbound.get("transport")
-                if (not isinstance(transport, dict) or set(transport) != {"type", "host", "path"}
+                if (not isinstance(transport, dict) or set(transport) - {"type", "host", "path", "mode", "xmux"} or not {"type", "host", "path"} <= set(transport)
                         or transport["type"] != "xhttp" or _host(transport["host"]) != tls["server_name"]
                         or not xhttp_path_valid(transport["path"])
                         or "flow" in outbound or "multiplex" in outbound):
                     raise ProfileError("invalid-xhttp-transport")
+                mode = secrets_doc["xray"].get("xhttp_mode", "auto")
+                try:
+                    tuning = xhttp_tuning(secrets_doc["xray"])
+                except ValueError:
+                    raise ProfileError("invalid-xhttp-tuning") from None
+                if (transport.get("mode", "auto") != mode or mode not in ("auto", "stream-up", "packet-up")
+                        or transport.get("xmux", {}) != tuning):
+                    raise ProfileError("wrong-xhttp-mode-or-tuning")
+                metadata["endpoint"] = "alternate" if alternate else "primary"
+                metadata["mode"] = mode
                 expected_path = secrets_doc["xray"].get("xhttp_path")
                 if transport["path"] != (expected_path if expected_path is not None else "/app-sync"):
                     raise ProfileError("wrong-xhttp-path")
@@ -296,7 +307,10 @@ def build_profiles(standard_doc, ripdpi_doc, secrets_doc, client, required_profi
                 native = {"protocol": "vless", "tag": outbound["tag"], "settings": {"vnext": [{"address": server, "port": port,
                           "users": [{"id": xray_client["uuid"], "encryption": "none"}]}]},
                           "streamSettings": {"network": "xhttp", "security": "tls", "tlsSettings": {"serverName": tls["server_name"], "allowInsecure": False},
-                                             "xhttpSettings": {"host": transport["host"], "path": transport["path"]}}}
+                                             "xhttpSettings": {"host": transport["host"], "path": transport["path"], "mode": mode}}}
+                if tuning:
+                    native["streamSettings"]["xhttpSettings"]["xmux"] = tuning
+                    metadata["tuning"] = tuning
                 if "fingerprint" in tls:
                     native["streamSettings"]["tlsSettings"]["fingerprint"] = tls["fingerprint"]
                 xray["outbounds"].append(native)
