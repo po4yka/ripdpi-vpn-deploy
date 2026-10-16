@@ -242,7 +242,7 @@ server.serve_forever()
         return self
 
     def converge(self, profile='xray', *, check=False, allow_failure=False, retire=False, site=False,
-                 stage_only=False, fail_after_acceptance=False, interrupt_first_adoption=False):
+                 stage_only=False, fail_after_acceptance=False, interrupt_first_adoption=False, retain_commit=False):
         self.context['vpn'].update(enable_xray_reality=profile in {'xray', 'both'}, enable_hysteria=profile in {'hysteria', 'both'})
         path = self.private / 'converge.yml'
         play = {'hosts': 'localhost', 'connection': 'local', 'gather_facts': True,
@@ -267,6 +267,8 @@ server.serve_forever()
                         '/usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py', 'finish']},
                     'when': '(transport_egress_role_enabled | bool) or (_transport_egress_full_retirement | default(false) | bool)',
                     'changed_when': False, 'no_log': True}]
+            if retain_commit:
+                play['tasks'] = play['tasks'][:-1]
             if stage_only:
                 play['tasks'] = play['tasks'][:3]
             if fail_after_acceptance:

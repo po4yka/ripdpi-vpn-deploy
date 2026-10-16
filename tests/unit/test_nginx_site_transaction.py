@@ -673,3 +673,97 @@ def test_site_authority_does_not_admit_external_deletion_as_retirement(fixture, 
         tx.publish(document)
     assert (tx.capture(state / 'site.json'), tx.capture(state / 'nginx-xhttp.activated.json')) == before
     assert not commands
+
+
+@pytest.mark.parametrize('boundary', ['before-decision', 'after-decision', 'before-egress-finish',
+                                      'after-egress-finish', 'before-ingress-clear', 'after-ingress-clear'])
+def test_sigkill_commit_boundary_recovers_one_generation(fixture, boundary):
+    """Real process death and journal I/O; the portable egress adapter is modeled."""
+    import signal
+    tx, context, _ = fixture
+    state = install_accepted(tx, context)
+    tx.site_transaction('begin', context)
+    candidate = publish_candidate(tx, context)
+    outer = state / 'modeled-outer'
+    outer.write_text('previous')
+    def finish(argv):
+        assert argv[-1] == 'finish'
+        outer.unlink(missing_ok=True)
+        return ''
+    tx.command = finish
+    pid = os.fork()
+    if pid == 0:
+        def kill():
+            os.kill(os.getpid(), signal.SIGKILL)
+        persist, clear = tx.persist, tx.clear
+        def marked(path, value):
+            if path.name == 'site.json' and value['phase'] == 'committing':
+                if boundary == 'before-decision': kill()
+                persist(path, value)
+                if boundary == 'after-decision': kill()
+            else:
+                persist(path, value)
+        def egress(argv):
+            if boundary == 'before-egress-finish': kill()
+            result = finish(argv)
+            if boundary == 'after-egress-finish': kill()
+            return result
+        def removed(path):
+            if boundary == 'before-ingress-clear': kill()
+            clear(path)
+            if boundary == 'after-ingress-clear': kill()
+        tx.persist, tx.command, tx.clear = marked, egress, removed
+        tx.site_transaction('commit', context, finish_egress=True)
+        os._exit(1)
+    _, status = os.waitpid(pid, 0)
+    assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGKILL
+    result = tx.site_transaction('recover-commit', context)
+    if result['status'] == 'open':
+        assert boundary == 'before-decision'
+        tx.command = lambda argv: ''
+        tx.site_transaction('restore', context)
+        outer.unlink()
+        assert candidate.read_bytes() == b'accepted'
+    else:
+        assert result['status'] == ('absent' if boundary == 'after-ingress-clear' else 'committed')
+        assert candidate.read_bytes() == b'candidate'
+    assert not outer.exists() and not (state / 'site.json').exists()
+    assert tx.site_transaction('recover-commit', context)['status'] == 'absent'
+
+
+def test_commit_failure_retains_decision_refuses_restore_and_retries(fixture):
+    tx, context, _ = fixture
+    state = install_accepted(tx, context)
+    tx.site_transaction('begin', context)
+    candidate = publish_candidate(tx, context)
+    def refused(argv):
+        raise tx.TransactionError('runtime-command')
+    tx.command = refused
+    with pytest.raises(tx.TransactionError, match='runtime-command'):
+        tx.site_transaction('commit', context, finish_egress=True)
+    journal = (state / 'site.json').read_bytes()
+    assert json.loads(journal)['phase'] == 'committing'
+    with pytest.raises(tx.TransactionError, match='commit-recovery-required'):
+        tx.site_transaction('restore', context)
+    with pytest.raises(tx.TransactionError, match='recovery-required'):
+        tx.site_transaction('begin', {**context, 'check': True})
+    assert (state / 'site.json').read_bytes() == journal and candidate.read_bytes() == b'candidate'
+    tx.command = lambda argv: ''
+    assert tx.site_transaction('recover-commit', context)['status'] == 'committed'
+
+
+def test_commit_decision_freezes_exact_ingress_authority(fixture):
+    tx, context, _ = fixture
+    state = install_accepted(tx, context)
+    tx.site_transaction('begin', context)
+    candidate = publish_candidate(tx, context)
+    def refused(argv):
+        raise tx.TransactionError('runtime-command')
+    tx.command = refused
+    with pytest.raises(tx.TransactionError):
+        tx.site_transaction('commit', context, finish_egress=True)
+    candidate.write_bytes(b'accepted')  # Previously allowed bytes are no longer accepted after the decision.
+    tx.command = lambda argv: pytest.fail('egress must not finish after ingress drift')
+    with pytest.raises(tx.TransactionError, match='foreign-publication'):
+        tx.site_transaction('recover-commit', context)
+    assert (state / 'site.json').exists()

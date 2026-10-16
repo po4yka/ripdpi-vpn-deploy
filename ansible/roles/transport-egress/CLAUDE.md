@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Protected site commit finishes `outer.json` through the ingress decision owner, retaining `site.json` until finish succeeds. Interrupted begin and rescue resolve a recorded commit before route status/adoption or quiescence. Do not independently roll back egress while that ingress decision remains committing.
+
 Frontend credential checks resolve the configuration from each exact owned systemd unit through the shared runtime parser. Custom Hysteria directories must agree during both candidate admission and controller startup; unsafe units and relative or traversing configuration paths refuse.
 
 Controller preparation installs its exact semantic companion alongside native probe helpers before recovery or candidate admission. Shared helper admission includes that root-owned, single-link file. The frontend validator's companion remains part of its own guarded generation and may still be older while a candidate is being validated.
