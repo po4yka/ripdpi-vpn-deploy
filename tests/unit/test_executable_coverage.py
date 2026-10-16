@@ -130,7 +130,9 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
     assert all_native == existing | transactions | endpoint_cases | awg_cases | ech_cases
     groups = [existing, transactions, endpoint_cases, awg_cases, ech_cases]
     assert all(not left & right for index,left in enumerate(groups) for right in groups[index+1:])
-    assert transactions and len(transactions) == 5
+    assert transactions and len(transactions) == 6
+    assert ('tests/unit/test_transport_runtime_acceptance_native.py::'
+            'test_native_ech_admission_retains_custom_configuration_directory') in transactions
     assert awg_cases and len(ech_cases) == 13
     assert endpoint_cases and len(endpoint_cases) == 2
     assert "$(MAKE) test-probe-matrix-mtproto" in makefile.split("ci-fast:", 1)[1]
