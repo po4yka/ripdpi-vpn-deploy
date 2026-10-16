@@ -18,13 +18,13 @@ recipient-device or production results. Open steps require observed acceptance.
 
 ## Execution
 
-- [ ] EPC-1792156116769877 Deliver isolated baseline transport and canonical per-device payload identity #feature !high @item:EPC-1792155716043904
-- [ ] EPC-1792156184465728 Deliver real dual-stack AWG forwarding MTU revocation and source-candidate adoption #feature !high @item:EPC-1792155716043904
-- [ ] EPC-1792156185783587 Deliver stable Hysteria resources trusted ECH and verified local parser upgrades #feature !high @item:EPC-1792155716043904
-- [ ] EPC-1792156186791455 Deliver selectable XHTTP endpoints typed tuning and measured degraded-path delivery #feature !high @item:EPC-1792155716043904
-- [ ] EPC-1792156187806825 Deliver finite REALITY target identity hygiene and bounded monitor ownership #feature !high @item:EPC-1792155716043904
-- [ ] EPC-1792156189132400 Deliver topology-aware secure probes and retained runtime recovery authority #feature !high @item:EPC-1792155716043904
-- [ ] EPC-1792156196617565 Complete real no-skip protocol lifecycle compensation and exact-source acceptance #feature !high @item:EPC-1792155716043904
+- [x] EPC-1792156116769877 Deliver isolated baseline transport and canonical per-device payload identity #feature !high @item:EPC-1792155716043904
+- [x] EPC-1792156184465728 Deliver real dual-stack AWG forwarding MTU revocation and source-candidate adoption #feature !high @item:EPC-1792155716043904
+- [x] EPC-1792156185783587 Deliver stable Hysteria resources trusted ECH and verified local parser upgrades #feature !high @item:EPC-1792155716043904
+- [x] EPC-1792156186791455 Deliver selectable XHTTP endpoints typed tuning and measured degraded-path delivery #feature !high @item:EPC-1792155716043904
+- [x] EPC-1792156187806825 Deliver finite REALITY target identity hygiene and bounded monitor ownership #feature !high @item:EPC-1792155716043904
+- [x] EPC-1792156189132400 Deliver topology-aware secure probes and retained runtime recovery authority #feature !high @item:EPC-1792155716043904
+- [x] EPC-1792156196617565 Complete real no-skip protocol lifecycle compensation and exact-source acceptance #feature !high @item:EPC-1792155716043904
 
 ## Verification
 

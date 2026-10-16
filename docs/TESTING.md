@@ -540,6 +540,9 @@ For systemd containers, restore shared `/run` propagation after each restart;
 otherwise per-unit credential paths can disappear from the service namespace.
 Verify actual read-only credentials and their service-user ACL before the suite.
 Keep separate roots sequential when they share a host network namespace.
+The canonical Xray log provisioner also requires root-owned parent directories
+without group/other write permission. Prepare the owned test image with a trusted
+`/var/log` (mode `0755`); a group-writable parent must continue to refuse.
 
 `make test-xhttp-delivery-matrix` runs all fourteen native XHTTP cases in an owned
 isolated Linux root lab with systemd, exact Xray 26.3.27/Hysteria 2.13.0,

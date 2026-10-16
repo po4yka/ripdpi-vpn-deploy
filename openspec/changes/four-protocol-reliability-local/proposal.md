@@ -25,13 +25,14 @@ not represented as passed. Existing taskctl evidence-transfer gates remain intac
 - `transport/native-acceptance`: complete native traffic and lifecycle acceptance.
 - `transports/awg-forwarding-dualstack`, `transports/awg-source-runtime`: typed device paths and real local source candidates.
 - `transports/hysteria-stable-runtime`, `transports/hysteria-ech-profiles`: bounded resources, trusted ECH and stable local adoption.
-- `transports/xhttp-alternate-and-tuning`, `transports/reality-target-validation`: exact endpoint selection, measured tuning and bounded hygiene.
+- `transports/xhttp-alternate-and-tuning`: exact endpoint selection and measured tuning.
 - `clients/stable-parser-adoption`, `clients/payload-identity`: actual parser adoption and consumed-input drift detection.
 - `operations/topology-authenticated-probes`: effective target sets and secure authenticated observation.
 
 ### Modified Capabilities
 
 - `clients/config-registry`: bind issuance and refresh to the material actually consumed.
+- `transports/reality-target-validation`: retain the integrated canonical identity/client requirements and complete bounded monitor ownership.
 
 ## Impact
 

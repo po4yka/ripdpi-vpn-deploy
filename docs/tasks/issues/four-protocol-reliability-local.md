@@ -2,7 +2,7 @@
 id: EPC-1792155716043904
 title: Deliver the local four-protocol reliability roadmap
 kind: epic
-status: doing
+status: review
 area: epic
 priority: high
 risk: high
@@ -12,8 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: four-protocol-reliability-local
 created: 2026-10-16
-updated: 2026-10-16
+updated: 2026-10-17
 related_tasks: []
+status_detail: Complete exact-source local acceptance passed; all 45 positive requirements verified and owned runtimes retired.
 ---
 
 ## Goal

@@ -2,7 +2,7 @@
 
 Provide observable, testable guarantees for make reality target validation bounded standards-correct and truthful across accepted inputs, successful operation, failure and retained authority.
 
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: REQ-PROTO-RTV-IDENTITY — Standards-correct target identity checking
 
