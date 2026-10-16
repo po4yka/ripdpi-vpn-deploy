@@ -73,6 +73,21 @@ def resources():
         }:
             processes.append((path.name, executable))
     return {
+        "authority": {
+            raw: os.path.lexists(raw)
+            for raw in (
+                "/lab",
+                "/usr/local/lib/awg-candidate",
+                "/etc/xray",
+                "/etc/hysteria",
+                "/opt/xray",
+                "/opt/hysteria",
+                "/etc/ripdpi/transport-egress",
+                "/var/lib/ripdpi/transport-runtime",
+                "/var/lib/ripdpi/transport-egress",
+                "/usr/local/libexec/ripdpi-transport-egress",
+            )
+        },
         "processes": sorted(processes),
         "users": sorted((entry.pw_name, entry.pw_uid) for entry in pwd.getpwall()),
         "groups": sorted((entry.gr_name, entry.gr_gid) for entry in grp.getgrall()),
@@ -252,6 +267,7 @@ def main():
     finally:
         evidence["cleanup"] = (
             resources() == before
+            and engines() == evidence["engines"]
             and not run(
                 ["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT
             ).strip()
