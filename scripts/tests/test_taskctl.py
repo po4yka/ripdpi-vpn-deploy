@@ -3237,6 +3237,85 @@ class TaskctlHistoryTest(TaskctlFixture):
                 finally:
                     fixture.tearDown()
 
+    def test_base_purge_import_is_not_a_new_feature_deletion(self) -> None:
+        source = self.add_simple_task(status="review")
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        self.commit_all("add source before divergence")
+        integration = self.git("branch", "--show-current")
+        self.git("branch", "feature")
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        self.commit_all("complete source in base")
+        self.purge_simple_task(source)
+        self.write_board()
+        base = self.commit_all("purge source in base")
+        self.git("switch", "feature")
+        (self.root / "feature.txt").write_text("unrelated feature\n")
+        self.commit_all("implement unrelated feature")
+        self.git("merge", integration, "-m", "import base purge")
+        taskctl.validate_deleted_history(self.root, base)
+        self.git("switch", integration)
+        self.git("merge", "--no-ff", "feature", "-m", "PR merge")
+        taskctl.validate_deleted_history(self.root, base)
+
+    def test_base_purge_cannot_hide_a_new_invalid_incarnation(self) -> None:
+        source = self.add_simple_task(status="review")
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        self.commit_all("add original source")
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        self.commit_all("complete original source")
+        self.purge_simple_task(source)
+        self.write_board()
+        base = self.commit_all("purge original source")
+        source = self.add_simple_task(status="doing")
+        self.write_board()
+        self.commit_all("reintroduce source without review")
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        self.commit_all("invalid direct completion")
+        self.purge_simple_task(source)
+        self.write_board()
+        self.commit_all("purge invalid incarnation")
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "invalid terminal transition doing -> done"
+        ):
+            taskctl.validate_deleted_history(self.root, base)
+
+    def test_merge_only_resurrection_after_base_purge_is_audited(self) -> None:
+        source = self.add_simple_task(status="review")
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        self.commit_all("add original source")
+        integration = self.git("branch", "--show-current")
+        self.git("branch", "stale-source")
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        self.commit_all("complete source in base")
+        self.purge_simple_task(source)
+        self.write_board()
+        base = self.commit_all("purge source in base")
+        self.git("switch", "stale-source")
+        (self.root / "stale.txt").write_text("unrelated stale branch\n")
+        self.commit_all("advance stale branch")
+        self.git("switch", integration)
+        self.git("merge", "--no-commit", "--no-ff", "stale-source")
+        source = self.add_simple_task(status="doing")
+        self.write_board()
+        self.commit_all("reintroduce source only in merge resolution")
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        self.commit_all("invalid merge incarnation completion")
+        self.purge_simple_task(source)
+        self.write_board()
+        self.commit_all("purge invalid merge incarnation")
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "invalid terminal transition doing -> done"
+        ):
+            taskctl.validate_deleted_history(self.root, base)
+
     def test_terminal_history_rejects_ambiguous_completed_merged_lanes(self) -> None:
         source_task = "CIC-1786234567890001"
         owner_task = "CIC-1786234567890003"

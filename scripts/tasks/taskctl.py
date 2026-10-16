@@ -3375,6 +3375,62 @@ def validate_historical_incarnation(
         validate_issue_shape(snapshot.document, config_at(revision))
 
 
+def task_lifecycle_changed_outside_base(
+    root: Path,
+    base: str,
+    task_id: str,
+    snapshots: dict[str, dict[str, HistoricalTaskSnapshot]],
+) -> bool:
+    """Distinguish feature lifecycle edits from importing an already trusted purge."""
+    paths = {f":(glob)docs/tasks/work/{task_id}.*"}
+    for tasks in snapshots.values():
+        snapshot = tasks.get(task_id)
+        if snapshot is None:
+            continue
+        paths.add(f":(literal){snapshot.relative}")
+        change = snapshot.document.values.get("openspec_change")
+        if change:
+            paths.add(f":(literal)openspec/changes/{change}/")
+            paths.add(f":(glob)openspec/changes/archive/*-{change}/**")
+    history = run_command(("git", "rev-list", "--parents", f"{base}..HEAD"), root=root)
+    if history.returncode != 0:
+        fail("cannot inspect introduced task lifecycle changes")
+
+    def differs(first: str, second: str) -> bool:
+        result = run_command(
+            ("git", "diff", "--quiet", "--no-ext-diff", "--no-textconv",
+             first, second, "--", *sorted(paths)), root=root
+        )
+        if result.returncode not in (0, 1):
+            fail(f"cannot compare introduced lifecycle for {task_id}")
+        return result.returncode == 1
+
+    for line in (history.stdout or "").splitlines():
+        revision, *parents = line.split()
+        if not parents:
+            return True
+        if not differs(parents[0], revision):
+            continue
+        # A merge may import a purge from the explicit trusted base. Any
+        # independent edit, including merge-only edits or resurrection, still
+        # needs the complete terminal-history audit below.
+        for parent in parents[1:]:
+            ancestry = run_command(
+                ("git", "merge-base", "--is-ancestor", parent, base), root=root
+            )
+            if ancestry.returncode not in (0, 1):
+                fail("cannot inspect trusted task lifecycle ancestry")
+            if (
+                ancestry.returncode == 0
+                and not differs(parent, revision)
+                and not differs(base, revision)
+            ):
+                break
+        else:
+            return True
+    return False
+
+
 def validate_deleted_history(root: Path, base: str) -> None:
     resolved = run_command(
         ("git", "rev-parse", "--verify", "--end-of-options", f"{base}^{{commit}}"),
@@ -3439,7 +3495,13 @@ def validate_deleted_history(root: Path, base: str) -> None:
             root, "HEAD", config_at=config_at, trusted_ref=base
         )
 
+        if base not in by_revision:
+            by_revision[base] = historical_task_snapshots(root, base, scratch)
         for task_id in sorted(candidate_ids - head_ids):
+            if task_id not in by_revision[base] and not task_lifecycle_changed_outside_base(
+                root, base, task_id, by_revision
+            ):
+                continue
             timeline = [
                 (revision, by_revision[revision].get(task_id)) for revision in revisions
             ]

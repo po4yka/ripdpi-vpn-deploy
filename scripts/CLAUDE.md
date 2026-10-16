@@ -725,3 +725,8 @@ remote probes reject loopback endpoints. Ordinary HTTP is hygiene only. Optional
 curl-impersonate 0.6.1 Chrome116 compatibility requires exact binary and profile
 hashes and an actual handshake; it never establishes filtered survival or grants
 promotion authority. No validator installs a client, edits secrets or deploys.
+
+Task deletion audits compare against the explicit trusted base while retaining
+feature first-parent lifecycle history. Importing a purge already in that base
+is not a new deletion when no issue, execution or receipt changed outside it.
+Independent lifecycle edits and merge-only resurrection retain the full audit.
