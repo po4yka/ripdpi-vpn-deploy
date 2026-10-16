@@ -43,3 +43,20 @@ def test_unsupported_host_is_failure_before_any_artifact(monkeypatch, tmp_path):
     with pytest.raises(RuntimeError, match="isolated-Linux-root-required"):
         runner.main()
     assert not (tmp_path / "evidence.json").exists()
+
+
+@pytest.mark.parametrize("missing", [True, False])
+def test_missing_or_fake_engine_is_categorical_failure(tmp_path, monkeypatch, missing):
+    import test_transport_semantics_native as native
+
+    fake = tmp_path / "fake-engine"
+    fake.write_text("#!/bin/sh\necho invented-version\n")
+    fake.chmod(0o700)
+    monkeypatch.setattr(native, "exact_awg_sources", lambda: (fake, fake))
+    monkeypatch.setattr(
+        runner.shutil, "which", lambda _: None if missing else str(fake)
+    )
+    with pytest.raises(
+        RuntimeError, match="engine-missing:xray" if missing else "engine-not-native"
+    ):
+        runner.engines()
