@@ -1,24 +1,53 @@
 ---
 task_id: "MON-1791618056169855"
 change: "topology-authenticated-probes"
-commit_sha: "c4c4d55c55dba02df299c7af349b93fabe841b67"
-local: "required"
-local_evidence: "native topology 7 passed; watchdog 17 passed; render contracts 31 passed; lifecycle 14 passed; executable coverage 6 passed; cohort smoke 1 passed; 164 snapshots match; full make check retry queued with exact sing-box 1.14.3"
-remote_ci: "required"
-remote_ci_evidence: "PR 316 exact final source checks running; initial CI exposed caller/fixture and missing-toggle defects fixed by d78e36b5, 5a453b53 and c4c4d55c; no terminal all-green claim"
+commit_sha: "df5c40554cb171f2b0acc6b275a65579a05d7806"
+local: "passed"
+local_evidence: "full make check exit 0: 7563 unit cases and 43 subtests, 320 vpnd cases, validation, lint, snapshots and CI parity passed on df5c40554cb171f2b0acc6b275a65579a05d7806"
+remote_ci: "passed"
+remote_ci_evidence: "CI run 38931291291 completed all 89 jobs successfully on df5c40554cb171f2b0acc6b275a65579a05d7806; CodeQL, Markdown and instruction-touch workflows also succeeded"
 dry_run: "not_applicable"
 dry_run_evidence: "source capability uses isolated native proof; real inventory/controller rehearsal needs separate authorization"
 staging: "not_applicable"
 staging_evidence: "source contract uses isolated native acceptance; actual fleet rehearsal is separately authorized"
 live: "not_applicable"
 live_evidence: "no production rollout belongs to this source or disabled-default candidate task"
-client: "required"
-client_evidence: "exact pinned Xray and Hysteria clients plus real source-built AWG passed isolated native topology cases; existing real Hysteria hopping/upgrade acceptance passed (1 case, 657.31 seconds)"
-artifact: "required"
-artifact_evidence: "committed native and renderer contracts exercise private configurations and categorical failures; closure remains gated by required validation and AWG prerequisite"
+client: "passed"
+client_evidence: "df5c40554cb171f2b0acc6b275a65579a05d7806 hosted native lanes passed exact Xray/Hysteria/AWG authentication, topology and actual hopping/upgrade/compensation; consumer 974cf06ab8d05e3b4275d0e98429a0d0de2bf598 separately passed both canonical arm64 matrices"
+artifact: "passed"
+artifact_evidence: "native and renderer contracts exercised private configurations and categorical failures; both actual arm64 APK/SO/peer/instrumentation artifact sets retained and validated; no operator material used"
 ---
 
 # Verification
+
+## Current acceptance boundary (2026-10-16)
+
+The source boundary is `df5c40554cb171f2b0acc6b275a65579a05d7806`,
+including the integrated XHTTP delivery and bounded-pool configuration contract.
+The complete local `make check` exited successfully: 7563 unit cases and
+43 subtests, 320 vpnd cases, schema/secret coverage, Terraform validation and
+policies, Ansible lint, all 164 snapshots and CI parity passed. The unit lane
+intentionally deselected 181 native cases; those are separate hosted lanes.
+
+CI run 38931291291 completed all 89 jobs successfully on that exact source.
+Native integration passed 13 ECH, 138 generic runtime, 10 XHTTP delivery,
+8 authenticated topology and 6 AWG dual-stack cases without selected skips.
+Both transport runtime shards passed three cases each; each deselected the
+other shard's three cases. The Hysteria shard exercised actual hopping traffic
+before upgrade, after upgrade and after compensation, including unchanged
+convergence. CodeQL run 38931291088, Markdown run 38931291427 and instruction
+touch run 38931291044 also completed successfully.
+
+These results supersede the pending source-gate descriptions in the chronological
+record below; they do not erase its earlier failed attempts. Fresh Android arm64
+emulator/native-core acceptance passed twice on consumer
+`974cf06ab8d05e3b4275d0e98429a0d0de2bf598`, each with 8 sessions and 64
+observations. Both actual artifact sets passed the producer evidence validator.
+Consumer CI run 38946668519 completed successfully on that exact source, with
+33 successful jobs and 25 conditionally skipped jobs; all 40 executed PR checks
+passed. The AWG prerequisite remains open until clean-source federation and its
+lifecycle finish. No fleet deployment, operator credential migration or real
+notification receipt was run.
 
 ## Requirement evidence
 

@@ -1,24 +1,70 @@
 ---
 task_id: "ANS-1791618048083304"
 change: "awg-forwarding-dualstack"
-commit_sha: "c3b108120d314fb2ce24a05c7eaf41e11a364621"
-local: "required"
-local_evidence: "complete affected suites and exact native positive/failure cases after implementation"
-remote_ci: "required"
-remote_ci_evidence: "terminal exact-SHA protected-source checks for this new capability"
+commit_sha: "df5c40554cb171f2b0acc6b275a65579a05d7806"
+local: "passed"
+local_evidence: "full make check exit 0: 7563 unit cases and 43 subtests, 320 vpnd cases, validation and CI parity passed on df5c40554cb171f2b0acc6b275a65579a05d7806; portable AWG design matrix 204 passed"
+remote_ci: "passed"
+remote_ci_evidence: "CI run 38931291291 completed all 89 jobs successfully on df5c40554cb171f2b0acc6b275a65579a05d7806, including all six actual Linux native AWG dual-stack cases without skips"
 dry_run: "not_applicable"
 dry_run_evidence: "source capability uses isolated native proof; real inventory/controller rehearsal needs separate authorization"
 staging: "not_applicable"
 staging_evidence: "source contract uses isolated native acceptance; actual fleet rehearsal is separately authorized"
 live: "not_applicable"
 live_evidence: "no production rollout belongs to this source or disabled-default candidate task"
-client: "required"
-client_evidence: "actual supported recipient parser plus authorized arm64 emulator/native-core authenticated IPv4/IPv6 TCP/UDP/DNS at MTU 1280 and 1420 through three reconnects each; physical-device and Android VpnService/TUN gates removed by owner; S3/S4 floor unchanged"
-artifact: "required"
-artifact_evidence: "private rendered outputs and redacted exact-source requirement-specific evidence after implementation"
+client: "passed"
+client_evidence: "consumer 974cf06ab8d05e3b4275d0e98429a0d0de2bf598 passed two independent original-peer arm64 API 35 matrices, each 8 sessions and 64 observations, IPv4/IPv6 TCP/UDP/DNS at MTU 1280/1420 with three reconnects each; producer evidence validator passed both"
+artifact: "passed"
+artifact_evidence: "both invocation-bound JSON receipts and complete APK/SO/peer/instrumentation artifact sets retained and revalidated against actual digests; synthetic rendered output and Linux native artifacts observed without operator material"
 ---
 
 # Verification
+
+## Current acceptance boundary (2026-10-16)
+
+Deployment source `df5c40554cb171f2b0acc6b275a65579a05d7806` passed the
+complete local `make check` (7563 unit cases, 43 subtests and 320 vpnd cases)
+and every one of the 89 jobs in CI run 38931291291. Hosted native integration
+passed all six AWG dual-stack cases without selected skips, in addition to
+138 generic runtime, 10 XHTTP and 8 authenticated topology cases. The portable
+AWG design matrix separately passed 204 cases. This supersedes the pending
+source-gate descriptions in the chronological record below.
+
+Consumer source `335d5de361445c8decef5560a07ebf3f60fe524f` passed the complete
+affected JVM suites: 887 data/parser and 2245 service cases (3132 total), with
+no failures, errors or skips. Original-peer arm64 emulator attempts failed UDP
+receive during reconnect and produced no acceptance artifact. Diagnostic peer
+runs passed but do not count as canonical acceptance.
+
+Consumer source `974cf06ab8d05e3b4275d0e98429a0d0de2bf598` fixes a separately
+confirmed native UDP subscription gap before the interface future first polls.
+Its real pre-poll datagram regression failed on the old source and passed on
+the fix; the complete warp-core suite passed 95 cases and strict crate Clippy
+passed. Independent general and async cancellation reviews approved the exact
+source. This proves that startup defect and its regression; the earlier
+canonical reconnect timeouts remain unattributed. Two independent unchanged
+canonical arm64 matrices against original peer commit
+`2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf` passed on API 35. Each delivered
+8 sessions and 64 actual IPv4/IPv6 TCP/UDP/DNS observations, with baseline and
+three reconnects at both MTU 1280 and 1420 and eight successful real socket
+protection calls. The producer's `make verify-awg-dualstack-client-evidence`
+validated both complete artifact sets; each test APK packages the exact
+recorded native library. Physical-device and Android VpnService/TUN acceptance
+remain outside the owner-approved scope; S3/S4 are zero and the version floor
+is unchanged. Consumer CI run 38946668519 completed successfully on that exact
+source: 33 jobs passed and 25 conditional jobs were skipped. All 40 executed
+PR checks succeeded, including CodeQL, secret scan and all three release
+verification shards; no checks remained pending. Clean current-source federation
+still needs to pass before task closure.
+
+Receipt SHA-256: primary
+`2013956f82e2fa4c4e3e1bc0b7298ec729ae567197b004275dd0318b263aaf4f`;
+confirmation
+`74d05b6a79cca857ae951ab978e6d8c96b8b7a301ed2a493c1711595a4802b89`.
+Both package native library
+`19408cf9b2b19dfc48ef7c45133a01261a327a185803ecbb9a99b2753dbec135`
+and test APK
+`fadf364a4de709f76081a31e7bcc1ac460d2c9b365c1a83301529be820e82355`.
 
 ## Requirement evidence
 
