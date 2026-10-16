@@ -547,7 +547,7 @@ def test_owned_capture_reserves_exited_leader_until_pipe_cleanup(tmp_path):
     async def exercise():
         cmd = (
             Cmd.new("sh")
-            .args(["-c", 'sleep 60 & printf \'%s\\n\' "$$" "$!" > "$PIDS"; exit 0'])
+            .args(["-c", 'sleep 60 & printf \'%s\\n\' "$$" "$!" > "$PIDS.tmp"; mv "$PIDS.tmp" "$PIDS"; exit 0'])
             .env("PIDS", pids)
             .capture_policy(CapturePolicy.OWNED_PROCESS_GROUP)
         )

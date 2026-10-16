@@ -35,6 +35,8 @@ environment/provider/IPs. TOML reads use the standard library; writes use
 of descriptor-gated YAML. Shared strict loading preserves scalar semantics and
 rejects duplicate mappings with categorical errors.
 
+Lifecycle fixtures publish complete PID manifests by rename before readers observe them; file existence alone cannot admit a partially written process list.
+
 **Process ownership is explicit.** `src/vpnd/runner/process.py` (`Cmd`) carries argv,
 environment, cwd and a description. Foreground operations retain terminal
 behavior. Doctor and matrix captures opt into owned groups; each worker drains
