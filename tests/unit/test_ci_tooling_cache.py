@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SETUP = "./.github/actions/setup-ci-python"
 DISPOSABLE_SETUP = "./.github/actions/setup-disposable-ci"
 GALAXY_JOBS = {"ansible", "molecule", "molecule-failure-scenarios", "molecule-full-stack"}
-NATIVE_JOBS = {"native-runtime", "transport-runtime-acceptance"}
+NATIVE_JOBS = {"native-runtime", "transport-runtime-acceptance", "transport-native-acceptance"}
 PYTHON_JOBS = GALAXY_JOBS | {"python-validators", "unit-tests", "bats-test"} | NATIVE_JOBS
 VALIDATORS = {
     "yamllint -c .yamllint.yml .",
