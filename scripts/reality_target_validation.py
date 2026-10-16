@@ -162,6 +162,16 @@ def main():
         if not 0 < args.stage_timeout <= args.budget <= 120:
             raise ValidationError("invalid-deadline-budget")
         target, selected = os.environ.get("TARGET"), os.environ.get("SERVER_NAMES")
+        public_endpoint = os.environ.get("REALITY_TARGET_PUBLIC_ENDPOINT")
+        if args.mode == "owned-public":
+            if not public_endpoint:
+                raise ValidationError("owned-public-endpoint-required")
+            endpoint(public_endpoint)
+        # Refuse invalid explicit input before resolving any missing private default.
+        if target is not None:
+            endpoint(target)
+        if selected is not None:
+            names(selected)
         if target is None or selected is None:
             import client_payload
             client_payload.DEADLINE = time.monotonic() + args.budget
@@ -172,7 +182,7 @@ def main():
             selected = selected if selected is not None else " ".join(document["xray"]["server_names"])
         result = validate(target, selected, budget=args.budget - (time.monotonic() - started), stage=args.stage_timeout,
             ca=os.environ.get("REALITY_TARGET_CA_FILE"), mode=args.mode,
-            public_endpoint=os.environ.get("REALITY_TARGET_PUBLIC_ENDPOINT"))
+            public_endpoint=public_endpoint)
     except (ValueError, KeyError, OSError, TypeError):
         result = {"schema": 1, "verdict": "failed", "reason_codes": ["input-or-prerequisite-refused"],
                   "browser_clienthello": "unverified", "filtered_survival": "unverified"}

@@ -6,7 +6,7 @@ Federation preserves dependency edges between receipt-validated cancelled record
 
 Taskctl archive maintenance relocates only owned inline task links. Dropped records retain immutable close receipts: readers verify the exact link projection from the archive’s reachable terminal source, rejecting every other byte change, including newline conversion. Repeated archival preserves timestamps/spec state; partial document-write failures restore the original record.
 
-REALITY target validation uses the shared bounded process-session owner for DNS, SAN-verified TLS 1.3/H2 and separate ordinary HTTPS stages. DNS sets over eight unique candidates refuse before truncation or path approval. Reports contain only digests and categorical observations. Owned public service checks require an explicit public endpoint; browser ClientHello and filtered survival remain unverified.
+REALITY target validation uses the shared bounded process-session owner for DNS, SAN-verified TLS 1.3/H2 and separate ordinary HTTPS stages. DNS sets over eight unique candidates refuse before truncation or path approval. Invalid explicitly supplied target/name fields refuse before loading any missing operator-private defaults. Reports contain only digests and categorical observations. Owned public service checks require an explicit public endpoint; browser ClientHello and filtered survival remain unverified.
 
 A successful alternate retains usable transport delivery, while any non-ok endpoint variant makes the operator decision degraded; exact primary/alternate observations remain separate and do not create a rotation candidate by themselves.
 

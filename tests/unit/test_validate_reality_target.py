@@ -145,3 +145,31 @@ def test_dns_worker_retains_all_eight_unique_candidates_with_duplicate_answers(m
     monkeypatch.setattr(module.sys, "stdin", SimpleNamespace(buffer=io.BytesIO(b'{"host":"owned.example","port":443}')))
     module.worker("dns")
     assert json.loads(capsys.readouterr().out) == [f"192.0.2.{i}" for i in range(1, 9)]
+
+
+@pytest.mark.parametrize("explicit", [{"TARGET": ""}, {"SERVER_NAMES": ""}, {"SERVER_NAMES": "bad/name"}])
+def test_invalid_partial_explicit_inputs_refuse_before_loading_operator_authority(monkeypatch, capsys, explicit):
+    import client_payload
+    import reality_target_validation
+    for name in ("TARGET", "SERVER_NAMES"):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in explicit.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(sys, "argv", ["reality_target_validation.py"])
+    monkeypatch.setattr(client_payload, "read_document", lambda *a, **kw: pytest.fail("invalid explicit input read operator authority"))
+    assert reality_target_validation.main() == 1
+    assert json.loads(capsys.readouterr().out)["verdict"] == "failed"
+
+
+@pytest.mark.parametrize("public_endpoint", [None, "", "bad/path"])
+def test_owned_public_prerequisite_refuses_before_loading_operator_authority(monkeypatch, capsys, public_endpoint):
+    import client_payload
+    import reality_target_validation
+    for name in ("TARGET", "SERVER_NAMES", "REALITY_TARGET_PUBLIC_ENDPOINT"):
+        monkeypatch.delenv(name, raising=False)
+    if public_endpoint is not None:
+        monkeypatch.setenv("REALITY_TARGET_PUBLIC_ENDPOINT", public_endpoint)
+    monkeypatch.setattr(sys, "argv", ["reality_target_validation.py", "--mode", "owned-public"])
+    monkeypatch.setattr(client_payload, "read_document", lambda *a, **kw: pytest.fail("invalid public endpoint read operator authority"))
+    assert reality_target_validation.main() == 1
+    assert json.loads(capsys.readouterr().out)["verdict"] == "failed"
