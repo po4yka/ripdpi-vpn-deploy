@@ -24,7 +24,7 @@ artifact_evidence: "163 golden templates match. Portable tests validate direct-o
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-PROTO-RTA-GATEWAY-ROLLBACK | ANS-1791996772545665 | Native rollback lane proving frontend and gateway executables, refusal compensation, and a following ordinary converge | passed: both native partitions, affected role/site scenarios, exact-source CI and complete gated local check |
+| REQ-PROTO-RTA-GATEWAY-ROLLBACK | ANS-1791996772545665 | Source e3c11684: CI 38909820069 passed both native partitions, executable proof, refusal/SIGKILL compensation, following ordinary converge and affected role/site scenarios; complete gated local check passed | passed |
 
 ## Acceptance scope
 
