@@ -42,9 +42,10 @@ prior external scopes are explicitly superseded through their terminal lifecycle
 
 ## Migration Plan
 
-Canonical RIPDPI-format XHTTP payloads now require explicit mode and preserve
-selected exact-engine bounded-pool settings. Update all owned adapters and regenerate local
-artifacts together; do not add compatibility shims. Existing operator material
+Canonical XHTTP payloads carry explicit mode. Native Xray and monitoring output
+preserve the selected exact-engine bounded-pool settings; RIPDPI export refuses
+settings its importer cannot consume. Update all owned adapters and regenerate
+local artifacts together; do not add compatibility shims. Existing operator material
 remains untouched. Complete local source and native validation, commit review
 with exact evidence, archive the completed local change and commit its terminal
 state before a later purge. External rollout, promotion and recipient redelivery

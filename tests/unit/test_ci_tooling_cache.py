@@ -96,3 +96,13 @@ def test_combined_validators_preserve_every_check_and_required_context():
     protection = (ROOT / ".github/workflows/branch-protection.yml").read_text()
     assert f'"{job["name"]}"' in protection
     assert not any(f'"{name}"' in protection for name in OLD_CONTEXTS)
+
+
+def test_taskctl_consumers_checkout_verifiable_terminal_history():
+    jobs = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
+    # The real workspace-status integration follows archive receipts to their
+    # immutable source commits. A shallow checkout must not bypass that proof.
+    for name in ("task-contract", "unit-tests"):
+        checkout = next(step for step in jobs[name]["steps"]
+                        if step.get("uses", "").startswith("actions/checkout@"))
+        assert checkout["with"].get("fetch-depth") == 0, name
