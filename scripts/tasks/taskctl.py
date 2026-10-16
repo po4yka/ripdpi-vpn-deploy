@@ -2397,12 +2397,25 @@ def build_terminal_history_index(
             )
             if already_integrated.returncode == 0:
                 continue
-            merge_base = run_command(
-                ("git", "merge-base", first_parent, side_parent),
-                root=root,
+            # A graph merge base can be a newer main commit merged into the
+            # feature branch. Its ancestry path omits the earlier lifecycle.
+            # Anchor the lane at the shared first-parent history instead.
+            parent_histories = [
+                run_command(("git", "rev-list", "--first-parent", parent), root=root)
+                for parent in (first_parent, side_parent)
+            ]
+            if any(result.returncode != 0 for result in parent_histories):
+                fail(f"cannot inspect merged task-history base for {side_parent}")
+            primary_history = set((parent_histories[0].stdout or "").splitlines())
+            lane_start = next(
+                (
+                    revision
+                    for revision in (parent_histories[1].stdout or "").splitlines()
+                    if revision in primary_history
+                ),
+                "",
             )
-            lane_start = (merge_base.stdout or "").strip()
-            if merge_base.returncode != 0 or not SHA_RE.fullmatch(lane_start):
+            if not SHA_RE.fullmatch(lane_start):
                 fail(f"cannot resolve merged task-history base for {side_parent}")
             unique_history = run_command(
                 (
