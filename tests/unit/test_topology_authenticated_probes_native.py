@@ -89,6 +89,7 @@ def test_secure_smoke_and_watchdog_hysteria_auth_sni_ca_and_obfs(salamander):
                 found = find(task.get("block", []))
                 if found:
                     return found
+            return None
         smoke = yaml.safe_load(render_fragment("native-smoke.yaml", find(play["tasks"]), values))
         smoke["server"] = "192.0.2.90:443"
         assert smoke["tls"] == private["tls"]
@@ -234,6 +235,7 @@ if kill -0 "$owned_pid" 2>/dev/null; then exit 42; fi
             try:
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
+                # Successful cleanup may already have removed the owned group.
                 pass
             process.wait(timeout=5)
         stack.close()

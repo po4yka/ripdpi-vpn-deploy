@@ -95,7 +95,7 @@ def test_omitted_transport_toggles_preserve_canonical_probe_authority(omitted):
 
     # Evaluate the real role's selection/retirement conditions as well as renders.
     # The values here are typed booleans, matching the canonical toggle contract.
-    environment = Environment(undefined=StrictUndefined)
+    environment = Environment(undefined=StrictUndefined, autoescape=True)
     environment.filters['bool'] = bool
     conditions = []
     for task in yaml.safe_load((ROLE / 'tasks/enable.yml').read_text()):
