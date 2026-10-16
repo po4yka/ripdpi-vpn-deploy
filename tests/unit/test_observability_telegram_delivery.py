@@ -1287,7 +1287,8 @@ def test_alertmanager_v0281_enforces_the_webhook_request_timeout(
             {"observability_control_plane": contract},
         )
     )
-    config["route"]["group_wait"] = "0s"
+    # Admit both alert batches before testing truncation and the webhook deadline.
+    config["route"]["group_wait"] = "1s"
     config_path = tmp_path / "alertmanager.yml"
     config_path.write_text(yaml.safe_dump(config, sort_keys=False))
     checked = subprocess.run(
@@ -1339,39 +1340,42 @@ def test_alertmanager_v0281_enforces_the_webhook_request_timeout(
                 time.sleep(0.05)
         else:
             raise AssertionError("Alertmanager did not become ready")
-        alert = json.dumps(
-            [
-                {
-                    "labels": {
-                        "alertname": "FixtureTimeout",
-                        "environment": "staging",
-                        "node": "fixture-node",
-                        "instance": f"fixture-{index}",
-                        "component": "control-plane",
-                        "policy": "none",
-                        "profile": "none",
-                        "vantage": "control",
-                        "severity": "warning",
-                    },
-                    "annotations": {
-                        "summary": "fixture",
-                        "evidence_class": "fixture",
-                        "runbook": "docs/OBSERVABILITY-OPERATIONS.md",
-                        "source_generation": "c" * 40,
-                    },
-                }
-                for index in range(7)
-            ]
-        ).encode()
-        with request.urlopen(
-            request.Request(
-                f"http://127.0.0.1:{alertmanager_port}/api/v2/alerts",
-                data=alert,
-                headers={"Content-Type": "application/json"},
-            ),
-            timeout=2,
-        ) as response:
-            assert response.status == 200
+        alerts = [
+            {
+                "labels": {
+                    "alertname": "FixtureTimeout",
+                    "environment": "staging",
+                    "node": "fixture-node",
+                    "instance": f"fixture-{index}",
+                    "component": "control-plane",
+                    "policy": "none",
+                    "profile": "none",
+                    "vantage": "control",
+                    "severity": "warning",
+                },
+                "annotations": {
+                    "summary": "fixture",
+                    "evidence_class": "fixture",
+                    "runbook": "docs/OBSERVABILITY-OPERATIONS.md",
+                    "source_generation": "c" * 40,
+                },
+            }
+            for index in range(7)
+        ]
+        for index, batch in enumerate((alerts[:1], alerts[1:])):
+            with request.urlopen(
+                request.Request(
+                    f"http://127.0.0.1:{alertmanager_port}/api/v2/alerts",
+                    data=json.dumps(batch).encode(),
+                    headers={"Content-Type": "application/json"},
+                ),
+                timeout=2,
+            ) as response:
+                assert response.status == 200
+            if index == 0:
+                assert not request_started.wait(timeout=0.1), (
+                    "batch dispatched before all alerts were published"
+                )
         assert request_started.wait(timeout=2)
         started = time.monotonic()
         assert deadline_observed.wait(timeout=3)

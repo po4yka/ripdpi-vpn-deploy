@@ -283,11 +283,12 @@ The limits bound running jobs, not time waiting for a runner.
 | Terraform validation/tests, cloud-init, Bats, Python validators, SBOM and Markdown links | 10 |
 | Pytest groups, Ansible lint, Go helper, Terraform policy, image scans | 15 |
 | Role/failure Molecule scenarios, CodeQL | 20 |
-| Native runtime integration, including setup and cleanup | 30 |
+| Native runtime integration, including setup and cleanup | 60 |
+| Complete transport runtime acceptance, each consumer group | 40 |
 | Full-stack Molecule scenarios | 30 |
 | Shared Python vpnd test/lint/package/dependency job | 30 |
 
-The limits leave headroom over five recent full executions: the maximum
+The limits leave headroom over five prior full executions: the maximum
 observed job runtime was 409 seconds for pytest, 389 for failure/full-stack
 Molecule, 199 for role Molecule and 152 for Rust tests. This small sample includes
 setup and execution but mostly benefits from warm caches. The larger shared
@@ -533,8 +534,14 @@ For local native verification, provide Terraform 1.15.2 on PATH and
 a disposable Linux environment, then run `make test-native-runtime` there.
 Run `make test-transport-runtime-acceptance` in a separate fresh disposable root
 with `TRANSPORT_NATIVE_ISOLATED=1`, systemd, nftables, iproute2, OpenSSL and curl.
+The native SSH sentinel also requires a non-root `SUDO_USER` with non-interactive
+sudo inside that disposable test root and a root-owned mode-0755 `/run/sshd`.
+For systemd containers, restore shared `/run` propagation after each restart;
+otherwise per-unit credential paths can disappear from the service namespace.
+Verify actual read-only credentials and their service-user ACL before the suite.
+Keep separate roots sequential when they share a host network namespace.
 
-`make test-xhttp-delivery-matrix` runs all ten native XHTTP cases in an owned
+`make test-xhttp-delivery-matrix` runs all fourteen native XHTTP cases in an owned
 isolated Linux root lab with systemd, exact Xray 26.3.27/Hysteria 2.13.0,
 nginx, nftables, iproute2 (including tc), OpenSSL, curl and pinned Python
 dependencies. It covers primary/alternate delivery, TLS/privacy/rollback,

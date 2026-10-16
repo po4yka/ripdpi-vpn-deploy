@@ -14,6 +14,8 @@
 
 ## Design decisions
 
+Native Alertmanager timeout coverage publishes split alert updates inside a real grouping window. Zero group wait can dispatch before all seven alerts join the group; retain the five-alert cap, two-alert truncation and one-second webhook deadline assertions.
+
 CI jobs that execute the real taskctl/workspace integration fetch complete Git history: immutable archive-link projections require the reachable terminal source commit. Missing history remains a refusal, never an inferred receipt match.
 
 Real log rotation uses the configured authenticated-probe deadline across process replacement. The pinned REALITY engine has a five-second cold target-record learning loop; steady-state destination-boundary probes retain their three-second socket budget.
