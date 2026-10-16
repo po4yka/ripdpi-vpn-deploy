@@ -37,6 +37,8 @@ rejects duplicate mappings with categorical errors.
 
 Lifecycle fixtures publish complete PID manifests by rename before readers observe them; file existence alone cannot admit a partially written process list.
 
+After a successful cancellation signal, wait retries only reap the retained leader. Darwin rejects a repeated group signal once only its unreaped zombie remains; signal errors still propagate rather than counting as successful termination.
+
 **Process ownership is explicit.** `src/vpnd/runner/process.py` (`Cmd`) carries argv,
 environment, cwd and a description. Foreground operations retain terminal
 behavior. Doctor and matrix captures opt into owned groups; each worker drains

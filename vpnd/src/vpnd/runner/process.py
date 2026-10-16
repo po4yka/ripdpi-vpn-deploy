@@ -130,6 +130,14 @@ class Cmd:
         reaped = False
         stdout = bytearray()
         stderr = bytearray()
+        termination_sent = False
+
+        def terminate():
+            nonlocal termination_sent
+            if not termination_sent:
+                self._terminate(child, owned)
+                termination_sent = True
+
         try:
             with selectors.DefaultSelector() as selector:
                 for stream, buffer in ((child.stdout, stdout), (child.stderr, stderr)):
@@ -151,7 +159,7 @@ class Cmd:
                 # Never poll/wait while captured descriptors remain open.
                 # On cancellation, kill before reaping the reserved leader.
                 if stopped.is_set():
-                    self._terminate(child, owned)
+                    terminate()
                 while True:
                     try:
                         child.wait(timeout=0.05)
@@ -159,11 +167,11 @@ class Cmd:
                         break
                     except subprocess.TimeoutExpired:
                         if stopped.is_set():
-                            self._terminate(child, owned)
+                            terminate()
             return child.returncode, bytes(stdout), bytes(stderr)
         finally:
             if not reaped:
-                self._terminate(child, owned)
+                terminate()
                 child.wait()
             for stream in (child.stdout, child.stderr):
                 if stream is not None:

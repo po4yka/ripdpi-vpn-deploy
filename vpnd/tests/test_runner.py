@@ -3,6 +3,7 @@ from dataclasses import replace
 import asyncio
 import os
 import json
+import traceback
 import pytest
 from vpnd.config import Context
 from vpnd.runner import Cmd, CapturePolicy
@@ -660,7 +661,9 @@ def test_more_than_32_owned_captures_start_simultaneously(tmp_path):
                 task.cancel()
             outcomes = await asyncio.gather(*tasks, return_exceptions=True)
             assert all(isinstance(outcome, asyncio.CancelledError) for outcome in outcomes), [
-                (index, type(outcome).__name__, repr(outcome))
+                (index, type(outcome).__name__,
+                 ''.join(traceback.format_exception(outcome))
+                 if isinstance(outcome, BaseException) else repr(outcome))
                 for index, outcome in enumerate(outcomes)
                 if not isinstance(outcome, asyncio.CancelledError)
             ]
