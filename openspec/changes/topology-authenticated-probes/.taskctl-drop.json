@@ -1,0 +1,14 @@
+{
+  "change": "topology-authenticated-probes",
+  "dropped_step_ids": [
+    "MON-1791618060162436",
+    "MON-1791618061120158",
+    "MON-1791618061966295",
+    "MON-1791618062766877"
+  ],
+  "outcome": "dropped",
+  "prepared_at": "2026-10-16T13:18:32Z",
+  "reason": "Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.",
+  "schema": 1,
+  "task_id": "MON-1791618056169855"
+}

@@ -1,0 +1,11 @@
+{
+  "change": "topology-authenticated-probes",
+  "evidence_summary": "Positive implementation and genuine source/runtime observations are retained. The local successor owns all 45 positive requirements and remains open until its complete native and source gates pass; no missing external observation is relabelled as passed.",
+  "execution_sha256": "cf9dcd02865ca8ad415cac3bc7b34ef0c0a039e0b5c174e0e75b0f67479e11f9",
+  "issue_sha256": "1b715e1a230d87a14aec93f5c21b2638772f14c0471791cf6ee50c5104496218",
+  "outcome": "dropped",
+  "prepared_at": "2026-10-16T13:18:32Z",
+  "reason": "Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.",
+  "schema": 1,
+  "task_id": "MON-1791618056169855"
+}

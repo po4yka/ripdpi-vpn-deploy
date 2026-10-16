@@ -1,0 +1,14 @@
+{
+  "change": "native-four-protocol-acceptance",
+  "dropped_step_ids": [
+    "TST-1791618369402905",
+    "TST-1791618370981853",
+    "TST-1791618372464891",
+    "TST-1791618373730661"
+  ],
+  "outcome": "dropped",
+  "prepared_at": "2026-10-16T13:18:32Z",
+  "reason": "Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.",
+  "schema": 1,
+  "task_id": "TST-1791618356595983"
+}

@@ -1,0 +1,11 @@
+{
+  "change": "awg-source-upgrade",
+  "evidence_summary": "Positive implementation and genuine source/runtime observations are retained. The local successor owns all 45 positive requirements and remains open until its complete native and source gates pass; no missing external observation is relabelled as passed.",
+  "execution_sha256": "07f9564f7729ec1ab3d14273ef2494c250abe3f2f3865af7233987c32772f267",
+  "issue_sha256": "4a44f1e0d459cc9ac560548437ac06afd12a0cd6dcc2d42ce190be7dc3813b31",
+  "outcome": "dropped",
+  "prepared_at": "2026-10-16T13:18:31Z",
+  "reason": "Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.",
+  "schema": 1,
+  "task_id": "SCR-1791618073850409"
+}

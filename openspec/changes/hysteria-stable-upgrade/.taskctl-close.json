@@ -1,0 +1,11 @@
+{
+  "change": "hysteria-stable-upgrade",
+  "evidence_summary": "Positive implementation and genuine source/runtime observations are retained. The local successor owns all 45 positive requirements and remains open until its complete native and source gates pass; no missing external observation is relabelled as passed.",
+  "execution_sha256": "a8d84f4c87bca2460b33374a0737bd2d499681afa3890da82588fabde2634fbd",
+  "issue_sha256": "43695d14664cd93bce7f99bdfeb57695e466a1e2b67bec8b84b71edf0d8508fb",
+  "outcome": "dropped",
+  "prepared_at": "2026-10-16T13:18:32Z",
+  "reason": "Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.",
+  "schema": 1,
+  "task_id": "SCR-1791618064422507"
+}

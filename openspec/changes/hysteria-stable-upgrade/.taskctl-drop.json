@@ -1,0 +1,12 @@
+{
+  "change": "hysteria-stable-upgrade",
+  "dropped_step_ids": [
+    "SCR-1791618069580618",
+    "SCR-1791618072302643"
+  ],
+  "outcome": "dropped",
+  "prepared_at": "2026-10-16T13:18:32Z",
+  "reason": "Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.",
+  "schema": 1,
+  "task_id": "SCR-1791618064422507"
+}

@@ -1,0 +1,14 @@
+{
+  "change": "four-protocol-reliability-roadmap",
+  "dropped_step_ids": [
+    "EPC-1791618459636532",
+    "EPC-1791618460420156",
+    "EPC-1791618461249475",
+    "EPC-1791618462520842"
+  ],
+  "outcome": "dropped",
+  "prepared_at": "2026-10-16T13:18:30Z",
+  "reason": "Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.",
+  "schema": 1,
+  "task_id": "EPC-1791618453830051"
+}

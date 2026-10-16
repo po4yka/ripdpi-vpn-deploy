@@ -1,0 +1,11 @@
+{
+  "change": "stable-client-parser-upgrade",
+  "evidence_summary": "Positive implementation and genuine source/runtime observations are retained. The local successor owns all 45 positive requirements and remains open until its complete native and source gates pass; no missing external observation is relabelled as passed.",
+  "execution_sha256": "dc4080503b063f7a40c26c431b1db2d5058f9dab317328f96c1709d53a2ccf72",
+  "issue_sha256": "dd5a59a2bec925c18b63cd907a17b4e3d371357248af9c34c60fbd28ebb2c07e",
+  "outcome": "dropped",
+  "prepared_at": "2026-10-16T13:18:32Z",
+  "reason": "Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.",
+  "schema": 1,
+  "task_id": "TST-1791618376497512"
+}
