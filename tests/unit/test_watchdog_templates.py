@@ -601,3 +601,22 @@ def test_subscription_only_has_no_absent_transport_probes():
     environment = render_template(TEMPLATES / "vpn-watchdog.env.j2", variables)
     for toggle in ("ENABLE_XRAY", "ENABLE_NGINX_XHTTP", "ENABLE_HYSTERIA", "ENABLE_AMNEZIAWG"):
         assert toggle + "=false" in environment
+
+
+def test_environment_lists_every_enabled_xhttp_frontend():
+    variables = _multi_cohort_vars()
+    variables["nginx_xhttp"]["fallback_enabled"] = True
+    variables["nginx_xhttp_public_port"] = 2443
+    rendered = render_template(TEMPLATES / "vpn-watchdog.env.j2", variables)
+    assert "XHTTP_FRONTEND_PORTS=2443,2083\nXHTTP_BACKEND_PORT=10085" in rendered
+
+
+@pytest.mark.parametrize("subscription_only", [False, True])
+def test_disabled_xhttp_does_not_require_nginx_role_variables(subscription_only):
+    values = _multi_cohort_vars()
+    values["vpn"]["enable_nginx_xhttp"] = subscription_only
+    values["vpn_subscription_only"] = subscription_only
+    for name in ("nginx_xhttp_public_port", "nginx_xhttp_port", "nginx_xhttp_fallback_port", "nginx_xhttp"):
+        values.pop(name, None)
+    rendered = render_template(TEMPLATES / "vpn-watchdog.env.j2", values)
+    assert "XHTTP_FRONTEND_PORTS=\nXHTTP_BACKEND_PORT=0" in rendered

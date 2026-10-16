@@ -23,6 +23,11 @@
           uuid: "98765432-1234-4234-8234-123456789abc"
           short_id: "55667788"
       cohorts: []
+    nginx_xhttp_public_port: 80
+    nginx_xhttp_fallback_port: 2083
+    nginx_xhttp_port: 10085
+    nginx_xhttp:
+      fallback_enabled: false
     xray_port: 443
     xray_fallback_port: 2053
     p0_reality_flow_mode: vision

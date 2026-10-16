@@ -312,6 +312,9 @@ def build_profiles(standard_doc, ripdpi_doc, secrets_doc, client, required_profi
                 xray["outbounds"].append(native)
                 xray["routing"]["rules"].append({"type": "field", "inboundTag": [inbound_tag], "outboundTag": outbound["tag"]})
                 metadata["path"] = transport["path"]
+                metadata["mode"] = expected_mode
+                if expected_xmux:
+                    metadata["xmux"] = dict(expected_xmux)
             maps[engine][profile].append(proxy_port)
             public.append(metadata)
     for engine, filename, document in (("sing_box", "sing-box.json", standard), ("xray", "xray.json", xray)):

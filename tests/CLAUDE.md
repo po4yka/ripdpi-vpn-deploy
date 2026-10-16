@@ -14,6 +14,8 @@
 
 ## Design decisions
 
+Native transport fixtures retain each owned unit before starting it and verify stopped PID/state before deleting runtime authority. Failed start acknowledgement or unconfirmed stop cannot become a passing cleanup.
+
 Alternate XHTTP regression cases exercise canonical materialization through the real semantic resolver and native profile adapter; mocked provider metadata is input selection only, never traffic proof.
 
 Subprocess ownership regressions require a retained session leader at the group signal boundary, and real quiet descendants must stop after successful exit, timeout, owner loss or a broken status report. A denied group signal fails once, while the private control channel still reclaims the supervisor. Fallback kill and wait failures retain categorical diagnostics.

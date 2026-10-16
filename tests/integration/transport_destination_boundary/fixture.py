@@ -85,8 +85,9 @@ class NativeStack:
         path.chmod(0o644)
         self.unit_files.append(path)
         command(["systemctl", "daemon-reload"])
-        command(["systemctl", "start", unit])
+        # Retain ownership before a start acknowledgement can fail or time out.
         self.units.append(unit)
+        command(["systemctl", "start", unit])
         return unit
 
     def start(self, common=False, peer_source=None):
@@ -386,7 +387,11 @@ class NativeStack:
                 process.kill()
             process.wait(timeout=5)
         for unit in reversed(self.units):
-            subprocess.run(["systemctl", "stop", unit], capture_output=True, timeout=15)
+            stopped = subprocess.run(["systemctl", "stop", unit], capture_output=True, timeout=15)
+            observed = command(["systemctl", "show", unit, "--property=ActiveState,MainPID"]).splitlines()
+            if (stopped.returncode != 0 or "MainPID=0" not in observed
+                    or not ({"ActiveState=inactive", "ActiveState=failed"} & set(observed))):
+                raise RuntimeError("owned-native-unit-cleanup-unconfirmed")
             subprocess.run(["systemctl", "reset-failed", unit], capture_output=True, timeout=15)
         for path in self.unit_files:
             path.unlink()

@@ -21,6 +21,7 @@ def materialize(monkeypatch, *, alternate=True, mode="auto", xmux=None, version=
     context["nginx_xhttp"]["fallback_enabled"] = alternate
     context.update(nginx_xhttp_public_port=8443, nginx_xhttp_fallback_port=2083)
     document = {key: deepcopy(context[key]) for key in ("xray", "nginx_xhttp")}
+    document["nginx_xhttp"].pop("fallback_enabled", None)
     document["client_registry"] = {"laptop": {"status": "active"}}
     document["nginx_xhttp"]["fallback_server_name"] = "alternate.example.test"
     document["xray"]["clients"] = [dict(name="laptop", uuid="11111111-1111-4111-8111-111111111111", short_id="0123456789abcdef")]
@@ -49,6 +50,8 @@ def test_endpoints_retain_exact_tls_identity_and_typed_native_settings(monkeypat
         assert outbounds[1]["tag"].endswith("-alternate")
     profiles = build_profiles(None, payload, document, "laptop", ["p1-xhttp"], None, None, None,
         lambda _: pytest.fail("unused AWG key"), "/owned-generation", awg_defaults={}, awg_cohort={})
+    assert all(profile["mode"] == mode and profile["xmux"] == xmux
+               for profile in profiles["public_profiles"])
     native = profiles["files"]["xray.json"]["outbounds"]
     for emitted, engine in zip(outbounds, native):
         stream = engine["streamSettings"]

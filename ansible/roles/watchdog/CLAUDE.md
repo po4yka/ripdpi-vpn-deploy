@@ -4,7 +4,7 @@
 
 Probe-port vacancy is checked before starting the owned REALITY client; occupied ports cause a red observation without authorizing runtime recovery. Startup uses a monotonic deadline. Subscription-only profiles omit transport checks and Xray sandbox paths.
 
-P1 diagnostics check the effective nginx frontend port and Xray backend independently, including P1-only profiles. Backend failures enter guarded Xray recovery and never restart healthy nginx. Diagnostic listeners remain distinct from authenticated native acceptance.
+P1 diagnostics check the effective primary and enabled alternate nginx frontend ports and Xray backend independently, including P1-only profiles. Backend failures enter guarded Xray recovery and never restart healthy nginx. Diagnostic listeners remain distinct from authenticated native acceptance.
 
 AWG probes use every normalized configured instance. The environment carries only comma-separated interface names; each failed interface maps to its exact `awg-quick@` unit. Subscription-only hosts emit no AWG probe list.
 

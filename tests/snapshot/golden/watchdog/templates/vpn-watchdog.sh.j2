@@ -184,8 +184,11 @@ if [[ "${ENABLE_NGINX_XHTTP:-true}" == "true" ]]; then
     "$XRAY_VALIDATE_BIN" --config /etc/xray/config.json
   probe_unit "xray.service" "XHTTP backend TCP/${XHTTP_BACKEND_PORT:?} listening" \
     socks_listener_ready "$XHTTP_BACKEND_PORT"
-  probe_unit "nginx.service" "XHTTP frontend TCP/${NGINX_PORT:?} listening" \
-    socks_listener_ready "$NGINX_PORT"
+  IFS=',' read -r -a xhttp_frontends <<< "${XHTTP_FRONTEND_PORTS:?}"
+  for frontend_port in "${xhttp_frontends[@]}"; do
+    probe_unit "nginx.service" "XHTTP frontend TCP/${frontend_port} listening" \
+      socks_listener_ready "$frontend_port"
+  done
 
 fi
 

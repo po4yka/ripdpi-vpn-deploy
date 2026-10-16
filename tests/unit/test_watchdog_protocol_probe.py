@@ -40,6 +40,8 @@ def _run_watchdog(
     xhttp: bool = False,
     xhttp_backend_ready: bool = True,
     foreign_socks: bool = False,
+    xhttp_alternate: bool = False,
+    alternate_ready: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -77,6 +79,9 @@ def _run_watchdog(
             else ""
         ),
     )
+    if xhttp_alternate and alternate_ready:
+        with (bin_dir / "ss").open("a") as output:
+            output.write("printf '%s\\n' 'LISTEN 0 4096 0.0.0.0:2083 0.0.0.0:*'\n")
     if xhttp:
         _executable(bin_dir / "nginx", "exit 0\n")
         if xhttp_backend_ready:
@@ -136,7 +141,7 @@ def _run_watchdog(
             "PATH": f"{bin_dir}:{env['PATH']}",
             "ENABLE_XRAY": "true",
             "ENABLE_NGINX_XHTTP": "true" if xhttp else "false",
-            "NGINX_PORT": str(server_port),
+            "XHTTP_FRONTEND_PORTS": str(server_port) + (",2083" if xhttp_alternate else ""),
             "XHTTP_BACKEND_PORT": "10085",
             "ENABLE_HYSTERIA": "false",
             "ENABLE_AMNEZIAWG": "true" if awg_interfaces else "false",
@@ -318,3 +323,19 @@ def test_foreign_probe_listener_refuses_without_launch_or_recovery(tmp_path):
     assert "local probe port occupied" in result.stdout
     assert not (tmp_path / "xray-started").exists()
     assert not (tmp_path / "recovery.log").exists()
+
+
+def test_missing_alternate_is_red_and_recovers_only_its_frontend(tmp_path):
+    result = _run_watchdog(tmp_path, xhttp=True, xhttp_alternate=True, alternate_ready=False)
+    assert result.returncode != 0
+    assert "FAIL  XHTTP frontend TCP/2083 listening" in result.stdout
+    assert "OK    XHTTP backend TCP/10085 listening" in result.stdout
+    assert "restart nginx.service" in (tmp_path / "systemctl.log").read_text()
+    assert not (tmp_path / "recovery.log").exists()
+
+
+def test_primary_and_alternate_are_independently_observed(tmp_path):
+    result = _run_watchdog(tmp_path, xhttp=True, xhttp_alternate=True)
+    assert result.returncode == 0, result.stdout
+    assert "OK    XHTTP frontend TCP/443 listening" in result.stdout
+    assert "OK    XHTTP frontend TCP/2083 listening" in result.stdout

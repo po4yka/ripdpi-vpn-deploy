@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+from copy import deepcopy
 import importlib.util
 import json
 import os
@@ -67,7 +68,9 @@ def exported_outbound(stack, *, alternate=False):
     metadata = ROOT / "tests/fixtures/tf-output-sample.json"
     previous = metadata.read_bytes()
     assert not profile.exists()
-    document = {name: stack.values[name] for name in ("xray", "nginx_xhttp", "hysteria", "transport_egress_secrets")}
+    document = {name: deepcopy(stack.values[name]) for name in ("xray", "nginx_xhttp", "hysteria", "transport_egress_secrets")}
+    # The enable flag is profile authority, not a supported secret key.
+    document["nginx_xhttp"].pop("fallback_enabled", None)
     document["client_registry"] = {"native-device": {"status": "active"}}
     private = stack.file("emission.yaml", yaml.safe_dump(document))
     try:
@@ -76,6 +79,7 @@ def exported_outbound(stack, *, alternate=False):
                     "enable_amneziawg": False, "enable_snell": False, "enable_naive": False},
             "nginx_xhttp_public_port": stack.values["nginx_xhttp_public_port"],
             "nginx_xhttp_fallback_port": 2083,
+            "nginx_xhttp": {"fallback_enabled": stack.values["nginx_xhttp"].get("fallback_enabled", False)},
         }))
         selected = json.loads(previous)
         selected["server_ipv4"]["value"] = "192.0.2.90"

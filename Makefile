@@ -1225,7 +1225,8 @@ test-topology-authenticated-probes:
 	  tests/unit/test_watchdog_protocol_probe.py tests/unit/test_watchdog_templates.py \
 	  tests/unit/test_smoke_test_cleanup.py tests/unit/test_runtime_audit_regressions.py \
 	  tests/unit/test_transport_frontend_boundary_native.py tests/unit/test_reality_target_validation_native.py \
-	  tests/unit/test_smoke_protocol_native.py tests/unit/test_transport_logrotate_native.py --fail-on-skip -v
+	  tests/unit/test_smoke_protocol_native.py tests/unit/test_transport_logrotate_native.py \
+	  tests/unit/test_hysteria_hopping_retirement_native.py --fail-on-skip -v
 
 test-xhttp-delivery-matrix:
 	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 && test "$${TRANSPORT_NATIVE_ISOLATED:-}" = 1 || { echo "XHTTP delivery requires an owned isolated Linux root environment" >&2; exit 1; }
