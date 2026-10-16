@@ -39,6 +39,43 @@ def test_generation_exact_selected_units_and_identity():
             mod.validate({**config, field: value}, normalizer)
 
 
+@pytest.mark.parametrize('unit,option', [('xray.service', '-config'), ('hysteria-server.service', '-c')])
+@pytest.mark.parametrize('selection', ['default', 'custom', 'relative', 'traversal', 'duplicate', 'writable', 'hardlink', 'foreign-owner', 'fifo'])
+def test_generation_reads_configuration_from_exact_owned_unit(tmp_path, monkeypatch, unit, option, selection):
+    import os
+    from types import SimpleNamespace
+    mod = load('generation')
+    monkeypatch.setattr(mod, 'UNIT_ROOT', tmp_path)
+    path = '/etc/selected/config.yaml' if selection == 'custom' else '/etc/hysteria/config.yaml'
+    if selection == 'relative':
+        path = 'config.yaml'
+    elif selection == 'traversal':
+        path = '/etc/hysteria/../config.yaml'
+    text = 'ExecStart=/owned/runtime run ' + option + ' ' + path + '\n'
+    if selection == 'duplicate':
+        text += text
+    target = tmp_path / unit
+    target.write_text(text)
+    target.chmod(0o666 if selection == 'writable' else 0o644)
+    if selection == 'hardlink':
+        os.link(target, tmp_path / 'other-unit')
+    elif selection == 'fifo':
+        target.unlink()
+        os.mkfifo(target)
+    def owned_stat(fd):
+        info = os.fstat(fd)
+        return SimpleNamespace(st_mode=info.st_mode, st_uid=1 if selection == 'foreign-owner' else 0,
+                               st_nlink=info.st_nlink, st_size=info.st_size)
+    monkeypatch.setattr(mod, 'os', SimpleNamespace(open=os.open, read=os.read, close=os.close,
+                        fstat=owned_stat, O_RDONLY=os.O_RDONLY, O_NOFOLLOW=os.O_NOFOLLOW,
+                        O_NONBLOCK=os.O_NONBLOCK, O_CLOEXEC=os.O_CLOEXEC))
+    if selection in {'default', 'custom'}:
+        assert mod.frontend_config_path(unit) == Path(path)
+    else:
+        with pytest.raises(mod.Refusal):
+            mod.frontend_config_path(unit)
+
+
 def test_snapshot_allowlist_covers_complete_route_and_excludes_registration():
     mod = load('snapshot')
     for path in ['/etc/xray/config.json', '/etc/hysteria/config.yaml',

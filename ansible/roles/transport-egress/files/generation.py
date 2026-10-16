@@ -19,6 +19,7 @@ CONTROLLER = "ripdpi-transport-generation.service"
 NORMALIZER = "ripdpi-transport-normalizer.service"
 GATEWAYS = {"direct": "ripdpi-transport-direct.service", "warp": "ripdpi-transport-warp.service"}
 FRONTENDS = {"xray.service", "hysteria-server.service"}
+UNIT_ROOT = Path('/etc/systemd/system')
 LOADER = "/usr/local/libexec/ripdpi-transport-egress/policy-loader.py"
 POLICY = "/etc/ripdpi/transport-egress/policy.json"
 READY = Path('/var/lib/ripdpi/transport-egress/ready.json')
@@ -48,6 +49,31 @@ def runtime_admission():
         admission('/var/lib/ripdpi/transport-runtime')
     except RuntimeRefusal:
         raise Refusal('generation-runtime-admission-refused') from None
+
+
+def frontend_config_path(unit):
+    from transport_runtime_accept import unit_binary
+    from transport_runtime_transaction import Refusal as RuntimeRefusal
+    if unit not in FRONTENDS:
+        raise Refusal('generation-unit-invalid')
+    fd = os.open(UNIT_ROOT / unit, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    try:
+        info = os.fstat(fd)
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_nlink != 1
+                or info.st_mode & 0o022 or info.st_size > 1048576):
+            raise Refusal('generation-unit-unowned')
+        raw_unit = os.read(fd, 1048577)
+    finally:
+        os.close(fd)
+    try:
+        text = raw_unit.decode('utf-8', 'strict')
+        _binary, _assets, raw = unit_binary(text)
+        path = Path(raw)
+        if not path.is_absolute() or '..' in path.parts or str(path) != raw:
+            raise ValueError()
+    except (RuntimeRefusal, ValueError, IndexError, UnicodeError):
+        raise Refusal('generation-frontend-authority-invalid') from None
+    return path
 
 
 def validate(config, normalizer):
@@ -176,7 +202,7 @@ class Controller:
             raise Refusal("generation-unit-invalid")
         text = self.command(["systemctl", "show", unit, "--property=LoadState,ActiveState,MainPID,ControlGroup,FragmentPath"], self.timeout)
         fields = dict(line.split("=", 1) for line in text.splitlines() if "=" in line)
-        expected = Path("/etc/systemd/system") / unit
+        expected = UNIT_ROOT / unit
         if fields.get("LoadState") != "loaded" or fields.get("FragmentPath") != str(expected):
             raise Refusal("generation-unit-unowned")
         info = expected.lstat()
@@ -328,7 +354,7 @@ class Controller:
         # Check their actual published private authority against this generation as well.
         by_name = {value['name']: value for value in self.normalizer['listeners']}
         for unit in self.config['frontend_units']:
-            path = Path('/etc/xray/config.json' if unit == 'xray.service' else '/etc/hysteria/config.yaml')
+            path = frontend_config_path(unit)
             fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
             try:
                 info = os.fstat(fd)
