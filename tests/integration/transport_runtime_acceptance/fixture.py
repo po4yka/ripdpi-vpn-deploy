@@ -1,7 +1,7 @@
 """Canonical roles in an owned Linux lab with a disconnected native TLS peer."""
 from __future__ import annotations
 
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 import hashlib
 import json
 import os
@@ -53,6 +53,23 @@ def command(argv, timeout=30, **kwargs):
     if result.returncode:
         raise RuntimeError('owned-runtime-fixture-command-refused')
     return result.stdout.decode()
+
+
+@contextmanager
+def owned_orchestrator(argv, **kwargs):
+    """Retain Ansible descendants even when modules create separate sessions."""
+    scope = 'native-orchestrator-' + uuid.uuid4().hex + '.scope'
+    process = subprocess.Popen(
+        ['systemd-run', '--scope', '--quiet', '--collect', '--unit=' + scope, *argv],
+        start_new_session=True, **kwargs)
+    try:
+        yield process, scope
+    finally:
+        stopped = subprocess.run(['systemctl', 'stop', scope], capture_output=True, timeout=15)
+        if stopped.returncode and command(
+                ['systemctl', 'show', scope, '--property=LoadState', '--value']).strip() != 'not-found':
+            raise RuntimeError('native-orchestrator-scope-cleanup-unconfirmed')
+        process.wait(timeout=10)
 
 
 def artifacts(directory):
@@ -291,14 +308,13 @@ server.serve_forever()
                     raise RuntimeError('native-first-adoption-interruption-scope-invalid')
                 unit = Path('/etc/systemd/system') / ('xray.service' if profile == 'xray' else 'hysteria-server.service')
                 config = Path('/etc/xray/config.json' if profile == 'xray' else '/etc/hysteria/config.yaml')
-                result = subprocess.Popen(argv, env=env, stdout=output, stderr=subprocess.STDOUT,
-                                          start_new_session=True)
-                try:
+                with owned_orchestrator(argv, env=env, stdout=output,
+                                        stderr=subprocess.STDOUT) as (result, scope):
                     deadline = time.monotonic() + 180
                     while result.poll() is None and time.monotonic() < deadline:
                         if (state / 'pending.json').exists() and unit.exists() and config.exists():
-                            # Ansible starts its command in another session; kill
-                            # the actual descendant publisher, then its orchestrator.
+                            # Prove the actual publisher belongs to this invocation.
+                            # Its scope also owns module workers in separate sessions.
                             publisher = None
                             for entry in Path('/proc').iterdir():
                                 if not entry.name.isdigit():
@@ -320,18 +336,14 @@ server.serve_forever()
                                     continue
                             if publisher is None:
                                 raise RuntimeError('native-first-adoption-publisher-unconfirmed')
-                            os.killpg(result.pid, signal.SIGKILL)
-                            os.kill(publisher, signal.SIGKILL)
+                            command(['systemctl', 'kill', '--kill-whom=all',
+                                     '--signal=SIGKILL', scope])
                             result.wait(timeout=10)
                             if result.returncode != -signal.SIGKILL or (state / 'accepted.json').exists():
                                 raise RuntimeError('native-first-adoption-interruption-unconfirmed')
                             return result.returncode
                         time.sleep(0.01)
                     raise RuntimeError('native-first-adoption-selection-not-observed')
-                finally:
-                    if result.poll() is None:
-                        os.killpg(result.pid, signal.SIGKILL)
-                        result.wait(timeout=10)
             else:
                 result = subprocess.run(argv, env=env, stdout=output, stderr=subprocess.STDOUT, timeout=600)
         if result.returncode and not allow_failure:

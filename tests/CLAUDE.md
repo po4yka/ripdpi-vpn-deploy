@@ -14,6 +14,11 @@
 
 ## Design decisions
 
+Native interruption fixtures launch Ansible in a uniquely owned transient
+systemd scope. Module workers may create separate sessions, so process-group
+signals alone cannot reclaim the invocation. Real scope regressions cover
+normal launcher exit and SIGKILL while preserving a foreign worker.
+
 The complete XHTTP delivery matrix extends the endpoint target with real native
 Xray format consumption, distinct alternate TLS identity, primary outage,
 wrong-certificate refusal, bounded-pool comparisons, idle reuse,

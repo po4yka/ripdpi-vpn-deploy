@@ -38,6 +38,7 @@ SUITES = (
     (
         "compensation",
         [
+            "tests/native/transport_acceptance/test_orchestrator.py",
             "tests/unit/test_transport_runtime_acceptance_native.py",
             "tests/native/transport_acceptance/test_rotation.py",
         ],
