@@ -4,7 +4,6 @@ SSH/Ansible executables in the orchestration fixture record calls instead of
 contacting hosts. Separate parity cases use the installed Ansible locally.
 """
 
-import contextlib
 import ast
 import hashlib
 import json
@@ -166,6 +165,16 @@ def invoke(workspace, target="dry-run", limit="", context_pairs=None, command_ti
 def calls(workspace):
     path = workspace["calls"]
     return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+
+def finish_fixture_process(process, stop):
+    """Release synthetic workers without signalling recycled process groups."""
+    stop.touch()
+    try:
+        process.communicate(timeout=3)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.communicate(timeout=3)
 
 
 def network_exposure_override(workspace, *, mode="canary"):
@@ -1036,6 +1045,7 @@ def test_cert_precheck_temporary_keys_are_reclaimed_on_interruption(workspace, f
         "key_pem": "STUB_CERT_PRIVATE"}}))
     binary = Path(workspace["env"]["PATH"].split(os.pathsep)[0])
     record = root.parent / "cert-precheck.json"
+    stop = root.parent / "cert-precheck.stop"
     write(binary / "openssl", f"""#!{sys.executable}
 import json, os, pathlib, sys, time
 record = pathlib.Path({str(record)!r})
@@ -1043,7 +1053,9 @@ record.with_suffix('.tmp').write_text(json.dumps({{
     'cert': sys.argv[sys.argv.index('-in') + 1], 'group': os.getpgrp(),
     'private': str(pathlib.Path(os.environ['VPN_SECRETS_FILE']).parent)}}))
 record.with_suffix('.tmp').replace(record)
-time.sleep(60)
+deadline = time.monotonic() + 60
+while time.monotonic() < deadline and not pathlib.Path({str(stop)!r}).exists():
+    time.sleep(0.02)
 """, 0o700)
     set_contexts(workspace, "node-one")
     process = subprocess.Popen(["make", "dry-run", "ANSIBLE_LIMIT=node-one",
@@ -1072,14 +1084,7 @@ time.sleep(60)
         assert not Path(observed["private"]).exists(), "controller snapshots survived interruption"
         assert not cert.parent.exists(), "private certificate copies escaped controller cleanup"
     finally:
-        for group in {process.pid, *([observed["group"]] if observed else [])}:
-            assert group != os.getpgrp()
-            try:
-                os.killpg(group, signal.SIGKILL)
-            except ProcessLookupError:
-                # Production cancellation already reclaimed this owned group.
-                pass
-        process.communicate()
+        finish_fixture_process(process, stop)
         if observed:
             # A failing regression may leave its synthetic copies outside the
             # controller directory. Reclaim only this fixture's recorded bundle.
@@ -1231,13 +1236,21 @@ pathlib.Path({str(record)!r}).write_text(json.dumps({{'config': config, 'transpo
 def test_make_cancellation_reclaims_readiness_children(workspace, interrupt):
     binary = Path(workspace["env"]["PATH"].split(os.pathsep)[0])
     pids = workspace["root"].parent / "pids.json"
+    stop = workspace["root"].parent / "readiness.stop"
     write(binary / "ssh", f"""#!{sys.executable}
 import json, os, pathlib, subprocess, time
 child = subprocess.Popen(['sleep', '60'])
 record = pathlib.Path({str(pids)!r})
 record.with_suffix('.tmp').write_text(json.dumps([os.getpid(), child.pid]))
 record.with_suffix('.tmp').replace(record)
-time.sleep(60)
+try:
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline and not pathlib.Path({str(stop)!r}).exists():
+        time.sleep(0.02)
+finally:
+    if child.poll() is None:
+        child.kill()
+    child.wait(timeout=3)
 """, 0o700)
     set_contexts(workspace, "node-one")
     process = subprocess.Popen(["make", "dry-run", "ANSIBLE_LIMIT=node-one",
@@ -1262,11 +1275,7 @@ time.sleep(60)
             assert not result.stdout.strip() or result.stdout.strip().startswith("Z"), "readiness descendant escaped"
         assert not any(entry["program"] == "ansible-playbook" for entry in calls(workspace))
     finally:
-        for group in {process.pid, *(json.loads(pids.read_text())[:1] if pids.exists() else [])}:
-            assert group != os.getpgrp()
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(group, signal.SIGKILL)
-        process.communicate()
+        finish_fixture_process(process, stop)
 
 
 def install_local_ansible(workspace):

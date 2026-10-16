@@ -135,8 +135,10 @@ def materialize(client, o, **kwargs):
         DEADLINE = previous
 
 
-def _materialize(client, o, *, documents=None, source_paths=None, private_only=False, per_app_bypass='', per_app_via_tun='', extended=False):
+def _materialize(client, o, *, documents=None, source_paths=None, private_only=False, per_app_bypass='', per_app_via_tun='', extended=False, xhttp_only=False):
     validate_options(o)
+    if xhttp_only and (o['format'] != 'ripdpi' or extended):
+        raise ValueError('--xhttp-only requires --profile-format ripdpi')
     if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', client):
         raise ValueError('invalid-client')
     sources = source_paths if source_paths is not None else paths(o['hosts'])
@@ -162,7 +164,7 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
         if errors:
             raise ValueError('invalid-transport-input')
         vpn = c.get('vpn', {})
-        enabled = lambda key, default=False: vpn.get(key, default)
+        enabled = lambda key, default=False: vpn.get(key, default) and (not xhttp_only or key == 'enable_nginx_xhttp')
         awg_enabled |= enabled('enable_amneziawg')
         tag = provider + '-' + environment
         fp = o['utls'] or c.get('xray_utls_fingerprint', 'chrome')
@@ -211,11 +213,22 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
                             transport=dict(type='xhttp', host=server_name, path=x.get('xhttp_path', '/app-sync'))))
         if enabled('enable_hysteria'):
             hy = d['hysteria']
+            ech = hy.get('ech')
+            resource = hy.get('resource_profile', 'bandwidth-capped')
+            if ech and o['format'] != 'singbox':
+                raise ValueError('ECH requires the verified official sing-box engine; RIPDPI export is unsupported')
+            if resource != 'bandwidth-capped' and o['format'] != 'singbox':
+                raise ValueError('BBR resource profiles require the verified official sing-box engine; RIPDPI export is unsupported')
             matches = [v for v in hy.get('clients', []) if v['name'] == client]
             if len(matches) != 1:
                 raise ValueError('missing-selected-hysteria-client')
             hyout = dict(type='hysteria2', tag='p2-hysteria2-' + tag, server=ip, server_port=c.get('hysteria_port', 443),
-                         password=client + ':' + required_text(matches[0].get('password')), tls=dict(enabled=True, server_name=required_text(hy.get('server_name') or (d.get('nginx_xhttp') or {}).get('server_name'))))
+                         password=client + ':' + required_text(matches[0].get('password')), tls=dict(enabled=True, server_name=required_text(hy.get('server_name') or (ech or {}).get('inner_name') or (d.get('nginx_xhttp') or {}).get('server_name'))))
+            if ech:
+                hyout['tls']['ech'] = dict(enabled=True, config=[
+                    '-----BEGIN ECH CONFIGS-----', ech['config_list'], '-----END ECH CONFIGS-----'])
+            if resource != 'bandwidth-capped':
+                hyout['bbr_profile'] = resource.removeprefix('bbr-')
             extra = dict(insecure=False)
             if hy.get('salamander_enabled') and hy.get('salamander_password'):
                 hyout['obfs'] = dict(type='salamander', password=hy['salamander_password'])
@@ -286,16 +299,17 @@ def main():
     parser.add_argument('client')
     parser.add_argument('--profile-format', choices=['sing-box', 'ripdpi'], default='sing-box')
     parser.add_argument('--bundle', action='store_true')
+    parser.add_argument('--xhttp-only', action='store_true')
     parser.add_argument('--per-app-bypass', default='')
     parser.add_argument('--per-app-via-tun', default='')
     args = parser.parse_args()
     try:
         o = options('ripdpi' if args.bundle or args.profile_format == 'ripdpi' else 'singbox', expires=os.environ.get('BUNDLE_EXPIRES', ''))
-        payload, _ = materialize(args.client, o, per_app_bypass=args.per_app_bypass, per_app_via_tun=args.per_app_via_tun, extended=args.bundle)
+        payload, _ = materialize(args.client, o, per_app_bypass=args.per_app_bypass, per_app_via_tun=args.per_app_via_tun, extended=args.bundle, xhttp_only=args.xhttp_only)
         print(json.dumps(payload, indent=2))
         return 0
     except (OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError, StopIteration, subprocess.SubprocessError, yaml.YAMLError) as error:
-        safe = {'P0 REALITY finalmask requires an Xray client', 'conflicting vpn.hysteria_realm values across HOSTS', 'ambiguous-device-binding', 'missing-device-binding', 'plaintext secrets cannot be combined with SOPS_FILES', 'missing-snell-variant'}
+        safe = {'--xhttp-only requires --profile-format ripdpi', 'ECH requires the verified official sing-box engine; RIPDPI export is unsupported', 'BBR resource profiles require the verified official sing-box engine; RIPDPI export is unsupported', 'P0 REALITY finalmask requires an Xray client', 'conflicting vpn.hysteria_realm values across HOSTS', 'ambiguous-device-binding', 'missing-device-binding', 'plaintext secrets cannot be combined with SOPS_FILES', 'missing-snell-variant'}
         detail = str(error) if isinstance(error, ValueError) and str(error) in safe else ('plaintext secrets unavailable' if 'VPN_SECRETS_FILE' in os.environ else 'materialization refused')
         print('client-payload: ' + detail, file=__import__('sys').stderr)
         return 2

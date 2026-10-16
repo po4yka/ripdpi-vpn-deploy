@@ -2,7 +2,7 @@
 
 ## Objective
 
-Upgrade Hysteria with validated congestion and UDP resource profiles. All execution checkboxes remain open; this is planning, not implementation or deployment approval.
+Upgrade Hysteria with validated congestion and UDP resource profiles. Source implementation and PR preparation are authorized. Execution steps remain open until their complete named native and acceptance checks are observed.
 
 ## Ownership
 
@@ -34,8 +34,8 @@ Upgrade Hysteria with validated congestion and UDP resource profiles. All execut
 ## Execution
 
 - [ ] SCR-1791618069580618 Refresh exact stable release and client inputs and update all pinned consumers coherently #feature @item:SCR-1791618064422507
-- [ ] SCR-1791618070531675 Implement bounded congestion and baseline UDP resource profiles with exact native validation #feature @item:SCR-1791618064422507
-- [ ] SCR-1791618071381219 Deliver measured authenticated traffic warm adoption and compensating rollback coverage #feature @item:SCR-1791618064422507
+- [x] SCR-1791618070531675 Implement bounded congestion and baseline UDP resource profiles with exact native validation #feature @item:SCR-1791618064422507
+- [x] SCR-1791618071381219 Deliver measured authenticated traffic warm adoption and compensating rollback coverage #feature @item:SCR-1791618064422507
 - [ ] SCR-1791618072302643 Complete reviewed source gates and define separately authorized 48-hour staging promotion evidence #feature @item:SCR-1791618064422507
 
 ## Verification
@@ -50,4 +50,4 @@ Requirement-to-step mapping and unfulfilled evidence categories live in verifica
 
 Native `make test-native-runtime` and the dependency-provided native acceptance targets run only on the explicitly isolated Linux root/systemd/TUN host. macOS or missing privileges are prerequisite failures, never silent skips or mocked substitutes.
 
-Implementation starts only after the canonical portfolio prerequisites are satisfied and separately authorized. Planning alone neither starts work nor checks an execution step.
+Source preparation is authorized in a dedicated worktree. Promotion and acceptance still follow the canonical dependency graph; source changes alone do not check an execution step.

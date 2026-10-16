@@ -2,6 +2,12 @@
 
 ## Design decisions
 
+ECH candidate admission selects the exact `LoadCredential=hysteria-ech:` source from the staged unit, including custom configuration directories. Missing, ambiguous, relative or unselected credential authority refuses before native execution.
+
+Hysteria ECH keys are complete consumer authority. Candidate leases allow only the exact additional ech.key file and relocate LoadCredential into their own unique unit. Receipt, interrupted cleanup, retirement and rollback retain the same key/config/unit generation. Native probes consume public configuration derived from the selected private key and never enable insecure TLS.
+ECH probes use the semantic companion installed with the controller before candidate admission. They do not load the frontend validator's still-accepted older companion. An isolated-interpreter regression exercises this layout with a stale frontend helper.
+The probe resolves that prepared companion by exact path because inline Ansible execution does not add the installed directory to Python's import path. Both ordinary import and inline execution have isolated regressions.
+
 `TrustedDirectory` owns directory traversal: transactions retain its scopes with
 `ExitStack.enter_context` until publication and compensation finish. Borrowed
 parent descriptors stay open for the whole transaction; callers never close them.

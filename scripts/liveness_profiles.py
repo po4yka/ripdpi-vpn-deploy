@@ -99,10 +99,10 @@ def _outbounds(document, profile):
     return selected
 
 
-def _tls(outbound, reality=False):
+def _tls(outbound, reality=False, allow_ech=False):
     tls = outbound.get("tls")
     if (not isinstance(tls, dict) or tls.get("enabled") is not True or tls.get("insecure", False) is not False
-            or set(tls) - {"enabled", "server_name", "insecure", "utls", "reality"}):
+            or set(tls) - {"enabled", "server_name", "insecure", "utls", "reality", "ech"}):
         raise ProfileError("invalid-profile-tls")
     result = {"server_name": _host(tls.get("server_name")), "enabled": True}
     if "utls" in tls:
@@ -111,6 +111,8 @@ def _tls(outbound, reality=False):
                 or set(utls) != {"enabled", "fingerprint"} or not NAME.fullmatch(_text(utls.get("fingerprint")))):
             raise ProfileError("invalid-profile-tls")
         result["fingerprint"] = utls["fingerprint"]
+    if not allow_ech and "ech" in tls:
+        raise ProfileError("invalid-profile-tls")
     if not reality and "reality" in tls:
         raise ProfileError("invalid-profile-tls")
     return result
@@ -118,6 +120,16 @@ def _tls(outbound, reality=False):
 
 def _hysteria_options(outbound, secrets):
     public = {}
+    ech = secrets.get('ech')
+    expected_ech = {'enabled': True, 'config': ['-----BEGIN ECH CONFIGS-----', ech['config_list'], '-----END ECH CONFIGS-----']} if ech else None
+    if outbound['tls'].get('ech') != expected_ech:
+        raise ProfileError('wrong-hysteria-ech-generation')
+    resource = secrets.get('resource_profile', 'bandwidth-capped')
+    expected_bbr = resource.removeprefix('bbr-') if resource != 'bandwidth-capped' else None
+    if outbound.get('bbr_profile') != expected_bbr:
+        raise ProfileError('wrong-hysteria-resource-profile')
+    if ech:
+        public['ech_generation'] = ech['generation']
     if secrets.get("salamander_enabled", False):
         expected = {"type": "salamander", "password": _text(secrets.get("salamander_password"))}
         if outbound.get("obfs") != expected:
@@ -220,11 +232,11 @@ def build_profiles(standard_doc, ripdpi_doc, secrets_doc, client, required_profi
         for index, original in enumerate(selected, 1):
             outbound = copy.deepcopy(original)
             allowed = {"type", "tag", "server", "server_port", "tls"}
-            allowed |= {"password", "obfs", "server_ports", "hop_interval"} if profile == "p2-hysteria2" else {"uuid", "flow", "multiplex", "transport"}
+            allowed |= {"password", "obfs", "server_ports", "hop_interval", "bbr_profile"} if profile == "p2-hysteria2" else {"uuid", "flow", "multiplex", "transport"}
             if set(outbound) - allowed:
                 raise ProfileError("unsupported-outbound-field")
             server, port = _host(outbound.get("server")), _port(outbound.get("server_port"))
-            tls = _tls(outbound, reality=profile == "p0-reality")
+            tls = _tls(outbound, reality=profile == "p0-reality", allow_ech=profile == "p2-hysteria2")
             if profile == "p0-reality":
                 server_names = secrets_doc["xray"].get("server_names")
                 if not isinstance(server_names, list) or not server_names:
@@ -235,8 +247,9 @@ def build_profiles(standard_doc, ripdpi_doc, secrets_doc, client, required_profi
                 if not isinstance(frontend, dict):
                     raise ProfileError("missing-frontend-sni")
                 expected_sni = frontend.get("server_name")
-                if profile == "p2-hysteria2" and secrets_doc["hysteria"].get("server_name") is not None:
-                    expected_sni = secrets_doc["hysteria"]["server_name"]
+                if profile == "p2-hysteria2":
+                    hysteria = secrets_doc["hysteria"]
+                    expected_sni = hysteria.get("server_name", hysteria.get("ech", {}).get("inner_name", expected_sni))
             if tls["server_name"] != _host(expected_sni):
                 raise ProfileError("wrong-server-sni")
             metadata = {"profile": profile, "variant": index, "server": server, "port": port, "tls": tls}

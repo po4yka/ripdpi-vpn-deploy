@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+Molecule upgrades the previous stable fixture to the selected 2.13.0 runtime and checks its actual version, accepted service and both immutable release receipts. Keep download labels and post-upgrade assertions aligned.
+
+ECH-required profiles bind the exact 2.13.0 runtime, owned inner identity and explicit outer name to a public SHA256 generation. The root-only ech.key enters the complete guarded transaction and LoadCredential; disabling ECH contributes exact absence authority. Candidate namespaces relocate the credential and prove a real ECH handshake. Resource profiles select fixed receive windows and explicit BBR settings; unsupported engines refuse before export.
+Changed Hysteria authority opens the whole-route recovery boundary even when normalizer/gateway configuration is unchanged. ECH-only rotations must therefore retain site compensation; unchanged convergence does not open or quiesce that boundary.
+
 - Matching node-local masquerade origins use a typed private hosts file bound read-only into this service. It maps the owned Nginx hostname to the provider IPv4 address only while that local frontend is enabled. External owned origins retain ordinary NSS. The file participates in guarded comparison, quiescence, publication and accepted rollback; global `/etc/hosts` is untouched.
 
 - Site staging defers frontend rescue to the protected site transaction, which restores matching ingress before accepted frontend recovery. Standalone role reconciliation keeps its own guarded rollback.
@@ -70,9 +75,9 @@ The staged runtime-release include returns generic `runtime_release_candidates`;
 
 - **UDP/443 is heavily policed in RU** — some carriers QUIC-throttle on UDP/443
   but not UDP/8443. Have `--port` flexibility ready; don't assume 443.
-- **UDP buffer sizes are not tuned** — no role sets `net.core.rmem_max` or
-  `wmem_max`; if Hysteria shows receive-buffer drops, add the tuning to
-  baseline's sysctl template rather than to this role.
+- **UDP ceilings belong to baseline** — its bounded `rmem_max`/`wmem_max` inputs
+  are optional performance settings. Observe effective values and receive drops;
+  a rendered value alone does not prove that the kernel applied it.
 - **systemd unit `LimitNOFILE` matters** — default 1024 caps concurrent
   flows. The unit template sets `LimitNOFILE=1048576`.
 - **No JSON API surface** — Hysteria's optional traffic API would be a

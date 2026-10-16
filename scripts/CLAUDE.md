@@ -14,6 +14,22 @@ lightweight/peeled annotated upstream refs before accepting cached bundles.
 Runtime execution has no external network
 or published ports; compilation belongs under the machine-wide build gate.
 
+ECH and BBR recipient fields are materialized in the shared Python payload path used by both delivery and drift inspection. The internal XHTTP-only selection retains semantic admission and is refused by bundle export.
+
+Bootstrap registers plaintext cleanup before creating an exclusive private temporary document; ECH refusal, encryption failure and signal exits remove only that invocation's staging file. Existing operator plaintext remains intact. RIPDPI bundle export rejects the internal `--xhttp-only` monitoring flag before invoking any producer or reading secrets.
+
+ECH recipients and liveness derive their default TLS identity from the declared inner name, independently of the nginx frontend hostname. An explicit Hysteria server_name must agree through semantic admission.
+
+BBR resource profiles, like ECH, target the qualified official sing-box recipient. Unqualified RIPDPI export refuses before output; paired XHTTP monitoring requests only its explicit Xray intermediate.
+
+Release eligibility evaluates high/critical advisories against the exact selected version and repository-owned module ranges. Historical fixed ranges may clear; unknown modules, missing ranges or unsupported syntax keep promotion blocked.
+
+Bound bandwidth scalar length before integer conversion, so oversized numeric inputs refuse categorically within the supported 1 Gbps policy.
+
+Hysteria release acquisition and ECH generation share scripts/hysteria-runtimes.json. These deployment-only pins are outside the client-mirrored contract directory.
+
+Generator acquisition rejects nonregular sources through a bounded nonblocking descriptor before bytes are trusted. ECH issuance uses the exact checksum-verified Hysteria generator and encrypted_client_document publication lock. Only public generation identity reaches stdout. The supported ECH recipient is official sing-box 1.14.3; RIPDPI bundle export refuses the profile until its real consumer is qualified. Liveness retains exact public ECH material and refuses a different or stripped generation.
+
 Federation reads the peer's own committed `taskctl export --json` contract;
 it never parses another project's portfolio through this project's schema.
 The shared graph validator checks exact identity, revision, contract hash,

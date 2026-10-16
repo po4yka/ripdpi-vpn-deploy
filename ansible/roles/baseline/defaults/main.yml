@@ -1,3 +1,7 @@
 ---
 # Additional accounts are admitted only through the recoverable SSH controller.
 baseline_ssh_extra_allowed_users: []
+
+# Per-socket UDP ceilings; bounded independently from TCP congestion control.
+baseline_udp_receive_buffer_max: 7500000
+baseline_udp_send_buffer_max: 7500000

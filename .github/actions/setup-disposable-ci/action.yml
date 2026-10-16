@@ -22,8 +22,8 @@ runs:
     - name: Install verified deployment clients
       shell: bash
       env:
-        SING_BOX_VERSION: "1.13.16"
-        SING_BOX_SHA256: e37c312859dfa84cba148f41072ff6369f08361ae91d622dc1fd3aab49611a8d
+        SING_BOX_VERSION: "1.14.3"
+        SING_BOX_SHA256: e2bdf179c15a3652955dc44867e33ca0965c9c9b91b34267dcc5a5d639a5feee
         TAILSCALE_VERSION: "1.102.3"
         TAILSCALE_SHA256: 36ddd9b51be57ffc2990cf76323cfa13643bfbb1b8a969f6183fa164741cdef5
         CONFTEST_VERSION: "0.57.0"
@@ -38,7 +38,12 @@ runs:
           -o "$work/sing-box.tar.gz"
         echo "${SING_BOX_SHA256}  $work/sing-box.tar.gz" | sha256sum -c -
         tar -xzf "$work/sing-box.tar.gz" -C "$work"
-        sudo install -m 0755 "$work/sing-box-${SING_BOX_VERSION}-linux-amd64/sing-box" /usr/local/bin/sing-box
+        python3 scripts/check-singbox-client-compatibility.py \
+          --expected-version "$SING_BOX_VERSION" --binary "$work/sing-box-${SING_BOX_VERSION}-linux-amd64/sing-box"
+        stage="$(sudo mktemp -d /usr/local/bin/.sing-box.XXXXXXXX)"
+        trap 'sudo rm -rf -- "$stage"; rm -rf -- "$work"' EXIT
+        sudo install -m 0755 "$work/sing-box-${SING_BOX_VERSION}-linux-amd64/sing-box" "$stage/sing-box"
+        sudo mv -T "$stage/sing-box" /usr/local/bin/sing-box
         curl -fsSL --connect-timeout 10 --max-time 120 \
           "https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_amd64.tgz" -o "$work/tailscale.tgz"
         echo "${TAILSCALE_SHA256}  $work/tailscale.tgz" | sha256sum -c -

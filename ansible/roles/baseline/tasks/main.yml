@@ -2,6 +2,18 @@
 # Baseline OS hardening: distro packages, sshd hardening, sysctl tuning,
 # timesync. Runs on every VPS as the first role in site.yml.
 
+- name: Validate bounded UDP socket ceilings before host changes
+  ansible.builtin.assert:
+    that:
+      - baseline_udp_receive_buffer_max is integer
+      - baseline_udp_send_buffer_max is integer
+      - baseline_udp_receive_buffer_max | int >= 1048576
+      - baseline_udp_receive_buffer_max | int <= 67108864
+      - baseline_udp_send_buffer_max | int >= 1048576
+      - baseline_udp_send_buffer_max | int <= 67108864
+    fail_msg: UDP socket ceilings must be integers between 1 MiB and 64 MiB.
+  tags: [always]
+
 - name: Install baseline packages
   ansible.builtin.apt:
     name:

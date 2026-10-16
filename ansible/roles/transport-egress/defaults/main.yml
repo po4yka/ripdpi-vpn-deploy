@@ -39,6 +39,7 @@ transport_egress_snapshot_paths:
   - /etc/hysteria/masquerade-hosts
   - /etc/hysteria/server.fullchain.pem
   - /etc/hysteria/server.key
+  - /etc/hysteria/ech.key
   - /usr/local/libexec/vpn-xray-validate
   - /usr/local/libexec/ripdpi-transport-egress/transport_egress_normalizer.py
   - /usr/local/libexec/ripdpi-transport-egress/transport_socks.py

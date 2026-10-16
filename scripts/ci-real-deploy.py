@@ -96,7 +96,7 @@ def promotion_intent(work, config, profile, environment, alias, address, digest)
     target = {"inventory_alias": alias, "public_service_address_sha256": hashlib.sha256(address.encode()).hexdigest(),
               "deployable_digest": digest}
     required = CI_PROFILES["ci-" + profile]
-    runtime = {"sing_box": "1.13.16"}
+    runtime = {"sing_box": "1.14.3"}
     if "p1-xhttp" in required:
         runtime["xray"] = "26.3.27"
     liveness = {"schema_version": 2, "probe_url": config["probe_url"], "expected_status": 204,

@@ -1,7 +1,11 @@
 """Consumer contract for Hysteria's shared runtime-release activation."""
 
 from pathlib import Path
+import os
+import subprocess
+import sys
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -19,6 +23,37 @@ SIDE_EFFECT = (
 MOLECULE = (
     ROOT / "ansible" / "roles" / "hysteria" / "molecule" / "default" / "molecule.yml"
 )
+
+
+@pytest.mark.parametrize('changed,check', [(True, False), (False, False), (True, True)])
+def test_ech_only_changes_retain_outer_recovery_and_unchanged_retry_stays_idle(tmp_path, changed, check):
+    tasks = yaml.safe_load(ROLE_TASKS.read_text())
+    detection = next(task for task in tasks if task['name'] == 'Detect Hysteria ECH authority change without publication')
+    assert detection['register'] == '_hysteria_ech_change'
+    boundary = next(task for task in tasks if task['name'] == 'Retain whole-route recovery for changed Hysteria authority')
+    stage = next(task for task in tasks if task['name'] == 'Stage complete Hysteria authority for guarded consumer acceptance')
+    assert tasks.index(detection) < tasks.index(boundary) < tasks.index(stage)
+    role = tmp_path / 'roles/transport-egress/tasks'
+    role.mkdir(parents=True)
+    marker = tmp_path / 'outer-owner-requested'
+    (role / 'begin.yml').write_text(yaml.safe_dump([{
+        'name': 'Observe the requested whole-route owner',
+        'ansible.builtin.copy': {'dest': str(marker), 'content': 'requested', 'mode': '0600'}}]))
+    variables = {name: {'changed': False} for name in (
+        '_hysteria_frontend_change', '_hysteria_hosts_change', '_hysteria_tls_change',
+        '_hysteria_ech_change', '_hysteria_validator_change')}
+    variables['_hysteria_ech_change']['changed'] = changed
+    variables['ansible_python_interpreter'] = sys.executable
+    play = tmp_path / 'boundary.yml'
+    play.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local',
+        'gather_facts': False, 'become': False, 'vars': variables, 'tasks': [boundary]}]))
+    result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(play), *(['--check'] if check else [])],
+        env={**os.environ, 'ANSIBLE_CONFIG': str(ROOT / 'ansible/ansible.cfg'),
+             'ANSIBLE_ROLES_PATH': str(tmp_path / 'roles')}, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
+    expected = changed and not check
+    assert marker.exists() is expected
+    assert ('Observe the requested whole-route owner' in result.stdout) is expected
 
 
 def test_hysteria_delegates_pinned_binary_activation_to_runtime_release() -> None:
@@ -74,12 +109,12 @@ def test_hysteria_molecule_uses_verified_local_artifacts() -> None:
     upgraded = yaml.safe_load(VERIFY.read_text())[0]
     override = next(task['vars']['hysteria'] for task in upgraded['tasks']
                     if task['name'] == 'Upgrade Hysteria through runtime-release')
-    assert override['version'] == 'v2.9.0'
+    assert override['version'] == 'v2.13.0'
     for architecture in ('amd64', 'arm64'):
         suffix = '-arm64' if architecture == 'arm64' else ''
-        artifact = artifacts['/var/tmp/hysteria-molecule/hysteria-v2.9.0'+suffix]
+        artifact = artifacts['/var/tmp/hysteria-molecule/hysteria-v2.13.0'+suffix]
         assert artifact['checksum'] == 'sha256:'+override['linux_'+architecture+'_sha256']
-        assert artifact['url'].endswith('/app/v2.9.0/hysteria-linux-'+architecture)
+        assert artifact['url'].endswith('/app/v2.13.0/hysteria-linux-'+architecture)
     assert not any('content' in task.get('ansible.builtin.copy', {}) for task in converge['pre_tasks'])
 
 
@@ -143,14 +178,14 @@ def test_hysteria_molecule_runs_check_mode_in_a_global_ansible_process() -> None
     )
     assert include["ansible.builtin.include_role"]["name"] == "hysteria"
     variables = check_mode["vars"]
-    assert variables["hysteria"]["version"] == "v2.9.0"
-    assert variables["hysteria_release_urls"]["amd64"].endswith("hysteria-v2.9.0")
-    assert variables["hysteria_release_urls"]["arm64"].endswith("hysteria-v2.9.0-arm64")
+    assert variables["hysteria"]["version"] == "v2.13.0"
+    assert variables["hysteria_release_urls"]["amd64"].endswith("hysteria-v2.13.0")
+    assert variables["hysteria_release_urls"]["arm64"].endswith("hysteria-v2.13.0-arm64")
     assert variables["hysteria"]["linux_amd64_sha256"] == (
-        "8225c8380f1ae8122921d4986c2b70976e9c6e6f87a977e7d0498a813f4f3e37"
+        "907ba8c9693edb104b20582681fb7dc15639d5b64a9cbb616a7b539190a86691"
     )
     assert variables["hysteria"]["linux_arm64_sha256"] == (
-        "a3ccc0a3e791b85710ef63d22304a6f7dea210259be71bcd70cf9a210a385454"
+        "a68a61a84452ca250ce0368202521965ca9cc9d801a404f1dc9008ac6cf677a7"
     )
     state_assertion = next(
         task
@@ -169,4 +204,4 @@ def test_hysteria_molecule_runs_check_mode_in_a_global_ansible_process() -> None
                  for task in converge['pre_tasks'] if 'ansible.builtin.get_url' in task}
     for architecture in ('amd64', 'arm64'):
         suffix = '-arm64' if architecture == 'arm64' else ''
-        assert artifacts['/var/tmp/hysteria-molecule/hysteria-v2.9.0'+suffix]['checksum'] == 'sha256:'+variables['hysteria']['linux_'+architecture+'_sha256']
+        assert artifacts['/var/tmp/hysteria-molecule/hysteria-v2.13.0'+suffix]['checksum'] == 'sha256:'+variables['hysteria']['linux_'+architecture+'_sha256']

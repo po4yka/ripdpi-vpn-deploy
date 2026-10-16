@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+ECH smoke clients use the declared inner identity even when the nginx frontend has a different hostname; certificate verification stays enabled.
+
 AWG device source claims are typed by family. The firewall and standalone AWG
 role admit the exact IPv6-capable uplink before their runtime mutations; network
 routing remains operator/provider authority. AWG candidates retain whole prior

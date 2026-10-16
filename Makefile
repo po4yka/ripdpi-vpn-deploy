@@ -7,6 +7,22 @@ endif
 .PHONY: workspace-status
 workspace-status:
 	@python3 scripts/workspace-status.py
+else ifneq ($(filter issue-hysteria-ech,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error ECH issuance requires exactly one make goal)
+endif
+override HYSTERIA_ECH_SOPS_LITERAL := $(value SOPS_FILE)
+override HYSTERIA_ECH_BINARY_LITERAL := $(value HYSTERIA_BINARY)
+override HYSTERIA_ECH_PUBLIC_LITERAL := $(value HYSTERIA_ECH_PUBLIC_NAME)
+override HYSTERIA_ECH_INNER_LITERAL := $(value HYSTERIA_ECH_INNER_NAME)
+export HYSTERIA_ECH_SOPS_LITERAL HYSTERIA_ECH_BINARY_LITERAL HYSTERIA_ECH_PUBLIC_LITERAL HYSTERIA_ECH_INNER_LITERAL
+unexport SOPS_FILE HYSTERIA_BINARY HYSTERIA_ECH_PUBLIC_NAME HYSTERIA_ECH_INNER_NAME MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+.PHONY: issue-hysteria-ech
+issue-hysteria-ech:
+	@SOPS_FILE="$${HYSTERIA_ECH_SOPS_LITERAL}" HYSTERIA_BINARY="$${HYSTERIA_ECH_BINARY_LITERAL}" \
+	  HYSTERIA_ECH_PUBLIC_NAME="$${HYSTERIA_ECH_PUBLIC_LITERAL}" HYSTERIA_ECH_INNER_NAME="$${HYSTERIA_ECH_INNER_LITERAL}" \
+	  python3 scripts/hysteria_ech.py
 else ifneq ($(filter awg-issue awg-revoke,$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error AWG device operations require exactly one make goal)
@@ -1192,6 +1208,7 @@ test-native-runtime:
 	  --ignore=tests/unit/test_transport_runtime_acceptance_native.py \
 	  --ignore=tests/unit/test_xhttp_endpoint_contract_native.py \
 	  --ignore=tests/unit/test_awg_device_binding_native.py \
+	  --ignore=tests/unit/test_hysteria_ech_native.py \
 	  --ignore=tests/unit/test_awg_dualstack_native.py \
 	  --ignore=tests/unit/test_awg_activation_native.py --fail-on-skip -v
 
@@ -1335,7 +1352,7 @@ task-federation:
 # tooling is a failure rather than a misleading green gate.
 .PHONY: liveness-profile-check
 liveness-profile-check:
-	python3 scripts/check-liveness-profile-compatibility.py --sing-box-version 1.13.16 --xray-version 26.3.27
+	python3 scripts/check-liveness-profile-compatibility.py --sing-box-version 1.14.3 --xray-version 26.3.27
 
 ci-fast:
 	@$(MAKE) test-probe-matrix-mtproto
@@ -1859,3 +1876,9 @@ tf-policy:
 	done
 	conftest verify --rego-version v0 -p terraform/policy/
 endif
+
+.PHONY: test-hysteria-ech-runtime test-hysteria-resource-profiles
+test-hysteria-ech-runtime test-hysteria-resource-profiles:
+	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 && test "$${TRANSPORT_NATIVE_ISOLATED:-}" = 1 || { echo "Hysteria acceptance requires an owned isolated Linux root environment" >&2; exit 1; }
+	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest \
+	  tests/unit/test_hysteria_ech_native.py --fail-on-skip -v -s
