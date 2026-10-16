@@ -61,7 +61,7 @@ def publish(stack, *, invalid=False):
     ], input=json.dumps(document), capture_output=True, text=True, timeout=70)
 
 
-def exported_outbound(stack):
+def exported_outbound(stack, endpoint="primary", *, native=False):
     """Synthetic provider metadata is input only; emission and client execution are real."""
     profile = ROOT / "ansible/group_vars" / ("vpn-" + stack.token + ".yml")
     metadata = ROOT / "tests/fixtures/tf-output-sample.json"
@@ -75,6 +75,8 @@ def exported_outbound(stack):
             "vpn": {"enable_xray_reality": False, "enable_nginx_xhttp": True, "enable_hysteria": False,
                     "enable_amneziawg": False, "enable_snell": False, "enable_naive": False},
             "nginx_xhttp_public_port": stack.values["nginx_xhttp_public_port"],
+            "nginx_xhttp_fallback_port": stack.values["nginx_xhttp_fallback_port"],
+            "nginx_xhttp": {"fallback_enabled": stack.values["nginx_xhttp"].get("fallback_enabled", False)},
         }))
         selected = json.loads(previous)
         selected["server_ipv4"]["value"] = "192.0.2.90"
@@ -89,17 +91,22 @@ def exported_outbound(stack):
         assert unsupported.returncode != 0 and not unsupported.stdout
         assert stack.uuid not in unsupported.stderr
         result = subprocess.run(["bash", str(ROOT / "scripts/emit-singbox.sh"), "native-device",
-                                 "--profile-format", "ripdpi"], env=environment, capture_output=True,
+                                 "--profile-format", "xray" if native else "ripdpi"], env=environment, capture_output=True,
                                 text=True, timeout=30)
         assert result.returncode == 0, "canonical selected-client emission failed"
         emitted = json.loads(result.stdout)
+        if native:
+            return next(v for v in emitted["outbounds"] if v.get("protocol") == "vless"
+                        and v["tag"].endswith(":alternate") == (endpoint == "alternate"))
         def no_key(_):
             raise AssertionError("unused AWG material was requested")
         profiles = build_profiles(None, emitted, document, "native-device", ["p1-xhttp"], None,
                                   None, None, no_key, str(stack.library), awg_defaults={}, awg_cohort={})
-        outbound = profiles["files"]["xray.json"]["outbounds"][0]
+        outbounds = profiles["files"]["xray.json"]["outbounds"]
+        outbound = next(v for v in outbounds if v["tag"].endswith(":alternate") == (endpoint == "alternate"))
         server = outbound["settings"]["vnext"][0]
-        assert server["address"] == "192.0.2.90" and server["port"] == stack.values["nginx_xhttp_public_port"]
+        assert server["address"] == "192.0.2.90" and server["port"] == stack.values[
+            "nginx_xhttp_fallback_port" if endpoint == "alternate" else "nginx_xhttp_public_port"]
         assert server["users"] == [{"id": stack.uuid, "encryption": "none"}]
         return outbound
     finally:
@@ -182,3 +189,149 @@ def test_pinned_endpoints_preserve_peer_origin_privacy_and_rejected_candidate(pr
         stack.close()
         if publication.exists():
             shutil.rmtree(publication)
+
+
+@pytest.mark.parametrize("mode", ["auto", "stream-up"])
+def test_exported_distinct_alternate_survives_primary_outage_and_rejects_wrong_tls(mode):
+    import copy
+    assert sys.platform == "linux" and os.geteuid() == 0 and os.environ.get("TRANSPORT_NATIVE_ISOLATED") == "1"
+    stack = fixture.NativeStack()
+    try:
+        stack.start()
+        stack.start_frontend("p1", fallback=True, fallback_hostname="alternate.example", xhttp_mode=mode)
+        primary = exported_outbound(stack)
+        alternate = exported_outbound(stack, "alternate")
+        assert alternate["streamSettings"]["tlsSettings"]["serverName"] == "alternate.example"
+        assert alternate["streamSettings"]["xhttpSettings"]["mode"] == mode
+        client = stack.start_client("p1", outbound=primary)
+        other = stack.start_client("p1", outbound=alternate)
+        time.sleep(.5)
+        stack.run_driver(client)
+        stack.run_driver(other)
+        bad = copy.deepcopy(alternate)
+        bad["streamSettings"]["tlsSettings"]["serverName"] = "unowned.example"
+        wrong_tls = stack.start_client("p1", outbound=bad)
+        time.sleep(.5)
+        stack.run_driver(wrong_tls, True)
+        rule = "table inet xhttp_outage {\n chain output {\n type filter hook output priority -100;\n tcp dport 8443 reject;\n }\n}\n"
+        result = subprocess.run(["ip", "netns", "exec", stack.namespace, "nft", "-f", "-"],
+                                input=rule, capture_output=True, text=True, timeout=5)
+        assert result.returncode == 0, "owned primary fault could not be installed"
+        stack.run_driver(client, True)
+        stack.run_driver(other)
+        fixture.command(["ip", "netns", "exec", stack.namespace, "nft", "delete", "table", "inet", "xhttp_outage"])
+        stack.run_driver(client)
+    finally:
+        stack.close()
+
+
+def measurement(stack, client):
+    # Unit startup acknowledgement precedes SOCKS bind. Admission is outside the
+    # measured transfer; no authenticated request is retried or discarded.
+    deadline = time.monotonic() + 5
+    while not fixture.command(['ip', 'netns', 'exec', stack.namespace, 'ss', '-Hntl',
+                               'sport', '=', str(client)]).strip():
+        assert time.monotonic() < deadline, 'owned client listener did not become ready'
+        time.sleep(.05)
+    raw = fixture.command(['ip', 'netns', 'exec', stack.namespace, sys.executable,
+                           str(ROOT / 'tests/integration/xhttp_delivery_matrix/measure.py'), str(client)], timeout=60)
+    result = json.loads(raw)
+    assert result['bytes_each_direction'] == 1048576
+    assert result['mib_per_second'] >= .02 and result['latency_ms'] <= 2000
+    return result
+
+
+def client_resources(stack, unit, port):
+    pid = int(fixture.command(['systemctl', 'show', unit, '--property=MainPID', '--value']).strip())
+    status = (Path('/proc') / str(pid) / 'status').read_text()
+    rss = int(re.search(r'^VmRSS:\s+(\d+)', status, re.M)[1])
+    connections = fixture.command(['ip', 'netns', 'exec', stack.namespace, 'ss', '-Hnt', 'state', 'established',
+                                   '(', 'dport', '=', str(port), ')']).splitlines()
+    return dict(rss_kib=rss, connections=len(connections))
+
+
+@pytest.mark.parametrize('connections', [1, 2, 4])
+def test_exact_native_format_compares_bounded_pool_idle_reconnect_and_restoration(connections):
+    mode = 'stream-up'
+    assert sys.platform == 'linux' and os.geteuid() == 0 and os.environ.get('TRANSPORT_NATIVE_ISOLATED') == '1'
+    stack = fixture.NativeStack()
+    try:
+        stack.start()
+        stack.start_frontend('p1', fallback=True, fallback_hostname='alternate.example', xhttp_mode=mode)
+        baseline = exported_outbound(stack, native=True)
+        baseline_client = stack.start_client('p1', outbound=baseline)
+        baseline_unit = stack.units[-1]
+        time.sleep(.5)
+        stack.run_driver(baseline_client)
+        baseline_measurement = measurement(stack, baseline_client)
+        baseline_resources = client_resources(stack, baseline_unit, 8443)
+        # Stop only the fixture-owned baseline client before measuring the candidate.
+        fixture.command(['systemctl', 'stop', baseline_unit])
+        stack.values['xray']['xhttp_tuning'] = dict(profile='bounded-pool', max_connections=connections)
+        candidate = exported_outbound(stack, 'alternate', native=True)
+        assert candidate['streamSettings']['xhttpSettings']['xmux'] == dict(
+            maxConnections=connections, hMaxRequestTimes=0, hMaxReusableSecs=0, cMaxReuseTimes=0)
+        candidate_client = stack.start_client('p1', outbound=candidate)
+        candidate_unit = stack.units[-1]
+        time.sleep(.5)
+        stack.run_driver(candidate_client)
+        measured = measurement(stack, candidate_client)
+        time.sleep(3)  # An idle pool must deliver without replacing the process.
+        idle = measurement(stack, candidate_client)
+        # Delay only this disconnected namespace. Both profiles see the same fault.
+        fixture.command(['ip', 'netns', 'exec', stack.namespace, 'tc', 'qdisc', 'add', 'dev', 'lo', 'root',
+                         'netem', 'delay', '2ms', 'rate', '20mbit'])
+        constrained = measurement(stack, candidate_client)
+        fixture.command(['systemctl', 'start', baseline_unit])
+        constrained_baseline = measurement(stack, baseline_client)
+        fixture.command(['systemctl', 'stop', baseline_unit])
+        fixture.command(['ip', 'netns', 'exec', stack.namespace, 'tc', 'qdisc', 'del', 'dev', 'lo', 'root'])
+        resources = client_resources(stack, candidate_unit, 2083)
+        assert resources['rss_kib'] <= 262144 and resources['connections'] <= connections
+        assert measured['mib_per_second'] >= baseline_measurement['mib_per_second'] * .1
+        assert constrained['mib_per_second'] >= constrained_baseline['mib_per_second'] * .1
+        fixture.command(['systemctl', 'restart', candidate_unit])
+        time.sleep(.5)
+        reconnect = measurement(stack, candidate_client)
+        # Real candidate parser refusal preserves the accepted baseline file.
+        accepted = stack.library / 'frontend.json'
+        before = accepted.read_bytes()
+        invalid = json.loads(before)
+        next(v for v in invalid['inbounds'] if v['tag'] == 'vless-xhttp-localhost')[
+            'streamSettings']['xhttpSettings']['mode'] = 'unaccepted-mode'
+        rejected = stack.file('rejected-tuning.json', json.dumps(invalid), 'x')
+        result = subprocess.run([stack.xray, 'run', '-test', '-config', str(rejected)],
+                                capture_output=True, text=True, timeout=10,
+                                env={**os.environ, 'XRAY_LOCATION_ASSET': str(stack.assets)})
+        assert result.returncode != 0 and accepted.read_bytes() == before
+        fixture.command(['systemctl', 'stop', candidate_unit])
+        stack.values['xray'].pop('xhttp_tuning')
+        assert exported_outbound(stack, native=True) == baseline
+        fixture.command(['systemctl', 'start', baseline_unit])
+        time.sleep(.5)
+        stack.run_driver(baseline_client)
+        restored = measurement(stack, baseline_client)
+        # Only technical aggregate observations are emitted, never profiles or credentials.
+        print(json.dumps(dict(mode=mode, configured_connections=connections, baseline=baseline_measurement, candidate=measured,
+                              baseline_resources=baseline_resources, candidate_resources=resources,
+                              idle=idle, constrained=constrained, constrained_baseline=constrained_baseline,
+                              reconnect=reconnect, restored=restored), sort_keys=True))
+    finally:
+        stack.close()
+
+
+@pytest.mark.parametrize('mode', ['auto', 'packet-up', 'stream-up'])
+def test_exact_native_format_modes_forward_without_tuning(mode):
+    assert sys.platform == 'linux' and os.geteuid() == 0 and os.environ.get('TRANSPORT_NATIVE_ISOLATED') == '1'
+    stack = fixture.NativeStack()
+    try:
+        stack.start()
+        stack.start_frontend('p1', xhttp_mode=mode)
+        native = exported_outbound(stack, native=True)
+        assert native['streamSettings']['xhttpSettings']['mode'] == mode
+        client = stack.start_client('p1', outbound=native)
+        time.sleep(.5)
+        stack.run_driver(client)
+        print(json.dumps(dict(mode=mode, untuned=measurement(stack, client))))
+    finally:
+        stack.close()
