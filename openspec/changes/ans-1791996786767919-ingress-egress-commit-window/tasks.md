@@ -10,7 +10,7 @@ An interruption anywhere in the protected commit leaves ingress and egress at on
 
 ## Execution
 
-- [ ] ANS-1791996824479999 Make protected ingress commit and egress finish one recoverable boundary with SIGKILL tests at every interruption point #bug @item:ANS-1791996786767919
+- [x] ANS-1791996824479999 Make protected ingress commit and egress finish one recoverable boundary with SIGKILL tests at every interruption point #bug @item:ANS-1791996786767919
 
 ## Verification
 
