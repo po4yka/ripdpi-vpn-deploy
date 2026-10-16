@@ -592,8 +592,6 @@ visible; deadline exhaustion explicitly reports unconfirmed cleanup and the
 owned name rather than treating absence as success. The image remains in the build cache. Public sources use existing GitHub SSH access
 on port 22 and immutable local Git bundles; every invocation checks the current
 upstream tags, including peeled annotated tags, before using a warm bundle.
-The lab source manifest lives beside its integration files; published
-`contract/` payloads remain byte-identical to the client SoT.
 The build receives no credentials.
 Both BuildKit and runtime calls bind the admitted local Docker engine context.
 

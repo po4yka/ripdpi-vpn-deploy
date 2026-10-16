@@ -21,6 +21,9 @@ from a checksum-pinned public CA package. Portable regressions exercise delayed
 container visibility, explicitly unknown cleanup and moved refs with warm bundles.
 Packet captures and mixed-version TCP/UDP/DNS are Linux runtime evidence only.
 Production-role readiness and physical Android acceptance are separate claims.
+When placing lab input manifests, consult `.github/workflows/contract-sync.yml`:
+keep local build provenance beside the lab fixtures and reserve `contract/`
+for client-vendored payloads.
 
 Runtime publisher tests verify retained directory descriptors remain valid
 inside normal and predictive transactions and close after success, exceptions,

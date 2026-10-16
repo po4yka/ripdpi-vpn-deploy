@@ -2,7 +2,7 @@
 id: SCR-1791618073850409
 title: Build and validate upgraded AmneziaWG sources locally
 kind: feature
-status: doing
+status: review
 area: scripts
 priority: medium
 risk: high
@@ -14,7 +14,7 @@ openspec_change: awg-source-upgrade
 created: 2026-10-10
 updated: 2026-10-16
 related_tasks: [ANS-1791562764586678, SEC-1791471757439452, SCR-1791618039091425, TST-1791618356595983]
-status_detail: Address three PR review findings and rerun local candidate acceptance.
+status_detail: All three PR review fixes and local lab manifest placement validated; updated ARM64 lab and complete make check passed.
 ---
 
 ## Goal
