@@ -1,0 +1,22 @@
+---
+- name: Admit effective AmneziaWG uplink name
+  ansible.builtin.assert:
+    that:
+      - _awg_uplink is string
+      - _awg_uplink is match('^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$')
+      - _awg_uplink not in (amneziawg_secrets.instances | map(attribute='name') | list)
+    fail_msg: awg-invalid-uplink-interface
+  no_log: true
+  vars:
+    _awg_uplink: "{{ firewall_awg_uplink_interface | default(ansible_facts.get('default_ipv4', {}).get('interface', '')) }}"
+  when: awg_uplink_required | default(vpn.enable_amneziawg | default(false)) | bool
+
+- name: Require public dual-stack routes on the exact AmneziaWG uplink
+  ansible.builtin.script:
+    cmd: >-
+      {{ role_path }}/../../../scripts/awg_uplink.py --interface
+      {{ firewall_awg_uplink_interface | default(ansible_facts.get('default_ipv4', {}).get('interface', '')) | quote }}
+    executable: python3
+  changed_when: false
+  check_mode: false
+  when: awg_uplink_required | default(vpn.enable_amneziawg | default(false)) | bool

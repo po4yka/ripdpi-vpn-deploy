@@ -2,6 +2,24 @@
 
 ## Design decisions
 
+Federation reads the peer's own committed `taskctl export --json` contract;
+it never parses another project's portfolio through this project's schema.
+The shared graph validator checks exact identity, revision, contract hash,
+relations, progress and terminal provenance. Purged references are resolved
+by the owning exporter's `--resolve-task` with native receipt/history checks.
+An unassessed peer risk remains null; no task records or receipts are rewritten.
+Peer failure diagnostics stay categorical and bounded.
+
+AWG peer `allowed_ips` is a typed IPv4/IPv6 mapping. Issuance allocates both
+host identities before publishing ciphertext; exhaustion in either pool leaves
+the prior generation intact. Address allocation jumps claimed intervals, so an
+IPv6 /64 is bounded by peer count. Standalone and bundle emission share instance
+MTU resolution with liveness; runner settings carry `addresses` and `mtu` and
+install both default routes in the owned namespace. Public uplink admission is
+read-only, requires the selected IPv6 default route, and refuses RA ownership
+that would expire after forwarding enables.
+
+
 AWG device issuance, revocation, export and recovery bind provider/environment,
 instance and device through `awg_device_binding.py`. Only the nonempty instance
 list owns peers and server keys. `awg_client.py` allocates from the selected
@@ -33,8 +51,8 @@ First-time subscription registry entries initialize a null AWG binding and
 empty recovery fields; existing AWG authority survives delivery metadata updates.
 Bundle multi-host selection requires `AWG_HOST` when more than one enabled host
 can bind; `AWG_INSTANCE` selects within that host. Missing enabled bindings
-refuse without emitting a partial payload. The public bundle shape/fingerprint
-algorithm are unchanged. RIPDPI bundles support AWG-only profiles through
+refuse without emitting a partial payload. The bundle retains the address array and fingerprint algorithm;
+its admitted device address pair and MTU bounds are stricter. RIPDPI bundles support AWG-only profiles through
 the direct carrier document; the official sing-box format still requires a
 supported proxy outbound. Private recipient output uses no-clobber `OUTPUT`
 publication in an owner-only directory. URI issuance also requires a private
@@ -644,6 +662,9 @@ mode keeps its early exit without QR side effects.
 The private identity binds the full enrolled AWG peer public key as well as its
 instance. A coherent peer/recovery-key rotation can leave placeholder-based
 exported JSON unchanged; it must still report stale without publishing key metadata.
+Both typed device addresses and the resolved MTU are consumed payload inputs.
+The coordinated dual-stack contract, exporter and runtime forwarding must land
+together; the shared renderer must not keep a single-address or fixed-MTU path.
 
 An explicit per-host cohort bypasses inventory hostname lookup: endpoint-only
 AWG callers do not consume a hostname and must retain their export path.

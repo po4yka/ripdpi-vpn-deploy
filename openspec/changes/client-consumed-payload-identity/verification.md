@@ -1,21 +1,21 @@
 ---
 task_id: SCR-1791618188806822
 change: client-consumed-payload-identity
-commit_sha: 13ccd1590ae04f9d3eb6117770386e77e9cd2dff
+commit_sha: null
 local: passed
 local_evidence: 'Complete review-follow-up suites: 251 passed in 111.02s and 144 passed in 57.25s, without selected skips. Task/OpenSpec validation and all commit hooks passed. Full make check did not execute: its queued run was stopped after more than 12 minutes waiting for the shared build gate.'
-remote_ci: blocked
-remote_ci_evidence: 'CI run 38849727400: contract-sync job 116808090088 fails against the independently changed RIPDPI vendored contract; contract/ is unchanged from main. CodeQL run 38849727288, Markdown links 38849727333 and instruction-doc checks 38849727309 passed. Other CI jobs remain in progress at this handoff.'
+remote_ci: required
+remote_ci_evidence: 'Integrated producer edd61bdcd9d800a1d169cadaa60aeb64de0381a0 from PR #304. All 31 contract files now match merged RIPDPI c843303bc byte-for-byte; exact integrated-source CI remains required.'
 dry_run: not_applicable
 dry_run_evidence: source-only capability; no controller or provider execution in this task
 staging: not_applicable
 staging_evidence: isolated native source acceptance owns this change; fleet rehearsal requires separate authorization
 live: not_applicable
 live_evidence: no production rollout is part of this source task
-client: blocked
-client_evidence: Local real SOPS/age delivery/refresh and encrypted AWG recipient regressions passed. Current cross-repository client compatibility remains blocked by divergent vendored dual-stack address and MTU constraints; no fleet or current Android-device acceptance is claimed.
-artifact: blocked
-artifact_evidence: The canonical contract is unchanged from main. RIPDPI currently vendors a different AWG address/MTU schema and seven differing example/negative fixtures. Reconciliation must align the cross-repository transport contract; this review fix does not change its authority or bypass contract-sync.
+client: required
+client_evidence: 'Real local SOPS/age integration tests cover the published dual-stack payload and consumed IPv4, IPv6 and MTU identity. Exact integrated-source native CI remains required; no fleet or physical-device acceptance is claimed.'
+artifact: passed
+artifact_evidence: 'All 31 canonical contract files match RIPDPI origin/main c843303bc. Regenerated the combined encrypted synthetic fixture; complete 399-case drift, transaction, retirement, binding, dual-stack, bundle and SOPS suites passed.'
 ---
 
 # Verification
@@ -104,3 +104,20 @@ Eight vendored files differ. A separate cross-repository transport change must
 align schema, export behavior and client acceptance before this gate can pass.
 The local full-gate attempt was stopped while still queued behind the machine
 gate; no local full-gate success is claimed.
+
+## Coordinated contract integration (2026-10-16)
+
+The owner authorized resolving downstream drift and completing PR #302 CI.
+Integrated PR #304 producer `edd61bdcd9d800a1d169cadaa60aeb64de0381a0`,
+including typed dual-family device claims, MTU resolution, runtime forwarding
+and compensation, exporter and schema. Its client companion is merged at
+`c843303bc`; all 31 contract files match byte-for-byte. Neither producer PR
+nor this PR has been merged to main by this integration.
+
+The shared in-memory renderer already calls the canonical AWG exporter. New
+real encrypted regressions require both device addresses and MTU in the
+published schema, stale after either address or MTU changes, and read-only
+unknown after missing-family, scalar-address or out-of-bounds MTU inputs.
+Complete affected suites passed 399 cases without selected skips. Exact
+integrated-source CI and the queued complete local gate remain pending.
+The earlier failed contract-sync evidence above is historical.

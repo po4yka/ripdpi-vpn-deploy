@@ -46,5 +46,5 @@ Audit coverage: A10, A21; planning baseline `605ae0be18dcbe1c55e3e7d8658131b2e0c
 - tests/unit/test_firewall_egress_policy.py
 - tests/unit/test_real_vps_awg_nat_lane.py
 - tests/unit/test_bundle_schema.py
-- Planning only: no implementation, private-input mutation, provider action or deployment is authorized by these artifacts.
+- Source implementation, paired PRs and arm64 Android emulator acceptance are authorized; physical-device acceptance is excluded by owner request. Private-input mutation, provider action and deployment remain outside this change.
 - Dependency and prerequisite ownership is recorded in the portfolio and design; source-fixed predecessor evidence stays intact.

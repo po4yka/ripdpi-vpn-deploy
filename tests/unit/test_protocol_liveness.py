@@ -56,10 +56,12 @@ def _report(sentinel: str, verdicts: dict[str, str], *, control: str = "ok", age
                 "verdict": verdict,
                 "duration_ms": 40,
                 "payload_transport": "tcp-https",
-                "target_address_family": "ipv4" if profile == "p2-amneziawg" else "unknown",
+                "target_address_family": "dualstack" if profile == "p2-amneziawg" else "unknown",
                 "dns_through_tunnel": verdict in {"ok", "throttled"},
                 "authenticated_handshake": verdict in {"ok", "throttled"},
-                **({"fresh_handshake": True} if profile == "p2-amneziawg" and verdict in {"ok", "throttled"} else {}),
+                **({"fresh_handshake": True, "family_results": {
+                    family: {"verdict": verdict, "duration_ms": 40, "payload_transport": "tcp-https"}
+                    for family in ("ipv4", "ipv6")}} if profile == "p2-amneziawg" and verdict in {"ok", "throttled"} else {}),
                 **(
                     {"variants": [{"variant": 1, "verdict": verdict, "duration_ms": 40}]}
                     if profile != "p2-amneziawg"
@@ -208,7 +210,7 @@ def test_fullstack_configuration_requires_explicit_runtime_and_target_binding(tm
         module["load_config"](config_path)
 
 
-@pytest.mark.parametrize("url", ["https://example.test:8443/check", "https://user:password@example.test/check", "https://[::1]/check",
+@pytest.mark.parametrize("url", ["https://192.0.2.1/check", "https://example.test:8443/check", "https://user:password@example.test/check", "https://[::1]/check",
                                 "https://exam\tple.test/check", "https://example.test/check\n", "https://example.test/check path"])
 def test_awg_policy_rejects_unsupported_probe_url_contract(tmp_path, url):
     path = _config(tmp_path)
@@ -216,7 +218,7 @@ def test_awg_policy_rejects_unsupported_probe_url_contract(tmp_path, url):
     config["probe_url"] = url
     path.write_text(yaml.safe_dump(config))
     module = runpy.run_path(str(SCRIPT))
-    assert any("IPv4 HTTPS port 443" in e for e in module["semantic_errors"](config))
+    assert any("dual-stack HTTPS hostname on port 443" in e for e in module["semantic_errors"](config))
 
 
 @pytest.mark.parametrize("direct", [False, True])
@@ -417,7 +419,7 @@ def test_aggregate_whitelists_public_identity_without_claiming_server_source(tmp
     assert item["target_identity"] == report["target_identity"]
     assert item["observed_at"] == report["observed_at"]
     assert item["profile_observations"]["p2-amneziawg"] == {
-        "payload_transport": "tcp-https", "target_address_family": "ipv4", "dns_through_tunnel": True,
+        "payload_transport": "tcp-https", "target_address_family": "dualstack", "dns_through_tunnel": True,
         "authenticated_handshake": True, "fresh_handshake": True}
     assert item["profile_observations"]["p1-xhttp"] == {
         "payload_transport": "tcp-https", "target_address_family": "unknown",
@@ -692,3 +694,21 @@ def test_unknown_profile_in_report_is_monitoring_error(tmp_path: Path) -> None:
     payload = json.loads(result.stdout)
     assert payload["decision"] == "unknown"
     assert any("invalid profile result" in error for error in payload["monitoring_errors"])
+
+
+@pytest.mark.parametrize("mutation", ["absent", "missing-ipv6", "failed-ipv6", "missing-transport"])
+def test_awg_positive_report_requires_both_family_observations(tmp_path, mutation):
+    module = runpy.run_path(str(SCRIPT))
+    config = yaml.safe_load(_config(tmp_path).read_text())
+    report = _report("tls-freeze-a", _all("ok"))
+    awg = report["profiles"][-1]
+    if mutation == "absent":
+        del awg["family_results"]
+    elif mutation == "missing-ipv6":
+        del awg["family_results"]["ipv6"]
+    elif mutation == "failed-ipv6":
+        awg["family_results"]["ipv6"]["verdict"] = "blocked"
+    else:
+        del awg["family_results"]["ipv6"]["payload_transport"]
+    valid, error = module["validate_report"](json.dumps(report), config["sentinels"][0], config, int(time.time()))
+    assert valid is None and "dual-stack family proof" in error

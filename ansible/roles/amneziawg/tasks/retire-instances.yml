@@ -5,7 +5,8 @@
     tasks_from: retire
   vars:
     runtime_retire_units: >-
-      {{ _awg_obsolete | map('regex_replace', '^', 'awg-quick@')
+      {{ (_awg_obsolete | difference(_awg_instances | map(attribute='name') | list))
+         | map('regex_replace', '^', 'awg-quick@')
          | map('regex_replace', '$', '.service') | list }}
     runtime_retire_paths: >-
       {{ _awg_obsolete | map('regex_replace', '^', _awg_previous.config_dir ~ '/')

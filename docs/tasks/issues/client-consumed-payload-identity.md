@@ -2,7 +2,7 @@
 id: SCR-1791618188806822
 title: Detect client payload drift from every consumed private input
 kind: bug
-status: review
+status: doing
 area: scripts
 priority: high
 risk: high
@@ -14,7 +14,7 @@ openspec_change: client-consumed-payload-identity
 created: 2026-10-10
 updated: 2026-10-16
 related_tasks: []
-status_detail: "PR #302 review findings fixed and resolved at 13ccd1590ae04f9d3eb6117770386e77e9cd2dff; 395 affected tests and CodeQL passed. The source-gate step remains open: contract-sync fails on independent RIPDPI vendored dual-stack address/MTU drift; the canonical contract is unchanged."
+status_detail: "Integrate the already coordinated AWG dual-stack producer from PR #304 to clear downstream contract drift; prove consumed IPv4/IPv6 and MTU changes, retain partial-publication safety, and rerun complete source gates for PR #302."
 ---
 
 ## Goal

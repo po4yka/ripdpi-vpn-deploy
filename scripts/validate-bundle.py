@@ -24,6 +24,7 @@ import base64
 import binascii
 import copy
 import json
+import ipaddress
 import os
 import stat
 import sys
@@ -90,6 +91,24 @@ def _fingerprint_errors(ripdpi: dict) -> list[str]:
                 f"amneziawg[{i}].cohort_fingerprint: {actual} "
                 f"but params hash to {expected}"
             )
+    return errors
+
+
+def _address_errors(ripdpi: dict) -> list[str]:
+    errors = []
+    for index, entry in enumerate(ripdpi.get("amneziawg") or []):
+        try:
+            addresses = entry["address"]
+            if not isinstance(addresses, list) or len(addresses) != 2:
+                raise ValueError
+            for value, version, prefix in zip(addresses, (4, 6), (32, 128)):
+                address = ipaddress.ip_interface(value)
+                if (not isinstance(value, str) or str(address) != value or address.version != version
+                        or address.network.prefixlen != prefix or address.ip.is_multicast
+                        or address.ip.is_unspecified or address.ip.is_loopback or address.ip.is_link_local):
+                    raise ValueError
+        except (KeyError, ValueError, TypeError):
+            errors.append(f"amneziawg[{index}].address: requires canonical IPv4 and IPv6 unicast host identities")
     return errors
 
 
@@ -189,7 +208,7 @@ def main() -> int:
     validator = jsonschema.Draft202012Validator(schema)
     errors = sorted(validator.iter_errors(ripdpi), key=lambda e: list(e.absolute_path))
 
-    fp_errors = _fingerprint_errors(ripdpi)
+    fp_errors = _fingerprint_errors(ripdpi) + _address_errors(ripdpi)
 
     if errors or fp_errors or runtime_errors:
         print(

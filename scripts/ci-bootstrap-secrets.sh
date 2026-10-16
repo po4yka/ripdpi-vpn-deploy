@@ -285,7 +285,9 @@ amneziawg_secrets:
         - name: ${CLIENT_NAME}
           public_key: "${peer_pub}"
           preshared_key: "${peer_psk}"
-          allowed_ips: "10.66.66.2/32"
+          allowed_ips:
+            ipv4: "10.66.66.2/32"
+            ipv6: "fd42:42:42::2/128"
 backup:
   restic_password: "${restic_pw}"
   remote:

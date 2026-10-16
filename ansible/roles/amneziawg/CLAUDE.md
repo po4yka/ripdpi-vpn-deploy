@@ -2,6 +2,28 @@
 
 ## Design decisions
 
+Post-activation retirement removes recorded obsolete configuration paths but
+stops only names absent from the accepted instance set. Moving a configuration
+directory must not stop a newly accepted unit with the same instance name.
+
+AWG candidate activation retains the prior complete firewall file through service
+acceptance. Failure restores it atomically before prior tunnels restart, so
+changed peer claims cannot strand the restored addresses. A fresh host retains
+a canonical default-drop baseline with AWG forwarding disabled. Foreign nft
+tables and named timed-set membership remain outside this rollback.
+
+Device peers carry typed `allowed_ips.ipv4` /32 and `allowed_ips.ipv6` /128
+identities; routed peers declare `address_kind: routed` and explicit family
+prefixes. Shared normalization rejects old scalar claims and family collisions.
+MTU resolves instance > technical cohort > role default > 1420, with integer
+bounds 1280–1420. Server, standalone, bundle and liveness use that value.
+Before mutation the exact uplink needs an IPv6 default route with a global
+source; RA routes require per-interface `accept_ra=2`. The role does not adopt
+provider networking authority. Configuration activation retains complete prior
+private configs and active/boot state, compensates failed candidates, and
+retires obsolete recorded instances only after acceptance.
+
+
 `amneziawg_secrets.instances` is the only server/peer authority, including one
 instance. Controller normalization shares `effective_awg_instances` with
 issuance, emission and liveness; instance values override cohort and role
@@ -87,9 +109,8 @@ interfaces. Fresh absence and recorded enable/disable transitions stay idempoten
 - **AWG 2.0 client app version skew** — issue #2457: clients on AmneziaWG
   client v1.0.x silently fall back to vanilla WG handshake when the server
   uses 2.0 finalmask. Pin client version in `docs/CLIENT-NOTES.md`.
-- **Client MTU is fixed, not per cohort** — `scripts/emit-awg.sh` and
-  `scripts/liveness_profiles.py` write `MTU = 1420`; cohort files carry no MTU
-  knob. A path that needs a smaller MTU needs a new, explicit emitter input.
+- **MTU selection is explicit** — a smaller configured MTU is not automatic
+  path diagnosis. Verify sustained transfers on the actual constrained path.
 - **Endpoint port reuse with Hysteria** — both use UDP. See `firewall/CLAUDE.md`
   pitfall; pick distinct ports.
 - **`jc` of 0 is not "off", it's "junk count 0"** — older clients interpret

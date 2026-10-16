@@ -123,7 +123,7 @@ def test_encrypted_two_instance_tcp_udp_export_revocation_and_rejection(encrypte
             server_text = render_template(ROOT / 'ansible/roles/amneziawg/templates/awg0.conf.j2', values)
             for namespace, interface, text, address in (
                     (server_ns, name, server_text, selected.instance['address_v4']),
-                    (client_ns, client_interface, standalone, selected.peer['allowed_ips'])):
+                    (client_ns, client_interface, standalone, selected.peer['allowed_ips']['ipv4'])):
                 candidate = tmp_path / (interface + '.conf')
                 candidate.write_text(native_config(text)); candidate.chmod(0o600)
                 command(['ip', 'netns', 'exec', namespace, str(tools), 'setconf', interface, str(candidate)])
@@ -154,7 +154,7 @@ def test_encrypted_two_instance_tcp_udp_export_revocation_and_rejection(encrypte
         command([sys.executable, str(ROOT / "scripts/awg_client.py"), "revoke", "new0", "--host", "upcloud:fixture", "--instance", names[0], "--file", str(path)])
         final = decrypt(path)
         assert final['amneziawg_secrets']['instances'][1] == issued['amneziawg_secrets']['instances'][1]
-        values = merge_render_vars(); values['_inst'] = final['amneziawg_secrets']['instances'][0]
+        values = merge_render_vars(); values['_inst'] = resolve_binding(final, {}, 'device0', 'upcloud:fixture', names[0]).instance
         candidate = tmp_path / (names[0] + '.conf')
         candidate.write_text(native_config(render_template(ROOT / 'ansible/roles/amneziawg/templates/awg0.conf.j2', values)))
         command(['ip', 'netns', 'exec', f'awgs-{token}-0', str(tools), 'setconf', names[0], str(candidate)])
@@ -165,7 +165,7 @@ def test_encrypted_two_instance_tcp_udp_export_revocation_and_rejection(encrypte
         assert reissued['amneziawg_secrets']['instances'][1] == issued['amneziawg_secrets']['instances'][1]
         refreshed = reissued['client_registry']['new0']
         assert refreshed['awg_private_key'] != issued['client_registry']['new0']['awg_private_key']
-        values['_inst'] = reissued['amneziawg_secrets']['instances'][0]
+        values['_inst'] = resolve_binding(reissued, {}, 'device0', 'upcloud:fixture', names[0]).instance
         candidate.write_text(native_config(render_template(ROOT / 'ansible/roles/amneziawg/templates/awg0.conf.j2', values)))
         command(['ip', 'netns', 'exec', f'awgs-{token}-0', str(tools), 'setconf', names[0], str(candidate)])
         assert probe(0) != 0 and probe(1) == 0, 'reissuance must not admit the previous device key'

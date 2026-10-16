@@ -149,16 +149,9 @@ def _awg(secrets, client, binding, endpoint, private_key, derive, defaults, coho
     except (BindingError, TypeError) as failure:
         raise ProfileError(str(failure) if isinstance(failure, BindingError) else "awg-binding") from None
     chosen = selected.instance
-    port, address = chosen["listen_port"], chosen["address_v4"]
-    peer = _client(chosen.get("peers"), client, ("public_key", "preshared_key", "allowed_ips"))
-    try:
-        server = ipaddress.IPv4Interface(address)
-        assigned = ipaddress.IPv4Interface(peer["allowed_ips"])
-        if (assigned.network.prefixlen != 32 or assigned.ip not in server.network
-                or assigned.ip in (server.ip, server.network.network_address, server.network.broadcast_address)):
-            raise ValueError
-    except (ValueError, TypeError):
-        raise ProfileError("awg-address") from None
+    port = chosen["listen_port"]
+    peer = selected.peer
+    assigned = [peer["allowed_ips"][family] for family in ("ipv4", "ipv6")]
     parameters = {name: chosen[name] for name in (*PARAM_DEFAULTS, "h1", "h2", "h3", "h4")}
     if parameter_errors(parameters, "amneziawg_secrets"):
         raise ProfileError("awg-input-semantics")
@@ -170,12 +163,13 @@ def _awg(secrets, client, binding, endpoint, private_key, derive, defaults, coho
     endpoint = _host(endpoint)
     port = _port(port)
     endpoint_text = f"[{endpoint}]" if ":" in endpoint else endpoint
-    fields = ["[Interface]", f"PrivateKey = {_key(private_key)}", f"Address = {assigned}", "MTU = 1420"]
+    fields = ["[Interface]", f"PrivateKey = {_key(private_key)}", "Address = " + ", ".join(assigned),
+              "DNS = " + ", ".join(chosen["dns_servers"]), f"MTU = {chosen['mtu']}"]
     fields += [f"{name.capitalize()} = {value}" for name, value in parameters.items()]
     fields += ["", "[Peer]", f"PublicKey = {server_public}", f"PresharedKey = {_key(peer.get('preshared_key'))}",
-               f"Endpoint = {endpoint_text}:{port}", "AllowedIPs = 0.0.0.0/0", "PersistentKeepalive = 25", ""]
+               f"Endpoint = {endpoint_text}:{port}", "AllowedIPs = 0.0.0.0/0, ::/0", "PersistentKeepalive = 25", ""]
     public = {"profile": "p2-amneziawg", "server": endpoint, "port": port, **binding}
-    return "\n".join(fields), str(assigned), public
+    return "\n".join(fields), assigned, {**public, "mtu": chosen["mtu"]}
 
 
 def build_profiles(standard_doc, ripdpi_doc, secrets_doc, client, required_profiles, awg_binding,
@@ -308,7 +302,7 @@ def build_profiles(standard_doc, ripdpi_doc, secrets_doc, client, required_profi
         awg, address, metadata = _awg(secrets_doc, client, awg_binding, endpoint, private_key,
                                      derive_public_key, awg_defaults, awg_cohort)
         files["awg.conf"] = awg
-        runtime["amneziawg"] = {"config": str(root / "awg.conf"), "address": address,
+        runtime["amneziawg"] = {"config": str(root / "awg.conf"), "addresses": address, "mtu": metadata["mtu"],
                                  "dns_servers": list(dns_servers)}
         public.append(metadata)
     digest = hashlib.sha256(json.dumps(public, sort_keys=True, separators=(",", ":")).encode()).hexdigest()

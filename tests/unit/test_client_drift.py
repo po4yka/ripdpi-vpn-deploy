@@ -100,6 +100,10 @@ def test_current_real_delivery_matches_private_artifact_and_ciphertext_rewrap(la
     import jsonschema
     jsonschema.validate(document, json.loads((ROOT / 'secrets/schema.json').read_text()))
     actual = json.loads(capture.read_bytes())
+    jsonschema.validate(actual['ripdpi'], json.loads((ROOT / 'contract/ripdpi-bundle.schema.json').read_text()))
+    awg = actual['ripdpi']['amneziawg'][0]
+    assert awg['address'] == ['10.66.66.2/32', 'fd42:42:42::2/128']
+    assert awg['mtu'] == 1420
     rendered, bindings = payload.materialize('phone', entry['delivery_options'], extended=True)
     assert actual == rendered
     assert entry['last_payload_identity'] == identities.digest('phone', entry['delivery_options'], actual, bindings, identities.authority(document))
@@ -119,7 +123,7 @@ def test_current_real_delivery_matches_private_artifact_and_ciphertext_rewrap(la
         assert value.encode() not in audit
 
 
-@pytest.mark.parametrize('field', ['password', 'uuid', 'sni', 'path', 'peer', 'instance', 'parameter', 'expiry'])
+@pytest.mark.parametrize('field', ['password', 'uuid', 'sni', 'path', 'peer', 'instance', 'parameter', 'ipv4', 'ipv6', 'mtu', 'expiry'])
 def test_consumed_private_change_is_stale(lab, field, capsys):
     path, _, drift = lab
     deliver()
@@ -140,11 +144,38 @@ def test_consumed_private_change_is_stale(lab, field, capsys):
             d['client_registry']['phone']['awg_binding']['instance'] = 'awg-renamed'
         elif field == 'parameter':
             d['amneziawg_secrets']['instances'][0]['jc'] += 1
+        elif field in ('ipv4', 'ipv6'):
+            d['amneziawg_secrets']['instances'][0]['peers'][0]['allowed_ips'][field] = (
+                '10.66.66.3/32' if field == 'ipv4' else 'fd42:42:42::3/128')
+        elif field == 'mtu':
+            d['amneziawg_secrets']['instances'][0]['mtu'] = 1280
         else:
             d['client_registry']['phone']['token_expires'] = '2028-01-01'
     change(path, mutate)
     assert drift._verdict('phone')[0] == 'stale'
     assert MARKER not in repr(drift._verdict('phone'))
+
+
+@pytest.mark.parametrize('fault', ['missing-ipv6', 'scalar-address', 'mtu-low', 'mtu-high'])
+def test_invalid_dualstack_contract_is_unknown_without_publication(lab, fault, capsys):
+    path, capture, drift = lab
+    deliver()
+    capsys.readouterr()
+    previous_payload = capture.read_bytes()
+    def mutate(d):
+        instance = d['amneziawg_secrets']['instances'][0]
+        if fault == 'missing-ipv6':
+            del instance['peers'][0]['allowed_ips']['ipv6']
+        elif fault == 'scalar-address':
+            instance['peers'][0]['allowed_ips'] = '10.66.66.2/32'
+        else:
+            instance['mtu'] = 1279 if fault == 'mtu-low' else 1421
+    change(path, mutate)
+    before = path.read_bytes()
+    assert drift._verdict('phone') == ('unknown', 'private input or materialization unavailable')
+    assert path.read_bytes() == before
+    assert capture.read_bytes() == previous_payload
+    assert MARKER not in repr(capsys.readouterr())
 
 
 def test_unconsumed_other_device_and_metadata_stay_current(lab, capsys):

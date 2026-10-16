@@ -20,9 +20,16 @@
       approved_sources:
         - "100.64.10.20"
         - "fd7a:115c:a1e0::1234"
-    firewall_awg_uplink_interface: eth0
+    firewall_awg_uplink_interface: awg-test-up
     amneziawg:
       listen_port: 51820
+    amneziawg_secrets:
+      instances:
+        - name: awg7
+          peers:
+            - allowed_ips:
+                ipv4: 10.66.66.2/32
+                ipv6: fd42:42:42::2/128
     public_listener_contract:
       - {name: xray, protocol: tcp, port: 443, port_range: null}
       - {name: xray-fallback, protocol: tcp, port: 2053, port_range: null}
@@ -67,6 +74,9 @@
         state: absent
       tags:
         - molecule-idempotence-notest
+
+    - name: Prepare isolated dual-stack AWG uplink admission
+      ansible.builtin.import_tasks: ../../../../molecule/prepare-awg-uplink.yml
 
     - name: Exercise clean firewall check mode before Tailnet fragment exists
       check_mode: true
