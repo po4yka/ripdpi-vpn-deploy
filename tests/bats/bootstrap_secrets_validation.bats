@@ -283,6 +283,7 @@ EOF
     [ "$status" -ne 0 ]
     [[ "$output" == *"ECH bootstrap refused"* ]]
     [ ! -e "${BATS_TEST_TMPDIR}/private/refused.secrets.yaml" ]
+    [ -z "$(find "${BATS_TEST_TMPDIR}/private" -maxdepth 1 -name '.refused.secrets.*' -print)" ]
     [ ! -e "${BATS_TEST_TMPDIR}/private/refused.secrets.sops.yaml" ]
   done
 }
@@ -297,6 +298,7 @@ EOF
     bash "$SCRIPT" --env refused --target mirror.example.com:443 --server-name mirror.example.com
   [ "$status" -eq 47 ]
   [ ! -e "${BATS_TEST_TMPDIR}/private/refused.secrets.yaml" ]
+  [ -z "$(find "${BATS_TEST_TMPDIR}/private" -maxdepth 1 -name '.refused.secrets.*' -print)" ]
 }
 
 @test "bootstrap removes plaintext on termination during encryption" {
@@ -312,4 +314,20 @@ EOF
     bash "$SCRIPT" --env interrupted --target mirror.example.com:443 --server-name mirror.example.com
   [ "$status" -eq 143 ]
   [ ! -e "${BATS_TEST_TMPDIR}/private/interrupted.secrets.yaml" ]
+  [ -z "$(find "${BATS_TEST_TMPDIR}/private" -maxdepth 1 -name '.interrupted.secrets.*' -print)" ]
+}
+
+@test "bootstrap cleanup preserves existing operator plaintext" {
+  _install_bootstrap_stubs
+  local config_dir="${BATS_TEST_TMPDIR}/private"
+  mkdir -m 0700 "$config_dir"
+  printf 'existing-operator-document\n' > "${config_dir}/preserved.secrets.yaml"
+  chmod 0400 "${config_dir}/preserved.secrets.yaml"
+  printf '#!/usr/bin/env bash\nexit 47\n' > "${FAKE_BIN}/sops"
+  run env PATH="${FAKE_BIN}:${PATH}" UUID_STATE="$UUID_STATE" OPENSSL_STATE="$OPENSSL_STATE" \
+    HOME="$BATS_TEST_TMPDIR" VPN_PROVISION_CONFIG_DIR="$config_dir" \
+    bash "$SCRIPT" --env preserved --target mirror.example.com:443 --server-name mirror.example.com
+  [ "$status" -eq 47 ]
+  [ "$(cat "${config_dir}/preserved.secrets.yaml")" = 'existing-operator-document' ]
+  [ -z "$(find "$config_dir" -maxdepth 1 -name '.preserved.secrets.*' -print)" ]
 }

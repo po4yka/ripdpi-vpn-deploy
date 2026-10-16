@@ -14,7 +14,7 @@
 
 ## Design decisions
 
-Bootstrap failure regressions execute ECH refusal, encryption failure and termination with synthetic tool authority and require plaintext removal. Bundle tests reject the monitoring-only flag before producer execution; adapter cases bind staged credential paths, and a real systemd case converges ECH in a custom configuration directory without relying on a default key.
+Bootstrap failure regressions execute ECH refusal, encryption failure and termination with synthetic tool authority, remove only newly staged plaintext and preserve existing operator documents. Bundle tests reject the monitoring-only flag before producer execution; adapter cases bind staged credential paths, and a real systemd case converges ECH in a custom configuration directory without relying on a default key.
 Controller path tests retain exact unit ownership and reject ambiguous or unsafe configuration selections before frontend credential reads.
 
 ECH export and sentinel cases keep distinct nginx and ECH inner identities. The real native recipient matrix also retains that distinction, so hostname fallback cannot silently bind ECH to the unrelated frontend.
