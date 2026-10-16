@@ -1,0 +1,11 @@
+{
+  "change": "ans-1791996724624876-gateway-runtime-rollback",
+  "evidence_summary": "Implemented single-publisher gateway runtime rollback and complete compensation. Source e3c11684: gated make check passed (7507 portable and 320 vpnd tests); CI 38909820069 passed both native partitions, affected role scenarios and both full-stack scenarios; 286 focused regressions and 163 snapshots passed. Source/native acceptance only; no production rollout.",
+  "execution_sha256": "0fed8d8de7562001e4134565aba4cc1cfcde0e87d580642ad8ef18bab9f815b0",
+  "issue_sha256": "214f3bfff47ff14159fb9b0eec0a97f825bf3dcbece76c2a4488f4fcbfd217c1",
+  "outcome": "done",
+  "prepared_at": "2026-10-16T15:12:23Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "ANS-1791996724624876"
+}

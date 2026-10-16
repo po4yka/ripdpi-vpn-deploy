@@ -5,6 +5,7 @@
       - python3
       - -c
       - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/ownership.py'') }}'
+      - stop-units
   register: _transport_egress_rollback_owned
   changed_when: false
   no_log: true

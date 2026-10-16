@@ -494,7 +494,7 @@ def terminate(*_):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=["run", "prepare", "validate", "status", "probe", "recover"])
+    parser.add_argument("action", choices=["run", "prepare", "validate", "status", "probe", "recover", "runtime-units"])
     parser.add_argument("--config")
     parser.add_argument("--normalizer-config")
     parser.add_argument("--unit", choices=sorted(FRONTENDS))
@@ -506,6 +506,9 @@ def main():
         probe(json.loads(raw))
         return
     controller = Controller(private_json(args.config), private_json(args.normalizer_config))
+    if args.action == "runtime-units":
+        print(json.dumps(controller.config["gateway_units"]))
+        return
     if args.action == "validate":
         return
     if os.geteuid() != 0:

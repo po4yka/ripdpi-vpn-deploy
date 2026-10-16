@@ -3188,6 +3188,55 @@ class TaskctlHistoryTest(TaskctlFixture):
         self.assertEqual(deletion, resolved["deletion_revision"])
         taskctl.validate_deleted_history(self.root, base)
 
+    def test_deleted_history_after_base_is_merged_into_completed_branch(self) -> None:
+        for valid in (True, False):
+            with self.subTest(valid=valid):
+                fixture = TaskctlHistoryTest()
+                fixture.setUp()
+                try:
+                    source = fixture.add_simple_task(status="review" if valid else "doing")
+                    fixture.add_simple_task(task_id="CIC-1786234567890003")
+                    fixture.write_board()
+                    fixture.commit_all("add active source")
+                    integration = fixture.git("branch", "--show-current")
+                    fixture.git("switch", "-c", "completed-lifecycle")
+                    fixture.prepare_simple_terminal(source)
+                    fixture.write_board()
+                    terminal = fixture.commit_all("complete source")
+                    fixture.purge_simple_task(source)
+                    fixture.write_board()
+                    deletion = fixture.commit_all("purge source")
+                    fixture.git("switch", integration)
+                    (fixture.root / "unrelated.txt").write_text("base advances\n")
+                    base = fixture.commit_all("advance base")
+                    fixture.git("switch", "completed-lifecycle")
+                    fixture.git("merge", integration, "-m", "update branch from base")
+                    if valid:
+                        taskctl.validate_deleted_history(fixture.root, base)
+                    else:
+                        with self.assertRaisesRegex(
+                            taskctl.ContractError, "invalid terminal transition doing -> done"
+                        ):
+                            taskctl.validate_deleted_history(fixture.root, base)
+                    fixture.git("switch", integration)
+                    fixture.git("merge", "--no-ff", "completed-lifecycle", "-m", "PR merge")
+                    if valid:
+                        taskctl.validate_deleted_history(fixture.root, base)
+                        resolved = taskctl.resolve_terminal_task(
+                            fixture.root, "CIC-1786234567890001",
+                            taskctl.load_project_config(fixture.root),
+                        )
+                        self.assertIsNotNone(resolved)
+                        self.assertEqual(terminal, resolved["terminal_revision"])
+                        self.assertEqual(deletion, resolved["deletion_revision"])
+                    else:
+                        with self.assertRaisesRegex(
+                            taskctl.ContractError, "invalid terminal transition doing -> done"
+                        ):
+                            taskctl.validate_deleted_history(fixture.root, base)
+                finally:
+                    fixture.tearDown()
+
     def test_terminal_history_rejects_ambiguous_completed_merged_lanes(self) -> None:
         source_task = "CIC-1786234567890001"
         owner_task = "CIC-1786234567890003"

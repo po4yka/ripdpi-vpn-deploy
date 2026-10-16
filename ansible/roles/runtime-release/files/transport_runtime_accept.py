@@ -115,6 +115,14 @@ def unit_binary(unit):
     return argv[0], assets[0] if len(assets) == 1 else None, config
 
 
+def gateway_units():
+    """Use the generation reader's validated topology, never a parallel unit list."""
+    return json.loads(run(['/usr/bin/python3', '-Es',
+        '/usr/local/libexec/ripdpi-transport-egress/generation.py', 'runtime-units',
+        '--config', '/etc/ripdpi/transport-egress/generation.json',
+        '--normalizer-config', '/etc/ripdpi/transport-egress/normalizer.json'], 10))
+
+
 def restore_points(candidates):
     result = list(candidates)
     for item in candidates:
@@ -204,7 +212,9 @@ class Adapter:
                                   self.candidate(tls['key']),
                                   unit_text, self.timeout, self.clients['hysteria'],
                                   transaction=getattr(self, 'transaction', None),
-                                  ech_key=ech_key)
+                                  ech_key=ech_key,
+                                  gateway_binary=unit_binary(self.candidate(
+                                      '/etc/systemd/system/' + gateway_units()[0]).decode())[0])
 
     def retained(self, receipt):
         self.known = (receipt or {}).get('nodes', {})
