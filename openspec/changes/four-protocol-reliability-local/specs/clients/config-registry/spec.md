@@ -10,7 +10,7 @@ Provide observable, testable guarantees for detect client payload drift from eve
 
 ### Requirement: REQ-DRIFT-CHECK — Payload drift detection
 
-The implementation MUST re-materialize the selected device payload from current repository, SOPS and resolved endpoint inputs and compare a private versioned identity with the recorded delivery, reporting stale, current or unknown without retaining the delivered plaintext file.
+The implementation MUST re-materialize the selected device payload from current repository, SOPS and resolved endpoint inputs and compare a private versioned HMAC over the canonical selected-device payload and exact delivery options with the recorded delivery, reporting stale, current or unknown without retaining the delivered plaintext file.
 
 #### Scenario: Private consumed value changes
 
@@ -30,7 +30,7 @@ The implementation MUST re-materialize the selected device payload from current 
 #### Scenario: Endpoint change detected as drift
 
 - **WHEN** a node IP changes after payload delivery and the operator runs make client-drift CLIENT=<device>
-- **THEN** the check reports stale and prints the identity delta
+- **THEN** the check reports stale and prints a categorical consumed-payload change without exposing a digest
 
 #### Scenario: Unchanged fleet reports current
 

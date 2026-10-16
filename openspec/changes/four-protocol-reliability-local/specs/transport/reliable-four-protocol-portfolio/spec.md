@@ -68,3 +68,9 @@ The implementation MUST keep all original findings traceable and acceptance cred
 
 - **WHEN** taskctl archives or revisits an already archived scope with task links into its former change directory
 - **THEN** only those links resolve to the owned archive, the original close receipt remains immutable and the current record verifies against its exact source-backed link projection, repeated invocation preserves lifecycle timestamps and spec state, and invalid receipt or source ownership refuses without mutation
+
+#### Scenario: Cancelled dependency history remains terminal
+
+- **GIVEN** receipt-validated cancelled dependent and prerequisite records
+- **WHEN** federation evaluates their retained dependency edges
+- **THEN** the historical graph remains readable, cancelled tasks never become ready, every non-cancelled dependent still refuses a cancelled prerequisite, and cycle checks remain mandatory
