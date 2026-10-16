@@ -51,7 +51,8 @@ def test_exact_pair_wire_warm_adoption_and_canonical_retirement(tmp_path):
         spec.loader.exec_module(lab)
         # The lab's disconnected-root assertion applies to its own namespaces;
         # this source lane retains external access only to acquire pinned engines.
-        # Run the existing positive cases in an owned disconnected root namespace.
+        # Join only the network namespace: ip-netns exec also isolates mounts,
+        # which hides nested namespace handles from the real systemd manager.
         shutil.copyfile(
             ROOT / "ansible/roles/runtime-release/files/runtime_build_receipt.py",
             "/lab/runtime_build_receipt.py",
@@ -64,7 +65,7 @@ def test_exact_pair_wire_warm_adoption_and_canonical_retirement(tmp_path):
         lab.command("ip", "netns", "add", namespace)
         try:
             observed = subprocess.run(
-                ["ip", "netns", "exec", namespace, sys.executable, str(script), "/lab"],
+                ["nsenter", "--net=/run/netns/" + namespace, sys.executable, str(script), "/lab"],
                 env={
                     **os.environ,
                     "PYTHONPATH": str(ROOT / "ansible/roles/runtime-release/files"),
@@ -73,7 +74,10 @@ def test_exact_pair_wire_warm_adoption_and_canonical_retirement(tmp_path):
                 text=True,
                 timeout=900,
             )
-            assert observed.returncode == 0, "exact-AWG-pair-warm-acceptance-failed"
+            assert observed.returncode == 0, (
+                "exact-AWG-pair-warm-acceptance-failed\n"
+                + observed.stdout + observed.stderr
+            )
         finally:
             lab.command("ip", "netns", "delete", namespace)
         # Exercise canonical handlers and two-to-one retirement with actual TUNs.
@@ -236,7 +240,10 @@ def test_exact_pair_wire_warm_adoption_and_canonical_retirement(tmp_path):
                     text=True,
                     timeout=60,
                 )
-                assert result.returncode == 0, "canonical-AWG-runtime-handler-refused"
+                assert result.returncode == 0, (
+                    "canonical-AWG-runtime-handler-refused\n"
+                    + result.stdout + result.stderr
+                )
 
             pids = [t.pid() for t in tunnels]
             published = lab.publisher.converge(lab.RECEIPTS, lab.descriptor("baseline"))
@@ -327,7 +334,10 @@ def test_exact_pair_wire_warm_adoption_and_canonical_retirement(tmp_path):
                         "ANSIBLE_ROLES_PATH": str(ROOT / "ansible/roles"),
                     },
                 )
-                assert result.returncode == 0, "canonical-AWG-retirement-refused"
+                assert result.returncode == 0, (
+                    "canonical-AWG-retirement-refused\n"
+                    + result.stdout + result.stderr
+                )
                 assert (
                     subprocess.run(
                         [
