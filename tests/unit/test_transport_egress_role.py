@@ -350,6 +350,18 @@ def test_quiescence_refuses_unconfirmed_absence(monkeypatch, failure):
         mod.stop_units()
 
 
+def test_retirement_preserves_claim_scope_but_stops_only_confirmed_units():
+    tasks = yaml.safe_load((ROLE / 'tasks/retire.yml').read_text())
+    retirement = tasks[1]
+    assert '_transport_egress_retire_owner.stdout' in retirement['when']
+    query, controller, gateways = retirement['block'][:3]
+    assert query['ansible.builtin.command']['argv'][-1] == 'stop-units'
+    assert '_transport_egress_retire_stop_units.stdout' in controller['when']
+    assert '_transport_egress_retire_stop_units.stdout' in gateways['loop']
+    removal = next(task for task in retirement['block'] if task['name'].startswith('Remove listener authority'))
+    assert 'when' not in removal
+
+
 def test_actual_gateway_identity_checks_every_uid_column(tmp_path, monkeypatch):
     from types import SimpleNamespace
     mod = load('generation')
