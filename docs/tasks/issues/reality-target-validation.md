@@ -2,7 +2,7 @@
 id: SCR-1791617975137354
 title: Make REALITY target validation bounded standards-correct and truthful
 kind: bug
-status: doing
+status: review
 area: scripts
 priority: medium
 risk: high
@@ -14,6 +14,7 @@ openspec_change: reality-target-validation
 created: 2026-10-10
 updated: 2026-10-16
 related_tasks: [SEC-1791545689674403, ANS-1791586652330612]
+status_detail: Implemented and validated exact source 4e043c0f; complete hosted CI 88 jobs, native REALITY 72 cases zero skips, affected portable suites 88 cases. Full local gate limitation recorded explicitly.
 ---
 
 ## Goal

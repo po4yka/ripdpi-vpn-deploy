@@ -94,3 +94,9 @@ Promotion still requires separately authorized target ownership, a supported rea
 recipient handshake, approved filtered-vantage evidence and authenticated rollback
 to the accepted target. Local hygiene, this named client profile and an asserted
 vantage label do not establish those facts. Runtime pins and PQE HOLD are unchanged.
+
+
+The monitor fingerprint now binds validation mode and the explicit service
+endpoint. This changes its state key: the first healthy observation after this
+upgrade establishes a fresh local metadata baseline. Accepted target and
+certificate authority are unchanged.

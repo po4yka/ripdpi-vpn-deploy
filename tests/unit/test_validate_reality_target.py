@@ -6,7 +6,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import signal
 import socket
 import ssl
 import subprocess
@@ -170,7 +169,7 @@ def test_stalled_stage_reclaims_real_child_group(stage, tmp_path, monkeypatch):
             break
         time.sleep(.05)
     else:
-        os.kill(pid, signal.SIGKILL)
+        # A recorded child PID may already have been reused; assert without signalling it.
         pytest.fail('owned child survived timeout')
 
 
