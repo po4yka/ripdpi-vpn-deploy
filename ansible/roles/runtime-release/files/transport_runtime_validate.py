@@ -176,11 +176,14 @@ def recover_validation(tx):
     return True
 
 
-def validate_hysteria(binary, raw, certificate, key, unit, timeout, client_name, *, transaction=None, ech_key=None, checkpoint=lambda _stage: None):
+def validate_hysteria(binary, raw, certificate, key, unit, timeout, client_name, *, gateway_binary, transaction=None, ech_key=None, checkpoint=lambda _stage: None):
+    if (not isinstance(gateway_binary, str) or not Path(gateway_binary).is_absolute()
+            or str(Path(gateway_binary)) != gateway_binary or '..' in Path(gateway_binary).parts):
+        raise Refusal('gateway-runtime-unavailable')
     if transaction is None:
         with Transaction(STATE) as tx:
             validate_hysteria(binary, raw, certificate, key, unit, timeout, client_name,
-                              transaction=tx, ech_key=ech_key, checkpoint=checkpoint)
+                              gateway_binary=gateway_binary, transaction=tx, ech_key=ech_key, checkpoint=checkpoint)
         return
     tx = transaction
     recover_validation(tx)
@@ -224,12 +227,8 @@ def validate_hysteria(binary, raw, certificate, key, unit, timeout, client_name,
                     'protocol': 'socks', 'settings': {'auth': 'password', 'udp': True,
                     'accounts': [{'user': outbound['username'], 'pass': outbound['password']}]}}],
                 'outbounds': [{'protocol': 'freedom'}]}))
-            gateway_unit = Path('/etc/systemd/system/ripdpi-transport-direct.service').read_text()
-            executables = [line.split('=', 1)[1].split()[0] for line in gateway_unit.splitlines() if line.startswith('ExecStart=')]
-            if len(executables) != 1 or not executables[0].startswith('/'):
-                raise Refusal('gateway-runtime-unavailable')
             resources.enter_context(child(['/usr/sbin/ip', 'netns', 'exec', token,
-                                           executables[0], 'run', '-config', str(gateway)]))
+                                           gateway_binary, 'run', '-config', str(gateway)]))
             canary_source = '''from http.server import BaseHTTPRequestHandler, HTTPServer
 class Canary(BaseHTTPRequestHandler):
  def do_GET(self):

@@ -1,11 +1,11 @@
 {
   "change": "reality-target-validation",
-  "evidence_summary": "Positive implementation and genuine source/runtime observations are retained. The local successor owns all 45 positive requirements and remains open until its complete native and source gates pass; no missing external observation is relabelled as passed.",
-  "execution_sha256": "69403ded9a03a4b0db0c54be318fb503bc1e42a759f0493a435ceace3d74847b",
-  "issue_sha256": "95d565255b4de829b42c9e114b45fd89f845f669cecbc280ae727b27e93230eb",
-  "outcome": "dropped",
-  "prepared_at": "2026-10-16T13:18:32Z",
-  "reason": "Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.",
+  "evidence_summary": "Implemented source 4e043c0f72345d3e3767415a56fead2391466913; full hosted CI 38895409950 passed all 88 jobs, CodeQL and dedicated native workflow 38895410063 passed; 72 native cases zero skips and inspected redacted artifact 12043906727. Complete affected local suites 88 passed; local full-gate environment limitation is explicit in archived verification. No deployment or target promotion claimed.",
+  "execution_sha256": "643e1319b0d61cedeb23458f29079c5b0a632574979b4ad9912a7c58a9578191",
+  "issue_sha256": "6f1cf065610d4abf8604967c90f9280c3140e1de583f15b685fe532d386d98dc",
+  "outcome": "done",
+  "prepared_at": "2026-10-16T12:52:19Z",
+  "reason": "All acceptance criteria and required evidence passed.",
   "schema": 1,
   "task_id": "SCR-1791617975137354"
 }

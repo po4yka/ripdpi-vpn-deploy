@@ -34,6 +34,7 @@ def test_failure_diagnostics_exclude_private_result_payload(tmp_path):
     assert result['categories'] == ['transport-runtime-refused:native-command-refused',
                                     'transport-runtime-frame:validate_hysteria:87']
     assert result['failed_tasks'] == ['hysteria : Report only bounded categorical consumer refusal']
+    assert result['last_task'] == 'hysteria : Report only bounded categorical consumer refusal'
     assert 'synthetic-private-password' not in str(result)
 
 

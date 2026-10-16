@@ -18,7 +18,7 @@
 #      ASN is checked separately via whois.cymru.com for the top candidates.
 #   4. Print the top candidates with ASN + ALPN + CN + issuer columns.
 #   5. Optional: feed the top result back through validate-reality-target.sh
-#      for the full bounded TLS/HTTP hygiene check.
+#      for the bounded TLS/HTTP hygiene.
 #
 # Usage:
 #   scripts/scan-reality-targets.sh --seeds my-seeds.txt
@@ -30,7 +30,7 @@
 # Environment:
 #   TOOL_CACHE   override the binary location (default ~/.cache/vpn-deploy)
 #   VPS_ASN      if exported, candidates whose ASN does not match get
-#                demoted by the scanner's discovery heuristic.
+#                demoted (re-uses validate-reality-target.sh's heuristic).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -42,8 +42,7 @@ REALI_LINUX_SHA256="3127c612c98ded9b07612ab8500a110a379cc0ab4342174ee026d913961f
 REALI_LINUX_URL="https://github.com/XTLS/RealiTLScanner/releases/download/${REALI_VERSION}/RealiTLScanner-linux-64"
 REALI_BIN="${TOOL_CACHE}/RealiTLScanner-${REALI_VERSION}"
 
-# Over-template list — REALITY targets too popular to be useful. Mirrored
-# used only for discovery ranking; validation reports measured TLS/HTTP hygiene.
+# Discovery-only popularity heuristic; independent of TLS/HTTP hygiene.
 OVERUSED_RE='^(([a-zA-Z0-9_-]+\.)+)?(cloudflare\.com|microsoft\.com|apple\.com|google\.com|discord\.com|icloud\.com)$'
 
 # ASN tier blocklist (see docs/PROVIDER-NOTES.md).
@@ -222,7 +221,7 @@ while IFS=, read -r ip origin cert issuer geo && (( i < TOP )); do
 done < <(tail -n +2 "$filtered")
 
 # ---------------------------------------------------------------------------
-# Optional: full bounded TLS/HTTP hygiene check on the top candidate
+# Optional: bounded TLS/HTTP hygiene on the top candidate
 # ---------------------------------------------------------------------------
 if [[ "$VALIDATE" == 1 && -n "${top_host_clean:-}" ]]; then
   echo

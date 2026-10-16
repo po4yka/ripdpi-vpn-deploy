@@ -6,6 +6,7 @@ import json
 import os
 import stat
 import subprocess
+import shutil
 from pathlib import Path
 
 import pytest
@@ -56,56 +57,6 @@ cat "$SOPS_FIXTURE"''',
     )
     _make_stub(
         bin_dir,
-        "getent",
-        """if [ "${DNS_EMPTY:-0}" = 1 ]; then exit 2; fi
-printf '%s STREAM target\\n' 203.0.113.7 203.0.113.8""",
-    )
-    _make_stub(bin_dir, "dig", "exit 0")
-    _make_stub(bin_dir, "host", "exit 0")
-    _make_stub(bin_dir, "timeout", 'shift; exec "$@"')
-    _make_stub(
-        bin_dir,
-        "whois",
-        '''if [ "${WHOIS_FAIL:-0}" = 1 ]; then echo 'error: unavailable'; exit 0; fi
-case "$*" in
-  *203.0.113.8*) ip=203.0.113.8; prefix=${WHOIS_PREFIX_2:-203.0.113.0/25} ;;
-  *) ip=203.0.113.7; prefix=${WHOIS_PREFIX_1:-203.0.113.0/25} ;;
-esac
-asn=${WHOIS_ASN:-64500}
-printf '%s | %s | %s | XX | registry | 2020-01-01 | PRIVATE-ORG\\n' "$asn" "$ip" "$prefix"''',
-    )
-    _make_stub(
-        bin_dir,
-        "openssl",
-        """case "$1" in
-  s_client)
-    case "$*" in *"${FAIL_TLS_IP:-__none__}"*) echo 'CONNECTED'; exit 1;; esac
-    printf '%s\\n' 'CONNECTED' '-----BEGIN CERTIFICATE-----' 'TESTCERT' '-----END CERTIFICATE-----'
-    if [ "${FAIL_H2:-0}" = 1 ]; then echo 'ALPN protocol: http/1.1'; else echo 'ALPN protocol: h2'; fi
-    [ "${FAIL_VERIFY:-0}" = 1 ] && exit 1
-    [ "${LARGE_TLS_TRANSCRIPT:-0}" = 1 ] && printf '%262144s\\n' ''
-    exit 0
-    ;;
-  x509)
-    if [ "${FAIL_SAN:-0}" = 1 ]; then
-      echo 'X509v3 Subject Alternative Name:'
-      echo '    DNS:wrong.example'
-    elif [ -n "${WILDCARD_SAN:-}" ]; then
-      echo 'X509v3 Subject Alternative Name:'
-      echo "    DNS:${WILDCARD_SAN}"
-    else
-      echo 'X509v3 Subject Alternative Name:'
-      echo '    DNS:private-sni.example, DNS:alt-private-sni.example, DNS:replacement-private.example'
-    fi
-    ;;
-  dgst)
-    echo 'SHA2-256(stdin)= test-fingerprint'
-    ;;
-  *) exit 2 ;;
-esac""",
-    )
-    _make_stub(
-        bin_dir,
         "curl",
         """case "$*" in
   *'-X POST'*)
@@ -128,6 +79,35 @@ printf '204'""",
     ):
         _make_stub(bin_dir, forbidden, f'echo {forbidden} >> "$FORBIDDEN_LOG"; exit 99')
 
+    # State/alert orchestration fixture. Native TLS/deadline evidence lives in
+    # test_validate_reality_target.py, independently of these categorical inputs.
+    scripts = tmp_path / "repo" / "scripts"
+    scripts.mkdir(parents=True)
+    for name in ("monitor-reality-target.sh", "reality-target-monitor-probe.sh", "reality_target_monitor.py", "bootstrap_readiness.py", "decrypt-secrets.sh"):
+        shutil.copy2(REPO_ROOT / "scripts" / name, scripts / name)
+    (scripts / "reality_target_validation.py").write_text("""
+import argparse, os, sys, subprocess
+if sys.argv[1] in ("bounded", "deadline"):
+    sys.exit(subprocess.call([sys.executable, os.environ["REAL_ENGINE"], *sys.argv[1:]]))
+from pathlib import Path
+p=argparse.ArgumentParser(); p.add_argument('action'); p.add_argument('--observations'); p.add_argument('--reasons'); p.add_argument('--names'); a=p.parse_args()
+reasons=[]; rows=[]
+if os.getenv('DNS_EMPTY') == '1': reasons.append('dns_no_ipv4')
+else:
+    for index, ip in enumerate(['203.0.113.7', '203.0.113.8'], 1):
+        failed=False
+        for key, reason in [('FAIL_H2','h2_unavailable'), ('FAIL_VERIFY','certificate_validation_failed'), ('FAIL_SAN','certificate_validation_failed'), ('WILDCARD_SAN','certificate_validation_failed')]:
+            if os.getenv(key): reasons.append(reason); failed=True
+        for key, reason in [('FAIL_TLS_IP','tls_failed'), ('FAIL_HTTP_IP','https_no_response')]:
+            if os.getenv(key) == ip: reasons.append(reason); failed=True
+        if os.getenv('WHOIS_FAIL'): reasons.append('asn_lookup_failed')
+        asn='' if os.getenv('WHOIS_FAIL') else 'AS'+os.getenv('WHOIS_ASN','64500')
+        prefix='' if os.getenv('WHOIS_FAIL') else os.getenv('WHOIS_PREFIX_'+str(index),'203.0.113.0/25')
+        rows.append('\\t'.join([ip,asn,prefix,str(len(os.environ['SERVER_NAMES'].split())),str(int(failed))]))
+Path(a.observations).write_text('\\n'.join(rows)+'\\n')
+Path(a.reasons).write_text('\\n'.join(reasons))
+""")
+
     env = ambient.copy()
     for variable in (
         "ALERT_FAIL",
@@ -137,7 +117,6 @@ printf '204'""",
         "FAIL_SAN",
         "FAIL_TLS_IP",
         "FAIL_VERIFY",
-        "LARGE_TLS_TRANSCRIPT",
         "SOPS_FAIL",
         "WHOIS_ASN",
         "WHOIS_FAIL",
@@ -152,6 +131,8 @@ printf '204'""",
     env.update(
         {
             "PATH": f"{bin_dir}:{tool_path}",
+            "REAL_ENGINE": str(REPO_ROOT / "scripts/reality_target_validation.py"),
+            "MONITOR_FIXTURE_SCRIPT": str(scripts / "monitor-reality-target.sh"),
             "HOME": str(tmp_path / "home"),
             "XDG_STATE_HOME": str(tmp_path / "state"),
             "TMPDIR": str(tmp_dir),
@@ -181,7 +162,7 @@ def monitor_env(tmp_path: Path) -> dict[str, str]:
 
 def _run(env: dict[str, str], *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["bash", str(SCRIPT), *args],
+        ["bash", env["MONITOR_FIXTURE_SCRIPT"], *args],
         cwd=REPO_ROOT,
         env=env,
         capture_output=True,
@@ -361,7 +342,7 @@ def test_asn_drift_requires_confirmation_and_healthy_acceptance(monitor_env):
     [
         ("FAIL_H2", "h2_unavailable"),
         ("FAIL_VERIFY", "certificate_validation_failed"),
-        ("FAIL_SAN", "certificate_san_mismatch"),
+        ("FAIL_SAN", "certificate_validation_failed"),
         ("FAIL_HTTP_IP", "https_no_response"),
     ],
 )
@@ -384,16 +365,6 @@ def test_dns_and_asn_lookup_failures_are_unknown(monitor_env):
     asn = _report(_run(monitor_env))
     assert asn["verdict"] == "unknown"
     assert "asn_lookup_failed" in asn["reason_codes"]
-
-
-@pytest.mark.parametrize("lookup_failure,verdict", [(False, "ok"), (True, "unknown")])
-def test_large_tls_transcript_retains_healthy_transport_classification(monitor_env, lookup_failure, verdict):
-    monitor_env["LARGE_TLS_TRANSCRIPT"] = "1"
-    if lookup_failure:
-        monitor_env["WHOIS_FAIL"] = "1"
-    report = _report(_run(monitor_env))
-    assert report["verdict"] == verdict
-    assert report["reason_codes"] == (["asn_lookup_failed"] if lookup_failure else [])
 
 
 def test_first_later_healthy_run_establishes_baseline(monitor_env):
@@ -482,7 +453,7 @@ def test_requires_explicit_filtered_vantage(monitor_env):
 
 def test_tls_probe_has_a_hard_timeout():
     source = (REPO_ROOT / "scripts/reality-target-monitor-probe.sh").read_text()
-    assert '"$TIMEOUT_BIN" "$PROBE_TIMEOUT" openssl s_client' in source
+    assert 'reality_target_validation.py" collect' in source
     assert " -k" not in source
 
 
@@ -495,7 +466,7 @@ def test_wildcard_san_matches_exactly_one_label(monitor_env):
 
     report = _report(_run(monitor_env))
     assert report["verdict"] == "blocked"
-    assert "certificate_san_mismatch" in report["reason_codes"]
+    assert "certificate_validation_failed" in report["reason_codes"]
 
 
 def test_partial_sops_decrypt_is_cleaned(monitor_env):
@@ -534,7 +505,6 @@ def test_cron_installer_wires_monitor_only_with_vantage(tmp_path):
     assert "make monitor-reality-target" in enabled.stdout
     assert "VANTAGE=filtered-cohort-a" in enabled.stdout
 
-
 def test_aggregate_monitor_deadline_reclaims_children_and_retains_budget(monitor_env, tmp_path):
     import time
     baseline = _report(_run(monitor_env))
@@ -542,10 +512,9 @@ def test_aggregate_monitor_deadline_reclaims_children_and_retains_budget(monitor
     state = next((Path(monitor_env["XDG_STATE_HOME"]) / "vpn-deploy/reality-target-monitor").glob("*.json"))
     before = json.loads(state.read_text())
     pid_file = tmp_path / "stalled.pid"
-    resolver = Path(monitor_env["PATH"].split(os.pathsep)[0]) / "getent"
+    collector = Path(monitor_env["MONITOR_FIXTURE_SCRIPT"]).with_name("reality_target_validation.py")
     child = "import os,pathlib,time;pathlib.Path(" + repr(str(pid_file)) + ").write_text(str(os.getpid()));time.sleep(60)"
-    resolver.write_text("#!/usr/bin/env python3\nimport subprocess,sys,time\nsubprocess.Popen([sys.executable,'-c'," + repr(child) + "])\ntime.sleep(60)\n")
-    resolver.chmod(0o755)
+    collector.write_text("import subprocess,sys,time\nif sys.argv[1] == 'collect':\n subprocess.Popen([sys.executable,'-c'," + repr(child) + "])\n time.sleep(60)\n" + collector.read_text())
     start = time.monotonic()
     result = _run({**monitor_env, "REALITY_MONITOR_BUDGET": "1"})
     assert result.returncode != 0

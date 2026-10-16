@@ -2,7 +2,7 @@
 
 The target validator describes ordinary curl with a Chrome User-Agent as browser ClientHello compatibility, manually accepts overly broad wildcard SAN suffixes, removes commas instead of splitting configured names and runs TLS work without deadlines. Target hygiene and filtered reachability are distinct, and owned self-steal targets need validation through their public service path rather than a remote sentinel's loopback.
 
-Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Revalidate source and current task ownership before implementation. Implementation and local acceptance are authorized.
+Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Implementation was authorized in a dedicated worktree; exact source and observed acceptance evidence are recorded in verification.md.
 
 ## Goals / Non-Goals
 
@@ -23,17 +23,21 @@ Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Reva
 - scripts/validate-reality-target.sh
 - scripts/monitor-reality-target.sh
 - scripts/reality_target_monitor.py
-- scripts/reality-target-monitor-probe.sh
-- scripts/reality_target_validation.py
 - scripts/scan-reality-targets.sh
 - scripts/CLAUDE.md
 - docs/REALITY-TARGET-MONITORING.md
 - ansible/roles/reality-self-steal/CLAUDE.md
 - tests/unit/test_monitor_reality_target.py
 - tests/unit/test_scan_reality_targets.py
-- NEW: tests/unit/test_validate_reality_target.py
-- Dependencies: None; may be implemented independently after baseline confirmation.. Exact IDs and hard edges are stored in portfolio frontmatter; related source-fixed tasks are traceability, not a new implementation blocker.
-- Implementation runs in a dedicated worktree; read nearest role/script/test guidance first.
+- scripts/reality_target_validation.py
+- scripts/probe-asn.sh
+- tests/unit/test_validate_reality_target.py
+- tests/unit/test_validate_reality_target_native.py
+- tests/unit/test_executable_coverage.py
+- Makefile
+- .github/workflows/reality-target-validation.yml
+- Dependencies: None; may be implemented independently after baseline confirmation. Exact IDs and hard edges are stored in portfolio frontmatter; related source-fixed tasks are traceability, not a new implementation blocker.
+- Implementation starts only after separate authorization in a dedicated worktree; read nearest role/script/test guidance first.
 - A single integration owner serializes schemas/examples, shared effective profile helpers, group variables, Makefile, CI selectors, snapshots and task metadata. Workers request shared-lane edits and preserve all concurrent work.
 - Terraform owns provider objects, cloud-init owns bootstrap, Ansible owns runtime and SOPS owns private authority; no layer shortcut is introduced.
 
@@ -47,25 +51,25 @@ Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Reva
 
 ## Migration Plan
 
-Implementation and local acceptance are authorized and updates all validation callers without retaining the false uTLS label as a compatibility alias. Existing TLS concurrency and target monitoring authority remain preserved. No changes to active targets or private material follow from this plan. A future target promotion separately requires exact owned identity, real supported-client handshake, approved filtered-vantage evidence and authenticated previous-target rollback; current PQE HOLD and stable runtime pins remain unchanged.
+Implementation updates all validation callers without retaining the false uTLS label as a compatibility alias. Existing TLS concurrency and target monitoring authority remain preserved. No changes to active targets or private material follow from this plan. A future target promotion separately requires exact owned identity, real supported-client handshake, approved filtered-vantage evidence and authenticated previous-target rollback; current PQE HOLD and stable runtime pins remain unchanged.
 
 Implementation order follows the dependency DAG. Run each complete affected test suite; use `build-gate` once around heavy top-level builds and never bypass pinned tools or safety hooks. Archive/closure remains unavailable while any requirement or required evidence category is unresolved.
 
 ## Acceptance tests
 
-- `REQ-PROTO-RTV-IDENTITY`: NEW test_validate_reality_target.py with controlled exact wildcard deep-label mixed comma/space duplicate and empty-name cases.
-- `REQ-PROTO-RTV-DEADLINES`: NEW real subprocess deadline and child-cleanup tests for DNS TLS HTTP and multi-name aggregate work; retain current monitor state tests.
-- `REQ-PROTO-RTV-CLAIMS`: NEW truthful report/available-client tests; inspect real handshake execution boundary rather than using a User-Agent assertion as proof.
-- `REQ-PROTO-RTV-OWNERSHIP`: NEW owned public-path/loopback distinction and no-mutation/privacy regressions, reusing current self-steal transaction fixtures for accepted authority preservation.
+- `REQ-PROTO-RTV-IDENTITY`: test_validate_reality_target.py with controlled exact wildcard deep-label mixed comma/space duplicate and empty-name cases.
+- `REQ-PROTO-RTV-DEADLINES`: real subprocess deadline and child-cleanup tests for DNS TLS HTTP and multi-name aggregate work; retain current monitor state tests.
+- `REQ-PROTO-RTV-CLAIMS`: truthful report/available-client tests; inspect real handshake execution boundary rather than using a User-Agent assertion as proof.
+- `REQ-PROTO-RTV-OWNERSHIP`: owned public-path/loopback distinction and no-mutation/privacy regressions, reusing current self-steal transaction fixtures for accepted authority preservation.
 
 ## Validation commands
 
 - `mise exec -- python3 -m pytest tests/unit/test_monitor_reality_target.py tests/unit/test_scan_reality_targets.py`
 - `make shellcheck`
 - `build-gate -- make check`
-- `NEW make test-reality-target-validation — Run controlled credential-free real TLS identity client-claim and deadline tests; do not resolve production private targets.`
+- `make test-reality-target-validation` — complete credential-free real TLS identity, pinned client, ingress and deadline cases; do not resolve production private targets.
 
-Commands marked NEW are implementation deliverables and must exist, execute complete cases and fail on selected skips before acceptance. They are not commands run during planning. No credentialed recipe is authorized merely by being listed here.
+The dedicated Make target executes complete portable and native cases and fails on any skip. No credentialed recipe is authorized merely by being listed here.
 
 ## Canonical dependencies
 

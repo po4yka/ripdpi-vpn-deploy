@@ -6,10 +6,10 @@ Federation preserves dependency edges between receipt-validated cancelled record
 
 Taskctl archive maintenance relocates only owned inline task links. Dropped records retain immutable close receipts: readers verify the exact link projection from the archive’s reachable terminal source, rejecting every other byte change, including newline conversion. Repeated archival preserves timestamps/spec state; partial document-write failures restore the original record.
 
-REALITY target validation uses the shared bounded process-session owner for DNS, SAN-verified TLS 1.3/H2 and separate ordinary HTTPS stages. DNS sets over eight unique candidates refuse before truncation or path approval. Invalid explicitly supplied target/name fields refuse before loading any missing operator-private defaults. Reports contain only digests and categorical observations. Owned public service checks require an explicit public endpoint; browser ClientHello and filtered survival remain unverified.
-
 A successful alternate retains usable transport delivery, while any non-ok endpoint variant makes the operator decision degraded; exact primary/alternate observations remain separate and do not create a rotation candidate by themselves.
 
+Task-history merge lanes retain the shared first-parent boundary, including
+closure commits made before a branch updates from main.
 
 XHTTP delivery resolves both configured direct endpoints through
 `transport_semantics.py`, retaining each hostname and port. Native Xray output
@@ -718,3 +718,23 @@ together; the shared renderer must not keep a single-address or fixed-MTU path.
 
 An explicit per-host cohort bypasses inventory hostname lookup: endpoint-only
 AWG callers do not consume a hostname and must retain their export path.
+
+REALITY validation shares `reality_target_validation.py` across point-in-time and
+recurring callers. It normalizes comma/whitespace names once, verifies each SNI
+through a trusted TLS 1.3 handshake with SAN-only hostname matching and H2 ALPN,
+and forces HTTP to the same resolved address. Blocking DNS, TLS, HTTP, metadata,
+and secret acquisition use the retained-session supervisor in
+`bootstrap_readiness.py`; per-stage and aggregate budgets include all pairs.
+Reports contain categories and counts, never target names or tool diagnostics.
+Owned self-steal probes require an explicit service endpoint and exact owned SNI;
+remote probes reject loopback endpoints. Ordinary HTTP is hygiene only. Optional
+curl-impersonate 0.6.1 Chrome116 compatibility requires exact binary and profile
+hashes and an actual handshake; it never establishes filtered survival or grants
+promotion authority. No validator installs a client, edits secrets or deploys.
+
+Task deletion audits compare against the explicit trusted base while retaining
+feature first-parent lifecycle history. Importing a purge already in that base
+is not a new deletion when no issue, execution or receipt changed outside it.
+Independent lifecycle edits and merge-only resurrection retain the full audit.
+
+The monitor wraps the canonical REALITY collector in one owned process session and parent-owned temporary directory. Invalid explicit target, name, mode and owned-public prerequisites refuse before missing private defaults are loaded.

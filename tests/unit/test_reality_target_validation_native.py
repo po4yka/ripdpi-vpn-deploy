@@ -40,12 +40,12 @@ def test_owned_public_path_uses_explicit_endpoint_and_preserves_private_target(t
         else:
             pytest.fail("owned native public fixture listener unavailable")
         environment = {**os.environ, "TARGET": "127.0.0.1:8443", "SERVER_NAMES": "owned.example",
-            "REALITY_TARGET_PUBLIC_ENDPOINT": "93.184.216.34:8444", "REALITY_TARGET_CA_FILE": str(certificate)}
+            "TARGET_MODE": "owned-public", "OWNED_SNI": "owned.example", "VALIDATION_TIMEOUT": "10", "PUBLIC_ENDPOINT": "93.184.216.34:8444", "REALITY_CA_FILE": str(certificate)}
         result = subprocess.run(["ip", "netns", "exec", namespace, sys.executable,
-            str(ROOT / "scripts/reality_target_validation.py"), "--mode", "owned-public", "--budget", "10"],
+            str(ROOT / "scripts/reality_target_validation.py"), "validate"],
             env=environment, capture_output=True, text=True, timeout=15)
         assert result.returncode == 0, result.stdout
-        assert json.loads(result.stdout)["verdict"] == "passed"
+        assert json.loads(result.stdout)["hygiene"] == "passed"
         assert "owned.example" not in result.stdout and "93.184.216.34" not in result.stdout
         assert (certificate.read_bytes(), key.read_bytes()) == before
         assert not command(["ip", "-n", namespace, "route", "show", "default"]).stdout
