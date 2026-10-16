@@ -628,3 +628,7 @@ The four-transport runner reuses canonical runtime, endpoint, device binding
 and source-pair labs. Keep selected native cases complete: overrides, empty
 JUnit, skips and resource identity differences fail. Publish only case names,
 results, source/engine hashes and cleanup status; raw pytest logs stay private.
+
+Copied native CI source trees must be root-owned before admission. A Git
+`safe.directory` exception for the top-level checkout does not admit its nested
+pinned AWG source clones; preserve normal ownership checks instead.
