@@ -8,12 +8,12 @@ priority: medium
 risk: high
 owner: primary
 parent: EPC-1791618453830051
-blocked_by: [TST-1791618356595983, SCT-1791617687019287, XRY-1791617955392712, SCR-1791618039091425]
+blocked_by: [SCT-1791617687019287, XRY-1791617955392712, SCR-1791618039091425]
 spec_mode: required
 openspec_change: stable-client-parser-upgrade
 created: 2026-10-10
-updated: 2026-10-15
-related_tasks: []
+updated: 2026-10-17
+related_tasks: [TST-1791618356595983]
 ---
 
 ## Goal
