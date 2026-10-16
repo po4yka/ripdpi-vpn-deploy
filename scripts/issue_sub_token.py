@@ -17,7 +17,7 @@ import yaml
 
 from client_delivery_identity import authority, digest
 from client_payload import ROOT, command, materialize, options, validate_options, paths
-from encrypted_client_document import CommittedPublication, operate
+from encrypted_client_document import CommittedPublication, ExternalPublicationUncertain, operate
 
 
 def issue(args):
@@ -75,7 +75,7 @@ def issue(args):
             delivery_sources=source_paths, delivery_options=o, last_payload_identity=digest(args.client, o, payload, bindings, auth))
         return doc, {}
 
-    def publish():
+    def publish(mark_external_started):
         server_ip = command([str(ROOT / 'scripts/terraform-env.sh'), 'output', '-raw', 'server_ipv4']).decode().strip()
         admin = command([str(ROOT / 'scripts/terraform-env.sh'), 'output', '-raw', 'admin_user']).decode().strip()
         hostname = command([str(ROOT / 'scripts/terraform-env.sh'), 'output', '-raw', 'server_hostname']).decode().strip()
@@ -99,6 +99,8 @@ def issue(args):
         meta = dict(client=args.client)
         if publication['expires']:
             meta['expires'] = publication['expires']
+        # A failed SSH reply cannot prove that its remote write was absent.
+        mark_external_started()
         command(['ssh', target, "sudo install -o vpn-bootstrap -g vpn-bootstrap -m 0600 /dev/stdin '" + remote + ".meta'"], data=json.dumps(meta).encode())
         command(['ssh', target, "sudo install -o vpn-bootstrap -g vpn-bootstrap -m 0600 /dev/stdin '" + remote + "'"], data=publication['payload'])
 
@@ -152,7 +154,10 @@ def main():
     try:
         return issue(args)
     except CommittedPublication:
-        print('subscription-delivery: committed-durability-uncertain; inspect before retrying', file=sys.stderr)
+        print('subscription-delivery: committed-durability-uncertain; reconcile remote delivery and encrypted registry before retrying', file=sys.stderr)
+        return 3
+    except ExternalPublicationUncertain:
+        print('subscription-delivery: remote-publication-uncertain; reconcile remote delivery and encrypted registry before retrying', file=sys.stderr)
         return 3
     except ValueError as error:
         # Only our fixed categories are exposed; downstream parsers may echo input.

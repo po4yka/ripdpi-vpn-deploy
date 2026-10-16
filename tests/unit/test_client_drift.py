@@ -1,7 +1,6 @@
 """Real SOPS and shared materializer drift, privacy and transaction regressions."""
 from __future__ import annotations
 
-import copy
 import importlib.util
 import json
 import os
@@ -33,7 +32,7 @@ def lab(tmp_path, monkeypatch):
     monkeypatch.setenv('AUDIT_LOG_FILE', str(tmp_path / 'audit.age'))
     path = tmp_path / 'devices.sops.yaml'
     monkeypatch.setenv('SOPS_FILE', str(path))
-    for name in ('SOPS_FILES', 'VPN_SECRETS_FILE', 'HOSTS', 'COHORTS', 'AWG_HOST', 'UTLS_FINGERPRINT'):
+    for name in ('SOPS_FILES', 'VPN_SECRETS_FILE', 'HOSTS', 'COHORTS', 'AWG_HOST', 'UTLS_FINGERPRINT', 'DELIVERY_FAULT'):
         monkeypatch.delenv(name, raising=False)
     document = yaml.safe_load((ROOT / 'tests/fixtures/secrets-sample.yml').read_text())
     document['hysteria']['clients'][0]['password'] = MARKER
@@ -53,10 +52,18 @@ print({'server_ipv4':'192.0.2.10','server_hostname':'vpn.example.com','admin_use
 ''')
     (bin_dir / 'ssh').write_text('''#!/usr/bin/env python3
 import os, pathlib, sys
+fault = os.environ.get('DELIVERY_FAULT', '')
 if '.vpn-sub-mirror' in sys.argv[-1]:
-    raise SystemExit(0)
+    raise SystemExit(23 if fault == 'preflight' else 0)
 data = sys.stdin.buffer.read()
-pathlib.Path(os.environ['PAYLOAD_CAPTURE'] + ('.meta' if sys.argv[-1].endswith(".meta'") else '')).write_bytes(data)
+metadata = sys.argv[-1].endswith(".meta'")
+if fault == 'payload-before-write' and not metadata:
+    sys.stderr.buffer.write(data)
+    raise SystemExit(23)
+pathlib.Path(os.environ['PAYLOAD_CAPTURE'] + ('.meta' if metadata else '')).write_bytes(data)
+if fault == ('metadata-after-write' if metadata else 'payload-after-write'):
+    sys.stderr.buffer.write(data)
+    raise SystemExit(23)
 ''')
     for file in bin_dir.iterdir():
         file.chmod(0o700)
@@ -468,3 +475,86 @@ def test_explicit_cohort_needs_only_endpoint(lab):
     terraform.write_text('#!/bin/sh\ncase "$*" in *workspace*) exit 0;; *server_ipv4) printf 192.0.2.10;; *) exit 2;; esac\n')
     artifact, bindings = payload.materialize('phone', payload.options('ripdpi', cohorts=['p2-udp']), extended=True)
     assert artifact['ripdpi']['amneziawg'] and bindings
+
+
+@pytest.mark.parametrize('state,fault', [
+    *((state, fault) for state in ('first', 'refresh') for fault in
+      ('metadata-after-write', 'payload-before-write', 'payload-after-write', 'local-replace', 'local-sync')),
+    *(('unchanged-refresh', fault) for fault in ('metadata-after-write', 'payload-before-write', 'payload-after-write')),
+    ('refresh', 'metadata-interrupt'),
+])
+def test_partial_publication_reports_reconcile_before_retry(lab, monkeypatch, capsys, state, fault):
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    import stat
+    path, capture, drift = lab
+    monkeypatch.setattr(issuer, 'datetime', SimpleNamespace(now=lambda tz: datetime(2026, 10, 16, tzinfo=timezone.utc)))
+    argv = ['issue_sub_token.py', 'phone', '--format', 'ripdpi', '--print-token-only']
+    if state != 'first':
+        deliver()
+        argv.append('--refresh-token=' + capsys.readouterr().out.strip())
+        if state == 'refresh':
+            change(path, lambda doc: doc['hysteria']['clients'][0].update(password=MARKER + '-rotated'))
+    before = path.read_bytes()
+    previous = capture.read_bytes() if capture.exists() else None
+    monkeypatch.setenv('DELIVERY_FAULT', fault)
+    original_command, original_replace, original_sync = issuer.command, os.replace, os.fsync
+    def command(arguments, **kwargs):
+        result = original_command(arguments, **kwargs)
+        if fault == 'metadata-interrupt' and arguments[0] == 'ssh' and arguments[-1].endswith(".meta'"):
+            raise KeyboardInterrupt
+        return result
+    def replace(source, destination):
+        if fault == 'local-replace' and Path(destination) == path:
+            raise OSError(MARKER)
+        return original_replace(source, destination)
+    def sync(descriptor):
+        if fault == 'local-sync' and stat.S_ISDIR(os.fstat(descriptor).st_mode):
+            raise OSError(MARKER)
+        return original_sync(descriptor)
+    monkeypatch.setattr(issuer, 'command', command)
+    monkeypatch.setattr(encrypted.os, 'replace', replace)
+    monkeypatch.setattr(encrypted.os, 'fsync', sync)
+    monkeypatch.setattr(sys, 'argv', argv)
+    result = issuer.main()
+    observed = capsys.readouterr()
+    assert result == 3 and not observed.out
+    assert 'reconcile remote delivery and encrypted registry before retrying' in observed.err
+    assert capture.with_suffix(capture.suffix + '.meta').exists()
+    if fault == 'local-sync':
+        assert path.read_bytes() != before and drift._verdict('phone')[0] == 'current'
+        assert 'committed-durability-uncertain' in observed.err
+    else:
+        assert path.read_bytes() == before
+        assert 'remote-publication-uncertain' in observed.err
+    current = capture.read_bytes() if capture.exists() else None
+    if fault in ('metadata-after-write', 'payload-before-write', 'metadata-interrupt'):
+        assert current == previous
+    else:
+        assert current is not None and MARKER.encode() in current
+        if state == 'refresh':
+            assert current != previous
+    document = payload.read_document(path)
+    record = document.get('client_registry', {}).get('phone', {}).get('last_payload_identity', {})
+    for value in (MARKER, document.get('client_delivery_identity', {}).get('key'), record.get('digest')):
+        if value:
+            assert value not in observed.out + observed.err
+    assert not list(path.parent.glob('.devices.sops.yaml.client.*'))
+
+
+@pytest.mark.parametrize('refresh', [False, True])
+def test_preflight_failure_retains_ordinary_refusal(lab, monkeypatch, capsys, refresh):
+    path, capture, _drift = lab
+    argv = ['issue_sub_token.py', 'phone', '--format', 'ripdpi', '--print-token-only']
+    if refresh:
+        deliver()
+        argv.append('--refresh-token=' + capsys.readouterr().out.strip())
+    before = path.read_bytes()
+    previous = capture.read_bytes() if capture.exists() else None
+    monkeypatch.setenv('DELIVERY_FAULT', 'preflight')
+    monkeypatch.setattr(sys, 'argv', argv)
+    result = issuer.main()
+    observed = capsys.readouterr()
+    assert result == 2 and not observed.out and 'reconcile' not in observed.err
+    assert path.read_bytes() == before
+    assert (capture.read_bytes() if capture.exists() else None) == previous

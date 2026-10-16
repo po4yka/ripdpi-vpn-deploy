@@ -441,3 +441,9 @@ A delivery records expiry, format, hosts, cohorts, AWG host, UTLS override and
 private source selectors. Changes to consumed values are stale; unrelated
 metadata, another device's values and SOPS re-encryption remain current.
 The old source/output identity is no longer accepted; redeliver to migrate.
+
+Publication callbacks receive a marker for the first external mutation attempt.
+SSH acknowledgement loss, a later write failure or failed local replacement
+retains an explicit uncertain-publication result requiring reconciliation.
+Local commit/durability uncertainty remains a separate category; both outcomes
+keep private error details out of diagnostics, including during interruption.

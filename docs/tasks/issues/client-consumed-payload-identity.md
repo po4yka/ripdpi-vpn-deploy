@@ -2,7 +2,7 @@
 id: SCR-1791618188806822
 title: Detect client payload drift from every consumed private input
 kind: bug
-status: review
+status: doing
 area: scripts
 priority: high
 risk: high
@@ -12,9 +12,9 @@ blocked_by: [SCR-1791618039091425, XRY-1791617955392712]
 spec_mode: required
 openspec_change: client-consumed-payload-identity
 created: 2026-10-10
-updated: 2026-10-15
+updated: 2026-10-16
 related_tasks: []
-status_detail: "Full source implementation in PR #302; exact implementation SHA a3a0763dd85321eb0474738108ab23415288ed8b passed complete hosted CI and native acceptance. Source-only review; predecessor edges and external acceptance remain unchanged."
+status_detail: "Address PR #302 review: track partial remote publication before local authority replacement; retain categorical diagnostics and add real encrypted regressions."
 ---
 
 ## Goal

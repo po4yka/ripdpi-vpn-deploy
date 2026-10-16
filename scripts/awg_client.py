@@ -181,7 +181,7 @@ def main():
                                 f"hysteria2://{args.name}:{hy['password']}@<SERVER_IP>:443/?sni=<SERVER_HOSTNAME>#{args.name}"]
                         write('\n'.join(uris) + '\n')
                         return updated, {**metadata, 'output': args.output}
-                    result = operate(args.file, transaction, before_publish=validate)
+                    result = operate(args.file, transaction, before_publish=lambda _mark_external: validate())
                     committed_metadata = result
             else:
                 result = operate(args.file, transform)

@@ -200,6 +200,9 @@ are recorded with the new identity. A staging/verification failure preserves
 prior encrypted state and precedes remote writes. Local SOPS and remote
 publication cannot commit atomically together: reconcile both after an
 interrupted or failed publication before retrying.
+The CLI returns 3 with that reconciliation warning once a mutating SSH attempt
+has started, even if its reply or subsequent local publication fails. Preflight
+and candidate-verification refusals precede that boundary.
 
 AWG uses a nonempty `instances` list as its sole server and peer authority,
 including single-instance hosts. Top-level server keys, parameters and peers

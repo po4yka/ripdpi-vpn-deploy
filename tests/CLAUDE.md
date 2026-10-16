@@ -479,3 +479,8 @@ and encryption-failure preservation. Endpoint lookup and remote publication
 are isolated, so this evidence does not claim live fleet delivery. Copied
 emitter fixtures must include the Python renderer and its shared dependencies
 and explicitly establish private source modes.
+
+Delivery failures exercise actual isolated writes before failed acknowledgements,
+local replacement/sync failure and interruption, including unchanged refresh.
+Require reconciliation diagnostics after external mutation starts; preflight
+refusal retains the ordinary error and the prior encrypted authority.

@@ -623,6 +623,10 @@ HMAC authority lifecycle described in [Private client delivery identity](DESIGN-
 Issuance verifies staged ciphertext before remote publication under the shared
 lock. Local SOPS and remote delivery are separate systems: after interruption
 or a post-publication failure, reconcile the delivered artifact before retrying.
+The callback marks external publication before the first mutating SSH attempt,
+since a failed reply can follow a completed write. Subsequent failures or
+interruptions return a reconciliation warning, including failed local replacement.
+Validation-only callbacks leave that marker unset.
 
 The encrypted client transaction runs its verified publication callback under
 the stable lock even when plaintext registry state is unchanged. Same-second

@@ -906,7 +906,7 @@ def test_retirement_interlocks_the_canonical_sops_writer_lock(setup):
         in (ROOT / "scripts/encrypted_client_document.py").read_text()
     )
     assert (
-        'from encrypted_client_document import CommittedPublication, operate'
+        'from encrypted_client_document import CommittedPublication, ExternalPublicationUncertain, operate'
         in (ROOT / "scripts/issue_sub_token.py").read_text()
     )
     assert (

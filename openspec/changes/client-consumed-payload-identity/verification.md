@@ -1,29 +1,30 @@
 ---
 task_id: SCR-1791618188806822
 change: client-consumed-payload-identity
-commit_sha: a3a0763dd85321eb0474738108ab23415288ed8b
+commit_sha: null
 local: passed
-local_evidence: 139 complete affected cases passed in 146.10s without selected skips; 279 transaction and 49 caller/gate cases also passed. Broad make check retained pre-fix failures and two timeouts; corrected cases and both original timeout cases passed on focused rerun. Full local make check is not claimed green.
-remote_ci: passed
-remote_ci_evidence: 'Exact implementation SHA: ci 38783529998, CodeQL 38783529682, markdown-link-check 38783529856 and claude-md-touch 38783529685 all completed successfully.'
+local_evidence: 'PR review follow-up: complete affected suites passed 251 cases in 111.02s and 144 cases in 57.25s, without selected skips. Task contracts and strict OpenSpec validation passed. Full make check is queued behind the shared machine gate.'
+remote_ci: required
+remote_ci_evidence: 'PR #302 review follow-up: partial-publication tracking and interruption regressions require fresh source validation; baseline evidence below belongs to a3a0763dd85321eb0474738108ab23415288ed8b.'
 dry_run: not_applicable
 dry_run_evidence: source-only capability; no controller or provider execution in this task
 staging: not_applicable
 staging_evidence: isolated native source acceptance owns this change; fleet rehearsal requires separate authorization
 live: not_applicable
 live_evidence: no production rollout is part of this source task
-client: passed
-client_evidence: Real test-only SOPS/age issuance and refresh match canonical delivery; official sing-box parser passed. Native runtime job 116589727461 passed 138 runtime cases, two routed-edge cases and encrypted two-instance AWG TCP/UDP export/revocation/reissue acceptance.
-artifact: passed
-artifact_evidence: Schema, bundle, secrets coverage, encrypted synthetic fixture parity, snapshots and private marker/authority regressions passed. All implementation source checks passed at the recorded SHA.
+client: required
+client_evidence: 'PR #302 review follow-up: partial-publication tracking and interruption regressions require fresh source validation; baseline evidence below belongs to a3a0763dd85321eb0474738108ab23415288ed8b.'
+artifact: required
+artifact_evidence: 'PR #302 review follow-up: partial-publication tracking and interruption regressions require fresh source validation; baseline evidence below belongs to a3a0763dd85321eb0474738108ab23415288ed8b.'
 ---
 
 # Verification
 
-Evidence is pinned to the implementation commit above. The PR handoff changes
-only task and verification metadata afterward. This is source acceptance using
+The baseline evidence below is pinned to implementation commit
+`a3a0763dd85321eb0474738108ab23415288ed8b`. PR review follow-up validation
+is pending for partial external publication and interruption handling. This is source acceptance using
 synthetic encrypted authority and isolated native endpoints; it makes no fleet,
-provider or production acceptance claim. Canonical predecessor edges remain open.
+provider or production acceptance claim. Canonical predecessor references are retained; current main owns their accepted terminal state.
 
 ## Requirement evidence
 
@@ -56,8 +57,7 @@ provider or production acceptance claim. Canonical predecessor edges remain open
   passed **138 + 2 + 1 cases**, including real encrypted two-instance AWG
   authenticated TCP/UDP, wrong-key/header rejection, isolated revocation and
   fresh-key reissue. Native transport acceptance also passed.
-- Strict OpenSpec and task-history validation passed. Security review of the
-  committed diff and working tree: **APPROVE**, no remaining findings.
+- Strict OpenSpec and task-history validation passed. Baseline security review was **APPROVE**; the review follow-up requires fresh validation.
 
 ## Migration and limits
 
@@ -71,3 +71,20 @@ Candidate verification precedes remote writes. Local SOPS and remote delivery
 cannot form one distributed atomic commit; reconcile both after interrupted
 publication before retrying. No merge, deployment or task closure is implied
 by this review handoff.
+
+## PR review follow-up
+
+- Removed the unused test import reported by CodeQL.
+- Reproduced remote metadata publication followed by an ordinary exit-2 error.
+  External publication is now marked before its first mutating SSH attempt.
+  A failed reply, payload write, local replace/sync or interruption requires
+  reconciliation of remote delivery and encrypted registry before retrying.
+- All callback consumers use the explicit marker contract; local recipient
+  validation remains separate from external mutation.
+- Current main was merged without rewriting published history. Its task
+  acceptance and instruction changes are preserved.
+
+Complete review-follow-up suites passed **395 cases** without selected skips:
+251 drift/encrypted-transaction/retirement cases and 144 registry, expiry,
+emitter, audit and Make caller cases. Task contracts and strict OpenSpec
+validation passed. Exact committed-source CI remains required.
