@@ -4,8 +4,8 @@ change: awg-source-upgrade
 commit_sha: 1148aa10fd754f046f66c166a78e313b5cd48273
 local: passed
 local_evidence: Complete make check passed with 7217 portable tests, 320 vpnd tests, 59 Bats cases and four Terraform mock suites; 50 focused tests and updated native ARM64 lab passed.
-remote_ci: required
-remote_ci_evidence: The owner now requires all PR checks to pass. Current-main contract parity is restored; fresh combined-tree hosted acceptance is pending.
+remote_ci: passed
+remote_ci_evidence: Combined-tree source 47d045bc8ce3c0fae1ce4440e6af0bf31ebb9e41 passed CI 38863940278 with 93 successful checks, one advisory neutral check, zero failures or active checks; required-check aggregation, contract-sync and both native suites passed.
 dry_run: not_applicable
 dry_run_evidence: No inventory, private inputs or deployed hosts are used.
 staging: not_applicable
@@ -96,7 +96,10 @@ The combined tree passes all 160 focused source-candidate, source-pin, version
 floor, bundle schema, instruction and Make gate tests. Every executable lab
 input, including the shared receipt publisher and service template, remains
 byte-identical to the source used for the 183.383s native acceptance above.
-Fresh hosted checks cover the combined deployment tree.
+Hosted run `38863940278` completed every check on combined-tree source
+`47d045bc8ce3c0fae1ce4440e6af0bf31ebb9e41`: 93 successful checks, one advisory
+neutral check, zero failures or active checks. Contract-sync, both native Linux
+suites, full-stack/failure Molecule lanes and the required-check aggregate passed.
 
 Production eligibility remains false. Captures cover bounded IPv4 H1/H2/H4
 cases; H3/cookie behavior, IPv6 and physical Android acceptance are unclaimed.
