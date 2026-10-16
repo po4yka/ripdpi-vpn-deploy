@@ -3237,6 +3237,79 @@ class TaskctlHistoryTest(TaskctlFixture):
                 finally:
                     fixture.tearDown()
 
+    def test_base_purge_is_not_reaudited_after_merging_main(self) -> None:
+        source = self.add_simple_task(status="review")
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        self.commit_all("add reviewed source")
+        integration = self.git("branch", "--show-current")
+        self.git("branch", "feature")
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        self.commit_all("complete source on main")
+        self.purge_simple_task(source)
+        self.write_board()
+        base = self.commit_all("purge source on main")
+        self.git("switch", "feature")
+        (self.root / "feature.txt").write_text("feature work\n")
+        self.commit_all("feature work")
+        self.git("merge", integration, "-m", "update feature from main")
+        taskctl.validate_deleted_history(self.root, base)
+        self.git("switch", integration)
+        self.git("merge", "--no-ff", "feature", "-m", "synthetic PR merge")
+        taskctl.validate_deleted_history(self.root, base)
+
+    def test_merge_parent_that_never_owned_task_cannot_excuse_deletion(self) -> None:
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        base = self.commit_all("bootstrap owner")
+        integration = self.git("branch", "--show-current")
+        self.git("switch", "-c", "unrelated-side")
+        (self.root / "unrelated.txt").write_text("unrelated change\n")
+        self.commit_all("unrelated side work")
+        self.git("switch", integration)
+        source = self.add_simple_task(status="doing")
+        self.write_board()
+        self.commit_all("add new task")
+        self.git("merge", "--no-ff", "--no-commit", "unrelated-side")
+        source.unlink()
+        (self.root / "docs/tasks/work/CIC-1786234567890001.md").unlink()
+        self.write_board()
+        self.commit_all("improperly delete task during merge")
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "without a preceding committed terminal"
+        ):
+            taskctl.validate_deleted_history(self.root, base)
+
+    def test_old_base_purge_cannot_excuse_deleting_reintroduced_task(self) -> None:
+        source = self.add_simple_task(status="review")
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        self.commit_all("add original source")
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        self.commit_all("complete original source")
+        self.purge_simple_task(source)
+        self.write_board()
+        base = self.commit_all("purge original source")
+        integration = self.git("branch", "--show-current")
+        self.git("switch", "-c", "unrelated-side")
+        (self.root / "unrelated.txt").write_text("unrelated change\n")
+        self.commit_all("unrelated work after old purge")
+        self.git("switch", integration)
+        source = self.add_simple_task(status="doing")
+        self.write_board()
+        self.commit_all("reintroduce active source")
+        self.git("merge", "--no-ff", "--no-commit", "unrelated-side")
+        source.unlink()
+        (self.root / "docs/tasks/work/CIC-1786234567890001.md").unlink()
+        self.write_board()
+        self.commit_all("improperly delete new incarnation during merge")
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "without a preceding committed terminal"
+        ):
+            taskctl.validate_deleted_history(self.root, base)
+
     def test_terminal_history_rejects_ambiguous_completed_merged_lanes(self) -> None:
         source_task = "CIC-1786234567890001"
         owner_task = "CIC-1786234567890003"

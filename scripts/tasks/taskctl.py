@@ -18,6 +18,7 @@ import time
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from itertools import pairwise
 from pathlib import Path
 from typing import Any, Callable, Iterable, Sequence
 
@@ -2707,6 +2708,41 @@ def timeline_contains_deleted_task(
     )
 
 
+def task_has_deletion_after_base(
+    root: Path,
+    history_index: TerminalHistoryIndex,
+    task_id: str,
+    base: str,
+) -> bool:
+    deletions = {
+        current: previous
+        for revisions in (history_index.revisions, *history_index.merged_lanes)
+        for previous, current in pairwise(revisions)
+        if task_id in history_index.by_revision[previous]
+        and task_id not in history_index.by_revision[current]
+    }
+    for deletion, first_parent in deletions.items():
+        if revision_is_ancestor(root, deletion, base):
+            continue
+        # A merge can carry a removal already present in its side parent.
+        # Absence alone is insufficient: that parent may never have owned the
+        # task. Require an actual earlier removal in its ancestry that the
+        # first parent has not already integrated and superseded by recreation.
+        inherited = any(
+            task_id not in history_index.by_revision[side_parent]
+            and any(
+                prior != deletion
+                and revision_is_ancestor(root, prior, side_parent)
+                and not revision_is_ancestor(root, prior, first_parent)
+                for prior in deletions
+            )
+            for side_parent in history_index.merge_side_parents.get(deletion, ())
+        )
+        if not inherited:
+            return True
+    return False
+
+
 def merged_lane_integrated_after_revision(
     root: Path,
     history_index: TerminalHistoryIndex,
@@ -3440,6 +3476,8 @@ def validate_deleted_history(root: Path, base: str) -> None:
         )
 
         for task_id in sorted(candidate_ids - head_ids):
+            if not task_has_deletion_after_base(root, terminal_index, task_id, base):
+                continue
             timeline = [
                 (revision, by_revision[revision].get(task_id)) for revision in revisions
             ]

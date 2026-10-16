@@ -3,7 +3,12 @@
 ## Design decisions
 
 Task-history merge lanes retain the shared first-parent boundary, including
-closure commits made before a branch updates from main.
+closure commits made before a branch updates from main. Base-scoped validation
+checks new deletion events, excluding removals already inherited from the base.
+A merge removal is inherited only with an actual prior deletion in an absent
+side parent's ancestry that the first parent has not already integrated; a
+side parent that never owned the task or carries an old incarnation cannot
+excuse an uncommitted terminal transition. Global review-policy checks still run.
 
 XHTTP delivery resolves both configured direct endpoints through
 `transport_semantics.py`, retaining each hostname and port. Native Xray output
