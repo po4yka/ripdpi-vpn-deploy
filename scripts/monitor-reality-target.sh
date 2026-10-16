@@ -46,13 +46,9 @@ done
 if [[ -z "${VPN_SECRETS_FILE:-}" ]] && ! command -v sops >/dev/null 2>&1; then
   emit_boot_error "missing_tool"; exit 2
 fi
-if command -v timeout >/dev/null 2>&1; then
-  TIMEOUT_BIN="timeout"
-elif command -v gtimeout >/dev/null 2>&1; then
-  TIMEOUT_BIN="gtimeout"
-else
-  emit_boot_error "missing_timeout_tool"; exit 2
-fi
+
+REALITY_VALIDATION_END="$(python3 "${REPO_ROOT}/scripts/reality_target_validation.py" deadline)" || { emit_boot_error "invalid_budget"; exit 2; }
+export REALITY_VALIDATION_END
 
 STATE_DIR="${XDG_STATE_HOME:-${HOME}/.local/state}/vpn-deploy/reality-target-monitor"
 STATE_FILE="${STATE_DIR}/${ENV}.json"
@@ -73,7 +69,7 @@ trap cleanup EXIT
 
 umask 077
 if [[ -z "$SECRETS_SOURCE" ]]; then
-  if ! VPN_RUNTIME_DIR="$WORK" SECRETS_FILE="$SECRETS_TMP" SOPS_FILE="$SOPS_FILE" ENV="$ENV" "${REPO_ROOT}/scripts/decrypt-secrets.sh" >/dev/null; then
+  if ! VPN_RUNTIME_DIR="$WORK" SECRETS_FILE="$SECRETS_TMP" SOPS_FILE="$SOPS_FILE" ENV="$ENV" python3 "${REPO_ROOT}/scripts/reality_target_validation.py" bounded secrets "${REPO_ROOT}/scripts/decrypt-secrets.sh"; then
     emit_boot_error "sops_decrypt_failed"; exit 2
   fi
   OWN_SECRETS=1
@@ -87,92 +83,21 @@ NTFY_TOKEN="${NTFY_TOKEN:-$(jq -r '.watchdog_secrets.ntfy_token // empty' "$SECR
 if [[ -z "$TARGET" || -z "$SERVER_NAMES" || "$TARGET" != *:* ]]; then
   emit_boot_error "target_config_invalid"; exit 2
 fi
-HOST="${TARGET%:*}"
-PORT="${TARGET##*:}"
-if ! [[ "$PORT" =~ ^[0-9]+$ ]] || (( PORT < 1 || PORT > 65535 )); then
-  emit_boot_error "target_port_invalid"; exit 2
-fi
 
 IPS_FILE="${WORK}/ips"
 REASONS_FILE="${WORK}/reasons"
 OBS_FILE="${WORK}/observations.tsv"
 : > "$IPS_FILE"; : > "$REASONS_FILE"; : > "$OBS_FILE"
 
-resolve_ipv4_all() {
-  local host_name="$1" out=""
-  if command -v getent >/dev/null 2>&1; then
-    out="$(getent ahostsv4 "$host_name" 2>/dev/null | awk '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/{print $1}' || true)"
-  fi
-  if [[ -z "$out" ]] && command -v dig >/dev/null 2>&1; then
-    out="$(dig +short A "$host_name" 2>/dev/null | awk '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/{print}' || true)"
-  fi
-  if [[ -z "$out" ]] && command -v host >/dev/null 2>&1; then
-    out="$(host -t A "$host_name" 2>/dev/null | awk '/has address/{print $NF}' || true)"
-  fi
-  if [[ -z "$out" ]]; then
-    out="$(python3 - "$host_name" <<'PY' 2>/dev/null || true
-import socket, sys
-try:
-    rows = socket.getaddrinfo(sys.argv[1], None, socket.AF_INET, socket.SOCK_STREAM)
-except OSError:
-    rows = []
-for address in sorted({row[4][0] for row in rows}):
-    print(address)
-PY
-)"
-  fi
-  printf '%s\n' "$out" | awk 'NF' | sort -u
-}
+# Shared collector owns bounded DNS/TLS/HTTP/metadata sessions and one run budget.
+# Failed/partial runs still feed the state engine, so stale health cannot survive.
+export TARGET SERVER_NAMES PROBE_TIMEOUT
+if ! python3 "${REPO_ROOT}/scripts/reality_target_validation.py" collect \
+    --observations "$OBS_FILE" --reasons "$REASONS_FILE" --names "${WORK}/names"; then
+  [[ -s "$REASONS_FILE" ]] || echo "collector_failed" >> "$REASONS_FILE"
+fi
 
-san_covers() {
-  local sni="$1" san_blob="$2" entry suffix label
-  while IFS= read -r entry; do
-    [[ -n "$entry" ]] || continue
-    if [[ "$entry" == \*.* ]]; then
-      suffix=".${entry#*.}"
-      if [[ "$sni" == *"$suffix" ]]; then
-        label="${sni%"$suffix"}"
-        [[ -n "$label" && "$label" != *.* ]] && return 0
-      fi
-    elif [[ "$entry" == "$sni" ]]; then
-      return 0
-    fi
-  done <<< "$san_blob"
-  return 1
-}
-
-resolve_ipv4_all "$HOST" > "$IPS_FILE"
-[[ -s "$IPS_FILE" ]] || echo "dns_no_ipv4" >> "$REASONS_FILE"
-while IFS= read -r ip; do
-  [[ -n "$ip" ]] || continue
-  asn=""; prefix=""; pair_count=0; failed_pairs=0
-  if asn_line="$("${REPO_ROOT}/scripts/probe-asn.sh" "$ip" 2>/dev/null)"; then
-    asn="AS$(printf '%s' "$asn_line" | awk -F'\t' '{print $2}')"
-    prefix="$(printf '%s' "$asn_line" | awk -F'\t' '{print $3}')"
-  else
-    echo "asn_lookup_failed" >> "$REASONS_FILE"
-  fi
-  while IFS= read -r sni; do
-    [[ -n "$sni" ]] || continue
-    pair_count=$((pair_count + 1)); pair_failed=0
-    set +e
-    tls_out="$("$TIMEOUT_BIN" "$PROBE_TIMEOUT" openssl s_client -connect "${ip}:${PORT}" -servername "$sni" -tls1_3 -alpn h2 -showcerts -verify_return_error -verify_hostname "$sni" </dev/null 2>/dev/null)"
-    tls_result=$?
-    set -e
-    if ! printf '%s' "$tls_out" | grep -q -- '-----BEGIN CERTIFICATE-----'; then
-      echo "tls_handshake_failed" >> "$REASONS_FILE"; pair_failed=1
-    else
-      (( tls_result == 0 )) || { echo "certificate_validation_failed" >> "$REASONS_FILE"; pair_failed=1; }
-      printf '%s' "$tls_out" | grep -q 'ALPN protocol: h2' || { echo "h2_unavailable" >> "$REASONS_FILE"; pair_failed=1; }
-      san_blob="$(printf '%s' "$tls_out" | openssl x509 -noout -ext subjectAltName 2>/dev/null | grep 'DNS:' | tr ',' '\n' | sed -E 's/.*DNS://; s/[[:space:]]//g' || true)"
-      san_covers "$sni" "$san_blob" || { echo "certificate_san_mismatch" >> "$REASONS_FILE"; pair_failed=1; }
-    fi
-    http_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 --resolve "${sni}:${PORT}:${ip}" "https://${sni}:${PORT}/" 2>/dev/null || true)"
-    [[ -n "$http_code" && "$http_code" != "000" ]] || { echo "https_no_response" >> "$REASONS_FILE"; pair_failed=1; }
-    (( pair_failed == 0 )) || failed_pairs=$((failed_pairs + 1))
-  done <<< "$SERVER_NAMES"
-  printf '%s\t%s\t%s\t%s\t%s\n' "$ip" "$asn" "$prefix" "$pair_count" "$failed_pairs" >> "$OBS_FILE"
-done < "$IPS_FILE"
+[[ ! -s "${WORK}/names" ]] || SERVER_NAMES="$(cat "${WORK}/names")"
 
 FINAL_REPORT="${WORK}/final-report.json"
 evaluate_args=(evaluate --observations "$OBS_FILE" --reasons "$REASONS_FILE" --state "$STATE_FILE" --vantage "$VANTAGE")
@@ -201,7 +126,7 @@ if [[ "$alert_event" == "alert" || "$alert_event" == "recovery" ]]; then
     fi
     alert_body="$(jq -r '"vantage=" + .vantage + " verdict=" + .verdict + " consecutive=" + (.consecutive_unhealthy|tostring) + " asns=" + (.asns|join(",")) + " prefixes=" + (.prefixes|join(",")) + " reasons=" + (.reason_codes|join(","))' "$FINAL_REPORT")"
     auth_args=(); [[ -z "$NTFY_TOKEN" ]] || auth_args=(-H "Authorization: Bearer ${NTFY_TOKEN}")
-    if curl -fsS -X POST -H "Title: ${alert_title}" -H "Priority: ${alert_priority}" -H "Tags: ${alert_tags}" "${auth_args[@]}" --data "$alert_body" "${NTFY_URL%/}/${NTFY_TOPIC}" >/dev/null; then
+    if python3 "${REPO_ROOT}/scripts/reality_target_validation.py" bounded alert curl -fsS --connect-timeout 5 --max-time 12 -X POST -H "Title: ${alert_title}" -H "Priority: ${alert_priority}" -H "Tags: ${alert_tags}" "${auth_args[@]}" --data "$alert_body" "${NTFY_URL%/}/${NTFY_TOPIC}" >/dev/null; then
       alert_delivery="sent"
     else
       echo "REALITY target monitor: alert delivery failed" >&2

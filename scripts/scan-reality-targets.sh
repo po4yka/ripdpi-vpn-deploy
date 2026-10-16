@@ -18,7 +18,7 @@
 #      ASN is checked separately via whois.cymru.com for the top candidates.
 #   4. Print the top candidates with ASN + ALPN + CN + issuer columns.
 #   5. Optional: feed the top result back through validate-reality-target.sh
-#      for the full 9-step audit.
+#      for the bounded TLS/HTTP hygiene.
 #
 # Usage:
 #   scripts/scan-reality-targets.sh --seeds my-seeds.txt
@@ -223,13 +223,13 @@ while IFS=, read -r ip origin cert issuer geo && (( i < TOP )); do
 done < <(tail -n +2 "$filtered")
 
 # ---------------------------------------------------------------------------
-# Optional: full 9-step audit on the top candidate
+# Optional: bounded TLS/HTTP hygiene on the top candidate
 # ---------------------------------------------------------------------------
 if [[ "$VALIDATE" == 1 && -n "${top_host_clean:-}" ]]; then
   echo
   echo ">>> validating top candidate via validate-reality-target.sh: $top_host_clean"
   TARGET="${top_host_clean}:443" SERVER_NAMES="$top_host_clean" \
-    "${REPO_ROOT}/scripts/validate-reality-target.sh" || true
+    "${REPO_ROOT}/scripts/validate-reality-target.sh"
 fi
 
 echo

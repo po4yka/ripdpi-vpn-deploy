@@ -1,0 +1,39 @@
+---
+name: REALITY target validation
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reality-target-validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Install pinned test dependencies
+        run: python3 -m pip install --require-hashes -r requirements.txt
+      - name: Acquire checksum-pinned test-only client
+        run: |
+          set -euo pipefail
+          client="$RUNNER_TEMP/reality-client"
+          mkdir -p "$client"
+          curl -fsSL --connect-timeout 5 --max-time 60 \
+            https://github.com/lwthiker/curl-impersonate/releases/download/v0.6.1/curl-impersonate-v0.6.1.x86_64-linux-gnu.tar.gz \
+            -o "$client/archive.tar.gz"
+          echo "fa1e1614f7ba69ccc66721a0f38be457a3647eb64c75d66974b56186e3316b12  $client/archive.tar.gz" | sha256sum -c -
+          tar -xzf "$client/archive.tar.gz" -C "$client"
+          {
+            echo "REALITY_TEST_CLIENT_DIR=$client"
+            echo 'REALITY_TEST_BIND=0.0.0.0'
+            echo "REALITY_TEST_PUBLIC_IP=$(hostname -I | awk '{print $1}')"
+          } >> "$GITHUB_ENV"
+      - name: Exercise complete real identity, client, ingress and timeout cases
+        run: make test-reality-target-validation

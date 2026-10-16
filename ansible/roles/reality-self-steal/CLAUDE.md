@@ -30,3 +30,9 @@
   the 404 body across domains — identical content hashes make the fleet
   clusterable.
 - DNS, certificate issuance, client SNI rotation, and filtered-vantage survival remain operator promotion gates outside this role.
+
+Remote target validation uses `TARGET_MODE=owned-public`, `PUBLIC_ENDPOINT` and
+`OWNED_SNI`; the endpoint is the approved service ingress, not this role's
+node-local `127.0.0.1:8443`. That listener and the accepted certificate authority
+are never modified by validation. A passing local TLS/HTTP observation does not
+approve promotion or establish filtered-path/client survival.
