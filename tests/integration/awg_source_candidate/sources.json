@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "go_toolchain": "1.27.1",
+  "go_toolchain_sha256": {
+    "amd64": "63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445",
+    "arm64": "3450b45a3f9ee8568792736a5c5e70a1f2e9b36c35a8f74958c03e51d7d92bec"
+  },
+  "baseline": {
+    "go": {
+      "tag": "v0.2.12",
+      "commit": "2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf"
+    },
+    "tools": {
+      "tag": "v1.0.20241018",
+      "commit": "c0b400c6dfc046f5cae8f3051b14cb61686fcf55"
+    }
+  },
+  "candidate": {
+    "go": {
+      "tag": "v3.1.20260828",
+      "commit": "b5928efb6ca19f0153958460c3d141f04abc5c2e"
+    },
+    "tools": {
+      "tag": "v3.1.20260812",
+      "commit": "ee0f0a9aa34ff0a0da4b3433b9512781cfe02843"
+    }
+  },
+  "eligibility": {
+    "production": false,
+    "reason": "Go candidate has no published release object; local Linux acceptance does not establish physical Android or production eligibility.",
+    "reviewed_on": "2026-10-15",
+    "go_release": null,
+    "tools_release": {
+      "prerelease": false,
+      "draft": false,
+      "published_at": "2026-08-12T22:40:46Z"
+    }
+  },
+  "wire_shapes": [
+    {
+      "name": "broad-junk-scalar-headers",
+      "jc": 4,
+      "jmin": 40,
+      "jmax": 70,
+      "s1": 50,
+      "s2": 100,
+      "h1": 11,
+      "h2": 12,
+      "h3": 13,
+      "h4": 14
+    },
+    {
+      "name": "narrow-junk-sequential",
+      "jc": 4,
+      "jmin": 10,
+      "jmax": 50,
+      "s1": 0,
+      "s2": 0,
+      "h1": 1,
+      "h2": 2,
+      "h3": 3,
+      "h4": 4
+    }
+  ],
+  "go_module_proxy": "https://goproxy.cn"
+}

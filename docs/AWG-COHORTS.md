@@ -163,6 +163,23 @@ pools; broader prefix routing requires explicit `address_kind: routed` ownership
 in a `0700` directory. The destination is reserved before enrollment and removed
 on transaction failure. URI passwords never enter metadata stdout.
 
+## Local source-upgrade candidate
+
+`tests/integration/awg_source_candidate/sources.json` selects Go v3.1.20260828 and tools
+v3.1.20260812 independently of the deployment examples above. Run
+`build-gate -- make test-awg-source-candidate` against local Docker to build both
+exact source pairs and exercise mixed-version TCP/UDP/DNS, captured packet
+headers, reconnects and warm adoption/compensation in a disconnected Linux lab.
+The command requires systemd, TUN and privileged containers inside the local
+Docker VM; it creates no provider objects, published ports or workspace mounts.
+
+The candidate has no production eligibility: the Go tag has no release object
+at the recorded review, and Linux arm64 does not establish physical Android
+acceptance. Deployment pins, wire fingerprints and the S3/S4 zero floor remain
+unchanged. The lab uses the existing source publisher, but its explicit service
+restart/rollback procedure does not claim automatic production-role data-plane
+readiness or a fleet rollout.
+
 ## Device addresses and MTU
 
 Every device peer has both host identities in its instance pools:

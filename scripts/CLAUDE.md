@@ -2,6 +2,18 @@
 
 ## Design decisions
 
+The AWG source-candidate runner admits only a local Unix-socket Docker daemon,
+copies an explicit public-file build context and removes only its own
+container ID. After an uncertain startup it polls the preallocated name for
+30 seconds, removes it once observed, and fails with an explicit unconfirmed
+cleanup diagnostic if the daemon outcome remains unknown. It binds
+BuildKit and runtime calls to the admitted local engine context. Public sources
+arrive as exact-commit Git bundles fetched over GitHub SSH port 22; credentials
+and the agent stay on the workstation. Every invocation revalidates current
+lightweight/peeled annotated upstream refs before accepting cached bundles.
+Runtime execution has no external network
+or published ports; compilation belongs under the machine-wide build gate.
+
 ECH and BBR recipient fields are materialized in the shared Python payload path used by both delivery and drift inspection. The internal XHTTP-only selection retains semantic admission and is refused by bundle export.
 
 Bootstrap registers plaintext cleanup before creating an exclusive private temporary document; ECH refusal, encryption failure and signal exits remove only that invocation's staging file. Existing operator plaintext remains intact. RIPDPI bundle export rejects the internal `--xhttp-only` monitoring flag before invoking any producer or reading secrets.
