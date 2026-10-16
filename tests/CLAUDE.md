@@ -14,6 +14,8 @@
 
 ## Design decisions
 
+Dual-family namespace probe regressions force both IPv4-first and IPv6-first logging. Concurrent child launch order does not imply log order; require exactly one request per family, the same namespace and in-tunnel hostname resolution in either schedule.
+
 Controller interruption fixtures release their synthetic workers through an owned stop marker and retained subprocess handles. Cleanup never signals a recorded process group after its ownership can have expired; privacy and child-removal assertions remain unchanged.
 
 ECH and BBR recipient fields are materialized in the shared Python payload path used by both delivery and drift inspection. The internal XHTTP-only selection retains semantic admission and is refused by bundle export.

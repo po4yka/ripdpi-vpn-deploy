@@ -180,7 +180,19 @@ signal.pause()
     _write_executable(
         bin_dir / "ip",
         """#!/usr/bin/env bash
+if [[ "${1:-} ${2:-}" == 'netns exec' && "${4:-}" == curl && -n "${AWG_FIRST_FAMILY:-}" ]]; then
+  if [[ " $* " != *" --${AWG_FIRST_FAMILY} "* ]]; then
+    for _ in {1..100}; do
+      [[ -f "${CALL_LOG}.first-family" ]] && break
+      sleep 0.01
+    done
+    [[ -f "${CALL_LOG}.first-family" ]] || exit 1
+  fi
+fi
 printf 'ip %s\n' "$*" >> "$CALL_LOG"
+if [[ "${1:-} ${2:-}" == 'netns exec' && "${4:-}" == curl && -n "${AWG_FIRST_FAMILY:-}" && " $* " == *" --${AWG_FIRST_FAMILY} "* ]]; then
+  touch "${CALL_LOG}.first-family"
+fi
 if [[ "${1:-} ${2:-}" == 'link show' ]]; then
   if [[ "${EXISTING_AWG_INTERFACE:-}" == 1 || -f "$AWG_PID_FILE" ]]; then exit 0; else exit 1; fi
 fi
@@ -443,11 +455,13 @@ def test_awg_probe_command_keeps_hostname_resolution_inside_namespace():
     assert command[-1] == "https://fixture.example/"
 
 
+@pytest.mark.parametrize("first_family", ["ipv4", "ipv6"])
 def test_awg_namespace_curl_requires_both_families_and_resolves_hostname_inside_namespace(
-    tmp_path: Path,
+    tmp_path: Path, first_family: str,
 ) -> None:
     config, env = _setup(tmp_path)
     document = json.loads(config.read_text())
+    env["AWG_FIRST_FAMILY"] = first_family
     document["probe_url"] = "https://dual-stack.fixture/"
     config.write_text(json.dumps(document))
 
@@ -455,21 +469,23 @@ def test_awg_namespace_curl_requires_both_families_and_resolves_hostname_inside_
 
     assert result.returncode == 0, result.stderr
     calls = (tmp_path / "calls.log").read_text().splitlines()
-    awg_curl = next(
-        line
-        for line in calls
-        if line.startswith("ip netns exec vpn-live-") and " curl " in line
-    )
-    awg_arguments = awg_curl.split()
-    assert "--ipv4" in awg_arguments
-    assert "--resolve" not in awg_arguments
-    assert awg_arguments[-1] == "https://dual-stack.fixture/"
-    assert any(line.startswith("ip netns exec vpn-live-") and " curl " in line and "--ipv6" in line for line in calls)
+    commands = [line.split() for line in calls
+                if line.startswith("ip netns exec vpn-live-") and " curl " in line]
+    assert len(commands) == 2
+    assert "--" + first_family in commands[0]
+    assert {tuple(arg for arg in command if arg in {"--ipv4", "--ipv6"})
+            for command in commands} == {("--ipv4",), ("--ipv6",)}
+    assert len({tuple(command[:4]) for command in commands}) == 1
+    for command in commands:
+        assert "--resolve" not in command
+        assert command[-1] == "https://dual-stack.fixture/"
     awg = next(
         item for item in json.loads(result.stdout)["profiles"] if item["profile"] == "p2-amneziawg"
     )
     assert awg["target_address_family"] == "dualstack"
     assert awg["dns_through_tunnel"] is True
+    assert set(awg["family_results"]) == {"ipv4", "ipv6"}
+    assert all(result["verdict"] == "ok" for result in awg["family_results"].values())
 
 
 def test_legacy_sing_box_xhttp_requires_explicit_migration(tmp_path):
