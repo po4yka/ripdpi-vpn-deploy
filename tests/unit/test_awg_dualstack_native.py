@@ -52,6 +52,7 @@ bind = (sys.argv[2] or None) if len(sys.argv)>2 else None
 timeout = float(sys.argv[3]) if len(sys.argv)>3 else 2
 started=time.monotonic(); received=0
 for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM):
+    print('phase=tcp' if kind == socket.SOCK_STREAM else 'phase=udp', file=sys.stderr, flush=True)
     with socket.socket(family,kind) as s:
         s.settimeout(timeout)
         if bind: s.bind((bind,0))
@@ -66,6 +67,7 @@ for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM):
             assert response==payload
             received+=len(response)
 for qtype in (1,28):
+    print('phase=dns-' + str(qtype), file=sys.stderr, flush=True)
     with socket.socket(family,socket.SOCK_DGRAM) as s:
         s.settimeout(timeout); s.connect((address,53))
         query=b'\x17\x42\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x05owned\x07example\x00'+struct.pack('!HH',qtype,1)
@@ -100,6 +102,8 @@ def path_evidence(spaces, peers, tools, address):
             ('links', ['ip', '-s', '-j', 'link', 'show']),
             ('firewall', ['nft', '-j', 'list', 'ruleset']),
             ('listeners', ['ss', '-lntu']),
+            ('ipv6-udp', ['nstat', '-az', 'Udp6InDatagrams', 'Udp6NoPorts',
+                         'Udp6InErrors', 'Udp6RcvbufErrors', 'Udp6InCsumErrors']),
         ):
             observed = subprocess.run(
                 ['ip', 'netns', 'exec', space, *argv], capture_output=True,
@@ -168,6 +172,7 @@ def test_owned_uplink_nat_mtu_dns_reconnect_revocation_and_no_native_bypass(tmp_
                 (clients[i], server, uplink),
                 ((clients[i], 'c'+token+str(i)), (server, interfaces[i])), tools, address,
             )
+            evidence['probe'] = {'returncode': result.returncode, 'stderr': result.stderr[-4000:]}
             pytest.fail('authenticated constrained-path result disagrees with policy: ' + json.dumps(evidence))
         if accepted:
             measured=json.loads(result.stdout)

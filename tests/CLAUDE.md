@@ -14,6 +14,8 @@
 
 ## Design decisions
 
+AWG constrained-path failures retain the bounded client exception, traffic phase and IPv6 UDP error counters alongside route and peer evidence. Probe diagnostics contain only owned synthetic traffic metadata, never AWG credentials.
+
 Ingress/egress commit tests kill a separate process before and after the durable decision, native outer finish and ingress journal deletion. Portable tests model only the egress adapter; the native lane retains a real accepted outer route and proves authenticated canary traffic after roll-forward or whole-route rollback. Ansible composition also covers a lost acknowledgement after journal deletion so rescue cannot revert committed egress. Native acceptance uses the least-duration split so new boundary cases mix with existing lifecycle cases instead of accumulating in one contiguous partition.
 
 The complete XHTTP delivery matrix extends the endpoint target with real native
