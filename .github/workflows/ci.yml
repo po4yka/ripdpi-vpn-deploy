@@ -712,7 +712,7 @@ jobs:
             chmod 0755 /var/log
             install -d -m 0755 /usr/local/libexec
             mount --make-rshared /run
-            git config --global --add safe.directory /opt/rta
+            chown -R --no-dereference 0:0 /opt/rta
           '
       - name: Execute every native case without selection or skip overrides
         run: |
