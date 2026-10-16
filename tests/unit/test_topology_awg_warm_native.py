@@ -38,9 +38,14 @@ def test_warm_binary_and_unit_adoption_then_unchanged_convergence(tmp_path):
     executable = private / 'amneziawg-go'
     shutil.copyfile(go, executable); executable.chmod(0o755)
     bin_dir = private / 'bin'; bin_dir.mkdir(mode=0o700)
-    (bin_dir / 'awg').symlink_to(tools)
-    quick = tools.parent / 'wg-quick/linux.bash'
-    assert quick.is_file()
+    # CI builds under /home, which the real unit deliberately hides. Stage
+    # exact runtime bytes beside the private fixture, as deployment does.
+    staged_tools = bin_dir / 'awg'
+    shutil.copyfile(tools, staged_tools); staged_tools.chmod(0o755)
+    quick_source = tools.parent / 'wg-quick/linux.bash'
+    assert quick_source.is_file()
+    quick = private / 'awg-quick'
+    shutil.copyfile(quick_source, quick); quick.chmod(0o755)
     key = command([str(tools), 'genkey']).strip()
     config = private / (interface + '.conf')
     config.write_text('[Interface]\nPrivateKey = ' + key + '\nAddress = 10.88.0.1/24\nMTU = 1420\n')
