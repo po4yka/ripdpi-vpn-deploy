@@ -2,7 +2,7 @@
 id: ANS-1791996724624876
 title: Roll back private gateway runtimes with the frontend runtime
 kind: bug
-status: review
+status: done
 area: ansible
 priority: medium
 risk: high
@@ -15,6 +15,9 @@ created: 2026-10-14
 updated: 2026-10-16
 related_tasks: []
 status_detail: Runtime rollback and complete compensation implemented; gated make check and exact-source CI 38909820069 passed at e3c11684, including both native partitions and all affected role/site scenarios.
+closed_at: "2026-10-16T15:12:23Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "Implemented single-publisher gateway runtime rollback and complete compensation. Source e3c11684: gated make check passed (7507 portable and 320 vpnd tests); CI 38909820069 passed both native partitions, affected role scenarios and both full-stack scenarios; 286 focused regressions and 163 snapshots passed. Source/native acceptance only; no production rollout."
 ---
 
 ## Goal
