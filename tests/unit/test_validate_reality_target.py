@@ -40,6 +40,9 @@ def tls_site(tmp_path, request):
     if variant != 'no-san':
         builder = builder.add_extension(x509.SubjectAlternativeName([x509.DNSName('exact.example'),
                                                     x509.DNSName('*.wild.example')]), critical=False)
+    if variant == 'large-certificate':
+        builder = builder.add_extension(x509.UnrecognizedExtension(
+            x509.ObjectIdentifier('1.3.6.1.4.1.55555.1'), b'x' * 80 * 1024), critical=False)
     cert = builder.sign(key, hashes.SHA256())
     ca = tmp_path / 'ca.pem'; private = tmp_path / 'key.pem'
     ca.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
@@ -331,3 +334,13 @@ def test_actual_missing_san_expiry_and_alpn_refuse(tls_site, request):
     result, report = run_site(tls_site, SERVER_NAMES='cn-only.example' if variant == 'no-san' else 'exact.example')
     assert result.returncode != 0
     assert ('h2_unavailable' if variant == 'no-h2' else 'certificate_validation_failed') in report['reason_codes']
+
+
+@pytest.mark.parametrize('tls_site', ['large-certificate'], indirect=True)
+def test_large_certificate_retains_healthy_transport_classification(tls_site):
+    # Exceeds ordinary pipe buffers; TLS evidence must not depend on shell readers.
+    assert tls_site[1].stat().st_size > 64 * 1024
+    result, report = run_site(tls_site)
+    assert result.returncode == 0, (report, result.stderr)
+    assert report['hygiene'] == 'passed'
+    assert report['reason_codes'] == []

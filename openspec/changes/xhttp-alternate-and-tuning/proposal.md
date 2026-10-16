@@ -12,7 +12,7 @@ Audit coverage: Upgrade or feature roadmap; planning baseline `605ae0be18dcbe1c5
 
 - Export and select the enabled alternate XHTTP endpoint with its actual port owned hostname and verified TLS identity.
 - Extend existing Xray-backed liveness profiles to observe each enabled endpoint and identify which path completed traffic.
-- Expose only a reviewed typed subset of supported XHTTP mode and XMUX connection/request bounds shared by server and exact recipient engines.
+- Expose only a reviewed typed subset of supported XHTTP mode and XMUX connection/request bounds with shared server mode and exact native Xray recipient support; RIPDPI refuses unsupported controls.
 - Measure positive transfer reconnect idle and failure behavior against the baseline before promoting a tuning profile; retain stable pins and classical P0 behavior.
 
 ## Capabilities
@@ -47,5 +47,5 @@ Audit coverage: Upgrade or feature roadmap; planning baseline `605ae0be18dcbe1c5
 - NEW: tests/unit/test_xhttp_alternate_profiles.py
 - NEW: tests/integration/xhttp_delivery_matrix/
 - NEW: docs/XHTTP-DELIVERY-PROFILES.md
-- Planning only: no implementation, private-input mutation, provider action or deployment is authorized by these artifacts.
+- Authorized scope (2026-10-16): local implementation and isolated native Xray runtime acceptance, with a new explicit native Xray recipient format. No external staging soak, physical/external clients, private inputs or provider action.
 - Dependency and prerequisite ownership is recorded in the portfolio and design; source-fixed predecessor evidence stays intact.

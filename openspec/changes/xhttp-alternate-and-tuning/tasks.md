@@ -2,7 +2,7 @@
 
 ## Objective
 
-Deliver selectable alternate XHTTP endpoints and measured typed tuning. All execution checkboxes remain open; this is planning, not implementation or deployment approval.
+Deliver selectable alternate XHTTP endpoints and measured typed tuning. Implementation and local-only acceptance are authorized; no external staging soak or physical/external clients are required.
 
 ## Ownership
 
@@ -28,13 +28,13 @@ Deliver selectable alternate XHTTP endpoints and measured typed tuning. All exec
 - NEW: docs/XHTTP-DELIVERY-PROFILES.md
 - Primary integration owns all shared schema, profile, Makefile, CI/snapshot and portfolio edits; explicitly assign disjoint paths before future parallel implementation.
 - Preserve unrelated work, existing review records and private operator files. Use a dedicated implementation worktree only after authorization.
-- This planning session has one serialized repository writer; delegated plan drafts do not alter runtime source.
+- One serialized implementation owner writes the shared integration and task metadata; no parallel writers are used.
 
 ## Execution
 
-- [ ] XRY-1791618003859679 Deliver primary and alternate endpoint artifacts with exact identity selection and authenticated client regressions #feature @item:XRY-1791617991738391
-- [ ] XRY-1791618006858260 Verify exact engine capabilities and implement a small typed mode and tuning allowlist with parser and transfer tests #feature @item:XRY-1791617991738391
-- [ ] XRY-1791618007864586 Integrate actual endpoint liveness and comparative delivery fault idle reconnect and resource measurements #feature @item:XRY-1791617991738391
+- [x] XRY-1791618003859679 Deliver primary and alternate endpoint artifacts with exact identity selection and authenticated client regressions #feature @item:XRY-1791617991738391
+- [x] XRY-1791618006858260 Verify exact engine capabilities and implement a small typed mode and tuning allowlist with parser and transfer tests #feature @item:XRY-1791617991738391
+- [x] XRY-1791618007864586 Integrate actual endpoint liveness and comparative delivery fault idle reconnect and resource measurements #feature @item:XRY-1791617991738391
 - [ ] XRY-1791618008836301 Run privacy security rollback and full gates and document accepted profiles coordinated client rollout and PQE HOLD #feature @item:XRY-1791617991738391
 
 ## Verification
@@ -47,4 +47,4 @@ Deliver selectable alternate XHTTP endpoints and measured typed tuning. All exec
 
 Requirement-to-step mapping and unfulfilled evidence categories live in verification.md. No fixture, refusal-only result or skipped selected case satisfies positive capability. Future external acceptance requires current authorization and exact scope; no existing cancelled task is revived.
 
-Implementation starts only after the canonical portfolio prerequisites are satisfied and separately authorized. Planning alone neither starts work nor checks an execution step.
+Accepted source prerequisites are retained. This change owns its independent local XHTTP matrix; the broader four-protocol acceptance task is related roadmap work. Mark steps complete only on observed local execution and exact-source checks.

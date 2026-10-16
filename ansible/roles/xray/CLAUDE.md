@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+XHTTP server mode shares admission with recipient emission. Optional typed
+bounded-pool tuning is qualified for v26.3.27 native Xray outbounds only; XMUX
+pool controls belong to the client and are never copied into the server inbound.
+No production pin, default mode, P0 shape or PQE eligibility changes with it.
+
 - Site staging defers frontend rescue to the protected site transaction, which restores matching ingress before accepted frontend recovery. Standalone role reconciliation keeps its own guarded rollback.
 
 - The guarded generation is the sole frontend lifecycle owner. Candidate
