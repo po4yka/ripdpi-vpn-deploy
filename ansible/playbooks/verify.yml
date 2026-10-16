@@ -180,7 +180,7 @@
       no_log: true
       when:
         - vpn.enable_watchdog | default(true)
-        - (vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true)) or (vpn.enable_hysteria | default(false))
+        - (vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true)) or (vpn.enable_hysteria | default(true))
         - not (vpn_subscription_only | default(false))
 
     - name: Run authenticated watchdog through its bounded credential-bearing unit
@@ -189,7 +189,7 @@
       changed_when: false
       when:
         - vpn.enable_watchdog | default(true)
-        - (vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true)) or (vpn.enable_hysteria | default(false))
+        - (vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true)) or (vpn.enable_hysteria | default(true))
         - not (vpn_subscription_only | default(false))
 
     - name: Verify authenticated round trips from the new watchdog journal records
@@ -208,11 +208,11 @@
             'OK    xray REALITY' not in watchdog_reality_verify.stdout)
         or ((vpn.enable_nginx_xhttp | default(true)) and
             'OK    xray XHTTP' not in watchdog_reality_verify.stdout)
-        or ((vpn.enable_hysteria | default(false)) and
+        or ((vpn.enable_hysteria | default(true)) and
             'OK    hysteria authenticated round-trip' not in watchdog_reality_verify.stdout)
       when:
         - vpn.enable_watchdog | default(true)
-        - (vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true)) or (vpn.enable_hysteria | default(false))
+        - (vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true)) or (vpn.enable_hysteria | default(true))
         - not (vpn_subscription_only | default(false))
 
     - name: nginx-xhttp public TCP listener active
