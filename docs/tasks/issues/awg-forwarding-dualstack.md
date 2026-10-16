@@ -2,7 +2,7 @@
 id: ANS-1791618048083304
 title: Deliver interface-correct dual-stack AmneziaWG forwarding and configurable MTU
 kind: feature
-status: doing
+status: review
 area: ansible
 priority: high
 risk: high
@@ -12,8 +12,9 @@ blocked_by: [SCR-1791618039091425]
 spec_mode: required
 openspec_change: awg-forwarding-dualstack
 created: 2026-10-10
-updated: 2026-10-15
+updated: 2026-10-16
 related_tasks: [ANS-1791562764586678, SEC-1791471757439452, "po4yka/RIPDPI#DAT-1792081130689287"]
+status_detail: Exact-source Linux native and source gates, two canonical arm64 matrices, consumer CI and qualified federation passed.
 ---
 
 ## Goal
