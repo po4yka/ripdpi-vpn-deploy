@@ -24,7 +24,7 @@ Deliver isolated native acceptance for every baseline transport. All execution c
 
 - [ ] TST-1791618369402905 Deliver exact-engine Linux four-protocol positive and rejection cases through existing adapters #feature !high @item:TST-1791618356595983
 - [ ] TST-1791618370981853 Exercise warm activation retirement rotation and failed authority compensation with real processes #feature !high @item:TST-1791618356595983
-- [ ] TST-1791618372464891 Prove both-family firewall-owned hopping and isolated unrelated-UDP preservation #feature !high @item:TST-1791618356595983
+- [x] TST-1791618372464891 Prove both-family firewall-owned hopping and isolated unrelated-UDP preservation #feature !high @item:TST-1791618356595983
 - [ ] TST-1791618373730661 Wire complete no-skip native acceptance into source checks with exact redacted evidence and cleanup #feature !high @item:TST-1791618356595983
 
 ## Verification
