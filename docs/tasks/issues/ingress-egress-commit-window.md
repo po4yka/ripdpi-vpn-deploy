@@ -14,7 +14,7 @@ openspec_change: ans-1791996786767919-ingress-egress-commit-window
 created: 2026-10-14
 updated: 2026-10-16
 related_tasks: []
-status_detail: Local gate and all native commit-boundary cases passed; awaiting final protected CI aggregation.
+status_detail: Full local gate, all native commit boundaries and exact-source protected CI passed.
 ---
 
 ## Goal
