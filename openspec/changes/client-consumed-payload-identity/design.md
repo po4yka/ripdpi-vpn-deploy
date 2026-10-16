@@ -19,6 +19,17 @@ Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Reva
 
 ## Contracts and ownership
 
+PR #302 integrates the coordinated producer from PR #304 at
+`edd61bdcd9d800a1d169cadaa60aeb64de0381a0`. Its typed IPv4 /32 and IPv6 /128
+device claims and shared MTU (1280–1420) already have a merged RIPDPI consumer.
+Keep the producer schema, runtime forwarding, exporter and recipient fixtures
+together; copying only the schema would misrepresent the emitted payload.
+The existing shared renderer consumes both addresses and resolved MTU, so
+valid changes must report stale and invalid authority must remain read-only
+unknown. Re-encrypt the combined synthetic fixture and rerun complete source
+gates. Integration does not close the independent AWG task or authorize private
+input migration or deployment.
+
 - scripts/client-drift.py
 - scripts/issue-sub-token.sh
 - scripts/emit-bundle.sh

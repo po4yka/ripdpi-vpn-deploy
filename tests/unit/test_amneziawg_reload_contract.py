@@ -27,7 +27,7 @@ def test_role_restart_applies_full_state_via_the_awg_quick_unit():
 
 
 def test_config_render_notifies_the_installed_restart_handler():
-    tasks = yaml.safe_load((ROLE_DIR / "tasks" / "enable.yml").read_text())
+    tasks = next(task["block"] for task in yaml.safe_load((ROLE_DIR / "tasks" / "configure.yml").read_text()) if "block" in task)
     handlers = yaml.safe_load(HANDLER.read_text())
     render = next(
         task for task in tasks if task["name"] == "Render AmneziaWG interface configs"
@@ -49,20 +49,27 @@ def test_awg_quick_unit_strips_config_before_syncconf():
 def test_rotation_uses_the_role_instance_normalization_for_every_instance():
     """Rotating credentials must not silently leave secondary peers stale."""
     content = ROTATION_PLAYBOOK.read_text()
-    handler = content.split("    - name: Restart amneziawg", maxsplit=1)[1]
-
-    assert "tasks_from: instances.yml" in content
-    assert 'loop: "{{ _awg_instances }}"' in content
-    assert 'dest: "{{ amneziawg_config_dir }}/{{ item.name }}.conf"' in content
-    assert "ansible.builtin.systemd_service:" in handler
-    assert 'name: "awg-quick@{{ item.name }}"' in handler
-    assert "notify: Restart amneziawg" in content
-    assert "state: restarted" in handler
-    assert "state: reloaded" not in handler
-    assert (
-        "loop: \"{{ _awg_instances | default([]) }}\""
-        in handler
-    )
+    enable = yaml.safe_load((ROLE_DIR / "tasks/enable.yml").read_text())
+    assert any(task.get("ansible.builtin.import_tasks") == "instances.yml" for task in enable)
+    rotation = yaml.safe_load((REPO_ROOT / "ansible/playbooks/tasks/awg-rotate.yml").read_text())[0]
+    assert [task["ansible.builtin.include_role"]["name"] for task in rotation["block"]] == ["firewall", "amneziawg"]
+    assert rotation["block"][1]["ansible.builtin.include_role"] == {"name": "amneziawg"}
+    assert rotation["rescue"][0]["ansible.builtin.include_role"] == {"name": "firewall", "tasks_from": "awg-restore.yml"}
+    assert rotation["rescue"][-1]["ansible.builtin.fail"]["msg"] == "awg-rotation-activation-failed"
+    play = yaml.safe_load(content)[0]
+    admission = next(task for task in play["tasks"] if task.get("ansible.builtin.import_tasks") == "tasks/public-listener-preflight.yml")
+    activation = next(task for task in play["tasks"] if task.get("ansible.builtin.import_tasks") == "tasks/awg-rotate.yml")
+    assert admission["when"] == activation["when"]
+    assert 0 < play["tasks"].index(admission) < play["tasks"].index(activation)
+    assert "Re-render AmneziaWG peers" not in content
+    assert "Restart amneziawg" not in content
+    tasks = yaml.safe_load((ROLE_DIR / "tasks/configure.yml").read_text())
+    transaction = next(task for task in tasks if "block" in task)
+    render = next(task for task in transaction["block"] if task["name"] == "Render AmneziaWG interface configs")
+    assert render["notify"] == "Restart amneziawg"
+    assert render["loop"] == "{{ _awg_instances }}"
+    assert render["ansible.builtin.template"]["dest"] == "{{ amneziawg_config_dir }}/{{ item.name }}.conf"
+    assert transaction["rescue"][-1]["ansible.builtin.fail"]["msg"] == "awg-complete-config-activation-failed"
 
 
 def test_instance_normalization_remains_role_owned():

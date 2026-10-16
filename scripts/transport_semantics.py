@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 INTERFACE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,14}\Z")
 PLACEHOLDER = re.compile(r"REPLACE_WITH_[A-Z0-9_]+\Z")
 AWG_PARAMETERS = {"jc": 4, "jmin": 40, "jmax": 70, "s1": 50, "s2": 100}
+AWG_MTU_MIN, AWG_MTU_MAX, AWG_MTU_DEFAULT = 1280, 1420, 1420
 MAX_INPUT_BYTES = 4 * 1024 * 1024
 EGRESS_CREDENTIALS = (
     "direct_xray_password", "direct_hysteria_password", "warp_xray_password",
@@ -199,14 +200,16 @@ def effective_awg_instances(raw: object, defaults: object = None, cohort: object
     if not isinstance(instances, list) or not instances or any(not isinstance(item, dict) for item in instances):
         raise ValueError("invalid-awg-contract")
     fields = {"name", "listen_port", "address_v4", "address_v6", "server_private_key", "peers",
-              "s3", "s4", *AWG_PARAMETERS, "h1", "h2", "h3", "h4"}
+              "mtu", "s3", "s4", *AWG_PARAMETERS, "h1", "h2", "h3", "h4"}
     if any(set(item) - fields for item in instances):
         raise ValueError("invalid-awg-contract")
     defaults = defaults if isinstance(defaults, dict) else {}
     cohort = cohort if isinstance(cohort, dict) else {}
     if set(cohort) - fields or any(f"i{index}" in defaults for index in range(1, 6)):
         raise ValueError("unsupported-awg-policy")
-    return [{**AWG_PARAMETERS, "dns_servers": ["1.1.1.1", "1.0.0.1"], **{key: value for key, value in cohort.items() if key in fields - {"name"}},
+    return [{**AWG_PARAMETERS, "mtu": cohort.get("mtu", defaults.get("mtu", AWG_MTU_DEFAULT)),
+             "dns_servers": ["1.1.1.1", "1.0.0.1"],
+             **{key: value for key, value in cohort.items() if key in fields - {"name", "mtu"}},
              **{key: value for key, value in defaults.items() if key in (
                  "listen_port", "address_v4", "address_v6", "dns_servers")},
              **item} for item in instances]
@@ -233,6 +236,8 @@ def awg_errors(raw: object, defaults: object = None, cohort: object = None, *,
     key_owners: dict[str, str] = {}
     device_names = set()
     for path, item in selected:
+        if type(item["mtu"]) is not int or not AWG_MTU_MIN <= item["mtu"] <= AWG_MTU_MAX:
+            errors.append((f"{path}.mtu", "requires an integer from 1280 through 1420"))
         if not awg_dns_valid(item["dns_servers"]):
             errors.append(("amneziawg.dns_servers", "requires one to four distinct global IPv4 DNS addresses"))
         name = item.get("name")
@@ -251,12 +256,15 @@ def awg_errors(raw: object, defaults: object = None, cohort: object = None, *,
             else:
                 ports.add(port)
         for field, version in (("address_v4", 4), ("address_v6", 6)):
-            if field in item:
+            if field not in item:
+                errors.append((f"{path}.{field}", "both server address families are required"))
+            else:
                 try:
                     if not isinstance(item[field], str):
                         raise ValueError
                     address = ipaddress.ip_interface(item[field])
-                    if address.version != version:
+                    if (address.version != version or address.ip.is_multicast or address.ip.is_unspecified
+                            or address.ip.is_loopback or address.ip.is_link_local):
                         raise ValueError
                 except (ValueError, TypeError):
                     errors.append((f"{path}.{field}", "invalid interface address family or CIDR"))
@@ -304,24 +312,34 @@ def awg_errors(raw: object, defaults: object = None, cohort: object = None, *,
             kind = peer.get("address_kind", "device")
             if kind not in ("device", "routed"):
                 errors.append((f"{peer_path}.address_kind", "unsupported address kind"))
-            try:
-                if not isinstance(peer.get("allowed_ips"), str):
-                    raise ValueError
-                network = ipaddress.ip_network(peer["allowed_ips"], strict=True)
-            except (ValueError, TypeError):
-                errors.append((f"{peer_path}.allowed_ips", "must be a valid IPv4 or IPv6 CIDR"))
+            prefixes = peer.get("allowed_ips")
+            if (not isinstance(prefixes, dict) or not prefixes
+                    or set(prefixes) - {"ipv4", "ipv6"}
+                    or (kind == "device" and set(prefixes) != {"ipv4", "ipv6"})):
+                errors.append((f"{peer_path}.allowed_ips", "requires typed address families; devices require both"))
                 continue
-            if kind == "device":
+            for family, prefix in prefixes.items():
+                version = 4 if family == "ipv4" else 6
                 try:
-                    server = ipaddress.IPv4Interface(item["address_v4"])
-                    if (network.version != 4 or network.prefixlen != 32
-                            or network.network_address not in server.network
-                            or network.network_address in (server.ip, server.network.network_address, server.network.broadcast_address)):
+                    network = ipaddress.ip_network(prefix, strict=True)
+                    if not isinstance(prefix, str) or network.version != version or str(network) != prefix:
                         raise ValueError
+                    if kind == "device":
+                        server = ipaddress.ip_interface(item[f"address_v{version}"])
+                        reserved = {server.ip, server.network.network_address}
+                        if version == 4:
+                            reserved.add(server.network.broadcast_address)
+                        if (network.prefixlen != network.max_prefixlen
+                                or network.network_address not in server.network
+                                or network.network_address in reserved
+                                or network.network_address.is_multicast or network.network_address.is_loopback
+                                or network.network_address.is_link_local or network.network_address.is_unspecified):
+                            raise ValueError
                 except (ValueError, TypeError, KeyError):
-                    errors.append((f"{peer_path}.allowed_ips", "device requires an unreserved IPv4 host inside its instance pool; other prefixes require explicit routed ownership"))
-            claims.append((network.version, int(network.network_address),
-                           int(network.broadcast_address), f"{peer_path}.allowed_ips"))
+                    errors.append((f"{peer_path}.allowed_ips.{family}", "requires a canonical family prefix; devices need an unreserved host in their instance pool"))
+                    continue
+                claims.append((network.version, int(network.network_address),
+                               int(network.broadcast_address), f"{peer_path}.allowed_ips.{family}"))
     family, previous_end = 0, -1
     for version, start, end, claim_path in sorted(claims):
         if version != family:

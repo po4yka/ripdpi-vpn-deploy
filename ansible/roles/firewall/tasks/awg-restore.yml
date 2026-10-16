@@ -1,0 +1,22 @@
+---
+- name: Restore the complete retained AWG firewall configuration
+  ansible.builtin.copy:
+    dest: "{{ _firewall_awg_restore.path }}"
+    content: "{{ _firewall_awg_restore.content | b64decode }}"
+    owner: root
+    group: root
+    mode: "{{ _firewall_awg_restore.mode }}"
+    validate: nft -c -f %s
+  no_log: true
+  diff: false
+
+- name: Restore retained AWG forwarding and NAT atomically
+  ansible.builtin.command:
+    argv: [nft, -f, "{{ _firewall_awg_restore.path }}"]
+  changed_when: true
+  no_log: true
+  when: not ansible_check_mode
+
+- name: Release compensated AWG firewall authority
+  ansible.builtin.set_fact:
+    _firewall_awg_restore: {}

@@ -89,10 +89,10 @@
           forward_chain="$(nft list chain inet filter forward)"
           grep -q 'policy drop' <<< "$forward_chain"
           grep -q 'ct state established,related accept' <<< "$forward_chain"
-          grep -q 'ct state new iifname "awg0" oifname "eth0" accept' <<< "$forward_chain"
+          grep -q 'ct state new iifname "awg7" oifname "awg-test-up" accept' <<< "$forward_chain"
           ! grep -q 'policy accept' <<< "$forward_chain"
-          ! grep -q 'iifname "awg0" accept' <<< "$forward_chain"
-          ! grep -q 'oifname "awg0" accept' <<< "$forward_chain"
+          ! grep -q 'iifname "awg7" accept' <<< "$forward_chain"
+          ! grep -q 'oifname "awg7" accept' <<< "$forward_chain"
         executable: /bin/bash
       changed_when: false
 

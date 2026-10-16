@@ -14,6 +14,24 @@ lightweight/peeled annotated upstream refs before accepting cached bundles.
 Runtime execution has no external network
 or published ports; compilation belongs under the machine-wide build gate.
 
+Federation reads the peer's own committed `taskctl export --json` contract;
+it never parses another project's portfolio through this project's schema.
+The shared graph validator checks exact identity, revision, contract hash,
+relations, progress and terminal provenance. Purged references are resolved
+by the owning exporter's `--resolve-task` with native receipt/history checks.
+An unassessed peer risk remains null; no task records or receipts are rewritten.
+Peer failure diagnostics stay categorical and bounded.
+
+AWG peer `allowed_ips` is a typed IPv4/IPv6 mapping. Issuance allocates both
+host identities before publishing ciphertext; exhaustion in either pool leaves
+the prior generation intact. Address allocation jumps claimed intervals, so an
+IPv6 /64 is bounded by peer count. Standalone and bundle emission share instance
+MTU resolution with liveness; runner settings carry `addresses` and `mtu` and
+install both default routes in the owned namespace. Public uplink admission is
+read-only, requires the selected IPv6 default route, and refuses RA ownership
+that would expire after forwarding enables.
+
+
 AWG device issuance, revocation, export and recovery bind provider/environment,
 instance and device through `awg_device_binding.py`. Only the nonempty instance
 list owns peers and server keys. `awg_client.py` allocates from the selected
@@ -45,8 +63,8 @@ First-time subscription registry entries initialize a null AWG binding and
 empty recovery fields; existing AWG authority survives delivery metadata updates.
 Bundle multi-host selection requires `AWG_HOST` when more than one enabled host
 can bind; `AWG_INSTANCE` selects within that host. Missing enabled bindings
-refuse without emitting a partial payload. The public bundle shape/fingerprint
-algorithm are unchanged. RIPDPI bundles support AWG-only profiles through
+refuse without emitting a partial payload. The bundle retains the address array and fingerprint algorithm;
+its admitted device address pair and MTU bounds are stricter. RIPDPI bundles support AWG-only profiles through
 the direct carrier document; the official sing-box format still requires a
 supported proxy outbound. Private recipient output uses no-clobber `OUTPUT`
 publication in an owner-only directory. URI issuance also requires a private
@@ -629,3 +647,36 @@ substitutes stock Caddy. Local compilation uses the machine build gate; CI
 keeps compilation at two workers and passes the verified output explicitly.
 
 Operator alert drills bind the verified controller source and a unique technical policy nonce. They wait for an authenticated relay API receipt for that exact nonce and start time before resolution; submission and receiver selection alone cannot prove delivery. Human receipt remains separate.
+
+Client delivery/drift changes must preserve the in-memory renderer and private
+HMAC authority lifecycle described in [Private client delivery identity](DESIGN-NOTES.md#private-client-delivery-identity).
+Issuance verifies staged ciphertext before remote publication under the shared
+lock. Local SOPS and remote delivery are separate systems: after interruption
+or a post-publication failure, reconcile the delivered artifact before retrying.
+The callback marks external publication before the first mutating SSH attempt,
+since a failed reply can follow a completed write. Subsequent failures or
+interruptions return a reconciliation warning, including failed local replacement.
+Validation-only callbacks leave that marker unset.
+
+The encrypted client transaction runs its verified publication callback under
+the stable lock even when plaintext registry state is unchanged. Same-second
+refresh must redeliver without manufacturing an encrypted state change.
+
+Profile and subscription dispatchers put the selected device after `--` while
+retaining the client-first shell interface. Leading-dash device names stay
+literal data through Python argument parsing; Make drift uses the same delimiter.
+
+Enabled transport authority must contain nonempty typed credentials and SNI
+before publication. Malformed consumed authority returns a categorical refusal;
+missing optional QR tooling retains the committed delivery and machine-token
+mode keeps its early exit without QR side effects.
+
+The private identity binds the full enrolled AWG peer public key as well as its
+instance. A coherent peer/recovery-key rotation can leave placeholder-based
+exported JSON unchanged; it must still report stale without publishing key metadata.
+Both typed device addresses and the resolved MTU are consumed payload inputs.
+The coordinated dual-stack contract, exporter and runtime forwarding must land
+together; the shared renderer must not keep a single-address or fixed-MTU path.
+
+An explicit per-host cohort bypasses inventory hostname lookup: endpoint-only
+AWG callers do not consume a hostname and must retain their export path.

@@ -283,7 +283,7 @@ Commit the completed task, execution, verification, and regenerated board in `re
 
 ## Federation
 
-Each repository is authoritative for its own tasks. `./taskctl export --json` emits the versioned local portfolio contract. Federation commands consume a peer checkout without copying peer state into this repository:
+Each repository is authoritative for its own tasks. `./taskctl export --json` emits the versioned local portfolio contract after native record/receipt validation. Federation invokes the peer checkout's own committed exporter and validates the shared graph wire contract, exact HEAD revision and identical contract hash. A peer without a native risk assessment exports `risk: null`; its issue records and historical receipts stay intact. `./taskctl export --resolve-task TASK-ID --json` resolves one active or proven historical terminal task through that repository's native lifecycle validation. Federation commands consume a peer checkout without copying peer state into this repository:
 
 ```bash
 ./taskctl federation list --peer-root ../RIPDPI

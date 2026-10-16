@@ -128,7 +128,7 @@ def test_awg_generation_requires_immutable_toolchain_pin(engine, root, toolchain
     generation, stage = candidate(root)
     config_path = stage / "config.json"
     config = json.loads(config_path.read_text())
-    config["amneziawg"] = {"config": str(root / "generations" / generation / "profiles/awg.conf"), "address": "10.66.66.2/32"}
+    config["amneziawg"] = {"config": str(root / "generations" / generation / "profiles/awg.conf"), "addresses": ["10.66.66.2/32", "fd42:42:42::2/128"], "mtu": 1420}
     config["expected_runtime"]["awg"] = "1.0.0"
     if toolchain is not None:
         config["expected_runtime"]["awg_toolchain"] = toolchain

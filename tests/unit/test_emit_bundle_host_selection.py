@@ -48,11 +48,14 @@ def test_bundle_uses_feature_host_and_emits_ingress_topology(
         REPO_ROOT / "scripts" / "ripdpi_cohort_fingerprint.py",
         scripts / "ripdpi_cohort_fingerprint.py",
     )
-    for name in ('awg_client.py', 'awg_device_binding.py', 'encrypted_client_document.py', 'private_client_artifact.py'):
+    for name in ('awg_client.py', 'awg_device_binding.py', 'encrypted_client_document.py', 'private_client_artifact.py', 'client_payload.py', 'fleet_inspection.py'):
         shutil.copy2(REPO_ROOT / 'scripts' / name, scripts / name)
     defaults = repo / 'ansible/roles/amneziawg/defaults'
     defaults.mkdir(parents=True)
     shutil.copy2(REPO_ROOT / 'ansible/roles/amneziawg/defaults/main.yml', defaults / 'main.yml')
+    snell_defaults = repo / 'ansible/roles/snell/defaults'
+    snell_defaults.mkdir(parents=True)
+    shutil.copy2(REPO_ROOT / 'ansible/roles/snell/defaults/main.yml', snell_defaults / 'main.yml')
     (scripts / "emit-singbox.sh").write_text("#!/bin/sh\nprintf '{\"outbounds\":[]}'\n")
     (scripts / "terraform-env.sh").write_text(
         "#!/bin/sh\n"
@@ -62,7 +65,7 @@ def test_bundle_uses_feature_host_and_emits_ingress_topology(
     for script in scripts.iterdir():
         script.chmod(0o700)
 
-    (group_vars / "all.yml").write_text(yaml.safe_dump({"vpn": {"enable_xray_reality": False}}))
+    (group_vars / "all.yml").write_text(yaml.safe_dump({"vpn": {"enable_xray_reality": False, "enable_nginx_xhttp": False}}))
     (group_vars / "vpn.yml").write_text(yaml.safe_dump({}))
     (group_vars / "vpn-p0.yml").write_text(
         yaml.safe_dump(
@@ -101,7 +104,7 @@ def test_bundle_uses_feature_host_and_emits_ingress_topology(
                             "name": "android-ripdpi",
                             "public_key": "CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk=",
                             "preshared_key": "CgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgo=",
-                            "allowed_ips": "10.66.66.4/32",
+                            "allowed_ips": {"ipv4": "10.66.66.4/32", "ipv6": "fd42:42:42::4/128"},
                         }
                     ],
                 }]},
@@ -109,6 +112,7 @@ def test_bundle_uses_feature_host_and_emits_ingress_topology(
         )
     )
 
+    secrets.chmod(0o600)
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     (fake_bin / "sops").write_text("#!/bin/sh\ncat \"$SOPS_FILE\"\n")

@@ -2347,15 +2347,16 @@ def test_capture_stays_within_bounded_root_capability_set() -> None:
 def test_firewall_nat_rule_has_stable_counter_comment() -> None:
     vars_ = merge_render_vars()
     vars_["vpn"] = {**vars_["vpn"], "enable_amneziawg": True}
+    vars_["firewall_awg_uplink_interface"] = "egress9"
     vars_["amneziawg_secrets"] = {
-        "instances": [{"name": "awg-primary"}, {"name": "awg-backup"}]
+        "instances": [{"name": "awg-primary", "peers": []}, {"name": "awg-backup", "peers": []}]
     }
 
     rendered = render_template(FIREWALL_TEMPLATE, vars_)
 
     for interface in ("awg-primary", "awg-backup"):
         rule = (
-            f'iifname "{interface}" oifname != "{interface}" '
+            f'iifname "{interface}" oifname "{vars_["firewall_awg_uplink_interface"]}" '
             f'counter masquerade comment "awg-nat-{interface}"'
         )
         assert rendered.count(rule) == 1

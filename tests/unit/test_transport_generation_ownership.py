@@ -71,11 +71,26 @@ def test_rotation_selects_canonical_roles_then_one_shared_activation(reality, xh
     assert not any(task.get("name") in {"Restart xray", "Restart hysteria"} for task in play["handlers"])
     assert all("ansible.builtin.template" not in task for task in stages)
     assert play["tasks"][0]["ansible.builtin.import_tasks"] == "tasks/transport-input-preflight.yml"
-    assert any(task.get("name") == "Re-render AmneziaWG peers" for task in play["tasks"])
+    admission = next(task for task in play["tasks"] if task.get("ansible.builtin.import_tasks") ==
+                     "tasks/public-listener-preflight.yml")
+    awg = next(task for task in play["tasks"] if task.get("ansible.builtin.import_tasks") ==
+               "tasks/awg-rotate.yml")
+    assert 0 < play["tasks"].index(admission) < play["tasks"].index(awg)
+    lifecycle = yaml.safe_load((ROOT / "ansible/playbooks/tasks/awg-rotate.yml").read_text())[0]
+    assert [task["ansible.builtin.include_role"] for task in lifecycle["block"]] == [
+        {"name": "firewall"}, {"name": "amneziawg"},
+    ]
+    assert admission["when"] == awg["when"]
+    assert bool(environment.compile_expression(awg["when"])(**values)) is True
+    values["vpn"]["enable_amneziawg"] = False
+    assert bool(environment.compile_expression(awg["when"])(**values)) is False
+    values["vpn"]["enable_amneziawg"] = True
+    assert not any(task.get("name") == "Restart amneziawg" for task in play["handlers"])
     assert any(task.get("name") == "Re-render Snell users" for task in play["tasks"])
     assert any(task.get("ansible.builtin.include_role") == {"name": "naive"} for task in play["tasks"])
     values["vpn_subscription_only"] = True
     assert environment.compile_expression(block["when"])(**values) is False
+    assert bool(environment.compile_expression(awg["when"])(**values)) is False
 
 
 def test_actual_ansible_publication_and_flush_cannot_dispatch_frontend_handlers(tmp_path):

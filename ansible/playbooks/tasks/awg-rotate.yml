@@ -1,0 +1,21 @@
+---
+- name: Activate the admitted AWG rotation generation
+  block:
+    - name: Publish current typed AWG firewall claims with retained prior authority
+      ansible.builtin.include_role:
+        name: firewall
+
+    - name: Reconcile rotated AmneziaWG authority through the complete role lifecycle
+      ansible.builtin.include_role:
+        name: amneziawg
+
+  rescue:
+    - name: Restore firewall authority after AWG rotation refusal
+      ansible.builtin.include_role:
+        name: firewall
+        tasks_from: awg-restore.yml
+      when: _firewall_awg_restore.content is defined
+
+    - name: Refuse the compensated AWG rotation
+      ansible.builtin.fail:
+        msg: awg-rotation-activation-failed

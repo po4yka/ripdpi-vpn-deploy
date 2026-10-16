@@ -3552,6 +3552,12 @@ class TaskctlFederationTest(TaskctlFixture):
         self.write_config(self.root, "po4yka/ripdpi-vpn-deploy", ["po4yka/RIPDPI"])
         self.write_config(self.peer, "po4yka/RIPDPI", ["po4yka/ripdpi-vpn-deploy"])
         self.write_federation_contract(self.peer)
+        # Exercise the actual peer-owned CLI and its native history validator.
+        (self.peer / "scripts/tasks").mkdir(parents=True)
+        (self.peer / "scripts/tasks/taskctl.py").write_bytes(Path(taskctl.__file__).read_bytes())
+        entrypoint = self.peer / "taskctl"
+        entrypoint.write_text("#!/bin/sh\nexec python3 scripts/tasks/taskctl.py \"$@\"\n")
+        entrypoint.chmod(0o755)
         self.init_git(self.root)
         self.init_git(self.peer)
 
@@ -3662,6 +3668,90 @@ class TaskctlFederationTest(TaskctlFixture):
             },
         )
 
+    def assert_peer_resolution_refuses(self, task_id: str, diagnostic: str) -> None:
+        # Specific evidence failures belong to the owning CLI. Federation must
+        # reject its nonzero result without exposing arbitrary peer output.
+        result = subprocess.run(
+            (str(self.peer / "taskctl"), "export", "--json", "--resolve-task", task_id),
+            cwd=self.peer, text=True, capture_output=True, check=False,
+        )
+        self.assertNotEqual(0, result.returncode)
+        self.assertRegex(result.stderr, diagnostic)
+        with self.assertRaisesRegex(taskctl.ContractError, "peer task export failed"):
+            taskctl.federation_payload(self.root, self.peer)
+
+    def test_wire_rejects_malformed_or_substituted_peer_nodes(self) -> None:
+        self.add_task(self.peer, "CIC-1786234567890001")
+        self.commit(self.peer, "add peer task")
+        config = taskctl.load_project_config(self.peer)
+        revision = taskctl.git_revision(self.peer)
+        original = taskctl.export_payload(self.peer)
+        original["tasks"][0]["risk"] = None
+        taskctl.validate_federation_export(original, self.peer, config, revision)
+        mutations = (
+            lambda p: p.update(project="po4yka/other"),
+            lambda p: p.update(revision="0" * 40),
+            lambda p: p.update(contract_version=True),
+            lambda p: p.update(contract_sha256="0" * 64),
+            lambda p: p.update(extra="unexpected"),
+            lambda p: p["tasks"].append(dict(p["tasks"][0])),
+            lambda p: p["tasks"][0].update(task_id="invalid"),
+            lambda p: p["tasks"][0].update(id="po4yka/other#CIC-1786234567890001"),
+            lambda p: p["tasks"][0].update(path="docs/tasks/issues/../private.md"),
+            lambda p: p["tasks"][0].update(kind=[]),
+            lambda p: p["tasks"][0].update(risk="invented"),
+            lambda p: p["tasks"][0].update(status="invented"),
+            lambda p: p["tasks"][0].update(progress={"done": True, "total": 1}),
+            lambda p: p["tasks"][0].update(progress={"done": 2, "total": 1}),
+            lambda p: p["tasks"][0].update(status="done"),
+            lambda p: p["tasks"][0].update(historical=True),
+            lambda p: p["tasks"][0].update(terminal_revision="0" * 40),
+            lambda p: p["tasks"][0].update(parent="po4yka/unapproved#CIC-1786234567890001"),
+            lambda p: p["tasks"][0].update(blocked_by=["CIC-1786234567890001"]),
+            lambda p: p["tasks"][0].update(related_tasks=[[], []]),
+            lambda p: p["tasks"][0].update(openspec_change="../private"),
+        )
+        for index, mutate in enumerate(mutations):
+            with self.subTest(index=index):
+                payload = json.loads(json.dumps(original))
+                mutate(payload)
+                with self.assertRaises(taskctl.ContractError):
+                    taskctl.validate_federation_export(payload, self.peer, config, revision)
+        with self.assertRaisesRegex(taskctl.ContractError, "resolution identity mismatch"):
+            taskctl.validate_federation_export(
+                original, self.peer, config, revision, task_id="CIC-1786234567890999"
+            )
+
+    def test_export_refuses_ignored_inputs_and_hidden_source_edits(self) -> None:
+        self.add_task(self.peer, "CIC-1786234567890001")
+        self.commit(self.peer, "add peer task")
+        ignored = self.peer / "docs/tasks/issues/ignored.md"
+        (self.peer / ".git/info/exclude").write_text("docs/tasks/issues/ignored.md\n")
+        ignored.write_text("uncommitted native input\n")
+        with self.assertRaisesRegex(taskctl.ContractError, "requires committed"):
+            taskctl.export_payload(self.peer)
+        ignored.unlink()
+        source = self.peer / "taskctl"
+        subprocess.run(("git", "update-index", "--assume-unchanged", "taskctl"), cwd=self.peer, check=True)
+        source.write_text(source.read_text() + "# hidden edit\n")
+        self.assertEqual("", subprocess.run(
+            ("git", "status", "--porcelain"), cwd=self.peer,
+            text=True, capture_output=True, check=True,
+        ).stdout)
+        with self.assertRaisesRegex(taskctl.ContractError, "matching committed HEAD"):
+            taskctl.export_payload(self.peer)
+
+    def test_export_refuses_nonregular_discovered_task_input(self) -> None:
+        self.add_task(self.peer, "CIC-1786234567890001")
+        self.commit(self.peer, "add peer task")
+        path = self.peer / "docs/tasks/issues/ignored.md"
+        (self.peer / ".git/info/exclude").write_text("docs/tasks/issues/ignored.md\n")
+        for create, remove in ((path.mkdir, path.rmdir), (lambda: os.mkfifo(path), path.unlink)):
+            create()
+            with self.assertRaisesRegex(taskctl.ContractError, "regular committed inputs"):
+                taskctl.export_payload(self.peer)
+            remove()
+
     def test_export_is_deterministic_and_omits_body_and_evidence(self) -> None:
         self.add_task(self.root, "CIC-1786234567890001")
         self.commit(self.root, "add task")
@@ -3727,8 +3817,7 @@ class TaskctlFederationTest(TaskctlFixture):
         self.commit(self.root, "add missing peer reference")
         self.commit(self.peer, "add peer anchor")
 
-        with self.assertRaisesRegex(taskctl.ContractError, "missing federated task"):
-            taskctl.federation_payload(self.root, self.peer)
+        self.assert_peer_resolution_refuses("CIC-1786234567890999", "missing federated task")
 
     def test_incompatible_contract_is_rejected_before_graph_evaluation(self) -> None:
         self.add_task(self.root, "CIC-1786234567890001")
@@ -3915,10 +4004,7 @@ class TaskctlFederationTest(TaskctlFixture):
         self.add_task(self.root, consumer_id, blockers=[f"po4yka/RIPDPI#{blocker_id}"])
         self.commit(self.root, "add consumer")
 
-        with self.assertRaisesRegex(
-            taskctl.ContractError, "invalid terminal transition doing -> done"
-        ):
-            taskctl.federation_payload(self.root, self.peer)
+        self.assert_peer_resolution_refuses(blocker_id, "invalid terminal transition doing -> done")
 
     def test_peer_late_policy_activation_cannot_grandfather_terminal_history(
         self,
@@ -3949,10 +4035,7 @@ class TaskctlFederationTest(TaskctlFixture):
         self.add_task(self.root, consumer_id, blockers=[f"po4yka/RIPDPI#{blocker_id}"])
         self.commit(self.root, "add consumer")
 
-        with self.assertRaisesRegex(
-            taskctl.ContractError, "invalid terminal transition doing -> done"
-        ):
-            taskctl.federation_payload(self.root, self.peer)
+        self.assert_peer_resolution_refuses(blocker_id, "invalid terminal transition doing -> done")
 
     def test_renamed_done_blocker_resolves_by_id_history(self) -> None:
         blocker_id = "CIC-1786234567890001"
@@ -4003,8 +4086,7 @@ class TaskctlFederationTest(TaskctlFixture):
         self.add_task(self.root, consumer_id, blockers=[f"po4yka/RIPDPI#{blocker_id}"])
         self.commit(self.root, "add consumer")
 
-        with self.assertRaisesRegex(taskctl.ContractError, "deletion lacks a terminal state"):
-            taskctl.federation_payload(self.root, self.peer)
+        self.assert_peer_resolution_refuses(blocker_id, "deletion lacks a terminal state")
 
     def test_reopened_terminal_blocker_cannot_release_federated_consumer(self) -> None:
         blocker_id = "CIC-1786234567890001"
@@ -4081,8 +4163,7 @@ class TaskctlFederationTest(TaskctlFixture):
         self.add_task(self.root, consumer_id, blockers=[f"po4yka/RIPDPI#{blocker_id}"])
         self.commit(self.root, "add consumer")
 
-        with self.assertRaisesRegex(taskctl.ContractError, "completed task has no execution steps"):
-            taskctl.federation_payload(self.root, self.peer)
+        self.assert_peer_resolution_refuses(blocker_id, "completed task has no execution steps")
 
 
 class TaskctlConcurrencyTest(TaskctlFixture):

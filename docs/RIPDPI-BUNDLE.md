@@ -66,9 +66,9 @@ instance, using the same resolver as the standalone and liveness clients.
 ```jsonc
 {
   "tag":     "p2-awg-<client>",      // stable identifier; matches naming convention
-  "address": ["10.66.66.X/32"],      // client tunnel address (from peer.allowed_ips in SOPS)
+  "address": ["10.66.66.2/32", "fd42:42:42::2/128"], // typed device identities, IPv4 then IPv6
   "dns":     ["1.1.1.1", "1.0.0.1"],
-  "mtu":     1420,
+  "mtu":     1420, // integer 1280..1420, resolved once for every consumer
 
   // AmneziaWG obfuscation parameters — must match the server awg0.conf exactly.
   // Resolved with three-level precedence (SOPS > cohort YAML > hard default):
@@ -314,3 +314,14 @@ scripts/emit-bundle.sh phone --per-app-via-tun com.example.private
 
 The output is written to stdout so the caller can redirect it, pipe it through a
 QR encoder, or POST it to a subscription host.
+
+### Dual-stack device contract
+
+AWG `address` contains exactly two canonical host CIDRs, IPv4 /32 followed by
+IPv6 /128. Encrypted peers use `allowed_ips.ipv4` and `allowed_ips.ipv6`; both
+must belong to their selected instance pools. The single-CIDR secrets contract
+is removed. `mtu` is an integer from 1280 through 1420, resolved from instance,
+technical cohort and role defaults. Both fields are required before publication.
+The wire array and schema version stay unchanged; consumers must adopt the
+stricter admission with the canonical vendored schema. Consumer integration is
+tracked by `po4yka/RIPDPI#DAT-1792081130689287`.

@@ -55,6 +55,11 @@ def test_fresh_unit_is_planned_before_service_activation(
     tasks = yaml.safe_load(
         (ROOT / "ansible/roles" / role / "tasks/enable.yml").read_text(encoding="utf-8")
     )
+    if role == "amneziawg":
+        index = next(i for i, task in enumerate(tasks) if task.get("ansible.builtin.import_tasks") == "configure.yml")
+        configure = yaml.safe_load((ROOT / "ansible/roles/amneziawg/tasks/configure.yml").read_text())
+        publication = next(task for task in configure if "block" in task)
+        tasks[index:index + 1] = configure[:configure.index(publication)] + publication["block"]
     if role == "hysteria":
         by_name = {task["name"]: task for task in tasks}
         predictive = by_name["Detect Hysteria frontend authority change before publication"]

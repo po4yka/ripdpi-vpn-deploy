@@ -425,3 +425,25 @@ new owner-only artifact rather than terminal output. Validate private destinatio
 authority before encrypted reads, reject existing entries, verify pinned identity
 after writing, and remove only the created inode on failure. No mutation operation
 accepts a readout output flag.
+
+## Private client delivery identity
+
+The renderer is `client_payload.py`; `emit-singbox.sh` and `emit-bundle.sh`
+dispatch without staging plaintext. Issuance hashes the same canonical JSON it
+publishes. HMAC-SHA256 is domain-separated by version, device, format, recorded
+options and exact AWG bindings, including the full enrolled peer public key
+even when export uses a device-private-key placeholder. The 256-bit key and 128-bit key-bound generation
+live in `client_delivery_identity` inside SOPS; neither the key nor keyed digest
+is printed. Only issuance creates missing authority. Explicitly rotating both
+key and generation invalidates prior comparisons until redelivery; inspection
+with unavailable, malformed or replaced authority reports unknown unchanged.
+A delivery records expiry, format, hosts, cohorts, AWG host, UTLS override and
+private source selectors. Changes to consumed values are stale; unrelated
+metadata, another device's values and SOPS re-encryption remain current.
+The old source/output identity is no longer accepted; redeliver to migrate.
+
+Publication callbacks receive a marker for the first external mutation attempt.
+SSH acknowledgement loss, a later write failure or failed local replacement
+retains an explicit uncertain-publication result requiring reconciliation.
+Local commit/durability uncertainty remains a separate category; both outcomes
+keep private error details out of diagnostics, including during interruption.

@@ -48,7 +48,7 @@ The effective technical profile MUST expose one bounded MTU contract with determ
 
 ### Requirement: REQ-PROTO-AWG-NOLEAK — Preserve kill-switch and compensating migration
 
-The implementation MUST Connection failure, dual-stack migration and instance revocation MUST preserve IPv4 and IPv6 leak prevention and the prior complete recoverable authority. Disallowed source identities MUST never gain forwarding merely to satisfy a positive test.
+Connection failure, dual-stack migration and instance revocation MUST preserve IPv4 and IPv6 leak prevention and the prior complete recoverable authority. Disallowed source identities MUST never gain forwarding merely to satisfy a positive test.
 
 #### Scenario: Tunnel failure and revoked device
 
@@ -59,3 +59,8 @@ The implementation MUST Connection failure, dual-stack migration and instance re
 
 - **WHEN** a dual-stack or MTU candidate fails validation or activation
 - **THEN** the previous complete addresses routing rules and service configuration remain usable or are restored, with a categorical failure and no mixed generation
+
+#### Scenario: Authorized Android emulator scope
+
+- **WHEN** Android acceptance is evaluated for this change
+- **THEN** the exact arm64 emulator/native-core exercises authenticated IPv4/IPv6 TCP UDP and DNS at MTU 1280 and 1420 through three reconnects each; Linux native tests establish kernel forwarding revocation and no-leak boundaries, and physical-device or Android VpnService/TUN proof is not required

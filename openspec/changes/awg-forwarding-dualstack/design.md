@@ -2,12 +2,12 @@
 
 The single-instance firewall still forwards and masquerades only awg0 even when the supported role interface differs. Ordinary issued peers have one IPv4 identity while recipient configurations capture the IPv6 default route without provisioning or authorizing an IPv6 source. Independent fixed MTU values prevent an explicit constrained-path configuration.
 
-Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Revalidate source and current task ownership before implementation. This request creates plans only.
+Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Revalidate source and current task ownership before implementation.
 
 ## Goals / Non-Goals
 
 - Goal: deliver interface-correct dual-stack amneziawg forwarding and configurable mtu with positive capability and meaningful negative, security, lifecycle and privacy tests.
-- Non-goal: implementation in this session, provider mutation, production deployment, actual credentials, unrelated cleanup, compatibility shims or revival of cancelled acceptance.
+- Non-goal: provider mutation, production deployment, actual operator credentials, unrelated cleanup, compatibility shims or revival of cancelled acceptance.
 
 ## Decisions
 
@@ -17,7 +17,7 @@ Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Reva
 - Support an explicit IPv4-only suppression profile where needed, but label it accurately; capture of ::/0 without successful IPv6 delivery never counts as dual-stack success.
 - MTU is an explicit bounded configuration input, not automatic network diagnosis. Choose the supported bounds from exact runtime and client behavior; server and emitted client must agree.
 - Keep one NAT counter comment per actual instance and preserve unrelated tables and default-drop forwarding. Do not grant broad forwarding or relax source authorization to make IPv6 pass.
-- Planning-only approval is not implementation or infrastructure authorization. Physical client and staging tests must retain exact source and resource identity.
+- Implementation and emulator checks are authorized. Any separately authorized staging tests must retain exact source and resource identity.
 
 ## Contracts and ownership
 
@@ -50,7 +50,7 @@ Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Reva
 - Dual-stack address and bundle changes affect external consumers and need coordinated breaking migration.
 - Removing IPv6 capture as a workaround would leak native IPv6 outside the tunnel; source and client failure tests must preserve lockdown.
 - IPv6 routing, RA ownership, uplink availability and MTU differ between hosts; fail explicitly when prerequisites are absent rather than advertising unsupported delivery.
-- A passing renderer, fixture, socket or installed-version command cannot stand in for the requirement's named real runtime, authenticated traffic, physical device or rollback result.
+- A passing renderer, fixture, socket or installed-version command cannot stand in for the requirement's named real runtime, authenticated traffic, emulator or rollback result.
 
 ## Migration Plan
 
@@ -63,7 +63,7 @@ Implementation order follows the dependency DAG. Run each complete affected test
 - `REQ-PROTO-AWG-FORWARD`: Extend firewall render tests and add real nftables namespace enforcement with exact AWG clients, observing per-instance counters and return traffic.
 - `REQ-PROTO-AWG-DUAL`: Exact server/client namespace tests plus qualified recipient parser round trips, separate IPv4 IPv6-only and DNS observations, and one-device revocation in each family.
 - `REQ-PROTO-AWG-MTU`: Shared resolution boundary tests, exact client parser tests and controlled link-MTU namespace transfers; record throughput and loss instead of claiming an arbitrary preset optimal.
-- `REQ-PROTO-AWG-NOLEAK`: Linux routing/nft packet capture plus supported physical recipient tests, failed activation compensation and prior-address/profile preservation assertions.
+- `REQ-PROTO-AWG-NOLEAK`: Linux routing/nft enforcement and packet observations, failed activation compensation and prior-address/profile preservation assertions; Android native-core behavior uses the separate emulator procedure.
 
 ## Validation commands
 
@@ -76,11 +76,11 @@ Implementation order follows the dependency DAG. Run each complete affected test
 
 Commands marked NEW are implementation deliverables and must exist, execute complete cases and fail on selected skips before acceptance. They are not commands run during planning. No credentialed recipe is authorized merely by being listed here.
 
-## Physical baseline acceptance
+## Android emulator acceptance
 
-Physical baseline acceptance uses the currently supported exact Android arm64 core with S3=S4=0; it does not depend on the later candidate upgrade. Record exact client/core/ABI/OS and interface MTU, perform three reconnect cycles, validate IPv4 and IPv6 DNS plus bidirectional TCP/UDP and IPv6-only targets, revoke the device and prove traffic stops, then disconnect and prove no traffic escapes the tunnel policy. A manually typed success record or fixture is not proof. This procedure and its bounded private evidence validator must be named in the operator acceptance surface; actual execution needs separate client/resource authorization.
+Android acceptance for this change uses the exact supported arm64 core with S3=S4=0 on an authorized emulator. Record exact client/core/ABI/OS and invocation-bound APK/library evidence; exercise authenticated IPv4/IPv6 TCP, UDP and DNS at MTU 1280 and 1420 through three reconnect cycles each. Physical-device and Android VpnService/TUN acceptance are outside this change, as explicitly requested by the owner. Linux native tests retain forwarding, revocation, tunnel-death lockdown and complete activation compensation requirements. Fixtures or hand-written success records cannot satisfy runtime acceptance.
 
-`NEW make verify-awg-dualstack-client-evidence; validate invocation-bound evidence from the named physical baseline procedure, never manufacture a passing record`
+`NEW make verify-awg-dualstack-client-evidence; validate invocation-bound evidence from the named Android emulator procedure, never manufacture a passing record`
 
 Native `make test-native-runtime` and the dependency-provided native acceptance targets run only on the explicitly isolated Linux root/systemd/TUN host. macOS or missing privileges are prerequisite failures, never silent skips or mocked substitutes.
 
@@ -89,3 +89,32 @@ Native `make test-native-runtime` and the dependency-provided native acceptance 
 - `SCR-1791618039091425` — `awg-device-binding`.
 
 These are canonical `blocked_by` edges; child requirements can be prepared and characterized before a blocker closes, but promotion/acceptance follows the graph. Existing integrated review records are preserved as related evidence and do not imply a new fleet acceptance.
+
+## Implementation contract
+
+Device `allowed_ips` is a family-typed map with required `ipv4` /32 and `ipv6`
+/128 host identities. Routed peers retain explicit ownership through
+`address_kind: routed` and family-typed subnet claims. All input, enrollment,
+render, export and liveness callers use the shared resolver. The bundle retains
+its existing address array with exactly two ordered canonical host identities;
+consumer work is `po4yka/RIPDPI#DAT-1792081130689287`.
+
+MTU resolves instance > technical cohort > role default > 1420, bounded to
+integer 1280–1420. IPv6 uplink admission requires a global source and default
+route; RA requires `accept_ra=2` on the exact uplink. The role fails before
+publication rather than changing provider networking. Failed configuration
+activation restores prior complete private configs and active/boot states;
+obsolete recorded interfaces retire after candidate acceptance.
+
+The implementation request authorizes source work and PR preparation. The user
+selected the RIPDPI client source and a Mac Android emulator for client checks.
+Android acceptance is limited to emulator/native-core results by the owner;
+physical-device and Android VpnService/TUN checks are not gates for this change.
+Fleet acceptance remains separately authorized and is not inferred from them.
+
+The qualified consumer uses its own task schema and historical close receipts.
+Federation therefore consumes each repository's committed, owner-validated
+export and checks the shared graph contract rather than reparsing peer records
+with the deployment risk schema. Missing references use owner-native historical
+resolution; invalid provenance still refuses. This integration does not migrate
+unrelated client task metadata or rewrite receipt hashes.

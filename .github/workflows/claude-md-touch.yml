@@ -32,7 +32,7 @@ jobs:
         run: |
           set -euo pipefail
           git check-ref-format --branch "$BASE_REF" >/dev/null
-          git fetch --depth=1 origin \
+          git fetch --no-tags origin \
             "refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
           git diff --name-only "origin/${BASE_REF}"...HEAD > /tmp/changed_files.txt
           echo "Changed files:"

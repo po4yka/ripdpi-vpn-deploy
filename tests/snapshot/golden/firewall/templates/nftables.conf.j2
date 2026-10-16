@@ -129,6 +129,32 @@ table inet filter {
   chain forward {
     type filter hook forward priority 0;
     policy drop;
+
+
+
+    iifname "awg0" oifname != "eth0" counter drop
+    oifname "awg0" iifname != "eth0" counter drop
+
+
+
+
+
+
+    iifname "awg0" meta nfproto ipv4 ip saddr != { 10.66.66.2/32 } counter drop
+    oifname "awg0" meta nfproto ipv4 ip daddr != { 10.66.66.2/32 } counter drop
+
+
+
+
+
+
+
+    iifname "awg0" meta nfproto ipv6 ip6 saddr != { fd42:42:42::2/128 } counter drop
+    oifname "awg0" meta nfproto ipv6 ip6 daddr != { fd42:42:42::2/128 } counter drop
+
+
+
+
     ct state established,related accept
 
 
@@ -156,7 +182,7 @@ table inet nat {
   chain postrouting {
     type nat hook postrouting priority 100;
 
-    iifname "awg0" oifname != "awg0" counter masquerade comment "awg-nat-awg0"
+    iifname "awg0" oifname "eth0" counter masquerade comment "awg-nat-awg0"
 
   }
 
