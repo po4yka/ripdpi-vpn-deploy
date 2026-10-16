@@ -18,7 +18,7 @@ CHECKS = {
     "ansible": {"ansible", "molecule", "molecule-full-stack", "molecule-failure-scenarios"},
     "terraform": {"terraform", "terraform-exception", "tf-test", "tf-policy", "cloud-init"},
     "python-vpnd": {"vpnd-test", "vpnd-lint", "vpnd-package", "vpnd-dependency", "vpnd-sbom"},
-    "native": {"native-runtime", "transport-runtime-acceptance"},
+    "native": {"native-runtime", "transport-runtime-acceptance", "transport-native-acceptance"},
     "go": {"go-helper"},
     "shell": {"bats-test"},
     "images": {"image-scan"},
@@ -46,6 +46,7 @@ PATHS = (
     ("tests/unit/", {"native"}),  # This directory also contains native tests.
     ("tests/bats/", {"shell"}),
     ("tests/snapshot/", {"ansible"}),
+    ("tests/native/", {"native"}),
     ("tests/integration/", {"ansible", "native"}),
     ("scripts/tests/", set()),
     ("tools/tasking/", set()),

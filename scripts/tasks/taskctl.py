@@ -655,11 +655,21 @@ def archived_issue_hash_matches(
         revision = receipt.get("commit_sha")
         if not isinstance(revision, str) or not SHA_RE.fullmatch(revision):
             return False
-        validate_source_revision(root, revision, ref or "HEAD", context=relative)
-        original = git_show_text(root, revision, relative)
-        if original is None or hashlib.sha256(
-            original.encode()
-        ).hexdigest() != close.get("issue_sha256"):
+        # Read validation binds every original byte to the frozen receipt.
+        # Reconstructing the inverse projection also works after a protected
+        # linear-history merge changes commit ancestry. Archive mutation still
+        # requires its reachable committed terminal source below.
+        header, separator, body = text.partition("\n---\n")
+        if not separator:
+            return False
+        parent = Path(relative).parent
+        old_prefix = os.path.relpath(Path("openspec/changes") / close["change"], parent) + "/"
+        new_prefix = os.path.relpath(archive, parent) + "/"
+        original_body, reversed_count = re.subn(
+            r"(\]\()" + re.escape(new_prefix), lambda match: match[1] + old_prefix, body
+        )
+        original = header + separator + original_body
+        if not reversed_count or hashlib.sha256(original.encode()).hexdigest() != close.get("issue_sha256"):
             return False
         projected, count = projected_archive_links(
             original, relative, close["change"], archive.as_posix()

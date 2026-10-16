@@ -1187,6 +1187,10 @@ test-transport-destination-boundary:
 	  tests/unit/test_transport_classifier_boundary_native.py \
 	  tests/unit/test_transport_warp_tun_native.py --fail-on-skip -v
 
+.PHONY: transport-native-acceptance
+transport-native-acceptance:
+	python3 tests/native/transport_acceptance/runner.py
+
 # Complete native consumer upgrade/rollback lane; no inventory or real credentials.
 .PHONY: test-transport-runtime-acceptance
 test-transport-runtime-acceptance:
