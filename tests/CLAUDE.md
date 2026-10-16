@@ -18,6 +18,8 @@ Subprocess ownership regressions require a retained session leader at the group 
 
 REALITY monitor regressions execute 256 KiB TLS transcripts through the actual shell path. Valid transport checks retain healthy classification or an unknown ASN lookup, rather than failing because a quiet pipeline reader closes early. Certificate, SAN and ALPN refusal cases remain required.
 
+WARP teardown regressions require successful fresh kernel absence checks before accepting concurrent veth removal. Persistent links, replacement namespace handles, dangling aliases and unreadable probes refuse; failed preparation retains its original error after successful compensation.
+
 The AWG source-candidate lab compiles exact upstream baseline/candidate pairs
 and exercises real systemd/TUN traffic in a disconnected local container.
 APT inputs use a dated signed Ubuntu snapshot; the minimal base bootstraps TLS
