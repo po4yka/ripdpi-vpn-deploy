@@ -696,7 +696,7 @@ def read_lifecycle_receipt(
             not archived_issue_hash_matches(
                 root,
                 document.path.relative_to(root).as_posix(),
-                document.path.read_text(encoding="utf-8"),
+                document.path.read_bytes().decode("utf-8"),
                 execution.relative_to(root).as_posix(),
                 receipt,
             )
@@ -4551,7 +4551,7 @@ def repair_archived_issue_links(root: Path, document: Document, execution: Path)
     ):
         fail("archive link repair requires a valid source revision")
     validate_source_revision(root, revision, "HEAD", context=document.task_id)
-    original = document.path.read_text(encoding="utf-8")
+    original = document.path.read_bytes().decode("utf-8")
     relative = document.path.relative_to(root).as_posix()
     updated, count = projected_archive_links(
         original,

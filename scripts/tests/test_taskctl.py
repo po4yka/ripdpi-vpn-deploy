@@ -3459,6 +3459,13 @@ class TaskctlHistoryTest(TaskctlFixture):
             before, (issue.read_bytes(), (archive / ".taskctl-close.json").read_bytes())
         )
 
+    def test_archive_links_refuse_unbound_newline_conversion(self):
+        issue, archive, args = self.archived_drop_with_links()
+        taskctl.command_openspec_archive(args)
+        issue.write_bytes(issue.read_bytes().replace(b"\n", b"\r\n"))
+        with self.assertRaisesRegex(taskctl.ContractError, "content hashes"):
+            taskctl.command_openspec_archive(args)
+
     def test_archive_links_refuse_unreachable_archive_source(self):
         issue, archive, args = self.archived_drop_with_links()
         p = archive / ".taskctl-archive.json"
