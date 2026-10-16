@@ -49,6 +49,7 @@ def test_unsupported_host_is_failure_before_any_artifact(monkeypatch, tmp_path):
 def test_missing_or_fake_engine_is_categorical_failure(tmp_path, monkeypatch, missing):
     import test_transport_semantics_native as native
 
+    monkeypatch.setattr(runner.sys, "path", list(runner.sys.path))
     fake = tmp_path / "fake-engine"
     fake.write_text("#!/bin/sh\necho invented-version\n")
     fake.chmod(0o700)
@@ -81,4 +82,41 @@ def test_cleanup_change_or_inspection_failure_persists_failure_without_private_d
     observed = json.loads(output.read_text())
     assert observed["success"] is False and observed["cleanup"] is False
     assert "private authority" not in output.read_text()
+    assert output.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize(
+    "category", ["systemd-TUN-required", "private-authority-must-not-be-published"]
+)
+def test_supported_host_preflight_failure_keeps_private_categorical_evidence(
+    tmp_path, monkeypatch, category
+):
+    import json
+
+    monkeypatch.setattr(runner.sys, "platform", "linux")
+    monkeypatch.setattr(runner.os, "geteuid", lambda: 0)
+    monkeypatch.setenv("TRANSPORT_NATIVE_ISOLATED", "1")
+    output = tmp_path / "preflight.json"
+    monkeypatch.setenv("TRANSPORT_NATIVE_EVIDENCE", str(output))
+
+    def refused(_evidence):
+        raise RuntimeError(category)
+
+    monkeypatch.setattr(runner, "preflight", refused)
+    previous_umask = runner.os.umask(0o077)
+    try:
+        with pytest.raises(RuntimeError):
+            runner.main()
+    finally:
+        runner.os.umask(previous_umask)
+    value = json.loads(output.read_text())
+    assert (
+        value["success"] is False
+        and value["cleanup"] is False
+        and value["suites"] == {}
+    )
+    assert value["failure_category"] == (
+        category if category == "systemd-TUN-required" else "RuntimeError"
+    )
+    assert "private-authority" not in output.read_text()
     assert output.stat().st_mode & 0o777 == 0o600

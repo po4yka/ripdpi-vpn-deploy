@@ -202,13 +202,6 @@ def main():
         or os.environ.get("TRANSPORT_NATIVE_ISOLATED") != "1"
     ):
         raise RuntimeError("isolated-Linux-root-required")
-    if not Path("/run/systemd/system").is_dir() or not Path("/dev/net/tun").exists():
-        raise RuntimeError("systemd-TUN-required")
-    if os.environ.get("PYTEST_ADDOPTS") or os.environ.get("PYTEST_PLUGINS"):
-        raise RuntimeError("pytest-selection-overrides-refused")
-    sha = run(["git", "rev-parse", "HEAD"], cwd=ROOT).decode().strip()
-    if run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT).strip():
-        raise RuntimeError("exact-source-clean-tree-required")
     os.umask(0o077)
     output = Path(
         os.environ.get(
@@ -218,19 +211,22 @@ def main():
     if output.exists() or output.is_symlink():
         raise RuntimeError("evidence-path-already-exists")
     evidence = {
-        "source": sha,
+        "source": None,
         "scope": "isolated-native-source",
-        "engines": engines(),
+        "engines": {},
         "suites": {},
         "cleanup": False,
         "success": False,
     }
-    before = resources()
+    before = None
+    evidence["phase"] = "prerequisites"
     try:
+        before = preflight(evidence)
         with tempfile.TemporaryDirectory(
             prefix="transport-native-", dir="/var/tmp"
         ) as private:
             for name, paths in SUITES:
+                evidence["phase"] = name
                 report = Path(private) / (name + ".xml")
                 with (Path(private) / (name + ".log")).open("wb") as log:
                     result = subprocess.run(
@@ -269,8 +265,56 @@ def main():
                 evidence["suites"][name] = cases(report)
                 print("native-suite-passed:" + name, flush=True)
         evidence["success"] = True
+    except Exception as error:
+        evidence["failure_type"] = type(error).__name__
+        code = str(error)
+        known = {
+            "systemd-TUN-required",
+            "pytest-selection-overrides-refused",
+            "exact-source-clean-tree-required",
+            "engine-not-native",
+            "xray-pin-mismatch",
+            "hysteria-pin-mismatch",
+            "AWG-pair-source-mismatch",
+            "exact-AWG-build-prerequisite-refused",
+            "owned-runtime-fixture-command-refused",
+            "owned-runtime-fixture-pin-mismatch",
+            "selected-case-incomplete",
+        }
+        known.update(
+            "engine-missing:" + name
+            for name in ("xray", "hysteria", "amneziawg-go", "awg")
+        )
+        known.update("native-suite-failed:" + name for name, _paths in SUITES)
+        evidence["failure_category"] = code if code in known else type(error).__name__
+        raise
     finally:
-        finish(evidence, before, output)
+        if before is None:
+            publish(evidence, output)
+        else:
+            finish(evidence, before, output)
+
+
+def preflight(evidence):
+    evidence["phase"] = "source"
+    evidence["source"] = run(["git", "rev-parse", "HEAD"], cwd=ROOT).decode().strip()
+    if run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT).strip():
+        raise RuntimeError("exact-source-clean-tree-required")
+    evidence["phase"] = "capabilities"
+    if not Path("/run/systemd/system").is_dir() or not Path("/dev/net/tun").exists():
+        raise RuntimeError("systemd-TUN-required")
+    if os.environ.get("PYTEST_ADDOPTS") or os.environ.get("PYTEST_PLUGINS"):
+        raise RuntimeError("pytest-selection-overrides-refused")
+    evidence["phase"] = "engines"
+    evidence["engines"] = engines()
+    evidence["phase"] = "resource-inventory"
+    return resources()
+
+
+def publish(evidence, output):
+    with output.open("x") as stream:
+        json.dump(evidence, stream, sort_keys=True, indent=2)
+    output.chmod(0o600)
 
 
 def finish(evidence, before, output):
@@ -287,9 +331,7 @@ def finish(evidence, before, output):
         evidence["cleanup"] = False
         evidence["cleanup_error"] = type(error).__name__
     evidence["success"] = evidence["success"] and evidence["cleanup"]
-    with output.open("x") as stream:
-        json.dump(evidence, stream, sort_keys=True, indent=2)
-    output.chmod(0o600)
+    publish(evidence, output)
     if not evidence["cleanup"]:
         raise RuntimeError("owned-resource-cleanup-unconfirmed")
 
