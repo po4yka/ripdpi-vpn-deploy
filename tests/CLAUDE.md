@@ -14,6 +14,8 @@
 
 ## Design decisions
 
+REALITY DNS worker regressions exercise overflow refusal and complete deduplicated candidate sets; runtime TLS and owned-public paths remain separate real-engine checks.
+
 The disconnected TUN fixture pins extracted Xray 26.3.27 binary digests independently for amd64 and arm64; unknown architectures or modified executables refuse.
 
 Native transport fixtures retain each owned unit before starting it and verify stopped PID/state before deleting runtime authority. Failed start acknowledgement or unconfirmed stop cannot become a passing cleanup.

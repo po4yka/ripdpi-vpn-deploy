@@ -2,7 +2,7 @@
 
 ## Design decisions
 
-REALITY target validation uses the shared bounded process-session owner for DNS, SAN-verified TLS 1.3/H2 and separate ordinary HTTPS stages. Reports contain only digests and categorical observations. Owned public service checks require an explicit public endpoint; browser ClientHello and filtered survival remain unverified.
+REALITY target validation uses the shared bounded process-session owner for DNS, SAN-verified TLS 1.3/H2 and separate ordinary HTTPS stages. DNS sets over eight unique candidates refuse before truncation or path approval. Reports contain only digests and categorical observations. Owned public service checks require an explicit public endpoint; browser ClientHello and filtered survival remain unverified.
 
 A successful alternate retains usable transport delivery, while any non-ok endpoint variant makes the operator decision degraded; exact primary/alternate observations remain separate and do not create a rotation candidate by themselves.
 

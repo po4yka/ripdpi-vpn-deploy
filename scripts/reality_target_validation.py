@@ -72,7 +72,9 @@ def worker(kind):
     data = json.loads(sys.stdin.buffer.read(8192))
     if kind == "dns":
         addresses = list(dict.fromkeys(row[4][0] for row in socket.getaddrinfo(data["host"], data["port"], type=socket.SOCK_STREAM)))
-        print(json.dumps(addresses[:8]))
+        if not 1 <= len(addresses) <= 8:
+            raise ValidationError("dns-empty-or-unbounded")
+        print(json.dumps(addresses))
         return
     context = ssl.create_default_context(cafile=data.get("ca"))
     context.hostname_checks_common_name = False

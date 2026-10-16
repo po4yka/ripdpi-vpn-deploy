@@ -122,3 +122,26 @@ def test_explicit_empty_names_never_fall_back_to_operator_secrets(monkeypatch, c
     monkeypatch.setattr(client_payload, "read_document", lambda *a, **kw: pytest.fail("explicit input read operator authority"))
     assert reality_target_validation.main() == 1
     assert json.loads(capsys.readouterr().out)["verdict"] == "failed"
+
+
+def test_dns_worker_refuses_overflow_instead_of_hiding_additional_addresses(monkeypatch, capsys):
+    import io
+    from types import SimpleNamespace
+    import reality_target_validation as module
+    answers = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (f"192.0.2.{i}", 443)) for i in range(1, 10)]
+    monkeypatch.setattr(module.socket, "getaddrinfo", lambda *args, **kwargs: answers)
+    monkeypatch.setattr(module.sys, "stdin", SimpleNamespace(buffer=io.BytesIO(b'{"host":"owned.example","port":443}')))
+    with pytest.raises(ValidationError, match="dns-empty-or-unbounded"):
+        module.worker("dns")
+    assert not capsys.readouterr().out
+
+
+def test_dns_worker_retains_all_eight_unique_candidates_with_duplicate_answers(monkeypatch, capsys):
+    import io
+    from types import SimpleNamespace
+    import reality_target_validation as module
+    answers = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (f"192.0.2.{i}", 443)) for i in range(1, 9)]
+    monkeypatch.setattr(module.socket, "getaddrinfo", lambda *args, **kwargs: answers + answers[:1])
+    monkeypatch.setattr(module.sys, "stdin", SimpleNamespace(buffer=io.BytesIO(b'{"host":"owned.example","port":443}')))
+    module.worker("dns")
+    assert json.loads(capsys.readouterr().out) == [f"192.0.2.{i}" for i in range(1, 9)]
