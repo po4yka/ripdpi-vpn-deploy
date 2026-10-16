@@ -1209,7 +1209,7 @@ verify-awg-dualstack-client-evidence:
 # suite keeps its real Linux/systemd/TUN prerequisites and selected-skip refusal.
 .PHONY: transport-native-acceptance test-topology-authenticated-probes test-xhttp-delivery-matrix
 transport-native-acceptance:
-	$(MAKE) test-transport-destination-boundary
+	$(MAKE) test-native-runtime
 	$(MAKE) test-xhttp-endpoint-contract
 	$(MAKE) test-awg-device-binding-runtime
 	$(MAKE) test-awg-dualstack-runtime
