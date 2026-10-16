@@ -1,9 +1,9 @@
 ---
 task_id: "TST-1791618356595983"
 change: "native-four-protocol-acceptance"
-commit_sha: null
-local: "required"
-local_evidence: "complete affected tests, exact native cases and full source gates after implementation"
+commit_sha: "3d01cb1171e964bf85e7368c2fdb882b12f9fb7d"
+local: "passed"
+local_evidence: "build-gate -- mise exec -- make check passed with pinned runtime and installed crypto binaries on PATH: 7498 portable tests, 63 Bats tests, 320 vpnd tests, strict static/schema/policy/source checks; 65 focused runner/CI regressions and 22 runner/instruction checks also passed"
 remote_ci: "required"
 remote_ci_evidence: "terminal required checks on the exact integrated implementation SHA"
 dry_run: "not_applicable"

@@ -2,7 +2,7 @@
 
 ## Objective
 
-Deliver isolated native acceptance for every baseline transport. All execution checkboxes remain open; this is planning, not implementation or deployment approval.
+Deliver isolated native acceptance for every baseline transport.
 
 ## Ownership
 
@@ -34,5 +34,3 @@ Deliver isolated native acceptance for every baseline transport. All execution c
 - `build-gate -- make check`
 
 Requirement-to-step mapping and unfulfilled evidence categories live in verification.md. No fixture, refusal-only result or skipped selected case satisfies positive capability. Future external acceptance requires current authorization and exact scope; no existing cancelled task is revived.
-
-Implementation starts only after the canonical portfolio prerequisites are satisfied and separately authorized. Planning alone neither starts work nor checks an execution step.

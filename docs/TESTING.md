@@ -658,3 +658,7 @@ SHA, engine digests and case outcomes. Raw diagnostics remain private inside
 the disposable runner; only redacted JSON is uploaded. This establishes isolated
 native source/client behavior, with no provider, physical-device or live-fleet
 acceptance claim.
+
+Use installed SOPS and age binaries on `PATH` for source checks. Crypto fixtures
+replace `HOME`, so tool shims that read their activation configuration there
+may refuse before encryption.
