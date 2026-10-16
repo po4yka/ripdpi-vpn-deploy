@@ -1,91 +1,102 @@
 ## Context
 
-Current examples pin Go v0.2.12 and tools v1.0.20241018, while researched candidate tags are v3.1.20260828 and v3.1.20260812. The source and client version gap requires semantic, toolchain and physical compatibility proof. Installed binary receipts and controller restart dispatch do not demonstrate warm running-process adoption or preserved real tunnel behavior.
-
-Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Revalidate source and current task ownership before implementation. This request creates plans only.
+The owner revised acceptance on 2026-10-15: all implementation and validation
+must run without external infrastructure. Local Docker supplies Linux root,
+systemd, TUN and network namespaces on the workstation. Upstream source/package
+retrieval is allowed; no external runtime or application endpoint is involved.
 
 ## Goals / Non-Goals
 
-- Goal: upgrade pinned amneziawg sources with unchanged reviewed wire settings with positive capability and meaningful negative, security, lifecycle and privacy tests.
-- Non-goal: implementation in this session, provider mutation, production deployment, actual credentials, unrelated cleanup, compatibility shims or revival of cancelled acceptance.
+- Goal: build and exercise the real upgraded sources against the exact retained
+  source pair, including warm daemon adoption and failure compensation locally.
+- Non-goals: change production defaults, claim stable upstream eligibility,
+  physical Android compatibility, provider acceptance or a 48-hour staging soak.
+  These are excluded from this task rather than relabelled as local successes.
 
 ## Decisions
 
-- Baseline integration validates the existing exact wire/runtime versions before this new candidate pair. The runtime transaction change owns durable complete adoption and compensation; reuse it and do not create an upgrade-to-integration dependency cycle.
-- Go v3.1.20260828 and tools v3.1.20260812 are candidate inputs, not proven compatible or stable merely because their tags exist. Refresh release/tag API status, resolved immutable commits, provenance, advisory status and toolchain requirements before source implementation and deployment.
-- Production eligibility requires reviewed stable channel provenance, at least 48 hours since published candidate metadata and a separately authorized 48-hour staging soak. Unresolved release-channel or publication metadata prevents promotion.
-- Keep current reviewed wire parameters. Do not enable RandomTrailers, DisableCookies, nonzero S3/S4 or new packet modes as part of this upgrade.
-- S3/S4 candidate and verified safe floors remain unchanged. Physical acceptance of zero-S3/S4 candidates cannot be used to infer that nonzero transport junk is safe.
-- Bind the exact client embedded core version, ABI and packet/header semantics to compatibility evidence. Update a qualified RIPDPI consumer task and federation checks if its source or published semantic contract must change.
-- Preserve the existing ownership-aware instance retirement and source-build transaction. Add only necessary build/API changes and real adoption proof, not a duplicate lifecycle framework.
-- Build toolchain versions and Go module inputs must be explicit and reviewed; do not rely on unrecorded automatic toolchain fetches to establish reproducibility.
-- Every heavy local build uses the machine-wide build gate and existing job ceilings. Planning authorizes no builds, credentials, physical installation or live staging.
+- The versioned candidate manifest binds both exact tags and commits, the exact
+  Go toolchain and both supported Linux archive checksums. A moved tag or dirty
+  module graph fails the build. `GOTOOLCHAIN=local`, readonly modules and two-job
+  limits prevent hidden toolchain upgrades and unbounded compilation.
+- Fetch public source Git objects on the workstation through standard GitHub
+  SSH port 22, revalidate the current remote tags on every run (peeling annotated
+  tags even for a warm cache), verify the exact tag commit, and cache bundles under
+  `.cache/awg-source-candidate/`. Only these public objects enter the build;
+  neither the SSH agent nor credentials are mounted or copied into Docker.
+  The build verifies each checked-out commit again before compiling.
+- Go v3.1.20260828 resolves to b5928efb6ca19f0153958460c3d141f04abc5c2e.
+  Its release API returned 404 at review; publication/channel eligibility is
+  unknown. Tools v3.1.20260812 resolves to
+  ee0f0a9aa34ff0a0da4b3433b9512781cfe02843 and its non-draft, non-prerelease
+  release was published on 2026-08-12. The contract explicitly denies production
+  eligibility; deployment examples remain on the reviewed baseline.
+- The runner admits only a local Unix-socket Docker context and its engine
+  BuildKit driver, binds subsequent calls to that context/builder, builds a bounded
+  explicit context containing public source files, and starts a uniquely allocated
+  container without network access, host workspace mounts or published ports.
+  The systemd cgroup mount belongs to the local Linux VM. Only the owned
+  container identity is removed, including its preallocated unique name when
+  startup fails before returning an ID. Uncertain startup polls for 30 seconds;
+  observation permits removal, while exhaustion explicitly reports unknown
+  cleanup with the owned identity for inspection.
+- A checksum-pinned Ubuntu image and the signed Ubuntu archive snapshot at
+  `20261015T000000Z` supply package dependencies. A checksum-pinned public
+  ca-certificates archive bootstraps HTTPS in the minimal base; TLS and APT
+  signature/hash checks remain enabled. Build both real
+  source pairs with repository-pinned Go 1.27.1. The manifest explicitly selects
+  the reachable module cache; original `go.sum`, readonly modules and the standard
+  signed checksum database remain enabled. This changes artifact delivery, not
+  the reviewed dependency versions or their byte authentication.
+- Test candidate/server versus baseline/client, baseline/server versus
+  candidate/client, and candidate/candidate with two existing scalar-header wire
+  shapes. Each proves authenticated bidirectional sustained TCP/UDP and DNS,
+  three reconnects, and captured handshake/transport header bytes and offsets.
+- Use the existing durable source publisher to atomically publish the complete
+  Go/tools/quick pair in the lab. Real systemd daemons adopt pin-only changes;
+  unit-only changes adopt the sandbox. Build failure retains the receipt and
+  ready traffic. Readiness rejection restores the complete baseline pair and
+  both owned daemons. Unchanged publication preserves PIDs and an independent
+  third tunnel retains its process and traffic throughout.
+- This proves a local candidate upgrade procedure. It does not claim that the
+  production role has acquired a new automatic data-plane readiness transaction.
+- S3/S4 remain zero; RandomTrailers, DisableCookies and new modes stay absent.
+  The physical safe-floor policy and cross-repository fingerprints are unchanged.
 
 ## Contracts and ownership
 
-- secrets/prod.secrets.example.yaml
-- scripts/bootstrap-secrets.sh
-- scripts/ci-bootstrap-secrets.sh
-- secrets/schema.json
-- ansible/roles/amneziawg/tasks/enable.yml
-- ansible/roles/amneziawg/templates/awg-quick@.service.j2
-- ansible/roles/amneziawg/handlers/main.yml
-- ansible/roles/amneziawg/CLAUDE.md
-- ansible/roles/runtime-release/tasks/source-build.yml
-- scripts/emit-sbom.py
-- contract/cohort-fingerprint.golden.json
-- contract/amneziawg-arm64-version-floor.json
-- scripts/check-amneziawg-arm64-upstream.py
-- tests/unit/test_amneziawg_source_pins.py
-- tests/unit/test_amneziawg_native_lifecycle.py
-- tests/unit/test_transport_p2_lifecycle.py
-- tests/unit/test_amneziawg_version_floor.py
-- docs/AWG-COHORTS.md
-- docs/CLIENT-NOTES.md
-- docs/TESTING.md
-- Dependencies: awg-binding, runtime-transaction, integration. Exact IDs and hard edges are stored in portfolio frontmatter; related source-fixed tasks are traceability, not a new implementation blocker.
-- Implementation starts only after separate authorization in a dedicated worktree; read nearest role/script/test guidance first.
-- A single integration owner serializes schemas/examples, shared effective profile helpers, group variables, Makefile, CI selectors, snapshots and task metadata. Workers request shared-lane edits and preserve all concurrent work.
-- Terraform owns provider objects, cloud-init owns bootstrap, Ansible owns runtime and SOPS owns private authority; no layer shortcut is introduced.
+- `tests/integration/awg_source_candidate/sources.json`: source and toolchain selection.
+- `scripts/test-awg-source-candidate.py`: local-only orchestration and cleanup.
+- `tests/integration/awg_source_candidate/`: real builds and isolated traffic.
+- `Makefile`, script/test guidance, test docs and this change's task metadata.
+- One serialized writer; no parallel ownership lanes are needed.
+- The already integrated source publisher is a dependency. Device binding and
+  four-protocol acceptance remain related work, not prerequisites for this
+  independent local two-version lab. Their task states are not modified.
 
 ## Risks / Trade-offs
 
-- The v3-family source jump may change header and packet semantics even when configuration names appear identical.
-- Old embedded client cores may not interoperate with selected candidate sources; successful server compilation is insufficient.
-- Physical Android arm64 is mandatory for candidate acceptance; unavailable hardware or client artifact leaves promotion incomplete without fabricated proof.
-- A passing renderer, fixture, socket or installed-version command cannot stand in for the requirement's named real runtime, authenticated traffic, physical device or rollback result.
+- Privileged containers are required for TUN, namespaces and service sandboxing;
+  the local Docker VM is the isolation boundary, not a production host.
+- Package versions and transitive dependencies resolve from the fixed signed
+  archive snapshot. Moving to another snapshot is a reviewed input change;
+  snapshot unavailability fails the build rather than selecting current packages.
+- Local Linux arm64 cannot establish Android's embedded-core or physical path
+  behavior. Existing physical S3/S4 guards remain fail-closed.
+- Unknown upstream release eligibility and advisory reachability cannot be
+  converted into a production approval by this lab.
 
 ## Migration Plan
 
-After implementation approval, refresh and select a compatible exact source pair and toolchain, update all pin consumers and exercise old reviewed wire settings with real clients. Preserve previous source receipts and complete config for rollback. Promotion waits for physical arm64 candidate proof and a separately authorized 48-hour staging soak. No private credential rotation or S3/S4 floor relaxation is implicit.
-
-Implementation order follows the dependency DAG. Run each complete affected test suite; use `build-gate` once around heavy top-level builds and never bypass pinned tools or safety hooks. Archive/closure remains unavailable while any requirement or required evidence category is unresolved.
-
-## Acceptance tests
-
-- `REQ-PROTO-AWG-VERSION`: Source-consumer consistency, real exact-source builds, immutable-ref rejection and receipt output checks; metadata and soak claims require separate observed evidence.
-- `REQ-PROTO-AWG-WIRE`: Exact upstream parser and packet-capture interoperability matrix, fingerprint goldens and existing version-floor tests; compare actual bytes and offsets, not release-note assertions.
-- `REQ-PROTO-AWG-ADOPT`: Extend native lifecycle to exact real AWG daemons and TUN traffic, inspect running executable identity and service restrictions, and inject candidate build/start/readiness failures.
-- `REQ-PROTO-AWG-ARM64`: Named physical test procedure integrated with candidate evidence; no emulator, synthetic data or local server fixture substitutes for hardware proof.
+Run `build-gate -- make test-awg-source-candidate` locally. No private migration
+or deployment is needed. Remove only the owned lab container on every outcome;
+its image remains reusable in the Docker build cache. Review candidate source
+changes through this PR. Promoting production pins is separate work requiring
+resolved upstream eligibility and its own explicit scope.
 
 ## Validation commands
 
-- `mise exec -- python3 -m pytest -q tests/unit/test_amneziawg_source_pins.py tests/unit/test_transport_p2_lifecycle.py tests/unit/test_amneziawg_version_floor.py`
-- `make test-native-runtime`
+- `mise exec -- python3 -m pytest -q tests/unit/test_awg_source_candidate.py tests/unit/test_amneziawg_source_pins.py tests/unit/test_amneziawg_version_floor.py`
+- `build-gate -- make test-awg-source-candidate`
 - `make snapshot-check`
 - `build-gate -- make check`
-- `Existing when the qualified peer checkout is available: make task-federation PEER_ROOT=<RIPDPI-checkout>`
-- `NEW build-gate -- make test-awg-source-candidate; implementation must add exact source-pair build interoperability and warm-adoption tests using existing job ceilings`
-- `NEW make verify-awg-arm64-candidate; implementation must validate explicit physical candidate evidence without changing the S3/S4 safe floor`
-
-Commands marked NEW are implementation deliverables and must exist, execute complete cases and fail on selected skips before acceptance. They are not commands run during planning. No credentialed recipe is authorized merely by being listed here.
-
-Native `make test-native-runtime` and the dependency-provided native acceptance targets run only on the explicitly isolated Linux root/systemd/TUN host. macOS or missing privileges are prerequisite failures, never silent skips or mocked substitutes.
-
-## Canonical dependencies
-
-- `SCR-1791618039091425` — `awg-device-binding`.
-- `ANS-1791617913525586` — `runtime-acceptance-transaction`.
-- `TST-1791618356595983` — `native-four-protocol-acceptance`.
-
-These are canonical `blocked_by` edges; child requirements can be prepared and characterized before a blocker closes, but promotion/acceptance follows the graph. Existing integrated review records are preserved as related evidence and do not imply a new fleet acceptance.

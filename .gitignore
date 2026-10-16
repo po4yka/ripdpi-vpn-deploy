@@ -83,6 +83,9 @@ Thumbs.db
 # pytest
 .pytest_cache/
 
+# Public immutable inputs for the local AWG source-candidate lab.
+/.cache/awg-source-candidate/
+
 # Claude Code / oh-my-claudecode local state
 # Track project-scoped skills and shared settings only; ignore runtime state under .claude/.
 /.claude/*
