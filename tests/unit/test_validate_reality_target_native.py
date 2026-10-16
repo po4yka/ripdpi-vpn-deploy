@@ -41,3 +41,16 @@ def test_client_h2_downgrade_does_not_relabel_hygiene(tls_site):
     assert report['hygiene'] == 'passed'
     assert report['client_compatibility'] == 'failed'
     assert report['reason_codes'] == ['client_failed']
+
+
+def test_valid_client_bytes_without_execution_capability_are_unavailable(tls_site, tmp_path):
+    import shutil
+    root = os.environ['REALITY_TEST_CLIENT_DIR']
+    for name in ('curl-impersonate-chrome', 'curl_chrome116'):
+        shutil.copyfile(os.path.join(root, name), tmp_path / name)
+    (tmp_path / 'curl-impersonate-chrome').chmod(0o600)
+    result, report = run_site(tls_site, REALITY_CLIENT_DIR=str(tmp_path))
+    assert result.returncode != 0
+    assert report['hygiene'] == 'passed'
+    assert report['client_compatibility'] == 'unavailable'
+    assert report['reason_codes'] == ['client_unavailable']

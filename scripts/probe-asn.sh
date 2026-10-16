@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Resolve an IP or hostname through Team Cymru's whois interface and print
-# a single tab-separated line: IP<TAB>ASN<TAB>ORG<TAB>COUNTRY.
-# Empty fields stay empty; the row always has four columns. Exit 1 if
+# a single tab-separated line: IP<TAB>ASN<TAB>PREFIX<TAB>COUNTRY<TAB>ORG.
+# Empty fields stay empty; the row always has five columns. Exit 1 if
 # Cymru is unreachable or returns an error envelope.
 #
 # Usage:

@@ -251,7 +251,8 @@ def collect(budget, mode, host, port, configured, *, metadata=False):
             reasons.extend(pair_reasons)
         observations.append((ip, asn, prefix, len(configured), failed))
     if client:
-        compatibility = "failed" if client_errors else "passed"
+        compatibility = ("unavailable" if "client_unavailable" in client_errors
+                         else "failed" if client_errors else "passed")
     reasons.extend(client_errors)
     return reasons, observations, compatibility
 

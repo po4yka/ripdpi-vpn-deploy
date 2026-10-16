@@ -42,9 +42,7 @@ REALI_LINUX_SHA256="3127c612c98ded9b07612ab8500a110a379cc0ab4342174ee026d913961f
 REALI_LINUX_URL="https://github.com/XTLS/RealiTLScanner/releases/download/${REALI_VERSION}/RealiTLScanner-linux-64"
 REALI_BIN="${TOOL_CACHE}/RealiTLScanner-${REALI_VERSION}"
 
-# Over-template list — REALITY targets too popular to be useful. Mirrored
-# from validate-reality-target.sh and the wiki reality-target-selection-2026
-# page. Keep these in sync.
+# Discovery-only popularity heuristic; independent of TLS/HTTP hygiene.
 OVERUSED_RE='^(([a-zA-Z0-9_-]+\.)+)?(cloudflare\.com|microsoft\.com|apple\.com|google\.com|discord\.com|icloud\.com)$'
 
 # ASN tier blocklist (see docs/PROVIDER-NOTES.md).
