@@ -160,3 +160,16 @@ The full workflow, local `make check` and fresh Android client acceptance remain
 required. The first combined local batch waited 3600 seconds without acquiring
 a slot (exit 75); no tests executed in that attempt. The identical batch is
 queued again through the machine gate without a wait timeout.
+
+
+## Recipient parser and runtime boundary (2026-10-16)
+
+On consumer source `335d5de361445c8decef5560a07ebf3f60fe524f`, all 55
+selected data/parser tests and 40 service/runtime configuration tests passed
+without failures, errors or skips. Together with the portable 204-case matrix
+and exact Linux native acceptance, this completes execution step
+ANS-1791618053112824. The fresh arm64 native-core emulator invocation built
+the actual production library and test APK. MTU 1280 baseline and reconnect 1
+passed; reconnect 2 completed TCP but failed UDP receive by its original
+deadline. No acceptance JSON was generated and client/runtime closure remains
+required while the UDP failure is diagnosed.
