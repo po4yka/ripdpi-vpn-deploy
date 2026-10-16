@@ -125,6 +125,7 @@ def run_command(command, *, timeout, environment=None, cwd=None, capture=False, 
         try:
             os.killpg(child.pid, signal.SIGKILL)
         except ProcessLookupError:
+            # The still-owned session has exited; no process group remains.
             pass
         except OSError:
             raise ReadinessError("command cleanup unavailable") from None
