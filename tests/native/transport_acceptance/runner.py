@@ -265,6 +265,12 @@ def main():
                 print("native-suite-passed:" + name, flush=True)
         evidence["success"] = True
     finally:
+        finish(evidence, before, output)
+
+
+def finish(evidence, before, output):
+    """Persist categorical cleanup failure even when its inspection itself fails."""
+    try:
         evidence["cleanup"] = (
             resources() == before
             and engines() == evidence["engines"]
@@ -272,12 +278,15 @@ def main():
                 ["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT
             ).strip()
         )
-        evidence["success"] = evidence["success"] and evidence["cleanup"]
-        with output.open("x") as stream:
-            json.dump(evidence, stream, sort_keys=True, indent=2)
-        output.chmod(0o600)
-        if not evidence["cleanup"]:
-            raise RuntimeError("owned-resource-cleanup-unconfirmed")
+    except BaseException as error:
+        evidence["cleanup"] = False
+        evidence["cleanup_error"] = type(error).__name__
+    evidence["success"] = evidence["success"] and evidence["cleanup"]
+    with output.open("x") as stream:
+        json.dump(evidence, stream, sort_keys=True, indent=2)
+    output.chmod(0o600)
+    if not evidence["cleanup"]:
+        raise RuntimeError("owned-resource-cleanup-unconfirmed")
 
 
 if __name__ == "__main__":
