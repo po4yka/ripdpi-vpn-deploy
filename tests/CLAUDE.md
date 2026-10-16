@@ -638,3 +638,8 @@ pinned AWG source clones; preserve normal ownership checks instead.
 A nested native lab that creates namespaces for systemd must join its root
 network namespace with `nsenter --net`. `ip netns exec` also isolates mounts,
 so the manager cannot open nested namespace handles created by that process.
+
+The complete native lane checks resource retirement after every case and suite.
+Its explicit pytest flag enables OS inventory only in that isolated lane;
+portable checks retain their ordinary fixture behavior. Evidence exposes only
+changed resource categories and counts, with private identities kept local.

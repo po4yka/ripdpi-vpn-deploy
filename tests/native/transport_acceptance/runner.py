@@ -110,6 +110,49 @@ def resources():
     }
 
 
+CLEANUP_CATEGORIES = frozenset({
+    "authority", "processes", "users", "groups", "namespaces", "tables", "units", "links",
+    "inventory", "engines", "source", "inspection",
+})
+
+
+def resource_differences(before, after):
+    """Publish changed categories and counts, never private identities or paths."""
+    result = {}
+    for key in set(before) | set(after):
+        if before.get(key) == after.get(key):
+            continue
+        label = key if key in CLEANUP_CATEGORIES else "inventory"
+        values = (before.get(key), after.get(key))
+        result[label] = dict(zip(("before", "after"), (
+            len(value) if isinstance(value, (dict, list, tuple, set)) else int(value is not None)
+            for value in values
+        )))
+    return result
+
+
+def case_cleanup_differences(case):
+    for node in case:
+        message = node.get("message", "")
+        prefix = "native-case-cleanup-unconfirmed:"
+        if prefix not in message:
+            continue
+        try:
+            value, _end = json.JSONDecoder().raw_decode(message.split(prefix, 1)[1])
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(value, dict):
+            continue
+        return {
+            key: {field: counts[field] for field in ("before", "after")}
+            for key, counts in value.items()
+            if key in CLEANUP_CATEGORIES and isinstance(counts, dict)
+            and all(type(counts.get(field)) is int and counts[field] >= 0
+                    for field in ("before", "after"))
+        }
+    return {}
+
+
 def case_results(path):
     root = ET.parse(path).getroot()
     rows = []
@@ -118,12 +161,14 @@ def case_results(path):
         for tag in ("failure", "error", "skipped"):
             if case.find(tag) is not None:
                 result = tag
-        rows.append(
-            {
-                "case": case.get("classname", "") + "." + case.get("name", ""),
-                "result": result,
-            }
-        )
+        row = {
+            "case": case.get("classname", "") + "." + case.get("name", ""),
+            "result": result,
+        }
+        cleanup = case_cleanup_differences(case)
+        if cleanup:
+            row["cleanup_differences"] = cleanup
+        rows.append(row)
     return rows
 
 
@@ -236,6 +281,7 @@ def main():
                             "pytest",
                             *paths,
                             "--fail-on-skip",
+                            "--native-resource-checks",
                             "--basetemp=" + str(Path(private) / (name + "-scratch")),
                             "--tb=short",
                             "-q",
@@ -263,6 +309,10 @@ def main():
                     retain_diagnostic(Path(private) / (name + ".log"), diagnostic)
                     raise RuntimeError("native-suite-failed:" + name)
                 evidence["suites"][name] = cases(report)
+                difference = resource_differences(before, resources())
+                if difference:
+                    evidence["cleanup_differences"] = difference
+                    raise RuntimeError("native-suite-cleanup-unconfirmed:" + name)
                 print("native-suite-passed:" + name, flush=True)
         evidence["success"] = True
     except Exception as error:
@@ -286,6 +336,7 @@ def main():
             for name in ("xray", "hysteria", "amneziawg-go", "awg")
         )
         known.update("native-suite-failed:" + name for name, _paths in SUITES)
+        known.update("native-suite-cleanup-unconfirmed:" + name for name, _paths in SUITES)
         evidence["failure_category"] = code if code in known else type(error).__name__
         raise
     finally:
@@ -327,17 +378,21 @@ def publish(evidence, output):
 
 def finish(evidence, before, output):
     """Persist categorical cleanup failure even when its inspection itself fails."""
+    difference = {}
     try:
-        evidence["cleanup"] = (
-            resources() == before
-            and engines() == evidence["engines"]
-            and not run(
-                ["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT
-            ).strip()
-        )
+        difference = resource_differences(before, resources())
+        if not difference:
+            current_engines = engines()
+            if current_engines != evidence["engines"]:
+                difference["engines"] = {"before": len(evidence["engines"]), "after": len(current_engines)}
+            if run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT).strip():
+                difference["source"] = {"before": 0, "after": 1}
+        evidence["cleanup"] = not difference
     except Exception as error:
         evidence["cleanup"] = False
         evidence["cleanup_error"] = type(error).__name__
+        difference["inspection"] = {"before": 0, "after": 1}
+    evidence["cleanup_differences"] = difference
     evidence["success"] = evidence["success"] and evidence["cleanup"]
     publish(evidence, output)
     if not evidence["cleanup"]:
