@@ -348,7 +348,11 @@ server.serve_forever()
                                 raise RuntimeError('native-first-adoption-interruption-unconfirmed')
                             return result.returncode
                         time.sleep(0.01)
-                    raise RuntimeError('native-first-adoption-selection-not-observed')
+                    detail = {**self.failure_categories(), 'running': result.poll() is None,
+                              'selected_unit': unit.exists(), 'selected_config': config.exists(),
+                              'pending': (state / 'pending.json').exists(),
+                              'accepted': (state / 'accepted.json').exists()}
+                    raise RuntimeError('native-first-adoption-selection-not-observed:' + json.dumps(detail, sort_keys=True))
                 finally:
                     if result.poll() is None:
                         os.killpg(result.pid, signal.SIGKILL)
@@ -375,7 +379,7 @@ server.serve_forever()
         codes = re.findall(
             r'transport-runtime-(?:refused:[a-z][a-z0-9-]{0,96}|frame:[A-Za-z_][A-Za-z_0-9]*:[0-9]{1,6})',
             '\n'.join(lines))
-        return {'failed_tasks': failures[-8:], 'categories': codes[-9:], 'status': 'refused'}
+        return {'failed_tasks': failures[-8:], 'categories': codes[-9:], 'last_task': task, 'status': 'refused'}
 
     def upgrade(self, profile):
         if profile == 'xray':
