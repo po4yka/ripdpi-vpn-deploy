@@ -1,0 +1,11 @@
+{
+  "change": "resource-bounded-observability",
+  "evidence_summary": "External host admission, live VPN performance, real Telegram delivery and human receipts are cancelled, not passed. Existing implementation and historical local observations are preserved; MON-1792080593038468 owns source-only positive runtime acceptance.",
+  "execution_sha256": "f389754fe66c9b5fe2958b23fec846d5d553fae2264a2033086faea973eefb40",
+  "issue_sha256": "563198da1833b06c9447dde3b5559b7fcc71139329fd9d907c67f7b5792efc49",
+  "outcome": "dropped",
+  "prepared_at": "2026-10-15T16:18:48Z",
+  "reason": "Owner excluded all external infrastructure from completion on 2026-10-15; source and isolated runtime capability is owned by MON-1792080593038468.",
+  "schema": 1,
+  "task_id": "MON-1790835036464962"
+}

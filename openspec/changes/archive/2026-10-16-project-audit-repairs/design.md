@@ -47,3 +47,11 @@ bundles to adopt corrected URLs and QR state. Runtime changes take effect only i
 a separately authorized deployment. Source rollback is a revert; runtime rollback
 uses the existing reviewed deployment lifecycle. Run focused tests, snapshot-check,
 make check, independent review and exact-source CI before claiming full source acceptance.
+
+## Source acceptance scope (2026-10-15)
+
+Per the owner-approved criteria revision, source acceptance requires focused Mac
+regressions, snapshots, full-history/staged gitleaks and complete unchanged
+exact-SHA hosted source/native checks. The local monolithic attempt failed on a
+registry timeout; its retry was cancelled after 32 minutes still queued. No full
+local success is claimed; global and deployment gates remain unchanged.

@@ -1,0 +1,11 @@
+{
+  "change": "project-audit-repairs",
+  "evidence_summary": "Integrated main source 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8 passed all 88 CI jobs in 38792726270 and both CodeQL analyses with zero open alerts. Actual native integration 138+2 XHTTP+1 AWG and four real recovery cases passed; enabled collector/agent and pinned Kuma isolated runtimes passed. Approved focused Mac and complete unchanged hosted source gate verified; local monolithic timeout and queued cancellation remain recorded. No external deployment or real notification receipt.",
+  "execution_sha256": "c79f15b98069ccfa74704d168cc40a10fc562882956a7196a72cdcfa6eac24a5",
+  "issue_sha256": "95842128219726e54f7f842798eeec1f3daf051bddb8db8a31f2b388c33c1d89",
+  "outcome": "done",
+  "prepared_at": "2026-10-15T20:36:38Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SEC-1791735853691219"
+}

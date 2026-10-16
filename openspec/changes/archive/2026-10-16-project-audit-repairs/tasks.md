@@ -25,4 +25,12 @@ Repair all sixteen REQ-AUDIT cases and publish source and validation evidence in
 ## Verification
 
 Run focused behavior tests for each lane, snapshot-check, make check, independent source review and exact-source PR CI. Native Linux and provider/client evidence remain separate; this source PR does not authorize deployment.
-- [ ] SEC-1791740843514856 Repair hosted CI and scanner findings and verify the updated PR head #bug !high @item:SEC-1791735853691219
+- [x] SEC-1791740843514856 Repair hosted CI and scanner findings and verify the updated PR head #bug !high @item:SEC-1791735853691219
+
+## Source acceptance scope (2026-10-15)
+
+Per the owner-approved criteria revision, source acceptance requires focused Mac
+regressions, snapshots, full-history/staged gitleaks and complete unchanged
+exact-SHA hosted source/native checks. The local monolithic attempt failed on a
+registry timeout; its retry was cancelled after 32 minutes still queued. No full
+local success is claimed; global and deployment gates remain unchanged.

@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "Integrated main source 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8 passed all 88 source/native CI jobs and both CodeQL analyses; open code-scanning alerts are zero. Real native rollback cleanup and focused descriptor regressions passed. Approved source gate and honest local monolithic limitation recorded; no live actions.",
+  "execution_sha256": "6c8068ef9c6f4c078ab1fb773efabe9aa81d96771b6cf6ebf1ee1af72fc1aef8",
+  "issue_sha256": "2013e0bcdc3c0c7fa44eb17c1ac61b24100c29a4708533b3bce61c67f382854a",
+  "outcome": "done",
+  "prepared_at": "2026-10-15T20:06:17Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "ANS-1792073622616697"
+}

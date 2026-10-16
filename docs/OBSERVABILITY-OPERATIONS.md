@@ -18,6 +18,12 @@ the replacement has positive acceptance. The old dedicated topology and
 The `deadman` operator component and dedicated host bootstrap are retired.
 Old task receipts and retained encrypted credentials do not accept this design.
 
+Source completion is limited to deployable code and isolated real-runtime acceptance,
+as requested on 2026-10-15. It does not accept external host deployment, real
+Telegram delivery, human receipts, live VPN performance or cutover. Those
+remain prerequisites for a separately authorized rollout. The original external
+acceptance task is cancelled; the source successor is `MON-1792080593038468`.
+
 Rollout remains on hold pending replacement acceptance. The previous Prometheus
 Agent 3.14.0 failed to deliver unsent pre-restart samples in the real outage
 drill. The approved replacement is vmagent 1.153.0 with a byte-bounded persistent
@@ -28,9 +34,9 @@ queue overhead, and the unchanged resource and live acceptance gates.
 ## Current contract and task history
 
 When an older monitoring task or archived proposal leads here, use the
-[resource-bounded requirements](../openspec/changes/resource-bounded-observability/specs/operations/resource-bounded-observability/spec.md)
-and [design](../openspec/changes/resource-bounded-observability/design.md) in
-the active change for the replacement contract. The machine-readable topology is
+[resource-bounded requirements](../openspec/changes/archive/2026-10-16-mon-1792080593038468-isolated-resource-bounded-monitoring/specs/operations/resource-bounded-observability/spec.md)
+and [design](../openspec/changes/archive/2026-10-16-mon-1792080593038468-isolated-resource-bounded-monitoring/design.md) in
+the accepted source change for the replacement contract. The machine-readable topology is
 [schema 2](../contract/observability-topology.schema.json); the tracked environment
 allowlist is in [all.yml](../ansible/group_vars/all.yml). This runbook describes
 the current operator workflow. Archived specifications describe their source
@@ -41,7 +47,8 @@ revision and do not override these inputs.
 | [TST-1787850553468536 — fleet observation](../openspec/changes/archive/2026-09-06-tst-1787850553468536-fleet-observation/proposal.md) | Passive inspection and authenticated external client probes are separate evidence producers, consumed by monitoring. | Keep client-path provenance, freshness and quorum separate from host health; see [evidence boundaries](#metric-and-alert-contracts) and the [historical verification](../openspec/changes/archive/2026-09-06-tst-1787850553468536-fleet-observation/verification.md), which records cancellation (`dropped`), not passed acceptance. |
 | [MON-1788008977760206 — centralized observability](../openspec/changes/archive/2026-09-06-mon-1788008977760206-centralized-observability-telegram-alerting/proposal.md) | Historical collection and alerting foundation; its dedicated control-plane/dead-man topology is superseded. | The [historical verification](../openspec/changes/archive/2026-09-06-mon-1788008977760206-centralized-observability-telegram-alerting/verification.md) records cancellation (`dropped`), not passed acceptance. Prior source/CI results do not establish replacement host admission or live acceptance. |
 | [MON-1790650904289505 — dedicated staging acceptance](tasks/issues/staging-observability-telegram-acceptance.md) | Cancelled historical work whose three-host deployment intent is replaced. Retained resources still use [guarded cleanup](#retained-dedicated-staging-cleanup-only). | Owner cancellation is not passed acceptance; do not resume retired deployment commands or transfer receipts to the replacement topology. |
-| [MON-1790835036464962 — resource-bounded observability](tasks/issues/resource-bounded-observability.md) | Active replacement owner: existing VPN capacity, private collector and independent Uptime Kuma observer. | Follow its [execution tasks](../openspec/changes/resource-bounded-observability/tasks.md) and [verification](../openspec/changes/resource-bounded-observability/verification.md) for remaining admission, VPN non-regression, real alerts, observer recovery and cutover gates. |
+| [MON-1790835036464962 — original external acceptance](tasks/issues/resource-bounded-observability.md) | External completion scope cancelled by the owner on 2026-10-15. | Historical local observations do not accept live deployment or human delivery. |
+| [MON-1792080593038468 — isolated source acceptance](tasks/issues/isolated-resource-bounded-monitoring.md) | Source successor: private collector, bounded sender and independent observer capability. | Exact-source gates and real isolated runtime acceptance passed; future host admission, VPN non-regression and human receipt remain outside this task. |
 
 Source/CI success and an archived task are not deployment or human receipt
 proof. Apply the [migration and acceptance](#migration-and-acceptance) gates to

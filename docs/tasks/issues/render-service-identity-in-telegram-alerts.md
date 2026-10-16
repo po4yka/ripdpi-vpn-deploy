@@ -2,7 +2,7 @@
 id: MON-1791918647679583
 title: Render service identity in Telegram alerts
 kind: bug
-status: review
+status: done
 area: monitoring
 priority: high
 risk: standard
@@ -12,10 +12,13 @@ blocked_by: []
 spec_mode: not-required
 openspec_change: null
 created: 2026-10-13
-updated: 2026-10-13
+updated: 2026-10-16
 spec_reason: regression-tested-single-module
 related_tasks: [MON-1791825755591250]
-status_detail: Bounded service identity, full local gate, exact-source hosted checks and independent review passed at f03923dfca69c3fa229444747bbe6939a21b7a41; deployment and real notifications remain excluded.
+status_detail: Integrated main source 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8 passed all 88 source/native CI jobs in 38792726270 and both CodeQL analyses; focused local evidence and the unsuccessful monolithic local attempt are recorded. No external rollout or real notification receipt claimed.
+closed_at: "2026-10-15T20:06:17Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Service identity rendering and failure boundaries pass focused tests and complete source/native CI 38792726270 on integrated main 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8. Actual isolated relay and monitoring acceptance passed; no real Telegram or human receipt claimed.
 ---
 
 ## Goal

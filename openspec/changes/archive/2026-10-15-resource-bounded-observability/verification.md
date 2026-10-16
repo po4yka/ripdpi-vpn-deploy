@@ -1,21 +1,21 @@
 ---
 task_id: MON-1790835036464962
 change: resource-bounded-observability
-commit_sha: null
-local: required
-local_evidence: null
-remote_ci: required
-remote_ci_evidence: null
-dry_run: required
-dry_run_evidence: null
-staging: required
-staging_evidence: null
-live: required
-live_evidence: null
-client: required
-client_evidence: null
-artifact: required
-artifact_evidence: null
+commit_sha: 3010dfb517b84cd7fbe9c3512b30b87d63b64fe8
+local: not_applicable
+local_evidence: "Task dropped: Owner excluded all external infrastructure from completion on 2026-10-15; source and isolated runtime capability is owned by MON-1792080593038468."
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Owner excluded all external infrastructure from completion on 2026-10-15; source and isolated runtime capability is owned by MON-1792080593038468."
+dry_run: not_applicable
+dry_run_evidence: "Task dropped: Owner excluded all external infrastructure from completion on 2026-10-15; source and isolated runtime capability is owned by MON-1792080593038468."
+staging: not_applicable
+staging_evidence: "Task dropped: Owner excluded all external infrastructure from completion on 2026-10-15; source and isolated runtime capability is owned by MON-1792080593038468."
+live: not_applicable
+live_evidence: "Task dropped: Owner excluded all external infrastructure from completion on 2026-10-15; source and isolated runtime capability is owned by MON-1792080593038468."
+client: not_applicable
+client_evidence: "Task dropped: Owner excluded all external infrastructure from completion on 2026-10-15; source and isolated runtime capability is owned by MON-1792080593038468."
+artifact: not_applicable
+artifact_evidence: "Task dropped: Owner excluded all external infrastructure from completion on 2026-10-15; source and isolated runtime capability is owned by MON-1792080593038468."
 ---
 
 # Verification
@@ -204,13 +204,13 @@ tests; other steps and the overall feature remain open.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-RBO-COST | MON-1790835430228619 | Approved collector/observer admission and zero-new-paid-resource checks | Required; no deployment |
-| REQ-RBO-BOUNDS | MON-1790835428068030 | Cgroup/load/queue/disk-guard tests and matched VPN performance runs | Local restart replay, queue saturation and filesystem latch passed; ten-node load and VPN performance remain unverified |
-| REQ-RBO-PRIVATE | MON-1790835428600254 | Real mTLS positive/revoked/wrong-SAN cases, listener inventory and unchanged VPN vhosts | Partial local ingestion and rejection proof; full gate remains required |
-| REQ-RBO-WATCHDOG | MON-1790835429142513 | Kuma direct-push missing-signal/recovery drills, observer outage, redaction, rotation and encrypted backup/isolated restore | Local application timing/restart/restore passed; production helper and host unverified |
-| REQ-RBO-DELIVERY | MON-1790835429142513 | Actual relay send/edit receipts, stale-receipt and token-failure cases, independent-route human receipt | Required |
-| REQ-RBO-EVIDENCE | MON-1790835429687617 | State-separation tests and authenticated external client verification | Required; no live client result |
-| REQ-RBO-MIGRATION | MON-1790835427523974 | Obsolete-topology rejection, migrated callers, rollback drill and explicit cutover approval | Contract/operator step and local agent activation rollback passed; full rollback gate and live cutover remain required |
+| REQ-RBO-COST | MON-1790835430228619 | Dropped: Owner excluded all external infrastructure from completion on 2026-10-15; source and isolated runtime capability is owned by MON-1792080593038468. | not_applicable |
+| REQ-RBO-BOUNDS | MON-1790835428068030 | Dropped: Owner excluded all external infrastructure from completion on 2026-10-15; source and isolated runtime capability is owned by MON-1792080593038468. | not_applicable |
+| REQ-RBO-PRIVATE | MON-1790835428600254 | Dropped: Owner excluded all external infrastructure from completion on 2026-10-15; source and isolated runtime capability is owned by MON-1792080593038468. | not_applicable |
+| REQ-RBO-WATCHDOG | MON-1790835429142513 | Dropped: Owner excluded all external infrastructure from completion on 2026-10-15; source and isolated runtime capability is owned by MON-1792080593038468. | not_applicable |
+| REQ-RBO-DELIVERY | MON-1790835429142513 | Dropped: Owner excluded all external infrastructure from completion on 2026-10-15; source and isolated runtime capability is owned by MON-1792080593038468. | not_applicable |
+| REQ-RBO-EVIDENCE | MON-1790835429687617 | Dropped: Owner excluded all external infrastructure from completion on 2026-10-15; source and isolated runtime capability is owned by MON-1792080593038468. | not_applicable |
+| REQ-RBO-MIGRATION | MON-1790835427523974 | Dropped: Owner excluded all external infrastructure from completion on 2026-10-15; source and isolated runtime capability is owned by MON-1792080593038468. | not_applicable |
 
 ## Exact gates for implementation
 
