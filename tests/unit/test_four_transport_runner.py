@@ -60,3 +60,25 @@ def test_missing_or_fake_engine_is_categorical_failure(tmp_path, monkeypatch, mi
         RuntimeError, match="engine-missing:xray" if missing else "engine-not-native"
     ):
         runner.engines()
+
+
+@pytest.mark.parametrize("unavailable", [False, True])
+def test_cleanup_change_or_inspection_failure_persists_failure_without_private_diagnostics(
+    tmp_path, monkeypatch, unavailable
+):
+    import json
+
+    def inspect():
+        if unavailable:
+            raise OSError("private authority must never be published")
+        return {"namespaces": ["remaining-owned-namespace"]}
+
+    monkeypatch.setattr(runner, "resources", inspect)
+    evidence = {"success": True, "engines": {}}
+    output = tmp_path / "evidence.json"
+    with pytest.raises(RuntimeError, match="owned-resource-cleanup-unconfirmed"):
+        runner.finish(evidence, {"namespaces": []}, output)
+    observed = json.loads(output.read_text())
+    assert observed["success"] is False and observed["cleanup"] is False
+    assert "private authority" not in output.read_text()
+    assert output.stat().st_mode & 0o777 == 0o600
