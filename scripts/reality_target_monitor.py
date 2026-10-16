@@ -10,6 +10,8 @@ import json
 import os
 import pathlib
 import tempfile
+import sys
+import re
 from typing import Any
 
 
@@ -203,7 +205,45 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def probe(arguments: list[str]) -> int:
+    from bootstrap_readiness import run_command, ReadinessError, cancellation
+    try:
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", os.environ.get("ENV", "prod")):
+            raise ValueError
+        budget = int(os.environ.get("REALITY_MONITOR_BUDGET", "120"))
+        if not 1 <= budget <= 120:
+            raise ValueError
+    except ValueError:
+        print(json.dumps({"schema_version": 1, "verdict": "error", "reason_codes": ["invalid_monitor_budget"]}))
+        return 2
+    failure = {"schema_version": 1, "verdict": "error", "reason_codes": ["monitor_deadline_or_process_refused"],
+               "captured_at": dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()}
+    try:
+        with tempfile.TemporaryDirectory(prefix="reality-monitor-owner-", dir=os.environ.get("TMPDIR")) as temporary:
+            environment = {**os.environ, "TMPDIR": temporary}
+            with cancellation():
+                code, output = run_command(["bash", str(pathlib.Path(__file__).with_name("reality-target-monitor-probe.sh")), *arguments],
+                    timeout=budget, environment=environment, capture=True, output_limit=65536)
+        if output:
+            sys.stdout.buffer.write(output)
+        return code
+    except (ReadinessError, SystemExit) as error:
+        # Preserve accepted ASN/prefix and alert budgets; replace only the
+        # observation so a killed run cannot retain a healthy last report.
+        state_home = pathlib.Path(os.environ.get("XDG_STATE_HOME", str(pathlib.Path.home() / ".local/state")))
+        state_path = state_home / "vpn-deploy/reality-target-monitor" / (os.environ.get("ENV", "prod") + ".json")
+        if state_path.is_file():
+            state = read_json(state_path)
+            if state:
+                state["last_report"] = failure
+                atomic_json(state_path, state)
+        print(json.dumps(failure, sort_keys=True))
+        return int(error.code) if isinstance(error, SystemExit) else 2
+
+
 def main() -> int:
+    if sys.argv[1:2] == ["probe"]:
+        return probe(sys.argv[2:])
     args = parse_args()
     return evaluate(args) if args.command == "evaluate" else record_delivery(args)
 

@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+REALITY target validation uses the shared bounded process-session owner for DNS, SAN-verified TLS 1.3/H2 and separate ordinary HTTPS stages. Reports contain only digests and categorical observations. Owned public service checks require an explicit public endpoint; browser ClientHello and filtered survival remain unverified.
+
+Canonical XHTTP materialization emits the enabled alternate with its own TLS identity and port. Mode and bounded XMUX connection/request/reuse limits pass unchanged into the exact Xray liveness adapter; official sing-box remains free of unsupported XHTTP.
+
 The AWG source-candidate runner admits only a local Unix-socket Docker daemon,
 copies an explicit public-file build context and removes only its own
 container ID. After an uncertain startup it polls the preallocated name for

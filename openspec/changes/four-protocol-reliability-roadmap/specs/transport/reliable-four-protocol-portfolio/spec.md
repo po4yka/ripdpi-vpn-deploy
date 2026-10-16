@@ -1,3 +1,7 @@
+## Local completion scope (2026-10-16)
+
+The owner authorizes full local implementation and removes staging soak, external recipient, Android emulator and physical-device acceptance from this change. Completion requires actual pinned local engines, isolated Linux systemd/network namespaces/TUN where applicable, authenticated positive and rejection traffic, compensation, privacy and complete source checks. Synthetic credentials are test inputs; mocks, render-only checks and refusal-only results cannot replace runnable behavior. External devices, provider actions, production rollout and promotion are outside acceptance. Earlier observations below retain their original source and limitations; removed external gates are excluded by this scope revision, never recorded as passed.
+
 ## Purpose
 
 Provide observable, testable guarantees for deliver isolated reliable and upgradeable four-protocol connectivity across accepted inputs, successful operation, failure and retained authority.
@@ -34,11 +38,11 @@ The implementation MUST preserve complete preceding runtime authority on failed 
 
 ### Requirement: REQ-PROTO-PORTFOLIO-EVOLUTION — Eligible supported upgrade and feature adoption
 
-The implementation MUST make stable candidate upgrades and typed optional endpoint/ECH features usable by supported real clients only after baseline security, acceptance, coordinated contracts and authenticated rollback pass.
+The implementation MUST make stable candidate upgrades and typed optional endpoint/ECH features usable by pinned local protocol engines only after baseline security, acceptance, coordinated contracts and authenticated rollback pass.
 
 #### Scenario: Candidate is eligible
 
-- **WHEN** exact reviewed stable source/client versions complete native, physical where required, and separately authorized staging acceptance
+- **WHEN** exact reviewed stable source/client versions complete complete isolated native acceptance
 - **THEN** selected supported clients complete actual traffic; optional features remain explicit and production promotion is a separate decision
 
 #### Scenario: Candidate lacks support or eligibility
@@ -57,5 +61,5 @@ The implementation MUST keep all original findings traceable and acceptance cred
 
 #### Scenario: A required layer is missing
 
-- **WHEN** a selected native, physical, client or candidate-staging requirement is unexecuted or fails
+- **WHEN** a selected local native or source requirement is unexecuted or fails
 - **THEN** the owner stays open with the exact unsatisfied check; planning or fixtures do not substitute and cancelled acceptance is not revived

@@ -1,8 +1,12 @@
+## Local completion scope (2026-10-16)
+
+The owner authorizes full local implementation and removes staging soak, external recipient, Android emulator and physical-device acceptance from this change. Completion requires actual pinned local engines, isolated Linux systemd/network namespaces/TUN where applicable, authenticated positive and rejection traffic, compensation, privacy and complete source checks. Synthetic credentials are test inputs; mocks, render-only checks and refusal-only results cannot replace runnable behavior. External devices, provider actions, production rollout and promotion are outside acceptance. Earlier observations below retain their original source and limitations; removed external gates are excluded by this scope revision, never recorded as passed.
+
 # MON-1791618056169855: Deliver topology-aware authenticated transport health and secure smoke probes
 
 ## Objective
 
-Deliver topology-aware authenticated transport health and secure smoke probes. All execution checkboxes remain open; this is planning, not implementation or deployment approval.
+Deliver topology-aware authenticated transport health and secure smoke probes. Local implementation is authorized; checkboxes require observed local behavior and source gates.
 
 ## Ownership
 
@@ -45,4 +49,4 @@ Requirement-to-step mapping and unfulfilled evidence categories live in verifica
 
 Native `make test-native-runtime` and the dependency-provided native acceptance targets run only on the explicitly isolated Linux root/systemd/TUN host. macOS or missing privileges are prerequisite failures, never silent skips or mocked substitutes.
 
-Implementation starts only after the canonical portfolio prerequisites are satisfied and separately authorized. Planning alone neither starts work nor checks an execution step.
+Local implementation is authorized. Acceptance follows the dependency graph; only observed checks complete execution steps.

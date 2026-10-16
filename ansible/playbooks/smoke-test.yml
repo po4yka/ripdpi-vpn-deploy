@@ -266,6 +266,12 @@
                       {% if hysteria.ech is defined %}
                         ech: {{ hysteria.ech.config_list | to_json }}
                       {% endif %}
+                      {% if hysteria.salamander_enabled | default(false) %}
+                      obfs:
+                        type: salamander
+                        salamander:
+                          password: {{ hysteria.salamander_password | to_json }}
+                      {% endif %}
                       socks5:
                         listen: 127.0.0.1:31081
                   no_log: true

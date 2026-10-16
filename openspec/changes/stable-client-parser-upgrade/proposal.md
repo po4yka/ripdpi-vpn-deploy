@@ -1,3 +1,7 @@
+## Local completion scope (2026-10-16)
+
+The owner authorizes full local implementation and removes staging soak, external recipient, Android emulator and physical-device acceptance from this change. Completion requires actual pinned local engines, isolated Linux systemd/network namespaces/TUN where applicable, authenticated positive and rejection traffic, compensation, privacy and complete source checks. Synthetic credentials are test inputs; mocks, render-only checks and refusal-only results cannot replace runnable behavior. External devices, provider actions, production rollout and promotion are outside acceptance. Earlier observations below retain their original source and limitations; removed external gates are excluded by this scope revision, never recorded as passed.
+
 # Change: Upgrade verified recipient parsers to the current stable client line
 
 Task ID: `TST-1791618376497512`
@@ -36,5 +40,5 @@ Audit coverage: Upgrade or feature roadmap; planning baseline `605ae0be18dcbe1c5
 - scripts/ci-real-deploy.py
 - Makefile
 - All exact-version expected-value tests discovered from the existing sing-box pin; runtime/source code unrelated to parser consumers is out of scope
-- Planning only: no implementation, private-input mutation, provider action or deployment is authorized by these artifacts.
+- Implementation and local acceptance are authorized; provider, private operator input and deployment actions remain outside scope.
 - Dependency and prerequisite ownership is recorded in the portfolio and design; source-fixed predecessor evidence stays intact.

@@ -18,7 +18,7 @@
 #      ASN is checked separately via whois.cymru.com for the top candidates.
 #   4. Print the top candidates with ASN + ALPN + CN + issuer columns.
 #   5. Optional: feed the top result back through validate-reality-target.sh
-#      for the full 9-step audit.
+#      for the full bounded TLS/HTTP hygiene check.
 #
 # Usage:
 #   scripts/scan-reality-targets.sh --seeds my-seeds.txt
@@ -30,7 +30,7 @@
 # Environment:
 #   TOOL_CACHE   override the binary location (default ~/.cache/vpn-deploy)
 #   VPS_ASN      if exported, candidates whose ASN does not match get
-#                demoted (re-uses validate-reality-target.sh's heuristic).
+#                demoted by the scanner's discovery heuristic.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -43,8 +43,7 @@ REALI_LINUX_URL="https://github.com/XTLS/RealiTLScanner/releases/download/${REAL
 REALI_BIN="${TOOL_CACHE}/RealiTLScanner-${REALI_VERSION}"
 
 # Over-template list — REALITY targets too popular to be useful. Mirrored
-# from validate-reality-target.sh and the wiki reality-target-selection-2026
-# page. Keep these in sync.
+# used only for discovery ranking; validation reports measured TLS/HTTP hygiene.
 OVERUSED_RE='^(([a-zA-Z0-9_-]+\.)+)?(cloudflare\.com|microsoft\.com|apple\.com|google\.com|discord\.com|icloud\.com)$'
 
 # ASN tier blocklist (see docs/PROVIDER-NOTES.md).
@@ -223,13 +222,13 @@ while IFS=, read -r ip origin cert issuer geo && (( i < TOP )); do
 done < <(tail -n +2 "$filtered")
 
 # ---------------------------------------------------------------------------
-# Optional: full 9-step audit on the top candidate
+# Optional: full bounded TLS/HTTP hygiene check on the top candidate
 # ---------------------------------------------------------------------------
 if [[ "$VALIDATE" == 1 && -n "${top_host_clean:-}" ]]; then
   echo
   echo ">>> validating top candidate via validate-reality-target.sh: $top_host_clean"
   TARGET="${top_host_clean}:443" SERVER_NAMES="$top_host_clean" \
-    "${REPO_ROOT}/scripts/validate-reality-target.sh" || true
+    "${REPO_ROOT}/scripts/validate-reality-target.sh"
 fi
 
 echo

@@ -1,3 +1,7 @@
+## Local completion scope (2026-10-16)
+
+The owner authorizes full local implementation and removes staging soak, external recipient, Android emulator and physical-device acceptance from this change. Completion requires actual pinned local engines, isolated Linux systemd/network namespaces/TUN where applicable, authenticated positive and rejection traffic, compensation, privacy and complete source checks. Synthetic credentials are test inputs; mocks, render-only checks and refusal-only results cannot replace runnable behavior. External devices, provider actions, production rollout and promotion are outside acceptance. Earlier observations below retain their original source and limitations; removed external gates are excluded by this scope revision, never recorded as passed.
+
 ## Purpose
 
 Provide observable, testable guarantees for upgrade hysteria with validated congestion and udp resource profiles across accepted inputs, successful operation, failure and retained authority.
@@ -6,11 +10,11 @@ Provide observable, testable guarantees for upgrade hysteria with validated cong
 
 ### Requirement: REQ-PROTO-HY-VERSION — Select an exact eligible stable runtime and compatible clients
 
-The implementation MUST Hysteria upgrades MUST bind a stable non-prerelease release tag to refreshed publication metadata, architecture asset digests and known reachable critical/high advisory status. Production promotion MUST require at least 48 hours since publication and a completed separately authorized 48-hour staging soak. Exact supported client parser versions MUST be refreshed and validated without automatic latest tracking.
+The implementation MUST Hysteria upgrades MUST bind a stable non-prerelease release tag to refreshed publication metadata, architecture asset digests and known reachable critical/high advisory status. Local source adoption MUST validate exact artifact digests and real local parser/traffic/rollback behavior. Production promotion remains separately authorized and requires stable publication eligibility plus its own operational acceptance; unavailable current advisory metadata MUST keep promotion ineligible without fabricating a passing observation. Exact supported client parser versions MUST be refreshed and validated without automatic latest tracking.
 
 #### Scenario: Eligible stable candidate and supported parser
 
-- **WHEN** the candidate release and clients satisfy reviewed metadata, digests, compatibility and staging eligibility
+- **WHEN** the candidate release and clients satisfy reviewed source metadata, digests and local compatibility
 - **THEN** every generator and runtime consumer selects the same exact inputs and positive native parsing and authenticated traffic pass
 
 #### Scenario: Changed hash, prerelease, advisory or insufficient age
@@ -44,7 +48,7 @@ A proposed tuning profile MUST be accepted only with observed authenticated TCP 
 #### Scenario: Drop or fairness regression
 
 - **WHEN** the candidate causes receive drops, sustained transfer failure or unacceptable resource/fairness regression
-- **THEN** the candidate remains in staging or is rejected and baseline remains available
+- **THEN** the local candidate is rejected and baseline remains available
 
 ### Requirement: REQ-PROTO-HY-UPGRADE — Activate and compensate the complete runtime upgrade
 

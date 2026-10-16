@@ -1,3 +1,7 @@
+## Local completion scope (2026-10-16)
+
+The owner authorizes full local implementation and removes staging soak, external recipient, Android emulator and physical-device acceptance from this change. Completion requires actual pinned local engines, isolated Linux systemd/network namespaces/TUN where applicable, authenticated positive and rejection traffic, compensation, privacy and complete source checks. Synthetic credentials are test inputs; mocks, render-only checks and refusal-only results cannot replace runnable behavior. External devices, provider actions, production rollout and promotion are outside acceptance. Earlier observations below retain their original source and limitations; removed external gates are excluded by this scope revision, never recorded as passed.
+
 # Change: Deliver isolated reliable and upgradeable four-protocol connectivity
 
 Task ID: `EPC-1791618453830051`
@@ -13,7 +17,7 @@ Audit coverage: A01, A02, A03, A04, A05, A06, A07, A08, A09, A10, A11, A12, A13,
 - Deliver working public recipient connectivity with private-destination isolation and exact per-device authoritative configuration.
 - Retain complete accepted runtime authority across failed changes and reconcile effective health rather than configuration intent.
 - Exercise all original findings through inherited repair ownership or named executable regression cases; keep source, native, physical and external evidence distinct.
-- Deliver stable candidate migration and typed opt-in XHTTP/ECH features only after the baseline protocol matrix and required recipient acceptance pass.
+- Deliver stable candidate migration and typed opt-in XHTTP/ECH features only after the local baseline protocol matrix passes.
 
 ## Capabilities
 
@@ -31,5 +35,5 @@ Audit coverage: A01, A02, A03, A04, A05, A06, A07, A08, A09, A10, A11, A12, A13,
 - Existing reviewed remediation change records are read-only inherited evidence
 - NEW audit-coverage.md and roadmap.md within this linked change; no separate process task
 - Shared schemas, Makefile, CI selectors, snapshots and portfolio metadata have one serialized integration owner
-- Planning only: no implementation, private-input mutation, provider action or deployment is authorized by these artifacts.
+- Implementation and local acceptance are authorized; provider, private operator input and deployment actions remain outside scope.
 - Dependency and prerequisite ownership is recorded in the portfolio and design; source-fixed predecessor evidence stays intact.

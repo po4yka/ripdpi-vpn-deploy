@@ -2,13 +2,15 @@
 
 ## Objective
 
-Make REALITY target validation bounded standards-correct and truthful. All execution checkboxes remain open; this is planning, not implementation or deployment approval.
+Make REALITY target validation bounded standards-correct and truthful. Local implementation is authorized; checkboxes require observed local behavior and source gates.
 
 ## Ownership
 
 - scripts/validate-reality-target.sh
 - scripts/monitor-reality-target.sh
 - scripts/reality_target_monitor.py
+- scripts/reality-target-monitor-probe.sh
+- scripts/reality_target_validation.py
 - scripts/scan-reality-targets.sh
 - scripts/CLAUDE.md
 - docs/REALITY-TARGET-MONITORING.md

@@ -1,3 +1,7 @@
+## Local completion scope (2026-10-16)
+
+The owner authorizes full local implementation and removes staging soak, external recipient, Android emulator and physical-device acceptance from this change. Completion requires actual pinned local engines, isolated Linux systemd/network namespaces/TUN where applicable, authenticated positive and rejection traffic, compensation, privacy and complete source checks. Synthetic credentials are test inputs; mocks, render-only checks and refusal-only results cannot replace runnable behavior. External devices, provider actions, production rollout and promotion are outside acceptance. Earlier observations below retain their original source and limitations; removed external gates are excluded by this scope revision, never recorded as passed.
+
 # SCR-1791618064422507: Upgrade Hysteria with validated congestion and UDP resource profiles
 
 ## Objective
@@ -36,7 +40,7 @@ Upgrade Hysteria with validated congestion and UDP resource profiles. Source imp
 - [ ] SCR-1791618069580618 Refresh exact stable release and client inputs and update all pinned consumers coherently #feature @item:SCR-1791618064422507
 - [x] SCR-1791618070531675 Implement bounded congestion and baseline UDP resource profiles with exact native validation #feature @item:SCR-1791618064422507
 - [x] SCR-1791618071381219 Deliver measured authenticated traffic warm adoption and compensating rollback coverage #feature @item:SCR-1791618064422507
-- [ ] SCR-1791618072302643 Complete reviewed source gates and define separately authorized 48-hour staging promotion evidence #feature @item:SCR-1791618064422507
+- [ ] SCR-1791618072302643 Complete reviewed source gates and define separately authorized bounded local runtime promotion evidence #feature @item:SCR-1791618064422507
 
 ## Verification
 

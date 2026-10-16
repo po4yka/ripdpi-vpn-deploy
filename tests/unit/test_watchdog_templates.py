@@ -256,7 +256,7 @@ def test_watchdog_sandbox_allows_xray_config_validation_to_open_logs():
 
 def test_watchdog_sandbox_keeps_xray_logs_read_only_when_xray_is_disabled():
     variables = _multi_cohort_vars()
-    variables["vpn"]["enable_xray_reality"] = False
+    variables["vpn"].update(enable_xray_reality=False, enable_nginx_xhttp=False)
 
     rendered = render_template(TEMPLATES / "vpn-watchdog.service.j2", variables)
 
@@ -270,7 +270,7 @@ def test_watchdog_sandbox_allows_nginx_config_validation_to_open_logs():
 
     rendered = render_template(TEMPLATES / "vpn-watchdog.service.j2", variables)
 
-    assert "ReadWritePaths=/var/lib/vpn-watchdog /var/log/nginx" in rendered
+    assert "ReadWritePaths=/var/lib/vpn-watchdog /var/log/xray /var/log/nginx" in rendered
 
 
 def test_reality_probe_requires_the_explicit_service_address() -> None:
@@ -569,11 +569,35 @@ def test_owned_molecule_runtime_propagation_is_prepared_only_when_needed(
 
 
 @pytest.mark.parametrize("xray,hysteria,control", [(True, True, 60), (True, False, 60), (False, True, 60), (False, False, 60)])
-def test_service_deadline_includes_each_enabled_guarded_recovery(xray, hysteria, control):
+@pytest.mark.parametrize("xhttp", [False, True])
+def test_service_deadline_includes_each_enabled_guarded_recovery(xray, hysteria, control, xhttp):
     variables = _multi_cohort_vars()
-    variables["vpn"].update(enable_xray_reality=xray, enable_hysteria=hysteria)
+    variables["vpn"].update(enable_xray_reality=xray, enable_hysteria=hysteria, enable_nginx_xhttp=xhttp)
     variables["transport_egress_control_timeout_seconds"] = control
     unit = render_template(TEMPLATES / "vpn-watchdog.service.j2", variables)
     probe_budget = 300 + 3 * variables["watchdog"].get("reality_probe_timeout", 15)
-    expected = probe_budget + (int(xray)+int(hysteria))*(3*control+5)
+    expected = probe_budget + (int(xray or xhttp)+int(hysteria))*(3*control+5)
     assert f"TimeoutStartSec={expected}s" in unit
+
+
+def test_p1_only_retains_backend_sandbox_paths_and_recovery_budget():
+    variables = _multi_cohort_vars()
+    variables["vpn"].update(enable_xray_reality=False, enable_nginx_xhttp=True, enable_hysteria=False)
+    variables["watchdog_reality_probes"] = []
+    unit = render_template(TEMPLATES / "vpn-watchdog.service.j2", variables)
+    assert " /var/log/xray" in unit
+    assert "TimeoutStartSec=410s" in unit
+    environment = render_template(TEMPLATES / "vpn-watchdog.env.j2", variables)
+    assert "ENABLE_XRAY=false" in environment and "ENABLE_NGINX_XHTTP=true" in environment
+    assert "XHTTP_BACKEND_PORT=10085" in environment
+
+
+def test_subscription_only_has_no_absent_transport_probes():
+    variables = _multi_cohort_vars()
+    variables["vpn_subscription_only"] = True
+    variables["vpn"].update(enable_xray_reality=True, enable_nginx_xhttp=True, enable_hysteria=True, enable_amneziawg=True)
+    unit = render_template(TEMPLATES / "vpn-watchdog.service.j2", variables)
+    assert "/var/log/xray" not in unit
+    environment = render_template(TEMPLATES / "vpn-watchdog.env.j2", variables)
+    for toggle in ("ENABLE_XRAY", "ENABLE_NGINX_XHTTP", "ENABLE_HYSTERIA", "ENABLE_AMNEZIAWG"):
+        assert toggle + "=false" in environment

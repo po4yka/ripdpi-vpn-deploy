@@ -369,6 +369,8 @@ server.serve_forever()
     def enable_hysteria_hopping(self):
         self.context['vpn']['enable_hysteria'] = True
         self.context['hysteria_port_range'] = '46000-46015'
+        command(['ip', 'addr', 'add', '2001:db8:247::1/64', 'dev', self.host_link, 'nodad'])
+        command(['ip', '-n', self.namespace, 'addr', 'add', '2001:db8:247::2/64', 'dev', self.peer_link, 'nodad'])
         self.context['hysteria'].update(salamander_enabled=True,
             salamander_password='synthetic-' + secrets.token_hex(24))
         rendered = render_template(ROOT / 'ansible/roles/firewall/templates/nftables.conf.j2', self.context)
@@ -385,6 +387,10 @@ server.serve_forever()
         command(['nft', '-f', '-'], input=rules.encode())
 
     def assert_hysteria_hopping(self):
+        for host, family in (('10.247.0.1', socket.AF_INET), ('2001:db8:247::1', socket.AF_INET6)):
+            self._assert_hysteria_hopping_family(host, family)
+
+    def _assert_hysteria_hopping_family(self, host, family):
         from transport_runtime_probe import child
         def counters():
             document = json.loads(command(['nft', '-j', 'list', 'chain', 'inet', self.hopping_table, 'prerouting']))
@@ -393,7 +399,7 @@ server.serve_forever()
         before = counters()
         assert len(before) == 16
         document = yaml.safe_load(Path('/etc/hysteria/config.yaml').read_bytes())
-        document['listen'] = '10.247.0.1:46000-46015'
+        document['listen'] = ('[' + host + ']' if family == socket.AF_INET6 else host) + ':46000-46015'
         configuration = self.private / 'hopped-authority.yaml'
         configuration.write_text(yaml.safe_dump(document));configuration.chmod(0o600)
         script = self.private / 'hopped-client.py'
@@ -440,8 +446,8 @@ with tempfile.TemporaryDirectory(prefix='native-hopped-client-') as temporary:
                 raise AssertionError('actual-port-hop-unobserved')
         # A control datagram outside the hop range must remain an ordinary UDP flow.
         import threading
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as control:
-            control.bind(('10.247.0.1', 46016));control.settimeout(5)
+        with socket.socket(family, socket.SOCK_DGRAM) as control:
+            control.bind((host, 46016));control.settimeout(5)
             destination = control.getsockname()[1]
             assert not 46000 <= destination <= 46015
             def echo():
@@ -451,9 +457,9 @@ with tempfile.TemporaryDirectory(prefix='native-hopped-client-') as temporary:
             worker.start()
             try:
                 command(['ip', 'netns', 'exec', self.namespace, sys.executable, '-c',
-                    "import socket,sys; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.settimeout(3);" +
-                    "s.sendto(b'unrelated-udp',('10.247.0.1',int(sys.argv[1])));" +
-                    "assert s.recv(1024)==b'unrelated-udp'", str(destination)], timeout=10)
+                    "import socket,sys; s=socket.socket(int(sys.argv[3]),socket.SOCK_DGRAM);s.settimeout(3);" +
+                    "s.sendto(b'unrelated-udp',(sys.argv[2],int(sys.argv[1])));" +
+                    "assert s.recv(1024)==b'unrelated-udp'", str(destination), host, str(int(family))], timeout=10)
             finally:
                 worker.join(timeout=6)
                 assert not worker.is_alive(), 'control-udp-cleanup-unconfirmed'

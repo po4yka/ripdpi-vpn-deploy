@@ -61,7 +61,7 @@ def publish(stack, *, invalid=False):
     ], input=json.dumps(document), capture_output=True, text=True, timeout=70)
 
 
-def exported_outbound(stack):
+def exported_outbound(stack, *, alternate=False):
     """Synthetic provider metadata is input only; emission and client execution are real."""
     profile = ROOT / "ansible/group_vars" / ("vpn-" + stack.token + ".yml")
     metadata = ROOT / "tests/fixtures/tf-output-sample.json"
@@ -75,6 +75,7 @@ def exported_outbound(stack):
             "vpn": {"enable_xray_reality": False, "enable_nginx_xhttp": True, "enable_hysteria": False,
                     "enable_amneziawg": False, "enable_snell": False, "enable_naive": False},
             "nginx_xhttp_public_port": stack.values["nginx_xhttp_public_port"],
+            "nginx_xhttp_fallback_port": 2083,
         }))
         selected = json.loads(previous)
         selected["server_ipv4"]["value"] = "192.0.2.90"
@@ -97,9 +98,9 @@ def exported_outbound(stack):
             raise AssertionError("unused AWG material was requested")
         profiles = build_profiles(None, emitted, document, "native-device", ["p1-xhttp"], None,
                                   None, None, no_key, str(stack.library), awg_defaults={}, awg_cohort={})
-        outbound = profiles["files"]["xray.json"]["outbounds"][0]
+        outbound = profiles["files"]["xray.json"]["outbounds"][1 if alternate else 0]
         server = outbound["settings"]["vnext"][0]
-        assert server["address"] == "192.0.2.90" and server["port"] == stack.values["nginx_xhttp_public_port"]
+        assert server["address"] == "192.0.2.90" and server["port"] == (2083 if alternate else stack.values["nginx_xhttp_public_port"])
         assert server["users"] == [{"id": stack.uuid, "encryption": "none"}]
         return outbound
     finally:

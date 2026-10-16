@@ -1,19 +1,19 @@
 ---
-id: "MON-1791618056169855"
-title: "Deliver topology-aware authenticated transport health and secure smoke probes"
-kind: "feature"
-status: "backlog"
-area: "monitoring"
-priority: "high"
-risk: "high"
-owner: "primary"
-parent: "EPC-1791618453830051"
-blocked_by: ["SCR-1791618039091425", "ANS-1791618048083304", "XRY-1791617955392712", "SCT-1791617687019287"]
-spec_mode: "required"
-openspec_change: "topology-authenticated-probes"
-created: "2026-10-10"
-updated: "2026-10-10"
-related_tasks: ["ANS-1791562764586678", "SEC-1791471757439452", "ANS-1791586652330612"]
+id: MON-1791618056169855
+title: Deliver topology-aware authenticated transport health and secure smoke probes
+kind: feature
+status: doing
+area: monitoring
+priority: high
+risk: high
+owner: primary
+parent: EPC-1791618453830051
+blocked_by: [SCR-1791618039091425, ANS-1791618048083304, XRY-1791617955392712, SCT-1791617687019287]
+spec_mode: required
+openspec_change: topology-authenticated-probes
+created: 2026-10-10
+updated: 2026-10-16
+related_tasks: [ANS-1791562764586678, SEC-1791471757439452, ANS-1791586652330612]
 ---
 
 ## Goal

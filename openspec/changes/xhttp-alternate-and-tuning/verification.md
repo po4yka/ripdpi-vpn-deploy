@@ -4,21 +4,26 @@ change: "xhttp-alternate-and-tuning"
 commit_sha: null
 local: "required"
 local_evidence: "complete affected suites plus the named native positive/failure cases after implementation"
-remote_ci: "required"
-remote_ci_evidence: "terminal exact-SHA protected-source checks for this new capability"
+remote_ci: "not_applicable"
+remote_ci_evidence: "Owner selected local completion on 2026-10-16; complete local source gates are required. Automatic PR checks remain separate review evidence."
 dry_run: "not_applicable"
 dry_run_evidence: "source capability is exercised in isolated local/native runtime; no real inventory run is part of this task"
-staging: "required"
-staging_evidence: "separately authorized exact-target comparative traffic and rollback before optional feature promotion"
+staging: "not_applicable"
+staging_evidence: "Owner removed staging soak on 2026-10-16; isolated local runtime acceptance is required instead."
 live: "not_applicable"
 live_evidence: "no production rollout is part of this source or disabled-default feature task"
-client: "required"
-client_evidence: "exact supported real client completes the named isolated protocol or TLS probe cases"
+client: "not_applicable"
+client_evidence: "Owner removed external and device acceptance on 2026-10-16; real local protocol engines remain required under local evidence."
 artifact: "required"
 artifact_evidence: "rendered contracts and redacted requirement-specific exact-source artifacts after implementation"
 ---
 
 # Verification
+
+## Local completion scope (2026-10-16)
+
+The owner authorizes full local implementation and removes staging soak, external recipient, Android emulator and physical-device acceptance from this change. Completion requires actual pinned local engines, isolated Linux systemd/network namespaces/TUN where applicable, authenticated positive and rejection traffic, compensation, privacy and complete source checks. Synthetic credentials are test inputs; mocks, render-only checks and refusal-only results cannot replace runnable behavior. External devices, provider actions, production rollout and promotion are outside acceptance. Earlier observations below retain their original source and limitations; removed external gates are excluded by this scope revision, never recorded as passed.
+
 
 ## Requirement evidence
 

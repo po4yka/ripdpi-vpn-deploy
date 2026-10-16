@@ -1,13 +1,17 @@
+## Local completion scope (2026-10-16)
+
+The owner authorizes full local implementation and removes staging soak, external recipient, Android emulator and physical-device acceptance from this change. Completion requires actual pinned local engines, isolated Linux systemd/network namespaces/TUN where applicable, authenticated positive and rejection traffic, compensation, privacy and complete source checks. Synthetic credentials are test inputs; mocks, render-only checks and refusal-only results cannot replace runnable behavior. External devices, provider actions, production rollout and promotion are outside acceptance. Earlier observations below retain their original source and limitations; removed external gates are excluded by this scope revision, never recorded as passed.
+
 ## Context
 
 The example still pins Hysteria v2.9.0 while the researched stable candidate is app/v2.13.0. Current bandwidth and QUIC windows are fixed and baseline lacks explicit UDP buffer controls. A pin-only edit would not prove real secure clients, hopping, resource limits, runtime adoption or rollback, nor establish whether supported congestion settings improve the selected technical path.
 
-Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Revalidate source and current task ownership before implementation. This request creates plans only.
+Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Revalidate source and current task ownership before implementation. The owner authorizes implementation and local acceptance.
 
 ## Goals / Non-Goals
 
 - Goal: upgrade hysteria with validated congestion and udp resource profiles with positive capability and meaningful negative, security, lifecycle and privacy tests.
-- Non-goal: implementation in this session, provider mutation, production deployment, actual credentials, unrelated cleanup, compatibility shims or revival of cancelled acceptance.
+- Non-goal: provider mutation, production deployment, operator credentials, external recipient/device acceptance, unrelated cleanup or revival of cancelled acceptance.
 
 ## Decisions
 
@@ -45,7 +49,7 @@ Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Reva
 - docs/TESTING.md
 - .github/workflows/reproducible-build.yml
 - Dependencies: boundary, runtime-transaction, topology-probes, integration. Exact IDs and hard edges are stored in portfolio frontmatter; related source-fixed tasks are traceability, not a new implementation blocker.
-- Implementation starts only after separate authorization in a dedicated worktree; read nearest role/script/test guidance first.
+- Implementation runs in a dedicated worktree; read nearest role/script/test guidance first.
 - A single integration owner serializes schemas/examples, shared effective profile helpers, group variables, Makefile, CI selectors, snapshots and task metadata. Workers request shared-lane edits and preserve all concurrent work.
 - Terraform owns provider objects, cloud-init owns bootstrap, Ansible owns runtime and SOPS owns private authority; no layer shortcut is introduced.
 

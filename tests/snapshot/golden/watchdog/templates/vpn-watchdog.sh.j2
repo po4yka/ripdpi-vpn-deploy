@@ -114,13 +114,23 @@ probe_reality_listeners() {
     return
   fi
 
+  # Existing local listeners belong to another invocation. Refuse before
+  # starting a client so their responses cannot satisfy this invocation.
+  for spec in "${probe_specs[@]}"; do
+    socks_port="${spec#*:}"
+    if socks_listener_ready "$socks_port"; then
+      probe "xray REALITY local probe port occupied" false
+      return
+    fi
+  done
+
   "$XRAY_BIN" run -config "$XRAY_REALITY_CONFIG" >/dev/null 2>&1 &
   xray_probe_pid=$!
   trap cleanup_reality_client EXIT
 
-  local deadline=$(( SECONDS + XRAY_REALITY_PROBE_TIMEOUT ))
+  local deadline=$(( $(python3 -c 'import time; print(time.monotonic_ns())') + XRAY_REALITY_PROBE_TIMEOUT * 1000000000 ))
   local all_ready=0
-  while (( SECONDS < deadline )); do
+  while (( $(python3 -c 'import time; print(time.monotonic_ns())') < deadline )); do
     kill -0 "$xray_probe_pid" 2>/dev/null || break
     all_ready=1
     for spec in "${probe_specs[@]}"; do
@@ -167,6 +177,16 @@ fi
 if [[ "${ENABLE_NGINX_XHTTP:-true}" == "true" ]]; then
   probe_unit "nginx.service" "nginx.service active" systemctl is-active --quiet nginx
   probe_unit "nginx.service" "nginx -t" nginx -t
+  # P1 retains the Xray backend even when P0 REALITY is disabled. Backend
+  # failure belongs to its guarded generation, never to healthy nginx.
+  probe_unit "xray.service" "XHTTP backend service active" systemctl is-active --quiet xray
+  probe_unit "xray.service" "XHTTP backend config valid" \
+    "$XRAY_VALIDATE_BIN" --config /etc/xray/config.json
+  probe_unit "xray.service" "XHTTP backend TCP/${XHTTP_BACKEND_PORT:?} listening" \
+    socks_listener_ready "$XHTTP_BACKEND_PORT"
+  probe_unit "nginx.service" "XHTTP frontend TCP/${NGINX_PORT:?} listening" \
+    socks_listener_ready "$NGINX_PORT"
+
 fi
 
 if [[ "${ENABLE_HYSTERIA:-false}" == "true" ]]; then

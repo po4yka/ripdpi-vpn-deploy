@@ -83,6 +83,32 @@ def xhttp_errors(doc: dict, context: dict) -> list[tuple[str, str]]:
     errors = []
     if not isinstance(raw, dict) or not xhttp_path_valid(raw.get("xhttp_path", "/app-sync")):
         errors.append(("xray.xhttp_path", "must be a bounded nonroot path of slash-separated alphanumeric underscore or dash segments"))
+    if isinstance(raw, dict):
+        if raw.get("xhttp_mode", "auto") not in ("auto", "packet-up", "stream-up"):
+            errors.append(("xray.xhttp_mode", "must use a supported XHTTP mode"))
+        if ("xhttp_xmux" in raw or raw.get("xhttp_mode", "auto") != "auto") and raw.get("version") != "v26.3.27":
+            errors.append(("xray.version", "typed XHTTP tuning requires the exact verified engine version"))
+        xmux = raw.get("xhttp_xmux", {})
+        limits = {"maxConnections": (1, 16), "hMaxRequestTimes": (1, 1024), "hMaxReusableSecs": (1, 600)}
+        if (not isinstance(xmux, dict) or set(xmux) - limits.keys()
+                or any(type(v) is not int or not limits[k][0] <= v <= limits[k][1]
+                       for k, v in xmux.items() if k in limits)):
+            errors.append(("xray.xhttp_xmux", "must use bounded supported connection and request limits"))
+    frontend_input = doc.get("nginx_xhttp", {})
+    context_frontend = context.get("nginx_xhttp", {})
+    if not isinstance(frontend_input, dict) or not isinstance(context_frontend, dict):
+        return errors + [("nginx_xhttp", "must be a mapping")]
+    frontend = {**context_frontend, **frontend_input}
+    if type(frontend.get("fallback_enabled", False)) is not bool:
+        errors.append(("nginx_xhttp.fallback_enabled", "must be a boolean"))
+    if frontend.get("fallback_enabled", False):
+        try:
+            served_origin(frontend.get("fallback_server_name", frontend.get("server_name")),
+                          context.get("nginx_xhttp_fallback_port", 2083))
+            if context.get("nginx_xhttp_fallback_port", 2083) == context.get("nginx_xhttp_public_port", 8443):
+                raise ValueError("alternate-listener-collision")
+        except ValueError:
+            errors.append(("nginx_xhttp.fallback_server_name", "must identify the enabled alternate HTTPS endpoint"))
     origin = context.get("public_site_canonical_url")
     if origin is not None:
         frontend = doc.get("nginx_xhttp", {})

@@ -1,13 +1,17 @@
+## Local completion scope (2026-10-16)
+
+The owner authorizes full local implementation and removes staging soak, external recipient, Android emulator and physical-device acceptance from this change. Completion requires actual pinned local engines, isolated Linux systemd/network namespaces/TUN where applicable, authenticated positive and rejection traffic, compensation, privacy and complete source checks. Synthetic credentials are test inputs; mocks, render-only checks and refusal-only results cannot replace runnable behavior. External devices, provider actions, production rollout and promotion are outside acceptance. Earlier observations below retain their original source and limitations; removed external gates are excluded by this scope revision, never recorded as passed.
+
 ## Context
 
 ECH is a grounded optional transport evolution, but the current server/client emission contract has no coordinated ECH authority, recipient capability check or real connection proof. A server-only option or unsupported-engine refusal would not deliver the feature and could break secure recipient connections.
 
-Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Revalidate source and current task ownership before implementation. This request creates plans only.
+Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Revalidate source and current task ownership before implementation. The owner authorizes implementation and local acceptance.
 
 ## Goals / Non-Goals
 
 - Goal: deliver coordinated hysteria ech server and recipient profiles with positive capability and meaningful negative, security, lifecycle and privacy tests.
-- Non-goal: implementation in this session, provider mutation, production deployment, actual credentials, unrelated cleanup, compatibility shims or revival of cancelled acceptance.
+- Non-goal: provider mutation, production deployment, operator credentials, external recipient/device acceptance, unrelated cleanup or revival of cancelled acceptance.
 
 ## Decisions
 
@@ -19,7 +23,7 @@ Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Reva
 - A qualified RIPDPI consumer task is mandatory if RIPDPI recipients are in the selected support set; federation and exact consumer parser/connection proof gate cross-repository completion.
 - Certificate verification remains enabled. Silent fallback to plaintext ClientHello or insecure TLS is not permitted in an ECH-required profile; any intentionally permitted non-ECH profile is separately named and accurately observed.
 - ECH changes affect packet identity and config lifecycle, not public admin exposure. Keep the unprivileged service and firewall-owned hopping; do not activate a traffic API or add unrelated transports.
-- Current stable server/client eligibility and 48-hour staging requirements apply. Planning authorizes no key generation, issuance, physical installation, PR publication or deployment.
+- Current stable server/client eligibility and bounded local runtime requirements apply. Planning authorizes no key generation, issuance, physical installation, PR publication or deployment.
 
 ## Contracts and ownership
 
@@ -44,7 +48,7 @@ Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Reva
 - docs/CLIENT-NOTES.md
 - docs/RIPDPI-BUNDLE.md
 - Dependencies: hysteria-upgrade, parser-upgrade, runtime-transaction. Exact IDs and hard edges are stored in portfolio frontmatter; related source-fixed tasks are traceability, not a new implementation blocker.
-- Implementation starts only after separate authorization in a dedicated worktree; read nearest role/script/test guidance first.
+- Implementation runs in a dedicated worktree; read nearest role/script/test guidance first.
 - A single integration owner serializes schemas/examples, shared effective profile helpers, group variables, Makefile, CI selectors, snapshots and task metadata. Workers request shared-lane edits and preserve all concurrent work.
 - Terraform owns provider objects, cloud-init owns bootstrap, Ansible owns runtime and SOPS owns private authority; no layer shortcut is introduced.
 
@@ -57,7 +61,7 @@ Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Reva
 
 ## Migration Plan
 
-After separate implementation approval, confirm the supported exact server and recipient API set, create encrypted ECH authority under explicit credential authorization, and update every selected parser/emitter together. Existing classical profiles remain a separately declared support choice rather than a hidden fallback inside ECH-required profiles. Validate complete candidate and rollback locally, then perform a separately authorized bounded 48-hour staging soak with real recipients before any production promotion.
+After separate implementation approval, confirm the supported exact server and recipient API set, create encrypted ECH authority under explicit credential authorization, and update every selected parser/emitter together. Existing classical profiles remain a separately declared support choice rather than a hidden fallback inside ECH-required profiles. Validate complete candidate and rollback locally, then perform a separately authorized bounded bounded local runtime soak with real recipients before any production promotion.
 
 Implementation order follows the dependency DAG. Run each complete affected test suite; use `build-gate` once around heavy top-level builds and never bypass pinned tools or safety hooks. Archive/closure remains unavailable while any requirement or required evidence category is unresolved.
 
@@ -66,7 +70,7 @@ Implementation order follows the dependency DAG. Run each complete affected test
 - `REQ-PROTO-ECH-CONTRACT`: Exact native server and recipient parser/connection matrix, schema boundaries and qualified RIPDPI integration if included; placeholders and refusal-only tests are insufficient.
 - `REQ-PROTO-ECH-PRIVATE`: Packet capture and exact client telemetry establish negotiated ECH; real wrong-SAN/untrusted certificate cases and verbose synthetic-key leak regressions enforce privacy.
 - `REQ-PROTO-ECH-ACTIVATE`: Real private-file and systemd compensation/intent tests with exact Hysteria connections; wrong-key, unsafe-path and interrupted-publication cases preserve prior generation.
-- `REQ-PROTO-ECH-ACCEPT`: NEW exact ECH native target plus separately authorized supported-recipient staging procedure, negotiated packet observations and guarded cleanup evidence.
+- `REQ-PROTO-ECH-ACCEPT`: NEW exact ECH native target plus isolated local protocol procedure, negotiated packet observations and guarded cleanup evidence.
 
 ## Validation commands
 

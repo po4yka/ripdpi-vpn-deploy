@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Hysteria smoke mirrors enabled Salamander in its private client document and retains verified TLS with the effective inner/server identity.
+
 ECH smoke clients use the declared inner identity even when the nginx frontend has a different hostname; certificate verification stays enabled.
 
 AWG device source claims are typed by family. The firewall and standalone AWG

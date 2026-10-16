@@ -1,3 +1,7 @@
+## Local completion scope (2026-10-16)
+
+The owner authorizes full local implementation and removes staging soak, external recipient, Android emulator and physical-device acceptance from this change. Completion requires actual pinned local engines, isolated Linux systemd/network namespaces/TUN where applicable, authenticated positive and rejection traffic, compensation, privacy and complete source checks. Synthetic credentials are test inputs; mocks, render-only checks and refusal-only results cannot replace runnable behavior. External devices, provider actions, production rollout and promotion are outside acceptance. Earlier observations below retain their original source and limitations; removed external gates are excluded by this scope revision, never recorded as passed.
+
 ## Purpose
 
 Provide observable, testable guarantees for deliver coordinated hysteria ech server and recipient profiles across accepted inputs, successful operation, failure and retained authority.
@@ -48,14 +52,14 @@ The implementation MUST ECH authority, configuration and runtime activation MUST
 
 ### Requirement: REQ-PROTO-ECH-ACCEPT — Require measured supported-client acceptance and eligible promotion
 
-The implementation MUST ECH feature acceptance MUST include actual supported recipient parser and connection behavior, authenticated TCP UDP DNS traffic, explicit certificate/negotiation failures and packet identity observations. Stable server/client metadata MUST be refreshed at execution time and production promotion MUST require 48-hour stable publication eligibility and a separately authorized bounded 48-hour staging soak.
+The implementation MUST ECH feature acceptance MUST include actual supported recipient parser and connection behavior, authenticated TCP UDP DNS traffic, explicit certificate/negotiation failures and packet identity observations. Local acceptance MUST bind exact supported server/parser artifacts to their reviewed digests and actual isolated traffic. Production promotion remains separately authorized; missing current release/advisory eligibility keeps promotion ineligible and cannot be reported as passed.
 
-#### Scenario: Supported recipient and paired profile staging
+#### Scenario: Local protocol engines and paired profiles
 
-- **WHEN** exact eligible server and recipient versions complete bounded staging with the ECH technical profile
+- **WHEN** exact eligible server and recipient versions complete the bounded isolated local ECH matrix
 - **THEN** positive traffic reconnect and required privacy behavior are observed with source/runtime identities and no unverified engine is marked supported
 
-#### Scenario: Parser-only, unavailable client or incomplete staging
+#### Scenario: Parser-only or incomplete local protocol behavior
 
-- **WHEN** only a parser passes, an actual recipient cannot be exercised or eligibility remains incomplete
+- **WHEN** only a parser passes, actual local protocol engines cannot be exercised or their identity is unverified
 - **THEN** the feature stays unfinished and records the missing boundary without treating refusal, mocks or old receipt data as success

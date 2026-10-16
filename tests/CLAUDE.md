@@ -14,6 +14,8 @@
 
 ## Design decisions
 
+Alternate XHTTP regression cases exercise canonical materialization through the real semantic resolver and native profile adapter; mocked provider metadata is input selection only, never traffic proof.
+
 Subprocess ownership regressions require a retained session leader at the group signal boundary, and real quiet descendants must stop after successful exit, timeout, owner loss or a broken status report. A denied group signal fails once, while the private control channel still reclaims the supervisor. Fallback kill and wait failures retain categorical diagnostics.
 
 The AWG source-candidate lab compiles exact upstream baseline/candidate pairs

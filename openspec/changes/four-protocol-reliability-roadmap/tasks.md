@@ -1,8 +1,12 @@
+## Local completion scope (2026-10-16)
+
+The owner authorizes full local implementation and removes staging soak, external recipient, Android emulator and physical-device acceptance from this change. Completion requires actual pinned local engines, isolated Linux systemd/network namespaces/TUN where applicable, authenticated positive and rejection traffic, compensation, privacy and complete source checks. Synthetic credentials are test inputs; mocks, render-only checks and refusal-only results cannot replace runnable behavior. External devices, provider actions, production rollout and promotion are outside acceptance. Earlier observations below retain their original source and limitations; removed external gates are excluded by this scope revision, never recorded as passed.
+
 # EPC-1791618453830051: Deliver isolated reliable and upgradeable four-protocol connectivity
 
 ## Objective
 
-Deliver isolated reliable and upgradeable four-protocol connectivity. The epic execution checkboxes remain open. Later implementation authorization covers only the linked transport-input-semantics and resolved-destination-boundary children; their own execution and verification records track source progress. This epic does not authorize deployment or the remaining roadmap implementations.
+Deliver isolated reliable and upgradeable four-protocol connectivity. The epic execution checkboxes remain open. The owner authorizes all remaining roadmap implementations and local acceptance. Child records retain their exact source observations; deployment and external/device acceptance are outside scope.
 
 ## Ownership
 
@@ -18,8 +22,8 @@ Deliver isolated reliable and upgradeable four-protocol connectivity. The epic e
 
 - [ ] EPC-1791618459636532 Deliver baseline destination isolation authoritative device and endpoint contracts with complete positive and security regression coverage #epic !high @item:EPC-1791618453830051
 - [ ] EPC-1791618460420156 Deliver complete runtime authority recovery topology supervision and inherited lifecycle regression proof #epic !high @item:EPC-1791618453830051
-- [ ] EPC-1791618461249475 Deliver eligible stable runtime and supported optional transport cohorts with real client traffic and rollback #epic !high @item:EPC-1791618453830051
-- [ ] EPC-1791618462520842 Complete requirement-scoped exact-source acceptance and retain unresolved external or physical gates without false closure #epic !high @item:EPC-1791618453830051
+- [ ] EPC-1791618461249475 Deliver eligible stable runtime and supported optional transport cohorts with real local protocol traffic and rollback #epic !high @item:EPC-1791618453830051
+- [ ] EPC-1791618462520842 Complete requirement-scoped exact-source local acceptance without claiming external or physical outcomes #epic !high @item:EPC-1791618453830051
 
 ## Verification
 
@@ -30,4 +34,4 @@ Deliver isolated reliable and upgradeable four-protocol connectivity. The epic e
 
 Requirement-to-step mapping and unfulfilled evidence categories live in verification.md. No fixture, refusal-only result or skipped selected case satisfies positive capability. Future external acceptance requires current authorization and exact scope; no existing cancelled task is revived.
 
-Implementation starts only after the canonical portfolio prerequisites are satisfied and separately authorized. Planning alone neither starts work nor checks an execution step.
+Local implementation is authorized. Acceptance follows the dependency graph; only observed checks complete execution steps.

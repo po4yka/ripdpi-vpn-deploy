@@ -30,6 +30,8 @@ Audit coverage: A20; planning baseline `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3
 - scripts/validate-reality-target.sh
 - scripts/monitor-reality-target.sh
 - scripts/reality_target_monitor.py
+- scripts/reality-target-monitor-probe.sh
+- scripts/reality_target_validation.py
 - scripts/scan-reality-targets.sh
 - scripts/CLAUDE.md
 - docs/REALITY-TARGET-MONITORING.md
@@ -37,5 +39,5 @@ Audit coverage: A20; planning baseline `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3
 - tests/unit/test_monitor_reality_target.py
 - tests/unit/test_scan_reality_targets.py
 - NEW: tests/unit/test_validate_reality_target.py
-- Planning only: no implementation, private-input mutation, provider action or deployment is authorized by these artifacts.
+- Local implementation and synthetic-input acceptance are authorized. Operator private inputs, provider actions and deployment remain outside scope.
 - Dependency and prerequisite ownership is recorded in the portfolio and design; source-fixed predecessor evidence stays intact.

@@ -1,19 +1,19 @@
 ---
-id: "EPC-1791618453830051"
-title: "Deliver isolated reliable and upgradeable four-protocol connectivity"
-kind: "epic"
-status: "backlog"
-area: "epic"
-priority: "high"
-risk: "high"
-owner: "primary"
+id: EPC-1791618453830051
+title: Deliver isolated reliable and upgradeable four-protocol connectivity
+kind: epic
+status: doing
+area: epic
+priority: high
+risk: high
+owner: primary
 parent: null
-blocked_by: ["SCT-1791617687019287", "SEC-1791617841911853", "ANS-1791617913525586", "SCR-1791618039091425", "ANS-1791618048083304", "XRY-1791617955392712", "MON-1791618056169855", "SCR-1791618188806822", "SCR-1791617975137354", "TST-1791618356595983", "SCR-1791618064422507", "SCR-1791618073850409", "TST-1791618376497512", "XRY-1791617991738391", "ANS-1791618083683925"]
-spec_mode: "required"
-openspec_change: "four-protocol-reliability-roadmap"
-created: "2026-10-10"
-updated: "2026-10-10"
-related_tasks: ["SEC-1791545689674403", "ANS-1791562764586678", "ANS-1791586652330612", "SEC-1791471757439452"]
+blocked_by: [SCT-1791617687019287, SEC-1791617841911853, ANS-1791617913525586, SCR-1791618039091425, ANS-1791618048083304, XRY-1791617955392712, MON-1791618056169855, SCR-1791618188806822, SCR-1791617975137354, TST-1791618356595983, SCR-1791618064422507, SCR-1791618073850409, TST-1791618376497512, XRY-1791617991738391, ANS-1791618083683925]
+spec_mode: required
+openspec_change: four-protocol-reliability-roadmap
+created: 2026-10-10
+updated: 2026-10-16
+related_tasks: [SEC-1791545689674403, ANS-1791562764586678, ANS-1791586652330612, SEC-1791471757439452]
 ---
 
 ## Goal

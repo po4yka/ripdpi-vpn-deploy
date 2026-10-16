@@ -43,3 +43,36 @@ Acknowledgement is refused while target-path health is not `ok`. If the target r
 - `blocked` — at least one TLS, H2, SAN, or HTTPS reachability check failed.
 - `unknown` — DNS or ASN lookup was indeterminate, or a healthy target's ASN/prefix set changed and awaits operator review.
 - `error` — local configuration or a required tool prevented the monitor from running.
+
+## Local target validation contract
+
+`make validate-target` emits redacted JSON for TLS 1.3, negotiated H2, actual SAN
+hostname verification and a separate ordinary HTTPS request. Commas and
+whitespace split names; normalization lowercases IDNA names, removes a final
+DNS root dot and deduplicates them. At most eight names and eight resolved
+addresses share one 30-second budget and five-second stage budgets. CLI
+`--budget` and `--stage-timeout` can choose smaller bounded limits.
+
+Certificate verification requires a SAN; CN fallback is disabled. A wildcard
+covers one label. `REALITY_TARGET_CA_FILE` selects an explicit trust anchor for
+an owned local test authority; certificate and hostname checks remain enabled.
+HTTP uses HTTP/1.1 separately from the H2 TLS negotiation observation. Neither
+an ordinary HTTP response nor a User-Agent certifies browser ClientHello
+compatibility. Reports retain `browser_clienthello` and `filtered_survival` as
+`unverified`; target promotion is a separate operator decision.
+
+For owned self-steal, invoke `scripts/validate-reality-target.sh --mode owned-public`
+with `REALITY_TARGET_PUBLIC_ENDPOINT=host:port`. This endpoint is required and
+must resolve only to public addresses; the configured node-local loopback target
+cannot stand in for that service path. Borrowed-mode local tests may explicitly
+use loopback. Validation never changes targets, certificates or deployment state.
+All subprocess groups are reclaimed through the shared bounded session owner,
+including timeout and cancellation. Missing prerequisites fail with categorical
+output without disclosing target names, addresses or certificate paths.
+
+The recurring monitor also owns one bounded subprocess session (default 120
+seconds; `REALITY_MONITOR_BUDGET` accepts 1–120). DNS, ASN, TLS, HTTP and alert
+work all share that bound. Its parent owns the temporary directory, so a killed
+probe cannot strand decrypted staging files. An exhausted session returns an
+error and replaces only `last_report`, preserving accepted baseline and alert
+budgets. External monitoring remains separately authorized.

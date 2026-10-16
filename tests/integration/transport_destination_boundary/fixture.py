@@ -202,7 +202,7 @@ class NativeStack:
         self.key = self.library / "private.pem"
         command(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(self.key),
                  "-out", str(self.cert), "-days", "2", "-subj", "/CN=owned.example",
-                 "-addext", "subjectAltName=DNS:owned.example", "-addext", "basicConstraints=critical,CA:TRUE"])
+                 "-addext", "subjectAltName=DNS:owned.example,DNS:alternate.example", "-addext", "basicConstraints=critical,CA:TRUE"])
         self.cert.chmod(0o644)
         self.key.chmod(0o640);os.chown(self.key, 0, self.gids["h"])
         self.values = merge_render_vars()
@@ -213,7 +213,7 @@ class NativeStack:
         self.short = secrets.token_hex(8)
         self.hys_password = "synthetic-native-hysteria-secret-" + secrets.token_hex(12)
 
-    def start_frontend(self, profile, *, primary_port=8443, path="/native-sync", fallback=False):
+    def start_frontend(self, profile, *, primary_port=8443, path="/native-sync", fallback=False, mode="auto", xmux=None, alternate_name=None):
         values = self.values
         values["vpn"].update(enable_xray_reality=profile == "p0", enable_nginx_xhttp=profile == "p1",
                               enable_warp_outbound=False, enable_cascade_ingress=False)
@@ -231,7 +231,9 @@ class NativeStack:
         self.reality_password = fields["Password (PublicKey)"]
         values["xray"].update(target="192.0.2.90:8444", server_names=["owned.example"], reality_private_key=fields["PrivateKey"],
                               clients=[{"name": "native-device", "uuid": self.uuid, "short_id": self.short}],
-                              cohorts=[], xhttp_path=path, xhttp_mode="auto")
+                              cohorts=[], xhttp_path=path, xhttp_mode=mode)
+        if xmux is not None:
+            values["xray"]["xhttp_xmux"] = xmux
         if profile in ("p0", "p1"):
             path = self.file("frontend.json", render_template(ROOT / "ansible/roles/xray/templates/config.json.j2", values), "x")
             listener = next(item for item in self.config["listeners"] if item["name"] == "direct_xray")
@@ -252,6 +254,9 @@ class NativeStack:
                                   "-cert", str(self.cert), "-key", str(self.key), "-quiet"])
         elif profile == "p1":
             values["nginx_xhttp"].update(server_name="owned.example", fallback_enabled=fallback)
+            if alternate_name:
+                values["nginx_xhttp"].update(fallback_server_name=alternate_name,
+                    fallback_cert_pem=self.cert.read_text(), fallback_key_pem=self.key.read_text())
             values["public_site_canonical_url"] = "https://owned.example" + ("" if primary_port == 443 else ":" + str(primary_port))
             self.ingress = self.library / "ingress"
             self.ingress.mkdir(mode=0o755);self.ingress.chmod(0o755)
@@ -270,6 +275,9 @@ class NativeStack:
             body = render_template(ROOT / "ansible/roles/nginx-xhttp/templates/site.conf.j2", values)
             body = body.replace("/etc/nginx/tls/owned.example.fullchain.pem", str(self.ingress / "certificate.pem")).replace(
                 "/etc/nginx/tls/owned.example.key", str(self.ingress / "private.pem")).replace("/var/log/nginx/", str(self.library) + "/")
+            if alternate_name:
+                body = body.replace("/etc/nginx/tls/" + alternate_name + ".fullchain.pem", str(self.ingress / "certificate.pem")).replace(
+                    "/etc/nginx/tls/" + alternate_name + ".key", str(self.ingress / "private.pem"))
             body = body.replace("/var/www/public-site", str(self.site))
             nginx = self.ingress / "nginx.conf"
             nginx.write_text("worker_processes 1;\npid " + str(self.library / "nginx.pid") +
@@ -282,11 +290,11 @@ class NativeStack:
         else:
             self.start_hysteria()
 
-    def start_hysteria(self, *, masquerade_origin="https://owned.example", hosts=None):
+    def start_hysteria(self, *, masquerade_origin="https://owned.example", hosts=None, salamander=False):
         values = self.values
         values["hysteria"].update(clients=[{"name": "native-device", "password": self.hys_password}],
                                   masquerade_type="proxy", masquerade_url=masquerade_origin,
-                                  salamander_enabled=False)
+                                  salamander_enabled=salamander, salamander_password="synthetic-native-obfuscation-secret")
         values.update(hysteria_port=443, hysteria_config_dir=str(self.library))
         shutil.copyfile(self.cert, self.library / "server.fullchain.pem")
         shutil.copyfile(self.key, self.library / "server.key")

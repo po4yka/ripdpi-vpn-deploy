@@ -469,7 +469,7 @@ def test_requires_explicit_filtered_vantage(monitor_env):
 
 
 def test_tls_probe_has_a_hard_timeout():
-    source = SCRIPT.read_text()
+    source = (REPO_ROOT / "scripts/reality-target-monitor-probe.sh").read_text()
     assert '"$TIMEOUT_BIN" "$PROBE_TIMEOUT" openssl s_client' in source
     assert " -k" not in source
 
@@ -521,3 +521,29 @@ def test_cron_installer_wires_monitor_only_with_vantage(tmp_path):
     assert "17 4 * * *" in enabled.stdout
     assert "make monitor-reality-target" in enabled.stdout
     assert "VANTAGE=filtered-cohort-a" in enabled.stdout
+
+
+def test_aggregate_monitor_deadline_reclaims_children_and_retains_budget(monitor_env, tmp_path):
+    import time
+    baseline = _report(_run(monitor_env))
+    assert baseline["verdict"] == "ok"
+    state = next((Path(monitor_env["XDG_STATE_HOME"]) / "vpn-deploy/reality-target-monitor").glob("*.json"))
+    before = json.loads(state.read_text())
+    pid_file = tmp_path / "stalled.pid"
+    resolver = Path(monitor_env["PATH"].split(os.pathsep)[0]) / "getent"
+    child = "import os,pathlib,time;pathlib.Path(" + repr(str(pid_file)) + ").write_text(str(os.getpid()));time.sleep(60)"
+    resolver.write_text("#!/usr/bin/env python3\nimport subprocess,sys,time\nsubprocess.Popen([sys.executable,'-c'," + repr(child) + "])\ntime.sleep(60)\n")
+    resolver.chmod(0o755)
+    start = time.monotonic()
+    result = _run({**monitor_env, "REALITY_MONITOR_BUDGET": "1"})
+    assert result.returncode != 0
+    assert time.monotonic() - start < 3
+    report = json.loads(result.stdout)
+    assert report["verdict"] == "error"
+    after = json.loads(state.read_text())
+    assert after["last_report"]["verdict"] == "error"
+    assert {k: v for k, v in before.items() if k != "last_report"} == {k: v for k, v in after.items() if k != "last_report"}
+    assert not list(Path(monitor_env["TMPDIR"]).iterdir())
+    pid = int(pid_file.read_text())
+    observed = subprocess.run(["ps", "-p", str(pid), "-o", "stat="], capture_output=True, text=True, timeout=3)
+    assert observed.returncode != 0 or observed.stdout.strip().startswith("Z")

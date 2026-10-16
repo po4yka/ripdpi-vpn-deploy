@@ -37,12 +37,16 @@ def _run_watchdog(
     recovery_succeeds: bool = True,
     awg_interfaces: tuple[str, ...] = (),
     failed_awg: str = "",
+    xhttp: bool = False,
+    xhttp_backend_ready: bool = True,
+    foreign_socks: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     state_file = tmp_path / "state"
     config_file = tmp_path / "reality.json"
     config_file.write_text("{}")
+    (tmp_path / "xray-started").unlink(missing_ok=True)
     from tests.transport_fixtures import guarded_xray_bytes
     server_config = tmp_path / "server.json"
     server_config.write_text(guarded_xray_bytes())
@@ -68,11 +72,16 @@ def _run_watchdog(
         bin_dir / "ss",
         f"printf '%s\\n' 'LISTEN 0 4096 0.0.0.0:{server_port} 0.0.0.0:*'\n"
         + (
-            "printf '%s\\n' 'LISTEN 0 4096 127.0.0.1:31082 0.0.0.0:*'\n"
+            "if [[ -f \"${XRAY_STARTED_MARKER}\" || ${FOREIGN_SOCKS:-false} == true ]]; then printf '%s\\n' 'LISTEN 0 4096 127.0.0.1:31082 0.0.0.0:*'; fi\n"
             if socks_ready
             else ""
         ),
     )
+    if xhttp:
+        _executable(bin_dir / "nginx", "exit 0\n")
+        if xhttp_backend_ready:
+            with (bin_dir / "ss").open("a") as output:
+                output.write("printf '%s\\n' 'LISTEN 0 4096 127.0.0.1:10085 0.0.0.0:*'\n")
     _executable(
         bin_dir / "df",
         "printf '%s\\n' 'Use%' '10%'\n",
@@ -94,6 +103,7 @@ def _run_watchdog(
         )
         + "fi\n"
         + ("exit 23\n" if xray_client_exits else "")
+        + "touch \"${XRAY_STARTED_MARKER}\"\n"
         + "trap 'touch \"${XRAY_TERM_MARKER}\"; exit 0' TERM INT\n"
         "while :; do read -r -t 1 _ || true; done\n",
     )
@@ -125,7 +135,9 @@ def _run_watchdog(
         {
             "PATH": f"{bin_dir}:{env['PATH']}",
             "ENABLE_XRAY": "true",
-            "ENABLE_NGINX_XHTTP": "false",
+            "ENABLE_NGINX_XHTTP": "true" if xhttp else "false",
+            "NGINX_PORT": str(server_port),
+            "XHTTP_BACKEND_PORT": "10085",
             "ENABLE_HYSTERIA": "false",
             "ENABLE_AMNEZIAWG": "true" if awg_interfaces else "false",
             "AWG_INTERFACES": ",".join(awg_interfaces),
@@ -142,6 +154,8 @@ def _run_watchdog(
             "XRAY_REALITY_PROBE_TIMEOUT": "1",
             "CANARY_STATUS": canary_status,
             "XRAY_TERM_MARKER": str(term_marker),
+            "XRAY_STARTED_MARKER": str(tmp_path / "xray-started"),
+            "FOREIGN_SOCKS": "true" if foreign_socks else "false",
             "STATE_FILE": str(state_file),
             "FAIL_THRESHOLD": "1",
             "KICKS_PER_HOUR_MAX": "1",
@@ -279,3 +293,28 @@ def test_failed_secondary_awg_recovers_only_that_instance(tmp_path):
     assert (tmp_path / "awg.log").read_text().splitlines() == ["show awg1", "show awg2"]
     restarts = [line for line in (tmp_path / "systemctl.log").read_text().splitlines() if line.startswith("restart")]
     assert restarts == ["restart awg-quick@awg2.service"]
+
+
+def test_xhttp_backend_failure_targets_guarded_backend_not_healthy_nginx(tmp_path):
+    result = _run_watchdog(tmp_path, xhttp=True, xhttp_backend_ready=False)
+    assert result.returncode != 0
+    assert "FAIL  XHTTP backend TCP/10085 listening" in result.stdout
+    assert "OK    XHTTP frontend TCP/443 listening" in result.stdout
+    assert "--unit xray.service" in (tmp_path / "recovery.log").read_text()
+    assert "restart nginx" not in (tmp_path / "systemctl.log").read_text()
+
+
+def test_xhttp_nondefault_frontend_and_backend_are_healthy(tmp_path):
+    result = _run_watchdog(tmp_path, xhttp=True, server_port=2443)
+    assert result.returncode == 0, result.stderr
+    assert "OK    XHTTP backend TCP/10085 listening" in result.stdout
+    assert "OK    XHTTP frontend TCP/2443 listening" in result.stdout
+    assert not (tmp_path / "recovery.log").exists()
+
+
+def test_foreign_probe_listener_refuses_without_launch_or_recovery(tmp_path):
+    result = _run_watchdog(tmp_path, foreign_socks=True)
+    assert result.returncode != 0
+    assert "local probe port occupied" in result.stdout
+    assert not (tmp_path / "xray-started").exists()
+    assert not (tmp_path / "recovery.log").exists()

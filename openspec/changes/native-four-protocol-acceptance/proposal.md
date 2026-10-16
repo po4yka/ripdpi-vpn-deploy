@@ -1,3 +1,7 @@
+## Local completion scope (2026-10-16)
+
+The owner authorizes full local implementation and removes staging soak, external recipient, Android emulator and physical-device acceptance from this change. Completion requires actual pinned local engines, isolated Linux systemd/network namespaces/TUN where applicable, authenticated positive and rejection traffic, compensation, privacy and complete source checks. Synthetic credentials are test inputs; mocks, render-only checks and refusal-only results cannot replace runnable behavior. External devices, provider actions, production rollout and promotion are outside acceptance. Earlier observations below retain their original source and limitations; removed external gates are excluded by this scope revision, never recorded as passed.
+
 # Change: Deliver isolated native acceptance for every baseline transport
 
 Task ID: `TST-1791618356595983`
@@ -34,7 +38,7 @@ Audit coverage: A03, A07, A08, A09, A12, A14, A22; planning baseline `605ae0be18
 - ansible/molecule/full-stack/
 - docs/TESTING.md
 - Makefile
-- NEW tests/native/transport_acceptance/ runner and fixtures
-- NEW selected isolated Linux CI workflow integrated with the existing selector
-- Planning only: no implementation, private-input mutation, provider action or deployment is authorized by these artifacts.
+- Canonical Make runner composing the existing native fixtures and complete named suites
+- Existing isolated native CI lane extended through its current selector
+- Implementation and local acceptance are authorized; provider, private operator input and deployment actions remain outside scope.
 - Dependency and prerequisite ownership is recorded in the portfolio and design; source-fixed predecessor evidence stays intact.

@@ -591,7 +591,7 @@ jobs:
             "AWG_NATIVE_GO_SOURCE=$GITHUB_WORKSPACE/.cache/native-transport-semantics/amneziawg-go-2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf" \
             "AWG_NATIVE_TOOLS_SOURCE=$GITHUB_WORKSPACE/.cache/native-transport-semantics/amneziawg-tools-c0b400c6dfc046f5cae8f3051b14cb61686fcf55" \
             "PATH=$GITHUB_WORKSPACE/.cache/native-transport-semantics/bin:$PATH" \
-            make test-native-runtime test-xhttp-endpoint-contract test-awg-device-binding-runtime test-awg-dualstack-runtime
+            make test-native-runtime test-xhttp-endpoint-contract test-awg-device-binding-runtime test-awg-dualstack-runtime test-xhttp-delivery-matrix
 
   transport-runtime-acceptance:
     needs: selection

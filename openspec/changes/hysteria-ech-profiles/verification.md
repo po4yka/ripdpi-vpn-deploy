@@ -4,21 +4,26 @@ change: "hysteria-ech-profiles"
 commit_sha: null
 local: "required"
 local_evidence: "complete affected suites and exact native positive/failure cases after implementation"
-remote_ci: "required"
-remote_ci_evidence: "terminal exact-SHA protected-source checks for this new capability"
+remote_ci: "not_applicable"
+remote_ci_evidence: "Owner selected local completion on 2026-10-16; complete local source gates are required. Automatic PR checks remain separate review evidence."
 dry_run: "not_applicable"
 dry_run_evidence: "source capability uses isolated native proof; real inventory/controller rehearsal needs separate authorization"
-staging: "required"
-staging_evidence: "separately authorized bounded 48-hour candidate soak and exact rollback before promotion"
+staging: "not_applicable"
+staging_evidence: "Owner removed staging soak on 2026-10-16; isolated local runtime acceptance is required instead."
 live: "not_applicable"
 live_evidence: "no production rollout belongs to this source or disabled-default candidate task"
-client: "required"
-client_evidence: "actual supported recipient parser and real authenticated protocol behavior"
+client: "not_applicable"
+client_evidence: "Owner removed external and device acceptance on 2026-10-16; real local protocol engines remain required under local evidence."
 artifact: "required"
 artifact_evidence: "private rendered outputs and redacted exact-source requirement-specific evidence after implementation"
 ---
 
 # Verification
+
+## Local completion scope (2026-10-16)
+
+The owner authorizes full local implementation and removes staging soak, external recipient, Android emulator and physical-device acceptance from this change. Completion requires actual pinned local engines, isolated Linux systemd/network namespaces/TUN where applicable, authenticated positive and rejection traffic, compensation, privacy and complete source checks. Synthetic credentials are test inputs; mocks, render-only checks and refusal-only results cannot replace runnable behavior. External devices, provider actions, production rollout and promotion are outside acceptance. Earlier observations below retain their original source and limitations; removed external gates are excluded by this scope revision, never recorded as passed.
+
 
 ## Requirement evidence
 
@@ -34,7 +39,7 @@ Each requirement row remains open until its complete named evidence is observed.
 | REQ-PROTO-ECH-PRIVATE | ANS-1791618095149688 | Packet capture and exact client telemetry establish negotiated ECH; real wrong-SAN/untrusted certificate cases and verbose synthetic-key leak regressions enforce privacy. | required |
 | REQ-PROTO-ECH-ACTIVATE | ANS-1791618094259404 | Real private-file and systemd compensation/intent tests with exact Hysteria connections; wrong-key, unsafe-path and interrupted-publication cases preserve prior generation. | passed: exact native privacy and complete authority transactions at 4b546833 |
 | REQ-PROTO-ECH-ACTIVATE | ANS-1791618095149688 | Real private-file and systemd compensation/intent tests with exact Hysteria connections; wrong-key, unsafe-path and interrupted-publication cases preserve prior generation. | required |
-| REQ-PROTO-ECH-ACCEPT | ANS-1791618095149688 | NEW exact ECH native target plus separately authorized supported-recipient staging procedure, negotiated packet observations and guarded cleanup evidence. | required |
+| REQ-PROTO-ECH-ACCEPT | ANS-1791618095149688 | NEW exact ECH native target plus isolated local protocol procedure, negotiated packet observations and guarded cleanup evidence. | required |
 
 ## Source implementation observations (2026-10-15)
 

@@ -639,3 +639,26 @@ of skipping cases. Portable launcher/contract tests are
 This is local Linux evidence, including Linux arm64 when run natively on that
 architecture. It is neither physical Android evidence nor a production pin
 promotion, production-role readiness transaction or external staging soak.
+
+### Local four-protocol roadmap acceptance
+
+`transport-native-acceptance` runs complete destination isolation, endpoint,
+AWG binding/dual-stack, ECH/resource, topology and XHTTP delivery suites in an
+owned Linux root/systemd/TUN environment. Run the complete consumer transaction
+suite in a separate fresh systemd root; its refusal of pre-existing global
+consumer authority remains mandatory. Run the source-candidate AWG lab with
+`build-gate -- make test-awg-source-candidate` for real warm pin/unit adoption.
+All selected cases require `--fail-on-skip`; credentials and authorities are
+synthetic and isolated. No inventory or operator secret inputs are consumed.
+
+`test-xhttp-delivery-matrix` executes all three typed modes with baseline and
+bounded XMUX on primary and distinct-name alternate TLS endpoints. It retains
+wrong-auth and wrong-SAN failures, independent primary-outage observations,
+authenticated recovery after rejected publication and ordinary-log privacy.
+Each endpoint completes two full both-family guarded TCP/UDP/DNS matrices with
+an idle interval; their observed durations are reported and bounded at 85 seconds.
+These are local correctness/resource bounds, not a throughput improvement claim.
+
+The owner removed staging soak and external/device client acceptance from the
+roadmap on 2026-10-16. Local engine processes remain necessary for positive
+protocol proof. Source completion grants no production promotion authority.

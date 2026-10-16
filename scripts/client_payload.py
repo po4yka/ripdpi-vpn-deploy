@@ -207,10 +207,17 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
                     reality['flow'] = shape['client_flow']
                 out.append(reality)
         if o['format'] == 'ripdpi' and enabled('enable_nginx_xhttp', True):
-            server_name = required_text(d['nginx_xhttp'].get('server_name'))
-            out.append(dict(type='vless', tag='p1-xhttp-' + tag, server=ip, server_port=c.get('nginx_xhttp_public_port', 443), uuid=credential['uuid'],
-                            tls=dict(enabled=True, server_name=server_name, utls=dict(enabled=True, fingerprint=fp)),
-                            transport=dict(type='xhttp', host=server_name, path=x.get('xhttp_path', '/app-sync'))))
+            frontend = {**c.get('nginx_xhttp', {}), **d['nginx_xhttp']}
+            endpoints = [('', c.get('nginx_xhttp_public_port', 443), required_text(frontend.get('server_name')))]
+            if frontend.get('fallback_enabled', False):
+                endpoints.append(('-alternate', c.get('nginx_xhttp_fallback_port', 2083),
+                                  required_text(frontend.get('fallback_server_name', frontend['server_name']))))
+            for suffix, port, server_name in endpoints:
+                transport = dict(type='xhttp', host=server_name, path=x.get('xhttp_path', '/app-sync'), mode=x.get('xhttp_mode', 'auto'))
+                if 'xhttp_xmux' in x:
+                    transport['xmux'] = dict(x['xhttp_xmux'])
+                out.append(dict(type='vless', tag='p1-xhttp-' + tag + suffix, server=ip, server_port=port, uuid=credential['uuid'],
+                                tls=dict(enabled=True, server_name=server_name, utls=dict(enabled=True, fingerprint=fp)), transport=transport))
         if enabled('enable_hysteria'):
             hy = d['hysteria']
             ech = hy.get('ech')

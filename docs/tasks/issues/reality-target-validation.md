@@ -1,19 +1,19 @@
 ---
-id: "SCR-1791617975137354"
-title: "Make REALITY target validation bounded standards-correct and truthful"
-kind: "bug"
-status: "backlog"
-area: "scripts"
-priority: "medium"
-risk: "high"
-owner: "primary"
-parent: "EPC-1791618453830051"
+id: SCR-1791617975137354
+title: Make REALITY target validation bounded standards-correct and truthful
+kind: bug
+status: doing
+area: scripts
+priority: medium
+risk: high
+owner: primary
+parent: EPC-1791618453830051
 blocked_by: []
-spec_mode: "required"
-openspec_change: "reality-target-validation"
-created: "2026-10-10"
-updated: "2026-10-10"
-related_tasks: ["SEC-1791545689674403", "ANS-1791586652330612"]
+spec_mode: required
+openspec_change: reality-target-validation
+created: 2026-10-10
+updated: 2026-10-16
+related_tasks: [SEC-1791545689674403, ANS-1791586652330612]
 ---
 
 ## Goal

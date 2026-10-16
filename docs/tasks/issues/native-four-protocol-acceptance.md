@@ -1,19 +1,19 @@
 ---
-id: "TST-1791618356595983"
-title: "Deliver isolated native acceptance for every baseline transport"
-kind: "feature"
-status: "backlog"
-area: "testing"
-priority: "high"
-risk: "high"
-owner: "primary"
-parent: "EPC-1791618453830051"
-blocked_by: ["SEC-1791617841911853", "ANS-1791617913525586", "SCR-1791618039091425", "ANS-1791618048083304", "XRY-1791617955392712", "MON-1791618056169855", "SCT-1791617687019287", "SCR-1791617975137354"]
-spec_mode: "required"
-openspec_change: "native-four-protocol-acceptance"
-created: "2026-10-10"
-updated: "2026-10-10"
-related_tasks: ["SEC-1791545689674403", "ANS-1791562764586678", "ANS-1791586652330612", "SEC-1791471757439452"]
+id: TST-1791618356595983
+title: Deliver isolated native acceptance for every baseline transport
+kind: feature
+status: doing
+area: testing
+priority: high
+risk: high
+owner: primary
+parent: EPC-1791618453830051
+blocked_by: [SEC-1791617841911853, ANS-1791617913525586, SCR-1791618039091425, ANS-1791618048083304, XRY-1791617955392712, MON-1791618056169855, SCT-1791617687019287, SCR-1791617975137354]
+spec_mode: required
+openspec_change: native-four-protocol-acceptance
+created: 2026-10-10
+updated: 2026-10-16
+related_tasks: [SEC-1791545689674403, ANS-1791562764586678, ANS-1791586652330612, SEC-1791471757439452]
 ---
 
 ## Goal

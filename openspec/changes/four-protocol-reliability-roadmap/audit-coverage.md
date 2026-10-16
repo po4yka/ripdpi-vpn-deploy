@@ -1,3 +1,7 @@
+## Current local implementation scope (2026-10-16)
+
+The owner authorizes every remaining roadmap child, full local source and isolated Linux runtime acceptance, PR preparation and evidence-backed task closure. Staging soak and external client/device acceptance are removed from completion; production remains excluded. The planning baseline below is historical. Real local protocol engines, TUN, traffic, fault and rollback checks remain mandatory.
+
 # Audit finding ownership and acceptance
 
 Original protocol audit: `28783a7e1d48a0c192db4da06cf23b9d9a9d5637`. Planning revalidation: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` on 2026-10-10. This is the 22-item protocol audit, not the separate user-owned 44-item role audit.
@@ -28,7 +32,7 @@ The table preserves that planning baseline. Later authorized source implementati
 | A18 | Schema/preflight/runtime acceptance contracts diverge | Residual at planning baseline; no implementation performed. | `SCT-1791617687019287` — [transport-input-semantics](../transport-input-semantics/proposal.md) | Accepted cohort membership, AWG header/junk/peer relationships and owned proxy masquerade render/parse; invalid relationships fail before mutation with redacted diagnostics. |
 | A19 | Client drift ignores consumed SOPS settings | Residual at planning baseline; no implementation performed. | `SCR-1791618188806822` — [client-consumed-payload-identity](../client-consumed-payload-identity/proposal.md) | Actual selected-device payload changes become stale; authority loss/rotation becomes unknown; unconsumed or ciphertext-only changes remain current. |
 | A20 | REALITY target validation overstates TLS evidence and lacks boundaries | Residual at planning baseline; no implementation performed. | `SCR-1791617975137354` — [reality-target-validation](../reality-target-validation/proposal.md) | Standards-correct SAN/wildcard/separator handling and bounded DNS/TLS/HTTP deadlines; ordinary UA is not credited as browser ClientHello proof. |
-| A21 | AWG captures IPv6 without a delivered authorized IPv6 identity | Residual at planning baseline; no implementation performed. | `ANS-1791618048083304` — [awg-forwarding-dualstack](../awg-forwarding-dualstack/proposal.md) | Both device families are issued/authorized/exported; IPv6-only TCP/UDP and DNS pass; disconnect/revocation preserve no-leak behavior, with named physical baseline proof. |
+| A21 | AWG captures IPv6 without a delivered authorized IPv6 identity | Residual at planning baseline; no implementation performed. | `ANS-1791618048083304` — [awg-forwarding-dualstack](../awg-forwarding-dualstack/proposal.md) | Both device families are issued/authorized/exported; IPv6-only TCP/UDP and DNS pass; disconnect/revocation preserve no-leak behavior, with named local native baseline proof. |
 | A22 | Synthetic role checks miss named real transport boundaries | Residual named integration boundaries; existing external four-protocol sentinel and recurring AWG capability are preserved. | `TST-1791618356595983` — [native-four-protocol-acceptance](../native-four-protocol-acceptance/proposal.md) | Runnable isolated exact-engine four-protocol tests cover real sockets/TUN, traffic/rejections, warm adoption, rollback, hopping and cleanup; zero selected skips. |
 
 ## Inherited source test pointers

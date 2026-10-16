@@ -4,21 +4,26 @@ change: "awg-forwarding-dualstack"
 commit_sha: null
 local: "required"
 local_evidence: "complete affected suites and exact native positive/failure cases after implementation"
-remote_ci: "required"
-remote_ci_evidence: "terminal exact-SHA protected-source checks for this new capability"
+remote_ci: "not_applicable"
+remote_ci_evidence: "Owner selected local completion on 2026-10-16; complete local source gates are required. Automatic PR checks remain separate review evidence."
 dry_run: "not_applicable"
 dry_run_evidence: "source capability uses isolated native proof; real inventory/controller rehearsal needs separate authorization"
 staging: "not_applicable"
-staging_evidence: "source contract uses isolated native acceptance; actual fleet rehearsal is separately authorized"
+staging_evidence: "Owner removed staging soak on 2026-10-16; isolated local runtime acceptance is required instead."
 live: "not_applicable"
 live_evidence: "no production rollout belongs to this source or disabled-default candidate task"
-client: "required"
-client_evidence: "actual supported recipient parser plus authorized arm64 emulator/native-core authenticated IPv4/IPv6 TCP/UDP/DNS at MTU 1280 and 1420 through three reconnects each; physical-device and Android VpnService/TUN gates removed by owner; S3/S4 floor unchanged"
+client: "not_applicable"
+client_evidence: "Owner removed external and device acceptance on 2026-10-16; real local protocol engines remain required under local evidence."
 artifact: "required"
 artifact_evidence: "private rendered outputs and redacted exact-source requirement-specific evidence after implementation"
 ---
 
 # Verification
+
+## Local completion scope (2026-10-16)
+
+The owner authorizes full local implementation and removes staging soak, external recipient, Android emulator and physical-device acceptance from this change. Completion requires actual pinned local engines, isolated Linux systemd/network namespaces/TUN where applicable, authenticated positive and rejection traffic, compensation, privacy and complete source checks. Synthetic credentials are test inputs; mocks, render-only checks and refusal-only results cannot replace runnable behavior. External devices, provider actions, production rollout and promotion are outside acceptance. Earlier observations below retain their original source and limitations; removed external gates are excluded by this scope revision, never recorded as passed.
+
 
 ## Requirement evidence
 
