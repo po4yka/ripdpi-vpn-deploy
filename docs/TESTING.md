@@ -694,3 +694,22 @@ These are local correctness/resource bounds, not a throughput improvement claim.
 The owner removed staging soak and external/device client acceptance from the
 roadmap on 2026-10-16. Local engine processes remain necessary for positive
 protocol proof. Source completion grants no production promotion authority.
+
+### Complete isolated four-transport acceptance
+
+`make transport-native-acceptance` runs the full named completion, lifecycle,
+firewall hopping and compensation suites in a fresh Linux root with systemd,
+real TUN and nftables. Set `TRANSPORT_NATIVE_ISOLATED=1` only for an owned
+throwaway environment. The selected CI job provisions checksum-verified Xray
+and Hysteria plus both immutable AWG source pairs, then removes its exact
+labelled container. It is selected with the native consumer group and required
+by the aggregate check.
+
+The runner refuses workstation execution, pytest selection overrides, dirty
+tracked source, missing engines, empty results, selected skips and resource
+cleanup differences. `TRANSPORT_NATIVE_EVIDENCE` names a new private JSON file
+(default `/var/tmp/transport-native-evidence.json`) containing the exact source
+SHA, engine digests and case outcomes. Raw diagnostics remain private inside
+the disposable runner; only redacted JSON is uploaded. This establishes isolated
+native source/client behavior, with no provider, physical-device or live-fleet
+acceptance claim.

@@ -623,3 +623,8 @@ target fails on skips and missing client prerequisites.
 The REALITY collector no longer parses shell TLS transcripts. Its large-certificate
 regression completes a real trusted handshake beyond ordinary pipe-buffer sizes;
 metadata failure classification remains covered by the shared monitor tests.
+
+The four-transport runner reuses canonical runtime, endpoint, device binding
+and source-pair labs. Keep selected native cases complete: overrides, empty
+JUnit, skips and resource identity differences fail. Publish only case names,
+results, source/engine hashes and cleanup status; raw pytest logs stay private.
