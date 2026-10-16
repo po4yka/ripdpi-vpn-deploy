@@ -2,7 +2,7 @@
 id: ANS-1791996724624876
 title: Roll back private gateway runtimes with the frontend runtime
 kind: bug
-status: blocked
+status: doing
 area: ansible
 priority: medium
 risk: high
@@ -14,7 +14,7 @@ openspec_change: ans-1791996724624876-gateway-runtime-rollback
 created: 2026-10-14
 updated: 2026-10-16
 related_tasks: []
-status_detail: Native first-adoption interruption selection remains unresolved at source 087658e8. Authenticated GitHub API/Git SSH and Terraform registry connections time out; restore connectivity to publish diagnostics and finish native/full-gate acceptance.
+status_detail: Native diagnostics identify first-adoption quiescence of claimed but unpublished gateway units; implement exact loaded-unit admission and rerun native acceptance.
 ---
 
 ## Goal

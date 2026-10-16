@@ -316,6 +316,38 @@ def test_rollback_retires_new_vendor_before_restoring_its_isolation_files():
         'Inspect rollback unit authority before stopping candidate services',
         'Stop candidate controller before restoring any credential file',
         'Stop remaining candidate generation processes before restore']
+    assert quiesce[0]['ansible.builtin.command']['argv'][-1] == 'stop-units'
+
+
+@pytest.mark.parametrize('state,selected', [
+    ('LoadState=not-found\nActiveState=inactive\nMainPID=0\n', False),
+    ('LoadState=loaded\nActiveState=inactive\nMainPID=0\n', True),
+    ('LoadState=not-found\nActiveState=active\nMainPID=123\n', True),
+    ('LoadState=loaded\nActiveState=failed\nMainPID=0\n', True),
+])
+def test_quiescence_omits_only_confirmed_absent_claims(monkeypatch, state, selected):
+    mod = load('ownership')
+    unit = 'ripdpi-transport-direct.service'
+    monkeypatch.setattr(mod, 'read', lambda: {'schema': 1, 'units': [unit]})
+    def show(argv, **kwargs):
+        assert argv == ['systemctl', 'show', unit, '--property=LoadState,ActiveState,MainPID']
+        assert kwargs['check'] and kwargs['timeout'] == 10
+        return subprocess.CompletedProcess(argv, 0, state)
+    monkeypatch.setattr(mod.subprocess, 'run', show)
+    assert mod.stop_units()['units'] == ([unit] if selected else [])
+
+
+@pytest.mark.parametrize('failure', ['query', 'partial'])
+def test_quiescence_refuses_unconfirmed_absence(monkeypatch, failure):
+    mod = load('ownership')
+    monkeypatch.setattr(mod, 'read', lambda: {'schema': 1, 'units': ['ripdpi-transport-direct.service']})
+    def show(argv, **_kwargs):
+        if failure == 'query':
+            raise subprocess.CalledProcessError(1, argv)
+        return subprocess.CompletedProcess(argv, 0, 'LoadState=not-found\n')
+    monkeypatch.setattr(mod.subprocess, 'run', show)
+    with pytest.raises((ValueError, subprocess.SubprocessError)):
+        mod.stop_units()
 
 
 def test_actual_gateway_identity_checks_every_uid_column(tmp_path, monkeypatch):
