@@ -23,6 +23,8 @@ process reconnect, namespace-only netem and baseline restoration. Aggregate
 measurements contain bytes, timings, RSS and socket counts only. Local fixture
 processes do not establish physical-client or production acceptance.
 
+Native lab retirement clears failure state only for its claimed stopped unit names after removing their files, then requires systemd to report each as absent and inactive. A failed removed unit can otherwise remain cached with a load error and poison the next lab's initial admission.
+
 Subprocess ownership regressions require a retained session leader at the group signal boundary, and real quiet descendants must stop after successful exit, timeout, owner loss or a broken status report. A denied group signal fails once, while the private control channel still reclaims the supervisor. Fallback kill and wait failures retain categorical diagnostics.
 
 REALITY monitor regressions execute 256 KiB TLS transcripts through the actual shell path. Valid transport checks retain healthy classification or an unknown ASN lookup, rather than failing because a quiet pipeline reader closes early. Certificate, SAN and ALPN refusal cases remain required.
