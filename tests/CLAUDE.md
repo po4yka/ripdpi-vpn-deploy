@@ -441,7 +441,8 @@ the runner's `ubuntu.sources` for both APT operations. An unrelated preinstalled
 repository cannot block this gate. Missing Ubuntu sources and failed updates
 remain fatal; package signatures and the real schema validator stay enforced.
 
-Runtime acceptance has a separate canonical-role Linux lab. It uses exact checksum-pinned runtimes, generated dedicated client/TLS authority and an owned routed namespace canary. Credential mount propagation is established before creating namespace references, so parent bind mounts cannot hide those references at cleanup. Upgrade, retry, check mode, failure compensation and real process-death cases must retain actual authenticated traffic and fail selected skips. Portable inode/state tests complement that lab and never claim service or client acceptance. The operator runtime rollback case asserts the rolled-back `xray.service` unit text, the live `MainPID` executable and a published receipt that claims no `ripdpi-transport-*.service` node, then that a following ordinary converge with the newer pin restores `current`, the unit text and the `MainPID` executable to the upgraded release with the rolled-back release as `previous`; portable tests pin its candidate set, that no egress-owned gateway unit is a candidate and that planning, whether it succeeds or refuses an unverified release, leaves every runtime-tree and transaction-state inode, mode, owner, link count and content untouched. Because that converge now follows the rollback, native retirement starts from the re-converged receipt rather than the rollback receipt, so retiring a receipt produced directly by an operator rollback is no longer covered natively.
+Runtime acceptance has a separate canonical-role Linux lab. It uses exact checksum-pinned runtimes, generated dedicated client/TLS authority and an owned routed namespace canary. Credential mount propagation is established before creating namespace references, so parent bind mounts cannot hide those references at cleanup. Upgrade, retry, check mode, failure compensation and real process-death cases must retain actual authenticated traffic and fail selected skips. Portable inode/state tests complement that lab and never claim service or client acceptance. The operator runtime rollback case asserts frontend and generation-selected gateway unit text, accepted claims and native `/proc/<MainPID>/exe` identity. A real gateway sandbox refusal and SIGKILL after gateway publication or adoption must restore all exact original unit inodes and authenticated forwarding. A following ordinary converge with the newer pin restores the whole generation and retains the rolled-back release as `previous`. Portable tests cover direct-only and paired gateway candidate selection, validated topology refusal and the sole publication lane. The isolated native lab exercises its selected direct gateway; this is not vendor tunnel or production acceptance. Native retirement follows the re-converged receipt. First-adoption interruption failures retain only bounded task/frame categories, the last static task and owned publication-state booleans for diagnosis. Keep the real interruption predicate and deadline intact.
+
 
 ## What's done well
 
@@ -605,3 +606,14 @@ The complete native lane checks resource retirement after every case and suite.
 Its explicit pytest flag enables OS inventory only in that isolated lane;
 portable checks retain their ordinary fixture behavior. Evidence exposes only
 changed resource categories and counts, with private identities kept local.
+
+REALITY identity/deadline regressions use real local CA certificates, TLS/HTTP
+sockets and stalled process trees. Monitor state/alert fixtures inject categorical
+collector observations; they do not claim network proof. The dedicated REALITY
+native lane additionally runs the exact checksum-pinned browser-shaped client
+and an owned service through its explicit ingress address. Its complete Make
+target fails on skips and missing client prerequisites.
+
+The REALITY collector no longer parses shell TLS transcripts. Its large-certificate
+regression completes a real trusted handshake beyond ordinary pipe-buffer sizes;
+metadata failure classification remains covered by the shared monitor tests.

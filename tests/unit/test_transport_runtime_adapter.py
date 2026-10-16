@@ -90,7 +90,10 @@ def test_ech_admission_uses_exact_staged_unit_credential(monkeypatch, directory,
             unit += 'LoadCredential=hysteria-ech:' + source + '\n'
     document = {'tls': {'cert': directory + '/cert.pem', 'key': directory + '/tls.key'},
                 'ech': {'keyPath': '/run/credentials/hysteria-server.service/hysteria-ech'}}
-    contents = {'/etc/systemd/system/hysteria-server.service': unit.encode(),
+    monkeypatch.setattr(accept, 'gateway_units', lambda: ['ripdpi-transport-direct.service'])
+    contents = {'/etc/systemd/system/ripdpi-transport-direct.service':
+                    b'ExecStart=/selected/xray run -config %d/config.json\n',
+                '/etc/systemd/system/hysteria-server.service': unit.encode(),
                 config: yaml.safe_dump(document).encode(), key: b'selected-private-authority',
                 directory + '/cert.pem': b'certificate', directory + '/tls.key': b'tls-key'}
     candidates = [{'path': path, 'data': base64.b64encode(raw).decode()} for path, raw in contents.items()]
@@ -102,6 +105,7 @@ def test_ech_admission_uses_exact_staged_unit_credential(monkeypatch, directory,
         assert len(observed) == 1
         assert observed[0][0][4] == unit
         assert observed[0][1]['ech_key'] == contents[key]
+        assert observed[0][1]['gateway_binary'] == '/selected/xray'
     else:
         reason = 'candidate-incomplete' if credential == 'unselected' else 'unit-credential-invalid'
         with pytest.raises(accept.Refusal, match=reason):
@@ -612,7 +616,7 @@ def test_operator_runtime_rollback_retargets_unit_text_and_exact_link_set(parame
     unit, config, selected, retained, assets = runtime_tree(root, bundled=bundled)
     with core.Transaction(state, uid=uid) as tx:
         before = tree_snapshot(root)
-        plan = runtime_candidates(tx, 'v26.3.27', unit, config, gid, root=root)
+        plan = runtime_candidates(tx, 'v26.3.27', unit, config, gid, gateway_paths=[], root=root)
         # Planning publishes nothing: the candidates are only a plan until the transaction applies them.
         assert tree_snapshot(root) == before
     files = [item for item in plan if 'data' in item]
@@ -640,7 +644,7 @@ def test_operator_runtime_rollback_refuses_the_selected_release(parameter_area):
     unit, config, _selected, _retained, _assets = runtime_tree(root)
     with core.Transaction(state, uid=uid) as tx:
         with pytest.raises(core.Refusal, match='rollback-no-change'):
-            runtime_candidates(tx, 'v26.5.3', unit, config, gid, root=root)
+            runtime_candidates(tx, 'v26.5.3', unit, config, gid, gateway_paths=[], root=root)
 
 
 @pytest.mark.parametrize('damage,category', [
@@ -661,31 +665,87 @@ def test_operator_runtime_rollback_plans_nothing_from_an_unverified_release(para
     with core.Transaction(state, uid=uid) as tx:
         before = tree_snapshot(root)
         with pytest.raises(core.Refusal, match=category):
-            runtime_candidates(tx, 'v26.3.27', unit, config, gid, root=root)
+            runtime_candidates(tx, 'v26.3.27', unit, config, gid, gateway_paths=[], root=root)
         # Refusal publishes nothing: the runtime tree and the transaction state are untouched.
         assert tree_snapshot(root) == before
 
 
-def test_operator_runtime_rollback_never_plans_egress_owned_gateway_units(parameter_area):
+@pytest.mark.parametrize('count', [1, 2])
+def test_operator_runtime_rollback_plans_every_generation_gateway(parameter_area, count):
     from transport_runtime_rollback import runtime_candidates
-    spec = importlib.util.spec_from_file_location(
-        'transport_egress_generation_owner_test', ROOT / 'ansible/roles/transport-egress/files/generation.py')
-    generation = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(generation)
     root, state, _actual, uid, gid = parameter_area
-    unit, config, selected, _retained, _assets = runtime_tree(root)
-    gateways = [unit.parent / name for name in generation.GATEWAYS.values()]
+    unit, config, selected, retained, _assets = runtime_tree(root)
+    gateways = [unit.parent / name for name in
+                ['ripdpi-transport-direct.service', 'ripdpi-transport-warp.service'][:count]]
     for gateway in gateways:
-        gateway.write_text('[Service]\nExecStart=' + str(selected / 'xray') + ' run -config /etc/ripdpi/transport-egress/gateway.json\n')
+        gateway.write_text('[Service]\nExecStart=' + str(selected / 'xray') + ' run -config %d/config.json\n')
     with core.Transaction(state, uid=uid) as tx:
         before = tree_snapshot(root)
-        plan = runtime_candidates(tx, 'v26.3.27', unit, config, gid, root=root)
-        # Neither the gateway units nor any live unit is rewritten on disk while planning.
+        plan = runtime_candidates(tx, 'v26.3.27', unit, config, gid, gateway_paths=gateways, root=root)
         assert tree_snapshot(root) == before
-    # The accepted receipt claims candidates by inode; the egress transaction rewrites these units on the next converge.
-    assert len(gateways) == 2
-    assert not [item for item in plan if Path(item['path']).name in generation.GATEWAYS.values()]
-    assert [item['path'] for item in plan if item['path'].endswith('.service')] == [str(unit)]
+    assert [item['path'] for item in plan if item['path'].endswith('.service')] == [str(unit), *map(str, gateways)]
+    for item in plan[1:1 + count]:
+        assert base64.b64decode(item['data']).decode() == ('[Service]\nExecStart=' + str(retained / 'xray')
+                                                        + ' run -config %d/config.json\n')
+
+
+def test_gateway_runtime_disagreement_refuses_before_publication(parameter_area):
+    from transport_runtime_rollback import runtime_candidates
+    root, state, _actual, uid, gid = parameter_area
+    unit, config, _selected, retained, _assets = runtime_tree(root)
+    gateway = unit.parent / 'ripdpi-transport-direct.service'
+    gateway.write_text('ExecStart=' + str(retained / 'xray') + ' run -config %d/config.json\n')
+    with core.Transaction(state, uid=uid) as tx:
+        before = tree_snapshot(root)
+        with pytest.raises(core.Refusal, match='rollback-gateway-runtime-mismatch'):
+            runtime_candidates(tx, 'v26.3.27', unit, config, gid, gateway_paths=[gateway], root=root)
+        assert tree_snapshot(root) == before
+
+
+@pytest.mark.parametrize('bad', ['none', 'inactive', 'wrong-executable'])
+def test_rollback_requires_each_gateway_loaded_executable(tmp_path, monkeypatch, bad):
+    import transport_runtime_rollback as rollback
+    monkeypatch.setattr(rollback, 'UNIT_ROOT', tmp_path)
+    monkeypatch.setattr(rollback.Adapter, 'ready', lambda self: None)
+    units = ['ripdpi-transport-direct.service', 'ripdpi-transport-warp.service']
+    monkeypatch.setattr(rollback, 'gateway_units', lambda: units)
+    for unit in units:
+        (tmp_path / unit).write_text('ExecStart=/owned/xray run -config %d/config.json\n')
+    monkeypatch.setattr(rollback, 'fields', lambda unit: state('inactive' if bad == 'inactive' and unit == units[1] else 'active'))
+    proofs = []
+    def samefile(proc, binary):
+        proofs.append((proc, binary))
+        return not (bad == 'wrong-executable' and len(proofs) == 2)
+    monkeypatch.setattr(rollback.os.path, 'samefile', samefile)
+    adapter = rollback.RollbackAdapter([], 'https://owned.example/', 204, 10, {'xray':'probe', 'hysteria':'probe'})
+    if bad == 'none':
+        adapter.ready()
+        assert proofs == [('/proc/10/exe', '/owned/xray')] * 2
+    else:
+        with pytest.raises(core.Refusal, match='gateway-runtime-mismatch'):
+            adapter.ready()
+
+
+@pytest.mark.parametrize('source', ['/etc/egress/direct.json', 'relative.json', '/etc/../secret', None])
+def test_rollback_validates_gateway_with_target_binary(monkeypatch, source):
+    import transport_runtime_rollback as rollback
+    monkeypatch.setattr(rollback.Adapter, 'validate', lambda self: None)
+    monkeypatch.setattr(rollback, 'gateway_units', lambda: ['ripdpi-transport-direct.service'])
+    text = 'ExecStart=/retained/xray run -config %d/config.json\n'
+    if source is not None:
+        text += 'LoadCredential=config.json:' + source + '\n'
+    candidates = [{'path': '/etc/systemd/system/ripdpi-transport-direct.service',
+                   'data': base64.b64encode(text.encode()).decode()}]
+    calls = []
+    monkeypatch.setattr(rollback, 'run', lambda argv, timeout: calls.append(argv))
+    adapter = rollback.RollbackAdapter(candidates, 'https://owned.example/', 204, 10, {'xray':'probe', 'hysteria':'probe'})
+    if source == '/etc/egress/direct.json':
+        adapter.validate()
+        assert calls == [['/retained/xray', 'run', '-test', '-config', source]]
+    else:
+        with pytest.raises(core.Refusal, match='gateway-credential-invalid'):
+            adapter.validate()
+        assert calls == []
 
 
 def test_absent_parent_retirement_is_verified_without_manufacturing_storage(parameter_area):
