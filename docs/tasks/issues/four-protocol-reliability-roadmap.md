@@ -33,5 +33,5 @@ Deliver isolated reliable and upgradeable four-protocol connectivity.
 
 ## Planning navigation
 
-- [Finding coverage](../../../openspec/changes/four-protocol-reliability-roadmap/audit-coverage.md).
-- [Implementation and upgrade roadmap](../../../openspec/changes/four-protocol-reliability-roadmap/roadmap.md).
+- [Finding coverage](../../../openspec/changes/archive/2026-10-16-four-protocol-reliability-roadmap/audit-coverage.md).
+- [Implementation and upgrade roadmap](../../../openspec/changes/archive/2026-10-16-four-protocol-reliability-roadmap/roadmap.md).

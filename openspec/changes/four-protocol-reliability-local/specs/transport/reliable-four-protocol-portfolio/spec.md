@@ -63,3 +63,8 @@ The implementation MUST keep all original findings traceable and acceptance cred
 
 - **WHEN** a selected local native or source requirement is unexecuted or fails
 - **THEN** the owner stays open with the exact unsatisfied check; planning or fixtures do not substitute and cancelled acceptance is not revived
+
+#### Scenario: Archived task artifacts retain valid links and receipt binding
+
+- **WHEN** taskctl archives or revisits an already archived scope with task links into its former change directory
+- **THEN** only those links resolve to the owned archive, the original close receipt remains immutable and the current record verifies against its exact source-backed link projection, repeated invocation preserves lifecycle timestamps and spec state, and invalid receipt or source ownership refuses without mutation

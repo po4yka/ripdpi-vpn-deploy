@@ -1,7 +1,7 @@
 ---
-task_id: TST-1791618376497512
-change: stable-client-parser-upgrade
-commit_sha: null
+task_id: ANS-1791618083683925
+change: hysteria-ech-profiles
+commit_sha: fc8938d9563e9cf61ead73f9bcdf07c90507fa6d
 local: not_applicable
 local_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
 remote_ci: not_applicable
@@ -27,14 +27,19 @@ The owner authorizes full local implementation and removes staging soak, externa
 
 ## Requirement evidence
 
-The requirement rows remain open until their complete named evidence is observed. Source implementation and the observations below do not satisfy unexecuted native, hosted or staging gates.
+Each requirement row remains open until its complete named evidence is observed. Source implementation and the observations below do not satisfy unexecuted native, hosted or staging gates.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-PROTO-PARSER-INTEGRITY | TST-1791618385464569 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
-| REQ-PROTO-PARSER-PAYLOADS | TST-1791618386942234 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
-| REQ-PROTO-PARSER-ROLLBACK | TST-1791618388220484 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
-| REQ-PROTO-PARSER-ELIGIBILITY | TST-1791618385464569 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-ECH-CONTRACT | ANS-1791618091815754 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-ECH-CONTRACT | ANS-1791618093172970 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-ECH-CONTRACT | ANS-1791618095149688 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-ECH-PRIVATE | ANS-1791618093172970 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-ECH-PRIVATE | ANS-1791618094259404 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-ECH-PRIVATE | ANS-1791618095149688 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-ECH-ACTIVATE | ANS-1791618094259404 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-ECH-ACTIVATE | ANS-1791618095149688 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-ECH-ACCEPT | ANS-1791618095149688 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
 
 ## Source implementation observations (2026-10-15)
 
@@ -59,23 +64,39 @@ The requirement rows remain open until their complete named evidence is observed
   provider authentication checksums from upstream releases. A complete portable
   suite was restarted after diagnosing an inactive local SOPS shim; its final
   result is reported with the PR and is not assumed here.
-- Exact official sing-box parsing/traffic, decoded packet observations, complete
-  Linux ECH authority activation/rotation/compensation, terminal exact-SHA hosted
-  checks and the separately authorized 48-hour staging soak remain required.
+- At the initial handoff, official recipient traffic, packet observations, complete
+  Linux activation/rotation/compensation and terminal exact-SHA hosted checks
+  were unverified. The continuation observations below supersede that boundary.
   Runtime downloads and Linux test dependency preparation were blocked by
   network timeouts. No deployment, real issuance or recipient redistribution ran.
 
 ## PR 303 continuation observations (2026-10-15)
 
-Official sing-box 1.14.3 completed the exact Linux ECH parser, TCP/UDP/DNS,
-trust/negotiation failure and outer-SNI packet matrix at source
-`237b622f672629cbfecb53e010632af0c2e52273` (native job `116572820157`). Its
-checksum-verified Darwin ARM64 release and Xray 26.3.27 also parsed complete
-canonical liveness artifacts locally. The four portable shards at `87a52b6b`
-reported 7,227 passed tests; final-head aggregate/native gates and complete
-parser adoption/rollback acceptance remain required. Combined release
-eligibility still refuses unavailable sing-box metadata; no production
-recipient redistribution occurred.
+- Source `237b622f672629cbfecb53e010632af0c2e52273`, CI run
+  `38778141118`, native job `116572820157`: all three selected ECH/resource
+  cases passed in 49.09 seconds before the later source push cancelled the
+  remaining job. This is not a pass for the complete native suite.
+- Actual Hysteria 2.13.0 and official sing-box 1.14.3 completed authenticated
+  TCP/UDP/DNS and the wrong-SAN, untrusted-CA, stale-generation, wrong-auth and
+  ECH-disabled-server failures. Decoded QUIC captures contained the outer SNI
+  and no inner SNI. Receive-buffer drops stayed zero; server RSS was
+  33,144–33,396 KiB and the two measured clients each sustained
+  3.14–3.25 million bytes/second on the identical controlled path. These
+  observations establish behavior and bounds, not a performance improvement.
+- Four portable shards in run `38775829979` reported 7,227 passed tests.
+  Later affected contracts passed 247 tests, the focused ECH/release suite passed 55,
+  and the baseline assertion/mutation-boundary suite passed eight. Counts
+  overlap. The complete aggregate and exact final-head gates remain required.
+- Native verified generation with real SOPS passed issuance, rotation,
+  invalid-identity ciphertext preservation and private file permissions.
+  Checksum-verified Darwin ARM64 sing-box 1.14.3 and Xray 26.3.27 parsed the
+  canonical liveness artifacts successfully.
+- Current source adds debug-level private-key leak checks and both BBR modes
+  inside the actual systemd credential generation. Their new native execution,
+  ECH rotation/compensation and full final-head source gates remain pending.
+  Hysteria release eligibility refreshed successfully; the combined refresh
+  still refuses when sing-box release metadata is unavailable. No staging,
+  production deployment or real credential issuance occurred.
 
 ## Integrated native continuation (2026-10-15)
 

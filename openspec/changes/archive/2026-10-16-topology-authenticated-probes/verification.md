@@ -1,7 +1,7 @@
 ---
-task_id: XRY-1791617991738391
-change: xhttp-alternate-and-tuning
-commit_sha: null
+task_id: MON-1791618056169855
+change: topology-authenticated-probes
+commit_sha: fc8938d9563e9cf61ead73f9bcdf07c90507fa6d
 local: not_applicable
 local_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
 remote_ci: not_applicable
@@ -31,13 +31,12 @@ All rows name planned acceptance, not observed implementation evidence. Planning
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-PROTO-XAT-ALTERNATE | XRY-1791618003859679 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
-| REQ-PROTO-XAT-ALTERNATE | XRY-1791618006858260 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
-| REQ-PROTO-XAT-ALTERNATE | XRY-1791618008836301 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
-| REQ-PROTO-XAT-TYPED | XRY-1791618006858260 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
-| REQ-PROTO-XAT-TYPED | XRY-1791618008836301 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
-| REQ-PROTO-XAT-MEASURED | XRY-1791618007864586 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
-| REQ-PROTO-XAT-MEASURED | XRY-1791618008836301 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
-| REQ-PROTO-XAT-ROLLBACK | XRY-1791618003859679 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
-| REQ-PROTO-XAT-ROLLBACK | XRY-1791618007864586 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
-| REQ-PROTO-XAT-ROLLBACK | XRY-1791618008836301 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PROBE-TOPOLOGY | MON-1791618060162436 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PROBE-TOPOLOGY | MON-1791618061966295 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PROBE-AUTH | MON-1791618060162436 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PROBE-AUTH | MON-1791618061120158 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PROBE-AUTH | MON-1791618061966295 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PROBE-OWNERSHIP | MON-1791618061120158 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PROBE-OWNERSHIP | MON-1791618062766877 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PROBE-EVIDENCE | MON-1791618061966295 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PROBE-EVIDENCE | MON-1791618062766877 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |

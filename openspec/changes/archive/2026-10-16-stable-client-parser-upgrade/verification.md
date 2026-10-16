@@ -1,7 +1,7 @@
 ---
-task_id: SCR-1791618064422507
-change: hysteria-stable-upgrade
-commit_sha: null
+task_id: TST-1791618376497512
+change: stable-client-parser-upgrade
+commit_sha: fc8938d9563e9cf61ead73f9bcdf07c90507fa6d
 local: not_applicable
 local_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
 remote_ci: not_applicable
@@ -31,14 +31,10 @@ The requirement rows remain open until their complete named evidence is observed
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-PROTO-HY-VERSION | SCR-1791618069580618 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
-| REQ-PROTO-HY-VERSION | SCR-1791618072302643 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
-| REQ-PROTO-HY-TUNING | SCR-1791618070531675 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
-| REQ-PROTO-HY-TUNING | SCR-1791618072302643 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
-| REQ-PROTO-HY-MEASURE | SCR-1791618071381219 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
-| REQ-PROTO-HY-MEASURE | SCR-1791618072302643 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
-| REQ-PROTO-HY-UPGRADE | SCR-1791618071381219 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
-| REQ-PROTO-HY-UPGRADE | SCR-1791618072302643 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PARSER-INTEGRITY | TST-1791618385464569 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PARSER-PAYLOADS | TST-1791618386942234 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PARSER-ROLLBACK | TST-1791618388220484 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PARSER-ELIGIBILITY | TST-1791618385464569 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
 
 ## Source implementation observations (2026-10-15)
 
@@ -71,15 +67,15 @@ The requirement rows remain open until their complete named evidence is observed
 
 ## PR 303 continuation observations (2026-10-15)
 
-The three exact Linux profiles passed in native job `116572820157` at source
-`237b622f672629cbfecb53e010632af0c2e52273`: authenticated TCP/UDP/DNS, paired
-client measurements, zero receive drops, 7,500,000-byte socket ceilings and
-33,144–33,396 KiB server RSS. The baseline source assertion's accepted integer
-boundaries and refusal-before-mutation cases passed eight tests. Both BBR modes
-in the actual systemd sandbox, warm Salamander/hopping upgrade and compensation
-remain required; the execution step stays open until those observations exist.
-The refreshed Hysteria release/advisory check cleared; the combined pair check
-still refuses unavailable sing-box metadata. The 48-hour staging soak is pending.
+Official sing-box 1.14.3 completed the exact Linux ECH parser, TCP/UDP/DNS,
+trust/negotiation failure and outer-SNI packet matrix at source
+`237b622f672629cbfecb53e010632af0c2e52273` (native job `116572820157`). Its
+checksum-verified Darwin ARM64 release and Xray 26.3.27 also parsed complete
+canonical liveness artifacts locally. The four portable shards at `87a52b6b`
+reported 7,227 passed tests; final-head aggregate/native gates and complete
+parser adoption/rollback acceptance remain required. Combined release
+eligibility still refuses unavailable sing-box metadata; no production
+recipient redistribution occurred.
 
 ## Integrated native continuation (2026-10-15)
 

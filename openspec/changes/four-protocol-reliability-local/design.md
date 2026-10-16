@@ -21,6 +21,7 @@ prior external scopes are explicitly superseded through their terminal lifecycle
 - Bind XHTTP mode and bounded XMUX fields to the exact verified engine. Preserve primary and alternate results independently; working fallback never conceals a degraded endpoint.
 - Keep trusted TLS/SAN validation and matching Salamander/ECH settings. Bound resolver, handshake, HTTP, notification and cleanup owners; refuse excessive or malformed input before authority publication.
 - Keep existing guarded runtime recovery, no-leak policy and immutable admission/rollback rules. Unknown release/advisory eligibility continues to block promotion; local execution does not claim deployment eligibility.
+- Archive maintenance relocates only links to owned change documents. Superseded records retain their original close receipt; validation checks the exact link projection from the archive’s reachable terminal source. Repeated archive invocation preserves lifecycle timestamps and spec state.
 - Retain existing taskctl gates. The old scope is superseded rather than falsely recording external evidence as passed or inventing a shared operational owner.
 
 ## Contracts and ownership

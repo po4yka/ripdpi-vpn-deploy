@@ -281,6 +281,13 @@ before `validate`; `add` does not rewrite the generated board.
 
 Commit the completed task, execution, verification, and regenerated board in `review` before archival. Archive a completed OpenSpec change only through `./taskctl openspec archive`. Then run `close prepare`, commit the terminal record, run `close purge`, and commit the deletion separately. CI rejects deletion without the preceding terminal-state commit. Direct upstream archive, `--no-validate`, manual task IDs, and mdtask archive/ID assignment are unsupported.
 
+An archived dropped task may display its owned change-document links at their
+archive locations. Its original close receipt remains immutable. Taskctl checks
+the record against the exact deterministic link projection of the reachable
+terminal source recorded by the archive; every other content change still
+invalidates the receipt. Repeating `taskctl openspec archive` maintains those
+links without re-archiving, updating timestamps or syncing specs again.
+
 ## Federation
 
 Each repository is authoritative for its own tasks. `./taskctl export --json` emits the versioned local portfolio contract after native record/receipt validation. Federation invokes the peer checkout's own committed exporter and validates the shared graph wire contract, exact HEAD revision and identical contract hash. A peer without a native risk assessment exports `risk: null`; its issue records and historical receipts stay intact. `./taskctl export --resolve-task TASK-ID --json` resolves one active or proven historical terminal task through that repository's native lifecycle validation. Federation commands consume a peer checkout without copying peer state into this repository:

@@ -12,6 +12,7 @@ recipient-device or production results. Open steps require observed acceptance.
 - `ansible/roles/watchdog/templates/`, `ansible/playbooks/smoke-test.yml`, secrets schema/examples and existing guarded runtime, Hysteria, AWG, firewall interfaces.
 - Native fixtures and regression suites under `tests/`, including complete four-protocol traffic, ownership, rollback, source-candidate and parser checks.
 - `Makefile`, existing CI selector, reviewed snapshots and relevant operator documentation.
+- `scripts/tasks/taskctl.py` and its lifecycle regressions own archive-link maintenance with verified existing receipts.
 - This linked change, supersession of the former roadmap scopes and taskctl-only portfolio lifecycle; preserve historical observations and unchanged completed predecessor records.
 - One primary writer serializes all shared source, schema, snapshot and portfolio edits in the dedicated worktree. Preserve unrelated work and private operator inputs.
 

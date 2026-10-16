@@ -1,7 +1,7 @@
 ---
 task_id: SCR-1791618073850409
 change: awg-source-upgrade
-commit_sha: null
+commit_sha: fc8938d9563e9cf61ead73f9bcdf07c90507fa6d
 local: not_applicable
 local_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
 remote_ci: not_applicable
