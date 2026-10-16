@@ -1,0 +1,65 @@
+---
+- name: Inspect accepted firewall configuration for AWG compensation
+  ansible.builtin.stat:
+    path: /etc/nftables.conf
+    follow: false
+  register: _firewall_awg_before
+  no_log: true
+
+- name: Require bounded owned firewall configuration before AWG publication
+  ansible.builtin.assert:
+    that:
+      - >-
+        not _firewall_awg_before.stat.exists or
+        (_firewall_awg_before.stat.isreg and _firewall_awg_before.stat.uid == 0 and
+         _firewall_awg_before.stat.nlink == 1 and _firewall_awg_before.stat.mode in ['0600', '0644', '0755'] and
+         _firewall_awg_before.stat.size <= 4194304)
+  no_log: true
+
+- name: Retain accepted firewall configuration through AWG activation
+  ansible.builtin.slurp:
+    src: /etc/nftables.conf
+  register: _firewall_awg_bytes
+  when: _firewall_awg_before.stat.exists
+  no_log: true
+
+- name: Identify accepted role-owned firewall generation
+  ansible.builtin.set_fact:
+    _firewall_awg_owned: >-
+      {{ _firewall_awg_before.stat.exists and
+         (_firewall_awg_bytes.content | b64decode).splitlines()[:2] ==
+         ['#!/usr/sbin/nft -f', '# Managed by Ansible role `firewall`. Hand edits will be overwritten.'] }}
+  no_log: true
+
+- name: Require nonexecutable role-owned firewall recovery authority
+  ansible.builtin.assert:
+    that:
+      - not _firewall_awg_owned or _firewall_awg_before.stat.mode in ['0600', '0644']
+  no_log: true
+
+- name: Refuse unsafe global-flush firewall recovery authority
+  ansible.builtin.assert:
+    that:
+      - not _firewall_awg_owned or not ((_firewall_awg_bytes.content | b64decode) is search('(?m)^\s*flush\s+ruleset(?:;|\s|$)'))
+  no_log: true
+
+- name: Retain complete AWG firewall compensation authority
+  ansible.builtin.set_fact:
+    _firewall_awg_restore:
+      path: /etc/nftables.conf
+      content: >-
+        {{ _firewall_awg_bytes.content if _firewall_awg_owned else
+           (lookup('ansible.builtin.template', 'nftables.conf.j2',
+                   template_vars={'vpn': vpn | combine({'enable_amneziawg': false})}) | b64encode) }}
+      mode: "{{ _firewall_awg_before.stat.mode if _firewall_awg_owned else '0644' }}"
+  no_log: true
+
+- name: Validate retained firewall generation before AWG publication
+  ansible.builtin.command:
+    argv: [nft, -c, -f, '-']
+    stdin: "{{ _firewall_awg_restore.content | b64decode }}"
+    stdin_add_newline: false
+  changed_when: false
+  check_mode: false
+  no_log: true
+  when: not _firewall_effective_check_mode | bool

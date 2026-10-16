@@ -116,8 +116,20 @@ def test_awg_normalization_never_prints_private_material_under_verbose_callback(
             if "_awg_instances" in str(task.get("loop", "")):
                 assert task.get("no_log") is True
     rotation = tasks("playbooks/rotate-credentials.yml")[0]
-    handler = named(rotation["handlers"], "Restart amneziawg")
-    assert handler["no_log"] is True
+    assert not any(task["name"] == "Restart amneziawg" for task in rotation["handlers"])
+    activation = named(rotation["tasks"], "Activate rotated AmneziaWG peers and firewall claims together")
+    assert activation["ansible.builtin.import_tasks"] == "tasks/awg-rotate.yml"
+    lifecycle = tasks("playbooks/tasks/awg-rotate.yml")[0]
+    assert lifecycle["block"][1]["ansible.builtin.include_role"] == {"name": "amneziawg"}
+    def flatten(rows):
+        for row in rows:
+            yield row
+            for section in ("block", "rescue", "always"):
+                yield from flatten(row.get(section, []))
+    sensitive = [task for task in flatten(tasks("roles/amneziawg/tasks/configure.yml"))
+                 if "loop" in task or "ansible.builtin.template" in task]
+    assert sensitive
+    assert all(task.get("no_log") is True for task in sensitive)
 
 
 @pytest.mark.parametrize(

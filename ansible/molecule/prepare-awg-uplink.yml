@@ -1,0 +1,66 @@
+---
+# Synthetic routes are confined to each disposable scenario's network namespace.
+- name: Inspect the synthetic AWG uplink
+  ansible.builtin.command:
+    argv: [ip, -j, link, show, awg-test-up]
+  register: _awg_test_link
+  failed_when: _awg_test_link.rc not in [0, 1]
+  changed_when: false
+
+- name: Create the synthetic AWG uplink
+  ansible.builtin.command:
+    argv: [ip, link, add, awg-test-up, type, dummy]
+  when: _awg_test_link.rc == 1
+  changed_when: true
+
+- name: Inspect synthetic AWG uplink addresses
+  ansible.builtin.command:
+    argv: [ip, -j, address, show, dev, awg-test-up]
+  register: _awg_test_addresses
+  changed_when: false
+
+- name: Configure synthetic public-family addresses
+  ansible.builtin.command:
+    argv: "{{ item.argv }}"
+  loop:
+    - address: 8.8.8.8
+      argv: [ip, address, add, 8.8.8.8/32, dev, awg-test-up]
+    - address: '2001:4860:ffff::1'
+      argv: [ip, -6, address, add, '2001:4860:ffff::1/128', dev, awg-test-up, nodad]
+  when: item.address not in _awg_test_addresses.stdout
+  changed_when: true
+
+- name: Bring the synthetic uplink up
+  ansible.builtin.command:
+    argv: [ip, link, set, awg-test-up, up]
+  when: _awg_test_link.rc == 1
+  changed_when: true
+
+- name: Inspect exact synthetic admission routes
+  ansible.builtin.command:
+    argv: [ip, -j, "{{ item.family }}", route, get, "{{ item.target }}"]
+  loop:
+    - {family: '-4', target: 1.1.1.1, source: 8.8.8.8}
+    - {family: '-6', target: '2606:4700:4700::1111', source: '2001:4860:ffff::1'}
+  failed_when: false
+  changed_when: false
+  register: _awg_test_routes
+
+- name: Install only the exact synthetic admission routes
+  ansible.builtin.command:
+    argv: [ip, "{{ item.item.family }}", route, replace, "{{ item.item.target }}", dev, awg-test-up, src, "{{ item.item.source }}"]
+  loop: "{{ _awg_test_routes.results }}"
+  when: item.rc != 0 or 'awg-test-up' not in item.stdout
+  changed_when: true
+
+- name: Inspect the isolated synthetic IPv6 default route
+  ansible.builtin.command:
+    argv: [ip, -j, -6, route, show, default, dev, awg-test-up]
+  register: _awg_test_default6
+  changed_when: false
+
+- name: Install the isolated synthetic IPv6 default route
+  ansible.builtin.command:
+    argv: [ip, -6, route, add, default, dev, awg-test-up, metric, '4096']
+  when: _awg_test_default6.stdout | from_json | length == 0
+  changed_when: true

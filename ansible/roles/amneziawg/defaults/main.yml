@@ -16,6 +16,7 @@ amneziawg:
   interface: awg0
   address_v4: "10.66.66.1/24"
   address_v6: "fd42:42:42::1/64"
+  mtu: 1420
   dns_servers:
     - "1.1.1.1"
     - "1.0.0.1"

@@ -702,6 +702,8 @@ help:
 	@echo "  test-unit-shard            Run one balanced pytest group (PYTEST_GROUP=1..4)"
 	@echo "  test-unit-profile          Refresh durations with a complete portable run"
 	@echo "  test-native-runtime        Run native integration tests in disposable Linux root environment"
+	@echo "  test-awg-dualstack-runtime  Exercise dual-stack AWG forwarding, MTU and compensation in the isolated native lab"
+	@echo "  verify-awg-dualstack-client-evidence Validate invocation-bound Android native-core evidence from PEER_ROOT"
 	@echo "  test-transport-runtime-acceptance  Run complete consumer transactions in a separate fresh Linux root"
 	@echo "  test-probe-matrix-mtproto   Run the compiled Go helper tests"
 	@echo "  snapshot-check             Diff every Jinja render against tests/snapshot/golden/"
@@ -1161,12 +1163,31 @@ test-xhttp-endpoint-contract:
 	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest \
 	  tests/unit/test_xhttp_endpoint_contract_native.py --fail-on-skip -v
 
+.PHONY: test-awg-dualstack-runtime
+test-awg-dualstack-runtime:
+	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 && test "$${TRANSPORT_NATIVE_ISOLATED:-}" = 1 || { echo "AWG dual-stack tests require an owned isolated Linux root environment" >&2; exit 1; }
+	@set -eu; \
+	  native_tmp=$$(mktemp -d /var/tmp/ripdpi-awg-native.XXXXXXXX); \
+	  trap 'rm -rf "$$native_tmp"' EXIT; \
+	  env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest \
+	    tests/unit/test_awg_dualstack_native.py tests/unit/test_awg_activation_native.py \
+	    --basetemp "$$native_tmp" --fail-on-skip -v -s
+
+# These inputs are inherited environment data; recipe expansion never evaluates them.
+.PHONY: verify-awg-dualstack-client-evidence
+verify-awg-dualstack-client-evidence:
+	@test -n "$${PEER_ROOT:-}" && test -n "$${AWG_CLIENT_EVIDENCE:-}" && test -n "$${AWG_CLIENT_NONCE:-}" && test -n "$${AWG_CLIENT_SOURCE_SHA:-}" || { echo "Set PEER_ROOT, AWG_CLIENT_EVIDENCE, AWG_CLIENT_NONCE and AWG_CLIENT_SOURCE_SHA in the environment" >&2; exit 1; }
+	python3 "$${PEER_ROOT}/scripts/tests/validate-android-awg-interop.py" \
+	  --evidence "$${AWG_CLIENT_EVIDENCE}" --nonce "$${AWG_CLIENT_NONCE}" --source-sha "$${AWG_CLIENT_SOURCE_SHA}"
+
 test-native-runtime:
 	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 || { echo "native runtime tests require a disposable Linux root environment" >&2; exit 1; }
 	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ -m native_runtime \
 	  --ignore=tests/unit/test_transport_runtime_acceptance_native.py \
 	  --ignore=tests/unit/test_xhttp_endpoint_contract_native.py \
-	  --ignore=tests/unit/test_awg_device_binding_native.py --fail-on-skip -v
+	  --ignore=tests/unit/test_awg_device_binding_native.py \
+	  --ignore=tests/unit/test_awg_dualstack_native.py \
+	  --ignore=tests/unit/test_awg_activation_native.py --fail-on-skip -v
 
 test-probe-matrix-mtproto:
 	cd tools/probe-matrix-mtproto && go test -mod=readonly -count=1 -v -timeout=2m -p=2 ./...
@@ -1484,7 +1505,7 @@ sub-reads:
 client-drift:
 	@test -n "$${CLIENT:-}" || { echo "usage: make client-drift CLIENT=phone"; exit 1; }
 	SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" ENV=$(ENV) \
-	./scripts/client-drift.py "$${CLIENT}"
+	./scripts/client-drift.py -- "$${CLIENT}"
 
 test-tls-policing:
 	@test -n "$(HOST)" || { echo "usage: make test-tls-policing HOST=vpn.example.com [STEPS=1,4,8,12,16,24]"; exit 1; }

@@ -44,9 +44,10 @@ def test_recorded_two_to_one_rename_and_repeated_disable_preserve_foreign_unit(
         for task in selections
         if task["name"] == "Select obsolete recorded AmneziaWG instances"
     )
+    transaction = next(task for task in yaml.safe_load((ROLE / "tasks/configure.yml").read_text()) if "block" in task)
     publish = next(
         task
-        for task in selections
+        for task in transaction["block"]
         if task["name"] == "Record the converged AmneziaWG instance ownership set"
     )
 
@@ -59,9 +60,9 @@ def test_recorded_two_to_one_rename_and_repeated_disable_preserve_foreign_unit(
             timeout=10,
         )
 
-    def converge(previous, current):
+    def converge(previous, current, previous_configs=None):
         record.write_text(
-            json.dumps({"schema": 1, "config_dir": str(configs), "instances": previous})
+            json.dumps({"schema": 1, "config_dir": str(previous_configs or configs), "instances": previous})
         )
         record.chmod(0o600)
         play = [
@@ -73,6 +74,7 @@ def test_recorded_two_to_one_rename_and_repeated_disable_preserve_foreign_unit(
                     "ansible_become": False,
                     "ansible_python_interpreter": sys.executable,
                     "amneziawg_config_dir": str(configs),
+                    "_awg_configuration_owns_lifecycle": True,
                     "_awg_instances": [{"name": name} for name in current],
                 },
                 "tasks": [
@@ -121,6 +123,15 @@ def test_recorded_two_to_one_rename_and_repeated_disable_preserve_foreign_unit(
         assert ctl("is-active", units[1], check=False).returncode != 0
         assert ctl("is-enabled", units[1], check=False).stdout.strip() == "disabled"
         assert not (configs / (b + ".conf")).exists(), output
+        old_configs = tmp_path / "previous-configs"
+        old_configs.mkdir()
+        old_path = old_configs / (a + ".conf")
+        old_path.write_text("previous owned configuration\n")
+        output = converge([a], [a], previous_configs=old_configs)
+        assert not old_path.exists(), output
+        assert (configs / (a + ".conf")).exists()
+        assert ctl("is-active", units[0]).stdout.strip() == "active"
+        assert ctl("is-enabled", units[0]).stdout.strip() == "enabled"
         converge([a], [c])
         assert ctl("is-active", units[0], check=False).returncode != 0
         assert not (configs / (a + ".conf")).exists()
@@ -157,6 +168,7 @@ def test_recorded_two_to_one_rename_and_repeated_disable_preserve_foreign_unit(
                         "vars": {
                             "ansible_python_interpreter": sys.executable,
                             "amneziawg_config_dir": str(configs),
+                    "_awg_configuration_owns_lifecycle": True,
                             "amneziawg_role_enabled": False,
                         },
                         "roles": [{"role": "amneziawg"}],

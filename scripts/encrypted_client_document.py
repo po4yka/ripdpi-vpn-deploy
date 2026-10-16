@@ -40,14 +40,22 @@ class CommittedPublication(OSError):
         self.metadata = metadata
 
 
+class ExternalPublicationUncertain(OSError):
+    """External mutation started; reconcile it with local authority before retry."""
+
+
 def operate(path, transform, *, runner=run_sops, before_publish=None):
+    """Callbacks receive a marker to call before attempting external mutation."""
     publication = {}
     try:
         return _operate(path, transform, runner=runner, before_publish=before_publish,
                         publication=publication)
-    except Exception as error:
+    except BaseException as error:
+        # Interruption cannot undo a remote write or a committed local rename.
         if "committed" in publication:
             raise CommittedPublication(publication["committed"]) from error
+        if publication.get("external_started"):
+            raise ExternalPublicationUncertain("external-publication-uncertain") from error
         raise
 
 
@@ -113,8 +121,14 @@ def _operate(path, transform, *, runner, before_publish, publication):
             if (identity(os.stat(temporary, follow_symlinks=False)) != identity(candidate_info)
                     or identity(os.fstat(candidate)) != identity(candidate_info)):
                 raise ValueError("private-candidate-changed")
-            if before_publish is not None:
-                before_publish()
+        # An unchanged encrypted document still has a verified, locked source;
+        # delivery callbacks must run even for an idempotent refresh.
+        def mark_external_started():
+            publication["external_started"] = True
+
+        if before_publish is not None:
+            before_publish(mark_external_started)
+        if temporary is not None:
             os.replace(temporary, path)
             publication["committed"] = metadata
             temporary = None

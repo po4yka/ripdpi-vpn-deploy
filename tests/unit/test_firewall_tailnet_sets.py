@@ -363,7 +363,7 @@ def test_existing_tailnet_fragment_is_preserved_only_when_safe_and_schema_valid(
     )
     assert "ipaddress.ip_network" in tasks_text
     assert "fragment bytes are not canonical" in tasks_text
-    task_names = [task["name"] for task in tasks]
+    task_names = [entry["name"] for task in tasks for entry in task.get("block", [task])]
     assert (
         task_names.index("Install approved Tailnet SSH sets fragment when absent")
         < task_names.index(

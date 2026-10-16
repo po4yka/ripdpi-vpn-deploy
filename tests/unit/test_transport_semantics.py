@@ -26,7 +26,7 @@ def awg():
             "address_v6": "fd42:42:42::1/64", "server_private_key": key(1), "jc": 4, "jmin": 40, "jmax": 70,
             "s1": 50, "s2": 100, "h1": 11, "h2": 12, "h3": 13, "h4": 14,
             "peers": [{"name": "device", "public_key": key(2), "preshared_key": key(3),
-                       "allowed_ips": "10.66.66.2/32"}]}
+                       "allowed_ips": {"ipv4": "10.66.66.2/32", "ipv6": "fd42:42:42::2/128"}}]}
 
 
 @pytest.mark.parametrize("refs", [None, [], ["device", "device"], ["missing"], [None], [{"secret": "marker"}]])
@@ -78,11 +78,11 @@ def test_effective_interface_name_uses_runtime_grammar(name):
 def test_peer_claim_and_key_relationship_failures(mutation):
     raw = awg()
     peer = copy.deepcopy(raw["peers"][0])
-    peer.update(name="other", public_key=key(4), preshared_key=key(5), allowed_ips="10.66.66.3/32")
+    peer.update(name="other", public_key=key(4), preshared_key=key(5), allowed_ips={"ipv4": "10.66.66.3/32", "ipv6": "fd42:42:42::3/128"})
     if mutation == "address":
-        peer["allowed_ips"] = "10.66.66.2/32"
+        peer["allowed_ips"]["ipv4"] = "10.66.66.2/32"
     elif mutation == "prefix":
-        peer["allowed_ips"] = "10.66.66.0/24"
+        peer["allowed_ips"]["ipv4"] = "10.66.66.0/24"
     elif mutation == "key-shape":
         peer["public_key"] = "private-marker"
     elif mutation == "key-roles":
@@ -97,18 +97,18 @@ def test_peer_claim_and_key_relationship_failures(mutation):
 
 def test_explicit_routed_prefix_is_legal_but_colliding_device_is_not():
     raw = awg()
-    raw["peers"][0].update(address_kind="routed", allowed_ips="10.77.0.0/24")
+    raw["peers"][0].update(address_kind="routed", allowed_ips={"ipv4": "10.77.0.0/24"})
     assert not awg_errors({"instances": [raw]})
     raw["peers"].append({"name": "other", "public_key": key(4), "preshared_key": key(5),
-                         "allowed_ips": "10.77.0.2/32"})
+                         "address_kind": "routed", "allowed_ips": {"ipv4": "10.77.0.2/32", "ipv6": "fd42:77::2/128"}})
     assert any("conflicting" in message for _, message in awg_errors({"instances": [raw]}))
 
 
 def test_distinct_multi_instances_accept_the_same_effective_validation():
     first = {**awg(), "name": "awg-first", "listen_port": 51900}
     second = copy.deepcopy(first)
-    second.update(name="awg-second", listen_port=51901, server_private_key=key(6), address_v4="10.77.0.1/24")
-    second["peers"][0].update(name="other", public_key=key(4), preshared_key=key(5), allowed_ips="10.77.0.2/32")
+    second.update(name="awg-second", listen_port=51901, server_private_key=key(6), address_v4="10.77.0.1/24", address_v6="fd42:77::1/64")
+    second["peers"][0].update(name="other", public_key=key(4), preshared_key=key(5), allowed_ips={"ipv4": "10.77.0.2/32", "ipv6": "fd42:77::2/128"})
     assert not awg_errors({"instances": [first, second]})
     second["peers"][0]["allowed_ips"] = first["peers"][0]["allowed_ips"]
     assert awg_errors({"instances": [first, second]})
@@ -199,7 +199,7 @@ def test_actual_controller_preflight_preserves_before_mutation_and_check_mode(tm
 @pytest.mark.parametrize("prefix", [1, True, ["sensitive-marker"], {"sensitive-marker": True}])
 def test_peer_cidr_types_refuse_before_native_render(prefix):
     raw = awg()
-    raw["peers"][0]["allowed_ips"] = prefix
+    raw["peers"][0]["allowed_ips"]["ipv4"] = prefix
     errors = awg_errors({"instances": [raw]})
     assert errors and "sensitive-marker" not in json.dumps(errors)
 

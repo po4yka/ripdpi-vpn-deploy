@@ -14,6 +14,34 @@
 
 ## Design decisions
 
+AWG onboarding fixtures use an HTTPS hostname so the real dual-family probe
+validator admits the positive path. Rotation tests follow the canonical
+configuration transaction and its private loops; the removed restart handler
+cannot stand in for complete failure compensation. Native CI coverage includes
+the dedicated dual-stack lane alongside binding and general runtime targets.
+
+Tagged deployment and AWG rotation execute the same real listener admission;
+mismatched or missing provider contracts must refuse before a mutation sentinel.
+AWG rotation publishes canonical firewall claims before the complete peer
+role lifecycle and retains prior firewall authority through refusal.
+Exact-node fixtures execute only the node/environment play heads; separate
+listener admission regressions cover positive, mismatch and check-mode paths.
+
+AWG failure tests change both peer claims and MTU, publish the real canonical
+firewall candidate, then verify real nft restoration before authenticated prior
+traffic resumes. The nft adapter only enters the owned network namespace. Adapters must be
+executable before any mutation, because PATH lookup skips a noexec mount and
+could otherwise select the global nft binary. The canonical AWG target owns
+private executable scratch under /var/tmp and removes it on exit.
+
+The AWG dual-stack native lane uses exact pinned AWG TUN peers and the complete
+canonical nftables render. Its owned namespaces exercise nondefault and multiple
+instances, constrained MTU, DNS A/AAAA, bidirectional TCP/UDP, source spoofing,
+cross-instance denial, revocation and native fallback denial. Measured counters
+and traffic distinguish that Linux proof from Android emulator/native-core,
+physical-client and fleet acceptance.
+
+
 Runtime publisher tests verify retained directory descriptors remain valid
 inside normal and predictive transactions and close after success, exceptions,
 interrupts and failed entry or lock acquisition.
@@ -149,6 +177,9 @@ Xray/Hysteria roles under staging and invokes their guarded activation once.
 Changed units, configs and TLS authority retain validate/snapshot/rollback
 ordering. Actual localhost publication plus handler flush cannot dispatch a
 second frontend restart; native role scenarios retain final readiness proof.
+AWG rotation source checks follow the complete firewall/role lifecycle. Actual
+Ansible listener admission covers both callers, matching and missing/drifted
+contracts, disabled/subscription selection and check mode before mutation.
 
 Native normalizer recovery also retains live authenticated TCP and UDP controls when killing the process. Both accepted TCP tuples must enter TIME_WAIT before one immediate restart with the original readiness deadline; fresh public TCP/UDP and zero forbidden contacts remain required. Closed-probe recovery alone cannot establish listener rebinding under active traffic. UDP tuple quarantine and gateway generation reset retain their separate authority.
 
@@ -383,6 +414,12 @@ Runtime acceptance has a separate canonical-role Linux lab. It uses exact checks
 
 **Native acceptance fixture authority** — Runtime acceptance tests use actual checksum-pinned clients, owned TLS peers and Linux systemd/network namespaces. Real SIGKILL tests run the publisher in a separate process and require authenticated positive forwarding after recovery. Canonical role fixtures keep only source inputs from the render fixture; computed runtime paths and numeric identity projections must not override real role discovery.
 
+AWG reconnect fixtures restore the same tunnel identities and both default routes after Linux link-down removes IPv6 addresses and routes. Server-compensation probes preserve the original client session and allow the pinned protocol's 15-second handshake recovery plus TCP retransmission within one bounded socket invocation.
+Constrained-path acceptance observes the initial connection and three subsequent
+reconnects for every member and both families.
+Revocation keeps the original IPv4 and IPv6 UDP sockets open across claim removal
+and key removal, requiring positive echoes first and no datagram delivery afterward.
+
 Read-only sender admission is also executed through actual Ansible argv/stdin templating. Sender queue regression tests perform real private-file copies and in-place restoration across interruption checkpoints and partial cleanup; they assert historical bytes, original root inode, no-follow authority, exact backup identities and fail-before-mutation admission. Service mocks are portable orchestration evidence only. The enabled native Molecule scenario requires the exact historical nonce and pre-cutover timestamp to reach the authenticated receiver after an actual rejected candidate.
 
 ## Pitfalls
@@ -471,3 +508,19 @@ without group/world write permissions. A disposable runner may start with
 it in cleanup. Production retirement validation keeps rejecting unsafe ancestry.
 
 Alerting regressions cross operator payloads into the real relay parser and renderer, and match exact send receipts. Lost canary responses and interrupted receipt writes must leave freshness absent while the next attempted sequence advances. A pinned real Prometheus receiver checks reordered queue batches without relaxing historical sample assertions.
+
+Client drift tests exercise real test-only SOPS/age documents and the shared
+in-memory renderer, including consumed and unrelated edits, exact canonical
+delivery, refresh expiry, lost/rotated/malformed authority, unsafe file types,
+and encryption-failure preservation. Endpoint lookup and remote publication
+are isolated, so this evidence does not claim live fleet delivery. Copied
+emitter fixtures must include the Python renderer and its shared dependencies
+and explicitly establish private source modes.
+
+Delivery failures exercise actual isolated writes before failed acknowledgements,
+local replacement/sync failure and interruption, including unchanged refresh.
+Require reconciliation diagnostics after external mutation starts; preflight
+refusal retains the ordinary error and the prior encrypted authority.
+The canonical delivered bundle must validate against the published dual-stack
+schema. Real encrypted drift cases change each address family and MTU; missing
+families, scalar claims and out-of-range MTU stay unknown without publication.

@@ -182,6 +182,12 @@ def test_transport_selector_is_unique_and_enters_disable_before_input_guard(role
     entry = yaml.safe_load(
         (ROOT / "ansible/roles" / role / "tasks/main.yml").read_text()
     )
+    assert len(entry) == 1
+    if role == "amneziawg":
+        recovery = entry[0]["rescue"]
+        assert recovery[0]["ansible.builtin.import_tasks"].endswith("firewall/tasks/awg-restore.yml")
+        assert recovery[-1]["ansible.builtin.fail"]["msg"] == "awg-runtime-activation-failed"
+        entry = entry[0]["block"]
     assert len(entry) == 1 and variable in entry[0]["ansible.builtin.include_tasks"]
     assert (ROOT / "ansible/roles" / role / "tasks/disable.yml").exists()
 

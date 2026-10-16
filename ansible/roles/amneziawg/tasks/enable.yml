@@ -9,6 +9,11 @@
   vars:
     transport_input_sections: [awg]
 
+- name: Admit AmneziaWG uplink before runtime mutation
+  ansible.builtin.import_tasks: "{{ role_path }}/../firewall/tasks/awg-uplink.yml"
+  vars:
+    awg_uplink_required: true
+
 - name: Pre-flight - AmneziaWG source refs and commits are pinned
   ansible.builtin.assert:
     that:
@@ -212,9 +217,6 @@
          else (_awg_previous.instances | difference(_awg_instances | map(attribute='name') | list)) }}
   no_log: true
 
-- name: Retire obsolete AmneziaWG interfaces before activating current members
-  ansible.builtin.import_tasks: retire-instances.yml
-
 # Forward guard: the role does not emit S3/S4 today, but a future cohort or
 # instance author might add them. Non-zero S3/S4 trigger an H4 transport-header
 # byte misalignment in awg-go on arm64 Android (amneziawg-go#110) that SILENTLY
@@ -249,67 +251,7 @@
     - Reload systemd
     - Restart amneziawg
 
-- name: Render AmneziaWG interface configs
-  ansible.builtin.template:
-    src: awg0.conf.j2
-    dest: "{{ amneziawg_config_dir }}/{{ item.name }}.conf"
-    owner: root
-    group: root
-    mode: "0600"
-  no_log: true
-  diff: false
-  loop: "{{ _awg_instances }}"
-  loop_control:
-    label: "{{ item.name }}"
+- name: Activate complete AmneziaWG configurations transactionally
+  ansible.builtin.import_tasks: configure.yml
   vars:
-    _inst: "{{ item }}"
-  notify: Restart amneziawg
-
-- name: Inspect AmneziaWG unit before check-mode activation
-  ansible.builtin.stat:
-    path: /etc/systemd/system/awg-quick@.service
-    follow: false
-  register: _awg_unit_before
-  changed_when: false
-  when: ansible_check_mode
-
-- name: Require planned AmneziaWG unit on a fresh check-mode host
-  ansible.builtin.assert:
-    that:
-      - _awg_unit_plan.changed
-    fail_msg: Check mode found no AmneziaWG unit and no planned installation.
-  when:
-    - ansible_check_mode
-    - not (_awg_unit_before.stat.exists | default(false))
-
-- name: Enable and start awg-quick@<iface> for every instance
-  ansible.builtin.systemd_service:
-    name: "awg-quick@{{ item.name }}"
-    enabled: true
-    state: started
-    daemon_reload: true
-  loop: "{{ _awg_instances }}"
-  loop_control:
-    label: "{{ item.name }}"
-  no_log: true
-  when: not ansible_check_mode or _awg_unit_before.stat.exists | default(false)
-
-- name: Apply queued AmneziaWG activation before committing ownership
-  ansible.builtin.meta: flush_handlers
-
-- name: Publish private AmneziaWG ownership directory
-  ansible.builtin.file:
-    path: /var/lib/ripdpi/amneziawg
-    state: directory
-    owner: root
-    group: root
-    mode: "0700"
-
-- name: Record the converged AmneziaWG instance ownership set
-  ansible.builtin.copy:
-    dest: /var/lib/ripdpi/amneziawg/instances.json
-    content: "{{ {'schema': 1, 'config_dir': amneziawg_config_dir, 'instances': _awg_instances | map(attribute='name') | list} | to_json }}"
-    owner: root
-    group: root
-    mode: "0600"
-  no_log: true
+    _awg_configuration_owns_lifecycle: true
