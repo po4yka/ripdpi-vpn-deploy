@@ -655,6 +655,8 @@ Independent controller homes are not a supported shared-ownership mechanism.
 - **Never run raw Terraform from an operator script** — it silently uses the active workspace. Set `PROVIDER` and `ENV` on `terraform-env.sh` instead.
 - **Galaxy drift lookups read only their temp install** — `ansible-galaxy collection list --collections-path <tmp>` also reports the configured default paths such as `~/.ansible/collections`, listed first. `check-ansible-galaxy-updates.py` must select the entry keyed by the resolved temp `ansible_collections` dir (macOS `/tmp` is a symlink); taking the first match reports an operator's stale local copy as latest and passes outdated pins. CI runners have no default collections, so only the manual review on operator machines exposes a regression.
 - **Active REALITY target monitoring is filtered-vantage only.** `monitor-reality-target.sh` rejects an absent or `unfiltered` vantage, resolves the active target through the canonical secrets gate, and persists only a target fingerprint plus technical IP/ASN/prefix observations. It requires two consecutive unhealthy runs before notifying and never edits SOPS or invokes deployment actions.
+  Match captured TLS markers in the shell: an early pipeline reader can SIGPIPE
+  a still-writing producer under `pipefail`, falsely reporting a healthy path as blocked.
 - **Burn-check textfile state is fail-loud** — `burn-check.sh` rewrites its
   Prometheus textfile from an EXIT trap. An external API failure removes stale
   reachability series and raises API-error plus incomplete-run gauges; a

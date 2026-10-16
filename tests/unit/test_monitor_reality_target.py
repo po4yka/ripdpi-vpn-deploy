@@ -83,6 +83,7 @@ printf '%s | %s | %s | XX | registry | 2020-01-01 | PRIVATE-ORG\\n' "$asn" "$ip"
     printf '%s\\n' 'CONNECTED' '-----BEGIN CERTIFICATE-----' 'TESTCERT' '-----END CERTIFICATE-----'
     if [ "${FAIL_H2:-0}" = 1 ]; then echo 'ALPN protocol: http/1.1'; else echo 'ALPN protocol: h2'; fi
     [ "${FAIL_VERIFY:-0}" = 1 ] && exit 1
+    [ "${LARGE_TLS_TRANSCRIPT:-0}" = 1 ] && printf '%262144s\\n' ''
     exit 0
     ;;
   x509)
@@ -136,6 +137,7 @@ printf '204'""",
         "FAIL_SAN",
         "FAIL_TLS_IP",
         "FAIL_VERIFY",
+        "LARGE_TLS_TRANSCRIPT",
         "SOPS_FAIL",
         "WHOIS_ASN",
         "WHOIS_FAIL",
@@ -382,6 +384,16 @@ def test_dns_and_asn_lookup_failures_are_unknown(monitor_env):
     asn = _report(_run(monitor_env))
     assert asn["verdict"] == "unknown"
     assert "asn_lookup_failed" in asn["reason_codes"]
+
+
+@pytest.mark.parametrize("lookup_failure,verdict", [(False, "ok"), (True, "unknown")])
+def test_large_tls_transcript_retains_healthy_transport_classification(monitor_env, lookup_failure, verdict):
+    monitor_env["LARGE_TLS_TRANSCRIPT"] = "1"
+    if lookup_failure:
+        monitor_env["WHOIS_FAIL"] = "1"
+    report = _report(_run(monitor_env))
+    assert report["verdict"] == verdict
+    assert report["reason_codes"] == (["asn_lookup_failed"] if lookup_failure else [])
 
 
 def test_first_later_healthy_run_establishes_baseline(monitor_env):

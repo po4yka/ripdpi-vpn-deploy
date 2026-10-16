@@ -177,3 +177,88 @@ def test_retirement_tolerates_only_exited_process_namespace(tmp_path, monkeypatc
         with pytest.raises(error):
             namespace.retire()
         assert commands == [] and publications == []
+
+
+@pytest.mark.parametrize("outcome", ["gone", "persistent", "replacement", "alias", "host-probe", "namespace-probe", "delete-oserror"])
+def test_retirement_accepts_only_verified_concurrent_veth_disappearance(tmp_path, monkeypatch, outcome):
+    spec = importlib.util.spec_from_file_location("warp_retirement_race", ROLE / "files/namespace.py")
+    namespace = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(namespace)
+    owned = tmp_path / "namespace"
+    owned.touch()
+    monkeypatch.setattr(namespace, "NSFILE", owned)
+    monkeypatch.setattr(namespace, "inspect", lambda: {"present": True, "record": {"schema": 2}})
+    monkeypatch.setattr(namespace, "Path", lambda path: SimpleNamespace(iterdir=lambda: iter([])))
+    publications = []
+    deleting = False
+
+    def command(argv):
+        nonlocal deleting
+        if argv == ["ip", "netns", "delete", namespace.NAMESPACE]:
+            owned.unlink()
+            if outcome == "replacement":
+                owned.touch()
+            elif outcome == "alias":
+                owned.symlink_to(tmp_path / "missing")
+            return ""
+        if argv == ["ip", "link", "delete", namespace.HOST]:
+            deleting = True
+            if outcome == "delete-oserror":
+                raise PermissionError("delete-denied")
+            raise namespace.Refusal("namespace-command-failed")
+        return json.dumps([{"ifname": "lo"}, {"ifname": namespace.PEER}])
+
+    def link(name):
+        assert name == namespace.HOST
+        if deleting and outcome == "host-probe":
+            raise namespace.Refusal("kernel-probe-failed")
+        return {"ifindex": 42} if not deleting or outcome == "persistent" else None
+
+    if outcome == "namespace-probe":
+        def denied():
+            raise PermissionError("namespace-probe-denied")
+        monkeypatch.setattr(namespace, "NSFILE", SimpleNamespace(stat=owned.stat, lstat=denied))
+    monkeypatch.setattr(namespace, "command", command)
+    monkeypatch.setattr(namespace, "link", link)
+    monkeypatch.setattr(namespace, "publish", lambda path, value: publications.append(value))
+    if outcome == "gone":
+        assert namespace.retire() is True
+        assert publications == [{"schema": 2, "unit": "warp-svc.service", "namespace_inode": None,
+                                 "host_ifindex": None, "peer_ifindex": None}]
+    else:
+        error = PermissionError if outcome in {"namespace-probe", "delete-oserror"} else namespace.Refusal
+        reason = "kernel-probe-failed" if outcome == "host-probe" else None
+        with pytest.raises(error, match=reason):
+            namespace.retire()
+        assert publications == []
+
+
+def test_prepare_compensation_preserves_original_failure_after_veth_disappears(tmp_path, monkeypatch):
+    spec = importlib.util.spec_from_file_location("warp_prepare_race", ROLE / "files/namespace.py")
+    namespace = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(namespace)
+    owned = tmp_path / "namespace"
+    monkeypatch.setattr(namespace, "NSFILE", owned)
+    monkeypatch.setattr(namespace, "STATE", tmp_path / "state.json")
+    monkeypatch.setattr(namespace, "inspect", lambda: {"present": False, "record": None})
+    monkeypatch.setattr(namespace, "publish", lambda path, value: None)
+    host_present = True
+    monkeypatch.setattr(namespace, "link", lambda name: {"ifindex": 42} if host_present else None)
+
+    def command(argv):
+        nonlocal host_present
+        if argv == ["ip", "netns", "add", namespace.NAMESPACE]:
+            owned.touch()
+        elif argv == ["ip", "link", "set", namespace.PEER, "netns", namespace.NAMESPACE]:
+            raise namespace.Refusal("prepare-failed")
+        elif argv == ["ip", "netns", "delete", namespace.NAMESPACE]:
+            owned.unlink()
+        elif argv == ["ip", "link", "delete", namespace.HOST]:
+            host_present = False
+            raise namespace.Refusal("namespace-command-failed")
+        return ""
+
+    monkeypatch.setattr(namespace, "command", command)
+    with pytest.raises(namespace.Refusal, match="prepare-failed"):
+        namespace.prepare()
+    assert not owned.exists() and not host_present
