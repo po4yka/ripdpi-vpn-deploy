@@ -18,7 +18,7 @@ prior external scopes are explicitly superseded through their terminal lifecycle
 - Reuse each existing domain capability path and stable requirement ID. Keep source and real-runtime evidence distinct; the new task cannot close until the accepted local behavior passes.
 - Compose complete native regressions and all named four-protocol suites through `make transport-native-acceptance`. Run complete runtime transactions in a separate fresh systemd root to preserve foreign-authority refusal.
 - Use actual pinned engines and synthetic private authority inside owned Linux network namespaces/TUN. Canonical emitters and adapters remain the data path; fixture DNS, peers and certificates terminate real traffic locally.
-- Bind XHTTP mode and bounded XMUX fields to the exact verified engine. Preserve primary and alternate results independently; working fallback never conceals a degraded endpoint.
+- Bind XHTTP mode and typed bounded-pool controls to the exact verified engine. Preserve primary and alternate results independently; working fallback never conceals a degraded endpoint.
 - Keep trusted TLS/SAN validation and matching Salamander/ECH settings. Bound resolver, handshake, HTTP, notification and cleanup owners; refuse excessive or malformed input before authority publication.
 - Keep existing guarded runtime recovery, no-leak policy and immutable admission/rollback rules. Unknown release/advisory eligibility continues to block promotion; local execution does not claim deployment eligibility.
 - Archive maintenance relocates only links to owned change documents. Superseded records retain their original close receipt; validation checks the exact link projection from the archive’s reachable terminal source. Repeated archive invocation preserves lifecycle timestamps and spec state.
@@ -43,7 +43,7 @@ prior external scopes are explicitly superseded through their terminal lifecycle
 ## Migration Plan
 
 Canonical RIPDPI-format XHTTP payloads now require explicit mode and preserve
-selected bounded XMUX settings. Update all owned adapters and regenerate local
+selected exact-engine bounded-pool settings. Update all owned adapters and regenerate local
 artifacts together; do not add compatibility shims. Existing operator material
 remains untouched. Complete local source and native validation, commit review
 with exact evidence, archive the completed local change and commit its terminal

@@ -15,17 +15,19 @@ from test_xhttp_endpoint_contract_native import fixture, exported_outbound, publ
 pytestmark = pytest.mark.native_runtime
 
 
-@pytest.mark.parametrize("mode", ["auto", "packet-up", "stream-up"])
-@pytest.mark.parametrize("xmux", [None, {"maxConnections": 2, "hMaxRequestTimes": 8, "hMaxReusableSecs": 2}])
-def test_delivered_endpoints_profiles_faults_and_rollback(mode, xmux):
+@pytest.mark.parametrize("mode,tuned", [("auto", False), ("packet-up", False), ("stream-up", False), ("stream-up", True)])
+def test_delivered_endpoints_profiles_faults_and_rollback(mode, tuned):
     assert os.geteuid() == 0 and os.environ.get("TRANSPORT_NATIVE_ISOLATED") == "1"
     stack = fixture.NativeStack()
     publication = Path("/var/lib/vpn-nginx-publication") / (stack.token + "-nginx.service")
     assert not publication.exists()
     try:
         stack.start()
-        stack.start_frontend("p1", fallback=True, mode=mode, xmux=xmux, alternate_name="alternate.example")
-        selected = [exported_outbound(stack, alternate=alternate) for alternate in (False, True)]
+        stack.start_frontend("p1", fallback=True, xhttp_mode=mode, fallback_hostname="alternate.example")
+        if tuned:
+            stack.values["xray"]["xhttp_tuning"] = dict(profile="bounded-pool", max_connections=2)
+        xmux = {"maxConnections": 2, "hMaxRequestTimes": 0, "hMaxReusableSecs": 0, "cMaxReuseTimes": 0} if tuned else None
+        selected = [exported_outbound(stack, endpoint, native=True) for endpoint in ("primary", "alternate")]
         assert [o["streamSettings"]["tlsSettings"]["serverName"] for o in selected] == ["owned.example", "alternate.example"]
         metrics = []
         for alternate, outbound in enumerate(selected):

@@ -15,7 +15,7 @@ import yaml
 from awg_client import export as awg_export, host_context
 from awg_device_binding import resolve_binding
 from encrypted_client_document import MAX_BYTES, private_file, identity
-from transport_semantics import transport_errors
+from transport_semantics import transport_errors, xhttp_endpoints, xhttp_tuning
 from fleet_inspection import bounded_command, InspectionError
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -80,7 +80,7 @@ def options(format, *, hosts=None, cohorts=None, awg_host=None, expires='', utls
 
 def validate_options(o):
     if (not isinstance(o, dict) or set(o) != {'format', 'hosts', 'cohorts', 'awg_host', 'expires', 'utls'}
-            or o['format'] not in ('singbox', 'ripdpi') or not isinstance(o['hosts'], list) or not o['hosts']
+            or o['format'] not in ('singbox', 'ripdpi', 'xray') or not isinstance(o['hosts'], list) or not o['hosts']
             or any(not isinstance(h, str) or not HOST.fullmatch(h) for h in o['hosts'])
             or not isinstance(o['cohorts'], list) or (o['cohorts'] and len(o['cohorts']) != len(o['hosts']))
             or any(not isinstance(c, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,62}', c) for c in o['cohorts'])
@@ -137,6 +137,10 @@ def materialize(client, o, **kwargs):
 
 def _materialize(client, o, *, documents=None, source_paths=None, private_only=False, per_app_bypass='', per_app_via_tun='', extended=False, xhttp_only=False):
     validate_options(o)
+    if o['format'] == 'xray' and (per_app_bypass or per_app_via_tun or o['expires']):
+        raise ValueError('unsupported-native-xhttp-options')
+    if extended and o['format'] != 'ripdpi':
+        raise ValueError('bundle requires RIPDPI format')
     if xhttp_only and (o['format'] != 'ripdpi' or extended):
         raise ValueError('--xhttp-only requires --profile-format ripdpi')
     if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', client):
@@ -164,13 +168,13 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
         if errors:
             raise ValueError('invalid-transport-input')
         vpn = c.get('vpn', {})
-        enabled = lambda key, default=False: vpn.get(key, default) and (not xhttp_only or key == 'enable_nginx_xhttp')
+        enabled = lambda key, default=False: vpn.get(key, default) and (not (xhttp_only or o['format'] == 'xray') or key == 'enable_nginx_xhttp')
         awg_enabled |= enabled('enable_amneziawg')
         tag = provider + '-' + environment
         fp = o['utls'] or c.get('xray_utls_fingerprint', 'chrome')
         x = d.get('xray', {})
         selected = [v for v in x.get('clients', []) if v.get('name') == client]
-        if enabled('enable_xray_reality', True) or (o['format'] == 'ripdpi' and enabled('enable_nginx_xhttp', True)):
+        if enabled('enable_xray_reality', True) or (o['format'] in ('ripdpi', 'xray') and enabled('enable_nginx_xhttp', True)):
             if len(selected) != 1:
                 raise ValueError('missing-selected-xray-client')
         credential = selected[0] if selected else {}
@@ -206,18 +210,23 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
                 elif shape['client_flow']:
                     reality['flow'] = shape['client_flow']
                 out.append(reality)
-        if o['format'] == 'ripdpi' and enabled('enable_nginx_xhttp', True):
-            frontend = {**c.get('nginx_xhttp', {}), **d['nginx_xhttp']}
-            endpoints = [('', c.get('nginx_xhttp_public_port', 443), required_text(frontend.get('server_name')))]
-            if frontend.get('fallback_enabled', False):
-                endpoints.append(('-alternate', c.get('nginx_xhttp_fallback_port', 2083),
-                                  required_text(frontend.get('fallback_server_name', frontend['server_name']))))
-            for suffix, port, server_name in endpoints:
-                transport = dict(type='xhttp', host=server_name, path=x.get('xhttp_path', '/app-sync'), mode=x.get('xhttp_mode', 'auto'))
-                if 'xhttp_xmux' in x:
-                    transport['xmux'] = dict(x['xhttp_xmux'])
-                out.append(dict(type='vless', tag='p1-xhttp-' + tag + suffix, server=ip, server_port=port, uuid=credential['uuid'],
-                                tls=dict(enabled=True, server_name=server_name, utls=dict(enabled=True, fingerprint=fp)), transport=transport))
+        if o['format'] in ('ripdpi', 'xray') and enabled('enable_nginx_xhttp', True):
+            mode = x.get('xhttp_mode', 'auto')
+            tuning = xhttp_tuning(x)
+            native = o['format'] == 'xray' or xhttp_only
+            if native and x.get('version') != 'v26.3.27':
+                raise ValueError('unsupported-native-xhttp-version')
+            # No unsupported field may silently disappear in a recipient importer.
+            if not native and (mode not in ('auto', 'stream-up') or tuning):
+                raise ValueError('unsupported-recipient-xhttp-mode')
+            for endpoint in xhttp_endpoints(d, c):
+                server_name = endpoint['host']
+                suffix = ':alternate' if endpoint['name'] == 'alternate' else ''
+                out.append(dict(type='vless', tag='p1-xhttp-' + tag + suffix, server=ip,
+                                server_port=endpoint['port'], uuid=credential['uuid'],
+                                tls=dict(enabled=True, server_name=server_name, utls=dict(enabled=True, fingerprint=fp)),
+                                transport=dict(type='xhttp', host=server_name, path=x.get('xhttp_path', '/app-sync'), mode=mode,
+                                               **({'xmux': tuning} if tuning else {}))))
         if enabled('enable_hysteria'):
             hy = d['hysteria']
             ech = hy.get('ech')
@@ -277,6 +286,27 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
                 bindings.append({**binding.identity, 'peer_public_key': binding.peer['public_key']})
     if not out and not (o['format'] == 'ripdpi' and awg_enabled):
         raise ValueError('no enabled outbounds resolved from Ansible profile toggles')
+    if o['format'] == 'xray':
+        # Each endpoint has its own local SOCKS listener. Native Xray has no
+        # recipient UI selector; routing pins each listener to exactly one path.
+        if len(out) > 16 or len({v['tag'] for v in out}) != len(out):
+            raise ValueError('invalid-native-xhttp-endpoint-set')
+        native_out, inbounds, rules = [], [], []
+        for index, outbound in enumerate(out):
+            transport, tls = outbound['transport'], outbound['tls']
+            tag = outbound['tag']
+            native_out.append(dict(protocol='vless', tag=tag, settings=dict(vnext=[dict(
+                address=outbound['server'], port=outbound['server_port'],
+                users=[dict(id=outbound['uuid'], encryption='none')])]), streamSettings=dict(
+                    network='xhttp', security='tls', tlsSettings=dict(serverName=tls['server_name'],
+                    allowInsecure=False, fingerprint=tls['utls']['fingerprint']),
+                    xhttpSettings={key: value for key, value in transport.items() if key != 'type'})))
+            inbounds.append(dict(tag=tag, listen='127.0.0.1', port=1080 + index,
+                                 protocol='socks', settings=dict(udp=False)))
+            rules.append(dict(type='field', inboundTag=[tag], outboundTag=tag))
+        return dict(log=dict(loglevel='warning'), inbounds=inbounds,
+                    outbounds=[dict(protocol='blackhole', tag='block'), *native_out],
+                    routing=dict(rules=rules)), []
     automatic = [v['tag'] for v in out if v['tag'] not in snell]
     if snell:
         out.append(dict(type='selector', tag='snell-evaluation', outbounds=snell, default=snell[0], interrupt_exist_connections=False))
@@ -304,14 +334,17 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('client')
-    parser.add_argument('--profile-format', choices=['sing-box', 'ripdpi'], default='sing-box')
+    parser.add_argument('--profile-format', choices=['sing-box', 'ripdpi', 'xray'], default='sing-box')
     parser.add_argument('--bundle', action='store_true')
     parser.add_argument('--xhttp-only', action='store_true')
     parser.add_argument('--per-app-bypass', default='')
     parser.add_argument('--per-app-via-tun', default='')
     args = parser.parse_args()
     try:
-        o = options('ripdpi' if args.bundle or args.profile_format == 'ripdpi' else 'singbox', expires=os.environ.get('BUNDLE_EXPIRES', ''))
+        if args.bundle and args.profile_format == 'xray':
+            raise ValueError('bundle requires RIPDPI format')
+        selected_format = 'ripdpi' if args.bundle else {'sing-box': 'singbox', 'ripdpi': 'ripdpi', 'xray': 'xray'}[args.profile_format]
+        o = options(selected_format, expires=os.environ.get('BUNDLE_EXPIRES', ''))
         payload, _ = materialize(args.client, o, per_app_bypass=args.per_app_bypass, per_app_via_tun=args.per_app_via_tun, extended=args.bundle, xhttp_only=args.xhttp_only)
         print(json.dumps(payload, indent=2))
         return 0

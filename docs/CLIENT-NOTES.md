@@ -16,8 +16,9 @@ Do not pair these artifacts with a PQE-enabled server inbound. Server-only enabl
 `address` list and removes the default cleartext local-DNS and
 private-network routes. It also uses typed DNS servers and route-level
 `sniff`/`hijack-dns` actions required by sing-box 1.13. The standard artifact
-contains P0 REALITY and P2 Hysteria2 only; P1 XHTTP is exclusive to
-`emit-bundle` because official sing-box does not implement that transport.
+contains P0 REALITY and P2 Hysteria2 only. P1 XHTTP is available through
+`emit-bundle` and the explicit `emit-xray` native format because official sing-box
+does not implement that transport. See [XHTTP delivery profiles](XHTTP-DELIVERY-PROFILES.md).
 Regenerate and redistribute existing profiles after upgrading.
 `--per-app-bypass` still emits an intentional non-lockdown profile, but
 `make check-killswitch BUNDLE=…` rejects that profile by design.
@@ -235,10 +236,10 @@ staging soak, reconnect checks and exact-generation rollback rehearsal.
 ## Direct XHTTP endpoint and tuning selection
 
 The RIPDPI-format producer emits a primary XHTTP outbound and an independently
-selectable `-alternate` outbound when the selected profile enables the alternate
-listener. Each uses its own effective port and TLS name. Mode and optional
-bounded XMUX settings flow unchanged into the exact Xray liveness adapter;
-nondefault controls require the verified `v26.3.27` engine. See
+selectable `:alternate` outbound when the selected profile enables the alternate
+listener. Each uses its own effective port and TLS name. Mode passes unchanged into the exact Xray adapter. Native Xray and monitoring
+output support the qualified `stream-up` bounded-pool profile on `v26.3.27`;
+RIPDPI export refuses fields its importer cannot consume. See
 [XHTTP delivery profiles](XHTTP-DELIVERY-PROFILES.md) for fields and limits.
 
 The local acceptance matrix exercises actual Xray processes, transfer, faults

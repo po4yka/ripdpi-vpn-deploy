@@ -14,7 +14,7 @@ not represented as passed. Existing taskctl evidence-transfer gates remain intac
 - Deliver isolated authenticated REALITY, direct XHTTP, Hysteria2 and AmneziaWG traffic, rejection, lifecycle and recovery behavior.
 - Deliver authoritative device and consumed-payload identity, interface-correct dual-stack forwarding, selectable XHTTP endpoints and typed tuning.
 - Deliver secure topology-aware probes, finite target validation and monitoring, eligible local runtime/parser adoption and compensation.
-- BREAKING: RIPDPI-format XHTTP transports carry explicit mode and optional bounded XMUX settings; adapters require exact material parity.
+- BREAKING: XHTTP exports carry explicit mode; native Xray and monitoring output support the exact qualified bounded-pool profile. RIPDPI export refuses fields its importer cannot consume.
 - Require real local Linux/systemd/TUN engines and complete source checks. Exclude external staging, physical/emulated recipients and production promotion from completion.
 
 ## Capabilities

@@ -7,6 +7,30 @@ endif
 .PHONY: workspace-status
 workspace-status:
 	@python3 scripts/workspace-status.py
+else ifneq ($(filter emit-xray,$(MAKECMDGOALS)),)
+ifneq ($(MAKECMDGOALS),emit-xray)
+$(error native Xray emission requires exactly one make goal)
+endif
+override XHTTP_CLIENT_LITERAL := $(value CLIENT)
+override XHTTP_HOSTS_LITERAL := $(value HOSTS)
+override XHTTP_COHORTS_LITERAL := $(value COHORTS)
+override XHTTP_SOPS_LITERAL := $(value SOPS_FILE)
+override XHTTP_SOPS_FILES_LITERAL := $(value SOPS_FILES)
+override XHTTP_SECRETS_LITERAL := $(value SECRETS_FILE)
+override XHTTP_PROVIDER_LITERAL := $(value PROVIDER)
+override XHTTP_ENV_LITERAL := $(value ENV)
+export XHTTP_CLIENT_LITERAL XHTTP_HOSTS_LITERAL XHTTP_COHORTS_LITERAL XHTTP_SOPS_LITERAL XHTTP_SOPS_FILES_LITERAL XHTTP_SECRETS_LITERAL XHTTP_PROVIDER_LITERAL XHTTP_ENV_LITERAL
+unexport CLIENT HOSTS COHORTS SOPS_FILE SOPS_FILES SECRETS_FILE PROVIDER ENV MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+.PHONY: emit-xray
+emit-xray:
+	@test -n "$${XHTTP_CLIENT_LITERAL:-}" || { echo "CLIENT=<name> required"; exit 1; }
+	@set -eu; \
+	  if test -n "$${XHTTP_SECRETS_LITERAL}"; then export VPN_SECRETS_FILE="$${XHTTP_SECRETS_LITERAL}"; fi; \
+	  HOSTS="$${XHTTP_HOSTS_LITERAL}" COHORTS="$${XHTTP_COHORTS_LITERAL}" \
+	  SOPS_FILE="$${XHTTP_SOPS_LITERAL}" SOPS_FILES="$${XHTTP_SOPS_FILES_LITERAL}" \
+	  PROVIDER="$${XHTTP_PROVIDER_LITERAL:-upcloud}" ENV="$${XHTTP_ENV_LITERAL:-prod}" \
+	  ./scripts/emit-singbox.sh "$${XHTTP_CLIENT_LITERAL}" --profile-format xray
 else ifneq ($(filter issue-hysteria-ech,$(MAKECMDGOALS)),)
 ifneq ($(words $(MAKECMDGOALS)),1)
 $(error ECH issuance requires exactly one make goal)
@@ -562,7 +586,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
 .PHONY: help init validate plan apply inventory wait decrypt require-inventory require-exact-node require-clean-source validate-ansible-extra-vars dry-run deploy tailnet-network-promote backup-configure deploy-canary os-maintenance verify source-drift security-verify security-audit clean \
         pre-deploy-check network-exposure-review \
         rollback-xray rollback-config rotate-credentials check-prereqs \
-        destroy backup-state burn-check diff-secrets emit-singbox emit-awg emit-bundle install-hooks \
+        destroy backup-state burn-check diff-secrets emit-singbox emit-xray emit-awg emit-bundle install-hooks \
         molecule-test smoke-test validate-target monitor-reality-target probe-sni-survival scan-targets blue-green \
         spot-check-secrets bootstrap-secrets probe-asn probe-matrix-control probe-matrix-cell probe-matrix-tools emit-probe-matrix-profile emit-qr check-certs \
         audit-permissions asn-drift check-ip-reputation issue-bootstrap naive-issue naive-revoke naive-readout \
@@ -666,6 +690,7 @@ help:
 	@echo "  promote-spare OTP=…        Consume OTP and swing traffic to GREEN_ENV"
 	@echo ""
 	@echo "── CLIENT / DELIVERY ──────────────────────────────────────────────────"
+	@echo "  emit-xray CLIENT=…         Native Xray P1 JSON (one loopback SOCKS listener per endpoint)"
 	@echo "  emit-singbox CLIENT=…      Official sing-box P0/P2 JSON (multi-host + cohort aware)"
 	@echo "  emit-awg CLIENT=…          AmneziaWG wg-quick .conf for a named peer"
 	@echo "  emit-bundle CLIENT=…       RIPDPI P0/P1/P2 JSON with ripdpi extension"
@@ -1178,11 +1203,14 @@ test-awg-device-binding-runtime:
 	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest \
 	  tests/unit/test_awg_device_binding_native.py --fail-on-skip -v
 
+.PHONY: test-xhttp-delivery-matrix
+test-xhttp-delivery-matrix: test-xhttp-endpoint-contract
+
 .PHONY: test-xhttp-endpoint-contract
 test-xhttp-endpoint-contract:
 	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 && test "$${TRANSPORT_NATIVE_ISOLATED:-}" = 1 || { echo "XHTTP endpoint tests require an owned isolated Linux root environment" >&2; exit 1; }
 	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest \
-	  tests/unit/test_xhttp_endpoint_contract_native.py --fail-on-skip -v
+	  tests/unit/test_xhttp_endpoint_contract_native.py --fail-on-skip -v -s
 
 .PHONY: test-awg-source-candidate
 test-awg-source-candidate:
@@ -1210,7 +1238,6 @@ verify-awg-dualstack-client-evidence:
 .PHONY: transport-native-acceptance test-topology-authenticated-probes test-xhttp-delivery-matrix
 transport-native-acceptance:
 	$(MAKE) test-native-runtime
-	$(MAKE) test-xhttp-endpoint-contract
 	$(MAKE) test-awg-device-binding-runtime
 	$(MAKE) test-awg-dualstack-runtime
 	$(MAKE) test-hysteria-ech-runtime

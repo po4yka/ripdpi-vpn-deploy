@@ -214,7 +214,7 @@ class NativeStack:
         self.short = secrets.token_hex(8)
         self.hys_password = "synthetic-native-hysteria-secret-" + secrets.token_hex(12)
 
-    def start_frontend(self, profile, *, primary_port=8443, path="/native-sync", fallback=False, mode="auto", xmux=None, alternate_name=None):
+    def start_frontend(self, profile, *, primary_port=8443, path="/native-sync", fallback=False, fallback_hostname="owned.example", xhttp_mode="auto"):
         values = self.values
         values["vpn"].update(enable_xray_reality=profile == "p0", enable_nginx_xhttp=profile == "p1",
                               enable_warp_outbound=False, enable_cascade_ingress=False)
@@ -232,9 +232,7 @@ class NativeStack:
         self.reality_password = fields["Password (PublicKey)"]
         values["xray"].update(target="192.0.2.90:8444", server_names=["owned.example"], reality_private_key=fields["PrivateKey"],
                               clients=[{"name": "native-device", "uuid": self.uuid, "short_id": self.short}],
-                              cohorts=[], xhttp_path=path, xhttp_mode=mode)
-        if xmux is not None:
-            values["xray"]["xhttp_xmux"] = xmux
+                              cohorts=[], xhttp_path=path, xhttp_mode=xhttp_mode)
         if profile in ("p0", "p1"):
             path = self.file("frontend.json", render_template(ROOT / "ansible/roles/xray/templates/config.json.j2", values), "x")
             listener = next(item for item in self.config["listeners"] if item["name"] == "direct_xray")
@@ -255,8 +253,8 @@ class NativeStack:
                                   "-cert", str(self.cert), "-key", str(self.key), "-quiet"])
         elif profile == "p1":
             values["nginx_xhttp"].update(server_name="owned.example", fallback_enabled=fallback)
-            if alternate_name:
-                values["nginx_xhttp"].update(fallback_server_name=alternate_name,
+            if fallback_hostname != "owned.example":
+                values["nginx_xhttp"].update(fallback_server_name=fallback_hostname,
                     fallback_cert_pem=self.cert.read_text(), fallback_key_pem=self.key.read_text())
             values["public_site_canonical_url"] = "https://owned.example" + ("" if primary_port == 443 else ":" + str(primary_port))
             self.ingress = self.library / "ingress"
@@ -276,9 +274,9 @@ class NativeStack:
             body = render_template(ROOT / "ansible/roles/nginx-xhttp/templates/site.conf.j2", values)
             body = body.replace("/etc/nginx/tls/owned.example.fullchain.pem", str(self.ingress / "certificate.pem")).replace(
                 "/etc/nginx/tls/owned.example.key", str(self.ingress / "private.pem")).replace("/var/log/nginx/", str(self.library) + "/")
-            if alternate_name:
-                body = body.replace("/etc/nginx/tls/" + alternate_name + ".fullchain.pem", str(self.ingress / "certificate.pem")).replace(
-                    "/etc/nginx/tls/" + alternate_name + ".key", str(self.ingress / "private.pem"))
+            if fallback_hostname != "owned.example":
+                body = body.replace("/etc/nginx/tls/" + fallback_hostname + ".fullchain.pem", str(self.ingress / "certificate.pem")).replace(
+                    "/etc/nginx/tls/" + fallback_hostname + ".key", str(self.ingress / "private.pem"))
             body = body.replace("/var/www/public-site", str(self.site))
             nginx = self.ingress / "nginx.conf"
             nginx.write_text("worker_processes 1;\npid " + str(self.library / "nginx.pid") +

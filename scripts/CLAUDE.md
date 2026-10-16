@@ -10,7 +10,14 @@ REALITY target validation uses the shared bounded process-session owner for DNS,
 
 A successful alternate retains usable transport delivery, while any non-ok endpoint variant makes the operator decision degraded; exact primary/alternate observations remain separate and do not create a rotation candidate by themselves.
 
-Canonical XHTTP materialization emits the enabled alternate with its own TLS identity and port. Mode and bounded XMUX connection/request/reuse limits pass unchanged into the exact Xray liveness adapter; official sing-box remains free of unsupported XHTTP.
+
+XHTTP delivery resolves both configured direct endpoints through
+`transport_semantics.py`, retaining each hostname and port. Native Xray output
+is P1-only: each loopback SOCKS inbound routes to one exact endpoint, and the
+unmatched default is blackhole. Typed bounded-pool controls require v26.3.27;
+RIPDPI export refuses tuning its importer drops. The explicit monitoring
+intermediate can carry the native fields, and liveness retains variant-to-endpoint
+identity plus exact mode/tuning in its public profile map.
 
 The AWG source-candidate runner admits only a local Unix-socket Docker daemon,
 copies an explicit public-file build context and removes only its own

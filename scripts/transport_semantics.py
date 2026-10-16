@@ -78,37 +78,71 @@ def origin_valid(value: object) -> bool:
         return False
 
 
+XHTTP_TUNING_BOUNDS = {"max_connections": 4}
+
+
+def xhttp_tuning(raw: dict) -> dict:
+    """The bounded-pool profile is qualified only for the exact native engine."""
+    tuning = raw.get("xhttp_tuning")
+    if "xhttp_tuning" not in raw:
+        return {}
+    if (raw.get("version") != "v26.3.27" or not isinstance(tuning, dict)
+            or set(tuning) != {"profile", *XHTTP_TUNING_BOUNDS}
+            or tuning.get("profile") != "bounded-pool" or raw.get("xhttp_mode", "auto") != "stream-up"
+            or any(type(tuning.get(key)) is not int or not 1 <= tuning[key] <= maximum
+                   for key, maximum in XHTTP_TUNING_BOUNDS.items())):
+        raise ValueError("invalid-xhttp-tuning")
+    # Retired Xray HTTP clients retain live sockets until their idle timeout.
+    # Disabling request/age retirement is necessary for a bounded live pool.
+    return {"maxConnections": tuning["max_connections"], "hMaxRequestTimes": 0,
+            "hMaxReusableSecs": 0, "cMaxReuseTimes": 0}
+
+
+def xhttp_endpoints(doc: dict, context: dict) -> list[dict]:
+    """Resolve only configured direct listeners, retaining each TLS identity."""
+    frontend = {**context.get("nginx_xhttp", {}), **doc.get("nginx_xhttp", {})}
+    primary = {"name": "primary", "host": frontend.get("server_name"),
+               "port": context.get("nginx_xhttp_public_port", 8443)}
+    served_origin(primary["host"], primary["port"])
+    enabled = frontend.get("fallback_enabled", False)
+    if type(enabled) is not bool:
+        raise ValueError("invalid-xhttp-alternate")
+    endpoints = [primary]
+    if enabled:
+        alternate = {"name": "alternate", "host": frontend.get("fallback_server_name", primary["host"]),
+                     "port": context.get("nginx_xhttp_fallback_port", 2083)}
+        served_origin(alternate["host"], alternate["port"])
+        cdn = {**context.get("cdn_front", {}), **doc.get("cdn_front", {})}
+        reserved = (primary["port"], context.get("xray_port", 443), context.get("xray_fallback_port", 2053),
+                    cdn.get("port", context.get("cdn_front_port", 8443)))
+        if alternate["port"] in reserved:
+            raise ValueError("invalid-xhttp-alternate")
+        if alternate["host"] != primary["host"] and not all(
+                isinstance(frontend.get(key), str) and frontend[key].strip()
+                for key in ("fallback_cert_pem", "fallback_key_pem")):
+            raise ValueError("missing-xhttp-alternate-tls")
+        endpoints.append(alternate)
+    return endpoints
+
+
 def xhttp_errors(doc: dict, context: dict) -> list[tuple[str, str]]:
     raw = doc.get("xray", {})
     errors = []
     if not isinstance(raw, dict) or not xhttp_path_valid(raw.get("xhttp_path", "/app-sync")):
         errors.append(("xray.xhttp_path", "must be a bounded nonroot path of slash-separated alphanumeric underscore or dash segments"))
+    if raw and isinstance(raw, dict) and raw.get("xhttp_mode", "auto") not in ("auto", "packet-up", "stream-up"):
+        errors.append(("xray.xhttp_mode", "must be an admitted XHTTP mode"))
     if isinstance(raw, dict):
-        if raw.get("xhttp_mode", "auto") not in ("auto", "packet-up", "stream-up"):
-            errors.append(("xray.xhttp_mode", "must use a supported XHTTP mode"))
-        if ("xhttp_xmux" in raw or raw.get("xhttp_mode", "auto") != "auto") and raw.get("version") != "v26.3.27":
-            errors.append(("xray.version", "typed XHTTP tuning requires the exact verified engine version"))
-        xmux = raw.get("xhttp_xmux", {})
-        limits = {"maxConnections": (1, 16), "hMaxRequestTimes": (1, 1024), "hMaxReusableSecs": (1, 600)}
-        if (not isinstance(xmux, dict) or set(xmux) - limits.keys()
-                or any(type(v) is not int or not limits[k][0] <= v <= limits[k][1]
-                       for k, v in xmux.items() if k in limits)):
-            errors.append(("xray.xhttp_xmux", "must use bounded supported connection and request limits"))
-    frontend_input = doc.get("nginx_xhttp", {})
-    context_frontend = context.get("nginx_xhttp", {})
-    if not isinstance(frontend_input, dict) or not isinstance(context_frontend, dict):
-        return errors + [("nginx_xhttp", "must be a mapping")]
-    frontend = {**context_frontend, **frontend_input}
-    if type(frontend.get("fallback_enabled", False)) is not bool:
-        errors.append(("nginx_xhttp.fallback_enabled", "must be a boolean"))
-    if frontend.get("fallback_enabled", False):
         try:
-            served_origin(frontend.get("fallback_server_name", frontend.get("server_name")),
-                          context.get("nginx_xhttp_fallback_port", 2083))
-            if context.get("nginx_xhttp_fallback_port", 2083) == context.get("nginx_xhttp_public_port", 8443):
-                raise ValueError("alternate-listener-collision")
+            xhttp_tuning(raw)
         except ValueError:
-            errors.append(("nginx_xhttp.fallback_server_name", "must identify the enabled alternate HTTPS endpoint"))
+            errors.append(("xray.xhttp_tuning", "requires exact qualified engine and bounded typed fields"))
+    # Partial callers without a frontend retain path-only admission.
+    if doc.get("nginx_xhttp") or context.get("nginx_xhttp"):
+        try:
+            xhttp_endpoints(doc, context)
+        except (AttributeError, TypeError, ValueError):
+            errors.append(("nginx_xhttp", "invalid direct endpoint identity port or alternate TLS authority"))
     origin = context.get("public_site_canonical_url")
     if origin is not None:
         frontend = doc.get("nginx_xhttp", {})

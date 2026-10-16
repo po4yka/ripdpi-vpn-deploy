@@ -534,6 +534,14 @@ a disposable Linux environment, then run `make test-native-runtime` there.
 Run `make test-transport-runtime-acceptance` in a separate fresh disposable root
 with `TRANSPORT_NATIVE_ISOLATED=1`, systemd, nftables, iproute2, OpenSSL and curl.
 
+`make test-xhttp-delivery-matrix` runs all ten native XHTTP cases in an owned
+isolated Linux root lab with systemd, exact Xray 26.3.27/Hysteria 2.13.0,
+nginx, nftables, iproute2 (including tc), OpenSSL, curl and pinned Python
+dependencies. It covers primary/alternate delivery, TLS/privacy/rollback,
+three untuned modes and bounded-pool comparisons at 1, 2 and 4 connections.
+The target fails on selected skips and emits only technical measurements.
+See [XHTTP delivery profiles](XHTTP-DELIVERY-PROFILES.md) for thresholds.
+
 To inspect the current Python inventory without executing tests:
 
 ```bash
@@ -660,8 +668,9 @@ The native runtime CI job has a 60-minute total budget for setup, the complete
 suite, delivery matrix and cleanup. Per-test deadlines and selected-skip refusal
 remain mandatory.
 
-`test-xhttp-delivery-matrix` executes all three typed modes with baseline and
-bounded XMUX on primary and distinct-name alternate TLS endpoints. It retains
+`test-xhttp-delivery-matrix` executes every admitted native profile: the three
+baseline modes and qualified `stream-up` bounded-pool tuning, on primary and
+distinct-name alternate TLS endpoints. It retains
 wrong-auth and wrong-SAN failures, independent primary-outage observations,
 authenticated recovery after rejected publication and ordinary-log privacy.
 Each endpoint completes two full both-family guarded TCP/UDP/DNS matrices with

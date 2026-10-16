@@ -73,7 +73,7 @@ construction, a version string, a queued command or a passing renderer.
 | REQ-PROTO-RTV-DEADLINES | EPC-1792156187806825 | Complete target validation/monitor/scanner regressions and owned-public native path check. | required |
 | REQ-PROTO-RTV-CLAIMS | EPC-1792156187806825 | Complete target validation/monitor/scanner regressions and owned-public native path check. | required |
 | REQ-PROTO-RTV-OWNERSHIP | EPC-1792156187806825 | Complete target validation/monitor/scanner regressions and owned-public native path check. | required |
-| REQ-PROTO-XAT-ALTERNATE | EPC-1792156186791455 | Complete endpoint contract and six-case actual XHTTP mode/XMUX transfer, fault and rollback matrix. | required |
-| REQ-PROTO-XAT-TYPED | EPC-1792156186791455 | Complete endpoint contract and six-case actual XHTTP mode/XMUX transfer, fault and rollback matrix. | required |
-| REQ-PROTO-XAT-MEASURED | EPC-1792156186791455 | Complete endpoint contract and six-case actual XHTTP mode/XMUX transfer, fault and rollback matrix. | required |
-| REQ-PROTO-XAT-ROLLBACK | EPC-1792156186791455 | Complete endpoint contract and six-case actual XHTTP mode/XMUX transfer, fault and rollback matrix. | required |
+| REQ-PROTO-XAT-ALTERNATE | EPC-1792156186791455 | Complete endpoint contract and complete admitted XHTTP mode/bounded-pool transfer, fault and rollback matrix. | required |
+| REQ-PROTO-XAT-TYPED | EPC-1792156186791455 | Complete endpoint contract and complete admitted XHTTP mode/bounded-pool transfer, fault and rollback matrix. | required |
+| REQ-PROTO-XAT-MEASURED | EPC-1792156186791455 | Complete endpoint contract and complete admitted XHTTP mode/bounded-pool transfer, fault and rollback matrix. | required |
+| REQ-PROTO-XAT-ROLLBACK | EPC-1792156186791455 | Complete endpoint contract and complete admitted XHTTP mode/bounded-pool transfer, fault and rollback matrix. | required |
