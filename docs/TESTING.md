@@ -644,7 +644,12 @@ promotion, production-role readiness transaction or external staging soak.
 
 `transport-native-acceptance` runs complete destination isolation, endpoint,
 AWG binding/dual-stack, ECH/resource, topology and XHTTP delivery suites in an
-owned Linux root/systemd/TUN environment. Run the complete consumer transaction
+owned Linux root/systemd/TUN environment. On macOS, prepare an owned Linux kernel
+VM for Hysteria resource cases: the ceiling fixture changes and restores
+`net.core.rmem_max` and `net.core.wmem_max` from its initial network namespace.
+Use that owned VM's host network when running container roots; a bridge-network
+container does not expose these kernel settings. Keep main and consumer roots
+fresh and run them serially. Run the complete consumer transaction
 suite in a separate fresh systemd root; its refusal of pre-existing global
 consumer authority remains mandatory. Run the source-candidate AWG lab with
 `build-gate -- make test-awg-source-candidate` for real warm pin/unit adoption.

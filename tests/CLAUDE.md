@@ -14,6 +14,8 @@
 
 ## Design decisions
 
+Real log rotation uses the configured authenticated-probe deadline across process replacement. The pinned REALITY engine has a five-second cold target-record learning loop; steady-state destination-boundary probes retain their three-second socket budget.
+
 Watchdog race regressions replace socket ownership after vacancy admission and during the canary. Success and server recovery both require the retained client PID to own its loopback listener.
 
 REALITY DNS worker regressions exercise overflow refusal and complete deduplicated candidate sets; runtime TLS and owned-public paths remain separate real-engine checks.

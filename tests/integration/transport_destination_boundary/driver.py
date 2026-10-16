@@ -43,7 +43,7 @@ def reply(connection):
 
 
 def control():
-    connection = socket.create_connection(("127.0.0.1", CONFIG["port"]), timeout=3)
+    connection = socket.create_connection(("127.0.0.1", CONFIG["port"]), timeout=CONFIG["socket_timeout"])
     connection.sendall(b"\x05\x01\0")
     if exact(connection, 2) != b"\x05\0":
         raise ValueError("native-client-negotiation-refused")

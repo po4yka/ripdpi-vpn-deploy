@@ -357,12 +357,14 @@ class NativeStack:
             self.unit("client-" + suffix, [self.hysteria, "client", "--config", str(path)], "h")
         return port
 
-    def run_driver(self, port, negative=False):
+    def run_driver(self, port, negative=False, *, socket_timeout=3):
+        assert 0 < socket_timeout <= self.values["watchdog"]["reality_probe_timeout"]
         result = self.driver_state / ("negative-result.json" if negative else "result.json")
         process = subprocess.Popen(["ip", "netns", "exec", self.namespace, sys.executable, str(AREA / "driver.py")],
                                    stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.processes.append(process)
-        process.stdin.write(json.dumps({"port": port, "result": str(result), "negative_auth": negative}).encode())
+        process.stdin.write(json.dumps({"port": port, "result": str(result), "negative_auth": negative,
+                                        "socket_timeout": socket_timeout}).encode())
         process.stdin.close()
         status = process.wait(timeout=90)
         if not result.is_file():

@@ -19,9 +19,13 @@ def test_real_nonempty_rotation_restores_authenticated_service_and_retains_inact
     try:
         stack.start()
         stack.start_frontend(protocol)
+        # The pinned REALITY engine learns target post-handshake records on a
+        # five-second loop after restart. Lifecycle traffic uses the declared
+        # authenticated-probe deadline; steady-state driver checks retain 3s.
+        socket_timeout = stack.values["watchdog"]["reality_probe_timeout"]
         client = stack.start_client(protocol)
         time.sleep(.5)
-        stack.run_driver(client)
+        stack.run_driver(client, socket_timeout=socket_timeout)
         unit = stack.token + "-frontend.service"
         before = fixture.command(["systemctl", "show", unit, "--property=MainPID", "--value"]).strip()
         values = deepcopy(stack.values)
@@ -38,7 +42,7 @@ def test_real_nonempty_rotation_restores_authenticated_service_and_retains_inact
         after = fixture.command(["systemctl", "show", unit, "--property=MainPID", "--value"]).strip()
         assert after != before and int(after) > 0
         time.sleep(.5)
-        stack.run_driver(client)
+        stack.run_driver(client, socket_timeout=socket_timeout)
         fixture.command(["systemctl", "stop", unit])
         with (stack.library / "logs/access.log").open("a") as stream:
             stream.write("owned inactive rotation case\n")
