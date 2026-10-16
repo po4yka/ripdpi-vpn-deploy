@@ -120,3 +120,21 @@ passed (owned generation and fresh baseline), preserving a foreign table. The
 four authenticated native cases remain unobserved while the build gate waits;
 the complete target now includes all six cases. The corresponding portable
 firewall/activation/check-mode/semantic regression run passed 133 cases.
+
+
+## Resumed acceptance (2026-10-16)
+
+The owner explicitly authorized completing this prerequisite as part of the
+authenticated-probe implementation. On isolated Linux arm64,
+`make test-awg-dualstack-runtime` passed all six selected cases without skips
+in 88.10 seconds using the exact pinned source-built AWG ELF runtimes. This
+observed constrained-path dual-family traffic, per-instance forwarding/NAT,
+reconnects, revocation, no native bypass and old/fresh activation compensation.
+The source files exercised are unchanged from integrated source
+`cdf85fed48e45600bf6f94907b382b94e5301ba5`.
+
+Fresh consumer arm64 emulator/native-core acceptance and parser checks are
+queued under the machine-wide gate. Historical prose about a prior successful
+invocation is not reused because its artifact is unavailable. Generic native
+acceptance, full local source checks, qualified federation and exact-source
+CI remain open gates; the task is not complete.

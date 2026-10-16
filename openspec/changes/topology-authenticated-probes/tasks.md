@@ -30,7 +30,7 @@ Deliver topology-aware authenticated transport health and secure smoke probes. I
 
 - [x] MON-1791618060162436 Implement effective topology resolution across verify watchdog and secure smoke clients #feature !high @item:MON-1791618056169855
 - [x] MON-1791618061120158 Deliver authenticated bounded checks and exact recovery targeting with private results #feature !high @item:MON-1791618056169855
-- [ ] MON-1791618061966295 Exercise warm runtime adoption real hopping and per-surface outage and credential failures #feature !high @item:MON-1791618056169855
+- [x] MON-1791618061966295 Exercise warm runtime adoption real hopping and per-surface outage and credential failures #feature !high @item:MON-1791618056169855
 - [ ] MON-1791618062766877 Integrate truthful evidence and preserved lifecycle regressions then complete source gates #feature !high @item:MON-1791618056169855
 
 ## Verification
