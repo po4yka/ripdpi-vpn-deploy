@@ -1,28 +1,29 @@
 ---
 task_id: SCR-1791618188806822
 change: client-consumed-payload-identity
-commit_sha: null
+commit_sha: 13ccd1590ae04f9d3eb6117770386e77e9cd2dff
 local: passed
-local_evidence: 'PR review follow-up: complete affected suites passed 251 cases in 111.02s and 144 cases in 57.25s, without selected skips. Task contracts and strict OpenSpec validation passed. Full make check is queued behind the shared machine gate.'
-remote_ci: required
-remote_ci_evidence: 'PR #302 review follow-up: partial-publication tracking and interruption regressions require fresh source validation; baseline evidence below belongs to a3a0763dd85321eb0474738108ab23415288ed8b.'
+local_evidence: 'Complete review-follow-up suites: 251 passed in 111.02s and 144 passed in 57.25s, without selected skips. Task/OpenSpec validation and all commit hooks passed. Full make check did not execute: its queued run was stopped after more than 12 minutes waiting for the shared build gate.'
+remote_ci: blocked
+remote_ci_evidence: 'CI run 38849727400: contract-sync job 116808090088 fails against the independently changed RIPDPI vendored contract; contract/ is unchanged from main. CodeQL run 38849727288, Markdown links 38849727333 and instruction-doc checks 38849727309 passed. Other CI jobs remain in progress at this handoff.'
 dry_run: not_applicable
 dry_run_evidence: source-only capability; no controller or provider execution in this task
 staging: not_applicable
 staging_evidence: isolated native source acceptance owns this change; fleet rehearsal requires separate authorization
 live: not_applicable
 live_evidence: no production rollout is part of this source task
-client: required
-client_evidence: 'PR #302 review follow-up: partial-publication tracking and interruption regressions require fresh source validation; baseline evidence below belongs to a3a0763dd85321eb0474738108ab23415288ed8b.'
-artifact: required
-artifact_evidence: 'PR #302 review follow-up: partial-publication tracking and interruption regressions require fresh source validation; baseline evidence below belongs to a3a0763dd85321eb0474738108ab23415288ed8b.'
+client: blocked
+client_evidence: Local real SOPS/age delivery/refresh and encrypted AWG recipient regressions passed. Current cross-repository client compatibility remains blocked by divergent vendored dual-stack address and MTU constraints; no fleet or current Android-device acceptance is claimed.
+artifact: blocked
+artifact_evidence: The canonical contract is unchanged from main. RIPDPI currently vendors a different AWG address/MTU schema and seven differing example/negative fixtures. Reconciliation must align the cross-repository transport contract; this review fix does not change its authority or bypass contract-sync.
 ---
 
 # Verification
 
 The baseline evidence below is pinned to implementation commit
-`a3a0763dd85321eb0474738108ab23415288ed8b`. PR review follow-up validation
-is pending for partial external publication and interruption handling. This is source acceptance using
+`a3a0763dd85321eb0474738108ab23415288ed8b`. The review fixes below are pinned to
+`13ccd1590ae04f9d3eb6117770386e77e9cd2dff`; their affected suites and CodeQL
+passed. Complete source acceptance remains blocked by cross-repository contract drift. This is source acceptance using
 synthetic encrypted authority and isolated native endpoints; it makes no fleet,
 provider or production acceptance claim. Canonical predecessor references are retained; current main owns their accepted terminal state.
 
@@ -87,4 +88,19 @@ by this review handoff.
 Complete review-follow-up suites passed **395 cases** without selected skips:
 251 drift/encrypted-transaction/retirement cases and 144 registry, expiry,
 emitter, audit and Make caller cases. Task contracts and strict OpenSpec
-validation passed. Exact committed-source CI remains required.
+validation passed. The complete source gate remains open because contract-sync fails independently of these changes.
+
+Both PR review threads were resolved after the code was pushed, the complete
+affected suites passed and CodeQL completed successfully. Current main was
+merged, and the PR is mergeable. Its source-gate checklist step remains open.
+
+### Remaining source gate
+
+The failed contract-sync job compares this repository's unchanged canonical
+contract with RIPDPI's default-branch vendored resources. The peer schema now
+requires exactly one IPv4 /32 and one IPv6 /128 address, and an MTU between
+1280 and 1420; this repository still exports the canonical single peer address.
+Eight vendored files differ. A separate cross-repository transport change must
+align schema, export behavior and client acceptance before this gate can pass.
+The local full-gate attempt was stopped while still queued behind the machine
+gate; no local full-gate success is claimed.
