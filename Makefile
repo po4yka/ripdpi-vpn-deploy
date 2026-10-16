@@ -627,7 +627,7 @@ help:
 	@echo "  bootstrap-secrets …        Generate full crypto + SOPS-encrypt"
 	@echo "  setup-yubikey [REENCRYPT=1]  Hardware-backed age identity on YubiKey"
 	@echo "  scan-targets {SEEDS=…|CIDR=…|CRAWL=…}  Discover REALITY targets (RealiTLScanner)"
-	@echo "  validate-target            9-step REALITY target audit (local hygiene only)"
+	@echo "  validate-target            Bounded REALITY target validation (local hygiene only)"
 	@echo "  monitor-reality-target     Daily ASN/path signal from an explicit filtered VANTAGE"
 	@echo "  probe-sni-survival         EXIT_IP=… bare/www SNI survival probe (run on RU vantage)"
 	@echo "  probe-asn HOST=…           Team Cymru ASN lookup"
@@ -1237,6 +1237,7 @@ test-native-runtime:
 	  --ignore=tests/unit/test_xhttp_endpoint_contract_native.py \
 	  --ignore=tests/unit/test_awg_device_binding_native.py \
 	  --ignore=tests/unit/test_hysteria_ech_native.py \
+	  --ignore=tests/unit/test_validate_reality_target_native.py \
 	  --ignore=tests/unit/test_awg_dualstack_native.py \
 	  --ignore=tests/unit/test_awg_activation_native.py --fail-on-skip -v
 
@@ -1434,7 +1435,6 @@ smoke-test:
 	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)")
 
 validate-target:
-	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run 'make decrypt'"; exit 1; }
 	SOPS_FILE=$(SOPS_FILE) ENV=$(ENV) ./scripts/validate-reality-target.sh
 
 monitor-reality-target:
@@ -1910,3 +1910,7 @@ test-hysteria-ech-runtime test-hysteria-resource-profiles:
 	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 && test "$${TRANSPORT_NATIVE_ISOLATED:-}" = 1 || { echo "Hysteria acceptance requires an owned isolated Linux root environment" >&2; exit 1; }
 	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest \
 	  tests/unit/test_hysteria_ech_native.py --fail-on-skip -v -s
+
+.PHONY: test-reality-target-validation
+test-reality-target-validation:
+	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/test_validate_reality_target.py tests/unit/test_validate_reality_target_native.py tests/unit/test_monitor_reality_target.py tests/unit/test_scan_reality_targets.py --fail-on-skip -q

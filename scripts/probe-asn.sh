@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Resolve an IP or hostname through Team Cymru's whois interface and print
-# a single tab-separated line: IP<TAB>ASN<TAB>ORG<TAB>COUNTRY.
-# Empty fields stay empty; the row always has four columns. Exit 1 if
+# a single tab-separated line: IP<TAB>ASN<TAB>PREFIX<TAB>COUNTRY<TAB>ORG.
+# Empty fields stay empty; the row always has five columns. Exit 1 if
 # Cymru is unreachable or returns an error envelope.
 #
 # Usage:
@@ -36,7 +36,12 @@ resolve_ipv4() {
 }
 
 ip="$target"
-if ! [[ "$target" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+if [[ "$target" == *:* ]]; then
+  if ! python3 -c 'import ipaddress,sys; ipaddress.IPv6Address(sys.argv[1])' "$target" 2>/dev/null; then
+    echo "invalid IPv6 address" >&2
+    exit 1
+  fi
+elif ! [[ "$target" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   ip="$(resolve_ipv4 "$target")"
   if [[ -z "$ip" ]]; then
     echo "could not resolve: $target" >&2
