@@ -721,6 +721,10 @@ together; the shared renderer must not keep a single-address or fixed-MTU path.
 An explicit per-host cohort bypasses inventory hostname lookup: endpoint-only
 AWG callers do not consume a hostname and must retain their export path.
 
+Native acceptance fixtures cross unit and integration directories. Keep the
+selector's native group closed over every consuming job, including changes
+under `tests/native/`; a Python-only selection can omit real-engine acceptance.
+
 REALITY validation shares `reality_target_validation.py` across point-in-time and
 recurring callers. It normalizes comma/whitespace names once, verifies each SNI
 through a trusted TLS 1.3 handshake with SAN-only hostname matching and H2 ALPN,
