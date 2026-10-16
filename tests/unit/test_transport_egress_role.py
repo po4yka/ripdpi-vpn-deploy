@@ -802,3 +802,7 @@ def test_gateway_units_have_one_publication_lane():
     live = next(task for task in publish if task['name'] == 'Publish the complete validated candidate')
     assert live['loop'] == '{{ _transport_egress_candidate_files }}'
     assert next(task for task in publish if task['name'] == 'Stage release-bound gateway units for syntax validation only')['ansible.builtin.copy']['dest'].startswith('{{ _transport_egress_candidate_dir.path }}')
+    names = [task['name'] for task in publish]
+    assert names.index('Publish the complete validated candidate') < names.index('Verify actual published unit syntax')
+    verify = next(task for task in publish if task['name'] == 'Verify actual published unit syntax')
+    assert '_transport_egress_candidate_dir.path' in verify['ansible.builtin.command']['argv']

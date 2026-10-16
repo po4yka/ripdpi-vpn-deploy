@@ -218,12 +218,6 @@
             mode: '0644'
           loop: '{{ _transport_egress_gateway_candidates }}'
           no_log: true
-        - name: Verify staged gateway unit syntax before runtime selection
-          ansible.builtin.command:
-            argv: >-
-              {{ ['systemd-analyze', 'verify'] + (_transport_egress_gateway_unit_list |
-                 map('regex_replace', '^', _transport_egress_candidate_dir.path ~ '/') | list) }}
-          changed_when: false
         - name: Validate every native gateway candidate before quiescence
           ansible.builtin.command:
             argv:
@@ -324,7 +318,8 @@
         - name: Verify actual published unit syntax
           ansible.builtin.command:
             argv: '{{ [''systemd-analyze'', ''verify'', ''/etc/systemd/system/ripdpi-transport-normalizer.service'',
-              ''/etc/systemd/system/ripdpi-transport-generation.service''] }}'
+              ''/etc/systemd/system/ripdpi-transport-generation.service''] + (_transport_egress_gateway_unit_list
+              | map(''regex_replace'', ''^'', _transport_egress_candidate_dir.path ~ ''/'') | list) }}'
           changed_when: false
       rescue:
         - name: Restore accepted route if candidate publication began
