@@ -1,7 +1,7 @@
 ---
 task_id: "ANS-1791618048083304"
 change: "awg-forwarding-dualstack"
-commit_sha: null
+commit_sha: "c3b108120d314fb2ce24a05c7eaf41e11a364621"
 local: "required"
 local_evidence: "complete affected suites and exact native positive/failure cases after implementation"
 remote_ci: "required"
@@ -146,3 +146,17 @@ seven cases without skips. These results do not erase the incomplete generic
 local native lane (87 passed, 26 failed, 19 setup errors, 6 skipped) or the
 registry-network failure of the full aggregate. A fresh configured hosted
 native lane and the complete source gate remain required.
+
+
+## Exact-source hosted native acceptance (2026-10-16)
+
+On source `c3b108120d314fb2ce24a05c7eaf41e11a364621`, CI run
+38908725450 native runtime integration passed: 138 generic native cases,
+2 XHTTP endpoint cases, all 7 topology cases and all 6 AWG dual-stack cases.
+The earlier warm-adoption fixture failed because `ProtectHome=yes` hid tools
+in the CI checkout; staging exact tools outside that checkout fixed the
+fixture while retaining the real unit sandbox. No production unit was weakened.
+The full workflow, local `make check` and fresh Android client acceptance remain
+required. The first combined local batch waited 3600 seconds without acquiring
+a slot (exit 75); no tests executed in that attempt. The identical batch is
+queued again through the machine gate without a wait timeout.

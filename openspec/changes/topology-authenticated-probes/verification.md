@@ -43,3 +43,17 @@ Later task/evidence-only commits do not change that runtime source boundary.
 - The first combined affected-suite run had 134 passes and one watchdog fixture startup race. The corrected watchdog suite passed all 17 cases; the earlier run is not reported as a full affected-suite pass.
 - `ANS-1791618048083304` remains doing on the integrated main branch. Its required arm64 emulator/native-core IPv4/IPv6 TCP/UDP/DNS acceptance across MTUs and reconnects is not established by these Linux probe tests. The owner authorized completing this prerequisite in the current session. The canonical dependency remains intact; task closure and promotion must wait for its observed acceptance.
 - No real inventory, operator credential, production host, fleet deployment or real notification receipt was exercised. Isolated synthetic native evidence does not establish those outcomes.
+
+
+## Exact-source hosted native acceptance (2026-10-16)
+
+CI run 38908725450 native runtime integration passed on
+`c3b108120d314fb2ce24a05c7eaf41e11a364621`: 138 generic native cases,
+2 XHTTP endpoint cases, all 7 topology cases (145.67 seconds) and all 6 AWG
+dual-stack cases (90.36 seconds), without selected skips. This supersedes the
+missing configured generic-lane proof while preserving the failed local lab
+result above. The real warm unit continues to enforce `ProtectHome=yes`; its
+fixture now stages exact tools outside the CI source checkout. The complete
+workflow and local source/client gates remain pending. The combined local
+batch timed out after 3600 seconds waiting for a slot (exit 75) without running
+tests, then was requeued through the same gate without a wait timeout.
