@@ -81,7 +81,38 @@ def test_exact_pair_wire_warm_adoption_and_canonical_retirement(tmp_path):
             lab.PINS["wire_shapes"][0][key]
             for key in ("jc", "jmin", "jmax", "s1", "s2", "h1", "h2", "h3", "h4")
         )
-        tunnels = [lab.Tunnel(i, "live", "baseline", shape) for i in (60, 61, 62)]
+
+        class QuickTunnel(lab.Tunnel):
+            def pid(self, side=0):
+                main = super().pid(side)
+                if main:
+                    return main
+                group = lab.command(
+                    "systemctl",
+                    "show",
+                    "-p",
+                    "ControlGroup",
+                    "--value",
+                    self.units[side],
+                )
+                members = (
+                    (Path("/sys/fs/cgroup") / group.lstrip("/") / "cgroup.procs")
+                    .read_text()
+                    .split()
+                )
+                daemons = []
+                for member in members:
+                    try:
+                        if Path(os.readlink(f"/proc/{member}/exe")).name.startswith(
+                            "amneziawg-go"
+                        ):
+                            daemons.append(int(member))
+                    except (FileNotFoundError, ProcessLookupError):
+                        continue
+                assert len(daemons) == 1, "exact-quick-daemon-identity-unconfirmed"
+                return daemons[0]
+
+        tunnels = [QuickTunnel(i, "live", "baseline", shape) for i in (60, 61, 62)]
         for tunnel in tunnels:
             tunnel.units = ["awg-quick@" + name + ".service" for name in tunnel.names]
         record = Path("/var/lib/ripdpi/amneziawg/instances.json")
@@ -95,23 +126,60 @@ def test_exact_pair_wire_warm_adoption_and_canonical_retirement(tmp_path):
             for tunnel in tunnels:
                 tunnel.start()
                 tunnel.probe()
-            # Make the native unit itself restore its live TUN configuration on restart.
+            # Exercise the canonical oneshot/RemainAfterExit lifecycle: observe the
+            # real surviving userspace daemon from the unit's cgroup, not MainPID=0.
+            binaries = Path("/lab/bin")
+            binaries.mkdir(mode=0o700)
+            (binaries / "awg").symlink_to(lab.LIVE / "awg")
             for tunnel in tunnels[:2]:
-                unit = Path("/etc/systemd/system") / tunnel.units[0]
-                lines = "\n".join(
-                    "ExecStartPost=" + line
-                    for line in (
-                        f"/usr/bin/python3 /lab/wait-tun.py {tunnel.names[0]}",
-                        f"{tunnel.tools(0)} setconf {tunnel.names[0]} {tunnel.configs[0]}",
-                        f"/usr/sbin/ip address replace 10.{tunnel.index}.0.1/24 dev {tunnel.names[0]}",
-                        f"/usr/sbin/ip link set {tunnel.names[0]} up",
+                lab.command("systemctl", "stop", tunnel.units[0])
+                config = tunnel.configs[0]
+                config.write_text(
+                    config.read_text().replace(
+                        "[Interface]\n",
+                        f"[Interface]\nAddress = 10.{tunnel.index}.0.1/24\n",
                     )
                 )
-                unit.write_text(unit.read_text() + "\n[Service]\n" + lines + "\n")
-            Path("/lab/wait-tun.py").write_text(
-                "import subprocess,sys,time\ndeadline=time.monotonic()+10\nwhile subprocess.run(['ip','link','show',sys.argv[1]],capture_output=True).returncode:\n if time.monotonic()>deadline: raise SystemExit(1)\n time.sleep(.05)\n"
-            )
+                unit = (
+                    ROOT / "ansible/roles/amneziawg/templates/awg-quick@.service.j2"
+                ).read_text()
+                unit = unit.replace("PartOf=awg-quick.target", "")
+                unit = unit.replace(
+                    "[Service]",
+                    "[Service]\n"
+                    + f"NetworkNamespacePath=/run/netns/{tunnel.names[0]}\n"
+                    + f"Environment=PATH={binaries}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n"
+                    + f"Environment=WG_QUICK_USERSPACE_IMPLEMENTATION={lab.LIVE / 'amneziawg-go'}",
+                )
+                unit = unit.replace(
+                    "ExecStart=/usr/bin/awg-quick up %i",
+                    f"ExecStart=/bin/bash {lab.LIVE / 'awg-quick'} up {config}",
+                )
+                unit = unit.replace(
+                    "ExecStop=/usr/bin/awg-quick down %i",
+                    f"ExecStop=/bin/bash {lab.LIVE / 'awg-quick'} down {config}",
+                )
+                unit = (
+                    "\n".join(
+                        row
+                        for row in unit.splitlines()
+                        if not row.startswith("ExecReload=")
+                    )
+                    + "\n"
+                )
+                (Path("/etc/systemd/system") / tunnel.units[0]).write_text(unit)
             lab.command("systemctl", "daemon-reload")
+            for tunnel in tunnels[:2]:
+                lab.command("systemctl", "start", tunnel.units[0])
+                tunnel.initiator = 0
+                tunnel.probe()
+                assert (
+                    lab.command(
+                        "systemctl", "show", "-p", "MainPID", "--value", tunnel.units[0]
+                    )
+                    == "0"
+                )
+                assert tunnel.pid() > 0
             tasks = yaml.safe_load(
                 (ROOT / "ansible/roles/amneziawg/tasks/enable.yml").read_text()
             )
