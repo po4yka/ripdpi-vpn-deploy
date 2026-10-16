@@ -2,10 +2,10 @@
 task_id: "XRY-1791617991738391"
 change: "xhttp-alternate-and-tuning"
 commit_sha: "824933e0ef611df9d2d9bc4a02baad5d8e001598"
-local: "required"
-local_evidence: "824933e0: 485 affected portable tests, complete 69-test sentinel suite, 112 endpoint/check-mode tests, 163 snapshots, exact parser checks and make validate passed. Full make check reached Terraform test initialization and failed on a registry timeout; a repeat using existing pinned provider packages and unchanged lock checks is waiting for the shared build gate. No full-gate pass is claimed."
+local: "blocked"
+local_evidence: "824933e0: 485 affected portable tests, complete 69-test sentinel suite, 112 endpoint/check-mode tests, 163 snapshots, exact parser checks and make validate passed. Full make check reached Terraform test initialization and failed on a registry timeout; a repeat using existing pinned provider packages and unchanged lock checks waited over 14 minutes for the shared build gate and was stopped before execution. No full-gate pass is claimed."
 remote_ci: "required"
-remote_ci_evidence: "824933e0: XHTTP 10-case matrix passed in hosted CI; total native job hit its 30-minute budget during later AWG cases. 35dd2dfb changes only that total budget to 40 minutes; complete exact-SHA CI run 38900431233 is pending."
+remote_ci_evidence: "824933e0: XHTTP 10-case matrix passed in hosted CI; total native job hit its 30-minute budget during later AWG cases. 35dd2dfb changes only that total budget to 40 minutes; complete exact-SHA CI run 38900431233 is queued, with no new job result observed."
 dry_run: "not_applicable"
 dry_run_evidence: "source capability is exercised in isolated local/native runtime; no real inventory run is part of this task"
 staging: "passed"
@@ -59,3 +59,7 @@ All rows sent and received exactly 1 MiB; times and memory are measured technica
 ## Security review
 
 APPROVE. Reviewed the complete source range and all staged/unstaged/untracked paths. Native recipient listeners bind loopback, unmatched routing is blackhole, exact selected-device identities remain private, unrecognized tuning refuses, and no server listener, provider object, credential authority, production pin, P0 shape or PQE HOLD transition is added. Public transport logs and redacted liveness evidence retain the native privacy assertions. Production enablement remains outside this local source change.
+
+## Remaining completion gate
+
+The full-gate execution step remains open and the portfolio item remains doing. Resume `build-gate -- make -j1 check` with the pinned parser binaries available, observe terminal exact-source CI, then complete the review-state commit and taskctl archive/close lifecycle. Never infer full-gate success from the passing native XHTTP selection. The queued local repeat was stopped before execution; no unattended deployment or test run remains from this task.
