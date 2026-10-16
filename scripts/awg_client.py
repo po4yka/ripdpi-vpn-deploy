@@ -88,7 +88,7 @@ def enroll(document, context, name, host, instance=None, *, all_profiles=False):
                       'formats': [], 'hosts': [host], 'cohorts': [], 'token_hash_prefix': '', 'token_expires': '',
                       'awg_public_key_fingerprint': 'sha256:' + hashlib.sha256(public.encode()).hexdigest()[:16],
                       'awg_private_key': private, 'awg_binding': binding.identity, 'awg_delivery_host': '',
-                      'last_payload_identity': {'source': '', 'outputs': ''}}
+                      'last_payload_identity': {}}
     if previous is not None:
         refreshed = {key: registry[name][key] for key in ('awg_binding', 'awg_private_key', 'awg_public_key_fingerprint')}
         registry[name] = {**previous, **refreshed}
@@ -181,7 +181,7 @@ def main():
                                 f"hysteria2://{args.name}:{hy['password']}@<SERVER_IP>:443/?sni=<SERVER_HOSTNAME>#{args.name}"]
                         write('\n'.join(uris) + '\n')
                         return updated, {**metadata, 'output': args.output}
-                    result = operate(args.file, transaction, before_publish=validate)
+                    result = operate(args.file, transaction, before_publish=lambda _mark_external: validate())
                     committed_metadata = result
             else:
                 result = operate(args.file, transform)

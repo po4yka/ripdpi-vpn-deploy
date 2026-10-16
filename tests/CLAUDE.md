@@ -514,3 +514,19 @@ without group/world write permissions. A disposable runner may start with
 it in cleanup. Production retirement validation keeps rejecting unsafe ancestry.
 
 Alerting regressions cross operator payloads into the real relay parser and renderer, and match exact send receipts. Lost canary responses and interrupted receipt writes must leave freshness absent while the next attempted sequence advances. A pinned real Prometheus receiver checks reordered queue batches without relaxing historical sample assertions.
+
+Client drift tests exercise real test-only SOPS/age documents and the shared
+in-memory renderer, including consumed and unrelated edits, exact canonical
+delivery, refresh expiry, lost/rotated/malformed authority, unsafe file types,
+and encryption-failure preservation. Endpoint lookup and remote publication
+are isolated, so this evidence does not claim live fleet delivery. Copied
+emitter fixtures must include the Python renderer and its shared dependencies
+and explicitly establish private source modes.
+
+Delivery failures exercise actual isolated writes before failed acknowledgements,
+local replacement/sync failure and interruption, including unchanged refresh.
+Require reconciliation diagnostics after external mutation starts; preflight
+refusal retains the ordinary error and the prior encrypted authority.
+The canonical delivered bundle must validate against the published dual-stack
+schema. Real encrypted drift cases change each address family and MTU; missing
+families, scalar claims and out-of-range MTU stay unknown without publication.

@@ -316,7 +316,7 @@ client_registry:
     awg_binding: {provider: "${PROVIDER:?}", environment: "${ENV:?}", instance: awg0}
     awg_private_key: "${peer_priv}"
     awg_delivery_host: ""
-    last_payload_identity: {source: "", outputs: ""}
+    last_payload_identity: {}
 YAML
 chmod 0600 "$OUT"
 echo "ci-bootstrap: wrote ${OUT} (xray=${xray_version} hysteria=${hys_version})"

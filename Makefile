@@ -1505,7 +1505,7 @@ sub-reads:
 client-drift:
 	@test -n "$${CLIENT:-}" || { echo "usage: make client-drift CLIENT=phone"; exit 1; }
 	SOPS_FILE="$(SOPS_FILE)" SOPS_FILES="$(SOPS_FILES)" ENV=$(ENV) \
-	./scripts/client-drift.py "$${CLIENT}"
+	./scripts/client-drift.py -- "$${CLIENT}"
 
 test-tls-policing:
 	@test -n "$(HOST)" || { echo "usage: make test-tls-policing HOST=vpn.example.com [STEPS=1,4,8,12,16,24]"; exit 1; }

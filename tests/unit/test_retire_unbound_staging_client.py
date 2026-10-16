@@ -252,7 +252,7 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
                 "awg_public_key_fingerprint": "sha256:0123456789abcdef",
                 "awg_private_key": "private-client-key",
                 "awg_binding": {"provider": "upcloud", "environment": environment, "instance": "awg0"},
-                "last_payload_identity": {"source": "", "outputs": ""},
+                "last_payload_identity": {},
             }
         },
         "unrelated": {"value": "preserve"},
@@ -906,8 +906,12 @@ def test_retirement_interlocks_the_canonical_sops_writer_lock(setup):
         in (ROOT / "scripts/encrypted_client_document.py").read_text()
     )
     assert (
-        'REGISTRY_LOCK="${sops_file}.new-client.lock"'
-        in (ROOT / "scripts/issue-sub-token.sh").read_text()
+        'from encrypted_client_document import CommittedPublication, ExternalPublicationUncertain, operate'
+        in (ROOT / "scripts/issue_sub_token.py").read_text()
+    )
+    assert (
+        'operate(path, transform, before_publish=publish)'
+        in (ROOT / "scripts/issue_sub_token.py").read_text()
     )
     assert (
         'SOPS_LOCK="${SOPS_FILE}.new-client.lock"'

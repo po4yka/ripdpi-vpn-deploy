@@ -18,6 +18,13 @@ The implementation MUST compute and record the identity from the exact selected-
 - **WHEN** private registry write fails after candidate materialization
 - **THEN** no success is reported and prior encrypted authority remains intact
 
+#### Scenario: Coordinated AWG contract changes
+
+- **WHEN** either typed device address or the resolved MTU changes after delivery
+- **THEN** the canonical dual-stack payload matches the published recipient contract and drift reports stale
+- **WHEN** a device family is missing, a legacy scalar address is supplied or MTU is outside 1280–1420
+- **THEN** inspection reports unknown without changing encrypted authority or delivery
+
 ### Requirement: REQ-PROTO-IDENTITY-PRIVACY — Safe failure and diagnostics
 
 The implementation MUST keep plaintext material and digest authority out of logs, argv, persisted temporary caches and public identity metadata.

@@ -173,7 +173,8 @@ geodata.{geosite_url, geoip_url, geosite_sha256, geoip_sha256, install_dir, refr
 amneziawg_go_version + amneziawg_go_commit / amneziawg_tools_version + amneziawg_tools_commit
 amneziawg_secrets.instances[*].{name, listen_port, address_v4, address_v6, server_private_key, jc/jmin/jmax/s1-s4/h1-h4, peers[*]}
 backup.restic_password
-client_registry.<device>.{status, issued_at, formats, hosts, cohorts, token_hash_prefix, token_expires, awg_binding, awg_delivery_host, awg_public_key_fingerprint, awg_private_key, last_payload_identity}
+client_registry.<device>.{status, issued_at, formats, hosts, cohorts, token_hash_prefix, token_expires, awg_binding, awg_delivery_host, awg_public_key_fingerprint, awg_private_key, delivery_options, delivery_sources, last_payload_identity}
+client_delivery_identity.{version, generation, key}  # created by authorized delivery
 subscription.{port, server_name}     # optional
 ```
 
@@ -183,8 +184,25 @@ Ansible roles): issuance options for each device so `issue-sub-token.sh
 to defaults, the lifecycle status (`issued → delivered → active → stale |
 revoked | burned`), the AWG client private key as a recovery copy (the
 device-local key stays primary), and the payload identity
-(`deploy-source-identity` digest + Terraform outputs hash) recorded at last
-delivery for `make client-drift CLIENT=<device>`.
+(versioned private HMAC-SHA256 over the canonical selected-device payload,
+format, exact options and AWG binding including the enrolled peer public key) recorded at last delivery for
+`make client-drift CLIENT=<device>`. Inspection re-renders in memory and emits
+only `current`, `stale` or `unknown`; it never prints the digest or creates
+identity authority. The encrypted authority has a 256-bit random key and a
+key-bound generation. Re-encryption and unrelated device/metadata edits keep
+the selected device current. Missing, malformed or rotated authority, absent
+recorded source selectors, and old source/output identities are unknown until
+an explicitly authorized redelivery. Issuance alone initializes missing
+authority; malformed existing authority refuses instead of being replaced.
+Refresh retains private per-host source selectors, format, hosts, cohorts,
+AWG host, UTLS selection and expiry. Explicit `--format` / `--expires` overrides
+are recorded with the new identity. A staging/verification failure preserves
+prior encrypted state and precedes remote writes. Local SOPS and remote
+publication cannot commit atomically together: reconcile both after an
+interrupted or failed publication before retrying.
+The CLI returns 3 with that reconciliation warning once a mutating SSH attempt
+has started, even if its reply or subsequent local publication fails. Preflight
+and candidate-verification refusals precede that boundary.
 
 AWG uses a nonempty `instances` list as its sole server and peer authority,
 including single-instance hosts. Top-level server keys, parameters and peers

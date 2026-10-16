@@ -635,3 +635,36 @@ substitutes stock Caddy. Local compilation uses the machine build gate; CI
 keeps compilation at two workers and passes the verified output explicitly.
 
 Operator alert drills bind the verified controller source and a unique technical policy nonce. They wait for an authenticated relay API receipt for that exact nonce and start time before resolution; submission and receiver selection alone cannot prove delivery. Human receipt remains separate.
+
+Client delivery/drift changes must preserve the in-memory renderer and private
+HMAC authority lifecycle described in [Private client delivery identity](DESIGN-NOTES.md#private-client-delivery-identity).
+Issuance verifies staged ciphertext before remote publication under the shared
+lock. Local SOPS and remote delivery are separate systems: after interruption
+or a post-publication failure, reconcile the delivered artifact before retrying.
+The callback marks external publication before the first mutating SSH attempt,
+since a failed reply can follow a completed write. Subsequent failures or
+interruptions return a reconciliation warning, including failed local replacement.
+Validation-only callbacks leave that marker unset.
+
+The encrypted client transaction runs its verified publication callback under
+the stable lock even when plaintext registry state is unchanged. Same-second
+refresh must redeliver without manufacturing an encrypted state change.
+
+Profile and subscription dispatchers put the selected device after `--` while
+retaining the client-first shell interface. Leading-dash device names stay
+literal data through Python argument parsing; Make drift uses the same delimiter.
+
+Enabled transport authority must contain nonempty typed credentials and SNI
+before publication. Malformed consumed authority returns a categorical refusal;
+missing optional QR tooling retains the committed delivery and machine-token
+mode keeps its early exit without QR side effects.
+
+The private identity binds the full enrolled AWG peer public key as well as its
+instance. A coherent peer/recovery-key rotation can leave placeholder-based
+exported JSON unchanged; it must still report stale without publishing key metadata.
+Both typed device addresses and the resolved MTU are consumed payload inputs.
+The coordinated dual-stack contract, exporter and runtime forwarding must land
+together; the shared renderer must not keep a single-address or fixed-MTU path.
+
+An explicit per-host cohort bypasses inventory hostname lookup: endpoint-only
+AWG callers do not consume a hostname and must retain their export path.

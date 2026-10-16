@@ -1,19 +1,20 @@
 ---
-id: "SCR-1791618188806822"
-title: "Detect client payload drift from every consumed private input"
-kind: "bug"
-status: "backlog"
-area: "scripts"
-priority: "high"
-risk: "high"
-owner: "primary"
-parent: "EPC-1791618453830051"
-blocked_by: ["SCR-1791618039091425", "XRY-1791617955392712"]
-spec_mode: "required"
-openspec_change: "client-consumed-payload-identity"
-created: "2026-10-10"
-updated: "2026-10-10"
+id: SCR-1791618188806822
+title: Detect client payload drift from every consumed private input
+kind: bug
+status: doing
+area: scripts
+priority: high
+risk: high
+owner: primary
+parent: EPC-1791618453830051
+blocked_by: [SCR-1791618039091425, XRY-1791617955392712]
+spec_mode: required
+openspec_change: client-consumed-payload-identity
+created: 2026-10-10
+updated: 2026-10-16
 related_tasks: []
+status_detail: "Integrate the already coordinated AWG dual-stack producer from PR #304 to clear downstream contract drift; prove consumed IPv4/IPv6 and MTU changes, retain partial-publication safety, and rerun complete source gates for PR #302."
 ---
 
 ## Goal
