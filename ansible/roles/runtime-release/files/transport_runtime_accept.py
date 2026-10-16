@@ -115,6 +115,14 @@ def unit_binary(unit):
     return argv[0], assets[0] if len(assets) == 1 else None, config
 
 
+def gateway_units():
+    """Use the generation reader's validated topology, never a parallel unit list."""
+    return json.loads(run(['/usr/bin/python3', '-Es',
+        '/usr/local/libexec/ripdpi-transport-egress/generation.py', 'runtime-units',
+        '--config', '/etc/ripdpi/transport-egress/generation.json',
+        '--normalizer-config', '/etc/ripdpi/transport-egress/normalizer.json'], 10))
+
+
 def restore_points(candidates):
     result = list(candidates)
     for item in candidates:

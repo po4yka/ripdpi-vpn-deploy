@@ -60,12 +60,17 @@ successful authenticated native forwarding. Refusal restores the complete
 previous generation. Check mode inspects ownership and predicts changes; it
 performs no publication, service restart or authenticated probe.
 
-Level 2 moves `xray.service` only. The private gateway units
-(`ripdpi-transport-direct.service`, `ripdpi-transport-warp.service`) are
-owned by the egress transaction and keep running the pinned release until
-`xray.version` is changed and `make deploy` re-renders them, so the egress
-leg of proxied connections stays on that release after this command. A
-later `make deploy` with the newer pin moves `xray.service` forward again.
+Level 2 moves `xray.service` and every private gateway declared by the validated
+`/etc/ripdpi/transport-egress/generation.json` together. The runtime transaction
+is the sole publisher of their release-bound unit files; egress retains process
+lifecycle ownership. Acceptance proves every main process executes the selected
+release. A refusal or interrupted transaction restores all original unit inodes
+and the accepted generation. A later ordinary deploy with the newer pin moves
+the whole generation forward again.
+
+Existing nodes must converge once to adopt gateway units into the runtime
+receipt before operator rollback; otherwise rollback refuses with
+`accepted-gateway-required` before publication.
 
 To make the rollback permanent, also update `xray.version` and
 `xray.linux_*_sha256` in secrets back to the rolled-back version, so

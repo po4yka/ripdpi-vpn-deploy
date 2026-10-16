@@ -2,7 +2,7 @@
 id: ANS-1791996724624876
 title: Roll back private gateway runtimes with the frontend runtime
 kind: bug
-status: backlog
+status: doing
 area: ansible
 priority: medium
 risk: high
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: ans-1791996724624876-gateway-runtime-rollback
 created: 2026-10-14
-updated: 2026-10-14
+updated: 2026-10-16
 related_tasks: []
 ---
 

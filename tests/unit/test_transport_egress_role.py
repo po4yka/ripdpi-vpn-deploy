@@ -768,3 +768,37 @@ def test_recovery_controller_admission_requires_all_four_root_uid_columns(tmp_pa
         proc.write_text('Pid:\t1234\nUid:\t'+'\t'.join(identities)+'\n')
         with pytest.raises(mod.Refusal, match='generation-process-identity'):
             controller.state(mod.CONTROLLER)
+
+
+@pytest.mark.parametrize('warp', [False, True])
+def test_generation_runtime_unit_query_uses_validated_topology(monkeypatch, capsys, warp):
+    mod = load('generation')
+    backends = {'direct': {}}
+    if warp:
+        backends['warp'] = {}
+    normalizer = {'runtime_uid': 1001, 'backends': backends, 'listeners': []}
+    units = [mod.GATEWAYS[name] for name in backends]
+    config = {'schema_version': 1, 'normalizer_uid': 1001, 'gateway_units': units,
+              'frontend_units': ['xray.service'], 'control_timeout_seconds': 30, 'recovery_seconds': 5}
+    monkeypatch.setattr(mod.sys, 'argv', ['generation', 'runtime-units', '--config', 'generation', '--normalizer-config', 'normalizer'])
+    monkeypatch.setattr(mod, 'private_json', lambda path: config if path == 'generation' else normalizer)
+    mod.main()
+    assert json.loads(capsys.readouterr().out) == units
+    config['gateway_units'] = ['ssh.service']
+    with pytest.raises(mod.Refusal, match='generation-gateways-invalid'):
+        mod.main()
+    assert capsys.readouterr().out == ''
+
+
+def test_gateway_units_have_one_publication_lane():
+    stage = yaml.safe_load((ROLE / 'tasks/stage.yml').read_text())[-1]['block']
+    render = next(task['ansible.builtin.set_fact'] for task in stage if task['name'] == 'Render gateway credentials and units into private candidates')
+    assert 'gateway.service.j2' not in render['_transport_egress_candidate_files']
+    assert 'gateway.service.j2' in render['_transport_egress_gateway_candidates']
+    select = next(task for task in stage if task['name'] == 'Select gateway units for the sole runtime publisher')
+    assert select['loop'] == '{{ _transport_egress_gateway_candidates }}'
+    assert 'transport_runtime_candidates' in select['ansible.builtin.set_fact']
+    publish = next(task for task in stage if task['name'] == 'Validate and publish changed private candidates')['block']
+    live = next(task for task in publish if task['name'] == 'Publish the complete validated candidate')
+    assert live['loop'] == '{{ _transport_egress_candidate_files }}'
+    assert next(task for task in publish if task['name'] == 'Stage release-bound gateway units for syntax validation only')['ansible.builtin.copy']['dest'].startswith('{{ _transport_egress_candidate_dir.path }}')
