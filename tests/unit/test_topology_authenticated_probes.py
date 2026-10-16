@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from jinja2 import Environment, StrictUndefined
 
 from template_render import merge_render_vars, render_template
 
@@ -69,3 +70,29 @@ def test_disabled_xhttp_needs_no_xhttp_configuration():
     assert 'XRAY_XHTTP_PROBES=\n' in env
     for name in ('NGINX_PORT', 'XHTTP_BACKEND_PORT', 'NGINX_FALLBACK_PORT'):
         assert f'{name}=0\n' in env
+
+
+@pytest.mark.parametrize('omitted', [('enable_nginx_xhttp',), ('enable_hysteria',),
+                                    ('enable_nginx_xhttp', 'enable_hysteria')])
+def test_omitted_transport_toggles_preserve_canonical_probe_authority(omitted):
+    canonical = merge_render_vars()
+    canonical['vpn']['enable_xray_reality'] = False
+    actual = {**canonical, 'vpn': {key: value for key, value in canonical['vpn'].items()
+                                 if key not in omitted}}
+    for name in ('vpn-watchdog.env.j2', 'reality-probe.json.j2', 'vpn-watchdog.service.j2'):
+        assert render_template(ROLE / 'templates' / name, actual) == render_template(
+            ROLE / 'templates' / name, canonical)
+
+    # Evaluate the real role's selection/retirement conditions as well as renders.
+    # The values here are typed booleans, matching the canonical toggle contract.
+    environment = Environment(undefined=StrictUndefined)
+    environment.filters['bool'] = bool
+    conditions = []
+    for task in yaml.safe_load((ROLE / 'tasks/enable.yml').read_text()):
+        when = task.get('when', [])
+        for condition in ([when] if isinstance(when, str) else when):
+            if any('vpn.' + toggle in condition for toggle in omitted):
+                conditions.append(environment.compile_expression(condition))
+    assert conditions
+    for evaluate in conditions:
+        assert evaluate(**actual) == evaluate(**canonical)

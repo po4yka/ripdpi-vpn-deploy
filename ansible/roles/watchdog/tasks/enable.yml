@@ -104,7 +104,7 @@
       vpn_service_address must identify the public data-plane endpoint;
       ansible_host is reserved for the administrative SSH path.
   when:
-    - (vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(false)) or (vpn.enable_hysteria | default(false))
+    - (vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true)) or (vpn.enable_hysteria | default(true))
     - not (vpn_subscription_only | default(false))
 
 - name: Validate authenticated REALITY probe contract
@@ -120,7 +120,7 @@
       Watchdog REALITY probing requires an owned HTTPS canary URL and one
       dedicated xray.clients entry named {{ watchdog.reality_probe_client | default('watchdog') }}.
   when:
-    - (vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(false))
+    - (vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true))
     - not (vpn_subscription_only | default(false))
   no_log: true
 
@@ -131,7 +131,7 @@
          | selectattr('name', 'equalto', watchdog.reality_probe_client | default('watchdog'))
          | list | first }}
   when:
-    - (vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(false))
+    - (vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true))
     - not (vpn_subscription_only | default(false))
   no_log: true
 
@@ -150,7 +150,7 @@
       The dedicated watchdog client must not reuse another device's UUID or
       short ID.
   when:
-    - (vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(false))
+    - (vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true))
     - not (vpn_subscription_only | default(false))
   no_log: true
 
@@ -176,7 +176,7 @@
     group: root
     mode: "0600"
   when:
-    - (vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(false))
+    - (vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true))
     - not (vpn_subscription_only | default(false))
   no_log: true
   diff: false
@@ -190,7 +190,7 @@
     path: /etc/vpn-watchdog-reality.json
     state: absent
   when: >-
-    (not (vpn.enable_xray_reality | default(true)) and not (vpn.enable_nginx_xhttp | default(false)))
+    (not (vpn.enable_xray_reality | default(true)) and not (vpn.enable_nginx_xhttp | default(true)))
     or (vpn_subscription_only | default(false))
 
 - name: Validate dedicated Hysteria watchdog identity
@@ -204,7 +204,7 @@
         | list | length == 1
     quiet: true
   when:
-    - vpn.enable_hysteria | default(false)
+    - vpn.enable_hysteria | default(true)
     - not (vpn_subscription_only | default(false))
   no_log: true
 
@@ -216,7 +216,7 @@
     group: root
     mode: "0600"
   when:
-    - vpn.enable_hysteria | default(false)
+    - vpn.enable_hysteria | default(true)
     - not (vpn_subscription_only | default(false))
   no_log: true
   diff: false
@@ -225,7 +225,7 @@
   ansible.builtin.file:
     path: /etc/vpn-watchdog-hysteria.yaml
     state: absent
-  when: not (vpn.enable_hysteria | default(false)) or (vpn_subscription_only | default(false))
+  when: not (vpn.enable_hysteria | default(true)) or (vpn_subscription_only | default(false))
 
 - name: Drop watchdog probe script
   ansible.builtin.template:
