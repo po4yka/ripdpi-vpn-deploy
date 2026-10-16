@@ -299,7 +299,7 @@ Each repository is authoritative for its own tasks. `./taskctl export --json` em
 ./taskctl federation validate --peer-root ../RIPDPI
 ```
 
-Without a peer checkout an external blocker remains unresolved. Strict validation accepts an active peer record or a `done` terminal record found in peer Git history; a `dropped`, missing, incompatible, or unavailable peer is not a satisfied blocker. Cross-repository cycles are errors.
+Without a peer checkout an external blocker remains unresolved. Strict validation accepts an active peer record or a `done` terminal record found in peer Git history; a `dropped`, missing, incompatible, or unavailable peer is not a satisfied blocker. Cancelled dependents retain their checked historical dependency edges; those edges never make a task ready or satisfy an active dependency. Cross-repository cycles are errors.
 
 ## Tool licenses
 

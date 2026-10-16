@@ -4093,6 +4093,26 @@ class TaskctlFederationTest(TaskctlFixture):
         with self.assertRaisesRegex(taskctl.ContractError, "blocker .* was dropped"):
             taskctl.federation_payload(self.root, self.peer)
 
+        # Cancelling the dependent keeps its historical dependency, without
+        # treating the cancelled prerequisite as satisfied for any live task.
+        taskctl.command_close_prepare(
+            argparse.Namespace(
+                root=self.root,
+                query=consumer_id,
+                outcome="dropped",
+                reason="Owner cancelled the dependent scope.",
+                evidence="No successful execution is claimed.",
+            )
+        )
+        self.commit(self.root, "cancel dependent scope")
+        payload = taskctl.federation_payload(self.root, self.peer)
+        consumer = next(
+            node for node in payload["tasks"] if node["task_id"] == consumer_id
+        )
+        self.assertEqual("dropped", consumer["status"])
+        self.assertEqual([f"po4yka/RIPDPI#{blocker_id}"], consumer["blocked_by"])
+        self.assertNotIn(consumer["id"], [node["id"] for node in payload["ready"]])
+
     def test_purged_done_blocker_resolves_from_terminal_history(self) -> None:
         blocker_id = "CIC-1786234567890001"
         consumer_id = "CIC-1786234567890005"

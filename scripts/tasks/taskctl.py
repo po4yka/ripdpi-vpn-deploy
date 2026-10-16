@@ -3103,7 +3103,7 @@ def federation_payload(root: Path, peer_root: Path) -> dict[str, Any]:
             children[node["parent"]].append(identity)
         blocker_edges[identity] = list(node["blocked_by"])
         for blocker in node["blocked_by"]:
-            if nodes[blocker]["status"] == "dropped":
+            if nodes[blocker]["status"] == "dropped" and node["status"] != "dropped":
                 fail(f"{identity}: blocker {blocker} was dropped")
             reverse_blocks[blocker].append(identity)
     assert_acyclic(parent_edges, "federated parent")
