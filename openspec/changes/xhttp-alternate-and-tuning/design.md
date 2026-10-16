@@ -2,19 +2,19 @@
 
 The server exposes an optional alternate direct XHTTP frontend, but the recipient emitter advertises only the primary. XHTTP mode and advanced connection behavior are largely upstream defaults rather than a tested shared contract. The existing architecture can deliver explicit alternate selection and bounded performance profiles cheaply after endpoint correctness, isolation and safe runtime adoption are established.
 
-Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Revalidate source and current task ownership before implementation. This request creates plans only.
+Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Revalidate source and current task ownership before implementation. Implementation is authorized with local-only acceptance (2026-10-16).
 
 ## Goals / Non-Goals
 
 - Goal: deliver selectable alternate xhttp endpoints and measured typed tuning with positive capability and meaningful negative, security, lifecycle and privacy tests.
-- Non-goal: implementation in this session, provider mutation, production deployment, actual credentials, unrelated cleanup, compatibility shims or revival of cancelled acceptance.
+- Non-goal: provider mutation, external staging, staging soak, physical or external clients, production deployment, actual credentials or unrelated cleanup.
 
 ## Decisions
 
 - Alternate delivery is direct HTTPS and opt-in; its endpoint uses its configured hostname and port, not an assumed copy of the primary identity.
-- Every emitted alternate is supported by the selected exact client engine and has a real server listener. Standard official sing-box output remains free of unsupported XHTTP.
-- Define named technical profiles from a small typed allowlist of mode and supported XMUX/request/connection limits after verifying exact engine capabilities. No arbitrary extra JSON or silently ignored fields are accepted.
-- Keep existing defaults until comparative actual-client evidence supports a selected profile. A parser-only or refusal-only state does not deliver the feature.
+- Every emitted alternate is supported by its selected format and has a real server listener. Official sing-box remains free of unsupported XHTTP. RIPDPI carries auto/stream-up only. The native Xray format binds one loopback SOCKS listener per endpoint; all routing rules select one exact endpoint, with an unmatched blackhole default.
+- Native Xray v26.3.27 admits auto, packet-up and stream-up. The optional bounded-pool profile requires stream-up and integer max_connections (1–4). It fixes request/age/session retirement to zero (unlimited reuse) so discarded HTTP pools cannot accumulate live sockets; native XMUX maps these controls directly. No extra JSON, unknown field, unsupported engine/version, unsafe retirement bound or ignored recipient tuning is accepted. Server XMUX is not emitted: these are connection-pool controls of the native outbound; server mode remains shared.
+- Keep existing defaults. Qualify the optional profile through actual pinned native Xray processes in an owned disconnected local Linux lab: primary/alternate authenticated transfers, TLS and credential refusals, primary outage, idle recovery, reconnect, constrained transfer, process RSS and connection observations, and restored baseline. No external client acceptance or staging soak is required.
 - Record active endpoint and failure class in redacted liveness evidence; do not automatically churn uTLS fingerprints or interrupt unrelated established sessions.
 - P0 controls are a separate measured contract, not incidental additions to XHTTP tuning. Preserve classical REALITY shape, stable production release policy and the PQE HOLD guard.
 - Unknown client support, prerelease-only controls or incomplete rollback keep the option unavailable for production. A future version upgrade is a separately reviewed coordinated server/client change.
@@ -42,7 +42,7 @@ Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Reva
 - NEW: tests/integration/xhttp_delivery_matrix/
 - NEW: docs/XHTTP-DELIVERY-PROFILES.md
 - Dependencies: xhttp-contract, runtime-transaction, boundary, integration. Exact IDs and hard edges are stored in portfolio frontmatter; related source-fixed tasks are traceability, not a new implementation blocker.
-- Implementation starts only after separate authorization in a dedicated worktree; read nearest role/script/test guidance first.
+- Implementation uses an authorized dedicated worktree; read nearest role/script/test guidance first.
 - A single integration owner serializes schemas/examples, shared effective profile helpers, group variables, Makefile, CI selectors, snapshots and task metadata. Workers request shared-lane edits and preserve all concurrent work.
 - Terraform owns provider objects, cloud-init owns bootstrap, Ansible owns runtime and SOPS owns private authority; no layer shortcut is introduced.
 
@@ -57,9 +57,21 @@ Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Reva
 
 ## Migration Plan
 
-Planning only. Future implementation requires separate approval. Land endpoint correctness, resolved isolation and complete runtime acceptance first. Determine exact server and supported recipient versions from primary release and parser evidence at implementation time; do not invent an upgrade pin now. Extend existing artifacts and consumers together without keeping duplicate contracts. Coordinate supported client redistribution before enabling a new mode/profile; ordinary defaults and the classical P0 path remain the accepted baseline until measured staging proof. PQE over REALITY stays HOLD and needs its own reviewed phase transition, client migration and authenticated rollback. Typed P0 controls may be evaluated later, but are outside this feature's runnable scope. No production promotion, DNS/TLS issuance or credential export is authorized.
+The user authorized local-only implementation and native Xray recipient format on
+2026-10-16. No provider, inventory, secret decryption, external staging soak or
+physical/external client run is part of acceptance. The independent four-protocol
+acceptance task remains related roadmap work; this change owns its complete local
+XHTTP matrix, rather than waiting for unrelated baseline transports.
 
-Implementation order follows the dependency DAG. Run each complete affected test suite; use `build-gate` once around heavy top-level builds and never bypass pinned tools or safety hooks. Archive/closure remains unavailable while any requirement or required evidence category is unresolved.
+The verification schema retains its existing categories: `staging` records only
+the disconnected local Linux runtime staging harness; `client` records only the
+pinned native fixture process. Neither category establishes external acceptance.
+These categories are fulfilled through real local execution, not marked passed
+by reclassifying a parser or mock as traffic evidence. Local and exact-source CI
+checks remain required. The production pins, classical P0 and PQE HOLD remain.
+Native Xray recipient JSON is a new explicit P1-only format; existing bundle and
+subscription formats do not silently acquire XMUX settings. Distribute native
+JSON only to the qualified engine. Unsupported RIPDPI tuning refuses publication.
 
 ## Acceptance tests
 
@@ -74,7 +86,7 @@ Implementation order follows the dependency DAG. Run each complete affected test
 - `make liveness-profile-check`
 - `make snapshot-check`
 - `build-gate -- make check`
-- `NEW make test-xhttp-delivery-matrix — Prove selectable alternate, exact typed modes, comparative measurements and rollback with owned client/server fixtures.`
+- `make test-xhttp-delivery-matrix — Prove selectable alternate, exact typed modes, comparative measurements and rollback with owned client/server fixtures.`
 
 Commands marked NEW are implementation deliverables and must exist, execute complete cases and fail on selected skips before acceptance. They are not commands run during planning. No credentialed recipe is authorized merely by being listed here.
 
@@ -83,6 +95,6 @@ Commands marked NEW are implementation deliverables and must exist, execute comp
 - `XRY-1791617955392712` — `xhttp-endpoint-contract`.
 - `ANS-1791617913525586` — `runtime-acceptance-transaction`.
 - `SEC-1791617841911853` — `resolved-destination-boundary`.
-- `TST-1791618356595983` — `native-four-protocol-acceptance`.
+- Related, not a local XHTTP implementation blocker: `TST-1791618356595983` — `native-four-protocol-acceptance`.
 
-These are canonical `blocked_by` edges; child requirements can be prepared and characterized before a blocker closes, but promotion/acceptance follows the graph. Existing integrated review records are preserved as related evidence and do not imply a new fleet acceptance.
+The first three are accepted source prerequisites. The independent four-protocol task is a related roadmap item under the authorized local-only scope. Existing integrated review records are preserved as related evidence and do not imply a new fleet acceptance.

@@ -16,7 +16,18 @@
 
 Ingress/egress commit tests kill a separate process before and after the durable decision, native outer finish and ingress journal deletion. Portable tests model only the egress adapter; the native lane retains a real accepted outer route and proves authenticated canary traffic after roll-forward or whole-route rollback. Ansible composition also covers a lost acknowledgement after journal deletion so rescue cannot revert committed egress. Native acceptance uses the least-duration split so new boundary cases mix with existing lifecycle cases instead of accumulating in one contiguous partition.
 
+The complete XHTTP delivery matrix extends the endpoint target with real native
+Xray format consumption, distinct alternate TLS identity, primary outage,
+wrong-certificate refusal, bounded-pool comparisons, idle reuse,
+process reconnect, namespace-only netem and baseline restoration. Aggregate
+measurements contain bytes, timings, RSS and socket counts only. Local fixture
+processes do not establish physical-client or production acceptance.
+
 Subprocess ownership regressions require a retained session leader at the group signal boundary, and real quiet descendants must stop after successful exit, timeout, owner loss or a broken status report. A denied group signal fails once, while the private control channel still reclaims the supervisor. Fallback kill and wait failures retain categorical diagnostics.
+
+REALITY monitor regressions execute 256 KiB TLS transcripts through the actual shell path. Valid transport checks retain healthy classification or an unknown ASN lookup, rather than failing because a quiet pipeline reader closes early. Certificate, SAN and ALPN refusal cases remain required.
+
+WARP teardown regressions require successful fresh kernel absence checks before accepting concurrent veth removal. Persistent links, replacement namespace handles, dangling aliases and unreadable probes refuse; failed preparation retains its original error after successful compensation.
 
 The AWG source-candidate lab compiles exact upstream baseline/candidate pairs
 and exercises real systemd/TUN traffic in a disconnected local container.

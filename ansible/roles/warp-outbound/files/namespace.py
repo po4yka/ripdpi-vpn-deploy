@@ -82,6 +82,22 @@ def link(name, namespace=False):
     return found[0] if found else None
 
 
+def remove_host_link_after_namespace():
+    if link(HOST) is None:
+        return
+    try:
+        command(['ip', 'link', 'delete', HOST])
+    except Refusal:
+        # Kernel namespace teardown can remove the pair after our link query.
+        # Accept only proven absence; aliases and unreadable probes still refuse.
+        try:
+            NSFILE.lstat()
+        except FileNotFoundError:
+            if link(HOST) is None:
+                return
+        raise
+
+
 def inspect():
     record = owner()
     if NSFILE.is_symlink():
@@ -142,8 +158,7 @@ def prepare():
     except (OSError, Refusal, KeyError, TypeError):
         if created:
             command(['ip', 'netns', 'delete', NAMESPACE])
-        if link(HOST) is not None:
-            command(['ip', 'link', 'delete', HOST])
+        remove_host_link_after_namespace()
         raise
 
 
@@ -209,8 +224,7 @@ def retire():
         if names - {'lo', PEER, TUNNEL}:
             raise Refusal('namespace-foreign-link')
         command(['ip', 'netns', 'delete', NAMESPACE])
-        if link(HOST) is not None:
-            command(['ip', 'link', 'delete', HOST])
+        remove_host_link_after_namespace()
     # Preserve bounded ownership for readmission and whole-route rollback.
     retired = {'schema': 2, 'unit': 'warp-svc.service', 'namespace_inode': None,
                'host_ifindex': None, 'peer_ifindex': None}

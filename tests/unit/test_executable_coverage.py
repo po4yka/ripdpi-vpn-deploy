@@ -61,7 +61,7 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
     assert "PATH=$PATH" in shlex.split(ech_step.replace("\\\n", ""))
     command = shlex.split(native[-1]["run"].replace("\\\n", ""))
     assert command[:2] == ["sudo", "env"]
-    assert command[-5:] == ["make", "test-native-runtime", "test-xhttp-endpoint-contract", "test-awg-device-binding-runtime", "test-awg-dualstack-runtime"]
+    assert command[-5:] == ["make", "test-native-runtime", "test-xhttp-delivery-matrix", "test-awg-device-binding-runtime", "test-awg-dualstack-runtime"]
     environment = {}
     for assignment in command[2:-5]:
         name, value = assignment.split("=", 1)
@@ -136,7 +136,7 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
     assert ('tests/unit/test_transport_runtime_acceptance_native.py::'
             'test_native_ech_admission_retains_custom_configuration_directory') in transactions
     assert awg_cases and len(ech_cases) == 13
-    assert endpoint_cases and len(endpoint_cases) == 2
+    assert endpoint_cases and len(endpoint_cases) == 10
     assert "$(MAKE) test-probe-matrix-mtproto" in makefile.split("ci-fast:", 1)[1]
     assert "go test -mod=readonly -count=1" in makefile
     names = []

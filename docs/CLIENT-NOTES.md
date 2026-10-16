@@ -16,8 +16,9 @@ Do not pair these artifacts with a PQE-enabled server inbound. Server-only enabl
 `address` list and removes the default cleartext local-DNS and
 private-network routes. It also uses typed DNS servers and route-level
 `sniff`/`hijack-dns` actions required by sing-box 1.13. The standard artifact
-contains P0 REALITY and P2 Hysteria2 only; P1 XHTTP is exclusive to
-`emit-bundle` because official sing-box does not implement that transport.
+contains P0 REALITY and P2 Hysteria2 only. P1 XHTTP is available through
+`emit-bundle` and the explicit `emit-xray` native format because official sing-box
+does not implement that transport. See [XHTTP delivery profiles](XHTTP-DELIVERY-PROFILES.md).
 Regenerate and redistribute existing profiles after upgrading.
 `--per-app-bypass` still emits an intentional non-lockdown profile, but
 `make check-killswitch BUNDLE=…` rejects that profile by design.
