@@ -146,3 +146,57 @@ def test_new_failure_diagnostic_is_private_and_byte_complete(tmp_path):
     runner.retain_diagnostic(source, destination)
     assert destination.read_bytes() == source.read_bytes()
     assert destination.stat().st_mode & 0o777 == 0o600
+
+
+def test_cleanup_inventory_reports_counts_without_private_identities():
+    import json
+
+    difference = runner.resource_differences(
+        {"users": [], "private-field": ["private-before"]},
+        {"users": [("private-user", 123)], "private-field": ["private-after"]},
+    )
+    assert difference == {
+        "users": {"before": 0, "after": 1},
+        "inventory": {"before": 1, "after": 1},
+    }
+    assert "private" not in json.dumps(difference)
+
+
+def test_case_cleanup_evidence_filters_private_messages_and_unknown_fields(tmp_path):
+    import json
+
+    root = runner.ET.Element("testsuite")
+    case = runner.ET.SubElement(root, "testcase", classname="native", name="cleanup")
+    error = runner.ET.SubElement(case, "error")
+    error.set("message", "native-case-cleanup-unconfirmed:" + json.dumps({
+        "processes": {"before": 1, "after": 2, "identity": "private-process"},
+        "private-field": {"before": 1, "after": 2},
+    }))
+    error.text = "private raw diagnostics"
+    path = tmp_path / "cases.xml"
+    runner.ET.ElementTree(root).write(path)
+    rows = runner.case_results(path)
+    assert rows == [{
+        "case": "native.cleanup", "result": "error",
+        "cleanup_differences": {"processes": {"before": 1, "after": 2}},
+    }]
+    assert "private" not in json.dumps(rows)
+
+
+@pytest.mark.parametrize("changed", ["engines", "source"])
+def test_final_cleanup_refuses_engine_or_source_drift_with_categorical_evidence(
+    tmp_path, monkeypatch, changed
+):
+    import json
+
+    before = {"namespaces": []}
+    monkeypatch.setattr(runner, "resources", lambda: before)
+    monkeypatch.setattr(runner, "engines", lambda: {"xray": "private-change" if changed == "engines" else "old"})
+    monkeypatch.setattr(runner, "run", lambda *a, **k: b"M private-filename" if changed == "source" else b"")
+    output = tmp_path / "evidence.json"
+    with pytest.raises(RuntimeError, match="owned-resource-cleanup-unconfirmed"):
+        runner.finish({"success": True, "engines": {"xray": "old"}}, before, output)
+    observed = json.loads(output.read_text())
+    assert observed["success"] is False and observed["cleanup"] is False
+    assert set(observed["cleanup_differences"]) == {changed}
+    assert "private" not in output.read_text()
