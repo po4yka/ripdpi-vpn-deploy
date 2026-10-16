@@ -578,3 +578,7 @@ results, source/engine hashes and cleanup status; raw pytest logs stay private.
 Copied native CI source trees must be root-owned before admission. A Git
 `safe.directory` exception for the top-level checkout does not admit its nested
 pinned AWG source clones; preserve normal ownership checks instead.
+
+A nested native lab that creates namespaces for systemd must join its root
+network namespace with `nsenter --net`. `ip netns exec` also isolates mounts,
+so the manager cannot open nested namespace handles created by that process.
