@@ -74,6 +74,41 @@ def test_xray_missing_probe_credentials_refuse_before_native_execution(monkeypat
         adapter.validate()
 
 
+@pytest.mark.parametrize('directory', ['/etc/hysteria', '/etc/hysteria/profile'])
+@pytest.mark.parametrize('credential', ['selected', 'missing', 'duplicate', 'relative', 'unselected'])
+def test_ech_admission_uses_exact_staged_unit_credential(monkeypatch, directory, credential):
+    import transport_runtime_validate as native
+    import yaml
+    config = directory + '/config.yaml'
+    key = directory + '/ech.key'
+    source = {'selected': key, 'missing': None, 'duplicate': key,
+              'relative': 'ech.key', 'unselected': '/etc/foreign/ech.key'}[credential]
+    unit = 'ExecStart=/owned/hysteria server -c ' + config + '\n'
+    if source is not None:
+        unit += 'LoadCredential=hysteria-ech:' + source + '\n'
+        if credential == 'duplicate':
+            unit += 'LoadCredential=hysteria-ech:' + source + '\n'
+    document = {'tls': {'cert': directory + '/cert.pem', 'key': directory + '/tls.key'},
+                'ech': {'keyPath': '/run/credentials/hysteria-server.service/hysteria-ech'}}
+    contents = {'/etc/systemd/system/hysteria-server.service': unit.encode(),
+                config: yaml.safe_dump(document).encode(), key: b'selected-private-authority',
+                directory + '/cert.pem': b'certificate', directory + '/tls.key': b'tls-key'}
+    candidates = [{'path': path, 'data': base64.b64encode(raw).decode()} for path, raw in contents.items()]
+    observed = []
+    monkeypatch.setattr(native, 'validate_hysteria', lambda *args, **kwargs: observed.append((args, kwargs)))
+    adapter = accept.Adapter(candidates, 'http://owned.example/', 204, 10, {'xray': 'probe', 'hysteria': 'probe'})
+    if credential == 'selected':
+        adapter.validate()
+        assert len(observed) == 1
+        assert observed[0][0][4] == unit
+        assert observed[0][1]['ech_key'] == contents[key]
+    else:
+        reason = 'candidate-incomplete' if credential == 'unselected' else 'unit-credential-invalid'
+        with pytest.raises(accept.Refusal, match=reason):
+            adapter.validate()
+        assert not observed
+
+
 def test_full_retirement_cannot_report_readiness_with_running_process(monkeypatch):
     adapter = accept.Adapter([], 'http://owned.example/', 204, 10, {'xray':'probe', 'hysteria':'probe'})
     monkeypatch.setattr(adapter, 'frontends', lambda: [])

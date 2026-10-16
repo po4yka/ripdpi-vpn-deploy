@@ -434,6 +434,29 @@ with Transaction(STATE) as tx:
             process.stdout.close()
 
 
+def test_native_ech_admission_retains_custom_configuration_directory():
+    from hysteria_ech import generate
+    with fixture.Lab() as lab:
+        from transport_runtime_accept import fields
+        lab.upgrade('hysteria')
+        directory = Path('/etc/hysteria/profile')
+        lab.context['hysteria_config_dir'] = str(directory)
+        authority = generate(lab.artifacts / 'hysteria-v2.13.0', 'outer.example', 'owned.example')
+        lab.context['hysteria']['ech'] = authority
+        assert lab.converge('hysteria') == 0
+        key = directory / 'ech.key'
+        matches = key.read_text() == authority['keys_pem']
+        assert matches, 'native-custom-directory-ECH-authority-mismatch'
+        assert key.stat().st_mode & 0o777 == 0o600
+        assert not Path('/etc/hysteria/ech.key').exists()
+        unit = Path('/etc/systemd/system/hysteria-server.service').read_text()
+        assert 'LoadCredential=hysteria-ech:' + str(key) in unit
+        before = fields('hysteria-server.service')['MainPID']
+        assert int(before) > 0
+        assert lab.converge('hysteria') == 0
+        assert fields('hysteria-server.service')['MainPID'] == before
+
+
 def test_native_ech_rotation_idempotence_and_complete_compensation():
     from hysteria_ech import generate
     with fixture.Lab() as lab:

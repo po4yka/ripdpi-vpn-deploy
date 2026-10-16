@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Bootstrap registers plaintext cleanup before writing credentials; ECH refusal, encryption failure and signal exits all remove that private document. RIPDPI bundle export rejects the internal `--xhttp-only` monitoring flag before invoking any producer or reading secrets.
+
 ECH recipients and liveness derive their default TLS identity from the declared inner name, independently of the nginx frontend hostname. An explicit Hysteria server_name must agree through semantic admission.
 
 BBR resource profiles, like ECH, target the qualified official sing-box recipient. Unqualified RIPDPI export refuses before output; paired XHTTP monitoring requests only its explicit Xray intermediate.

@@ -261,6 +261,12 @@ NTFY_TOPIC="vpn-$(openssl rand -hex 8)"
 # ---------------------------------------------------------------------------
 # Compose plaintext YAML
 # ---------------------------------------------------------------------------
+cleanup_plaintext() {
+  shred -u "$PLAINTEXT" 2>/dev/null || rm -f "$PLAINTEXT"
+}
+trap cleanup_plaintext EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 umask 077
 {
   cat <<HEAD
@@ -440,7 +446,7 @@ PY_ECH
 fi
 sops --encrypt --age "$AGE_RECIPIENT" "$PLAINTEXT" > "$ENCRYPTED"
 chmod 0600 "$ENCRYPTED"
-shred -u "$PLAINTEXT" 2>/dev/null || rm -f "$PLAINTEXT"
+cleanup_plaintext
 echo ">>> encrypted to: $ENCRYPTED"
 echo
 echo "Next: edit with  sops $ENCRYPTED"

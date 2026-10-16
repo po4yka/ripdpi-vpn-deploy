@@ -325,6 +325,24 @@ def test_wrong_private_scalar_with_same_public_metadata_refuses():
     assert hysteria_errors(hysteria(ech))
 
 
+@pytest.mark.parametrize('profile', ['ech', 'bbr-conservative', 'bbr-standard'])
+def test_bundle_refuses_internal_monitoring_flag_before_emission(tmp_path, profile):
+    source = _secrets_as_json(tmp_path)
+    document = json.loads(source.read_text())
+    document['hysteria']['version'] = 'v2.13.0'
+    if profile == 'ech':
+        document['hysteria']['ech'] = authority(inner_name=document['nginx_xhttp']['server_name'])
+    else:
+        document['hysteria']['resource_profile'] = profile
+    source.write_text(json.dumps(document))
+    environment = _build_env(tmp_path, source)
+    result = subprocess.run(['bash', str(BUNDLE_SCRIPT), 'laptop', '--xhttp-only'],
+                            env=environment, capture_output=True, text=True, timeout=30)
+    assert result.returncode != 0 and not result.stdout
+    assert '--xhttp-only is reserved for monitoring' in result.stderr
+    assert not Path(environment['STUB_LOG']).exists()
+
+
 @pytest.mark.parametrize('profile', ['bbr-conservative', 'bbr-standard'])
 def test_bbr_recipient_requires_qualified_engine_and_retains_paired_xhttp(tmp_path, profile):
     source = _secrets_as_json(tmp_path)

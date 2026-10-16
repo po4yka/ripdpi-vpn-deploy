@@ -176,7 +176,8 @@ class Adapter:
                 continue
             if not any(item['path'] == path for item in self.candidates) and not (unit == 'xray.service' and self.asset_dir):
                 continue
-            binary, assets, config_path = unit_binary(self.candidate(path).decode())
+            unit_text = self.candidate(path).decode()
+            binary, assets, config_path = unit_binary(unit_text)
             if unit == 'xray.service':
                 with tempfile.TemporaryDirectory(prefix='ripdpi-xray-candidate-') as tmp:
                     config = Path(tmp) / 'config.json'
@@ -191,11 +192,19 @@ class Adapter:
                 raw = self.candidate(config_path)
                 document = yaml.safe_load(raw)
                 tls = document['tls']
+                ech_key = None
+                if 'ech' in document:
+                    prefix = 'LoadCredential=hysteria-ech:'
+                    sources = [line[len(prefix):] for line in unit_text.splitlines() if line.startswith(prefix)]
+                    if (len(sources) != 1 or not Path(sources[0]).is_absolute()
+                            or str(Path(sources[0])) != sources[0] or '..' in Path(sources[0]).parts):
+                        raise Refusal('unit-credential-invalid')
+                    ech_key = self.candidate(sources[0])
                 validate_hysteria(binary, raw, self.candidate(tls['cert']),
                                   self.candidate(tls['key']),
-                                  self.candidate(path).decode(), self.timeout, self.clients['hysteria'],
+                                  unit_text, self.timeout, self.clients['hysteria'],
                                   transaction=getattr(self, 'transaction', None),
-                                  ech_key=self.candidate('/etc/hysteria/ech.key') if 'ech' in document else None)
+                                  ech_key=ech_key)
 
     def retained(self, receipt):
         self.known = (receipt or {}).get('nodes', {})

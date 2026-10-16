@@ -264,3 +264,52 @@ EOF
   [[ "$output" == *"could not parse xray x25519 output"* ]]
   [ ! -e "${BATS_TEST_TMPDIR}/.config/vpn-provision/local-env.secrets.sops.yaml" ]
 }
+
+@test "bootstrap removes plaintext on ECH runtime and identity refusal" {
+  _install_bootstrap_stubs
+  local failure binary outer
+  binary="${FAKE_BIN}/hysteria"
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$binary"
+  chmod 0700 "$binary"
+  for failure in missing checksum identities; do
+    outer='outer.example'
+    [[ "$failure" != identities ]] || outer='vpn.example.com'
+    local selected="$binary"
+    [[ "$failure" != missing ]] || selected="${FAKE_BIN}/absent-hysteria"
+    run env PATH="${FAKE_BIN}:${PATH}" UUID_STATE="$UUID_STATE" OPENSSL_STATE="$OPENSSL_STATE" \
+      HOME="$BATS_TEST_TMPDIR" VPN_PROVISION_CONFIG_DIR="${BATS_TEST_TMPDIR}/private" HYSTERIA_BINARY="$selected" \
+      bash "$SCRIPT" --env refused --target mirror.example.com:443 --server-name mirror.example.com \
+      --xhttp-host vpn.example.com --ech-public-name "$outer"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"ECH bootstrap refused"* ]]
+    [ ! -e "${BATS_TEST_TMPDIR}/private/refused.secrets.yaml" ]
+    [ ! -e "${BATS_TEST_TMPDIR}/private/refused.secrets.sops.yaml" ]
+  done
+}
+
+@test "bootstrap removes plaintext on encryption failure with shred unavailable" {
+  _install_bootstrap_stubs
+  printf '#!/usr/bin/env bash\nexit 47\n' > "${FAKE_BIN}/sops"
+  printf '#!/usr/bin/env bash\nexit 1\n' > "${FAKE_BIN}/shred"
+  chmod 0700 "${FAKE_BIN}/shred"
+  run env PATH="${FAKE_BIN}:${PATH}" UUID_STATE="$UUID_STATE" OPENSSL_STATE="$OPENSSL_STATE" \
+    HOME="$BATS_TEST_TMPDIR" VPN_PROVISION_CONFIG_DIR="${BATS_TEST_TMPDIR}/private" \
+    bash "$SCRIPT" --env refused --target mirror.example.com:443 --server-name mirror.example.com
+  [ "$status" -eq 47 ]
+  [ ! -e "${BATS_TEST_TMPDIR}/private/refused.secrets.yaml" ]
+}
+
+@test "bootstrap removes plaintext on termination during encryption" {
+  _install_bootstrap_stubs
+  cat > "${FAKE_BIN}/sops" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ -s "${!#}" ]]
+kill -TERM "$PPID"
+EOF
+  run env PATH="${FAKE_BIN}:${PATH}" UUID_STATE="$UUID_STATE" OPENSSL_STATE="$OPENSSL_STATE" \
+    HOME="$BATS_TEST_TMPDIR" VPN_PROVISION_CONFIG_DIR="${BATS_TEST_TMPDIR}/private" \
+    bash "$SCRIPT" --env interrupted --target mirror.example.com:443 --server-name mirror.example.com
+  [ "$status" -eq 143 ]
+  [ ! -e "${BATS_TEST_TMPDIR}/private/interrupted.secrets.yaml" ]
+}

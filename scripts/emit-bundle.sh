@@ -44,6 +44,12 @@ if [[ -z "$CLIENT_NAME" ]]; then
   exit 1
 fi
 shift
+for argument in "$@"; do
+  if [[ "$argument" == "--xhttp-only" ]]; then
+    echo "--xhttp-only is reserved for monitoring and unsupported in RIPDPI bundles" >&2
+    exit 1
+  fi
+done
 SINGBOX_CLI_ARGS=("$@")
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
