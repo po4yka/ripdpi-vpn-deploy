@@ -546,7 +546,8 @@ jobs:
     name: native runtime integration
     runs-on: ubuntu-24.04
     # Setup, the complete native suite and cleanup share this total job budget.
-    timeout-minutes: 30
+    # The ten-case XHTTP matrix adds about ten minutes before the AWG cases.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
