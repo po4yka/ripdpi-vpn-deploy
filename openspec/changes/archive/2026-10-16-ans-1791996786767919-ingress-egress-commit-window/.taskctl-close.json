@@ -1,0 +1,11 @@
+{
+  "change": "ans-1791996786767919-ingress-egress-commit-window",
+  "evidence_summary": "Source 8f89764ab5c3bfc38224f948ef4b54c59cd16465: full gated make check passed; all 12 native transport cases including six SIGKILL boundaries passed; CI run 38930926508 and required-checks job 117092904845 succeeded; both CodeQL alerts fixed and review threads resolved.",
+  "execution_sha256": "31d8b6f0fc78dbdb156f00a886dd89880de14400a7ec1e4b6e0aeb855498e085",
+  "issue_sha256": "36803db9a5898619d441ae090d4895128074a35f53e95b7d6d099ce5d3250d3c",
+  "outcome": "done",
+  "prepared_at": "2026-10-16T17:26:18Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "ANS-1791996786767919"
+}
