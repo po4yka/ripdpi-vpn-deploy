@@ -6,6 +6,7 @@ loaders below without an editable install.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import math
 import os
@@ -41,8 +42,26 @@ def isolated_synthetic_git_config(monkeypatch):
 def pytest_addoption(parser):
     parser.addoption("--fail-on-skip", action="store_true",
                      help="Fail a required lane if any selected test is skipped")
+    parser.addoption("--native-resource-checks", action="store_true",
+                     help="Require every isolated native case to retire its resources")
     parser.addoption("--shard-report", type=Path,
                      help="Write complete collection and execution coverage for a CI group")
+
+
+@pytest.fixture(autouse=True)
+def native_owned_resource_cleanup(request):
+    if not request.config.getoption("--native-resource-checks"):
+        yield
+        return
+    spec = importlib.util.spec_from_file_location(
+        "_native_resource_inventory", REPO_ROOT / "tests/native/transport_acceptance/runner.py"
+    )
+    inventory = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(inventory)
+    before = inventory.resources()
+    yield
+    difference = inventory.resource_differences(before, inventory.resources())
+    assert not difference, "native-case-cleanup-unconfirmed:" + json.dumps(difference, sort_keys=True)
 
 
 def pytest_configure(config):
