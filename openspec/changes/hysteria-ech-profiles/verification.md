@@ -1,21 +1,21 @@
 ---
-task_id: "ANS-1791618083683925"
-change: "hysteria-ech-profiles"
+task_id: ANS-1791618083683925
+change: hysteria-ech-profiles
 commit_sha: null
-local: "required"
-local_evidence: "complete affected suites and exact native positive/failure cases after implementation"
-remote_ci: "not_applicable"
-remote_ci_evidence: "Owner selected local completion on 2026-10-16; complete local source gates are required. Automatic PR checks remain separate review evidence."
-dry_run: "not_applicable"
-dry_run_evidence: "source capability uses isolated native proof; real inventory/controller rehearsal needs separate authorization"
-staging: "not_applicable"
-staging_evidence: "Owner removed staging soak on 2026-10-16; isolated local runtime acceptance is required instead."
-live: "not_applicable"
-live_evidence: "no production rollout belongs to this source or disabled-default candidate task"
-client: "not_applicable"
-client_evidence: "Owner removed external and device acceptance on 2026-10-16; real local protocol engines remain required under local evidence."
-artifact: "required"
-artifact_evidence: "private rendered outputs and redacted exact-source requirement-specific evidence after implementation"
+local: not_applicable
+local_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+dry_run: not_applicable
+dry_run_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+staging: not_applicable
+staging_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+live: not_applicable
+live_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+client: not_applicable
+client_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+artifact: not_applicable
+artifact_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
 ---
 
 # Verification
@@ -31,15 +31,15 @@ Each requirement row remains open until its complete named evidence is observed.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-PROTO-ECH-CONTRACT | ANS-1791618091815754 | Exact native server and recipient parser/connection matrix, schema boundaries and qualified RIPDPI integration if included; placeholders and refusal-only tests are insufficient. | passed: source contract and exact Linux recipient matrix at 237b622f |
-| REQ-PROTO-ECH-CONTRACT | ANS-1791618093172970 | Exact native server and recipient parser/connection matrix, schema boundaries and qualified RIPDPI integration if included; placeholders and refusal-only tests are insufficient. | passed: exact native privacy and complete authority transactions at 4b546833 |
-| REQ-PROTO-ECH-CONTRACT | ANS-1791618095149688 | Exact native server and recipient parser/connection matrix, schema boundaries and qualified RIPDPI integration if included; placeholders and refusal-only tests are insufficient. | required |
-| REQ-PROTO-ECH-PRIVATE | ANS-1791618093172970 | Packet capture and exact client telemetry establish negotiated ECH; real wrong-SAN/untrusted certificate cases and verbose synthetic-key leak regressions enforce privacy. | passed: exact native privacy and complete authority transactions at 4b546833 |
-| REQ-PROTO-ECH-PRIVATE | ANS-1791618094259404 | Packet capture and exact client telemetry establish negotiated ECH; real wrong-SAN/untrusted certificate cases and verbose synthetic-key leak regressions enforce privacy. | passed: exact native privacy and complete authority transactions at 4b546833 |
-| REQ-PROTO-ECH-PRIVATE | ANS-1791618095149688 | Packet capture and exact client telemetry establish negotiated ECH; real wrong-SAN/untrusted certificate cases and verbose synthetic-key leak regressions enforce privacy. | required |
-| REQ-PROTO-ECH-ACTIVATE | ANS-1791618094259404 | Real private-file and systemd compensation/intent tests with exact Hysteria connections; wrong-key, unsafe-path and interrupted-publication cases preserve prior generation. | passed: exact native privacy and complete authority transactions at 4b546833 |
-| REQ-PROTO-ECH-ACTIVATE | ANS-1791618095149688 | Real private-file and systemd compensation/intent tests with exact Hysteria connections; wrong-key, unsafe-path and interrupted-publication cases preserve prior generation. | required |
-| REQ-PROTO-ECH-ACCEPT | ANS-1791618095149688 | NEW exact ECH native target plus isolated local protocol procedure, negotiated packet observations and guarded cleanup evidence. | required |
+| REQ-PROTO-ECH-CONTRACT | ANS-1791618091815754 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-ECH-CONTRACT | ANS-1791618093172970 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-ECH-CONTRACT | ANS-1791618095149688 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-ECH-PRIVATE | ANS-1791618093172970 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-ECH-PRIVATE | ANS-1791618094259404 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-ECH-PRIVATE | ANS-1791618095149688 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-ECH-ACTIVATE | ANS-1791618094259404 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-ECH-ACTIVATE | ANS-1791618095149688 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-ECH-ACCEPT | ANS-1791618095149688 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
 
 ## Source implementation observations (2026-10-15)
 

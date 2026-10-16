@@ -1,21 +1,21 @@
 ---
-task_id: "TST-1791618356595983"
-change: "native-four-protocol-acceptance"
+task_id: TST-1791618356595983
+change: native-four-protocol-acceptance
 commit_sha: null
-local: "required"
-local_evidence: "complete affected tests, exact native cases and full source gates after implementation"
-remote_ci: "not_applicable"
-remote_ci_evidence: "Owner selected local completion on 2026-10-16; complete local source gates are required. Automatic PR checks remain separate review evidence."
-dry_run: "not_applicable"
-dry_run_evidence: "source-only capability; no controller or provider execution in this task"
-staging: "not_applicable"
-staging_evidence: "Owner removed staging soak on 2026-10-16; isolated local runtime acceptance is required instead."
-live: "not_applicable"
-live_evidence: "no production rollout is part of this source task"
-client: "not_applicable"
-client_evidence: "Owner removed external and device acceptance on 2026-10-16; real local protocol engines remain required under local evidence."
-artifact: "required"
-artifact_evidence: "validated contracts, private redacted outputs and requirement-to-test evidence on the exact implementation SHA"
+local: not_applicable
+local_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+dry_run: not_applicable
+dry_run_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+staging: not_applicable
+staging_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+live: not_applicable
+live_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+client: not_applicable
+client_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+artifact: not_applicable
+artifact_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
 ---
 
 # Verification
@@ -31,8 +31,8 @@ All rows name planned acceptance, not observed implementation evidence. Planning
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-PROTO-NATIVE-COMPLETION | TST-1791618369402905 | NEW native runner cases plus complete existing liveness and emitter suites; packet completion is required rather than socket/activity alone. | required |
-| REQ-PROTO-NATIVE-LIFECYCLE | TST-1791618370981853 | Real upstream AWG on Linux TUN, recorded process identity and before/after traffic; inherited ownership fixtures remain supplemental. | required |
-| REQ-PROTO-NATIVE-COMPENSATION | TST-1791618370981853 | Exact binaries, activation interruption cases, native logrotate execution and real served request log checks. | required |
-| REQ-PROTO-NATIVE-HOPPING | TST-1791618372464891 | Actual nftables namespace rules, rendered systemd restrictions and native Hysteria clients; require controlled traffic witnesses. | required |
-| REQ-PROTO-NATIVE-HONESTY | TST-1791618373730661 | NEW runner self-tests for failure paths and complete native CI run; no fake executable can fulfill this requirement. | required |
+| REQ-PROTO-NATIVE-COMPLETION | TST-1791618369402905 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-NATIVE-LIFECYCLE | TST-1791618370981853 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-NATIVE-COMPENSATION | TST-1791618370981853 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-NATIVE-HOPPING | TST-1791618372464891 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-NATIVE-HONESTY | TST-1791618373730661 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |

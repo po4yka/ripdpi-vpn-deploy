@@ -2,7 +2,7 @@
 id: ANS-1791618048083304
 title: Deliver interface-correct dual-stack AmneziaWG forwarding and configurable MTU
 kind: feature
-status: doing
+status: dropped
 area: ansible
 priority: high
 risk: high
@@ -12,8 +12,11 @@ blocked_by: [SCR-1791618039091425]
 spec_mode: required
 openspec_change: awg-forwarding-dualstack
 created: 2026-10-10
-updated: 2026-10-15
+updated: 2026-10-16
 related_tasks: [ANS-1791562764586678, SEC-1791471757439452, "po4yka/RIPDPI#DAT-1792081130689287"]
+closed_at: "2026-10-16T13:18:32Z"
+closed_reason: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.
+evidence_summary: Positive implementation and genuine source/runtime observations are retained. The local successor owns all 45 positive requirements and remains open until its complete native and source gates pass; no missing external observation is relabelled as passed.
 ---
 
 ## Goal

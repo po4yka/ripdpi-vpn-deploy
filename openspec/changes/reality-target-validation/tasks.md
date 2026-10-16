@@ -26,8 +26,8 @@ Make REALITY target validation bounded standards-correct and truthful. Local imp
 
 - [x] SCR-1791617985610703 Normalize names replace wildcard heuristics and add actual certificate identity regressions #bug @item:SCR-1791617975137354
 - [x] SCR-1791617986915903 Implement bounded stage and aggregate execution with real stalled-process cleanup tests #bug @item:SCR-1791617975137354
-- [ ] SCR-1791617987865403 Separate hygiene actual client compatibility and owned public service modes with truthful evidence tests #bug @item:SCR-1791617975137354
-- [ ] SCR-1791617989032738 Run target regressions shell and full gates and document promotion authority and remaining vantage gaps #bug @item:SCR-1791617975137354
+- SCR-1791617987865403 DROPPED: Separate hygiene actual client compatibility and owned public service modes with truthful evidence tests #bug @item:SCR-1791617975137354
+- SCR-1791617989032738 DROPPED: Run target regressions shell and full gates and document promotion authority and remaining vantage gaps #bug @item:SCR-1791617975137354
 
 ## Verification
 

@@ -2,7 +2,7 @@
 id: XRY-1791617991738391
 title: Deliver selectable alternate XHTTP endpoints and measured typed tuning
 kind: feature
-status: doing
+status: dropped
 area: xray-config
 priority: medium
 risk: high
@@ -14,6 +14,9 @@ openspec_change: xhttp-alternate-and-tuning
 created: 2026-10-10
 updated: 2026-10-16
 related_tasks: [ANS-1791562764586678, ANS-1791586652330612]
+closed_at: "2026-10-16T13:18:32Z"
+closed_reason: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.
+evidence_summary: Positive implementation and genuine source/runtime observations are retained. The local successor owns all 45 positive requirements and remains open until its complete native and source gates pass; no missing external observation is relabelled as passed.
 ---
 
 ## Goal

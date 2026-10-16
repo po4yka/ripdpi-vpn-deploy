@@ -1,21 +1,21 @@
 ---
-task_id: "EPC-1791618453830051"
-change: "four-protocol-reliability-roadmap"
+task_id: EPC-1791618453830051
+change: four-protocol-reliability-roadmap
 commit_sha: null
-local: "required"
-local_evidence: "complete child local/native suites after implementation; planning checks are not runtime acceptance"
-remote_ci: "not_applicable"
-remote_ci_evidence: "Owner selected local completion on 2026-10-16; complete local source gates are required. Automatic PR checks remain separate review evidence."
-dry_run: "not_applicable"
-dry_run_evidence: "this source/feature portfolio does not run real deployment inputs; any rollout gets its own authorized controller scope"
-staging: "not_applicable"
-staging_evidence: "Owner removed staging soak on 2026-10-16; isolated local runtime acceptance is required instead."
-live: "not_applicable"
-live_evidence: "no production rollout or revival of cancelled fleet acceptance is part of this portfolio"
-client: "not_applicable"
-client_evidence: "Owner removed external and device acceptance on 2026-10-16; real local protocol engines remain required under local evidence."
-artifact: "required"
-artifact_evidence: "exact-source contract/rendered/private-output and redacted native/candidate evidence mapped to every finding"
+local: not_applicable
+local_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+dry_run: not_applicable
+dry_run_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+staging: not_applicable
+staging_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+live: not_applicable
+live_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+client: not_applicable
+client_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+artifact: not_applicable
+artifact_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
 ---
 
 # Verification
@@ -31,7 +31,7 @@ All rows name planned acceptance, not observed implementation evidence. Planning
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-PROTO-PORTFOLIO-ISOLATION | EPC-1791618459636532 | Run the child isolation, binding, schema and native-completion scenarios with exact runtime and client identities; link every A01-A22 row to a child or inherited owner. | required |
-| REQ-PROTO-PORTFOLIO-LIFECYCLE | EPC-1791618460420156 | Map real warm AWG, hopping, Xray rotation, nginx compensation/privacy and health topology scenarios to inherited and new linked owners. | required |
-| REQ-PROTO-PORTFOLIO-EVOLUTION | EPC-1791618461249475 | Require candidate-specific architecture/hash/advisory refresh, exact local parser/traffic, bounded local runtime and compensation cases; retain PQE and nonzero S3/S4 HOLD. | required |
-| REQ-PROTO-PORTFOLIO-EVIDENCE | EPC-1791618462520842 | Validate complete audit coverage, DAG, source-fixed pointers and child evidence mappings; verify actual future source/native/client/staging results before feature completion. | required |
+| REQ-PROTO-PORTFOLIO-ISOLATION | EPC-1791618459636532 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PORTFOLIO-LIFECYCLE | EPC-1791618460420156 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PORTFOLIO-EVOLUTION | EPC-1791618461249475 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PORTFOLIO-EVIDENCE | EPC-1791618462520842 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |

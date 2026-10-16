@@ -37,10 +37,10 @@ Upgrade Hysteria with validated congestion and UDP resource profiles. Source imp
 
 ## Execution
 
-- [ ] SCR-1791618069580618 Refresh exact stable release and client inputs and update all pinned consumers coherently #feature @item:SCR-1791618064422507
+- SCR-1791618069580618 DROPPED: Refresh exact stable release and client inputs and update all pinned consumers coherently #feature @item:SCR-1791618064422507
 - [x] SCR-1791618070531675 Implement bounded congestion and baseline UDP resource profiles with exact native validation #feature @item:SCR-1791618064422507
 - [x] SCR-1791618071381219 Deliver measured authenticated traffic warm adoption and compensating rollback coverage #feature @item:SCR-1791618064422507
-- [ ] SCR-1791618072302643 Complete reviewed source gates and define separately authorized bounded local runtime promotion evidence #feature @item:SCR-1791618064422507
+- SCR-1791618072302643 DROPPED: Complete reviewed source gates and define separately authorized bounded local runtime promotion evidence #feature @item:SCR-1791618064422507
 
 ## Verification
 

@@ -20,10 +20,10 @@ Deliver isolated reliable and upgradeable four-protocol connectivity. The epic e
 
 ## Execution
 
-- [ ] EPC-1791618459636532 Deliver baseline destination isolation authoritative device and endpoint contracts with complete positive and security regression coverage #epic !high @item:EPC-1791618453830051
-- [ ] EPC-1791618460420156 Deliver complete runtime authority recovery topology supervision and inherited lifecycle regression proof #epic !high @item:EPC-1791618453830051
-- [ ] EPC-1791618461249475 Deliver eligible stable runtime and supported optional transport cohorts with real local protocol traffic and rollback #epic !high @item:EPC-1791618453830051
-- [ ] EPC-1791618462520842 Complete requirement-scoped exact-source local acceptance without claiming external or physical outcomes #epic !high @item:EPC-1791618453830051
+- EPC-1791618459636532 DROPPED: Deliver baseline destination isolation authoritative device and endpoint contracts with complete positive and security regression coverage #epic !high @item:EPC-1791618453830051
+- EPC-1791618460420156 DROPPED: Deliver complete runtime authority recovery topology supervision and inherited lifecycle regression proof #epic !high @item:EPC-1791618453830051
+- EPC-1791618461249475 DROPPED: Deliver eligible stable runtime and supported optional transport cohorts with real local protocol traffic and rollback #epic !high @item:EPC-1791618453830051
+- EPC-1791618462520842 DROPPED: Complete requirement-scoped exact-source local acceptance without claiming external or physical outcomes #epic !high @item:EPC-1791618453830051
 
 ## Verification
 

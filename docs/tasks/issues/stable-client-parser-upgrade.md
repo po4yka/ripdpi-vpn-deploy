@@ -2,7 +2,7 @@
 id: TST-1791618376497512
 title: Upgrade verified recipient parsers to the current stable client line
 kind: feature
-status: doing
+status: dropped
 area: testing
 priority: medium
 risk: high
@@ -12,8 +12,11 @@ blocked_by: [TST-1791618356595983, SCT-1791617687019287, XRY-1791617955392712, S
 spec_mode: required
 openspec_change: stable-client-parser-upgrade
 created: 2026-10-10
-updated: 2026-10-15
+updated: 2026-10-16
 related_tasks: []
+closed_at: "2026-10-16T13:18:32Z"
+closed_reason: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.
+evidence_summary: Positive implementation and genuine source/runtime observations are retained. The local successor owns all 45 positive requirements and remains open until its complete native and source gates pass; no missing external observation is relabelled as passed.
 ---
 
 ## Goal

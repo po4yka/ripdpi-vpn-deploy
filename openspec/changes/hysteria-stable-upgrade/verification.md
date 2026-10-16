@@ -1,21 +1,21 @@
 ---
-task_id: "SCR-1791618064422507"
-change: "hysteria-stable-upgrade"
+task_id: SCR-1791618064422507
+change: hysteria-stable-upgrade
 commit_sha: null
-local: "required"
-local_evidence: "complete affected suites and exact native positive/failure cases after implementation"
-remote_ci: "not_applicable"
-remote_ci_evidence: "Owner selected local completion on 2026-10-16; complete local source gates are required. Automatic PR checks remain separate review evidence."
-dry_run: "not_applicable"
-dry_run_evidence: "source capability uses isolated native proof; real inventory/controller rehearsal needs separate authorization"
-staging: "not_applicable"
-staging_evidence: "Owner removed staging soak on 2026-10-16; isolated local runtime acceptance is required instead."
-live: "not_applicable"
-live_evidence: "no production rollout belongs to this source or disabled-default candidate task"
-client: "not_applicable"
-client_evidence: "Owner removed external and device acceptance on 2026-10-16; real local protocol engines remain required under local evidence."
-artifact: "required"
-artifact_evidence: "private rendered outputs and redacted exact-source requirement-specific evidence after implementation"
+local: not_applicable
+local_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+dry_run: not_applicable
+dry_run_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+staging: not_applicable
+staging_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+live: not_applicable
+live_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+client: not_applicable
+client_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+artifact: not_applicable
+artifact_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
 ---
 
 # Verification
@@ -31,14 +31,14 @@ The requirement rows remain open until their complete named evidence is observed
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-PROTO-HY-VERSION | SCR-1791618069580618 | Version-consumer consistency, digest rejection and exact native parser cases; recorded execution-time refresh and staging eligibility are separate from unit fixture assertions. | required |
-| REQ-PROTO-HY-VERSION | SCR-1791618072302643 | Version-consumer consistency, digest rejection and exact native parser cases; recorded execution-time refresh and staging eligibility are separate from unit fixture assertions. | required |
-| REQ-PROTO-HY-TUNING | SCR-1791618070531675 | Schema boundary tests, exact binary startup under rendered sandbox, effective sysctl inspection and coordinated client configuration tests. | passed: exact native resource and systemd profiles at 4b546833 |
-| REQ-PROTO-HY-TUNING | SCR-1791618072302643 | Schema boundary tests, exact binary startup under rendered sandbox, effective sysctl inspection and coordinated client configuration tests. | required |
-| REQ-PROTO-HY-MEASURE | SCR-1791618071381219 | NEW measured runtime target with controlled Linux network impairment and two real clients; do not silently skip required modes or substitute a fixture server. | passed: real measured traffic, warm hopping adoption and complete compensation at 4b546833 |
-| REQ-PROTO-HY-MEASURE | SCR-1791618072302643 | NEW measured runtime target with controlled Linux network impairment and two real clients; do not silently skip required modes or substitute a fixture server. | required |
-| REQ-PROTO-HY-UPGRADE | SCR-1791618071381219 | Extend real runtime-release adoption/compensation cases with exact Hysteria sockets, secure trust, Salamander and multi-port traffic; capture process identity instead of invoking only the new installed command. | passed: real measured traffic, warm hopping adoption and complete compensation at 4b546833 |
-| REQ-PROTO-HY-UPGRADE | SCR-1791618072302643 | Extend real runtime-release adoption/compensation cases with exact Hysteria sockets, secure trust, Salamander and multi-port traffic; capture process identity instead of invoking only the new installed command. | required |
+| REQ-PROTO-HY-VERSION | SCR-1791618069580618 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-HY-VERSION | SCR-1791618072302643 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-HY-TUNING | SCR-1791618070531675 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-HY-TUNING | SCR-1791618072302643 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-HY-MEASURE | SCR-1791618071381219 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-HY-MEASURE | SCR-1791618072302643 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-HY-UPGRADE | SCR-1791618071381219 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-HY-UPGRADE | SCR-1791618072302643 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
 
 ## Source implementation observations (2026-10-15)
 

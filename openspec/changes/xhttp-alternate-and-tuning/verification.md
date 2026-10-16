@@ -1,21 +1,21 @@
 ---
-task_id: "XRY-1791617991738391"
-change: "xhttp-alternate-and-tuning"
+task_id: XRY-1791617991738391
+change: xhttp-alternate-and-tuning
 commit_sha: null
-local: "required"
-local_evidence: "complete affected suites plus the named native positive/failure cases after implementation"
-remote_ci: "not_applicable"
-remote_ci_evidence: "Owner selected local completion on 2026-10-16; complete local source gates are required. Automatic PR checks remain separate review evidence."
-dry_run: "not_applicable"
-dry_run_evidence: "source capability is exercised in isolated local/native runtime; no real inventory run is part of this task"
-staging: "not_applicable"
-staging_evidence: "Owner removed staging soak on 2026-10-16; isolated local runtime acceptance is required instead."
-live: "not_applicable"
-live_evidence: "no production rollout is part of this source or disabled-default feature task"
-client: "not_applicable"
-client_evidence: "Owner removed external and device acceptance on 2026-10-16; real local protocol engines remain required under local evidence."
-artifact: "required"
-artifact_evidence: "rendered contracts and redacted requirement-specific exact-source artifacts after implementation"
+local: not_applicable
+local_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+dry_run: not_applicable
+dry_run_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+staging: not_applicable
+staging_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+live: not_applicable
+live_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+client: not_applicable
+client_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+artifact: not_applicable
+artifact_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
 ---
 
 # Verification
@@ -31,13 +31,13 @@ All rows name planned acceptance, not observed implementation evidence. Planning
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-PROTO-XAT-ALTERNATE | XRY-1791618003859679 | NEW test_xhttp_alternate_profiles.py plus exact client delivery matrix with distinct host/port, certificate mismatch, disabled listener and official unsupported-client cases. | required |
-| REQ-PROTO-XAT-ALTERNATE | XRY-1791618006858260 | NEW test_xhttp_alternate_profiles.py plus exact client delivery matrix with distinct host/port, certificate mismatch, disabled listener and official unsupported-client cases. | required |
-| REQ-PROTO-XAT-ALTERNATE | XRY-1791618008836301 | NEW test_xhttp_alternate_profiles.py plus exact client delivery matrix with distinct host/port, certificate mismatch, disabled listener and official unsupported-client cases. | required |
-| REQ-PROTO-XAT-TYPED | XRY-1791618006858260 | NEW schema and exact native profile matrix tests for each approved mode and bound, including explicit unsupported field/version rejection. | required |
-| REQ-PROTO-XAT-TYPED | XRY-1791618008836301 | NEW schema and exact native profile matrix tests for each approved mode and bound, including explicit unsupported field/version rejection. | required |
-| REQ-PROTO-XAT-MEASURED | XRY-1791618007864586 | NEW credential-free xhttp_delivery_matrix using exact clients and deterministic controlled faults; preserve raw technical measurements and declared acceptance thresholds. | required |
-| REQ-PROTO-XAT-MEASURED | XRY-1791618008836301 | NEW credential-free xhttp_delivery_matrix using exact clients and deterministic controlled faults; preserve raw technical measurements and declared acceptance thresholds. | required |
-| REQ-PROTO-XAT-ROLLBACK | XRY-1791618003859679 | Reuse destination boundary and runtime acceptance native suites; add private artifact, bearer-log and unchanged PQE HOLD/classical-P0 guard regressions to the feature matrix. | required |
-| REQ-PROTO-XAT-ROLLBACK | XRY-1791618007864586 | Reuse destination boundary and runtime acceptance native suites; add private artifact, bearer-log and unchanged PQE HOLD/classical-P0 guard regressions to the feature matrix. | required |
-| REQ-PROTO-XAT-ROLLBACK | XRY-1791618008836301 | Reuse destination boundary and runtime acceptance native suites; add private artifact, bearer-log and unchanged PQE HOLD/classical-P0 guard regressions to the feature matrix. | required |
+| REQ-PROTO-XAT-ALTERNATE | XRY-1791618003859679 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-XAT-ALTERNATE | XRY-1791618006858260 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-XAT-ALTERNATE | XRY-1791618008836301 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-XAT-TYPED | XRY-1791618006858260 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-XAT-TYPED | XRY-1791618008836301 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-XAT-MEASURED | XRY-1791618007864586 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-XAT-MEASURED | XRY-1791618008836301 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-XAT-ROLLBACK | XRY-1791618003859679 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-XAT-ROLLBACK | XRY-1791618007864586 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-XAT-ROLLBACK | XRY-1791618008836301 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |

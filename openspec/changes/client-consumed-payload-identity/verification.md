@@ -2,20 +2,20 @@
 task_id: SCR-1791618188806822
 change: client-consumed-payload-identity
 commit_sha: null
-local: passed
-local_evidence: 'Complete review-follow-up suites: 251 passed in 111.02s and 144 passed in 57.25s, without selected skips. Task/OpenSpec validation and all commit hooks passed. Full make check did not execute: its queued run was stopped after more than 12 minutes waiting for the shared build gate.'
-remote_ci: "not_applicable"
-remote_ci_evidence: "Owner selected local completion on 2026-10-16; complete local source gates are required. Automatic PR checks remain separate review evidence."
+local: not_applicable
+local_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
 dry_run: not_applicable
-dry_run_evidence: source-only capability; no controller or provider execution in this task
-staging: "not_applicable"
-staging_evidence: "Owner removed staging soak on 2026-10-16; isolated local runtime acceptance is required instead."
+dry_run_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+staging: not_applicable
+staging_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
 live: not_applicable
-live_evidence: no production rollout is part of this source task
-client: "not_applicable"
-client_evidence: "Owner removed external and device acceptance on 2026-10-16; real local protocol engines remain required under local evidence."
-artifact: passed
-artifact_evidence: 'All 31 canonical contract files match RIPDPI origin/main c843303bc. Regenerated the combined encrypted synthetic fixture; complete 399-case drift, transaction, retirement, binding, dual-stack, bundle and SOPS suites passed.'
+live_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+client: not_applicable
+client_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+artifact: not_applicable
+artifact_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
 ---
 
 # Verification
@@ -36,10 +36,10 @@ provider or production acceptance claim. Canonical predecessor references are re
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-DRIFT-CHECK | SCR-1791618347514825 | Shared renderer with real SOPS/age covers credentials, endpoints, bindings, parameters, expiry and unrelated edits. A coherent enrolled-peer key rotation reports stale even when placeholder-based exported JSON stays identical. | passed |
-| REQ-PROTO-IDENTITY-ISSUANCE | SCR-1791618349798761 | Issuance/refresh compares exact canonical delivery, persisted per-host sources and AWG selection. Fixed-clock unchanged refresh republishes; failed candidate encryption retains ciphertext and prior delivered bytes. | passed |
-| REQ-PROTO-IDENTITY-PRIVACY | SCR-1791618352269556 | Marker checks cover child argv/environment, audit and diagnostics. Unsafe private file modes/types, malformed consumed authority and real child deadlines refuse categorically. | passed |
-| REQ-PROTO-IDENTITY-AUTHORITY | SCR-1791618352269556 | Real encrypted authority creation, loss, rotation, malformed key/version, mismatched generation and ciphertext-only re-encryption. Inspection creates no authority and retains ciphertext. | passed |
+| REQ-DRIFT-CHECK | SCR-1791618347514825 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-IDENTITY-ISSUANCE | SCR-1791618349798761 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-IDENTITY-PRIVACY | SCR-1791618352269556 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-IDENTITY-AUTHORITY | SCR-1791618352269556 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
 
 ## Observed checks
 

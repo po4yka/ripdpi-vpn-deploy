@@ -26,9 +26,9 @@ Upgrade verified recipient parsers to the current stable client line. Source imp
 
 ## Execution
 
-- [ ] TST-1791618385464569 Select and verify stable parser artifacts with exact architecture and rollback tests #feature @item:TST-1791618376497512
-- [ ] TST-1791618386942234 Migrate full recipient parsing and supported engine routes with real baseline traffic #feature @item:TST-1791618376497512
-- [ ] TST-1791618388220484 Publish atomic verified parser adoption and exact source compatibility evidence #feature @item:TST-1791618376497512
+- TST-1791618385464569 DROPPED: Select and verify stable parser artifacts with exact architecture and rollback tests #feature @item:TST-1791618376497512
+- TST-1791618386942234 DROPPED: Migrate full recipient parsing and supported engine routes with real baseline traffic #feature @item:TST-1791618376497512
+- TST-1791618388220484 DROPPED: Publish atomic verified parser adoption and exact source compatibility evidence #feature @item:TST-1791618376497512
 
 ## Verification
 

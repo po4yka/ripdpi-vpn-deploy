@@ -1,0 +1,35 @@
+---
+id: EPC-1792155716043904
+title: Deliver the local four-protocol reliability roadmap
+kind: epic
+status: doing
+area: epic
+priority: high
+risk: high
+owner: primary
+parent: null
+blocked_by: []
+spec_mode: required
+openspec_change: four-protocol-reliability-local
+created: 2026-10-16
+updated: 2026-10-16
+related_tasks: []
+---
+
+## Goal
+
+Deliver complete local REALITY, direct XHTTP, Hysteria2 and AmneziaWG reliability
+with canonical per-device identity, guarded runtime authority, secure observation
+and real pinned-engine acceptance. This is the local successor to
+`EPC-1791618453830051` following the owner's removal of external soak and
+recipient-device acceptance.
+
+## Acceptance criteria
+
+- Actual local engines complete authenticated traffic and reject wrong authority while private destinations, unrelated UDP and independent tunnels retain their declared isolation.
+- Canonical materialization and drift/issuance agree on selected device binding, both address families, MTU, explicit XHTTP modes, bounded XMUX and independently selectable alternate identities.
+- Stable local runtime/parser adoption, ECH/SNI/trust, Salamander, resource limits, warm/unchanged convergence, hopping, retirement and rollback are observed with real processes and retained authority.
+- Watchdog, secure smoke and liveness use effective topology, finite ownership and exact recovery targets; a working alternate cannot conceal a failed endpoint.
+- REALITY target hygiene validates normalized SAN identities, TLS 1.3/H2, complete bounded DNS candidates and finite owned process sessions without claiming browser or external-path equivalence.
+- Complete portable/native source gates and every selected requirement pass without skips or uncertain owned cleanup. Redacted measurements retain exact source and runtime identities.
+- Prior external scopes are explicitly superseded, their genuine observations retain their original provenance, and no staging, physical/emulated recipient, provider or production outcome is claimed.

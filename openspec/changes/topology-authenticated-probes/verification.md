@@ -1,21 +1,21 @@
 ---
-task_id: "MON-1791618056169855"
-change: "topology-authenticated-probes"
+task_id: MON-1791618056169855
+change: topology-authenticated-probes
 commit_sha: null
-local: "required"
-local_evidence: "complete affected suites and exact native positive/failure cases after implementation"
-remote_ci: "not_applicable"
-remote_ci_evidence: "Owner selected local completion on 2026-10-16; complete local source gates are required. Automatic PR checks remain separate review evidence."
-dry_run: "not_applicable"
-dry_run_evidence: "source capability uses isolated native proof; real inventory/controller rehearsal needs separate authorization"
-staging: "not_applicable"
-staging_evidence: "Owner removed staging soak on 2026-10-16; isolated local runtime acceptance is required instead."
-live: "not_applicable"
-live_evidence: "no production rollout belongs to this source or disabled-default candidate task"
-client: "not_applicable"
-client_evidence: "Owner removed external and device acceptance on 2026-10-16; real local protocol engines remain required under local evidence."
-artifact: "required"
-artifact_evidence: "private rendered outputs and redacted exact-source requirement-specific evidence after implementation"
+local: not_applicable
+local_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+dry_run: not_applicable
+dry_run_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+staging: not_applicable
+staging_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+live: not_applicable
+live_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+client: not_applicable
+client_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+artifact: not_applicable
+artifact_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
 ---
 
 # Verification
@@ -31,12 +31,12 @@ All rows name planned acceptance, not observed implementation evidence. Planning
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-PROTO-PROBE-TOPOLOGY | MON-1791618060162436 | Executable manifest/verify/watchdog regression matrix for cohort-only, custom single-interface and multiple-instance layouts, plus XHTTP backend-only outage and shared-owner cases. | required |
-| REQ-PROTO-PROBE-TOPOLOGY | MON-1791618061966295 | Executable manifest/verify/watchdog regression matrix for cohort-only, custom single-interface and multiple-instance layouts, plus XHTTP backend-only outage and shared-owner cases. | required |
-| REQ-PROTO-PROBE-AUTH | MON-1791618060162436 | Exact Hysteria and supported client runtime tests with real certificates and obfuscation on/off; exact AWG and Xray authenticated positive and credential-negative cases. | required |
-| REQ-PROTO-PROBE-AUTH | MON-1791618061120158 | Exact Hysteria and supported client runtime tests with real certificates and obfuscation on/off; exact AWG and Xray authenticated positive and credential-negative cases. | required |
-| REQ-PROTO-PROBE-AUTH | MON-1791618061966295 | Exact Hysteria and supported client runtime tests with real certificates and obfuscation on/off; exact AWG and Xray authenticated positive and credential-negative cases. | required |
-| REQ-PROTO-PROBE-OWNERSHIP | MON-1791618061120158 | Preserve smoke cleanup and watchdog notification/state suites; add actual stalled-client and exact recovery-target cases with verbose synthetic-secret leak assertions. | required |
-| REQ-PROTO-PROBE-OWNERSHIP | MON-1791618062766877 | Preserve smoke cleanup and watchdog notification/state suites; add actual stalled-client and exact recovery-target cases with verbose synthetic-secret leak assertions. | required |
-| REQ-PROTO-PROBE-EVIDENCE | MON-1791618061966295 | Add exact binary Linux systemd/TUN/QUIC cases to the native lane; retain existing controller notification and retirement tests as distinct proof. Schema-test redacted evidence and stale-health replacement. | required |
-| REQ-PROTO-PROBE-EVIDENCE | MON-1791618062766877 | Add exact binary Linux systemd/TUN/QUIC cases to the native lane; retain existing controller notification and retirement tests as distinct proof. Schema-test redacted evidence and stale-health replacement. | required |
+| REQ-PROTO-PROBE-TOPOLOGY | MON-1791618060162436 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PROBE-TOPOLOGY | MON-1791618061966295 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PROBE-AUTH | MON-1791618060162436 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PROBE-AUTH | MON-1791618061120158 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PROBE-AUTH | MON-1791618061966295 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PROBE-OWNERSHIP | MON-1791618061120158 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PROBE-OWNERSHIP | MON-1791618062766877 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PROBE-EVIDENCE | MON-1791618061966295 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PROBE-EVIDENCE | MON-1791618062766877 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |

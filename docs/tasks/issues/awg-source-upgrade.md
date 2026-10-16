@@ -2,7 +2,7 @@
 id: SCR-1791618073850409
 title: Build and validate upgraded AmneziaWG sources locally
 kind: feature
-status: review
+status: dropped
 area: scripts
 priority: medium
 risk: high
@@ -15,6 +15,9 @@ created: 2026-10-10
 updated: 2026-10-16
 related_tasks: [ANS-1791562764586678, SEC-1791471757439452, SCR-1791618039091425, TST-1791618356595983]
 status_detail: All three PR review fixes and local lab manifest placement validated; updated ARM64 lab and complete make check passed.
+closed_at: "2026-10-16T13:18:31Z"
+closed_reason: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.
+evidence_summary: Positive implementation and genuine source/runtime observations are retained. The local successor owns all 45 positive requirements and remains open until its complete native and source gates pass; no missing external observation is relabelled as passed.
 ---
 
 ## Goal

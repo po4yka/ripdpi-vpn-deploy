@@ -1,21 +1,21 @@
 ---
-task_id: "TST-1791618376497512"
-change: "stable-client-parser-upgrade"
+task_id: TST-1791618376497512
+change: stable-client-parser-upgrade
 commit_sha: null
-local: "required"
-local_evidence: "complete affected tests, exact native cases and full source gates after implementation"
-remote_ci: "not_applicable"
-remote_ci_evidence: "Owner selected local completion on 2026-10-16; complete local source gates are required. Automatic PR checks remain separate review evidence."
-dry_run: "not_applicable"
-dry_run_evidence: "source-only capability; no controller or provider execution in this task"
-staging: "not_applicable"
-staging_evidence: "Owner removed staging soak on 2026-10-16; isolated local runtime acceptance is required instead."
-live: "not_applicable"
-live_evidence: "no production rollout is part of this source task"
-client: "not_applicable"
-client_evidence: "Owner removed external and device acceptance on 2026-10-16; real local protocol engines remain required under local evidence."
-artifact: "required"
-artifact_evidence: "validated contracts, private redacted outputs and requirement-to-test evidence on the exact implementation SHA"
+local: not_applicable
+local_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+dry_run: not_applicable
+dry_run_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+staging: not_applicable
+staging_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+live: not_applicable
+live_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+client: not_applicable
+client_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+artifact: not_applicable
+artifact_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
 ---
 
 # Verification
@@ -31,10 +31,10 @@ The requirement rows remain open until their complete named evidence is observed
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-PROTO-PARSER-INTEGRITY | TST-1791618385464569 | Installer transaction and checksum failure tests with verified real candidate version output. | required |
-| REQ-PROTO-PARSER-PAYLOADS | TST-1791618386942234 | Complete emit_singbox_roundtrip and liveness suites plus native-four-protocol acceptance on old/candidate inputs. | required |
-| REQ-PROTO-PARSER-ROLLBACK | TST-1791618388220484 | Actual installed-tool rollback and complete hosted parser/native jobs with exact-SHA evidence. | required |
-| REQ-PROTO-PARSER-ELIGIBILITY | TST-1791618385464569 | Deterministic release-age boundaries, unknown metadata and advisory cases; actual candidate parser/native compatibility remains a separate mandatory gate. | required |
+| REQ-PROTO-PARSER-INTEGRITY | TST-1791618385464569 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PARSER-PAYLOADS | TST-1791618386942234 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PARSER-ROLLBACK | TST-1791618388220484 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-PARSER-ELIGIBILITY | TST-1791618385464569 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
 
 ## Source implementation observations (2026-10-15)
 

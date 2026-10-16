@@ -1,21 +1,21 @@
 ---
 task_id: SCR-1791618073850409
 change: awg-source-upgrade
-commit_sha: 1148aa10fd754f046f66c166a78e313b5cd48273
-local: passed
-local_evidence: Complete make check passed with 7217 portable tests, 320 vpnd tests, 59 Bats cases and four Terraform mock suites; 50 focused tests and updated native ARM64 lab passed.
-remote_ci: passed
-remote_ci_evidence: Combined-tree source 47d045bc8ce3c0fae1ce4440e6af0bf31ebb9e41 passed CI 38863940278 with 93 successful checks, one advisory neutral check, zero failures or active checks; required-check aggregation, contract-sync and both native suites passed.
+commit_sha: null
+local: not_applicable
+local_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+remote_ci: not_applicable
+remote_ci_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
 dry_run: not_applicable
-dry_run_evidence: No inventory, private inputs or deployed hosts are used.
+dry_run_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
 staging: not_applicable
-staging_evidence: External 48-hour soak is outside the revised local candidate scope.
+staging_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
 live: not_applicable
-live_evidence: Production defaults remain unchanged; no rollout is part of this task.
-client: passed
-client_evidence: Real baseline/candidate Linux ARM64 cores passed all six matrices and warm/failure transactions; physical Android remains excluded and unclaimed.
-artifact: passed
-artifact_evidence: Exact pairs rebuilt with fixed signed Ubuntu package inputs and checksum-pinned Go; image 29916c582031af8f passed the disconnected lab with owned removal.
+live_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+client: not_applicable
+client_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
+artifact: not_applicable
+artifact_evidence: "Task dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance."
 ---
 
 # Verification
@@ -32,10 +32,10 @@ are outside this scope and are not represented as passing Docker evidence.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-PROTO-AWG-VERSION | SCR-1791618078367215 | Both exact source pairs rebuilt on ARM64 with checksum-pinned Go and fixed signed Ubuntu inputs; fresh upstream tag checks precede warm-cache reuse. | passed |
-| REQ-PROTO-AWG-WIRE | SCR-1791618079169597 | Six real mixed/new pairing and shape cases, captured H1/H2/H4, sustained bidirectional TCP/UDP/DNS and three reconnects per case; complete lab passed in 183.383s. | passed |
-| REQ-PROTO-AWG-ADOPT | SCR-1791618080142425 | Two owned daemons adopted executable/sandbox changes, real compiler/readiness failures compensated, unchanged publication preserved PIDs and the third tunnel retained traffic. | passed |
-| REQ-PROTO-AWG-LOCAL | SCR-1791618081446678 | Local daemon admission, explicit public inputs, disconnected runtime, actual owned removal and delayed-creation cleanup; complete make check returned zero. | passed |
+| REQ-PROTO-AWG-VERSION | SCR-1791618078367215 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-AWG-WIRE | SCR-1791618079169597 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-AWG-ADOPT | SCR-1791618080142425 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
+| REQ-PROTO-AWG-LOCAL | SCR-1791618081446678 | Dropped: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance. | not_applicable |
 
 ## Current observed checks
 

@@ -36,10 +36,10 @@ Deliver selectable alternate XHTTP endpoints and measured typed tuning. Local im
 
 ## Execution
 
-- [ ] XRY-1791618003859679 Deliver primary and alternate endpoint artifacts with exact identity selection and authenticated client regressions #feature @item:XRY-1791617991738391
-- [ ] XRY-1791618006858260 Verify exact engine capabilities and implement a small typed mode and tuning allowlist with parser and transfer tests #feature @item:XRY-1791617991738391
-- [ ] XRY-1791618007864586 Integrate actual endpoint liveness and comparative delivery fault idle reconnect and resource measurements #feature @item:XRY-1791617991738391
-- [ ] XRY-1791618008836301 Run privacy security rollback and full gates and document accepted profiles coordinated client rollout and PQE HOLD #feature @item:XRY-1791617991738391
+- XRY-1791618003859679 DROPPED: Deliver primary and alternate endpoint artifacts with exact identity selection and authenticated client regressions #feature @item:XRY-1791617991738391
+- XRY-1791618006858260 DROPPED: Verify exact engine capabilities and implement a small typed mode and tuning allowlist with parser and transfer tests #feature @item:XRY-1791617991738391
+- XRY-1791618007864586 DROPPED: Integrate actual endpoint liveness and comparative delivery fault idle reconnect and resource measurements #feature @item:XRY-1791617991738391
+- XRY-1791618008836301 DROPPED: Run privacy security rollback and full gates and document accepted profiles coordinated client rollout and PQE HOLD #feature @item:XRY-1791617991738391
 
 ## Verification
 
