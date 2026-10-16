@@ -64,6 +64,10 @@ def main():
                 check=True,
                 timeout=600,
             )
+            for args in (["diff", "--exit-code"], ["diff", "--cached", "--exit-code"]):
+                subprocess.run(
+                    ["git", "-C", str(directory), *args], check=True, timeout=30
+                )
 
 
 if __name__ == "__main__":

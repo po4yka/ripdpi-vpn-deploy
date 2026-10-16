@@ -17,7 +17,18 @@ pytestmark = pytest.mark.native_runtime
 
 def test_exact_pair_wire_warm_adoption_and_canonical_retirement(tmp_path):
     area = ROOT / "tests/integration/awg_source_candidate"
-    assert not Path("/lab").exists(), "isolated-AWG-lab-already-owned"
+    owned_roots = [
+        Path(raw)
+        for raw in (
+            "/lab",
+            "/usr/local/lib/awg-candidate",
+            "/var/lib/ripdpi/runtime-build-receipts",
+            "/var/lib/ripdpi/runtime-build-staging",
+        )
+    ]
+    assert all(
+        not os.path.lexists(path) for path in owned_roots
+    ), "isolated-AWG-lab-already-owned"
     sys.path.insert(0, str(ROOT / "ansible/roles/runtime-release/files"))
     Path("/lab").mkdir(mode=0o700)
     sources = []
@@ -278,13 +289,9 @@ def test_exact_pair_wire_warm_adoption_and_canonical_retirement(tmp_path):
     finally:
         for path in sources:
             path.unlink()
-        shutil.rmtree("/lab")
-        for path in (
-            "/usr/local/lib/awg-candidate",
-            "/var/lib/ripdpi/runtime-build-staging/awg-candidate",
-        ):
-            if Path(path).exists():
+        for path in owned_roots:
+            if path.exists():
+                assert (
+                    not path.is_symlink() and path.stat().st_uid == 0
+                ), "AWG-cleanup-authority-changed"
                 shutil.rmtree(path)
-        Path("/var/lib/ripdpi/runtime-build-receipts/awg-candidate.json").unlink(
-            missing_ok=True
-        )
