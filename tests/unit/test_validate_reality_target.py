@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -99,6 +100,14 @@ def run_site(tls_site, **extra):
     result = subprocess.run(['bash', str(SCRIPT)], env=env, capture_output=True, text=True, timeout=15)
     report = json.loads(result.stdout)
     assert 'exact.example' not in result.stdout + result.stderr
+    evidence_dir = os.environ.get('REALITY_TEST_EVIDENCE_DIR')
+    if evidence_dir:
+        payload = dict(source_revision=os.environ['REALITY_TEST_SOURCE_SHA'],
+                       tested_revision=os.environ['REALITY_TEST_TESTED_SHA'], observation=report)
+        encoded = json.dumps(payload, sort_keys=True).encode()
+        destination = Path(evidence_dir)
+        destination.mkdir(parents=True, exist_ok=True)
+        (destination / (hashlib.sha256(encoded).hexdigest() + '.json')).write_bytes(encoded)
     return result, report
 
 

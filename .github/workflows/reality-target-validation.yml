@@ -11,6 +11,9 @@ jobs:
   reality-target-validation:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      REALITY_TEST_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      REALITY_TEST_TESTED_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -32,8 +35,19 @@ jobs:
           tar -xzf "$client/archive.tar.gz" -C "$client"
           {
             echo "REALITY_TEST_CLIENT_DIR=$client"
+            echo "REALITY_TEST_EVIDENCE_DIR=$RUNNER_TEMP/reality-validation-evidence"
             echo 'REALITY_TEST_BIND=0.0.0.0'
             echo "REALITY_TEST_PUBLIC_IP=$(hostname -I | awk '{print $1}')"
           } >> "$GITHUB_ENV"
       - name: Exercise complete real identity, client, ingress and timeout cases
-        run: make test-reality-target-validation
+        run: |
+          mkdir -p "$REALITY_TEST_EVIDENCE_DIR"
+          PYTEST_ADDOPTS="--junitxml=$REALITY_TEST_EVIDENCE_DIR/results.xml" make test-reality-target-validation
+      - name: Retain exact-source redacted observations and complete case results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: reality-target-validation-${{ github.event.pull_request.head.sha || github.sha }}
+          path: ${{ runner.temp }}/reality-validation-evidence/
+          if-no-files-found: error
+          retention-days: 7

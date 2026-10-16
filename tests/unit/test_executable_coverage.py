@@ -134,7 +134,7 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
     assert all(not left & right for index,left in enumerate(groups) for right in groups[index+1:])
     assert reality_cases and len(reality_cases) == 4
     reality_workflow = yaml.safe_load((ROOT / ".github/workflows/reality-target-validation.yml").read_text())["jobs"]["reality-target-validation"]
-    assert any(s.get("run") == "make test-reality-target-validation" for s in reality_workflow["steps"])
+    assert any("make test-reality-target-validation" in s.get("run", "") for s in reality_workflow["steps"])
     assert transactions and len(transactions) == 6
     assert ('tests/unit/test_transport_runtime_acceptance_native.py::'
             'test_native_ech_admission_retains_custom_configuration_directory') in transactions
