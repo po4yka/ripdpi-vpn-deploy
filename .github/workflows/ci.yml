@@ -658,6 +658,93 @@ jobs:
             docker rm --force "$owned"
           fi
 
+  transport-native-acceptance:
+    needs: selection
+    if: ${{ fromJSON(needs.selection.outputs.checks)['transport-native-acceptance'] }}
+    name: native four-transport acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-disposable-ci
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.1"
+          cache: false
+      - name: Build exact native source pairs and verified protocol artifacts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libmnl-dev
+          make native-transport-semantics-build
+          TRANSPORT_NATIVE_ISOLATED=1 python3 tests/native/transport_acceptance/prepare_awg.py
+      - name: Create owned systemd and TUN acceptance environment
+        env:
+          NATIVE_IMAGE: ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-ubuntu2404@sha256:e9dfdf3cc37d8d098ef7e036e716abba78980333522ccbf7504a79189755a267
+          NATIVE_OWNER: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          NATIVE_PYTHON="$(python -c 'import sys; print(sys.prefix)')"
+          echo "NATIVE_PYTHON=$NATIVE_PYTHON" >> "$GITHUB_ENV"
+          docker pull "$NATIVE_IMAGE"
+          docker create --name four-transport-native \
+            --label "ripdpi.native.owner=$NATIVE_OWNER" \
+            --privileged --cgroupns=host --tmpfs /run --tmpfs /run/lock \
+            --volume /sys/fs/cgroup:/sys/fs/cgroup:rw \
+            --volume "$NATIVE_PYTHON:$NATIVE_PYTHON:ro" \
+            "$NATIVE_IMAGE" /lib/systemd/systemd
+          docker cp "$GITHUB_WORKSPACE/." four-transport-native:/opt/rta
+          docker cp /usr/local/bin/xray four-transport-native:/usr/local/bin/xray
+          docker cp /usr/local/bin/geoip.dat four-transport-native:/usr/local/bin/geoip.dat
+          docker cp /usr/local/bin/geosite.dat four-transport-native:/usr/local/bin/geosite.dat
+          docker cp /usr/local/bin/sops four-transport-native:/usr/local/bin/sops
+          docker cp "$GITHUB_WORKSPACE/.cache/native-transport-semantics/bin/hysteria" four-transport-native:/usr/local/sbin/hysteria
+          docker start four-transport-native
+          docker exec four-transport-native /bin/bash -eu -c '
+            apt-get update
+            apt-get install -y --no-install-recommends \
+              nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 \
+              iproute2 iptables openssl curl ca-certificates openssh-server \
+              python3-yaml make unzip nginx logrotate tcpdump age git
+            chmod 0755 /var/log
+            git config --global --add safe.directory /opt/rta
+          '
+      - name: Execute every native case without selection or skip overrides
+        run: |
+          docker exec --workdir /opt/rta \
+            --env TRANSPORT_NATIVE_ISOLATED=1 \
+            --env TRANSPORT_NATIVE_EVIDENCE=/var/tmp/transport-native-evidence.json \
+            --env AWG_NATIVE_GO_SOURCE=/opt/rta/.cache/four-transport-sources/baseline/go \
+            --env AWG_NATIVE_TOOLS_SOURCE=/opt/rta/.cache/four-transport-sources/baseline/tools \
+            --env ANSIBLE_COLLECTIONS_PATH=/opt/rta/.ansible/collections \
+            --env "PATH=$NATIVE_PYTHON/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+            four-transport-native make transport-native-acceptance
+      - name: Retain only redacted case and cleanup evidence
+        if: always()
+        run: |
+          mkdir -p native-evidence
+          docker cp four-transport-native:/var/tmp/transport-native-evidence.json native-evidence/result.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
+        if: always()
+        with:
+          name: native-four-transport-evidence
+          path: native-evidence/result.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove and confirm exact owned environment
+        if: always()
+        env:
+          NATIVE_OWNER: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          owned="$(docker ps -aq --filter name='^/four-transport-native$' \
+            --filter "label=ripdpi.native.owner=$NATIVE_OWNER")"
+          if [[ -n "$owned" ]]; then
+            docker rm --force "$owned"
+          fi
+          test -z "$(docker ps -aq --filter name='^/four-transport-native$')"
+
   go-helper:
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['go-helper'] }}
@@ -901,6 +988,7 @@ jobs:
       - pytest-required
       - native-runtime
       - transport-runtime-acceptance
+      - transport-native-acceptance
       - go-helper
       - bats-test
       - tf-test

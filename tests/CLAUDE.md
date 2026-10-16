@@ -569,3 +569,8 @@ refusal retains the ordinary error and the prior encrypted authority.
 The canonical delivered bundle must validate against the published dual-stack
 schema. Real encrypted drift cases change each address family and MTU; missing
 families, scalar claims and out-of-range MTU stay unknown without publication.
+
+The four-transport runner reuses canonical runtime, endpoint, device binding
+and source-pair labs. Keep selected native cases complete: overrides, empty
+JUnit, skips and resource identity differences fail. Publish only case names,
+results, source/engine hashes and cleanup status; raw pytest logs stay private.

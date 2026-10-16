@@ -639,3 +639,22 @@ of skipping cases. Portable launcher/contract tests are
 This is local Linux evidence, including Linux arm64 when run natively on that
 architecture. It is neither physical Android evidence nor a production pin
 promotion, production-role readiness transaction or external staging soak.
+
+### Complete isolated four-transport acceptance
+
+`make transport-native-acceptance` runs the full named completion, lifecycle,
+firewall hopping and compensation suites in a fresh Linux root with systemd,
+real TUN and nftables. Set `TRANSPORT_NATIVE_ISOLATED=1` only for an owned
+throwaway environment. The selected CI job provisions checksum-verified Xray
+and Hysteria plus both immutable AWG source pairs, then removes its exact
+labelled container. It is selected with the native consumer group and required
+by the aggregate check.
+
+The runner refuses workstation execution, pytest selection overrides, dirty
+tracked source, missing engines, empty results, selected skips and resource
+cleanup differences. `TRANSPORT_NATIVE_EVIDENCE` names a new private JSON file
+(default `/var/tmp/transport-native-evidence.json`) containing the exact source
+SHA, engine digests and case outcomes. Raw diagnostics remain private inside
+the disposable runner; only redacted JSON is uploaded. This establishes isolated
+native source/client behavior, with no provider, physical-device or live-fleet
+acceptance claim.
