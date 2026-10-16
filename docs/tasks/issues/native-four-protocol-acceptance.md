@@ -2,7 +2,7 @@
 id: TST-1791618356595983
 title: Deliver isolated native acceptance for every baseline transport
 kind: feature
-status: review
+status: done
 area: testing
 priority: high
 risk: high
@@ -12,9 +12,12 @@ blocked_by: [SEC-1791617841911853, ANS-1791617913525586, SCR-1791618039091425, A
 spec_mode: required
 openspec_change: native-four-protocol-acceptance
 created: 2026-10-10
-updated: 2026-10-16
+updated: 2026-10-17
 related_tasks: [SEC-1791545689674403, ANS-1791562764586678, ANS-1791586652330612, SEC-1791471757439452]
 status_detail: 34 integrated native cases passed with cleanup confirmed; all 90 CI jobs passed in run 38949485403
+closed_at: "2026-10-16T20:06:23Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Implemented real four-transport native acceptance; all 34 cases passed without skips, resource/engine/source cleanup confirmed, exact owned environments removed, and all 90 integrated CI jobs passed in run 38949485403 for dee3439e3bd07ccd39ca21f33add14fd125fef06
 ---
 
 ## Goal

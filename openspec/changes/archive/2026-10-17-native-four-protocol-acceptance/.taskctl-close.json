@@ -1,0 +1,11 @@
+{
+  "change": "native-four-protocol-acceptance",
+  "evidence_summary": "Implemented real four-transport native acceptance; all 34 cases passed without skips, resource/engine/source cleanup confirmed, exact owned environments removed, and all 90 integrated CI jobs passed in run 38949485403 for dee3439e3bd07ccd39ca21f33add14fd125fef06",
+  "execution_sha256": "d540c10cf6eaa816f54c283e033393b22e86ef3c6b39d5d9afc60b9344233786",
+  "issue_sha256": "b983a2bed064128451e3d58a9ee0a075c207b0cc3e1a3d3518a77b533353bebe",
+  "outcome": "done",
+  "prepared_at": "2026-10-16T20:06:23Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "TST-1791618356595983"
+}
