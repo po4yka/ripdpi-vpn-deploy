@@ -2,7 +2,7 @@
 id: ANS-1791996724624876
 title: Roll back private gateway runtimes with the frontend runtime
 kind: bug
-status: doing
+status: review
 area: ansible
 priority: medium
 risk: high
@@ -14,7 +14,7 @@ openspec_change: ans-1791996724624876-gateway-runtime-rollback
 created: 2026-10-14
 updated: 2026-10-16
 related_tasks: []
-status_detail: Native diagnostics identify first-adoption quiescence of claimed but unpublished gateway units; implement exact loaded-unit admission and rerun native acceptance.
+status_detail: Runtime rollback and complete compensation implemented; gated make check and exact-source CI 38909820069 passed at e3c11684, including both native partitions and all affected role/site scenarios.
 ---
 
 ## Goal
