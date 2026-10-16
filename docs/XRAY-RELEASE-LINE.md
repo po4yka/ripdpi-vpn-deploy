@@ -186,3 +186,11 @@ stays off; the prebuilt path is the v1 baseline.
 Re-read this page on every Xray-core minor bump and at the start of
 each quarter. Stale rollout instructions are worse than no
 instructions.
+
+## Local XHTTP qualification
+
+The optional bounded-pool delivery profile is restricted to the existing
+v26.3.27 native Xray engine and its typed parser fields. It introduces no pin
+upgrade or prerelease eligibility. Native mode and resource comparisons run in
+`make test-xhttp-delivery-matrix`; external rollout and PQE HOLD remain separate.
+See [delivery profiles](XHTTP-DELIVERY-PROFILES.md).

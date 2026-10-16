@@ -58,9 +58,7 @@ def render_profiles(directory: Path, *, document: dict | None = None) -> dict[st
     outputs = []
     for profile_format in ("sing-box", "ripdpi"):
         try:
-            hysteria = document.get("hysteria", {})
-            official = hysteria.get("ech") or hysteria.get("resource_profile", "bandwidth-capped") != "bandwidth-capped"
-            selection = ["--xhttp-only"] if profile_format == "ripdpi" and official else []
+            selection = ["--xhttp-only"] if profile_format == "ripdpi" else []
             outputs.append(json.loads(run(["bash", str(ROOT / "scripts/emit-singbox.sh"),
                                            "laptop", *selection, "--profile-format", profile_format], environment)))
         except json.JSONDecodeError:
