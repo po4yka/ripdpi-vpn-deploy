@@ -244,7 +244,8 @@ def main():
                         cwd=ROOT,
                         stdout=log,
                         stderr=subprocess.STDOUT,
-                        timeout=2400,
+                        # This phase combines both existing 40-minute CI partitions.
+                        timeout=3600 if name == "compensation" else 2400,
                     )
                 if result.returncode:
                     # Keep diagnostics on this isolated machine only, with private modes.
