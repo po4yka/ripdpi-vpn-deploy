@@ -14,6 +14,8 @@
 
 ## Design decisions
 
+Watchdog race regressions replace socket ownership after vacancy admission and during the canary. Success and server recovery both require the retained client PID to own its loopback listener.
+
 REALITY DNS worker regressions exercise overflow refusal and complete deduplicated candidate sets; runtime TLS and owned-public paths remain separate real-engine checks.
 
 The disconnected TUN fixture pins extracted Xray 26.3.27 binary digests independently for amd64 and arm64; unknown architectures or modified executables refuse.

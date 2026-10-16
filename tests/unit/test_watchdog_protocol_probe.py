@@ -40,6 +40,8 @@ def _run_watchdog(
     xhttp: bool = False,
     xhttp_backend_ready: bool = True,
     foreign_socks: bool = False,
+    foreign_after_start: bool = False,
+    replace_during_canary: bool = False,
     xhttp_alternate: bool = False,
     alternate_ready: bool = True,
 ) -> subprocess.CompletedProcess[str]:
@@ -74,7 +76,10 @@ def _run_watchdog(
         bin_dir / "ss",
         f"printf '%s\\n' 'LISTEN 0 4096 0.0.0.0:{server_port} 0.0.0.0:*'\n"
         + (
-            "if [[ -f \"${XRAY_STARTED_MARKER}\" || ${FOREIGN_SOCKS:-false} == true ]]; then printf '%s\\n' 'LISTEN 0 4096 127.0.0.1:31082 0.0.0.0:*'; fi\n"
+            "if [[ -f \"${XRAY_STARTED_MARKER}\" || ${FOREIGN_SOCKS:-false} == true ]]; then\n"
+            "  pid=999999; if [[ -s \"${XRAY_STARTED_MARKER}\" && ${FOREIGN_AFTER_START:-false} == false && ! -f \"${REPLACED_SOCKS_MARKER}\" ]]; then pid=$(cat \"${XRAY_STARTED_MARKER}\"); fi\n"
+            "  printf 'LISTEN 0 4096 127.0.0.1:31082 0.0.0.0:* users:((\"xray\",pid=%s,fd=3))\\n' \"$pid\"\n"
+            "fi\n"
             if socks_ready
             else ""
         ),
@@ -94,6 +99,8 @@ def _run_watchdog(
     _executable(
         bin_dir / "curl",
         "if printf '%s\\n' \"$@\" | grep -q -- '--proxy'; then\n"
+        "  touch \"${CANARY_LOG}\"\n"
+        "  if [[ ${REPLACE_DURING_CANARY:-false} == true ]]; then touch \"${REPLACED_SOCKS_MARKER}\"; fi\n"
         "  printf '%s' \"${CANARY_STATUS}\"\n"
         "fi\n",
     )
@@ -108,7 +115,7 @@ def _run_watchdog(
         )
         + "fi\n"
         + ("exit 23\n" if xray_client_exits else "")
-        + "touch \"${XRAY_STARTED_MARKER}\"\n"
+        + "printf '%s\\n' \"$$\" > \"${XRAY_STARTED_MARKER}\"\n"
         + "trap 'touch \"${XRAY_TERM_MARKER}\"; exit 0' TERM INT\n"
         "while :; do read -r -t 1 _ || true; done\n",
     )
@@ -161,6 +168,10 @@ def _run_watchdog(
             "XRAY_TERM_MARKER": str(term_marker),
             "XRAY_STARTED_MARKER": str(tmp_path / "xray-started"),
             "FOREIGN_SOCKS": "true" if foreign_socks else "false",
+            "FOREIGN_AFTER_START": "true" if foreign_after_start else "false",
+            "REPLACE_DURING_CANARY": "true" if replace_during_canary else "false",
+            "REPLACED_SOCKS_MARKER": str(tmp_path / "socks-replaced"),
+            "CANARY_LOG": str(tmp_path / "canary-called"),
             "STATE_FILE": str(state_file),
             "FAIL_THRESHOLD": "1",
             "KICKS_PER_HOUR_MAX": "1",
@@ -339,3 +350,21 @@ def test_primary_and_alternate_are_independently_observed(tmp_path):
     assert result.returncode == 0, result.stdout
     assert "OK    XHTTP frontend TCP/443 listening" in result.stdout
     assert "OK    XHTTP frontend TCP/2083 listening" in result.stdout
+
+
+def test_foreign_listener_after_vacancy_refuses_without_server_recovery(tmp_path):
+    result = _run_watchdog(tmp_path, foreign_after_start=True)
+    assert result.returncode != 0
+    assert "FAIL  xray REALITY TCP/443 round-trip" in result.stdout
+    assert not (tmp_path / "canary-called").exists()
+    assert (tmp_path / "xray-terminated").exists()
+    assert not (tmp_path / "recovery.log").exists()
+
+
+def test_listener_replacement_during_canary_cannot_certify_or_restart_server(tmp_path):
+    result = _run_watchdog(tmp_path, replace_during_canary=True)
+    assert result.returncode != 0
+    assert "FAIL  xray REALITY TCP/443 round-trip" in result.stdout
+    assert (tmp_path / "canary-called").exists()
+    assert (tmp_path / "xray-terminated").exists()
+    assert not (tmp_path / "recovery.log").exists()

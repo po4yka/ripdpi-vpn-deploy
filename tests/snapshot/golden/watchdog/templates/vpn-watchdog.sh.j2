@@ -92,20 +92,28 @@ socks_listener_ready() {
   ss -lnt | awk -v suffix=":${port}" '$4 ~ (suffix "$") { found=1 } END { exit !found }'
 }
 
+socks_listener_owned() {
+  local port="$1"
+  ss -lntp | awk -v endpoint="127.0.0.1:${port}" -v owner="pid=${xray_probe_pid}," \
+    '$4 == endpoint && index($0, owner) { found=1 } END { exit !found }'
+}
+
 reality_canary_round_trip() {
   local socks_port="$1"
   local status
   kill -0 "$xray_probe_pid" 2>/dev/null || return 1
+  socks_listener_owned "$socks_port" || return 1
   status="$(curl -sS -o /dev/null -w '%{http_code}' \
     --max-time "$XRAY_REALITY_PROBE_TIMEOUT" \
     --proxy "socks5h://127.0.0.1:${socks_port}" \
     "$XRAY_REALITY_PROBE_URL")" || return 1
   kill -0 "$xray_probe_pid" 2>/dev/null || return 1
+  socks_listener_owned "$socks_port" || return 1
   [[ "$status" == "$XRAY_REALITY_PROBE_EXPECTED_STATUS" ]]
 }
 
 probe_reality_listeners() {
-  local spec server_port socks_port
+  local spec server_port socks_port failures_before
   local -a probe_specs=()
   IFS=',' read -r -a probe_specs <<< "$XRAY_REALITY_PROBES"
 
@@ -135,7 +143,7 @@ probe_reality_listeners() {
     all_ready=1
     for spec in "${probe_specs[@]}"; do
       socks_port="${spec#*:}"
-      if ! socks_listener_ready "$socks_port"; then
+      if ! socks_listener_owned "$socks_port"; then
         all_ready=0
         break
       fi
@@ -147,11 +155,16 @@ probe_reality_listeners() {
   for spec in "${probe_specs[@]}"; do
     server_port="${spec%%:*}"
     socks_port="${spec#*:}"
-    if (( all_ready == 1 )) && kill -0 "$xray_probe_pid" 2>/dev/null; then
-      probe_unit "xray.service" "xray REALITY TCP/${server_port} round-trip" \
+    if (( all_ready == 1 )) && kill -0 "$xray_probe_pid" 2>/dev/null && socks_listener_owned "$socks_port"; then
+      failures_before=$probe_failure_count
+      probe "xray REALITY TCP/${server_port} round-trip" \
         reality_canary_round_trip "$socks_port"
+      # A lost or replaced local client cannot authorize server recovery.
+      if (( probe_failure_count > failures_before )) && socks_listener_owned "$socks_port"; then
+        failed_units["xray.service"]=1
+      fi
     else
-      probe_unit "xray.service" "xray REALITY TCP/${server_port} round-trip" false
+      probe "xray REALITY TCP/${server_port} round-trip" false
     fi
   done
 
