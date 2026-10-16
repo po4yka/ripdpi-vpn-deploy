@@ -2,7 +2,7 @@
 id: TST-1791618356595983
 title: Deliver isolated native acceptance for every baseline transport
 kind: feature
-status: doing
+status: review
 area: testing
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: native-four-protocol-acceptance
 created: 2026-10-10
 updated: 2026-10-16
 related_tasks: [SEC-1791545689674403, ANS-1791562764586678, ANS-1791586652330612, SEC-1791471757439452]
+status_detail: 34 native cases passed with cleanup confirmed; all 90 exact-source CI jobs passed in run 38937693541
 ---
 
 ## Goal
