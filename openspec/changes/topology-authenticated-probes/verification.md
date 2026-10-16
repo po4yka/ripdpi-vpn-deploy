@@ -3,86 +3,117 @@ task_id: "MON-1791618056169855"
 change: "topology-authenticated-probes"
 commit_sha: "df5c40554cb171f2b0acc6b275a65579a05d7806"
 local: "passed"
-local_evidence: "full make check exit 0: 7563 unit cases and 43 subtests, 320 vpnd cases, validation, lint, snapshots and CI parity passed on df5c40554cb171f2b0acc6b275a65579a05d7806"
+local_evidence: "full make check exit 0: 7563 unit cases and 43 subtests, 320 vpnd cases, validation, lint, all 164 snapshots and CI parity passed on exact runtime source"
 remote_ci: "passed"
-remote_ci_evidence: "CI run 38931291291 completed all 89 jobs successfully on df5c40554cb171f2b0acc6b275a65579a05d7806; CodeQL, Markdown and instruction-touch workflows also succeeded"
+remote_ci_evidence: "CI 38931291291 completed all 89 jobs successfully on df5c40554cb171f2b0acc6b275a65579a05d7806; CodeQL, Markdown and instruction-touch workflows succeeded"
 dry_run: "not_applicable"
 dry_run_evidence: "source capability uses isolated native proof; real inventory/controller rehearsal needs separate authorization"
 staging: "not_applicable"
 staging_evidence: "source contract uses isolated native acceptance; actual fleet rehearsal is separately authorized"
 live: "not_applicable"
-live_evidence: "no production rollout belongs to this source or disabled-default candidate task"
+live_evidence: "no production rollout belongs to this source capability"
 client: "passed"
-client_evidence: "df5c40554cb171f2b0acc6b275a65579a05d7806 hosted native lanes passed exact Xray/Hysteria/AWG authentication, topology and actual hopping/upgrade/compensation; consumer 974cf06ab8d05e3b4275d0e98429a0d0de2bf598 separately passed both canonical arm64 matrices"
+client_evidence: "exact pinned Xray/Hysteria/AWG clients passed authenticated topology, actual hopping/upgrade/compensation and warm adoption; consumer 974cf06ab8d05e3b4275d0e98429a0d0de2bf598 passed two canonical arm64 matrices"
 artifact: "passed"
-artifact_evidence: "native and renderer contracts exercised private configurations and categorical failures; both actual arm64 APK/SO/peer/instrumentation artifact sets retained and validated; no operator material used"
+artifact_evidence: "native and renderer contracts exercised private configuration and categorical failures; both complete arm64 APK/SO/peer/instrumentation artifact sets retained and validated; no operator material used"
 ---
 
 # Verification
 
-## Current acceptance boundary (2026-10-16)
+## Source and completion boundary
 
-The source boundary is `df5c40554cb171f2b0acc6b275a65579a05d7806`,
-including the integrated XHTTP delivery and bounded-pool configuration contract.
-The complete local `make check` exited successfully: 7563 unit cases and
-43 subtests, 320 vpnd cases, schema/secret coverage, Terraform validation and
-policies, Ansible lint, all 164 snapshots and CI parity passed. The unit lane
-intentionally deselected 181 native cases; those are separate hosted lanes.
+Runtime source is `df5c40554cb171f2b0acc6b275a65579a05d7806`, including
+integration of source `5daffa6a630883c389257ef161f6c9663103c47c` and its XHTTP
+delivery contract. Watchdog retains admitted XHTTP mode and bounded-pool fields;
+real native cases cover auto and tuned stream-up. Later evidence and lifecycle
+commits do not change runtime behavior.
 
-CI run 38931291291 completed all 89 jobs successfully on that exact source.
-Native integration passed 13 ECH, 138 generic runtime, 10 XHTTP delivery,
-8 authenticated topology and 6 AWG dual-stack cases without selected skips.
-Both transport runtime shards passed three cases each; each deselected the
-other shard's three cases. The Hysteria shard exercised actual hopping traffic
-before upgrade, after upgrade and after compensation, including unchanged
-convergence. CodeQL run 38931291088, Markdown run 38931291427 and instruction
-touch run 38931291044 also completed successfully.
-
-These results supersede the pending source-gate descriptions in the chronological
-record below; they do not erase its earlier failed attempts. Fresh Android arm64
-emulator/native-core acceptance passed twice on consumer
-`974cf06ab8d05e3b4275d0e98429a0d0de2bf598`, each with 8 sessions and 64
-observations. Both actual artifact sets passed the producer evidence validator.
-Consumer CI run 38946668519 completed successfully on that exact source, with
-33 successful jobs and 25 conditionally skipped jobs; all 40 executed PR checks
-passed. The AWG prerequisite remains open until clean-source federation and its
-lifecycle finish. No fleet deployment, operator credential migration or real
-notification receipt was run.
+Prerequisite `ANS-1791618048083304` reached committed `done` in `0e6bd844`.
+Its complete evidence is retained in
+`openspec/changes/archive/2026-10-16-awg-forwarding-dualstack/verification.md`.
+All canonical dependency edges remain intact. No fleet deployment, provider
+mutation, operator-secret migration or real notification receipt was performed.
 
 ## Requirement evidence
 
-Source capability under review: `c4c4d55c55dba02df299c7af349b93fabe841b67`.
-The source tree at `405f69d9` also passed all seven topology native cases without skips in 140.00 seconds. The later omitted-toggle correction has 35 passing renderer/watchdog cases and unchanged canonical snapshots; its final exact-source hosted native lane remains required. Hysteria hopping evidence was observed on the initial implementation `b961e63620cf1face0e678369e27be88b04b9278`. Subsequent fixes isolate disabled XHTTP render inputs, retain canonical transport defaults throughout watchdog selection/config/credentials/deadlines, and update affected test callers; 86 listener/renderer/SOPS, 33 shape, 22 profile-default and 35 final renderer/watchdog regressions passed. The final three omitted-toggle cases compare actual renders and role lifecycle conditions against canonical defaults; subscription-only suppression remains enforced.
-Later task/evidence-only commits do not change that runtime source boundary.
-
 | Requirement | Execution step | Observed evidence | Result |
 |---|---|---|---|
-| REQ-PROTO-PROBE-TOPOLOGY | MON-1791618060162436 | `test_topology_authenticated_probes.py`, watchdog and smoke regressions cover cohort-only REALITY, XHTTP-only/Hysteria-only verification, separate XHTTP frontend/backend failures and shared owner recovery. Real two-instance AWG encrypted traffic and per-device revocation passed in `make test-topology-authenticated-probes`. | targeted checks passed |
-| REQ-PROTO-PROBE-AUTH | MON-1791618061120158 | New native target: 7 passed, no skips. Real pinned Xray/Hysteria deliver controlled requests; wrong UUID/password/SAN/trust and mismatched Salamander fail while direct controls succeed. AWG native binding cases use exact source-built daemons and real encrypted traffic. | targeted checks passed |
-| REQ-PROTO-PROBE-OWNERSHIP | MON-1791618061120158 | Watchdog suite: 17 passed. Foreign sockets, shared recovery ownership, durable pre-action budgets, notification/state boundaries and SIGKILL kernel lock release are executable. Actual Hysteria client first delivers traffic, then SIGSTOP forces bounded failure and TERM/KILL cleanup. Lifecycle/state/notification suites: 14 passed. Two-cohort smoke cleanup: 1 passed. | targeted checks passed |
-| REQ-PROTO-PROBE-EVIDENCE | MON-1791618062766877 | Native AWG warm-adoption test observes new ELF inode/PID and unit sandbox adoption, then unchanged convergence retains PID. Existing real Hysteria hopping/upgrade acceptance passed: 1 case, 657.31 seconds, with actual multiple-port traffic and unrelated UDP control. Renderer/watchdog contracts: 31 passed; executable CI coverage: 6 passed; snapshots: 164 matched. | native checks passed; full gates pending |
+| REQ-PROTO-PROBE-TOPOLOGY | MON-1791618060162436 | Exact-source native matrix passed cohort-only REALITY, effective XHTTP/Hysteria layouts, separate frontend/backend failure and shared recovery ownership. Real two-instance AWG encrypted traffic and per-device revocation passed. Portable omitted-toggle, disabled-input and mode/pool contracts passed. | passed |
+| REQ-PROTO-PROBE-AUTH | MON-1791618061120158 | All 8 native topology cases passed without skips. Exact pinned clients delivered controlled requests; wrong UUID/password, SAN/trust and mismatched Salamander failed while direct controls succeeded. Real source-built AWG authenticated independent instances. | passed |
+| REQ-PROTO-PROBE-OWNERSHIP | MON-1791618061120158 | Executable watchdog/lifecycle/state/notification tests passed: exact socket PID, foreign socket refusal, owned bounded TERM/KILL cleanup, kernel lock release after SIGKILL, durable pre-action budgets and exact recovery target. Real Hysteria delivery followed by SIGSTOP observed bounded failure and cleanup. Two-cohort smoke cleanup passed. | passed |
+| REQ-PROTO-PROBE-EVIDENCE | MON-1791618062766877 | Full local gate and all 89 exact-source hosted jobs passed. Native AWG warm adoption observed new ELF inode/PID and unit sandbox, followed by unchanged PID convergence. Real Hysteria hopping passed before/after upgrade and compensation. AWG prerequisite, both canonical Android matrices, consumer CI and clean committed federation passed. | passed |
 
-## Remaining gates and dependency
+## Source gates
 
-- `build-gate -- make check` completed validation but failed CI parity because the local sing-box was 1.13.16 rather than required 1.14.3. A checksum-verified 1.14.3 binary passed canonical emitter/parser compatibility; a complete retry with that temporary tool path is queued. An earlier attempt failed on a trailing empty line in the moved smoke include; that defect was fixed and the source commit's hooks passed.
-- The next full local aggregate reached three provider test groups (69, 50 and 53 passes), then failed Scaleway registry discovery because the selected IPv6 route was unavailable. Exact cached providers passed a checksum-enforced readonly initialization through a temporary filesystem mirror; the complete aggregate retry is queued.
-- The generic native lane in the combined local lab failed: 87 passed, 26 failed, 19 setup errors and 6 skipped. The combined lab lacks generic-lane binaries/provider prerequisites; remaining broad-lane failures were not fully diagnosed. No aggregate success is claimed. Its fresh configured exact-source hosted lane must pass; the seven-case topology target and six-case AWG target are separate successful evidence.
-- A further complete local aggregate failed in the Docker cloud-init schema fallback because Ubuntu APT endpoints timed out. Host HTTPS to Ubuntu succeeded, while all six tested Ubuntu IPv4 endpoints were unreachable from the default Docker bridge. No TLS or package gate was bypassed. The complete portable unit suite is separately gate-queued.
-- Exact-source PR CI must reach a terminal successful state. No queued or running check counts as success.
-- The first combined affected-suite run had 134 passes and one watchdog fixture startup race. The corrected watchdog suite passed all 17 cases; the earlier run is not reported as a full affected-suite pass.
-- `ANS-1791618048083304` remains doing on the integrated main branch. Its required arm64 emulator/native-core IPv4/IPv6 TCP/UDP/DNS acceptance across MTUs and reconnects is not established by these Linux probe tests. The owner authorized completing this prerequisite in the current session. The canonical dependency remains intact; task closure and promotion must wait for its observed acceptance.
-- No real inventory, operator credential, production host, fleet deployment or real notification receipt was exercised. Isolated synthetic native evidence does not establish those outcomes.
+Complete local `build-gate -- make check` exited 0: 7563 unit cases,
+43 subtests and 320 vpnd cases passed. Terraform validation and test groups,
+policies, Ansible lint and syntax, schema/secret coverage, all 164 snapshots,
+canonical parser checks, lint/type checks and vpnd parity passed. The unit lane
+intentionally deselected 181 native cases; separate Linux lanes supplied actual
+native acceptance. Canonical sing-box 1.14.3 and Xray 26.3.27 were used.
 
+CI run 38931291291 completed all 89 jobs successfully on the exact runtime
+source. Native integration passed 13 ECH, 138 generic runtime, 10 XHTTP delivery,
+8 authenticated topology and 6 AWG dual-stack cases without selected skips.
+The topology target completed in 164.17 seconds. Both transport runtime shards
+passed three cases each; each intentionally deselected the other shard's three.
+The Hysteria shard observed real hopping traffic before upgrade, after upgrade
+and after compensation, including unchanged convergence and unrelated UDP
+control traffic. The warm fixture staged exact tools outside the source checkout
+while preserving the actual `ProtectHome=yes` unit sandbox.
 
-## Exact-source hosted native acceptance (2026-10-16)
+CodeQL run 38931291088, Markdown run 38931291427 and instruction-touch run
+38931291044 also completed successfully. The merged-source integration passed
+95 focused cases, all 164 snapshots, ordinary commit hooks and independent
+specification/standards reviews. All later task commits retain ordinary hooks.
 
-CI run 38908725450 native runtime integration passed on
-`c3b108120d314fb2ce24a05c7eaf41e11a364621`: 138 generic native cases,
-2 XHTTP endpoint cases, all 7 topology cases (145.67 seconds) and all 6 AWG
-dual-stack cases (90.36 seconds), without selected skips. This supersedes the
-missing configured generic-lane proof while preserving the failed local lab
-result above. The real warm unit continues to enforce `ProtectHome=yes`; its
-fixture now stages exact tools outside the CI source checkout. The complete
-workflow and local source/client gates remain pending. The combined local
-batch timed out after 3600 seconds waiting for a slot (exit 75) without running
-tests, then was requeued through the same gate without a wait timeout.
+## Client and dependency evidence
+
+Consumer source `974cf06ab8d05e3b4275d0e98429a0d0de2bf598` passed two independent
+original-peer API 35 arm64 native-core matrices. Each delivered 8 sessions and
+64 IPv4/IPv6 TCP/UDP/DNS observations at MTU 1280/1420, baseline plus three
+reconnects each, with eight successful real socket protection calls. Both complete
+APK/SO/peer/instrumentation artifact sets passed the producer's
+`make verify-awg-dualstack-client-evidence`, with invocation/source identity,
+artifact digests, exact packaged library and actual measurement logs checked.
+Their exact receipt and binary identities are recorded in the AWG archive.
+Physical-device and Android VpnService/TUN acceptance were explicitly excluded
+by the owner; these native-core results do not claim those outcomes.
+
+Consumer CI 38946668519 succeeded on that exact source: 33 jobs passed,
+25 conditional jobs skipped and all 40 executed PR checks successful, including
+CodeQL, secret scan and all three release verification shards. No checks remained
+pending. Full affected JVM modules passed 3132 cases on byte-identical module
+source; the companion UDP fix passed a genuine red/green regression, all
+95 warp-core tests, async Clippy and independent general/cancellation reviews.
+
+`make task-federation` validated 189 tasks against clean committed producer
+`748ae57bfc5da6b0a9920761b9c89160a2df5e24` and consumer
+`974cf06ab8d05e3b4275d0e98429a0d0de2bf598`. A qualified reference alone was
+not counted as federation evidence.
+
+## Earlier failures and operator boundary
+
+Earlier local aggregates failed a trailing empty line, a local sing-box version
+mismatch, exact Terraform provider network downloads and Docker Ubuntu APT
+reachability. Those failures were fixed using reviewed formatting, verified
+pinned tools, a checksum-enforced provider mirror and a bounded local TLS
+CONNECT route; the complete later aggregate passed. The initial combined
+focused run had 134 passes and one watchdog fixture startup failure; the
+corrected watchdog suite passed all 17 cases, followed by the full source gate.
+An incomplete generic local lab had 87 passes, 26 failures, 19 setup errors and
+6 skips; the configured hosted lane subsequently passed all 138 native cases.
+An earlier warm fixture failed under `ProtectHome=yes`; only its tool staging
+was repaired, and the production unit sandbox was preserved.
+
+Two older original-peer Android invocations failed UDP reconnect and produced
+no acceptance receipt. Diagnostic peer variants passed but were not counted.
+The independently proven UDP startup gap has a real red/green regression;
+causality for those earlier timeouts remains unproven. The later two unchanged
+canonical matrices passed on the new source, with assertions and deadlines
+preserved. Historical failures are not relabeled as successful runs.
+
+Enabled Hysteria now requires a separately enrolled watchdog identity (default
+`watchdog`); recipient credentials are never reused. Configure that identity
+before any separately authorized deployment. No production rollout or private
+credential issuance is implied by source completion.

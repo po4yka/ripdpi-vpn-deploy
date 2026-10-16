@@ -2,7 +2,7 @@
 id: MON-1791618056169855
 title: Deliver topology-aware authenticated transport health and secure smoke probes
 kind: feature
-status: doing
+status: review
 area: monitoring
 priority: high
 risk: high
@@ -12,8 +12,9 @@ blocked_by: [SCR-1791618039091425, ANS-1791618048083304, XRY-1791617955392712, S
 spec_mode: required
 openspec_change: topology-authenticated-probes
 created: 2026-10-10
-updated: 2026-10-16
+updated: 2026-10-17
 related_tasks: [ANS-1791562764586678, SEC-1791471757439452, ANS-1791586652330612]
+status_detail: Authenticated native topology, complete local and hosted source gates, closed AWG prerequisite, canonical arm64 acceptance and qualified federation passed.
 ---
 
 ## Goal
