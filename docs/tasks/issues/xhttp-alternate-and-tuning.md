@@ -2,7 +2,7 @@
 id: XRY-1791617991738391
 title: Deliver selectable alternate XHTTP endpoints and measured typed tuning
 kind: feature
-status: doing
+status: blocked
 area: xray-config
 priority: medium
 risk: high
@@ -14,6 +14,7 @@ openspec_change: xhttp-alternate-and-tuning
 created: 2026-10-10
 updated: 2026-10-16
 related_tasks: [TST-1791618356595983, ANS-1791562764586678, ANS-1791586652330612]
+status_detail: "Implementation and exact-source CI complete: 89 jobs plus CodeQL and documentation checks passed for e30d591f. Full local make check remains required; corrected SOPS/age invocation exhausted the standard 3600-second machine build gate wait and exited 75 before execution."
 ---
 
 ## Goal
