@@ -9,10 +9,11 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 def main():
-    assert (
-        os.uname().sysname == "Linux"
-        and os.environ.get("TRANSPORT_NATIVE_ISOLATED") == "1"
-    )
+    if (
+        os.uname().sysname != "Linux"
+        or os.environ.get("TRANSPORT_NATIVE_ISOLATED") != "1"
+    ):
+        raise RuntimeError("isolated-Linux-source-build-required")
     pins = json.loads(
         (ROOT / "tests/integration/awg_source_candidate/sources.json").read_text()
     )
@@ -25,10 +26,11 @@ def main():
         "GOPROXY": pins["go_module_proxy"],
         "GOFLAGS": "-mod=readonly -p=2",
     }
-    assert (
-        subprocess.check_output(["go", "env", "GOVERSION"], env=env, text=True).strip()
-        == "go" + pins["go_toolchain"]
-    )
+    toolchain = subprocess.check_output(
+        ["go", "env", "GOVERSION"], env=env, text=True
+    ).strip()
+    if toolchain != "go" + pins["go_toolchain"]:
+        raise RuntimeError("pinned-Go-toolchain-required")
     for pair in ("baseline", "candidate"):
         for component in ("go", "tools"):
             pin = pins[pair][component]
@@ -48,12 +50,11 @@ def main():
                     check=True,
                     timeout=180,
                 )
-            assert (
-                subprocess.check_output(
-                    ["git", "-C", str(directory), "rev-parse", "HEAD"], text=True
-                ).strip()
-                == pin["commit"]
-            )
+            head = subprocess.check_output(
+                ["git", "-C", str(directory), "rev-parse", "HEAD"], text=True
+            ).strip()
+            if head != pin["commit"]:
+                raise RuntimeError("AWG-source-commit-mismatch")
             for args in (["diff", "--exit-code"], ["diff", "--cached", "--exit-code"]):
                 subprocess.run(
                     ["git", "-C", str(directory), *args], check=True, timeout=30
