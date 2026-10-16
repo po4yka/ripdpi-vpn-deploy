@@ -120,7 +120,7 @@ def test_exact_pair_wire_warm_adoption_and_canonical_retirement(tmp_path):
         for tunnel in tunnels:
             tunnel.units = ["awg-quick@" + name + ".service" for name in tunnel.names]
         record = Path("/var/lib/ripdpi/amneziawg/instances.json")
-        assert not record.exists()
+        assert not os.path.lexists(record)
         prior_parent = record.parent.exists()
         record.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         foreign_queue = tmp_path / "foreign-queue"
