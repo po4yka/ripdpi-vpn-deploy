@@ -23,7 +23,7 @@ Deliver isolated native acceptance for every baseline transport.
 
 ## Verification
 
-- `make transport-native-acceptance` passed in the owned Linux CI environment: all 34 cases, zero skips, confirmed resource and engine/source cleanup at the recorded previous base. The integrated rerun remains required.
-- `build-gate -- mise exec -- make check` passed at the recorded source revision; current focused integration checks also passed; fresh hosted parity is required after the main merge. Exact revisions and outcomes are recorded in verification.md.
+- `make transport-native-acceptance` passed in the owned integrated Linux CI environment: all 34 cases, zero skips, confirmed resource and engine/source cleanup.
+- `build-gate -- mise exec -- make check` passed at the recorded source revision; current focused integration checks and complete hosted source parity also passed. Exact revisions and outcomes are recorded in verification.md.
 
 Requirement-to-step mapping and exact-source evidence live in verification.md. No fixture, refusal-only result or skipped selected case satisfies positive capability. Provider, physical-device and live-fleet acceptance require separate authorization and scope.
