@@ -250,6 +250,7 @@ make emit-singbox CLIENT=<name>           # official sing-box P0/P2 JSON from th
 make clean                               # remove the runtime plaintext after use
 make emit-awg CLIENT=<name>              # AmneziaWG wg-quick .conf for a named peer
 make emit-bundle CLIENT=<name>           # RIPDPI P0/P1/P2 JSON with ripdpi extension
+make emit-xray CLIENT=<name>             # native Xray P1 JSON; explicit HOSTS/COHORTS and optional SECRETS_FILE
 make install-hooks                        # one-time pre-commit setup
 # vpnd subcommands (run from repo root or set VPN_DEPLOY_ROOT)
 vpnd ai-docs [--out DIR]                  # emit repo docs as structured markdown for AI context

@@ -12,11 +12,15 @@ ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / 'ansible/roles/watchdog'
 
 
+@pytest.mark.parametrize('max_connections', [None, 1, 2, 4])
 @pytest.mark.parametrize('reality', [False, True])
 @pytest.mark.parametrize('fallback', [False, True])
-def test_effective_xhttp_routes_have_distinct_tls_authorities_and_no_missing_base(reality, fallback):
+def test_effective_xhttp_routes_have_distinct_tls_authorities_and_no_missing_base(reality, fallback, max_connections):
     values = merge_render_vars()
     values['vpn'].update(enable_xray_reality=reality, enable_nginx_xhttp=True)
+    if max_connections is not None:
+        values['xray'].update(xhttp_mode='stream-up', xhttp_tuning={
+            'profile': 'bounded-pool', 'max_connections': max_connections})
     values['nginx_xhttp'].update(server_name='primary.example', fallback_server_name='fallback.example',
                                  fallback_enabled=fallback)
     values['watchdog_reality_probes'] = ([{'name': 'cohort', 'port': 2443, 'p0_reality_shape_input': {}}]
@@ -30,6 +34,12 @@ def test_effective_xhttp_routes_have_distinct_tls_authorities_and_no_missing_bas
     assert [row['streamSettings']['tlsSettings']['serverName'] for row in p1] == ['primary.example'] + (
         ['fallback.example'] if fallback else [])
     assert all(row['streamSettings']['tlsSettings']['allowInsecure'] is False for row in p1)
+    for row in p1:
+        settings = row['streamSettings']['xhttpSettings']
+        assert settings['mode'] == values['xray'].get('xhttp_mode', 'auto')
+        assert settings.get('xmux') == ({'maxConnections': max_connections,
+            'hMaxRequestTimes': 0, 'hMaxReusableSecs': 0, 'cMaxReuseTimes': 0}
+            if max_connections is not None else None)
     assert len(config['routing']['rules']) == len(config['inbounds'])
     assert all(row['settings']['vnext'][0]['port'] != 443 for row in config['outbounds'])
 

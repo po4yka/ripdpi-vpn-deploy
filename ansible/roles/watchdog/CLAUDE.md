@@ -2,7 +2,7 @@
 
 ## Design decisions
 
-XHTTP frontend sockets belong to nginx and the localhost backend belongs to Xray. Dedicated authenticated XHTTP inbounds route every enabled primary/fallback endpoint through the canonical Xray TLS client. Backend diagnostics recover only Xray, including XHTTP-only hosts. A failed client round trip alone has no service-restart authority: credential, trust and canary failures remain red without restarting a healthy server.
+XHTTP frontend sockets belong to nginx and the localhost backend belongs to Xray. Dedicated authenticated XHTTP inbounds route every enabled primary/fallback endpoint through the canonical Xray TLS client, retaining the effective mode and bounded-pool controls. Backend diagnostics recover only Xray, including XHTTP-only hosts. A failed client round trip alone has no service-restart authority: credential, trust and canary failures remain red without restarting a healthy server.
 
 Omitted XHTTP/Hysteria toggles retain the canonical enabled defaults in probe selection, private credentials and service deadlines. Explicitly disabled XHTTP has zero diagnostic ports and needs no XHTTP configuration, including standalone REALITY-only role convergence.
 

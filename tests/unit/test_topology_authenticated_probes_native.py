@@ -113,16 +113,19 @@ def test_secure_smoke_and_watchdog_hysteria_auth_sni_ca_and_obfs(salamander):
         stack.close()
 
 
-def test_xhttp_all_frontends_authentication_and_backend_outage():
+@pytest.mark.parametrize("mode", ["auto", "stream-up"])
+def test_xhttp_all_frontends_authentication_and_backend_outage(mode):
     require_native()
     stack = fixture.NativeStack()
     try:
         stack.start()
-        stack.start_frontend("p1", primary_port=8443, fallback=True)
+        stack.start_frontend("p1", primary_port=8443, fallback=True, xhttp_mode=mode)
         cert = canary(stack)
         values = copy.deepcopy(stack.values)
         values.update(vpn_service_address="192.0.2.90", watchdog_reality_probes=[])
         values["watchdog"]["reality_probe_client"] = "native-device"
+        if mode == "stream-up":
+            values["xray"]["xhttp_tuning"] = {"profile": "bounded-pool", "max_connections": 2}
         document = json.loads(render_template(
             ROOT / "ansible/roles/watchdog/templates/reality-probe.json.j2", values))
         path = stack.file("health-xhttp.json", json.dumps(document), "x")

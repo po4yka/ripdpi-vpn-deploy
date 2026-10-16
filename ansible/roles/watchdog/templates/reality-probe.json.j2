@@ -62,7 +62,9 @@
      "streamSettings": {"network": "xhttp", "security": "tls",
        "tlsSettings": {"serverName": {{ _sni | to_json }}, "allowInsecure": false},
        "xhttpSettings": {"host": {{ _sni | to_json }},
-         "path": {{ xray.xhttp_path | default('/app-sync') | to_json }}, "mode": {{ xray.xhttp_mode | default('auto') | to_json }} }}}
+         "path": {{ xray.xhttp_path | default('/app-sync') | to_json }}, "mode": {{ xray.xhttp_mode | default('auto') | to_json }}{% if xray.xhttp_tuning is defined %},
+         "xmux": {"maxConnections": {{ xray.xhttp_tuning.max_connections }},
+           "hMaxRequestTimes": 0, "hMaxReusableSecs": 0, "cMaxReuseTimes": 0}{% endif %} }}}
     {%- endfor %}
   ],
   "routing": {
