@@ -467,6 +467,8 @@ and key removal, requiring positive echoes first and no datagram delivery afterw
 
 Read-only sender admission is also executed through actual Ansible argv/stdin templating. Sender queue regression tests perform real private-file copies and in-place restoration across interruption checkpoints and partial cleanup; they assert historical bytes, original root inode, no-follow authority, exact backup identities and fail-before-mutation admission. Service mocks are portable orchestration evidence only. The enabled native Molecule scenario requires the exact historical nonce and pre-cutover timestamp to reach the authenticated receiver after an actual rejected candidate.
 
+Authenticated topology acceptance runs exact Xray and Hysteria clients against an owned HTTPS canary in a disconnected namespace. Wrong password, SAN, CA and obfuscation never substitute listener readiness for traffic. XHTTP observes both frontend paths and preserves the nginx PID through backend loss. Warm AWG acceptance republishes the pinned ELF to a new inode and runs actual role notifications/handlers; it observes the new process and unit sandbox, then requires unchanged convergence to preserve the PID. Source acquisition remains the native builder's separate responsibility.
+
 ## Pitfalls
 
 - Ubuntu Molecule consumers use one immutable digest from the repository-owned,

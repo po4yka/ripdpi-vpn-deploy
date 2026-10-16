@@ -264,6 +264,15 @@ make snell-refinement BUNDLE=<json> CONFIG=<yaml> VANTAGE=<technical-id> # stagi
 make blue-green GREEN_ENV=<name>          # orchestrate blue-green replacement
 ```
 
+Watchdog authentication requires a dedicated `xray.clients` identity (default
+`watchdog`) for REALITY and XHTTP, and a separate `hysteria.clients` identity
+when Hysteria is enabled. Enroll distinct probe credentials before deploying
+this change; recipient credentials are never selected as a fallback. Hysteria
+uses verified TLS and matching Salamander. A failed authenticated request stays
+unhealthy without restarting a locally healthy service; backend diagnostics
+recover only their owned runtime. AWG interface diagnostics remain separate
+from authenticated external client-path evidence.
+
 `vpnd` requires Python 3.12; installation, development checks and the native-binary
 to Python wheel-bundle transition are documented in [vpnd/README.md](vpnd/README.md).
 

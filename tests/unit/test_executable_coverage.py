@@ -61,7 +61,7 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
     assert "PATH=$PATH" in shlex.split(ech_step.replace("\\\n", ""))
     command = shlex.split(native[-1]["run"].replace("\\\n", ""))
     assert command[:2] == ["sudo", "env"]
-    assert command[-5:] == ["make", "test-native-runtime", "test-xhttp-endpoint-contract", "test-awg-device-binding-runtime", "test-awg-dualstack-runtime"]
+    assert command[-5:] == ["make", "test-native-runtime", "test-xhttp-endpoint-contract", "test-topology-authenticated-probes", "test-awg-dualstack-runtime"]
     environment = {}
     for assignment in command[2:-5]:
         name, value = assignment.split("=", 1)
@@ -97,6 +97,8 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
     endpoints = makefile.split('test-xhttp-endpoint-contract:\n', 1)[1].split('\n\n', 1)[0]
     assert 'pytest tests/unit/ -m native_runtime' in baseline
     assert '--ignore=tests/unit/test_transport_runtime_acceptance_native.py' in baseline
+    topology = makefile.split('test-topology-authenticated-probes:\n', 1)[1].split('\n\n', 1)[0]
+    assert '--fail-on-skip' in topology and ' -k ' not in topology
     assert 'tests/unit/test_transport_runtime_acceptance_native.py' in consumer
     assert '--fail-on-skip' in baseline and '--fail-on-skip' in consumer and '--fail-on-skip' in endpoints
     assert '--ignore' not in consumer + endpoints and ' -k ' not in baseline + consumer + endpoints
@@ -106,11 +108,16 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
         ['tests/unit/', '-m', 'native_runtime'],
         ['tests/unit/', '-m', 'native_runtime', '--ignore=tests/unit/test_transport_runtime_acceptance_native.py',
          '--ignore=tests/unit/test_xhttp_endpoint_contract_native.py',
-         '--ignore=tests/unit/test_awg_device_binding_native.py', '--ignore=tests/unit/test_hysteria_ech_native.py'],
+         '--ignore=tests/unit/test_awg_device_binding_native.py', '--ignore=tests/unit/test_hysteria_ech_native.py',
+         '--ignore=tests/unit/test_topology_authenticated_probes_native.py',
+         '--ignore=tests/unit/test_topology_awg_warm_native.py',
+         '--ignore=tests/unit/test_awg_dualstack_native.py', '--ignore=tests/unit/test_awg_activation_native.py'],
         ['tests/unit/test_transport_runtime_acceptance_native.py'],
         ['tests/unit/test_xhttp_endpoint_contract_native.py'],
         ['tests/unit/test_awg_device_binding_native.py'],
         ['tests/unit/test_hysteria_ech_native.py'],
+        ['tests/unit/test_topology_authenticated_probes_native.py', 'tests/unit/test_topology_awg_warm_native.py'],
+        ['tests/unit/test_awg_dualstack_native.py', 'tests/unit/test_awg_activation_native.py'],
         *[['tests/unit/test_transport_runtime_acceptance_native.py', '--splits', '2', '--group', str(group),
            '--splitting-algorithm', 'duration_based_chunks'] for group in (1, 2)],
     ]
@@ -121,14 +128,14 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
         selected.append({line for line in result.stdout.splitlines()
                          if line.startswith('tests/unit/') and '::' in line})
     all_native, existing, transactions, endpoint_cases, awg_cases, ech_cases = selected[:6]
-    first, second = selected[6:]
+    topology_cases, dualstack_cases, first, second = selected[6:]
     assert transactions == first | second and not first & second
     workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]["transport-runtime-acceptance"]
     assert workflow["strategy"]["matrix"]["group"] == [1, 2]
     assert workflow["strategy"]["fail-fast"] is False
     assert any("--splits 2 --group $PYTEST_NATIVE_GROUP --splitting-algorithm duration_based_chunks" in s.get("run", "") for s in workflow["steps"])
-    assert all_native == existing | transactions | endpoint_cases | awg_cases | ech_cases
-    groups = [existing, transactions, endpoint_cases, awg_cases, ech_cases]
+    assert all_native == existing | transactions | endpoint_cases | awg_cases | ech_cases | topology_cases | dualstack_cases
+    groups = [existing, transactions, endpoint_cases, awg_cases, ech_cases, topology_cases, dualstack_cases]
     assert all(not left & right for index,left in enumerate(groups) for right in groups[index+1:])
     assert transactions and len(transactions) == 6
     assert ('tests/unit/test_transport_runtime_acceptance_native.py::'

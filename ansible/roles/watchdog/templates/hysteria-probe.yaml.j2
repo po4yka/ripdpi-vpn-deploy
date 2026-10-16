@@ -1,0 +1,18 @@
+{% set client = hysteria.clients | selectattr('name', 'equalto', watchdog.hysteria_probe_client | default('watchdog')) | list | first %}
+server: {{ ((('[' ~ vpn_service_address ~ ']') if ':' in vpn_service_address else vpn_service_address) ~ ':' ~ hysteria_port) | to_json }}
+auth: {{ (client.name ~ ':' ~ client.password) | to_json }}
+tls:
+  sni: {{ (hysteria.ech.inner_name if hysteria.ech is defined else hysteria.server_name | default(nginx_xhttp.server_name | default(xray.server_names[0]))) | to_json }}
+  insecure: false
+  ca: {{ (hysteria_config_dir ~ '/server.fullchain.pem') | to_json }}
+{% if hysteria.ech is defined %}
+  ech: {{ hysteria.ech.config_list | to_json }}
+{% endif %}
+{% if hysteria.salamander_enabled | default(false) %}
+obfs:
+  type: salamander
+  salamander:
+    password: {{ hysteria.salamander_password | to_json }}
+{% endif %}
+socks5:
+  listen: {{ ('127.0.0.1:' ~ (watchdog.hysteria_probe_socks_port | default(31110))) | to_json }}

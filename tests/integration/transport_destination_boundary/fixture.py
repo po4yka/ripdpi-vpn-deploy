@@ -213,7 +213,7 @@ class NativeStack:
         self.short = secrets.token_hex(8)
         self.hys_password = "synthetic-native-hysteria-secret-" + secrets.token_hex(12)
 
-    def start_frontend(self, profile, *, primary_port=8443, path="/native-sync", fallback=False):
+    def start_frontend(self, profile, *, primary_port=8443, path="/native-sync", fallback=False, cohorts=None):
         values = self.values
         values["vpn"].update(enable_xray_reality=profile == "p0", enable_nginx_xhttp=profile == "p1",
                               enable_warp_outbound=False, enable_cascade_ingress=False)
@@ -231,7 +231,7 @@ class NativeStack:
         self.reality_password = fields["Password (PublicKey)"]
         values["xray"].update(target="192.0.2.90:8444", server_names=["owned.example"], reality_private_key=fields["PrivateKey"],
                               clients=[{"name": "native-device", "uuid": self.uuid, "short_id": self.short}],
-                              cohorts=[], xhttp_path=path, xhttp_mode="auto")
+                              cohorts=cohorts or [], xhttp_path=path, xhttp_mode="auto")
         if profile in ("p0", "p1"):
             path = self.file("frontend.json", render_template(ROOT / "ansible/roles/xray/templates/config.json.j2", values), "x")
             listener = next(item for item in self.config["listeners"] if item["name"] == "direct_xray")
@@ -282,11 +282,11 @@ class NativeStack:
         else:
             self.start_hysteria()
 
-    def start_hysteria(self, *, masquerade_origin="https://owned.example", hosts=None):
+    def start_hysteria(self, *, masquerade_origin="https://owned.example", hosts=None, salamander=False):
         values = self.values
         values["hysteria"].update(clients=[{"name": "native-device", "password": self.hys_password}],
                                   masquerade_type="proxy", masquerade_url=masquerade_origin,
-                                  salamander_enabled=False)
+                                  salamander_enabled=salamander, salamander_password="synthetic-native-salamander-authority")
         values.update(hysteria_port=443, hysteria_config_dir=str(self.library))
         shutil.copyfile(self.cert, self.library / "server.fullchain.pem")
         shutil.copyfile(self.key, self.library / "server.key")

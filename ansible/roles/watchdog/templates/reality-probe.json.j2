@@ -1,4 +1,6 @@
 {%- set _client = xray.clients | selectattr('name', 'equalto', watchdog.reality_probe_client | default('watchdog')) | list | first -%}
+{%- set _p1 = ([nginx_xhttp_public_port] + ([nginx_xhttp_fallback_port] if (nginx_xhttp.fallback_enabled | default(false)) else [])) if (vpn.enable_nginx_xhttp | default(false)) and not (vpn_subscription_only | default(false)) else [] -%}
+{%- set _base = (watchdog.reality_probe_socks_port | default(31082)) + (watchdog_reality_probes | length) -%}
 {
   "log": {"loglevel": "error"},
   "inbounds": [
@@ -10,6 +12,11 @@
       "protocol": "socks",
       "settings": {"auth": "noauth", "udp": false}
     }{% if not loop.last %},{% endif %}
+    {%- endfor %}
+    {%- for port in _p1 %}{% if watchdog_reality_probes or not loop.first %},{% endif %}
+    {%- set _sni = (nginx_xhttp.fallback_server_name | default(nginx_xhttp.server_name)) if port == nginx_xhttp_fallback_port else nginx_xhttp.server_name %}
+    {"tag": "watchdog-xhttp-socks-{{ loop.index0 }}", "listen": "127.0.0.1", "port": {{ _base + loop.index0 }},
+     "protocol": "socks", "settings": {"auth": "noauth", "udp": false}}
     {%- endfor %}
   ],
   "outbounds": [
@@ -47,6 +54,16 @@
       "mux": {"enabled": true, "concurrency": 8}{% endif %}
     }{% if not loop.last %},{% endif %}
     {%- endfor %}
+    {%- for port in _p1 %}{% if watchdog_reality_probes or not loop.first %},{% endif %}
+    {%- set _sni = (nginx_xhttp.fallback_server_name | default(nginx_xhttp.server_name)) if port == nginx_xhttp_fallback_port else nginx_xhttp.server_name %}
+    {"tag": "watchdog-xhttp-{{ loop.index0 }}", "protocol": "vless",
+     "settings": {"vnext": [{"address": {{ vpn_service_address | to_json }}, "port": {{ port }},
+       "users": [{"id": {{ _client.uuid | to_json }}, "encryption": "none"}]}]},
+     "streamSettings": {"network": "xhttp", "security": "tls",
+       "tlsSettings": {"serverName": {{ _sni | to_json }}, "allowInsecure": false},
+       "xhttpSettings": {"host": {{ _sni | to_json }},
+         "path": {{ xray.xhttp_path | default('/app-sync') | to_json }}, "mode": {{ xray.xhttp_mode | default('auto') | to_json }} }}}
+    {%- endfor %}
   ],
   "routing": {
     "rules": [
@@ -56,6 +73,10 @@
         "inboundTag": ["watchdog-socks-{{ loop.index0 }}"],
         "outboundTag": "watchdog-reality-{{ loop.index0 }}"
       }{% if not loop.last %},{% endif %}
+      {%- endfor %}
+      {%- for port in _p1 %}{% if watchdog_reality_probes or not loop.first %},{% endif %}
+      {"type": "field", "inboundTag": ["watchdog-xhttp-socks-{{ loop.index0 }}"],
+       "outboundTag": "watchdog-xhttp-{{ loop.index0 }}"}
       {%- endfor %}
     ]
   }

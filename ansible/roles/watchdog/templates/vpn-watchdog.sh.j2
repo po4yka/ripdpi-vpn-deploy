@@ -10,11 +10,13 @@ set -euo pipefail
 : "${ALERTS_PER_HOUR_MAX:=4}"
 : "${KICKS_PER_HOUR_MAX:=3}"
 : "${XRAY_BIN:=/usr/local/bin/xray}"
+: "${HYSTERIA_BIN:=/usr/local/bin/hysteria}"
 : "${TRANSPORT_GENERATION_BIN:=/usr/local/libexec/ripdpi-transport-egress/generation.py}"
 : "${XRAY_VALIDATE_BIN:=/usr/local/libexec/vpn-xray-validate}"
 : "${XRAY_API_SERVER:=127.0.0.1:10086}"
 : "${XRAY_REALITY_CONFIG:=/etc/vpn-watchdog-reality.json}"
 : "${XRAY_REALITY_PROBES:=}"
+: "${XRAY_XHTTP_PROBES:=}"
 : "${XRAY_REALITY_PROBE_URL:=}"
 : "${XRAY_REALITY_PROBE_EXPECTED_STATUS:=204}"
 : "${XRAY_REALITY_PROBE_TIMEOUT:=15}"
@@ -82,9 +84,47 @@ cleanup_reality_client() {
     if kill -0 "$xray_probe_pid" 2>/dev/null; then
       kill -KILL "$xray_probe_pid" 2>/dev/null || true
     fi
+    deadline=$(( SECONDS + 2 ))
+    while kill -0 "$xray_probe_pid" 2>/dev/null && (( SECONDS < deadline )); do
+      sleep 0.1
+    done
+    if kill -0 "$xray_probe_pid" 2>/dev/null; then
+      echo "watchdog: owned client cleanup unconfirmed" >&2
+      return 1
+    fi
     wait "$xray_probe_pid" 2>/dev/null || true
   fi
   xray_probe_pid=""
+}
+
+# A stable private directory is only a kernel lock, never a persistent lease.
+# Children inherit fd 9, so a surviving owned client also retains exclusion.
+probe_claim="${STATE_FILE}.probe"
+mkdir -p -m 0700 "$probe_claim"
+if ! python3 -c 'import os,stat,sys; s=os.lstat(sys.argv[1]); sys.exit(not (stat.S_ISDIR(s.st_mode) and s.st_uid==os.geteuid() and stat.S_IMODE(s.st_mode)==0o700))' "$probe_claim"; then
+  echo "watchdog: unsafe private probe lock" >&2
+  exit 1
+fi
+exec 9<"$probe_claim"
+if ! flock -n 9; then
+  echo "watchdog: private probe lock unavailable" >&2
+  exit 1
+fi
+# Re-read after admission: a completed concurrent invocation may have published
+# a newer budget between the ancestry check and acquiring the kernel lock.
+budget="$("$WATCHDOG_STATE_BIN" read "$STATE_FILE")"
+while IFS='=' read -r k v; do
+  [[ -n "$k" ]] && STATE["$k"]="$v"
+done <<< "$budget"
+trap cleanup_reality_client EXIT
+trap 'exit 143' TERM
+trap 'exit 130' INT
+
+persist_state() {
+  local key
+  for key in consecutive_fails last_alert_epoch alerts_this_hour alerts_hour_started kicks_this_hour kicks_hour_started; do
+    echo "${key}=${STATE[$key]}"
+  done | "$WATCHDOG_STATE_BIN" write "$STATE_FILE"
 }
 
 socks_listener_ready() {
@@ -92,31 +132,54 @@ socks_listener_ready() {
   ss -lnt | awk -v suffix=":${port}" '$4 ~ (suffix "$") { found=1 } END { exit !found }'
 }
 
+socks_listener_owned() {
+  local port="$1"
+  ss -lntp | awk -v address="127.0.0.1:${port}" -v owner="pid=${xray_probe_pid}," \
+    '$4 == address && index($0, owner) { found=1 } END { exit !found }'
+}
+
 reality_canary_round_trip() {
   local socks_port="$1"
   local status
   kill -0 "$xray_probe_pid" 2>/dev/null || return 1
+  socks_listener_owned "$socks_port" || return 1
   status="$(curl -sS -o /dev/null -w '%{http_code}' \
     --max-time "$XRAY_REALITY_PROBE_TIMEOUT" \
-    --proxy "socks5h://127.0.0.1:${socks_port}" \
+    --noproxy '' --proxy "socks5h://127.0.0.1:${socks_port}" \
     "$XRAY_REALITY_PROBE_URL")" || return 1
   kill -0 "$xray_probe_pid" 2>/dev/null || return 1
+  socks_listener_owned "$socks_port" || return 1
   [[ "$status" == "$XRAY_REALITY_PROBE_EXPECTED_STATUS" ]]
 }
 
 probe_reality_listeners() {
-  local spec server_port socks_port
-  local -a probe_specs=()
-  IFS=',' read -r -a probe_specs <<< "$XRAY_REALITY_PROBES"
+  local spec server_port socks_port label
+  local -a probe_specs=() labels=()
+  if [[ "${ENABLE_XRAY:-true}" == true ]]; then
+    IFS=',' read -r -a probe_specs <<< "$XRAY_REALITY_PROBES"
+    for spec in "${probe_specs[@]}"; do labels+=(REALITY); done
+  fi
+  if [[ "${ENABLE_NGINX_XHTTP:-false}" == true ]]; then
+    IFS=',' read -r -a xhttp_specs <<< "$XRAY_XHTTP_PROBES"
+    for spec in "${xhttp_specs[@]}"; do probe_specs+=("$spec"); labels+=(XHTTP); done
+  fi
 
-  if [[ -z "$XRAY_REALITY_PROBE_URL" || ! -r "$XRAY_REALITY_CONFIG" || -z "$XRAY_REALITY_PROBES" ]]; then
-    probe_unit "xray.service" "xray REALITY round-trip configured" false
+  if [[ -z "$XRAY_REALITY_PROBE_URL" || ! -r "$XRAY_REALITY_CONFIG" || -z "${probe_specs[*]}" ]]; then
+    probe "xray REALITY round-trip configured" false
     return
   fi
 
+  # Never adopt a foreign SOCKS listener, even while our client is alive.
+  for spec in "${probe_specs[@]}"; do
+    socks_port="${spec#*:}"
+    if socks_listener_ready "$socks_port"; then
+      probe "xray REALITY private listener occupied" false
+      return
+    fi
+  done
+
   "$XRAY_BIN" run -config "$XRAY_REALITY_CONFIG" >/dev/null 2>&1 &
   xray_probe_pid=$!
-  trap cleanup_reality_client EXIT
 
   local deadline=$(( SECONDS + XRAY_REALITY_PROBE_TIMEOUT ))
   local all_ready=0
@@ -134,19 +197,45 @@ probe_reality_listeners() {
     sleep 0.2
   done
 
+  local index=0
   for spec in "${probe_specs[@]}"; do
+    label="${labels[$index]}"
+    index=$(( index + 1 ))
     server_port="${spec%%:*}"
     socks_port="${spec#*:}"
     if (( all_ready == 1 )) && kill -0 "$xray_probe_pid" 2>/dev/null; then
-      probe_unit "xray.service" "xray REALITY TCP/${server_port} round-trip" \
+      probe "xray ${label} TCP/${server_port} round-trip" \
         reality_canary_round_trip "$socks_port"
     else
-      probe_unit "xray.service" "xray REALITY TCP/${server_port} round-trip" false
+      probe "xray ${label} TCP/${server_port} round-trip" false
     fi
   done
 
   cleanup_reality_client
-  trap - EXIT
+}
+
+probe_hysteria_round_trip() {
+  local port="${HYSTERIA_PROBE_SOCKS_PORT:-31110}" deadline
+  local config="${CREDENTIALS_DIRECTORY:-/run/credentials/vpn-watchdog.service}/hysteria.yaml"
+  if [[ ! -r "$config" || -z "$XRAY_REALITY_PROBE_URL" ]] || socks_listener_ready "$port"; then
+    probe "hysteria authenticated probe unavailable" false
+    return
+  fi
+  "$HYSTERIA_BIN" client -c "$config" >/dev/null 2>&1 &
+  xray_probe_pid=$!
+  deadline=$(( SECONDS + XRAY_REALITY_PROBE_TIMEOUT ))
+  while (( SECONDS < deadline )); do
+    kill -0 "$xray_probe_pid" 2>/dev/null || break
+    socks_listener_ready "$port" && break
+    sleep 0.2
+  done
+  # An authentication/trust/target failure is red, but never restart authority.
+  if kill -0 "$xray_probe_pid" 2>/dev/null && socks_listener_ready "$port"; then
+    probe "hysteria authenticated round-trip" reality_canary_round_trip "$port"
+  else
+    probe "hysteria authenticated round-trip" false
+  fi
+  cleanup_reality_client
 }
 
 if [[ "${ENABLE_XRAY:-true}" == "true" ]]; then
@@ -161,18 +250,32 @@ if [[ "${ENABLE_XRAY:-true}" == "true" ]]; then
     "$XRAY_VALIDATE_BIN" --config /etc/xray/config.json
   probe_unit "xray.service" "xray StatsService query" \
     "$XRAY_BIN" api statsquery "--server=${XRAY_API_SERVER}"
-  probe_reality_listeners
 fi
 
 if [[ "${ENABLE_NGINX_XHTTP:-true}" == "true" ]]; then
   probe_unit "nginx.service" "nginx.service active" systemctl is-active --quiet nginx
   probe_unit "nginx.service" "nginx -t" nginx -t
+  for port in "${NGINX_PORT:?NGINX_PORT is required}" "${NGINX_FALLBACK_PORT:-0}"; do
+    if (( port > 0 )); then
+      probe_unit "nginx.service" "nginx XHTTP TCP/${port} listening" \
+        timeout 2 bash -c "</dev/tcp/127.0.0.1/${port}"
+    fi
+  done
+  # The backend belongs to Xray. A backend outage never restarts nginx.
+  probe_unit "xray.service" "XHTTP backend active" systemctl is-active --quiet xray
+  probe_unit "xray.service" "XHTTP backend TCP/${XHTTP_BACKEND_PORT:?XHTTP_BACKEND_PORT is required} listening" \
+    timeout 2 bash -c "</dev/tcp/127.0.0.1/${XHTTP_BACKEND_PORT}"
+fi
+
+if [[ "${ENABLE_XRAY:-true}" == true || "${ENABLE_NGINX_XHTTP:-false}" == true ]]; then
+  probe_reality_listeners
 fi
 
 if [[ "${ENABLE_HYSTERIA:-false}" == "true" ]]; then
   probe_unit "hysteria-server.service" "hysteria-server active" systemctl is-active --quiet hysteria-server
   probe_unit "hysteria-server.service" "hysteria UDP/${HYSTERIA_PORT} listening" \
     bash -c "ss -lnu | awk '{print \$4}' | grep -q ':${HYSTERIA_PORT}\$'"
+  probe_hysteria_round_trip
 fi
 
 if [[ "${ENABLE_AMNEZIAWG:-false}" == "true" ]]; then
@@ -255,12 +358,14 @@ if (( STATE[consecutive_fails] >= FAIL_THRESHOLD )); then
     else
       recovery=(systemctl restart "$unit")
     fi
+    # Reserve the durable attempt before an external action or notification.
+    STATE[kicks_this_hour]=$(( STATE[kicks_this_hour] + 1 ))
+    persist_state
     if "${recovery[@]}"; then
       kick_results+=("RESTARTED  $unit")
     else
       kick_results+=("RESTART FAILED  $unit")
     fi
-    STATE[kicks_this_hour]=$(( STATE[kicks_this_hour] + 1 ))
   done
 fi
 
@@ -301,21 +406,18 @@ if (( should_alert )); then
   body="consecutive_fails=${STATE[consecutive_fails]}
 ${class_lines}${result_text}"
 
+  STATE[last_alert_epoch]=$now
+  STATE[alerts_this_hour]=$(( STATE[alerts_this_hour] + 1 ))
+  persist_state
   if ! printf '%s' "$body" | "$WATCHDOG_NOTIFY_BIN" \
     --title "$title" --tags "warning,vpn,${HOSTNAME}${class_tags}" --timeout 10; then
     echo "watchdog: notification delivery failed" >&2
   fi
 
-  STATE[last_alert_epoch]=$now
-  STATE[alerts_this_hour]=$(( STATE[alerts_this_hour] + 1 ))
 fi
 
-# Persist state
-{
-  for k in consecutive_fails last_alert_epoch alerts_this_hour alerts_hour_started kicks_this_hour kicks_hour_started; do
-    echo "${k}=${STATE[$k]}"
-  done
-} | "$WATCHDOG_STATE_BIN" write "$STATE_FILE"
+# Persist the final diagnostic counters even when no action was requested.
+persist_state
 
 # Always log to journal so `journalctl -u vpn-watchdog.service` shows status
 echo "watchdog: consecutive_fails=${STATE[consecutive_fails]} alerts_this_hour=${STATE[alerts_this_hour]} kicks_this_hour=${STATE[kicks_this_hour]} classes=${class_summary:-none}"
