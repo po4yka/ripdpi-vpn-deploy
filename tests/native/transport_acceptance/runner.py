@@ -120,6 +120,7 @@ def cases(path):
 
 
 def engines():
+    sys.path.insert(0, str(ROOT))
     sys.path.insert(0, str(ROOT / "scripts"))
     sys.path.insert(0, str(ROOT / "tests/unit"))
     from test_transport_semantics_native import exact_awg_sources
@@ -132,6 +133,8 @@ def engines():
         ("amneziawg-go", go),
         ("awg", tools),
     ]:
+        if path is None or not Path(path).is_file():
+            raise RuntimeError("engine-missing:" + name)
         data = Path(path).read_bytes()
         if data[:4] != b"\x7fELF":
             raise RuntimeError("engine-not-native")
@@ -217,6 +220,7 @@ def main():
                             "pytest",
                             *paths,
                             "--fail-on-skip",
+                            "--basetemp=" + str(Path(private) / (name + "-scratch")),
                             "--tb=short",
                             "-q",
                             "--junitxml=" + str(report),
