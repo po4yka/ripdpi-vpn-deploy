@@ -656,6 +656,10 @@ consumer authority remains mandatory. Run the source-candidate AWG lab with
 All selected cases require `--fail-on-skip`; credentials and authorities are
 synthetic and isolated. No inventory or operator secret inputs are consumed.
 
+The native runtime CI job has a 60-minute total budget for setup, the complete
+suite, delivery matrix and cleanup. Per-test deadlines and selected-skip refusal
+remain mandatory.
+
 `test-xhttp-delivery-matrix` executes all three typed modes with baseline and
 bounded XMUX on primary and distinct-name alternate TLS endpoints. It retains
 wrong-auth and wrong-SAN failures, independent primary-outage observations,
