@@ -583,9 +583,12 @@ Independent controller homes are not a supported shared-ownership mechanism.
   Remote deadline retries are distinct from an unresponsive SSH session; cloud-init
   exit codes 1 and 2 both refuse readiness even when the marker already exists.
   Keep raw cloud-init output suppressed and reclaim the owned SSH group on interruption.
-  A group-signal permission failure is retried only after the owned child exits
-  and is reaped. The retry still signals the whole group; only a missing group
-  is accepted. A live child or repeated permission failure remains an error.
+  A private session supervisor reports command status without exiting. Keep it
+  unreaped until group cleanup, so the group identity cannot be recycled. Command
+  descendants inherit neither control nor status descriptors. Signal refusal
+  remains categorical failure; control-channel EOF and unexpected status-channel
+  errors independently reclaim the group. Bounded fallback wait or signal failure
+  must retain the categorical cleanup error without exposing supervisor argv.
 - **First-boot SSH uses only its selected key** — the wait adapter must ignore
   operator SSH config with `-F /dev/null`, disable the agent with
   `IdentityAgent=none`, and pass `IdentitiesOnly=yes` with its `-i` key.

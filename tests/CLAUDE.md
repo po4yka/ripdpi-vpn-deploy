@@ -14,6 +14,8 @@
 
 ## Design decisions
 
+Subprocess ownership regressions require a retained session leader at the group signal boundary, and real quiet descendants must stop after successful exit, timeout, owner loss or a broken status report. A denied group signal fails once, while the private control channel still reclaims the supervisor. Fallback kill and wait failures retain categorical diagnostics.
+
 Dual-family namespace probe regressions force both IPv4-first and IPv6-first logging. Concurrent child launch order does not imply log order; require exactly one request per family, the same namespace and in-tunnel hostname resolution in either schedule.
 
 Controller interruption fixtures release their synthetic workers through an owned stop marker and retained subprocess handles. Cleanup never signals a recorded process group after its ownership can have expired; privacy and child-removal assertions remain unchanged.

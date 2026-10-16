@@ -55,13 +55,37 @@ def cancellation():
             signal.signal(sig, handler)
 
 
+# The session leader stays alive after the command exits, retaining the group
+# identity until its owner signals cleanup. Only this supervisor inherits the
+# status/control descriptors; the command receives its original stdio and argv.
+_SESSION_SUPERVISOR = r"""
+import os, selectors, signal, subprocess, sys
+status, control = map(int, sys.argv[1:3])
+try:
+    try:
+        command = subprocess.Popen(sys.argv[3:], close_fds=True)
+    except OSError:
+        command = None
+        os.write(status, b"unavailable\n")
+    reported = command is None
+    with selectors.DefaultSelector() as selector:
+        selector.register(control, selectors.EVENT_READ)
+        while True:
+            if not reported:
+                result = command.poll()
+                if result is not None:
+                    os.write(status, str(result).encode("ascii") + b"\n")
+                    reported = True
+            if selector.select(0.01) and not os.read(control, 1):
+                break
+finally:
+    os.killpg(os.getpgrp(), signal.SIGKILL)
+"""
+
+
 def run_command(command, *, timeout, environment=None, cwd=None, capture=False, stream=False,
                 input_data=None, defer_cancellation=False, output_limit=65536):
-    """Bound the owned process group, including spawn-window cancellation.
-
-    Bootstrap discards output. Small local metadata queries use bounded capture.
-    Ansible can stream its ordinary reviewed output with debugging disabled.
-    """
+    """Bound an owned session, retaining its leader until descendants stop."""
     if not defer_cancellation:
         check_cancelled()
     if type(output_limit) is not int or not 1 <= output_limit <= 1_049_600:
@@ -70,74 +94,117 @@ def run_command(command, *, timeout, environment=None, cwd=None, capture=False, 
         raise ReadinessError("command input invalid")
     output = bytearray()
     target = subprocess.PIPE if capture else (None if stream else subprocess.DEVNULL)
-    input_stream = None
+    input_stream, descriptors = None, []
     try:
         if input_data is not None:
-            # Anonymous private backing avoids pipe-capacity deadlocks while
-            # keeping transaction nonces out of argv, environment and logs.
             input_stream = tempfile.TemporaryFile()
             input_stream.write(input_data)
             input_stream.seek(0)
-        child = subprocess.Popen(command, stdin=input_stream or subprocess.DEVNULL, stdout=target, stderr=target,
-                                 env=environment, cwd=cwd, start_new_session=True)
+        status_read, status_write = os.pipe()
+        descriptors.extend((status_read, status_write))
+        control_read, control_write = os.pipe()
+        descriptors.extend((control_read, control_write))
+        child = subprocess.Popen(
+            [sys.executable, "-I", "-B", "-c", _SESSION_SUPERVISOR,
+             str(status_write), str(control_read), *command],
+            stdin=input_stream or subprocess.DEVNULL, stdout=target, stderr=target,
+            env=environment, cwd=cwd, start_new_session=True,
+            pass_fds=(status_write, control_read),
+        )
     except OSError:
+        for descriptor in descriptors:
+            os.close(descriptor)
         if input_stream is not None:
             input_stream.close()
         raise ReadinessError("command unavailable") from None
+    signal_attempted = False
+
+    def stop_group():
+        nonlocal signal_attempted
+        signal_attempted = True
+        try:
+            os.killpg(child.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        except OSError:
+            raise ReadinessError("command cleanup unavailable") from None
+
     try:
+        for descriptor in (status_write, control_read):
+            os.close(descriptor)
+            descriptors.remove(descriptor)
         deadline = time.monotonic() + timeout
+        status, reply, total = None, bytearray(), 0
         with selectors.DefaultSelector() as selector:
+            os.set_blocking(status_read, False)
+            selector.register(status_read, selectors.EVENT_READ)
             if capture:
                 for pipe in (child.stdout, child.stderr):
                     os.set_blocking(pipe.fileno(), False)
                     selector.register(pipe, selectors.EVENT_READ)
-            total = 0
             while True:
                 if not defer_cancellation:
                     check_cancelled()
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise CommandTimeout("session timeout")
-                if capture:
-                    for key, _event in selector.select(min(0.1, remaining)):
-                        data = os.read(key.fd, 4096)
-                        if not data:
-                            selector.unregister(key.fileobj)
-                        total += len(data)
-                        if total > output_limit:
-                            raise ReadinessError("command output limit")
-                        if key.fileobj is child.stdout:
-                            output.extend(data)
-                    if child.poll() is not None and not selector.get_map():
-                        return child.returncode, bytes(output)
-                else:
+                for key, _event in selector.select(min(0.1, remaining)):
                     try:
-                        return child.wait(timeout=min(0.1, remaining)), b""
-                    except subprocess.TimeoutExpired:
+                        data = os.read(key.fd, 4096)
+                    except (BlockingIOError, InterruptedError):
                         continue
+                    if key.fd == status_read:
+                        reply.extend(data)
+                        if not data or len(reply) > 64:
+                            raise ReadinessError("command supervisor unavailable")
+                        if not reply.endswith(b"\n"):
+                            continue
+                        if reply == b"unavailable\n":
+                            raise ReadinessError("command unavailable")
+                        value = reply[:-1]
+                        digits = value[1:] if value.startswith(b"-") else value
+                        if not digits.isdigit() or not -255 <= int(value) <= 255:
+                            raise ReadinessError("command supervisor unavailable")
+                        status = int(value)
+                        selector.unregister(status_read)
+                        stop_group()
+                        continue
+                    if not data:
+                        selector.unregister(key.fileobj)
+                    total += len(data)
+                    if total > output_limit:
+                        raise ReadinessError("command output limit")
+                    if key.fileobj is child.stdout:
+                        output.extend(data)
+                if status is not None and not selector.get_map():
+                    return status, bytes(output)
     finally:
         try:
-            os.killpg(child.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            # The owned process group has already exited; nothing remains to kill.
-            pass
-        except PermissionError:
-            # Darwin can refuse a group containing only the unreaped child.
-            # Reap only an exited child, then retry so descendants still receive
-            # the signal. A live child or another refusal remains an error.
-            if child.poll() is None:
-                raise
+            if not signal_attempted:
+                stop_group()
+        finally:
+            # EOF also asks the still-owned supervisor to reclaim its session
+            # if the owner's signal failed or the owner disappeared.
+            os.close(control_write)
+            descriptors.remove(control_write)
             try:
-                os.killpg(child.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                # The owned group disappeared after reaping; cleanup is complete.
-                pass
-        child.wait()
-        if input_stream is not None:
-            input_stream.close()
-        if capture:
-            child.stdout.close()
-            child.stderr.close()
+                try:
+                    child.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    try:
+                        child.kill()
+                        child.wait(timeout=1)
+                    except (OSError, subprocess.TimeoutExpired):
+                        raise ReadinessError("command cleanup unavailable") from None
+                    raise ReadinessError("command cleanup unavailable") from None
+            finally:
+                for descriptor in descriptors:
+                    os.close(descriptor)
+                if input_stream is not None:
+                    input_stream.close()
+                if capture:
+                    child.stdout.close()
+                    child.stderr.close()
 
 
 def wait_for_bootstrap(ssh, *, environment=None, first_boot=False):
