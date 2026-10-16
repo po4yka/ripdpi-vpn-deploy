@@ -21,7 +21,7 @@ import uuid
 
 import yaml
 
-from scripts.template_render import merge_render_vars
+from scripts.template_render import merge_render_vars, render_template
 
 ROOT = Path(__file__).resolve().parents[3]
 LIBRARY = ROOT / 'ansible/roles/runtime-release/files'
@@ -32,7 +32,7 @@ XRAY_PINS = {
 }
 HYSTERIA_PINS = {
     'v2.8.2': 'b11bf0fb5f84a3f5c6baff3696e899539e68af4cee868c9203cfb896784ad3b0',
-    'v2.9.0': '8225c8380f1ae8122921d4986c2b70976e9c6e6f87a977e7d0498a813f4f3e37',
+    'v2.13.0': '907ba8c9693edb104b20582681fb7dc15639d5b64a9cbb616a7b539190a86691',
 }
 
 ARM_XRAY_PINS = {
@@ -41,7 +41,7 @@ ARM_XRAY_PINS = {
 }
 ARM_HYSTERIA_PINS = {
     'v2.8.2': '802d77ae3ca37bdc235ec848edfaaa7cb9109007d9044f50b0746239269cb8cf',
-    'v2.9.0': 'a3ccc0a3e791b85710ef63d22304a6f7dea210259be71bcd70cf9a210a385454',
+    'v2.13.0': 'a68a61a84452ca250ce0368202521965ca9cc9d801a404f1dc9008ac6cf677a7',
 }
 ARCH = 'arm64' if os.uname().machine == 'aarch64' else 'amd64'
 XRAY_PINS = ARM_XRAY_PINS if ARCH == 'arm64' else XRAY_PINS
@@ -233,6 +233,7 @@ server.serve_forever()
         command(['unzip', '-q', str(self.artifacts / 'xray-v26.3.27.zip'), '-d', str(runtime)])
         key_fields = dict(line.split(': ', 1) for line in command([str(runtime / 'xray'), 'x25519']).splitlines() if ': ' in line)
         self.context['xray']['reality_private_key'] = key_fields['PrivateKey']
+        self.context['hysteria'].pop('resource_profile', None)
         self.context['hysteria'].update(version='v2.8.2', linux_amd64_sha256=HYSTERIA_PINS['v2.8.2'],
             linux_arm64_sha256=HYSTERIA_PINS['v2.8.2'], cert_pem=self.cert.read_text(), key_pem=self.key.read_text(),
             masquerade_url=OWNED_ORIGIN, clients=[{'name': 'native-device-h', 'password': secrets.token_hex(24)}])
@@ -361,9 +362,101 @@ server.serve_forever()
                                         linux_arm64_sha256=XRAY_PINS['v26.5.3'])
             self.context['xray_runtime_release_urls'] = dict.fromkeys(('amd64','arm64'), 'file://' + str(self.artifacts / 'xray-v26.5.3.zip'))
         else:
-            self.context['hysteria'].update(version='v2.9.0', linux_amd64_sha256=HYSTERIA_PINS['v2.9.0'],
-                                           linux_arm64_sha256=HYSTERIA_PINS['v2.9.0'])
-            self.context['hysteria_release_urls'] = dict.fromkeys(('amd64','arm64'), 'file://' + str(self.artifacts / 'hysteria-v2.9.0'))
+            self.context['hysteria'].update(version='v2.13.0', linux_amd64_sha256=HYSTERIA_PINS['v2.13.0'],
+                                           linux_arm64_sha256=HYSTERIA_PINS['v2.13.0'])
+            self.context['hysteria_release_urls'] = dict.fromkeys(('amd64','arm64'), 'file://' + str(self.artifacts / 'hysteria-v2.13.0'))
+
+    def enable_hysteria_hopping(self):
+        self.context['vpn']['enable_hysteria'] = True
+        self.context['hysteria_port_range'] = '46000-46015'
+        self.context['hysteria'].update(salamander_enabled=True,
+            salamander_password='synthetic-' + secrets.token_hex(24))
+        rendered = render_template(ROOT / 'ansible/roles/firewall/templates/nftables.conf.j2', self.context)
+        redirects = [line.strip() for line in rendered.splitlines() if 'comment "hysteria-port-hopping"' in line]
+        assert len(redirects) == 1
+        self.hopping_table = self.token + 'hops'
+        command(['nft', 'add', 'table', 'inet', self.hopping_table])
+        self.resources.callback(command, ['nft', 'delete', 'table', 'inet', self.hopping_table])
+        # Instrument the exact rendered redirect without adopting the host firewall.
+        rules = ('add chain inet ' + self.hopping_table + ' prerouting { type nat hook prerouting priority dstnat; }\n'
+                 + ''.join('add rule inet ' + self.hopping_table + ' prerouting udp dport ' + str(port) + ' counter\n'
+                           for port in range(46000, 46016))
+                 + 'add rule inet ' + self.hopping_table + ' prerouting ' + redirects[0] + '\n')
+        command(['nft', '-f', '-'], input=rules.encode())
+
+    def assert_hysteria_hopping(self):
+        from transport_runtime_probe import child
+        def counters():
+            document = json.loads(command(['nft', '-j', 'list', 'chain', 'inet', self.hopping_table, 'prerouting']))
+            return [expression['counter']['packets'] for item in document['nftables'] if 'rule' in item
+                    for expression in item['rule']['expr'] if 'counter' in expression][:16]
+        before = counters()
+        assert len(before) == 16
+        document = yaml.safe_load(Path('/etc/hysteria/config.yaml').read_bytes())
+        document['listen'] = '10.247.0.1:46000-46015'
+        configuration = self.private / 'hopped-authority.yaml'
+        configuration.write_text(yaml.safe_dump(document));configuration.chmod(0o600)
+        script = self.private / 'hopped-client.py'
+        observed = self.private / ('hopped-observed-' + secrets.token_hex(8))
+        script.write_text("""import json,sys,tempfile,time
+from pathlib import Path
+import yaml
+sys.path.insert(0,sys.argv[1])
+from transport_runtime_probe import child,free_port,hysteria_client,private_file,request
+source=yaml.safe_load(Path(sys.argv[3]).read_bytes())
+port=free_port()
+client=hysteria_client(source,port,source['tls']['cert'],'native-device-h')
+client['transport']={'udp':{'hopInterval':'5s'}}
+with tempfile.TemporaryDirectory(prefix='native-hopped-client-') as temporary:
+    path=private_file(Path(temporary),'client.yaml',yaml.safe_dump(client))
+    with child([sys.argv[2],'client','-c',str(path)]) as process:
+        deadline=time.monotonic()+35
+        while time.monotonic()<deadline:
+            request(port,'https://192.0.2.80:18080/',204,process,deadline)
+            if Path(sys.argv[4]).exists():
+                # Require fresh authenticated delivery after observed multi-port traffic.
+                request(port,'https://192.0.2.80:18080/',204,process,deadline)
+                break
+            time.sleep(.25)
+        else:
+            raise RuntimeError('actual-port-hop-unobserved')
+""")
+        script.chmod(0o600)
+        # Upstream deliberately permits reselecting the same remote port. Observe
+        # two actual destinations, rather than assuming one timer event changes it.
+        with child(['ip', 'netns', 'exec', self.namespace, sys.executable, str(script),
+                    str(LIBRARY), '/usr/local/bin/hysteria', str(configuration), str(observed)]) as process:
+            deadline = time.monotonic() + 40
+            while time.monotonic() < deadline:
+                assert process.poll() is None, 'hopped-client-exited-before-observation'
+                after = counters()
+                if sum(right > left for left, right in zip(before, after)) >= 2:
+                    observed.write_text('two-destinations-observed')
+                    observed.chmod(0o600)
+                    assert process.wait(timeout=max(.1, deadline-time.monotonic())) == 0, 'post-hop-authentication-refused'
+                    break
+                time.sleep(.2)
+            else:
+                raise AssertionError('actual-port-hop-unobserved')
+        # A control datagram outside the hop range must remain an ordinary UDP flow.
+        import threading
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as control:
+            control.bind(('10.247.0.1', 46016));control.settimeout(5)
+            destination = control.getsockname()[1]
+            assert not 46000 <= destination <= 46015
+            def echo():
+                packet, peer = control.recvfrom(1024)
+                control.sendto(packet, peer)
+            worker = threading.Thread(target=echo)
+            worker.start()
+            try:
+                command(['ip', 'netns', 'exec', self.namespace, sys.executable, '-c',
+                    "import socket,sys; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.settimeout(3);" +
+                    "s.sendto(b'unrelated-udp',('10.247.0.1',int(sys.argv[1])));" +
+                    "assert s.recv(1024)==b'unrelated-udp'", str(destination)], timeout=10)
+            finally:
+                worker.join(timeout=6)
+                assert not worker.is_alive(), 'control-udp-cleanup-unconfirmed'
 
     def geodata(self):
         for raw in ('/etc/systemd/system/vpn-geodata-refresh.timer',

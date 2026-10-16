@@ -2,7 +2,7 @@
 
 ## Objective
 
-Upgrade verified recipient parsers to the current stable client line. All execution checkboxes remain open; this is planning, not implementation or deployment approval.
+Upgrade verified recipient parsers to the current stable client line. Source implementation and PR preparation are authorized. Execution steps remain open until their complete named native and acceptance checks are observed.
 
 ## Ownership
 
@@ -34,4 +34,4 @@ Upgrade verified recipient parsers to the current stable client line. All execut
 
 Requirement-to-step mapping and unfulfilled evidence categories live in verification.md. No fixture, refusal-only result or skipped selected case satisfies positive capability. Future external acceptance requires current authorization and exact scope; no existing cancelled task is revived.
 
-Implementation starts only after the canonical portfolio prerequisites are satisfied and separately authorized. Planning alone neither starts work nor checks an execution step.
+Source preparation is authorized in a dedicated worktree. Promotion and acceptance still follow the canonical dependency graph; source changes alone do not check an execution step.

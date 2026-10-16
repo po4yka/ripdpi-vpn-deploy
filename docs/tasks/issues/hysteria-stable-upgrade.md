@@ -1,19 +1,19 @@
 ---
-id: "SCR-1791618064422507"
-title: "Upgrade Hysteria with validated congestion and UDP resource profiles"
-kind: "feature"
-status: "backlog"
-area: "scripts"
-priority: "medium"
-risk: "high"
-owner: "primary"
-parent: "EPC-1791618453830051"
-blocked_by: ["SEC-1791617841911853", "ANS-1791617913525586", "MON-1791618056169855", "TST-1791618356595983"]
-spec_mode: "required"
-openspec_change: "hysteria-stable-upgrade"
-created: "2026-10-10"
-updated: "2026-10-10"
-related_tasks: ["SEC-1791471757439452", "ANS-1791562764586678"]
+id: SCR-1791618064422507
+title: Upgrade Hysteria with validated congestion and UDP resource profiles
+kind: feature
+status: doing
+area: scripts
+priority: medium
+risk: high
+owner: primary
+parent: EPC-1791618453830051
+blocked_by: [SEC-1791617841911853, ANS-1791617913525586, MON-1791618056169855, TST-1791618356595983]
+spec_mode: required
+openspec_change: hysteria-stable-upgrade
+created: 2026-10-10
+updated: 2026-10-15
+related_tasks: [SEC-1791471757439452, ANS-1791562764586678]
 ---
 
 ## Goal

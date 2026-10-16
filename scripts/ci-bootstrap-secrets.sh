@@ -104,7 +104,7 @@ print((d.get('xray') or {}).get('version') or 'v26.3.27')
 ")"
 hys_version="$(python3 -c "
 import yaml; d=yaml.safe_load(open('$EXAMPLE')) or {}
-print((d.get('hysteria') or {}).get('version') or 'v2.9.0')
+print((d.get('hysteria') or {}).get('version') or 'v2.13.0')
 ")"
 
 # ---------------------------------------------------------------------------

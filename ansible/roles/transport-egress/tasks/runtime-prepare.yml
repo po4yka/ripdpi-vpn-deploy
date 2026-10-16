@@ -33,6 +33,14 @@
     - transport_runtime_outer.py
     - transport_runtime_rollback.py
 
+- name: Install the exact semantic companion before consumer admission
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../../scripts/transport_semantics.py"
+    dest: "{{ transport_egress_libexec_dir }}/transport_semantics.py"
+    owner: root
+    group: root
+    mode: '0644'
+
 - name: Inspect interrupted outer route ownership before consumer recovery
   ansible.builtin.command:
     argv: [/usr/bin/python3, -Es, '{{ transport_egress_libexec_dir }}/transport_runtime_outer.py', status]

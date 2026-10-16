@@ -20,6 +20,8 @@ pytestmark = pytest.mark.native_runtime
 @pytest.mark.parametrize('profile', ['xray', 'hysteria'])
 def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(profile):
     with fixture.Lab() as lab:
+        if profile == 'hysteria':
+            lab.enable_hysteria_hopping()
         # Successful byte acquisition must not admit an unready first install.
         if profile == 'xray':
             original = lab.context['xray']['target']
@@ -53,12 +55,19 @@ def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(
         assert lab.converge(profile) == 0
         root = Path('/opt/xray' if profile == 'xray' else '/opt/hysteria')
         previous = os.readlink(root / 'current')
+        if profile == 'hysteria':
+            lab.assert_hysteria_hopping()
         # The accepted receipt exists and parses before the upgrade.
         json.loads(Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_text())
         lab.upgrade(profile)
         assert lab.converge(profile) == 0
         assert os.readlink(root / 'current') != previous
         assert os.readlink(root / 'previous') == previous
+        if profile == 'hysteria':
+            from transport_runtime_accept import fields
+            observed = fields('hysteria-server.service')
+            assert os.path.samefile('/proc/' + observed['MainPID'] + '/exe', str(root / 'current' / 'hysteria'))
+            lab.assert_hysteria_hopping()
         receipt = Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_bytes()
         assert not Path('/var/lib/ripdpi/transport-runtime/pending.json').exists()
         assert lab.converge(profile) == 0
@@ -78,6 +87,8 @@ def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(
             assert result.returncode == 0, 'protected-native-geodata-timer-refused'
             assert Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_bytes() == before_timer
         exercise_native_refusals_and_process_death(lab, profile)
+        if profile == 'hysteria':
+            lab.assert_hysteria_hopping()
         if profile == 'xray':
             result = subprocess.run(['/usr/bin/python3', '-Es',
                 '/usr/local/libexec/ripdpi-transport-egress/transport_runtime_rollback.py',
@@ -132,7 +143,7 @@ def test_native_site_retirement_and_remaining_upgrade_commit_once():
         assert lab.converge('hysteria', site=True) == 0
         accepted = json.loads((state / 'accepted.json').read_bytes())
         assert accepted['nodes']['/etc/systemd/system/xray.service'] is None
-        assert os.readlink('/opt/hysteria/current').endswith('/v2.9.0')
+        assert os.readlink('/opt/hysteria/current').endswith('/v2.13.0')
         assert json.loads((state / 'last.json').read_bytes())['before_receipt'] == initial
         assert not (state / 'outer.json').exists()
         baseline = (state / 'accepted.json').read_bytes()
@@ -361,8 +372,8 @@ except Exception as error:
 
 def test_hysteria_admission_sigkill_reconciles_exact_validation_lease():
     import selectors
-    from transport_runtime_accept import Adapter, STATE, read_parameters
     with fixture.Lab() as lab:
+        from transport_runtime_accept import Adapter, STATE, read_parameters
         assert lab.converge('hysteria') == 0
         original = (STATE / 'accepted.json').read_bytes()
         parameters = read_parameters()
@@ -421,3 +432,75 @@ with Transaction(STATE) as tx:
                 os.kill(process.pid, signal.SIGKILL)
                 process.wait(timeout=10)
             process.stdout.close()
+
+
+def test_native_ech_admission_retains_custom_configuration_directory():
+    from hysteria_ech import generate
+    with fixture.Lab() as lab:
+        from transport_runtime_accept import fields
+        lab.upgrade('hysteria')
+        directory = Path('/etc/hysteria/profile')
+        lab.context['hysteria_config_dir'] = str(directory)
+        authority = generate(lab.artifacts / 'hysteria-v2.13.0', 'outer.example', 'owned.example')
+        lab.context['hysteria']['ech'] = authority
+        assert lab.converge('hysteria') == 0
+        key = directory / 'ech.key'
+        matches = key.read_text() == authority['keys_pem']
+        assert matches, 'native-custom-directory-ECH-authority-mismatch'
+        assert key.stat().st_mode & 0o777 == 0o600
+        assert not Path('/etc/hysteria/ech.key').exists()
+        unit = Path('/etc/systemd/system/hysteria-server.service').read_text()
+        assert 'LoadCredential=hysteria-ech:' + str(key) in unit
+        before = fields('hysteria-server.service')['MainPID']
+        assert int(before) > 0
+        assert lab.converge('hysteria') == 0
+        assert fields('hysteria-server.service')['MainPID'] == before
+
+
+def test_native_ech_rotation_idempotence_and_complete_compensation():
+    from hysteria_ech import generate
+    with fixture.Lab() as lab:
+        from transport_runtime_accept import fields
+        assert lab.converge('hysteria') == 0
+        lab.upgrade('hysteria')
+        binary = lab.artifacts / 'hysteria-v2.13.0'
+        ech = generate(binary, 'outer.example', 'owned.example')
+        lab.context['hysteria'].update(ech=ech, resource_profile='bbr-conservative')
+        assert lab.converge('hysteria') == 0
+        key = Path('/etc/hysteria/ech.key')
+        def assert_key(expected):
+            matched = key.read_text() == expected['keys_pem']
+            assert matched, 'native-ech-private-generation-mismatch'
+        assert_key(ech)
+        assert key.stat().st_mode & 0o777 == 0o600
+        assert key.stat().st_uid == 0 and key.stat().st_gid == 0
+        before = fields('hysteria-server.service')['MainPID']
+        receipt = Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_bytes()
+        assert lab.converge('hysteria') == 0
+        assert fields('hysteria-server.service')['MainPID'] == before
+        assert Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_bytes() == receipt
+        # Existing native failure/kill matrix now runs with ECH credential authority.
+        exercise_native_refusals_and_process_death(lab, 'hysteria')
+        assert_key(ech)
+        rotated = generate(binary, 'outer.example', 'owned.example')
+        baseline_receipt = Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_bytes()
+        lab.context['hysteria']['ech'] = rotated
+        assert lab.converge('hysteria', site=True, fail_after_acceptance=True, allow_failure=True) != 0
+        failures = lab.failure_categories()
+        assert 'Inject failure after native consumer acceptance' in failures['failed_tasks'], failures
+        assert_key(ech)
+        receipt_restored = Path('/var/lib/ripdpi/transport-runtime/accepted.json').read_bytes() == baseline_receipt
+        assert receipt_restored, 'native-ech-receipt-compensation-mismatch'
+        assert not Path('/var/lib/ripdpi/transport-runtime/outer.json').exists()
+        rotation_pid = fields('hysteria-server.service')['MainPID']
+        assert lab.converge('hysteria') == 0
+        assert_key(rotated)
+        assert fields('hysteria-server.service')['MainPID'] != rotation_pid
+        lab.context['hysteria']['resource_profile'] = 'bbr-standard'
+        assert lab.converge('hysteria') == 0
+        import yaml
+        assert yaml.safe_load(Path('/etc/hysteria/config.yaml').read_bytes())['congestion']['bbrProfile'] == 'standard'
+        del lab.context['hysteria']['ech']
+        assert lab.converge('hysteria') == 0
+        assert not key.exists()
+        assert lab.converge('hysteria', retire=True) == 0

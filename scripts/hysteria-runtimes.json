@@ -1,0 +1,20 @@
+{
+  "hysteria": {
+    "version": "v2.13.0",
+    "published_at": "2026-10-05T04:31:35Z",
+    "sha256": {
+      "linux-amd64": "907ba8c9693edb104b20582681fb7dc15639d5b64a9cbb616a7b539190a86691",
+      "linux-arm64": "a68a61a84452ca250ce0368202521965ca9cc9d801a404f1dc9008ac6cf677a7",
+      "darwin-arm64": "c8c3589239ce4ecf335c07a3f6ec11b3ef8fbdfe9e5a5ea0ef8ba8ce50d2bb90"
+    }
+  },
+  "sing_box": {
+    "version": "1.14.3",
+    "published_at": "2026-10-09T05:35:00Z",
+    "sha256": {
+      "linux-amd64": "e2bdf179c15a3652955dc44867e33ca0965c9c9b91b34267dcc5a5d639a5feee",
+      "linux-arm64": "29dae24d76bea3bc62d07dd3e60cfc12003de7debbd6b768df9be9c68360174e",
+      "darwin-arm64": "0360ce634a04c26a6b4fd957517987bb4f6c8950f63435ce3c5af2fcae5860c5"
+    }
+  }
+}

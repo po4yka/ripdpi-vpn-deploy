@@ -84,6 +84,16 @@ def _validate_hysteria(document: dict) -> None:
     tls = _mapping(document, "tls")
     _string(tls, "cert")
     _string(tls, "key")
+    if 'ech' in document:
+        ech = _mapping(document, 'ech')
+        if ech != {'keyPath': '/run/credentials/hysteria-server.service/hysteria-ech'}:
+            raise ValueError('Hysteria ECH credential path is invalid')
+    if 'congestion' in document:
+        congestion = _mapping(document, 'congestion')
+        if (set(congestion) != {'type', 'bbrProfile'} or congestion['type'] != 'bbr'
+                or congestion['bbrProfile'] not in {'conservative', 'standard'}
+                or document.get('ignoreClientBandwidth') is not True):
+            raise ValueError('Hysteria resource profile is invalid')
     auth = _mapping(document, "auth")
     if auth.get("type") != "userpass":
         raise ValueError("Hysteria auth type is invalid")
@@ -125,7 +135,10 @@ def _validate_hysteria(document: dict) -> None:
         "initConnReceiveWindow",
         "maxConnReceiveWindow",
     ):
-        _positive_int(quic, key)
+        value = _positive_int(quic, key)
+        ceiling = 16777216 if 'Stream' in key else 67108864
+        if not 1048576 <= value <= ceiling:
+            raise ValueError('Hysteria receive window exceeds resource bounds')
 
 
 def _validate_dns_morph(document: dict) -> None:

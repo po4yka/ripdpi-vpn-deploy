@@ -2,7 +2,7 @@
 
 ## Objective
 
-Deliver coordinated Hysteria ECH server and recipient profiles. All execution checkboxes remain open; this is planning, not implementation or deployment approval.
+Deliver coordinated Hysteria ECH server and recipient profiles. Source implementation and PR preparation are authorized. Execution steps remain open until their complete named native and acceptance checks are observed.
 
 ## Ownership
 
@@ -32,9 +32,9 @@ Deliver coordinated Hysteria ECH server and recipient profiles. All execution ch
 
 ## Execution
 
-- [ ] ANS-1791618091815754 Confirm exact ECH capability and implement the coordinated typed server recipient contract #feature @item:ANS-1791618083683925
-- [ ] ANS-1791618093172970 Deliver private authority generation secure emission and actual supported recipient integration #feature @item:ANS-1791618083683925
-- [ ] ANS-1791618094259404 Implement complete activation rotation and compensating failure behavior #feature @item:ANS-1791618083683925
+- [x] ANS-1791618091815754 Confirm exact ECH capability and implement the coordinated typed server recipient contract #feature @item:ANS-1791618083683925
+- [x] ANS-1791618093172970 Deliver private authority generation secure emission and actual supported recipient integration #feature @item:ANS-1791618083683925
+- [x] ANS-1791618094259404 Implement complete activation rotation and compensating failure behavior #feature @item:ANS-1791618083683925
 - [ ] ANS-1791618095149688 Prove negotiated ECH authenticated delivery and negative cases then complete eligible source and staging gates #feature @item:ANS-1791618083683925
 
 ## Verification
@@ -50,4 +50,4 @@ Requirement-to-step mapping and unfulfilled evidence categories live in verifica
 
 Native `make test-native-runtime` and the dependency-provided native acceptance targets run only on the explicitly isolated Linux root/systemd/TUN host. macOS or missing privileges are prerequisite failures, never silent skips or mocked substitutes.
 
-Implementation starts only after the canonical portfolio prerequisites are satisfied and separately authorized. Planning alone neither starts work nor checks an execution step.
+Source preparation is authorized in a dedicated worktree. Promotion and acceptance still follow the canonical dependency graph; source changes alone do not check an execution step.

@@ -12,6 +12,10 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / 'ansible/roles/transport-egress'
 
+@pytest.fixture(autouse=True)
+def runtime_library(monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT / 'ansible/roles/runtime-release/files'))
+
 def load(name):
     path = ROLE / 'files' / (name + '.py')
     spec = importlib.util.spec_from_file_location('egress_' + name, path)
@@ -33,6 +37,43 @@ def test_generation_exact_selected_units_and_identity():
                          ('normalizer_uid', 0), ('control_timeout_seconds', 61)]:
         with pytest.raises(mod.Refusal):
             mod.validate({**config, field: value}, normalizer)
+
+
+@pytest.mark.parametrize('unit,option', [('xray.service', '-config'), ('hysteria-server.service', '-c')])
+@pytest.mark.parametrize('selection', ['default', 'custom', 'relative', 'traversal', 'duplicate', 'writable', 'hardlink', 'foreign-owner', 'fifo'])
+def test_generation_reads_configuration_from_exact_owned_unit(tmp_path, monkeypatch, unit, option, selection):
+    import os
+    from types import SimpleNamespace
+    mod = load('generation')
+    monkeypatch.setattr(mod, 'UNIT_ROOT', tmp_path)
+    path = '/etc/selected/config.yaml' if selection == 'custom' else '/etc/hysteria/config.yaml'
+    if selection == 'relative':
+        path = 'config.yaml'
+    elif selection == 'traversal':
+        path = '/etc/hysteria/../config.yaml'
+    text = 'ExecStart=/owned/runtime run ' + option + ' ' + path + '\n'
+    if selection == 'duplicate':
+        text += text
+    target = tmp_path / unit
+    target.write_text(text)
+    target.chmod(0o666 if selection == 'writable' else 0o644)
+    if selection == 'hardlink':
+        os.link(target, tmp_path / 'other-unit')
+    elif selection == 'fifo':
+        target.unlink()
+        os.mkfifo(target)
+    def owned_stat(fd):
+        info = os.fstat(fd)
+        return SimpleNamespace(st_mode=info.st_mode, st_uid=1 if selection == 'foreign-owner' else 0,
+                               st_nlink=info.st_nlink, st_size=info.st_size)
+    monkeypatch.setattr(mod, 'os', SimpleNamespace(open=os.open, read=os.read, close=os.close,
+                        fstat=owned_stat, O_RDONLY=os.O_RDONLY, O_NOFOLLOW=os.O_NOFOLLOW,
+                        O_NONBLOCK=os.O_NONBLOCK, O_CLOEXEC=os.O_CLOEXEC))
+    if selection in {'default', 'custom'}:
+        assert mod.frontend_config_path(unit) == Path(path)
+    else:
+        with pytest.raises(mod.Refusal):
+            mod.frontend_config_path(unit)
 
 
 def test_snapshot_allowlist_covers_complete_route_and_excludes_registration():
@@ -179,6 +220,7 @@ def test_accepted_receipt_covers_frontend_bytes_and_permissions(tmp_path, monkey
 
 def test_role_capture_paths_match_controller_accepted_authority():
     mod = load('snapshot')
+    assert Path('/etc/hysteria/ech.key') in mod.FRONTEND_FILES
     paths = yaml.safe_load((ROLE / 'defaults/main.yml').read_text())['transport_egress_snapshot_paths']
     assert len(paths) == len(set(paths))
     assert set(paths) == set(mod.managed_paths()) | {str(mod.ACCEPTED)}
@@ -188,16 +230,17 @@ def test_role_capture_paths_match_controller_accepted_authority():
 
 
 @pytest.mark.parametrize('present', [False, True])
-def test_optional_hosts_file_retains_accepted_capture_and_restores_bytes(tmp_path, monkeypatch, present):
+@pytest.mark.parametrize('filename,mode', [('masquerade-hosts', 0o640), ('ech.key', 0o600)])
+def test_optional_frontend_authority_retains_accepted_capture_and_restores_bytes(tmp_path, monkeypatch, present, filename, mode):
     import io
     import os
     mod = load('snapshot')
-    hosts = tmp_path / 'masquerade-hosts'
+    hosts = tmp_path / filename
     mod.ACCEPTED = tmp_path / 'accepted.json'
     mod.STATE = tmp_path / 'previous.json'
     if present:
         hosts.write_bytes(b'127.0.0.1 owned-origin.invalid\n')
-        hosts.chmod(0o640)
+        hosts.chmod(mode)
     # The portable actor owns these exact temporary files; this exercises real
     # serialization/publication/restore, not production root-ancestry admission.
     owned = {hosts, mod.ACCEPTED, mod.STATE}
@@ -227,7 +270,7 @@ def test_optional_hosts_file_retains_accepted_capture_and_restores_bytes(tmp_pat
     assert mod.is_accepted(mod.capture([str(hosts)]))
     if present:
         assert hosts.read_bytes() == b'127.0.0.1 owned-origin.invalid\n'
-        assert hosts.stat().st_mode & 0o777 == 0o640
+        assert hosts.stat().st_mode & 0o777 == mode
         assert hosts.stat().st_gid == prior['files'][str(hosts)]['gid']
     else:
         assert not hosts.exists()

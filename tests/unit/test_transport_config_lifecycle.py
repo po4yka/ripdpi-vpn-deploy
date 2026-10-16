@@ -85,10 +85,10 @@ def test_role_profiles_reject_wrong_types_and_missing_nested_fields(
             "bandwidth": {"up": "100 mbps", "down": "200 mbps"},
             "masquerade": {"type": "proxy", "proxy": {"url": "https://example.test"}},
             "quic": {
-                "initStreamReceiveWindow": 1,
-                "maxStreamReceiveWindow": 1,
-                "initConnReceiveWindow": 1,
-                "maxConnReceiveWindow": 1,
+                "initStreamReceiveWindow": 1048576,
+                "maxStreamReceiveWindow": 1048576,
+                "initConnReceiveWindow": 1048576,
+                "maxConnReceiveWindow": 1048576,
             },
         },
         "dns-morph": {

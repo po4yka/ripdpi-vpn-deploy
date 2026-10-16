@@ -62,7 +62,7 @@ evaluation_interval_seconds: 120
 failure_threshold: 3
 otp_ttl_seconds: 3600
 expected_runtime:
-  sing_box: 1.13.16
+  sing_box: 1.14.3
   xray: 26.3.27
   awg: 1.0.0
   awg_toolchain: "<64-character source-input digest from the installed toolchain>"

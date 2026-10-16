@@ -408,10 +408,14 @@ def test_pending_only_journal_refuses_dry_run_with_its_own_category_and_one_depl
 
 
 @pytest.mark.parametrize('tamper', ['symlink', 'group-writable', 'hardlink', 'writable-directory'])
-def test_unsafe_outer_helper_is_refused_before_status_runs_and_the_journal_is_retained(tmp_path, tamper):
+@pytest.mark.parametrize('helper_name', ['transport_runtime_outer.py', 'transport_semantics.py'])
+def test_unsafe_outer_helper_is_refused_before_status_runs_and_the_journal_is_retained(tmp_path, tamper, helper_name):
     root, context = _fixture(tmp_path, 'none')
     _interrupt(root, 'open')
-    helper = root / 'libexec/transport_runtime_outer.py'
+    helper = root / 'libexec' / helper_name
+    if helper_name == 'transport_semantics.py':
+        helper.write_text('')
+        helper.chmod(0o644)
     if tamper == 'symlink':
         target = root / 'outer-target.py'
         target.write_text('')
@@ -556,7 +560,7 @@ def test_interrupted_transaction_detection_matches_the_production_contract():
     assert prepare[0]['ansible.builtin.import_tasks'] == 'helper-authority.yml' and 'consumer-helper-authority-refused' not in (EGRESS_TASKS / 'runtime-prepare.yml').read_text()
     shared = yaml.safe_load((EGRESS_TASKS / 'helper-authority.yml').read_text())
     assert len(shared) == 1 and shared[0]['check_mode'] is False and shared[0]['changed_when'] is False
-    assert any('transport_runtime_' in part and "'outer'" in part for part in shared[0]['ansible.builtin.command']['argv'])
+    assert any('transport_runtime_outer.py' in part for part in shared[0]['ansible.builtin.command']['argv'])
     assert outer['ansible.builtin.command']['argv'] == ['/usr/bin/python3', '-Es', OUTER_HELPER, 'status']
     assert outer['no_log'] is True and outer['failed_when'] is False and outer['changed_when'] is False
     for step in (locate, outer, adopt):
@@ -584,9 +588,9 @@ def test_interrupted_transaction_detection_matches_the_production_contract():
         f"not ({stat_state}.isdir and {stat_state}.uid == 0 and {stat_state}.mode == '0700') or _transport_ingress_interrupted_outer_record.stat.exists"]
     assert missing['ansible.builtin.fail']['msg'].startswith('egress-outer-helper-missing:') and 'no_log' not in missing
     # The remedy names the whole helper set the next deploy's admission checks, its directory and the admission contract, not one helper.
-    admitted = ast.literal_eval(re.search(r'for name in (\([^)]*\)):', (EGRESS_TASKS / 'helper-authority.yml').read_text()).group(1))
-    assert sorted(path.name for path in RUNTIME_FILES.glob('transport_runtime_*.py')) == sorted(f'transport_runtime_{name}.py' for name in admitted)
-    for text in ('transport_runtime_*.py', str(Path(OUTER_HELPER).parent), 'deployed revision', 'root-owned regular file with one link, not group- or world-writable',
+    admitted = ast.literal_eval(re.search(r'helper_names = (\([^)]*\))', (EGRESS_TASKS / 'helper-authority.yml').read_text()).group(1))
+    assert sorted([path.name for path in RUNTIME_FILES.glob('transport_runtime_*.py')] + ['transport_semantics.py']) == sorted(admitted)
+    for text in ('transport_runtime_*.py', 'transport_semantics.py', str(Path(OUTER_HELPER).parent), 'deployed revision', 'root-owned regular file with one link, not group- or world-writable',
                  'under root-owned directories that are not group- or world-writable', 'recreate the node'):
         assert text in missing['ansible.builtin.fail']['msg']
     assert 'root-owned helper' not in missing['ansible.builtin.fail']['msg']

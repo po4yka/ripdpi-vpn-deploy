@@ -4,6 +4,11 @@ tls:
   cert: {{ (hysteria_config_dir ~ '/server.fullchain.pem') | to_json }}
   key:  {{ (hysteria_config_dir ~ '/server.key') | to_json }}
 
+{% if hysteria.ech is defined %}
+ech:
+  keyPath: "/run/credentials/hysteria-server.service/hysteria-ech"
+{% endif %}
+
 auth:
   type: userpass
   userpass:
@@ -22,6 +27,12 @@ obfs:
     password: {{ hysteria.salamander_password | to_json }}
 {% endif %}
 
+{% if hysteria.resource_profile | default('bandwidth-capped') != 'bandwidth-capped' %}
+congestion:
+  type: bbr
+  bbrProfile: {{ hysteria.resource_profile | replace('bbr-', '') | to_json }}
+ignoreClientBandwidth: true
+{% endif %}
 bandwidth:
   up:   {{ hysteria.bandwidth_up   | default("100 mbps") | to_json }}
   down: {{ hysteria.bandwidth_down | default("200 mbps") | to_json }}

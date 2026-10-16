@@ -33,7 +33,7 @@ PY
   echo 'native source fixture pins are invalid' >&2
   exit 1
 }
-[[ "$hysteria_version" == v2.9.0 ]] || {
+[[ "$hysteria_version" == v2.13.0 ]] || {
   echo 'Hysteria native version and asset digest must be reviewed together' >&2
   exit 1
 }
@@ -61,10 +61,10 @@ make -C "${native_root}/amneziawg-tools-${tools_commit}/src" -j2
 native_download="$(mktemp -d "${native_root}/download.XXXXXXXX")"
 trap 'rm -rf -- "$native_download"' EXIT
 curl -fsSL --connect-timeout 10 --max-time 120 \
-  'https://github.com/apernet/hysteria/releases/download/app/v2.9.0/hysteria-linux-amd64' \
+  'https://github.com/apernet/hysteria/releases/download/app/v2.13.0/hysteria-linux-amd64' \
   -o "$native_download/hysteria"
 printf '%s  %s\n' \
-  '8225c8380f1ae8122921d4986c2b70976e9c6e6f87a977e7d0498a813f4f3e37' \
+  '907ba8c9693edb104b20582681fb7dc15639d5b64a9cbb616a7b539190a86691' \
   "$native_download/hysteria" | sha256sum -c -
 install -m 0755 "$native_download/hysteria" "$native_root/bin/hysteria"
 "$native_root/bin/hysteria" version

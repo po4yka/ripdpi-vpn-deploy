@@ -82,12 +82,12 @@
         name: hysteria
       vars:
         hysteria_release_urls:
-          amd64: file:///var/tmp/hysteria-molecule/hysteria-v2.9.0
-          arm64: file:///var/tmp/hysteria-molecule/hysteria-v2.9.0-arm64
+          amd64: file:///var/tmp/hysteria-molecule/hysteria-v2.13.0
+          arm64: file:///var/tmp/hysteria-molecule/hysteria-v2.13.0-arm64
         hysteria:
-          version: v2.9.0
-          linux_amd64_sha256: 8225c8380f1ae8122921d4986c2b70976e9c6e6f87a977e7d0498a813f4f3e37
-          linux_arm64_sha256: a3ccc0a3e791b85710ef63d22304a6f7dea210259be71bcd70cf9a210a385454
+          version: v2.13.0
+          linux_amd64_sha256: 907ba8c9693edb104b20582681fb7dc15639d5b64a9cbb616a7b539190a86691
+          linux_arm64_sha256: a68a61a84452ca250ce0368202521965ca9cc9d801a404f1dc9008ac6cf677a7
           cert_pem: '{{ transport_native_hysteria_tls.cert_pem }}'
           key_pem: '{{ transport_native_hysteria_tls.key_pem }}'
           bandwidth_up: 100 mbps
@@ -114,7 +114,7 @@
     - name: Assert upgraded fixture version and active Hysteria service
       ansible.builtin.assert:
         that:
-          - '''2.9.0'' in upgraded_hysteria_version.stdout'
+          - '''2.13.0'' in upgraded_hysteria_version.stdout'
           - upgraded_hysteria_service.stdout == 'active'
     - name: Inspect upgraded runtime-release links and receipts
       ansible.builtin.stat:
@@ -125,13 +125,13 @@
         - /opt/hysteria/previous
         - /usr/local/bin/hysteria
         - /opt/hysteria/releases/v2.8.2/.runtime-release.json
-        - /opt/hysteria/releases/v2.9.0/.runtime-release.json
+        - /opt/hysteria/releases/v2.13.0/.runtime-release.json
       register: upgraded_runtime_release_paths
     - name: Assert upgraded runtime-release links and receipts
       ansible.builtin.assert:
         that:
           - runtime_release_changed | bool
-          - upgraded_runtime_release_paths.results[0].stat.lnk_source == '/opt/hysteria/releases/v2.9.0'
+          - upgraded_runtime_release_paths.results[0].stat.lnk_source == '/opt/hysteria/releases/v2.13.0'
           - upgraded_runtime_release_paths.results[1].stat.lnk_source == '/opt/hysteria/releases/v2.8.2'
           - upgraded_runtime_release_paths.results[2].stat.lnk_target == '/opt/hysteria/current/hysteria'
           - upgraded_runtime_release_paths.results[3].stat.mode == '0644'

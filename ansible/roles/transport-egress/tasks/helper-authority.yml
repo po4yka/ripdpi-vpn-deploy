@@ -17,8 +17,12 @@
                     continue
                 if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
                     raise SystemExit('consumer-helper-authority-refused')
-        for name in ('transaction', 'accept', 'probe', 'validate', 'outer', 'rollback'):
-            path = roots[1] / ('transport_runtime_' + name + '.py')
+        helper_names = ('transport_runtime_transaction.py', 'transport_runtime_accept.py',
+                        'transport_runtime_probe.py', 'transport_runtime_validate.py',
+                        'transport_runtime_outer.py', 'transport_runtime_rollback.py',
+                        'transport_semantics.py')
+        for name in helper_names:
+            path = roots[1] / name
             try:
                 info = path.lstat()
             except FileNotFoundError:

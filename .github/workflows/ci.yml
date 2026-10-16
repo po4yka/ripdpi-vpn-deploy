@@ -412,8 +412,8 @@ jobs:
       matrix:
         group: [1, 2, 3, 4]
     env:
-      SING_BOX_CLIENT_VERSION: "1.13.16"
-      SING_BOX_CLIENT_LINUX_AMD64_SHA256: "e37c312859dfa84cba148f41072ff6369f08361ae91d622dc1fd3aab49611a8d"
+      SING_BOX_CLIENT_VERSION: "1.14.3"
+      SING_BOX_CLIENT_LINUX_AMD64_SHA256: "e2bdf179c15a3652955dc44867e33ca0965c9c9b91b34267dcc5a5d639a5feee"
       PROMTOOL_VERSION: "3.14.0"
       PROMETHEUS_LINUX_AMD64_SHA256: "f665c6da19eb7ba399c915d30c7d9793c9b417bf8a749b504bc470678631478d"
     steps:
@@ -464,12 +464,18 @@ jobs:
           prometheus --version
       - name: Install pinned sing-box client parser
         run: |
+          set -euo pipefail
           version="${SING_BOX_CLIENT_VERSION}"
           archive="sing-box-${version}-linux-amd64.tar.gz"
           curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/v${version}/${archive}" -o "/tmp/${archive}"
           echo "${SING_BOX_CLIENT_LINUX_AMD64_SHA256}  /tmp/${archive}" | sha256sum -c -
           tar -xzf "/tmp/${archive}" -C /tmp
-          sudo install -m 0755 "/tmp/sing-box-${version}-linux-amd64/sing-box" /usr/local/bin/sing-box
+          python3 scripts/check-singbox-client-compatibility.py \
+            --expected-version "$version" --binary "/tmp/sing-box-${version}-linux-amd64/sing-box"
+          stage="$(sudo mktemp -d /usr/local/bin/.sing-box.XXXXXXXX)"
+          trap 'sudo rm -rf -- "$stage"' EXIT
+          sudo install -m 0755 "/tmp/sing-box-${version}-linux-amd64/sing-box" "$stage/sing-box"
+          sudo mv -T "$stage/sing-box" /usr/local/bin/sing-box
       - name: Install checksum-verified Conftest for policy regression tests
         env:
           CONFTEST_VERSION: "0.57.0"
@@ -570,7 +576,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 openssh-server e2fsprogs util-linux mount nginx iproute2 openssl wireguard-tools unbound lynis prometheus-node-exporter
+            nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 openssh-server e2fsprogs util-linux mount nginx iproute2 openssl wireguard-tools unbound lynis prometheus-node-exporter tcpdump tshark
+      - name: Exercise ECH recipients, privacy and resource profiles
+        run: |
+          sudo env "PATH=$PATH" TRANSPORT_NATIVE_ISOLATED=1 PYTEST_ADDOPTS=--tb=short \
+            make test-hysteria-ech-runtime
       - name: Execute native tests with UID and GID capabilities
         run: |
           sudo env \
@@ -586,9 +596,13 @@ jobs:
   transport-runtime-acceptance:
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['transport-runtime-acceptance'] }}
-    name: native transport runtime acceptance
+    name: native transport runtime acceptance (${{ matrix.group }}/2)
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [1, 2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -621,11 +635,13 @@ jobs:
               python3-yaml make unzip
             chmod 0755 /var/log
           '
-      - name: Execute complete transport acceptance in a fresh runner
+      - name: Execute complete transport acceptance in fresh partitioned runners
+        env:
+          PYTEST_NATIVE_GROUP: ${{ matrix.group }}
         run: |
           docker exec --workdir /opt/rta \
             --env TRANSPORT_NATIVE_ISOLATED=1 \
-            --env PYTEST_ADDOPTS=--tb=short \
+            --env "PYTEST_ADDOPTS=--tb=short --splits 2 --group $PYTEST_NATIVE_GROUP --splitting-algorithm duration_based_chunks" \
             --env ANSIBLE_COLLECTIONS_PATH=/opt/rta/.ansible/collections \
             --env "PATH=$RTA_PYTHON_PREFIX/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
             transport-runtime-acceptance \

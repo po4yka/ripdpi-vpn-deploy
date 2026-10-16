@@ -23,3 +23,4 @@
       - '{{ hysteria_config_dir }}/config.yaml.prev'
       - '{{ hysteria_config_dir }}/server.fullchain.pem'
       - '{{ hysteria_config_dir }}/server.key'
+      - '{{ hysteria_config_dir }}/ech.key'
