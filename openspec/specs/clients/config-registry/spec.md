@@ -95,29 +95,37 @@ key remains the primary copy; the SOPS entry is the recovery path.
 
 ### Requirement: REQ-DRIFT-CHECK — Payload drift detection
 
-A `make client-drift CLIENT=<name>` target MUST re-render the device payload
-from current git + SOPS + Terraform outputs and compare its identity
-(a versioned private HMAC over canonical selected-device payload and exact delivery options) against the
-identity recorded at last delivery, reporting `stale`, `current`, or
-`unknown` without requiring the delivered file to be stored locally.
+The implementation MUST re-materialize the selected device payload from current repository, SOPS and resolved endpoint inputs and compare a private versioned HMAC over the canonical selected-device payload and exact delivery options with the recorded delivery, reporting stale, current or unknown without retaining the delivered plaintext file.
+
+#### Scenario: Private consumed value changes
+
+- **WHEN** a device password, peer key, SNI, bound instance, supported parameter or token expiry changes after delivery
+- **THEN** the identity changes and client-drift reports stale without printing the value
+
+#### Scenario: Unconsumed inputs change
+
+- **WHEN** only SOPS ciphertext wrapping or another device credential changes
+- **THEN** the selected device remains current
+
+#### Scenario: No usable recorded identity
+
+- **WHEN** the record is absent or lacks the new validated identity generation
+- **THEN** the verdict is unknown and no delivery or credential mutation occurs
 
 #### Scenario: Endpoint change detected as drift
 
-- **WHEN** a node IP changes after payload delivery and the operator runs
-  `make client-drift CLIENT=<device>`
-- **THEN** the check reports `stale` and prints a categorical consumed-payload change without exposing a digest.
+- **WHEN** a node IP changes after payload delivery and the operator runs make client-drift CLIENT=<device>
+- **THEN** the check reports stale and prints a categorical consumed-payload change without exposing a digest
 
 #### Scenario: Unchanged fleet reports current
 
-- **WHEN** the drift check runs with no relevant source or output change
-  since last delivery
-- **THEN** the check reports `current` and exits zero.
+- **WHEN** the drift check runs with no relevant source or output change since last delivery
+- **THEN** the check reports current and exits zero
 
 #### Scenario: Drift check without registry entry
 
 - **WHEN** the drift check runs for a device with no registry entry
-- **THEN** the check reports `unknown` with a non-zero exit and does not
-  guess defaults.
+- **THEN** the check reports unknown with a non-zero exit and does not guess defaults
 
 ### Requirement: REQ-REGISTRY-SECURITY — Registry confidentiality and revocation
 

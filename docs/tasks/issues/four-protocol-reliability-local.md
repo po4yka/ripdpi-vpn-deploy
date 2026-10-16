@@ -2,7 +2,7 @@
 id: EPC-1792155716043904
 title: Deliver the local four-protocol reliability roadmap
 kind: epic
-status: review
+status: done
 area: epic
 priority: high
 risk: high
@@ -15,6 +15,9 @@ created: 2026-10-16
 updated: 2026-10-17
 related_tasks: []
 status_detail: Complete exact-source local acceptance passed; all 45 positive requirements verified and owned runtimes retired.
+closed_at: "2026-10-16T22:37:02Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Implementation 60689d884b1b4b1a108b2138bd7af13ca913da20 passed complete local make check, all 189 unique native cases without skips, exact AWG source-pair adoption and confirmed owned runtime cleanup. All 45 requirements are retained in canonical specs; 48 OpenSpec items validate. Supplementary exact-source CI 38955842595 passed all 89 jobs. External soak, recipient devices and production promotion are excluded by the owner.
 ---
 
 ## Goal

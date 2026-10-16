@@ -195,3 +195,8 @@ temporary-file ownership, guarded recovery and immutable task receipts. Existing
 production eligibility gates remain separate from source/native success. The
 canonical REALITY requirements are projected as MODIFIED after their independent
 integration; all 45 positive requirements and their scenarios are retained.
+
+The archive initially warned that the existing config-registry Purpose took
+precedence over the redundant delta Purpose. The canonical Purpose is retained;
+the redundant archived delta heading was removed, and all 45 unique requirement
+IDs were independently matched to canonical specs before terminal closure.
