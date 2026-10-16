@@ -19,6 +19,11 @@ systemd scope. Module workers may create separate sessions, so process-group
 signals alone cannot reclaim the invocation. Real scope regressions cover
 normal launcher exit and SIGKILL while preserving a foreign worker.
 
+Portable CI shards fetch complete Git history for real `taskctl` workspace
+queries. Completed related-task references are accepted through committed
+closure history; a shallow checkout cannot establish that history. The shard
+budget includes those audited pointer lookups.
+
 The complete XHTTP delivery matrix extends the endpoint target with real native
 Xray format consumption, distinct alternate TLS identity, primary outage,
 wrong-certificate refusal, bounded-pool comparisons, idle reuse,
