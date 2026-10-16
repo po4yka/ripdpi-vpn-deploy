@@ -440,7 +440,7 @@ def test_hysteria_admission_sigkill_reconciles_exact_validation_lease():
 sys.path.insert(0,sys.argv[1])
 from pathlib import Path
 from transport_runtime_transaction import Transaction
-from transport_runtime_accept import STATE,read_parameters
+from transport_runtime_accept import STATE,read_parameters,gateway_units,unit_binary
 from transport_runtime_validate import validate_hysteria
 values=read_parameters()
 unit=Path('/etc/systemd/system/hysteria-server.service').read_text()
@@ -452,7 +452,9 @@ def checkpoint(stage):
 with Transaction(STATE) as tx:
  validate_hysteria(binary,Path('/etc/hysteria/config.yaml').read_bytes(),
   Path('/etc/hysteria/server.fullchain.pem').read_bytes(),Path('/etc/hysteria/server.key').read_bytes(),
-  unit,values['timeout'],values['clients']['hysteria'],transaction=tx,checkpoint=checkpoint)
+  unit,values['timeout'],values['clients']['hysteria'],
+  gateway_binary=unit_binary(Path('/etc/systemd/system',gateway_units()[0]).read_text())[0],
+  transaction=tx,checkpoint=checkpoint)
 '''
         process = subprocess.Popen(['/usr/bin/python3', '-Es', '-c', source,
             '/usr/local/libexec/ripdpi-transport-egress'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)

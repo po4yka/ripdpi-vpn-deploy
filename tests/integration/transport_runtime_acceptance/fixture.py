@@ -327,7 +327,7 @@ server.serve_forever()
                                 raise RuntimeError('native-first-adoption-interruption-unconfirmed')
                             return result.returncode
                         time.sleep(0.01)
-                    raise RuntimeError('native-first-adoption-selection-not-observed')
+                    raise RuntimeError('native-first-adoption-selection-not-observed:' + json.dumps(self.failure_categories(), sort_keys=True))
                 finally:
                     if result.poll() is None:
                         os.killpg(result.pid, signal.SIGKILL)

@@ -44,7 +44,7 @@ lines decide which release runs; `current`, `previous` and
 # Find the previous release
 ssh deploy@<vps> ls /opt/xray/releases
 
-# Roll xray.service back to a retained release (one node per run)
+# Roll the frontend and its private gateways back (one node per run)
 make rollback-xray ANSIBLE_LIMIT=<alias> ROLLBACK_XRAY_VERSION=v26.3.27
 ```
 
@@ -70,7 +70,10 @@ the whole generation forward again.
 
 Existing nodes must converge once to adopt gateway units into the runtime
 receipt before operator rollback; otherwise rollback refuses with
-`accepted-gateway-required` before publication.
+`accepted-gateway-required` before publication. The accepted receipt then retains
+runtime ownership of those unit inodes. Reverting to the older egress publisher
+requires a separate complete-generation recovery or node recreation; a source-only
+revert and ordinary deploy can invalidate the retained ownership claims.
 
 To make the rollback permanent, also update `xray.version` and
 `xray.linux_*_sha256` in secrets back to the rolled-back version, so

@@ -212,7 +212,9 @@ class Adapter:
                                   self.candidate(tls['key']),
                                   unit_text, self.timeout, self.clients['hysteria'],
                                   transaction=getattr(self, 'transaction', None),
-                                  ech_key=ech_key)
+                                  ech_key=ech_key,
+                                  gateway_binary=unit_binary(self.candidate(
+                                      '/etc/systemd/system/' + gateway_units()[0]).decode())[0])
 
     def retained(self, receipt):
         self.known = (receipt or {}).get('nodes', {})

@@ -73,6 +73,8 @@ cleanup. A third receipt state refuses without mutating any inode.
 
 Site retirement contributes exact absence candidates to the final complete frontend plan, including when all frontends are disabled. Timer asset refresh and operator rollback refuse an open outer route owner before recovery or publication. Native admission leases bind the Linux boot identity: a proven reboot permits missing volatile unit/namespace authority only after the new manager confirms no same-named unit or process; durable private files still require their exact inode claims.
 
+Hysteria isolated admission takes its gateway executable from the selected runtime candidate (or retained accepted claim), never an already published unit. Gateway units can remain unpublished through first-install validation. The explicit executable parameter is required for every direct validator caller.
+
 **Runtime publication owns every release-bound unit** — frontend and private gateway unit files enter the same runtime plan on deploy, upgrade and operator rollback. Egress renders gateway candidates but never publishes them. Rollback queries the generation reader's validated `gateway_units`, requires accepted claims, validates each gateway configuration with the retained binary and proves every loaded executable before acceptance. Refusal and interrupted publication restore exact original unit inodes. Existing nodes must converge once to adopt the gateway claims before rollback. Shared adapter readiness remains unchanged for refresh, retirement and adoption.
 
 ## What's done well

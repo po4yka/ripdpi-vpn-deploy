@@ -6,7 +6,7 @@ Operator runtime rollback moves the frontend and both private gateways to the pr
 
 ## Ownership
 
-- `ansible/roles/transport-egress/tasks/stage.yml`, `ansible/roles/transport-egress/templates/gateway.service.j2`, `ansible/roles/runtime-release/files/transport_runtime_rollback.py`, `ansible/roles/runtime-release/files/transport_runtime_accept.py`, related unit and native tests, `docs/RUNBOOK-rollback.md`.
+- `ansible/roles/transport-egress/tasks/stage.yml`, `ansible/roles/transport-egress/files/generation.py`, `ansible/roles/transport-egress/templates/gateway.service.j2`, `ansible/roles/runtime-release/files/transport_runtime_rollback.py`, `ansible/roles/runtime-release/files/transport_runtime_accept.py`, `ansible/roles/runtime-release/files/transport_runtime_validate.py`, related unit and native tests, `docs/RUNBOOK-rollback.md`.
 
 ## Execution
 

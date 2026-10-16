@@ -90,7 +90,10 @@ def test_ech_admission_uses_exact_staged_unit_credential(monkeypatch, directory,
             unit += 'LoadCredential=hysteria-ech:' + source + '\n'
     document = {'tls': {'cert': directory + '/cert.pem', 'key': directory + '/tls.key'},
                 'ech': {'keyPath': '/run/credentials/hysteria-server.service/hysteria-ech'}}
-    contents = {'/etc/systemd/system/hysteria-server.service': unit.encode(),
+    monkeypatch.setattr(accept, 'gateway_units', lambda: ['ripdpi-transport-direct.service'])
+    contents = {'/etc/systemd/system/ripdpi-transport-direct.service':
+                    b'ExecStart=/selected/xray run -config %d/config.json\n',
+                '/etc/systemd/system/hysteria-server.service': unit.encode(),
                 config: yaml.safe_dump(document).encode(), key: b'selected-private-authority',
                 directory + '/cert.pem': b'certificate', directory + '/tls.key': b'tls-key'}
     candidates = [{'path': path, 'data': base64.b64encode(raw).decode()} for path, raw in contents.items()]
@@ -102,6 +105,7 @@ def test_ech_admission_uses_exact_staged_unit_credential(monkeypatch, directory,
         assert len(observed) == 1
         assert observed[0][0][4] == unit
         assert observed[0][1]['ech_key'] == contents[key]
+        assert observed[0][1]['gateway_binary'] == '/selected/xray'
     else:
         reason = 'candidate-incomplete' if credential == 'unselected' else 'unit-credential-invalid'
         with pytest.raises(accept.Refusal, match=reason):
