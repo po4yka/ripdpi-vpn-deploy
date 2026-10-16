@@ -2,6 +2,7 @@
 # Version sentinel — must be overridden in secrets/group_vars.
 # The role asserts this is non-empty at task start.
 hysteria:
+  resource_profile: bandwidth-capped
   version: ""
   linux_amd64_sha256: ""
   linux_arm64_sha256: ""

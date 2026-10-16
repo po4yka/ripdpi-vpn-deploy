@@ -14,11 +14,37 @@
 
 ## Design decisions
 
-Controller interruption fixtures release their synthetic workers through an
-owned stop marker and retained subprocess handles. Never signal recorded
-process-group numbers after the controller exits: group ownership may already
-have ended. Cleanup runs after the unchanged timeout, privacy and descendant
-termination assertions.
+Dual-family namespace probe regressions force both IPv4-first and IPv6-first logging. Concurrent child launch order does not imply log order; require exactly one request per family, the same namespace and in-tunnel hostname resolution in either schedule.
+
+Controller interruption fixtures release their synthetic workers through an owned stop marker and retained subprocess handles. Cleanup never signals a recorded process group after its ownership can have expired; privacy and child-removal assertions remain unchanged.
+
+ECH and BBR recipient fields are materialized in the shared Python payload path used by both delivery and drift inspection. The internal XHTTP-only selection retains semantic admission and is refused by bundle export.
+
+Bootstrap failure regressions execute ECH refusal, encryption failure and termination with synthetic tool authority, remove only newly staged plaintext and preserve existing operator documents. Bundle tests reject the monitoring-only flag before producer execution; adapter cases bind staged credential paths, and a real systemd case converges ECH in a custom configuration directory without relying on a default key.
+Controller path tests retain exact unit ownership and reject ambiguous or unsafe configuration selections before frontend credential reads.
+
+ECH export and sentinel cases keep distinct nginx and ECH inner identities. The real native recipient matrix also retains that distinction, so hostname fallback cannot silently bind ECH to the unrelated frontend.
+
+Parser adoption regressions execute both CI installation fragments with checksum-verified real sing-box bytes and an owned destination. Local acquisition supplies verified, tampered, truncated, wrong-version and incompatible-executable archives. Refusal must retain the prior inode and an actually usable parser; successful full-profile acceptance must atomically replace it and clean staging.
+
+Guidance coverage exercises the workflow's actual Git collection against an advanced base branch. Preserve full history for three-dot comparisons; a shallow fetch can hide the merge base after checkout.
+
+Baseline resource tests execute its real first Ansible assertion and require an invalid value to stop before the next mutating task. ECH native leak checks run Hysteria with debug logging as well as secure positive/negative recipient traffic. The systemd generation case adopts both BBR profiles under the actual credential sandbox.
+
+The complete native transaction suite is split into two disjoint CI groups in independent fresh systemd containers; both are required and a collection test proves their complete union. Keep the full local Make target unchanged.
+Each case imports installed runtime helpers only after its own lab has established the module path; isolated partitions must not depend on earlier cases initializing the interpreter.
+ECH probe regressions exercise both isolated import and Ansible's inline loading. Whole-route snapshot cases retain private ECH bytes, permissions, group and exact absence; generation helper unit cases establish their own runtime library path.
+ECH identity admission excludes literal IPs before executable acquisition. Native UDP listeners probe the UDP port space; BBR recipient tests retain the paired XHTTP intermediate while refusing unqualified engine output.
+
+Warm Hysteria upgrades retain Salamander and exercise the canonical firewall redirect through the lab veth. Per-port counters must observe an actual five-second client hop before and after upgrade and compensation; a datagram outside the range remains unchanged.
+The native client may randomly choose its current destination again. Keep authenticated traffic running within one finite observation deadline until counters prove two distinct destinations, then require a fresh authenticated request before accepting the hop.
+
+ECH native traffic stays in a private netns. Host-wide UDP ceilings are observed, tuned and restored before entering that namespace because Linux 6.8 does not expose them there. Packet decoding explicitly selects QUIC for the allocated test port. Capture only supported-recipient traffic and trust failures, outside the throughput measurement interval. Root CI steps preserve the pinned Python PATH.
+The controlled 0.1% random loss applies only to concurrent throughput measurements. Single-datagram UDP/DNS functional assertions retain the same five-millisecond path without injected loss, so expected UDP loss cannot randomly invalidate acceptance.
+
+Native frontend fixtures verify the same upgraded Hysteria bytes as the builder. Smoke control-flow fixtures load the deployed CA directory from shared group variables; encrypted synthetic fixtures must track the plaintext runtime selection.
+
+ECH unit cases check wire framing, private/public key agreement, identity/generation matching, strict emitter routing and root-only systemd credential wiring. They are source evidence; exact native ECH negotiation, packet identity, traffic and generation compensation have a separately selected Linux lane.
 
 AWG onboarding fixtures use an HTTPS hostname so the real dual-family probe
 validator admits the positive path. Rotation tests follow the canonical

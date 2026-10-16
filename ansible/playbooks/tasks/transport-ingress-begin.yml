@@ -157,7 +157,8 @@
       egress-outer-helper-missing: the egress outer route helper of an interrupted protected ingress transaction is missing
       while the route's durable state is present, unsafe or cannot be judged;
       the journal is retained and nothing was adopted or compensated.
-      Restore the complete transport_runtime_*.py helper set in /usr/local/libexec/ripdpi-transport-egress from the deployed revision,
+      Restore the complete transport_runtime_*.py helper set and transport_semantics.py
+      in /usr/local/libexec/ripdpi-transport-egress from the deployed revision,
       each a root-owned regular file with one link, not group- or world-writable,
       under root-owned directories that are not group- or world-writable,
       or recreate the node.

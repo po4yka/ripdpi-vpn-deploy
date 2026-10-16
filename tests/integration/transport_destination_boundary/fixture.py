@@ -114,9 +114,9 @@ class NativeStack:
             # Copy the exact bytes into this owned executable directory.
             target = self.library / "hysteria"
             shutil.copyfile(self.hysteria, target);target.chmod(0o555)
-            expected = ("a3ccc0a3e791b85710ef63d22304a6f7dea210259be71bcd70cf9a210a385454"
-                        if os.uname().machine == "aarch64" else
-                        "8225c8380f1ae8122921d4986c2b70976e9c6e6f87a977e7d0498a813f4f3e37")
+            architecture = "arm64" if os.uname().machine == "aarch64" else "amd64"
+            expected = json.loads((ROOT / "scripts/hysteria-runtimes.json").read_text())[
+                "hysteria"]["sha256"]["linux-" + architecture]
             if hashlib.sha256(target.read_bytes()).hexdigest() != expected:
                 raise RuntimeError("native-hysteria-digest-mismatch")
             self.hysteria = str(target)

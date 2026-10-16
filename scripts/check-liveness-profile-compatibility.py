@@ -40,12 +40,12 @@ def private_json(path, document):
         json.dump(document, stream)
 
 
-def render_profiles(directory: Path) -> dict[str, Path]:
+def render_profiles(directory: Path, *, document: dict | None = None) -> dict[str, Path]:
     spec = importlib.util.spec_from_file_location(
         "standard_compatibility", ROOT / "scripts/check-singbox-client-compatibility.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    document = module.fixture_document()
+    document = module.fixture_document() if document is None else dict(document)
     document["client_registry"] = {"laptop": {"status": "active"}}
     secrets = directory / "secrets.json"
     private_json(secrets, document)
@@ -58,8 +58,11 @@ def render_profiles(directory: Path) -> dict[str, Path]:
     outputs = []
     for profile_format in ("sing-box", "ripdpi"):
         try:
+            hysteria = document.get("hysteria", {})
+            official = hysteria.get("ech") or hysteria.get("resource_profile", "bandwidth-capped") != "bandwidth-capped"
+            selection = ["--xhttp-only"] if profile_format == "ripdpi" and official else []
             outputs.append(json.loads(run(["bash", str(ROOT / "scripts/emit-singbox.sh"),
-                                           "laptop", "--profile-format", profile_format], environment)))
+                                           "laptop", *selection, "--profile-format", profile_format], environment)))
         except json.JSONDecodeError:
             raise CompatibilityError("emitter returned malformed JSON") from None
 

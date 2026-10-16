@@ -217,7 +217,7 @@ def test_native_provisioning_is_version_pinned_and_precedes_selected_tests():
     run = next(index for index, task in enumerate(steps) if "make test-native-runtime" in task.get("run", ""))
     assert build < run
     script = (ROOT / "scripts/build-native-transport-semantics.sh").read_text()
-    assert "8225c8380f1ae8122921d4986c2b70976e9c6e6f87a977e7d0498a813f4f3e37" in script
+    assert "907ba8c9693edb104b20582681fb7dc15639d5b64a9cbb616a7b539190a86691" in script
     assert "sha256sum -c -" in script and "GOTOOLCHAIN=local" in script
     assert script.index("git -C \"$destination\" rev-parse HEAD") < script.index('make -C "${native_root}/amneziawg-go-')
     for field in ("amneziawg_go_commit", "amneziawg_tools_commit"):

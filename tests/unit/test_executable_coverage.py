@@ -57,6 +57,8 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
         s for s in setup["runs"]["steps"] if "setup-terraform@" in s.get("uses", "")
     )
     assert terraform["with"]["terraform_wrapper"] is False
+    ech_step = next(step["run"] for step in native if "make test-hysteria-ech-runtime" in step.get("run", ""))
+    assert "PATH=$PATH" in shlex.split(ech_step.replace("\\\n", ""))
     command = shlex.split(native[-1]["run"].replace("\\\n", ""))
     assert command[:2] == ["sudo", "env"]
     assert command[-5:] == ["make", "test-native-runtime", "test-xhttp-endpoint-contract", "test-awg-device-binding-runtime", "test-awg-dualstack-runtime"]
@@ -103,9 +105,14 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
     commands = [
         ['tests/unit/', '-m', 'native_runtime'],
         ['tests/unit/', '-m', 'native_runtime', '--ignore=tests/unit/test_transport_runtime_acceptance_native.py',
-         '--ignore=tests/unit/test_xhttp_endpoint_contract_native.py'],
+         '--ignore=tests/unit/test_xhttp_endpoint_contract_native.py',
+         '--ignore=tests/unit/test_awg_device_binding_native.py', '--ignore=tests/unit/test_hysteria_ech_native.py'],
         ['tests/unit/test_transport_runtime_acceptance_native.py'],
         ['tests/unit/test_xhttp_endpoint_contract_native.py'],
+        ['tests/unit/test_awg_device_binding_native.py'],
+        ['tests/unit/test_hysteria_ech_native.py'],
+        *[['tests/unit/test_transport_runtime_acceptance_native.py', '--splits', '2', '--group', str(group),
+           '--splitting-algorithm', 'duration_based_chunks'] for group in (1, 2)],
     ]
     selected = []
     for arguments in commands:
@@ -113,10 +120,20 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
             cwd=ROOT, text=True, capture_output=True, check=True, timeout=60)
         selected.append({line for line in result.stdout.splitlines()
                          if line.startswith('tests/unit/') and '::' in line})
-    all_native, existing, transactions, endpoint_cases = selected
-    assert all_native == existing | transactions | endpoint_cases
-    assert not existing & transactions and not existing & endpoint_cases and not transactions & endpoint_cases
-    assert transactions and len(transactions) == 4
+    all_native, existing, transactions, endpoint_cases, awg_cases, ech_cases = selected[:6]
+    first, second = selected[6:]
+    assert transactions == first | second and not first & second
+    workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]["transport-runtime-acceptance"]
+    assert workflow["strategy"]["matrix"]["group"] == [1, 2]
+    assert workflow["strategy"]["fail-fast"] is False
+    assert any("--splits 2 --group $PYTEST_NATIVE_GROUP --splitting-algorithm duration_based_chunks" in s.get("run", "") for s in workflow["steps"])
+    assert all_native == existing | transactions | endpoint_cases | awg_cases | ech_cases
+    groups = [existing, transactions, endpoint_cases, awg_cases, ech_cases]
+    assert all(not left & right for index,left in enumerate(groups) for right in groups[index+1:])
+    assert transactions and len(transactions) == 6
+    assert ('tests/unit/test_transport_runtime_acceptance_native.py::'
+            'test_native_ech_admission_retains_custom_configuration_directory') in transactions
+    assert awg_cases and len(ech_cases) == 13
     assert endpoint_cases and len(endpoint_cases) == 2
     assert "$(MAKE) test-probe-matrix-mtproto" in makefile.split("ci-fast:", 1)[1]
     assert "go test -mod=readonly -count=1" in makefile
