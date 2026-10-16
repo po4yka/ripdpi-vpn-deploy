@@ -9,11 +9,11 @@ remote_ci_evidence: "terminal exact-SHA protected-source checks for this new cap
 dry_run: "not_applicable"
 dry_run_evidence: "source capability is exercised in isolated local/native runtime; no real inventory run is part of this task"
 staging: "required"
-staging_evidence: "separately authorized exact-target comparative traffic and rollback before optional feature promotion"
+staging_evidence: "owned disconnected local Linux runtime staging: comparative native traffic, faults, resource bounds and baseline restoration; no external staging soak"
 live: "not_applicable"
 live_evidence: "no production rollout is part of this source or disabled-default feature task"
 client: "required"
-client_evidence: "exact supported real client completes the named isolated protocol or TLS probe cases"
+client_evidence: "exact pinned native Xray fixture process completes local transfer, TLS and credential cases; no physical or external client acceptance"
 artifact: "required"
 artifact_evidence: "rendered contracts and redacted requirement-specific exact-source artifacts after implementation"
 ---

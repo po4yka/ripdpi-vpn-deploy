@@ -2,7 +2,7 @@
 
 ## Objective
 
-Deliver selectable alternate XHTTP endpoints and measured typed tuning. All execution checkboxes remain open; this is planning, not implementation or deployment approval.
+Deliver selectable alternate XHTTP endpoints and measured typed tuning. Implementation and local-only acceptance are authorized; no external staging soak or physical/external clients are required.
 
 ## Ownership
 
@@ -28,7 +28,7 @@ Deliver selectable alternate XHTTP endpoints and measured typed tuning. All exec
 - NEW: docs/XHTTP-DELIVERY-PROFILES.md
 - Primary integration owns all shared schema, profile, Makefile, CI/snapshot and portfolio edits; explicitly assign disjoint paths before future parallel implementation.
 - Preserve unrelated work, existing review records and private operator files. Use a dedicated implementation worktree only after authorization.
-- This planning session has one serialized repository writer; delegated plan drafts do not alter runtime source.
+- One serialized implementation owner writes the shared integration and task metadata; no parallel writers are used.
 
 ## Execution
 
@@ -47,4 +47,4 @@ Deliver selectable alternate XHTTP endpoints and measured typed tuning. All exec
 
 Requirement-to-step mapping and unfulfilled evidence categories live in verification.md. No fixture, refusal-only result or skipped selected case satisfies positive capability. Future external acceptance requires current authorization and exact scope; no existing cancelled task is revived.
 
-Implementation starts only after the canonical portfolio prerequisites are satisfied and separately authorized. Planning alone neither starts work nor checks an execution step.
+Accepted source prerequisites are retained. This change owns its independent local XHTTP matrix; the broader four-protocol acceptance task is related roadmap work. Mark steps complete only on observed local execution and exact-source checks.

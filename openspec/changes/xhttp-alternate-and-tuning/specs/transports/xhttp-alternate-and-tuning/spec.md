@@ -10,7 +10,7 @@ The implementation MUST When the direct alternate frontend is enabled, the suppo
 
 #### Scenario: Enabled alternate completes traffic
 
-- **WHEN** a synthetic supported recipient selects the enabled alternate frontend
+- **WHEN** a local pinned native Xray fixture recipient selects the enabled alternate frontend
 - **THEN** authenticated transfer succeeds using its correct hostname port and verified certificate
 
 #### Scenario: Disabled or unsupported alternate is not advertised
@@ -20,7 +20,7 @@ The implementation MUST When the direct alternate frontend is enabled, the suppo
 
 ### Requirement: REQ-PROTO-XAT-TYPED — Typed exact-engine mode and tuning contract
 
-The implementation MUST XHTTP mode and advanced tuning inputs MUST come from a reviewed typed allowlist supported by both exact server and recipient engine. Invalid unknown out-of-bound or version-ineligible fields MUST refuse before publication; arbitrary extra JSON is prohibited.
+The implementation MUST XHTTP mode and advanced tuning inputs MUST come from a reviewed typed allowlist supported by the exact native Xray server/recipient pair. RIPDPI export MUST refuse XMUX settings its importer cannot retain. Invalid unknown out-of-bound or version-ineligible fields MUST refuse before publication; arbitrary extra JSON is prohibited.
 
 #### Scenario: Supported typed profile renders and forwards
 
@@ -34,7 +34,7 @@ The implementation MUST XHTTP mode and advanced tuning inputs MUST come from a r
 
 ### Requirement: REQ-PROTO-XAT-MEASURED — Measured delivery and truthful endpoint liveness
 
-Each promoted tuning profile MUST have comparative actual-runtime evidence for throughput latency connection/resource bounds idle recovery and reconnect behavior. Existing liveness MUST identify actual endpoint completion and MUST NOT report primary healthy merely because an alternate succeeded.
+Each locally qualified optional tuning profile MUST have comparative actual-runtime evidence for throughput latency connection/resource bounds idle recovery and reconnect behavior. Existing liveness MUST identify actual endpoint completion and MUST NOT report primary healthy merely because an alternate succeeded.
 
 #### Scenario: Primary outage retains alternate delivery
 
@@ -59,3 +59,11 @@ The implementation MUST Feature activation MUST retain destination isolation pri
 
 - **WHEN** synthetic recipient credentials or an ineligible PQE/prerelease control reach export or validation
 - **THEN** credentials stay out of diagnostics unaccepted capability stays disabled and normal classical P0 plus supported XHTTP delivery remain usable
+
+### Local acceptance scope
+
+All protocol peers are owned local fixture processes. External staging soak,
+physical/external client acceptance and production promotion are outside this
+change. Existing staging/client evidence categories refer to the disconnected
+Linux harness and exact native Xray fixture process, respectively. Parser-only
+checks cannot satisfy the authenticated transfer scenarios.

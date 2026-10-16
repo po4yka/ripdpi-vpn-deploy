@@ -2,6 +2,14 @@
 
 ## Design decisions
 
+XHTTP delivery resolves both configured direct endpoints through
+`transport_semantics.py`, retaining each hostname and port. Native Xray output
+is P1-only: each loopback SOCKS inbound routes to one exact endpoint, and the
+unmatched default is blackhole. Typed bounded-pool controls require v26.3.27;
+RIPDPI export refuses tuning its importer drops. The explicit monitoring
+intermediate can carry the native fields, and liveness retains variant-to-endpoint
+identity plus exact mode/tuning in its public profile map.
+
 The AWG source-candidate runner admits only a local Unix-socket Docker daemon,
 copies an explicit public-file build context and removes only its own
 container ID. After an uncertain startup it polls the preallocated name for
