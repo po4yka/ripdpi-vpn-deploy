@@ -1,6 +1,7 @@
 """Checkout discovery must reflect real Git state without altering it."""
 
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -336,6 +337,42 @@ def test_sanitized_make_entry_bypasses_inherited_makefiles_and_flags(repo, tmp_p
     assert result.returncode == 0, result.stderr
     assert "HEAD: " + git(repo, "rev-parse", "HEAD") in result.stdout
     assert not marker.exists()
+
+
+@pytest.mark.parametrize("expires", [False, True])
+def test_task_audit_budget_allows_slow_queries_and_keeps_timeout_private(monkeypatch, repo, capsys, expires):
+    document = {"task": {"id": "owned-task", "status": "doing", "openspec_change": "owned-change"},
+                "path": "docs/tasks/issues/owned.md", "execution": "openspec/changes/owned-change/tasks.md"}
+    taskctl = repo / "taskctl"
+    taskctl.write_text(
+        f"#!{sys.executable}\nimport sys,time\n"
+        "print('private-task-diagnostic',file=sys.stderr,flush=True)\n"
+        "time.sleep(1)\n"
+        + "print(" + repr(json.dumps(document)) + ")\n"
+    )
+    taskctl.chmod(0o700)
+    spec = importlib.util.spec_from_file_location("workspace_audit_budget", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    original = subprocess.run
+
+    def scaled_query(argv, *args, **kwargs):
+        if argv[0] == str(taskctl):
+            # Exercise the production budget ratio without waiting 30 seconds.
+            kwargs["timeout"] = .5 if expires else kwargs["timeout"] / 100
+        return original(argv, *args, **kwargs)
+
+    monkeypatch.setattr(module.subprocess, "run", scaled_query)
+    monkeypatch.chdir(repo)
+    monkeypatch.setattr(sys, "argv", [str(SCRIPT), "--task", "owned-task", "--json"])
+    assert module.main() == (2 if expires else 0)
+    output = capsys.readouterr()
+    assert "private-task-diagnostic" not in output.out + output.err
+    if expires:
+        assert not output.out
+        assert output.err == "workspace-status: checkout or selected task metadata unavailable\n"
+    else:
+        assert json.loads(output.out)["task"]["id"] == "owned-task"
 
 
 def test_task_pointers_use_real_taskctl(monkeypatch, repo):

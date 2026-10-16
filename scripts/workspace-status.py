@@ -74,9 +74,10 @@ def summary(task_id: str | None) -> dict:
                 next(entries)  # Porcelain -z adds the rename/copy source path.
     task = None
     if task_id:
+        # Committed closure-history audits take longer than individual Git queries.
         result = subprocess.run(
             [str(root / "taskctl"), "show", "--json", task_id], cwd=root,
-            capture_output=True, text=True, check=True, timeout=30,
+            capture_output=True, text=True, check=True, timeout=300,
             env=environment(),
         )
         document = json.loads(result.stdout)
