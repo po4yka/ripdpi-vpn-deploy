@@ -4,6 +4,8 @@
 
 XHTTP frontend sockets belong to nginx and the localhost backend belongs to Xray. Dedicated authenticated XHTTP inbounds route every enabled primary/fallback endpoint through the canonical Xray TLS client. Backend diagnostics recover only Xray, including XHTTP-only hosts. A failed client round trip alone has no service-restart authority: credential, trust and canary failures remain red without restarting a healthy server.
 
+Disabled XHTTP has zero diagnostic ports and needs no XHTTP configuration, including standalone REALITY-only role convergence.
+
 Hysteria uses a separately enrolled `hysteria.clients` watchdog identity, a private systemd credential, effective SNI/CA and matching Salamander. The ordinary environment contains only ports and paths. Each probe invocation holds a kernel lock inherited by its client. Process death releases the lock; a surviving client retains exclusion, and exact SOCKS PID ownership prevents a foreign listener from satisfying delivery. The service deadline budgets both Xray endpoint families and Hysteria startup/request time.
 
 AWG probes use every normalized configured instance. The environment carries only comma-separated interface names; each failed interface maps to its exact `awg-quick@` unit. Subscription-only hosts emit no AWG probe list.

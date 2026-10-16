@@ -57,3 +57,15 @@ def test_subscription_only_environment_has_no_transport_probe_authority():
     env = render_template(ROLE / 'templates/vpn-watchdog.env.j2', values)
     for feature in ('XRAY', 'NGINX_XHTTP', 'HYSTERIA', 'AMNEZIAWG'):
         assert f'ENABLE_{feature}=false' in env
+
+
+def test_disabled_xhttp_needs_no_xhttp_configuration():
+    values = merge_render_vars()
+    values['vpn']['enable_nginx_xhttp'] = False
+    for name in ('nginx_xhttp', 'nginx_xhttp_public_port', 'nginx_xhttp_port',
+                 'nginx_xhttp_fallback_port'):
+        values.pop(name)
+    env = render_template(ROLE / 'templates/vpn-watchdog.env.j2', values)
+    assert 'XRAY_XHTTP_PROBES=\n' in env
+    for name in ('NGINX_PORT', 'XHTTP_BACKEND_PORT', 'NGINX_FALLBACK_PORT'):
+        assert f'{name}=0\n' in env

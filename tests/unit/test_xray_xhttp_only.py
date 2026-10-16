@@ -92,15 +92,19 @@ def test_installed_ansible_smoke_client_uses_the_shared_mux_and_finalmask_shape(
                     return found
         return {}
 
+    included = yaml.safe_load(
+        (REPO_ROOT / 'ansible/playbooks/tasks/smoke-reality.yml').read_text()
+    )
     names = (
-        "Select populated REALITY smoke cohorts",
-        "Select REALITY smoke cohort",
         "Require valid REALITY smoke cohort",
         "Select REALITY smoke client from cohort",
         "Require REALITY smoke client belongs to selected cohort",
         "Render Xray client config (REALITY)",
     )
-    tasks = [copy.deepcopy(find_task(source["tasks"], name)) for name in names]
+    tasks = [copy.deepcopy(find_task(source['tasks'], 'Select every effective REALITY smoke listener')),
+             {'name': 'Select first listener for shape assertion', 'ansible.builtin.set_fact':
+              {'smoketest_reality_cohort': '{{ smoketest_reality_cohorts[0] }}'}}]
+    tasks.extend(copy.deepcopy(find_task(included, name)) for name in names)
     assert all(tasks), "smoke playbook must retain cohort selection and render tasks"
     task = tasks[-1]
     destination = tmp_path / "xray-client.json"
@@ -115,7 +119,6 @@ def test_installed_ansible_smoke_client_uses_the_shared_mux_and_finalmask_shape(
     if scenario == "cohort":
         clients.insert(0, {"name": "other", "uuid": "other-uuid", "short_id": "dead"})
         cohorts = [
-            {"name": "empty", "port": 2442, "flow_mode": "vision", "clients": []},
             {
                 "name": "mux-shaped",
                 "port": 2443,

@@ -76,10 +76,13 @@ def test_shared_shape_refuses_unknown_mode() -> None:
 def test_canonical_fixture_renders_watchdog_through_shared_shape() -> None:
     config = json.loads(render_template(WATCHDOG, merge_render_vars()))
 
-    assert len(config["outbounds"]) == 2
+    reality = [outbound for outbound in config['outbounds']
+               if outbound['streamSettings']['security'] == 'reality']
+    assert len(reality) == 2
+    assert len(config['outbounds']) == 3  # REALITY primary/fallback plus XHTTP.
     assert all(
         outbound["settings"]["vnext"][0]["users"][0]["flow"] == "xtls-rprx-vision"
-        for outbound in config["outbounds"]
+        for outbound in reality
     )
 
 
