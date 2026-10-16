@@ -2332,6 +2332,29 @@ def validate_terminal_snapshot(
     return execution_text, terminal_steps
 
 
+def shared_first_parent_base(root: Path, first: str, second: str) -> str:
+    # A graph merge base can be a newer main commit merged into the feature
+    # branch. Its ancestry path omits the lifecycle preceding that update.
+    histories = [
+        run_command(("git", "rev-list", "--first-parent", parent), root=root)
+        for parent in (first, second)
+    ]
+    if any(result.returncode != 0 for result in histories):
+        fail("cannot inspect shared first-parent task history")
+    primary = set((histories[0].stdout or "").splitlines())
+    common = next(
+        (
+            revision
+            for revision in (histories[1].stdout or "").splitlines()
+            if revision in primary
+        ),
+        "",
+    )
+    if not SHA_RE.fullmatch(common):
+        fail("cannot resolve shared first-parent task-history base")
+    return common
+
+
 def build_terminal_history_index(
     root: Path,
     config: ProjectConfig,
@@ -2397,26 +2420,7 @@ def build_terminal_history_index(
             )
             if already_integrated.returncode == 0:
                 continue
-            # A graph merge base can be a newer main commit merged into the
-            # feature branch. Its ancestry path omits the earlier lifecycle.
-            # Anchor the lane at the shared first-parent history instead.
-            parent_histories = [
-                run_command(("git", "rev-list", "--first-parent", parent), root=root)
-                for parent in (first_parent, side_parent)
-            ]
-            if any(result.returncode != 0 for result in parent_histories):
-                fail(f"cannot inspect merged task-history base for {side_parent}")
-            primary_history = set((parent_histories[0].stdout or "").splitlines())
-            lane_start = next(
-                (
-                    revision
-                    for revision in (parent_histories[1].stdout or "").splitlines()
-                    if revision in primary_history
-                ),
-                "",
-            )
-            if not SHA_RE.fullmatch(lane_start):
-                fail(f"cannot resolve merged task-history base for {side_parent}")
+            lane_start = shared_first_parent_base(root, first_parent, side_parent)
             unique_history = run_command(
                 (
                     "git",
@@ -3385,6 +3389,7 @@ def validate_deleted_history(root: Path, base: str) -> None:
     )
     if ancestry.returncode != 0:
         fail(f"cannot validate task history: {base} is not an ancestor of HEAD")
+    history_base = shared_first_parent_base(root, base, "HEAD")
     history = run_command(
         (
             "git",
@@ -3392,13 +3397,13 @@ def validate_deleted_history(root: Path, base: str) -> None:
             "--first-parent",
             "--reverse",
             "--ancestry-path",
-            f"{base}..HEAD",
+            f"{history_base}..HEAD",
         ),
         root=root,
     )
     if history.returncode != 0:
         fail(f"cannot inspect task history: {(history.stdout or '').rstrip()}")
-    revisions = [base, *filter(None, (history.stdout or "").splitlines())]
+    revisions = [history_base, *filter(None, (history.stdout or "").splitlines())]
     terminal_index = build_terminal_history_index(root, load_project_config(root))
 
     with tempfile.TemporaryDirectory(prefix="ripdpi-task-history-") as directory:

@@ -3211,6 +3211,13 @@ class TaskctlHistoryTest(TaskctlFixture):
                     base = fixture.commit_all("advance base")
                     fixture.git("switch", "completed-lifecycle")
                     fixture.git("merge", integration, "-m", "update branch from base")
+                    if valid:
+                        taskctl.validate_deleted_history(fixture.root, base)
+                    else:
+                        with self.assertRaisesRegex(
+                            taskctl.ContractError, "invalid terminal transition doing -> done"
+                        ):
+                            taskctl.validate_deleted_history(fixture.root, base)
                     fixture.git("switch", integration)
                     fixture.git("merge", "--no-ff", "completed-lifecycle", "-m", "PR merge")
                     if valid:
