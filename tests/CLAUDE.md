@@ -38,6 +38,12 @@ AWG constrained-path failures retain the bounded client exception, traffic phase
 
 Ingress/egress commit tests kill a separate process before and after the durable decision, native outer finish and ingress journal deletion. Portable tests model only the egress adapter; the native lane retains a real accepted outer route and proves authenticated canary traffic after roll-forward or whole-route rollback. Ansible composition also covers a lost acknowledgement after journal deletion so rescue cannot revert committed egress. Native acceptance uses the least-duration split so new boundary cases mix with existing lifecycle cases instead of accumulating in one contiguous partition.
 
+
+Native interruption fixtures launch Ansible in a uniquely owned transient
+systemd scope. Module workers may create separate sessions, so process-group
+signals alone cannot reclaim the invocation. Real scope regressions cover
+normal launcher exit and SIGKILL while preserving a foreign worker.
+
 Authenticated watchdog XHTTP cases retain primary/fallback delivery and refusal boundaries in both auto and tuned stream-up mode.
 
 The complete XHTTP delivery matrix extends the endpoint target with real native
