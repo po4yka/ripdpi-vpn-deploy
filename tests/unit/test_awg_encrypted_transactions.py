@@ -51,7 +51,7 @@ def test_distinct_enrollment_export_and_selected_revocation(encrypted):
     assert one['awg_private_key'] != two['awg_private_key']
     for index, name in enumerate(('first', 'second')):
         peer = issued['amneziawg_secrets']['instances'][index]['peers'][-1]
-        assert peer['allowed_ips'] == f'10.{70 + index}.0.3/32'
+        assert peer['allowed_ips'] == {'ipv4': f'10.{70 + index}.0.3/32', 'ipv6': f'fd42:{index + 10}::3/128'}
         assert public_key(issued['client_registry'][name]['awg_private_key']) == peer['public_key']
         block = export(issued, {}, name, 'upcloud:fixture', f'awg{index}', '192.0.2.1')
         assert block['peer']['endpoint'] == f'192.0.2.1:{51820 + index}'
@@ -233,11 +233,11 @@ def test_recipient_failure_rolls_back_output_and_encrypted_authority(encrypted):
                 changed, metadata = enroll(doc, {}, 'uri-device', 'upcloud:fixture', 'awg0')
                 write('synthetic-selected-recipient-material')
                 return changed, metadata
-            publisher.operate(path, transaction, runner=failure, before_publish=validate)
+            publisher.operate(path, transaction, runner=failure, before_publish=lambda _mark_external: validate())
     assert not output.exists() and path.read_bytes() == before
 
 
-@pytest.mark.parametrize('fault', ['directory-sync', 'descriptor-close'])
+@pytest.mark.parametrize('fault', ['directory-sync', 'directory-interrupt', 'descriptor-close'])
 def test_post_commit_failure_retains_enrolled_device_and_recipient(encrypted, monkeypatch, fault):
     from private_client_artifact import new_output
     path, _ = encrypted
@@ -254,6 +254,9 @@ def test_post_commit_failure_retains_enrolled_device_and_recipient(encrypted, mo
 
     def sync(descriptor):
         nonlocal failed
+        if committed and fault == 'directory-interrupt' and not failed:
+            failed = True
+            raise KeyboardInterrupt
         if committed and fault == 'directory-sync' and not failed:
             failed = True
             raise OSError('injected-directory-sync')
@@ -275,7 +278,7 @@ def test_post_commit_failure_retains_enrolled_device_and_recipient(encrypted, mo
                 changed, metadata = enroll(doc, {}, 'uri-device', 'upcloud:fixture', 'awg0')
                 write('synthetic-selected-recipient-material')
                 return changed, metadata
-            publisher.operate(path, transaction, before_publish=validate)
+            publisher.operate(path, transaction, before_publish=lambda _mark_external: validate())
     assert observed.value.metadata['client'] == 'uri-device'
     assert output.read_text() == 'synthetic-selected-recipient-material'
     assert 'uri-device' in decrypt(path)['client_registry']
@@ -390,7 +393,7 @@ def test_awg_only_reissuance_preserves_other_device_state(encrypted, target):
     def metadata(doc):
         doc['client_registry']['first'].update(status='active', formats=['ripdpi'],
             token_hash_prefix='9f86d081', token_expires='2026-12-31',
-            last_payload_identity={'source': 'a' * 64, 'outputs': 'b' * 64})
+            last_payload_identity={'version': 1, 'generation': 'a' * 32, 'digest': 'b' * 64})
         return doc, {}
     publisher.operate(path, metadata)
     issued = decrypt(path)

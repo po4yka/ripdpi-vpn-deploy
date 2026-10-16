@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import importlib.util
 import json
 import os
@@ -385,9 +386,11 @@ def test_listener_contract_pre_tasks_run_during_tagged_deploys() -> None:
         "Guard — provider edge and runtime listener contracts agree",
         "Guard — block public listener collisions before convergence",
     }
-    tasks = {
-        task["name"]: task for task in play["pre_tasks"] if task["name"] in required
-    }
+    shared = next(task for task in play["pre_tasks"]
+                  if task.get("ansible.builtin.import_tasks") == "tasks/public-listener-preflight.yml")
+    assert "always" in shared["tags"]
+    guards = yaml.safe_load((REPO_ROOT / "ansible/playbooks/tasks/public-listener-preflight.yml").read_text())
+    tasks = {task["name"]: task for task in [*play["pre_tasks"], *guards] if task["name"] in required}
     assert set(tasks) == required
     assert all("always" in task.get("tags", []) for task in tasks.values())
 
@@ -840,3 +843,54 @@ def test_verify_hostclass_preserves_shared_hardening_checks(tmp_path, bad_sysctl
     assert (result.returncode == 0) is (not bad_sysctl), output
     assert "skipping: [localhost]" not in output, output
     assert [call["name"] for call in calls] == ["nft", "sshd"] + ["sysctl"] * 6
+
+
+@pytest.mark.parametrize("caller", ["site", "rotate-credentials"])
+@pytest.mark.parametrize("admission", ["match", "drift", "missing", "disabled", "subscription"])
+@pytest.mark.parametrize("check_mode", [False, True])
+def test_shared_listener_admission_precedes_tagged_mutation(tmp_path, caller, admission, check_mode):
+    """Execute the real shared guard in both callers before a mutation sentinel."""
+    source = yaml.safe_load((REPO_ROOT / f"ansible/playbooks/{caller}.yml").read_text())[0]
+    guard = next(task for task in [*source.get("pre_tasks", []), *source.get("tasks", [])]
+                 if task.get("ansible.builtin.import_tasks") == "tasks/public-listener-preflight.yml")
+    variables = renderer.merge_render_vars()
+    variables["ansible_python_interpreter"] = sys.executable
+    if admission == "disabled":
+        variables["vpn"]["enable_amneziawg"] = False
+    if admission == "subscription":
+        variables["vpn_subscription_only"] = True
+    actual = json.loads(renderer.render_template(MANIFEST_TEMPLATE, variables))
+    expected = [{"name": item["role"], "protocol": item["protocol"],
+                 "port": item.get("port"), "port_range": item.get("range")}
+                for item in actual if item["enabled"]]
+    if admission == "drift":
+        next(item for item in expected if item["name"] == "amneziawg")["port"] += 1
+    if admission in {"match", "drift"}:
+        variables["terraform_public_listeners_b64"] = base64.b64encode(json.dumps(expected).encode()).decode()
+    playbooks = tmp_path / "ansible/playbooks"
+    playbooks.mkdir(parents=True)
+    templates = playbooks.parent / "templates"
+    templates.mkdir()
+    shutil.copyfile(MANIFEST_TEMPLATE, templates / MANIFEST_TEMPLATE.name)
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    shutil.copyfile(SCRIPT, scripts / SCRIPT.name)
+    guard = {**guard, "ansible.builtin.import_tasks": str(REPO_ROOT / "ansible/playbooks/tasks/public-listener-preflight.yml")}
+    marker = tmp_path / "mutated"
+    play = {"hosts": "localhost", "connection": "local", "gather_facts": False,
+            "become": False, "vars": variables, "pre_tasks": [guard],
+            "tasks": [{"name": "Mutation sentinel", "tags": ["p2"],
+                       "ansible.builtin.copy": {"dest": str(marker), "content": "mutated"}}]}
+    playbook = playbooks / "admission.yml"
+    playbook.write_text(yaml.safe_dump([play], sort_keys=False))
+    config = tmp_path / "ansible.cfg"
+    config.write_text("[defaults]\nfact_caching=memory\n")
+    argv = ["ansible-playbook", "-i", "localhost,", str(playbook), "--tags", "p2"]
+    if check_mode:
+        argv.append("--check")
+    result = subprocess.run(argv,
+                            capture_output=True, text=True, timeout=30,
+                            env={**os.environ, "ANSIBLE_CONFIG": str(config)})
+    admitted = admission == "match" or (caller == "rotate-credentials" and admission in {"disabled", "subscription"})
+    assert (result.returncode == 0) is admitted, result.stdout + result.stderr
+    assert marker.exists() is (admitted and not check_mode)

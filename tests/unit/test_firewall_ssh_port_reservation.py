@@ -93,7 +93,7 @@ def test_failure_message_names_listener_and_port() -> None:
 
 
 def test_check_precedes_firewall_mutation() -> None:
-    names = [task["name"] for task in _tasks()]
+    names = [entry["name"] for task in _tasks() for entry in task.get("block", [task])]
     check = names.index(TASK_NAME)
     assert names.index("Require one effective SSH listener port") < check
     assert check < names.index("Disable provider-image UFW firewall")

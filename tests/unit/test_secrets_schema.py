@@ -182,7 +182,7 @@ def filled():
                     "name": "phone",
                     "public_key": 'CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk=',
                     "preshared_key": 'CgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgo=',
-                    "allowed_ips": "10.66.66.2/32",
+                    "allowed_ips": {"ipv4": "10.66.66.2/32", "ipv6": "fd42:42:42::2/128"},
                 }
             ],
         }]},
@@ -838,7 +838,7 @@ def test_bandwidth_unit_required(filled):
 
 def test_allowed_ips_must_be_cidrish(filled):
     v = _validator()
-    filled["amneziawg_secrets"]["instances"][0]["peers"][0]["allowed_ips"] = "wat"
+    filled["amneziawg_secrets"]["instances"][0]["peers"][0]["allowed_ips"]["ipv4"] = "wat"
     errs = list(v.iter_errors(filled))
     assert errs
 
@@ -926,19 +926,19 @@ def test_cohort_client_reference_must_exist(filled, tmp_path):
 
 def test_invalid_numeric_cidr_is_rejected_semantically(filled, tmp_path):
     doc = deepcopy(filled)
-    doc["amneziawg_secrets"]["instances"][0]["peers"][0]["allowed_ips"] = "999.66.66.2/32"
+    doc["amneziawg_secrets"]["instances"][0]["peers"][0]["allowed_ips"]["ipv4"] = "999.66.66.2/32"
 
     proc = _validate_cli(doc, tmp_path)
 
     assert proc.returncode == 1
-    assert "valid IPv4 or IPv6 CIDR" in proc.stderr
+    assert "canonical family prefix" in proc.stderr
 
 
 def test_awg_peer_public_keys_must_be_unique(filled, tmp_path):
     doc = deepcopy(filled)
     peer = deepcopy(doc["amneziawg_secrets"]["instances"][0]["peers"][0])
     peer["name"] = "laptop"
-    peer["allowed_ips"] = "10.66.66.3/32"
+    peer["allowed_ips"] = {"ipv4": "10.66.66.3/32", "ipv6": "fd42:42:42::3/128"}
     doc["amneziawg_secrets"]["instances"][0]["peers"].append(peer)
 
     proc = _validate_cli(doc, tmp_path)
@@ -986,7 +986,7 @@ def _registry_entry(**overrides):
         "awg_private_key": base64.b64encode(bytes([8]) * 32).decode(),
         "awg_delivery_host": "",
         "awg_binding": {"provider": "upcloud", "environment": "prod", "instance": "awg0"},
-        "last_payload_identity": {"source": "", "outputs": ""},
+        "last_payload_identity": {},
     }
     entry.update(overrides)
     return entry
@@ -1096,7 +1096,7 @@ def test_unbound_awg_registry_requires_device_absent_from_every_instance(filled,
     instances.append(extra)
     peer = instances[0]['peers'].pop(0)
     if retained_instance is not None:
-        peer['allowed_ips'] = ('10.66.66.2/32', '10.67.67.2/32')[retained_instance]
+        peer['allowed_ips'] = {'ipv4': ('10.66.66.2/32', '10.67.67.2/32')[retained_instance], 'ipv6': ('fd42:42:42::2/128', 'fd42:43:43::2/128')[retained_instance]}
         instances[retained_instance]['peers'].append(peer)
     filled['client_registry'] = {'phone': _registry_entry(awg_binding=None, awg_private_key='', awg_public_key_fingerprint='')}
     result = _run_validator_on(filled, tmp_path)

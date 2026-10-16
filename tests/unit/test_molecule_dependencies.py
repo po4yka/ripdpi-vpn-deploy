@@ -381,8 +381,10 @@ def test_published_static_role_defaults_match_declared_manifest(tmp_path) -> Non
     executable = shutil.which("ansible-playbook")
     assert executable, "installed Ansible is required for static role-default proof"
     source = yaml.safe_load((REPO_ROOT / "ansible/playbooks/site.yml").read_text())[0]
-    manifest_tasks = [task for task in source["pre_tasks"]
-                      if task["name"] == "Build effective public listener manifest"]
+    assert any(task.get("ansible.builtin.import_tasks") == "tasks/public-listener-preflight.yml"
+               for task in source["pre_tasks"])
+    guards = yaml.safe_load((REPO_ROOT / "ansible/playbooks/tasks/public-listener-preflight.yml").read_text())
+    manifest_tasks = [task for task in guards if task["name"] == "Build effective public listener manifest"]
     assert len(manifest_tasks) == 1
     roles = [{**role, "when": False} for role in site_roles(source)]
     assert roles and all(role["when"] is False for role in roles)

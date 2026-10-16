@@ -3,6 +3,7 @@
 PrivateKey = REPLACE_WITH_AWG_PRIVATE_KEY
 Address    = 10.66.66.1/24, fd42:42:42::1/64
 ListenPort = 51820
+MTU = 1420
 
 # AmneziaWG obfuscation parameters (mandatory; not standard WireGuard).
 Jc = 4
@@ -20,5 +21,4 @@ H4 = REPLACE_WITH_H4_INT
 # phone
 PublicKey  = REPLACE_WITH_PEER_PUBLIC_KEY
 PresharedKey = REPLACE_WITH_PRESHARED_KEY
-AllowedIPs = 10.66.66.2/32
-
+AllowedIPs = 10.66.66.2/32, fd42:42:42::2/128

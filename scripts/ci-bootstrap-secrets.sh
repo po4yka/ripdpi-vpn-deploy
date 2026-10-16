@@ -285,7 +285,9 @@ amneziawg_secrets:
         - name: ${CLIENT_NAME}
           public_key: "${peer_pub}"
           preshared_key: "${peer_psk}"
-          allowed_ips: "10.66.66.2/32"
+          allowed_ips:
+            ipv4: "10.66.66.2/32"
+            ipv6: "fd42:42:42::2/128"
 backup:
   restic_password: "${restic_pw}"
   remote:
@@ -314,7 +316,7 @@ client_registry:
     awg_binding: {provider: "${PROVIDER:?}", environment: "${ENV:?}", instance: awg0}
     awg_private_key: "${peer_priv}"
     awg_delivery_host: ""
-    last_payload_identity: {source: "", outputs: ""}
+    last_payload_identity: {}
 YAML
 chmod 0600 "$OUT"
 echo "ci-bootstrap: wrote ${OUT} (xray=${xray_version} hysteria=${hys_version})"

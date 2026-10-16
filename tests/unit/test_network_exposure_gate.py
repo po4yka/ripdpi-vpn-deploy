@@ -305,7 +305,7 @@ def test_disabled_rollback_does_not_log_removed_policy_addresses(tmp_path):
     import os
     import yaml
     tasks = yaml.safe_load((ROOT / 'ansible/roles/firewall/tasks/main.yml').read_text())
-    task = copy.deepcopy(next(task for task in tasks if task['name'] == 'Render nftables config'))
+    task = copy.deepcopy(next(entry for task in tasks for entry in task.get('block', [task]) if entry['name'] == 'Render nftables config'))
     prefix = str(ipaddress.ip_network((secrets.randbits(32), 32)))
     target = tmp_path / 'nftables.conf'
     old = render_firewall({'mode': 'canary', 'directions': {'ingress': [prefix], 'host_egress': [], 'forwarded': []}})

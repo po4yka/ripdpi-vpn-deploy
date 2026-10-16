@@ -69,14 +69,6 @@ def resolve_binding(document, context, client, host, instance=None, *, enrollmen
         elif peers:
             if peers[0].get("address_kind", "device") != "device":
                 raise BindingError("routed-peer-not-device")
-            try:
-                server = ipaddress.IPv4Interface(effective["address_v4"])
-                address = ipaddress.IPv4Interface(peers[0]["allowed_ips"])
-                if (address.network.prefixlen != 32 or address.ip not in server.network
-                        or address.ip in (server.ip, server.network.network_address, server.network.broadcast_address)):
-                    raise ValueError
-            except (ValueError, KeyError, TypeError):
-                raise BindingError("invalid-device-address") from None
             matches.append(DeviceBinding(provider, environment, index, effective, peers[0]))
     if not matches:
         raise BindingError("missing-device-binding")
@@ -94,23 +86,29 @@ def resolve_binding(document, context, client, host, instance=None, *, enrollmen
     return result
 
 
-def allocate_address(instance):
-    """Find the first free IPv4 host in work bounded by the peer collection."""
+def allocate_address(instance, version):
+    """Find a free host in O(peers log peers), including large IPv6 pools."""
     try:
-        server = ipaddress.IPv4Interface(instance["address_v4"])
+        if version not in (4, 6):
+            raise ValueError
+        server = ipaddress.ip_interface(instance[f"address_v{version}"])
+        if server.version != version:
+            raise ValueError
         candidate = int(server.network.network_address) + 1
-        last = int(server.network.broadcast_address) - 1
+        last = int(server.network.broadcast_address) - (1 if version == 4 else 0)
         claims = [(int(server.ip), int(server.ip))]
         for peer in instance["peers"]:
-            prefix = ipaddress.ip_network(peer["allowed_ips"], strict=True)
-            if prefix.version == 4:
+            raw = peer["allowed_ips"].get(f"ipv{version}")
+            if raw is not None:
+                prefix = ipaddress.ip_network(raw, strict=True)
                 claims.append((int(prefix.network_address), int(prefix.broadcast_address)))
         for start, end in sorted(claims):
             if start <= candidate <= end:
                 candidate = end + 1
         if candidate > last:
             raise BindingError("address-pool-exhausted")
-        return str(ipaddress.IPv4Address(candidate)) + "/32"
+        constructor = ipaddress.IPv4Address if version == 4 else ipaddress.IPv6Address
+        return str(constructor(candidate)) + ("/32" if version == 4 else "/128")
     except (ValueError, KeyError, TypeError) as failure:
         if isinstance(failure, BindingError):
             raise

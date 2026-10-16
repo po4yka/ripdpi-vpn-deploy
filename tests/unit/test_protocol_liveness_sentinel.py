@@ -77,6 +77,7 @@ def _setup(
     blocked_ports: tuple[int, ...] = (),
     blocked_delay_seconds: float = 0,
     awg_curl_fails: bool = False,
+    awg_ipv6_fails: bool = False,
     awg_curl_sleeps: bool = False,
     sing_curl_sleeps: bool = False,
     sing_auth_fails: bool = False,
@@ -115,7 +116,7 @@ if os.environ.get("IN_AWG_NETNS") == "1":
         raise SystemExit(6)
     if {awg_curl_sleeps!r}:
         time.sleep(30)
-    if {awg_curl_fails!r}:
+    if {awg_curl_fails!r} or ({awg_ipv6_fails!r} and "--ipv6" in args):
         raise SystemExit(28)
 print("204 0.040000", end="")
 """,
@@ -275,7 +276,7 @@ signal.pause()
                 "expected_runtime": {"sing_box": "1.14.0", "xray": "26.3.27", "awg": "1.0.0", "awg_toolchain": toolchain_id},
                 "sing_box": {"config": str(profile_config), "profiles": sing_profiles},
                 "xray": {"config": str(xray_config), "profiles": {"p1-xhttp": [18181]}},
-                "amneziawg": {"config": str(awg), "address": "10.66.66.2/32",
+                "amneziawg": {"config": str(awg), "addresses": ["10.66.66.2/32", "fd42:42:42::2/128"], "mtu": 1420,
                                "dns_servers": ["1.1.1.1", "1.0.0.1"]},
             }
         )
@@ -343,7 +344,7 @@ def test_sentinel_reports_authenticated_data_plane_success_without_secrets(
         assert profile["dns_through_tunnel"] is True
         assert profile["authenticated_handshake"] is True
         if profile["profile"] == "p2-amneziawg":
-            assert profile["target_address_family"] == "ipv4"
+            assert profile["target_address_family"] == "dualstack"
             assert profile["fresh_handshake"] is True
         else:
             assert profile["target_address_family"] == "unknown"
@@ -442,7 +443,7 @@ def test_awg_probe_command_keeps_hostname_resolution_inside_namespace():
     assert command[-1] == "https://fixture.example/"
 
 
-def test_awg_namespace_curl_forces_ipv4_and_resolves_hostname_inside_namespace(
+def test_awg_namespace_curl_requires_both_families_and_resolves_hostname_inside_namespace(
     tmp_path: Path,
 ) -> None:
     config, env = _setup(tmp_path)
@@ -463,10 +464,11 @@ def test_awg_namespace_curl_forces_ipv4_and_resolves_hostname_inside_namespace(
     assert "--ipv4" in awg_arguments
     assert "--resolve" not in awg_arguments
     assert awg_arguments[-1] == "https://dual-stack.fixture/"
+    assert any(line.startswith("ip netns exec vpn-live-") and " curl " in line and "--ipv6" in line for line in calls)
     awg = next(
         item for item in json.loads(result.stdout)["profiles"] if item["profile"] == "p2-amneziawg"
     )
-    assert awg["target_address_family"] == "ipv4"
+    assert awg["target_address_family"] == "dualstack"
     assert awg["dns_through_tunnel"] is True
 
 
@@ -930,7 +932,7 @@ def test_namespace_partial_creation_is_reconciled_without_deleting_collision(mon
             return subprocess.CompletedProcess(command, 0, b"", b"")
         raise AssertionError("unexpected namespace fixture command")
     monkeypatch.setattr(module.subprocess, "run", run)
-    config = {"probe_url": "https://probe.example/", "amneziawg": {"config": "/fixture", "address": "10.66.66.2/32",
+    config = {"probe_url": "https://probe.example/", "amneziawg": {"config": "/fixture", "addresses": ["10.66.66.2/32", "fd42:42:42::2/128"], "mtu": 1420,
                                                                      "dns_servers": ["1.1.1.1"]}}
     if failure == "signal":
         with pytest.raises(KeyboardInterrupt):
@@ -986,7 +988,7 @@ def test_awg_resolver_directory_is_removed_when_mkdir_raises_after_creation(
         "probe_url": "https://probe.example/",
         "amneziawg": {
             "config": "/fixture",
-            "address": "10.66.66.2/32",
+            "addresses": ["10.66.66.2/32", "fd42:42:42::2/128"], "mtu": 1420,
             "dns_servers": ["1.1.1.1"],
         },
     }
@@ -1049,7 +1051,7 @@ def test_awg_dns_validation_precedes_namespace_mutation(monkeypatch, servers):
     monkeypatch.setattr(module.subprocess, "run", lambda *_a, **_k: (_ for _ in ()).throw(
         AssertionError("DNS validation must precede namespace mutation")))
     config = {"probe_url": "https://probe.example/", "amneziawg": {
-        "config": "/fixture", "address": "10.66.66.2/32", "dns_servers": servers}}
+        "config": "/fixture", "addresses": ["10.66.66.2/32", "fd42:42:42::2/128"], "mtu": 1420, "dns_servers": servers}}
     result = module.probe_awg(config, True, {})
     assert result["verdict"] == "error"
     assert result["error_kind"] == "valueerror"
@@ -1064,3 +1066,14 @@ def test_unstarted_curl_does_not_claim_attempted_payload(monkeypatch):
     result = module.aggregate_variants("p0-reality", variants)
     assert result["payload_transport"] == "unknown"
     assert result["target_address_family"] == "unknown"
+
+
+def test_ipv4_success_cannot_hide_failed_ipv6_delivery(tmp_path):
+    config, env = _setup(tmp_path, awg_ipv6_fails=True)
+    result = _run(config, env)
+    assert result.returncode == 0, result.stderr
+    awg = next(item for item in json.loads(result.stdout)["profiles"] if item["profile"] == "p2-amneziawg")
+    assert awg["verdict"] not in {"ok", "throttled"}
+    assert awg["family_results"]["ipv4"]["verdict"] == "ok"
+    assert awg["family_results"]["ipv6"]["verdict"] == "blocked"
+    assert awg["authenticated_handshake"] is False and awg["dns_through_tunnel"] is False

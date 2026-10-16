@@ -79,6 +79,12 @@ a failure, run `make clean` yourself with the same `ENV`:
 )
 ```
 
+AWG rotation validates the rendered inventory's provider listener contract and
+republishes the canonical firewall with current typed peer claims before
+reconciling the complete AWG role lifecycle, including obsolete instance retirement.
+A failed activation restores the prior firewall and configs together. The normal rendered inventory is required for rotation;
+missing or mismatched listener authority refuses before mutation.
+
 Credential rotation enters the authoritative Naive role when enabled, including
 native validation and acknowledgement of the activated configuration. Editing the
 encrypted source alone does not revoke a running server's access.

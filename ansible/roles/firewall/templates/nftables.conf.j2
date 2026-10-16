@@ -175,7 +175,27 @@ table inet filter {
 {% for prefix in _network_exposure_plan.directions.forwarded %}
     {{ 'ip6' if ':' in prefix else 'ip' }} daddr {{ prefix }} counter drop comment "exposure-forwarded"
 {% endfor %}
-{% endif %}    ct state established,related accept
+{% endif %}
+{% if vpn.enable_amneziawg | default(false) %}
+{% for inst in _awg_inst %}
+    iifname "{{ inst.name }}" oifname != "{{ awg_uplink_interface }}" counter drop
+    oifname "{{ inst.name }}" iifname != "{{ awg_uplink_interface }}" counter drop
+{% for family, protocol in [('ipv4', 'ip'), ('ipv6', 'ip6')] %}
+{% set sources = [] %}
+{% for peer in inst.peers %}
+{% if family in peer.allowed_ips %}{% set _ = sources.append(peer.allowed_ips[family]) %}{% endif %}
+{% endfor %}
+{% if sources %}
+    iifname "{{ inst.name }}" meta nfproto {{ family }} {{ protocol }} saddr != { {{ sources | join(', ') }} } counter drop
+    oifname "{{ inst.name }}" meta nfproto {{ family }} {{ protocol }} daddr != { {{ sources | join(', ') }} } counter drop
+{% else %}
+    iifname "{{ inst.name }}" meta nfproto {{ family }} counter drop
+    oifname "{{ inst.name }}" meta nfproto {{ family }} counter drop
+{% endif %}
+{% endfor %}
+{% endfor %}
+{% endif %}
+    ct state established,related accept
 {% if vpn.enable_amneziawg | default(false) %}
 {% for inst in _awg_inst %}
     # New client traffic may leave only via the configured uplink; replies use conntrack above.
@@ -257,7 +277,7 @@ table inet nat {
   chain postrouting {
     type nat hook postrouting priority 100;
 {% for inst in _awg_inst %}
-    iifname "{{ inst.name }}" oifname != "{{ inst.name }}" counter masquerade comment "awg-nat-{{ inst.name }}"
+    iifname "{{ inst.name }}" oifname "{{ awg_uplink_interface }}" counter masquerade comment "awg-nat-{{ inst.name }}"
 {% endfor %}
   }
 {% endif %}
