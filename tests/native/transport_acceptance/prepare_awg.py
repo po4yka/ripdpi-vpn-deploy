@@ -22,6 +22,7 @@ def main():
         "CGO_ENABLED": "0",
         "GOTOOLCHAIN": "local",
         "GOWORK": "off",
+        "GOPROXY": pins["go_module_proxy"],
         "GOFLAGS": "-mod=readonly -p=2",
     }
     assert (
