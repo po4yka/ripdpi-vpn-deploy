@@ -743,6 +743,7 @@ help:
 	@echo "  test-unit-shard            Run one balanced pytest group (PYTEST_GROUP=1..4)"
 	@echo "  test-unit-profile          Refresh durations with a complete portable run"
 	@echo "  test-native-runtime        Run native integration tests in disposable Linux root environment"
+	@echo "  transport-native-acceptance Complete four-transport source/client acceptance in isolated Linux"
 	@echo "  test-awg-source-candidate  Build and exercise exact AWG source pairs in local Docker (build-gate required)"
 
 	@echo "  transport-native-acceptance  Complete local four-protocol traffic, isolation and recovery suites"

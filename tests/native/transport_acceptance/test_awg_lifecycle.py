@@ -88,6 +88,9 @@ def test_exact_pair_wire_warm_adoption_and_canonical_retirement(tmp_path):
         assert not record.exists()
         prior_parent = record.parent.exists()
         record.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        foreign_queue = tmp_path / "foreign-queue"
+        foreign_queue.write_bytes(os.urandom(128))
+        queue_before = (foreign_queue.stat().st_ino, foreign_queue.read_bytes())
         try:
             for tunnel in tunnels:
                 tunnel.start()
@@ -99,14 +102,14 @@ def test_exact_pair_wire_warm_adoption_and_canonical_retirement(tmp_path):
                     "ExecStartPost=" + line
                     for line in (
                         f"/usr/bin/python3 /lab/wait-tun.py {tunnel.names[0]}",
-                        f"/usr/sbin/ip netns exec {tunnel.names[0]} {tunnel.tools(0)} setconf {tunnel.names[0]} {tunnel.configs[0]}",
-                        f"/usr/sbin/ip -n {tunnel.names[0]} address replace 10.{tunnel.index}.0.1/24 dev {tunnel.names[0]}",
-                        f"/usr/sbin/ip -n {tunnel.names[0]} link set {tunnel.names[0]} up",
+                        f"{tunnel.tools(0)} setconf {tunnel.names[0]} {tunnel.configs[0]}",
+                        f"/usr/sbin/ip address replace 10.{tunnel.index}.0.1/24 dev {tunnel.names[0]}",
+                        f"/usr/sbin/ip link set {tunnel.names[0]} up",
                     )
                 )
                 unit.write_text(unit.read_text() + "\n[Service]\n" + lines + "\n")
             Path("/lab/wait-tun.py").write_text(
-                "import subprocess,sys,time\ndeadline=time.monotonic()+10\nwhile subprocess.run(['ip','-n',sys.argv[1],'link','show',sys.argv[1]],capture_output=True).returncode:\n if time.monotonic()>deadline: raise SystemExit(1)\n time.sleep(.05)\n"
+                "import subprocess,sys,time\ndeadline=time.monotonic()+10\nwhile subprocess.run(['ip','link','show',sys.argv[1]],capture_output=True).returncode:\n if time.monotonic()>deadline: raise SystemExit(1)\n time.sleep(.05)\n"
             )
             lab.command("systemctl", "daemon-reload")
             tasks = yaml.safe_load(
@@ -275,6 +278,10 @@ def test_exact_pair_wire_warm_adoption_and_canonical_retirement(tmp_path):
                     retired.probe()
                 tunnels[0].probe()
                 tunnels[2].probe()
+                assert (
+                    foreign_queue.stat().st_ino,
+                    foreign_queue.read_bytes(),
+                ) == queue_before
         finally:
             for tunnel in tunnels:
                 for unit in tunnel.units:
