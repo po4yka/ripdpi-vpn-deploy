@@ -1,11 +1,11 @@
 ---
 task_id: "MON-1791618056169855"
 change: "topology-authenticated-probes"
-commit_sha: "5a453b53be8266b143e410555824d1ee78c52791"
+commit_sha: "c4c4d55c55dba02df299c7af349b93fabe841b67"
 local: "required"
 local_evidence: "native topology 7 passed; watchdog 17 passed; render contracts 31 passed; lifecycle 14 passed; executable coverage 6 passed; cohort smoke 1 passed; 164 snapshots match; full make check retry queued with exact sing-box 1.14.3"
 remote_ci: "required"
-remote_ci_evidence: "PR 316 exact final source checks running; initial CI exposed caller/fixture and missing-toggle defects fixed by d78e36b5 and 5a453b53; no terminal all-green claim"
+remote_ci_evidence: "PR 316 exact final source checks running; initial CI exposed caller/fixture and missing-toggle defects fixed by d78e36b5, 5a453b53 and c4c4d55c; no terminal all-green claim"
 dry_run: "not_applicable"
 dry_run_evidence: "source capability uses isolated native proof; real inventory/controller rehearsal needs separate authorization"
 staging: "not_applicable"
@@ -22,8 +22,8 @@ artifact_evidence: "committed native and renderer contracts exercise private con
 
 ## Requirement evidence
 
-Source capability under review: `5a453b53be8266b143e410555824d1ee78c52791`.
-Native topology and Hysteria hopping evidence was observed on the initial implementation `b961e63620cf1face0e678369e27be88b04b9278`. Subsequent fixes isolate disabled XHTTP render inputs, retain canonical Hysteria defaults, and update affected test callers; 86 listener/renderer/SOPS, 33 shape and 22 profile-default regressions passed.
+Source capability under review: `c4c4d55c55dba02df299c7af349b93fabe841b67`.
+The source tree at `405f69d9` also passed all seven topology native cases without skips in 140.00 seconds. The later omitted-toggle correction has 35 passing renderer/watchdog cases and unchanged canonical snapshots; its final exact-source hosted native lane remains required. Hysteria hopping evidence was observed on the initial implementation `b961e63620cf1face0e678369e27be88b04b9278`. Subsequent fixes isolate disabled XHTTP render inputs, retain canonical transport defaults throughout watchdog selection/config/credentials/deadlines, and update affected test callers; 86 listener/renderer/SOPS, 33 shape, 22 profile-default and 35 final renderer/watchdog regressions passed. The final three omitted-toggle cases compare actual renders and role lifecycle conditions against canonical defaults; subscription-only suppression remains enforced.
 Later task/evidence-only commits do not change that runtime source boundary.
 
 | Requirement | Execution step | Observed evidence | Result |
@@ -36,6 +36,9 @@ Later task/evidence-only commits do not change that runtime source boundary.
 ## Remaining gates and dependency
 
 - `build-gate -- make check` completed validation but failed CI parity because the local sing-box was 1.13.16 rather than required 1.14.3. A checksum-verified 1.14.3 binary passed canonical emitter/parser compatibility; a complete retry with that temporary tool path is queued. An earlier attempt failed on a trailing empty line in the moved smoke include; that defect was fixed and the source commit's hooks passed.
+- The next full local aggregate reached three provider test groups (69, 50 and 53 passes), then failed Scaleway registry discovery because the selected IPv6 route was unavailable. Exact cached providers passed a checksum-enforced readonly initialization through a temporary filesystem mirror; the complete aggregate retry is queued.
+- The generic native lane in the combined local lab failed: 87 passed, 26 failed, 19 setup errors and 6 skipped. The combined lab lacks generic-lane binaries/provider prerequisites; remaining broad-lane failures were not fully diagnosed. No aggregate success is claimed. Its fresh configured exact-source hosted lane must pass; the seven-case topology target and six-case AWG target are separate successful evidence.
+- A further complete local aggregate failed in the Docker cloud-init schema fallback because Ubuntu APT endpoints timed out. Host HTTPS to Ubuntu succeeded, while all six tested Ubuntu IPv4 endpoints were unreachable from the default Docker bridge. No TLS or package gate was bypassed. The complete portable unit suite is separately gate-queued.
 - Exact-source PR CI must reach a terminal successful state. No queued or running check counts as success.
 - The first combined affected-suite run had 134 passes and one watchdog fixture startup race. The corrected watchdog suite passed all 17 cases; the earlier run is not reported as a full affected-suite pass.
 - `ANS-1791618048083304` remains doing on the integrated main branch. Its required arm64 emulator/native-core IPv4/IPv6 TCP/UDP/DNS acceptance across MTUs and reconnects is not established by these Linux probe tests. The owner authorized completing this prerequisite in the current session. The canonical dependency remains intact; task closure and promotion must wait for its observed acceptance.

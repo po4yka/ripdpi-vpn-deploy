@@ -32,7 +32,7 @@ Deliver interface-correct dual-stack AmneziaWG forwarding and configurable MTU. 
 ## Execution
 
 - [ ] ANS-1791618053112824 Extend canonical device identity and published consumers to typed dual-stack addresses and shared MTU #feature !high @item:ANS-1791618048083304
-- [ ] ANS-1791618053810186 Converge interface-correct isolated forwarding and NAT with complete failure compensation #feature !high @item:ANS-1791618048083304
+- [x] ANS-1791618053810186 Converge interface-correct isolated forwarding and NAT with complete failure compensation #feature !high @item:ANS-1791618048083304
 - [ ] ANS-1791618054450509 Deliver exact client and liveness parity and qualified cross-repository contract integration #feature !high @item:ANS-1791618048083304
 - [ ] ANS-1791618055065632 Prove bidirectional constrained-path traffic no-leak failure and revocation then complete source gates #feature !high @item:ANS-1791618048083304
 

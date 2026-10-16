@@ -138,3 +138,11 @@ queued under the machine-wide gate. Historical prose about a prior successful
 invocation is not reused because its artifact is unavailable. Generic native
 acceptance, full local source checks, qualified federation and exact-source
 CI remain open gates; the task is not complete.
+
+The three named portable design suites passed all 204 tests on the resumed
+source tree. Qualified federation validation passed with 189 tasks against the
+current committed consumer source. Final topology native regression passed all
+seven cases without skips. These results do not erase the incomplete generic
+local native lane (87 passed, 26 failed, 19 setup errors, 6 skipped) or the
+registry-network failure of the full aggregate. A fresh configured hosted
+native lane and the complete source gate remain required.
