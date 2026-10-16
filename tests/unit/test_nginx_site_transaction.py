@@ -713,7 +713,12 @@ def test_sigkill_commit_boundary_recovers_one_generation(fixture, boundary):
             clear(path)
             if boundary == 'after-ingress-clear': kill()
         tx.persist, tx.command, tx.clear = marked, egress, removed
-        tx.site_transaction('commit', context, finish_egress=True)
+        try:
+            tx.site_transaction('commit', context, finish_egress=True)
+        except BaseException:
+            import traceback
+            traceback.print_exc()
+            os._exit(2)
         os._exit(1)
     _, status = os.waitpid(pid, 0)
     assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGKILL
