@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import subprocess
 import sys
 import tempfile
 
@@ -46,6 +47,22 @@ def claim(units):
     return value
 
 
+def stop_units():
+    """A durable claim can precede publication or outlive compensation."""
+    value = read()
+    selected = []
+    for unit in value['units']:
+        result = subprocess.run(['systemctl', 'show', unit,
+            '--property=LoadState,ActiveState,MainPID'], check=True,
+            capture_output=True, text=True, timeout=10)
+        fields = dict(line.split('=', 1) for line in result.stdout.splitlines())
+        if set(fields) != {'LoadState', 'ActiveState', 'MainPID'}:
+            raise ValueError('invalid-egress-unit-state')
+        if fields != {'LoadState': 'not-found', 'ActiveState': 'inactive', 'MainPID': '0'}:
+            selected.append(unit)
+    return {'schema': 1, 'units': selected}
+
+
 if __name__ == '__main__':
     try:
         if sys.argv[1:] == ['claim']:
@@ -53,11 +70,13 @@ if __name__ == '__main__':
             if len(raw) > 4096:
                 raise ValueError('oversized-claim')
             result = claim(json.loads(raw))
+        elif sys.argv[1:] == ['stop-units']:
+            result = stop_units()
         elif not sys.argv[1:]:
             result = read()
         else:
             raise ValueError('invalid-command')
         print(json.dumps(result))
-    except (OSError, ValueError, TypeError, KeyError):
+    except (OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError):
         print('transport-ownership-refused', file=sys.stderr)
         raise SystemExit(1)

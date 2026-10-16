@@ -2,6 +2,9 @@
 
 ## Design decisions
 
+Task-history merge lanes retain the shared first-parent boundary, including
+closure commits made before a branch updates from main.
+
 XHTTP delivery resolves both configured direct endpoints through
 `transport_semantics.py`, retaining each hostname and port. Native Xray output
 is P1-only: each loopback SOCKS inbound routes to one exact endpoint, and the

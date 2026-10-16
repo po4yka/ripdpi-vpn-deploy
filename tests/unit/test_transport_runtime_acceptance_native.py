@@ -95,35 +95,23 @@ def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(
                 'config'], capture_output=True, timeout=90)
             assert result.returncode == 0, 'native-config-rollback-refused'
             upgraded = os.readlink(root / 'current')
+            exercise_gateway_rollback_compensation()
             result = subprocess.run(['/usr/bin/python3', '-Es',
                 '/usr/local/libexec/ripdpi-transport-egress/transport_runtime_rollback.py',
                 'runtime', '--version', 'v26.3.27'], capture_output=True, timeout=90)
             assert result.returncode == 0, 'native-runtime-rollback-refused'
             assert os.readlink(root / 'current') == previous
-            # The published receipt claims runtime-publisher nodes only; the egress-owned gateway
-            # units are never candidates, or the next converge would refuse their rewrite.
+            from transport_runtime_accept import gateway_units
             published = json.loads((state / 'accepted.json').read_text())
-            assert not [raw for raw in published['nodes'] if Path(raw).match('ripdpi-transport-*.service')], 'native-runtime-rollback-claimed-gateway-unit'
-            # Retargeted links do not prove what runs: the unit text and the live main process
-            # must both name the rolled-back release binary.
-            from transport_runtime_accept import fields, unit_binary
-            rolled_back = str(Path(previous) / 'xray')
-            unit_text = Path('/etc/systemd/system/xray.service').read_text()
-            assert unit_binary(unit_text)[0] == rolled_back
-            assert 'Environment=XRAY_RUNTIME_BINARY=' + rolled_back in unit_text.splitlines()
-            observed = fields('xray.service')
-            assert observed['ActiveState'] == 'active' and int(observed['MainPID']) > 0
-            assert os.path.samefile('/proc/' + observed['MainPID'] + '/exe', rolled_back), 'native-runtime-rollback-process-unchanged'
+            for name in gateway_units():
+                assert published['nodes']['/etc/systemd/system/' + name] is not None
+            assert_xray_generation(previous)
             # The next ordinary converge with the newer pin must still be accepted and move the
             # unit, the links and the running process forward again, keeping the rolled-back release as previous.
             assert lab.converge(profile) == 0
             assert os.readlink(root / 'current') == upgraded
             assert os.readlink(root / 'previous') == previous
-            upgraded_binary = str(Path(upgraded) / 'xray')
-            assert unit_binary(Path('/etc/systemd/system/xray.service').read_text())[0] == upgraded_binary
-            observed = fields('xray.service')
-            assert observed['ActiveState'] == 'active' and int(observed['MainPID']) > 0
-            assert os.path.samefile('/proc/' + observed['MainPID'] + '/exe', upgraded_binary), 'native-runtime-upgrade-process-unchanged'
+            assert_xray_generation(upgraded)
         assert lab.converge(profile, retire=True) == 0
         retired_unit = '/etc/systemd/system/' + ('xray.service' if profile == 'xray' else 'hysteria-server.service')
         assert not os.path.lexists(retired_unit)
@@ -132,6 +120,77 @@ def test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous(
         assert not Path('/var/lib/ripdpi/transport-runtime/outer.json').exists()
         assert lab.converge(profile) == 0
         assert Path(retired_unit).is_file()
+
+
+def assert_xray_generation(release):
+    from transport_runtime_accept import fields, gateway_units, unit_binary
+    binary = str(Path(release) / 'xray')
+    for name in ['xray.service', *gateway_units()]:
+        text = Path('/etc/systemd/system', name).read_text()
+        assert unit_binary(text)[0] == binary
+        observed = fields(name)
+        assert observed['ActiveState'] == 'active' and int(observed['MainPID']) > 0
+        assert os.path.samefile('/proc/' + observed['MainPID'] + '/exe', binary), name
+    assert 'Environment=XRAY_RUNTIME_BINARY=' + binary in Path('/etc/systemd/system/xray.service').read_text().splitlines()
+
+
+def exercise_gateway_rollback_compensation():
+    from transport_runtime_accept import STATE, gateway_units, read_parameters
+    from transport_runtime_rollback import RollbackAdapter, runtime_candidates
+    from transport_runtime_transaction import Transaction, Refusal
+    parameters = read_parameters()
+    paths = [Path('/etc/systemd/system', name) for name in ['xray.service', *gateway_units()]]
+    original = {path: (path.read_bytes(), path.stat().st_ino) for path in paths}
+    before = (STATE / 'accepted.json').read_bytes()
+    release = os.readlink('/opt/xray/current')
+    config = Path('/etc/xray/config.json')
+    with Transaction(STATE) as tx:
+        tx.accepted()
+        candidate = runtime_candidates(tx, 'v26.3.27', paths[0], config, config.stat().st_gid,
+                                       gateway_paths=paths[1:])
+        # A real sandbox refusal in a gateway must compensate every runtime unit.
+        gateway = next(item for item in candidate if item['path'] == str(paths[1]))
+        gateway['data'] = base64.b64encode(base64.b64decode(gateway['data']) +
+            b'\n[Service]\nReadWritePaths=/var/lib/rta-missing-gateway-sandbox\n').decode()
+        owner = RollbackAdapter(candidate, parameters['probe_url'], parameters['expected_status'],
+                                parameters['timeout'], parameters['clients'])
+        with pytest.raises(Refusal, match='candidate-refused'):
+            tx.apply(candidate, owner)
+        tx.accepted()
+    assert (STATE / 'accepted.json').read_bytes() == before
+    assert {path: (path.read_bytes(), path.stat().st_ino) for path in paths} == original
+    assert_xray_generation(release)
+    # Kill the actual publisher after a gateway publication and after adoption.
+    source = '''import json,os,signal,sys
+sys.path.insert(0,sys.argv[1])
+from pathlib import Path
+from transport_runtime_accept import STATE,gateway_units,read_parameters
+from transport_runtime_rollback import RollbackAdapter,runtime_candidates
+from transport_runtime_transaction import Transaction
+p=read_parameters()
+config=Path('/etc/xray/config.json')
+with Transaction(STATE) as tx:
+ tx.accepted()
+ plan=runtime_candidates(tx,'v26.3.27',Path('/etc/systemd/system/xray.service'),config,config.stat().st_gid,
+  gateway_paths=[Path('/etc/systemd/system',name) for name in gateway_units()])
+ owner=RollbackAdapter(plan,p['probe_url'],p['expected_status'],p['timeout'],p['clients'])
+ def checkpoint(stage):
+  if stage==sys.argv[2]: os.kill(os.getpid(),signal.SIGKILL)
+ tx.apply(plan,owner,checkpoint=checkpoint)
+'''
+    for stage in ('published-1', 'adopted'):
+        result = subprocess.run(['/usr/bin/python3', '-Es', '-c', source,
+            '/usr/local/libexec/ripdpi-transport-egress', stage], capture_output=True, timeout=180)
+        assert result.returncode == -signal.SIGKILL, stage
+        owner = RollbackAdapter([], parameters['probe_url'], parameters['expected_status'],
+                                parameters['timeout'], parameters['clients'])
+        with Transaction(STATE) as tx:
+            tx.recover(owner)
+            tx.accepted()
+        owner.ready()
+        assert (STATE / 'accepted.json').read_bytes() == before
+        assert {path: (path.read_bytes(), path.stat().st_ino) for path in paths} == original
+        assert_xray_generation(release)
 
 
 def test_native_site_retirement_and_remaining_upgrade_commit_once():
@@ -381,7 +440,7 @@ def test_hysteria_admission_sigkill_reconciles_exact_validation_lease():
 sys.path.insert(0,sys.argv[1])
 from pathlib import Path
 from transport_runtime_transaction import Transaction
-from transport_runtime_accept import STATE,read_parameters
+from transport_runtime_accept import STATE,read_parameters,gateway_units,unit_binary
 from transport_runtime_validate import validate_hysteria
 values=read_parameters()
 unit=Path('/etc/systemd/system/hysteria-server.service').read_text()
@@ -393,7 +452,9 @@ def checkpoint(stage):
 with Transaction(STATE) as tx:
  validate_hysteria(binary,Path('/etc/hysteria/config.yaml').read_bytes(),
   Path('/etc/hysteria/server.fullchain.pem').read_bytes(),Path('/etc/hysteria/server.key').read_bytes(),
-  unit,values['timeout'],values['clients']['hysteria'],transaction=tx,checkpoint=checkpoint)
+  unit,values['timeout'],values['clients']['hysteria'],
+  gateway_binary=unit_binary(Path('/etc/systemd/system',gateway_units()[0]).read_text())[0],
+  transaction=tx,checkpoint=checkpoint)
 '''
         process = subprocess.Popen(['/usr/bin/python3', '-Es', '-c', source,
             '/usr/local/libexec/ripdpi-transport-egress'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)

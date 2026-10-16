@@ -11,9 +11,13 @@ import re
 import stat
 import sys
 
-from transport_runtime_accept import Adapter, STATE, read_parameters, parameter_candidate, restore_points, unit_binary
+from transport_runtime_accept import Adapter, STATE, read_parameters, parameter_candidate, restore_points, unit_binary, gateway_units, fields
+from transport_runtime_probe import run
 from transport_runtime_transaction import Transaction, Refusal, node, read_private, identity
 from transport_runtime_validate import inspect_lease, recover_validation
+
+
+UNIT_ROOT = Path('/etc/systemd/system')
 
 
 def file_candidate(path, data, gid, mode=0o640):
@@ -67,9 +71,8 @@ def verified_release(tx, root, version, name, mode):
     return directory
 
 
-def runtime_candidates(tx, raw_version, unit_path, config_path, gid, *, root=Path('/opt/xray')):
+def runtime_candidates(tx, raw_version, unit_path, config_path, gid, *, gateway_paths, root=Path('/opt/xray')):
     # The accepted receipt claims every candidate by inode and digest, so only runtime-publisher-owned paths belong here.
-    # The private gateway units are egress-owned and rewritten by the next converge; they are never candidates.
     runtime_version, asset_version = release_versions(raw_version)
     release = verified_release(tx, root, runtime_version, 'xray', 0o755)
     unit = unit_path.read_text()
@@ -89,8 +92,43 @@ def runtime_candidates(tx, raw_version, unit_path, config_path, gid, *, root=Pat
     links += [{'path': str(root / 'current'), 'target': str(release)},
               {'path': str(root / 'previous'), 'target': selected},
               {'path': '/usr/local/bin/xray', 'target': str(root / 'current/xray')}]
-    return [file_candidate(unit_path, rendered.encode(), 0, 0o644), *links,
+    gateways = []
+    for path in gateway_paths:
+        text = path.read_text()
+        gateway_binary, _assets, _config = unit_binary(text)
+        if gateway_binary != binary:
+            raise Refusal('rollback-gateway-runtime-mismatch')
+        gateways.append(file_candidate(path, text.replace(binary, str(release / 'xray')).encode(), 0, 0o644))
+    return [file_candidate(unit_path, rendered.encode(), 0, 0o644), *gateways, *links,
             file_candidate(config_path, config_path.read_bytes(), gid)]
+
+
+class RollbackAdapter(Adapter):
+    def validate(self):
+        super().validate()
+        for unit in gateway_units():
+            path = '/etc/systemd/system/' + unit
+            if not any(item['path'] == path for item in self.candidates):
+                continue
+            text = self.candidate(path).decode()
+            binary, _assets, _config = unit_binary(text)
+            prefix = 'LoadCredential=config.json:'
+            sources = [line[len(prefix):] for line in text.splitlines() if line.startswith(prefix)]
+            if (len(sources) != 1 or not Path(sources[0]).is_absolute()
+                    or str(Path(sources[0])) != sources[0] or '..' in Path(sources[0]).parts):
+                raise Refusal('gateway-credential-invalid')
+            run([binary, 'run', '-test', '-config', sources[0]], self.timeout)
+
+    def ready(self):
+        super().ready()
+        # The controller still owns startup and compensation for the entire generation.
+        # Prove loaded gateway executables here without changing shared readiness callers.
+        for unit in gateway_units():
+            current = fields(unit)
+            binary, _assets, _config = unit_binary((UNIT_ROOT / unit).read_text())
+            if (current['ActiveState'] != 'active' or int(current['MainPID']) <= 0
+                    or not os.path.samefile('/proc/' + current['MainPID'] + '/exe', binary)):
+                raise Refusal('gateway-runtime-mismatch')
 
 
 def main():
@@ -111,19 +149,19 @@ def main():
             inspect_lease(tx)
         else:
             recover_validation(tx)
-        owner = Adapter([], parameters['probe_url'], parameters['expected_status'], parameters['timeout'], parameters['clients'])
+        owner = RollbackAdapter([], parameters['probe_url'], parameters['expected_status'], parameters['timeout'], parameters['clients'])
         owner.transaction = tx
         if not args.check:
             tx.recover(owner)
             parameters = read_parameters()
             if parameters is None:
                 raise Refusal('accepted-parameters-required')
-            owner = Adapter([], parameters['probe_url'], parameters['expected_status'], parameters['timeout'], parameters['clients'])
+            owner = RollbackAdapter([], parameters['probe_url'], parameters['expected_status'], parameters['timeout'], parameters['clients'])
             owner.transaction = tx
         receipt = tx.accepted()
         if receipt is None:
             raise Refusal('accepted-runtime-required')
-        unit_path = Path('/etc/systemd/system/xray.service')
+        unit_path = UNIT_ROOT / 'xray.service'
         config_path = Path('/etc/xray/config.json')
         if not receipt['nodes'].get(str(unit_path)) or not receipt['nodes'].get(str(config_path)):
             raise Refusal('accepted-xray-required')
@@ -135,7 +173,11 @@ def main():
             candidates = restore_points([file_candidate(unit_path, unit_path.read_bytes(), 0, 0o644),
                                          file_candidate(config_path, previous.read_bytes(), gid)])
         else:
-            candidates = runtime_candidates(tx, args.version, unit_path, config_path, gid)
+            gateway_paths = [UNIT_ROOT / unit for unit in gateway_units()]
+            if any(not receipt['nodes'].get(str(path)) for path in gateway_paths):
+                raise Refusal('accepted-gateway-required')
+            candidates = runtime_candidates(tx, args.version, unit_path, config_path, gid,
+                                            gateway_paths=gateway_paths)
         candidates.append(parameter_candidate(parameters))
         owner.candidates = candidates
         result = tx.apply(candidates, owner, check=args.check)
