@@ -18,7 +18,7 @@
 #      ASN is checked separately via whois.cymru.com for the top candidates.
 #   4. Print the top candidates with ASN + ALPN + CN + issuer columns.
 #   5. Optional: feed the top result back through validate-reality-target.sh
-#      for the full 9-step audit.
+#      for the bounded TLS/HTTP hygiene.
 #
 # Usage:
 #   scripts/scan-reality-targets.sh --seeds my-seeds.txt
@@ -42,9 +42,7 @@ REALI_LINUX_SHA256="3127c612c98ded9b07612ab8500a110a379cc0ab4342174ee026d913961f
 REALI_LINUX_URL="https://github.com/XTLS/RealiTLScanner/releases/download/${REALI_VERSION}/RealiTLScanner-linux-64"
 REALI_BIN="${TOOL_CACHE}/RealiTLScanner-${REALI_VERSION}"
 
-# Over-template list — REALITY targets too popular to be useful. Mirrored
-# from validate-reality-target.sh and the wiki reality-target-selection-2026
-# page. Keep these in sync.
+# Discovery-only popularity heuristic; independent of TLS/HTTP hygiene.
 OVERUSED_RE='^(([a-zA-Z0-9_-]+\.)+)?(cloudflare\.com|microsoft\.com|apple\.com|google\.com|discord\.com|icloud\.com)$'
 
 # ASN tier blocklist (see docs/PROVIDER-NOTES.md).
@@ -223,13 +221,13 @@ while IFS=, read -r ip origin cert issuer geo && (( i < TOP )); do
 done < <(tail -n +2 "$filtered")
 
 # ---------------------------------------------------------------------------
-# Optional: full 9-step audit on the top candidate
+# Optional: bounded TLS/HTTP hygiene on the top candidate
 # ---------------------------------------------------------------------------
 if [[ "$VALIDATE" == 1 && -n "${top_host_clean:-}" ]]; then
   echo
   echo ">>> validating top candidate via validate-reality-target.sh: $top_host_clean"
   TARGET="${top_host_clean}:443" SERVER_NAMES="$top_host_clean" \
-    "${REPO_ROOT}/scripts/validate-reality-target.sh" || true
+    "${REPO_ROOT}/scripts/validate-reality-target.sh"
 fi
 
 echo

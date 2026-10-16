@@ -225,3 +225,21 @@ def test_scan_without_csv_fails_and_preserves_previous_result(tmp_path):
     assert result.returncode != 0
     assert "no candidates produced" in result.stderr
     assert prior.read_text() == "previous scan\n"
+
+
+def test_candidate_validation_failure_is_propagated(tmp_path):
+    import shutil
+    root = tmp_path / 'repo'; scripts = root / 'scripts'; scripts.mkdir(parents=True)
+    shutil.copy2(SCRIPT, scripts / SCRIPT.name)
+    validator = scripts / 'validate-reality-target.sh'
+    validator.write_text('#!/bin/sh\nexit 9\n'); validator.chmod(0o755)
+    cache = tmp_path / 'cache'; cache.mkdir()
+    scanner = cache / 'RealiTLScanner-v0.2.1'
+    scanner.write_text('#!/bin/sh\n[ "$1" = -h ] && exit 0\nwhile [ "$1" != -out ]; do shift; done\nprintf "IP,ORIGIN,CERT_DOMAIN,CERT_ISSUER,GEO_CODE\\n192.0.2.7,one.example,one.example,Fixture,ZZ\\n" > "$2"\n')
+    scanner.chmod(0o755)
+    commands = tmp_path / 'bin'; commands.mkdir()
+    whois = commands / 'whois'; whois.write_text('#!/bin/sh\nexit 1\n'); whois.chmod(0o755)
+    result = subprocess.run(['bash', str(scripts / SCRIPT.name), '--cidr', '192.0.2.7/32', '--validate'],
+                            capture_output=True, text=True, timeout=5,
+                            env={**os.environ, 'TOOL_CACHE': str(cache), 'PATH': f"{commands}:{os.environ['PATH']}"})
+    assert result.returncode == 9

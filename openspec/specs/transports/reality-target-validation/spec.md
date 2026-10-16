@@ -1,12 +1,11 @@
+# transports/reality-target-validation Specification
+
 ## Purpose
-
 Provide observable, testable guarantees for make reality target validation bounded standards-correct and truthful across accepted inputs, successful operation, failure and retained authority.
-
-## ADDED Requirements
-
+## Requirements
 ### Requirement: REQ-PROTO-RTV-IDENTITY — Standards-correct target identity checking
 
-The implementation MUST Target validation MUST normalize the configured name list once and verify each actual handshake certificate against that exact name using standards-correct hostname matching. A single-label wildcard MUST NOT authorize multiple deeper labels.
+Target validation MUST normalize the configured name list once and verify each actual handshake certificate against that exact name using standards-correct hostname matching. A single-label wildcard MUST NOT authorize multiple deeper labels.
 
 #### Scenario: Valid exact and single-label wildcard names pass
 
@@ -20,7 +19,7 @@ The implementation MUST Target validation MUST normalize the configured name lis
 
 ### Requirement: REQ-PROTO-RTV-DEADLINES — Finite operation and aggregate budgets
 
-The implementation MUST DNS TLS HTTP metadata lookups and their child process groups MUST terminate within explicit per-operation and whole-run budgets. Timeout MUST remain a failed or unavailable observation and MUST NOT be reported as healthy.
+DNS, TLS, HTTP and metadata lookups and their child process groups MUST terminate within explicit per-operation and whole-run budgets. Timeout MUST remain a failed or unavailable observation and MUST NOT be reported as healthy.
 
 #### Scenario: Bounded healthy run completes
 
@@ -34,7 +33,7 @@ The implementation MUST DNS TLS HTTP metadata lookups and their child process gr
 
 ### Requirement: REQ-PROTO-RTV-CLAIMS — Report only measured client and path capability
 
-The implementation MUST HTTP User-Agent probes MUST be labeled ordinary HTTP/TLS hygiene. Browser ClientHello compatibility MUST require a real exact pinned supported client handshake. Missing client capability or absent filtered vantage MUST remain explicit unavailable evidence and MUST NOT count toward promotion.
+HTTP User-Agent probes MUST be labeled ordinary HTTP/TLS hygiene. Browser ClientHello compatibility MUST require a real exact pinned supported client handshake. Missing client capability or absent filtered vantage MUST remain explicit unavailable evidence and MUST NOT count toward promotion.
 
 #### Scenario: Real supported client handshake succeeds
 
@@ -48,7 +47,7 @@ The implementation MUST HTTP User-Agent probes MUST be labeled ordinary HTTP/TLS
 
 ### Requirement: REQ-PROTO-RTV-OWNERSHIP — Separate owned public service validation from loopback plumbing
 
-The implementation MUST Owned self-steal validation MUST bind the approved public service endpoint and SNI while keeping node-local target plumbing distinct. Validation failure MUST preserve accepted target and certificate authority, never mutate credentials or deployment state, and emit no private values.
+Owned self-steal validation MUST bind the approved public service endpoint and SNI while keeping node-local target plumbing distinct. Validation failure MUST preserve accepted target and certificate authority, never mutate credentials or deployment state, and emit no private values.
 
 #### Scenario: Owned public service path validates
 

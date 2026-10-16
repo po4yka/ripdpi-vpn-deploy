@@ -712,3 +712,21 @@ together; the shared renderer must not keep a single-address or fixed-MTU path.
 
 An explicit per-host cohort bypasses inventory hostname lookup: endpoint-only
 AWG callers do not consume a hostname and must retain their export path.
+
+REALITY validation shares `reality_target_validation.py` across point-in-time and
+recurring callers. It normalizes comma/whitespace names once, verifies each SNI
+through a trusted TLS 1.3 handshake with SAN-only hostname matching and H2 ALPN,
+and forces HTTP to the same resolved address. Blocking DNS, TLS, HTTP, metadata,
+and secret acquisition use the retained-session supervisor in
+`bootstrap_readiness.py`; per-stage and aggregate budgets include all pairs.
+Reports contain categories and counts, never target names or tool diagnostics.
+Owned self-steal probes require an explicit service endpoint and exact owned SNI;
+remote probes reject loopback endpoints. Ordinary HTTP is hygiene only. Optional
+curl-impersonate 0.6.1 Chrome116 compatibility requires exact binary and profile
+hashes and an actual handshake; it never establishes filtered survival or grants
+promotion authority. No validator installs a client, edits secrets or deploys.
+
+Task deletion audits compare against the explicit trusted base while retaining
+feature first-parent lifecycle history. Importing a purge already in that base
+is not a new deletion when no issue, execution or receipt changed outside it.
+Independent lifecycle edits and merge-only resurrection retain the full audit.

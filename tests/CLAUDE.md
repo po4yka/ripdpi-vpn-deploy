@@ -581,3 +581,14 @@ refusal retains the ordinary error and the prior encrypted authority.
 The canonical delivered bundle must validate against the published dual-stack
 schema. Real encrypted drift cases change each address family and MTU; missing
 families, scalar claims and out-of-range MTU stay unknown without publication.
+
+REALITY identity/deadline regressions use real local CA certificates, TLS/HTTP
+sockets and stalled process trees. Monitor state/alert fixtures inject categorical
+collector observations; they do not claim network proof. The dedicated REALITY
+native lane additionally runs the exact checksum-pinned browser-shaped client
+and an owned service through its explicit ingress address. Its complete Make
+target fails on skips and missing client prerequisites.
+
+The REALITY collector no longer parses shell TLS transcripts. Its large-certificate
+regression completes a real trusted handshake beyond ordinary pipe-buffer sizes;
+metadata failure classification remains covered by the shared monitor tests.
