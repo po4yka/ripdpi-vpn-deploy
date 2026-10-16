@@ -641,7 +641,7 @@ jobs:
         run: |
           docker exec --workdir /opt/rta \
             --env TRANSPORT_NATIVE_ISOLATED=1 \
-            --env "PYTEST_ADDOPTS=--tb=short --splits 2 --group $PYTEST_NATIVE_GROUP --splitting-algorithm duration_based_chunks" \
+            --env "PYTEST_ADDOPTS=--tb=short --splits 2 --group $PYTEST_NATIVE_GROUP --splitting-algorithm least_duration" \
             --env ANSIBLE_COLLECTIONS_PATH=/opt/rta/.ansible/collections \
             --env "PATH=$RTA_PYTHON_PREFIX/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
             transport-runtime-acceptance \
