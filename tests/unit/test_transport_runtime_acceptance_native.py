@@ -3,6 +3,7 @@ import importlib.util
 import base64
 import json
 import os
+import sys
 from pathlib import Path
 import signal
 import re
@@ -555,11 +556,13 @@ def test_native_ingress_egress_commit_sigkill_recovers_one_accepted_generation(b
             tx.persist, tx.clear, tx.command = marked, removed, finish
             try:
                 tx.site_transaction('commit', context, finish_egress=True)
-            except BaseException:
-                import traceback
-                traceback.print_exc()
-                os._exit(2)
-            os._exit(1)
+            finally:
+                # A forked worker must never unwind into the parent pytest runner.
+                failed = sys.exc_info()[0] is not None
+                if failed:
+                    import traceback
+                    traceback.print_exc()
+                os._exit(2 if failed else 1)
         _, status = os.waitpid(pid, 0)
         assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGKILL
         result = tx.site_transaction('recover-commit', context)

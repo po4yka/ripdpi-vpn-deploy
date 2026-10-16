@@ -5,6 +5,7 @@ import fcntl
 import importlib.util
 import json
 import os
+import sys
 from pathlib import Path
 import stat
 
@@ -715,11 +716,13 @@ def test_sigkill_commit_boundary_recovers_one_generation(fixture, boundary):
         tx.persist, tx.command, tx.clear = marked, egress, removed
         try:
             tx.site_transaction('commit', context, finish_egress=True)
-        except BaseException:
-            import traceback
-            traceback.print_exc()
-            os._exit(2)
-        os._exit(1)
+        finally:
+            # A forked worker must never unwind into the parent pytest runner.
+            failed = sys.exc_info()[0] is not None
+            if failed:
+                import traceback
+                traceback.print_exc()
+            os._exit(2 if failed else 1)
     _, status = os.waitpid(pid, 0)
     assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGKILL
     result = tx.site_transaction('recover-commit', context)
