@@ -4,8 +4,8 @@ change: "xhttp-alternate-and-tuning"
 commit_sha: "e30d591f0c0af7f43283a7abaa68c68e9fe0ed00"
 local: "blocked"
 local_evidence: "824933e0: 485 affected portable tests, complete 69-test sentinel suite, 112 endpoint/check-mode tests, 163 snapshots, exact parser checks and make validate passed. Full make check reached Terraform test initialization and failed on a registry timeout; a later repeat passed Terraform and all pre-suite checks, but setup of 62 AWG tests failed because HOME-isolating fixtures resolved an inactive SOPS shim. Direct installed SOPS/age paths fixed the invocation: the complete 62-test module passed. The corrected full repeat exhausted the standard 3600-second machine gate wait and exited 75 before execution; no full-gate pass is claimed."
-remote_ci: "passed"
-remote_ci_evidence: "e30d591f: CI run 38902283925 completed successfully with all 89 jobs; CodeQL, markdown-link-check and claude-md-touch also passed. The complete hosted native job includes all 10 XHTTP cases (570.13 seconds), 138 selected native regressions and subsequent AWG tests."
+remote_ci: "required"
+remote_ci_evidence: "Frozen e30d591f passed all 89 CI jobs, CodeQL and documentation workflows. Incoming remote commit 27185226 subsequently merged main TLS/WARP fixes (52d73286); current merged-head CI has not been observed and remains required."
 dry_run: "not_applicable"
 dry_run_evidence: "source capability is exercised in isolated local/native runtime; no real inventory run is part of this task"
 staging: "passed"
@@ -22,7 +22,7 @@ artifact_evidence: "824933e0: 163 golden renders and complete emitted native pro
 
 ## Requirement evidence
 
-The source SHA above is frozen. The local native command ran from its git archive in an owned disconnected Linux arm64 container. Staging/client categories describe only that local harness and its native fixture processes under the authorized scope. The functional source remains identical to 824933e0; 35dd2dfb changes only the native job total time budget, and e30d591f adds task evidence. Exact-source hosted CI is complete. Local full-gate evidence remains blocked: the corrected invocation could not obtain a machine build slot within its standard 3600-second bound.
+The source SHA above is frozen. The local native command ran from its git archive in an owned disconnected Linux arm64 container. Staging/client categories describe only that local harness and its native fixture processes under the authorized scope. The XHTTP runtime/source files remain identical to 824933e0; 35dd2dfb changes only the native job total time budget, and e30d591f adds task evidence. Hosted CI is complete for frozen e30d591f; the later incoming main integration requires fresh current-head CI. Local full-gate evidence remains blocked: the corrected invocation could not obtain a machine build slot within its standard 3600-second bound.
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
@@ -67,3 +67,7 @@ The full-gate execution step remains open and the portfolio item is blocked on l
 ## Hosted acceptance
 
 [Exact-source CI run](https://github.com/po4yka/ripdpi-vpn-deploy/actions/runs/38902283925): all 89 jobs passed for e30d591f, including both native transport acceptance partitions, every selected Molecule role, all portable test partitions, Terraform tests/policies, secret scanning and package checks. The native runtime job passed its complete sequence in approximately 30 minutes, including the 10-case XHTTP matrix; the increased 40-minute total budget preserves each per-test assertion.
+
+## Incoming main integration
+
+Before publishing the final evidence update, a normal push was rejected because remote commit 27185226 had integrated main commit 52d73286 (TLS transcript and WARP teardown fixes). Those incoming changes are preserved by a normal merge without rewriting history. They do not change the XHTTP implementation, but the 89-job result above applies to e30d591f only. Current merged-head CI remains required; neither that integration nor metadata updates are claimed to have completed a fresh full gate.
