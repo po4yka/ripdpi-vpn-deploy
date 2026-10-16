@@ -8,7 +8,7 @@ Production defaults and physical client safe floors remain unchanged.
 
 ## Ownership
 
-- contract/awg-source-candidate.json
+- tests/integration/awg_source_candidate/sources.json
 - scripts/test-awg-source-candidate.py
 - tests/integration/awg_source_candidate/
 - tests/unit/test_awg_source_candidate.py

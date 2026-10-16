@@ -32,7 +32,7 @@ change delivers a complete local source-candidate lab rather than a fleet rollou
 
 ## Impact
 
-- `contract/awg-source-candidate.json` owns exact candidate/control sources,
+- `tests/integration/awg_source_candidate/sources.json` owns exact candidate/control sources,
   toolchain digests and explicit non-production eligibility.
 - Local Docker build/runner, isolated acceptance tests, Makefile and test docs.
 - No provider, inventory, host-management SSH, VPN private inputs, published

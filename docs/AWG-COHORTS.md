@@ -165,7 +165,7 @@ on transaction failure. URI passwords never enter metadata stdout.
 
 ## Local source-upgrade candidate
 
-`contract/awg-source-candidate.json` selects Go v3.1.20260828 and tools
+`tests/integration/awg_source_candidate/sources.json` selects Go v3.1.20260828 and tools
 v3.1.20260812 independently of the deployment examples above. Run
 `build-gate -- make test-awg-source-candidate` against local Docker to build both
 exact source pairs and exercise mixed-version TCP/UDP/DNS, captured packet

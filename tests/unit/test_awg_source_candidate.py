@@ -201,7 +201,9 @@ def test_uncertain_start_cleanup_observes_late_creation_or_reports_unknown(
 
 
 def test_candidate_is_separate_from_deployment_and_physical_policy():
-    pins = json.loads((ROOT / "contract/awg-source-candidate.json").read_text())
+    pins = json.loads(
+        (ROOT / "tests/integration/awg_source_candidate/sources.json").read_text()
+    )
     deployment = yaml.safe_load(
         (ROOT / "secrets/prod.secrets.example.yaml").read_text()
     )
@@ -264,9 +266,13 @@ def test_package_inputs_are_bound_to_one_signed_immutable_snapshot():
 
 def test_source_cache_symlink_refuses_before_context_copy(monkeypatch, tmp_path):
     module = runner()
-    pins = json.loads((ROOT / "contract/awg-source-candidate.json").read_text())
-    (tmp_path / "contract").mkdir()
-    (tmp_path / "contract/awg-source-candidate.json").write_text(json.dumps(pins))
+    pins = json.loads(
+        (ROOT / "tests/integration/awg_source_candidate/sources.json").read_text()
+    )
+    (tmp_path / "tests/integration/awg_source_candidate").mkdir(parents=True)
+    (tmp_path / "tests/integration/awg_source_candidate/sources.json").write_text(
+        json.dumps(pins)
+    )
     cache = tmp_path / ".cache/awg-source-candidate"
     cache.mkdir(parents=True, mode=0o700)
     foreign = tmp_path / "foreign-input"
@@ -310,12 +316,14 @@ def test_warm_bundle_cache_revalidates_current_lightweight_and_annotated_tags(
     git("tag", "baseline")
     git("tag", "-a", "candidate", "-m", "annotated fixture")
     root = tmp_path / "workspace"
-    (root / "contract").mkdir(parents=True)
+    (root / "tests/integration/awg_source_candidate").mkdir(parents=True)
     pins = {
         pair: {part: {"tag": pair, "commit": reviewed} for part in ("go", "tools")}
         for pair in ("baseline", "candidate")
     }
-    (root / "contract/awg-source-candidate.json").write_text(json.dumps(pins))
+    (root / "tests/integration/awg_source_candidate/sources.json").write_text(
+        json.dumps(pins)
+    )
     cache = root / ".cache/awg-source-candidate"
     cache.mkdir(parents=True, mode=0o700)
     for component in ("go", "tools"):
@@ -390,7 +398,9 @@ def test_toolchain_digest_rejects_corrupted_bytes(tmp_path):
 
 
 def test_narrow_wire_shape_matches_canonical_cohort():
-    pins = json.loads((ROOT / "contract/awg-source-candidate.json").read_text())
+    pins = json.loads(
+        (ROOT / "tests/integration/awg_source_candidate/sources.json").read_text()
+    )
     cohort = yaml.safe_load(
         (
             ROOT / "ansible/roles/amneziawg/vars/cohorts/narrow-junk-sequential.yml"

@@ -10,7 +10,7 @@ RUN dpkg-deb -x /tmp/bootstrap-ca.deb /tmp/bootstrap-ca \
     systemd systemd-sysv ca-certificates curl git make gcc libc6-dev libmnl-dev \
     iproute2 iptables python3 tcpdump procps \
     && rm -rf /var/lib/apt/lists/* /tmp/bootstrap-ca /tmp/bootstrap-ca.deb
-COPY contract/awg-source-candidate.json /lab/contract/awg-source-candidate.json
+COPY tests/integration/awg_source_candidate/sources.json /lab/sources.json
 COPY tests/integration/awg_source_candidate/build.py /lab/build.py
 COPY sources/ /sources/
 RUN python3 /lab/build.py

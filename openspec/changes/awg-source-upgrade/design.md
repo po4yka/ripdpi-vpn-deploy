@@ -15,7 +15,7 @@ retrieval is allowed; no external runtime or application endpoint is involved.
 
 ## Decisions
 
-- The versioned candidate contract binds both exact tags and commits, the exact
+- The versioned candidate manifest binds both exact tags and commits, the exact
   Go toolchain and both supported Linux archive checksums. A moved tag or dirty
   module graph fails the build. `GOTOOLCHAIN=local`, readonly modules and two-job
   limits prevent hidden toolchain upgrades and unbounded compilation.
@@ -44,7 +44,7 @@ retrieval is allowed; no external runtime or application endpoint is involved.
   `20261015T000000Z` supply package dependencies. A checksum-pinned public
   ca-certificates archive bootstraps HTTPS in the minimal base; TLS and APT
   signature/hash checks remain enabled. Build both real
-  source pairs with repository-pinned Go 1.27.1. The contract explicitly selects
+  source pairs with repository-pinned Go 1.27.1. The manifest explicitly selects
   the reachable module cache; original `go.sum`, readonly modules and the standard
   signed checksum database remain enabled. This changes artifact delivery, not
   the reviewed dependency versions or their byte authentication.
@@ -65,7 +65,7 @@ retrieval is allowed; no external runtime or application endpoint is involved.
 
 ## Contracts and ownership
 
-- `contract/awg-source-candidate.json`: source and toolchain selection.
+- `tests/integration/awg_source_candidate/sources.json`: source and toolchain selection.
 - `scripts/test-awg-source-candidate.py`: local-only orchestration and cleanup.
 - `tests/integration/awg_source_candidate/`: real builds and isolated traffic.
 - `Makefile`, script/test guidance, test docs and this change's task metadata.

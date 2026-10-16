@@ -29,7 +29,7 @@ def verify_source(directory, expected):
 
 
 def main():
-    pins = json.loads(Path("/lab/contract/awg-source-candidate.json").read_text())
+    pins = json.loads(Path("/lab/sources.json").read_text())
     arch = {"x86_64": "amd64", "aarch64": "arm64"}[platform.machine()]
     archive = Path("/lab/go.tar.gz")
     with urllib.request.urlopen(

@@ -94,3 +94,11 @@ Three review findings are being validated: delayed Docker visibility after
 startup timeout, immutable signed APT inputs, and upstream ref revalidation for
 warm source bundles. Historical passing evidence above predates these changes.
 Focused regressions: 50 passed; Ruff passed. Updated native and full gates pending.
+
+The local-only manifest was moved out of published `contract/` into the lab
+inputs, fixing its unintended Android vendoring requirement without weakening
+contract-sync. Public contract files remain unchanged from main. Current client
+commit c843303bc237224c1516452cf821c014d6905e9b has all 31 published files, but
+eight existing bundle schema/golden/negative-fixture blob hashes differ from
+main. This independent cross-repository drift remains a supplementary CI gap;
+no client payload schema or safety floor was changed by this task.

@@ -21,7 +21,7 @@ from pathlib import Path
 import runtime_build_receipt as publisher
 
 ROOT = Path("/lab")
-PINS = json.loads((ROOT / "contract/awg-source-candidate.json").read_text())
+PINS = json.loads((ROOT / "sources.json").read_text())
 RECEIPTS = Path("/var/lib/ripdpi/runtime-build-receipts")
 STAGE = Path("/var/lib/ripdpi/runtime-build-staging/awg-candidate")
 LIVE = Path("/usr/local/lib/awg-candidate")

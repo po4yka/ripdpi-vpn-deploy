@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FILES = (
-    "contract/awg-source-candidate.json",
+    "tests/integration/awg_source_candidate/sources.json",
     "tests/integration/awg_source_candidate/Dockerfile",
     "tests/integration/awg_source_candidate/ubuntu.sources",
     "tests/integration/awg_source_candidate/build.py",
