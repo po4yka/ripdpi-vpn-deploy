@@ -32,3 +32,12 @@ def test_pinned_client_ignores_ambient_curl_config(tls_site, tmp_path):
                               REALITY_CLIENT_DIR=os.environ['REALITY_TEST_CLIENT_DIR'])
     assert result.returncode == 0, report
     assert report['client_compatibility'] == 'passed'
+
+
+@pytest.mark.parametrize('tls_site', ['client-no-h2'], indirect=True)
+def test_client_h2_downgrade_does_not_relabel_hygiene(tls_site):
+    result, report = run_site(tls_site, REALITY_CLIENT_DIR=os.environ['REALITY_TEST_CLIENT_DIR'])
+    assert result.returncode != 0
+    assert report['hygiene'] == 'passed'
+    assert report['client_compatibility'] == 'failed'
+    assert report['reason_codes'] == ['client_failed']

@@ -67,6 +67,8 @@ def tls_site(tmp_path, request):
             except OSError:
                 break
             raw.settimeout(1)
+            if variant == 'client-no-h2' and len(seen) >= 2:
+                context.set_alpn_protocols(['http/1.1'])
             try:
                 with context.wrap_socket(raw, server_side=True) as conn:
                     seen.append((conn.version(), conn.selected_alpn_protocol()))
@@ -125,7 +127,7 @@ def test_real_untrusted_certificate_refuses(tls_site, tmp_path):
 
 
 @pytest.mark.parametrize('value', ['', ', ', 'bad..example', '*.example', 'a.example/secret', '-a.example',
-                                   'a.example:443', 'é.example', 'a.example,,', 'a' * 254])
+                                   'a.example:443', '127.0.0.1', 'é.example', 'a.example,,', 'a' * 254])
 def test_invalid_names_refuse_before_network(value, monkeypatch):
     monkeypatch.setenv('TARGET', 'private.example:443'); monkeypatch.setenv('SERVER_NAMES', value)
     with pytest.raises(validator.Refused, match='invalid_names'):
@@ -135,7 +137,7 @@ def test_invalid_names_refuse_before_network(value, monkeypatch):
 def test_name_count_and_address_endpoint_bounds():
     with pytest.raises(validator.Refused):
         validator.names(' '.join(f'a{i}.example' for i in range(17)))
-    for endpoint in ['a.example:0', 'a.example:65536', 'a.example:abc', 'a.example,b.example:443']:
+    for endpoint in ['a.example:0', 'a.example:65536', 'a.example:abc', 'a.example,b.example:443', '[a.example:443', 'a.example]:443', '::1:443']:
         with pytest.raises(validator.Refused):
             validator.endpoint(endpoint)
     assert validator.endpoint('[::1]:443') == ('::1', 443)

@@ -46,6 +46,12 @@ def names(value):
                 or any(not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
                        for label in name.split("."))):
             raise Refused("invalid_names")
+        try:
+            ipaddress.ip_address(name)
+        except ValueError:
+            pass
+        else:
+            raise Refused("invalid_names")
         if name not in result:
             result.append(name)
     if not 1 <= len(result) <= MAX_NAMES:
@@ -55,8 +61,16 @@ def names(value):
 
 def endpoint(value):
     try:
-        host, port = value.rsplit(":", 1)
-        host = host.removeprefix("[").removesuffix("]")
+        if value.startswith("["):
+            match = re.fullmatch(r"\[([^\]]+)\]:([0-9]+)", value)
+            if not match:
+                raise ValueError
+            host, port = match.groups()
+            ipaddress.IPv6Address(host)
+        else:
+            if value.count(":") != 1 or "[" in value or "]" in value:
+                raise ValueError
+            host, port = value.rsplit(":", 1)
         if not port.isascii() or not port.isdigit() or not 1 <= int(port) <= 65535:
             raise ValueError
         try:
@@ -124,6 +138,7 @@ def call_worker(budget, kind, payload):
 
 def load_inputs(budget):
     target, configured = os.environ.get("TARGET"), os.environ.get("SERVER_NAMES")
+    normalized = names(configured) if configured is not None else None
     if target is None or configured is None:
         source = os.environ.get("SOPS_FILE", str(Path.home() / ".config/vpn-provision" /
                                 (os.environ.get("ENV", "prod") + ".secrets.sops.yaml")))
@@ -132,7 +147,8 @@ def load_inputs(budget):
         xray = data["xray"]
         target = xray["target"] if target is None else target
         configured = " ".join(xray["server_names"]) if configured is None else configured
-    normalized = names(configured)
+    if normalized is None:
+        normalized = names(configured)
     mode = os.environ.get("TARGET_MODE", "borrowed")
     host, port = endpoint(target)
     if mode == "owned-public":
@@ -147,7 +163,7 @@ def load_inputs(budget):
 def http(budget, ip, port, sni, *, client=None):
     address = f"[{ip}]" if ":" in ip else ip
     command = [*(client if client else ["curl", "--disable"]), "--silent", "--show-error", "--noproxy", "*",
-               "--output", os.devnull, "--write-out", "%{http_code}",
+               "--output", os.devnull, "--write-out", "%{http_code}/%{http_version}" if client else "%{http_code}",
                "--resolve", f"{sni}:{port}:{address}", f"https://{sni}:{port}/"]
     if not client:
         command.append("--http1.1")
@@ -155,6 +171,10 @@ def http(budget, ip, port, sni, *, client=None):
     if ca:
         command.extend(["--cacert", ca])
     result = budget.run("client" if client else "http", command)
+    if client:
+        result, separator, version = result.partition("/")
+        if separator != "/" or version != "2":
+            raise Refused("client_failed")
     if not re.fullmatch(r"[1-5][0-9]{2}", result):
         raise Refused("client_failed" if client else "https_no_response")
     return result

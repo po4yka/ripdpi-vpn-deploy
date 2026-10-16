@@ -132,7 +132,7 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
     assert all_native == existing | transactions | endpoint_cases | awg_cases | ech_cases | reality_cases
     groups = [existing, transactions, endpoint_cases, awg_cases, ech_cases, reality_cases]
     assert all(not left & right for index,left in enumerate(groups) for right in groups[index+1:])
-    assert reality_cases and len(reality_cases) == 3
+    assert reality_cases and len(reality_cases) == 4
     reality_workflow = yaml.safe_load((ROOT / ".github/workflows/reality-target-validation.yml").read_text())["jobs"]["reality-target-validation"]
     assert any(s.get("run") == "make test-reality-target-validation" for s in reality_workflow["steps"])
     assert transactions and len(transactions) == 6
