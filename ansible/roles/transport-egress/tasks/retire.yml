@@ -12,18 +12,29 @@
 - name: Retire only exact previously claimed generation units
   when: (_transport_egress_retire_owner.stdout | from_json).units | length > 0
   block:
+    - name: Inspect published units while retaining the complete retirement scope
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - '{{ lookup(''ansible.builtin.file'', role_path ~ ''/files/ownership.py'') }}'
+          - stop-units
+      register: _transport_egress_retire_stop_units
+      changed_when: false
+      check_mode: false
+      no_log: true
     - name: Stop and disable controller before gateways
       ansible.builtin.systemd_service:
         name: ripdpi-transport-generation.service
         state: stopped
         enabled: false
-      when: '''ripdpi-transport-generation.service'' in (_transport_egress_retire_owner.stdout | from_json).units'
+      when: '''ripdpi-transport-generation.service'' in (_transport_egress_retire_stop_units.stdout | from_json).units'
     - name: Stop remaining exact private mapping processes
       ansible.builtin.systemd_service:
         name: '{{ item }}'
         state: stopped
         enabled: false
-      loop: '{{ (_transport_egress_retire_owner.stdout | from_json).units }}'
+      loop: '{{ (_transport_egress_retire_stop_units.stdout | from_json).units }}'
       when: item != 'ripdpi-transport-generation.service'
     - name: Retire owned optional vendor namespace after mapping processes stop
       ansible.builtin.include_role:

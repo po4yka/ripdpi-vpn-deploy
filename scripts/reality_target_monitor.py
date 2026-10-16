@@ -81,12 +81,13 @@ def next_strike(previous_day: str | None, current_day: str, previous_count: int)
 def evaluate(args: argparse.Namespace) -> int:
     target = os.environ["TARGET"]
     server_names = os.environ["SERVER_NAMES"]
+    target += "\0" + os.environ.get("TARGET_MODE", "borrowed") + "\0" + os.environ.get("PUBLIC_ENDPOINT", "")
     fingerprint = hashlib.sha256((target + "\0" + server_names).encode()).hexdigest()
     reasons = read_reasons(args.reasons)
     observations = read_observations(args.observations)
     asns = sorted({row["asn"] for row in observations if row["asn"]})
     prefixes = sorted({row["prefix"] for row in observations if row["prefix"]})
-    blocked_reasons = {"tls_handshake_failed", "certificate_validation_failed", "h2_unavailable", "certificate_san_mismatch", "https_no_response"}
+    blocked_reasons = {"tls_handshake_failed", "certificate_validation_failed", "h2_unavailable", "certificate_san_mismatch", "https_no_response", "tls_failed", "http_failed", "http_status_failed", "client_failed"}
     verdict = "blocked" if any(reason in blocked_reasons for reason in reasons) else "unknown" if reasons else "ok"
     captured_at = args.captured_at or dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
     report = {

@@ -24,7 +24,7 @@ Operator runtime rollback (`make rollback-xray`) retargets only `xray.service`. 
 
 ## Impact
 
-- Ansible: `ansible/roles/transport-egress/tasks/stage.yml`, `ansible/roles/transport-egress/templates/gateway.service.j2`, `ansible/roles/runtime-release/files/transport_runtime_rollback.py`, `ansible/roles/runtime-release/files/transport_runtime_accept.py`.
+- Ansible: `ansible/roles/transport-egress/tasks/stage.yml`, `ansible/roles/transport-egress/templates/gateway.service.j2`, `ansible/roles/runtime-release/files/transport_runtime_rollback.py`, `ansible/roles/runtime-release/files/transport_runtime_accept.py`, `ansible/roles/runtime-release/files/transport_runtime_validate.py`.
 - Tests: portable ownership and candidate tests, native rollback lane.
 - Docs: `docs/RUNBOOK-rollback.md` (remove the interim limitation).
 - Scope: source implementation and native validation; live deployment is outside scope.

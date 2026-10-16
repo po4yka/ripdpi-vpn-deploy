@@ -231,3 +231,9 @@ def test_proven_reboot_preserves_dangling_volatile_root(leased, monkeypatch):
     assert namespace.parent.is_symlink() and directory.exists()
     assert (state/'validation.json').read_bytes() == before
     assert calls == []
+
+
+@pytest.mark.parametrize('binary', [None, '', 'relative/xray', '/opt/../xray', '/opt//xray'])
+def test_hysteria_gateway_executable_requires_selected_absolute_authority(binary):
+    with pytest.raises(Refusal, match='gateway-runtime-unavailable'):
+        validation.validate_hysteria('/owned/hysteria', b'', b'', b'', '', 10, 'probe', gateway_binary=binary)

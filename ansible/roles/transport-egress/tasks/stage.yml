@@ -68,6 +68,7 @@
           transport_egress_generation_units) | list }}'
         _transport_egress_forbidden: '{{ _transport_egress_policy_sets.stdout | from_json }}'
         _transport_egress_candidate_files: []
+        _transport_egress_gateway_candidates: []
       no_log: true
     - name: Render fixed private candidate files without remote publication
       ansible.builtin.set_fact:
@@ -107,13 +108,22 @@
         _transport_egress_candidate_files: |-
           {{ _transport_egress_candidate_files + [
             {'path': transport_egress_config_dir ~ '/' ~ item.key ~ '.json', 'mode': '0600',
-             'content': lookup('ansible.builtin.template', 'gateway.json.j2')},
+             'content': lookup('ansible.builtin.template', 'gateway.json.j2')}] }}
+        _transport_egress_gateway_candidates: |-
+          {{ _transport_egress_gateway_candidates + [
             {'path': '/etc/systemd/system/' ~ transport_egress_generation_units[item.key], 'mode': '0644',
              'content': lookup('ansible.builtin.template', 'gateway.service.j2')}] }}
       vars:
         _transport_egress_backend: '{{ item.value }}'
         _transport_egress_backend_name: '{{ item.key }}'
       loop: '{{ transport_egress_normalizer_config.backends | dict2items }}'
+      no_log: true
+    - name: Select gateway units for the sole runtime publisher
+      ansible.builtin.set_fact:
+        transport_runtime_candidates: >-
+          {{ (transport_runtime_candidates | default([])) + [
+             {'path': item.path, 'data': item.content | b64encode, 'gid': 0, 'mode': 420}] }}
+      loop: '{{ _transport_egress_gateway_candidates }}'
       no_log: true
     - name: Add exact shared helper source candidates
       ansible.builtin.set_fact:
@@ -147,7 +157,7 @@
       ansible.builtin.set_fact:
         _transport_egress_candidate_projection: '{{ _transport_egress_candidate_projection | combine({item.path:
           {''mode'': item.mode | int(base=8), ''gid'': 0, ''data'': item.content | b64encode}}) }}'
-      loop: '{{ _transport_egress_candidate_files }}'
+      loop: '{{ _transport_egress_candidate_files + _transport_egress_gateway_candidates }}'
       no_log: true
     - name: Compare desired files without changing the accepted route
       ansible.builtin.command:
@@ -198,6 +208,15 @@
             mode: '0600'
           loop: '{{ _transport_egress_candidate_files | selectattr(''path'', ''match'', ''^/etc/ripdpi/transport-egress/.*[.]json$'')
             | list }}'
+          no_log: true
+        - name: Stage release-bound gateway units for syntax validation only
+          ansible.builtin.copy:
+            content: '{{ item.content }}'
+            dest: '{{ _transport_egress_candidate_dir.path }}/{{ item.path | basename }}'
+            owner: root
+            group: root
+            mode: '0644'
+          loop: '{{ _transport_egress_gateway_candidates }}'
           no_log: true
         - name: Validate every native gateway candidate before quiescence
           ansible.builtin.command:
@@ -300,7 +319,7 @@
           ansible.builtin.command:
             argv: '{{ [''systemd-analyze'', ''verify'', ''/etc/systemd/system/ripdpi-transport-normalizer.service'',
               ''/etc/systemd/system/ripdpi-transport-generation.service''] + (_transport_egress_gateway_unit_list
-              | map(''regex_replace'', ''^'', ''/etc/systemd/system/'') | list) }}'
+              | map(''regex_replace'', ''^'', _transport_egress_candidate_dir.path ~ ''/'') | list) }}'
           changed_when: false
       rescue:
         - name: Restore accepted route if candidate publication began

@@ -111,13 +111,15 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
          '--ignore=tests/unit/test_awg_device_binding_native.py', '--ignore=tests/unit/test_hysteria_ech_native.py',
          '--ignore=tests/unit/test_topology_authenticated_probes_native.py',
          '--ignore=tests/unit/test_topology_awg_warm_native.py',
-         '--ignore=tests/unit/test_awg_dualstack_native.py', '--ignore=tests/unit/test_awg_activation_native.py'],
+         '--ignore=tests/unit/test_awg_dualstack_native.py', '--ignore=tests/unit/test_awg_activation_native.py',
+         '--ignore=tests/unit/test_validate_reality_target_native.py'],
         ['tests/unit/test_transport_runtime_acceptance_native.py'],
         ['tests/unit/test_xhttp_endpoint_contract_native.py'],
         ['tests/unit/test_awg_device_binding_native.py'],
         ['tests/unit/test_hysteria_ech_native.py'],
         ['tests/unit/test_topology_authenticated_probes_native.py', 'tests/unit/test_topology_awg_warm_native.py'],
         ['tests/unit/test_awg_dualstack_native.py', 'tests/unit/test_awg_activation_native.py'],
+        ['tests/unit/test_validate_reality_target_native.py'],
         *[['tests/unit/test_transport_runtime_acceptance_native.py', '--splits', '2', '--group', str(group),
            '--splitting-algorithm', 'duration_based_chunks'] for group in (1, 2)],
     ]
@@ -128,15 +130,18 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
         selected.append({line for line in result.stdout.splitlines()
                          if line.startswith('tests/unit/') and '::' in line})
     all_native, existing, transactions, endpoint_cases, awg_cases, ech_cases = selected[:6]
-    topology_cases, dualstack_cases, first, second = selected[6:]
+    topology_cases, dualstack_cases, reality_cases, first, second = selected[6:]
     assert transactions == first | second and not first & second
     workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]["transport-runtime-acceptance"]
     assert workflow["strategy"]["matrix"]["group"] == [1, 2]
     assert workflow["strategy"]["fail-fast"] is False
     assert any("--splits 2 --group $PYTEST_NATIVE_GROUP --splitting-algorithm duration_based_chunks" in s.get("run", "") for s in workflow["steps"])
-    assert all_native == existing | transactions | endpoint_cases | awg_cases | ech_cases | topology_cases | dualstack_cases
-    groups = [existing, transactions, endpoint_cases, awg_cases, ech_cases, topology_cases, dualstack_cases]
+    assert all_native == existing | transactions | endpoint_cases | awg_cases | ech_cases | topology_cases | dualstack_cases | reality_cases
+    groups = [existing, transactions, endpoint_cases, awg_cases, ech_cases, topology_cases, dualstack_cases, reality_cases]
     assert all(not left & right for index,left in enumerate(groups) for right in groups[index+1:])
+    assert reality_cases and len(reality_cases) == 5
+    reality_workflow = yaml.safe_load((ROOT / ".github/workflows/reality-target-validation.yml").read_text())["jobs"]["reality-target-validation"]
+    assert any("make test-reality-target-validation" in s.get("run", "") for s in reality_workflow["steps"])
     assert transactions and len(transactions) == 6
     assert ('tests/unit/test_transport_runtime_acceptance_native.py::'
             'test_native_ech_admission_retains_custom_configuration_directory') in transactions
