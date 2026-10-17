@@ -69,7 +69,8 @@ trap cleanup EXIT
 
 umask 077
 if [[ -z "$SECRETS_SOURCE" ]]; then
-  if ! VPN_RUNTIME_DIR="$WORK" SECRETS_FILE="$SECRETS_TMP" SOPS_FILE="$SOPS_FILE" ENV="$ENV" python3 "${REPO_ROOT}/scripts/reality_target_validation.py" bounded secrets "${REPO_ROOT}/scripts/decrypt-secrets.sh"; then
+  if ! python3 "${REPO_ROOT}/scripts/reality_target_validation.py" bounded secrets \
+      sops --decrypt --output-type json --output "$SECRETS_TMP" "$SOPS_FILE"; then
     emit_boot_error "sops_decrypt_failed"; exit 2
   fi
   OWN_SECRETS=1

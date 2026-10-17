@@ -52,8 +52,16 @@ def _monitor_environment(tmp_path: Path, ambient: dict[str, str]) -> dict[str, s
         bin_dir,
         "sops",
         '''printf '%s\\n' "$*" >> "$SOPS_LOG"
-if [ "${SOPS_FAIL:-0}" = 1 ]; then printf '{"partial":'; exit 1; fi
-cat "$SOPS_FIXTURE"''',
+output=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[ -n "$output" ] || exit 91
+if [ "${SOPS_FAIL:-0}" = 1 ]; then printf '{"partial":' > "$output"; exit 1; fi
+cat "$SOPS_FIXTURE" > "$output"''',
     )
     _make_stub(
         bin_dir,
@@ -83,7 +91,7 @@ printf '204'""",
     # test_validate_reality_target.py, independently of these categorical inputs.
     scripts = tmp_path / "repo" / "scripts"
     scripts.mkdir(parents=True)
-    for name in ("monitor-reality-target.sh", "reality-target-monitor-probe.sh", "reality_target_monitor.py", "bootstrap_readiness.py", "decrypt-secrets.sh"):
+    for name in ("monitor-reality-target.sh", "reality-target-monitor-probe.sh", "reality_target_monitor.py", "bootstrap_readiness.py"):
         shutil.copy2(REPO_ROOT / "scripts" / name, scripts / name)
     (scripts / "reality_target_validation.py").write_text("""
 import argparse, os, sys, subprocess
@@ -586,3 +594,38 @@ def test_monitor_cancellation_removes_decrypted_authority_and_children(monitor_e
         if process.poll() is None:
             process.kill()
         process.communicate(timeout=5)
+
+
+def test_real_sops_yaml_input_is_loaded_and_cleaned(monitor_env, tmp_path):
+    """Real input crypto; native TLS traffic is covered by its separate lane."""
+    import tempfile
+    import yaml
+
+    real_path = os.pathsep.join(monitor_env["PATH"].split(os.pathsep)[1:])
+    sops = shutil.which("sops", path=real_path)
+    keygen = shutil.which("age-keygen", path=real_path)
+    assert sops and keygen, "real SOPS and age are required"
+    with tempfile.TemporaryDirectory(prefix="synthetic-sops-", dir=tmp_path) as directory:
+        owned = Path(directory)
+        key, plain, cipher = owned / "identity.txt", owned / "input.yaml", owned / "input.sops.yaml"
+        plain.write_text(yaml.safe_dump(json.loads(Path(monitor_env["SOPS_FIXTURE"]).read_text())))
+        plain.chmod(0o600)
+        crypto_env = {"PATH": real_path, "HOME": monitor_env["HOME"], "SOPS_AGE_KEY_FILE": str(key)}
+        subprocess.run([keygen, "-o", str(key)], env=crypto_env, cwd=owned,
+                       capture_output=True, check=True, timeout=5)
+        recipient = subprocess.check_output([keygen, "-y", str(key)], env=crypto_env, cwd=owned,
+                                            text=True, timeout=5).strip()
+        encrypted = subprocess.run([sops, "--encrypt", "--age", recipient, str(plain)],
+                                   env=crypto_env, cwd=owned, capture_output=True, check=True, timeout=5)
+        cipher.write_bytes(encrypted.stdout)
+        stub = Path(monitor_env["PATH"].split(os.pathsep)[0]) / "sops"
+        stub.unlink()
+        stub.symlink_to(Path(sops).resolve())
+        environment = {name: value for name, value in monitor_env.items() if not name.startswith("SOPS_")}
+        environment.update(SOPS_FILE=str(cipher), SOPS_AGE_KEY_FILE=str(key))
+        result = _run(environment)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert _report(result)["verdict"] == "ok"
+        assert TARGET not in result.stdout + result.stderr
+        assert "private-alert-token" not in result.stdout + result.stderr
+        assert not list(Path(monitor_env["TMPDIR"]).iterdir())
