@@ -315,6 +315,9 @@
         - name: Commit the ready protected ingress and egress composition
           ansible.builtin.import_tasks: tasks/transport-ingress-commit.yml
       rescue:
+        - name: Resolve a durable commit decision before any compensation
+          ansible.builtin.include_tasks: tasks/transport-ingress-recover-commit.yml
+          when: transport_site_transaction_active | default(false) | bool
         - name: Quiesce candidate transport processes before ingress compensation
           ansible.builtin.include_role:
             name: transport-egress

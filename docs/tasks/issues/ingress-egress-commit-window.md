@@ -2,7 +2,7 @@
 id: ANS-1791996786767919
 title: Close the window between protected ingress commit and egress finish
 kind: bug
-status: backlog
+status: done
 area: ansible
 priority: medium
 risk: high
@@ -12,8 +12,12 @@ blocked_by: []
 spec_mode: required
 openspec_change: ans-1791996786767919-ingress-egress-commit-window
 created: 2026-10-14
-updated: 2026-10-14
+updated: 2026-10-16
 related_tasks: []
+status_detail: Full local gate, all native commit boundaries and exact-source protected CI passed.
+closed_at: "2026-10-16T17:26:18Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "Source 8f89764ab5c3bfc38224f948ef4b54c59cd16465: full gated make check passed; all 12 native transport cases including six SIGKILL boundaries passed; CI run 38930926508 and required-checks job 117092904845 succeeded; both CodeQL alerts fixed and review threads resolved."
 ---
 
 ## Goal

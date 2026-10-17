@@ -3,6 +3,7 @@ import importlib.util
 import base64
 import json
 import os
+import sys
 from pathlib import Path
 import signal
 import re
@@ -565,3 +566,89 @@ def test_native_ech_rotation_idempotence_and_complete_compensation():
         assert lab.converge('hysteria') == 0
         assert not key.exists()
         assert lab.converge('hysteria', retire=True) == 0
+
+
+@pytest.mark.parametrize('boundary', ['before-decision', 'after-decision', 'before-egress-finish',
+                                      'after-egress-finish', 'before-ingress-clear', 'after-ingress-clear'])
+def test_native_ingress_egress_commit_sigkill_recovers_one_accepted_generation(boundary):
+    """Real ingress journal plus canonical egress rollback/readiness and authenticated traffic."""
+    import yaml
+    from test_nginx_site_transaction import load, install_accepted, publish_candidate
+    with fixture.Lab() as lab:
+        from transport_runtime_outer import adapter
+        assert lab.converge('xray') == 0
+        accepted = Path('/var/lib/ripdpi/transport-runtime/accepted.json')
+        previous = json.loads(accepted.read_text())
+        tx = load()
+        tx.STATE_ROOT = lab.private / 'ingress-journal'
+        ingress = lab.private / 'ingress'
+        ingress.mkdir(mode=0o700)
+        context = {'check': False, 'owners': [
+            {'owner': owner, 'roots': [str(ingress)], 'paths': [str(ingress / (owner + '.conf'))],
+             'prune_releases': None} for owner in sorted(tx.SITE_OWNERS)]}
+        state = install_accepted(tx, context)
+        tx.site_transaction('begin', context)
+        lab.upgrade('xray')
+        assert lab.converge('xray', site=True, retain_commit=True) == 0
+        current = json.loads(accepted.read_text())
+        assert current != previous
+        candidate = publish_candidate(tx, context)
+        pid = os.fork()
+        if pid == 0:
+            def kill():
+                os.kill(os.getpid(), signal.SIGKILL)
+            persist, clear, command = tx.persist, tx.clear, tx.command
+            def marked(path, value):
+                if path.name == 'site.json' and value['phase'] == 'committing':
+                    if boundary == 'before-decision': kill()
+                    persist(path, value)
+                    if boundary == 'after-decision': kill()
+                else:
+                    persist(path, value)
+            def finish(argv):
+                if boundary == 'before-egress-finish': kill()
+                result = command(argv)
+                if boundary == 'after-egress-finish': kill()
+                return result
+            def removed(path):
+                if boundary == 'before-ingress-clear': kill()
+                clear(path)
+                if boundary == 'after-ingress-clear': kill()
+            tx.persist, tx.clear, tx.command = marked, removed, finish
+            try:
+                tx.site_transaction('commit', context, finish_egress=True)
+            finally:
+                # A forked worker must never unwind into the parent pytest runner.
+                failed = sys.exc_info()[0] is not None
+                if failed:
+                    import traceback
+                    traceback.print_exc()
+                os._exit(2 if failed else 1)
+        _, status = os.waitpid(pid, 0)
+        assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGKILL
+        result = tx.site_transaction('recover-commit', context)
+        if boundary == 'before-decision':
+            assert result['status'] == 'open'
+            recovery = lab.private / 'recover-commit.yml'
+            recovery.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local',
+                'gather_facts': True, 'vars': {**lab.context, '_transport_egress_transaction_started': True},
+                'tasks': [{'ansible.builtin.include_role': {'name': 'transport-egress', 'tasks_from': 'quiesce'}}]}]))
+            recovery.chmod(0o600)
+            env = {**os.environ, 'ANSIBLE_CONFIG': str(ROOT / 'ansible/ansible.cfg'),
+                   'ANSIBLE_ROLES_PATH': str(ROOT / 'ansible/roles'), 'ANSIBLE_STDOUT_CALLBACK': 'default'}
+            fixture.command(['ansible-playbook', '-i', 'localhost,', str(recovery)], env=env, timeout=180)
+            tx.site_transaction('restore', context)
+            play = yaml.safe_load(recovery.read_text())
+            play[0]['tasks'][0]['ansible.builtin.include_role']['tasks_from'] = 'rollback'
+            recovery.write_text(yaml.safe_dump(play))
+            fixture.command(['ansible-playbook', '-i', 'localhost,', str(recovery)], env=env, timeout=180)
+            assert json.loads(accepted.read_text()) == previous
+            assert candidate.read_bytes() == b'accepted'
+        else:
+            assert result['status'] == ('absent' if boundary == 'after-ingress-clear' else 'committed')
+            assert json.loads(accepted.read_text()) == current
+            assert candidate.read_bytes() == b'candidate'
+        assert not (state / 'site.json').exists()
+        assert not accepted.with_name('outer.json').exists()
+        # This executes actual authenticated frontend canary traffic after recovery.
+        adapter().ready()

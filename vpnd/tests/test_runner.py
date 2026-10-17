@@ -3,6 +3,7 @@ from dataclasses import replace
 import asyncio
 import os
 import json
+import traceback
 import pytest
 from vpnd.config import Context
 from vpnd.runner import Cmd, CapturePolicy
@@ -547,7 +548,7 @@ def test_owned_capture_reserves_exited_leader_until_pipe_cleanup(tmp_path):
     async def exercise():
         cmd = (
             Cmd.new("sh")
-            .args(["-c", 'sleep 60 & printf \'%s\\n\' "$$" "$!" > "$PIDS"; exit 0'])
+            .args(["-c", 'sleep 60 & printf \'%s\\n\' "$$" "$!" > "$PIDS.tmp"; mv "$PIDS.tmp" "$PIDS"; exit 0'])
             .env("PIDS", pids)
             .capture_policy(CapturePolicy.OWNED_PROCESS_GROUP)
         )
@@ -660,7 +661,9 @@ def test_more_than_32_owned_captures_start_simultaneously(tmp_path):
                 task.cancel()
             outcomes = await asyncio.gather(*tasks, return_exceptions=True)
             assert all(isinstance(outcome, asyncio.CancelledError) for outcome in outcomes), [
-                (index, type(outcome).__name__, repr(outcome))
+                (index, type(outcome).__name__,
+                 ''.join(traceback.format_exception(outcome))
+                 if isinstance(outcome, BaseException) else repr(outcome))
                 for index, outcome in enumerate(outcomes)
                 if not isinstance(outcome, asyncio.CancelledError)
             ]
