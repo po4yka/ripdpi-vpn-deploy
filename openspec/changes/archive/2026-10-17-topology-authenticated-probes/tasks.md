@@ -2,7 +2,7 @@
 
 ## Objective
 
-Deliver topology-aware authenticated transport health and secure smoke probes. All execution checkboxes remain open; this is planning, not implementation or deployment approval.
+Deliver topology-aware authenticated transport health and secure smoke probes. Implementation is authorized in the dedicated worktree. Complete steps only after their named behavior and checks pass; external host execution remains separately authorized.
 
 ## Ownership
 
@@ -28,10 +28,10 @@ Deliver topology-aware authenticated transport health and secure smoke probes. A
 
 ## Execution
 
-- [ ] MON-1791618060162436 Implement effective topology resolution across verify watchdog and secure smoke clients #feature !high @item:MON-1791618056169855
-- [ ] MON-1791618061120158 Deliver authenticated bounded checks and exact recovery targeting with private results #feature !high @item:MON-1791618056169855
-- [ ] MON-1791618061966295 Exercise warm runtime adoption real hopping and per-surface outage and credential failures #feature !high @item:MON-1791618056169855
-- [ ] MON-1791618062766877 Integrate truthful evidence and preserved lifecycle regressions then complete source gates #feature !high @item:MON-1791618056169855
+- [x] MON-1791618060162436 Implement effective topology resolution across verify watchdog and secure smoke clients #feature !high @item:MON-1791618056169855
+- [x] MON-1791618061120158 Deliver authenticated bounded checks and exact recovery targeting with private results #feature !high @item:MON-1791618056169855
+- [x] MON-1791618061966295 Exercise warm runtime adoption real hopping and per-surface outage and credential failures #feature !high @item:MON-1791618056169855
+- [x] MON-1791618062766877 Integrate truthful evidence and preserved lifecycle regressions then complete source gates #feature !high @item:MON-1791618056169855
 
 ## Verification
 

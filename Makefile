@@ -1164,6 +1164,14 @@ install-hooks:
 	pre-commit install
 	pre-commit install --hook-type commit-msg
 
+# Positive exact-client topology acceptance; never a portable/mock substitute.
+.PHONY: test-topology-authenticated-probes
+test-topology-authenticated-probes:
+	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 && test "$${TRANSPORT_NATIVE_ISOLATED:-}" = 1 || { echo "authenticated topology probes require an owned isolated Linux root/systemd/TUN environment" >&2; exit 1; }
+	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest \
+	  tests/unit/test_topology_authenticated_probes_native.py tests/unit/test_topology_awg_warm_native.py \
+	  tests/unit/test_awg_device_binding_native.py --fail-on-skip -v
+
 # Exact Caddy/forwardproxy composite; native tests never accept stock Caddy.
 native-naive-build:
 	./scripts/build-native-naive-test.sh
@@ -1234,6 +1242,8 @@ test-native-runtime:
 	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 || { echo "native runtime tests require a disposable Linux root environment" >&2; exit 1; }
 	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ -m native_runtime \
 	  --ignore=tests/unit/test_transport_runtime_acceptance_native.py \
+	  --ignore=tests/unit/test_topology_authenticated_probes_native.py \
+	  --ignore=tests/unit/test_topology_awg_warm_native.py \
 	  --ignore=tests/unit/test_xhttp_endpoint_contract_native.py \
 	  --ignore=tests/unit/test_awg_device_binding_native.py \
 	  --ignore=tests/unit/test_hysteria_ech_native.py \

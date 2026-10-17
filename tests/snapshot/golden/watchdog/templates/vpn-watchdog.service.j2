@@ -7,8 +7,13 @@ Wants=network-online.target
 Type=oneshot
 EnvironmentFile=/etc/vpn-watchdog.env
 LoadCredential=notifications.json:/etc/vpn-watchdog-notifications.json
+
+LoadCredential=hysteria.yaml:/etc/vpn-watchdog-hysteria.yaml
+
 ExecStart=/usr/local/sbin/vpn-watchdog.sh
-TimeoutStartSec=535s
+
+
+TimeoutStartSec=580s
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7

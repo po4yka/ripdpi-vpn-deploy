@@ -35,6 +35,10 @@
         client_flow: ""
         client_mux: true
         finalmask: false
+    nginx_xhttp: {server_name: canary.example.test, fallback_enabled: false}
+    nginx_xhttp_public_port: 8443
+    nginx_xhttp_port: 10085
+    nginx_xhttp_fallback_port: 2083
     hysteria_port: 443
     watchdog_secrets:
       ntfy_topic: "molecule-stub-topic"

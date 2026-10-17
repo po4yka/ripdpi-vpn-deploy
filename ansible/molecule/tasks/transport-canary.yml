@@ -85,6 +85,14 @@
     mode: '0644'
   register: _molecule_canary_ca
 
+- name: Trust the declared synthetic frontend certificate for authenticated watchdog clients
+  ansible.builtin.copy:
+    content: '{{ transport_native_hysteria_tls.cert_pem }}'
+    dest: /usr/local/share/ca-certificates/molecule-transport-frontend.crt
+    owner: root
+    group: root
+    mode: '0644'
+
 - name: Refresh the owned container trust store after canary publication
   ansible.builtin.command:
     argv: [update-ca-certificates]

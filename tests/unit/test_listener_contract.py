@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -688,7 +689,7 @@ def test_verify_listener_defaults_match_rendered_configuration(
 
 
 HOSTCLASS_TASKS = (
-    "Xray TCP listener active",
+    "Xray effective REALITY listeners active",
     "nginx-xhttp public TCP listener active",
     "nginx -t",
     "P1 public IPv4 hostname resolves through host NSS",
@@ -780,7 +781,14 @@ elif name not in ('nginx', 'python3', 'sing-box-snell', 'awg', 'nft'):
         "_awg_instances": [{"name": "awg0"}],
         "security_controls": {"ssh_strict": False},
     }
-    result = _run_verify_task_slice(tmp_path, tasks, variables)
+    # Exercise the canonical wait_for against a real owned listener. The shell
+    # inspection stubs above remain scoped to the other host-class tasks.
+    with socket.socket() as listener:
+        listener.bind(('127.0.0.1', 0))
+        listener.listen()
+        variables['xray_port'] = listener.getsockname()[1]
+        variables['xray'] = {'cohorts': []}
+        result = _run_verify_task_slice(tmp_path, tasks, variables)
     calls = (
         [json.loads(line) for line in trace.read_text().splitlines()]
         if trace.exists()
@@ -806,7 +814,6 @@ def test_verify_hostclass_enabled_transports_still_inspect_state(tmp_path):
     assert result.returncode == 0, output
     assert "skipping: [localhost]" not in output, output
     assert [call["name"] for call in calls] == [
-        "ss",
         "ss",
         "nginx",
         "getent",

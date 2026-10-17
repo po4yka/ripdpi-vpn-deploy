@@ -14,7 +14,9 @@
       "port": 31083,
       "protocol": "socks",
       "settings": {"auth": "noauth", "udp": false}
-    }
+    },
+    {"tag": "watchdog-xhttp-socks-0", "listen": "127.0.0.1", "port": 31084,
+     "protocol": "socks", "settings": {"auth": "noauth", "udp": false}}
   ],
   "outbounds": [
     {
@@ -66,7 +68,14 @@
           "shortId": "REPLACE_WITH_DEDICATED_WATCHDOG_8HEX"
         }
       }
-    }
+    },
+    {"tag": "watchdog-xhttp-0", "protocol": "vless",
+     "settings": {"vnext": [{"address": "198.51.100.10", "port": 8443,
+       "users": [{"id": "REPLACE_WITH_DEDICATED_WATCHDOG_UUID", "encryption": "none"}]}]},
+     "streamSettings": {"network": "xhttp", "security": "tls",
+       "tlsSettings": {"serverName": "vpn.example.com", "allowInsecure": false},
+       "xhttpSettings": {"host": "vpn.example.com",
+         "path": "/app-sync", "mode": "auto" }}}
   ],
   "routing": {
     "rules": [
@@ -79,7 +88,9 @@
         "type": "field",
         "inboundTag": ["watchdog-socks-1"],
         "outboundTag": "watchdog-reality-1"
-      }
+      },
+      {"type": "field", "inboundTag": ["watchdog-xhttp-socks-0"],
+       "outboundTag": "watchdog-xhttp-0"}
     ]
   }
 }
