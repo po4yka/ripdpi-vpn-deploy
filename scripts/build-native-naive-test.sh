@@ -19,7 +19,7 @@ export GOCACHE="$naive_test_build_dir/go-cache"
 export GOMAXPROCS=2
 export CGO_ENABLED=0
 export GOFLAGS='-mod=readonly -p=2'
-go install github.com/caddyserver/xcaddy/cmd/xcaddy@v0.4.5
-"$GOBIN/xcaddy" build v2.11.2 \
-  --with github.com/caddyserver/forwardproxy@caddy2=github.com/klzgrad/forwardproxy@d62c80d3dd2c706b6b87579844d2397bddd18317 \
+go install github.com/caddyserver/xcaddy/cmd/xcaddy@v0.4.7
+"$GOBIN/xcaddy" build v2.11.7 \
+  --with github.com/caddyserver/forwardproxy@caddy2=github.com/klzgrad/forwardproxy@c096d6a00cb28e019cc1995b04bdc6a9311d8024 \
   --output "$naive_test_build_dir/caddy"

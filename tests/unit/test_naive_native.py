@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import socket
 import ssl
+import struct
 import subprocess
 import sys
 import time
@@ -42,10 +43,10 @@ def test_exact_naive_composite_accepts_tcp_and_disables_http3(tmp_path):
         [str(binary), "build-info"], capture_output=True, text=True, timeout=5
     )
     assert info.returncode == 0
-    assert "v2.11.2" in info.stdout
+    assert "v2.11.7" in info.stdout
     assert (
         "github.com/klzgrad/forwardproxy" in info.stdout
-        and "d62c80d3dd2c" in info.stdout
+        and "c096d6a00cb2" in info.stdout
     )
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])
@@ -304,6 +305,87 @@ def test_exact_naive_composite_accepts_tcp_and_disables_http3(tmp_path):
 
         clients = list(values["naive_secrets"]["clients"])
         connect(clients[1], True)
+
+        # A refused upstream creates a real 5xx handler error. Its request has
+        # unique metadata so the test detects both message and structured leaks.
+        marker = "native-private-connect-marker"
+        with socket.socket() as refused_upstream:
+            refused_upstream.bind(("203.0.113.9", 0))
+            refused_target = f"203.0.113.9:{refused_upstream.getsockname()[1]}"
+            with context.wrap_socket(
+                socket.create_connection(("127.0.0.1", port), 3),
+                server_hostname="localhost",
+            ) as failed:
+                failed.settimeout(3)
+                failed.sendall(
+                    f"CONNECT {refused_target} HTTP/1.1\r\nHost: {refused_target}\r\nProxy-Authorization: Basic {auth}\r\nUser-Agent: {marker}\r\nConnection: close\r\n\r\n".encode()
+                )
+                response = failed.recv(4096)
+                status = int(response.split(b"\r\n", 1)[0].split()[1])
+                assert (
+                    500 <= status < 600
+                ), "fixture must execute the real CONNECT error path"
+
+        # Minimal standards-compliant HTTP/2 frames avoid a separate client
+        # dependency. Literal HPACK fields use no dynamic table or Huffman data.
+        def hpack_string(value):
+            value = value.encode()
+            assert len(value) < 127
+            return bytes([len(value)]) + value
+
+        def frame(kind, stream, payload):
+            return (
+                len(payload).to_bytes(3, "big")
+                + bytes([kind, 0])
+                + stream.to_bytes(4, "big")
+                + payload
+            )
+
+        h2_context = ssl.create_default_context(
+            cafile=str(tmp_path / "server.fullchain.pem")
+        )
+        h2_context.minimum_version = ssl.TLSVersion.TLSv1_2
+        h2_context.set_alpn_protocols(["h2"])
+        with h2_context.wrap_socket(
+            socket.create_connection(("127.0.0.1", port), 3),
+            server_hostname="localhost",
+        ) as reset:
+            reset.settimeout(3)
+            assert reset.selected_alpn_protocol() == "h2"
+            target = f"203.0.113.9:{upstream.getsockname()[1]}"
+            headers = b"".join(
+                b"\x00" + hpack_string(name) + hpack_string(value)
+                for name, value in (
+                    (":method", "CONNECT"),
+                    (":authority", target),
+                    ("proxy-authorization", "Basic " + auth),
+                    ("user-agent", marker),
+                )
+            )
+            # HEADERS with END_HEADERS, no END_STREAM: a CONNECT tunnel remains open.
+            reset.sendall(
+                b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+                + frame(4, 0, b"")
+                + len(headers).to_bytes(3, "big")
+                + b"\x01\x04"
+                + (1).to_bytes(4, "big")
+                + headers
+            )
+            with upstream.accept()[0] as accepted:
+                accepted.settimeout(3)
+                payload = b"authenticated-http2-before-reset"
+                reset.sendall(frame(0, 1, payload))
+                received = b""
+                while len(received) < len(payload):
+                    block = accepted.recv(len(payload) - len(received))
+                    assert block, "HTTP/2 tunnel closed before the reset fixture"
+                    received += block
+                assert received == payload
+                reset.sendall(frame(3, 1, struct.pack("!I", 8)))  # RST_STREAM CANCEL
+                assert (
+                    accepted.recv(1) == b""
+                ), "stream reset did not close the real upstream"
+        time.sleep(0.1)
         for remaining in ([clients[1]], []):
             values["naive_secrets"]["clients"] = remaining
             config.write_text(template.render(**values))
@@ -359,6 +441,21 @@ def test_exact_naive_composite_accepts_tcp_and_disables_http3(tmp_path):
         subprocess.run(
             ["ip", "netns", "delete", namespace], capture_output=True, timeout=5
         )
+    retained = "\n".join(
+        (tmp_path / name).read_text()
+        for name in ("access.log", "site-error.log")
+        if (tmp_path / name).exists()
+    )
+    for private in (
+        marker,
+        refused_target,
+        target,
+        "203.0.113.9",
+        '"request":',
+        '"remote_ip":',
+        "http.log.error",
+    ):
+        assert private not in retained, "CONNECT metadata reached a retained Naive log"
 
 
 def test_naive_unacknowledged_revocation_is_adopted_by_actual_unit():

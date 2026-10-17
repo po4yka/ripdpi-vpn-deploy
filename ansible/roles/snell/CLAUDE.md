@@ -6,7 +6,7 @@
 
 **One pinned binary, three server variants** — a single checksum-pinned sing-box release serves the v4-compatible stream and the v6 default/unshaped variants on separate TCP listeners. The shared `runtime-release` role owns extraction, receipts, and compensated current/public/previous link publication. Separate listeners keep evaluation attribution explicit without multiplying daemons.
 
-**No automatic selection** — emitted Snell outbounds live in a nested `snell-evaluation` selector and never enter the primary `auto` urltest. Promotion requires a separate tier/policy change after field evidence and a stable upstream release.
+**No automatic selection** — emitted Snell outbounds live in a nested `snell-evaluation` selector and never enter the primary `auto` urltest. Promotion requires a separate tier/policy change after field evidence and a stable upstream protocol release.
 
 ## What's done well
 
@@ -17,7 +17,13 @@
 
 ## Pitfalls
 
-- The pinned `1.14.0-alpha` line is forbidden in `prod`; the role fails before download when a prerelease is selected there.
+- The pinned sing-box engine is stable `1.14.3`. Snell v6 remains a research
+  protocol; engine stability does not authorize production or promotion. The role
+  rejects `prod` before download for stable and prerelease engine pins.
+- Molecule uses a synthetic binary only for lifecycle checks. Required native
+  tests use the checksum-verified release with all three variants, wrong userkeys
+  and observed fresh/reused transport connections. Synthetic service health does
+  not prove protocol compatibility.
 - Server version 5 pairs with client version 4 because sing-box does not expose a separate v5 client wire format.
 - v6 traffic shaping is key-dependent. Do not generalize from one PSK; rotate across the documented evaluation sequence.
 

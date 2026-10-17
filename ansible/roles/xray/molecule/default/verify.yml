@@ -45,7 +45,7 @@
             ] as $inbounds
             | ($inbounds | length == 2)
               and ([$inbounds[].settings.clients[] | has("flow")] | all(. == false))
-              and ([$inbounds[].streamSettings.sockopt.finalmask] | all(. == "Sudoku"))
+              and ([$inbounds[].streamSettings.finalmask] | all(. == {"tcp":[{"type":"sudoku","settings":{}}]}))
           ' /etc/xray/config.json
       changed_when: false
 

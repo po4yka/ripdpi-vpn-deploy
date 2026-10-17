@@ -249,7 +249,7 @@ def _semantic_errors(
 
     xray = doc.get("xray") or {}
     xray_clients = xray.get("clients") or []
-    for key in ("name", "uuid", "short_id"):
+    for key in ("name", "uuid"):
         if _duplicate_values(xray_clients, key):
             errors.append(("xray.clients", f"duplicate {key}"))
     errors.extend(transport_errors(doc, allow_placeholders=allow_placeholders))

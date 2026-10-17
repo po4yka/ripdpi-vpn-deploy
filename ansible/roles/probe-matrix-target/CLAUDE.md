@@ -2,6 +2,23 @@
 
 ## Design decisions
 
+FakeTLS admission runs on the controller before any target mutation. It accepts
+hex or unpadded URL-safe base64 with an ee prefix, nonzero sixteen-byte key and
+valid ASCII hostname. It reports field categories only. The official mtg tar.gz
+uses one versioned architecture directory; the shared installer selects its mtg
+member and strips exactly one component. Correct archive extraction uses the
+local release and receipt identity `<mtg_version>+archive.1`; the upstream version
+and member names keep `<mtg_version>`. This separates the corrected executable
+from a legacy same-version receipt that may own raw tarball bytes. Legacy bytes
+and receipts remain immutable; a successful migration retains their release as
+the previous pointer. Stage-only acquisition preserves the
+accepted runtime links until the candidate version and native configuration
+parser pass. Native validation also runs when configuration bytes are unchanged,
+so a binary-only migration cannot skip version and parser admission. The
+validator uses explicit loopback access addresses, discards
+credential-bearing output and does not start the proxy or contact Telegram.
+An invalid candidate retains the old mtg configuration and runtime authority.
+
 Disabled role intent stops only declared owned services and removes exact runtime
 configuration; shared packages, immutable release receipts and unrelated state
 remain. The unique `probe_matrix_target_role_enabled` selector defaults true for direct calls.

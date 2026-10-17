@@ -1,9 +1,9 @@
 ---
-- name: Pre-flight — prerelease Snell builds are staging-only
+- name: Pre-flight — Snell research builds are staging-only
   ansible.builtin.assert:
     that:
-      - not ((snell.version is search('-(alpha|beta|rc)')) and ((env | default(lookup('env', 'ENV'), true)) == 'prod'))
-    fail_msg: "Snell prerelease {{ snell.version }} is staging-only; refusing ENV=prod."
+      - (env | default(lookup('env', 'ENV'), true)) != 'prod'
+    fail_msg: "Snell research transport is staging-only; refusing ENV=prod."
 
 - name: Pre-flight — Snell secrets and variants are complete
   ansible.builtin.assert:

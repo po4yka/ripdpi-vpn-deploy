@@ -1172,6 +1172,11 @@ install-hooks:
 native-naive-build:
 	./scripts/build-native-naive-test.sh
 
+# Real mtg release extraction and FakeTLS parser checks; no Telegram traffic.
+.PHONY: test-mtg-native-compatibility
+test-mtg-native-compatibility:
+	python3 tests/native/mtg_compatibility.py
+
 # Exact source-pinned AWG and checksum-pinned Hysteria parser fixtures.
 .PHONY: native-transport-semantics-build
 native-transport-semantics-build:

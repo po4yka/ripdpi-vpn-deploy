@@ -14,6 +14,11 @@
 
 ## Design decisions
 
+Protocol compatibility checks use pinned real engines and synthetic local
+credentials. P0, Snell and Naive failure paths prove authentication and privacy;
+mtg release/parser checks make no Telegram requests. An inert service fixture
+proves lifecycle behavior only, never protocol parsing or authenticated traffic.
+
 REALITY monitor cancellation tests wait until synthetic decryption has completed, assert that the shell work path is inside the supervisor-owned parent, and then deliver each supported termination signal. Genuine SOPS/age coverage encrypts YAML with a fresh synthetic authority and requires successful monitor admission and cleanup. CLI diagnostics remain on stderr while stdout remains JSON-only. Aggregate-deadline coverage admits the intended descendant before expiry and retains one bounded clock across setup and cleanup.
 
 Runtime acceptance requires the production log-parent trust contract: root ownership and no group/other write permission. Tighten an owned disposable image before tests; never relax the descriptor-based provisioner or rewrite its failure as a successful activation.

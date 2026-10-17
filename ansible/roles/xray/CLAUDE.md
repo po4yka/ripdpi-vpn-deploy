@@ -2,6 +2,13 @@
 
 ## Design decisions
 
+P0 recipient delivery refuses the mux shape. Xray Mux.Cool and sing-mux are
+different wire protocols; an empty VLESS flow does not make them compatible.
+Native Xray smoke and watchdog clients retain Mux.Cool. The opt-in Sudoku
+shape uses typed `streamSettings.finalmask.tcp` with the pinned default settings
+on both ends. It changes traffic appearance only; VLESS and REALITY still own
+authentication. Never put Finalmask under `sockopt`, where Xray ignores it.
+
 XHTTP server mode shares admission with recipient emission. Optional typed
 bounded-pool tuning is qualified for v26.3.27 native Xray outbounds only; XMUX
 pool controls belong to the client and are never copied into the server inbound.

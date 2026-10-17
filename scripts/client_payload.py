@@ -201,13 +201,13 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
                 shape = shapes[member.get('flow_mode', flow)]
                 if member.get('finalmask', finalmask):
                     raise ValueError('P0 REALITY finalmask requires an Xray client')
+                if shape['client_mux']:
+                    raise ValueError('P0 REALITY Mux.Cool requires an Xray client; sing-mux is incompatible')
                 reality = dict(type='vless', tag='p0-reality-' + tag + ('-' + member['name'] if member['name'] else ''), server=ip,
                                server_port=member['port'], uuid=credential['uuid'],
                                tls=dict(enabled=True, server_name=server_names[0], utls=dict(enabled=True, fingerprint=fp),
                                         reality=dict(enabled=True, public_key=reality_key, short_id=credential['short_id'])))
-                if shape['client_mux']:
-                    reality['multiplex'] = dict(enabled=True, protocol='smux', max_streams=8)
-                elif shape['client_flow']:
+                if shape['client_flow']:
                     reality['flow'] = shape['client_flow']
                 out.append(reality)
         if o['format'] in ('ripdpi', 'xray') and enabled('enable_nginx_xhttp', True):
@@ -349,7 +349,7 @@ def main():
         print(json.dumps(payload, indent=2))
         return 0
     except (OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError, StopIteration, subprocess.SubprocessError, yaml.YAMLError) as error:
-        safe = {'--xhttp-only requires --profile-format ripdpi', 'ECH requires the verified official sing-box engine; RIPDPI export is unsupported', 'BBR resource profiles require the verified official sing-box engine; RIPDPI export is unsupported', 'P0 REALITY finalmask requires an Xray client', 'conflicting vpn.hysteria_realm values across HOSTS', 'ambiguous-device-binding', 'missing-device-binding', 'plaintext secrets cannot be combined with SOPS_FILES', 'missing-snell-variant'}
+        safe = {'--xhttp-only requires --profile-format ripdpi', 'ECH requires the verified official sing-box engine; RIPDPI export is unsupported', 'BBR resource profiles require the verified official sing-box engine; RIPDPI export is unsupported', 'P0 REALITY finalmask requires an Xray client', 'P0 REALITY Mux.Cool requires an Xray client; sing-mux is incompatible', 'conflicting vpn.hysteria_realm values across HOSTS', 'ambiguous-device-binding', 'missing-device-binding', 'plaintext secrets cannot be combined with SOPS_FILES', 'missing-snell-variant'}
         detail = str(error) if isinstance(error, ValueError) and str(error) in safe else ('plaintext secrets unavailable' if 'VPN_SECRETS_FILE' in os.environ else 'materialization refused')
         print('client-payload: ' + detail, file=__import__('sys').stderr)
         return 2

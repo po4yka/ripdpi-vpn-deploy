@@ -92,9 +92,9 @@
     - name: Require exact reviewed Caddy and forwardproxy pins
       ansible.builtin.assert:
         that:
-          - "'v2.11.2' in _naive_fixture_info.stdout"
+          - "'v2.11.7' in _naive_fixture_info.stdout"
           - "'github.com/klzgrad/forwardproxy' in _naive_fixture_info.stdout"
-          - "'d62c80d3dd2c' in _naive_fixture_info.stdout"
+          - "'c096d6a00cb2' in _naive_fixture_info.stdout"
 
     - name: Inspect pinned composite digest
       ansible.builtin.stat:

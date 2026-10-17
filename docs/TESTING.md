@@ -63,7 +63,7 @@ matrix records coverage and commands rather than manually maintained totals.
 | **Ansible role: warp-outbound** | ansible-lint | render check | **molecule** (default sequence: dependency, syntax, create, prepare, converge, idempotence, verify, destroy) | stateful command fixtures execute actual-role connection/trace failures, warp=off refusal, unchanged idempotence and successful reconvergence; real registration, tunnel egress, and filtered-path reachability remain live checks. |
 | **Ansible role: dns-morph-bridge** | ansible-lint | render check | **molecule** (converge + idempotence + verify) | binary install skipped when `binary_url` is a placeholder; verify play checks service unit presence and signing-key file perms. |
 | **Ansible role: hysteria-realm** | ansible-lint | render check | **molecule** (converge + idempotence + verify) | sing-box tarball fetch gated on non-placeholder sha256; verify play checks realm-service unit + auth-token file perms. |
-| **Ansible role: snell** | ansible-lint | render check + snapshots | **molecule** (converge + idempotence + verify) | RESEARCH-tier staging candidate; verifies the v5/v6 inbound matrix, secure config, pinned binary layout, and service health. |
+| **Ansible role: snell** | ansible-lint | render check + snapshots | **molecule** (converge + idempotence + verify) | RESEARCH-tier staging candidate. Molecule uses an inert executable for lifecycle, permissions and release layout only. Required native-runtime checks use the real pinned engine for all three variants, authentication refusal and connection reuse (`tests/unit/test_snell_native.py`). |
 | **Ansible role: split-hop-egress** | ansible-lint | render check | **molecule** (converge + idempotence + verify) | WireGuard peer config rendered from placeholder keys; verify play checks wg-quick unit and key file perms on Node B. |
 | **Ansible role: split-hop-ingress** | ansible-lint | render check | **molecule** (converge + idempotence + verify) | Verifies Node A has no peer endpoint/keepalive and policy routing marks only new original-direction probe runtime flows. |
 | **Ansible role: cascade-ingress** | ansible-lint + structural guard tests | render check + classifier/probe socket-process fixtures | **required paired molecule** (`populated` + `forced-empty`) | EXCEPTION-tier and absent from family profiles. Tests cover the RU/foreign interface-selection mapping, authenticated SOCKS boundary, IP-only handoff, startup/runtime dataset loss, DNS/WARP bypass prevention, authenticated leg/control health transitions, and redacted evidence. Molecule proves the adapter/probe units remain literally disabled; forced-empty must block before any unit, proxy secret, tunnel configuration, or serving state and is required independently from the happy path. |
@@ -721,3 +721,13 @@ acceptance claim.
 Use installed SOPS and age binaries on `PATH` for source checks. Crypto fixtures
 replace `HOME`, so tool shims that read their activation configuration there
 may refuse before encryption.
+
+### Protocol audit compatibility
+
+The required native runtime job runs `make test-mtg-native-compatibility` with
+the official checksum-pinned archive, the native FakeTLS parser and rejected
+publication checks. It makes no Telegram requests. Real P0 recipient and
+Finalmask traffic runs in `tests/unit/test_p0_client_compatibility_native.py`.
+Naive native checks cover authenticated CONNECT and failed/reset request-log
+privacy. These checks use synthetic local identities and do not prove deployed
+versions, production reachability or physical-client behavior.

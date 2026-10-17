@@ -67,9 +67,8 @@ point operators at the minimum versions.
 NaiveProxy v147.0.7727.49-3 (released 2026-05) and the follow-on
 v148.0.7778.96-2 (2026-05-02) inject realistic Chrome HTTP/2 preambles
 derived from the fronting Caddy site's root page. The server-side
-`naive` role's native Caddy JSON configuration already ships the compression headers a real
-Chrome browser would trigger (`encode zstd gzip`, ERROR-only access
-log) so the preambles look organic.
+`naive` role's native Caddy JSON configuration enables zstd and gzip compression
+for the fronting site. Use suitable root-page content for the selected cover.
 
 The feature is on by default in v147+. Clients without this feature lack
 the preamble cover. The preamble change alone does not establish either
@@ -77,6 +76,13 @@ compatibility or incompatibility with the pinned Caddy/forwardproxy build.
 Qualify the exact client and server build in staging with authenticated
 traffic before distribution; retain TLS verification and the previous
 working client/server pair for rollback.
+
+Use the current reviewed client release to track Chromium signatures. The server
+disables access logging and excludes `http.log.access` and `http.log.error`
+because failed CONNECT requests can contain activity metadata. An ERROR-only
+access logger also contains request metadata for 5xx responses. The role pins
+Caddy 2.11.7 and the reviewed forwardproxy commit. Native acceptance covers
+authenticated traffic, failed CONNECT and stream reset.
 
 ## VLESS desktop client VPS-IP exposure (2026)
 
