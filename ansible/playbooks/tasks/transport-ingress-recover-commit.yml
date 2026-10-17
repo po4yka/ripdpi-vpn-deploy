@@ -1,0 +1,23 @@
+---
+- name: Complete a recorded protected commit without capturing a new generation
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - '{{ lookup("ansible.builtin.file", playbook_dir ~ "/../roles/nginx-xhttp/files/nginx_transaction.py") }}'
+      - --site
+      - recover-commit
+    stdin: '{{ _transport_ingress_request | to_json }}'
+  register: _transport_ingress_commit_recovery
+  changed_when: false
+  no_log: true
+  diff: false
+
+- name: Release compensation ownership only after completing a recorded commit
+  ansible.builtin.set_fact:
+    transport_site_transaction_active: false
+    _transport_egress_transaction_started: false
+    _transport_ingress_interrupted:
+      stat:
+        exists: false
+  when: (_transport_ingress_commit_recovery.stdout | from_json).status in ['committed', 'absent']

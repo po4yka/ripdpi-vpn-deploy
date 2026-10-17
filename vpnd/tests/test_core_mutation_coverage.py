@@ -321,6 +321,55 @@ def test_closed_capture_pipes_do_not_block_live_leader_cancellation(tmp_path, mo
             worker.join(timeout=3)
 
 
+def test_cancellation_signals_once_when_reaping_exceeds_a_wait_slice(monkeypatch):
+    children, signals = [], []
+    stopped = threading.Event()
+    original_spawn = process.subprocess.Popen
+    original_killpg = os.killpg
+
+    def observe_spawn(*args, **kwargs):
+        child = original_spawn(*args, **kwargs)
+        children.append(child)
+        wait = child.wait
+        first_wait = True
+
+        def delayed_wait(*args, **kwargs):
+            nonlocal first_wait
+            if first_wait:
+                first_wait = False
+                time.sleep(0.02)
+                raise subprocess.TimeoutExpired(child.args, kwargs.get("timeout", 0))
+            return wait(*args, **kwargs)
+
+        monkeypatch.setattr(child, "wait", delayed_wait)
+        stopped.set()
+        return child
+
+    def signal_group(pid, sig):
+        assert pid == children[0].pid and sig == signal.SIGKILL
+        signals.append(pid)
+        if len(signals) > 1:
+            # Darwin rejects signaling a group containing only an unreaped zombie.
+            raise PermissionError(1, "Operation not permitted")
+        original_killpg(pid, sig)
+
+    monkeypatch.setattr(process.subprocess, "Popen", observe_spawn)
+    monkeypatch.setattr(process.os, "killpg", signal_group)
+    command = Cmd.new(sys.executable).args(["-c", "import time; time.sleep(60)"])
+    command.capture_policy(CapturePolicy.OWNED_PROCESS_GROUP)
+    try:
+        assert command._worker(stopped, True, True) == (-signal.SIGKILL, b"", b"")
+        assert len(signals) == 1
+        assert children[0].returncode == -signal.SIGKILL
+        assert children[0].stdout.closed and children[0].stderr.closed
+    finally:
+        for child in children:
+            child.kill()
+            child.wait(timeout=3)
+            child.stdout.close()
+            child.stderr.close()
+
+
 def test_foreground_capture_setup_failure_kills_only_its_direct_child(monkeypatch):
     children = []
     groups = []

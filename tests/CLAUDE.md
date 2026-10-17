@@ -14,6 +14,10 @@
 
 ## Design decisions
 
+AWG constrained-path failures retain the bounded client exception, traffic phase and IPv6 UDP error counters alongside route and peer evidence. Probe diagnostics contain only owned synthetic traffic metadata, never AWG credentials.
+
+Ingress/egress commit tests kill a separate process before and after the durable decision, native outer finish and ingress journal deletion. Portable tests model only the egress adapter; the native lane retains a real accepted outer route and proves authenticated canary traffic after roll-forward or whole-route rollback. Ansible composition also covers a lost acknowledgement after journal deletion so rescue cannot revert committed egress. Native acceptance uses the least-duration split so new boundary cases mix with existing lifecycle cases instead of accumulating in one contiguous partition.
+
 Authenticated watchdog XHTTP cases retain primary/fallback delivery and refusal boundaries in both auto and tuned stream-up mode.
 
 The complete XHTTP delivery matrix extends the endpoint target with real native
@@ -22,6 +26,8 @@ wrong-certificate refusal, bounded-pool comparisons, idle reuse,
 process reconnect, namespace-only netem and baseline restoration. Aggregate
 measurements contain bytes, timings, RSS and socket counts only. Local fixture
 processes do not establish physical-client or production acceptance.
+
+Native lab retirement clears failure state only for its claimed stopped unit names after removing their files, then requires systemd to report each as absent and inactive. A failed removed unit can otherwise remain cached with a load error and poison the next lab's initial admission.
 
 Subprocess ownership regressions require a retained session leader at the group signal boundary, and real quiet descendants must stop after successful exit, timeout, owner loss or a broken status report. A denied group signal fails once, while the private control channel still reclaims the supervisor. Fallback kill and wait failures retain categorical diagnostics.
 

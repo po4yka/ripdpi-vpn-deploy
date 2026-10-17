@@ -1,26 +1,16 @@
 ---
-- name: Discard private ingress compensation only after guarded route readiness
+- name: Commit ready ingress and egress under one durable ingress decision
   ansible.builtin.command:
-    argv:
-      - python3
-      - -c
-      - '{{ lookup("ansible.builtin.file", playbook_dir ~ "/../roles/nginx-xhttp/files/nginx_transaction.py") }}'
-      - --site
-      - commit
+    argv: >-
+      {{ ['python3', '-c', lookup('ansible.builtin.file',
+          playbook_dir ~ '/../roles/nginx-xhttp/files/nginx_transaction.py'), '--site', 'commit']
+         + (['--finish-egress'] if ((transport_egress_role_enabled | default(false) | bool)
+             or (_transport_egress_full_retirement | default(false) | bool)) else []) }}
     stdin: '{{ _transport_ingress_request | to_json }}'
   changed_when: false
   no_log: true
   diff: false
   when: transport_site_transaction_active | default(false) | bool
-
-- name: Commit the complete native consumer recovery boundary
-  ansible.builtin.command:
-    argv: [/usr/bin/python3, -Es, /usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py, finish]
-  changed_when: false
-  no_log: true
-  when:
-    - not ansible_check_mode
-    - (transport_egress_role_enabled | default(false) | bool) or (_transport_egress_full_retirement | default(false) | bool)
 
 - name: Close the complete protected site transaction
   ansible.builtin.set_fact:

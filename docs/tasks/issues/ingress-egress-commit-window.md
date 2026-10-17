@@ -2,7 +2,7 @@
 id: ANS-1791996786767919
 title: Close the window between protected ingress commit and egress finish
 kind: bug
-status: backlog
+status: doing
 area: ansible
 priority: medium
 risk: high
@@ -12,8 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: ans-1791996786767919-ingress-egress-commit-window
 created: 2026-10-14
-updated: 2026-10-14
+updated: 2026-10-16
 related_tasks: []
+status_detail: Fix native fixture retirement so boundary acceptance is independent of earlier failure cases.
 ---
 
 ## Goal

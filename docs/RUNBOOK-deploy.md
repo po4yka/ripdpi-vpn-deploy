@@ -244,10 +244,12 @@ or `.fleet.mk` selects tags; preserve it on both commands.
 One exception to "do not run the deploy block after a failed preflight": when
 `make dry-run` stops with `interrupted-protected-ingress-transaction` or
 `interrupted-nginx-publication`, the node still holds a recovery journal, and
-dry-run refuses and changes nothing until a deploy compensates it. The first
+dry-run refuses and changes nothing until a deploy recovers it. The first
 category means a previous deploy was killed (Ctrl-C, lost SSH or the
-controller timeout) after protected ingress capture and before commit, leaving
-the open site journal. The second means an ordinary nginx publication was
+controller timeout) after protected ingress capture and before commit completion, leaving
+the site journal. A durable `committing` phase means readiness already selected
+the new generation: recovery finishes its egress commit and retains that ingress.
+The second means an ordinary nginx publication was
 interrupted and only its pending journal remains. Before recovering, review
 every change the refused dry-run reported before the refusal (baseline,
 package updates, firewall, intrusion prevention, geodata, tailnet management),
@@ -279,11 +281,17 @@ make deploy ANSIBLE_LIMIT='<exact-alias>' ANSIBLE_TAGS=
 The explicit empty `ANSIBLE_TAGS=` is required: an operator `.fleet.mk` may
 select tags that skip the protected block, and the recovery lives in that
 block. This is a mutating run: the ordinary pre-block roles run first. For
-`interrupted-protected-ingress-transaction` the protected block then restores
+`interrupted-protected-ingress-transaction`, an undecided journal makes the
+protected block restore
 the accepted ingress; when the egress outer route is open it first quiesces
 candidate transports and afterwards rolls the egress generation back. That run
 ends non-zero with `interrupted-protected-ingress-transaction` followed by the
-protected-staging failure message, which is the expected recovery result. For
+protected-staging failure message, which is the expected recovery result. A
+`committing` journal instead completes the retained decision before new staging
+and then continues the full graph. A failed commit recovery retains the journal
+and stops before compensation; restore the admitted helper set or diagnose the
+reported authority refusal before retrying. Resolve a committing journal with
+this helper before reverting source to an older helper that cannot read it. For
 `interrupted-nginx-publication` the deploy recovers the recognized pending
 journal under the nginx unit lock before capturing ingress and then converges
 the complete graph: protected staging, activation and commit and every later

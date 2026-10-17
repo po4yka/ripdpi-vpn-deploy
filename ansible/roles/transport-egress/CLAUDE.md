@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Protected site commit finishes `outer.json` through the ingress decision owner, retaining `site.json` until finish succeeds. Interrupted begin and rescue resolve a recorded commit before route status/adoption or quiescence. Do not independently roll back egress while that ingress decision remains committing.
+
 Gateway units bind an immutable Xray release and have one publisher: the shared runtime transaction. Stage retains separate gateway candidates, validates their unit syntax privately and includes them in change prediction; only configuration, helpers and controller/normalizer units use egress publication. The generation reader exposes the validated `gateway_units` selection for runtime rollback without a second topology list. Egress keeps lifecycle and whole-route compensation ownership.
 
 Quiescence and retirement query each exact claimed unit before stopping it. A claim may precede gateway publication or survive first-install compensation; only systemd's complete not-found/inactive/zero-PID state permits omission. Loaded or running units still require shutdown, and failed or malformed introspection refuses restoration. Retirement retains the complete ownership scope for listener removal even when every claimed unit is absent.

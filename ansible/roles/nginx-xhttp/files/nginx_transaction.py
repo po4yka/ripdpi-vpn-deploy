@@ -889,7 +889,9 @@ def read_site(state):
         return None
     if (not isinstance(journal, dict) or set(journal) != {
             "schema", "requests", "files", "receipts", "allowed", "allowed_receipts", "service", "phase"}
-            or type(journal["schema"]) is not int or journal["schema"] != 1 or journal["phase"] not in {"open", "restoring"}
+            | ({"finish_egress"} if journal.get("phase") == "committing" else set())
+            or type(journal["schema"]) is not int or journal["schema"] != 1 or journal["phase"] not in {"open", "restoring", "committing"}
+            or (journal["phase"] == "committing" and type(journal["finish_egress"]) is not bool)
             or not isinstance(journal["requests"], list) or len(journal["requests"]) != 2
             or {value.get("owner") for value in journal["requests"]} != SITE_OWNERS):
         raise TransactionError("unsafe-site-journal")
@@ -1001,7 +1003,7 @@ def site_authorize(state, document, expected_receipt):
     persist(state / "site.json", journal)
 
 
-def site_transaction(action, document):
+def site_transaction(action, document, *, finish_egress=False):
     requests = site_request(document)
     state = STATE_ROOT / "nginx.service"
     if document["check"]:
@@ -1065,9 +1067,13 @@ def site_transaction(action, document):
         journal = read_site(state)
         if journal is None:
             return {"status": "absent", "changed": False}
+        if action == "recover-commit" and journal["phase"] != "committing":
+            return {"status": "open", "changed": False}
+        if journal["phase"] == "committing" and action not in {"commit", "recover-commit"}:
+            raise TransactionError("commit-recovery-required")
         pending = private_json(state / "pending.json")
         if pending is not None:
-            if action == "commit":
+            if action in {"commit", "recover-commit"}:
                 raise TransactionError("recovery-required")
             staged, _ = request(pending["request"])
             authorized = next((value for value in journal["requests"]
@@ -1080,12 +1086,26 @@ def site_transaction(action, document):
                 raise TransactionError("site-write-set")
             recover(state / "pending.json", "nginx.service")
         verify_site(state, journal)
-        if action == "commit":
+        if action in {"commit", "recover-commit"}:
+            if journal["phase"] == "restoring":
+                raise TransactionError("recovery-required")
             for owner in SITE_OWNERS:
                 current = private_json(state / (owner + ".activated.json"))
                 if current is not None:
                     validate_receipt(current, owner, "nginx.service")
                     verify_witnesses(current["files"])
+            if journal["phase"] != "committing":
+                # Freeze the readiness-accepted ingress authority before closing
+                # the other journal. A retry may only roll this decision forward.
+                journal["allowed"] = {path: [witness(capture(Path(path)))] for path in journal["allowed"]}
+                journal["allowed_receipts"] = {
+                    owner: [capture(state / (owner + ".activated.json"))] for owner in SITE_OWNERS}
+                journal["phase"] = "committing"
+                journal["finish_egress"] = finish_egress
+                persist(state / "site.json", journal)
+            if journal["finish_egress"]:
+                command(["/usr/bin/python3", "-Es",
+                         "/usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py", "finish"])
             clear(state / "site.json")
             return {"status": "committed", "changed": False}
         journal["phase"] = "restoring"
@@ -1615,7 +1635,8 @@ def publish(document):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--validate")
-    parser.add_argument("--site", choices=("begin", "restore", "commit"))
+    parser.add_argument("--site", choices=("begin", "restore", "commit", "recover-commit"))
+    parser.add_argument("--finish-egress", action="store_true")
     args = parser.parse_args()
     try:
         if args.validate:
@@ -1625,7 +1646,7 @@ def main():
         if len(data) > LIMIT:
             raise TransactionError("request-size")
         document = json.loads(data)
-        print(json.dumps(site_transaction(args.site, document) if args.site else publish(document)))
+        print(json.dumps(site_transaction(args.site, document, finish_egress=args.finish_egress) if args.site else publish(document)))
     except (TransactionError, OSError, ValueError, KeyError, TypeError):
         print("nginx publication failed", file=sys.stderr)
         return 1
