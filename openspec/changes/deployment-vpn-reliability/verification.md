@@ -1,13 +1,13 @@
 ---
 task_id: OPS-1792263187492070
 change: deployment-vpn-reliability
-commit_sha: null
-local: required
-local_evidence: null
+commit_sha: 992c8905ff7acb31eb1b1d58047567ec6ed71f8c
+local: passed
+local_evidence: Focused 253-test consolidated result; final 97-test VPN/baseline bundle; final 65-test site/source suites; all applicable commit hooks, 164 snapshots and structured P0 review passed. Complete local gate remains host-limited as documented below.
 remote_ci: required
 remote_ci_evidence: null
-dry_run: required
-dry_run_evidence: null
+dry_run: passed
+dry_run_evidence: Actual blue-green environment dry-run exited zero without a SSH key or SOPS input; 12 Bats cases and ordered Make regressions passed. This is credential-free source prediction, not a real-host deployment check.
 staging: not_applicable
 staging_evidence: Source-only repair; no external staging resource is authorized or required. Isolated native runtime evidence belongs to remote_ci and artifact.
 live: not_applicable
@@ -65,7 +65,7 @@ The final VPN/baseline command passed 97 tests across
 `test_transport_p2_lifecycle.py`. After the last required YAML line wrap, the
 13 forwarding regressions passed again and Ansible lint passed for that file.
 Four focused site tests confirm that firewall restoration precedes old runtime
-readiness. The full site composition suite is still running.
+readiness. The final site/source command passed all 65 tests in 431.60 seconds without skips.
 
 The final structured review of the frozen source reported no actionable P0
 finding. TruffleHog passed for that exact review bundle. The security review
@@ -73,3 +73,10 @@ verdict is APPROVE: private candidate data retains `no_log`, fixed helper and
 executable authority is bounded, and no listener, credential or deployment
 authority is added. Runtime and native evidence remains separate. The existing
 one-live-deploy-per-node constraint still applies.
+
+## Source receipt
+
+Source commit: `992c8905ff7acb31eb1b1d58047567ec6ed71f8c`. All applicable
+commit hooks passed with no bypass. The direct environment dry-run also exited
+zero with an absent SOPS input and no SSH key. Its output was a plan only.
+The final site/source suites passed 65 tests without skips.
