@@ -14,6 +14,8 @@ execute the real remote command under an isolated SSH transport fixture; the
 production target uses its existing coreutils `timeout`, and the controller
 uses Python's standard library for local SSH deadlines.
 
+`make test-topology-authenticated-probes` requires an owned isolated Linux root/systemd/TUN runner. It executes real TLS/authentication failures, every XHTTP frontend and backend outage, pinned AWG warm runtime/unit adoption and encrypted two-instance AWG traffic/revocation. Portable watchdog/smoke suites separately exercise ownership, bounded lifecycle and exact recovery attribution. No mock or selected skip accepts this native target.
+
 ## Coverage matrix
 
 PR jobs run according to the dependency selection described below; this table
@@ -76,7 +78,7 @@ matrix records coverage and commands rather than manually maintained totals.
 | **Shell scripts (56)** | `bash -n` syntax + **`shellcheck -s bash -S warning`** (CI) | n/a | n/a | every shell script in `scripts/` runs through shellcheck; the two isolated exception-root boundaries are linted by the exception Terraform CI job. |
 | **Python validators** | implicit — they validate everything else | n/a | n/a | |
 | **Secrets schema** | **`scripts/check-secrets-coverage.py`** | n/a | n/a | Walks every Jinja2 template, ensures every top-level variable is declared in `secrets/prod.secrets.example.yaml`, `group_vars/all.yml`, or a role's `defaults/main.yml`. |
-| **Jinja2 templates (152)** | **`scripts/check-templates-render.py`** | renders all 152 role templates against synthetic + example data | n/a | Catches Jinja syntax errors, JSON-invalid output for `*.json.j2`, nginx parse errors for site configs. |
+| **Jinja2 templates (153)** | **`scripts/check-templates-render.py`** | renders all 153 role templates against synthetic + example data | n/a | Catches Jinja syntax errors, JSON-invalid output for `*.json.j2`, nginx parse errors for site configs. |
 | **Cohort group_vars** | render check (group_vars/all.yml + cohort file are merged into render env) | n/a | n/a | If a cohort file references a flag the role doesn't accept, render fails. |
 | **YAML formatting** | **yamllint** (CI) | n/a | n/a | uses `.yamllint.yml` profile. |
 | **GitHub automation security** | **zizmor 1.29.0** (`make zizmor-check` + required CI) | strict offline collection of owned workflows, actions, Dependabot, and pre-commit configuration | executable negative fixtures | The mise pin and checksum-verified CI binary run the same regular-persona gate; missing or mismatched local versions, unsupported output formats, actionable findings, and malformed owned YAML fail closed. The runtime contract also proves vendored nested workflows stay outside the explicit owned-input scope. |
@@ -103,7 +105,7 @@ matrix records coverage and commands rather than manually maintained totals.
 | **Container image scanning (Trivy)** | `.github/workflows/image-scan.yml` when selected; always on main/manual CI | n/a | n/a | When the image consumer group is selected, scans the complete deduplicated set of digest-pinned images from all Molecule scenarios; selection never narrows the image inventory. Uploads HIGH/CRITICAL SARIF to the Security tab under a digest-free per-image category, so a clean scan of a repinned digest closes the previous digest's alerts. Escalate only with rationale + expiry + owner in `.trivyignore`. |
 | **Repo drift (weekly)** | `.github/workflows/drift.yml` | `scripts/drift-since-tag.sh --repo-only` | n/a | Scheduled Monday 12:00 UTC. Diffs the repository against the last known-good tag. Updates a single rolling issue labelled `automation:drift` when drift is detected; silent when clean. Operator-side cron (against live servers) is unchanged and uses the script without `--repo-only`. |
 | **Task and OpenSpec contract** | `make task-check` + required `task-contract` CI job | strict portfolio, mdtask, OpenSpec, generated-asset, board, and deletion-history validation | peer checkout in CI | Federation resolves qualified RIPDPI task references, terminal Git history, and cross-repository cycles. The Python shard checkout also fetches full history because real workspace/taskctl integration verifies immutable archive source commits. |
-| **Jinja2 snapshot diff (163 templates)** | `scripts/render-snapshots.py` | golden-file diff | n/a | Fails on any unintended render change. Run `make snapshot-update` after intentional template edits. |
+| **Jinja2 snapshot diff (164 templates)** | `scripts/render-snapshots.py` | golden-file diff | n/a | Fails on any unintended render change. Run `make snapshot-update` after intentional template edits. |
 
 ## Test fixtures and stubs
 

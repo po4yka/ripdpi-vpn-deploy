@@ -14,6 +14,8 @@
 
 ## Design decisions
 
+REALITY monitor cancellation tests wait until synthetic decryption has completed, assert that the shell work path is inside the supervisor-owned parent, and then deliver each supported termination signal. CLI diagnostics remain on stderr while stdout remains JSON-only.
+
 Runtime acceptance requires the production log-parent trust contract: root ownership and no group/other write permission. Tighten an owned disposable image before tests; never relax the descriptor-based provisioner or rewrite its failure as a successful activation.
 
 Native Alertmanager timeout coverage publishes split alert updates inside a real grouping window. Zero group wait can dispatch before all seven alerts join the group; retain the five-alert cap, two-alert truncation and one-second webhook deadline assertions.
@@ -31,6 +33,8 @@ The disconnected TUN fixture pins extracted Xray 26.3.27 binary digests independ
 Native transport fixtures retain each owned unit before starting it and verify stopped PID/state before deleting runtime authority. Failed start acknowledgement or unconfirmed stop cannot become a passing cleanup.
 
 Alternate XHTTP regression cases exercise canonical materialization through the real semantic resolver and native profile adapter; mocked provider metadata is input selection only, never traffic proof.
+
+Authenticated watchdog XHTTP cases retain primary/fallback delivery and refusal boundaries in both auto and tuned stream-up mode.
 
 The complete XHTTP delivery matrix extends the endpoint target with real native
 Xray format consumption, distinct alternate TLS identity, primary outage,
@@ -496,6 +500,9 @@ Revocation keeps the original IPv4 and IPv6 UDP sockets open across claim remova
 and key removal, requiring positive echoes first and no datagram delivery afterward.
 
 Read-only sender admission is also executed through actual Ansible argv/stdin templating. Sender queue regression tests perform real private-file copies and in-place restoration across interruption checkpoints and partial cleanup; they assert historical bytes, original root inode, no-follow authority, exact backup identities and fail-before-mutation admission. Service mocks are portable orchestration evidence only. The enabled native Molecule scenario requires the exact historical nonce and pre-cutover timestamp to reach the authenticated receiver after an actual rejected candidate.
+
+Authenticated topology acceptance runs exact Xray and Hysteria clients against an owned HTTPS canary in a disconnected namespace. Wrong password, SAN, CA and obfuscation never substitute listener readiness for traffic. XHTTP observes both frontend paths and preserves the nginx PID through backend loss. Warm AWG acceptance republishes the pinned ELF to a new inode and runs actual role notifications/handlers; it observes the new process and unit sandbox, then requires unchanged convergence to preserve the PID. Source acquisition remains the native builder's separate responsibility.
+Warm AWG fixtures stage the exact tools and quick script outside the source checkout before unit activation. CI source trees live under `/home`, which the production unit hides through `ProtectHome=yes`; preserve that sandbox during acceptance.
 
 ## Pitfalls
 

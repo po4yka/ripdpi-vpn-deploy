@@ -1249,6 +1249,8 @@ transport-native-acceptance:
 test-topology-authenticated-probes:
 	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 && test "$${TRANSPORT_NATIVE_ISOLATED:-}" = 1 || { echo "topology acceptance requires an owned isolated Linux root environment" >&2; exit 1; }
 	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest \
+	  tests/unit/test_topology_authenticated_probes_native.py tests/unit/test_topology_awg_warm_native.py \
+	  tests/unit/test_awg_device_binding_native.py \
 	  tests/unit/test_watchdog_protocol_probe.py tests/unit/test_watchdog_templates.py \
 	  tests/unit/test_smoke_test_cleanup.py tests/unit/test_runtime_audit_regressions.py \
 	  tests/unit/test_transport_frontend_boundary_native.py tests/unit/test_reality_target_validation_native.py \
@@ -1264,6 +1266,8 @@ test-native-runtime:
 	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 || { echo "native runtime tests require a disposable Linux root environment" >&2; exit 1; }
 	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ -m native_runtime \
 	  --ignore=tests/unit/test_transport_runtime_acceptance_native.py \
+	  --ignore=tests/unit/test_topology_authenticated_probes_native.py \
+	  --ignore=tests/unit/test_topology_awg_warm_native.py \
 	  --ignore=tests/unit/test_xhttp_endpoint_contract_native.py \
 	  --ignore=tests/unit/test_awg_device_binding_native.py \
 	  --ignore=tests/unit/test_hysteria_ech_native.py \

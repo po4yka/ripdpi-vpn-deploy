@@ -2,7 +2,7 @@
 id: ANS-1791618048083304
 title: Deliver interface-correct dual-stack AmneziaWG forwarding and configurable MTU
 kind: feature
-status: dropped
+status: done
 area: ansible
 priority: high
 risk: high
@@ -14,9 +14,10 @@ openspec_change: awg-forwarding-dualstack
 created: 2026-10-10
 updated: 2026-10-16
 related_tasks: [ANS-1791562764586678, SEC-1791471757439452, "po4yka/RIPDPI#DAT-1792081130689287"]
-closed_at: "2026-10-16T13:18:32Z"
-closed_reason: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.
-evidence_summary: Positive implementation and genuine source/runtime observations are retained. The local successor owns all 45 positive requirements and remains open until its complete native and source gates pass; no missing external observation is relabelled as passed.
+status_detail: Exact-source Linux native and source gates, two canonical arm64 matrices, consumer CI and qualified federation passed.
+closed_at: "2026-10-16T19:58:22Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Deployment df5c40554cb171f2b0acc6b275a65579a05d7806 passed full make check and all 89 CI jobs; six Linux native AWG cases and consumer 974cf06ab8d05e3b4275d0e98429a0d0de2bf598 passed two canonical arm64 matrices, hosted CI and 189-task federation.
 ---
 
 ## Goal

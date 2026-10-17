@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = (
     REPO_ROOT / "ansible" / "roles" / "watchdog" / "templates" / "vpn-watchdog.sh.j2"
@@ -37,20 +39,18 @@ def _run_watchdog(
     recovery_succeeds: bool = True,
     awg_interfaces: tuple[str, ...] = (),
     failed_awg: str = "",
-    xhttp: bool = False,
-    xhttp_backend_ready: bool = True,
-    foreign_socks: bool = False,
+    foreign_listener: bool = False,
     foreign_after_start: bool = False,
     replace_during_canary: bool = False,
-    xhttp_alternate: bool = False,
-    alternate_ready: bool = True,
+    nginx_xhttp: bool = False,
+    backend_failed: bool = False,
+    reality_enabled: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     state_file = tmp_path / "state"
     config_file = tmp_path / "reality.json"
     config_file.write_text("{}")
-    (tmp_path / "xray-started").unlink(missing_ok=True)
     from tests.transport_fixtures import guarded_xray_bytes
     server_config = tmp_path / "server.json"
     server_config.write_text(guarded_xray_bytes())
@@ -63,7 +63,8 @@ def _run_watchdog(
         f"  printf '%s\\n' 'XRAY_LOCATION_ASSET=/tmp/watchdog-test-assets XRAY_RUNTIME_BINARY={bin_dir / 'xray'}'\n"
         "fi\nexit 0\n",
     )
-    _executable(bin_dir / "timeout", "exit 0\n")
+    _executable(bin_dir / "timeout", 'if [[ "$*" == *127.0.0.1/10085* && "${FAILED_BACKEND:-0}" == 1 ]]; then exit 1; fi\nexit 0\n')
+    _executable(bin_dir / "nginx", "exit 0\n")
     _executable(
         bin_dir / "watchdog-notify",
         (
@@ -76,22 +77,17 @@ def _run_watchdog(
         bin_dir / "ss",
         f"printf '%s\\n' 'LISTEN 0 4096 0.0.0.0:{server_port} 0.0.0.0:*'\n"
         + (
-            "if [[ -f \"${XRAY_STARTED_MARKER}\" || ${FOREIGN_SOCKS:-false} == true ]]; then\n"
-            "  pid=999999; if [[ -s \"${XRAY_STARTED_MARKER}\" && ${FOREIGN_AFTER_START:-false} == false && ! -f \"${REPLACED_SOCKS_MARKER}\" ]]; then pid=$(cat \"${XRAY_STARTED_MARKER}\"); fi\n"
-            "  printf 'LISTEN 0 4096 127.0.0.1:31082 0.0.0.0:* users:((\"xray\",pid=%s,fd=3))\\n' \"$pid\"\n"
-            "fi\n"
-            if socks_ready
-            else ""
+            ("pid=0\n" if foreign_listener else
+             '[[ -e "${XRAY_STARTED_MARKER}" ]] || exit 0\n'
+             'pid="$(cat "${XRAY_STARTED_MARKER}")"\n'
+             'if [[ ${FOREIGN_AFTER_START:-false} == true || -f "${REPLACED_SOCKS_MARKER}" ]]; then pid=999999; fi\n')
+            + 'printf \'%s\\n\' "LISTEN 0 4096 127.0.0.1:31082 0.0.0.0:* users:((xray,pid=${pid},fd=3))"\n'
+            if socks_ready else ""
         ),
     )
-    if xhttp_alternate and alternate_ready:
-        with (bin_dir / "ss").open("a") as output:
-            output.write("printf '%s\\n' 'LISTEN 0 4096 0.0.0.0:2083 0.0.0.0:*'\n")
-    if xhttp:
-        _executable(bin_dir / "nginx", "exit 0\n")
-        if xhttp_backend_ready:
-            with (bin_dir / "ss").open("a") as output:
-                output.write("printf '%s\\n' 'LISTEN 0 4096 127.0.0.1:10085 0.0.0.0:*'\n")
+    if nginx_xhttp and socks_ready:
+        with (bin_dir / "ss").open("a") as stream:
+            stream.write('printf \'%s\\n\' "LISTEN 0 4096 127.0.0.1:31083 0.0.0.0:* users:((xray,pid=${pid},fd=3))"\n')
     _executable(
         bin_dir / "df",
         "printf '%s\\n' 'Use%' '10%'\n",
@@ -99,9 +95,9 @@ def _run_watchdog(
     _executable(
         bin_dir / "curl",
         "if printf '%s\\n' \"$@\" | grep -q -- '--proxy'; then\n"
-        "  touch \"${CANARY_LOG}\"\n"
-        "  if [[ ${REPLACE_DURING_CANARY:-false} == true ]]; then touch \"${REPLACED_SOCKS_MARKER}\"; fi\n"
         "  printf '%s' \"${CANARY_STATUS}\"\n"
+        '  touch "${CANARY_LOG}"\n'
+        '  if [[ ${REPLACE_DURING_CANARY:-false} == true ]]; then touch "${REPLACED_SOCKS_MARKER}"; fi\n'
         "fi\n",
     )
     _executable(
@@ -115,8 +111,8 @@ def _run_watchdog(
         )
         + "fi\n"
         + ("exit 23\n" if xray_client_exits else "")
-        + "printf '%s\\n' \"$$\" > \"${XRAY_STARTED_MARKER}\"\n"
-        + "trap 'touch \"${XRAY_TERM_MARKER}\"; exit 0' TERM INT\n"
+        + 'echo $$ > "${XRAY_STARTED_MARKER}"\n'
+        + "trap 'touch \"${XRAY_TERM_MARKER}\"; rm -f \"${XRAY_STARTED_MARKER}\"; exit 0' TERM INT\n"
         "while :; do read -r -t 1 _ || true; done\n",
     )
 
@@ -146,10 +142,12 @@ def _run_watchdog(
     env.update(
         {
             "PATH": f"{bin_dir}:{env['PATH']}",
-            "ENABLE_XRAY": "true",
-            "ENABLE_NGINX_XHTTP": "true" if xhttp else "false",
-            "XHTTP_FRONTEND_PORTS": str(server_port) + (",2083" if xhttp_alternate else ""),
-            "XHTTP_BACKEND_PORT": "10085",
+            "XRAY_STARTED_MARKER": str(tmp_path / "xray-started"),
+            "ENABLE_XRAY": "true" if reality_enabled else "false",
+            "ENABLE_NGINX_XHTTP": "true" if nginx_xhttp else "false",
+            "XRAY_XHTTP_PROBES": "8443:31083" if nginx_xhttp else "",
+            "NGINX_PORT": "8443", "NGINX_FALLBACK_PORT": "0", "XHTTP_BACKEND_PORT": "10085",
+            "FAILED_BACKEND": "1" if backend_failed else "0",
             "ENABLE_HYSTERIA": "false",
             "ENABLE_AMNEZIAWG": "true" if awg_interfaces else "false",
             "AWG_INTERFACES": ",".join(awg_interfaces),
@@ -163,15 +161,13 @@ def _run_watchdog(
             "XRAY_REALITY_PROBES": f"{server_port}:31082",
             "XRAY_REALITY_PROBE_URL": "https://canary.example.test/healthz",
             "XRAY_REALITY_PROBE_EXPECTED_STATUS": expected_status,
-            "XRAY_REALITY_PROBE_TIMEOUT": "1",
+            "XRAY_REALITY_PROBE_TIMEOUT": "3",
             "CANARY_STATUS": canary_status,
-            "XRAY_TERM_MARKER": str(term_marker),
-            "XRAY_STARTED_MARKER": str(tmp_path / "xray-started"),
-            "FOREIGN_SOCKS": "true" if foreign_socks else "false",
             "FOREIGN_AFTER_START": "true" if foreign_after_start else "false",
             "REPLACE_DURING_CANARY": "true" if replace_during_canary else "false",
             "REPLACED_SOCKS_MARKER": str(tmp_path / "socks-replaced"),
             "CANARY_LOG": str(tmp_path / "canary-called"),
+            "XRAY_TERM_MARKER": str(term_marker),
             "STATE_FILE": str(state_file),
             "FAIL_THRESHOLD": "1",
             "KICKS_PER_HOUR_MAX": "1",
@@ -229,7 +225,7 @@ def test_wrong_canary_status_is_a_probe_failure_and_cleans_up(tmp_path):
     assert "FAIL  xray REALITY TCP/443 round-trip" in result.stdout
     assert (tmp_path / "xray-terminated").exists()
     assert "consecutive_fails=1" in (tmp_path / "state").read_text()
-    assert "--unit xray.service" in (tmp_path / "recovery.log").read_text()
+    assert not (tmp_path / "recovery.log").exists()
     assert "restart xray.service" not in (tmp_path / "systemctl.log").read_text()
 
 
@@ -241,8 +237,8 @@ def test_owned_site_root_can_require_exact_200_status(tmp_path):
 
 
 def test_recovery_kicks_are_bounded_per_hour(tmp_path):
-    first = _run_watchdog(tmp_path, canary_status="200")
-    second = _run_watchdog(tmp_path, canary_status="200")
+    first = _run_watchdog(tmp_path, stats_service_ready=False)
+    second = _run_watchdog(tmp_path, stats_service_ready=False)
 
     assert first.returncode != 0, first.stderr
     assert second.returncode != 0, second.stderr
@@ -288,7 +284,7 @@ def test_cohort_only_non_base_listener_does_not_trigger_recovery(tmp_path):
 
 
 def test_failed_guarded_recovery_never_falls_back_to_direct_restart(tmp_path):
-    result = _run_watchdog(tmp_path, canary_status="200", recovery_succeeds=False)
+    result = _run_watchdog(tmp_path, stats_service_ready=False, recovery_succeeds=False)
     assert result.returncode != 0
     assert "RESTART FAILED  xray.service" in result.stdout
     assert "--unit xray.service" in (tmp_path / "recovery.log").read_text()
@@ -311,45 +307,56 @@ def test_failed_secondary_awg_recovers_only_that_instance(tmp_path):
     assert restarts == ["restart awg-quick@awg2.service"]
 
 
-def test_xhttp_backend_failure_targets_guarded_backend_not_healthy_nginx(tmp_path):
-    result = _run_watchdog(tmp_path, xhttp=True, xhttp_backend_ready=False)
+def test_foreign_socks_listener_never_satisfies_probe_or_authorizes_recovery(tmp_path):
+    result = _run_watchdog(tmp_path, foreign_listener=True)
     assert result.returncode != 0
-    assert "FAIL  XHTTP backend TCP/10085 listening" in result.stdout
-    assert "OK    XHTTP frontend TCP/443 listening" in result.stdout
-    assert "--unit xray.service" in (tmp_path / "recovery.log").read_text()
-    assert "restart nginx" not in (tmp_path / "systemctl.log").read_text()
-
-
-def test_xhttp_nondefault_frontend_and_backend_are_healthy(tmp_path):
-    result = _run_watchdog(tmp_path, xhttp=True, server_port=2443)
-    assert result.returncode == 0, result.stderr
-    assert "OK    XHTTP backend TCP/10085 listening" in result.stdout
-    assert "OK    XHTTP frontend TCP/2443 listening" in result.stdout
-    assert not (tmp_path / "recovery.log").exists()
-
-
-def test_foreign_probe_listener_refuses_without_launch_or_recovery(tmp_path):
-    result = _run_watchdog(tmp_path, foreign_socks=True)
-    assert result.returncode != 0
-    assert "local probe port occupied" in result.stdout
+    assert "FAIL  xray REALITY private listener occupied" in result.stdout
     assert not (tmp_path / "xray-started").exists()
+    assert not (tmp_path / "xray-terminated").exists()
     assert not (tmp_path / "recovery.log").exists()
 
 
-def test_missing_alternate_is_red_and_recovers_only_its_frontend(tmp_path):
-    result = _run_watchdog(tmp_path, xhttp=True, xhttp_alternate=True, alternate_ready=False)
-    assert result.returncode != 0
-    assert "FAIL  XHTTP frontend TCP/2083 listening" in result.stdout
-    assert "OK    XHTTP backend TCP/10085 listening" in result.stdout
-    assert "restart nginx.service" in (tmp_path / "systemctl.log").read_text()
-    assert not (tmp_path / "recovery.log").exists()
+@pytest.mark.parametrize("reality_enabled", [False, True])
+def test_xhttp_backend_outage_recovers_only_xray_and_retains_budget(tmp_path, reality_enabled):
+    for _ in range(2):
+        result = _run_watchdog(tmp_path, nginx_xhttp=True, backend_failed=True, reality_enabled=reality_enabled)
+        assert result.returncode != 0
+        assert "FAIL  XHTTP backend TCP/10085 listening" in result.stdout
+    calls = (tmp_path / "recovery.log").read_text()
+    assert calls.count("--unit xray.service") == 1
+    assert "nginx" not in calls
+    assert "restart nginx" not in (tmp_path / "systemctl.log").read_text()
+    assert "kicks_this_hour=1" in (tmp_path / "state").read_text()
+    assert "consecutive_fails=2" in (tmp_path / "state").read_text()
 
 
-def test_primary_and_alternate_are_independently_observed(tmp_path):
-    result = _run_watchdog(tmp_path, xhttp=True, xhttp_alternate=True)
-    assert result.returncode == 0, result.stdout
-    assert "OK    XHTTP frontend TCP/443 listening" in result.stdout
-    assert "OK    XHTTP frontend TCP/2083 listening" in result.stdout
+def test_interrupted_kernel_lock_releases_without_stale_directory_adoption(tmp_path):
+    import signal
+    import time
+    claim = tmp_path / "state.probe"
+    claim.mkdir(mode=0o700)
+    ready = tmp_path / "holder-ready"
+    code = ("import fcntl,os,pathlib,time; fd=os.open(" + repr(str(claim)) +
+            ",os.O_RDONLY); fcntl.flock(fd,fcntl.LOCK_EX); pathlib.Path(" + repr(str(ready)) +
+            ").touch(); time.sleep(30)")
+    holder = subprocess.Popen([sys.executable, "-c", code])
+    try:
+        deadline = time.monotonic() + 5
+        while not ready.exists():
+            assert time.monotonic() < deadline
+            time.sleep(.01)
+        blocked = _run_watchdog(tmp_path)
+        assert blocked.returncode != 0 and "private probe lock unavailable" in blocked.stderr
+        assert not (tmp_path / "xray-started").exists()
+        holder.send_signal(signal.SIGKILL)
+        holder.wait(timeout=5)
+        recovered = _run_watchdog(tmp_path)
+        assert recovered.returncode == 0, recovered.stderr
+        assert claim.is_dir(), "the stable lock inode survives; its dead owner does not"
+    finally:
+        if holder.poll() is None:
+            holder.kill()
+        holder.wait(timeout=5)
 
 
 def test_foreign_listener_after_vacancy_refuses_without_server_recovery(tmp_path):

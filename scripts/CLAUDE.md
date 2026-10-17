@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+The REALITY monitor supervisor handles INT, TERM, HUP and QUIT before launching any decrypting child. The shell creates its work directory using an explicit parent path; BSD mktemp -t can ignore TMPDIR. Parent-owned temporary authority is removed after session cleanup on cancellation. Bounded child stderr is forwarded separately from the JSON stdout protocol.
+
 Federation preserves dependency edges between receipt-validated cancelled records. A cancelled prerequisite still refuses every non-cancelled dependent and never makes a task ready.
 
 Taskctl archive maintenance relocates only owned inline task links. Dropped records retain immutable close receipts: readers verify the exact link projection from the archive’s reachable terminal source, rejecting every other byte change, including newline conversion. Repeated archival preserves timestamps/spec state; partial document-write failures restore the original record.

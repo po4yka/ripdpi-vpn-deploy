@@ -18,6 +18,7 @@ TEMPLATES = REPO_ROOT / "ansible" / "roles" / "watchdog" / "templates"
 def _multi_cohort_vars() -> dict:
     vars_ = deepcopy(merge_render_vars())
     vars_["vpn_service_address"] = "192.0.2.50"
+    vars_["vpn"]["enable_nginx_xhttp"] = False
     vars_["watchdog_reality_probes"] = [
         {
             "name": "primary",
@@ -100,7 +101,7 @@ def test_notification_authority_is_separate_and_the_unit_has_a_deadline():
     assert (
         "LoadCredential=notifications.json:/etc/vpn-watchdog-notifications.json" in unit
     )
-    assert "TimeoutStartSec=535s" in unit
+    assert "TimeoutStartSec=565s" in unit
     assert config["token"] not in unit and config["topic"] not in unit
 
 
@@ -575,7 +576,7 @@ def test_service_deadline_includes_each_enabled_guarded_recovery(xray, hysteria,
     variables["vpn"].update(enable_xray_reality=xray, enable_hysteria=hysteria, enable_nginx_xhttp=xhttp)
     variables["transport_egress_control_timeout_seconds"] = control
     unit = render_template(TEMPLATES / "vpn-watchdog.service.j2", variables)
-    probe_budget = 300 + 3 * variables["watchdog"].get("reality_probe_timeout", 15)
+    probe_budget = 300 + (3 + int(xhttp) + 2 * int(hysteria)) * variables["watchdog"].get("reality_probe_timeout", 15)
     expected = probe_budget + (int(xray or xhttp)+int(hysteria))*(3*control+5)
     assert f"TimeoutStartSec={expected}s" in unit
 
@@ -586,7 +587,7 @@ def test_p1_only_retains_backend_sandbox_paths_and_recovery_budget():
     variables["watchdog_reality_probes"] = []
     unit = render_template(TEMPLATES / "vpn-watchdog.service.j2", variables)
     assert " /var/log/xray" in unit
-    assert "TimeoutStartSec=410s" in unit
+    assert "TimeoutStartSec=425s" in unit
     environment = render_template(TEMPLATES / "vpn-watchdog.env.j2", variables)
     assert "ENABLE_XRAY=false" in environment and "ENABLE_NGINX_XHTTP=true" in environment
     assert "XHTTP_BACKEND_PORT=10085" in environment
@@ -605,10 +606,11 @@ def test_subscription_only_has_no_absent_transport_probes():
 
 def test_environment_lists_every_enabled_xhttp_frontend():
     variables = _multi_cohort_vars()
+    variables["vpn"]["enable_nginx_xhttp"] = True
     variables["nginx_xhttp"]["fallback_enabled"] = True
     variables["nginx_xhttp_public_port"] = 2443
     rendered = render_template(TEMPLATES / "vpn-watchdog.env.j2", variables)
-    assert "XHTTP_FRONTEND_PORTS=2443,2083\nXHTTP_BACKEND_PORT=10085" in rendered
+    assert "NGINX_PORT=2443\nXHTTP_BACKEND_PORT=10085\nNGINX_FALLBACK_PORT=2083" in rendered
 
 
 @pytest.mark.parametrize("subscription_only", [False, True])
@@ -619,4 +621,4 @@ def test_disabled_xhttp_does_not_require_nginx_role_variables(subscription_only)
     for name in ("nginx_xhttp_public_port", "nginx_xhttp_port", "nginx_xhttp_fallback_port", "nginx_xhttp"):
         values.pop(name, None)
     rendered = render_template(TEMPLATES / "vpn-watchdog.env.j2", values)
-    assert "XHTTP_FRONTEND_PORTS=\nXHTTP_BACKEND_PORT=0" in rendered
+    assert "NGINX_PORT=0\nXHTTP_BACKEND_PORT=0" in rendered

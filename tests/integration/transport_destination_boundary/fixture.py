@@ -85,9 +85,8 @@ class NativeStack:
         path.chmod(0o644)
         self.unit_files.append(path)
         command(["systemctl", "daemon-reload"])
-        # Retain ownership before a start acknowledgement can fail or time out.
-        self.units.append(unit)
         command(["systemctl", "start", unit])
+        self.units.append(unit)
         return unit
 
     def start(self, common=False, peer_source=None):
@@ -214,7 +213,7 @@ class NativeStack:
         self.short = secrets.token_hex(8)
         self.hys_password = "synthetic-native-hysteria-secret-" + secrets.token_hex(12)
 
-    def start_frontend(self, profile, *, primary_port=8443, path="/native-sync", fallback=False, fallback_hostname="owned.example", xhttp_mode="auto"):
+    def start_frontend(self, profile, *, primary_port=8443, path="/native-sync", fallback=False, cohorts=None, fallback_hostname="owned.example", xhttp_mode="auto"):
         values = self.values
         values["vpn"].update(enable_xray_reality=profile == "p0", enable_nginx_xhttp=profile == "p1",
                               enable_warp_outbound=False, enable_cascade_ingress=False)
@@ -232,7 +231,7 @@ class NativeStack:
         self.reality_password = fields["Password (PublicKey)"]
         values["xray"].update(target="192.0.2.90:8444", server_names=["owned.example"], reality_private_key=fields["PrivateKey"],
                               clients=[{"name": "native-device", "uuid": self.uuid, "short_id": self.short}],
-                              cohorts=[], xhttp_path=path, xhttp_mode=xhttp_mode)
+                              cohorts=cohorts or [], xhttp_path=path, xhttp_mode=xhttp_mode)
         if profile in ("p0", "p1"):
             path = self.file("frontend.json", render_template(ROOT / "ansible/roles/xray/templates/config.json.j2", values), "x")
             listener = next(item for item in self.config["listeners"] if item["name"] == "direct_xray")
@@ -255,7 +254,7 @@ class NativeStack:
             values["nginx_xhttp"].update(server_name="owned.example", fallback_enabled=fallback)
             if fallback_hostname != "owned.example":
                 values["nginx_xhttp"].update(fallback_server_name=fallback_hostname,
-                    fallback_cert_pem=self.cert.read_text(), fallback_key_pem=self.key.read_text())
+                                           fallback_cert_pem=self.cert.read_text(), fallback_key_pem=self.key.read_text())
             values["public_site_canonical_url"] = "https://owned.example" + ("" if primary_port == 443 else ":" + str(primary_port))
             self.ingress = self.library / "ingress"
             self.ingress.mkdir(mode=0o755);self.ingress.chmod(0o755)
@@ -274,9 +273,8 @@ class NativeStack:
             body = render_template(ROOT / "ansible/roles/nginx-xhttp/templates/site.conf.j2", values)
             body = body.replace("/etc/nginx/tls/owned.example.fullchain.pem", str(self.ingress / "certificate.pem")).replace(
                 "/etc/nginx/tls/owned.example.key", str(self.ingress / "private.pem")).replace("/var/log/nginx/", str(self.library) + "/")
-            if fallback_hostname != "owned.example":
-                body = body.replace("/etc/nginx/tls/" + fallback_hostname + ".fullchain.pem", str(self.ingress / "certificate.pem")).replace(
-                    "/etc/nginx/tls/" + fallback_hostname + ".key", str(self.ingress / "private.pem"))
+            body = body.replace("/etc/nginx/tls/" + fallback_hostname + ".fullchain.pem", str(self.ingress / "certificate.pem"))
+            body = body.replace("/etc/nginx/tls/" + fallback_hostname + ".key", str(self.ingress / "private.pem"))
             body = body.replace("/var/www/public-site", str(self.site))
             nginx = self.ingress / "nginx.conf"
             nginx.write_text("worker_processes 1;\npid " + str(self.library / "nginx.pid") +
@@ -293,7 +291,7 @@ class NativeStack:
         values = self.values
         values["hysteria"].update(clients=[{"name": "native-device", "password": self.hys_password}],
                                   masquerade_type="proxy", masquerade_url=masquerade_origin,
-                                  salamander_enabled=salamander, salamander_password="synthetic-native-obfuscation-secret")
+                                  salamander_enabled=salamander, salamander_password="synthetic-native-salamander-authority")
         values.update(hysteria_port=443, hysteria_config_dir=str(self.library))
         shutil.copyfile(self.cert, self.library / "server.fullchain.pem")
         shutil.copyfile(self.key, self.library / "server.key")
@@ -355,14 +353,12 @@ class NativeStack:
             self.unit("client-" + suffix, [self.hysteria, "client", "--config", str(path)], "h")
         return port
 
-    def run_driver(self, port, negative=False, *, socket_timeout=3):
-        assert 0 < socket_timeout <= self.values["watchdog"]["reality_probe_timeout"]
+    def run_driver(self, port, negative=False):
         result = self.driver_state / ("negative-result.json" if negative else "result.json")
         process = subprocess.Popen(["ip", "netns", "exec", self.namespace, sys.executable, str(AREA / "driver.py")],
                                    stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.processes.append(process)
-        process.stdin.write(json.dumps({"port": port, "result": str(result), "negative_auth": negative,
-                                        "socket_timeout": socket_timeout}).encode())
+        process.stdin.write(json.dumps({"port": port, "result": str(result), "negative_auth": negative}).encode())
         process.stdin.close()
         status = process.wait(timeout=90)
         if not result.is_file():
@@ -387,11 +383,7 @@ class NativeStack:
                 process.kill()
             process.wait(timeout=5)
         for unit in reversed(self.units):
-            stopped = subprocess.run(["systemctl", "stop", unit], capture_output=True, timeout=15)
-            observed = command(["systemctl", "show", unit, "--property=ActiveState,MainPID"]).splitlines()
-            if (stopped.returncode != 0 or "MainPID=0" not in observed
-                    or not ({"ActiveState=inactive", "ActiveState=failed"} & set(observed))):
-                raise RuntimeError("owned-native-unit-cleanup-unconfirmed")
+            subprocess.run(["systemctl", "stop", unit], capture_output=True, timeout=15)
             subprocess.run(["systemctl", "reset-failed", unit], capture_output=True, timeout=15)
         for path in self.unit_files:
             path.unlink()

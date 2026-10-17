@@ -1,12 +1,8 @@
-## Local completion scope (2026-10-16)
-
-The owner authorizes full local implementation and removes staging soak, external recipient, Android emulator and physical-device acceptance from this change. Completion requires actual pinned local engines, isolated Linux systemd/network namespaces/TUN where applicable, authenticated positive and rejection traffic, compensation, privacy and complete source checks. Synthetic credentials are test inputs; mocks, render-only checks and refusal-only results cannot replace runnable behavior. External devices, provider actions, production rollout and promotion are outside acceptance. Earlier observations below retain their original source and limitations; removed external gates are excluded by this scope revision, never recorded as passed.
-
 # MON-1791618056169855: Deliver topology-aware authenticated transport health and secure smoke probes
 
 ## Objective
 
-Deliver topology-aware authenticated transport health and secure smoke probes. Local implementation is authorized; checkboxes require observed local behavior and source gates.
+Deliver topology-aware authenticated transport health and secure smoke probes. Implementation is authorized in the dedicated worktree. Complete steps only after their named behavior and checks pass; external host execution remains separately authorized.
 
 ## Ownership
 
@@ -32,10 +28,10 @@ Deliver topology-aware authenticated transport health and secure smoke probes. L
 
 ## Execution
 
-- MON-1791618060162436 DROPPED: Implement effective topology resolution across verify watchdog and secure smoke clients #feature !high @item:MON-1791618056169855
-- MON-1791618061120158 DROPPED: Deliver authenticated bounded checks and exact recovery targeting with private results #feature !high @item:MON-1791618056169855
-- MON-1791618061966295 DROPPED: Exercise warm runtime adoption real hopping and per-surface outage and credential failures #feature !high @item:MON-1791618056169855
-- MON-1791618062766877 DROPPED: Integrate truthful evidence and preserved lifecycle regressions then complete source gates #feature !high @item:MON-1791618056169855
+- [x] MON-1791618060162436 Implement effective topology resolution across verify watchdog and secure smoke clients #feature !high @item:MON-1791618056169855
+- [x] MON-1791618061120158 Deliver authenticated bounded checks and exact recovery targeting with private results #feature !high @item:MON-1791618056169855
+- [x] MON-1791618061966295 Exercise warm runtime adoption real hopping and per-surface outage and credential failures #feature !high @item:MON-1791618056169855
+- [x] MON-1791618062766877 Integrate truthful evidence and preserved lifecycle regressions then complete source gates #feature !high @item:MON-1791618056169855
 
 ## Verification
 
@@ -49,4 +45,4 @@ Requirement-to-step mapping and unfulfilled evidence categories live in verifica
 
 Native `make test-native-runtime` and the dependency-provided native acceptance targets run only on the explicitly isolated Linux root/systemd/TUN host. macOS or missing privileges are prerequisite failures, never silent skips or mocked substitutes.
 
-Local implementation is authorized. Acceptance follows the dependency graph; only observed checks complete execution steps.
+Implementation starts only after the canonical portfolio prerequisites are satisfied and separately authorized. Planning alone neither starts work nor checks an execution step.

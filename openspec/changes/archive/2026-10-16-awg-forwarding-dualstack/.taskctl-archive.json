@@ -1,8 +1,8 @@
 {
-  "archived_at": "2026-10-16T13:25:01Z",
+  "archived_at": "2026-10-16T19:55:20Z",
   "change": "awg-forwarding-dualstack",
-  "commit_sha": "fc8938d9563e9cf61ead73f9bcdf07c90507fa6d",
-  "outcome": "dropped",
+  "commit_sha": "df5c40554cb171f2b0acc6b275a65579a05d7806",
+  "outcome": "review",
   "schema": 1,
   "task_id": "ANS-1791618048083304"
 }

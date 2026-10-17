@@ -372,3 +372,25 @@ def test_invalid_public_endpoint_refuses_before_private_defaults(monkeypatch, pu
     monkeypatch.setattr(budget, "run", lambda *a, **kw: pytest.fail("invalid input loaded private defaults"))
     with pytest.raises(validator.Refused, match="invalid_endpoint"):
         validator.load_inputs(budget)
+
+
+@pytest.mark.parametrize("target", ["EXAMPLE.COM:443", "Example.Com.:443"])
+def test_target_dns_spelling_is_normalized(target):
+    assert validator.endpoint(target) == ("example.com", 443)
+
+
+def test_http_failure_retains_successful_tls_observation(monkeypatch):
+    stages = []
+    def worker(_budget, stage, _payload):
+        stages.append(stage)
+        return ["192.0.2.1"] if stage == "dns" else {"h2": True}
+    def rejected_http(*_args, **_kwargs):
+        raise validator.Refused("https_timeout")
+    monkeypatch.setattr(validator, "call_worker", worker)
+    monkeypatch.setattr(validator, "http", rejected_http)
+    monkeypatch.setattr(validator, "pinned_client", lambda: None)
+    reasons, observations, compatibility = validator.collect(None, "borrowed", "example.com", 443, ["example.com"])
+    assert stages == ["dns", "tls"]
+    assert reasons == ["https_timeout"]
+    assert observations == [("192.0.2.1", "", "", 1, 1)]
+    assert compatibility == "unavailable"

@@ -1,7 +1,3 @@
-## Local completion scope (2026-10-16)
-
-The owner authorizes full local implementation and removes staging soak, external recipient, Android emulator and physical-device acceptance from this change. Completion requires actual pinned local engines, isolated Linux systemd/network namespaces/TUN where applicable, authenticated positive and rejection traffic, compensation, privacy and complete source checks. Synthetic credentials are test inputs; mocks, render-only checks and refusal-only results cannot replace runnable behavior. External devices, provider actions, production rollout and promotion are outside acceptance. Earlier observations below retain their original source and limitations; removed external gates are excluded by this scope revision, never recorded as passed.
-
 # ANS-1791618048083304: Deliver interface-correct dual-stack AmneziaWG forwarding and configurable MTU
 
 ## Objective
@@ -35,10 +31,10 @@ Deliver interface-correct dual-stack AmneziaWG forwarding and configurable MTU. 
 
 ## Execution
 
-- ANS-1791618053112824 DROPPED: Extend canonical device identity and published consumers to typed dual-stack addresses and shared MTU #feature !high @item:ANS-1791618048083304
-- ANS-1791618053810186 DROPPED: Converge interface-correct isolated forwarding and NAT with complete failure compensation #feature !high @item:ANS-1791618048083304
-- ANS-1791618054450509 DROPPED: Deliver exact client and liveness parity and qualified cross-repository contract integration #feature !high @item:ANS-1791618048083304
-- ANS-1791618055065632 DROPPED: Prove bidirectional constrained-path traffic no-leak failure and revocation then complete source gates #feature !high @item:ANS-1791618048083304
+- [x] ANS-1791618053112824 Extend canonical device identity and published consumers to typed dual-stack addresses and shared MTU #feature !high @item:ANS-1791618048083304
+- [x] ANS-1791618053810186 Converge interface-correct isolated forwarding and NAT with complete failure compensation #feature !high @item:ANS-1791618048083304
+- [x] ANS-1791618054450509 Deliver exact client and liveness parity and qualified cross-repository contract integration #feature !high @item:ANS-1791618048083304
+- [x] ANS-1791618055065632 Prove bidirectional constrained-path traffic no-leak failure and revocation then complete source gates #feature !high @item:ANS-1791618048083304
 
 ## Verification
 
@@ -51,10 +47,10 @@ Deliver interface-correct dual-stack AmneziaWG forwarding and configurable MTU. 
 
 Requirement-to-step mapping and unfulfilled evidence categories live in verification.md. No fixture, refusal-only result or skipped selected case satisfies positive capability. Future external acceptance requires current authorization and exact scope; no existing cancelled task is revived.
 
-### Local runtime gate
+### Android emulator gate
 
-AWG acceptance uses exact local Linux runtimes with S3=S4=0. Exercise both-family TCP/UDP/DNS at MTU 1280 and 1420, three reconnects, revocation, tunnel-death lockdown and activation compensation. External Android emulator, device and VpnService outcomes are outside this change.
+Android acceptance for this change uses the exact supported arm64 core with S3=S4=0 on an authorized emulator. Record exact client/core/ABI/OS and invocation-bound APK/library evidence; exercise authenticated IPv4/IPv6 TCP, UDP and DNS at MTU 1280 and 1420 through three reconnect cycles each. Physical-device and Android VpnService/TUN acceptance are outside this change, as explicitly requested by the owner. Linux native tests retain forwarding, revocation, tunnel-death lockdown and complete activation compensation requirements. Fixtures or hand-written success records cannot satisfy runtime acceptance.
 
 Native `make test-native-runtime` and the dependency-provided native acceptance targets run only on the explicitly isolated Linux root/systemd/TUN host. macOS or missing privileges are prerequisite failures, never silent skips or mocked substitutes.
 
-Local implementation is authorized. Acceptance follows the dependency graph; only observed checks complete execution steps.
+Implementation starts only after the canonical portfolio prerequisites are satisfied and separately authorized. Planning alone neither starts work nor checks an execution step.

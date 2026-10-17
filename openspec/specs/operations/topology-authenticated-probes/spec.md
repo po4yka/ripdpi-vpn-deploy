@@ -5,7 +5,7 @@ Provide observable, testable guarantees for deliver topology-aware authenticated
 ## Requirements
 ### Requirement: REQ-PROTO-PROBE-TOPOLOGY — Inspect every effective transport surface
 
-Ordinary verification and watchdog MUST derive complete target sets from effective REALITY cohorts, XHTTP frontend/backend ownership, Hysteria settings and all AWG instance bindings. Valid nondefault layouts MUST pass and failure of any required target MUST be visible without testing an absent legacy base port or interface.
+The implementation MUST Ordinary verification and watchdog MUST derive complete target sets from effective REALITY cohorts, XHTTP frontend/backend ownership, Hysteria settings and all AWG instance bindings. Valid nondefault layouts MUST pass and failure of any required target MUST be visible without testing an absent legacy base port or interface.
 
 #### Scenario: Cohort-only and multiple-instance topology
 
@@ -33,7 +33,7 @@ A transport success MUST require authenticated data delivery through its selecte
 
 ### Requirement: REQ-PROTO-PROBE-OWNERSHIP — Bound probe lifecycle and recovery ownership
 
-Probe starts, waits, requests and cleanup MUST have bounded deadlines and invocation-bound ownership. Recovery MUST preserve existing durable budgets and affect only the exact failing owned runtime; credentials MUST remain outside ordinary callback, process and evidence output.
+The implementation MUST Probe starts, waits, requests and cleanup MUST have bounded deadlines and invocation-bound ownership. Recovery MUST preserve existing durable budgets and affect only the exact failing owned runtime; credentials MUST remain outside ordinary callback, process and evidence output.
 
 #### Scenario: Foreign listener and occupied private workdir
 
@@ -47,7 +47,7 @@ Probe starts, waits, requests and cleanup MUST have bounded deadlines and invoca
 
 ### Requirement: REQ-PROTO-PROBE-EVIDENCE — Separate positive runtime proof from source and deployment claims
 
-Results MUST identify exact source, runtime, topology and observed boundary, distinguish direct controls from transport delivery, and replace stale healthy status with redacted failure. Native warm AWG adoption and Hysteria hopping MUST observe actual processes and traffic rather than script versions or render assertions.
+The implementation MUST Results MUST identify exact source, runtime, topology and observed boundary, distinguish direct controls from transport delivery, and replace stale healthy status with redacted failure. Native warm AWG adoption and Hysteria hopping MUST observe actual processes and traffic rather than script versions or render assertions.
 
 #### Scenario: Pin-only or unit-only AWG warm update
 

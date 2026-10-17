@@ -528,3 +528,42 @@ def test_aggregate_monitor_deadline_reclaims_children_and_retains_budget(monitor
     pid = int(pid_file.read_text())
     observed = subprocess.run(["ps", "-p", str(pid), "-o", "stat="], capture_output=True, text=True, timeout=3)
     assert observed.returncode != 0 or observed.stdout.strip().startswith("Z")
+
+
+@pytest.mark.parametrize("argument,status,message", [("--help", 0, "usage:"), ("--unknown", 2, "unknown arg: --unknown")])
+def test_monitor_forwards_bounded_cli_diagnostics(monitor_env, argument, status, message):
+    result = _run(monitor_env, argument)
+    assert result.returncode == status
+    assert message in result.stderr
+    assert result.stdout == ""
+
+
+@pytest.mark.parametrize("signal_name", ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"])
+def test_monitor_cancellation_removes_decrypted_authority_and_children(monitor_env, tmp_path, signal_name):
+    import signal
+    import time
+    pid_file = tmp_path / "cancelled-child.pid"
+    collector = Path(monitor_env["MONITOR_FIXTURE_SCRIPT"]).with_name("reality_target_validation.py")
+    collector.write_text("import os,pathlib,time,sys,json\nif sys.argv[1] == 'collect':\n pathlib.Path(" + repr(str(pid_file)) + ").write_text(json.dumps([os.getpid(),sys.argv[sys.argv.index('--observations')+1],os.environ['TMPDIR']]))\n time.sleep(60)\n" + collector.read_text())
+    process = subprocess.Popen(["bash", monitor_env["MONITOR_FIXTURE_SCRIPT"]], cwd=REPO_ROOT,
+                               env=monitor_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        deadline = time.monotonic() + 5
+        while not pid_file.exists():
+            assert process.poll() is None
+            assert time.monotonic() < deadline
+            time.sleep(.01)
+        child, observation, temporary = json.loads(pid_file.read_text())
+        assert Path(observation).parent.joinpath("secrets.json").is_file(), (observation, temporary)
+        assert Path(observation).is_relative_to(temporary), (observation, temporary)
+        process.send_signal(getattr(signal, signal_name))
+        output, errors = process.communicate(timeout=5)
+        assert process.returncode == 128 + getattr(signal, signal_name), errors
+        assert json.loads(output)["verdict"] == "error"
+        assert not list(Path(monitor_env["TMPDIR"]).iterdir())
+        observed = subprocess.run(["ps", "-p", str(child), "-o", "stat="], capture_output=True, text=True, timeout=3)
+        assert observed.returncode != 0 or observed.stdout.strip().startswith("Z")
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.communicate(timeout=5)

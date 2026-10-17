@@ -1,0 +1,11 @@
+
+server: "198.51.100.10:443"
+auth: "watchdog:REPLACE_WITH_DEDICATED_HYSTERIA_WATCHDOG_PASSWORD"
+tls:
+  sni: "vpn.example.com"
+  insecure: false
+  ca: "/etc/hysteria/server.fullchain.pem"
+
+
+socks5:
+  listen: "127.0.0.1:31110"

@@ -59,7 +59,7 @@ Connection failure, dual-stack migration and instance revocation MUST preserve I
 - **WHEN** a dual-stack or MTU candidate fails validation or activation
 - **THEN** the previous complete addresses routing rules and service configuration remain usable or are restored, with a categorical failure and no mixed generation
 
-#### Scenario: Local dual-family acceptance
+#### Scenario: Authorized Android emulator scope
 
-- **WHEN** the exact pinned AWG pair runs in an owned Linux TUN namespace
-- **THEN** real authenticated IPv4/IPv6 TCP UDP and DNS complete at MTU 1280 and 1420 through three subsequent reconnects, revocation and tunnel-death lockdown; Android emulator, device and VpnService acceptance are outside completion scope
+- **WHEN** Android acceptance is evaluated for this change
+- **THEN** the exact arm64 emulator/native-core exercises authenticated IPv4/IPv6 TCP UDP and DNS at MTU 1280 and 1420 through three reconnects each; Linux native tests establish kernel forwarding revocation and no-leak boundaries, and physical-device or Android VpnService/TUN proof is not required

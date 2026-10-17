@@ -2,7 +2,7 @@
 id: MON-1791618056169855
 title: Deliver topology-aware authenticated transport health and secure smoke probes
 kind: feature
-status: dropped
+status: done
 area: monitoring
 priority: high
 risk: high
@@ -12,11 +12,12 @@ blocked_by: [SCR-1791618039091425, ANS-1791618048083304, XRY-1791617955392712, S
 spec_mode: required
 openspec_change: topology-authenticated-probes
 created: 2026-10-10
-updated: 2026-10-16
+updated: 2026-10-17
 related_tasks: [ANS-1791562764586678, SEC-1791471757439452, ANS-1791586652330612]
-closed_at: "2026-10-16T13:18:32Z"
-closed_reason: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.
-evidence_summary: Positive implementation and genuine source/runtime observations are retained. The local successor owns all 45 positive requirements and remains open until its complete native and source gates pass; no missing external observation is relabelled as passed.
+status_detail: Authenticated native topology, complete local and hosted source gates, closed AWG prerequisite, canonical arm64 acceptance and qualified federation passed.
+closed_at: "2026-10-16T20:14:37Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Runtime df5c40554cb171f2b0acc6b275a65579a05d7806 passed full make check, all 89 CI jobs, eight authenticated topology cases and real hopping/warm adoption; AWG prerequisite committed done at 0e6bd844, two canonical arm64 matrices and consumer CI passed, clean federation validated 189 tasks.
 ---
 
 ## Goal

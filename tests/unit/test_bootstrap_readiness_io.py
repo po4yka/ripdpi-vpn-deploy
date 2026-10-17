@@ -281,3 +281,18 @@ def test_uncertain_fallback_cleanup_refuses_categorically(monkeypatch, failure):
         monkeypatch.undo()
         for child in children:
             child.wait(timeout=5)
+
+
+
+def test_forwarded_stderr_is_separate_and_bounded(capfd):
+    readiness = module()
+    status, output = readiness.run_command(
+        [sys.executable, "-c", "import sys;sys.stdout.write('json');sys.stderr.write('usage')"],
+        timeout=5, capture=True, forward_stderr=True, output_limit=9,
+    )
+    assert status == 0 and output == b"json"
+    assert capfd.readouterr().err == "usage"
+    with pytest.raises(readiness.ReadinessError, match="command output limit"):
+        readiness.run_command([sys.executable, "-c", "import sys;sys.stderr.write('x'*4096)"],
+                              timeout=5, capture=True, forward_stderr=True, output_limit=10)
+    assert capfd.readouterr().err == ""

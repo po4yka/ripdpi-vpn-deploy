@@ -12,6 +12,7 @@ import pathlib
 import tempfile
 import sys
 import re
+import signal
 from typing import Any
 
 
@@ -222,9 +223,9 @@ def probe(arguments: list[str]) -> int:
     try:
         with tempfile.TemporaryDirectory(prefix="reality-monitor-owner-", dir=os.environ.get("TMPDIR")) as temporary:
             environment = {**os.environ, "TMPDIR": temporary}
-            with cancellation():
+            with cancellation(signals=(signal.SIGINT, signal.SIGTERM, signal.SIGHUP, signal.SIGQUIT)):
                 code, output = run_command(["bash", str(pathlib.Path(__file__).with_name("reality-target-monitor-probe.sh")), *arguments],
-                    timeout=budget, environment=environment, capture=True, output_limit=65536)
+                    timeout=budget, environment=environment, capture=True, output_limit=65536, forward_stderr=True)
         if output:
             sys.stdout.buffer.write(output)
         return code

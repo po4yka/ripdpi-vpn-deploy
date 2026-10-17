@@ -2,9 +2,15 @@
 
 ## Design decisions
 
-Probe-port vacancy is checked before starting the owned REALITY client; occupied ports cause a red observation without authorizing runtime recovery. Startup uses a monotonic deadline. Ready sockets must belong to the retained client PID before and after the canary; local client loss or replacement cannot authorize server recovery. Subscription-only profiles omit transport checks and Xray sandbox paths.
+Probe-port vacancy is checked before starting the owned REALITY client; occupied ports cause a red observation without authorizing runtime recovery. Startup uses a monotonic deadline. Ready sockets must belong to the retained client PID before and after the canary; local client loss or replacement cannot authorize server recovery. Authenticated round-trip failure alone has no restart authority; only failed host diagnostics select a service. Subscription-only profiles omit transport checks and Xray sandbox paths.
 
 P1 diagnostics check the effective primary and enabled alternate nginx frontend ports and Xray backend independently, including P1-only profiles. Backend failures enter guarded Xray recovery and never restart healthy nginx. Diagnostic listeners remain distinct from authenticated native acceptance.
+
+XHTTP frontend sockets belong to nginx and the localhost backend belongs to Xray. Dedicated authenticated XHTTP inbounds route every enabled primary/fallback endpoint through the canonical Xray TLS client, retaining the effective mode and bounded-pool controls. Backend diagnostics recover only Xray, including XHTTP-only hosts. A failed client round trip alone has no service-restart authority: credential, trust and canary failures remain red without restarting a healthy server.
+
+Omitted XHTTP/Hysteria toggles retain the canonical enabled defaults in probe selection, private credentials and service deadlines. Explicitly disabled XHTTP has zero diagnostic ports and needs no XHTTP configuration, including standalone REALITY-only role convergence.
+
+Hysteria uses a separately enrolled `hysteria.clients` watchdog identity, a private systemd credential, effective SNI/CA and matching Salamander. The ordinary environment contains only ports and paths. Each probe invocation holds a kernel lock inherited by its client. Process death releases the lock; a surviving client retains exclusion, and exact SOCKS PID ownership prevents a foreign listener from satisfying delivery. The service deadline budgets both Xray endpoint families and Hysteria startup/request time.
 
 AWG probes use every normalized configured instance. The environment carries only comma-separated interface names; each failed interface maps to its exact `awg-quick@` unit. Subscription-only hosts emit no AWG probe list.
 

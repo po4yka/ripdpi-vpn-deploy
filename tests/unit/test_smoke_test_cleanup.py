@@ -48,6 +48,12 @@ if name == 'systemd-run':
     config = Path(args[config_flag + 1])
     assert stat.S_IMODE(config.stat().st_mode) == 0o600
     assert stat.S_IMODE(config.parent.stat().st_mode) == 0o700
+    if config.suffix == '.json' and 'xray' in config.name:
+        document = json.loads(config.read_text())
+        targets = [row['port'] for outbound in document['outbounds']
+                   for row in outbound.get('settings', {}).get('vnext', [])]
+        with (state / 'remote-ports.jsonl').open('a') as stream:
+            stream.write(json.dumps(targets) + '\n')
     unit = next(arg.split('=', 1)[1] for arg in args if arg.startswith('--unit='))
     unit = unit.removesuffix('.service') + '.service'
     marker = state / 'units' / unit
@@ -188,8 +194,13 @@ def smoke_run(tmp_path):
 
     def prepare(protocol='xray', *, subscription_only=False, disabled=False, failure='',
                 stop_failure=False, collision=False, render_failure=False, remove_failure=False, collected=False,
-                occupied_port=None, unit_dies='', snell_count=1):
+                occupied_port=None, unit_dies='', snell_count=1, reality_ports=None):
         source = copy.deepcopy(yaml.safe_load((ROOT / 'ansible/playbooks/smoke-test.yml').read_text())[0])
+        included = yaml.safe_load((ROOT / 'ansible/playbooks/tasks/smoke-reality.yml').read_text())
+        included = _replace_paths(included, workdir, units)
+        _replace_waits(included, remove_failure)
+        (playbook_dir / 'tasks').mkdir(exist_ok=True)
+        (playbook_dir / 'tasks/smoke-reality.yml').write_text(yaml.safe_dump(included, sort_keys=False))
         source = _replace_paths(source, workdir, units)
         _replace_waits(source['tasks'], remove_failure)
         source.update(hosts='localhost', become=False, gather_facts=False)
@@ -220,6 +231,10 @@ def smoke_run(tmp_path):
             'snell_secrets': {'variants': [
                 {'id': 'v4-stream', 'psk': 'STUB_SMOKE_PSK_ONE', 'users': [{'userkey': 'STUB_SMOKE_USERKEY_ONE'}]}]},
         }
+        if reality_ports is not None:
+            secrets['xray']['cohorts'] = [
+                {'name': 'cohort-' + str(index), 'port': port, 'clients': ['fixture'], 'flow_mode': 'vision'}
+                for index, port in enumerate(reality_ports)]
         if render_failure:
             if protocol in ('xray', 'hysteria'):
                 secrets[protocol]['clients'] = []
@@ -478,6 +493,8 @@ def test_smoke_real_curl_cannot_bypass_closed_proxy_via_no_proxy(tmp_path, proto
 
     source = yaml.safe_load((ROOT / 'ansible/playbooks/smoke-test.yml').read_text())[0]
     command = find_probe(source['tasks'])
+    if protocol == 'xray':
+        command = find_probe(yaml.safe_load((ROOT / 'ansible/playbooks/tasks/smoke-reality.yml').read_text()))
     assert command is not None
     requests = []
 
@@ -524,3 +541,13 @@ def test_smoke_real_curl_cannot_bypass_closed_proxy_via_no_proxy(tmp_path, proto
             server.shutdown()
             thread.join(timeout=5)
             assert not thread.is_alive()
+
+
+def test_smoke_visits_all_cohort_only_listeners_with_independent_cleanup(smoke_run):
+    execute, _, calls, workdir, units, state, _ = smoke_run
+    result = execute(protocol='xray', reality_ports=[2443, 2444])
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert [json.loads(line) for line in (state / 'remote-ports.jsonl').read_text().splitlines()] == [[2443], [2444]]
+    assert sum(call['name'] == 'systemd-run' for call in calls()) == 2
+    assert sum(call['name'] == 'systemctl' and call['args'][0] == 'stop' for call in calls()) == 2
+    assert not workdir.exists() and not list(units.iterdir())

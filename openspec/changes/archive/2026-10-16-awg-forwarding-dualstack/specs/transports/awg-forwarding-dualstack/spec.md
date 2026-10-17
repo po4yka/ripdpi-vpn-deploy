@@ -1,7 +1,3 @@
-## Local completion scope (2026-10-16)
-
-The owner authorizes full local implementation and removes staging soak, external recipient, Android emulator and physical-device acceptance from this change. Completion requires actual pinned local engines, isolated Linux systemd/network namespaces/TUN where applicable, authenticated positive and rejection traffic, compensation, privacy and complete source checks. Synthetic credentials are test inputs; mocks, render-only checks and refusal-only results cannot replace runnable behavior. External devices, provider actions, production rollout and promotion are outside acceptance. Earlier observations below retain their original source and limitations; removed external gates are excluded by this scope revision, never recorded as passed.
-
 ## Purpose
 
 Provide observable, testable guarantees for deliver interface-correct dual-stack amneziawg forwarding and configurable mtu across accepted inputs, successful operation, failure and retained authority.
@@ -64,7 +60,7 @@ Connection failure, dual-stack migration and instance revocation MUST preserve I
 - **WHEN** a dual-stack or MTU candidate fails validation or activation
 - **THEN** the previous complete addresses routing rules and service configuration remain usable or are restored, with a categorical failure and no mixed generation
 
-#### Scenario: Local dual-family acceptance
+#### Scenario: Authorized Android emulator scope
 
-- **WHEN** the exact pinned AWG pair runs in an owned Linux TUN namespace
-- **THEN** real authenticated IPv4/IPv6 TCP UDP and DNS complete at MTU 1280 and 1420 through three subsequent reconnects, revocation and tunnel-death lockdown; Android emulator, device and VpnService acceptance are outside completion scope
+- **WHEN** Android acceptance is evaluated for this change
+- **THEN** the exact arm64 emulator/native-core exercises authenticated IPv4/IPv6 TCP UDP and DNS at MTU 1280 and 1420 through three reconnects each; Linux native tests establish kernel forwarding revocation and no-leak boundaries, and physical-device or Android VpnService/TUN proof is not required

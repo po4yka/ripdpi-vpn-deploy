@@ -1,17 +1,13 @@
-## Local completion scope (2026-10-16)
-
-The owner authorizes full local implementation and removes staging soak, external recipient, Android emulator and physical-device acceptance from this change. Completion requires actual pinned local engines, isolated Linux systemd/network namespaces/TUN where applicable, authenticated positive and rejection traffic, compensation, privacy and complete source checks. Synthetic credentials are test inputs; mocks, render-only checks and refusal-only results cannot replace runnable behavior. External devices, provider actions, production rollout and promotion are outside acceptance. Earlier observations below retain their original source and limitations; removed external gates are excluded by this scope revision, never recorded as passed.
-
 ## Context
 
 Ordinary verification and watchdog still assume one legacy AWG interface, and Hysteria smoke omits enabled obfuscation and bypasses TLS verification. Effective cohorts and XHTTP backend ownership also need one consistent health model. Existing source fixes and synthetic service checks do not by themselves prove authenticated transport delivery or correct outage attribution.
 
-Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Revalidate source and current task ownership before implementation. The owner authorizes implementation and local acceptance.
+Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Revalidate source and current task ownership before implementation. This request creates plans only.
 
 ## Goals / Non-Goals
 
 - Goal: deliver topology-aware authenticated transport health and secure smoke probes with positive capability and meaningful negative, security, lifecycle and privacy tests.
-- Non-goal: provider mutation, production deployment, operator credentials, external recipient/device acceptance, unrelated cleanup or revival of cancelled acceptance.
+- Non-goal: implementation in this session, provider mutation, production deployment, actual credentials, unrelated cleanup, compatibility shims or revival of cancelled acceptance.
 
 ## Decisions
 
@@ -42,7 +38,7 @@ Planning baseline: `605ae0be18dcbe1c55e3e7d8658131b2e0c201d3` (2026-10-10). Reva
 - tests/unit/test_protocol_liveness_sentinel.py
 - docs/TESTING.md
 - Dependencies: awg-binding, awg-forwarding, xhttp-contract, schema. Exact IDs and hard edges are stored in portfolio frontmatter; related source-fixed tasks are traceability, not a new implementation blocker.
-- Implementation runs in a dedicated worktree; read nearest role/script/test guidance first.
+- Implementation starts only after separate authorization in a dedicated worktree; read nearest role/script/test guidance first.
 - A single integration owner serializes schemas/examples, shared effective profile helpers, group variables, Makefile, CI selectors, snapshots and task metadata. Workers request shared-lane edits and preserve all concurrent work.
 - Terraform owns provider objects, cloud-init owns bootstrap, Ansible owns runtime and SOPS owns private authority; no layer shortcut is introduced.
 

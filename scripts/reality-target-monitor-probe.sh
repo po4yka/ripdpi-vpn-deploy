@@ -55,7 +55,7 @@ STATE_FILE="${STATE_DIR}/${ENV}.json"
 mkdir -p "$STATE_DIR"
 chmod 0700 "$STATE_DIR"
 
-WORK="$(mktemp -d -t reality-target-monitor.XXXXXX)"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/reality-target-monitor.XXXXXX")"
 SECRETS_TMP="${WORK}/secrets.json"
 SECRETS_SOURCE="${VPN_SECRETS_FILE:-}"
 OWN_SECRETS=0
