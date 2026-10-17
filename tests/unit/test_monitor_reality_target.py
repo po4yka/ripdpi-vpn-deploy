@@ -513,21 +513,40 @@ def test_aggregate_monitor_deadline_reclaims_children_and_retains_budget(monitor
     before = json.loads(state.read_text())
     pid_file = tmp_path / "stalled.pid"
     collector = Path(monitor_env["MONITOR_FIXTURE_SCRIPT"]).with_name("reality_target_validation.py")
-    child = "import os,pathlib,time;pathlib.Path(" + repr(str(pid_file)) + ").write_text(str(os.getpid()));time.sleep(60)"
+    child = ("import os,pathlib,time; p=pathlib.Path(" + repr(str(pid_file)) + "); "
+             "pending=p.with_suffix('.pending'); pending.write_text(str(os.getpid())); "
+             "pending.replace(p); time.sleep(60)")
     collector.write_text("import subprocess,sys,time\nif sys.argv[1] == 'collect':\n subprocess.Popen([sys.executable,'-c'," + repr(child) + "])\n time.sleep(60)\n" + collector.read_text())
     start = time.monotonic()
-    result = _run({**monitor_env, "REALITY_MONITOR_BUDGET": "1"})
-    assert result.returncode != 0
-    assert time.monotonic() - start < 3
-    report = json.loads(result.stdout)
-    assert report["verdict"] == "error"
-    after = json.loads(state.read_text())
-    assert after["last_report"]["verdict"] == "error"
-    assert {k: v for k, v in before.items() if k != "last_report"} == {k: v for k, v in after.items() if k != "last_report"}
-    assert not list(Path(monitor_env["TMPDIR"]).iterdir())
-    pid = int(pid_file.read_text())
-    observed = subprocess.run(["ps", "-p", str(pid), "-o", "stat="], capture_output=True, text=True, timeout=3)
-    assert observed.returncode != 0 or observed.stdout.strip().startswith("Z")
+    process = subprocess.Popen(["bash", monitor_env["MONITOR_FIXTURE_SCRIPT"]], cwd=REPO_ROOT,
+                               env={**monitor_env, "REALITY_MONITOR_BUDGET": "10"},
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        # Admit the intended descendant before measuring its forced cleanup.
+        # The whole run still has one deadline, including decryption/setup.
+        while not pid_file.is_file():
+            assert process.poll() is None, "monitor expired before descendant admission"
+            assert time.monotonic() < start + 8, "descendant startup exceeded admission margin"
+            time.sleep(.01)
+        pid = int(pid_file.read_text())
+        output, errors = process.communicate(timeout=max(.1, start + 12 - time.monotonic()))
+        assert process.returncode != 0, errors
+        assert time.monotonic() - start < 12
+        assert json.loads(output)["verdict"] == "error"
+        after = json.loads(state.read_text())
+        assert after["last_report"]["verdict"] == "error"
+        assert {k: v for k, v in before.items() if k != "last_report"} == {k: v for k, v in after.items() if k != "last_report"}
+        assert not list(Path(monitor_env["TMPDIR"]).iterdir())
+        observed = subprocess.run(["ps", "-p", str(pid), "-o", "stat="], capture_output=True, text=True, timeout=3)
+        assert observed.returncode != 0 or observed.stdout.strip().startswith("Z")
+    finally:
+        if process.poll() is None:
+            process.terminate()
+        try:
+            process.communicate(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate(timeout=3)
 
 
 @pytest.mark.parametrize("argument,status,message", [("--help", 0, "usage:"), ("--unknown", 2, "unknown arg: --unknown")])
