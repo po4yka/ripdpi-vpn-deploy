@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "Source a15e77ad71e699a5663009bd8bcbaff844975811 passed all 92 jobs in CI 39070456406, including both unchanged Trivy scans and all affected Molecule consumers. Debian digest b3f2db18b8a6f53891196f7a166e36896f9200357d453a0129be09fa9bf94e84 and 29 focused pin/cloud-init cases passed. PR324 merged as a620c9dfb0ef41e13410a932016d88ec6785b66d; its tree equals the tested source. Local aggregate Docker timeout is recorded in the parent task.",
+  "execution_sha256": "850e7af89a0267a1a2f855d8b342cdabfaf7d0dfbdcb05238ca57a2fd2f32850",
+  "issue_sha256": "2a8f4581a6f7d92fa447c2b95c7d7d79ca5ca9ccfdc70c52cb18551ae8f68b71",
+  "outcome": "done",
+  "prepared_at": "2026-10-17T22:22:14Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1792268380780556"
+}
