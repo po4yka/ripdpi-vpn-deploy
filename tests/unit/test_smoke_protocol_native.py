@@ -49,6 +49,6 @@ def test_canonical_smoke_client_uses_own_sni_trust_and_obfuscation(salamander):
         stack.run_driver(31082, True)
         stack.run_driver(31081)
         journal = fixture.command(["journalctl", "--unit", unit, "--no-pager", "-o", "cat"])
-        assert stack.hys_password not in journal and "synthetic-native-obfuscation-secret" not in journal
+        assert stack.hys_password not in journal and stack.values["hysteria"]["salamander_password"] not in journal
     finally:
         stack.close()

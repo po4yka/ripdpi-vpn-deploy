@@ -30,7 +30,7 @@ REALITY partial-input regressions reject explicit invalid fields before loading 
 
 The disconnected TUN fixture pins extracted Xray 26.3.27 binary digests independently for amd64 and arm64; unknown architectures or modified executables refuse.
 
-Native transport fixtures retain each owned unit before starting it and verify stopped PID/state before deleting runtime authority. Failed start acknowledgement or unconfirmed stop cannot become a passing cleanup.
+Native transport fixtures retain each owned unit before starting it and verify stopped PID/state before deleting runtime authority. Portable controller regressions retain authority after a lost start acknowledgement or unconfirmed stop; they are not native traffic evidence. Redaction assertions use the effective fixture credential rather than a stale literal. Failed start acknowledgement or unconfirmed stop cannot become a passing cleanup.
 
 Alternate XHTTP regression cases exercise canonical materialization through the real semantic resolver and native profile adapter; mocked provider metadata is input selection only, never traffic proof.
 

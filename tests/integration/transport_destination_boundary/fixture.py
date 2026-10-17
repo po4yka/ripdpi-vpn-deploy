@@ -85,8 +85,9 @@ class NativeStack:
         path.chmod(0o644)
         self.unit_files.append(path)
         command(["systemctl", "daemon-reload"])
-        command(["systemctl", "start", unit])
+        # Retain ownership before a start acknowledgement can fail or time out.
         self.units.append(unit)
+        command(["systemctl", "start", unit])
         return unit
 
     def start(self, common=False, peer_source=None):
@@ -353,12 +354,14 @@ class NativeStack:
             self.unit("client-" + suffix, [self.hysteria, "client", "--config", str(path)], "h")
         return port
 
-    def run_driver(self, port, negative=False):
+    def run_driver(self, port, negative=False, *, socket_timeout=3):
+        assert 0 < socket_timeout <= self.values["watchdog"]["reality_probe_timeout"]
         result = self.driver_state / ("negative-result.json" if negative else "result.json")
         process = subprocess.Popen(["ip", "netns", "exec", self.namespace, sys.executable, str(AREA / "driver.py")],
                                    stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.processes.append(process)
-        process.stdin.write(json.dumps({"port": port, "result": str(result), "negative_auth": negative}).encode())
+        process.stdin.write(json.dumps({"port": port, "result": str(result), "negative_auth": negative,
+                                        "socket_timeout": socket_timeout}).encode())
         process.stdin.close()
         status = process.wait(timeout=90)
         if not result.is_file():
@@ -383,7 +386,11 @@ class NativeStack:
                 process.kill()
             process.wait(timeout=5)
         for unit in reversed(self.units):
-            subprocess.run(["systemctl", "stop", unit], capture_output=True, timeout=15)
+            stopped = subprocess.run(["systemctl", "stop", unit], capture_output=True, timeout=15)
+            observed = command(["systemctl", "show", unit, "--property=ActiveState,MainPID"]).splitlines()
+            if (stopped.returncode != 0 or "MainPID=0" not in observed
+                    or not ({"ActiveState=inactive", "ActiveState=failed"} & set(observed))):
+                raise RuntimeError("owned-native-unit-cleanup-unconfirmed")
             subprocess.run(["systemctl", "reset-failed", unit], capture_output=True, timeout=15)
         for path in self.unit_files:
             path.unlink()
