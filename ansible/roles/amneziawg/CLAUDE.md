@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+The fixed `awg-quick.target` has no service `MainPID` property. Normalize only that target's absent PID to zero in retained unit state; a missing service PID still refuses activation.
+
 Source builds acquire immutable commit-selected executable files under `/opt/amneziawg/releases/`; they do not replace the accepted `/usr` executables. The complete consumer uses the shared inode journal with an AWG-only profile to publish binaries, shared units, private configurations and membership together. It keeps the AWG firewall open until runtime acceptance records a durable decision. Refusal restores the old firewall and exact runtime inodes before prior instance activation. A failed stop acknowledgement permits compensation only after inactive/failed state, PID zero and an empty recursive cgroup prove quiescence. Unconfirmed quiescence retains the journals.
 
 The unit consumes the exact admitted configuration directory in `up`, `down` and `strip`; directories must be canonical absolute paths without systemd or shell metacharacters. Its read-only start admission rejects an interrupted candidate without a live publisher lock. Recorded legacy binaries need matching build receipt digests before upgrade adoption. Retirement can adopt only the owned unit/configuration membership it changes; it does not claim or replace an unproved binary. Disable and re-enable retain the same complete consumer contract. After final acceptance a private cleanup journal forgets only proven-absent retired paths and their exact backups, so repeated 32-instance renames do not grow receipt or unit authority without bound.

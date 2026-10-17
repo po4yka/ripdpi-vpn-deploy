@@ -58,6 +58,9 @@ def fields(unit):
     values = dict(line.split('=', 1) for line in result.stdout.decode().splitlines() if '=' in line)
     if values.get('LoadState') == 'not-found':
         values['UnitFileState'] = ''
+    # Target units have no service process and do not expose MainPID.
+    if unit == 'awg-quick.target' and 'MainPID' not in values:
+        values['MainPID'] = '0'
     if set(values) != {'LoadState', 'ActiveState', 'UnitFileState', 'MainPID'} or (result.returncode and values.get('LoadState') != 'not-found'):
         raise Refusal('awg-unit-state-invalid')
     return values

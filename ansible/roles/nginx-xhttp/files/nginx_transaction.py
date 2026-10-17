@@ -1115,7 +1115,7 @@ def site_transaction(action, document, *, finish_egress=False, finish_firewall=F
         journal["phase"] = "restoring"
         persist(state / "site.json", journal)
         prior = journal["service"]
-        if not prior["active"]:
+        if not prior["active"] and service_state("nginx.service")["exists"]:
             command(["systemctl", "stop", "nginx.service"])
         changed = False
         for path, row in journal["files"].items():

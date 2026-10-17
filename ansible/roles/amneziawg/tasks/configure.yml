@@ -13,6 +13,7 @@
     checksum_algorithm: sha256
     follow: false
   loop: "{{ _awg_executables }}"
+  no_log: true
   register: _awg_acquired
 
 - name: Require admitted acquired AmneziaWG executables
@@ -24,6 +25,7 @@
       - item.stat.mode == '0755'
       - item.stat.nlink == 1
   loop: "{{ _awg_acquired.results }}"
+  no_log: true
   when: not ansible_check_mode
 
 - name: Select bounded acquired executable publication candidates
@@ -32,6 +34,7 @@
       {{ _awg_consumer_candidates + [{'path': item.item.path, 'source': item.item.source,
                                       'sha256': item.stat.checksum, 'mode': 493, 'gid': 0}] }}
   loop: "{{ _awg_acquired.results }}"
+  no_log: true
   when: item.stat.exists
 
 - name: Stage every complete private AmneziaWG configuration

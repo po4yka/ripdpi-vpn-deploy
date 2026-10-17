@@ -12,6 +12,13 @@ Repair the six audited failure paths and merge verified source without a live ro
 - infra_audit also owns tests/native/transport_acceptance/test_awg_lifecycle.py and tests/unit/test_awg_activation_native.py native fixture adaptations and exact supporting dependency maps; vpn_audit retains production/helper ownership.
 - vpn_audit owns ansible/playbooks/site.yml and required playbook tasks, ansible/roles/firewall, ansible/roles/amneziawg, the required runtime-release retention seam, owned role notes and focused VPN tests.
 - vpn_audit also owns the narrow ansible/roles/baseline/tasks/forwarding.yml retained-forwarding seam, its CLAUDE.md note and focused forwarding regressions; standalone baseline keeps its current contract.
+- vpn_audit owns the CI-confirmed inline command rendering fix and the fresh missing-unit restore guard in nginx_transaction.py with tests/unit/test_nginx_site_transaction.py; shared ownership is serialized before the next source freeze.
+- deploy_audit owns only the fields() target-property correction in ansible/roles/amneziawg/files/consumer.py and tests/unit/test_awg_unit_state.py; vpn_audit will not edit that function or test during the CI repair.
+- deploy_audit owns the three acquisition-loop no_log additions in amneziawg/tasks/configure.yml and the child-tag contract adaptation in tests/unit/test_warp_pin_contract.py; existing privacy assertions remain unchanged.
+- vpn_audit owns the retained-consumer check-mode and pre-mutation contract adaptations in tests/unit/test_check_mode_handlers.py, tests/unit/test_transport_semantics.py and its existing test_vpn_consumer_reliability.py lane.
+- infra_audit owns the explicitly authorized CI-only Debian13 publisher run, all 45 Debian13 Molecule pin files and tests/unit/test_molecule_image_pins.py. Accept only a freshly scanned immutable digest; primary serializes commits and publication of the PR branch.
+- deploy_audit owns the exact runtime-authority fixture dependency in tests/unit/test_amneziawg_source_pins.py.
+- vpn_audit owns tests/unit/test_fresh_protocol_check_mode.py for the retained AWG fresh-host check-mode contract; Hysteria checks remain unchanged.
 - primary owns tests/conftest.py fixture group normalization and serializes shared scripts/CLAUDE.md, tests/CLAUDE.md, ansible/CLAUDE.md, docs/RUNBOOK-deploy.md, task/spec artifacts, integration and Git/PR operations. Workers do not commit or edit shared lanes.
 
 ## Execution

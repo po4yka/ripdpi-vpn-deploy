@@ -80,3 +80,41 @@ Source commit: `992c8905ff7acb31eb1b1d58047567ec6ed71f8c`. All applicable
 commit hooks passed with no bypass. The direct environment dry-run also exited
 zero with an absent SOPS input and no SSH key. Its output was a plan only.
 The final site/source suites passed 65 tests without skips.
+
+## First hosted run and scoped repairs
+
+Hosted run 39063347083 at head 0d1875d425a36275ed9fc00f7ecc3f83bda79251
+found two fresh-host integration failures and a target-unit property mismatch.
+The inline reader now preserves the lookup file's actual final newline. Its
+regression uses actual Ansible rendering. Ingress recovery skips a stop only
+when nginx is still absent. The fixed AWG target alone normalizes its missing
+service PID property; missing service PID remains a refusal.
+
+The reader and ingress suites passed 83 tests. The target boundary reproduced
+three failures before its fix; the target/consumer/profile bundle then passed
+59 tests. Hosted native acceptance must be repeated for these repairs.
+
+The complete local make check passed task validation, all four provider
+validations, Gitleaks, production Ansible lint, syntax, Go helper tests and
+action/workflow checks. It stopped at the bounded cloud-init Docker fallback
+with exit 125 after timeout. Docker inspection also timed out. Cleanup of the
+exact owned container vpn-cloud-init-schema-8576-ccab3b56d8add0a5 is unconfirmed.
+No local full-gate or native pass is claimed.
+
+The same hosted run reports new HIGH findings in the unchanged pinned Debian13
+CI image. This security gate is retained. Its artifact refresh is a separate
+validation dependency; no suppression or production rollout is authorized.
+
+## Consolidated hosted-failure repair proof
+
+The complete ten-file repair command passed 274 tests in 56.58 seconds. It
+includes actual Ansible rendering, fresh and accepted AWG check-mode execution,
+unit-state parsing, all six stale source-contract repairs and the original
+privacy guards. The only warning comes from Python ipaddress handling of an
+intentional invalid boolean CIDR fixture. Structured review of the final repair
+bundle reported no actionable P0 finding; TruffleHog also passed.
+
+The owner explicitly authorized the CI-only Debian13 image refresh and coherent
+pin update. Publisher run 39064420607 uses main source
+082eea068adecfc705c149540b18c980244f113c with unchanged publisher and Dockerfile.
+Its new digest remains unaccepted until the current security scan passes.

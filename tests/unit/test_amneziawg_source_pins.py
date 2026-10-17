@@ -148,6 +148,7 @@ def test_amneziawg_scenario_dispatches_real_role_tasks(tmp_path):
     fixture_root = tmp_path / "repo"
     copied_role = fixture_root / "ansible/roles/amneziawg"
     shutil.copytree(role, copied_role)
+    shutil.copytree(REPO_ROOT / "ansible/roles/runtime-release", fixture_root / "ansible/roles/runtime-release")
     shutil.copytree(REPO_ROOT / "ansible/playbooks/tasks", fixture_root / "ansible/playbooks/tasks")
     uplink = fixture_root / "ansible/roles/firewall/tasks/awg-uplink.yml"
     uplink.parent.mkdir(parents=True)

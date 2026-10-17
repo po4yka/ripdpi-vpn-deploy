@@ -58,8 +58,8 @@
       - python3
       - -c
       - >-
-        {{ lookup('ansible.builtin.file', role_path ~ '/../runtime-release/files/transport_runtime_transaction.py')
-           ~ '\n' ~ (lookup('ansible.builtin.file', role_path ~ '/files/firewall_consumer.py')
+        {{ lookup('ansible.builtin.file', role_path ~ '/../runtime-release/files/transport_runtime_transaction.py', rstrip=false)
+           ~ (lookup('ansible.builtin.file', role_path ~ '/files/firewall_consumer.py')
              | regex_replace('(?m)^from (?:transport_runtime_transaction|__future__) import .*$', '')) }}
       - accepted-awg
   register: _firewall_accepted_awg

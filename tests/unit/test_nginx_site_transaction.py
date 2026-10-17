@@ -775,3 +775,32 @@ def test_commit_decision_freezes_exact_ingress_authority(fixture):
     with pytest.raises(tx.TransactionError, match='foreign-publication'):
         tx.site_transaction('recover-commit', context)
     assert (state / 'site.json').exists()
+
+
+@pytest.mark.parametrize('previous_exists,current_exists', [(False, False), (False, True), (True, True)])
+def test_pre_consumer_failure_restores_missing_or_newly_installed_unit(fixture, monkeypatch, previous_exists, current_exists):
+    tx, context, commands = fixture
+    state = {'active': False, 'exists': previous_exists,
+             'unit_file_state': 'disabled' if previous_exists else 'not-found'}
+    monkeypatch.setattr(tx, 'service_state', lambda unit: dict(state))
+    restored = []
+    monkeypatch.setattr(tx, 'restore_enabled', lambda unit, prior: restored.append((unit, prior)))
+    def command(argv):
+        commands.append(argv)
+        if argv == ['systemctl', 'stop', 'nginx.service'] and not state['exists']:
+            raise tx.TransactionError('runtime-command')
+        return ''
+    monkeypatch.setattr(tx, 'command', command)
+    tx.site_transaction('begin', context)
+    state.update(exists=current_exists, unit_file_state='disabled' if current_exists else 'not-found')
+    if current_exists:
+        candidate = publish_candidate(tx, context)
+        assert candidate.exists()
+    result = tx.site_transaction('restore', context)
+    assert result['changed'] is current_exists
+    assert (['systemctl', 'stop', 'nginx.service'] in commands) is current_exists
+    assert (['systemctl', 'disable', 'nginx.service'] in commands) is (current_exists and not previous_exists)
+    assert bool(restored) is previous_exists
+    assert not (tx.STATE_ROOT / 'nginx.service/site.json').exists()
+    for owner in context['owners']:
+        assert not Path(owner['paths'][0]).exists()

@@ -5,6 +5,7 @@ import base64
 import importlib.util
 import json
 import os
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,6 +13,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 FILES = ROOT / 'ansible/roles'
+RUN = subprocess.run
 
 
 def load(name, path, monkeypatch):
@@ -290,20 +292,50 @@ def test_configuration_directory_cannot_change_systemd_or_shell_interpretation(c
         context.awg.names({'schema': 1, 'config_dir': directory, 'instances': ['a0']})
 
 
-def test_actual_check_mode_policy_reader_composition_compiles_and_runs(context, monkeypatch):
-    import re
+def test_actual_check_mode_policy_reader_composition_compiles_and_runs(context, tmp_path):
+    import sys
     import yaml
     c = context
     tasks = yaml.safe_load((FILES / 'firewall/tasks/consumer-prepare.yml').read_text())
     task = next(row for row in tasks if row['name'] == 'Read only exact owned accepted AWG firewall claims')
     expression = task['ansible.builtin.command']['argv'][2]
-    pattern = re.search(r"regex_replace\('([^']+)', ''\)", expression).group(1)
-    generic = (FILES / 'runtime-release/files/transport_runtime_transaction.py').read_text()
-    selected = (FILES / 'firewall/files/firewall_consumer.py').read_text()
-    combined = generic + '\n' + re.sub(pattern, '', selected)
+    rendered = tmp_path / 'reader.py'
+    play = [{'hosts': 'localhost', 'connection': 'local', 'become': False, 'gather_facts': False,
+             'vars': {'role_path': str(FILES / 'firewall'), 'ansible_python_interpreter': sys.executable},
+             'tasks': [{'name': 'Render actual policy reader expression', 'ansible.builtin.copy': {
+                 'content': expression, 'dest': str(rendered), 'mode': '0600'}, 'no_log': True}]}]
+    playbook = tmp_path / 'render.yml'
+    playbook.write_text(yaml.safe_dump(play))
+    result = RUN(['ansible-playbook', '-i', 'localhost,', str(playbook)], capture_output=True,
+        text=True, timeout=30, env={**os.environ, 'ANSIBLE_CONFIG': str(ROOT / 'ansible/ansible.cfg')})
+    assert result.returncode == 0, result.stdout + result.stderr
+    combined = rendered.read_text()
     namespace = {'__name__': 'owned_composite_fixture'}
     exec(compile(combined, '<actual-firewall-policy-reader>', 'exec'), namespace)
     # The executed source reads exact owned scratch metadata/configuration and
     # returns the old claims, without relying on an installed helper in check mode.
     namespace['AWG_RECORD'] = c.record
     assert namespace['accepted_awg']()[0]['peers'][0]['allowed_ips']['ipv4'] == '10.66.66.2/32'
+
+
+
+def test_awg_check_mode_predicts_changes_without_lifecycle_or_file_mutation(context, monkeypatch):
+    c = context
+    before = {str(path): (path.read_bytes(), path.stat().st_ino)
+              for path in c.root.rglob('*') if path.is_file()}
+    old_firewall = c.kernel['bytes']
+    def forbidden(*args, **kwargs):
+        raise AssertionError('check mode must not activate, repair, compensate or probe runtime')
+    for callback in ['stop', 'start', 'restore', 'ensure', 'ready', 'inspect']:
+        monkeypatch.setattr(c.awg.Adapter, callback, forbidden)
+    monkeypatch.setattr(c.awg, 'firewall', forbidden)
+    result = c.awg.operate('apply', {'check': True, 'candidates': [data(c.cfg, b'changed-config')],
+        'firewall': base64.b64encode(c.fw.HEADER + b'table inet filter { # predicted\n}\n').decode()})
+    assert result == {'status': 'predicted', 'changed': True, 'published': False}
+    after = {str(path): (path.read_bytes(), path.stat().st_ino)
+             for path in c.root.rglob('*') if path.is_file()}
+    assert after == before
+    assert c.fw.CONFIG.read_bytes() == c.kernel['bytes'] == old_firewall
+    for name in ['pending.json', 'preparation.json', 'compensating.json', 'firewall.json', 'retirement.json']:
+        assert not (c.awg.STATE / name).exists()
+    assert not (c.fw.STATE / 'consumer.json').exists()
