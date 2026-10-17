@@ -16,10 +16,11 @@ import uuid
 
 import pytest
 import yaml
+from jinja2 import FileSystemLoader
 
 from awg_client import config, export
 from awg_device_binding import resolve_binding
-from template_render import merge_render_vars, render_template
+from template_render import merge_render_vars, render_template, template_environment
 from test_awg_device_binding import document
 from test_awg_device_binding_native import native_config
 from test_awg_dualstack_native import ECHO, PROBE, path_evidence
@@ -27,6 +28,14 @@ from test_transport_semantics_native import command, exact_awg_sources
 
 pytestmark = pytest.mark.native_runtime
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def render_native_awg_config(instance):
+    """Match Ansible's template lookup without changing snapshot whitespace."""
+    template = ROOT / 'ansible/roles/amneziawg/templates/awg0.conf.j2'
+    environment = template_environment(FileSystemLoader(str(template.parent)))
+    environment.trim_blocks = True
+    return environment.get_template(template.name).render(_inst=instance)
 
 
 class CompletePublisher:
@@ -173,8 +182,7 @@ def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes
     doc['client_registry']={'device0':doc['client_registry']['device0']}
     doc['client_registry']['device0']['awg_binding']['instance']=iface
     effective=resolve_binding(doc,{},'device0','upcloud:fixture',iface).instance
-    values=merge_render_vars(); values['_inst']=effective
-    accepted=render_template(ROOT/'ansible/roles/amneziawg/templates/awg0.conf.j2',values)
+    accepted=render_native_awg_config(effective)
     processes=[]; namespaces=[]; ownership=ExitStack()
     firewall=Path('/etc/nftables.conf')
     # This adapter only enters the owned network namespace; it executes real nft.
@@ -251,8 +259,7 @@ def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes
         candidate=copy.deepcopy(effective)
         if failure=='configuration': candidate['mtu']=1280
         candidate['peers'][0]['allowed_ips']={'ipv4':'10.70.0.9/32','ipv6':'fd42:10::9/128'}
-        values['_inst']=candidate
-        candidate_config=render_template(ROOT/'ansible/roles/amneziawg/templates/awg0.conf.j2',values)
+        candidate_config=render_native_awg_config(candidate)
         if failure=='binary':
             rejected=directory/'rejected-amneziawg-go'; rejected.write_text('#!/bin/sh\nexit 71\n'); rejected.chmod(0o755)
             acquired=publisher.acquire(rejected,tools,quick)

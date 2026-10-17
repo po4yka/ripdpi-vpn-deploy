@@ -168,3 +168,14 @@ readiness. The consumer/profile suites passed 54 tests; generic transaction,
 unit-state and reload suites passed 84 tests. Exact older cleanup journals
 resume; a changed retirement subset refuses. The generic transaction and
 Ansible changed-condition are unchanged.
+
+## Native expected-render boundary
+
+The native core job in run 39066025063 passed initial AWG role activation and
+the exact-pair wire/warm-adoption case. Three previous-runtime cases then failed
+an expected-configuration byte assertion. Cleanup was confirmed with no
+remaining differences. A bounded actual Ansible comparison identified exactly
+two extra newline bytes from the fixture renderer's block-trimming setting;
+this was not a production configuration mismatch or a trailing-newline change.
+The fixture expectation must match Ansible block trimming and retain an exact
+portable lookup regression before native failure recovery is accepted.

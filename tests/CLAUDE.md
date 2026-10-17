@@ -14,6 +14,8 @@
 
 ## Design decisions
 
+AWG native configuration expectations use Ansible block trimming and retain the final newline. A portable comparison executes the actual template lookup and checks exact bytes; generic snapshot rendering keeps its existing contract.
+
 Private authority fixtures set their owned root to the process GID. Darwin may
 inherit another group from the home directory; matching the production storage
 contract here keeps strict ownership checks active in portable tests.

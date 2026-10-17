@@ -10,6 +10,7 @@ Repair the six audited failure paths and merge verified source without a live ro
 - deploy_audit also owns tests/unit/test_runtime_awg_profile.py plus tests/unit/test_transport_site_transaction.py and tests/unit/test_runtime_source_consumers.py source-contract adaptations; vpn_audit owns its production implementation.
 - infra_audit owns scripts/backup-tf-state.sh, docs/RUNBOOK-incident.md and tests/unit/test_tf_state_backup.py.
 - infra_audit also owns tests/native/transport_acceptance/test_awg_lifecycle.py and tests/unit/test_awg_activation_native.py native fixture adaptations and exact supporting dependency maps; vpn_audit retains production/helper ownership.
+- infra_audit owns tests/unit/test_awg_native_renderer.py and the native fixture expected-render correction; production and the generic snapshot renderer retain their current contracts.
 - vpn_audit owns ansible/playbooks/site.yml and required playbook tasks, ansible/roles/firewall, ansible/roles/amneziawg, the required runtime-release retention seam, owned role notes and focused VPN tests.
 - vpn_audit also owns the narrow ansible/roles/baseline/tasks/forwarding.yml retained-forwarding seam, its CLAUDE.md note and focused forwarding regressions; standalone baseline keeps its current contract.
 - vpn_audit owns the CI-confirmed inline command rendering fix and the fresh missing-unit restore guard in nginx_transaction.py with tests/unit/test_nginx_site_transaction.py; shared ownership is serialized before the next source freeze.
