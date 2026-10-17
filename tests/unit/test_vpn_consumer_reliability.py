@@ -401,3 +401,69 @@ def test_actual_firewall_preparation_owns_fresh_runtime_parent(context, monkeypa
         assert stat.S_IMODE(parent.stat().st_mode) == (0o700 if layout == 'existing' else 0o755)
         assert (c.fw.STATE / 'consumer.json').exists()
         assert c.fw.CONFIG.read_bytes() == c.kernel['bytes'] == base64.b64decode(raw)
+
+
+def test_repeated_retirement_accepts_firewall_without_runtime_republication(context, monkeypatch):
+    c = context
+    plan = [{'path': raw, 'absent': True} for raw in c.shared | {str(c.cfg), str(c.record)}]
+    policy = base64.b64encode(c.fw.CONFIG.read_bytes()).decode()
+    assert c.awg.operate('apply', {'candidates': plan, 'firewall': policy})['changed']
+    with c.tx.Transaction(c.awg.STATE, uid=os.geteuid(), awg=True) as active:
+        assert {raw for raw, claim in active.accepted()['nodes'].items() if claim is None} == c.shared | {str(c.record)}
+    paths = c.binaries | c.shared | {str(c.cfg), str(c.record), str(c.awg.STATE / 'accepted.json')}
+    def observed():
+        return {raw: (Path(raw).read_bytes(), Path(raw).stat().st_ino) if Path(raw).exists() else None for raw in paths}
+    before = observed()
+    calls = []
+    for name in ['ensure', 'ready']:
+        original = getattr(c.awg.Adapter, name)
+        def checked(self, _name=name, _original=original):
+            calls.append(_name)
+            return _original(self)
+        monkeypatch.setattr(c.awg.Adapter, name, checked)
+    def forbidden(*args, **kwargs):
+        raise AssertionError('accepted retirement must not republish runtime or change lifecycle')
+    for name in ['stop', 'start', 'restore']:
+        monkeypatch.setattr(c.awg.Adapter, name, forbidden)
+    monkeypatch.setattr(c.tx.Transaction, 'replace', forbidden)
+    record = c.tx.Transaction.record
+    def checked_record(self, name, value):
+        if self.root == c.awg.STATE and name in {'pending.json', 'preparation.json', 'compensating.json', 'retirement.json'}:
+            forbidden()
+        return record(self, name, value)
+    monkeypatch.setattr(c.tx.Transaction, 'record', checked_record)
+    firewall = c.awg.firewall
+    def checked_firewall(action, payload):
+        calls.append('firewall-' + action)
+        return firewall(action, payload)
+    monkeypatch.setattr(c.awg, 'firewall', checked_firewall)
+    repeated = [{'path': raw, 'absent': True} for raw in c.shared | {str(c.record)}]
+    result = c.awg.operate('apply', {'candidates': repeated, 'firewall': policy})
+    assert result == {'status': 'accepted', 'changed': False, 'published': False}
+    assert calls == ['ensure', 'firewall-apply', 'ready', 'firewall-finish']
+    assert observed() == before
+    assert c.fw.CONFIG.read_bytes() == c.kernel['bytes'] == base64.b64decode(policy)
+    assert not (c.awg.STATE / 'firewall.json').exists()
+    assert not (c.fw.STATE / 'consumer.json').exists()
+
+
+@pytest.mark.parametrize('tampered', [False, True])
+def test_legacy_retirement_cleanup_resumes_only_exact_old_authority(context, monkeypatch, tampered):
+    c = context
+    fixed, dynamic = str(c.root / 'fixed.service'), str(c.root / 'retired.conf')
+    monkeypatch.setattr(c.awg, 'SHARED', {fixed})
+    with c.tx.Transaction(c.root / 'legacy-prune', uid=os.geteuid(), awg=True) as active:
+        before = {'schema': 1, 'nodes': {fixed: None, dynamic: None}, 'previous': None, 'units': {}}
+        after = {**before, 'nodes': {}}
+        active.record('accepted.json', before)
+        active.record('retirement.json', {'schema': 1, 'before': before, 'after': after,
+            'backups': None, 'next_backups': None, 'retired': [dynamic] if tampered else [fixed, dynamic], 'last': None})
+        if tampered:
+            with pytest.raises(c.tx.Refusal, match='awg-retirement-invalid'):
+                c.awg.prune_retired(active)
+            assert active.accepted() == before
+            assert (active.root / 'retirement.json').exists()
+        else:
+            c.awg.prune_retired(active)
+            assert active.accepted() == after
+            assert not (active.root / 'retirement.json').exists()

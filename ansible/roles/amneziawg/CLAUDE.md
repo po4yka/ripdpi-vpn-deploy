@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Retirement keeps exactly the two canonical shared-unit absence claims and the membership-record absence claim. These three bounded claims let repeated disable convergence use accepted readiness and firewall checks without publishing another runtime generation. Dynamic retired configuration claims and backups still prune after commit. Recovery accepts only the exact previous all-absence cleanup journal or the new bounded cleanup journal.
+
 The fixed `awg-quick.target` has no service `MainPID` property. Normalize only that target's absent PID to zero in retained unit state; a missing service PID still refuses activation.
 
 Source builds acquire immutable commit-selected executable files under `/opt/amneziawg/releases/`; they do not replace the accepted `/usr` executables. The complete consumer uses the shared inode journal with an AWG-only profile to publish binaries, shared units, private configurations and membership together. It keeps the AWG firewall open until runtime acceptance records a durable decision. Refusal restores the old firewall and exact runtime inodes before prior instance activation. A failed stop acknowledgement permits compensation only after inactive/failed state, PID zero and an empty recursive cgroup prove quiescence. Unconfirmed quiescence retains the journals.

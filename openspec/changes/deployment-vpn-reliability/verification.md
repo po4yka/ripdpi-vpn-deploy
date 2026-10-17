@@ -148,3 +148,23 @@ The hosted AWG Molecule scenario passed convergence, idempotence, all 31 verify
 assertions and destruction in that run. Both image scans passed with fresh
 databases and zero SARIF findings. A complete run of the final source is still
 required before merge.
+
+## Repeated AWG retirement
+
+At source dd126d8f33c67a77c316bc14f058073624f93ba0, hosted run 39066025063
+passed all 7,815 unit tests and 45 subtests, the AWG Molecule scenario and its
+cleanup, and all 19 infrastructure and image jobs. Both full-stack scenarios
+passed convergence. Their second application exposed a real retirement no-op
+defect: cleanup pruned every absent-path claim, so identical fixed-path
+retirement bypassed the retained transaction fast path. The final source must
+retain bounded canonical absence authority and keep dynamic retirement cleanup,
+then pass full-stack idempotence and the complete exact-source gates.
+
+The AWG-specific repair retains only the three canonical absence claims.
+Dynamic configuration retirement remains bounded and pruned. The regression
+failed on a second runtime preparation before the fix and now forbids runtime
+publication and lifecycle changes while checking firewall acceptance and
+readiness. The consumer/profile suites passed 54 tests; generic transaction,
+unit-state and reload suites passed 84 tests. Exact older cleanup journals
+resume; a changed retirement subset refuses. The generic transaction and
+Ansible changed-condition are unchanged.

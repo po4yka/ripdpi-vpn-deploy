@@ -277,11 +277,12 @@ def prune_retired(tx):
         receipt = tx.accepted()
         if receipt is None:
             return
-        retired = [raw for raw, claim in receipt['nodes'].items() if claim is None]
+        fixed_absence = SHARED | {str(RECORD)}
+        retired = [raw for raw, claim in receipt['nodes'].items() if claim is None and raw not in fixed_absence]
         if not retired:
             return
         backups = tx.backups()
-        remaining = {raw: claim for raw, claim in receipt['nodes'].items() if claim is not None}
+        remaining = {raw: claim for raw, claim in receipt['nodes'].items() if raw not in retired}
         after = {**receipt, 'nodes': remaining,
                  'previous': None if receipt['previous'] is None else {raw: claim for raw, claim in receipt['previous'].items() if raw in remaining}}
         next_backups = None if backups is None else {
@@ -296,8 +297,13 @@ def prune_retired(tx):
         raise Refusal('awg-retirement-invalid')
     for key in ('before', 'after'):
         validate_receipt(intent[key], root=tx.root, uid=tx.uid, node_limit=tx.node_limit)
-    if (intent['retired'] != [raw for raw, claim in intent['before']['nodes'].items() if claim is None]
-            or intent['after']['nodes'] != {raw: claim for raw, claim in intent['before']['nodes'].items() if claim is not None}):
+    absent = [raw for raw, claim in intent['before']['nodes'].items() if claim is None]
+    dynamic_absence = [raw for raw in absent if raw not in SHARED | {str(RECORD)}]
+    # Resume the exact older all-absence cleanup journal as well as the bounded
+    # form. A caller cannot choose an arbitrary subset or change retained claims.
+    if (intent['retired'] not in (absent, dynamic_absence)
+            or intent['after']['nodes'] != {raw: claim for raw, claim in intent['before']['nodes'].items()
+                                           if raw not in intent['retired']}):
         raise Refusal('awg-retirement-invalid')
     tx.validate_backup_map(intent['backups'])
     tx.validate_backup_map(intent['next_backups'])
