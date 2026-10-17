@@ -106,6 +106,12 @@
     - _transport_ingress_interrupted.stat.exists
     - not ansible_check_mode
 
+- name: Resolve a recorded protected commit before interrupted transaction adoption
+  ansible.builtin.include_tasks: transport-ingress-recover-commit.yml
+  when:
+    - _transport_ingress_interrupted.stat.exists
+    - not ansible_check_mode
+
 - name: Read the interrupted egress outer route ownership
   ansible.builtin.command:
     argv: [/usr/bin/python3, -Es, /usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py, status]

@@ -634,7 +634,8 @@ jobs:
             apt-get install -y --no-install-recommends \
               nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 \
               iproute2 openssl curl ca-certificates openssh-server \
-              python3-yaml make unzip
+              python3-yaml make unzip \
+              nginx=1.24.0-2ubuntu7.18 nginx-common=1.24.0-2ubuntu7.18
             chmod 0755 /var/log
           '
       - name: Execute complete transport acceptance in fresh partitioned runners
@@ -643,7 +644,7 @@ jobs:
         run: |
           docker exec --workdir /opt/rta \
             --env TRANSPORT_NATIVE_ISOLATED=1 \
-            --env "PYTEST_ADDOPTS=--tb=short --splits 2 --group $PYTEST_NATIVE_GROUP --splitting-algorithm duration_based_chunks" \
+            --env "PYTEST_ADDOPTS=--tb=short --splits 2 --group $PYTEST_NATIVE_GROUP --splitting-algorithm least_duration" \
             --env ANSIBLE_COLLECTIONS_PATH=/opt/rta/.ansible/collections \
             --env "PATH=$RTA_PYTHON_PREFIX/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
             transport-runtime-acceptance \

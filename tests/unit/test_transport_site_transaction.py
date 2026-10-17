@@ -98,9 +98,10 @@ def test_site_closes_complete_protected_block_before_unrelated_roles():
     assert block['block'][-1]['ansible.builtin.import_tasks'] == 'tasks/transport-ingress-commit.yml'
     assert play['tasks'][1]['ansible.builtin.import_role']['name'] == 'cdn-front'
     assert 'post_tasks' not in play
-    assert block['rescue'][0]['ansible.builtin.include_role']['tasks_from'] == 'quiesce'
-    assert block['rescue'][1]['ansible.builtin.include_tasks'] == 'tasks/transport-ingress-restore.yml'
-    assert block['rescue'][2]['ansible.builtin.include_role']['tasks_from'] == 'rollback'
+    assert block['rescue'][0]['ansible.builtin.include_tasks'] == 'tasks/transport-ingress-recover-commit.yml'
+    assert block['rescue'][1]['ansible.builtin.include_role']['tasks_from'] == 'quiesce'
+    assert block['rescue'][2]['ansible.builtin.include_tasks'] == 'tasks/transport-ingress-restore.yml'
+    assert block['rescue'][3]['ansible.builtin.include_role']['tasks_from'] == 'rollback'
     assert all(value['ansible.builtin.import_role']['public'] for value in block['block'] if 'ansible.builtin.import_role' in value)
 
 
@@ -181,7 +182,12 @@ def safe(path,missing=False):
   if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.geteuid() or info.st_mode&0o022:raise tx.TransactionError('unsafe-parent')
 tx.safe=safe;tx.STATE_ROOT=root/'nginx-state'
 tx.service_state=lambda unit:dict(active=False,exists=True,unit_file_state='disabled')
-tx.command=lambda argv:'';tx.restore_enabled=lambda *args:None
+def command(argv):
+ if argv[-1]=='finish':
+  if (root/'outer-fail').exists():raise tx.TransactionError('runtime-command')
+  (root/'outer-open').unlink(missing_ok=True)
+ return ''
+tx.command=command;tx.restore_enabled=lambda *args:None
 context=json.loads((root/'context.json').read_text()); state=tx.STATE_ROOT/'nginx.service'
 def write(owner,payload):
  value=next(v for v in tx.site_request(context) if v['owner']==owner)
@@ -200,8 +206,9 @@ elif action=='pend':
  path=Path(value['files'][0]['path'])
  tx.persist(state/'pending.json',dict(schema=2,phase='prepared',candidate='candidate-'+'0'*32,request=value,files={str(path):tx.capture(path)},active=False,
   service=dict(active=False,exists=True,unit_file_state='disabled'),owner='nginx-xhttp',receipt=tx.capture(state/'nginx-xhttp.activated.json'),next_receipt=tx.receipt_row(tx.owned_receipt(value))))
-else:tx.site_transaction(action,context)
-with (root/'events').open('a') as stream:stream.write('ingress-'+action+'\\n')
+else:print(json.dumps(tx.site_transaction(action,context)))
+if action!='recover-commit':
+ with (root/'events').open('a') as stream:stream.write('ingress-'+action+'\\n')
 ''')
     script = HELPER
     argv = [sys.executable, str(driver), str(root), 'seed', str(script)]
@@ -247,6 +254,9 @@ if (root / 'outer-fail').exists():
 print('{"open": %s}' % ('true' if (root / 'outer-open').exists() else 'false'))
 ''')
     _write(root / 'tasks/transport-ingress-begin.yml', _prestep(root, os.geteuid() if state_owner is None else state_owner) + [invoke('begin'), {'ansible.builtin.set_fact': {'transport_site_transaction_active': True}}])
+    recovery = yaml.safe_load((ROOT / 'ansible/playbooks/tasks/transport-ingress-recover-commit.yml').read_text())
+    recovery[0]['ansible.builtin.command'] = invoke('recover-commit')['ansible.builtin.command']
+    _write(root / 'tasks/transport-ingress-recover-commit.yml', recovery)
     _write(root / 'tasks/transport-ingress-restore.yml', [{**invoke('restore'), 'when': 'transport_site_transaction_active | default(false) | bool'}])
     _write(root / 'tasks/transport-ingress-commit.yml', [invoke('commit'), {'ansible.builtin.set_fact': {'transport_site_transaction_active': False, '_transport_egress_transaction_started': False}}])
     (root / 'tasks/transport-egress-activate.yml').write_bytes((ROOT / 'ansible/playbooks/tasks/transport-egress-activate.yml').read_bytes())
@@ -509,14 +519,14 @@ def test_malformed_prior_site_journal_fails_closed_before_capture_and_is_retaine
     journal.write_text('{"schema": 99}')
     before = _journal_state(root)
     result = _run(root)
-    assert result.returncode != 0 and 'interrupted-protected-ingress-transaction' in result.stdout
+    assert result.returncode != 0 and 'Complete a recorded protected commit' in result.stdout
     assert _journal_state(root) == before
     assert all(Path(value['paths'][0]).read_bytes() == b'changed ingress' for value in context['owners'])
     events = (root / 'events').read_text().splitlines()
     assert 'ingress-restore' not in events and 'ingress-begin' not in events and 'stage' not in events
-    # With the outer route open the rescue stops the candidates, cannot restore, and never resumes the accepted generation.
-    assert events == (['quiesce'] if outer == 'open' else [])
-    assert (root / 'state').read_text() == ('stopped' if outer == 'open' else 'accepted-running')
+    # An unreadable decision refuses before adoption, quiescence or compensation.
+    assert events == []
+    assert (root / 'state').read_text() == ('candidate-running' if outer == 'open' else 'accepted-running')
 
 
 def test_interrupted_transaction_detection_matches_the_production_contract():
@@ -529,6 +539,7 @@ def test_interrupted_transaction_detection_matches_the_production_contract():
         'Refuse dry-run while an interrupted ordinary nginx publication awaits recovery',
         'Admit exact root-owned egress helper authority before running it for interrupted transaction adoption',
         'Locate the egress outer route helper for interrupted transaction adoption',
+        'Resolve a recorded protected commit before interrupted transaction adoption',
         'Read the interrupted egress outer route ownership',
         'Refuse adoption when the egress outer route ownership cannot be read',
         'Locate the egress outer route state directory when its helper is missing',
@@ -536,7 +547,7 @@ def test_interrupted_transaction_detection_matches_the_production_contract():
         'Refuse adoption when a missing egress outer route helper leaves the route state unproven',
         "Adopt the interrupted transaction as this block's sole compensation owner",
         'Refuse to capture while an interrupted protected ingress transaction awaits compensation']
-    detect, pending, pending_refuse, admit, locate, outer, unreadable, state_dir, record, missing, adopt, refuse = steps
+    detect, pending, pending_refuse, admit, locate, recovery, outer, unreadable, state_dir, record, missing, adopt, refuse = steps
     # The playbook-side journal path must stay the helper's own state root.
     spec = importlib.util.spec_from_file_location('site_nginx_contract', HELPER)
     helper = importlib.util.module_from_spec(spec)
@@ -550,8 +561,9 @@ def test_interrupted_transaction_detection_matches_the_production_contract():
     assert pending_refuse['ansible.builtin.fail']['msg'].startswith('interrupted-nginx-publication:') and 'no_log' not in pending_refuse
     # The outer route helper is the one the commit task already addresses.
     commit = yaml.safe_load((ROOT / 'ansible/playbooks/tasks/transport-ingress-commit.yml').read_text())
-    finish = next(value for value in commit if value['name'].startswith('Commit the complete native consumer'))
-    assert finish['ansible.builtin.command']['argv'][2] == OUTER_HELPER
+    assert '--finish-egress' in commit[0]['ansible.builtin.command']['argv']
+    assert recovery['ansible.builtin.include_tasks'] == 'transport-ingress-recover-commit.yml'
+    assert recovery['when'] == ['_transport_ingress_interrupted.stat.exists', 'not ansible_check_mode']
     assert locate['ansible.builtin.stat'] == {'path': OUTER_HELPER, 'follow': False}
     # The status helper runs as root only after the role's one shared admission of its ancestry and file.
     assert admit['ansible.builtin.include_role'] == {'name': 'transport-egress', 'tasks_from': 'helper-authority'}
@@ -695,3 +707,46 @@ def test_public_pages_and_assets_are_staged_by_actual_ansible_without_direct_pub
     assert all('ansible.builtin.copy' not in value and 'ansible.builtin.template' not in value for value in tasks)
     enabled = (source_role / 'tasks/enable.yml').read_text()
     assert '/etc/hosts' not in enabled and 'unsafe_writes' not in enabled and 'getent' not in enabled
+
+
+@pytest.mark.parametrize('committed', [False, True])
+def test_rescue_rolls_forward_commit_and_never_compensates_after_lost_ack(tmp_path, committed):
+    root, context = _fixture(tmp_path, 'none')
+    # Run the production rescue resolver through Ansible and the real journal API.
+    recovery = yaml.safe_load((ROOT / 'ansible/playbooks/tasks/transport-ingress-recover-commit.yml').read_text())
+    recovery[0]['ansible.builtin.command'] = {
+        'argv': [sys.executable, str(root / 'ingress_driver.py'), str(root), 'recover-commit', str(HELPER)]}
+    _write(root / 'tasks/transport-ingress-recover-commit.yml', recovery)
+    commit = yaml.safe_load((root / 'tasks/transport-ingress-commit.yml').read_text())
+    if committed:
+        # The helper completed but its response never reached the controller.
+        commit = [commit[0], {'ansible.builtin.fail': {'msg': 'lost commit acknowledgement'}}]
+    else:
+        # The subprocess dies after deciding commit; retry must complete it.
+        marker = "import json,sys;from pathlib import Path;p=Path(sys.argv[1]);v=json.loads(p.read_text());v.update(phase='committing',finish_egress=False);p.write_text(json.dumps(v))"
+        commit = [{'ansible.builtin.command': {'argv': [sys.executable, '-c', marker, str(root / 'nginx-state/nginx.service/site.json')]}, 'changed_when': False},
+                  {'ansible.builtin.fail': {'msg': 'lost commit acknowledgement'}}]
+    _write(root / 'tasks/transport-ingress-commit.yml', commit)
+    result = _run(root)
+    assert result.returncode != 0 and 'lost commit acknowledgement' in result.stdout
+    events = (root / 'events').read_text().splitlines()
+    assert 'quiesce' not in events and 'resume' not in events and 'ingress-restore' not in events
+    assert all(Path(owner['paths'][0]).read_bytes() == b'changed ingress' for owner in context['owners'])
+    assert (root / 'frontend.conf').read_bytes() == b'changed frontend'
+    assert not (root / 'nginx-state/nginx.service/site.json').exists()
+
+
+def test_next_deploy_finishes_recorded_commit_before_staging(tmp_path):
+    root, context = _fixture(tmp_path, 'none')
+    _interrupt(root, 'open')
+    journal = root / 'nginx-state/nginx.service/site.json'
+    decision = json.loads(journal.read_text())
+    decision.update(phase='committing', finish_egress=True)
+    journal.write_text(json.dumps(decision))
+    result = _run(root)
+    assert result.returncode == 0, result.stdout + result.stderr
+    events = (root / 'events').read_text().splitlines()
+    assert 'quiesce' not in events and 'resume' not in events and 'ingress-restore' not in events
+    assert events.index('ingress-begin') < events.index('stage')
+    assert all(Path(owner['paths'][0]).read_bytes() == b'changed ingress' for owner in context['owners'])
+    assert not journal.exists() and not (root / 'outer-open').exists()

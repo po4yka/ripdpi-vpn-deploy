@@ -55,6 +55,25 @@ def command(argv, timeout=30, **kwargs):
     return result.stdout.decode()
 
 
+def forget_retired_units(units):
+    """Only the claimed lab's removed units may lose retained failure state."""
+    def inspect(unit):
+        raw = command(['systemctl', 'show', unit, '--property=LoadState,ActiveState,MainPID'])
+        return dict(row.split('=', 1) for row in raw.splitlines() if '=' in row)
+
+    for unit in units:
+        state = inspect(unit)
+        if (state.get('MainPID') != '0' or state.get('ActiveState') not in {'inactive', 'failed'}
+                or state.get('LoadState') not in {'loaded', 'not-found', 'error'}):
+            raise RuntimeError('native-fixture-unit-retirement-unconfirmed')
+        if state['ActiveState'] == 'failed':
+            command(['systemctl', 'reset-failed', unit])
+    command(['systemctl', 'daemon-reload'])
+    for unit in units:
+        if inspect(unit) != {'LoadState': 'not-found', 'ActiveState': 'inactive', 'MainPID': '0'}:
+            raise RuntimeError('native-fixture-unit-retirement-unconfirmed')
+
+
 def artifacts(directory):
     directory = directory / ARCH
     directory.mkdir(mode=0o755, parents=True, exist_ok=True)
@@ -242,7 +261,7 @@ server.serve_forever()
         return self
 
     def converge(self, profile='xray', *, check=False, allow_failure=False, retire=False, site=False,
-                 stage_only=False, fail_after_acceptance=False, interrupt_first_adoption=False):
+                 stage_only=False, fail_after_acceptance=False, interrupt_first_adoption=False, retain_commit=False):
         self.context['vpn'].update(enable_xray_reality=profile in {'xray', 'both'}, enable_hysteria=profile in {'hysteria', 'both'})
         path = self.private / 'converge.yml'
         play = {'hosts': 'localhost', 'connection': 'local', 'gather_facts': True,
@@ -267,6 +286,8 @@ server.serve_forever()
                         '/usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py', 'finish']},
                     'when': '(transport_egress_role_enabled | bool) or (_transport_egress_full_retirement | default(false) | bool)',
                     'changed_when': False, 'no_log': True}]
+            if retain_commit:
+                play['tasks'] = play['tasks'][:-1]
             if stage_only:
                 play['tasks'] = play['tasks'][:3]
             if fail_after_acceptance:
@@ -569,6 +590,7 @@ with tempfile.TemporaryDirectory(prefix='native-hopped-client-') as temporary:
             if user not in self.prior_groups and user in {entry.gr_name for entry in grp.getgrall()}:
                 command(['groupdel', user])
         command(['systemctl', 'daemon-reload'])
+        forget_retired_units(units)
         if getattr(self, 'sshd_runtime_created', False):
             Path('/run/sshd').rmdir()
 
