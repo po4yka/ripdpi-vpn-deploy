@@ -5,9 +5,11 @@ import base64
 import copy
 from contextlib import ExitStack
 import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import sys
 import uuid
@@ -23,6 +25,68 @@ from test_transport_semantics_native import command, exact_awg_sources
 ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / "ansible/roles/amneziawg"
 pytestmark = pytest.mark.native_runtime
+
+
+def warm_startup_diagnostics(unit, namespace, private, *, runner=subprocess.run):
+    """Expose only fixed categories and kernel metadata, never command output."""
+    def query(argv):
+        try:
+            result = runner(argv, capture_output=True, text=True, timeout=10)
+            return result.stdout[:131072] if result.returncode == 0 else ''
+        except (OSError, subprocess.SubprocessError):
+            return ''
+
+    allowed = {
+        'LoadState': {'loaded', 'not-found', 'error', 'masked', 'merged'},
+        'ActiveState': {'active', 'inactive', 'failed', 'activating', 'deactivating', 'reloading'},
+        'SubState': {'running', 'exited', 'dead', 'failed', 'start', 'start-pre', 'start-post',
+                     'stop', 'stop-sigterm', 'stop-sigkill', 'auto-restart'},
+        'Result': {'success', 'exit-code', 'signal', 'core-dump', 'watchdog', 'timeout',
+                   'protocol', 'resources', 'oom-kill', 'exec-condition', 'start-limit-hit'},
+        'ExecMainCode': None, 'ExecMainStatus': None,
+    }
+    text = query(['systemctl', 'show', unit, '--property=' + ','.join(allowed)])
+    properties = {key: 'unavailable' for key in allowed}
+    for key, choices in allowed.items():
+        values = [line.partition('=')[2] for line in text.splitlines() if line.startswith(key + '=')]
+        if len(values) != 1:
+            continue
+        value = values[0]
+        if choices is not None and value in choices:
+            properties[key] = value
+        elif choices is None and value.isascii() and value.isdecimal() and len(value) <= 3 and int(value) <= 255:
+            properties[key] = int(value)
+    values = query(['ip', 'netns', 'exec', namespace, 'sysctl', '-n',
+                    'net.ipv6.conf.all.disable_ipv6', 'net.ipv6.conf.default.disable_ipv6']).split()
+    ipv6 = dict.fromkeys(('all_disabled', 'default_disabled'), 'unavailable')
+    if len(values) == 2 and all(value in {'0', '1'} for value in values):
+        ipv6 = dict(zip(ipv6, map(int, values)))
+    journal = query(['journalctl', '--unit', unit, '--no-pager', '--output=cat', '--lines=64'])
+    patterns = {
+        'exec_failure': ('Failed at step EXEC', 'status=203/EXEC'),
+        'namespace_failure': ('Failed at step NAMESPACE', 'status=226/NAMESPACE'),
+        'permission_denied': ('Permission denied', 'Operation not permitted'),
+        'ipv6_disabled': ('IPv6 is disabled',),
+        'address_family_unavailable': ('Address family not supported by protocol',),
+        'missing_path': ('No such file or directory',),
+        'config_rejected': ('Line unrecognized', 'Configuration parsing error'),
+        'uapi_unavailable': ('Unable to access interface',),
+    }
+    parents = {}
+    for label, path in {
+        'usr': Path('/usr'), 'usr_local': Path('/usr/local'), 'usr_local_bin': Path('/usr/local/bin'),
+        'usr_bin': Path('/usr/bin'), 'etc': Path('/etc'), 'systemd': Path('/etc/systemd'),
+        'systemd_system': Path('/etc/systemd/system'), 'var': Path('/var'), 'var_lib': Path('/var/lib'),
+        'ripdpi': Path('/var/lib/ripdpi'), 'private': private,
+    }.items():
+        try:
+            info = path.lstat()
+            parents[label] = {'uid': info.st_uid, 'gid': info.st_gid, 'mode': format(stat.S_IMODE(info.st_mode), '04o'),
+                              'nlink': info.st_nlink, 'issym': stat.S_ISLNK(info.st_mode), 'isdir': stat.S_ISDIR(info.st_mode)}
+        except OSError:
+            parents[label] = dict.fromkeys(('uid', 'gid', 'mode', 'nlink', 'issym', 'isdir'), 'unavailable')
+    return {'unit': properties, 'ipv6': ipv6, 'parents': parents,
+            'journal_flags': {key: any(pattern in journal for pattern in choices) for key, choices in patterns.items()}}
 
 
 def test_warm_binary_and_unit_adoption_then_unchanged_convergence(tmp_path):
@@ -73,7 +137,9 @@ def test_warm_binary_and_unit_adoption_then_unchanged_convergence(tmp_path):
             assert config.stat().st_mode & 0o777 == 0o600
 
         initial = publisher.role([effective])
-        assert initial.returncode == 0, 'native warm AWG initial role convergence failed'
+        if initial.returncode != 0:
+            evidence = warm_startup_diagnostics(unit.name, token, private)
+            pytest.fail('native warm AWG initial role convergence failed: ' + json.dumps(evidence, sort_keys=True))
         if key in initial.stdout + initial.stderr:
             pytest.fail('native warm AWG initial role exposed its fixture key')
         private_configuration()

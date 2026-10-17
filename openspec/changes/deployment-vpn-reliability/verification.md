@@ -201,3 +201,25 @@ no-op, while rollback retains its separate exact-inode requirement. The custom
 unit candidate does not claim that a full role run would retain fixture-only
 settings. Local collection and a portable Ansible render comparison pass; native
 execution remains a required hosted check.
+
+## Warm startup diagnostic boundary
+
+Run 39070390257 at source 6534e9f9c638b3ec66bb390ce3de2cf10b5c6c8a passed
+7,819 unit tests and 45 subtests, both full-stack idempotence/verify/destroy
+cycles, AWG Molecule and all infrastructure/image gates. Core and both recovery
+plans passed all 44 cases with confirmed cleanup and no differences. Both
+transport partitions passed all 12 cases with successful retirement. Native
+integration observed 337 passing tests, then refused initial warm-fixture
+publication; the last AWG dual-stack target did not run. The internal cause is
+not established by empty stdout. Safe failure metadata and an early warm case
+are required to distinguish fixture authority and service startup conditions.
+The complete runtime suite and all gates remain required; raw journal, private
+configuration and key output remain prohibited. Workflow lint passed for the
+early test step.
+
+Diagnostic leak regressions and the actual Ansible renderer comparison passed
+11 tests. They reject unknown or duplicate properties, non-ASCII/negative/large
+exit values, exception/timeout command strings, raw journal and parent-error
+paths. CI selection and protective workflow coverage passed 68 tests; actionlint,
+Zizmor and all four Zizmor gate regressions passed. No native acceptance is
+claimed from these portable checks.
