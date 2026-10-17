@@ -22,6 +22,8 @@ Repair the six audited failure paths and merge verified source without a live ro
 - infra_audit owns the explicitly authorized CI-only Debian13 publisher run, all 45 Debian13 Molecule pin files and tests/unit/test_molecule_image_pins.py. Accept only a freshly scanned immutable digest; primary serializes commits and publication of the PR branch.
 - deploy_audit owns the exact runtime-authority fixture dependency in tests/unit/test_amneziawg_source_pins.py.
 - vpn_audit owns tests/unit/test_fresh_protocol_check_mode.py for the retained AWG fresh-host check-mode contract; Hysteria checks remain unchanged.
+- infra_audit owns the hosted-runner trusted executable parent setup in .github/actions/setup-disposable-ci/action.yml and its executable regression; production trust checks stay unchanged.
+- vpn_audit owns the six confirmed CodeQL repairs in its consumer helpers, reliability/profile tests and the unused initial warm acquisition binding; the acquisition call remains required.
 - primary owns tests/conftest.py fixture group normalization and serializes shared scripts/CLAUDE.md, tests/CLAUDE.md, ansible/CLAUDE.md, docs/RUNBOOK-deploy.md, task/spec artifacts, integration and Git/PR operations. Workers do not commit or edit shared lanes.
 
 ## Execution

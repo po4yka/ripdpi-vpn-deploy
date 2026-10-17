@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import base64
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -12,7 +11,7 @@ import re
 import subprocess
 import sys
 
-from transport_runtime_transaction import Transaction, Refusal, TrustedDirectory, node, read_private, sync, validate_receipt, admission
+from transport_runtime_transaction import Transaction, Refusal, TrustedDirectory, read_private, validate_receipt, admission
 from firewall_consumer import operate as firewall
 
 STATE = Path('/var/lib/ripdpi/amneziawg/runtime')

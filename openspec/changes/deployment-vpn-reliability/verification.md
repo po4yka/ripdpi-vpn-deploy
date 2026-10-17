@@ -236,3 +236,31 @@ the read-only assertion boundary. The five-file integration bundle passed
 Workflow lint and all 56 task contracts passed. Image pins already match the
 scanned digest; no additional publication was required. Hosted execution of the
 combined source remains required.
+
+## Hosted executable-parent refusal
+
+Run 39075421503 at source 00683518aac31db73625c8af48f94f298cc45f3d
+reproduced the early warm refusal in 8.60 seconds. Safe metadata confirms that
+root-owned /usr/local/bin has mode 0777 on the hosted runner. Other observed
+ancestors satisfy the trust floor. The service was not loaded, IPv6 was enabled
+and no journal failure category matched. The existing transaction rejects this
+parent before publication. Disposable CI preparation must establish its required
+0755 mode without changing production admission. The complete native goals
+remain required on the repaired source.
+
+The same PR analysis found six new CodeQL alerts. Narrow repairs make a fixture
+path assignment unconditional, retain acquisition while removing its unused
+binding, remove unused imports and use Path directly. The affected portable
+suites passed 82 cases and the complete four-transport runner suite passed
+21 cases. No runtime failure is claimed for the correlated-branch static alert.
+Only a new published analysis can confirm alert closure.
+
+The disposable CI admission repair passed all ten executable cases, including
+repeated leaf normalization, preserved child inode/bytes/mode, unsafe ancestry,
+symlink, owner-policy, missing-path and regular-file refusal. The complete
+CI source-contract bundle passed 51 tests; actionlint, Zizmor, YAML lint and
+diff checks passed. Only disposable setup changes its fixed leaf mode.
+Production admission and the complete hosted runtime goals remain unchanged.
+Main integration includes the task-only commit
+234211e223f90256efbfc77eeb0e2ef430bcfddf; the board is regenerated from task
+records. Hosted acceptance remains required before merge.

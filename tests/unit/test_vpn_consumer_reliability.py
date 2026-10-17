@@ -349,11 +349,11 @@ def test_actual_firewall_preparation_owns_fresh_runtime_parent(context, monkeypa
     import yaml
     c = context
     parent = c.root / 'ripdpi'
+    target = c.root / 'foreign-parent'
     monkeypatch.setattr(c.fw, 'STATE', parent / 'firewall-runtime')
     if layout == 'existing':
         parent.mkdir(mode=0o700)
     elif layout == 'symlink':
-        target = c.root / 'foreign-parent'
         target.mkdir(mode=0o700)
         parent.symlink_to(target, target_is_directory=True)
     prepare = yaml.safe_load((FILES / 'firewall/tasks/consumer-prepare.yml').read_text())

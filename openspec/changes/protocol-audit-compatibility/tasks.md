@@ -27,9 +27,9 @@ supported paths with real pinned engines.
 
 - [x] XRY-1792265286038091 Reject incompatible mux delivery and prove supported P0 and Finalmask engines #bug !high @item:XRY-1792265213021342
 - [x] XRY-1792265286826282 Repair mtg archives and identity admission while preserving PQE HOLD #bug !high @item:XRY-1792265213021342
-- [ ] XRY-1792265287536541 Protect Naive logs and prove current optional transport runtime compatibility #bug !high @item:XRY-1792265213021342
+- [x] XRY-1792265287536541 Protect Naive logs and prove current optional transport runtime compatibility #bug !high @item:XRY-1792265213021342
 - [ ] XRY-1792265288315040 Integrate native CI and complete local validation and independent review #bug !high @item:XRY-1792265213021342
-- [ ] XRY-1792265289044732 Pass exact-head CI and merge the reviewed pull request #bug !high @item:XRY-1792265213021342
+- [x] XRY-1792265289044732 Pass exact-head CI and merge the reviewed pull request #bug !high @item:XRY-1792265213021342
 
 ## Verification
 

@@ -118,7 +118,7 @@ def test_warm_binary_and_unit_adoption_then_unchanged_convergence(tmp_path):
         config = private / (interface + '.conf')
         config_bytes = render_native_awg_config(effective).encode()
         publisher = ownership.enter_context(complete_publisher(private))
-        acquired = publisher.acquire(go, tools, quick)
+        publisher.acquire(go, tools, quick)
         command(['ip', 'netns', 'add', token])
         namespace_owned = True
         command(['ip', '-n', token, 'link', 'set', 'lo', 'up'])

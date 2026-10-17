@@ -60,7 +60,7 @@ def canonical_files(core, area, monkeypatch):
         # Only canonical parent/storage lookup is virtual. Executable admission,
         # hashing, source modes and byte limits use the production implementation.
         monkeypatch.setattr(selected, "parent", lambda _path: None)
-        monkeypatch.setattr(selected, "storage", lambda raw: Path(raw))
+        monkeypatch.setattr(selected, "storage", Path)
         return selected
 
     return observed, transaction
