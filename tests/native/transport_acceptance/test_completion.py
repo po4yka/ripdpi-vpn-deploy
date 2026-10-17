@@ -159,7 +159,7 @@ def test_https_upload_download_tcp_udp_dns_and_independent_rejection(profile, ob
         result = stack.driver_state / "bulk-result.json"
         observed = subprocess.run(
             ["ip", "netns", "exec", stack.namespace, sys.executable, "-c", source],
-            input=json.dumps({"port": port, "result": str(result)}),
+            input=json.dumps({"port": port, "result": str(result), "socket_timeout": 3}),
             capture_output=True,
             text=True,
             timeout=90,
