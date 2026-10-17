@@ -61,189 +61,26 @@
                 smoketest_unit_suffix: "{{ lookup('password', '/dev/null', length=32, chars=['ascii_lowercase', 'digits']) }}"
               no_log: true
 
-            - name: Smoke-test REALITY
+            - name: Select every effective REALITY smoke listener
+              ansible.builtin.set_fact:
+                smoketest_reality_cohorts: >-
+                  {{ xray.cohorts if (xray.cohorts | default([]) | length > 0)
+                     else ([{'name': 'primary', 'port': xray_port,
+                             'clients': [xray.clients[0].name]}]
+                       + ([{'name': 'fallback', 'port': xray_fallback_port,
+                            'clients': [xray.clients[0].name]}]
+                          if (xray_fallback_port | default(0) | int > 0) and
+                             (xray_fallback_port | int != xray_port | int) else [])) }}
               when: vpn.enable_xray_reality | default(true)
-              block:
-                - name: Require REALITY smoke credentials
-                  ansible.builtin.assert:
-                    that:
-                      - xray.clients | length > 0
-                      - xray.reality_public_key is defined
-                      - xray.server_names | length > 0
-                    fail_msg: "secrets are missing client/REALITY data; cannot smoke-test"
-                  no_log: true
+              no_log: true
 
-                - name: Select populated REALITY smoke cohorts
-                  ansible.builtin.set_fact:
-                    smoketest_reality_populated_cohorts: >-
-                      {{ xray.cohorts | default([])
-                         | selectattr('clients', 'defined')
-                         | selectattr('clients') | list }}
-                  no_log: true
-
-                - name: Select REALITY smoke cohort
-                  ansible.builtin.set_fact:
-                    smoketest_reality_cohort: >-
-                      {{ (smoketest_reality_populated_cohorts | first | default({}))
-                         if (xray.cohorts | default([]) | length > 0)
-                         else {
-                           'port': xray_port,
-                           'flow_mode': vpn.xray_flow_mode | default(p0_reality_flow_mode),
-                           'clients': [xray.clients[0].name]
-                         } }}
-                  no_log: true
-
-                - name: Require valid REALITY smoke cohort
-                  ansible.builtin.assert:
-                    that:
-                      - smoketest_reality_cohort is mapping
-                      - smoketest_reality_cohort.clients | default([]) | length > 0
-                      - smoketest_reality_cohort.port | int > 0
-                      - smoketest_reality_cohort.port | int <= 65535
-                    fail_msg: "REALITY cohort has no smoke-testable client or listener"
-
-                - name: Select REALITY smoke client from cohort
-                  ansible.builtin.set_fact:
-                    smoketest_client: >-
-                      {{ xray.clients
-                         | selectattr('name', 'equalto', smoketest_reality_cohort.clients[0])
-                         | list | first | default({}) }}
-                  no_log: true
-
-                - name: Require REALITY smoke client belongs to selected cohort
-                  ansible.builtin.assert:
-                    that:
-                      - smoketest_client is mapping
-                      - smoketest_client.uuid | default('') | length > 0
-                      - smoketest_client.short_id | default('') | length > 0
-                    fail_msg: "selected REALITY cohort references an unknown or incomplete client"
-                  no_log: true
-
-                - name: Render Xray client config (REALITY)
-                  ansible.builtin.copy:
-                    dest: "{{ smoketest_dir }}/xray-client.json"
-                    owner: root
-                    group: root
-                    mode: "0600"
-                    content: |
-                      {% set _smoke_shape = lookup(
-                        'ansible.builtin.template',
-                        p0_reality_shape_template,
-                        template_vars={'p0_reality_shape_input': smoketest_reality_cohort}
-                      ) | from_json %}
-                      {
-                        "log": { "loglevel": "warning" },
-                        "inbounds": [{
-                          "tag": "smoke-socks",
-                          "listen": "127.0.0.1",
-                          "port": 31080,
-                          "protocol": "socks",
-                          "settings": { "auth": "noauth", "udp": true }
-                        }],
-                        "outbounds": [{
-                          "tag": "smoke-reality",
-                          "protocol": "vless",
-                          "settings": {
-                            "vnext": [{
-                              "address": "127.0.0.1",
-                              "port": {{ smoketest_reality_cohort.port }},
-                              "users": [{
-                                "id": "{{ smoketest_client.uuid }}",
-                                "encryption": "none"{% if _smoke_shape.client_flow %},
-                                "flow": "{{ _smoke_shape.client_flow }}"{% endif %}
-                              }]
-                            }]
-                          },
-                          "streamSettings": {
-                            "network": "raw",
-                            "security": "reality",
-                            "realitySettings": {
-                              "fingerprint": "chrome",
-                              "serverName": "{{ xray.server_names[0] }}",
-                              "publicKey": "{{ xray.reality_public_key }}",
-                              "shortId": "{{ smoketest_client.short_id }}"
-                            }{% if _smoke_shape.finalmask %},
-                            "sockopt": {"finalmask": "Sudoku"}{% endif %}
-                          }{% if _smoke_shape.client_mux %},
-                          "mux": {"enabled": true, "concurrency": 8}{% endif %}
-                        }]
-                      }
-                  no_log: true
-                  diff: false
-
-                - name: Require vacant REALITY smoke listener ports
-                  ansible.builtin.wait_for:
-                    host: 127.0.0.1
-                    port: 31080
-                    state: stopped
-                    timeout: 1
-
-                - name: Mark REALITY smoke ownership as uncertain before start
-                  ansible.builtin.set_fact:
-                    smoketest_cleanup_confirmed: false
-
-                - name: Run Xray smoke client (REALITY)
-                  ansible.builtin.command:
-                    cmd: |
-                      systemd-run --quiet --no-block --collect
-                        --unit=vpn-smoke-xray-{{ smoketest_unit_suffix }}
-                        --property=Type=simple --property=RuntimeMaxSec=60
-                        /usr/local/bin/xray run -config {{ smoketest_dir }}/xray-client.json
-                  changed_when: true
-                  register: smoketest_start_xray
-
-                - name: Wait briefly for the smoke listener
-                  ansible.builtin.wait_for:
-                    host: 127.0.0.1
-                    port: 31080
-                    timeout: 10
-
-                - name: Confirm own REALITY smoke unit is active before probing
-                  ansible.builtin.command:
-                    cmd: systemctl is-active --quiet vpn-smoke-xray-{{ smoketest_unit_suffix }}.service
-                  changed_when: false
-
-                - name: Probe through REALITY proxy
-                  ansible.builtin.command:
-                    cmd: |
-                      curl -sS -o /dev/null -w '%{http_code}'
-                        --max-time 15
-                        --noproxy '' --proxy socks5h://127.0.0.1:31080
-                        {{ smoketest_target }}
-                  register: reality_probe
-                  changed_when: false
-                  failed_when: reality_probe.stdout | int != smoketest_expected_code
-
-                - name: Confirm own REALITY smoke unit is active after probing
-                  ansible.builtin.command:
-                    cmd: systemctl is-active --quiet vpn-smoke-xray-{{ smoketest_unit_suffix }}.service
-                  changed_when: false
-
-              rescue:
-                - name: Report REALITY smoke failure
-                  ansible.builtin.fail:
-                    msg: "REALITY smoke probe failed; see the original task error. Owned-resource cleanup follows."
-              always:
-                - name: Stop the successfully started REALITY smoke client
-                  when:
-                    - smoketest_start_xray is defined
-                    - smoketest_start_xray.rc | default(-1) == 0
-                  ansible.builtin.command:
-                    cmd: systemctl stop vpn-smoke-xray-{{ smoketest_unit_suffix }}.service
-                  environment:
-                    LC_ALL: C
-                  register: smoketest_stop_xray
-                  changed_when: smoketest_stop_xray.rc == 0
-                  failed_when: >-
-                    smoketest_stop_xray.rc != 0 and
-                    ('Unit vpn-smoke-xray-' ~ smoketest_unit_suffix ~ '.service not loaded.') not in smoketest_stop_xray.stderr
-
-                - name: Confirm REALITY smoke client cleanup
-                  when:
-                    - smoketest_start_xray is defined
-                    - smoketest_start_xray.rc | default(-1) == 0
-                  ansible.builtin.set_fact:
-                    smoketest_cleanup_confirmed: true
+            - name: Smoke-test REALITY
+              ansible.builtin.include_tasks: tasks/smoke-reality.yml
+              loop: "{{ smoketest_reality_cohorts | default([]) }}"
+              loop_control:
+                loop_var: smoketest_reality_cohort
+                label: "{{ smoketest_reality_cohort.name | default('listener') }}"
+              when: vpn.enable_xray_reality | default(true)
 
             - name: Smoke-test Hysteria
               when: vpn.enable_hysteria | default(true)
@@ -265,6 +102,12 @@
                         ca: {{ (hysteria_config_dir ~ '/server.fullchain.pem') | to_json }}
                       {% if hysteria.ech is defined %}
                         ech: {{ hysteria.ech.config_list | to_json }}
+                      {% endif %}
+                      {% if hysteria.salamander_enabled | default(false) %}
+                      obfs:
+                        type: salamander
+                        salamander:
+                          password: {{ hysteria.salamander_password | to_json }}
                       {% endif %}
                       socks5:
                         listen: 127.0.0.1:31081

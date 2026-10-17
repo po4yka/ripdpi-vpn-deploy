@@ -18,6 +18,7 @@ TEMPLATES = REPO_ROOT / "ansible" / "roles" / "watchdog" / "templates"
 def _multi_cohort_vars() -> dict:
     vars_ = deepcopy(merge_render_vars())
     vars_["vpn_service_address"] = "192.0.2.50"
+    vars_["vpn"]["enable_nginx_xhttp"] = False
     vars_["watchdog_reality_probes"] = [
         {
             "name": "primary",
@@ -100,7 +101,7 @@ def test_notification_authority_is_separate_and_the_unit_has_a_deadline():
     assert (
         "LoadCredential=notifications.json:/etc/vpn-watchdog-notifications.json" in unit
     )
-    assert "TimeoutStartSec=535s" in unit
+    assert "TimeoutStartSec=565s" in unit
     assert config["token"] not in unit and config["topic"] not in unit
 
 
@@ -574,6 +575,6 @@ def test_service_deadline_includes_each_enabled_guarded_recovery(xray, hysteria,
     variables["vpn"].update(enable_xray_reality=xray, enable_hysteria=hysteria)
     variables["transport_egress_control_timeout_seconds"] = control
     unit = render_template(TEMPLATES / "vpn-watchdog.service.j2", variables)
-    probe_budget = 300 + 3 * variables["watchdog"].get("reality_probe_timeout", 15)
+    probe_budget = 300 + (3 + (2 if hysteria else 0)) * variables["watchdog"].get("reality_probe_timeout", 15)
     expected = probe_budget + (int(xray)+int(hysteria))*(3*control+5)
     assert f"TimeoutStartSec={expected}s" in unit

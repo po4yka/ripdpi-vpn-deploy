@@ -133,13 +133,15 @@
         ((vpn.enable_xray_reality | default(true)) or
          (vpn.enable_nginx_xhttp | default(true)))
 
-    - name: Xray TCP listener active
-      ansible.builtin.shell:
-        cmd: |
-          set -o pipefail
-          ss -lnt | awk '{print $4}' | grep -q ':{{ xray_port }}$'
-        executable: /bin/bash
-      changed_when: false
+    - name: Xray effective REALITY listeners active
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: "{{ item }}"
+        timeout: 5
+      loop: >-
+        {{ (xray.cohorts | map(attribute='port') | list)
+           if (xray.cohorts | default([]) | length > 0)
+           else [xray_port] }}
       when:
         - not (vpn_subscription_only | default(false))
         - vpn.enable_xray_reality | default(true)
@@ -178,7 +180,7 @@
       no_log: true
       when:
         - vpn.enable_watchdog | default(true)
-        - vpn.enable_xray_reality | default(true)
+        - (vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true)) or (vpn.enable_hysteria | default(true))
         - not (vpn_subscription_only | default(false))
 
     - name: Run authenticated watchdog through its bounded credential-bearing unit
@@ -187,7 +189,7 @@
       changed_when: false
       when:
         - vpn.enable_watchdog | default(true)
-        - vpn.enable_xray_reality | default(true)
+        - (vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true)) or (vpn.enable_hysteria | default(true))
         - not (vpn_subscription_only | default(false))
 
     - name: Verify authenticated round trips from the new watchdog journal records
@@ -201,11 +203,16 @@
       register: watchdog_reality_verify
       changed_when: false
       failed_when: >-
-        'FAIL  xray REALITY' in watchdog_reality_verify.stdout
-        or 'OK    xray REALITY' not in watchdog_reality_verify.stdout
+        'FAIL  ' in watchdog_reality_verify.stdout
+        or ((vpn.enable_xray_reality | default(true)) and
+            'OK    xray REALITY' not in watchdog_reality_verify.stdout)
+        or ((vpn.enable_nginx_xhttp | default(true)) and
+            'OK    xray XHTTP' not in watchdog_reality_verify.stdout)
+        or ((vpn.enable_hysteria | default(true)) and
+            'OK    hysteria authenticated round-trip' not in watchdog_reality_verify.stdout)
       when:
         - vpn.enable_watchdog | default(true)
-        - vpn.enable_xray_reality | default(true)
+        - (vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true)) or (vpn.enable_hysteria | default(true))
         - not (vpn_subscription_only | default(false))
 
     - name: nginx-xhttp public TCP listener active
@@ -215,6 +222,15 @@
           ss -lnt | awk '{print $4}' | grep -q ':{{ nginx_xhttp_public_port }}$'
         executable: /bin/bash
       changed_when: false
+      when:
+        - not (vpn_subscription_only | default(false))
+        - vpn.enable_nginx_xhttp | default(true)
+
+    - name: XHTTP owned Xray backend listener active
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: "{{ nginx_xhttp_port }}"
+        timeout: 5
       when:
         - not (vpn_subscription_only | default(false))
         - vpn.enable_nginx_xhttp | default(true)
