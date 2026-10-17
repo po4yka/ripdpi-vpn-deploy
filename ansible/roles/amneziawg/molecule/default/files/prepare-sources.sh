@@ -39,11 +39,12 @@ cat > "$fixture/amneziawg-tools/src/fixture-awg-quick" <<'EOF'
 #!/bin/sh
 # The real systemd unit calls this no-TUN fixture, which records only lifecycle.
 set -eu
-[ "$#" -eq 2 ] && [ "$2" = awg0 ] || exit 2
+[ "$#" -eq 2 ] && [ "$2" = /etc/amneziawg/awg0.conf ] || exit 2
+interface=awg0
 case "$1" in
   up|down)
     test -f /etc/amneziawg/awg0.conf
-    printf '%s %s\n' "$1" "$2" >> /run/molecule-awg-quick.events
+    printf '%s %s\n' "$1" "$interface" >> /run/molecule-awg-quick.events
     ;;
   strip) printf '[Interface]\n' ;;
   *) exit 2 ;;

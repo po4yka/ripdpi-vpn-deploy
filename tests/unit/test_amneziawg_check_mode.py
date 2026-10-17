@@ -58,19 +58,19 @@ def test_build_receipts_make_check_mode_commit_aware_without_building():
         {
             "name": "installed",
             "staged_path": "/var/lib/ripdpi/runtime-build-staging/amneziawg-go/amneziawg-go",
-            "path": "/usr/local/bin/amneziawg-go",
+            "path": "/opt/amneziawg/releases/go-{{ amneziawg_go_commit }}/amneziawg-go",
         },
     ]
     assert descriptors[1]["outputs"] == [
         {
             "name": "awg",
             "staged_path": "/var/lib/ripdpi/runtime-build-staging/amneziawg-tools/root/usr/bin/awg",
-            "path": "/usr/bin/awg",
+            "path": "/opt/amneziawg/releases/tools-{{ amneziawg_tools_commit }}/awg",
         },
         {
             "name": "awg-quick",
             "staged_path": "/var/lib/ripdpi/runtime-build-staging/amneziawg-tools/root/usr/bin/awg-quick",
-            "path": "/usr/bin/awg-quick",
+            "path": "/opt/amneziawg/releases/tools-{{ amneziawg_tools_commit }}/awg-quick",
         },
     ]
     assert "WITH_WGQUICK=yes" in descriptors[1]["steps"][1]["argv"]

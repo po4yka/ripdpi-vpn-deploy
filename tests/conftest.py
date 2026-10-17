@@ -26,6 +26,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 def private_authority_path():
     """Own a private tree outside the globally writable Linux temporary ancestry."""
     with tempfile.TemporaryDirectory(prefix='.ripdpi-authority-test-', dir=Path.home()) as directory:
+        # Darwin can inherit a home-directory group that differs from our real GID.
+        # Match the publisher's authority contract on this owned fixture tree.
+        os.chown(directory, -1, os.getgid())
         yield Path(directory).resolve()
 
 

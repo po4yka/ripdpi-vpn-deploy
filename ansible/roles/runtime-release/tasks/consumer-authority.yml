@@ -1,0 +1,12 @@
+---
+- name: Admit exact shared consumer helper ancestry before convergence
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - "{{ lookup('ansible.builtin.file', role_path ~ '/../runtime-release/files/consumer_authority.py') }}"
+    stdin: >-
+      {{ {'private': consumer_private_directories | default([]),
+          'directories': consumer_guard_directories | default([])} | to_json }}
+  changed_when: false
+  check_mode: false

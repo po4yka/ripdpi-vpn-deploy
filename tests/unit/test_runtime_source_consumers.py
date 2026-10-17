@@ -216,6 +216,29 @@ def test_amneziawg_checkouts_are_immutable_per_exact_commit() -> None:
         )
         for step in descriptors[1]["steps"]
     )
+    assert descriptors[0]["outputs"] == [{
+        "name": "installed",
+        "staged_path": "/var/lib/ripdpi/runtime-build-staging/amneziawg-go/amneziawg-go",
+        "path": "/opt/amneziawg/releases/go-{{ amneziawg_go_commit }}/amneziawg-go",
+    }]
+    assert descriptors[1]["outputs"] == [
+        {"name": name,
+         "staged_path": "/var/lib/ripdpi/runtime-build-staging/amneziawg-tools/root/usr/bin/" + name,
+         "path": "/opt/amneziawg/releases/tools-{{ amneziawg_tools_commit }}/" + name}
+        for name in ("awg", "awg-quick")]
+    public_paths = {"/usr/local/bin/amneziawg-go", "/usr/bin/awg", "/usr/bin/awg-quick"}
+    assert all(argument not in public_paths for descriptor in descriptors
+               for step in descriptor["steps"] for argument in step["argv"])
+    builds = by_name["Converge pinned AmneziaWG source builds"]
+    assert builds["ansible.builtin.include_role"] == {
+        "name": "runtime-release", "tasks_from": "source-build", "defaults_from": "source-build"}
+    assert builds["loop"] == "{{ _amneziawg_build_descriptors }}"
+    assert tasks.index(builds) < tasks.index(by_name["Activate complete AmneziaWG configurations transactionally"])
+    configure = yaml.safe_load((ROOT / "ansible/roles/amneziawg/tasks/configure.yml").read_text())
+    selected = configure[0]["ansible.builtin.set_fact"]["_awg_executables"]
+    assert selected == [{"path": public, "source": output["path"]}
+                        for public, output in zip(("/usr/local/bin/amneziawg-go", "/usr/bin/awg", "/usr/bin/awg-quick"),
+                                                  [descriptors[0]["outputs"][0], *descriptors[1]["outputs"]])]
 
 
 def test_xray_source_pins_are_separate_optional_secret_fields() -> None:

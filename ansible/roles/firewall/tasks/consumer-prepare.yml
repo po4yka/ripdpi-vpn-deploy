@@ -1,0 +1,99 @@
+---
+- name: Admit shared retained consumer helper authority
+  ansible.builtin.import_tasks: "{{ role_path }}/../runtime-release/tasks/consumer-authority.yml"
+  vars:
+    consumer_private_directories: [/var/lib/ripdpi/firewall-runtime]
+
+- name: Inspect the existing shared runtime parent before first firewall publication
+  ansible.builtin.stat:
+    path: /var/lib/ripdpi
+    follow: false
+  register: _firewall_runtime_parent
+
+- name: Create the admitted shared runtime parent only when absent
+  ansible.builtin.file:
+    path: /var/lib/ripdpi
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: not _firewall_runtime_parent.stat.exists
+
+- name: Ensure the shared retained consumer helper directory
+  ansible.builtin.file:
+    path: /usr/local/libexec/ripdpi-consumer
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the retained firewall consumer and common transaction
+  ansible.builtin.copy:
+    src: "{{ item.source }}"
+    dest: "/usr/local/libexec/ripdpi-consumer/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - source: "{{ role_path }}/files/firewall_consumer.py"
+      name: firewall_consumer.py
+    - source: "{{ role_path }}/../runtime-release/files/transport_runtime_transaction.py"
+      name: transport_runtime_transaction.py
+  register: _firewall_consumer_install
+
+- name: Inspect the retained AWG consumer before initial firewall publication
+  ansible.builtin.stat:
+    path: /usr/local/libexec/ripdpi-consumer/amneziawg_consumer.py
+    follow: false
+  register: _firewall_awg_consumer
+  when: firewall_site_transaction | default(false) | bool
+
+- name: Require owned retained AWG consumer authority
+  ansible.builtin.assert:
+    that:
+      - >-
+        not _firewall_awg_consumer.stat.exists or (_firewall_awg_consumer.stat.isreg and
+        _firewall_awg_consumer.stat.uid == 0 and _firewall_awg_consumer.stat.nlink == 1 and
+        _firewall_awg_consumer.stat.mode == '0755')
+  when: firewall_site_transaction | default(false) | bool
+
+- name: Recover an interrupted AWG consumer before publishing initial policy
+  ansible.builtin.command:
+    argv: [python3, -Es, /usr/local/libexec/ripdpi-consumer/amneziawg_consumer.py, recover]
+    stdin: "{{ {'check': ansible_check_mode} | to_json }}"
+  register: _firewall_awg_recovery
+  changed_when: (_firewall_awg_recovery.stdout | from_json).changed | bool
+  check_mode: false
+  no_log: true
+  when:
+    - firewall_site_transaction | default(false) | bool
+    - _firewall_awg_consumer.stat.exists
+
+- name: Read only exact owned accepted AWG firewall claims
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - >-
+        {{ lookup('ansible.builtin.file', role_path ~ '/../runtime-release/files/transport_runtime_transaction.py', rstrip=false)
+           ~ (lookup('ansible.builtin.file', role_path ~ '/files/firewall_consumer.py')
+             | regex_replace('(?m)^from (?:transport_runtime_transaction|__future__) import .*$', '')) }}
+      - accepted-awg
+  register: _firewall_accepted_awg
+  changed_when: false
+  check_mode: false
+  no_log: true
+  when: firewall_site_transaction | default(false) | bool
+
+- name: Retain accepted AWG policy during initial tagged convergence
+  ansible.builtin.set_fact:
+    _firewall_render_awg: "{{ {'instances': _firewall_accepted_awg.stdout | from_json} }}"
+    _firewall_render_vpn: "{{ vpn | combine({'enable_amneziawg': (_firewall_accepted_awg.stdout | from_json | length > 0)}) }}"
+    _firewall_render_listeners: >-
+      {%- set ns = namespace(values=public_listener_contract | rejectattr('name', 'equalto', 'amneziawg') | list) -%}
+      {%- for inst in _firewall_accepted_awg.stdout | from_json -%}
+      {%- set ns.values = ns.values + [{'name': 'amneziawg', 'protocol': 'udp', 'port': inst.listen_port, 'port_range': none}] -%}
+      {%- endfor -%}
+      {{ ns.values }}
+  no_log: true
+  when: firewall_site_transaction | default(false) | bool

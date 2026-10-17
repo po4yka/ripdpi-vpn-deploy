@@ -2,6 +2,24 @@
 
 ## Design decisions
 
+Debian13 Molecule consumers share one immutable image digest. Refresh it through
+the existing CI publisher, require its current HIGH/CRITICAL scan to pass, and
+update every Molecule consumer plus the pin guard together. The parent image
+and scanner policy remain separate reviewed inputs.
+
+Initial firewall publication is retained through the protected ingress commit.
+It uses accepted AWG claims until the AWG consumer takes ownership after that
+commit. AWG rollback therefore restores post-protected policy and preserves
+committed frontend ports. Tagged runs refuse unrelated protected listener
+changes before publication. The durable ingress commit also finishes its exact
+firewall owner; an interrupted acknowledgement cannot turn a committed route
+into an old firewall generation.
+
+AWG consumer acceptance retains executable bytes, shared units, complete configs
+and instance membership in one private runtime transaction. Its separate firewall
+decision covers unchanged-runtime policy changes too. Confirm candidate quiescence
+before restoring files; retain recovery authority when stop cannot be proven.
+
 Optional transport candidates retain native parser admission before publication.
 Naive excludes request-bearing HTTP errors from retained logs. The mtg consumer
 uses the shared verified archive lifecycle and admits FakeTLS input before host
@@ -17,7 +35,6 @@ AWG device source claims are typed by family. The firewall and standalone AWG
 role admit the exact IPv6-capable uplink before their runtime mutations; network
 routing remains operator/provider authority. AWG candidates retain whole prior
 configurations until all instance activations succeed.
-
 
 AWG singleton and multi-instance deployments both use the nonempty encrypted
 instance list. Observer checks and role normalization never synthesize a
@@ -56,7 +73,6 @@ changes. Enabled Xray, Hysteria and AWG roles use that same controller-side
 entry for standalone invocation. It delegates to localhost without privilege,
 executes read-only in check mode, and sends private values only on stdin under
 `no_log`. Disabled-role reconciliation bypasses unused transport inputs.
-
 
 **Exporter endpoint verification shares installation admission** — `verify.yml`
 gathers only local network facts and reuses monitoring's literal private endpoint

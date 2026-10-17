@@ -10,6 +10,7 @@ import signal
 from pathlib import Path
 import subprocess
 import sys
+import time
 import urllib.error
 
 import pytest
@@ -198,6 +199,48 @@ def test_real_subprocess_timeout_refuses(tmp_path, monkeypatch):
     monkeypatch.setenv("UPCLOUD_TOKEN", "synthetic-provider-token")
     with pytest.raises(MODULE.DeploymentError, match="timeout"):
         MODULE.Runtime(tmp_path).run([sys.executable, "-c", "import time; time.sleep(5)"], timeout=0.05)
+
+
+@pytest.mark.parametrize("outcome", ["success", "failure", "timeout"])
+def test_runtime_reclaims_descendants_before_return(tmp_path, monkeypatch, outcome):
+    monkeypatch.setenv("UPCLOUD_TOKEN", "synthetic-provider-token")
+    marker, stop = tmp_path / "descendant.pid", tmp_path / "stop"
+    worker = ("import pathlib,time\n"
+              "deadline=time.monotonic()+20\n"
+              f"while time.monotonic()<deadline and not pathlib.Path({str(stop)!r}).exists(): time.sleep(.01)\n")
+    program = ("import pathlib,subprocess,sys,time\n"
+               f"child=subprocess.Popen([sys.executable,'-c',{worker!r}])\n"
+               f"pathlib.Path({str(marker)!r}).write_text(str(child.pid))\n"
+               + ("time.sleep(20)\n" if outcome == "timeout" else
+                  "raise SystemExit(0)\n" if outcome == "success" else "raise SystemExit(9)\n"))
+    runtime = MODULE.Runtime(tmp_path)
+    try:
+        if outcome == "success":
+            assert runtime.run([sys.executable, "-c", program], timeout=1) == b""
+        else:
+            with pytest.raises(MODULE.DeploymentError):
+                runtime.run([sys.executable, "-c", program], timeout=1)
+        pid = int(marker.read_text())
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            state = subprocess.run(["ps", "-p", str(pid), "-o", "stat="],
+                                   capture_output=True, text=True, timeout=2).stdout.strip()
+            if not state or state.startswith("Z"):
+                break
+            time.sleep(.01)
+        else:
+            pytest.fail("owned descendant survived command cleanup")
+    finally:
+        stop.touch()
+
+
+def test_runtime_keeps_stderr_private_and_stdout_separate(tmp_path, monkeypatch, capfd):
+    monkeypatch.setenv("UPCLOUD_TOKEN", "synthetic-provider-token")
+    result = MODULE.Runtime(tmp_path).run([
+        sys.executable, "-c", "import sys;sys.stdout.write('result');sys.stderr.write('private-detail')"])
+    assert result == b"result"
+    assert (tmp_path / "command-1.log").read_bytes() == b"resultprivate-detail"
+    assert capfd.readouterr() == ("", "")
 
 
 @pytest.mark.parametrize("fail_goal", [None, "deploy", "staging-destroy", "daemon-start", "logout", "deploy-with-signal"])

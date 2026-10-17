@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+Site capture precedes initial firewall convergence. Fresh-host compensation skips stopping an absent nginx unit, while a unit installed after capture is still stopped and disabled before the journal is closed.
+
+The site commit can select `--finish-firewall`. It records that flag in the same durable `committing` journal as `--finish-egress`, invokes only the fixed firewall consumer `finish --owner site`, and removes the ingress journal only after both owners acknowledge completion. Recovery repeats those exact completion actions. A failed or lost acknowledgement retains the decision and never permits ingress/firewall compensation to cross it.
+
 `--site commit --finish-egress` freezes accepted ingress witnesses and persists the `committing` decision under the shared unit lock before invoking the fixed outer helper. The site journal is removed only after egress finish succeeds. `recover-commit` retries that decision before new staging or rescue; `restore` refuses a committing journal. Exact ingress drift preserves the decision for diagnosis. Check mode remains read-only and refuses every retained journal.
 
 Recipient emission now advertises the enabled alternate using its configured

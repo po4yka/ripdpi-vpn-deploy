@@ -89,19 +89,33 @@ def protected():
 
 def test_site_closes_complete_protected_block_before_unrelated_roles():
     play = yaml.safe_load(SITE.read_text())[0]
-    assert [value['role'] for value in play['roles']] == ['baseline', 'package_updates', 'firewall', 'intrusion_prevention', 'geodata', 'tailnet-management']
+    assert [value['role'] for value in play['roles']] == ['baseline', 'package_updates']
     block = protected()
     names = [value.get('ansible.builtin.import_role', {}).get('name') for value in block['block']]
-    assert [name for name in names if name] == ['transport-egress', 'xray', 'reality-self-steal', 'nginx-xhttp', 'hysteria']
+    assert [name for name in names if name] == ['firewall', 'intrusion_prevention', 'geodata', 'tailnet-management',
+                                             'transport-egress', 'xray', 'reality-self-steal', 'nginx-xhttp', 'hysteria']
     assert block['block'][0]['ansible.builtin.import_tasks'] == 'tasks/transport-ingress-begin.yml'
-    assert block['block'][-2]['ansible.builtin.import_tasks'] == 'tasks/transport-egress-activate.yml'
-    assert block['block'][-1]['ansible.builtin.import_tasks'] == 'tasks/transport-ingress-commit.yml'
+    assert block['block'][1]['vars']['firewall_site_transaction'] is True
+    assert 'always' in block['block'][1]['tags']
+    assert block['block'][-3]['ansible.builtin.import_tasks'] == 'tasks/transport-egress-activate.yml'
+    assert block['block'][-2]['ansible.builtin.import_tasks'] == 'tasks/transport-ingress-commit.yml'
+    finish = block['block'][-1]
+    assert finish['ansible.builtin.command']['argv'] == [
+        'python3', '-Es', '/usr/local/libexec/ripdpi-consumer/firewall_consumer.py', 'finish', '--owner', 'site']
+    assert finish['when'] == '_firewall_site_transaction_active | default(false) | bool'
     assert play['tasks'][1]['ansible.builtin.import_role']['name'] == 'cdn-front'
     assert 'post_tasks' not in play
     assert block['rescue'][0]['ansible.builtin.include_tasks'] == 'tasks/transport-ingress-recover-commit.yml'
     assert block['rescue'][1]['ansible.builtin.include_role']['tasks_from'] == 'quiesce'
     assert block['rescue'][2]['ansible.builtin.include_tasks'] == 'tasks/transport-ingress-restore.yml'
-    assert block['rescue'][3]['ansible.builtin.include_role']['tasks_from'] == 'rollback'
+    rollback = next(value for value in block['rescue']
+                    if value.get('ansible.builtin.include_role', {}).get('tasks_from') == 'rollback')
+    restore = next(value for value in block['rescue'] if value['name'] == 'Restore initial firewall after protected convergence refusal')
+    assert 2 < block['rescue'].index(restore) < block['rescue'].index(rollback)
+    assert restore['ansible.builtin.command']['argv'][-1] == 'restore'
+    assert restore['when'] == ['_firewall_rescue_helper.stat.exists',
+                              "(_firewall_rescue_owner.stdout | from_json).owner == 'site'"]
+    assert block['rescue'][-1]['ansible.builtin.fail']['msg'].startswith('Protected transport staging failed;')
     assert all(value['ansible.builtin.import_role']['public'] for value in block['block'] if 'ansible.builtin.import_role' in value)
 
 
@@ -183,6 +197,8 @@ def safe(path,missing=False):
 tx.safe=safe;tx.STATE_ROOT=root/'nginx-state'
 tx.service_state=lambda unit:dict(active=False,exists=True,unit_file_state='disabled')
 def command(argv):
+ if '/usr/local/libexec/ripdpi-consumer/firewall_consumer.py' in argv:
+  (root/'firewall-owner').unlink(missing_ok=True)
  if argv[-1]=='finish':
   if (root/'outer-fail').exists():raise tx.TransactionError('runtime-command')
   (root/'outer-open').unlink(missing_ok=True)
@@ -206,7 +222,7 @@ elif action=='pend':
  path=Path(value['files'][0]['path'])
  tx.persist(state/'pending.json',dict(schema=2,phase='prepared',candidate='candidate-'+'0'*32,request=value,files={str(path):tx.capture(path)},active=False,
   service=dict(active=False,exists=True,unit_file_state='disabled'),owner='nginx-xhttp',receipt=tx.capture(state/'nginx-xhttp.activated.json'),next_receipt=tx.receipt_row(tx.owned_receipt(value))))
-else:print(json.dumps(tx.site_transaction(action,context)))
+else:print(json.dumps(tx.site_transaction(action,context,finish_firewall=action=='commit')))
 if action!='recover-commit':
  with (root/'events').open('a') as stream:stream.write('ingress-'+action+'\\n')
 ''')
@@ -222,8 +238,16 @@ if action!='recover-commit':
         args = [sys.executable, str(driver), str(root), action, str(script)] + ([owner] if owner else [])
         return {'ansible.builtin.command': {'argv': args}, 'no_log': True, 'changed_when': False}
     roles = root / 'roles'
-    for role in ['transport-egress', 'xray', 'hysteria', 'nginx-xhttp', 'reality-self-steal']:
+    for role in ['transport-egress', 'xray', 'hysteria', 'nginx-xhttp', 'reality-self-steal',
+                 'firewall', 'intrusion_prevention', 'geodata', 'tailnet-management']:
         _write(roles / role / 'defaults/main.yml', {role.replace('-', '_') + '_parse_visible': True})
+    for role in ['intrusion_prevention', 'geodata', 'tailnet-management']:
+        _write(roles / role / 'tasks/main.yml', [])
+    (root / 'firewall-policy').write_bytes(b'accepted firewall')
+    _write(roles / 'firewall/tasks/main.yml', [
+        {'ansible.builtin.set_fact': {'_firewall_site_transaction_active': True}},
+        {'ansible.builtin.copy': {'content': 'candidate firewall', 'dest': str(root / 'firewall-policy'), 'mode': '0600'}},
+        {'ansible.builtin.copy': {'content': 'site', 'dest': str(root / 'firewall-owner'), 'mode': '0600'}}])
     _write(roles / 'transport-egress/tasks/prepare-site.yml', [
         {'ansible.builtin.copy': {'src': str(accepted), 'dest': str(root / 'previous.conf'), 'mode': '0600'}},
         {'ansible.builtin.set_fact': {'_transport_egress_transaction_started': True, 'transport_egress_role_enabled': True, 'transport_egress_warp_enabled': False}}, event('stage')])
@@ -235,7 +259,11 @@ if action!='recover-commit':
     _write(roles / 'transport-egress/tasks/activate.yml', [event('activate'), {'ansible.builtin.copy': {'content': 'candidate-running', 'dest': str(root / 'state'), 'mode': '0600'}},
         {'ansible.builtin.fail': {'msg': 'controlled activation failure'}, 'when': "failure == 'activation'"}])
     _write(roles / 'transport-egress/tasks/quiesce.yml', [event('quiesce'), {'ansible.builtin.copy': {'content': 'stopped', 'dest': str(root / 'state'), 'mode': '0600'}}])
-    _write(roles / 'transport-egress/tasks/rollback.yml', [event('resume'), {'ansible.builtin.copy': {'src': str(root / 'previous.conf'), 'dest': str(accepted), 'mode': '0640'}},
+    _write(roles / 'transport-egress/tasks/rollback.yml', [
+        {'name': 'Require accepted firewall before previous frontend readiness',
+         'ansible.builtin.assert': {'that': [
+             "lookup('ansible.builtin.file', " + json.dumps(str(root / 'firewall-policy')) + ") == 'accepted firewall'"]}},
+        event('resume'), {'ansible.builtin.copy': {'src': str(root / 'previous.conf'), 'dest': str(accepted), 'mode': '0640'}},
         {'ansible.builtin.copy': {'content': 'accepted-running', 'dest': str(root / 'state'), 'mode': '0600'}}, {'ansible.builtin.set_fact': {'_transport_egress_transaction_started': False}}])
     # Only the host-facing stat paths, the outer-route status command and the
     # helper admission's root-owned ancestry are replaced; the production detection,
@@ -258,9 +286,40 @@ print('{"open": %s}' % ('true' if (root / 'outer-open').exists() else 'false'))
     recovery[0]['ansible.builtin.command'] = invoke('recover-commit')['ansible.builtin.command']
     _write(root / 'tasks/transport-ingress-recover-commit.yml', recovery)
     _write(root / 'tasks/transport-ingress-restore.yml', [{**invoke('restore'), 'when': 'transport_site_transaction_active | default(false) | bool'}])
-    _write(root / 'tasks/transport-ingress-commit.yml', [invoke('commit'), {'ansible.builtin.set_fact': {'transport_site_transaction_active': False, '_transport_egress_transaction_started': False}}])
+    _write(root / 'tasks/transport-ingress-commit.yml', [invoke('commit'), {'ansible.builtin.set_fact': {
+        'transport_site_transaction_active': False, '_transport_egress_transaction_started': False,
+        '_firewall_site_transaction_active': False}}])
     (root / 'tasks/transport-egress-activate.yml').write_bytes((ROOT / 'ansible/playbooks/tasks/transport-egress-activate.yml').read_bytes())
     block = protected()
+    # Retarget only the new firewall host-command boundary. The complete outer
+    # block, conditions and ordering still run through real localhost Ansible.
+    firewall_driver = root / 'firewall_driver.py'
+    firewall_driver.write_text('''import json,sys
+from pathlib import Path
+root=Path(sys.argv[1]); action=sys.argv[2]; marker=root/'firewall-owner'
+owner=marker.read_text() if marker.exists() else None
+if action=='status': print(json.dumps({'owner':owner}))
+elif action=='restore' and owner=='site':
+ (root/'firewall-policy').write_bytes(b'accepted firewall')
+ with (root/'events').open('a') as stream: stream.write('firewall-restore\\n')
+ marker.unlink()
+elif action=='finish': marker.unlink(missing_ok=True)
+''')
+    firewall_helper = root / 'firewall-helper.py'
+    firewall_helper.write_text('synthetic helper authority\n')
+    for task in [*block['block'], *block['rescue']]:
+        name = task['name']
+        if name == 'Admit retained consumer helpers before recovery':
+            task['ansible.builtin.command']['argv'] = [sys.executable, '-c', 'pass']
+        elif name == 'Inspect retained firewall helper after interrupted convergence':
+            task['ansible.builtin.stat']['path'] = str(firewall_helper)
+        elif name in ('Finish an initial firewall without a selected protected consumer',
+                      'Read retained firewall consumer ownership before compensation',
+                      'Restore initial firewall after protected convergence refusal'):
+            action = {'Finish an initial firewall without a selected protected consumer': 'finish',
+                      'Read retained firewall consumer ownership before compensation': 'status',
+                      'Restore initial firewall after protected convergence refusal': 'restore'}[name]
+            task['ansible.builtin.command']['argv'] = [sys.executable, str(firewall_driver), str(root), action]
     _write(root / 'play.yml', [{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False, 'become': False,
                               'vars': {'failure': failure, 'vpn': {}, 'vpn_subscription_only': False},
                               'pre_tasks': [{'ansible.builtin.assert': {'that': ['xray_parse_visible', 'hysteria_parse_visible']}, 'tags': ['always']}],
@@ -323,10 +382,12 @@ def test_protected_failure_restores_ingress_before_frontend_resume(tmp_path, fai
     assert (root / 'frontend.conf').read_bytes() == b'accepted frontend'
     assert (root / 'frontend.conf').stat().st_mode & 0o777 == 0o640
     assert (root / 'state').read_text() == 'accepted-running'
+    assert (root / 'firewall-policy').read_bytes() == b'accepted firewall'
     for owner in context['owners']:
         assert Path(owner['paths'][0]).read_bytes() == b'accepted ingress'
     events = (root / 'events').read_text().splitlines()
     assert events.index('quiesce') < events.index('ingress-restore') < events.index('resume')
+    assert events.index('ingress-restore') < events.index('firewall-restore') < events.index('resume')
     assert not (root / 'nginx-state/nginx.service/site.json').exists()
 
 
@@ -336,6 +397,7 @@ def test_later_unrelated_failure_keeps_once_activated_committed_generation(tmp_p
     assert result.returncode != 0 and 'controlled unrelated failure' in result.stdout
     assert (root / 'frontend.conf').read_bytes() == b'changed frontend'
     assert (root / 'state').read_text() == 'candidate-running'
+    assert (root / 'firewall-policy').read_bytes() == b'candidate firewall'
     assert all(Path(value['paths'][0]).read_bytes() == b'changed ingress' for value in context['owners'])
     events = (root / 'events').read_text().splitlines()
     assert events.count('activate') == 1 and 'resume' not in events
@@ -562,6 +624,9 @@ def test_interrupted_transaction_detection_matches_the_production_contract():
     # The outer route helper is the one the commit task already addresses.
     commit = yaml.safe_load((ROOT / 'ansible/playbooks/tasks/transport-ingress-commit.yml').read_text())
     assert '--finish-egress' in commit[0]['ansible.builtin.command']['argv']
+    assert '--finish-firewall' in commit[0]['ansible.builtin.command']['argv']
+    assert '_firewall_site_transaction_active | default(false) | bool' in commit[0]['ansible.builtin.command']['argv']
+    assert commit[1]['ansible.builtin.set_fact']['_firewall_site_transaction_active'] is False
     assert recovery['ansible.builtin.include_tasks'] == 'transport-ingress-recover-commit.yml'
     assert recovery['when'] == ['_transport_ingress_interrupted.stat.exists', 'not ansible_check_mode']
     assert locate['ansible.builtin.stat'] == {'path': OUTER_HELPER, 'follow': False}
@@ -587,7 +652,14 @@ def test_interrupted_transaction_detection_matches_the_production_contract():
     transaction = (RUNTIME_FILES / 'transport_runtime_transaction.py').read_text()
     assert "read_private(root / 'outer.json', uid)" in transaction
     # The helper's own status runs as root and refuses any state directory that is not a root-owned 0700 directory, so only such a directory may be judged.
-    assert 'def __init__(self, root, *, uid=0, check=False):' in transaction
+    transaction_class = next(node for node in ast.parse(transaction).body
+                             if isinstance(node, ast.ClassDef) and node.name == 'Transaction')
+    constructor = next(node for node in transaction_class.body
+                       if isinstance(node, ast.FunctionDef) and node.name == '__init__')
+    defaults = {argument.arg: ast.literal_eval(value)
+                for argument, value in zip(constructor.args.kwonlyargs, constructor.args.kw_defaults)}
+    assert defaults == {'uid': 0, 'check': False, 'awg': False}
+    assert type(defaults['uid']) is int and defaults['check'] is False and defaults['awg'] is False
     assert 'info.st_uid != self.uid or stat.S_IMODE(info.st_mode) != 0o700' in transaction
     assert "with Transaction(STATE, check=args.action == 'status') as tx:" in (RUNTIME_FILES / 'transport_runtime_outer.py').read_text()
     assert state_dir['ansible.builtin.stat'] == {'path': OUTER_STATE, 'follow': False}
@@ -723,7 +795,7 @@ def test_rescue_rolls_forward_commit_and_never_compensates_after_lost_ack(tmp_pa
         commit = [commit[0], {'ansible.builtin.fail': {'msg': 'lost commit acknowledgement'}}]
     else:
         # The subprocess dies after deciding commit; retry must complete it.
-        marker = "import json,sys;from pathlib import Path;p=Path(sys.argv[1]);v=json.loads(p.read_text());v.update(phase='committing',finish_egress=False);p.write_text(json.dumps(v))"
+        marker = "import json,sys;from pathlib import Path;p=Path(sys.argv[1]);v=json.loads(p.read_text());v.update(phase='committing',finish_egress=False,finish_firewall=True);p.write_text(json.dumps(v))"
         commit = [{'ansible.builtin.command': {'argv': [sys.executable, '-c', marker, str(root / 'nginx-state/nginx.service/site.json')]}, 'changed_when': False},
                   {'ansible.builtin.fail': {'msg': 'lost commit acknowledgement'}}]
     _write(root / 'tasks/transport-ingress-commit.yml', commit)
@@ -733,6 +805,7 @@ def test_rescue_rolls_forward_commit_and_never_compensates_after_lost_ack(tmp_pa
     assert 'quiesce' not in events and 'resume' not in events and 'ingress-restore' not in events
     assert all(Path(owner['paths'][0]).read_bytes() == b'changed ingress' for owner in context['owners'])
     assert (root / 'frontend.conf').read_bytes() == b'changed frontend'
+    assert (root / 'firewall-policy').read_bytes() == b'candidate firewall'
     assert not (root / 'nginx-state/nginx.service/site.json').exists()
 
 

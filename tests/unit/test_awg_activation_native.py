@@ -3,20 +3,24 @@ from __future__ import annotations
 
 import base64
 import copy
+from contextlib import contextmanager, ExitStack
+import hashlib
 import json
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import sys
 import time
 import uuid
 
 import pytest
 import yaml
+from jinja2 import FileSystemLoader
 
 from awg_client import config, export
 from awg_device_binding import resolve_binding
-from template_render import merge_render_vars, render_template
+from template_render import merge_render_vars, render_template, template_environment
 from test_awg_device_binding import document
 from test_awg_device_binding_native import native_config
 from test_awg_dualstack_native import ECHO, PROBE, path_evidence
@@ -26,8 +30,148 @@ pytestmark = pytest.mark.native_runtime
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def render_native_awg_config(instance):
+    """Match Ansible's template lookup without changing snapshot whitespace."""
+    template = ROOT / 'ansible/roles/amneziawg/templates/awg0.conf.j2'
+    environment = template_environment(FileSystemLoader(str(template.parent)))
+    environment.trim_blocks = True
+    return environment.get_template(template.name).render(_inst=instance)
+
+
+class CompletePublisher:
+    """Use the installed production helper and real immutable acquisition bytes."""
+
+    helper = Path('/usr/local/libexec/ripdpi-consumer/amneziawg_consumer.py')
+    record = Path('/var/lib/ripdpi/amneziawg/instances.json')
+    firewall = Path('/etc/nftables.conf')
+
+    def __init__(self, directory, environment):
+        self.directory, self.environment = directory, environment
+
+    def acquire(self, go, tools, quick):
+        go_bytes, tool_bytes, quick_bytes = Path(go).read_bytes(), Path(tools).read_bytes(), Path(quick).read_bytes()
+        go_commit = hashlib.sha256(go_bytes).hexdigest()
+        tools_commit = hashlib.sha256(tool_bytes + quick_bytes).hexdigest()
+        pairs = [('/usr/local/bin/amneziawg-go', f'go-{go_commit}', 'amneziawg-go', go_bytes),
+                 ('/usr/bin/awg', f'tools-{tools_commit}', 'awg', tool_bytes),
+                 ('/usr/bin/awg-quick', f'tools-{tools_commit}', 'awg-quick', quick_bytes)]
+        candidates = []
+        for target, release, name, content in pairs:
+            source = Path('/opt/amneziawg/releases') / release / name
+            source.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+            if source.exists():
+                assert source.read_bytes() == content, 'immutable-native-acquisition-changed'
+            else:
+                source.write_bytes(content); source.chmod(0o755)
+            candidates.append({'path': target, 'source': str(source), 'sha256': hashlib.sha256(content).hexdigest(), 'mode': 0o755, 'gid': 0})
+        self.go_commit, self.tools_commit = go_commit, tools_commit
+        return candidates
+
+    def request(self, acquired, configs, shared, *, firewall=None, absent=()):
+        candidates = copy.deepcopy(acquired)
+        for name, content in configs.items():
+            candidates.append({'path': str(self.directory / (name + '.conf')), 'data': base64.b64encode(content.encode()).decode(), 'mode': 0o600, 'gid': 0})
+        candidates.extend({'path': str(path), 'absent': True} for path in absent)
+        values = merge_render_vars(); values['_awg_instances'] = [{'name': name} for name in configs]
+        target = render_template(ROOT / 'ansible/roles/amneziawg/templates/awg-quick.target.j2', values)
+        for path, content, mode in (
+            ('/etc/systemd/system/awg-quick@.service', shared, 0o644),
+            ('/etc/systemd/system/awg-quick.target', target, 0o644),
+            (str(self.record), json.dumps({'schema': 1, 'config_dir': str(self.directory), 'instances': list(configs)}), 0o600),
+        ):
+            candidates.append({'path': path, 'data': base64.b64encode(content.encode()).decode(), 'mode': mode, 'gid': 0})
+        return {'check': False, 'candidates': candidates, 'firewall': None if firewall is None else base64.b64encode(firewall.encode()).decode()}
+
+    def apply(self, request):
+        return subprocess.run([sys.executable, '-Es', str(self.helper), 'apply'], input=json.dumps(request),
+                              env=self.environment, capture_output=True, text=True, timeout=90)
+
+    def role(self, instances, *, firewall=None):
+        previous = json.loads(self.record.read_text()) if self.record.exists() else {'schema': 1, 'config_dir': str(self.directory), 'instances': []}
+        play = self.directory / 'converge.yml'
+        play.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False,
+            'environment': {'PATH': self.environment['PATH']},
+            'vars': {'amneziawg_config_dir': str(self.directory), '_awg_instances': instances,
+                     'amneziawg_go_commit': self.go_commit, 'amneziawg_tools_commit': self.tools_commit,
+                     '_awg_previous': previous, '_awg_obsolete': [], '_awg_configuration_owns_lifecycle': True,
+                     '_firewall_consumer_candidate': None if firewall is None else base64.b64encode(firewall.encode()).decode()},
+            'tasks': [{'ansible.builtin.include_role': {'name': 'amneziawg', 'tasks_from': 'consumer-prepare'}},
+                      {'ansible.builtin.include_role': {'name': 'amneziawg', 'tasks_from': 'configure'}}]}]))
+        return subprocess.run(['ansible-playbook', '-i', 'localhost,', str(play)], env=self.environment,
+                              capture_output=True, text=True, timeout=90)
+
+
+def prepare_native_acquisition(root):
+    """Create only fresh claimed directories with modes independent of umask."""
+    root.mkdir(mode=0o755)
+    root.chmod(0o755)
+    releases = root / 'releases'
+    releases.mkdir(mode=0o755)
+    releases.chmod(0o755)
+
+
+@contextmanager
+def complete_publisher(directory, environment=None):
+    """Claim only absent fixed paths in the isolated native host; retire all of them."""
+    assert sys.platform == 'linux' and os.geteuid() == 0
+    roots = [Path(raw) for raw in ('/usr/local/libexec/ripdpi-consumer', '/var/lib/ripdpi/amneziawg',
+             '/var/lib/ripdpi/firewall-runtime', '/opt/amneziawg')]
+    files = [Path(raw) for raw in ('/usr/local/bin/amneziawg-go', '/usr/bin/awg', '/usr/bin/awg-quick',
+             '/etc/systemd/system/awg-quick@.service', '/etc/systemd/system/awg-quick.target')]
+    stores = {path.parent / '.ripdpi-transport-runtime' for path in [*files, Path('/etc/nftables.conf')]}
+    assert all(not os.path.lexists(path) for path in [*roots, *files, *stores]), 'native-complete-AWG-authority-already-owned'
+    nft = Path('/etc/nftables.conf')
+    assert not nft.is_symlink(), 'native-firewall-file-is-foreign-symlink'
+    saved = nft.with_name('.native-awg-' + uuid.uuid4().hex)
+    if nft.exists(): os.replace(nft, saved)
+    publisher = CompletePublisher(directory, {**os.environ, **(environment or {}),
+        'ANSIBLE_ROLES_PATH': str(ROOT / 'ansible/roles'), 'ANSIBLE_CONFIG': str(ROOT / 'ansible/ansible.cfg')})
+    try:
+        roots[0].mkdir(parents=True, mode=0o755)
+        roots[1].mkdir(parents=True, mode=0o700)
+        prepare_native_acquisition(roots[3])
+        for source, name in (
+            ('amneziawg/files/consumer.py', 'amneziawg_consumer.py'),
+            ('firewall/files/firewall_consumer.py', 'firewall_consumer.py'),
+            ('runtime-release/files/transport_runtime_transaction.py', 'transport_runtime_transaction.py'),
+            ('runtime-release/files/runtime_build_receipt.py', 'runtime_build_receipt.py'),
+        ):
+            destination = roots[0] / name
+            shutil.copyfile(ROOT / 'ansible/roles' / source, destination); destination.chmod(0o755)
+        yield publisher
+    finally:
+        for path in files:
+            path.unlink(missing_ok=True)
+        for path in [*stores, *roots]:
+            if path.exists():
+                assert path.is_dir() and not path.is_symlink() and path.stat().st_uid == 0
+                shutil.rmtree(path)
+        nft.unlink(missing_ok=True)
+        if saved.exists(): os.replace(saved, nft)
+        subprocess.run(['systemctl', 'daemon-reload'], capture_output=True, timeout=15)
+
+
+def userspace_digest(selected):
+    """Require the real accepted userspace daemon, including oneshot children."""
+    group=command(['systemctl','show',selected,'--property=ControlGroup','--value']).strip()
+    assert group.startswith('/') and '..' not in Path(group).parts
+    root=Path('/sys/fs/cgroup')/group.lstrip('/')
+    daemons=[]
+    for membership in root.rglob('cgroup.procs'):
+        for pid in membership.read_text().split():
+            try:
+                executable=Path('/proc')/pid/'exe'
+                if Path(os.readlink(executable)).name.split(' ')[0]=='amneziawg-go':
+                    daemons.append(hashlib.sha256(executable.read_bytes()).hexdigest())
+            except (FileNotFoundError,ProcessLookupError):
+                continue
+    assert len(daemons)==1, 'native-AWG-userspace-process-unconfirmed'
+    return daemons[0]
+
+
 @pytest.mark.parametrize('previous', [True, False])
-def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes(tmp_path, previous):
+@pytest.mark.parametrize('failure', ['configuration', 'binary', 'shared-unit'])
+def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes(tmp_path, previous, failure):
     go, tools = exact_awg_sources()
     assert Path('/run/systemd/system').is_dir(), 'AWG compensation requires an isolated systemd root host'
     token=uuid.uuid4().hex[:7]
@@ -35,10 +179,11 @@ def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes
     iface,ci='ar'+token,'cr'+token
     unit=Path('/etc/systemd/system')/('awg-quick@'+iface+'.service')
     assert not unit.exists(), 'the fixture may not adopt an existing systemd unit'
-    directory=tmp_path/'private'; directory.mkdir(mode=0o700)
+    dropin=unit.with_name(unit.name+'.d')
+    assert not dropin.exists(), 'the fixture may not adopt an existing systemd drop-in'
+    directory=Path('/var/lib/ripdpi')/('awg-native-'+token); directory.mkdir(parents=True, mode=0o700)
     path=directory/(iface+'.conf')
     bin_dir=directory/'bin'; bin_dir.mkdir(mode=0o700)
-    (bin_dir/'awg').symlink_to(tools)
     quick=tools.parent/'wg-quick/linux.bash'
     assert quick.is_file(), 'the exact pinned awg-quick source is required'
     doc=document(); item=doc['amneziawg_secrets']['instances'][0]
@@ -47,10 +192,9 @@ def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes
     doc['client_registry']={'device0':doc['client_registry']['device0']}
     doc['client_registry']['device0']['awg_binding']['instance']=iface
     effective=resolve_binding(doc,{},'device0','upcloud:fixture',iface).instance
-    values=merge_render_vars(); values['_inst']=effective
-    accepted=render_template(ROOT/'ansible/roles/amneziawg/templates/awg0.conf.j2',values)
-    processes=[]; namespaces=[]
-    firewall=directory/'nftables.conf'
+    accepted=render_native_awg_config(effective)
+    processes=[]; namespaces=[]; ownership=ExitStack()
+    firewall=Path('/etc/nftables.conf')
     # This adapter only enters the owned network namespace; it executes real nft.
     nft=bin_dir/'nft'
     nft.write_text(f'#!/bin/sh\nexec /usr/sbin/ip netns exec {server} /usr/sbin/nft "$@"\n')
@@ -68,6 +212,10 @@ def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes
     retained_firewall=firewall_text(effective,previous)
     def run(ns,argv,data=None): return command(['ip','netns','exec',ns,*map(str,argv)],data=data)
     try:
+        publisher=ownership.enter_context(complete_publisher(directory, {'PATH':str(bin_dir)+':/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'}))
+        acquired=publisher.acquire(go,tools,quick)
+        shared=render_template(ROOT/'ansible/roles/amneziawg/templates/awg-quick@.service.j2', merge_render_vars())
+        firewall.write_text(retained_firewall); firewall.chmod(0o644)
         for ns in (server,client,uplink):
             command(['ip','netns','add',ns]); namespaces.append(ns)
             command(['ip','-n',ns,'link','set','lo','up'])
@@ -86,12 +234,19 @@ def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes
         for setting in ('net.ipv4.ip_forward=1','net.ipv6.conf.all.forwarding=1'):
             run(server,['sysctl','-qw',setting])
         run(server,['nft','-f','-'],retained_firewall)
-        # A real unit-level injected candidate failure occurs after old interface teardown.
-        unit.write_text(f'''[Unit]\nDescription=Owned AWG compensation fixture\n[Service]\nType=oneshot\nRemainAfterExit=yes\nNetworkNamespacePath=/run/netns/{server}\nEnvironment=PATH={bin_dir}:/usr/sbin:/usr/bin:/sbin:/bin\nEnvironment=WG_QUICK_USERSPACE_IMPLEMENTATION={go}\nExecStartPre=/bin/sh -c '! grep -q "MTU = 1280" {path}'\nExecStart=/bin/bash {quick} up {path}\nExecStop=/bin/bash {quick} down {path}\n[Install]\nWantedBy=multi-user.target\n''')
-        unit.chmod(0o644); command(['systemctl','daemon-reload'])
+        # The namespace/config adapter is owned by this fixture. Executable and
+        # shared-unit authority still pass through the production publisher.
+        dropin.mkdir(mode=0o755)
+        (dropin/'namespace.conf').write_text(f'''[Service]\nNetworkNamespacePath=/run/netns/{server}\nEnvironment=WG_QUICK_USERSPACE_IMPLEMENTATION=/usr/local/bin/amneziawg-go\nExecStartPre=/bin/sh -c '! grep -q "MTU = 1280" {path}'\nExecStart=\nExecStart=/bin/bash /usr/bin/awg-quick up {path}\nExecStop=\nExecStop=/bin/bash /usr/bin/awg-quick down {path}\nExecReload=\n''')
+        command(['systemctl','daemon-reload'])
         if previous:
-            path.write_text(accepted); path.chmod(0o600)
-            command(['systemctl','start',unit.name])
+            initial=publisher.role([effective],firewall=retained_firewall)
+            assert initial.returncode==0, 'canonical-complete-AWG-role-refused\n'+initial.stdout+initial.stderr
+            assert path.read_text()==accepted
+            assert userspace_digest(unit.name)==hashlib.sha256(go.read_bytes()).hexdigest()
+            prior={raw:(Path(raw).stat().st_ino,Path(raw).stat().st_mode,Path(raw).read_bytes()) for raw in
+                   ('/usr/local/bin/amneziawg-go','/usr/bin/awg','/usr/bin/awg-quick',
+                    '/etc/systemd/system/awg-quick@.service','/etc/systemd/system/awg-quick.target')}
             process=subprocess.Popen(['ip','netns','exec',client,str(go),'-f',ci],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
             processes.append(process); deadline=time.monotonic()+10
             while subprocess.run(['ip','-n',client,'link','show',ci],capture_output=True).returncode:
@@ -112,30 +267,28 @@ def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes
                     pytest.fail('authenticated activation path failed: ' + json.dumps(path_evidence(
                         (client, server, uplink), ((client, ci), (server, iface)), tools, address)))
         candidate=copy.deepcopy(effective)
-        candidate['mtu']=1280
+        if failure=='configuration': candidate['mtu']=1280
         candidate['peers'][0]['allowed_ips']={'ipv4':'10.70.0.9/32','ipv6':'fd42:10::9/128'}
-        firewall.write_text(firewall_text(candidate)); firewall.chmod(0o600)
-        run(server,['nft','-f',firewall])
-        if previous:
-            for address in ('198.18.1.2','fd88::2'):
-                assert subprocess.run(['ip','netns','exec',client,sys.executable,'-c',PROBE,address],capture_output=True,timeout=12).returncode!=0
-        play=directory/'failure.yml'
-        play.write_text(yaml.safe_dump([{'hosts':'localhost','connection':'local','gather_facts':False,
-            'environment':{'PATH':str(bin_dir)+':/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'},
-            'vars':{'amneziawg_config_dir':str(directory),'_awg_instances':[candidate],
-                    '_firewall_awg_restore':{'path':str(firewall),'content':base64.b64encode(retained_firewall.encode()).decode(),'mode':'0600'},
-                    '_awg_unit_plan':{'changed':False},'amneziawg_role_enabled':True},
-            'tasks':[{'ansible.builtin.include_role':{'name':'amneziawg','tasks_from':'configure'}}]}]))
-        result=subprocess.run(['ansible-playbook','-i','localhost,',str(play)],capture_output=True,text=True,timeout=90,
-                              env={**os.environ,'ANSIBLE_ROLES_PATH':str(ROOT/'ansible/roles'),'ANSIBLE_CONFIG':str(ROOT/'ansible/ansible.cfg')})
-        assert result.returncode!=0 and 'awg-complete-config-activation-failed' in result.stdout+result.stderr
+        candidate_config=render_native_awg_config(candidate)
+        if failure=='binary':
+            rejected=directory/'rejected-amneziawg-go'; rejected.write_text('#!/bin/sh\nexit 71\n'); rejected.chmod(0o755)
+            acquired=publisher.acquire(rejected,tools,quick)
+        candidate_shared=shared+'\n[Service]\nExecStartPre=/bin/false\n' if failure=='shared-unit' else shared
+        request=publisher.request(acquired,{iface:candidate_config},candidate_shared,firewall=firewall_text(candidate))
+        result=publisher.apply(request)
+        assert result.returncode!=0 and 'awg-consumer-refused' in result.stderr
         assert ('BEGIN PRIVATE' not in result.stdout+result.stderr)
         assert firewall.read_text()==retained_firewall
         live_firewall=run(server,['nft','list','ruleset'])
         assert '10.70.0.9' not in live_firewall and 'fd42:10::9' not in live_firewall
         boot=subprocess.run(['systemctl','is-enabled',unit.name],capture_output=True,text=True)
-        assert boot.returncode==1 and boot.stdout.strip()=='disabled'
         if previous:
+            assert boot.returncode==0 and boot.stdout.strip()=='enabled'
+        else:
+            assert boot.returncode!=0
+        if previous:
+            assert {raw:(Path(raw).stat().st_ino,Path(raw).stat().st_mode,Path(raw).read_bytes()) for raw in prior}==prior
+            assert userspace_digest(unit.name)==hashlib.sha256(go.read_bytes()).hexdigest()
             assert path.read_text()==accepted and path.stat().st_mode & 0o777==0o600
             assert command(['systemctl','is-active',unit.name]).strip()=='active'
             link=json.loads(command(['ip','-n',server,'-j','link','show',iface]))[0]
@@ -157,13 +310,17 @@ def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes
     finally:
         subprocess.run(['systemctl','stop',unit.name],capture_output=True,timeout=15)
         subprocess.run(['systemctl','disable',unit.name],capture_output=True,timeout=15)
-        unit.unlink(missing_ok=True); command(['systemctl','daemon-reload'])
+        if dropin.exists(): shutil.rmtree(dropin)
+        command(['systemctl','daemon-reload'])
         for process in processes:
             if process.poll() is None: process.terminate()
         for process in processes:
             try: process.wait(timeout=5)
             except subprocess.TimeoutExpired: process.kill(); process.wait(timeout=5)
         for ns in reversed(namespaces): command(['ip','netns','delete',ns])
+        ownership.close()
+        subprocess.run(['systemctl','reset-failed',unit.name],capture_output=True,timeout=15)
+        shutil.rmtree(directory)
 
 
 @pytest.mark.parametrize('previous', [True, False])

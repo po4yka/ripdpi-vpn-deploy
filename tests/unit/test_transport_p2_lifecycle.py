@@ -30,50 +30,15 @@ def run(play, path):
     )
 
 
-@pytest.mark.parametrize("changed", ["amneziawg-go", "amneziawg-tools", None])
-def test_awg_published_runtime_change_queues_every_current_instance(tmp_path, changed):
-    signal = next(
-        task
-        for task in tasks("amneziawg")
-        if task["name"] == "Apply changed AmneziaWG runtimes to current instances"
-    )
-    actual = next(
-        task
-        for task in yaml.safe_load(
-            (ROOT / "ansible/roles/amneziawg/handlers/main.yml").read_text()
-        )
-        if task["name"] == "Restart amneziawg"
-    )
-    handler = copy.deepcopy(actual)
-    handler.pop("ansible.builtin.systemd_service")
-    handler["ansible.builtin.copy"] = {
-        "dest": str(tmp_path / "{{ item.name }}"),
-        "content": "restart",
-    }
-    play = [
-        {
-            "hosts": "localhost",
-            "gather_facts": False,
-            "connection": "local",
-            "become": False,
-            "vars": {
-                "ansible_become": False,
-                "ansible_python_interpreter": sys.executable,
-                "amneziawg_role_enabled": True,
-                "_awg_instances": [{"name": "p2awg-a"}, {"name": "p2awg-b"}],
-                "runtime_build_results": {
-                    name: {"changed": name == changed}
-                    for name in ("amneziawg-go", "amneziawg-tools")
-                },
-            },
-            "tasks": [signal],
-            "handlers": [handler],
-        }
-    ]
-    result = run(play, tmp_path)
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert (tmp_path / "p2awg-a").exists() == (changed is not None)
-    assert (tmp_path / "p2awg-b").exists() == (changed is not None)
+def test_awg_acquisition_does_not_restart_accepted_instances_before_complete_plan():
+    acquire = tasks("amneziawg")
+    descriptors = next(task for task in acquire if task["name"] == "Define pinned AmneziaWG source-build descriptors")["ansible.builtin.set_fact"]["_amneziawg_build_descriptors"]
+    assert all(output["path"].startswith("/opt/amneziawg/releases/") for descriptor in descriptors for output in descriptor["outputs"])
+    assert all("notify" not in task for task in acquire)
+    configure = tasks("amneziawg", "configure.yml")
+    accept = next(task for task in configure if task["name"] == "Accept complete AmneziaWG runtime and firewall together")
+    assert accept["ansible.builtin.command"]["argv"][-1] == "apply"
+    assert accept["no_log"] is True
 
 
 @pytest.mark.parametrize("changed", ["probe-matrix-xray", "probe-matrix-mtg", None])

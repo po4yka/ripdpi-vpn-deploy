@@ -5,7 +5,8 @@
       {{ ['python3', '-c', lookup('ansible.builtin.file',
           playbook_dir ~ '/../roles/nginx-xhttp/files/nginx_transaction.py'), '--site', 'commit']
          + (['--finish-egress'] if ((transport_egress_role_enabled | default(false) | bool)
-             or (_transport_egress_full_retirement | default(false) | bool)) else []) }}
+             or (_transport_egress_full_retirement | default(false) | bool)) else [])
+         + (['--finish-firewall'] if (_firewall_site_transaction_active | default(false) | bool) else []) }}
     stdin: '{{ _transport_ingress_request | to_json }}'
   changed_when: false
   no_log: true
@@ -16,3 +17,4 @@
   ansible.builtin.set_fact:
     transport_site_transaction_active: false
     _transport_egress_transaction_started: false
+    _firewall_site_transaction_active: false

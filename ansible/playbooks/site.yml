@@ -8,6 +8,7 @@
 
   vars:
     transport_egress_site_staging: true
+    baseline_defer_awg_forwarding: true
     vpn_secrets_file: >-
       {{
         lookup('env', 'VPN_SECRETS_FILE')
@@ -246,78 +247,104 @@
     - role: package_updates
       tags: [baseline, security, updates]
 
-    - role: firewall
-      tags: [firewall, always]
-
-    - role: intrusion_prevention
-      tags: [security, intrusion-prevention]
-
-    - role: geodata
-      vars:
-        geodata_role_enabled: >-
-          {{ (vpn.enable_geodata | default(true)) and ((vpn.enable_xray_reality | default(true)) or
-             (vpn.enable_cascade_ingress | default(false))) and not (vpn_subscription_only | default(false)) }}
-      tags: [geodata, xray]
-
-    - role: tailnet-management
-      when: vpn.enable_tailnet_management | default(false)
-      tags: [tailnet-management, security]
-
   tasks:
-    - name: Stage and close the protected transport generation before unrelated roles
-      tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
+    # One ingress decision owns initial firewall compensation. AWG commits later.
+    - name: Converge protected consumers with retained initial firewall authority
       block:
         - name: Capture the protected ingress composition before staging
           ansible.builtin.import_tasks: tasks/transport-ingress-begin.yml
+          tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
+        - name: Reconcile firewall prerequisites
+          ansible.builtin.import_role:
+            name: firewall
+            public: true
+          tags: [firewall, always]
+          vars:
+            firewall_site_transaction: true
+        - name: Reconcile intrusion_prevention prerequisites
+          ansible.builtin.import_role:
+            name: intrusion_prevention
+            public: true
+          tags: [security, intrusion-prevention]
+        - name: Reconcile geodata prerequisites
+          ansible.builtin.import_role:
+            name: geodata
+            public: true
+          vars:
+            geodata_role_enabled: >-
+              {{ (vpn.enable_geodata | default(true)) and ((vpn.enable_xray_reality | default(true)) or
+              (vpn.enable_cascade_ingress | default(false))) and not (vpn_subscription_only | default(false)) }}
+          tags: [geodata, xray]
+        - name: Reconcile tailnet-management prerequisites
+          ansible.builtin.import_role:
+            name: tailnet-management
+            public: true
+          when: vpn.enable_tailnet_management | default(false)
+          tags: [tailnet-management, security]
         - name: Reconcile transport-egress runtime
           ansible.builtin.import_role:
             name: transport-egress
             public: true
             tasks_from: prepare-site
-          tags: [xray, hysteria, p0, p1, p2, transport]
+          tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
         - name: Reconcile xray runtime
           ansible.builtin.import_role:
             name: xray
             public: true
           vars:
             xray_role_enabled: >-
-              {{ ((vpn.enable_xray_reality | default(true)) or
-                  (vpn.enable_nginx_xhttp | default(true))) and
-                 not (vpn_subscription_only | default(false)) }}
-          tags: [xray, hysteria, p0, p1, p2, transport]
+              {{ ((vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true))) and not
+              (vpn_subscription_only | default(false)) }}
+          tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
         - name: Reconcile reality-self-steal runtime
           ansible.builtin.import_role:
             name: reality-self-steal
             public: true
           vars:
             reality_self_steal_role_enabled: >-
-              {{ (not (vpn_subscription_only | default(false))) and
-                 (vpn.enable_reality_self_steal | default(false) | bool) }}
-          tags: [reality-self-steal, p0, transport]
+              {{ (not (vpn_subscription_only | default(false))) and (vpn.enable_reality_self_steal | default(false) | bool)
+              }}
+          tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
         - name: Reconcile nginx-xhttp runtime
           ansible.builtin.import_role:
             name: nginx-xhttp
             public: true
           vars:
-            nginx_xhttp_role_enabled: >-
-              {{ (vpn.enable_nginx_xhttp | default(true)) and not (vpn_subscription_only | default(false)) }}
-          tags: [nginx, xhttp, p1, transport]
+            nginx_xhttp_role_enabled: '{{ (vpn.enable_nginx_xhttp | default(true)) and not (vpn_subscription_only | default(false))
+              }}'
+          tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
         - name: Reconcile hysteria runtime
           ansible.builtin.import_role:
             name: hysteria
             public: true
           vars:
-            hysteria_role_enabled: >-
-              {{ (vpn.enable_hysteria | default(true)) and not (vpn_subscription_only | default(false)) }}
-          tags: [xray, hysteria, p0, p1, p2, transport]
+            hysteria_role_enabled: '{{ (vpn.enable_hysteria | default(true)) and not (vpn_subscription_only | default(false))
+              }}'
+          tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
         - name: Admit protected transports after complete frontend staging
           ansible.builtin.import_tasks: tasks/transport-egress-activate.yml
+          tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
         - name: Commit the ready protected ingress and egress composition
           ansible.builtin.import_tasks: tasks/transport-ingress-commit.yml
+          tags: [xray, hysteria, nginx, xhttp, reality-self-steal, p0, p1, p2, transport]
+        - name: Finish an initial firewall without a selected protected consumer
+          ansible.builtin.command:
+            argv:
+              - python3
+              - -Es
+              - /usr/local/libexec/ripdpi-consumer/firewall_consumer.py
+              - finish
+              - --owner
+              - site
+          changed_when: false
+          no_log: true
+          when: _firewall_site_transaction_active | default(false) | bool
+          tags: [always]
       rescue:
         - name: Resolve a durable commit decision before any compensation
           ansible.builtin.include_tasks: tasks/transport-ingress-recover-commit.yml
           when: transport_site_transaction_active | default(false) | bool
+          tags: [always]
         - name: Quiesce candidate transport processes before ingress compensation
           ansible.builtin.include_role:
             name: transport-egress
@@ -325,8 +352,53 @@
           when:
             - transport_site_transaction_active | default(false) | bool
             - _transport_egress_transaction_started | default(false) | bool
+          tags: [always]
         - name: Restore accepted ingress before any protected frontend recovery
           ansible.builtin.include_tasks: tasks/transport-ingress-restore.yml
+          tags: [always]
+        - name: Admit retained consumer helpers before recovery
+          ansible.builtin.command:
+            argv:
+              - python3
+              - -c
+              - '{{ lookup(''ansible.builtin.file'', playbook_dir ~ ''/../roles/runtime-release/files/consumer_authority.py'')
+                }}'
+          changed_when: false
+          check_mode: false
+          tags: [always]
+        - name: Inspect retained firewall helper after interrupted convergence
+          ansible.builtin.stat:
+            path: /usr/local/libexec/ripdpi-consumer/firewall_consumer.py
+            follow: false
+          register: _firewall_rescue_helper
+          tags: [always]
+        - name: Read retained firewall consumer ownership before compensation
+          ansible.builtin.command:
+            argv:
+              - python3
+              - -Es
+              - /usr/local/libexec/ripdpi-consumer/firewall_consumer.py
+              - status
+          changed_when: false
+          check_mode: false
+          register: _firewall_rescue_owner
+          when: _firewall_rescue_helper.stat.exists
+          tags: [always]
+        - name: Restore initial firewall after protected convergence refusal
+          ansible.builtin.command:
+            argv:
+              - python3
+              - -Es
+              - /usr/local/libexec/ripdpi-consumer/firewall_consumer.py
+              - restore
+            stdin: '{{ {''owner'': ''site'', ''check'': ansible_check_mode} | to_json }}'
+          changed_when: true
+          check_mode: false
+          no_log: true
+          when:
+            - _firewall_rescue_helper.stat.exists
+            - (_firewall_rescue_owner.stdout | from_json).owner == 'site'
+          tags: [always]
         - name: Restore accepted protected generation after site staging failure
           ansible.builtin.include_role:
             name: transport-egress
@@ -334,12 +406,14 @@
           when:
             - transport_site_transaction_active | default(false) | bool
             - _transport_egress_transaction_started | default(false) | bool
+          tags: [always]
         - name: Report protected site staging refusal after bounded recovery
           ansible.builtin.fail:
             msg: >-
               Protected transport staging failed; {{ 'accepted-generation recovery was attempted when available.'
               if (transport_site_transaction_active | default(false) | bool)
               else 'no accepted-generation recovery was attempted.' }}
+          tags: [always]
     - name: Reconcile cdn-front runtime
       ansible.builtin.import_role:
         name: cdn-front
@@ -362,6 +436,15 @@
         public: true
       vars:
         amneziawg_role_enabled: >-
+          {{ (vpn.enable_amneziawg | default(true)) and not (vpn_subscription_only | default(false)) }}
+      tags: [amneziawg, awg, p2, transport]
+    - name: Reconcile forwarding after accepted AWG lifecycle
+      ansible.builtin.import_role:
+        name: baseline
+        tasks_from: forwarding
+      vars:
+        baseline_defer_awg_forwarding: false
+        baseline_forwarding_amneziawg_active: >-
           {{ (vpn.enable_amneziawg | default(true)) and not (vpn_subscription_only | default(false)) }}
       tags: [amneziawg, awg, p2, transport]
     - name: Reconcile subscription-host runtime

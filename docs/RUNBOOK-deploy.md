@@ -417,6 +417,12 @@ can offer selective recipes.
 The role tags remain defined in `ansible/playbooks/site.yml`; baseline and
 firewall carry `always` tags and also run during a tagged deploy.
 
+Initial firewall convergence retains the accepted AWG peer policy. New AWG policy
+is accepted by the complete AWG runtime transaction after protected transports
+commit. A tagged run that omits protected consumers refuses a changed protected
+listener contract before publishing it. Use the ordinary full re-deploy recipe
+when transport ports or enabled transports change.
+
 ## Staging first
 
 This disposable recipe uses **UpCloud only**: the linked UUID-bound cleanup

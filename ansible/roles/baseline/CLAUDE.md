@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+**Site staging retains accepted AWG forwarding** — the site-only defer flag reads the existing exact IPv4/IPv6 forwarding fragment before mutation. The bounded no-follow reader requires root ownership and non-writable ancestry. A selected AWG consumer reconciles desired forwarding only after its lifecycle completes. Failed protected staging and tagged runs that omit AWG keep accepted forwarding. Standalone baseline remains desired-authoritative; no kernel transaction is added.
+
 UDP receive/send socket ceilings are integer role inputs bounded from 1 MiB to 64 MiB before host mutation. Their optional performance application uses the existing per-setting exception boundary; it cannot mask mandatory hardening failure and does not demonstrate QUIC congestion behavior.
 
 The bounded Molecule sysctl diagnostic assigns successful replay status only
