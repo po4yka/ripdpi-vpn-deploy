@@ -46,6 +46,25 @@ SUITES = (
 )
 
 
+def suite_commands(plan):
+    """Fixed complete CI plans; the local default executes their entire union."""
+    if plan not in {"all", "core", "recovery-1", "recovery-2"}:
+        raise RuntimeError("native-plan-refused")
+    commands = []
+    for name, paths in SUITES:
+        if name != "compensation":
+            if plan in {"all", "core"}:
+                commands.append((name, paths, []))
+            continue
+        for group in (1, 2):
+            if plan in {"all", "recovery-" + str(group)}:
+                commands.append((name + "-" + str(group), paths, [
+                    "--splits", "2", "--group", str(group),
+                    "--splitting-algorithm", "least_duration",
+                ]))
+    return commands
+
+
 def run(argv, **kwargs):
     return subprocess.run(
         argv, capture_output=True, timeout=30, check=True, **kwargs
@@ -265,13 +284,16 @@ def main():
         "success": False,
     }
     before = None
+    plan = os.environ.get("TRANSPORT_NATIVE_PLAN", "all")
+    commands = suite_commands(plan)
+    evidence["plan"] = plan
     evidence["phase"] = "prerequisites"
     try:
         before = preflight(evidence)
         with tempfile.TemporaryDirectory(
             prefix="transport-native-", dir="/var/tmp"
         ) as private:
-            for name, paths in SUITES:
+            for name, paths, selection in commands:
                 evidence["phase"] = name
                 report = Path(private) / (name + ".xml")
                 with (Path(private) / (name + ".log")).open("wb") as log:
@@ -281,6 +303,7 @@ def main():
                             "-m",
                             "pytest",
                             *paths,
+                            *selection,
                             "--fail-on-skip",
                             "--native-resource-checks",
                             "--basetemp=" + str(Path(private) / (name + "-scratch")),
@@ -291,8 +314,7 @@ def main():
                         cwd=ROOT,
                         stdout=log,
                         stderr=subprocess.STDOUT,
-                        # This phase combines both existing 40-minute CI partitions.
-                        timeout=3600 if name == "compensation" else 2400,
+                        timeout=2400,
                     )
                 if result.returncode:
                     # Keep diagnostics on this isolated machine only, with private modes.
@@ -336,8 +358,8 @@ def main():
             "engine-missing:" + name
             for name in ("xray", "hysteria", "amneziawg-go", "awg")
         )
-        known.update("native-suite-failed:" + name for name, _paths in SUITES)
-        known.update("native-suite-cleanup-unconfirmed:" + name for name, _paths in SUITES)
+        known.update("native-suite-failed:" + name for name, _paths, _selection in commands)
+        known.update("native-suite-cleanup-unconfirmed:" + name for name, _paths, _selection in commands)
         evidence["failure_category"] = code if code in known else type(error).__name__
         raise
     finally:

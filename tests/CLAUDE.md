@@ -635,6 +635,11 @@ The REALITY collector no longer parses shell TLS transcripts. Its large-certific
 regression completes a real trusted handshake beyond ordinary pipe-buffer sizes;
 metadata failure classification remains covered by the shared monitor tests.
 
+The required four-transport CI matrix runs core coverage and two complete,
+disjoint compensation partitions in independent owned containers. Each phase
+retains its 40-minute bound; the local default executes their complete union.
+A real collection regression rejects gaps and overlaps as native cases expand.
+
 The four-transport runner reuses canonical runtime, endpoint, device binding
 and source-pair labs. Keep selected native cases complete: overrides, empty
 JUnit, skips and resource identity differences fail. Publish only case names,

@@ -1,7 +1,10 @@
 """Portable honesty checks; these never establish native protocol acceptance."""
 
 import importlib.util
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -11,6 +14,45 @@ spec = importlib.util.spec_from_file_location(
 )
 runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runner)
+
+
+def test_native_ci_plans_cover_the_complete_real_collection_once():
+    """Collect actual parameterized cases, including new recovery boundaries."""
+    def collect(paths, options=()):
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", "--collect-only", "-q", *paths, *options],
+            cwd=ROOT, capture_output=True, text=True, timeout=60, check=True,
+            env={key: value for key, value in os.environ.items()
+                 if key not in {"PYTEST_ADDOPTS", "PYTEST_PLUGINS"}},
+        )
+        return {line for line in result.stdout.splitlines() if line.startswith("tests/") and "::" in line}
+
+    expected = collect([path for _name, paths in runner.SUITES for path in paths])
+    assert expected
+    observed = set()
+    for plan in ("core", "recovery-1", "recovery-2"):
+        selected = set()
+        for _name, paths, options in runner.suite_commands(plan):
+            cases = collect(paths, options)
+            assert cases and not selected.intersection(cases)
+            selected.update(cases)
+        assert not observed.intersection(selected)
+        observed.update(selected)
+    assert observed == expected
+    assert runner.suite_commands("all") == sum(
+        (runner.suite_commands(plan) for plan in ("core", "recovery-1", "recovery-2")), []
+    )
+    import yaml
+    jobs = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
+    job = jobs["transport-native-acceptance"]
+    assert job["strategy"]["matrix"]["plan"] == ["core", "recovery-1", "recovery-2"]
+    assert job["strategy"]["fail-fast"] is False
+    assert "transport-native-acceptance" in jobs["required"]["needs"]
+
+
+def test_unknown_native_plan_cannot_silently_omit_cases():
+    with pytest.raises(RuntimeError, match="native-plan-refused"):
+        runner.suite_commands("recovery-3")
 
 
 @pytest.mark.parametrize(
