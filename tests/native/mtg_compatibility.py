@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shlex
 import subprocess
 import sys
@@ -29,12 +30,33 @@ SHA256 = {
 VALIDATOR = ROOT / 'ansible/roles/probe-matrix-target/files/validate_mtg.py'
 
 
+def failure_context(result):
+    """Expose static task labels and refusal categories, never tool payloads."""
+    tasks = re.findall(r"(?m)^TASK \[([A-Za-z0-9 :_-]{1,160})\] \*+$", result.stdout)
+    categories = []
+    diagnostic = result.stdout + result.stderr
+    for marker, category in (
+        ('unsafe-storage-ancestor', 'unsafe-storage-ancestor'),
+        ('a password is required', 'become-password-required'),
+        ('Missing sudo password', 'become-password-required'),
+        ('Permission denied', 'permission-refused'),
+        ("couldn't resolve module", 'module-unavailable'),
+        ('No module named', 'python-dependency-unavailable'),
+        ('untrusted', 'templating-untrusted'),
+        ('Module result deserialization failed', 'interpreter-result-refused'),
+    ):
+        if marker in diagnostic and category not in categories:
+            categories.append(category)
+    label = tasks[-1] if tasks else 'no-task-label'
+    return f"rc={result.returncode}; task={label}; categories={','.join(categories) or 'uncategorized'}"
+
+
 def command(argv, *, success=True, env=None):
     result = subprocess.run(argv, capture_output=True, text=True, timeout=90, env=env)
     if (result.returncode == 0) != success:
         # Ansible and mtg can include synthetic credentials in errors. Keep the
         # same categorical diagnostic contract as the production validator.
-        raise RuntimeError('native-command-outcome-mismatch')
+        raise RuntimeError('native-command-outcome-mismatch: ' + failure_context(result))
     return result
 
 

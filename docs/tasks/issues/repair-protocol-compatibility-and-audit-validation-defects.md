@@ -13,7 +13,7 @@ spec_mode: required
 openspec_change: protocol-audit-compatibility
 created: 2026-10-17
 updated: 2026-10-17
-related_tasks: []
+related_tasks: [CIC-1792268380780556]
 ---
 
 ## Goal

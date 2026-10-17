@@ -61,3 +61,12 @@ supported P0 client before that operation. A source revert restores the prior
 contract; no live state is mutated by this task. Validate focused regressions,
 review rendered snapshots, run make check, complete independent structured and
 security reviews, then require exact-head CI before merge.
+
+## Required test dependency
+
+CI exposed an existing Debian test-image security failure on the unchanged main
+source. Dependency task CIC-1792268380780556 advances all active consumers to the
+already published digest that passes the existing scan. This refresh changes no
+runtime image, deployment or scan policy. Native migration failures must expose
+only static task labels and categorical refusals; captured tool output remains
+private. Exact-head CI remains required before merge.

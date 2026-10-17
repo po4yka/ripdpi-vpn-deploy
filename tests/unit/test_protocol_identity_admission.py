@@ -139,3 +139,20 @@ def test_native_mtg_wrapper_discards_credentials_from_both_streams(tmp_path, mon
     assert calls[1][1]['stdout'] == subprocess.DEVNULL
     assert calls[1][1]['stderr'] == subprocess.DEVNULL
     assert capsys.readouterr().out == ''
+
+
+def test_native_mtg_failure_context_exposes_only_static_task_and_category(monkeypatch):
+    import importlib.util
+    source = ROOT / 'tests/native/mtg_compatibility.py'
+    spec = importlib.util.spec_from_file_location('mtg_native_diagnostics', source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    stdout = ('TASK [runtime-release : Preflight runtime release activation layout] ********\n'
+              'fatal: unsafe-storage-ancestor synthetic-private-value /private/path\n')
+    result = subprocess.CompletedProcess(['ansible-playbook'], 2, stdout=stdout, stderr='private-stderr')
+    monkeypatch.setattr(module.subprocess, 'run', lambda *args, **kwargs: result)
+    with pytest.raises(RuntimeError) as raised:
+        module.command(['ansible-playbook'])
+    assert str(raised.value) == ('native-command-outcome-mismatch: rc=2; '
+        'task=runtime-release : Preflight runtime release activation layout; categories=unsafe-storage-ancestor')
+    assert 'private' not in str(raised.value)
