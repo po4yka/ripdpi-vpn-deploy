@@ -109,6 +109,8 @@ matrix records coverage and commands rather than manually maintained totals.
 
 ## Test fixtures and stubs
 
+Portable Python shards and standalone REALITY validation share checksum-pinned SOPS/age installation through `.github/actions/install-sops-age`. The real YAML input regression creates and retires a fresh synthetic age authority; it never reads fleet secrets.
+
 All shared test inputs live under `tests/fixtures/` and stub binaries under
 `tests/stubs/bin/`.
 

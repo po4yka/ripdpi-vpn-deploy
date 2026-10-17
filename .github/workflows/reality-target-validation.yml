@@ -23,6 +23,7 @@ jobs:
           python-version: '3.12'
       - name: Install pinned test dependencies
         run: python3 -m pip install --require-hashes -r requirements.txt
+      - uses: ./.github/actions/install-sops-age
       - name: Acquire checksum-pinned test-only client
         run: |
           set -euo pipefail
