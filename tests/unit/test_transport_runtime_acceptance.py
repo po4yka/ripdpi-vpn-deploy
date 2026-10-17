@@ -463,6 +463,35 @@ def load_probe():
     return module
 
 
+@pytest.mark.parametrize('flow', ['', 'xtls-rprx-vision'])
+@pytest.mark.parametrize('masked', [False, True])
+def test_reality_acceptance_client_preserves_typed_candidate_mask(monkeypatch, flow, masked):
+    probe = load_probe()
+    monkeypatch.setattr(probe, 'public_key', lambda _private, **_: 'synthetic-public-key')
+    stream = {'network': 'raw', 'security': 'reality', 'realitySettings': {
+        'privateKey': 'synthetic-private-key', 'serverNames': ['owned.example'], 'shortIds': ['1234']}}
+    if masked:
+        stream['finalmask'] = {'tcp': [{'type': 'sudoku', 'settings': {
+            'ascii': 'prefer_ascii', 'paddingMin': 2, 'paddingMax': 7}}]}
+    user = {'id': '00000000-0000-4000-8000-000000000001', 'email': 'native-device-primary'}
+    if flow:
+        user['flow'] = flow
+    document = {'inbounds': [{'tag': 'vless-reality-primary', 'protocol': 'vless',
+        'port': 443, 'settings': {'clients': [user]}, 'streamSettings': stream}]}
+    before = json.loads(json.dumps(document))
+    generated = probe.xray_clients(document, 19000, 'native-device')[0]['outbounds'][0]
+    client_stream = generated['streamSettings']
+    assert ('finalmask' in client_stream) is masked
+    assert generated['mux']['enabled'] is (not bool(flow))
+    assert generated['settings']['vnext'][0]['users'][0] == {
+        **({'flow': flow} if flow else {}), 'id': user['id'], 'encryption': 'none'}
+    assert 'sockopt' not in client_stream
+    if masked:
+        assert client_stream['finalmask'] == stream['finalmask']
+        client_stream['finalmask']['tcp'][0]['settings']['ascii'] = 'prefer_entropy'
+    assert document == before
+
+
 def test_native_command_output_stream_limit_stops_owned_child(area):
     _state, live, _adapter, _candidates = area
     probe = load_probe()

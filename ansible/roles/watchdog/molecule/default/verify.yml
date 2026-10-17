@@ -61,7 +61,7 @@
             .outbounds[0]
             | (.settings.vnext[0].users[0] | has("flow") | not)
               and (.mux == {"enabled": true, "concurrency": 8})
-              and (.streamSettings.sockopt.finalmask == "Sudoku")
+              and (.streamSettings.finalmask == {"tcp":[{"type":"sudoku","settings":{}}]})
           ' /etc/vpn-watchdog-reality.json
       changed_when: false
 

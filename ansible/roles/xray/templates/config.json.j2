@@ -98,9 +98,7 @@
             {%- endfor %}
           ]
         }{% if _shape.finalmask %},
-        "sockopt": {
-          "finalmask": "Sudoku"
-        }{% endif %}
+        "finalmask": {"tcp": [{"type": "sudoku", "settings": {}}]}{% endif %}
       },
       "sniffing": {
         "enabled": true,

@@ -4,12 +4,7 @@
       "default": {
         "writer": {"output": "file", "filename": "/var/log/naive/access.log"},
         "level": "INFO",
-        "exclude": ["http.log.access.log0"]
-      },
-      "log0": {
-        "writer": {"output": "file", "filename": "/var/log/naive/site-error.log"},
-        "level": "ERROR",
-        "include": ["http.log.access.log0"]
+        "exclude": ["http.log.access", "http.log.error"]
       }
     }
   },
@@ -21,7 +16,6 @@
           "protocols": ["h1", "h2"],
           "automatic_https": {"disable": true},
           "tls_connection_policies": [{"certificate_selection": {"any_tag": ["cert0"]}}],
-          "logs": {"default_logger_name": "log0"},
           "routes": [{"handle": [
             {"handler": "encode", "encodings": {"gzip": {}, "zstd": {}}, "prefer": ["zstd", "gzip"]},
             {"handler": "subroute", "routes": [{"handle": [

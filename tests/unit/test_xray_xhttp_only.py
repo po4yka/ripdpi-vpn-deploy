@@ -192,7 +192,7 @@ def test_installed_ansible_smoke_client_uses_the_shared_mux_and_finalmask_shape(
     assert outbound["settings"]["vnext"][0]["users"][0]["id"] == "fixture-uuid"
     assert "flow" not in outbound["settings"]["vnext"][0]["users"][0]
     assert outbound["mux"] == {"enabled": True, "concurrency": 8}
-    assert outbound["streamSettings"]["sockopt"]["finalmask"] == "Sudoku"
+    assert outbound["streamSettings"]["finalmask"] == {"tcp": [{"type": "sudoku", "settings": {}}]}
 
 
 def _run_live_p0_shape_preflight(

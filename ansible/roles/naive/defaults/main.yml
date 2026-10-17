@@ -7,12 +7,12 @@ naive:
   # runs use the pinned binary at /usr/local/bin/caddy-naive.
   build_with_xcaddy: true
   # Pin xcaddy version for reproducibility.
-  xcaddy_version: "v0.4.5"
+  xcaddy_version: "v0.4.7"
   # Caddy version that xcaddy will pin during build. The role passes this as
-  # the `--caddy=` flag.
-  caddy_version: "v2.11.2"
+  # the positional version argument.
+  caddy_version: "v2.11.7"
   # Forwardproxy fork (klzgrad's naive-enhanced fork).
-  forwardproxy_module: "github.com/caddyserver/forwardproxy@caddy2=github.com/klzgrad/forwardproxy@d62c80d3dd2c706b6b87579844d2397bddd18317"
+  forwardproxy_module: "github.com/caddyserver/forwardproxy@caddy2=github.com/klzgrad/forwardproxy@c096d6a00cb28e019cc1995b04bdc6a9311d8024"
   install_dir: /opt/naive
   config_dir: /etc/naive
   log_dir: /var/log/naive

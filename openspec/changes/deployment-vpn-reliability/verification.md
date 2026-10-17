@@ -223,3 +223,16 @@ exit values, exception/timeout command strings, raw journal and parent-error
 paths. CI selection and protective workflow coverage passed 68 tests; actionlint,
 Zizmor and all four Zizmor gate regressions passed. No native acceptance is
 claimed from these portable checks.
+
+## Current main integration
+
+Main advanced to a620c9dfb0ef41e13410a932016d88ec6785b66d while the native
+checks ran. The PR required integration before GitHub could schedule its next
+run. Independent guidance additions are retained on both sides; the generated
+board was rebuilt from 56 tasks. Production sources merged without conflict.
+The shared semantic preflight regression retains the new main input cases and
+the read-only assertion boundary. The five-file integration bundle passed
+121 tests; the only warning remains the intentional boolean CIDR fixture.
+Workflow lint and all 56 task contracts passed. Image pins already match the
+scanned digest; no additional publication was required. Hosted execution of the
+combined source remains required.

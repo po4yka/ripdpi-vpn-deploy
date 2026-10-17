@@ -267,9 +267,7 @@ def build_profiles(standard_doc, ripdpi_doc, secrets_doc, client, required_profi
                                    "short_id": xray_client["short_id"]} or "transport" in outbound):
                         raise ProfileError("wrong-reality-material")
                     if "multiplex" in outbound:
-                        if outbound["multiplex"] != {"enabled": True, "protocol": "smux", "max_streams": 8} or "flow" in outbound:
-                            raise ProfileError("unsupported-reality-flow")
-                        metadata["flow"] = "mux"
+                        raise ProfileError("incompatible-reality-multiplex")
                     elif outbound.get("flow") != "xtls-rprx-vision":
                         raise ProfileError("unsupported-reality-flow")
                     else:

@@ -49,7 +49,7 @@
           "publicKey": "{{ xray.reality_public_key }}",
           "shortId": "{{ _client.short_id }}"
         }{% if _shape.finalmask %},
-        "sockopt": {"finalmask": "Sudoku"}{% endif %}
+        "finalmask": {"tcp": [{"type": "sudoku", "settings": {}}]}{% endif %}
       }{% if _shape.client_mux %},
       "mux": {"enabled": true, "concurrency": 8}{% endif %}
     }{% if not loop.last %},{% endif %}

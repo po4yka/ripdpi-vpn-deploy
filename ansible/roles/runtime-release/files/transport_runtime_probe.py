@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import ctypes
 from contextlib import contextmanager
+from copy import deepcopy
 import json
 import os
 from pathlib import Path
@@ -179,8 +180,8 @@ def xray_clients(document, port, client_name, timeout=30):
             stream = {'network': 'xhttp', 'security': 'none', 'xhttpSettings': stream['xhttpSettings']}
         else:
             raise ProbeRefused('frontend-shape-unsupported')
-        if stream.get('security') == 'reality' and inbound['streamSettings'].get('sockopt', {}).get('finalmask'):
-            stream['sockopt'] = {'finalmask': inbound['streamSettings']['sockopt']['finalmask']}
+        if stream.get('security') == 'reality' and 'finalmask' in inbound['streamSettings']:
+            stream['finalmask'] = deepcopy(inbound['streamSettings']['finalmask'])
         candidates.append({'log': {'loglevel': 'none'}, 'inbounds': [{
             'listen': '127.0.0.1', 'port': port, 'protocol': 'socks', 'settings': {'udp': True}}],
             'outbounds': [{'protocol': 'vless', 'mux': {'enabled': stream.get('security') == 'reality' and not user.get('flow')},

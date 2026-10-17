@@ -77,7 +77,7 @@ def test_example_sbom_includes_pinned_snell_candidate(emit_sbom_module, monkeypa
     assert emit_sbom_module.main() == 0
     sbom = json.loads((emit_sbom_module.SBOM_DIR / "example.json").read_text())
     snell = next(component for component in sbom["components"] if component["name"] == "sing-box-snell")
-    assert snell["version"] == "v1.14.0-alpha.42"
+    assert snell["version"] == "v1.14.3"
 
 
 def test_invalid_custom_label_is_rejected(emit_sbom_module, tmp_path, monkeypatch, capsys):

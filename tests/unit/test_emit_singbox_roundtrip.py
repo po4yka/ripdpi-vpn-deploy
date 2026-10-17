@@ -265,6 +265,7 @@ def _run_shape_only_emitter(
     flow: str,
     finalmask: bool = False,
     cohort_finalmask: bool | None = None,
+    profile_format: str = "sing-box",
 ) -> subprocess.CompletedProcess:
     """Exercise the emitted P0 client shape from a self-contained group-vars tree."""
     repo = tmp_path / "shape-repo"
@@ -366,7 +367,7 @@ def _run_shape_only_emitter(
         }
     )
     return subprocess.run(
-        ["bash", str(repo / "scripts/emit-singbox.sh"), "laptop"],
+        ["bash", str(repo / "scripts/emit-singbox.sh"), "laptop", "--profile-format", profile_format],
         capture_output=True,
         text=True,
         env=environment,
@@ -591,18 +592,15 @@ def test_emit_singbox_json_structure(tmp_path):
     assert proto_obs, "no protocol outbounds (p0/p1/p2) found"
 
 
-def test_emit_singbox_p0_mux_uses_the_declared_shape(tmp_path: Path) -> None:
+@pytest.mark.parametrize("profile_format", ["sing-box", "ripdpi"])
+@pytest.mark.parametrize("explicit_cohort", [False, True])
+def test_emit_singbox_p0_mux_refuses_before_publication(tmp_path: Path, profile_format: str, explicit_cohort: bool) -> None:
     _require_tool("jq")
-    result = _run_shape_only_emitter(tmp_path, flow="mux")
-    assert result.returncode == 0, result.stderr
-    p0 = next(
-        item
-        for item in json.loads(result.stdout)["outbounds"]
-        if item.get("tag", "").startswith("p0-reality-")
-    )
-    assert p0["server_port"] == 1443
-    assert p0["multiplex"] == {"enabled": True, "protocol": "smux", "max_streams": 8}
-    assert "flow" not in p0
+    result = _run_shape_only_emitter(tmp_path, flow="mux", profile_format=profile_format,
+                                     cohort_finalmask=False if explicit_cohort else None)
+    assert result.returncode != 0
+    assert not result.stdout
+    assert "Mux.Cool requires an Xray client" in result.stderr
 
 
 def test_emit_singbox_refuses_finalmask_without_an_official_client_mapping(

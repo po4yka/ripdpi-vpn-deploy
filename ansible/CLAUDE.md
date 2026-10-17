@@ -20,6 +20,11 @@ and instance membership in one private runtime transaction. Its separate firewal
 decision covers unchanged-runtime policy changes too. Confirm candidate quiescence
 before restoring files; retain recovery authority when stop cannot be proven.
 
+Optional transport candidates retain native parser admission before publication.
+Naive excludes request-bearing HTTP errors from retained logs. The mtg consumer
+uses the shared verified archive lifecycle and admits FakeTLS input before host
+mutation; source validation does not enable its research profile.
+
 Hysteria smoke mirrors enabled Salamander in its private client document and retains verified TLS with the effective inner/server identity.
 
 Protected commit keeps a durable `committing` ingress journal while finishing the native consumer outer route. Both begin and rescue resolve that decision before adopting or compensating an open transaction; a failed roll-forward retains remaining journals and stops. Only an undecided journal may roll back. Lost acknowledgement after journal removal releases compensation ownership as an already completed commit.

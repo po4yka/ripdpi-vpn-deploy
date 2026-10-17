@@ -285,7 +285,7 @@ def test_installed_ansible_rotation_uses_shared_shape_from_playbook_context(
     assert result.returncode == 0, result.stdout + result.stderr
     inbound = json.loads(destination.read_text(encoding="utf-8"))["inbounds"][0]
     assert "flow" not in inbound["settings"]["clients"][0]
-    assert inbound["streamSettings"]["sockopt"]["finalmask"] == "Sudoku"
+    assert inbound["streamSettings"]["finalmask"] == {"tcp": [{"type": "sudoku", "settings": {}}]}
 
 
 def test_xray_and_watchdog_consume_identical_shape_semantics() -> None:
@@ -318,8 +318,8 @@ def test_xray_and_watchdog_consume_identical_shape_semantics() -> None:
     probe_user = probe["settings"]["vnext"][0]["users"][0]
     assert "flow" not in server_user
     assert "flow" not in probe_user
-    assert server["streamSettings"]["sockopt"]["finalmask"] == "Sudoku"
-    assert probe["streamSettings"]["sockopt"]["finalmask"] == "Sudoku"
+    assert server["streamSettings"]["finalmask"] == {"tcp": [{"type": "sudoku", "settings": {}}]}
+    assert probe["streamSettings"]["finalmask"] == {"tcp": [{"type": "sudoku", "settings": {}}]}
     assert probe["mux"] == {"enabled": True, "concurrency": 8}
 
 

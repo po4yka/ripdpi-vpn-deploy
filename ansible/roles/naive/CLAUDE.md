@@ -55,7 +55,8 @@ forward-proxy handler and retains the decoy, without an unauthenticated fallback
 ## Pitfalls
 
 - **Validation opens the default log writer** — root-run Caddy validation can
-  create root-owned `0600` access and site-error logs before the service starts.
+  create a root-owned `0600` runtime log before the service starts. Retained
+  historical configurations can also leave a site-error log.
   Inspect retained log authority before directory metadata convergence, then
   provision the exact service-owned `0600` logs before validation, preserving
   bytes and refusing symlinks, hardlinks, unsafe ancestry and foreign owners.
@@ -64,6 +65,19 @@ forward-proxy handler and retains the decoy, without an unauthenticated fallback
 - **Qualify the exact client/server pair** — v147 changes client preamble
   cover; it does not establish a universal server compatibility cutoff.
   Follow the staging and rollback checks in `docs/CLIENT-NOTES.md`.
+- **CONNECT errors contain request metadata** — do not enable HTTP access logs.
+  Caddy emits 5xx access entries at ERROR, so raising the log level is insufficient.
+  Exclude both `http.log.access` and `http.log.error` namespaces. Preserve existing
+  private log files as historical authority without writing new request records.
+  Native tests require a failed CONNECT and a real HTTP/2 stream reset to leave
+  no request or destination metadata in retained logs.
+  The pinned forwardproxy uses CONNECT Fast Open: it sends 200 before dialing,
+  so a wire status alone cannot prove forwarding or classify a failed CONNECT.
+  Native privacy tests first witness a real 502 handler error through a private
+  temporary control logger, restore exact role logging, and repeat the request.
+  The control contains synthetic metadata only and is removed before acceptance.
+  Caddy's separate operator reload API can log its loopback POST `/load`; native
+  checks allow only that exact admin record and reject customer request fields.
 - **Authentication is HTTP Basic over TLS** — credentials come from SOPS and
   render as native JSON byte-slice credentials into `caddy.json`, owned `0640`
   root:naive. There is no env-delivery path; the render is `no_log` with diff

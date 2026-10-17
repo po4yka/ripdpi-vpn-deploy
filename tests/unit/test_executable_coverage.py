@@ -50,6 +50,7 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
         assert any(f"make {target}" in step.get("run", "") for step in job["steps"])
     native = jobs["native-runtime"]["steps"]
     assert any(s.get("uses") == "./.github/actions/setup-disposable-ci" for s in native)
+    assert any(s.get("run") == 'sudo env "PATH=$PATH" make test-mtg-native-compatibility' for s in native)
     setup = yaml.safe_load(
         (ROOT / ".github/actions/setup-disposable-ci/action.yml").read_text()
     )

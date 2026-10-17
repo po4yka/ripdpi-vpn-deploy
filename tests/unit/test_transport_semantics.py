@@ -34,18 +34,18 @@ def test_incoherent_cohort_membership_is_rejected_without_values(refs):
     cohort = {"name": "technical", "port": 443, "flow_mode": "xtls-rprx-vision"}
     if refs is not None:
         cohort["clients"] = refs
-    errors = cohort_errors({"clients": [{"name": "device"}], "cohorts": [cohort]})
+    errors = cohort_errors({"clients": [{"name": "device", "short_id": "aabb"}], "cohorts": [cohort]})
     assert errors and "marker" not in json.dumps(errors)
 
 
 def test_complete_known_cohort_membership_is_accepted():
-    assert not cohort_errors({"clients": [{"name": "first"}, {"name": "second"}],
+    assert not cohort_errors({"clients": [{"name": "first", "short_id": "aa"}, {"name": "second", "short_id": "bb"}],
                               "cohorts": [{"name": "technical", "clients": ["second", "first"]}]})
 
 
 def test_duplicate_client_names_cannot_resolve_an_ambiguous_cohort():
-    raw = {"clients": [{"name": "sensitive-marker", "uuid": "first"},
-                       {"name": "sensitive-marker", "uuid": "second"}],
+    raw = {"clients": [{"name": "sensitive-marker", "uuid": "first", "short_id": "aa"},
+                       {"name": "sensitive-marker", "uuid": "second", "short_id": "bb"}],
            "cohorts": [{"name": "technical", "clients": ["sensitive-marker"]}]}
     assert cohort_errors(raw) == [("xray.clients", "duplicate name")]
     assert "sensitive-marker" not in json.dumps(cohort_errors(raw))
@@ -172,15 +172,20 @@ def test_early_controller_preflight_precedes_every_mutation_boundary(tmp_path):
         assert all("ansible.builtin.assert" in task for task in tasks[:position])
 
 
-@pytest.mark.parametrize("input_kind", ["accepted", "empty-membership", "duplicate-client-name"])
+@pytest.mark.parametrize("input_kind", ["accepted", "empty-membership", "duplicate-client-name", "odd-short-id", "alias-short-id"])
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_actual_controller_preflight_preserves_before_mutation_and_check_mode(tmp_path, input_kind, check_mode):
     marker = tmp_path / "mutation"
     valid = input_kind == "accepted"
-    xray = {"clients": [{"name": "device", "uuid": "00000000-0000-4000-8000-000000000001"}],
+    xray = {"clients": [{"name": "device", "uuid": "00000000-0000-4000-8000-000000000001", "short_id": "aa"}],
             "cohorts": [{"name": "technical", "clients": [] if input_kind == "empty-membership" else ["device"]}]}
     if input_kind == "duplicate-client-name":
-        xray["clients"].append({"name": "device", "uuid": "00000000-0000-4000-8000-000000000002"})
+        xray["clients"].append({"name": "device", "uuid": "00000000-0000-4000-8000-000000000002", "short_id": "bb"})
+    if input_kind == "odd-short-id":
+        xray["clients"][0]["short_id"] = "abc"
+    if input_kind == "alias-short-id":
+        xray["clients"].append({"name": "second", "uuid": "00000000-0000-4000-8000-000000000002", "short_id": "AA00"})
+        xray["cohorts"].append({"name": "second", "clients": ["second"]})
     play = tmp_path / "preflight.yml"
     play.write_text(yaml.safe_dump([{
         "hosts": "localhost", "connection": "local", "gather_facts": False, "become": False,
@@ -209,7 +214,7 @@ def test_peer_cidr_types_refuse_before_native_render(prefix):
 
 
 def test_duplicate_cohort_names_remain_rejected_by_every_semantic_consumer():
-    raw = {"clients": [{"name": "device"}], "cohorts": [
+    raw = {"clients": [{"name": "device", "short_id": "aabb"}], "cohorts": [
         {"name": "same", "clients": ["device"]}, {"name": "same", "clients": ["device"]}]}
     assert ("xray.cohorts", "duplicate name") in cohort_errors(raw)
 
