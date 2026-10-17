@@ -743,7 +743,7 @@ help:
 	@echo "  test-unit-shard            Run one balanced pytest group (PYTEST_GROUP=1..4)"
 	@echo "  test-unit-profile          Refresh durations with a complete portable run"
 	@echo "  test-native-runtime        Run native integration tests in disposable Linux root environment"
-	@echo "  transport-native-acceptance Complete four-transport source/client acceptance in isolated Linux"
+	@echo "  test-four-transport-native Complete four-transport source/client acceptance in isolated Linux"
 	@echo "  test-awg-source-candidate  Build and exercise exact AWG source pairs in local Docker (build-gate required)"
 
 	@echo "  transport-native-acceptance  Complete local four-protocol traffic, isolation and recovery suites"
@@ -1188,8 +1188,8 @@ test-transport-destination-boundary:
 	  tests/unit/test_transport_classifier_boundary_native.py \
 	  tests/unit/test_transport_warp_tun_native.py --fail-on-skip -v
 
-.PHONY: transport-native-acceptance
-transport-native-acceptance:
+.PHONY: test-four-transport-native
+test-four-transport-native:
 	python3 tests/native/transport_acceptance/runner.py
 
 # Complete native consumer upgrade/rollback lane; no inventory or real credentials.

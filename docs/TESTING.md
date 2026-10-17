@@ -697,13 +697,17 @@ protocol proof. Source completion grants no production promotion authority.
 
 ### Complete isolated four-transport acceptance
 
-`make transport-native-acceptance` runs the full named completion, lifecycle,
+`make test-four-transport-native` runs the full named completion, lifecycle,
 firewall hopping and compensation suites in a fresh Linux root with systemd,
 real TUN and nftables. Set `TRANSPORT_NATIVE_ISOLATED=1` only for an owned
 throwaway environment. The selected CI job provisions checksum-verified Xray
 and Hysteria plus both immutable AWG source pairs, then removes its exact
-labelled container. It is selected with the native consumer group and required
-by the aggregate check.
+labelled container. Core, recovery-1 and recovery-2 run in independent containers;
+the two recovery groups partition the complete real collection without overlap.
+Each phase retains a 40-minute bound. The local default runs their entire union.
+All three CI plans are selected with the native consumer group and required by
+the aggregate check. The separate `transport-native-acceptance` roadmap target
+retains its complete local acceptance scope.
 
 The runner refuses workstation execution, pytest selection overrides, dirty
 tracked source, missing engines, empty results, selected skips and resource
