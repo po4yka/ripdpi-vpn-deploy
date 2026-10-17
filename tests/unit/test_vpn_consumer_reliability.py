@@ -339,3 +339,65 @@ def test_awg_check_mode_predicts_changes_without_lifecycle_or_file_mutation(cont
     for name in ['pending.json', 'preparation.json', 'compensating.json', 'firewall.json', 'retirement.json']:
         assert not (c.awg.STATE / name).exists()
     assert not (c.fw.STATE / 'consumer.json').exists()
+
+
+@pytest.mark.parametrize('layout', ['fresh', 'existing', 'symlink', 'check'])
+def test_actual_firewall_preparation_owns_fresh_runtime_parent(context, monkeypatch, layout):
+    import copy
+    import stat
+    import sys
+    import yaml
+    c = context
+    parent = c.root / 'ripdpi'
+    monkeypatch.setattr(c.fw, 'STATE', parent / 'firewall-runtime')
+    if layout == 'existing':
+        parent.mkdir(mode=0o700)
+    elif layout == 'symlink':
+        target = c.root / 'foreign-parent'
+        target.mkdir(mode=0o700)
+        parent.symlink_to(target, target_is_directory=True)
+    prepare = yaml.safe_load((FILES / 'firewall/tasks/consumer-prepare.yml').read_text())
+    boundary = next(i for i, task in enumerate(prepare) if task['name'] == 'Ensure the shared retained consumer helper directory')
+    guard = copy.deepcopy(yaml.safe_load((FILES / 'runtime-release/tasks/consumer-authority.yml').read_text())[0])
+    authority = (FILES / 'runtime-release/files/consumer_authority.py').read_text()
+    # Confine only ownership/path observations to this fixture. Keep the actual
+    # no-follow, type, mode and private-leaf admission code unchanged.
+    authority = authority.replace("Path('/usr/local/libexec/ripdpi-consumer')",
+        "Path(" + repr(str(c.root / 'helpers')) + ")")
+    authority = authority.replace('[*reversed(path.parents), path]',
+        f"[current for current in [*reversed(path.parents), path] if current == Path({str(c.root)!r}) or Path({str(c.root)!r}) in current.parents]")
+    authority = authority.replace('info.st_uid != 0', f'info.st_uid != {os.geteuid()}')
+    guard['ansible.builtin.command']['argv'] = [sys.executable, '-c', authority]
+    guard['vars'] = copy.deepcopy(prepare[0].get('vars', {}))
+    for key in ['consumer_private_directories', 'consumer_guard_directories']:
+        if key in guard['vars']:
+            guard['vars'][key] = [value.replace('/var/lib/ripdpi', str(parent)) for value in guard['vars'][key]]
+    selected = [guard, *copy.deepcopy(prepare[1:boundary])]
+    for task in selected[1:]:
+        for module in ['ansible.builtin.stat', 'ansible.builtin.file']:
+            if module in task:
+                args = task[module]
+                args['path'] = args['path'].replace('/var/lib/ripdpi', str(parent))
+                args.pop('owner', None)
+                args.pop('group', None)
+    path = c.root / 'prepare-firewall.yml'
+    path.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False,
+        'become': False, 'vars': {'ansible_python_interpreter': sys.executable}, 'tasks': selected}]))
+    argv = ['ansible-playbook', '-i', 'localhost,', str(path)] + (['--check'] if layout == 'check' else [])
+    result = RUN(argv, capture_output=True, text=True, timeout=30,
+        env={**os.environ, 'ANSIBLE_CONFIG': str(ROOT / 'ansible/ansible.cfg')})
+    if layout == 'symlink':
+        assert result.returncode != 0
+        assert parent.is_symlink() and stat.S_IMODE(target.stat().st_mode) == 0o700
+        assert not c.fw.STATE.exists()
+        return
+    assert result.returncode == 0, result.stdout + result.stderr
+    raw = base64.b64encode(c.fw.HEADER + b'table inet filter { # retained candidate\n}\n').decode()
+    publication = c.fw.operate('apply', {'check': layout == 'check', 'data': raw, 'owner': 'site'})
+    assert publication['changed'] is True
+    if layout == 'check':
+        assert not parent.exists()
+    else:
+        assert stat.S_IMODE(parent.stat().st_mode) == (0o700 if layout == 'existing' else 0o755)
+        assert (c.fw.STATE / 'consumer.json').exists()
+        assert c.fw.CONFIG.read_bytes() == c.kernel['bytes'] == base64.b64decode(raw)

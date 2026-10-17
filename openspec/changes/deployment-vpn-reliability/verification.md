@@ -133,3 +133,18 @@ All 47 references in 45 Molecule files and their pin guard now select this
 verified digest. The pin tests passed both cases; all 45 YAML files passed lint.
 Byte comparison confirms only exact digest changes in that owned file set.
 The next complete PR run must verify role and native compatibility before merge.
+
+## Fresh retained firewall parent
+
+Hosted run 39065219318 at source 4c07a768a4255d0ed196e7d72db90fa38b8fb5a1
+confirmed that first full-stack publication can reach the strict transaction
+before its shared runtime parent exists. The role now admits existing ancestry
+and creates only an absent parent before publication. Existing trusted metadata
+is preserved; unsafe ancestry still refuses. Actual Ansible preparation with
+the real file transaction reproduced two failing cases before the fix. All four
+new cases and the complete 23-test consumer suite pass after the fix, including
+check mode and symlink refusal. Targeted production Ansible lint passed.
+The hosted AWG Molecule scenario passed convergence, idempotence, all 31 verify
+assertions and destruction in that run. Both image scans passed with fresh
+databases and zero SARIF findings. A complete run of the final source is still
+required before merge.

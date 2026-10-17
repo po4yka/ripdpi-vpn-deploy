@@ -1,6 +1,23 @@
 ---
 - name: Admit shared retained consumer helper authority
   ansible.builtin.import_tasks: "{{ role_path }}/../runtime-release/tasks/consumer-authority.yml"
+  vars:
+    consumer_private_directories: [/var/lib/ripdpi/firewall-runtime]
+
+- name: Inspect the existing shared runtime parent before first firewall publication
+  ansible.builtin.stat:
+    path: /var/lib/ripdpi
+    follow: false
+  register: _firewall_runtime_parent
+
+- name: Create the admitted shared runtime parent only when absent
+  ansible.builtin.file:
+    path: /var/lib/ripdpi
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: not _firewall_runtime_parent.stat.exists
 
 - name: Ensure the shared retained consumer helper directory
   ansible.builtin.file:
