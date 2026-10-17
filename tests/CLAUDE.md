@@ -635,6 +635,9 @@ The REALITY collector no longer parses shell TLS transcripts. Its large-certific
 regression completes a real trusted handshake beyond ordinary pipe-buffer sizes;
 metadata failure classification remains covered by the shared monitor tests.
 
+Bulk four-transport probes supply the canonical driver socket timeout explicitly;
+they retain its three-second default while expanding byte payloads.
+
 The required four-transport CI matrix runs core coverage and two complete,
 disjoint compensation partitions in independent owned containers. Each phase
 retains its 40-minute bound; the local default executes their complete union.
