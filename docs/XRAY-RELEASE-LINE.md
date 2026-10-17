@@ -8,6 +8,14 @@ This file tracks notable behavioural changes per release so an
 operator deciding when to bump the pin can see the surface they're
 crossing.
 
+## v25.9.5 — PQE history correction reviewed 2026-10-17
+
+- Upstream announced VLESS Encryption (PQE) in this release. The tagged
+  `v26.3.27` source also contains its `mlkem768x25519plus` parser and
+  handshake. The later Pre-release entries are not its introduction.
+- This corrects release history only. The repository retains classical
+  server/client artifacts and the HOLD policy in `PQ-REALITY-ADOPTION.md`.
+
 ## v26.2.6 — 2026-02-06
 
 - **XHTTP CDN bypass options** — new headers that make XHTTP look
@@ -36,8 +44,8 @@ crossing.
   uses it.
 - uTLS gained the browser-facing `X25519MLKEM768` key share. This
   updates the outer TLS fingerprint and is distinct from VLESS
-  Encryption (PQE), which operates inside VLESS and first appears on
-  the later Pre-release line.
+  Encryption (PQE), which operates inside VLESS and is already present
+  in this tagged source. The repository does not enable PQE.
 
 ## v26.4.x — Pre-release as of 2026-04-30
 
@@ -70,14 +78,14 @@ crossing.
 
 ## v26.5.9 — Pre-release as of 2026-05-09
 
-- Continues the VLESS Encryption (PQE) release line introduced in
-  v26.5.3. It does not change this repository's HOLD decision.
+- Continues the existing VLESS Encryption (PQE) release line. It does
+  not change this repository's HOLD decision.
 
 ## v26.6.1, v26.6.22, v26.6.27 — Pre-release as of 2026-07-10
 
 - These tags remain marked Pre-release upstream. v26.6.27 updates the
-  cryptographic dependency that supplies ML-KEM, but no stable release
-  or supported-client transition has occurred.
+  cryptographic dependency that supplies ML-KEM. These entries do not
+  establish a repository-supported client transition or PQE adoption.
 - Production remains pinned to the GitHub-tagged Latest release. See
   `PQ-REALITY-ADOPTION.md` for the separate STAGING and PRODUCTION
   eligibility gates.

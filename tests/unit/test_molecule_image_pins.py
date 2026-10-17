@@ -14,7 +14,7 @@ MOLECULE_IMAGE = re.compile(
 
 EXPECTED_DIGESTS = {
     "ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-debian13": {
-        "3eaa352852855158e752c94f2ea9b47aa03ba014d5ea3e51c06e74c45a57ad08"
+        "b3f2db18b8a6f53891196f7a166e36896f9200357d453a0129be09fa9bf94e84"
     },
     "ghcr.io/po4yka/ripdpi-vpn-deploy/molecule-ubuntu2404": {
         "e287225b506f48360e5cb185c9ef8d8af690ad07da5b3856a2ea4c7656febe7a"

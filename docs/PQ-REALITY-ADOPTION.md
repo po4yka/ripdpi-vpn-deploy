@@ -1,6 +1,6 @@
 # PQ-REALITY adoption policy
 
-Status: **HOLD**; last reviewed 2026-07-26.
+Status: **HOLD**; last reviewed 2026-10-17.
 
 The canonical capability name is **VLESS Encryption (PQE) over REALITY**. This document uses **PQ-REALITY** only as an operator shorthand. VLESS PQE is an encryption layer inside VLESS; it is not the `X25519MLKEM768` key share used by browser-shaped uTLS profiles.
 
@@ -8,12 +8,16 @@ The canonical capability name is **VLESS Encryption (PQE) over REALITY**. This d
 
 PQ-REALITY is not an operator-configurable feature in this repository. Every VLESS inbound whose `streamSettings.security` is `reality` must retain `settings.decryption: "none"`, and the changelog-driven guard in `XRAY-RELEASE-LINE.md` enforces that invariant through pre-commit, CI, and `make ci-fast`.
 
-The HOLD decision has two independent causes. Xray tags that include VLESS PQE
-through `v26.7.11` remain Pre-release, while `v26.3.27` remains the
-GitHub-tagged Latest release. The supported client delivery path in this
-repository emits sing-box JSON and classical VLESS URIs, and that client
-contract does not express Xray's VLESS Encryption setting. Enabling only the
-server side would make supported client artifacts incompatible.
+Upstream announced VLESS PQE in `v25.9.5`; the tagged `v26.3.27` source
+already accepts `mlkem768x25519plus` encryption and decryption settings.
+PQE is therefore not limited to the later Pre-release line. Release
+availability alone does not satisfy this repository's adoption criteria.
+
+HOLD remains in force because the supported client artifacts and schema do
+not express the matching VLESS Encryption contract. The existing native
+Xray delivery path also selects classical VLESS encryption. Enabling only
+the server side would make supported client artifacts incompatible. The
+server/client, staging, rollback and production gates below remain required.
 
 HOLD means there is no PQE secret, schema field, Ansible variable, environment override, Make target, client field, or generated bundle field. Pre-release Xray builds may still be evaluated under the repository's general staging-only policy, but PQ-REALITY remains disabled in every environment until this policy moves to STAGING.
 

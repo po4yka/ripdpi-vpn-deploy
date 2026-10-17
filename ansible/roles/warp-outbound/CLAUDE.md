@@ -6,6 +6,10 @@ One exact stable vendor package and the canonical `warp-svc.service` own retaine
 
 The vendor runs in `tunnel_only` inside `ripdpi-warp`, with its private numeric resolver and host bus inaccessible. Package installation suppresses both maintainer-script and direct systemd autostart before namespace guard publication. Host management routing and DNS remain outside the namespace.
 
+The role does not select a WireGuard or MASQUE backend. Confirm the retained
+vendor protocol setting during separately authorized registered-tunnel acceptance;
+the TUN interface alone does not identify the negotiated protocol.
+
 Recipient WARP traffic uses a distinct native gateway identity. Namespace policy admits only the verified current UP TUN ifindex; underlay fallback remains denied. TUN replacement updates host and namespace policy together and resets the paired recipient generation. Retirement preserves the vendor package and registration state.
 
 ## What's done well

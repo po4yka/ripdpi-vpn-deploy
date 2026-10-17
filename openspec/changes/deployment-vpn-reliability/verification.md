@@ -1,7 +1,7 @@
 ---
 task_id: OPS-1792263187492070
 change: deployment-vpn-reliability
-commit_sha: 992c8905ff7acb31eb1b1d58047567ec6ed71f8c
+commit_sha: b001d337fab20a35f3c8aec38e8b348eed8a8c72
 local: passed
 local_evidence: Focused 253-test consolidated result; final 97-test VPN/baseline bundle; final 65-test site/source suites; all applicable commit hooks, 164 snapshots and structured P0 review passed. Complete local gate remains host-limited as documented below.
 remote_ci: required
@@ -118,3 +118,18 @@ The owner explicitly authorized the CI-only Debian13 image refresh and coherent
 pin update. Publisher run 39064420607 uses main source
 082eea068adecfc705c149540b18c980244f113c with unchanged publisher and Dockerfile.
 Its new digest remains unaccepted until the current security scan passes.
+
+## Scanned CI image receipt
+
+Publisher 39064420607 passed at source
+082eea068adecfc705c149540b18c980244f113c. It produced and scanned immutable
+index digest sha256:b3f2db18b8a6f53891196f7a166e36896f9200357d453a0129be09fa9bf94e84.
+Fresh Trivy 0.70.0 database and SARIF analysis 1973697119 report zero findings.
+Registry manifest digests were verified; the nine parent layers are unchanged.
+Only the package-upgrade layer changed. The previously published alternative
+has the same vulnerable package versions and was not adopted.
+
+All 47 references in 45 Molecule files and their pin guard now select this
+verified digest. The pin tests passed both cases; all 45 YAML files passed lint.
+Byte comparison confirms only exact digest changes in that owned file set.
+The next complete PR run must verify role and native compatibility before merge.

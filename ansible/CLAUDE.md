@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+Debian13 Molecule consumers share one immutable image digest. Refresh it through
+the existing CI publisher, require its current HIGH/CRITICAL scan to pass, and
+update every Molecule consumer plus the pin guard together. The parent image
+and scanner policy remain separate reviewed inputs.
+
 Initial firewall publication is retained through the protected ingress commit.
 It uses accepted AWG claims until the AWG consumer takes ownership after that
 commit. AWG rollback therefore restores post-protected policy and preserves
