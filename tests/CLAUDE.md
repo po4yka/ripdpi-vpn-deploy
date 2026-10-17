@@ -14,7 +14,7 @@
 
 ## Design decisions
 
-AWG native configuration expectations use Ansible block trimming and retain the final newline. A portable comparison executes the actual template lookup and checks exact bytes; generic snapshot rendering keeps its existing contract.
+AWG native configuration expectations use Ansible block trimming and retain the final newline. A portable comparison executes the actual template lookup and checks exact bytes; generic snapshot rendering keeps its existing contract. Warm adoption uses the actual initial role and complete publication task. A changed complete generation may replace unchanged file inodes; retain exact bytes and modes across binary-only changes, and assert inode stability on unchanged convergence. Custom unit candidates use the publication task rather than claiming the full role would retain fixture-only settings.
 
 Private authority fixtures set their owned root to the process GID. Darwin may
 inherit another group from the home directory; matching the production storage

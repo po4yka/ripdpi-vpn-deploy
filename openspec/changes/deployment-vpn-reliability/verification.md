@@ -179,3 +179,25 @@ two extra newline bytes from the fixture renderer's block-trimming setting;
 this was not a production configuration mismatch or a trailing-newline change.
 The fixture expectation must match Ansible block trimming and retain an exact
 portable lookup regression before native failure recovery is accepted.
+
+## Complete first native run
+
+Run 39066025063 finished all six native groups. Both transport partitions passed
+12 cases in total with successful retirement. Both recovery plans passed all
+15 cases with confirmed cleanup and no differences. Core passed 24 cases and
+failed the three expected-render assertions described above; cleanup passed.
+Runtime integration observed 337 passing tests and one stale warm-AWG fixture
+lookup for the removed notification task. Its final AWG dual-stack Make goal
+did not execute after that failure. That stale fixture must move to the complete
+publisher without removing process, hardening, unit-adoption or no-op assertions.
+No cleanup receipt is claimed for the failed pre-activation fixture setup.
+
+The warm fixture now starts through the actual role and replays its current
+complete publication task for changed binary and custom unit candidates.
+It retains ELF/hash/PID and process-hardening checks, exact configuration bytes,
+unit-only UMask adoption, and unchanged convergence. A complete accepted
+generation can replace identical file inodes; inode stability applies to the
+no-op, while rollback retains its separate exact-inode requirement. The custom
+unit candidate does not claim that a full role run would retain fixture-only
+settings. Local collection and a portable Ansible render comparison pass; native
+execution remains a required hosted check.
