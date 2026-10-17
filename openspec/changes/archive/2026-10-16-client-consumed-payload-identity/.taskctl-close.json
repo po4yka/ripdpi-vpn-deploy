@@ -1,0 +1,11 @@
+{
+  "change": "client-consumed-payload-identity",
+  "evidence_summary": "Positive implementation and genuine source/runtime observations are retained. The local successor owns all 45 positive requirements and remains open until its complete native and source gates pass; no missing external observation is relabelled as passed.",
+  "execution_sha256": "f430280cdac29f117f9db94c06823ab36260da2d09852d24ae1893fc8d71fc27",
+  "issue_sha256": "2ea54db3669dc38c47427369d8cbaff63c0a06767200a40c5cb16e44b5fcc174",
+  "outcome": "dropped",
+  "prepared_at": "2026-10-16T13:18:31Z",
+  "reason": "Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.",
+  "schema": 1,
+  "task_id": "SCR-1791618188806822"
+}

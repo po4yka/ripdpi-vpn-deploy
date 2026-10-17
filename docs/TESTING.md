@@ -104,10 +104,12 @@ matrix records coverage and commands rather than manually maintained totals.
 | **Terraform policy (cross-provider, Conftest)** | `.github/workflows/tf-policy.yml` when selected; always on main/manual CI | n/a | n/a | Runs each provider's native Terraform tests with `mock_provider`, then `conftest verify --rego-version v0 -p terraform/policy/` for Rego syntax/unit-test validation. Hetzner and Vultr additionally render offline plans with credential-shaped dummy inputs for policy checks; UpCloud and Scaleway retain operator-side plan evaluation. `make tf-policy` for local; pinned Conftest 0.57.0 is mandatory for `make ci-fast` and `make check` (see `mise.toml`). |
 | **Container image scanning (Trivy)** | `.github/workflows/image-scan.yml` when selected; always on main/manual CI | n/a | n/a | When the image consumer group is selected, scans the complete deduplicated set of digest-pinned images from all Molecule scenarios; selection never narrows the image inventory. Uploads HIGH/CRITICAL SARIF to the Security tab under a digest-free per-image category, so a clean scan of a repinned digest closes the previous digest's alerts. Escalate only with rationale + expiry + owner in `.trivyignore`. |
 | **Repo drift (weekly)** | `.github/workflows/drift.yml` | `scripts/drift-since-tag.sh --repo-only` | n/a | Scheduled Monday 12:00 UTC. Diffs the repository against the last known-good tag. Updates a single rolling issue labelled `automation:drift` when drift is detected; silent when clean. Operator-side cron (against live servers) is unchanged and uses the script without `--repo-only`. |
-| **Task and OpenSpec contract** | `make task-check` + required `task-contract` CI job | strict portfolio, mdtask, OpenSpec, generated-asset, board, and deletion-history validation | peer checkout in CI | Federation resolves qualified RIPDPI task references, terminal Git history, and cross-repository cycles. |
+| **Task and OpenSpec contract** | `make task-check` + required `task-contract` CI job | strict portfolio, mdtask, OpenSpec, generated-asset, board, and deletion-history validation | peer checkout in CI | Federation resolves qualified RIPDPI task references, terminal Git history, and cross-repository cycles. The Python shard checkout also fetches full history because real workspace/taskctl integration verifies immutable archive source commits. |
 | **Jinja2 snapshot diff (164 templates)** | `scripts/render-snapshots.py` | golden-file diff | n/a | Fails on any unintended render change. Run `make snapshot-update` after intentional template edits. |
 
 ## Test fixtures and stubs
+
+Portable Python shards and standalone REALITY validation share checksum-pinned SOPS/age installation through `.github/actions/install-sops-age`. The real YAML input regression creates and retires a fresh synthetic age authority; it never reads fleet secrets.
 
 All shared test inputs live under `tests/fixtures/` and stub binaries under
 `tests/stubs/bin/`.
@@ -285,11 +287,12 @@ The limits bound running jobs, not time waiting for a runner.
 | Terraform validation/tests, cloud-init, Bats, Python validators, SBOM and Markdown links | 10 |
 | Pytest groups, Ansible lint, Go helper, Terraform policy, image scans | 15 |
 | Role/failure Molecule scenarios, CodeQL | 20 |
-| Native runtime integration, including setup and cleanup | 30 |
+| Native runtime integration, including setup and cleanup | 60 |
+| Complete transport runtime acceptance, each consumer group | 40 |
 | Full-stack Molecule scenarios | 30 |
 | Shared Python vpnd test/lint/package/dependency job | 30 |
 
-The limits leave headroom over five recent full executions: the maximum
+The limits leave headroom over five prior full executions: the maximum
 observed job runtime was 409 seconds for pytest, 389 for failure/full-stack
 Molecule, 199 for role Molecule and 152 for Rust tests. This small sample includes
 setup and execution but mostly benefits from warm caches. The larger shared
@@ -535,8 +538,17 @@ For local native verification, provide Terraform 1.15.2 on PATH and
 a disposable Linux environment, then run `make test-native-runtime` there.
 Run `make test-transport-runtime-acceptance` in a separate fresh disposable root
 with `TRANSPORT_NATIVE_ISOLATED=1`, systemd, nftables, iproute2, OpenSSL and curl.
+The native SSH sentinel also requires a non-root `SUDO_USER` with non-interactive
+sudo inside that disposable test root and a root-owned mode-0755 `/run/sshd`.
+For systemd containers, restore shared `/run` propagation after each restart;
+otherwise per-unit credential paths can disappear from the service namespace.
+Verify actual read-only credentials and their service-user ACL before the suite.
+Keep separate roots sequential when they share a host network namespace.
+The canonical Xray log provisioner also requires root-owned parent directories
+without group/other write permission. Prepare the owned test image with a trusted
+`/var/log` (mode `0755`); a group-writable parent must continue to refuse.
 
-`make test-xhttp-delivery-matrix` runs all ten native XHTTP cases in an owned
+`make test-xhttp-delivery-matrix` runs all fourteen native XHTTP cases in an owned
 isolated Linux root lab with systemd, exact Xray 26.3.27/Hysteria 2.13.0,
 nginx, nftables, iproute2 (including tc), OpenSSL, curl and pinned Python
 dependencies. It covers primary/alternate delivery, TLS/privacy/rollback,
@@ -649,3 +661,36 @@ of skipping cases. Portable launcher/contract tests are
 This is local Linux evidence, including Linux arm64 when run natively on that
 architecture. It is neither physical Android evidence nor a production pin
 promotion, production-role readiness transaction or external staging soak.
+
+### Local four-protocol roadmap acceptance
+
+`transport-native-acceptance` runs complete destination isolation, endpoint,
+AWG binding/dual-stack, ECH/resource, topology and XHTTP delivery suites in an
+owned Linux root/systemd/TUN environment. On macOS, prepare an owned Linux kernel
+VM for Hysteria resource cases: the ceiling fixture changes and restores
+`net.core.rmem_max` and `net.core.wmem_max` from its initial network namespace.
+Use that owned VM's host network when running container roots; a bridge-network
+container does not expose these kernel settings. Keep main and consumer roots
+fresh and run them serially. Run the complete consumer transaction
+suite in a separate fresh systemd root; its refusal of pre-existing global
+consumer authority remains mandatory. Run the source-candidate AWG lab with
+`build-gate -- make test-awg-source-candidate` for real warm pin/unit adoption.
+All selected cases require `--fail-on-skip`; credentials and authorities are
+synthetic and isolated. No inventory or operator secret inputs are consumed.
+
+The native runtime CI job has a 60-minute total budget for setup, the complete
+suite, delivery matrix and cleanup. Per-test deadlines and selected-skip refusal
+remain mandatory.
+
+`test-xhttp-delivery-matrix` executes every admitted native profile: the three
+baseline modes and qualified `stream-up` bounded-pool tuning, on primary and
+distinct-name alternate TLS endpoints. It retains
+wrong-auth and wrong-SAN failures, independent primary-outage observations,
+authenticated recovery after rejected publication and ordinary-log privacy.
+Each endpoint completes two full both-family guarded TCP/UDP/DNS matrices with
+an idle interval; their observed durations are reported and bounded at 85 seconds.
+These are local correctness/resource bounds, not a throughput improvement claim.
+
+The owner removed staging soak and external/device client acceptance from the
+roadmap on 2026-10-16. Local engine processes remain necessary for positive
+protocol proof. Source completion grants no production promotion authority.

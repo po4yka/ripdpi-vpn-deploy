@@ -52,8 +52,16 @@ def _monitor_environment(tmp_path: Path, ambient: dict[str, str]) -> dict[str, s
         bin_dir,
         "sops",
         '''printf '%s\\n' "$*" >> "$SOPS_LOG"
-if [ "${SOPS_FAIL:-0}" = 1 ]; then printf '{"partial":'; exit 1; fi
-cat "$SOPS_FIXTURE"''',
+output=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[ -n "$output" ] || exit 91
+if [ "${SOPS_FAIL:-0}" = 1 ]; then printf '{"partial":' > "$output"; exit 1; fi
+cat "$SOPS_FIXTURE" > "$output"''',
     )
     _make_stub(
         bin_dir,
@@ -83,7 +91,7 @@ printf '204'""",
     # test_validate_reality_target.py, independently of these categorical inputs.
     scripts = tmp_path / "repo" / "scripts"
     scripts.mkdir(parents=True)
-    for name in ("monitor-reality-target.sh", "reality_target_monitor.py", "decrypt-secrets.sh"):
+    for name in ("monitor-reality-target.sh", "reality-target-monitor-probe.sh", "reality_target_monitor.py", "bootstrap_readiness.py"):
         shutil.copy2(REPO_ROOT / "scripts" / name, scripts / name)
     (scripts / "reality_target_validation.py").write_text("""
 import argparse, os, sys, subprocess
@@ -452,7 +460,7 @@ def test_requires_explicit_filtered_vantage(monitor_env):
 
 
 def test_tls_probe_has_a_hard_timeout():
-    source = SCRIPT.read_text()
+    source = (REPO_ROOT / "scripts/reality-target-monitor-probe.sh").read_text()
     assert 'reality_target_validation.py" collect' in source
     assert " -k" not in source
 
@@ -504,3 +512,120 @@ def test_cron_installer_wires_monitor_only_with_vantage(tmp_path):
     assert "17 4 * * *" in enabled.stdout
     assert "make monitor-reality-target" in enabled.stdout
     assert "VANTAGE=filtered-cohort-a" in enabled.stdout
+
+def test_aggregate_monitor_deadline_reclaims_children_and_retains_budget(monitor_env, tmp_path):
+    import time
+    baseline = _report(_run(monitor_env))
+    assert baseline["verdict"] == "ok"
+    state = next((Path(monitor_env["XDG_STATE_HOME"]) / "vpn-deploy/reality-target-monitor").glob("*.json"))
+    before = json.loads(state.read_text())
+    pid_file = tmp_path / "stalled.pid"
+    collector = Path(monitor_env["MONITOR_FIXTURE_SCRIPT"]).with_name("reality_target_validation.py")
+    child = ("import os,pathlib,time; p=pathlib.Path(" + repr(str(pid_file)) + "); "
+             "pending=p.with_suffix('.pending'); pending.write_text(str(os.getpid())); "
+             "pending.replace(p); time.sleep(60)")
+    collector.write_text("import subprocess,sys,time\nif sys.argv[1] == 'collect':\n subprocess.Popen([sys.executable,'-c'," + repr(child) + "])\n time.sleep(60)\n" + collector.read_text())
+    start = time.monotonic()
+    process = subprocess.Popen(["bash", monitor_env["MONITOR_FIXTURE_SCRIPT"]], cwd=REPO_ROOT,
+                               env={**monitor_env, "REALITY_MONITOR_BUDGET": "10"},
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        # Admit the intended descendant before measuring its forced cleanup.
+        # The whole run still has one deadline, including decryption/setup.
+        while not pid_file.is_file():
+            assert process.poll() is None, "monitor expired before descendant admission"
+            assert time.monotonic() < start + 8, "descendant startup exceeded admission margin"
+            time.sleep(.01)
+        pid = int(pid_file.read_text())
+        output, errors = process.communicate(timeout=max(.1, start + 12 - time.monotonic()))
+        assert process.returncode != 0, errors
+        assert time.monotonic() - start < 12
+        assert json.loads(output)["verdict"] == "error"
+        after = json.loads(state.read_text())
+        assert after["last_report"]["verdict"] == "error"
+        assert {k: v for k, v in before.items() if k != "last_report"} == {k: v for k, v in after.items() if k != "last_report"}
+        assert not list(Path(monitor_env["TMPDIR"]).iterdir())
+        observed = subprocess.run(["ps", "-p", str(pid), "-o", "stat="], capture_output=True, text=True, timeout=3)
+        assert observed.returncode != 0 or observed.stdout.strip().startswith("Z")
+    finally:
+        if process.poll() is None:
+            process.terminate()
+        try:
+            process.communicate(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate(timeout=3)
+
+
+@pytest.mark.parametrize("argument,status,message", [("--help", 0, "usage:"), ("--unknown", 2, "unknown arg: --unknown")])
+def test_monitor_forwards_bounded_cli_diagnostics(monitor_env, argument, status, message):
+    result = _run(monitor_env, argument)
+    assert result.returncode == status
+    assert message in result.stderr
+    assert result.stdout == ""
+
+
+@pytest.mark.parametrize("signal_name", ["SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT"])
+def test_monitor_cancellation_removes_decrypted_authority_and_children(monitor_env, tmp_path, signal_name):
+    import signal
+    import time
+    pid_file = tmp_path / "cancelled-child.pid"
+    collector = Path(monitor_env["MONITOR_FIXTURE_SCRIPT"]).with_name("reality_target_validation.py")
+    collector.write_text("import os,pathlib,time,sys,json\nif sys.argv[1] == 'collect':\n pathlib.Path(" + repr(str(pid_file)) + ").write_text(json.dumps([os.getpid(),sys.argv[sys.argv.index('--observations')+1],os.environ['TMPDIR']]))\n time.sleep(60)\n" + collector.read_text())
+    process = subprocess.Popen(["bash", monitor_env["MONITOR_FIXTURE_SCRIPT"]], cwd=REPO_ROOT,
+                               env=monitor_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        deadline = time.monotonic() + 5
+        while not pid_file.exists():
+            assert process.poll() is None
+            assert time.monotonic() < deadline
+            time.sleep(.01)
+        child, observation, temporary = json.loads(pid_file.read_text())
+        assert Path(observation).parent.joinpath("secrets.json").is_file(), (observation, temporary)
+        assert Path(observation).is_relative_to(temporary), (observation, temporary)
+        process.send_signal(getattr(signal, signal_name))
+        output, errors = process.communicate(timeout=5)
+        assert process.returncode == 128 + getattr(signal, signal_name), errors
+        assert json.loads(output)["verdict"] == "error"
+        assert not list(Path(monitor_env["TMPDIR"]).iterdir())
+        observed = subprocess.run(["ps", "-p", str(child), "-o", "stat="], capture_output=True, text=True, timeout=3)
+        assert observed.returncode != 0 or observed.stdout.strip().startswith("Z")
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.communicate(timeout=5)
+
+
+def test_real_sops_yaml_input_is_loaded_and_cleaned(monitor_env, tmp_path):
+    """Real input crypto; native TLS traffic is covered by its separate lane."""
+    import tempfile
+    import yaml
+
+    real_path = os.pathsep.join(monitor_env["PATH"].split(os.pathsep)[1:])
+    sops = shutil.which("sops", path=real_path)
+    keygen = shutil.which("age-keygen", path=real_path)
+    assert sops and keygen, "real SOPS and age are required"
+    with tempfile.TemporaryDirectory(prefix="synthetic-sops-", dir=tmp_path) as directory:
+        owned = Path(directory)
+        key, plain, cipher = owned / "identity.txt", owned / "input.yaml", owned / "input.sops.yaml"
+        plain.write_text(yaml.safe_dump(json.loads(Path(monitor_env["SOPS_FIXTURE"]).read_text())))
+        plain.chmod(0o600)
+        crypto_env = {"PATH": real_path, "HOME": monitor_env["HOME"], "SOPS_AGE_KEY_FILE": str(key)}
+        subprocess.run([keygen, "-o", str(key)], env=crypto_env, cwd=owned,
+                       capture_output=True, check=True, timeout=5)
+        recipient = subprocess.check_output([keygen, "-y", str(key)], env=crypto_env, cwd=owned,
+                                            text=True, timeout=5).strip()
+        encrypted = subprocess.run([sops, "--encrypt", "--age", recipient, str(plain)],
+                                   env=crypto_env, cwd=owned, capture_output=True, check=True, timeout=5)
+        cipher.write_bytes(encrypted.stdout)
+        stub = Path(monitor_env["PATH"].split(os.pathsep)[0]) / "sops"
+        stub.unlink()
+        stub.symlink_to(Path(sops).resolve())
+        environment = {name: value for name, value in monitor_env.items() if not name.startswith("SOPS_")}
+        environment.update(SOPS_FILE=str(cipher), SOPS_AGE_KEY_FILE=str(key))
+        result = _run(environment)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert _report(result)["verdict"] == "ok"
+        assert TARGET not in result.stdout + result.stderr
+        assert "private-alert-token" not in result.stdout + result.stderr
+        assert not list(Path(monitor_env["TMPDIR"]).iterdir())

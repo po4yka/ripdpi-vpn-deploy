@@ -712,3 +712,25 @@ def test_awg_positive_report_requires_both_family_observations(tmp_path, mutatio
         del awg["family_results"]["ipv6"]["payload_transport"]
     valid, error = module["validate_report"](json.dumps(report), config["sentinels"][0], config, int(time.time()))
     assert valid is None and "dual-stack family proof" in error
+
+
+@pytest.mark.parametrize("primary", ["blocked", "throttled", "error", "unknown"])
+def test_working_alternate_retains_degraded_primary_without_rotation(tmp_path, primary):
+    config_path = _config(tmp_path)
+    config = yaml.safe_load(config_path.read_text())
+    reports = {}
+    for sentinel in config["sentinels"]:
+        report = _report(sentinel["id"], {profile: "ok" for profile in PROFILES})
+        profile = next(p for p in report["profiles"] if p["profile"] == "p1-xhttp")
+        profile["variants"] = [{"variant": 1, "verdict": primary, "duration_ms": 40},
+                               {"variant": 2, "verdict": "ok", "duration_ms": 40}]
+        reports[sentinel["ssh_target"]] = report
+    result = _run(tmp_path, config_path, reports)
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["decision"] == "degraded"
+    assert payload["candidate_policies"] == []
+    for evidence in payload["evidence"]:
+        assert evidence["profiles"]["p1-xhttp"] == "ok"
+        assert evidence["endpoint_variants"]["p1-xhttp"] == [
+            {"variant": 1, "verdict": primary}, {"variant": 2, "verdict": "ok"}]

@@ -40,6 +40,8 @@ def _run_watchdog(
     awg_interfaces: tuple[str, ...] = (),
     failed_awg: str = "",
     foreign_listener: bool = False,
+    foreign_after_start: bool = False,
+    replace_during_canary: bool = False,
     nginx_xhttp: bool = False,
     backend_failed: bool = False,
     reality_enabled: bool = True,
@@ -77,7 +79,8 @@ def _run_watchdog(
         + (
             ("pid=0\n" if foreign_listener else
              '[[ -e "${XRAY_STARTED_MARKER}" ]] || exit 0\n'
-             'pid="$(cat "${XRAY_STARTED_MARKER}")"\n')
+             'pid="$(cat "${XRAY_STARTED_MARKER}")"\n'
+             'if [[ ${FOREIGN_AFTER_START:-false} == true || -f "${REPLACED_SOCKS_MARKER}" ]]; then pid=999999; fi\n')
             + 'printf \'%s\\n\' "LISTEN 0 4096 127.0.0.1:31082 0.0.0.0:* users:((xray,pid=${pid},fd=3))"\n'
             if socks_ready else ""
         ),
@@ -93,6 +96,8 @@ def _run_watchdog(
         bin_dir / "curl",
         "if printf '%s\\n' \"$@\" | grep -q -- '--proxy'; then\n"
         "  printf '%s' \"${CANARY_STATUS}\"\n"
+        '  touch "${CANARY_LOG}"\n'
+        '  if [[ ${REPLACE_DURING_CANARY:-false} == true ]]; then touch "${REPLACED_SOCKS_MARKER}"; fi\n'
         "fi\n",
     )
     _executable(
@@ -158,6 +163,10 @@ def _run_watchdog(
             "XRAY_REALITY_PROBE_EXPECTED_STATUS": expected_status,
             "XRAY_REALITY_PROBE_TIMEOUT": "3",
             "CANARY_STATUS": canary_status,
+            "FOREIGN_AFTER_START": "true" if foreign_after_start else "false",
+            "REPLACE_DURING_CANARY": "true" if replace_during_canary else "false",
+            "REPLACED_SOCKS_MARKER": str(tmp_path / "socks-replaced"),
+            "CANARY_LOG": str(tmp_path / "canary-called"),
             "XRAY_TERM_MARKER": str(term_marker),
             "STATE_FILE": str(state_file),
             "FAIL_THRESHOLD": "1",
@@ -348,3 +357,21 @@ def test_interrupted_kernel_lock_releases_without_stale_directory_adoption(tmp_p
         if holder.poll() is None:
             holder.kill()
         holder.wait(timeout=5)
+
+
+def test_foreign_listener_after_vacancy_refuses_without_server_recovery(tmp_path):
+    result = _run_watchdog(tmp_path, foreign_after_start=True)
+    assert result.returncode != 0
+    assert "FAIL  xray REALITY TCP/443 round-trip" in result.stdout
+    assert not (tmp_path / "canary-called").exists()
+    assert (tmp_path / "xray-terminated").exists()
+    assert not (tmp_path / "recovery.log").exists()
+
+
+def test_listener_replacement_during_canary_cannot_certify_or_restart_server(tmp_path):
+    result = _run_watchdog(tmp_path, replace_during_canary=True)
+    assert result.returncode != 0
+    assert "FAIL  xray REALITY TCP/443 round-trip" in result.stdout
+    assert (tmp_path / "canary-called").exists()
+    assert (tmp_path / "xray-terminated").exists()
+    assert not (tmp_path / "recovery.log").exists()

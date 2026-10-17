@@ -14,6 +14,26 @@
 
 ## Design decisions
 
+REALITY monitor cancellation tests wait until synthetic decryption has completed, assert that the shell work path is inside the supervisor-owned parent, and then deliver each supported termination signal. Genuine SOPS/age coverage encrypts YAML with a fresh synthetic authority and requires successful monitor admission and cleanup. CLI diagnostics remain on stderr while stdout remains JSON-only. Aggregate-deadline coverage admits the intended descendant before expiry and retains one bounded clock across setup and cleanup.
+
+Runtime acceptance requires the production log-parent trust contract: root ownership and no group/other write permission. Tighten an owned disposable image before tests; never relax the descriptor-based provisioner or rewrite its failure as a successful activation.
+
+Native Alertmanager timeout coverage publishes split alert updates inside a real grouping window. Zero group wait can dispatch before all seven alerts join the group; retain the five-alert cap, two-alert truncation and one-second webhook deadline assertions.
+
+CI jobs that execute the real taskctl/workspace integration fetch complete Git history: immutable archive-link projections require the reachable terminal source commit. Missing history remains a refusal, never an inferred receipt match.
+
+Real log rotation uses the configured authenticated-probe deadline across process replacement. The pinned REALITY engine has a five-second cold target-record learning loop; steady-state destination-boundary probes retain their three-second socket budget.
+
+Watchdog race regressions replace socket ownership after vacancy admission and during the canary. Success and server recovery both require the retained client PID to own its loopback listener.
+
+REALITY partial-input regressions reject explicit invalid fields before loading missing operator-private defaults. DNS worker regressions exercise overflow refusal and complete deduplicated candidate sets; runtime TLS and owned-public paths remain separate real-engine checks.
+
+The disconnected TUN fixture pins extracted Xray 26.3.27 binary digests independently for amd64 and arm64; unknown architectures or modified executables refuse.
+
+Native transport fixtures retain each owned unit before starting it and verify stopped PID/state before deleting runtime authority. Portable controller regressions retain authority after a lost start acknowledgement or unconfirmed stop; they are not native traffic evidence. Redaction assertions use the effective fixture credential rather than a stale literal. Failed start acknowledgement or unconfirmed stop cannot become a passing cleanup.
+
+Alternate XHTTP regression cases exercise canonical materialization through the real semantic resolver and native profile adapter; mocked provider metadata is input selection only, never traffic proof.
+
 AWG constrained-path failures retain the bounded client exception, traffic phase and IPv6 UDP error counters alongside route and peer evidence. Probe diagnostics contain only owned synthetic traffic metadata, never AWG credentials.
 
 Ingress/egress commit tests kill a separate process before and after the durable decision, native outer finish and ingress journal deletion. Portable tests model only the egress adapter; the native lane retains a real accepted outer route and proves authenticated canary traffic after roll-forward or whole-route rollback. Ansible composition also covers a lost acknowledgement after journal deletion so rescue cannot revert committed egress. Native acceptance uses the least-duration split so new boundary cases mix with existing lifecycle cases instead of accumulating in one contiguous partition.

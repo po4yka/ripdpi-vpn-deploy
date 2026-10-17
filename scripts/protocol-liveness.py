@@ -321,6 +321,11 @@ def aggregate(config: dict, reports: dict[str, dict], errors: list[str]) -> dict
             failed_by_policy[policy["id"]] += 1
         if any(verdict in {"blocked", "throttled"} for verdict in profile_verdicts):
             degraded = True
+        if any(variant["verdict"] != "ok" for name in required
+               for variant in profile_results[name].get("variants") or []):
+            # A working alternate preserves delivery, but cannot certify the
+            # independently failed primary or another required endpoint.
+            degraded = True
         if not control_alive or any(verdict in {"unknown", "error"} for verdict in profile_verdicts):
             errors.append(f"{sentinel_id}: indeterminate protocol evidence")
         endpoint_variants = {

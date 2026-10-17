@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Operator target hygiene selects `--mode owned-public` with an explicit public endpoint. A remote validator must not use the node-local loopback target as public service evidence; local plumbing and public acceptance stay distinct.
+
 **Memory validation and shared publication authority** — certificate/key/hostname and the seven-day remaining lifetime are validated without controller staging files. Immutable pair, current pointer, vhost and owned asset/credential removals pass through the existing serialized nginx transaction; no controller deletes another invocation's stage. Failed validation/activation retains compensated prior authority. Empty owned directory scaffolding is retained rather than recursively deleting a concurrent writer's namespace. Check mode validates available TLS tooling and predicts publication without installing credentials.
 
 **Same-node self-steal** — Xray keeps public TCP/443 and forwards unauthenticated REALITY handshakes to an nginx TLS 1.3 + H2 site on `127.0.0.1:8443`. The target certificate and `xray.server_names` must describe the same operator-owned hostname.

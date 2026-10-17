@@ -1,0 +1,13 @@
+{
+  "change": "stable-client-parser-upgrade",
+  "dropped_step_ids": [
+    "TST-1791618385464569",
+    "TST-1791618386942234",
+    "TST-1791618388220484"
+  ],
+  "outcome": "dropped",
+  "prepared_at": "2026-10-16T13:18:32Z",
+  "reason": "Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.",
+  "schema": 1,
+  "task_id": "TST-1791618376497512"
+}

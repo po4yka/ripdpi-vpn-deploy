@@ -1,3 +1,5 @@
+{%- set _watchdog_xray = not (vpn_subscription_only | default(false)) and ((vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true))) -%}
+{%- set _watchdog_hysteria = not (vpn_subscription_only | default(false)) and (vpn.enable_hysteria | default(true)) -%}
 [Unit]
 Description=VPN watchdog probe
 After=network-online.target
@@ -13,7 +15,7 @@ LoadCredential=hysteria.yaml:/etc/vpn-watchdog-hysteria.yaml
 ExecStart=/usr/local/sbin/vpn-watchdog.sh
 {% set _p1_count = (1 + (nginx_xhttp.fallback_enabled | default(false) | bool | int)) if (vpn.enable_nginx_xhttp | default(true)) and not (vpn_subscription_only | default(false)) else 0 %}
 {% set _hys_count = 2 if (vpn.enable_hysteria | default(true)) and not (vpn_subscription_only | default(false)) else 0 %}
-TimeoutStartSec={{ 300 + ((watchdog_reality_probes | length) + 1 + _p1_count + _hys_count) * (watchdog.reality_probe_timeout | default(15) | int) + ((((vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true))) | bool | int) + (vpn.enable_hysteria | default(true) | bool | int)) * (3 * (transport_egress_control_timeout_seconds | default(30) | int) + 5) }}s
+TimeoutStartSec={{ 300 + ((watchdog_reality_probes | length) + 1 + _p1_count + _hys_count) * (watchdog.reality_probe_timeout | default(15) | int) + ((_watchdog_xray | bool | int) + (_watchdog_hysteria | bool | int)) * (3 * (transport_egress_control_timeout_seconds | default(30) | int) + 5) }}s
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
@@ -30,4 +32,4 @@ LockPersonality=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
 SystemCallArchitectures=native
-ReadWritePaths={{ watchdog.state_file | dirname }}{% if vpn.enable_xray_reality | default(true) %} {{ xray_log_dir | default('/var/log/xray') }}{% endif %}{% if (vpn.enable_nginx_xhttp | default(true)) or (vpn.enable_cdn_front | default(false)) or (vpn.enable_subscription_host | default(false)) %} /var/log/nginx{% endif %}
+ReadWritePaths={{ watchdog.state_file | dirname }}{% if _watchdog_xray %} {{ xray_log_dir | default('/var/log/xray') }}{% endif %}{% if (vpn.enable_nginx_xhttp | default(true)) or (vpn.enable_cdn_front | default(false)) or (vpn.enable_subscription_host | default(false)) %} /var/log/nginx{% endif %}

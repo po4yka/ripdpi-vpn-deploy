@@ -1,0 +1,14 @@
+{
+  "change": "xhttp-alternate-and-tuning",
+  "dropped_step_ids": [
+    "XRY-1791618003859679",
+    "XRY-1791618006858260",
+    "XRY-1791618007864586",
+    "XRY-1791618008836301"
+  ],
+  "outcome": "dropped",
+  "prepared_at": "2026-10-16T13:18:31Z",
+  "reason": "Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.",
+  "schema": 1,
+  "task_id": "XRY-1791617991738391"
+}

@@ -3551,8 +3551,174 @@ class TaskctlHistoryTest(TaskctlFixture):
         ):
             taskctl.validate_deleted_history(self.root, base)
 
-    def test_dropped_openspec_change_archives_without_syncing_normative_specs(self) -> None:
-        self.add_active_spec_task(status="review", done=False)
+    def archived_drop_with_links(self):
+        issue = self.add_active_spec_task(status="review", done=False)
+        change = "ans-1786234567890101-change"
+        document = taskctl.read_document(issue)
+        body = (
+            document.body
+            + f"\n[Proposal](../../../openspec/changes/{change}/proposal.md)\n[Other](../work/retained.md)\n"
+        )
+        issue.write_text(
+            taskctl.render_document(document.values, body), encoding="utf-8"
+        )
+        self.write_board()
+        self.commit_all("add linked scope")
+        taskctl.command_close_prepare(
+            argparse.Namespace(
+                root=self.root,
+                query="ANS-1786234567890101",
+                outcome="dropped",
+                reason="Owner selected a local successor.",
+                evidence="Local successor remains open.",
+            )
+        )
+        source = self.commit_all("commit superseded scope and receipts")
+        archive = self.root / "openspec/changes/archive" / ("2026-08-09-" + change)
+        (self.root / "openspec/changes" / change).rename(archive)
+        verification = taskctl.read_document(archive / "verification.md")
+        values = dict(verification.values)
+        values["commit_sha"] = source
+        (archive / "verification.md").write_text(
+            taskctl.render_document(values, verification.body, order=tuple(values)),
+            encoding="utf-8",
+        )
+        (archive / ".taskctl-archive.json").write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "task_id": "ANS-1786234567890101",
+                    "change": change,
+                    "outcome": "dropped",
+                    "commit_sha": source,
+                    "archived_at": "2026-08-09T00:00:00Z",
+                }
+            )
+            + "\n"
+        )
+        return issue, archive, argparse.Namespace(root=self.root, change=change)
+
+    def test_archive_links_refresh_owned_record_and_close_binding_idempotently(self):
+        issue, archive, args = self.archived_drop_with_links()
+        before = taskctl.read_document(issue).values
+        receipt = json.loads((archive / ".taskctl-close.json").read_text())
+        archive_receipt = (archive / ".taskctl-archive.json").read_bytes()
+        self.assertEqual(0, taskctl.command_openspec_archive(args))
+        self.assertIn(
+            "../../../openspec/changes/archive/2026-08-09-"
+            + args.change
+            + "/proposal.md",
+            issue.read_text(),
+        )
+        self.assertIn("[Other](../work/retained.md)", issue.read_text())
+        self.assertEqual(before, taskctl.read_document(issue).values)
+        documents, _ = taskctl.load_state(self.root)
+        updated = taskctl.read_lifecycle_receipt(
+            self.root, documents[0], archive / "tasks.md", "close"
+        )
+        self.assertEqual(receipt, updated)
+        accepted = issue.read_bytes(), (archive / ".taskctl-close.json").read_bytes()
+        self.assertEqual(0, taskctl.command_openspec_archive(args))
+        self.assertEqual(
+            accepted,
+            (issue.read_bytes(), (archive / ".taskctl-close.json").read_bytes()),
+        )
+        self.assertEqual(
+            archive_receipt, (archive / ".taskctl-archive.json").read_bytes()
+        )
+
+    def test_archive_links_refuse_unbound_terminal_edit(self):
+        issue, archive, args = self.archived_drop_with_links()
+        taskctl.command_openspec_archive(args)
+        issue.write_text(issue.read_text() + "Unbound edit.\n")
+        before = issue.read_bytes(), (archive / ".taskctl-close.json").read_bytes()
+        with self.assertRaisesRegex(taskctl.ContractError, "content hashes"):
+            taskctl.command_openspec_archive(args)
+        self.assertEqual(
+            before, (issue.read_bytes(), (archive / ".taskctl-close.json").read_bytes())
+        )
+
+    def test_archive_links_refuse_unbound_newline_conversion(self):
+        issue, archive, args = self.archived_drop_with_links()
+        taskctl.command_openspec_archive(args)
+        issue.write_bytes(issue.read_bytes().replace(b"\n", b"\r\n"))
+        with self.assertRaisesRegex(taskctl.ContractError, "content hashes"):
+            taskctl.command_openspec_archive(args)
+
+    def test_archive_links_refuse_unreachable_archive_source(self):
+        issue, archive, args = self.archived_drop_with_links()
+        p = archive / ".taskctl-archive.json"
+        value = json.loads(p.read_text())
+        value["commit_sha"] = "f" * 40
+        p.write_text(json.dumps(value) + "\n")
+        before = issue.read_bytes(), (archive / ".taskctl-close.json").read_bytes()
+        with self.assertRaisesRegex(taskctl.ContractError, "source revision"):
+            taskctl.command_openspec_archive(args)
+        self.assertEqual(
+            before, (issue.read_bytes(), (archive / ".taskctl-close.json").read_bytes())
+        )
+
+    def test_archive_links_refuse_reachable_source_from_before_terminal_state(self):
+        issue, archive, args = self.archived_drop_with_links()
+        path = archive / ".taskctl-archive.json"
+        value = json.loads(path.read_text())
+        value["commit_sha"] = self.git("rev-parse", "HEAD~1")
+        path.write_text(json.dumps(value) + "\n")
+        before = issue.read_bytes(), (archive / ".taskctl-close.json").read_bytes()
+        with self.assertRaisesRegex(taskctl.ContractError, "source does not match"):
+            taskctl.command_openspec_archive(args)
+        self.assertEqual(
+            before, (issue.read_bytes(), (archive / ".taskctl-close.json").read_bytes())
+        )
+
+    def test_archive_links_restore_record_if_document_write_fails(self):
+        issue, archive, args = self.archived_drop_with_links()
+        before = issue.read_bytes(), (archive / ".taskctl-close.json").read_bytes()
+        write = Path.write_text
+
+        def fail_owned_write(path, value, *a, **kw):
+            if path == issue:
+                path.write_bytes(b"partial owned write")
+                raise OSError("owned write fault")
+            return write(path, value, *a, **kw)
+
+        with mock.patch.object(Path, "write_text", fail_owned_write):
+            with self.assertRaises(OSError):
+                taskctl.command_openspec_archive(args)
+        self.assertEqual(
+            before, (issue.read_bytes(), (archive / ".taskctl-close.json").read_bytes())
+        )
+
+    def test_archive_links_preserve_valid_terminal_history_through_purge(self):
+        issue, archive, args = self.archived_drop_with_links()
+        base = self.git("rev-parse", "HEAD~1")
+        self.add_simple_task()
+        self.write_board()
+        self.commit_all("retain independent task and archive before link projection")
+        taskctl.command_openspec_archive(args)
+        self.write_board()
+        self.commit_all("commit archive and projected links")
+        taskctl.command_close_purge(
+            argparse.Namespace(
+                root=self.root, query="ANS-1786234567890101", trusted_base=None
+            )
+        )
+        self.write_board()
+        self.commit_all("purge archived terminal record")
+        taskctl.validate_deleted_history(self.root, base)
+
+    def test_dropped_openspec_change_archives_without_syncing_normative_specs(
+        self,
+    ) -> None:
+        issue = self.add_active_spec_task(status="review", done=False)
+        document = taskctl.read_document(issue)
+        issue.write_text(
+            taskctl.render_document(
+                document.values,
+                document.body
+                + "\n[Proposal](../../../openspec/changes/ans-1786234567890101-change/proposal.md)\n",
+            )
+        )
         openspec = self.root / "tools/tasking/node_modules/.bin/openspec"
         openspec.parent.mkdir(parents=True)
         openspec.write_text(
@@ -3594,18 +3760,27 @@ print("{}")
             )
         )
         documents, steps = taskctl.load_state(self.root)
-        archive = self.root / "openspec/changes/archive/2026-08-09-ans-1786234567890101-change"
+        archive = (
+            self.root
+            / "openspec/changes/archive/2026-08-09-ans-1786234567890101-change"
+        )
 
         self.assertEqual(0, result)
         self.assertEqual("dropped", documents[0].values["status"])
         self.assertEqual([], steps)
         self.assertTrue((archive / ".taskctl-archive.json").is_file())
         self.assertFalse((self.root / "openspec/specs/change/spec.md").exists())
+        self.assertIn(
+            "../../../openspec/changes/archive/2026-08-09-ans-1786234567890101-change/proposal.md",
+            issue.read_text(),
+        )
         (archive / ".taskctl-archive.json").write_text("{}\n", encoding="utf-8")
         (self.root / "docs/tasks/issues/change-ansible.md").unlink()
         self.commit_all("forge archive and delete task")
 
-        with self.assertRaisesRegex(taskctl.ContractError, "invalid OpenSpec archive receipt"):
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "invalid OpenSpec archive receipt"
+        ):
             taskctl.validate_deleted_history(self.root, base)
 
     def test_historical_openspec_requires_resolved_requirement_evidence(self) -> None:
@@ -4103,6 +4278,26 @@ class TaskctlFederationTest(TaskctlFixture):
 
         with self.assertRaisesRegex(taskctl.ContractError, "blocker .* was dropped"):
             taskctl.federation_payload(self.root, self.peer)
+
+        # Cancelling the dependent keeps its historical dependency, without
+        # treating the cancelled prerequisite as satisfied for any live task.
+        taskctl.command_close_prepare(
+            argparse.Namespace(
+                root=self.root,
+                query=consumer_id,
+                outcome="dropped",
+                reason="Owner cancelled the dependent scope.",
+                evidence="No successful execution is claimed.",
+            )
+        )
+        self.commit(self.root, "cancel dependent scope")
+        payload = taskctl.federation_payload(self.root, self.peer)
+        consumer = next(
+            node for node in payload["tasks"] if node["task_id"] == consumer_id
+        )
+        self.assertEqual("dropped", consumer["status"])
+        self.assertEqual([f"po4yka/RIPDPI#{blocker_id}"], consumer["blocked_by"])
+        self.assertNotIn(consumer["id"], [node["id"] for node in payload["ready"]])
 
     def test_purged_done_blocker_resolves_from_terminal_history(self) -> None:
         blocker_id = "CIC-1786234567890001"

@@ -1,0 +1,31 @@
+---
+name: Install verified SOPS and age
+description: Install shared checksum-pinned Linux amd64 tools for real cryptographic input tests
+runs:
+  using: composite
+  steps:
+    - name: Verify and install SOPS and age
+      shell: bash
+      env:
+        SOPS_VERSION: "3.13.3"
+        SOPS_SHA256: e5bec3346a873ae91d871550f3e698c1aad962aff462a080e40f25fde17fef6b
+        AGE_VERSION: "1.3.2"
+        AGE_SHA256: cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10
+      run: |
+        set -euo pipefail
+        test "$RUNNER_OS" = Linux
+        test "$RUNNER_ARCH" = X64
+        install_dir="$(mktemp -d "$RUNNER_TEMP/sops-age.XXXXXXXX")"
+        trap 'rm -rf "$install_dir"' EXIT
+        curl --fail --location --retry 3 --connect-timeout 10 --max-time 120 \
+          "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.amd64" \
+          --output "$install_dir/sops"
+        printf '%s  %s\n' "$SOPS_SHA256" "$install_dir/sops" | sha256sum --check --strict
+        curl --fail --location --retry 3 --connect-timeout 10 --max-time 120 \
+          "https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/age-v${AGE_VERSION}-linux-amd64.tar.gz" \
+          --output "$install_dir/age.tar.gz"
+        printf '%s  %s\n' "$AGE_SHA256" "$install_dir/age.tar.gz" | sha256sum --check --strict
+        tar -xzf "$install_dir/age.tar.gz" -C "$install_dir" age/age age/age-keygen
+        sudo install -m 0755 "$install_dir/sops" /usr/local/bin/sops
+        sudo install -m 0755 "$install_dir/age/age" "$install_dir/age/age-keygen" /usr/local/bin/
+        test "$(age --version)" = "v${AGE_VERSION}"

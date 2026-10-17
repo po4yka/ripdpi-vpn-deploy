@@ -1,0 +1,11 @@
+{
+  "change": "four-protocol-reliability-roadmap",
+  "evidence_summary": "Positive implementation and genuine source/runtime observations are retained. The local successor owns all 45 positive requirements and remains open until its complete native and source gates pass; no missing external observation is relabelled as passed.",
+  "execution_sha256": "f7ebbb377412dbfa328d599ea5544a9b6eaa1c5ee871ec01ee538301afa85edf",
+  "issue_sha256": "a97fb29c7af5ea2a0f00aee6dbfc8939b2d7a082d5e2cd4992d3f0f1e04e0922",
+  "outcome": "dropped",
+  "prepared_at": "2026-10-16T13:18:30Z",
+  "reason": "Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.",
+  "schema": 1,
+  "task_id": "EPC-1791618453830051"
+}

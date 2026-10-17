@@ -43,7 +43,7 @@ def inputs():
     p1 = {"type": "vless", "tag": "p1-xhttp-scaleway-probe", "server": "192.0.2.2", "server_port": 443,
           "uuid": xray["uuid"], "tls": {"enabled": True, "server_name": "origin.example",
           "utls": {"enabled": True, "fingerprint": "chrome"}},
-          "transport": {"type": "xhttp", "host": "origin.example", "path": "/sync"}}
+          "transport": {"type": "xhttp", "host": "origin.example", "path": "/sync", "mode": "auto"}}
     p2 = {"type": "hysteria2", "tag": "p2-hysteria2-vultr-probe", "server": "192.0.2.3", "server_port": 443,
           "password": "sentinel:private-password", "tls": {"enabled": True, "server_name": "origin.example"}}
     standard = {"outbounds": [p0, p2, {"type": "direct", "tag": "direct"}]}

@@ -181,9 +181,9 @@ probe_reality_listeners() {
   "$XRAY_BIN" run -config "$XRAY_REALITY_CONFIG" >/dev/null 2>&1 &
   xray_probe_pid=$!
 
-  local deadline=$(( SECONDS + XRAY_REALITY_PROBE_TIMEOUT ))
+  local deadline=$(( $(python3 -c 'import time; print(time.monotonic_ns())') + XRAY_REALITY_PROBE_TIMEOUT * 1000000000 ))
   local all_ready=0
-  while (( SECONDS < deadline )); do
+  while (( $(python3 -c 'import time; print(time.monotonic_ns())') < deadline )); do
     kill -0 "$xray_probe_pid" 2>/dev/null || break
     all_ready=1
     for spec in "${probe_specs[@]}"; do

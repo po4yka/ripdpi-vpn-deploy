@@ -19,7 +19,7 @@ Target validation MUST normalize the configured name list once and verify each a
 
 ### Requirement: REQ-PROTO-RTV-DEADLINES — Finite operation and aggregate budgets
 
-DNS, TLS, HTTP and metadata lookups and their child process groups MUST terminate within explicit per-operation and whole-run budgets. Timeout MUST remain a failed or unavailable observation and MUST NOT be reported as healthy.
+DNS TLS HTTP metadata lookups and their child process groups MUST terminate within explicit per-operation and whole-run budgets. Timeout MUST remain a failed or unavailable observation and MUST NOT be reported as healthy.
 
 #### Scenario: Bounded healthy run completes
 

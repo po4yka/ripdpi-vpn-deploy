@@ -603,6 +603,72 @@ def lifecycle_receipt_path(
     return execution.with_suffix(f".{kind}.json")
 
 
+def projected_archive_links(
+    text: str, relative: str, change: str, archive: str
+) -> tuple[str, int]:
+    header, separator, body = text.partition("\n---\n")
+    if not separator:
+        fail("archive link repair requires a complete task document")
+    parent = Path(relative).parent
+    old_prefix = os.path.relpath(Path("openspec/changes") / change, parent) + "/"
+    new_prefix = os.path.relpath(archive, parent) + "/"
+    rewritten, count = re.subn(
+        r"(\]\()" + re.escape(old_prefix), lambda match: match[1] + new_prefix, body
+    )
+    return header + separator + rewritten, count
+
+
+def archived_issue_hash_matches(
+    root: Path,
+    relative: str,
+    text: str,
+    execution: str,
+    close: dict[str, Any],
+    *,
+    ref: str | None = None,
+) -> bool:
+    """Verify a frozen terminal record or its exact owned archive-link projection."""
+    if close.get("issue_sha256") == hashlib.sha256(text.encode()).hexdigest():
+        return True
+    archive = Path(execution).parent
+    if close.get("outcome") != "dropped" or archive.parent != Path(
+        "openspec/changes/archive"
+    ):
+        return False
+    receipt_path = archive / ".taskctl-archive.json"
+    try:
+        if ref is None:
+            path = root / receipt_path
+            if path.is_symlink() or (root / archive).is_symlink():
+                return False
+            receipt_text = path.read_text(encoding="utf-8")
+        else:
+            receipt_text = git_show_text(root, ref, receipt_path.as_posix())
+        receipt = json.loads(receipt_text or "{}")
+        if (
+            receipt.get("schema") != 1
+            or receipt.get("outcome") != "dropped"
+            or receipt.get("task_id") != close.get("task_id")
+            or receipt.get("change") != close.get("change")
+        ):
+            return False
+        revision = receipt.get("commit_sha")
+        if not isinstance(revision, str) or not SHA_RE.fullmatch(revision):
+            return False
+        validate_source_revision(root, revision, ref or "HEAD", context=relative)
+        original = git_show_text(root, revision, relative)
+        if original is None or hashlib.sha256(
+            original.encode()
+        ).hexdigest() != close.get("issue_sha256"):
+            return False
+        projected, count = projected_archive_links(
+            original, relative, close["change"], archive.as_posix()
+        )
+        return bool(count) and projected == text
+    except (OSError, ValueError, KeyError, ContractError):
+        return False
+
+
 def read_lifecycle_receipt(
     root: Path,
     document: Document,
@@ -625,10 +691,15 @@ def read_lifecycle_receipt(
     ):
         fail(f"{path}: receipt change backlink mismatch")
     if kind == "close":
-        issue_hash = hashlib.sha256(document.path.read_bytes()).hexdigest()
         execution_hash = hashlib.sha256(execution.read_bytes()).hexdigest()
         if (
-            receipt.get("issue_sha256") != issue_hash
+            not archived_issue_hash_matches(
+                root,
+                document.path.relative_to(root).as_posix(),
+                document.path.read_bytes().decode("utf-8"),
+                execution.relative_to(root).as_posix(),
+                receipt,
+            )
             or receipt.get("execution_sha256") != execution_hash
         ):
             fail(f"{path}: close receipt content hashes do not match terminal state")
@@ -2225,8 +2296,9 @@ def validate_terminal_snapshot(
         or close_receipt.get("task_id") != document.task_id
         or close_receipt.get("change") != document.values["openspec_change"]
         or close_receipt.get("outcome") != outcome
-        or close_receipt.get("issue_sha256")
-        != hashlib.sha256(issue_text.encode()).hexdigest()
+        or not archived_issue_hash_matches(
+            root, relative, issue_text, execution_path, close_receipt, ref=terminal_ref
+        )
         or close_receipt.get("execution_sha256")
         != hashlib.sha256(execution_text.encode()).hexdigest()
     ):
@@ -3048,7 +3120,7 @@ def federation_payload(root: Path, peer_root: Path) -> dict[str, Any]:
             children[node["parent"]].append(identity)
         blocker_edges[identity] = list(node["blocked_by"])
         for blocker in node["blocked_by"]:
-            if nodes[blocker]["status"] == "dropped":
+            if nodes[blocker]["status"] == "dropped" and node["status"] != "dropped":
                 fail(f"{identity}: blocker {blocker} was dropped")
             reverse_blocks[blocker].append(identity)
     assert_acyclic(parent_edges, "federated parent")
@@ -3737,8 +3809,14 @@ def validate_deleted_history(root: Path, base: str) -> None:
                 close_receipt.get("schema") != 1
                 or close_receipt.get("task_id") != terminal_document.task_id
                 or close_receipt.get("outcome") != outcome
-                or close_receipt.get("issue_sha256")
-                != hashlib.sha256(terminal_text.encode()).hexdigest()
+                or not archived_issue_hash_matches(
+                    root,
+                    relative,
+                    terminal_text,
+                    execution_path,
+                    close_receipt,
+                    ref=terminal_ref,
+                )
                 or close_receipt.get("execution_sha256")
                 != hashlib.sha256((execution_result.stdout or "").encode()).hexdigest()
             ):
@@ -4539,6 +4617,45 @@ def command_verify(args: argparse.Namespace) -> int:
     return 0
 
 
+def repair_archived_issue_links(root: Path, document: Document, execution: Path) -> int:
+    """Relocate only the owned task's links while retaining its checked receipt."""
+    archive = execution.parent
+    if archive.is_symlink() or archive.parent != root / "openspec/changes/archive":
+        fail("archive link repair requires an owned archive directory")
+    receipt = read_lifecycle_receipt(root, document, execution, "archive")
+    revision = receipt.get("commit_sha")
+    if (
+        receipt.get("schema") != 1
+        or not isinstance(revision, str)
+        or not SHA_RE.fullmatch(revision)
+    ):
+        fail("archive link repair requires a valid source revision")
+    validate_source_revision(root, revision, "HEAD", context=document.task_id)
+    original = document.path.read_bytes().decode("utf-8")
+    relative = document.path.relative_to(root).as_posix()
+    updated, count = projected_archive_links(
+        original,
+        relative,
+        document.values["openspec_change"],
+        archive.relative_to(root).as_posix(),
+    )
+    if not count:
+        return 0
+    if git_show_text(root, "HEAD", relative) != original:
+        fail("archive link repair requires a committed unchanged task record")
+    if (
+        document.values["status"] == "dropped"
+        and git_show_text(root, revision, relative) != original
+    ):
+        fail("archive link repair source does not match the terminal record")
+    try:
+        document.path.write_text(updated, encoding="utf-8")
+    except BaseException:
+        document.path.write_bytes(original.encode("utf-8"))
+        raise
+    return count
+
+
 def command_openspec_archive(args: argparse.Namespace) -> int:
     documents, steps = load_state(args.root)
     document = next(
@@ -4549,6 +4666,34 @@ def command_openspec_archive(args: argparse.Namespace) -> int:
         fail(f"OpenSpec change {args.change!r} has no portfolio task")
     if document.values["status"] not in {"review", "dropped"}:
         fail(f"{document.task_id}: archive requires review or a prepared dropped state")
+    execution = expected_execution_path(args.root, document)
+    if execution.parent.parent == args.root / "openspec/changes/archive":
+        count = repair_archived_issue_links(args.root, document, execution)
+        print(
+            json.dumps(
+                {
+                    "archive": {
+                        "change": args.change,
+                        "archivedAs": execution.parent.name,
+                        "path": str(execution.parent),
+                        "specsUpdated": False,
+                        "linksUpdated": count,
+                    }
+                },
+                indent=2,
+            )
+        )
+        return 0
+    old_prefix = (
+        os.path.relpath(
+            args.root / "openspec/changes" / args.change, document.path.parent
+        )
+        + "/"
+    )
+    if old_prefix in document.body and git_show_text(
+        args.root, "HEAD", document.path.relative_to(args.root).as_posix()
+    ) != document.path.read_text(encoding="utf-8"):
+        fail("archive link repair requires a committed unchanged task record")
     archive_args = ["archive", args.change, "--yes", "--json"]
     if document.values["status"] == "dropped":
         relative = document.path.relative_to(args.root).as_posix()
@@ -4607,6 +4752,7 @@ def command_openspec_archive(args: argparse.Namespace) -> int:
     (archives[0] / ".taskctl-archive.json").write_text(
         json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
+    repair_archived_issue_links(args.root, document, archives[0] / "tasks.md")
     return 0
 
 

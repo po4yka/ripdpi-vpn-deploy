@@ -344,3 +344,53 @@ def test_large_certificate_retains_healthy_transport_classification(tls_site):
     assert result.returncode == 0, (report, result.stderr)
     assert report['hygiene'] == 'passed'
     assert report['reason_codes'] == []
+
+
+@pytest.mark.parametrize("explicit", [{"TARGET": ""}, {"SERVER_NAMES": ""}, {"SERVER_NAMES": "bad/name"}])
+def test_invalid_partial_input_refuses_before_private_defaults(monkeypatch, explicit):
+    monkeypatch.delenv("TARGET", raising=False)
+    monkeypatch.delenv("SERVER_NAMES", raising=False)
+    for key, value in explicit.items():
+        monkeypatch.setenv(key, value)
+    budget = validator.Budget()
+    monkeypatch.setattr(budget, "run", lambda *a, **kw: pytest.fail("invalid input loaded private defaults"))
+    with pytest.raises(validator.Refused):
+        validator.load_inputs(budget)
+
+
+@pytest.mark.parametrize("public", [None, "", "bad/path"])
+def test_invalid_public_endpoint_refuses_before_private_defaults(monkeypatch, public):
+    monkeypatch.delenv("TARGET", raising=False)
+    monkeypatch.delenv("SERVER_NAMES", raising=False)
+    monkeypatch.setenv("TARGET_MODE", "owned-public")
+    monkeypatch.setenv("OWNED_SNI", "owned.example")
+    if public is None:
+        monkeypatch.delenv("PUBLIC_ENDPOINT", raising=False)
+    else:
+        monkeypatch.setenv("PUBLIC_ENDPOINT", public)
+    budget = validator.Budget()
+    monkeypatch.setattr(budget, "run", lambda *a, **kw: pytest.fail("invalid input loaded private defaults"))
+    with pytest.raises(validator.Refused, match="invalid_endpoint"):
+        validator.load_inputs(budget)
+
+
+@pytest.mark.parametrize("target", ["EXAMPLE.COM:443", "Example.Com.:443"])
+def test_target_dns_spelling_is_normalized(target):
+    assert validator.endpoint(target) == ("example.com", 443)
+
+
+def test_http_failure_retains_successful_tls_observation(monkeypatch):
+    stages = []
+    def worker(_budget, stage, _payload):
+        stages.append(stage)
+        return ["192.0.2.1"] if stage == "dns" else {"h2": True}
+    def rejected_http(*_args, **_kwargs):
+        raise validator.Refused("https_timeout")
+    monkeypatch.setattr(validator, "call_worker", worker)
+    monkeypatch.setattr(validator, "http", rejected_http)
+    monkeypatch.setattr(validator, "pinned_client", lambda: None)
+    reasons, observations, compatibility = validator.collect(None, "borrowed", "example.com", 443, ["example.com"])
+    assert stages == ["dns", "tls"]
+    assert reasons == ["https_timeout"]
+    assert observations == [("192.0.2.1", "", "", 1, 1)]
+    assert compatibility == "unavailable"

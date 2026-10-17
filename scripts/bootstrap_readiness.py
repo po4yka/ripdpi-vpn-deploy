@@ -40,13 +40,13 @@ def check_cancelled():
 
 
 @contextmanager
-def cancellation():
+def cancellation(signals=(signal.SIGINT, signal.SIGTERM)):
     global _cancelled
     _cancelled = 0
     def interrupted(signum, _frame):
         global _cancelled
         _cancelled = signum
-    previous = {sig: signal.signal(sig, interrupted) for sig in (signal.SIGINT, signal.SIGTERM)}
+    previous = {sig: signal.signal(sig, interrupted) for sig in signals}
     try:
         yield
         check_cancelled()
@@ -84,7 +84,7 @@ finally:
 
 
 def run_command(command, *, timeout, environment=None, cwd=None, capture=False, stream=False,
-                input_data=None, defer_cancellation=False, output_limit=65536):
+                input_data=None, defer_cancellation=False, output_limit=65536, forward_stderr=False):
     """Bound an owned session, retaining its leader until descendants stop."""
     if not defer_cancellation:
         check_cancelled()
@@ -177,6 +177,9 @@ def run_command(command, *, timeout, environment=None, cwd=None, capture=False, 
                         raise ReadinessError("command output limit")
                     if key.fileobj is child.stdout:
                         output.extend(data)
+                    elif forward_stderr:
+                        sys.stderr.buffer.write(data)
+                        sys.stderr.buffer.flush()
                 if status is not None and not selector.get_map():
                     return status, bytes(output)
     finally:

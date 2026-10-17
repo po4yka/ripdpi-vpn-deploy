@@ -2,7 +2,7 @@
 id: SCR-1791618064422507
 title: Upgrade Hysteria with validated congestion and UDP resource profiles
 kind: feature
-status: doing
+status: dropped
 area: scripts
 priority: medium
 risk: high
@@ -12,8 +12,11 @@ blocked_by: [SEC-1791617841911853, ANS-1791617913525586, MON-1791618056169855, T
 spec_mode: required
 openspec_change: hysteria-stable-upgrade
 created: 2026-10-10
-updated: 2026-10-15
+updated: 2026-10-16
 related_tasks: [SEC-1791471757439452, ANS-1791562764586678]
+closed_at: "2026-10-16T13:18:32Z"
+closed_reason: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.
+evidence_summary: Positive implementation and genuine source/runtime observations are retained. The local successor owns all 45 positive requirements and remains open until its complete native and source gates pass; no missing external observation is relabelled as passed.
 ---
 
 ## Goal

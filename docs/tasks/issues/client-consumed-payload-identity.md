@@ -2,7 +2,7 @@
 id: SCR-1791618188806822
 title: Detect client payload drift from every consumed private input
 kind: bug
-status: doing
+status: dropped
 area: scripts
 priority: high
 risk: high
@@ -15,6 +15,9 @@ created: 2026-10-10
 updated: 2026-10-16
 related_tasks: []
 status_detail: "Integrate the already coordinated AWG dual-stack producer from PR #304 to clear downstream contract drift; prove consumed IPv4/IPv6 and MTU changes, retain partial-publication safety, and rerun complete source gates for PR #302."
+closed_at: "2026-10-16T13:18:31Z"
+closed_reason: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.
+evidence_summary: Positive implementation and genuine source/runtime observations are retained. The local successor owns all 45 positive requirements and remains open until its complete native and source gates pass; no missing external observation is relabelled as passed.
 ---
 
 ## Goal

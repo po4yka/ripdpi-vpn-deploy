@@ -215,7 +215,10 @@ def main():
                         kernel.STATE = work/'policy-state';kernel.STATE.mkdir(mode=0o700)
                         admit()
                         binary = Path(shutil.which('xray') or '')
-                        if not binary.is_file() or hashlib.sha256(binary.read_bytes()).hexdigest() != '8255dd939c34cf966cc91517b6324dd3c8d0bcf49ffac8beca049a38c46845ed':
+                        if not binary.is_file() or hashlib.sha256(binary.read_bytes()).hexdigest() != {
+                                'x86_64': '8255dd939c34cf966cc91517b6324dd3c8d0bcf49ffac8beca049a38c46845ed',
+                                'aarch64': 'c2d20a7045250497083afea0d79db0672f6c89a25aaaf37c92de034d6b764b04',
+                            }.get(os.uname().machine):
                             raise RuntimeError('exact-native-xray-required')
                         target = work/'xray';shutil.copyfile(binary,target);target.chmod(0o555)
                         cfg = gateway_config(work, {'log':{'loglevel':'none'},'inbounds':[{'listen':'10.250.254.2','port':12091,'protocol':'socks',

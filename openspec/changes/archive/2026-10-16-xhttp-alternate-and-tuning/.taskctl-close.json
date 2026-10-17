@@ -1,0 +1,11 @@
+{
+  "change": "xhttp-alternate-and-tuning",
+  "evidence_summary": "Positive implementation and genuine source/runtime observations are retained. The local successor owns all 45 positive requirements and remains open until its complete native and source gates pass; no missing external observation is relabelled as passed.",
+  "execution_sha256": "6069a8924f4a4ef9acf89db76db5c4ce3c4bf66bddc0bfcce9a3968a809a11dc",
+  "issue_sha256": "0a8003b7344b6f700356edcd1325b03a0addb8100ffeaa6ef2880ed47bbbc1f7",
+  "outcome": "dropped",
+  "prepared_at": "2026-10-16T13:18:32Z",
+  "reason": "Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.",
+  "schema": 1,
+  "task_id": "XRY-1791617991738391"
+}

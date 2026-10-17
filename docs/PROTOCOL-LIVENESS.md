@@ -445,3 +445,12 @@ three evaluations issues one OTP without promotion, and restoring any required
 profile invalidates that OTP. These are additional fault-injection tests, not a
 prerequisite for every ordinary acceptance run. Never change production routes
 or firewall rules to simulate them.
+
+### Partial endpoint availability
+
+Every emitted XHTTP endpoint is observed separately. A usable alternate retains
+the profile's positive delivery result, while any non-ok endpoint variant makes
+the aggregate operator decision `degraded`. The evidence retains each variant's
+actual verdict; partial availability alone does not create a rotation candidate.
+The public profile digest includes the admitted XHTTP mode and XMUX limits, so
+a previous tuning profile cannot be credited to a newly selected one.

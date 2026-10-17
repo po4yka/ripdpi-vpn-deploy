@@ -1,0 +1,11 @@
+{
+  "change": "native-four-protocol-acceptance",
+  "evidence_summary": "Positive implementation and genuine source/runtime observations are retained. The local successor owns all 45 positive requirements and remains open until its complete native and source gates pass; no missing external observation is relabelled as passed.",
+  "execution_sha256": "5d88975b45a9fd847f594a1d2d56b0dd6cb96e611cce9cb802fb9c4d0b9c3934",
+  "issue_sha256": "2b8a8b2a25f57405c13974531e4b678dcbb0730d2791cfb3cd74315632b96f8f",
+  "outcome": "dropped",
+  "prepared_at": "2026-10-16T13:18:32Z",
+  "reason": "Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.",
+  "schema": 1,
+  "task_id": "TST-1791618356595983"
+}

@@ -1,19 +1,22 @@
 ---
-id: "TST-1791618356595983"
-title: "Deliver isolated native acceptance for every baseline transport"
-kind: "feature"
-status: "backlog"
-area: "testing"
-priority: "high"
-risk: "high"
-owner: "primary"
-parent: "EPC-1791618453830051"
-blocked_by: ["SEC-1791617841911853", "ANS-1791617913525586", "SCR-1791618039091425", "ANS-1791618048083304", "XRY-1791617955392712", "MON-1791618056169855", "SCT-1791617687019287", "SCR-1791617975137354"]
-spec_mode: "required"
-openspec_change: "native-four-protocol-acceptance"
-created: "2026-10-10"
-updated: "2026-10-10"
-related_tasks: ["SEC-1791545689674403", "ANS-1791562764586678", "ANS-1791586652330612", "SEC-1791471757439452"]
+id: TST-1791618356595983
+title: Deliver isolated native acceptance for every baseline transport
+kind: feature
+status: dropped
+area: testing
+priority: high
+risk: high
+owner: primary
+parent: EPC-1791618453830051
+blocked_by: [SEC-1791617841911853, ANS-1791617913525586, SCR-1791618039091425, ANS-1791618048083304, XRY-1791617955392712, MON-1791618056169855, SCT-1791617687019287, SCR-1791617975137354]
+spec_mode: required
+openspec_change: native-four-protocol-acceptance
+created: 2026-10-10
+updated: 2026-10-16
+related_tasks: [SEC-1791545689674403, ANS-1791562764586678, ANS-1791586652330612, SEC-1791471757439452]
+closed_at: "2026-10-16T13:18:32Z"
+closed_reason: Superseded by EPC-1792155716043904 after the owner selected integrated local completion without external soak or recipient-device acceptance.
+evidence_summary: Positive implementation and genuine source/runtime observations are retained. The local successor owns all 45 positive requirements and remains open until its complete native and source gates pass; no missing external observation is relabelled as passed.
 ---
 
 ## Goal

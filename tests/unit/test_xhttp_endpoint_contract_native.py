@@ -1,6 +1,8 @@
 """Real pinned clients, peer attribution and owned HTTPS origin/rollback proof."""
 from __future__ import annotations
 
+from copy import deepcopy
+
 import base64
 import importlib.util
 import json
@@ -67,7 +69,7 @@ def exported_outbound(stack, endpoint="primary", *, native=False):
     metadata = ROOT / "tests/fixtures/tf-output-sample.json"
     previous = metadata.read_bytes()
     assert not profile.exists()
-    document = {name: stack.values[name] for name in ("xray", "nginx_xhttp", "hysteria", "transport_egress_secrets")}
+    document = {name: deepcopy(stack.values[name]) for name in ("xray", "nginx_xhttp", "hysteria", "transport_egress_secrets")}
     document["client_registry"] = {"native-device": {"status": "active"}}
     private = stack.file("emission.yaml", yaml.safe_dump(document))
     try:

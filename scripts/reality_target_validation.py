@@ -139,6 +139,16 @@ def call_worker(budget, kind, payload):
 def load_inputs(budget):
     target, configured = os.environ.get("TARGET"), os.environ.get("SERVER_NAMES")
     normalized = names(configured) if configured is not None else None
+    if target is not None:
+        endpoint(target)
+    mode = os.environ.get("TARGET_MODE", "borrowed")
+    if mode not in {"borrowed", "owned-public"}:
+        raise Refused("invalid_mode")
+    if mode == "owned-public":
+        endpoint(os.environ.get("PUBLIC_ENDPOINT", ""))
+        owned = names(os.environ.get("OWNED_SNI", ""))
+        if len(owned) != 1 or (normalized is not None and owned != normalized):
+            raise Refused("owned_sni_mismatch")
     if target is None or configured is None:
         source = os.environ.get("SOPS_FILE", str(Path.home() / ".config/vpn-provision" /
                                 (os.environ.get("ENV", "prod") + ".secrets.sops.yaml")))

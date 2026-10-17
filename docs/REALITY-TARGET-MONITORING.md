@@ -100,3 +100,10 @@ The monitor fingerprint now binds validation mode and the explicit service
 endpoint. This changes its state key: the first healthy observation after this
 upgrade establishes a fresh local metadata baseline. Accepted target and
 certificate authority are unchanged.
+
+The monitor has an outer owned process session (default 120 seconds;
+`REALITY_MONITOR_BUDGET` accepts 1–120). Its parent owns the temporary directory,
+including secret staging, and reclaims children after timeout or cancellation.
+An exhausted run replaces only `last_report`, retaining accepted baselines and
+alert budgets. Invalid explicit validator inputs refuse before private defaults
+are loaded.

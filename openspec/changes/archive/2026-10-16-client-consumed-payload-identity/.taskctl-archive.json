@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-10-16T13:25:01Z",
+  "change": "client-consumed-payload-identity",
+  "commit_sha": "fc8938d9563e9cf61ead73f9bcdf07c90507fa6d",
+  "outcome": "dropped",
+  "schema": 1,
+  "task_id": "SCR-1791618188806822"
+}

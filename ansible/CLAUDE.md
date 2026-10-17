@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Hysteria smoke mirrors enabled Salamander in its private client document and retains verified TLS with the effective inner/server identity.
+
 Protected commit keeps a durable `committing` ingress journal while finishing the native consumer outer route. Both begin and rescue resolve that decision before adopting or compensating an open transaction; a failed roll-forward retains remaining journals and stops. Only an undecided journal may roll back. Lost acknowledgement after journal removal releases compensation ownership as an already completed commit.
 
 ECH smoke clients use the declared inner identity even when the nginx frontend has a different hostname; certificate verification stays enabled.

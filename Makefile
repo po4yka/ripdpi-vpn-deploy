@@ -745,6 +745,9 @@ help:
 	@echo "  test-native-runtime        Run native integration tests in disposable Linux root environment"
 	@echo "  test-awg-source-candidate  Build and exercise exact AWG source pairs in local Docker (build-gate required)"
 
+	@echo "  transport-native-acceptance  Complete local four-protocol traffic, isolation and recovery suites"
+	@echo "  test-xhttp-delivery-matrix  Compare direct endpoints and typed XHTTP profiles with real engines"
+	@echo "  test-reality-target-validation  Exercise controlled TLS identities and bounded cleanup"
 	@echo "  test-awg-dualstack-runtime  Exercise dual-stack AWG forwarding, MTU and compensation in the isolated native lab"
 	@echo "  verify-awg-dualstack-client-evidence Validate invocation-bound Android native-core evidence from PEER_ROOT"
 	@echo "  test-transport-runtime-acceptance  Run complete consumer transactions in a separate fresh Linux root"
@@ -1164,14 +1167,6 @@ install-hooks:
 	pre-commit install
 	pre-commit install --hook-type commit-msg
 
-# Positive exact-client topology acceptance; never a portable/mock substitute.
-.PHONY: test-topology-authenticated-probes
-test-topology-authenticated-probes:
-	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 && test "$${TRANSPORT_NATIVE_ISOLATED:-}" = 1 || { echo "authenticated topology probes require an owned isolated Linux root/systemd/TUN environment" >&2; exit 1; }
-	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest \
-	  tests/unit/test_topology_authenticated_probes_native.py tests/unit/test_topology_awg_warm_native.py \
-	  tests/unit/test_awg_device_binding_native.py --fail-on-skip -v
-
 # Exact Caddy/forwardproxy composite; native tests never accept stock Caddy.
 native-naive-build:
 	./scripts/build-native-naive-test.sh
@@ -1238,6 +1233,35 @@ verify-awg-dualstack-client-evidence:
 	python3 "$${PEER_ROOT}/scripts/tests/validate-android-awg-interop.py" \
 	  --evidence "$${AWG_CLIENT_EVIDENCE}" --nonce "$${AWG_CLIENT_NONCE}" --source-sha "$${AWG_CLIENT_SOURCE_SHA}"
 
+# Local protocol completion uses only owned synthetic authorities. Each complete
+# suite keeps its real Linux/systemd/TUN prerequisites and selected-skip refusal.
+.PHONY: transport-native-acceptance test-topology-authenticated-probes test-xhttp-delivery-matrix
+transport-native-acceptance:
+	$(MAKE) test-native-runtime
+	$(MAKE) test-awg-device-binding-runtime
+	$(MAKE) test-awg-dualstack-runtime
+	$(MAKE) test-hysteria-ech-runtime
+	$(MAKE) test-topology-authenticated-probes
+	$(MAKE) test-xhttp-delivery-matrix
+
+# Run whole-route transactions in a fresh isolated systemd root, as in CI.
+# They deliberately refuse pre-existing global consumer authority.
+test-topology-authenticated-probes:
+	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 && test "$${TRANSPORT_NATIVE_ISOLATED:-}" = 1 || { echo "topology acceptance requires an owned isolated Linux root environment" >&2; exit 1; }
+	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest \
+	  tests/unit/test_topology_authenticated_probes_native.py tests/unit/test_topology_awg_warm_native.py \
+	  tests/unit/test_awg_device_binding_native.py \
+	  tests/unit/test_watchdog_protocol_probe.py tests/unit/test_watchdog_templates.py \
+	  tests/unit/test_smoke_test_cleanup.py tests/unit/test_runtime_audit_regressions.py \
+	  tests/unit/test_transport_frontend_boundary_native.py tests/unit/test_reality_target_validation_native.py \
+	  tests/unit/test_smoke_protocol_native.py tests/unit/test_transport_logrotate_native.py \
+	  tests/unit/test_hysteria_hopping_retirement_native.py --fail-on-skip -v
+
+test-xhttp-delivery-matrix:
+	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 && test "$${TRANSPORT_NATIVE_ISOLATED:-}" = 1 || { echo "XHTTP delivery requires an owned isolated Linux root environment" >&2; exit 1; }
+	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest \
+	  tests/unit/test_xhttp_delivery_matrix_native.py --fail-on-skip -v -s
+
 test-native-runtime:
 	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 || { echo "native runtime tests require a disposable Linux root environment" >&2; exit 1; }
 	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ -m native_runtime \
@@ -1247,6 +1271,7 @@ test-native-runtime:
 	  --ignore=tests/unit/test_xhttp_endpoint_contract_native.py \
 	  --ignore=tests/unit/test_awg_device_binding_native.py \
 	  --ignore=tests/unit/test_hysteria_ech_native.py \
+	  --ignore=tests/unit/test_xhttp_delivery_matrix_native.py \
 	  --ignore=tests/unit/test_validate_reality_target_native.py \
 	  --ignore=tests/unit/test_awg_dualstack_native.py \
 	  --ignore=tests/unit/test_awg_activation_native.py --fail-on-skip -v

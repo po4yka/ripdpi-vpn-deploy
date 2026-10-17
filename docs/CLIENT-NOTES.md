@@ -232,3 +232,19 @@ nor authorization to deploy. Run `make test-hysteria-ech-runtime` and
 packet capture, actual recipient traffic and full transaction compensation remain
 required. Production promotion follows a separately authorized bounded 48-hour
 staging soak, reconnect checks and exact-generation rollback rehearsal.
+
+## Direct XHTTP endpoint and tuning selection
+
+The RIPDPI-format producer emits a primary XHTTP outbound and an independently
+selectable `:alternate` outbound when the selected profile enables the alternate
+listener. Each uses its own effective port and TLS name. Mode passes unchanged into the exact Xray adapter. Native Xray and monitoring
+output support the qualified `stream-up` bounded-pool profile on `v26.3.27`;
+RIPDPI export refuses fields its importer cannot consume. See
+[XHTTP delivery profiles](XHTTP-DELIVERY-PROFILES.md) for fields and limits.
+
+The local acceptance matrix exercises actual Xray processes, transfer, faults
+and rollback. External recipient adoption and device testing are outside the
+owner's local completion scope. Official sing-box output remains free of
+unsupported XHTTP fields. A working alternate preserves connectivity, while a
+failed or indeterminate primary keeps the aggregate liveness decision degraded;
+it does not by itself request node rotation.

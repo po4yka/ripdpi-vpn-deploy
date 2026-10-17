@@ -2,6 +2,14 @@
 
 ## Design decisions
 
+The REALITY monitor supervisor handles INT, TERM, HUP and QUIT before launching any decrypting child. The shell creates its work directory using an explicit parent path; BSD mktemp -t can ignore TMPDIR. Parent-owned temporary authority is removed after session cleanup on cancellation. Bounded child stderr is forwarded separately from the JSON stdout protocol. The monitor requests SOPS JSON directly into its private owned file; the general decrypt cache retains its YAML contract.
+
+Federation preserves dependency edges between receipt-validated cancelled records. A cancelled prerequisite still refuses every non-cancelled dependent and never makes a task ready.
+
+Taskctl archive maintenance relocates only owned inline task links. Dropped records retain immutable close receipts: readers verify the exact link projection from the archive’s reachable terminal source, rejecting every other byte change, including newline conversion. Repeated archival preserves timestamps/spec state; partial document-write failures restore the original record.
+
+A successful alternate retains usable transport delivery, while any non-ok endpoint variant makes the operator decision degraded; exact primary/alternate observations remain separate and do not create a rotation candidate by themselves.
+
 Task-history merge lanes retain the shared first-parent boundary, including
 closure commits made before a branch updates from main.
 
@@ -730,3 +738,5 @@ Task deletion audits compare against the explicit trusted base while retaining
 feature first-parent lifecycle history. Importing a purge already in that base
 is not a new deletion when no issue, execution or receipt changed outside it.
 Independent lifecycle edits and merge-only resurrection retain the full audit.
+
+The monitor wraps the canonical REALITY collector in one owned process session and parent-owned temporary directory. Invalid explicit target, name, mode and owned-public prerequisites refuse before missing private defaults are loaded.
