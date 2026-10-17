@@ -264,3 +264,20 @@ Production admission and the complete hosted runtime goals remain unchanged.
 Main integration includes the task-only commit
 234211e223f90256efbfc77eeb0e2ef430bcfddf; the board is regenerated from task
 records. Hosted acceptance remains required before merge.
+
+## Remaining warm admission diagnosis
+
+Run 39076232814 at source 50a95b21a555e0037be3debaf3296884ea99e942
+confirms the hosted executable parent now has mode 0755. Its early warm case
+still refused initial publication in 8.07 seconds, before an active unit could
+be observed. The earlier unsafe parent is repaired; no claim establishes the
+remaining cause. CodeQL reports all six new alerts fixed with no suppression.
+
+The fixture now adds read-only candidate and unit admission through the unchanged
+installed helper. Its child uses check-mode transaction validation and adapter
+inspection, never apply or recover. Only known literal refusal categories, known
+role task names and bounded metadata can leave the private process capture.
+Seventeen portable diagnostics/render tests passed, including actual check-mode
+transaction refusal with an absent state and unchanged helper files. Native
+collection passed one case. This diagnostic evidence does not claim native
+acceptance; the complete exact-source hosted gates remain required.

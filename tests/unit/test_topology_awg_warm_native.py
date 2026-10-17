@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import base64
+import ast
 import copy
 from contextlib import ExitStack
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
 import subprocess
@@ -18,6 +20,7 @@ import pytest
 import yaml
 
 from awg_device_binding import resolve_binding
+from template_render import render_template
 from test_awg_activation_native import complete_publisher, render_native_awg_config
 from test_awg_device_binding import document
 from test_transport_semantics_native import command, exact_awg_sources
@@ -26,8 +29,97 @@ ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / "ansible/roles/amneziawg"
 pytestmark = pytest.mark.native_runtime
 
+HELPER_FILES = ('amneziawg_consumer.py', 'transport_runtime_transaction.py',
+                'firewall_consumer.py', 'runtime_build_receipt.py')
+READONLY_CHILD = r'''
+import ast, importlib.util, json, os, re, sys
+from pathlib import Path
+directory = Path(sys.argv[1])
+sys.path.insert(0, str(directory))
+files = ('amneziawg_consumer.py', 'transport_runtime_transaction.py',
+         'firewall_consumer.py', 'runtime_build_receipt.py')
+codes = set()
+for name in files:
+    for node in ast.walk(ast.parse((directory / name).read_text())):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == 'Refusal' and node.args
+                and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)
+                and re.fullmatch(r'[a-z][a-z0-9-]{0,80}', node.args[0].value)):
+            codes.add(node.args[0].value)
+spec = importlib.util.spec_from_file_location('warm_observed_consumer', directory / files[0])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+payload = json.load(sys.stdin)
+def observe(operation):
+    try:
+        operation()
+        return 'ok'
+    except module.Refusal as error:
+        value = str(error)
+        return 'refusal:' + value if value in codes else 'Refusal'
+    except OSError:
+        return 'OSError'
+    except (ValueError, TypeError, KeyError):
+        return 'input-exception'
+    except BaseException:
+        return 'unexpected-exception'
+def transaction():
+    with module.Transaction(module.STATE, uid=os.geteuid(), check=True, awg=True) as tx:
+        tx.validate(payload['candidates'])
+def adapter_validate():
+    module.Adapter(payload['candidates'], payload.get('firewall')).validate()
+def adapter_inspect():
+    module.Adapter(payload['candidates'], payload.get('firewall')).inspect()
+print(json.dumps({'transaction_validate': observe(transaction),
+                  'adapter_validate': observe(adapter_validate),
+                  'adapter_inspect': observe(adapter_inspect)}, sort_keys=True))
+'''
 
-def warm_startup_diagnostics(unit, namespace, private, *, runner=subprocess.run):
+
+def literal_refusal_codes(directory):
+    """Admit only categorical literals from the unchanged installed helpers."""
+    codes = set()
+    for name in HELPER_FILES:
+        for node in ast.walk(ast.parse((directory / name).read_text())):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id == 'Refusal' and node.args
+                    and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)
+                    and re.fullmatch(r'[a-z][a-z0-9-]{0,80}', node.args[0].value)):
+                codes.add(node.args[0].value)
+    return codes
+
+
+def readonly_consumer_diagnostics(request, directory, *, runner=subprocess.run):
+    """Inspect actual admission in a separate process without applying anything."""
+    unavailable = dict.fromkeys(('transaction_validate', 'adapter_validate', 'adapter_inspect'), 'unavailable')
+    try:
+        codes = literal_refusal_codes(directory)
+        result = runner([sys.executable, '-B', '-Es', '-c', READONLY_CHILD, str(directory)],
+                        input=json.dumps(request), capture_output=True, text=True, timeout=30)
+        if result.returncode != 0 or len(result.stdout) > 4096:
+            return unavailable
+        values = json.loads(result.stdout)
+        if not isinstance(values, dict) or set(values) != set(unavailable):
+            return unavailable
+        allowed = {'ok', 'Refusal', 'OSError', 'input-exception', 'unexpected-exception'} | {
+            'refusal:' + code for code in codes}
+        return {key: value if isinstance(value, str) and value in allowed else 'unavailable'
+                for key, value in values.items()}
+    except Exception:
+        return unavailable
+
+
+def last_known_role_task(output):
+    """Select a literal role task name; discard all other Ansible output."""
+    known = {task['name'] for name in ('consumer-prepare.yml', 'configure.yml')
+             for task in yaml.safe_load((ROLE / 'tasks' / name).read_text())
+             if isinstance(task.get('name'), str) and '{{' not in task['name'] and '{%' not in task['name']}
+    selected = [match.group(1) for match in re.finditer(r'TASK \[amneziawg : ([^\]\r\n]{1,240})\]', output)
+                if match.group(1) in known]
+    return selected[-1] if selected else 'unavailable'
+
+
+def warm_startup_diagnostics(unit, namespace, private, *, sources=(), runner=subprocess.run):
     """Expose only fixed categories and kernel metadata, never command output."""
     def query(argv):
         try:
@@ -43,7 +135,9 @@ def warm_startup_diagnostics(unit, namespace, private, *, runner=subprocess.run)
                      'stop', 'stop-sigterm', 'stop-sigkill', 'auto-restart'},
         'Result': {'success', 'exit-code', 'signal', 'core-dump', 'watchdog', 'timeout',
                    'protocol', 'resources', 'oom-kill', 'exec-condition', 'start-limit-hit'},
-        'ExecMainCode': None, 'ExecMainStatus': None,
+        'UnitFileState': {'enabled', 'disabled', 'static', 'masked', 'alias', 'indirect', 'not-found',
+                          'generated', 'transient', 'enabled-runtime', 'masked-runtime'},
+        'ExecMainCode': None, 'ExecMainStatus': None, 'MainPID': None,
     }
     text = query(['systemctl', 'show', unit, '--property=' + ','.join(allowed)])
     properties = {key: 'unavailable' for key in allowed}
@@ -54,7 +148,8 @@ def warm_startup_diagnostics(unit, namespace, private, *, runner=subprocess.run)
         value = values[0]
         if choices is not None and value in choices:
             properties[key] = value
-        elif choices is None and value.isascii() and value.isdecimal() and len(value) <= 3 and int(value) <= 255:
+        elif (choices is None and value.isascii() and value.isdecimal() and len(value) <= 10
+              and int(value) <= (2**31 - 1 if key == 'MainPID' else 255)):
             properties[key] = int(value)
     values = query(['ip', 'netns', 'exec', namespace, 'sysctl', '-n',
                     'net.ipv6.conf.all.disable_ipv6', 'net.ipv6.conf.default.disable_ipv6']).split()
@@ -73,12 +168,21 @@ def warm_startup_diagnostics(unit, namespace, private, *, runner=subprocess.run)
         'uapi_unavailable': ('Unable to access interface',),
     }
     parents = {}
-    for label, path in {
+    paths = {
         'usr': Path('/usr'), 'usr_local': Path('/usr/local'), 'usr_local_bin': Path('/usr/local/bin'),
         'usr_bin': Path('/usr/bin'), 'etc': Path('/etc'), 'systemd': Path('/etc/systemd'),
         'systemd_system': Path('/etc/systemd/system'), 'var': Path('/var'), 'var_lib': Path('/var/lib'),
-        'ripdpi': Path('/var/lib/ripdpi'), 'private': private,
-    }.items():
+        'ripdpi': Path('/var/lib/ripdpi'), 'private': private, 'opt': Path('/opt'),
+        'awg_acquisitions': Path('/opt/amneziawg'), 'awg_releases': Path('/opt/amneziawg/releases'),
+        'local_libexec': Path('/usr/local/libexec'), 'consumer_helpers': Path('/usr/local/libexec/ripdpi-consumer'),
+    }
+    labels = {'/usr/local/bin/amneziawg-go': 'go', '/usr/bin/awg': 'tools', '/usr/bin/awg-quick': 'quick'}
+    for candidate in sources:
+        if candidate.get('path') in labels and isinstance(candidate.get('source'), str):
+            label = labels[candidate['path']]
+            paths['source_' + label] = Path(candidate['source'])
+            paths['source_' + label + '_parent'] = Path(candidate['source']).parent
+    for label, path in paths.items():
         try:
             info = path.lstat()
             parents[label] = {'uid': info.st_uid, 'gid': info.st_gid, 'mode': format(stat.S_IMODE(info.st_mode), '04o'),
@@ -118,7 +222,7 @@ def test_warm_binary_and_unit_adoption_then_unchanged_convergence(tmp_path):
         config = private / (interface + '.conf')
         config_bytes = render_native_awg_config(effective).encode()
         publisher = ownership.enter_context(complete_publisher(private))
-        publisher.acquire(go, tools, quick)
+        acquired = publisher.acquire(go, tools, quick)
         command(['ip', 'netns', 'add', token])
         namespace_owned = True
         command(['ip', '-n', token, 'link', 'set', 'lo', 'up'])
@@ -138,7 +242,12 @@ def test_warm_binary_and_unit_adoption_then_unchanged_convergence(tmp_path):
 
         initial = publisher.role([effective])
         if initial.returncode != 0:
-            evidence = warm_startup_diagnostics(unit.name, token, private)
+            evidence = warm_startup_diagnostics(unit.name, token, private, sources=acquired)
+            values = {'amneziawg_config_dir': str(private)}
+            shared = render_template(ROLE / 'templates/awg-quick@.service.j2', values)
+            request = publisher.request(acquired, {interface: config_bytes.decode()}, shared)
+            evidence['readonly'] = readonly_consumer_diagnostics(request, publisher.helper.parent)
+            evidence['last_known_task'] = last_known_role_task(initial.stdout)
             pytest.fail('native warm AWG initial role convergence failed: ' + json.dumps(evidence, sort_keys=True))
         if key in initial.stdout + initial.stderr:
             pytest.fail('native warm AWG initial role exposed its fixture key')

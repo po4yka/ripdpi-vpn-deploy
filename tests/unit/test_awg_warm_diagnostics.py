@@ -3,11 +3,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shutil
 import subprocess
 
 import pytest
 
-from test_topology_awg_warm_native import warm_startup_diagnostics
+from test_topology_awg_warm_native import (
+    HELPER_FILES, ROOT, last_known_role_task, literal_refusal_codes,
+    readonly_consumer_diagnostics, warm_startup_diagnostics,
+)
 
 PRIVATE = 'fixture-private-value-never-render'
 
@@ -98,3 +102,69 @@ def test_ipv6_accepts_only_exact_two_boolean_numbers(tmp_path, ipv6):
     observed = evidence(tmp_path, runner=runner_for(ipv6=ipv6))
     assert observed['ipv6'] == {'all_disabled': 'unavailable', 'default_disabled': 'unavailable'}
     assert PRIVATE not in json.dumps(observed)
+
+
+def install_helpers(directory):
+    directory.mkdir()
+    sources = ('amneziawg/files/consumer.py', 'runtime-release/files/transport_runtime_transaction.py',
+               'firewall/files/firewall_consumer.py', 'runtime-release/files/runtime_build_receipt.py')
+    for source, target in zip(sources, HELPER_FILES):
+        shutil.copyfile(ROOT / 'ansible/roles' / source, directory / target)
+    return directory
+
+
+def test_only_literal_known_task_names_can_enter_diagnostics():
+    known = 'Accept complete AmneziaWG runtime and firewall together'
+    text = f'TASK [amneziawg : {known}] ***\nTASK [amneziawg : {PRIVATE}] ***\n{PRIVATE}'
+    assert last_known_role_task(text) == known
+    assert last_known_role_task(PRIVATE) == 'unavailable'
+
+
+@pytest.mark.parametrize('output', [PRIVATE, json.dumps({
+    'transaction_validate': PRIVATE, 'adapter_validate': 'refusal:' + PRIVATE,
+    'adapter_inspect': {'private': PRIVATE}}), json.dumps({'unexpected': PRIVATE})])
+def test_child_output_is_filtered_against_actual_literal_categories(tmp_path, output):
+    helpers = install_helpers(tmp_path / 'helpers')
+    assert 'unsafe-parent' in literal_refusal_codes(helpers)
+    def run(argv, **kwargs):
+        assert argv[1:3] == ['-B', '-Es']
+        return subprocess.CompletedProcess(argv, 0, output, PRIVATE)
+    observed = readonly_consumer_diagnostics({'candidates': []}, helpers, runner=run)
+    assert PRIVATE not in json.dumps(observed)
+    assert set(observed.values()) == {'unavailable'}
+
+
+def test_actual_readonly_transaction_child_censors_faults_without_writes(private_authority_path):
+    helpers = install_helpers(private_authority_path / 'helpers')
+    state = private_authority_path / 'absent-runtime'
+    # Fault-only adapter canaries test disclosure boundaries. The transaction
+    # class and its check-mode admission remain the actual copied production code.
+    (helpers / 'amneziawg_consumer.py').write_text(
+        'from pathlib import Path\nfrom transport_runtime_transaction import Transaction, Refusal\n'
+        f'STATE = Path({str(state)!r})\n'
+        'class Adapter:\n'
+        '    def __init__(self, *args): pass\n'
+        '    def validate(self): raise Refusal("fixture-" + "private-value-never-render")\n'
+        f'    def inspect(self): raise OSError({PRIVATE!r})\n')
+    before = {path.name: (path.stat().st_ino, path.stat().st_mode, path.read_bytes()) for path in helpers.iterdir()}
+    observed = readonly_consumer_diagnostics({'candidates': []}, helpers)
+    assert observed == {'transaction_validate': 'refusal:candidate-invalid',
+                        'adapter_validate': 'Refusal', 'adapter_inspect': 'OSError'}
+    assert PRIVATE not in json.dumps(observed)
+    assert not state.exists()
+    assert {path.name: (path.stat().st_ino, path.stat().st_mode, path.read_bytes()) for path in helpers.iterdir()} == before
+
+
+def test_source_metadata_and_additional_unit_properties_are_bounded(tmp_path):
+    source = tmp_path / 'private-source'
+    source.write_text(PRIVATE)
+    acquired = [{'path': '/usr/local/bin/amneziawg-go', 'source': str(source)}]
+    observed = warm_startup_diagnostics('fixture.service', 'fixture', tmp_path, sources=acquired,
+        runner=runner_for(f'UnitFileState={PRIVATE}\nMainPID=2147483648\n'))
+    assert observed['unit']['UnitFileState'] == 'unavailable'
+    assert observed['unit']['MainPID'] == 'unavailable'
+    assert observed['parents']['source_go']['isdir'] is False
+    assert observed['parents']['source_go_parent']['isdir'] is True
+    assert {'opt', 'awg_acquisitions', 'awg_releases', 'local_libexec', 'consumer_helpers'} <= set(observed['parents'])
+    assert PRIVATE not in json.dumps(observed)
+    assert str(source) not in json.dumps(observed)
