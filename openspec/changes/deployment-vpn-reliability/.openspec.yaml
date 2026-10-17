@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-10-17
+goal: OPS-1792263187492070 Restore deployment and VPN rollback reliability
