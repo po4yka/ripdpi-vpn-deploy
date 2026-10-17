@@ -1,0 +1,11 @@
+{
+  "change": "topology-authenticated-probes",
+  "evidence_summary": "Runtime df5c40554cb171f2b0acc6b275a65579a05d7806 passed full make check, all 89 CI jobs, eight authenticated topology cases and real hopping/warm adoption; AWG prerequisite committed done at 0e6bd844, two canonical arm64 matrices and consumer CI passed, clean federation validated 189 tasks.",
+  "execution_sha256": "bf88fc7db21e17a5a5bfd41a980a1118457db9984698a7fd85d7dfca77997c53",
+  "issue_sha256": "dd78cc79e9c722a420c078ef7f807f48b6105036d29f395bc2136000c86b4835",
+  "outcome": "done",
+  "prepared_at": "2026-10-16T20:14:37Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "MON-1791618056169855"
+}

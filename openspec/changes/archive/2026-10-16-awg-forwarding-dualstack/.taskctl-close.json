@@ -1,0 +1,11 @@
+{
+  "change": "awg-forwarding-dualstack",
+  "evidence_summary": "Deployment df5c40554cb171f2b0acc6b275a65579a05d7806 passed full make check and all 89 CI jobs; six Linux native AWG cases and consumer 974cf06ab8d05e3b4275d0e98429a0d0de2bf598 passed two canonical arm64 matrices, hosted CI and 189-task federation.",
+  "execution_sha256": "b27c4216c699b09594eb614d7f1c9270b47a1d98b53716ea051e503657c19abc",
+  "issue_sha256": "4a0c5f191800c4753fb2ad283c4422e9f0e5c75c5f61c46ff5f9f15ef640c942",
+  "outcome": "done",
+  "prepared_at": "2026-10-16T19:58:22Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "ANS-1791618048083304"
+}
