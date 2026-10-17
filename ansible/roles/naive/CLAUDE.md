@@ -71,6 +71,13 @@ forward-proxy handler and retains the decoy, without an unauthenticated fallback
   private log files as historical authority without writing new request records.
   Native tests require a failed CONNECT and a real HTTP/2 stream reset to leave
   no request or destination metadata in retained logs.
+  The pinned forwardproxy uses CONNECT Fast Open: it sends 200 before dialing,
+  so a wire status alone cannot prove forwarding or classify a failed CONNECT.
+  Native privacy tests first witness a real 502 handler error through a private
+  temporary control logger, restore exact role logging, and repeat the request.
+  The control contains synthetic metadata only and is removed before acceptance.
+  Caddy's separate operator reload API can log its loopback POST `/load`; native
+  checks allow only that exact admin record and reject customer request fields.
 - **Authentication is HTTP Basic over TLS** — credentials come from SOPS and
   render as native JSON byte-slice credentials into `caddy.json`, owned `0640`
   root:naive. There is no env-delivery path; the render is `no_log` with diff

@@ -29,6 +29,103 @@ ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.native_runtime
 
 
+def _assert_proxy_logs_private(retained, private_values):
+    for private in private_values:
+        assert private not in retained, "CONNECT metadata reached a retained Naive log"
+    for line in retained.splitlines():
+        record = json.loads(line)
+        assert "request" not in record, "customer request fields reached a Naive log"
+        assert not record.get("logger", "").startswith("http.log.error")
+        if "remote_ip" in record:
+            # Caddy's own local reload API logs its POST independently of the
+            # customer HTTP server. No other request metadata gets this exception.
+            assert (
+                record.get("logger") == "admin.api"
+                and record.get("method") == "POST"
+                and record.get("uri") == "/load"
+                and record["remote_ip"] in ("127.0.0.1", "::1")
+            ), "customer remote address reached a Naive log"
+
+
+def _assert_failed_connect_privacy(binary, config, context, port, auth, marker):
+    """Witness the Fast Open handler error, then repeat with exact role logging."""
+    canonical = config.read_text()
+    document = json.loads(canonical)
+    control = config.with_name("connect-error-control-" + uuid.uuid4().hex + ".log")
+    descriptor = os.open(control, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    os.close(descriptor)
+    # A double dot fails Go's domain-name validation locally. No external DNS
+    # service or routable upstream is needed for this real Bad Gateway error.
+    target = "bad..invalid:443"
+
+    def reload_config():
+        result = subprocess.run(
+            [str(binary), "reload", "--config", str(config)],
+            capture_output=True,
+            timeout=10,
+        )
+        assert result.returncode == 0, "exact Caddy must adopt the logging fixture"
+
+    def failed_connect():
+        with context.wrap_socket(
+            socket.create_connection(("127.0.0.1", port), 3),
+            server_hostname="localhost",
+        ) as failed:
+            failed.settimeout(3)
+            failed.sendall(
+                f"CONNECT {target} HTTP/1.1\r\nHost: {target}\r\nProxy-Authorization: Basic {auth}\r\nUser-Agent: {marker}\r\nConnection: close\r\n\r\n".encode()
+            )
+            response = b""
+            while block := failed.recv(4096):
+                response += block
+        headers, separator, body = response.partition(b"\r\n\r\n")
+        assert separator, "failed CONNECT did not finish its HTTP response"
+        # The pinned fork sends 200 before dialing (CONNECT Fast Open). A 200
+        # acknowledges the request; the independent control proves the 502 error.
+        assert int(headers.split(b"\r\n", 1)[0].split()[1]) == 200
+        assert b"Padding:" in headers, "the real forward proxy did not handle CONNECT"
+        assert body in (b"", b"0\r\n\r\n"), "failed CONNECT returned tunnel data"
+
+    try:
+        document["logging"]["logs"]["connect_error_control"] = {
+            "writer": {"output": "file", "filename": str(control)},
+            "level": "ERROR",
+            "include": ["http.log.error"],
+        }
+        config.write_text(json.dumps(document))
+        reload_config()
+        failed_connect()
+        deadline = time.monotonic() + 2
+        while True:
+            records = [json.loads(row) for row in control.read_text().splitlines()]
+            witnesses = [
+                record
+                for record in records
+                if record.get("status") == 502
+                and record.get("request", {}).get("method") == "CONNECT"
+                and record.get("request", {}).get("host") == target
+                and marker in json.dumps(record)
+            ]
+            if witnesses:
+                break
+            assert (
+                time.monotonic() < deadline
+            ), "control must witness a real 502 CONNECT error with request metadata"
+            time.sleep(0.02)
+    finally:
+        try:
+            config.write_text(canonical)
+            reload_config()
+        finally:
+            control.unlink(missing_ok=True)
+    assert config.read_text() == canonical and not control.exists()
+    failed_connect()
+    retained = Path(
+        document["logging"]["logs"]["default"]["writer"]["filename"]
+    ).read_text()
+    _assert_proxy_logs_private(retained, (marker, target))
+
+
 def test_exact_naive_composite_accepts_tcp_and_disables_http3(tmp_path):
     assert sys.platform == "linux", "requires exact Linux composite binary"
     binary = Path(
@@ -306,25 +403,8 @@ def test_exact_naive_composite_accepts_tcp_and_disables_http3(tmp_path):
         clients = list(values["naive_secrets"]["clients"])
         connect(clients[1], True)
 
-        # A refused upstream creates a real 5xx handler error. Its request has
-        # unique metadata so the test detects both message and structured leaks.
         marker = "native-private-connect-marker"
-        with socket.socket() as refused_upstream:
-            refused_upstream.bind(("203.0.113.9", 0))
-            refused_target = f"203.0.113.9:{refused_upstream.getsockname()[1]}"
-            with context.wrap_socket(
-                socket.create_connection(("127.0.0.1", port), 3),
-                server_hostname="localhost",
-            ) as failed:
-                failed.settimeout(3)
-                failed.sendall(
-                    f"CONNECT {refused_target} HTTP/1.1\r\nHost: {refused_target}\r\nProxy-Authorization: Basic {auth}\r\nUser-Agent: {marker}\r\nConnection: close\r\n\r\n".encode()
-                )
-                response = failed.recv(4096)
-                status = int(response.split(b"\r\n", 1)[0].split()[1])
-                assert (
-                    500 <= status < 600
-                ), "fixture must execute the real CONNECT error path"
+        _assert_failed_connect_privacy(binary, config, context, port, auth, marker)
 
         # Minimal standards-compliant HTTP/2 frames avoid a separate client
         # dependency. Literal HPACK fields use no dynamic table or Huffman data.
@@ -446,16 +526,9 @@ def test_exact_naive_composite_accepts_tcp_and_disables_http3(tmp_path):
         for name in ("access.log", "site-error.log")
         if (tmp_path / name).exists()
     )
-    for private in (
-        marker,
-        refused_target,
-        target,
-        "203.0.113.9",
-        '"request":',
-        '"remote_ip":',
-        "http.log.error",
-    ):
-        assert private not in retained, "CONNECT metadata reached a retained Naive log"
+    _assert_proxy_logs_private(
+        retained, (marker, "bad..invalid:443", target, "203.0.113.9")
+    )
 
 
 def test_naive_unacknowledged_revocation_is_adopted_by_actual_unit():

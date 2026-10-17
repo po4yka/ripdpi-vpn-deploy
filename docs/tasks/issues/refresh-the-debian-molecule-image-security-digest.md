@@ -2,7 +2,7 @@
 id: CIC-1792268380780556
 title: Refresh the Debian Molecule image security digest
 kind: bug
-status: doing
+status: review
 area: ci
 priority: high
 risk: standard
@@ -15,6 +15,7 @@ created: 2026-10-18
 updated: 2026-10-18
 spec_reason: dependency-only
 related_tasks: [XRY-1792265213021342]
+status_detail: Both unchanged Trivy scans, cloud-init schema and all affected Molecule jobs passed at e2aa874c25b149575bfa520f5b2d48f54cfde002 in run 39067975140. The unrelated Naive native fixture failure keeps the parent PR draft.
 ---
 
 ## Goal
