@@ -185,3 +185,34 @@ def test_native_mtg_failure_context_keeps_first_failure_before_always_cleanup():
     assert module.failure_context(result) == ('rc=2; task=runtime-release-task-14; '
                                              'categories=unsafe-staged-candidate')
     assert 'ABC123' not in module.failure_context(result)
+
+
+def test_native_mtg_public_link_uses_the_real_shared_directory_contract(tmp_path):
+    import importlib.util
+    import os
+    modules = []
+    for name, path in (
+        ('mtg_native_public_parent', ROOT / 'tests/native/mtg_compatibility.py'),
+        ('mtg_real_runtime_activator', ROOT / 'ansible/roles/runtime-release/files/runtime_release_activate.py'),
+    ):
+        spec = importlib.util.spec_from_file_location(name, path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        modules.append(module)
+    native, activator = modules
+    private = tmp_path.resolve()
+    private.chmod(0o700)
+    original = activator._open_directory(private)
+    try:
+        with pytest.raises(activator.UnsafeState, match='unsafe-public-link-parent-directory'):
+            activator._require_directory_contract(original, os.geteuid(), os.getegid(), 'public-link-parent')
+    finally:
+        original.close()
+    public = native.create_runtime_public_link(private)
+    admitted = activator._open_directory(public.parent)
+    try:
+        activator._require_directory_contract(admitted, os.geteuid(), os.getegid(), 'public-link-parent')
+    finally:
+        admitted.close()
+    assert private.stat().st_mode & 0o777 == 0o700
+    assert public.parent.stat().st_mode & 0o777 == 0o755

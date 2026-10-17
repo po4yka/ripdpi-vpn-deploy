@@ -59,6 +59,7 @@ def failure_context(result):
     diagnostic = result.stdout + result.stderr
     for marker, category in (
         ('unsafe-storage-ancestor', 'unsafe-storage-ancestor'),
+        ('unsafe-public-link-parent-directory', 'unsafe-public-link-parent-directory'),
         ('a password is required', 'become-password-required'),
         ('Missing sudo password', 'become-password-required'),
         ('Permission denied', 'permission-refused'),
@@ -107,11 +108,19 @@ def parser_checks(directory, binary):
     command([sys.executable, str(VALIDATOR), '--binary', str(binary), '--version', 'v0.0.1', '--config', str(candidate)], success=False)
 
 
+def create_runtime_public_link(directory):
+    """Keep private input ancestry while meeting the public-parent contract."""
+    parent = directory / 'bin'
+    parent.mkdir(mode=0o755)
+    parent.chmod(0o755)
+    return parent / 'mtg'
+
+
 def publication_checks(directory, archive, arch, member):
     if platform.system() != 'Linux' or os.geteuid() != 0:
         raise RuntimeError('full-native-publication-requires-root-Linux')
     install = directory / 'runtime'
-    public = directory / 'public-mtg'
+    public = create_runtime_public_link(directory)
     upstream_version = 'v' + VERSION
     local_version = upstream_version + '+archive.1'
     legacy = install / 'releases' / upstream_version
