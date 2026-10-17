@@ -30,7 +30,7 @@ INVALID_PATHS = [
 
 def inputs(path="/sync", port=8443, origin=None):
     document = {
-        "xray": {"clients": [{"name": "device"}], "xhttp_path": path},
+        "xray": {"clients": [{"name": "device", "short_id": "aabb"}], "xhttp_path": path},
         "nginx_xhttp": {"server_name": "edge.example.test"},
     }
     context = {

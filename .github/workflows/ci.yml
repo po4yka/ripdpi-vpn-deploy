@@ -552,6 +552,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-disposable-ci
+      - name: Verify the real mtg release and FakeTLS configuration
+        run: sudo env "PATH=$PATH" make test-mtg-native-compatibility
       - name: Install checksum-verified Alertmanager and amtool
         env:
           ALERTMANAGER_SHA256: 5ac7ab5e4b8ee5ce4d8fb0988f9cb275efcc3f181b4b408179fafee121693311
@@ -577,8 +579,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 openssh-server e2fsprogs util-linux mount nginx iproute2 openssl wireguard-tools unbound lynis prometheus-node-exporter tcpdump tshark
-      - name: Verify the real mtg release and FakeTLS configuration
-        run: sudo env "PATH=$PATH" make test-mtg-native-compatibility
       - name: Exercise ECH recipients, privacy and resource profiles
         run: |
           sudo env "PATH=$PATH" TRANSPORT_NATIVE_ISOLATED=1 PYTEST_ADDOPTS=--tb=short \
