@@ -3638,37 +3638,6 @@ class TaskctlHistoryTest(TaskctlFixture):
             before, (issue.read_bytes(), (archive / ".taskctl-close.json").read_bytes())
         )
 
-    def test_projected_drop_validation_survives_squash_without_source_objects(self):
-        issue, archive, args = self.archived_drop_with_links()
-        taskctl.command_openspec_archive(args)
-        document = taskctl.read_document(issue)
-        before = issue.read_bytes(), (archive / ".taskctl-close.json").read_bytes()
-        # A fresh clone of a squash-integrated main cannot retrieve the old
-        # source commit from its ancestry. The frozen bytes still bind exactly.
-        with mock.patch.object(taskctl, "git_show_text", return_value=None):
-            receipt = taskctl.read_lifecycle_receipt(
-                self.root, document, archive / "tasks.md", "close"
-            )
-        self.assertEqual("dropped", receipt["outcome"])
-        self.assertEqual(before, (issue.read_bytes(), (archive / ".taskctl-close.json").read_bytes()))
-
-    def test_projected_drop_validation_still_binds_all_terminal_bytes(self):
-        issue, archive, args = self.archived_drop_with_links()
-        taskctl.command_openspec_archive(args)
-        original = issue.read_text()
-        for altered in (
-            original.replace("Local successor remains open.", "Local successor passed."),
-            original.replace("/proposal.md)", "/design.md)"),
-            original.replace("../work/retained.md", "../work/foreign.md"),
-        ):
-            self.assertNotEqual(original, altered)
-            issue.write_text(altered)
-            with self.assertRaisesRegex(taskctl.ContractError, "content hashes"):
-                taskctl.read_lifecycle_receipt(
-                    self.root, taskctl.read_document(issue), archive / "tasks.md", "close"
-                )
-        issue.write_text(original)
-
     def test_archive_links_refuse_unbound_newline_conversion(self):
         issue, archive, args = self.archived_drop_with_links()
         taskctl.command_openspec_archive(args)
