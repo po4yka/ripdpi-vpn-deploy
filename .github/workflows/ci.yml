@@ -731,7 +731,7 @@ jobs:
             --env AWG_NATIVE_TOOLS_SOURCE=/opt/rta/.cache/four-transport-sources/baseline/tools \
             --env ANSIBLE_COLLECTIONS_PATH=/opt/rta/.ansible/collections \
             --env "PATH=$NATIVE_PYTHON/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-            four-transport-native make transport-native-acceptance
+            four-transport-native make test-four-transport-native
       - name: Retain only redacted case and cleanup evidence
         if: always()
         run: |
