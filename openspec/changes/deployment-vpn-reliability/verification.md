@@ -281,3 +281,22 @@ Seventeen portable diagnostics/render tests passed, including actual check-mode
 transaction refusal with an absent state and unchanged helper files. Native
 collection passed one case. This diagnostic evidence does not claim native
 acceptance; the complete exact-source hosted gates remain required.
+
+## Immutable acquisition ancestry
+
+Run 39077256692 at source 2730f4d695441fe4b81505beb05d5f6a7cb1d294
+identifies the exact remaining pre-publication category: transaction validation
+returns unsafe-parent, while candidate and unit adapter admission pass. The last
+known task is complete runtime publication. Fixed metadata confirms root-owned
+/opt, /opt/amneziawg and its releases parent have mode 0777. Source files and
+their immediate version directories have the required 0755 mode and one link.
+
+Disposable CI now admits only the two fixed leaves /usr/local/bin and /opt,
+through the existing no-follow descriptor guard, and sets each to 0755. The
+fresh-owned fixture explicitly creates and normalizes its acquisition root and
+releases directory before use. Existing roots still refuse without mutation.
+Actual helper executions with umask 0000 and 0777 confirm safe owned modes;
+a second fixed-leaf symlink refuses without modifying its target. The focused
+bundle passed 31 tests; the complete CI source-contract bundle passed 55.
+Actionlint, Zizmor, YAML lint, AST and diff checks passed. Nine native cases
+collect. Production guards remain unchanged; hosted runtime remains required.

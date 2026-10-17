@@ -14,7 +14,7 @@
 
 ## Design decisions
 
-Disposable CI admits the fixed root-owned executable directory through no-follow directory descriptors before it installs clients. Only the leaf mode changes to 0755; unsafe ancestors, symlinks and foreign ownership refuse. Executable regressions run the exact inline admission code in an owned temporary tree, with only its path and expected UID changed, and preserve existing child bytes and inodes.
+Disposable CI admits the fixed root-owned executable and acquisition directories through no-follow directory descriptors before it installs clients. Only the `/usr/local/bin` and `/opt` leaf modes change to 0755; unsafe ancestors, symlinks and foreign ownership refuse. Executable regressions run the exact inline admission code in an owned temporary tree, with only its paths and expected UID changed, and preserve existing child bytes and inodes. The complete AWG native fixture creates its fresh claimed acquisition root and release directory with explicit 0755 modes; actual umask 0000 and 0777 regressions prevent unsafe default intermediate permissions, without changing existing authority.
 
 Warm AWG startup failure evidence reports only fixed unit-state values, bounded numeric status and parent/source metadata, fixed journal categories and literal known role task names. A separate process loads unchanged installed helpers without bytecode writes and probes transaction check-mode validation plus adapter validation/inspection; it never applies or recovers. Refusal text is admitted only when it equals a literal categorical code in those helpers. Unknown values, exception messages and raw journal text never enter test output. The early CI warm case does not replace the complete native runtime suite.
 

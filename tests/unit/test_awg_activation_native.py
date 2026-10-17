@@ -101,6 +101,15 @@ class CompletePublisher:
                               capture_output=True, text=True, timeout=90)
 
 
+def prepare_native_acquisition(root):
+    """Create only fresh claimed directories with modes independent of umask."""
+    root.mkdir(mode=0o755)
+    root.chmod(0o755)
+    releases = root / 'releases'
+    releases.mkdir(mode=0o755)
+    releases.chmod(0o755)
+
+
 @contextmanager
 def complete_publisher(directory, environment=None):
     """Claim only absent fixed paths in the isolated native host; retire all of them."""
@@ -120,6 +129,7 @@ def complete_publisher(directory, environment=None):
     try:
         roots[0].mkdir(parents=True, mode=0o755)
         roots[1].mkdir(parents=True, mode=0o700)
+        prepare_native_acquisition(roots[3])
         for source, name in (
             ('amneziawg/files/consumer.py', 'amneziawg_consumer.py'),
             ('firewall/files/firewall_consumer.py', 'firewall_consumer.py'),
