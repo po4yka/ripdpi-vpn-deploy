@@ -62,7 +62,7 @@ target client binary is recent enough. The server bundle does not
 ship clients, but the QUICKSTART and SUBSCRIPTION-PLANE docs should
 point operators at the minimum versions.
 
-## NaiveProxy v147 preamble injection (clients should run >= v147)
+## NaiveProxy v147 preamble injection (use >= v147 for preamble cover)
 
 NaiveProxy v147.0.7727.49-3 (released 2026-05) and the follow-on
 v148.0.7778.96-2 (2026-05-02) inject realistic Chrome HTTP/2 preambles
@@ -71,8 +71,12 @@ derived from the fronting Caddy site's root page. The server-side
 Chrome browser would trigger (`encode zstd gzip`, ERROR-only access
 log) so the preambles look organic.
 
-Operationally: the feature is on by default in v147+. Older clients
-still work but lose the preamble cover.
+The feature is on by default in v147+. Clients without this feature lack
+the preamble cover. The preamble change alone does not establish either
+compatibility or incompatibility with the pinned Caddy/forwardproxy build.
+Qualify the exact client and server build in staging with authenticated
+traffic before distribution; retain TLS verification and the previous
+working client/server pair for rollback.
 
 ## VLESS desktop client VPS-IP exposure (2026)
 

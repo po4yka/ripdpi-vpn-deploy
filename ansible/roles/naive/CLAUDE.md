@@ -17,8 +17,8 @@ forces synchronous restart and a verified local TLS handshake before success,
 even if publication was interrupted and its bytes are now unchanged.
 
 **Optional, off by default** — `vpn.enable_naive: false`. NaiveProxy is a
-useful tactical option for HTTP/2 + Chromium TLS fingerprint, but its v147
-preamble change (see `docs/CLIENT-NOTES.md`) burned an upgrade cycle.
+useful tactical option for HTTP/2 + Chromium TLS fingerprint. Client
+preamble behavior and compatibility checks are in `docs/CLIENT-NOTES.md`.
 
 **Mutually exclusive with nginx-xhttp** — both want 443/tcp; the global
 listener manifest guard rejects the pair before any role runs. The role
@@ -61,8 +61,9 @@ forward-proxy handler and retains the decoy, without an unauthenticated fallback
   bytes and refusing symlinks, hardlinks, unsafe ancestry and foreign owners.
   Existing root-owned safe logs from validation are migrated without truncation.
 
-- **v147 preamble change is breaking** — clients on < v147 cannot connect to
-  server on ≥ v147. Coordinate upgrades; staging environment exists for this.
+- **Qualify the exact client/server pair** — v147 changes client preamble
+  cover; it does not establish a universal server compatibility cutoff.
+  Follow the staging and rollback checks in `docs/CLIENT-NOTES.md`.
 - **Authentication is HTTP Basic over TLS** — credentials come from SOPS and
   render as native JSON byte-slice credentials into `caddy.json`, owned `0640`
   root:naive. There is no env-delivery path; the render is `no_log` with diff
