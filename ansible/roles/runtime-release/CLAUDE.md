@@ -2,6 +2,12 @@
 
 ## Design decisions
 
+Authenticated REALITY acceptance clients copy the candidate's typed
+`streamSettings.finalmask` unchanged. A server with an active TCP mask must be
+tested through the same mask; `sockopt.finalmask` is not a supported substitute.
+Probe generation keeps its own copy so client preparation cannot alter the
+candidate configuration.
+
 ECH candidate admission selects the exact `LoadCredential=hysteria-ech:` source from the staged unit, including custom configuration directories. Missing, ambiguous, relative or unselected credential authority refuses before native execution.
 
 Hysteria ECH keys are complete consumer authority. Candidate leases allow only the exact additional ech.key file and relocate LoadCredential into their own unique unit. Receipt, interrupted cleanup, retirement and rollback retain the same key/config/unit generation. Native probes consume public configuration derived from the selected private key and never enable insecure TLS.

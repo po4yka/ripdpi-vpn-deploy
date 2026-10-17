@@ -70,3 +70,11 @@ already published digest that passes the existing scan. This refresh changes no
 runtime image, deployment or scan policy. Native migration failures must expose
 only static task labels and categorical refusals; captured tool output remains
 private. Exact-head CI remains required before merge.
+
+## Authenticated Finalmask acceptance
+
+The runtime-release probe must copy typed streamSettings.finalmask from the
+accepted inbound into its generated Xray client. Copy it independently so probe
+generation cannot change the source candidate. Real Vision and Mux.Cool cases
+must pass traffic with this generated client and refuse a valid identity when
+the required mask is absent. The legacy sockopt location is not a fallback.

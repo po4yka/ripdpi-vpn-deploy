@@ -30,9 +30,31 @@ SHA256 = {
 VALIDATOR = ROOT / 'ansible/roles/probe-matrix-target/files/validate_mtg.py'
 
 
+def static_task_labels():
+    """Bind repository-owned literal task names to payload-free identifiers."""
+    source = ROOT / 'ansible/roles/runtime-release/tasks/main.yml'
+    labels = {}
+    def visit(rows):
+        for row in rows:
+            name = row.get('name')
+            if isinstance(name, str) and '{{' not in name and '{%' not in name:
+                labels['runtime-release : ' + name] = f'runtime-release-task-{len(labels) + 1}'
+            for key in ('block', 'rescue', 'always'):
+                visit(row.get(key, []))
+    visit(yaml.safe_load(source.read_text()))
+    return labels
+
+
 def failure_context(result):
     """Expose static task labels and refusal categories, never tool payloads."""
-    tasks = re.findall(r"(?m)^TASK \[([A-Za-z0-9 :_-]{1,160})\] \*+$", result.stdout)
+    tasks = list(re.finditer(r"(?m)^TASK \[(.{1,512})\] \*+$", result.stdout))
+    labels = static_task_labels()
+    failed = []
+    for index, task in enumerate(tasks):
+        end = tasks[index + 1].start() if index + 1 < len(tasks) else len(result.stdout)
+        body = result.stdout[task.end():end]
+        if re.search(r"(?m)^(?:fatal:|failed:|\[ERROR\])", body):
+            failed.append(labels.get(task.group(1), 'unknown-task'))
     categories = []
     diagnostic = result.stdout + result.stderr
     for marker, category in (
@@ -47,7 +69,13 @@ def failure_context(result):
     ):
         if marker in diagnostic and category not in categories:
             categories.append(category)
-    label = tasks[-1] if tasks else 'no-task-label'
+    # Keep the first causal failure even when an always cleanup task runs last.
+    label = failed[0] if failed else labels.get(tasks[-1].group(1), 'unknown-task') if tasks else 'no-task-label'
+    helper = ROOT / 'ansible/roles/runtime-release/files/runtime_release_activate.py'
+    allowed = set(re.findall(r'UnsafeState\("([a-z][a-z0-9-]+)"', helper.read_text()))
+    for category in sorted(allowed):
+        if category in diagnostic and category not in categories:
+            categories.append(category)
     return f"rc={result.returncode}; task={label}; categories={','.join(categories) or 'uncategorized'}"
 
 

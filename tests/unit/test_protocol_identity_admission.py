@@ -154,5 +154,34 @@ def test_native_mtg_failure_context_exposes_only_static_task_and_category(monkey
     with pytest.raises(RuntimeError) as raised:
         module.command(['ansible-playbook'])
     assert str(raised.value) == ('native-command-outcome-mismatch: rc=2; '
-        'task=runtime-release : Preflight runtime release activation layout; categories=unsafe-storage-ancestor')
+        'task=runtime-release-task-14; categories=unsafe-storage-ancestor')
     assert 'private' not in str(raised.value)
+
+
+def test_native_mtg_failure_context_refuses_dynamic_allowed_character_task_name():
+    import importlib.util
+    source = ROOT / 'tests/native/mtg_compatibility.py'
+    spec = importlib.util.spec_from_file_location('mtg_native_private_task', source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    result = subprocess.CompletedProcess(['ansible-playbook'], 2,
+        stdout='TASK [runtime-release : private-secret-ABC123] ********\n', stderr='')
+    assert module.failure_context(result) == 'rc=2; task=unknown-task; categories=uncategorized'
+    assert 'ABC123' not in module.failure_context(result)
+
+
+def test_native_mtg_failure_context_keeps_first_failure_before_always_cleanup():
+    import importlib.util
+    source = ROOT / 'tests/native/mtg_compatibility.py'
+    spec = importlib.util.spec_from_file_location('mtg_native_causal_task', source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    stdout = ('TASK [runtime-release : Preflight runtime release activation layout] ********\n'
+              '[ERROR]: synthetic-private-value unsafe-staged-candidate\n'
+              'fatal: [localhost]: FAILED! private-secret-ABC123\n'
+              'TASK [runtime-release : Clean trusted runtime release transaction] ********\n'
+              'skipping: [localhost]\n')
+    result = subprocess.CompletedProcess(['ansible-playbook'], 2, stdout=stdout, stderr='')
+    assert module.failure_context(result) == ('rc=2; task=runtime-release-task-14; '
+                                             'categories=unsafe-staged-candidate')
+    assert 'ABC123' not in module.failure_context(result)

@@ -113,6 +113,38 @@ def start_xray(stack, document, label):
     return document["inbounds"][0]["port"]
 
 
+@pytest.mark.parametrize("flow", ["vision", "mux"])
+def test_runtime_acceptance_probe_preserves_active_candidate_finalmask(flow):
+    require_runtime("xray", "Xray 26.3.27")
+    source = ROOT / "ansible/roles/runtime-release/files/transport_runtime_probe.py"
+    spec = importlib.util.spec_from_file_location("p0_real_runtime_probe", source)
+    probe = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(probe)
+    stack = fixture.NativeStack()
+    try:
+        stack.start()
+        stack.values["vpn"].update(xray_flow_mode=flow, xray_finalmask=True)
+        stack.start_frontend("p0")
+        server = json.loads((stack.library / "frontend.json").read_text())
+        documents = probe.xray_clients(server, 31180, "native-device")
+        assert len(documents) == 1
+        document = documents[0]
+        assert document["outbounds"][0]["streamSettings"]["finalmask"] == server["inbounds"][0]["streamSettings"]["finalmask"]
+        port = start_xray(stack, document, "runtime-acceptance-probe")
+        stack.run_driver(port)
+        unmasked = deepcopy(document)
+        unmasked["inbounds"][0]["port"] += 1
+        del unmasked["outbounds"][0]["streamSettings"]["finalmask"]
+        stack.run_driver(start_xray(stack, unmasked, "runtime-unmasked-probe"), True)
+        invalid = deepcopy(document)
+        invalid["inbounds"][0]["port"] += 2
+        invalid["outbounds"][0]["settings"]["vnext"][0]["users"][0]["id"] = str(uuid.uuid4())
+        stack.run_driver(start_xray(stack, invalid, "runtime-wrong-identity"), True)
+        stack.run_driver(port)
+    finally:
+        stack.close()
+
+
 @pytest.mark.parametrize("flow,masked", [("mux", False), ("vision", True), ("mux", True)])
 def test_native_smoke_shape_authentication_xudp_and_active_finalmask(flow, masked):
     require_runtime("xray", "Xray 26.3.27")

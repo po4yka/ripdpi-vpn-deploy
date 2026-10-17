@@ -10,7 +10,8 @@ supported paths with real pinned engines.
 - Client lane: scripts/client_payload.py, scripts/liveness_profiles.py,
   ansible/roles/xray/templates/config.json.j2, ansible/roles/xray/CLAUDE.md,
   related P0/export tests and a dedicated native compatibility test;
-  watchdog REALITY probe template, smoke-reality.yml and watchdog role notes.
+  watchdog REALITY probe template, smoke-reality.yml and watchdog role notes;
+  runtime-release authenticated probe generation, its role notes and regressions.
 - Identity/mtg lane: secrets/schema.json, scripts/validate-secrets.py,
   scripts/transport_semantics.py, new FakeTLS validator, probe-matrix-target role,
   related identity/mtg tests, docs/PQ-REALITY-ADOPTION.md and docs/XRAY-RELEASE-LINE.md.
