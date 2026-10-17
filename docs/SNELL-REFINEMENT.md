@@ -4,7 +4,8 @@ Snell is a RESEARCH-tier, staging-only transport candidate. It is disabled in ev
 
 ## Deployment boundary
 
-Enable `vpn.enable_snell` only on a non-production host that explicitly lists `snell` in `allow_research_roles`. Add TCP listeners 2443, 2444, and 2445 to that staging environment's typed `public_listeners` contract. The prerelease guard refuses `ENV=prod` while the role pins sing-box `v1.14.0-alpha.42`.
+Enable `vpn.enable_snell` only on a non-production host that explicitly lists `snell` in `allow_research_roles`. Add TCP listeners 2443, 2444, and 2445 to that staging environment's typed `public_listeners` contract. The research guard refuses `ENV=prod` for every engine pin. The role pins stable sing-box `v1.14.3`;
+Snell v6 protocol stability and field acceptance remain separate promotion gates.
 
 The optional same-node control endpoint requires nginx-xhttp and `snell.evaluation_enabled: true`. It serves fixed, uncompressed payload files under the secret `snell_secrets.evaluation_path_token`; access logging is disabled for that location.
 
@@ -18,4 +19,19 @@ The report contains only the technical vantage ID, profile tags, timing/completi
 
 `blocked` requires fewer than two of three exact-size completions while the direct controls before and after each attempt pass. `throttled` requires successful transfers whose median duration reaches three times the same-size direct control. Failed controls make the result `unknown`; local runtime or authentication failures are errors rather than blocking evidence.
 
-Promotion requires a stable upstream release, two technical vantages on three non-consecutive days, three independently rotated v6 PSKs, at least 95 percent exact completion through 32 KiB without the latency cliff, and evidence that Snell survives where an existing production transport is blocked or throttled. Promotion is a separate reviewed change that selects one variant and changes tier/selector policy; this evaluator never deploys, promotes, rotates, or edits routes.
+Promotion requires a stable Snell protocol release, two technical vantages on three non-consecutive days, three independently rotated v6 PSKs, at least 95 percent exact completion through 32 KiB without the latency cliff, and evidence that Snell survives where an existing production transport is blocked or throttled. Promotion is a separate reviewed change that selects one variant and changes tier/selector policy; this evaluator never deploys, promotes, rotates, or edits routes.
+
+## Local engine qualification
+
+The required native test uses the exact checksum-verified sing-box release with
+synthetic loopback credentials. It checks the three role-rendered server variants,
+authenticated byte transfer, refusal of a wrong userkey, and two application
+connections over fresh or reused encrypted transports. The test counts accepted
+outer TCP connections, so configuration text alone cannot prove reuse. Run
+`python3 -m pytest -q tests/unit/test_snell_native.py --fail-on-skip -o addopts=`.
+Its private pytest cache stores only public release artifacts. Set
+`SNELL_NATIVE_ARCHIVE` to a local release archive to avoid a download; checksum and
+version checks still apply. Required CI can set `SNELL_NATIVE_BINARY` to the exact
+release executable that its checksum-gated setup has already installed. The test
+checks its version and executes the same parser and wire cases. Molecule uses a synthetic service binary for lifecycle
+checks and does not establish protocol or field acceptance.

@@ -1,6 +1,6 @@
 ---
 snell:
-  version: "v1.14.0-alpha.42"
+  version: "v1.14.3"
   download_url: >-
     https://github.com/SagerNet/sing-box/releases/download/{{ snell.version
     }}/sing-box-{{ snell.version | regex_replace('^v', '')

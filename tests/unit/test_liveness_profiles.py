@@ -85,6 +85,17 @@ def test_four_profiles_are_materialized_with_only_named_client_material():
         assert private not in public
 
 
+@pytest.mark.parametrize("protocol", ["smux", "yamux", "h2mux"])
+def test_p0_sing_mux_refuses_before_private_profile_publication(protocol):
+    module = load()
+    args = inputs()
+    outbound = args["standard_doc"]["outbounds"][0]
+    outbound.pop("flow")
+    outbound["multiplex"] = {"enabled": True, "protocol": protocol, "max_streams": 8}
+    with pytest.raises(module.ProfileError, match="incompatible-reality-multiplex"):
+        module.build_profiles(**args)
+
+
 @pytest.mark.parametrize("servers", [[], ["127.0.0.1"], ["1.1.1.1", "1.1.1.1"], ["not-an-ip"]])
 def test_awg_profile_rejects_unsafe_dns(servers):
     args = inputs()

@@ -60,7 +60,7 @@ def test_probe_config_maps_every_cohort_to_a_distinct_socks_inbound():
     )
     assert "flow" not in config["outbounds"][1]["settings"]["vnext"][0]["users"][0]
     assert config["outbounds"][1]["mux"]["enabled"] is True
-    assert config["outbounds"][1]["streamSettings"]["sockopt"]["finalmask"] == "Sudoku"
+    assert config["outbounds"][1]["streamSettings"]["finalmask"] == {"tcp": [{"type": "sudoku", "settings": {}}]}
 
 
 def test_probe_config_refuses_an_unknown_p0_shape() -> None:

@@ -75,7 +75,7 @@
                   "publicKey": "{{ xray.reality_public_key }}",
                   "shortId": "{{ smoketest_client.short_id }}"
                 }{% if _smoke_shape.finalmask %},
-                "sockopt": {"finalmask": "Sudoku"}{% endif %}
+                "finalmask": {"tcp": [{"type": "sudoku", "settings": {}}]}{% endif %}
               }{% if _smoke_shape.client_mux %},
               "mux": {"enabled": true, "concurrency": 8}{% endif %}
             }]

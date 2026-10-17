@@ -46,6 +46,8 @@ def test_snell_role_guards_the_exported_production_environment() -> None:
     tasks = (ROOT / "ansible/roles/snell/tasks/enable.yml").read_text()
     assert "lookup('env', 'ENV')" in tasks
     assert "staging-only; refusing ENV=prod" in tasks
+    assert "(env | default(lookup('env', 'ENV'), true)) != 'prod'" in tasks
+    assert "snell.version is search" not in tasks
     assert tasks.index(
         "Install pinned Snell runtime through runtime-release"
     ) < tasks.index("Render validated Snell configuration")

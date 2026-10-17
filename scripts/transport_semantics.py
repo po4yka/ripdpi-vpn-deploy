@@ -315,13 +315,53 @@ def hysteria_errors(raw: object, canonical_origin: object = None) -> list[tuple[
     return errors
 
 
-def cohort_errors(raw: object) -> list[tuple[str, str]]:
+def mtg_errors(raw: object, *, allow_placeholders: bool = False) -> list[tuple[str, str]]:
+    """Admit only the FakeTLS form accepted by the pinned mtg runtime."""
+    value = raw.get("mtproto_secret") if isinstance(raw, dict) else None
+    path = "probe_matrix_target_secrets.mtproto_secret"
+    if isinstance(value, str) and allow_placeholders and PLACEHOLDER.fullmatch(value):
+        return []
+    try:
+        if not isinstance(value, str) or not 1 <= len(value) <= 540:
+            raise ValueError
+        if re.fullmatch(r"(?:[0-9a-fA-F]{2})+", value):
+            decoded = bytes.fromhex(value)
+        else:
+            if re.fullmatch(r"[A-Za-z0-9_-]+", value) is None:
+                raise ValueError
+            decoded = base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True)
+            if base64.urlsafe_b64encode(decoded).decode().rstrip("=") != value:
+                raise ValueError
+        if len(decoded) < 18 or decoded[0] != 0xee or not any(decoded[1:17]):
+            raise ValueError
+        host = decoded[17:].decode("ascii")
+        if "." not in host or not hostname_valid(host.lower()):
+            raise ValueError
+    except (ValueError, UnicodeError, binascii.Error):
+        return [(path, "requires FakeTLS prefix, a nonzero sixteen-byte key and a valid hostname")]
+    return []
+
+
+def cohort_errors(raw: object, *, allow_placeholders: bool = False) -> list[tuple[str, str]]:
     if not isinstance(raw, dict):
         return [("xray", "must be a mapping")]
     errors = []
     clients, cohorts = raw.get("clients", []), raw.get("cohorts", [])
     if not isinstance(clients, list) or any(not isinstance(item, dict) for item in clients):
         return [("xray.clients", "must be a client collection")]
+    wire_ids = set()
+    for index, item in enumerate(clients):
+        value = item.get("short_id")
+        if isinstance(value, str) and allow_placeholders and PLACEHOLDER.fullmatch(value):
+            continue
+        path = f"xray.clients.{index}.short_id"
+        if not isinstance(value, str) or re.fullmatch(r"(?:[0-9a-fA-F]{2}){1,8}", value) is None:
+            errors.append((path, "must be nonempty even-length hex of at most eight bytes"))
+            continue
+        wire_id = bytes.fromhex(value).ljust(8, b"\x00")
+        if wire_id in wire_ids:
+            errors.append(("xray.clients", "duplicate short_id wire value"))
+        wire_ids.add(wire_id)
     names = [item.get("name") for item in clients]
     string_names = [name for name in names if isinstance(name, str)]
     known_names = set(string_names)
@@ -617,11 +657,15 @@ def transport_errors(doc: object, context: object = None, *, sections: list[str]
                 sections.append("hysteria")
         else:
             sections = [name for name, field in (("xray", "xray"), ("awg", "amneziawg_secrets"), ("hysteria", "hysteria")) if field in doc]
+        if "probe_matrix_target_secrets" in doc:
+            sections.append("mtg")
         if "transport_egress_secrets" in doc or context.get("require_transport_egress", False):
             sections.append("egress")
     errors = []
+    if "mtg" in sections:
+        errors.extend(mtg_errors(doc.get("probe_matrix_target_secrets"), allow_placeholders=allow_placeholders))
     if "xray" in sections:
-        errors.extend(cohort_errors(doc.get("xray")))
+        errors.extend(cohort_errors(doc.get("xray"), allow_placeholders=allow_placeholders))
     vpn = context.get("vpn")
     if ("xhttp" in sections
             or ("xray" in sections and (not isinstance(vpn, dict) or vpn.get("enable_nginx_xhttp", False)))
@@ -671,7 +715,7 @@ def selected_context(context: object, sections: list[str] | None) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--section", action="append", choices=("xray", "xhttp", "awg", "hysteria", "egress"))
+    parser.add_argument("--section", action="append", choices=("xray", "xhttp", "awg", "hysteria", "egress", "mtg"))
     parser.add_argument("--allow-placeholders", action="store_true")
     args = parser.parse_args()
     try:

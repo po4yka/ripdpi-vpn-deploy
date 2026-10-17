@@ -1,5 +1,5 @@
 ---
-- name: Converge Snell role with a stub binary
+- name: Converge Snell lifecycle with a synthetic service fixture
   hosts: all
   become: true
   vars:

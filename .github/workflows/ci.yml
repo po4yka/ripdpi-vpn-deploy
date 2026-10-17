@@ -552,6 +552,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-disposable-ci
+      - name: Verify the real mtg release and FakeTLS configuration
+        run: sudo env "PATH=$PATH" make test-mtg-native-compatibility
       - name: Install checksum-verified Alertmanager and amtool
         env:
           ALERTMANAGER_SHA256: 5ac7ab5e4b8ee5ce4d8fb0988f9cb275efcc3f181b4b408179fafee121693311
@@ -588,6 +590,7 @@ jobs:
             "PYTEST_ADDOPTS=--tb=short" \
             "ALERTMANAGER_BIN=$RUNNER_TEMP/alertmanager-0.28.1.linux-amd64/alertmanager" \
             "NAIVE_NATIVE_BINARY=$GITHUB_WORKSPACE/.cache/p2-native-caddy/caddy" \
+            "SNELL_NATIVE_BINARY=/usr/local/bin/sing-box" \
             "AWG_NATIVE_GO_SOURCE=$GITHUB_WORKSPACE/.cache/native-transport-semantics/amneziawg-go-2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf" \
             "AWG_NATIVE_TOOLS_SOURCE=$GITHUB_WORKSPACE/.cache/native-transport-semantics/amneziawg-tools-c0b400c6dfc046f5cae8f3051b14cb61686fcf55" \
             "PATH=$GITHUB_WORKSPACE/.cache/native-transport-semantics/bin:$PATH" \

@@ -1,5 +1,5 @@
 ---
-- name: Prepare probe matrix target stubs
+- name: Prepare probe matrix orchestration and native mtg inputs
   hosts: all
   become: true
   tasks:
@@ -29,10 +29,14 @@
           - xray
         chdir: /var/tmp/probe-matrix-xray-fixture
         creates: /var/tmp/probe-matrix-xray.zip
-    - name: Install mtg download stub
-      ansible.builtin.copy:
-        dest: /tmp/mtg-stub
-        mode: "0755"
-        content: |
-          #!/bin/sh
-          exec /bin/sleep infinity
+    - name: Acquire the pinned native mtg archive
+      ansible.builtin.get_url:
+        url: >-
+          https://github.com/9seconds/mtg/releases/download/v2.2.8/mtg-2.2.8-linux-{{
+          'amd64' if ansible_facts['architecture'] == 'x86_64' else 'arm64' }}.tar.gz
+        dest: /var/tmp/probe-matrix-mtg.tar.gz
+        checksum: >-
+          sha256:{{ '7ef19d079d85f4e00d4f8334ec1f3f3c8718e3d0ed1f3109ea9a8673138a2102'
+          if ansible_facts['architecture'] == 'x86_64'
+          else '562a94dd4cafcb8f179b76cfeafb76da12747c8e230bc76235bf8746cc189644' }}
+        mode: "0600"

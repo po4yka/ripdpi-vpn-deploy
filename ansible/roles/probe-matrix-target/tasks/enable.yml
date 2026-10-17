@@ -1,4 +1,18 @@
 ---
+- name: Validate FakeTLS authority before target mutation
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - "{{ role_path }}/../../../scripts/transport_semantics.py"
+      - --section=mtg
+    stdin: "{{ {'secrets': {'probe_matrix_target_secrets': probe_matrix_target_secrets}} | to_json }}"
+    stdin_add_newline: false
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  check_mode: false
+  no_log: true
+
 - name: Validate probe matrix target configuration
   ansible.builtin.assert:
     that:
@@ -9,7 +23,6 @@
       - probe_matrix_target.ports.values() | list | unique | length == 5
       - probe_matrix_target.paths.xhttp_vless is match('^/')
       - probe_matrix_target.paths.xhttp_trojan is match('^/')
-      - probe_matrix_target_secrets.mtproto_secret | length >= 16
       - probe_matrix_target_secrets.vless_uuid | length > 0
       - probe_matrix_target_secrets.xhttp_trojan_password | length >= 16
       - probe_matrix_target_secrets.tcp_trojan_password | length >= 16
@@ -135,30 +148,11 @@
   diff: false
   notify: Restart probe matrix xray
 
-- name: Select mtg release asset
-  ansible.builtin.set_fact:
-    _probe_mtg_url: >-
-      {{ probe_matrix_target_secrets.mtg_linux_amd64_url
-         if ansible_facts['architecture'] == 'x86_64'
-         else probe_matrix_target_secrets.mtg_linux_arm64_url }}
-    _probe_mtg_sha256: >-
-      {{ probe_matrix_target_secrets.mtg_linux_amd64_sha256
-         if ansible_facts['architecture'] == 'x86_64'
-         else probe_matrix_target_secrets.mtg_linux_arm64_sha256 }}
-
-- name: Validate mtg release asset pin
-  ansible.builtin.assert:
-    that:
-      - probe_matrix_target_secrets.mtg_version | length > 0
-      - _probe_mtg_url | length > 0
-      - _probe_mtg_sha256 is match('^[0-9a-fA-F]{64}$')
-    fail_msg: mtg v2.2.8 release URL and architecture SHA256 are required.
-
-- name: Install pinned mtg runtime through runtime-release
+- name: Stage pinned mtg runtime through runtime-release
   ansible.builtin.include_role:
     name: runtime-release
   vars:
-    runtime_release_version: "{{ probe_matrix_target_secrets.mtg_version }}"
+    runtime_release_version: "{{ probe_matrix_target_secrets.mtg_version }}+archive.1"
     runtime_release_install_root: /opt/probe-matrix/mtg
     runtime_release_binary_name: mtg
     runtime_release_public_link: /usr/local/bin/probe-matrix-mtg
@@ -171,19 +165,29 @@
     runtime_release_arch_slugs:
       amd64: amd64
       arm64: arm64
-    runtime_release_artifact_filename: mtg
-    runtime_release_artifact_type: binary
+    runtime_release_artifact_filename: mtg.tar.gz
+    runtime_release_artifact_type: archive
+    runtime_release_archive_members:
+      amd64: "mtg-{{ probe_matrix_target_secrets.mtg_version | regex_replace('^v', '') }}-linux-amd64/mtg"
+      arm64: "mtg-{{ probe_matrix_target_secrets.mtg_version | regex_replace('^v', '') }}-linux-arm64/mtg"
+    runtime_release_archive_strip_components: 1
+    runtime_release_stage_only: true
 
-- name: Notify probe matrix mtg restart after runtime release activation
-  ansible.builtin.debug:
-    msg: Probe matrix mtg runtime release activation changed={{ runtime_release_changed | bool }}
-  changed_when: runtime_release_changed | bool
-  notify: Restart probe matrix mtg
-  when: not ansible_check_mode
+- name: Install private native mtg validator
+  ansible.builtin.copy:
+    src: validate_mtg.py
+    dest: /usr/local/libexec/vpn-mtg-validate
+    owner: root
+    group: root
+    mode: "0755"
 
 - name: Render mtg configuration
   ansible.builtin.template:
     src: mtg.toml.j2
+    validate: >-
+      /usr/bin/python3 /usr/local/libexec/vpn-mtg-validate
+      --binary /opt/probe-matrix/mtg/releases/{{ probe_matrix_target_secrets.mtg_version }}+archive.1/mtg
+      --version {{ probe_matrix_target_secrets.mtg_version }} --config %s
     dest: /etc/probe-matrix/mtg.toml
     owner: root
     group: probe-mtg
@@ -191,6 +195,53 @@
   no_log: true
   diff: false
   notify: Restart probe matrix mtg
+
+- name: Validate mtg candidate even when configuration bytes are unchanged
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - /usr/local/libexec/vpn-mtg-validate
+      - --binary
+      - /opt/probe-matrix/mtg/releases/{{ probe_matrix_target_secrets.mtg_version }}+archive.1/mtg
+      - --version
+      - "{{ probe_matrix_target_secrets.mtg_version }}"
+      - --config
+      - /etc/probe-matrix/mtg.toml
+  changed_when: false
+  no_log: true
+  when: not ansible_check_mode
+
+- name: Publish validated mtg runtime through runtime-release
+  ansible.builtin.include_role:
+    name: runtime-release
+  vars:
+    runtime_release_version: "{{ probe_matrix_target_secrets.mtg_version }}+archive.1"
+    runtime_release_install_root: /opt/probe-matrix/mtg
+    runtime_release_binary_name: mtg
+    runtime_release_public_link: /usr/local/bin/probe-matrix-mtg
+    runtime_release_urls:
+      amd64: "{{ probe_matrix_target_secrets.mtg_linux_amd64_url }}"
+      arm64: "{{ probe_matrix_target_secrets.mtg_linux_arm64_url }}"
+    runtime_release_sha256:
+      amd64: "{{ probe_matrix_target_secrets.mtg_linux_amd64_sha256 }}"
+      arm64: "{{ probe_matrix_target_secrets.mtg_linux_arm64_sha256 }}"
+    runtime_release_arch_slugs:
+      amd64: amd64
+      arm64: arm64
+    runtime_release_artifact_filename: mtg.tar.gz
+    runtime_release_artifact_type: archive
+    runtime_release_archive_members:
+      amd64: "mtg-{{ probe_matrix_target_secrets.mtg_version | regex_replace('^v', '') }}-linux-amd64/mtg"
+      arm64: "mtg-{{ probe_matrix_target_secrets.mtg_version | regex_replace('^v', '') }}-linux-arm64/mtg"
+    runtime_release_archive_strip_components: 1
+    runtime_release_stage_only: false
+
+- name: Notify probe matrix mtg restart after runtime release activation
+  ansible.builtin.debug:
+    msg: Probe matrix mtg runtime release activation changed={{ runtime_release_changed | bool }}
+  changed_when: runtime_release_changed | bool
+  notify: Restart probe matrix mtg
+  when: not ansible_check_mode
 
 - name: Install probe matrix services
   ansible.builtin.template:

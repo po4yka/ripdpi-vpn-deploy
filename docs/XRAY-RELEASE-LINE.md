@@ -27,7 +27,7 @@ crossing.
   dynamic Chrome UA by default, replacing the static `Go-http-client`
   string. No config change required.
 
-## v26.3.27 — 2026-03-27 (current Latest as of 2026-07-26)
+## v26.3.27 — 2026-03-27 (current Latest as of 2026-10-17)
 
 - **REALITY auto-probe defence** improvements.
 - **ECH full mode** — `echForceQuery` default changed to `"full"`.
@@ -44,8 +44,11 @@ crossing.
   uses it.
 - uTLS gained the browser-facing `X25519MLKEM768` key share. This
   updates the outer TLS fingerprint and is distinct from VLESS
-  Encryption (PQE), which operates inside VLESS and is already present
-  in this tagged source. The repository does not enable PQE.
+  Encryption (PQE), which operates inside VLESS. This stable release already
+  supports `mlkem768x25519plus` server decryption and client encryption. The repository retains HOLD.
+- **REALITY ML-DSA-65** — `mldsa65Seed` and `mldsa65Verify` are separate
+  certificate signature settings in this stable engine. They are not exposed
+  by this repository's server or client contract.
 
 ## v26.4.x — Pre-release as of 2026-04-30
 
@@ -72,7 +75,8 @@ crossing.
   v26.5.3.
 - ICMP tunnel transport added.
 - **VLESS Encryption (PQE)** — an ML-KEM-768 + X25519 VLESS encryption
-  layer with its own server/client settings. It is not the uTLS
+  layer with its own server/client settings, already supported by v26.3.27.
+  It is not the uTLS
   `X25519MLKEM768` ClientHello key share noted under v26.3.27. Adoption
   remains on HOLD under `PQ-REALITY-ADOPTION.md`.
 
@@ -95,9 +99,16 @@ crossing.
 - The tag remains marked Pre-release and its release entry carries no
   repository-adopted migration guidance.
 - It does not satisfy the stable-release or supported-client gates for VLESS
-  Encryption over REALITY.
+  Encryption over REALITY for those prerelease artifacts. Stable engine support
+  in v26.3.27 does not replace the missing client-delivery and acceptance evidence.
 - Production therefore remains pinned to v26.3.27. Any evaluation belongs to
   an isolated staging cohort and still passes the guards below.
+
+## v26.7.28 through v26.10.17 — Pre-release as of 2026-10-17
+
+- The current upstream Latest remains v26.3.27. Newer tags remain Pre-release.
+- The server pin and enforced PQE HOLD remain unchanged. The HOLD is based on
+  the unsupported client-delivery contract and missing promotion evidence.
 
 The fenced registry below is the machine-readable source for CI. `always`
 rules apply before an upgrade when the migration is backwards-compatible;

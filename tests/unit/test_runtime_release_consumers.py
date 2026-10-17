@@ -38,6 +38,8 @@ def _runtime_task(role: str, name: str | None = None) -> dict:
         )
     if name is not None:
         matches = [task for task in matches if task.get("name") == name]
+    elif role == "probe-matrix-target":
+        matches = [task for task in matches if task["vars"].get("runtime_release_stage_only") is True]
     assert len(matches) == 1, (role, name)
     return matches[0]
 
@@ -70,7 +72,7 @@ def _task(role: str, name: str) -> dict:
             "/opt/probe-matrix/mtg",
             "mtg",
             "/usr/local/bin/probe-matrix-mtg",
-            "binary",
+            "archive",
         ),
         (
             "dns-morph-bridge",
@@ -312,7 +314,7 @@ def test_direct_binary_consumers_bind_version_to_immutable_identity() -> None:
     bridge = _runtime_task("dns-morph-bridge")["vars"]
 
     assert mtg["runtime_release_version"] == (
-        "{{ probe_matrix_target_secrets.mtg_version }}"
+        "{{ probe_matrix_target_secrets.mtg_version }}+archive.1"
     )
     assert bridge["runtime_release_version"] == (
         "sha256-{{ dns_morph_bridge_secrets.binary_sha256 | lower }}"

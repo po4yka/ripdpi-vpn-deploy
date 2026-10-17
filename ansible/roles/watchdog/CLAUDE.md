@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+Native REALITY probes use the same typed Sudoku TCP mask as the server when
+the opt-in shape requests it. Finalmask belongs to `streamSettings`, not
+`sockopt`. These clients use Xray Mux.Cool for the mux shape; sing-mux recipient
+delivery remains unsupported.
+
 Probe-port vacancy is checked before starting the owned REALITY client; occupied ports cause a red observation without authorizing runtime recovery. Startup uses a monotonic deadline. Ready sockets must belong to the retained client PID before and after the canary; local client loss or replacement cannot authorize server recovery. Authenticated round-trip failure alone has no restart authority; only failed host diagnostics select a service. Subscription-only profiles omit transport checks and Xray sandbox paths.
 
 P1 diagnostics check the effective primary and enabled alternate nginx frontend ports and Xray backend independently, including P1-only profiles. Backend failures enter guarded Xray recovery and never restart healthy nginx. Diagnostic listeners remain distinct from authenticated native acceptance.
