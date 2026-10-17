@@ -1,0 +1,45 @@
+---
+- name: Admit shared retained consumer helper authority
+  ansible.builtin.import_tasks: "{{ role_path }}/../runtime-release/tasks/consumer-authority.yml"
+  vars:
+    consumer_private_directories: [/var/lib/ripdpi/amneziawg]
+
+- name: Ensure the complete AWG consumer helper directory
+  ansible.builtin.file:
+    path: /usr/local/libexec/ripdpi-consumer
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the complete AWG consumer dependencies
+  ansible.builtin.copy:
+    src: "{{ item.source }}"
+    dest: "/usr/local/libexec/ripdpi-consumer/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - {source: "{{ role_path }}/files/consumer.py", name: amneziawg_consumer.py}
+    - {source: "{{ role_path }}/../firewall/files/firewall_consumer.py", name: firewall_consumer.py}
+    - {source: "{{ role_path }}/../runtime-release/files/transport_runtime_transaction.py", name: transport_runtime_transaction.py}
+    - {source: "{{ role_path }}/../runtime-release/files/runtime_build_receipt.py", name: runtime_build_receipt.py}
+  register: _awg_consumer_install
+
+- name: Ensure the private AWG runtime parent
+  ansible.builtin.file:
+    path: /var/lib/ripdpi/amneziawg
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Recover complete interrupted AWG authority before build acquisition
+  ansible.builtin.command:
+    argv: [python3, -Es, /usr/local/libexec/ripdpi-consumer/amneziawg_consumer.py, recover]
+    stdin: "{{ {'check': ansible_check_mode, 'retiring': awg_consumer_retiring | default(false) | bool} | to_json }}"
+  register: _awg_consumer_recovery
+  changed_when: (_awg_consumer_recovery.stdout | from_json).changed | bool
+  check_mode: false
+  no_log: true
+  when: not (ansible_check_mode and _awg_consumer_install.changed)

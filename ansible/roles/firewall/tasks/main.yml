@@ -1,4 +1,8 @@
 ---
+- name: Prepare retained firewall consumer authority
+  ansible.builtin.import_tasks: consumer-prepare.yml
+  when: (firewall_site_transaction | default(false) | bool) or (firewall_stage_candidate | default(false) | bool)
+
 - name: Admit AmneziaWG dual-stack forwarding prerequisites before mutation
   ansible.builtin.import_tasks: awg-uplink.yml
 
@@ -481,9 +485,69 @@
 
 - name: Retain firewall generation before AWG publication
   ansible.builtin.import_tasks: awg-retain.yml
-  when: vpn.enable_amneziawg | default(false) | bool
+  when:
+    - vpn.enable_amneziawg | default(false) | bool
+    - not (firewall_site_transaction | default(false) | bool)
+    - not (firewall_stage_candidate | default(false) | bool)
+
+- name: Stage the exact desired firewall for its runtime consumer
+  ansible.builtin.set_fact:
+    _firewall_consumer_candidate: "{{ lookup('ansible.builtin.template', 'nftables.conf.j2') | b64encode }}"
+  no_log: true
+  when: firewall_stage_candidate | default(false) | bool
+
+- name: Retain the initial firewall consumer until protected site commit
+  ansible.builtin.set_fact:
+    _firewall_site_transaction_active: "{{ not ansible_check_mode }}"
+    _firewall_site_enabled: true
+  when: firewall_site_transaction | default(false) | bool
+
+- name: Publish initial policy while retaining accepted AWG claims
+  ansible.builtin.command:
+    argv: [python3, -Es, /usr/local/libexec/ripdpi-consumer/firewall_consumer.py, apply]
+    stdin: >-
+      {{ {'owner': 'site', 'check': ansible_check_mode,
+           'allow_listener_change': (ansible_run_tags | default(['all'])
+             | intersect(['all', 'transport', 'xray', 'hysteria', 'nginx', 'xhttp',
+                          'reality-self-steal', 'p0', 'p1', 'p2']) | length > 0),
+           'data': lookup('ansible.builtin.template', 'nftables.conf.j2',
+                           template_vars={'vpn': _firewall_render_vpn,
+                                          'amneziawg_secrets': _firewall_render_awg,
+                                          'public_listener_contract': _firewall_render_listeners}) | b64encode,
+           'baseline': lookup('ansible.builtin.template', 'nftables.conf.j2',
+                               template_vars={'vpn': vpn | combine({'enable_amneziawg': false})}) | b64encode} | to_json }}
+    stdin_add_newline: false
+  register: _firewall_consumer_publication
+  changed_when: (_firewall_consumer_publication.stdout | from_json).changed | bool
+  check_mode: false
+  no_log: true
+  when:
+    - firewall_site_transaction | default(false) | bool
+    - not (ansible_check_mode and _firewall_consumer_install.changed)
+
+- name: Enable the accepted firewall at boot after publication
+  ansible.builtin.systemd_service:
+    name: nftables
+    enabled: true
+    state: started
+  when:
+    - firewall_site_transaction | default(false) | bool
+    - ansible_facts.get('virtualization_type', '') != 'docker'
+    - not (ansible_check_mode and _firewall_consumer_install.changed)
+
+- name: Predict initial retained firewall publication before helper installation
+  ansible.builtin.debug:
+    msg: Retained firewall helper and candidate publication are planned.
+  changed_when: true
+  when:
+    - firewall_site_transaction | default(false) | bool
+    - ansible_check_mode
+    - _firewall_consumer_install.changed
 
 - name: Publish firewall generation with AWG compensation
+  when:
+    - not (firewall_site_transaction | default(false) | bool)
+    - not (firewall_stage_candidate | default(false) | bool)
   block:
     - name: Render nftables config
       ansible.builtin.template:

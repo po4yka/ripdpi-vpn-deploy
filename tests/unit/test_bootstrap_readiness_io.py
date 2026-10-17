@@ -296,3 +296,26 @@ def test_forwarded_stderr_is_separate_and_bounded(capfd):
         readiness.run_command([sys.executable, "-c", "import sys;sys.stderr.write('x'*4096)"],
                               timeout=5, capture=True, forward_stderr=True, output_limit=10)
     assert capfd.readouterr().err == ""
+
+
+def test_private_stderr_capture_is_separate_and_uses_existing_budget(capfd):
+    readiness = module()
+    stderr = bytearray()
+    status, output = readiness.run_command(
+        [sys.executable, "-c", "import sys;sys.stdout.write('json');sys.stderr.write('usage')"],
+        timeout=5, capture=True, stderr_output=stderr, output_limit=9,
+    )
+    assert status == 0 and output == b"json" and stderr == b"usage"
+    assert capfd.readouterr() == ("", "")
+    stderr.clear()
+    with pytest.raises(readiness.ReadinessError, match="command output limit"):
+        readiness.run_command([sys.executable, "-c", "import sys;sys.stderr.write('x'*4096)"],
+                              timeout=5, capture=True, stderr_output=stderr, output_limit=10)
+    assert stderr == b""
+
+
+@pytest.mark.parametrize("capture,value", [(False, bytearray()), (True, b""), (True, "")])
+def test_invalid_private_stderr_sink_refuses_before_spawn(capture, value):
+    readiness = module()
+    with pytest.raises(readiness.ReadinessError, match="stderr capture invalid"):
+        readiness.run_command(["missing-command"], timeout=5, capture=capture, stderr_output=value)

@@ -1,237 +1,93 @@
 ---
-# Keep complete accepted configs until every candidate instance is active.
-- name: Reset complete AmneziaWG configuration membership
+- name: Select immutable acquired AmneziaWG executables
   ansible.builtin.set_fact:
-    _awg_config_members: []
+    _awg_executables:
+      - {path: /usr/local/bin/amneziawg-go, source: "/opt/amneziawg/releases/go-{{ amneziawg_go_commit }}/amneziawg-go"}
+      - {path: /usr/bin/awg, source: "/opt/amneziawg/releases/tools-{{ amneziawg_tools_commit }}/awg"}
+      - {path: /usr/bin/awg-quick, source: "/opt/amneziawg/releases/tools-{{ amneziawg_tools_commit }}/awg-quick"}
+    _awg_consumer_candidates: []
 
-- name: Track current AmneziaWG candidate paths
+- name: Inspect acquired AmneziaWG executable digests
+  ansible.builtin.stat:
+    path: "{{ item.source }}"
+    checksum_algorithm: sha256
+    follow: false
+  loop: "{{ _awg_executables }}"
+  register: _awg_acquired
+
+- name: Require admitted acquired AmneziaWG executables
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isreg
+      - item.stat.uid == 0
+      - item.stat.mode == '0755'
+      - item.stat.nlink == 1
+  loop: "{{ _awg_acquired.results }}"
+  when: not ansible_check_mode
+
+- name: Select bounded acquired executable publication candidates
   ansible.builtin.set_fact:
-    _awg_config_members: "{{ _awg_config_members + [{'name': item.name, 'path': amneziawg_config_dir ~ '/' ~ item.name ~ '.conf'}] }}"
+    _awg_consumer_candidates: >-
+      {{ _awg_consumer_candidates + [{'path': item.item.path, 'source': item.item.source,
+                                      'sha256': item.stat.checksum, 'mode': 493, 'gid': 0}] }}
+  loop: "{{ _awg_acquired.results }}"
+  when: item.stat.exists
+
+- name: Stage every complete private AmneziaWG configuration
+  ansible.builtin.set_fact:
+    _awg_consumer_candidates: >-
+      {{ _awg_consumer_candidates + [{'path': amneziawg_config_dir ~ '/' ~ item.name ~ '.conf',
+                                      'data': lookup('ansible.builtin.template', 'awg0.conf.j2',
+                                                     template_vars={'_inst': item}) | b64encode,
+                                      'mode': 384, 'gid': 0}] }}
   loop: "{{ _awg_instances }}"
   no_log: true
 
-- name: Retain obsolete recorded AmneziaWG members through acceptance
+- name: Stage exact obsolete AmneziaWG configuration retirement
   ansible.builtin.set_fact:
-    _awg_config_members: "{{ _awg_config_members + [{'name': item, 'path': _awg_previous.config_dir ~ '/' ~ item ~ '.conf'}] }}"
+    _awg_consumer_candidates: >-
+      {{ _awg_consumer_candidates + [{'path': _awg_previous.config_dir ~ '/' ~ item ~ '.conf', 'absent': true}] }}
   loop: "{{ _awg_obsolete | default([]) }}"
+  no_log: true
   when: _awg_configuration_owns_lifecycle | default(false) | bool
-  no_log: true
 
-- name: Inspect previous complete AmneziaWG configurations
-  ansible.builtin.stat:
-    path: "{{ item.path }}"
-    follow: false
-  loop: "{{ _awg_config_members | unique(attribute='path') }}"
-  register: _awg_config_before
-  no_log: true
-
-- name: Require private regular previous AmneziaWG configurations
-  ansible.builtin.assert:
-    that:
-      - not item.stat.exists or (item.stat.isreg and item.stat.uid == 0 and item.stat.mode == '0600' and item.stat.nlink == 1)
-  loop: "{{ _awg_config_before.results }}"
-  no_log: true
-
-- name: Retain complete accepted AmneziaWG configurations
-  ansible.builtin.slurp:
-    src: "{{ item.stat.path }}"
-  loop: "{{ _awg_config_before.results }}"
-  when: item.stat.exists
-  register: _awg_config_backup
-  no_log: true
-
-- name: Observe previous AmneziaWG activation state
-  ansible.builtin.command:
-    argv: [systemctl, show, "awg-quick@{{ item.name }}.service", --property=ActiveState, --value]
-  loop: "{{ _awg_config_members | unique(attribute='name') }}"
-  register: _awg_active_before
-  changed_when: false
-  check_mode: false
-  no_log: true
-  when: not ansible_check_mode
-
-- name: Admit stable AmneziaWG activation state
-  ansible.builtin.assert:
-    that:
-      - item.stdout | trim in ['active', 'inactive', 'failed']
-  loop: "{{ _awg_active_before.results }}"
-  no_log: true
-  when: not ansible_check_mode
-
-- name: Begin complete AmneziaWG configuration activation
+- name: Stage shared units and the complete AWG membership receipt
   ansible.builtin.set_fact:
-    _awg_activation_failed: false
+    _awg_consumer_candidates: >-
+      {{ _awg_consumer_candidates + [
+           {'path': '/etc/systemd/system/awg-quick@.service', 'mode': 420, 'gid': 0,
+            'data': lookup('ansible.builtin.template', 'awg-quick@.service.j2') | b64encode},
+           {'path': '/etc/systemd/system/awg-quick.target', 'mode': 420, 'gid': 0,
+            'data': lookup('ansible.builtin.template', 'awg-quick.target.j2') | b64encode},
+           {'path': '/var/lib/ripdpi/amneziawg/instances.json', 'mode': 384, 'gid': 0,
+            'data': {'schema': 1, 'config_dir': amneziawg_config_dir,
+                     'instances': _awg_instances | map(attribute='name') | list} | to_json | b64encode} ] }}
+  no_log: true
 
-- name: Observe previous AmneziaWG boot activation state
+- name: Predict fresh AmneziaWG acquisition and complete consumer publication
+  ansible.builtin.debug:
+    msg: Complete AWG runtime acquisition and consumer publication are planned.
+  changed_when: true
+  when: >-
+    ansible_check_mode and ((_awg_acquired.results | selectattr('stat.exists', 'equalto', false) | list | length
+    > 0) or _awg_consumer_install.changed)
+
+- name: Accept complete AmneziaWG runtime and firewall together
   ansible.builtin.command:
-    argv: [systemctl, is-enabled, "awg-quick@{{ item.name }}.service"]
-  loop: "{{ _awg_config_members | unique(attribute='name') }}"
-  register: _awg_enabled_before
-  failed_when: _awg_enabled_before.rc not in [0, 1]
-  changed_when: false
+    argv: [python3, -Es, /usr/local/libexec/ripdpi-consumer/amneziawg_consumer.py, apply]
+    stdin: >-
+      {{ {'check': ansible_check_mode, 'candidates': _awg_consumer_candidates,
+          'firewall': _firewall_consumer_candidate | default(none)} | to_json }}
+    stdin_add_newline: false
+  register: _awg_consumer_publication
+  changed_when: (_awg_consumer_publication.stdout | from_json).changed | bool
   check_mode: false
   no_log: true
-  when: not ansible_check_mode
+  when: >-
+    not (ansible_check_mode and ((_awg_acquired.results | selectattr('stat.exists', 'equalto', false) | list |
+    length > 0) or _awg_consumer_install.changed))
 
-- name: Admit stable AmneziaWG boot activation state
-  ansible.builtin.assert:
-    that:
-      - item.stdout | trim in ['enabled', 'disabled']
-  loop: "{{ _awg_enabled_before.results }}"
-  no_log: true
-  when: not ansible_check_mode
-
-- name: Publish complete AmneziaWG candidates with compensation
-  block:
-    - name: Render AmneziaWG interface configs
-      ansible.builtin.template:
-        src: awg0.conf.j2
-        dest: "{{ amneziawg_config_dir }}/{{ item.name }}.conf"
-        owner: root
-        group: root
-        mode: "0600"
-      no_log: true
-      diff: false
-      loop: "{{ _awg_instances }}"
-      loop_control:
-        label: "{{ item.name }}"
-      vars:
-        _inst: "{{ item }}"
-      notify: Restart amneziawg
-
-    - name: Inspect AmneziaWG unit before check-mode activation
-      ansible.builtin.stat:
-        path: /etc/systemd/system/awg-quick@.service
-        follow: false
-      register: _awg_unit_before
-      changed_when: false
-      when: ansible_check_mode
-
-    - name: Require planned AmneziaWG unit on a fresh check-mode host
-      ansible.builtin.assert:
-        that:
-          - _awg_unit_plan.changed
-        fail_msg: Check mode found no AmneziaWG unit and no planned installation.
-      when:
-        - ansible_check_mode
-        - not (_awg_unit_before.stat.exists | default(false))
-
-    - name: Enable and start awg-quick@<iface> for every instance
-      ansible.builtin.systemd_service:
-        name: "awg-quick@{{ item.name }}"
-        enabled: true
-        state: started
-        daemon_reload: true
-      loop: "{{ _awg_instances }}"
-      loop_control:
-        label: "{{ item.name }}"
-      no_log: true
-      when: not ansible_check_mode or _awg_unit_before.stat.exists | default(false)
-
-    - name: Apply queued AmneziaWG activation before committing ownership
-      ansible.builtin.meta: flush_handlers
-
-    - name: Retire obsolete AmneziaWG interfaces after candidate acceptance
-      ansible.builtin.import_tasks: retire-instances.yml
-      when: _awg_configuration_owns_lifecycle | default(false) | bool
-
-    - name: Publish private AmneziaWG ownership directory
-      ansible.builtin.file:
-        path: /var/lib/ripdpi/amneziawg
-        state: directory
-        owner: root
-        group: root
-        mode: "0700"
-      when: _awg_configuration_owns_lifecycle | default(false) | bool
-
-    - name: Record the converged AmneziaWG instance ownership set
-      ansible.builtin.copy:
-        dest: /var/lib/ripdpi/amneziawg/instances.json
-        content: >-
-          {{ {'schema': 1, 'config_dir': amneziawg_config_dir,
-              'instances': _awg_instances | map(attribute='name') | list} | to_json }}
-        owner: root
-        group: root
-        mode: "0600"
-      no_log: true
-      when: _awg_configuration_owns_lifecycle | default(false) | bool
-
-    - name: Release retained firewall generation after complete AWG acceptance
-      ansible.builtin.set_fact:
-        _firewall_awg_restore: {}
-
-  rescue:
-    - name: Prevent queued restarts of refused AmneziaWG candidates
-      ansible.builtin.set_fact:
-        _awg_activation_failed: true
-
-    - name: Stop candidate AmneziaWG instances before restoring complete configs
-      ansible.builtin.systemd_service:
-        name: "awg-quick@{{ item.name }}"
-        state: stopped
-      loop: "{{ _awg_config_members | unique(attribute='name') }}"
-      no_log: true
-
-    - name: Restore complete accepted AmneziaWG configs
-      ansible.builtin.copy:
-        dest: "{{ item.item.stat.path }}"
-        content: "{{ item.content | b64decode }}"
-        owner: root
-        group: root
-        mode: "0600"
-      loop: "{{ _awg_config_backup.results }}"
-      when: not (item.skipped | default(false))
-      no_log: true
-      diff: false
-
-    - name: Remove only newly created candidate AmneziaWG configs
-      ansible.builtin.file:
-        path: "{{ item.item.path }}"
-        state: absent
-      loop: "{{ _awg_config_before.results }}"
-      when: not item.stat.exists
-      no_log: true
-
-    - name: Restore accepted AWG firewall generation before prior activation
-      ansible.builtin.import_tasks: "{{ role_path }}/../firewall/tasks/awg-restore.yml"
-      when: _firewall_awg_restore.content is defined
-
-    - name: Restore previously active AmneziaWG instances
-      ansible.builtin.systemd_service:
-        name: "awg-quick@{{ item.item.name }}"
-        state: started
-      loop: "{{ _awg_active_before.results }}"
-      when: item.stdout | trim == 'active'
-      no_log: true
-
-    - name: Restore previous AmneziaWG boot activation state
-      ansible.builtin.systemd_service:
-        name: "awg-quick@{{ item.item.name }}"
-        enabled: "{{ item.stdout | trim == 'enabled' }}"
-      loop: "{{ _awg_enabled_before.results }}"
-      no_log: true
-
-    - name: Restore prior AmneziaWG ownership record after compensation
-      ansible.builtin.copy:
-        dest: /var/lib/ripdpi/amneziawg/instances.json
-        content: "{{ _awg_owned_bytes.content | b64decode }}"
-        owner: root
-        group: root
-        mode: "0600"
-      when:
-        - _awg_configuration_owns_lifecycle | default(false) | bool
-        - _awg_owned_stat.stat.exists
-      no_log: true
-      diff: false
-
-    - name: Remove only a newly published AmneziaWG ownership record
-      ansible.builtin.file:
-        path: /var/lib/ripdpi/amneziawg/instances.json
-        state: absent
-      when:
-        - _awg_configuration_owns_lifecycle | default(false) | bool
-        - not _awg_owned_stat.stat.exists
-
-    - name: Refuse the compensated AmneziaWG activation
-      ansible.builtin.fail:
-        msg: awg-complete-config-activation-failed
+- name: Release accepted AWG firewall preparation facts
+  ansible.builtin.set_fact:
+    _firewall_consumer_candidate: null

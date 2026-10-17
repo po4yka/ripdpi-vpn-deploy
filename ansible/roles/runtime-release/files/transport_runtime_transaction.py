@@ -77,7 +77,7 @@ def validate_claim(value, uid):
         raise Refusal('node-claim-invalid')
 
 
-def validate_receipt(value, *, root, uid):
+def validate_receipt(value, *, root, uid, node_limit=64):
     """Typed public boundary for receipts embedded in recovery-owner records."""
     if (not isinstance(value, dict) or set(value) != {'schema', 'nodes', 'previous', 'units'}
             or type(value['schema']) is not int or value['schema'] != 1
@@ -87,7 +87,7 @@ def validate_receipt(value, *, root, uid):
         mapping = value[key]
         if mapping is None and key == 'previous':
             continue
-        if not isinstance(mapping, dict) or len(mapping) > 64:
+        if not isinstance(mapping, dict) or len(mapping) > node_limit:
             raise Refusal('receipt-invalid')
         for raw, claimed in mapping.items():
             if not isinstance(raw, str) or len(raw) > 4096 or any(ord(ch) < 32 for ch in raw):
@@ -133,7 +133,7 @@ class TrustedDirectory:
         os.close(self.fd)
 
 
-def node(path, uid, *, links=1):
+def node(path, uid, *, links=1, maximum=None):
     try:
         info = path.lstat()
     except FileNotFoundError:
@@ -142,7 +142,9 @@ def node(path, uid, *, links=1):
         raise Refusal('unsafe-node')
     if stat.S_ISLNK(info.st_mode):
         return {'identity': identity(info), 'target': os.readlink(path)}
-    if path.name in {'geoip.dat', 'geosite.dat'} or path.name.startswith(('before-', 'after-', 'rollback-', 'undo-', 'staged-')):
+    if maximum is not None:
+        pass
+    elif path.name in {'geoip.dat', 'geosite.dat'} or path.name.startswith(('before-', 'after-', 'rollback-', 'undo-', 'staged-')):
         maximum = 128 * 1024 * 1024
     elif path.name in {'accepted.json', 'pending.json', 'last.json', 'preparation.json', 'compensating.json', 'parameters.json', 'backups.json'} or path.name.startswith('.write-'):
         maximum = LIMIT
@@ -192,7 +194,7 @@ def read_private(path, uid, *, links=1):
     return value
 
 
-def outer_record(root, uid):
+def outer_record(root, uid, *, node_limit=64):
     value = read_private(root / 'outer.json', uid)
     if value is None:
         return None
@@ -201,7 +203,7 @@ def outer_record(root, uid):
         raise Refusal('outer-intent-invalid')
     for key in ('receipt', 'consumer_receipt'):
         if value[key] is not None:
-            validate_receipt(value[key], root=root, uid=uid)
+            validate_receipt(value[key], root=root, uid=uid, node_limit=node_limit)
     return value
 
 
@@ -242,13 +244,26 @@ def admission(root, *, uid=0):
 class Transaction:
     """One retained lock and exact before/after inode journal per transport set."""
 
-    def __init__(self, root, *, uid=0, check=False):
+    def __init__(self, root, *, uid=0, check=False, awg=False):
         self.root = Path(root)
         self.uid = uid
         self.check = check
+        self.awg = awg
+        self.node_limit = 128 if awg else 64
         self.parents = {}
         self.resources = ExitStack()
         self.storage_locks = set()
+
+
+    def executable(self, path):
+        """Only the AWG consumer may select its fixed, bounded executables."""
+        path = Path(path)
+        return str(path) in {'/usr/local/bin/amneziawg-go', '/usr/bin/awg', '/usr/bin/awg-quick'} or re.fullmatch(
+            r'/opt/amneziawg/releases/(?:go|tools)-(?:[0-9a-f]{40}|[0-9a-f]{64})/(?:amneziawg-go|awg|awg-quick)', str(path)) is not None
+
+    def _node(self, path, _uid=None, *, links=1):
+        maximum = 128 * 1024 * 1024 if self.awg and self.executable(path) else None
+        return node(Path(path), self.uid, links=links, maximum=maximum)
 
     def __enter__(self):
         try:
@@ -301,7 +316,7 @@ class Transaction:
         if identity(self.root.lstat()) != self.state_identity:
             raise Refusal('state-directory-changed')
         target = self.root / name
-        before = node(target, self.uid)
+        before = self._node(target, self.uid)
         if before is not None and ('sha256' not in before or before['identity'][4] != 0o600):
             raise Refusal('unsafe-record')
         encoded = json.dumps(value, sort_keys=True, separators=(',', ':')).encode()
@@ -319,20 +334,20 @@ class Transaction:
                 stream.write(encoded)
                 stream.flush()
                 os.fsync(stream.fileno())
-            if node(target, self.uid) != before:
+            if self._node(target, self.uid) != before:
                 raise Refusal('record-changed')
             self.parent(self.root)
             os.replace(temporary.name, target.name, src_dir_fd=self.state_fd, dst_dir_fd=self.state_fd)
             os.fsync(self.state_fd)
         finally:
-            observed = node(temporary, self.uid)
+            observed = self._node(temporary, self.uid)
             if observed is not None:
                 if observed['identity'] != temporary_identity:
                     raise Refusal('record-temporary-changed')
                 os.unlink(temporary.name, dir_fd=self.state_fd)
 
     def validate(self, candidates, *, pending=False):
-        if not isinstance(candidates, list) or not 1 <= len(candidates) <= 64:
+        if not isinstance(candidates, list) or not 1 <= len(candidates) <= self.node_limit:
             raise Refusal('candidate-invalid')
         paths = set()
         for item in candidates:
@@ -344,7 +359,7 @@ class Transaction:
             paths.add(path)
             self.parent(path.parent)
             self.storage(item['path'])
-            before = node(path, self.uid, links=2 if pending else 1)
+            before = self._node(path, self.uid, links=2 if pending else 1)
             if type(item.get('deferred', False)) is not bool:
                 raise Refusal('candidate-invalid')
             if 'absent' in item:
@@ -361,8 +376,8 @@ class Transaction:
                 if 'source' in item:
                     source = Path(item['source'])
                     self.parent(source.parent)
-                    observed = node(source, self.uid)
-                    if observed is None or observed.get('sha256') != item['sha256'] or item['mode'] != 0o644:
+                    observed = self._node(source, self.uid)
+                    if observed is None or observed.get('sha256') != item['sha256'] or (item['mode'] != 0o644 and not (self.awg and item['mode'] == 0o755 and self.executable(path) and self.executable(source))):
                         raise Refusal('asset-authority-invalid')
                 elif len(base64.b64decode(item['data'], validate=True)) > 1048576:
                     raise Refusal('file-authority-invalid')
@@ -371,7 +386,7 @@ class Transaction:
 
     def unchanged(self, candidates, *, pending=False):
         for item in candidates:
-            before = node(Path(item['path']), self.uid, links=2 if pending else 1)
+            before = self._node(Path(item['path']), self.uid, links=2 if pending else 1)
             if 'absent' in item:
                 if before is not None:
                     return False
@@ -387,14 +402,14 @@ class Transaction:
         return True
 
     def validate_intent(self, value):
-        if not isinstance(value, dict) or set(value) != {'schema', 'before_receipt', 'after_receipt', 'before_backups', 'entries', 'units'} or type(value['schema']) is not int or value['schema'] != 1 or not isinstance(value['entries'], list) or not 1 <= len(value['entries']) <= 64 or not isinstance(value['units'], dict):
+        if not isinstance(value, dict) or set(value) != {'schema', 'before_receipt', 'after_receipt', 'before_backups', 'entries', 'units'} or type(value['schema']) is not int or value['schema'] != 1 or not isinstance(value['entries'], list) or not 1 <= len(value['entries']) <= self.node_limit or not isinstance(value['units'], dict):
             raise Refusal('journal-invalid')
         self.validate_backup_map(value['before_backups'])
         after_receipt = value['after_receipt']
-        validate_receipt(after_receipt, root=self.root, uid=self.uid)
+        validate_receipt(after_receipt, root=self.root, uid=self.uid, node_limit=self.node_limit)
         before_receipt = value['before_receipt']
         if before_receipt is not None:
-            validate_receipt(before_receipt, root=self.root, uid=self.uid)
+            validate_receipt(before_receipt, root=self.root, uid=self.uid, node_limit=self.node_limit)
         paths = set()
         for entry in value['entries']:
             if not isinstance(entry, dict) or set(entry) != {'path', 'before', 'after', 'deferred', 'storage'} or type(entry['deferred']) is not bool:
@@ -468,7 +483,7 @@ class Transaction:
         # Reuse the exact selectable-path and inode/type boundary; this record
         # claims backup authority independently of the last complete receipt.
         validate_receipt({'schema': 1, 'nodes': value['nodes'], 'previous': None, 'units': {}},
-                         root=self.root, uid=self.uid)
+                         root=self.root, uid=self.uid, node_limit=self.node_limit)
         if not isinstance(value['directories'], dict) or set(value['directories']) != {str(storage_path(raw)) for raw in value['nodes']}:
             raise Refusal('backup-map-invalid')
         for raw in value['nodes']:
@@ -495,7 +510,7 @@ class Transaction:
         known = (value or {}).get('nodes', {})
         for raw in set(known) | set(paths):
             self.storage(raw)
-            if node(self.backup_path(raw), self.uid) != known.get(raw):
+            if self._node(self.backup_path(raw), self.uid) != known.get(raw):
                 raise Refusal('foreign-rollback')
         return value
 
@@ -510,7 +525,7 @@ class Transaction:
         old_nodes = (before or {}).get('nodes', {})
         entries = {entry['path']: (index, entry) for index, entry in enumerate(value['entries'])}
         for raw in set(old_nodes) | set(after['nodes']):
-            observed = node(self.backup_path(raw), self.uid, links=2)
+            observed = self._node(self.backup_path(raw), self.uid, links=2)
             if not committed or raw not in entries:
                 if observed != old_nodes.get(raw):
                     raise Refusal('foreign-rollback')
@@ -522,7 +537,7 @@ class Transaction:
             elif observed not in (old_nodes.get(raw), entry['before'], None):
                 raise Refusal('foreign-rollback')
             if entry['before'] is not None and observed != entry['before']:
-                if node(storage_path(entry['path']) / ('before-' + str(index)), self.uid, links=2) != entry['before']:
+                if self._node(storage_path(entry['path']) / ('before-' + str(index)), self.uid, links=2) != entry['before']:
                     raise Refusal('rollback-node-absent')
         return after
 
@@ -535,10 +550,10 @@ class Transaction:
         for index, entry in enumerate(value['entries']):
             for key in ('before', 'after'):
                 claimed = entry[key]
-                stored = node(storage_path(entry['path']) / (key + '-' + str(index)), self.uid, links=2)
+                stored = self._node(storage_path(entry['path']) / (key + '-' + str(index)), self.uid, links=2)
                 if stored is not None and stored != claimed:
                     raise Refusal('journal-node-changed')
-            live = node(Path(entry['path']), self.uid, links=2)
+            live = self._node(Path(entry['path']), self.uid, links=2)
             if live not in (entry['before'], entry['after'], None):
                 raise Refusal('foreign-publication')
             if live is None and entry['before'] is not None and entry['after'] is not None:
@@ -565,15 +580,15 @@ class Transaction:
             raise Refusal('preparation-directory-changed')
         self.parent(directory)
         for index, entry in enumerate(value['intent']['entries']):
-            staged = node(staged_path(value, index, entry), self.uid, links=2)
+            staged = self._node(staged_path(value, index, entry), self.uid, links=2)
             if staged is not None:
                 if staged != entry['after']:
                     raise Refusal('preparation-node-changed')
             for key in ('before', 'after'):
-                stored = node(storage_path(entry['path']) / (key + '-' + str(index)), self.uid, links=2)
+                stored = self._node(storage_path(entry['path']) / (key + '-' + str(index)), self.uid, links=2)
                 if stored is not None and stored != entry[key]:
                     raise Refusal('preparation-node-changed')
-            if node(Path(entry['path']), self.uid, links=2) != entry['before']:
+            if self._node(Path(entry['path']), self.uid, links=2) != entry['before']:
                 raise Refusal('preparation-publication-changed')
         if os.listdir(directory):
             raise Refusal('preparation-foreign-node')
@@ -597,13 +612,13 @@ class Transaction:
             if not retain_fixed:
                 for key in ('before', 'after'):
                     name = key + '-' + str(index)
-                    observed = node(storage_path(entry['path']) / name, self.uid, links=2)
+                    observed = self._node(storage_path(entry['path']) / name, self.uid, links=2)
                     if observed is not None:
                         if observed != entry[key]:
                             raise Refusal('preparation-node-changed')
                         os.unlink(name, dir_fd=storage_fd)
             staged = staged_path(value, index, entry)
-            observed = node(staged, self.uid, links=2)
+            observed = self._node(staged, self.uid, links=2)
             if observed is not None:
                 if observed != entry['after']:
                     raise Refusal('preparation-node-changed')
@@ -627,7 +642,7 @@ class Transaction:
     def replace(self, entry, index, which):
         path = Path(entry['path'])
         fd = self.parent(path.parent)
-        current = node(path, self.uid, links=2)
+        current = self._node(path, self.uid, links=2)
         if current not in (entry['before'], entry['after'], None):
             raise Refusal('foreign-publication')
         desired = entry[which]
@@ -637,7 +652,7 @@ class Transaction:
             # before the strict runtime owner inspects the restored unit/config.
             if desired is not None:
                 saved = storage_path(entry['path']) / (which + '-' + str(index))
-                retained = node(saved, self.uid, links=2)
+                retained = self._node(saved, self.uid, links=2)
                 if retained not in (None, desired):
                     raise Refusal('recovery-node-changed')
                 if retained is not None:
@@ -649,7 +664,7 @@ class Transaction:
             os.unlink(path.name, dir_fd=fd)
         else:
             saved = storage_path(entry['path']) / (which + '-' + str(index))
-            if node(saved, self.uid, links=2) != desired:
+            if self._node(saved, self.uid, links=2) != desired:
                 raise Refusal('recovery-node-absent')
             storage_fd = self.parent(self.storage(entry['path'], expected=entry['storage']))
             os.replace(saved.name, path.name, src_dir_fd=storage_fd, dst_dir_fd=fd)
@@ -668,17 +683,17 @@ class Transaction:
             if committed:
                 saved = storage_path(entry['path']) / ('before-' + str(index))
                 rollback = self.backup_path(entry['path'])
-                observed = node(rollback, self.uid, links=2)
+                observed = self._node(rollback, self.uid, links=2)
                 if observed != entry['before']:
                     if observed is not None:
                         os.unlink(rollback.name, dir_fd=storage_fd)
                     if entry['before'] is not None:
-                        if node(saved, self.uid, links=2) != entry['before']:
+                        if self._node(saved, self.uid, links=2) != entry['before']:
                             raise Refusal('rollback-node-absent')
                         os.replace(saved.name, rollback.name, src_dir_fd=storage_fd, dst_dir_fd=storage_fd)
             for key in ('before', 'after'):
                 path = storage_path(entry['path']) / (key + '-' + str(index))
-                observed = node(path, self.uid, links=2)
+                observed = self._node(path, self.uid, links=2)
                 if observed is not None:
                     if observed != entry[key]:
                         raise Refusal('cleanup-node-changed')
@@ -715,7 +730,7 @@ class Transaction:
         if current_backups not in ((committed_backups,) if preparing else (committed_backups, compensated_backups)):
             raise Refusal('foreign-backup-map')
         for raw, expected in committed_backups['nodes'].items():
-            observed = node(self.backup_path(raw), self.uid, links=2)
+            observed = self._node(self.backup_path(raw), self.uid, links=2)
             if raw not in changed_paths and observed != expected:
                 raise Refusal('foreign-rollback')
             if raw in changed_paths and current_backups == compensated_backups and observed is not None:
@@ -723,21 +738,21 @@ class Transaction:
         for raw, expected in value['after_receipt']['nodes'].items():
             if raw not in changed_paths:
                 self.parent(Path(raw).parent)
-                if node(Path(raw), self.uid) != expected:
+                if self._node(Path(raw), self.uid) != expected:
                     raise Refusal('accepted-authority-changed')
         for index, entry in enumerate(value['entries']):
-            current = node(Path(entry['path']), self.uid, links=2)
+            current = self._node(Path(entry['path']), self.uid, links=2)
             if current not in (entry['before'], entry['after']):
                 raise Refusal('foreign-publication')
             if preparing and current != entry['after']:
                 raise Refusal('compensation-authority-changed')
             before = self.backup_path(entry['path'])
-            retained = node(before, self.uid, links=2)
+            retained = self._node(before, self.uid, links=2)
             if retained not in (None, entry['before']):
                 raise Refusal('foreign-rollback')
             if entry['before'] is not None and current != entry['before'] and retained != entry['before']:
                 raise Refusal('rollback-node-absent')
-            retained_after = node(storage_path(entry['path']) / ('undo-' + str(index)), self.uid, links=2)
+            retained_after = self._node(storage_path(entry['path']) / ('undo-' + str(index)), self.uid, links=2)
             if retained_after not in (None, entry['after']):
                 raise Refusal('foreign-compensation-node')
             if receipt != value['before_receipt'] and entry['after'] is not None and current != entry['after'] and retained_after != entry['after']:
@@ -766,11 +781,11 @@ class Transaction:
             path = Path(entry['path'])
             fd = self.parent(path.parent)
             storage_fd = self.parent(self.storage(entry['path'], expected=entry['storage']))
-            current = node(path, self.uid, links=2)
+            current = self._node(path, self.uid, links=2)
             if current not in (entry['before'], entry['after']):
                 raise Refusal('foreign-publication')
             undo = storage_path(entry['path']) / ('undo-' + str(index))
-            if current == entry['after'] and current is not None and node(undo, self.uid, links=2) is None:
+            if current == entry['after'] and current is not None and self._node(undo, self.uid, links=2) is None:
                 os.link(path.name, undo.name, src_dir_fd=fd, dst_dir_fd=storage_fd, follow_symlinks=False)
                 os.fsync(storage_fd)
             if current != entry['before']:
@@ -778,7 +793,7 @@ class Transaction:
                     os.unlink(path.name, dir_fd=fd)
                 else:
                     before = self.backup_path(entry['path'])
-                    if node(before, self.uid, links=2) != entry['before']:
+                    if self._node(before, self.uid, links=2) != entry['before']:
                         raise Refusal('rollback-node-absent')
                     os.replace(before.name, path.name, src_dir_fd=storage_fd, dst_dir_fd=fd)
                 os.fsync(fd)
@@ -807,7 +822,7 @@ class Transaction:
         self.validate_compensation(value)
         for index, entry in enumerate(value['entries']):
             undo = storage_path(entry['path']) / ('undo-' + str(index))
-            if node(undo, self.uid, links=2) is not None:
+            if self._node(undo, self.uid, links=2) is not None:
                 storage_fd = self.parent(self.storage(entry['path'], expected=entry['storage']))
                 os.unlink(undo.name, dir_fd=storage_fd)
                 os.fsync(storage_fd)
@@ -822,7 +837,7 @@ class Transaction:
 
     def recover(self, adapter, *, restore_only=False):
         adapter.transaction = self
-        outer_record(self.root, self.uid)
+        outer_record(self.root, self.uid, node_limit=self.node_limit)
         prepared = self.recover_preparation()
         if read_private(self.root / 'compensating.json', self.uid) is not None:
             result = self.compensate_latest(adapter, restore_only=restore_only)
@@ -857,15 +872,15 @@ class Transaction:
     def accepted(self):
         receipt = read_private(self.root / 'accepted.json', self.uid)
         if receipt is not None:
-            validate_receipt(receipt, root=self.root, uid=self.uid)
+            validate_receipt(receipt, root=self.root, uid=self.uid, node_limit=self.node_limit)
             for raw, expected in receipt['nodes'].items():
                 self.parent(Path(raw).parent)
-                if node(Path(raw), self.uid) != expected:
+                if self._node(Path(raw), self.uid) != expected:
                     raise Refusal('accepted-authority-changed')
         return receipt
 
     def confirm_outer(self):
-        outer = outer_record(self.root, self.uid)
+        outer = outer_record(self.root, self.uid, node_limit=self.node_limit)
         if outer is not None:
             receipt = self.accepted()
             if receipt is None:
@@ -875,7 +890,7 @@ class Transaction:
 
     def apply(self, candidates, adapter, *, check=False, checkpoint=lambda _stage: None):
         adapter.transaction = self
-        outer_record(self.root, self.uid)
+        outer_record(self.root, self.uid, node_limit=self.node_limit)
         prepared = self.preparation()
         pending = self.journal()
         compensating = self.compensation()
@@ -890,14 +905,14 @@ class Transaction:
             if not interrupted:
                 receipt = self.accepted()
                 self.backups(str(Path(item['path'])) for item in candidates)
-                if len(set((receipt or {}).get('nodes', {})) | {str(Path(item['path'])) for item in candidates}) > 64:
+                if len(set((receipt or {}).get('nodes', {})) | {str(Path(item['path'])) for item in candidates}) > self.node_limit:
                     raise Refusal('receipt-node-limit')
             return {'status': 'predicted', 'changed': interrupted or not self.unchanged(candidates, pending=interrupted), 'published': False}
         recovered = self.recover(adapter)
         self.validate(candidates)
         receipt = self.accepted()
         before_backups = self.backups(str(Path(item['path'])) for item in candidates)
-        if len(set((receipt or {}).get('nodes', {})) | {str(Path(item['path'])) for item in candidates}) > 64:
+        if len(set((receipt or {}).get('nodes', {})) | {str(Path(item['path'])) for item in candidates}) > self.node_limit:
             raise Refusal('receipt-node-limit')
         adapter.retained(receipt)
         if (self.unchanged(candidates) and receipt is not None
@@ -918,7 +933,7 @@ class Transaction:
         fd = self.parent(directory)
         for index, item in enumerate(candidates):
             path = Path(item['path'])
-            before = node(path, self.uid)
+            before = self._node(path, self.uid)
             storage = self.storage(item['path'], create=True)
             storage_identity = storage_claim(item['path'])
             storage_fd = self.parent(storage)
@@ -949,7 +964,7 @@ class Transaction:
                             stream.write(base64.b64decode(item['data'], validate=True))
                         stream.flush()
                         os.fsync(stream.fileno())
-                observed_after = node(after, self.uid)
+                observed_after = self._node(after, self.uid)
                 if 'source' in item and observed_after['sha256'] != item['sha256']:
                     raise Refusal('asset-changed')
             os.fsync(storage_fd)
@@ -973,7 +988,7 @@ class Transaction:
             path = Path(entry['path'])
             parent = self.parent(path.parent)
             storage_fd = self.parent(self.storage(entry['path'], expected=entry['storage']))
-            if node(path, self.uid) != entry['before']:
+            if self._node(path, self.uid) != entry['before']:
                 raise Refusal('preparation-publication-changed')
             if entry['before'] is not None:
                 os.link(path.name, 'before-' + str(index), src_dir_fd=parent,
@@ -1002,7 +1017,7 @@ class Transaction:
                 self.replace(entry, index, 'after')
                 checkpoint('published-' + str(index))
             known = self.journal()
-            if any(node(Path(entry['path']), self.uid, links=2) != entry['before' if entry['deferred'] else 'after'] for entry in known['entries']):
+            if any(self._node(Path(entry['path']), self.uid, links=2) != entry['before' if entry['deferred'] else 'after'] for entry in known['entries']):
                 raise Refusal('publication-unconfirmed')
             adapter.start()
             checkpoint('adopted')

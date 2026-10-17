@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Initial site publication uses only AWG claims read from the exact private instance record and its owned configurations. Desired peer changes wait for the AWG consumer. A tagged run that omits protected consumers refuses a changed public listener contract before publication. The shared publisher retains the initial firewall until the ingress journal records and completes the same durable `committing` decision. It never restores an old firewall after that decision. AWG then uses a separate retained firewall transaction, so its refusal does not undo an already accepted protected frontend. Shared consumer helper ancestry is admitted before file convergence or recovery execution. The operator must retain the existing one-live-deploy-per-node discipline; per-call locks do not grant whole-play concurrency.
+
 AWG candidate activation retains the prior complete firewall file through service
 acceptance. Failure restores it atomically before prior tunnels restart, so
 changed peer claims cannot strand the restored addresses. A fresh host retains

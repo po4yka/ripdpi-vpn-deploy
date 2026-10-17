@@ -44,12 +44,17 @@ def test_recorded_two_to_one_rename_and_repeated_disable_preserve_foreign_unit(
         for task in selections
         if task["name"] == "Select obsolete recorded AmneziaWG instances"
     )
-    transaction = next(task for task in yaml.safe_load((ROLE / "tasks/configure.yml").read_text()) if "block" in task)
-    publish = next(
-        task
-        for task in transaction["block"]
-        if task["name"] == "Record the converged AmneziaWG instance ownership set"
-    )
+    # This fixture exercises ownership retirement independently of runtime
+    # acquisition. Publish its exact synthetic membership through the same
+    # private ownership contract; full consumer activation has its own native lane.
+    publish = {
+        "ansible.builtin.copy": {
+            "dest": str(record),
+            "content": "{{ {'schema': 1, 'config_dir': amneziawg_config_dir, 'instances': _awg_instances | map(attribute='name') | list} | to_json }}",
+            "owner": "root", "group": "root", "mode": "0600",
+        },
+        "no_log": True,
+    }
 
     def ctl(*argv, check=True):
         return subprocess.run(

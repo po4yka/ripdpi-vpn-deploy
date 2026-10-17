@@ -15,6 +15,10 @@ COPY tests/integration/awg_source_candidate/build.py /lab/build.py
 COPY sources/ /sources/
 RUN python3 /lab/build.py
 COPY ansible/roles/runtime-release/files/runtime_build_receipt.py /lab/runtime_build_receipt.py
+COPY --chmod=0755 ansible/roles/runtime-release/files/runtime_build_receipt.py /usr/local/libexec/ripdpi-consumer/runtime_build_receipt.py
+COPY --chmod=0755 ansible/roles/runtime-release/files/transport_runtime_transaction.py /usr/local/libexec/ripdpi-consumer/transport_runtime_transaction.py
+COPY --chmod=0755 ansible/roles/firewall/files/firewall_consumer.py /usr/local/libexec/ripdpi-consumer/firewall_consumer.py
+COPY --chmod=0755 ansible/roles/amneziawg/files/consumer.py /usr/local/libexec/ripdpi-consumer/amneziawg_consumer.py
 COPY ansible/roles/amneziawg/templates/awg-quick@.service.j2 /lab/awg-quick@.service
 COPY tests/integration/awg_source_candidate/acceptance.py /lab/acceptance.py
 STOPSIGNAL SIGRTMIN+3

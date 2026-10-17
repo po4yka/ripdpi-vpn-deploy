@@ -2,6 +2,19 @@
 
 ## Design decisions
 
+Initial firewall publication is retained through the protected ingress commit.
+It uses accepted AWG claims until the AWG consumer takes ownership after that
+commit. AWG rollback therefore restores post-protected policy and preserves
+committed frontend ports. Tagged runs refuse unrelated protected listener
+changes before publication. The durable ingress commit also finishes its exact
+firewall owner; an interrupted acknowledgement cannot turn a committed route
+into an old firewall generation.
+
+AWG consumer acceptance retains executable bytes, shared units, complete configs
+and instance membership in one private runtime transaction. Its separate firewall
+decision covers unchanged-runtime policy changes too. Confirm candidate quiescence
+before restoring files; retain recovery authority when stop cannot be proven.
+
 Hysteria smoke mirrors enabled Salamander in its private client document and retains verified TLS with the effective inner/server identity.
 
 Protected commit keeps a durable `committing` ingress journal while finishing the native consumer outer route. Both begin and rescue resolve that decision before adopting or compensating an open transaction; a failed roll-forward retains remaining journals and stops. Only an undecided journal may roll back. Lost acknowledgement after journal removal releases compensation ownership as an already completed commit.
@@ -12,7 +25,6 @@ AWG device source claims are typed by family. The firewall and standalone AWG
 role admit the exact IPv6-capable uplink before their runtime mutations; network
 routing remains operator/provider authority. AWG candidates retain whole prior
 configurations until all instance activations succeed.
-
 
 AWG singleton and multi-instance deployments both use the nonempty encrypted
 instance list. Observer checks and role normalization never synthesize a
@@ -51,7 +63,6 @@ changes. Enabled Xray, Hysteria and AWG roles use that same controller-side
 entry for standalone invocation. It delegates to localhost without privilege,
 executes read-only in check mode, and sends private values only on stdin under
 `no_log`. Disabled-role reconciliation bypasses unused transport inputs.
-
 
 **Exporter endpoint verification shares installation admission** — `verify.yml`
 gathers only local network facts and reuses monitoring's literal private endpoint

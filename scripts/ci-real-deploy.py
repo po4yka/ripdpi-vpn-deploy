@@ -12,7 +12,6 @@ from pathlib import Path
 import re
 import shlex
 import signal
-import subprocess
 import sys
 import tarfile
 import time
@@ -21,6 +20,7 @@ import uuid
 
 import yaml
 
+from bootstrap_readiness import ReadinessError, run_command
 from ci_deployment import CI_PROFILES
 from ci_tailnet_api import Enrollment, EnrollmentError
 
@@ -125,26 +125,17 @@ class Runtime:
         self.counter += 1
         log = self.work / f"command-{self.counter}.log"
         child = {**self.environment, **(environment or {})}
-        process = None
+        stderr = bytearray()
         try:
-            process = subprocess.Popen([str(x) for x in command], cwd=ROOT, env=child,
-                                       stdin=subprocess.PIPE if data is not None else subprocess.DEVNULL,
-                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
-            stdout, stderr = process.communicate(input=data, timeout=timeout)
+            status, stdout = run_command(
+                [str(x) for x in command], cwd=ROOT, environment=child, timeout=timeout,
+                input_data=data, capture=True, stderr_output=stderr, output_limit=1_049_600)
             private(log, stdout + stderr)
-            if process.returncode:
+            if status:
                 raise DeploymentError("ci-command-failed")
             return stdout
-        except (OSError, subprocess.TimeoutExpired):
+        except (OSError, ReadinessError):
             raise DeploymentError("ci-command-unavailable-or-timeout") from None
-        finally:
-            if process is not None and process.poll() is None:
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    # The owned process group already exited before cancellation.
-                    pass
-                process.wait(timeout=10)
 
     def make(self, goal, **environment):
         return self.run(["make", goal], environment=environment)
