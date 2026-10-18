@@ -9,6 +9,11 @@ server {
 
     server_tokens off;
 
+    # Every outcome can carry a bearer path, including unmatched requests.
+    # Child locations inherit URI-free diagnostics from this server boundary.
+    error_log /dev/null crit;
+    access_log /var/log/nginx/vpn-sub.categorical.log vpn_sub_category;
+
     ssl_certificate     /etc/nginx/tls/subscription-host/server.fullchain.pem;
     ssl_certificate_key /etc/nginx/tls/subscription-host/server.key;
 
@@ -66,5 +71,4 @@ server {
         return 404;
     }
 
-    error_log /var/log/nginx/vpn-sub.error.log warn;
 }
