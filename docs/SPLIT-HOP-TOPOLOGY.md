@@ -98,7 +98,10 @@ swapping the cohort file under `split-hop-egress`.
 - **Latency:** an extra hop between A and B. For an EU-hosted pair
   (e.g. fi-hel1 ↔ de-fra1) the added RTT is ~10–25 ms; for cross-
   continent pairs it can exceed 100 ms.
-- **Failure mode:** when B goes down, A can still answer its local listeners
+- **Failure mode:** the protected UIDs cannot use direct egress while the tunnel is stopped.
+  The retained egress boundary survives WireGuard stop and restart. Its IPv4
+  check uses the final POSTROUTING interface after policy routing; IPv6 originals
+  are refused in OUTPUT. When B goes down, A can still answer its local listeners
   while forwarded traffic fails. Cascade has a separate authenticated
   per-leg health contract, but split-hop has no equivalent family-path gate.
 - **Current routing scope:** `split-hop-ingress` marks only the dedicated

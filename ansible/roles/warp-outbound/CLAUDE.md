@@ -10,6 +10,11 @@ The role does not select a WireGuard or MASQUE backend. Confirm the retained
 vendor protocol setting during separately authorized registered-tunnel acceptance;
 the TUN interface alone does not identify the negotiated protocol.
 
+The upstream repository key is ASCII armored. Publish and reference it as
+`.asc`, with the checksum pinned to the original bytes. Do not label armored
+bytes as a binary `.gpg` keyring. Convergence leaves an old `.gpg` file intact
+and changes only the role-owned repository source to the admitted `.asc` key.
+
 Recipient WARP traffic uses a distinct native gateway identity. Namespace policy admits only the verified current UP TUN ifindex; underlay fallback remains denied. TUN replacement updates host and namespace policy together and resets the paired recipient generation. Retirement preserves the vendor package and registration state.
 
 ## What's done well

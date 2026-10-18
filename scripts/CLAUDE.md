@@ -2,6 +2,12 @@
 
 ## Design decisions
 
+Hysteria export retains metadata for each endpoint. Official-client bandwidth
+hints use the shared exact-rate conversion with reversed client directions and
+positive whole-Mbps rounding; liveness requires the same hints and includes
+them in the public generation digest. These are negotiated per-connection
+values. RIPDPI does not currently apply them, so no server-wide cap is claimed.
+
 Checkout discovery passes Git metadata input through a private temporary file.
 Large NUL-delimited path lists can otherwise block both stdin and captured
 output before the query timeout applies. Preserve UTF-8 surrogateescape bytes,

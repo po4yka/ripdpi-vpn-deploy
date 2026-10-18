@@ -86,6 +86,7 @@ def _make_sops_stub(bin_dir: Path, sops_file: Path) -> None:
         "  esac\n"
         "done\n"
         'if [ "$decrypt" -eq 1 ]; then\n'
+        "  cat >/dev/null\n"
         f'  cat "${{SOPS_FILE:-{sops_file}}}"\n'
         "  exit 0\n"
         "fi\n"
@@ -227,7 +228,7 @@ def _run_snell_only_script(
     secrets.chmod(0o600)
     fake_bin = tmp_path / "snell-bin"
     fake_bin.mkdir()
-    (fake_bin / "sops").write_text('#!/bin/sh\ncat "$SOPS_FILE"\n')
+    (fake_bin / "sops").write_text('#!/bin/sh\ncat >/dev/null\ncat "$SOPS_FILE"\n')
     (fake_bin / "terraform").write_text(
         "#!/bin/sh\n"
         'case "$*" in\n'
@@ -345,7 +346,7 @@ def _run_shape_only_emitter(
     secrets.write_text(json.dumps(payload))
     bin_dir = tmp_path / "shape-bin"
     bin_dir.mkdir()
-    (bin_dir / "sops").write_text('#!/bin/sh\ncat "$SOPS_FILE"\n')
+    (bin_dir / "sops").write_text('#!/bin/sh\ncat >/dev/null\ncat "$SOPS_FILE"\n')
     (bin_dir / "terraform").write_text(
         '#!/bin/sh\ncase "$*" in\n'
         "  *'workspace select'*) exit 0 ;;\n"
@@ -653,6 +654,7 @@ def test_emit_singbox_hysteria_uses_server_userpass_contract(tmp_path):
     )
 
     assert hysteria["password"] == ("laptop:fixture-hysteria-password-laptop-001")
+    assert (hysteria["up_mbps"], hysteria["down_mbps"]) == (200, 100)
 
 
 def test_smoke_hysteria_uses_server_userpass_contract():

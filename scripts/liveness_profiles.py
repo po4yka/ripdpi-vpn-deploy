@@ -16,7 +16,7 @@ import re
 import uuid
 
 from awg_device_binding import BindingError, resolve_binding
-from transport_semantics import awg_dns_valid, cohort_errors, hysteria_errors, key_valid, parameter_errors, xhttp_path_valid, xhttp_tuning
+from transport_semantics import awg_dns_valid, cohort_errors, hysteria_client_bandwidth, hysteria_errors, key_valid, parameter_errors, xhttp_path_valid, xhttp_tuning
 
 PROFILES = {"p0-reality", "p1-xhttp", "p2-hysteria2", "p2-amneziawg"}
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}\Z")
@@ -128,6 +128,12 @@ def _hysteria_options(outbound, secrets):
     expected_bbr = resource.removeprefix('bbr-') if resource != 'bandwidth-capped' else None
     if outbound.get('bbr_profile') != expected_bbr:
         raise ProfileError('wrong-hysteria-resource-profile')
+    expected_bandwidth = hysteria_client_bandwidth(secrets)
+    actual_bandwidth = {key: outbound[key] for key in ('up_mbps', 'down_mbps') if key in outbound}
+    if (actual_bandwidth != expected_bandwidth
+            or any(type(value) is not int for value in actual_bandwidth.values())):
+        raise ProfileError('wrong-hysteria-bandwidth')
+    public.update(expected_bandwidth)
     if ech:
         public['ech_generation'] = ech['generation']
     if secrets.get("salamander_enabled", False):
@@ -232,7 +238,7 @@ def build_profiles(standard_doc, ripdpi_doc, secrets_doc, client, required_profi
         for index, original in enumerate(selected, 1):
             outbound = copy.deepcopy(original)
             allowed = {"type", "tag", "server", "server_port", "tls"}
-            allowed |= {"password", "obfs", "server_ports", "hop_interval", "bbr_profile"} if profile == "p2-hysteria2" else {"uuid", "flow", "multiplex", "transport"}
+            allowed |= {"password", "obfs", "server_ports", "hop_interval", "bbr_profile", "up_mbps", "down_mbps"} if profile == "p2-hysteria2" else {"uuid", "flow", "multiplex", "transport"}
             if set(outbound) - allowed:
                 raise ProfileError("unsupported-outbound-field")
             server, port = _host(outbound.get("server")), _port(outbound.get("server_port"))

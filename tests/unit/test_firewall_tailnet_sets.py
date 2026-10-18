@@ -7,6 +7,7 @@ import re
 import subprocess
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
+from ansible.plugins.filter.core import to_bool
 import yaml
 
 from template_render import merge_render_vars, render_template
@@ -50,6 +51,7 @@ def _render_with_ansible_whitespace() -> str:
     environment.tests["match"] = lambda value, pattern: bool(
         re.search(pattern, str(value))
     )
+    environment.filters["bool"] = to_bool
     return environment.get_template(TEMPLATE.name).render(**variables)
 
 

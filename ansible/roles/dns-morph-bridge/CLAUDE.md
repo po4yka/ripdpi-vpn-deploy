@@ -11,7 +11,13 @@ remain. The unique `dns_morph_bridge_role_enabled` selector defaults true for di
 **Config validation is role-specific** — the unpublished bridge binary has no
 stable validation CLI. The shared bounded YAML validator rejects malformed or
 duplicate-key candidates and invalid nested listener, forwarder, morph, limit,
-or log values before publication; the restart handler then proves liveness.
+or log values. Controller-side admission runs before site and standalone host
+changes, including in check mode. The private signing key is a canonical padded
+base64 32-byte Ed25519 seed, matching disposable CI generation. Expanded private
+keys and public keys are not this input format. An upstream host:port is required;
+only the explicit boolean `dns_morph_bridge_allow_echo_only: true` permits an
+empty endpoint in isolated tests. Publication repeats the same semantic gate.
+The restart handler proves process activity only, not a DNS-Morph handshake.
 
 **Standalone listener, not an Xray inbound** — DNS-Morph requires line-rate
 packet inspection of every UDP/53 datagram to split handshake-shaped queries
@@ -42,6 +48,8 @@ an unauthenticated public query into admitted recursion merely by changing its
 source to loopback. Local authoritative answers remain supported. The upstream
 DNS-Morph release artifact is unavailable in this source acceptance lane, so
 authenticated morphology and end-to-end bridge forwarding remain unverified.
+Molecule uses a non-protocol shell stub to check file rendering and lifecycle;
+its success does not establish wire compatibility or forwarding.
 
 Retiring the owned Unbound fragment captures its exact bounded bytes and
 metadata. Failed post-removal validation or restart restores that fragment and
