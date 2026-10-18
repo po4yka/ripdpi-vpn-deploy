@@ -1,0 +1,22 @@
+---
+- name: Require an explicit boolean for DNS-Morph test-only echo mode
+  ansible.builtin.assert:
+    that:
+      - dns_morph_bridge_allow_echo_only is boolean
+    fail_msg: DNS-Morph echo-only selection must be a boolean.
+
+- name: Validate DNS-Morph input before host mutation
+  ansible.builtin.command:
+    argv: >-
+      {{ [ansible_playbook_python,
+          role_path ~ '/../runtime-release/files/validate_yaml_mapping.py',
+          '--profile', 'dns-morph']
+         + (['--allow-dns-morph-echo-only'] if dns_morph_bridge_allow_echo_only else [])
+         + ['-'] }}
+    stdin: "{{ lookup('ansible.builtin.template', role_path ~ '/templates/dns-morph-bridge.yaml.j2') }}"
+    stdin_add_newline: false
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+  no_log: true

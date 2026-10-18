@@ -2,6 +2,16 @@
 
 ## Design decisions
 
+The output filter guard runs after policy rerouting. It admits protected IPv4
+originals only on loopback or the tunnel and refuses protected IPv6 originals.
+The boot policy loader is a required WireGuard dependency. Tunnel PostDown
+removes routes only; policy remains active across stop and restart. Explicit
+role retirement first requires the canonical firewall to remove its shared
+ingress guard, then stops the loader and removes the owned policy. Direct
+retirement refuses while that shared guard remains. Check mode skips the live
+ruleset refusal because canonical firewall removal is only predicted. Site firewall
+publication also retains this boundary before the transport roles run.
+
 Disabled role intent stops only declared owned services and removes exact runtime
 configuration; shared packages, immutable release receipts and unrelated state
 remain. The unique `split_hop_ingress_role_enabled` selector defaults true for direct calls.

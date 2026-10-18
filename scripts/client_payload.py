@@ -15,7 +15,7 @@ import yaml
 from awg_client import export as awg_export, host_context
 from awg_device_binding import resolve_binding
 from encrypted_client_document import MAX_BYTES, private_file, identity
-from transport_semantics import transport_errors, xhttp_endpoints, xhttp_tuning
+from transport_semantics import hysteria_client_bandwidth, transport_errors, xhttp_endpoints, xhttp_tuning
 from fleet_inspection import bounded_command, InspectionError
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -240,6 +240,7 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
                 raise ValueError('missing-selected-hysteria-client')
             hyout = dict(type='hysteria2', tag='p2-hysteria2-' + tag, server=ip, server_port=c.get('hysteria_port', 443),
                          password=client + ':' + required_text(matches[0].get('password')), tls=dict(enabled=True, server_name=required_text(hy.get('server_name') or (ech or {}).get('inner_name') or (d.get('nginx_xhttp') or {}).get('server_name'))))
+            hyout.update(hysteria_client_bandwidth(hy))
             if ech:
                 hyout['tls']['ech'] = dict(enabled=True, config=[
                     '-----BEGIN ECH CONFIGS-----', ech['config_list'], '-----END ECH CONFIGS-----'])
@@ -257,8 +258,7 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
                 hyout.update(server_ports=[ports], hop_interval=interval)
                 extra['port_hopping'] = dict(ports=ports, interval=interval)
             out.append(hyout)
-            if not extras:
-                extras[hyout['tag']] = extra
+            extras[hyout['tag']] = extra
         if enabled('enable_snell'):
             for variant in c['snell']['variants']:
                 secret = next((v for v in d['snell_secrets']['variants'] if v['id'] == variant['id']), None)

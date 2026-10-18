@@ -58,14 +58,22 @@ secret guards; immutable source receipts remain retained.
 
 **Private instance records stay out of callbacks** — normalization and every service lifecycle loop over complete instances use `no_log`, including credential rotation. Verbose callback regressions use synthetic keys and PSKs.
 
-**Userspace AWG, not kernel WireGuard** — AmneziaWG 2.0 in userspace is the
-only path that supports the cohort obfuscation params (jc/jmin/jmax/s1/s2 and
-2.0 finalmask/headers). Kernel WG doesn't.
+**Pinned userspace AWG** — The deployed configuration supports the legacy
+Jc/Jmin/Jmax/S1/S2 and scalar H1..H4 parameter set. It does not emit finalmask,
+I1..I5 or AWG 3.1 options. Standard kernel WireGuard does not support this
+obfuscation configuration. The separate source candidate does not change the
+deployment contract.
+
+Admission follows the pinned engine: `148 + S1` and `92 + S2` must differ.
+Each header must equal its standard message type (`H1=1` through `H4=4`) or
+exceed four; other low values would be silently rewritten by the engine.
+All four effective headers must differ, so exported fingerprints describe the
+actual wire values.
 
 **Cohort profiles are config, not code** — `vars/cohorts/<slug>.yml` is the
 SOT. New cohort = new file. See `docs/AWG-COHORTS.md`. Currently shipped as
 a YAML file: `narrow-junk-sequential`. The broad-rule baseline (long junks
-+ non-zero S1/S2 + random per-peer H1..H4) is encoded as the role's
++ non-zero S1/S2 + random per-instance H1..H4) is encoded as the role's
 hard-coded defaults — no separate cohort file needed, that profile is the
 safe starting point on any unmeasured network.
 

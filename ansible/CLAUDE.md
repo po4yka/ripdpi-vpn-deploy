@@ -2,6 +2,12 @@
 
 ## Design decisions
 
+DNS-Morph controller admission runs in site pre_tasks before host changes and
+at standalone role entry. Both use the same bounded YAML validator and rendered
+role contract; malformed seed material and implicit echo-only inputs refuse in
+normal and check mode. Split-hop ingress retains its UID output boundary when
+the WireGuard route stops, independently from its policy-routing lifecycle.
+
 Debian13 Molecule consumers share one immutable image digest. Refresh it through
 the existing CI publisher, require its current HIGH/CRITICAL scan to pass, and
 update every Molecule consumer plus the pin guard together. The parent image

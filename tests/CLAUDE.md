@@ -14,6 +14,12 @@
 
 ## Design decisions
 
+Transport audit regressions cover local-only hopping NAT, forwarded UDP,
+retained split-hop denial during tunnel stops, strict overlay allowances,
+complete multi-host metadata and exact client bandwidth hints. DNS-Morph
+preflight tests run the real controller validator before synthetic mutation
+sentinels. Render fixtures and research stubs establish no live protocol claim.
+
 Disposable CI admits the fixed root-owned executable and acquisition directories through no-follow directory descriptors before it installs clients. Only the `/usr/local/bin` and `/opt` leaf modes change to 0755; unsafe ancestors, symlinks and foreign ownership refuse. Executable regressions run the exact inline admission code in an owned temporary tree, with only its paths and expected UID changed, and preserve existing child bytes and inodes. The complete AWG native fixture creates its fresh claimed acquisition root and release directory with explicit 0755 modes; actual umask 0000 and 0777 regressions prevent unsafe default intermediate permissions, without changing existing authority.
 
 The early AWG rollback step runs the complete canonical dual-stack goal with the same pinned sources and isolated environment. The final native bundle retains that goal to check the complete runtime context.

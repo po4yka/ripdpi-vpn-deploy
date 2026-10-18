@@ -1,4 +1,36 @@
 ---
+- name: Inspect canonical firewall tooling before ingress retirement
+  ansible.builtin.stat:
+    path: /usr/sbin/nft
+  register: _split_hop_retire_nft
+
+- name: Refuse standalone retirement while the canonical firewall retains ingress
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -c
+      - |
+        import json
+        import subprocess
+        import sys
+        result = subprocess.run(['/usr/sbin/nft', '-j', 'list', 'ruleset'],
+                                capture_output=True, text=True, timeout=15)
+        try:
+            if result.returncode:
+                raise ValueError()
+            rows = json.loads(result.stdout)['nftables']
+            retained = any(rule.get('family') == 'inet' and rule.get('table') == 'filter'
+                           and rule.get('chain') == 'output'
+                           and rule.get('comment') in ('split-hop-ingress-boundary-v4',
+                                                       'split-hop-ingress-boundary-v6')
+                           for row in rows for rule in [row.get('rule', {})])
+        except (ValueError, KeyError, TypeError):
+            sys.exit('split-hop-firewall-state-unavailable')
+        if retained:
+            sys.exit('Reconcile the canonical firewall with split-hop ingress disabled before retirement.')
+  changed_when: false
+  when: _split_hop_retire_nft.stat.exists
+
 - name: Retire split-hop-ingress owned runtime authority
   ansible.builtin.include_role:
     name: runtime-release
@@ -6,9 +38,12 @@
   vars:
     runtime_retire_units:
       - wg-quick@{{ split_hop_ingress.wg_interface }}.service
+      - split-hop-ingress-policy.service
     runtime_retire_paths:
       - /etc/wireguard/{{ split_hop_ingress.wg_interface }}.conf
       - /etc/wireguard/split-hop-ingress.nft
+      - /etc/systemd/system/split-hop-ingress-policy.service
+      - /etc/systemd/system/wg-quick@{{ split_hop_ingress.wg_interface }}.service.d/split-hop-policy.conf
 
 - name: Inspect installed packages for scoped ingress policy retirement
   ansible.builtin.package_facts:

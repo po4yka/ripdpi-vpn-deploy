@@ -2,6 +2,12 @@
 
 ## Design decisions
 
+Hysteria export retains metadata for each endpoint. Official-client bandwidth
+hints use the shared exact-rate conversion with reversed client directions and
+positive whole-Mbps rounding; liveness requires the same hints and includes
+them in the public generation digest. These are negotiated per-connection
+values. RIPDPI does not currently apply them, so no server-wide cap is claimed.
+
 Blue-green treats each Make phase as a separate ordered command with inherited
 Make controls removed. Dry-run accepts only 0 or 1 and resolves before private
 inputs. CI commands use the retained bootstrap session supervisor; keep private

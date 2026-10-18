@@ -250,6 +250,24 @@ def ech_keys_config(pem, *, verify_private=False):
         raise ValueError("invalid-ech-authority") from None
 
 
+def hysteria_client_bandwidth(raw):
+    """Return whole-Mbps client hints; server negotiation retains exact rates."""
+    if raw.get('resource_profile', 'bandwidth-capped') != 'bandwidth-capped':
+        return {}
+    result = {}
+    for target, field, default in (('up_mbps', 'bandwidth_down', '200 mbps'),
+                                   ('down_mbps', 'bandwidth_up', '100 mbps')):
+        value = raw.get(field, default)
+        match = re.fullmatch(r'([1-9][0-9]*)\s*(bps|kbps|mbps|gbps)', value) if isinstance(value, str) and len(value) <= 32 else None
+        if not match:
+            raise ValueError('invalid-hysteria-bandwidth')
+        rate = int(match[1]) * {'bps': 1, 'kbps': 1000, 'mbps': 1000000, 'gbps': 1000000000}[match[2]]
+        if rate > 1000000000:
+            raise ValueError('invalid-hysteria-bandwidth')
+        result[target] = (rate + 999999) // 1000000
+    return result
+
+
 def hysteria_profile_errors(raw):
     import hashlib
     import base64
@@ -407,7 +425,15 @@ def parameter_errors(raw: dict, path: str, *, allow_placeholders: bool = False) 
             errors.append((f"{path}.{name}", "invalid bounded integer"))
     if all(type(effective.get(name)) is int for name in ("jmin", "jmax")) and effective["jmin"] > effective["jmax"]:
         errors.append((path, "junk bounds must be ordered"))
+    if (all(type(effective.get(name)) is int for name in ("s1", "s2"))
+            and 148 + effective["s1"] == 92 + effective["s2"]):
+        errors.append((path, "initiation and response sizes must differ"))
     headers = [effective.get(f"h{i}") for i in range(1, 5)]
+    for index, value in enumerate(headers, 1):
+        # The pinned engine maps every value at most four to this message's
+        # standard type. Refuse rewrites so exports describe the actual wire.
+        if type(value) is int and 0 <= value <= 4 and value != index:
+            errors.append((f"{path}.h{index}", "requires the standard message type or a value above four"))
     if all(type(value) is int for value in headers) and len(set(headers)) != 4:
         errors.append((path, "headers must be pairwise distinct"))
     return errors

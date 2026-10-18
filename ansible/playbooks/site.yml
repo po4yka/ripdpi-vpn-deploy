@@ -23,6 +23,15 @@
       ansible.builtin.import_tasks: tasks/transport-input-preflight.yml
       tags: [always]
 
+    - name: Preflight enabled DNS-Morph inputs before host changes
+      ansible.builtin.import_role:
+        name: dns-morph-bridge
+        tasks_from: preflight
+      when:
+        - vpn.enable_dns_morph_bridge | default(false) | bool
+        - not (vpn_subscription_only | default(false) | bool)
+      tags: [always]
+
     - name: Require exact-node controller ownership before convergence
       tags: [always]
       ansible.builtin.assert:

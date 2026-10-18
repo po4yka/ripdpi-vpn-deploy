@@ -86,6 +86,7 @@ def _make_sops_stub(bin_dir: Path, sops_file: Path) -> None:
         "  esac\n"
         "done\n"
         'if [ "$decrypt" -eq 1 ]; then\n'
+        "  cat >/dev/null\n"
         f'  cat "${{SOPS_FILE:-{sops_file}}}"\n'
         "  exit 0\n"
         "fi\n"
@@ -653,6 +654,7 @@ def test_emit_singbox_hysteria_uses_server_userpass_contract(tmp_path):
     )
 
     assert hysteria["password"] == ("laptop:fixture-hysteria-password-laptop-001")
+    assert (hysteria["up_mbps"], hysteria["down_mbps"]) == (200, 100)
 
 
 def test_smoke_hysteria_uses_server_userpass_contract():
