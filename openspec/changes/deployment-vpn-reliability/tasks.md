@@ -30,9 +30,9 @@ Repair the six audited failure paths and merge verified source without a live ro
 
 - [x] OPS-1792263261040276 Serialize blue-green phases and preserve dry-run intent with regression tests #bug !high @item:OPS-1792263187492070
 - [x] OPS-1792263261891666 Isolate state backup retention and recovery by exact environment with regression tests #bug !high @item:OPS-1792263187492070
-- [ ] OPS-1792263262980365 Compensate firewall and retain complete AWG runtime through acceptance with regression tests #bug !high @item:OPS-1792263187492070
+- [x] OPS-1792263262980365 Compensate firewall and retain complete AWG runtime through acceptance with regression tests #bug !high @item:OPS-1792263187492070
 - [x] OPS-1792263263700589 Reclaim CI command descendants with retained supervisor and regression tests #bug !high @item:OPS-1792263187492070
-- [ ] OPS-1792263264479573 Run required gates and reviews and land the verified pull request #bug !high @item:OPS-1792263187492070
+- [x] OPS-1792263264479573 Run required gates and reviews and land the verified pull request #bug !high @item:OPS-1792263187492070
 
 ## Verification
 

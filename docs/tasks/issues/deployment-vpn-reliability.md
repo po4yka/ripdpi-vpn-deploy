@@ -2,7 +2,7 @@
 id: OPS-1792263187492070
 title: Restore deployment and VPN rollback reliability
 kind: bug
-status: doing
+status: review
 area: operations
 priority: high
 risk: high
@@ -12,8 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: deployment-vpn-reliability
 created: 2026-10-17
-updated: 2026-10-17
+updated: 2026-10-18
 related_tasks: []
+status_detail: "All six repairs and regression coverage merged in PR #323 after all 92 CI jobs and nine required contexts passed. Exact protected-main verification is running before closure."
 ---
 
 ## Goal

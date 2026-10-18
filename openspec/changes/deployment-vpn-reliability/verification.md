@@ -1,11 +1,11 @@
 ---
 task_id: OPS-1792263187492070
 change: deployment-vpn-reliability
-commit_sha: b001d337fab20a35f3c8aec38e8b348eed8a8c72
+commit_sha: 632b42f599c5c6c58c92b44f62b5b95d120b3bc7
 local: passed
-local_evidence: Focused 253-test consolidated result; final 97-test VPN/baseline bundle; final 65-test site/source suites; all applicable commit hooks, 164 snapshots and structured P0 review passed. Complete local gate remains host-limited as documented below.
-remote_ci: required
-remote_ci_evidence: null
+local_evidence: Exact merged-source repeat passed 129 portable regressions and one real crypto generator case. Earlier focused suites, 164 snapshots, applicable commit hooks and structured review passed as recorded below. Complete local gate remains Docker-limited; no complete local gate is claimed.
+remote_ci: passed
+remote_ci_evidence: Protected-main run 39089475940 at the exact commit_sha passed all 92 jobs; all nine required contexts passed. PR run 39085981444 also passed all 92 jobs before merge. No bypass was used.
 dry_run: passed
 dry_run_evidence: Actual blue-green environment dry-run exited zero without a SSH key or SOPS input; 12 Bats cases and ordered Make regressions passed. This is credential-free source prediction, not a real-host deployment check.
 staging: not_applicable
@@ -14,8 +14,8 @@ live: not_applicable
 live_evidence: Source-only PR and merge; no external rollout is in scope.
 client: not_applicable
 client_evidence: No recipient device or external client acceptance is requested. Isolated test traffic does not establish live service health.
-artifact: required
-artifact_evidence: null
+artifact: passed
+artifact_evidence: Exact protected-main artifacts 12123006103, 12123101135 and 12122528920 confirm 44 native cases with cleanup and no differences. Both transport partitions passed 12 cases with retirement; all 38 Molecule jobs and the full native integration passed. Image scans report zero findings; no new CodeQL alerts were introduced.
 ---
 
 # Verification
@@ -24,12 +24,12 @@ artifact_evidence: null
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-DR-ORDER | OPS-1792263261040276 | Executable inherited-parallel Make regression | required |
-| REQ-DR-PREDICT | OPS-1792263261040276 | Environment and CLI dry-run regression with no private inputs | required |
-| REQ-DR-STATE | OPS-1792263261891666 | Actual shell retention and documented recovery selection with synthetic encrypted state | required |
-| REQ-DR-FIREWALL | OPS-1792263262980365 | Cross-role failure and tagged dependency regression | required |
-| REQ-DR-AWG | OPS-1792263262980365 | Rejected executable/unit restoration and isolated native acceptance | required |
-| REQ-DR-CHILD | OPS-1792263263700589 | Real exited-leader and retained-descendant deadline tests | required |
+| REQ-DR-ORDER | OPS-1792263261040276 | Executable inherited-parallel Make regression | passed |
+| REQ-DR-PREDICT | OPS-1792263261040276 | Environment and CLI dry-run regression with no private inputs | passed |
+| REQ-DR-STATE | OPS-1792263261891666 | Actual shell retention and documented recovery selection with synthetic encrypted state | passed |
+| REQ-DR-FIREWALL | OPS-1792263262980365 | Cross-role failure and tagged dependency regression | passed |
+| REQ-DR-AWG | OPS-1792263262980365 | Rejected executable/unit restoration and isolated native acceptance | passed |
+| REQ-DR-CHILD | OPS-1792263263700589 | Real exited-leader and retained-descendant deadline tests | passed |
 
 ## Source scope
 
@@ -337,3 +337,60 @@ The aggregate integration job budget is now 75 minutes. This includes setup,
 the early AWG gates, every late canonical recipe and cleanup. All test sets,
 inner command deadlines and production admission guards remain unchanged.
 The full hosted gate at the updated source remains required before merge.
+
+## Merged source acceptance
+
+PR #323 merged on 2026-10-18 at 02:16:01 UTC as
+632b42f599c5c6c58c92b44f62b5b95d120b3bc7. Its complete tree matches reviewed
+source 0f78fd83181dcef18b705d594a0720c7c10a12bc. PR CI run 39085981444
+passed all 92 jobs and all nine required contexts without bypass.
+
+The four disjoint unit groups passed 7,902 tests and 45 subtests. All 38
+Molecule jobs passed with verify and destroy confirmed in every log; all 34
+declared idempotence phases passed. Both full-stack scenarios passed all three
+phases. Five separate native jobs passed 56 cases. Core artifact 12121053666
+(29), recovery artifact 12121432781 (eight) and recovery artifact 12120674581
+(seven) report success, cleanup and no differences. Both transport partitions
+passed six cases and their exact owned retirement steps.
+
+Integration job 117552559756 passed early warm (one), early AWG (ten), ECH
+(13), then all late canonical recipes (156 + 10 + 4 + 167 + 10). The final
+dual-stack recipe completed. All three post-cleanup steps passed; no timeout
+or cancellation occurred. The job completed in 57 minutes and 12 seconds.
+PR CodeQL analyses 1974393212 and 1974389402 and image scan analyses
+1974389905 and 1974389186 report zero findings. PR open CodeQL alerts are zero.
+
+The exact merged-source local repeat passed 129 portable regressions in
+24.03 seconds and the real crypto generator case in 30.83 seconds. An initial
+combined attempt passed 129 and refused that native case because the verified
+Xray was absent from PATH. Repeating it with the existing checksum-verified
+executable passed without source changes. The earlier complete local Docker
+gate limitation remains; no complete local gate or live rollout is claimed.
+
+Protected-main run 39089475940 passed all 92 jobs at the exact merge SHA.
+All six repaired requirements have source and runtime regression evidence.
+
+Its unit aggregator 117564836637 passed 7,902 tests and 45 subtests in four
+disjoint groups. Both main CodeQL jobs passed. Python analysis 1974524850
+contains the same 15 rule/path results as baseline analysis 1974062283 at
+234211e223f90256efbfc77eeb0e2ef430bcfddf. Thirteen were already dismissed;
+the two open unused-import notes (1251 and 1252) predate this merge. No new
+alert IDs were introduced. Main image analyses 1974522335 and 1974522273
+report zero findings, with both scan jobs successful. These are portable and
+security results; full runtime acceptance is recorded below.
+
+## Protected-main runtime acceptance
+
+All 38 Molecule jobs passed at the exact merge SHA. Fresh logs confirm all
+38 verify and destroy phases and all 34 declared idempotence phases. Both
+full-stack scenarios passed their complete phase sets. Core artifact
+12123006103 (29), recovery artifact 12123101135 (eight) and recovery artifact
+12122528920 (seven) each identify the merge SHA and report success, cleanup
+and no differences. Both transport partitions passed six cases and their
+exact owned retirement steps. All 56 separate native cases passed.
+
+Integration job 117562960067 passed early warm (one), early AWG (ten), ECH
+(13), then every late canonical recipe (156 + 10 + 4 + 167 + 10). Its final
+dual-stack invocation completed all ten cases. No test or required gate was
+removed to obtain acceptance. This establishes isolated source/runtime
+acceptance; staging, live hosts and recipient devices remain outside scope.
