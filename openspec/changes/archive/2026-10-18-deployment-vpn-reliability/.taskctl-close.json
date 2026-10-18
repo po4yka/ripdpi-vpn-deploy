@@ -1,0 +1,11 @@
+{
+  "change": "deployment-vpn-reliability",
+  "evidence_summary": "All six repairs merged in PR #323 as 632b42f599c5c6c58c92b44f62b5b95d120b3bc7. Exact protected-main CI 39089475940 passed all 92 jobs, 7902 tests and 45 subtests, 38 Molecule jobs, full integration and 56 separate native cases with cleanup. Both image scans passed with zero findings; no new CodeQL alerts. PR #326 committed the accepted review snapshot in main. Canonical OpenSpec archive passed. No live rollout.",
+  "execution_sha256": "1ebc226c2ebe61400079b7afeead16641341f6fdf9b086e66e4b4c3e3989cc98",
+  "issue_sha256": "d78a5ab98b1c2cadefb288e0b8200fd6bcffa33cc0ad9c303f06548ed995e0d6",
+  "outcome": "done",
+  "prepared_at": "2026-10-18T05:16:11Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "OPS-1792263187492070"
+}

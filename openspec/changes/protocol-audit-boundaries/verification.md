@@ -31,7 +31,7 @@ artifact_evidence: Exact parsed credential values and all per-host metadata pass
 | REQ-PAB-JSON | SEC-1792301642634281 | 229 combined regressions and 12 real Snell authentication/reuse tests passed | passed |
 | REQ-PAB-HOP | SEC-1792301643438614 | CLI and materializer refusal tests passed; official sing-box control passed | passed |
 | REQ-PAB-SAN | SEC-1792301644239886 | 12 real-certificate operator-script tests passed; uses verify -verify_hostname for OpenSSL 3.0 | passed |
-| REQ-PAB-EXTRAS | SEC-1792301645045399 | Multi-host emitted tags and extension metadata match in both host orders | passed |
+| REQ-PAB-EXTRAS | SEC-1792301645045399 | Multi-host emitted tags and distinct source metadata match | passed |
 | REQ-PAB-GATES | SEC-1792301645900459 | Full checks, security review and unchanged safety policy | pending |
 
 ## Integration acceptance
