@@ -14,6 +14,11 @@
 
 ## Design decisions
 
+The native upgrade fixture renders hopping ingress for its owned host veth in
+both IP families. This render-only context preserves the facts used by canonical
+Ansible convergence. The exact local-destination redirect, native authentication
+and observed multi-port traffic remain required.
+
 Transport audit regressions cover local-only hopping NAT, forwarded UDP,
 retained split-hop denial during tunnel stops, strict overlay allowances,
 complete multi-host metadata and exact client bandwidth hints. DNS-Morph
