@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 
 def environment() -> dict[str, str]:
@@ -16,12 +17,17 @@ def environment() -> dict[str, str]:
 
 
 def git(cwd: Path, *args: str, check: bool = True, input: str | None = None) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["git", "-c", "core.fsmonitor=false", "-c", "status.renameLimit=0", "-C", str(cwd), *args],
-        capture_output=True, text=True,
-        encoding="utf-8", errors="surrogateescape",
-        env=environment(), check=check, timeout=30, input=input,
-    )
+    command = ["git", "-c", "core.fsmonitor=false", "-c", "status.renameLimit=0", "-C", str(cwd), *args]
+    options = {"capture_output": True, "text": True, "encoding": "utf-8", "errors": "surrogateescape",
+               "env": environment(), "check": check, "timeout": 30}
+    if input is None:
+        return subprocess.run(command, **options)
+    # Metadata can exceed both pipe capacities. A private seekable input avoids
+    # a blocked stdin write while Git waits for its captured output to drain.
+    with tempfile.TemporaryFile(mode="w+b") as metadata:
+        metadata.write(input.encode("utf-8", "surrogateescape"))
+        metadata.seek(0)
+        return subprocess.run(command, stdin=metadata, **options)
 
 
 def reject_content_filters(root: Path) -> None:

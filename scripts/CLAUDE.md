@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+Checkout discovery passes Git metadata input through a private temporary file.
+Large NUL-delimited path lists can otherwise block both stdin and captured
+output before the query timeout applies. Preserve UTF-8 surrogateescape bytes,
+the empty-input EOF, the deadline and all active-content-filter refusals.
+
 Strict full-device kill-switch certification refuses partial TUN capture
 selectors, including route sets, interfaces, users, packages, namespaces and
 MPTCP exclusions. Parser validity alone does not prove device traffic capture.
