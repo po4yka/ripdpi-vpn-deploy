@@ -57,4 +57,4 @@ check, security review, structured review and protected PR checks. Retain source
 merge and exact integration CI evidence separately from local and device proof.
 No deployment, live credentials, provider mutation or real notification occurs.
 - [x] SEC-1792317891777907 Bound checkout metadata input without a duplex pipe deadlock #bug !high @item:SEC-1792307003680932
-- [ ] SEC-1792321613767971 Normalize computed zero UDP checksums in pinned AWG builds #bug !high @item:SEC-1792307003680932
+- [x] SEC-1792321613767971 Normalize computed zero UDP checksums in pinned AWG builds #bug !high @item:SEC-1792307003680932

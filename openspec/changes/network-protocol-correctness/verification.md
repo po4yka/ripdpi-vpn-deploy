@@ -32,7 +32,7 @@ artifact_evidence: null
 | REQ-NPC-RELAY | SEC-1792307141621739 | 156 client boundary tests on Python 3.12.13 and 3.12.15 include real TCP half-close, bounded buffers and authenticated empty UDP | Passed locally |
 | REQ-NPC-RESOLVER | SEC-1792307142612713 | 49 resolver/runtime tests; interrupted apply replay; independent focused review APPROVE | Passed locally |
 | REQ-NPC-DISCOVERY | SEC-1792317891777907 | 38 checkout-discovery tests; real large-input, byte-identity, filter-refusal and FIFO deadline cases; actual Make and selected-task commands | Passed locally |
-| REQ-NPC-UDP-CHECKSUM | SEC-1792321613767971 | Baseline/current packet proof; strict source correction, build-identity tests and corrected real-packet regression | Repair pending |
+| REQ-NPC-UDP-CHECKSUM | SEC-1792321613767971 | Baseline/current packet proof; strict source correction, build-identity tests and corrected real-packet regression | Passed corrected isolated proof; integrated CI pending |
 | REQ-NPC-EVIDENCE | SEC-1792307143659844 | Full gate, source ledger, reviews, coordinated fixes and protected merge | Pending |
 
 ## Coordination
@@ -149,8 +149,8 @@ source-candidate cases, plus 74 passing role, consumer and lifecycle contracts.
 The strict filesystem regressions first exposed writable-file and directory
 admission gaps in the new helper; these were corrected without relaxing the
 receipt authority. A separate native-consumer rerun passes 28 cases after the
-Go test asset and all three overlay invocations are present. Real Go and packet
-acceptance remain pending in the shared build queue.
+Go test asset and all three overlay invocations are present. The corrected
+exact-pin Go and packet evidence below completes that isolated proof.
 
 The earlier exact head 9dcf9329508c006f7fbd9fe574bd3a0002040aa9 completes CI
 run 39118640694 with 98 successful contexts and one neutral context. It predates
@@ -202,3 +202,42 @@ transport semantics module passes 70 cases after its build ordering assertion
 includes correction, checksum tests, forced build and publication. Actionlint,
 offline Zizmor, focused Ruff and diff whitespace checks pass. Full native host
 execution remains a required exact-head CI gate.
+
+## Corrected exact-pin Go and packet proof
+
+The isolated Linux experiment exits zero for both public source commits:
+2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf and
+b5928efb6ca19f0153958460c3d141f04abc5c2e. Each baseline fails exactly the
+eight expected computed-zero UDP leaves; each corrected tree passes all 28
+leaves with no skips. Each tree then passes the production overlay check, a
+forced build and strict immutable publication under correction digest
+94a67434677bec1a122fd0f415f9b86a3382725ded84e6a5fdf09fe02c324987.
+The core correction inputs match source commit 85149fa4; the later offline
+producer and root CI staging remain covered by their separate regressions.
+
+The experiment selects each published corrected binary explicitly. Each pin
+passes six UDP6 probes through each of the two recorded baseline/current NAT
+policies: 24 replies in total. Server TUN AUXDATA has six complete requests
+per pin/policy, ffff for the zero-producing tuple and fffe for its adjacent
+control, CSUMNOTREADY=false and valid independently computed checksums. All
+upstream, server and client UDP6 checksum error deltas remain zero. The payload
+is a DNS-shaped query and the responder echoes it. This proves UDP transport;
+the new CI regression separately requires actual AAAA DNS answers.
+
+The baseline-pin binary SHA256 is
+948bafa2f849ab8b3ee4eee6c3bdd7e79bbaef57cab4367f643a47318a5578a5;
+the candidate-pin binary SHA256 is
+8b4adcc31e1a1789c256a936fac50c36e3e1fc337be602e29b3d9aecda7010f9.
+The retained artifact manifest SHA256 is
+1b5d2687c74cf433053c4a873a8a8aadd64e90a92fba18e74fbf7d04c1b38ce0.
+The experiment uses Linux 7.0.14-linuxkit arm64, pinned Go 1.27.1 and nftables
+1.0.9, with two CPUs and 2 GiB RAM. Its exact owned container is removed after
+the proof; packet captures and public provenance remain retained. The earlier
+attempt failed the copied-file owner guard after its Go check and is not a
+packet pass. The successful attempt fixes only ownership of its copied public
+inputs. No source owner check, offload or packet guard is relaxed.
+
+Independent review approves the root CI staging delta; its actual-shell
+regressions pass. The complete follow-up structured review is clean at 0.97,
+and all hooks pass on 65f4c365. Final integrated full-gate and exact-head CI
+evidence remain required before source merge.

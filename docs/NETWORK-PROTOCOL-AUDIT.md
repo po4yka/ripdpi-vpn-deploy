@@ -75,7 +75,7 @@ checksum offload. The required UDP wire value is ffff. Each lost request adds
 one upstream checksum error. These observations do not establish the exact
 cause of the earlier CI failure, whose source port was not captured.
 
-The repair must preserve offloads, TCP checksum behavior, packet guards and
+The repair preserves offloads, TCP checksum behavior, packet guards and
 authentication. Production and native acceptance builds must use the same
 strictly admitted source correction. An unchanged upstream commit must not
 allow reuse of an uncorrected binary or overwrite its immutable release path.
@@ -95,6 +95,15 @@ Keep the previous directory for rollback; do not add identity fields to old
 manifests by hand. Both standalone readers resolve the exact trusted installed
 helper and compare the complete correction identity. No runtime or arm64
 candidate promotion follows from this source correction.
+
+The corrected isolated experiment passes both exact public pins. Each has
+eight expected failing Go leaves before correction and 28 passing leaves
+after correction, with no skips. Each published corrected binary receives
+six UDP6 replies under each of the two recorded NAT policies, for 24 replies
+in total. Complete pre-NAT TUN checksums are ffff/fffe and all checksum error
+deltas stay zero. This uses a DNS-shaped echo payload. The native CI case
+separately requires actual AAAA answers; production and physical clients
+remain outside this isolated acceptance.
 
 ## Remaining independent evidence
 
