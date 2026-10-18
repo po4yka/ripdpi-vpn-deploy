@@ -7,9 +7,9 @@ table inet split_hop_ingress {
     ct mark 1 meta mark set ct mark
   }
   chain egress_guard {
-    type filter hook output priority 10; policy accept;
-    meta nfproto ipv6 ct direction original meta skuid { 971, 972 } reject with icmpv6 type admin-prohibited
-    meta nfproto ipv4 ct direction original meta skuid { 971, 972 } oifname != { "lo", "shop0" } reject
+    # OUTPUT retains its original interface after marking; check final egress here.
+    type filter hook postrouting priority 0; policy accept;
+    meta nfproto ipv4 ct direction original meta skuid { 971, 972 } oifname != { "lo", "shop0" } drop
   }
   chain postrouting {
     type nat hook postrouting priority srcnat; policy accept;

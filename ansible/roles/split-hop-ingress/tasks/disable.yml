@@ -20,7 +20,7 @@
                 raise ValueError()
             rows = json.loads(result.stdout)['nftables']
             retained = any(rule.get('family') == 'inet' and rule.get('table') == 'filter'
-                           and rule.get('chain') == 'output'
+                           and rule.get('chain') in ('output', 'split_hop_ingress_egress_guard')
                            and rule.get('comment') in ('split-hop-ingress-boundary-v4',
                                                        'split-hop-ingress-boundary-v6')
                            for row in rows for rule in [row.get('rule', {})])

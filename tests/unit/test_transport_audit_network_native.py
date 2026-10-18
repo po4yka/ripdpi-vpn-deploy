@@ -47,7 +47,9 @@ s=socket.socket(socket.AF_INET6 if family=='6' else socket.AF_INET,socket.SOCK_D
 s.bind(('::' if family=='6' else '0.0.0.0',int(source_port)));s.settimeout(2)
 try:
  s.sendto(b'owned-overlay-packet',(address,int(port)))
- assert s.recv(64)==b'owned-overlay-packet'
+ data,remote=s.recvfrom(64)
+ assert data==b'owned-overlay-packet'
+ assert remote[0]==address, 'unexpected echo source: '+remote[0]
 except OSError:
  raise SystemExit(3)
 """
@@ -77,21 +79,24 @@ except OSError:
         server = """
 import select,socket,sys
 family=int(sys.argv[1]);sockets=[]
-for port in (3478,51821,18081,18082,18083,18084):
- s=socket.socket(socket.AF_INET6 if family==6 else socket.AF_INET,socket.SOCK_DGRAM)
- s.bind(('::' if family==6 else '0.0.0.0',port));sockets.append(s)
+for address in sys.argv[2:]:
+ for port in (3478,51821,18081,18082,18083,18084):
+  s=socket.socket(socket.AF_INET6 if family==6 else socket.AF_INET,socket.SOCK_DGRAM)
+  s.bind((address,port));sockets.append(s)
 print('ready',flush=True)
 while True:
  for s in select.select(sockets,[],[])[0]:
   data,remote=s.recvfrom(4096);s.sendto(data,remote)
 """
         echo = subprocess.Popen(
-            ["ip", "netns", "exec", peer, sys.executable, "-c", server, str(family)],
+            ["ip", "netns", "exec", peer, sys.executable, "-c", server,
+             str(family), *addresses[1:]],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
         assert select.select([echo.stdout], [], [], 5)[0], "owned UDP listeners unavailable"
         assert echo.stdout.readline().strip() == "ready"
-        # Prove the wrong-destination listener is reachable before policy.
+        # Prove both listeners retain their destination as the reply source.
+        probe(addresses[1], 51821, 40999, allowed=True)
         probe(addresses[2], 51821, 41000, allowed=True)
         values = merge_render_vars()
         values["vpn"] = {key: False for key in values["vpn"] if key.startswith("enable_")}

@@ -2,8 +2,10 @@
 
 ## Design decisions
 
-The output filter guard runs after policy rerouting. It admits protected IPv4
-originals only on loopback or the tunnel and refuses protected IPv6 originals.
+The IPv4 filter guard runs in POSTROUTING. OUTPUT retains its original interface
+after route marking, so a later OUTPUT guard can reject valid tunnel traffic.
+The final-interface check admits protected IPv4 originals only on loopback or
+the tunnel. Protected IPv6 originals are refused in OUTPUT.
 The boot policy loader is a required WireGuard dependency. Tunnel PostDown
 removes routes only; policy remains active across stop and restart. Explicit
 role retirement first requires the canonical firewall to remove its shared

@@ -43,14 +43,15 @@ def test_ingress_policy_loader_is_required_before_tunnel_activation():
     assert unit.index("ExecStart=/usr/sbin/nft -c -f ") < unit.index("ExecStart=/usr/sbin/nft -f ")
 
 
-def test_tunnel_postdown_preserves_the_post_routing_output_guard():
+def test_tunnel_postdown_preserves_the_final_interface_guard():
     values = merge_render_vars()
     policy = render_template(INGRESS / "templates/policy.nft.j2", values)
     guard = policy.split("  chain egress_guard {", 1)[1].split("\n  }", 1)[0]
-    assert "type filter hook output priority 10;" in guard
+    assert "type filter hook postrouting priority 0;" in guard
     assert "ct direction original meta skuid" in guard
-    assert "meta nfproto ipv6" in guard and "admin-prohibited" in guard
-    assert f'oifname != {{ "lo", "{values["split_hop_ingress"]["wg_interface"]}" }} reject' in guard
+    route_output = output_chain(policy)
+    assert "meta nfproto ipv6" in route_output and "admin-prohibited" in route_output
+    assert f'oifname != {{ "lo", "{values["split_hop_ingress"]["wg_interface"]}" }} drop' in guard
     config = render_template(INGRESS / "templates/split-hop-ingress.conf.j2", values)
     post_down = next(line for line in config.splitlines() if line.startswith("PostDown = "))
     assert "ip rule del fwmark" in post_down and "ip route flush table" in post_down
@@ -82,16 +83,23 @@ def test_canonical_firewall_retains_original_traffic_guard_before_established_ac
     values = merge_render_vars()
     values["vpn"]["enable_split_hop_ingress"] = True
     values["firewall_egress_policy"] = "strict"
-    chain = output_chain(render_template(FIREWALL, values))
+    rendered = render_template(FIREWALL, values)
+    chain = output_chain(rendered)
     assert chain.index("ct direction original meta skuid") < chain.index("ct state established,related accept")
-    assert f'oifname != {{ "lo", "{values["split_hop_ingress"]["wg_interface"]}" }} reject' in chain
+    assert "oifname !=" not in chain
+    final = rendered.split("  chain split_hop_ingress_egress_guard {", 1)[1].split("\n  }", 1)[0]
+    assert "type filter hook postrouting priority 0;" in final
+    assert f'oifname != {{ "lo", "{values["split_hop_ingress"]["wg_interface"]}" }} drop' in final
 
 
 def test_explicit_ingress_retirement_omits_shared_firewall_guard():
     values = merge_render_vars()
     values["vpn"]["enable_split_hop_ingress"] = True
     values["split_hop_ingress_role_enabled"] = False
-    chain = output_chain(render_template(FIREWALL, values))
+    rendered = render_template(FIREWALL, values)
+    chain = output_chain(rendered)
+    assert "split_hop_ingress_egress_guard" not in rendered
+    assert "split-hop-ingress-boundary" not in rendered
     assert "split-hop-ingress-boundary" not in chain
     assert "ct direction original meta skuid" not in chain
 

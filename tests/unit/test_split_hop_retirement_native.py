@@ -14,6 +14,8 @@ import uuid
 import pytest
 import yaml
 
+from template_render import merge_render_vars, render_template
+
 ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.native_runtime
 
@@ -62,12 +64,21 @@ def test_inactive_split_hop_retires_only_its_tables_and_route_authority(tmp_path
                     ns("ip", "-j", "rule", "show"),
                     ns("ip", "-j", "-4", "route", "show", "table", "all"))
 
-        for family in (4, 6):
-            ns("nft", "-f", "-", data=(
+        guards = [
                 "table inet filter { chain output { type filter hook output priority 0; "
                 f'policy accept; meta nfproto ipv{family} meta skuid 65532 reject '
-                f'comment "split-hop-ingress-boundary-v{family}"; }} }}\n'
-            ))
+                f'comment "split-hop-ingress-boundary-v{family}"; }}; }}\n'
+                for family in (4, 6)
+        ]
+        values = merge_render_vars()
+        values["vpn"]["enable_split_hop_ingress"] = True
+        values["split_hop_ingress_role_enabled"] = True
+        canonical = render_template(ROOT / "ansible/roles/firewall/templates/nftables.conf.j2", values)
+        chain_start = "  chain split_hop_ingress_egress_guard {"
+        chain = chain_start + canonical.split(chain_start, 1)[1].split("\n  }", 1)[0] + "\n  }\n"
+        guards.append("table inet filter {\n" + chain + "}\n")
+        for guard in guards:
+            ns("nft", "-f", "-", data=guard)
             before = owned_state()
             refusal = subprocess.run(checker_argv, capture_output=True, text=True, timeout=20)
             assert refusal.returncode != 0 and refusal.stdout == ""

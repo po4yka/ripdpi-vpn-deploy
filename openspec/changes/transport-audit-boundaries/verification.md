@@ -3,7 +3,7 @@ task_id: SEC-1792306834441683
 change: transport-audit-boundaries
 commit_sha: 40471477976336f87364a14910d9ad1e5d416874
 local: required
-local_evidence: Focused AWG/WARP passed 225 cases; Hysteria/liveness passed 185 cases with official sing-box 1.14.3; DNS admission/lifecycle/schema passed 195 cases. Network and instruction checks passed 17 cases after check-mode repair. Source validation, linters, Terraform tests, schemas, 165 snapshots and parser compatibility passed. The portable run was interrupted at 29 percent for main integration after 2474 passes. A baseline Homebrew base64 CR failure reproduced on clean source and passed with the system executable; the custom whitespace fixture needed the actual Ansible bool filter. Both fixture suites then passed 60 cases. Full exact-head CI remains required.
+local_evidence: Focused AWG/WARP passed 225 cases; integrated Hysteria/export/liveness/ECH passed 191 cases and the final emitter suite passed 38. DNS admission/lifecycle/schema passed 195 cases. Actual Ubuntu nftables 1.0.9 and pinned Python 3.12 passed both strict-overlay family cases and split-hop/retirement cases with no skips. The native split-hop failure exposed the stale OUTPUT interface; both guards now use final IPv4 POSTROUTING, with successful encrypted traffic, stopped-tunnel denial, recovery, repeated table replacement and canonical guard coverage. Complete current-source gates remain required.
 remote_ci: required
 remote_ci_evidence: null
 dry_run: not_applicable
@@ -13,7 +13,7 @@ staging_evidence: No runtime rollout or promotion is part of this change.
 live: not_applicable
 live_evidence: No provider, real host or credential operations are authorized by this source task.
 client: required
-client_evidence: Native synthetic packet and export regressions required; physical recipient acceptance is outside scope.
+client_evidence: Four local native packet and retirement cases passed without skips; hosted hopping and complete protocol acceptance remain required. Physical recipient acceptance is outside scope.
 artifact: required
 artifact_evidence: All 165 rendered templates match reviewed snapshots. Exact changed policy and service output reviewed. Actual nftables 1.0.9 proved stable rules after three loads and replaced changed SNAT. Structured review has no accepted P0-P2 findings; security review APPROVE. The DNS role remains a research integration.
 ---

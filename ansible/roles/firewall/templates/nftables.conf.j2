@@ -221,7 +221,6 @@ table inet filter {
 {% if (vpn.enable_split_hop_ingress | default(false) | bool) and (split_hop_ingress_role_enabled | default(true) | bool) %}
     # Keep the recipient boundary when wg-quick removes its routes on stop.
     meta nfproto ipv6 ct direction original meta skuid { {{ probe_matrix_runtime_users.xray_uid }}, {{ probe_matrix_runtime_users.mtg_uid }} } reject with icmpv6 type admin-prohibited comment "split-hop-ingress-boundary-v6"
-    meta nfproto ipv4 ct direction original meta skuid { {{ probe_matrix_runtime_users.xray_uid }}, {{ probe_matrix_runtime_users.mtg_uid }} } oifname != { "lo", "{{ split_hop_ingress.wg_interface }}" } reject comment "split-hop-ingress-boundary-v4"
 {% endif %}
 {% if (_network_exposure_plan | default({})).mode | default('disabled') in ['canary', 'enforce'] %}
 {% for prefix in _network_exposure_plan.directions.host_egress %}
@@ -275,6 +274,14 @@ table inet filter {
     policy accept;
 {%- endif %}
   }
+{% if (vpn.enable_split_hop_ingress | default(false) | bool) and (split_hop_ingress_role_enabled | default(true) | bool) %}
+
+  chain split_hop_ingress_egress_guard {
+    # The final interface is available after the marked OUTPUT route lookup.
+    type filter hook postrouting priority 0; policy accept;
+    meta nfproto ipv4 ct direction original meta skuid { {{ probe_matrix_runtime_users.xray_uid }}, {{ probe_matrix_runtime_users.mtg_uid }} } oifname != { "lo", "{{ split_hop_ingress.wg_interface }}" } drop comment "split-hop-ingress-boundary-v4"
+  }
+{% endif %}
 }
 
 {% set hysteria_hopping = (vpn.enable_hysteria | default(false)) and (hysteria_port_range | default('') | length > 0) %}

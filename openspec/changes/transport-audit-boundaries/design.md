@@ -11,6 +11,7 @@ The audit identified cross-role packet paths and admission gaps. Runtime version
 
 - Local-destination and public-ingress predicates isolate hopping NAT from forwarded traffic.
 - Split-hop retains a direct-egress guard independently of tunnel routes; explicit role retirement removes only owned state. Canonical firewall guards follow the effective role selector; standalone retirement refuses while a shared guard remains, so callers first converge the disabled canonical policy.
+- IPv4 interface checks run in POSTROUTING, where the final marked route is visible. OUTPUT can retain the pre-mark interface and must not use it for this decision. The IPv6 original-traffic refusal remains in OUTPUT. Both owned and canonical guards follow this rule.
 - Strict overlay allowances are bounded by enabled role and required protocol identity or destination.
 - Official sing-box integer Mbps hints are rounded up from admitted exact server rates and reversed into client directions. Server negotiation clamps exact rates. RIPDPI currently cannot apply these hints; its supported bundles remain compatible and documentation states this limit. No aggregate server limiter is claimed.
 - AWG rejects noncanonical legacy header values and equal handshake sizes rather than changing exported fingerprints.

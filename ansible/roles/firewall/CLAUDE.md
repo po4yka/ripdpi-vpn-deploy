@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+Split-hop IPv4 guard rules use POSTROUTING to inspect the final interface after
+route marking. OUTPUT can retain the earlier interface. The IPv6 original-traffic
+guard remains in OUTPUT before established acceptance; neither guard depends on
+the tunnel's lifecycle. Retirement checks both owned canonical chain names.
+
 Hopping REDIRECT matches only default-route ingress interfaces and destinations
 classified local by the kernel FIB. Forwarded UDP keeps its destination even
 when its port belongs to the hopping range. Strict output retains bounded
