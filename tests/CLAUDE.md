@@ -31,6 +31,10 @@ retirement with accepted payload and replay authority retained. RIPDPI hopping
 refuses before output; official sing-box keeps supported hopping.
 Expression-only Jinja test environments enable autoescape explicitly; their
 compiled predicates keep the same boolean results.
+The mirror retirement fixture defers independent timer schedules and drains their
+services before its exact authority baseline. Timers stay enabled and active for
+the check-mode control. All seven authority categories remain byte-compared;
+failure diagnostics expose only fixed component names and change booleans.
 
 DHCPv6 portable tests exercise actual admission and both rendered egress policies.
 The native hopping suite additionally sends real UDP across owned network

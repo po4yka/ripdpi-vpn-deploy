@@ -234,6 +234,43 @@
       no_log: true
       diff: false
 
+    # Keep scheduling active for check mode, but drain independent writers before
+    # comparing exact authority bytes across the retirement transaction.
+    - name: Create owned fixture timer override directories
+      ansible.builtin.file:
+        path: '/run/systemd/system/{{ item }}.d'
+        state: directory
+        mode: '0755'
+      loop: [vpn-sub-mirror.timer, vpn-subscription-maintenance.timer]
+
+    - name: Defer independent fixture writers beyond the verification window
+      ansible.builtin.copy:
+        dest: '/run/systemd/system/{{ item }}.d/molecule-retirement.conf'
+        content: |
+          [Timer]
+          OnCalendar=
+          OnBootSec=
+          OnUnitActiveSec=
+          OnActiveSec=365d
+          RandomizedDelaySec=0
+          Persistent=false
+        mode: '0644'
+      loop: [vpn-sub-mirror.timer, vpn-subscription-maintenance.timer]
+
+    - name: Keep fixture timers enabled and active with deferred scheduling
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+        enabled: true
+        state: restarted
+        daemon_reload: true
+      loop: [vpn-sub-mirror.timer, vpn-subscription-maintenance.timer]
+
+    - name: Drain independent fixture writers before the authority baseline
+      ansible.builtin.systemd_service:
+        name: '{{ item }}'
+        state: stopped
+      loop: [vpn-sub-mirror.service, vpn-subscription-maintenance.service]
+
     - name: Capture retained delivery authority before mirror retirement
       ansible.builtin.command:
         argv:
@@ -320,6 +357,37 @@
       register: _mirror_authority_after
       changed_when: false
       no_log: true
+
+    - name: Classify retained authority differences without private values
+      ansible.builtin.set_fact:
+        _mirror_authority_changed:
+          pointer: >-
+            {{ (_mirror_authority_after.stdout | from_json).pointer != (_mirror_authority_before.stdout | from_json).pointer }}
+          revoked: >-
+            {{ (_mirror_authority_after.stdout | from_json).files['revoked'] !=
+               (_mirror_authority_before.stdout | from_json).files['revoked'] }}
+          fence: >-
+            {{ (_mirror_authority_after.stdout | from_json).files['.vpn-bootstrap-retired-before'] !=
+               (_mirror_authority_before.stdout | from_json).files['.vpn-bootstrap-retired-before'] }}
+          lock: >-
+            {{ (_mirror_authority_after.stdout | from_json).files['.vpn-bootstrap-state.lock'] !=
+               (_mirror_authority_before.stdout | from_json).files['.vpn-bootstrap-state.lock'] }}
+          payload: >-
+            {{ (_mirror_authority_after.stdout | from_json).files[
+                 '.vpn-sub-mirror-current/sub/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'] !=
+               (_mirror_authority_before.stdout | from_json).files[
+                 '.vpn-sub-mirror-current/sub/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'] }}
+          credential: >-
+            {{ (_mirror_authority_after.stdout | from_json).files['/etc/vpn-subscription/mirror_ssh_key'] !=
+               (_mirror_authority_before.stdout | from_json).files['/etc/vpn-subscription/mirror_ssh_key'] }}
+          consumed: >-
+            {{ (_mirror_authority_after.stdout | from_json).consumed != (_mirror_authority_before.stdout | from_json).consumed }}
+      no_log: true
+
+    - name: Report only changed retained authority categories
+      ansible.builtin.debug:
+        var: _mirror_authority_changed
+      when: _mirror_authority_after.stdout != _mirror_authority_before.stdout
 
     - name: Retired mirror preserves accepted payload and replay authority
       ansible.builtin.assert:
