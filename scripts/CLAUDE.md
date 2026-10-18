@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+Checkout discovery passes Git metadata input through a private temporary file.
+Large NUL-delimited path lists can otherwise block both stdin and captured
+output before the query timeout applies. Preserve UTF-8 surrogateescape bytes,
+the empty-input EOF, the deadline and all active-content-filter refusals.
+
 Blue-green treats each Make phase as a separate ordered command with inherited
 Make controls removed. Dry-run accepts only 0 or 1 and resolves before private
 inputs. CI commands use the retained bootstrap session supervisor; keep private

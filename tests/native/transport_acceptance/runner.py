@@ -174,6 +174,67 @@ def case_cleanup_differences(case):
     return {}
 
 
+DHCPV6_DIAGNOSTIC_PREFIX = "dhcpv6-observation:"
+DHCPV6_DIAGNOSTIC_FIELDS = {
+    "probe_id", "phase", "ready_ms", "send_ms", "elapsed_ms", "receiver_member",
+    "packet_received", "output_before", "output_after", "input_before", "input_after",
+    "udp_errors", "udp_checksum_errors", "udp_no_ports", "udp_ignored_multicast",
+}
+
+
+def dhcpv6_diagnostics(log):
+    """Admit one fixed synthetic probe record; raw log data stays private."""
+    records = []
+    scanned = 0
+
+    def unique_object(pairs):
+        value = dict(pairs)
+        if len(value) != len(pairs):
+            raise ValueError("duplicate-diagnostic-field")
+        return value
+
+    # A bounded scan also refuses truncated overlong lines and duplicate probes.
+    try:
+        with log.open("rb") as stream:
+            for _ in range(65536):
+                line = stream.readline(4097)
+                if not line:
+                    break
+                scanned += len(line)
+                if len(line) > 4096 or scanned > 1048576:
+                    return []
+                if not line.startswith(DHCPV6_DIAGNOSTIC_PREFIX.encode()):
+                    continue
+                try:
+                    value = json.loads(line[len(DHCPV6_DIAGNOSTIC_PREFIX):], object_pairs_hook=unique_object)
+                except (ValueError, UnicodeError):
+                    return []
+                if not isinstance(value, dict) or set(value) != DHCPV6_DIAGNOSTIC_FIELDS:
+                    return []
+                if type(value["probe_id"]) is not str or type(value["phase"]) is not str:
+                    return []
+                if value["probe_id"] != "multicast-request" or value["phase"] not in {
+                    "packet",
+                }:
+                    return []
+                if any(type(value[field]) is not bool for field in ("receiver_member", "packet_received")):
+                    return []
+                for field in DHCPV6_DIAGNOSTIC_FIELDS - {
+                    "probe_id", "phase", "receiver_member", "packet_received",
+                }:
+                    limit = 30000 if field.endswith("_ms") else 65535
+                    if type(value[field]) is not int or not 0 <= value[field] <= limit:
+                        return []
+                records.append(value)
+                if len(records) > 1:
+                    return []
+            else:
+                return []
+    except OSError:
+        return []
+    return records
+
+
 def case_results(path):
     root = ET.parse(path).getroot()
     rows = []
@@ -317,6 +378,8 @@ def main():
                         stderr=subprocess.STDOUT,
                         timeout=2400,
                     )
+                if name == "hopping":
+                    evidence["dhcpv6_diagnostics"] = dhcpv6_diagnostics(Path(private) / (name + ".log"))
                 if result.returncode:
                     # Keep diagnostics on this isolated machine only, with private modes.
                     if report.exists():

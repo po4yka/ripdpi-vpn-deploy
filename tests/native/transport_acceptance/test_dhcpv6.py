@@ -33,6 +33,13 @@ if multicast == 'yes':
  import struct
  s.setsockopt(socket.IPPROTO_IPV6,socket.IPV6_JOIN_GROUP,
               socket.inet_pton(socket.AF_INET6,'ff02::1:2')+struct.pack('@I',socket.if_nametoindex(interface)))
+ try:
+  with open('/proc/net/igmp6') as groups:
+   member=any(len(fields)>=3 and fields[1]==interface and fields[2].lower()=='ff020000000000000000000000010002'
+              for fields in (line.split() for line in groups))
+  print('dhcpv6-membership:'+('yes' if member else 'no'),file=sys.stderr,flush=True)
+ except OSError:
+  print('dhcpv6-membership:unknown',file=sys.stderr,flush=True)
 print('ready',flush=True)
 if not select.select([sys.stdin],[],[],20)[0]:
  raise SystemExit('dhcpv6-receiver-send-ack-timeout')
@@ -63,18 +70,64 @@ except OSError as error:
 """
 
 
+# Observe only the existing synthetic multicast tuple; no rule gives a verdict.
+MULTICAST_OBSERVER = """
+add table inet dhcpv6_probe
+add chain inet dhcpv6_probe before { type filter hook %s priority -301; }
+add chain inet dhcpv6_probe after { type filter hook %s priority 301; }
+add rule inet dhcpv6_probe before ip6 saddr fe80::10 ip6 daddr ff02::1:2 udp sport 546 udp dport 547 counter
+add rule inet dhcpv6_probe after ip6 saddr fe80::10 ip6 daddr ff02::1:2 udp sport 546 udp dport 547 counter
+"""
+
+
+def multicast_counters(namespace):
+    table = json.loads(run("ip", "netns", "exec", namespace, "nft", "-j",
+                           "list", "table", "inet", "dhcpv6_probe"))
+    return {
+        row["rule"]["chain"]: min(65535, expression["counter"]["packets"])
+        for row in table["nftables"] if "rule" in row
+        for expression in row["rule"]["expr"] if "counter" in expression
+    }
+
+
+def multicast_udp_errors(namespace):
+    counters = run("ip", "netns", "exec", namespace, "cat", "/proc/net/snmp6")
+    expected = {"Udp6InErrors", "Udp6InCsumErrors", "Udp6NoPorts", "Udp6IgnoredMulti"}
+    selected = {}
+    for line in counters.splitlines():
+        key, value = line.split()
+        if key in expected:
+            selected[key] = int(value)
+    if set(selected) != expected:
+        raise ValueError("dhcpv6-observation-metric-unavailable")
+    return selected
+
+
 def packet(sender, receiver, *, source="fe80::20", target="fe80::10",
            sport=547, dport=546, send_interface="peer0", receive_interface="up0",
-           expected_output_deny=False):
-    listener = subprocess.Popen(
-        ["ip", "netns", "exec", receiver, sys.executable, "-c", RECEIVER,
-         receive_interface, "::" if target.startswith("ff02") else target,
-         str(dport), "yes" if target.startswith("ff02") else "no"],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-    )
+           expected_output_deny=False, observe_multicast=False):
+    observed_namespaces = []
+    errors_before = None
+    receiver_member = None
+    listener = None
     started = time.monotonic()
     diagnostic = {"phase": "readiness", "packet_received": None}
     try:
+        if observe_multicast:
+            try:
+                for namespace, hook in ((sender, "output"), (receiver, "input")):
+                    run("ip", "netns", "exec", namespace, "nft", "-f", "-",
+                        data=MULTICAST_OBSERVER % (hook, hook))
+                    observed_namespaces.append(namespace)
+                errors_before = multicast_udp_errors(receiver)
+            except Exception:
+                print("dhcpv6-observation-unavailable", flush=True)
+        listener = subprocess.Popen(
+            ["ip", "netns", "exec", receiver, sys.executable, "-c", RECEIVER,
+             receive_interface, "::" if target.startswith("ff02") else target,
+             str(dport), "yes" if target.startswith("ff02") else "no"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
         assert select.select([listener.stdout], [], [], 3)[0], "dhcpv6-receiver-timeout"
         assert listener.stdout.readline().strip() == "ready", "dhcpv6-receiver-not-ready"
         diagnostic["ready_ms"] = min(30000, int((time.monotonic() - started) * 1000))
@@ -92,6 +145,10 @@ def packet(sender, receiver, *, source="fe80::20", target="fe80::10",
         except subprocess.SubprocessError:
             raise AssertionError("dhcpv6-receive-result-refused") from None
         assert listener.returncode == 0, "dhcpv6-receiver-control-refused"
+        if observe_multicast:
+            member_marker = _error.strip()
+            if member_marker in {"dhcpv6-membership:yes", "dhcpv6-membership:no"}:
+                receiver_member = member_marker == "dhcpv6-membership:yes"
         received = json.loads(output)
         if received is not None:
             assert received[0] == "dhcpv6-regression"
@@ -101,9 +158,43 @@ def packet(sender, receiver, *, source="fe80::20", target="fe80::10",
     finally:
         diagnostic["elapsed_ms"] = min(30000, int((time.monotonic() - started) * 1000))
         print("dhcpv6-probe:" + json.dumps(diagnostic, sort_keys=True), flush=True)
-        if listener.poll() is None:
+        if listener is not None and listener.poll() is None:
             listener.kill()
             listener.communicate(timeout=3)
+        try:
+            # Publish only a completed attempt with every observation measured.
+            if (observe_multicast and diagnostic["phase"] == "packet"
+                    and len(observed_namespaces) == 2 and errors_before is not None
+                    and receiver_member is not None):
+                sent = multicast_counters(sender)
+                received_counts = multicast_counters(receiver)
+                errors_after = multicast_udp_errors(receiver)
+                error_deltas = {key: errors_after[key] - errors_before[key] for key in errors_before}
+                if any(value < 0 for value in error_deltas.values()):
+                    raise ValueError("dhcpv6-observation-counter-reset")
+                observation = {
+                    "probe_id": "multicast-request", "phase": "packet",
+                    "ready_ms": diagnostic["ready_ms"], "send_ms": diagnostic["send_ms"],
+                    "elapsed_ms": diagnostic["elapsed_ms"], "receiver_member": receiver_member,
+                    "packet_received": diagnostic["packet_received"],
+                    "output_before": sent["before"], "output_after": sent["after"],
+                    "input_before": received_counts["before"], "input_after": received_counts["after"],
+                    "udp_errors": min(65535, error_deltas["Udp6InErrors"]),
+                    "udp_checksum_errors": min(65535, error_deltas["Udp6InCsumErrors"]),
+                    "udp_no_ports": min(65535, error_deltas["Udp6NoPorts"]),
+                    "udp_ignored_multicast": min(65535, error_deltas["Udp6IgnoredMulti"]),
+                }
+                print("dhcpv6-observation:" + json.dumps(observation, sort_keys=True), flush=True)
+        except Exception:
+            # Observation failure must not replace the packet outcome.
+            print("dhcpv6-observation-unavailable", flush=True)
+        finally:
+            for namespace in reversed(observed_namespaces):
+                try:
+                    run("ip", "netns", "exec", namespace, "nft", "delete", "table", "inet", "dhcpv6_probe")
+                except Exception:
+                    # The required outer namespace cleanup also removes this table.
+                    print("dhcpv6-observation-cleanup-unavailable", flush=True)
 
 
 def test_native_scoped_dhcpv6_bootstrap_rebind_and_legacy_server():
@@ -149,7 +240,7 @@ def test_native_scoped_dhcpv6_bootstrap_rebind_and_legacy_server():
         # Reply has no matching multicast reverse tuple and must pass independently.
         assert packet(peer, client)
         assert packet(client, peer, source="fe80::10", target="ff02::1:2", sport=546,
-                      dport=547, send_interface="up0", receive_interface="peer0")
+                      dport=547, send_interface="up0", receive_interface="peer0", observe_multicast=True)
         run("ip", "-n", peer, "addr", "add", "fe80::21/64", "dev", "peer0", "nodad")
         assert packet(client, peer, source="fe80::10", target="fe80::21", sport=546,
                       dport=547, send_interface="up0", receive_interface="peer0")

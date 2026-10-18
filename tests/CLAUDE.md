@@ -48,8 +48,17 @@ complete observation window starts only after the parent confirms the sender
 result through a bounded control acknowledgement. Portable real loopback UDP
 regressions delay sender startup beyond that window and require missing control
 acknowledgement to refuse. Native probe diagnostics contain fixed phase names,
-bounded millisecond counts and packet-presence booleans only; the runner keeps
-these logs private and publishes only safe failure source locations.
+bounded millisecond counts and packet-presence booleans only. The multicast
+probe also records group membership, no-verdict OUTPUT/INPUT counters and UDP
+error, no-port and ignored-multicast deltas in its owned namespaces. Counter setup and UDP baselines precede
+listener creation; the receiver reads membership before readiness, so the parent
+adds no observer command between readiness and send. The runner admits one exact-schema record
+only after a complete attempt and successful observation, with fixed labels,
+bounded integers and booleans. Missing UDP metrics or unmeasured values leave
+the record absent. Passing pytest output remains private; failure output supplies
+the validated CI record. Observation errors
+retain the packet outcome and raw logs stay private. Unknown fields, duplicate probes
+and oversized or malformed records publish no diagnostics.
 
 Protocol audit regressions use schema-valid synthetic inputs and actual
 controller preflight in ordinary and check mode. They prove identity/address
