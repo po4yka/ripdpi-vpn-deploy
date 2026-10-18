@@ -545,8 +545,8 @@ jobs:
     if: ${{ fromJSON(needs.selection.outputs.checks)['native-runtime'] }}
     name: native runtime integration
     runs-on: ubuntu-24.04
-    # Setup, the complete native suite, delivery matrix and cleanup share this budget.
-    timeout-minutes: 60
+    # Setup, early AWG gates, the complete native suite and cleanup share this budget.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:

@@ -320,3 +320,20 @@ afterward. The focused renderer, diagnostics and directory bundle passed 32
 cases. CI wiring and protective bundles passed 78 tests; the early canonical
 dual-stack goal retains the same pins and the final goal still executes.
 The final exact-source full hosted gate remains required before merge.
+
+## Complete native job budget
+
+Run 39081928260 at source 8131e8f24f915df9869a1390a8e5addacbe32825
+passed 7,902 unit cases and 45 subtests, all 38 Molecule jobs and all 56 cases
+in the five other native groups. Both image scans and CodeQL reported zero
+findings. Early warm and all ten early dual-stack cases passed. The integration
+job then passed ECH (13), native (156), endpoints (10), delivery (four) and
+topology (167) cases. Its final dual-stack invocation passed its first two
+cases before the job reached its one-hour limit. GitHub explicitly reports
+that timeout. Runner cleanup passed; complete fixture cleanup after the
+interruption is not established.
+
+The aggregate integration job budget is now 75 minutes. This includes setup,
+the early AWG gates, every late canonical recipe and cleanup. All test sets,
+inner command deadlines and production admission guards remain unchanged.
+The full hosted gate at the updated source remains required before merge.
