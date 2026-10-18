@@ -47,25 +47,47 @@ with a YubiKey-backed identity via the `age-plugin-yubikey` plugin.
 The encrypted SOPS blob stays useless to anyone without physical
 access to the YubiKey, even if they have the file.
 
+Select one YubiKey serial and an available slot (1 through 20). Use `YUBIKEY_GENERATE=1` (`--generate`)
+only for first enrollment in a private operator terminal. PIN prompts and plugin
+setup diagnostics stay on that terminal; they do not enter command logs. The
+plugin refuses a filled slot; the wrapper refuses
+`--generate` when a saved identity already exists.
+
 ```bash
-scripts/setup-yubikey-age.sh              # generate + print recipient
-scripts/setup-yubikey-age.sh --reencrypt  # also `sops updatekeys` every blob
+make setup-yubikey YUBIKEY_SERIAL=<serial> YUBIKEY_SLOT=<slot> YUBIKEY_GENERATE=1
+make setup-yubikey YUBIKEY_SERIAL=<serial> YUBIKEY_SLOT=<slot> REENCRYPT=1
 ```
+
+The second command also resumes an interrupted enrollment without generating a
+new key. It checks the saved identity against the selected hardware and retains
+its bytes. Without `--generate`, a missing local identity can be recovered from
+that same occupied hardware slot.
 
 Migration discipline:
 
-1. Generate the YubiKey identity and add its recipient as a SECOND
-   recipient on every SOPS blob — do not yet remove the software
-   recipient.
-2. Verify decryption from `SOPS_AGE_KEY_FILE=…yubikey-identity.txt`
-   on every operator workstation that needs it.
-3. Once verified everywhere, remove the software recipient via
-   `sops updatekeys` per blob. Skipping step 2 means losing access
-   the moment the software key is rotated out.
+1. Add the selected hardware recipient to every encrypted document. The command
+   retains each document's existing recipients, uses an explicit staged SOPS
+   config, and verifies unchanged plaintext before publication. It adds exact
+   per-file rules to the operator `.sops.yaml` and retains general rules.
+   All candidates are checked before publication starts. Publication is per
+   file; completed additive updates remain safe to resume after interruption.
+   Grouped or non-age recipient policies require a separate reviewed procedure
+   and refuse without replacement. One hardware key must not satisfy every
+   group of a multi-group quorum.
+2. Verify hardware-only decryption on every operator workstation that needs it.
+   Clear other age key sources, set `SOPS_AGE_KEY_FILE` to the saved
+   `yubikey-identity.txt`, and direct decrypted output to `/dev/null`. Do not
+   print plaintext or use terminal output as the verification artifact.
+3. Retire the software recipient only as a separate reviewed operation. Update
+   the explicit `.sops.yaml`, run `sops updatekeys` on each selected file, and
+   retain other authorized recovery recipients. If the retired key may have
+   been compromised, also follow [data-key rotation](AGE-RECOVERY.md#rotating-the-age-key)
+   before changing stored credentials.
 
-`scripts/setup-yubikey-age.sh` does steps 1 and 3 explicitly; step
-2 (verification) is left to the operator because failure modes are
-human-specific (forgot the PIN, slot wasn't the one expected, etc.).
+The enrollment command never removes recovery recipients or verifies
+hardware-only decryption on behalf of the operator. Private files use mode
+`0600`; their directory must use mode `0700`. A failed update returns failure
+and keeps prior decryption paths available.
 
 Encrypt against one or more recipients (multiple operators):
 
@@ -246,9 +268,12 @@ Three rotation scopes:
    `xray.reality_private_key` + `xray.reality_public_key`, redistribute
    the new public key + shortIds to clients, run `make deploy`. All
    clients must reissue.
-3. **Restic password**: regenerate `backup.restic_password`. Existing
-   restic snapshots become unrecoverable — keep the OLD password until
-   you've taken a fresh snapshot under the new one and verified restore.
+3. **Restic password**: a planned password change rewraps the repository key
+   through `restic key passwd`; it does not invalidate snapshots. Keep the
+   previous password until the new password passes restore verification.
+   A compromised repository master key requires a new local and remote
+   generation. Preserve the prior repository until the new generation passes
+   backup and isolated restore; retire it only as a separate authorized action.
 
 See `RUNBOOK-rotate.md` for full procedures.
 

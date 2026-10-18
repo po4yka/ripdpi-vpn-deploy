@@ -258,6 +258,7 @@ def test_promtool_rules_require_matching_family_and_resolve_when_evidence_arrive
             ROLE / "templates/observability-expected-target-rules.yml.j2",
             {
                 "observability_control_plane": {
+                    "alerting": {"silence_gateway": {"environment": "staging"}},
                     "expected_targets": {
                         "inventory": inventory,
                         "expected_source_revision": "c" * 40,
@@ -290,7 +291,7 @@ def test_promtool_rules_require_matching_family_and_resolve_when_evidence_arrive
                 "      - eval_time: 4m",
                 "        alertname: ObservabilityRequiredFamilyMissing_vpn_p0_edge_vpn_watchdog_collection_success",
                 "        exp_alerts:",
-                "          - exp_labels: {severity: warning, component: expected-target, environment: fleet, node: vpn-p0, role: edge}",
+                "          - exp_labels: {severity: warning, component: expected-target, environment: staging, node: vpn-p0, role: edge}",
                 "            exp_annotations: {incident_family: expected-target-family, evidence_class: required-family-absent, source_generation: cccccccccccccccccccccccccccccccccccccccc, summary: Required bounded evidence family is absent for an expected target., runbook: docs/RUNBOOK-incident.md}",
                 "      - eval_time: 4m",
                 "        alertname: ObservabilityRequiredFamilyMissing_vpn_p2_edge_vpn_watchdog_collection_success",
@@ -298,7 +299,7 @@ def test_promtool_rules_require_matching_family_and_resolve_when_evidence_arrive
                 "      - eval_time: 3m",
                 "        alertname: ObservabilityExpectedTargetMissing",
                 "        exp_alerts:",
-                "          - exp_labels: {severity: warning, component: expected-target, environment: fleet, node: vpn-p0, role: edge}",
+                "          - exp_labels: {severity: warning, component: expected-target, environment: staging, node: vpn-p0, role: edge}",
                 "            exp_annotations: {incident_family: expected-target-absence, evidence_class: no-required-family, source_generation: cccccccccccccccccccccccccccccccccccccccc, summary: Expected observability target has no required producer family., runbook: docs/RUNBOOK-incident.md}",
                 "      - eval_time: 5m",
                 "        alertname: ObservabilityExpectedTargetMissing",
@@ -420,6 +421,7 @@ def test_rules_are_prometheus_rule_documents_without_notification_routes() -> No
         ROLE / "templates/observability-expected-target-rules.yml.j2",
         {
             "observability_control_plane": {
+                "alerting": {"silence_gateway": {"environment": "staging"}},
                 "expected_targets": {
                     "inventory": _inventory(),
                     "expected_source_revision": "c" * 40,
@@ -441,7 +443,7 @@ def test_rules_are_prometheus_rule_documents_without_notification_routes() -> No
     for group in rules["groups"]:
         for rule in group["rules"]:
             assert rule["labels"]["component"] == "expected-target"
-            assert rule["labels"]["environment"] == "fleet"
+            assert rule["labels"]["environment"] == "staging"
             assert rule["annotations"]["incident_family"]
             assert rule["annotations"]["evidence_class"]
             assert rule["annotations"]["source_generation"] == "c" * 40
@@ -455,6 +457,38 @@ def test_rules_are_prometheus_rule_documents_without_notification_routes() -> No
     assert "vpn_watchdog_collection_success" in rendered
     assert 'node=~"^(vpn-p0)$"' in rendered
     assert 'role=~"^(edge)$"' in rendered
+
+
+@pytest.mark.parametrize("environment", ["staging", "prod"])
+def test_generated_alert_scope_matches_finite_silence_authority(environment) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    spec = importlib.util.spec_from_file_location(
+        "audit_silence_gateway", ROLE / "files/observability-silence-gateway.py"
+    )
+    gateway = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gateway)
+    document = yaml.safe_load(render_template(
+        ROLE / "templates/observability-expected-target-rules.yml.j2",
+        {"observability_control_plane": {
+            "alerting": {"silence_gateway": {"environment": environment}},
+            "expected_targets": {"inventory": _inventory(), "expected_source_revision": "c" * 40},
+        }},
+    ))
+    now = datetime.now(UTC).replace(microsecond=0)
+    silence = {
+        "schema_version": 1, "reason": "planned-maintenance",
+        "starts_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "ends_at": (now + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "matchers": {"environment": environment, "node": "vpn-p0"},
+    }
+    gateway.validate_silence(silence, {"environment": environment, "max_ttl_seconds": 14400}, now.timestamp())
+    for group in document["groups"]:
+        for rule in group["rules"]:
+            # Alertmanager exact-match silence labels use the same environment
+            # that this gateway admitted; only the target varies by rule result.
+            labels = {**rule["labels"], "node": "vpn-p0"}
+            assert all(labels[key] == value for key, value in silence["matchers"].items())
 
 
 def test_role_wires_only_opted_in_expected_targets_into_immutable_config() -> None:

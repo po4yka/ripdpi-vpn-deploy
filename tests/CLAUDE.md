@@ -14,6 +14,15 @@
 
 ## Design decisions
 
+Security delivery regressions use real local redirect servers, synthetic SOPS
+and age authorities, and actual private filesystem publication. Failure and
+interruption checks preserve the last complete generation. SSH planner tests
+exercise the exact prior managed policy, hybrid promotion, retained rollback
+bytes, contextual effective policy and idempotency. A successful parser test
+does not prove a live SSH or hardware migration. Subscription tests race real
+HTTP readers against filesystem publication and cover fsync, rename, signals,
+legacy input, mirror generations and private namespace admission.
+
 Protocol audit regressions use schema-valid synthetic inputs and actual
 controller preflight in ordinary and check mode. They prove identity/address
 refusal before later publication, exact parsed server/client credential bytes,

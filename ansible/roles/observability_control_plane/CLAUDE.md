@@ -2,6 +2,15 @@
 
 ## Design decisions
 
+Expected-target alerts use the finite-silence gateway's configured environment.
+Do not replace it with a fleet label: exact maintenance matchers must select
+the alerts produced in that same environment.
+
+Telegram flood control reads bounded JSON `parameters.retry_after`. A wait of
+more than five seconds fails the current webhook without another request;
+later Alertmanager delivery owns the retry. Never cap a longer wait and retry
+early. The two request attempts and short wait retain the webhook work bound.
+
 **Producer time owns freshness** — central evaluation expires producer and
 adapter completion timestamps even when node_exporter keeps serving a retained
 textfile. Required-target presence follows the reviewed actual metric families;

@@ -419,3 +419,94 @@ def test_negative_fixture_is_rejected(path):
         f"{path.name} should be rejected by validate-bundle.py "
         f"(schema or fingerprint) but it passed:\n{proc.stdout}{proc.stderr}"
     )
+
+
+@pytest.mark.parametrize("field,value", [
+    ("public_key", "not-a-key"), ("preshared_key", "not-a-key"),
+    ("public_key", base64.b64encode(bytes(31)).decode()),
+    ("public_key", base64.b64encode(bytes(32)).decode()[:-2] + "B="),
+    ("endpoint", "host.test:0"), ("endpoint", "host.test:65536"),
+    ("endpoint", "bad host:443"), ("endpoint", "999.1.1.1:443"),
+    ("endpoint", "-bad.test:443"), ("endpoint", "[not-ip]:443"),
+    ("endpoint", "2001:db8::1:443"),
+    ("allowed_ips", ["192.0.2.1/24"]), ("allowed_ips", ["192.0.2.1"]),
+    ("allowed_ips", ["2001:db8::/129"]),
+])
+def test_shape_valid_peer_semantics_refuse_without_echo(tmp_path, example, field, value):
+    doc = copy.deepcopy(example)
+    doc["amneziawg"][0]["peer"][field] = value
+    path = tmp_path / "bundle.json"
+    path.write_text(json.dumps(doc))
+    proc = _run_validator(path)
+    assert proc.returncode == 1
+    if isinstance(value, str):
+        assert value not in proc.stdout + proc.stderr
+
+
+@pytest.mark.parametrize("field,value", [
+    ("jmin", 51), ("h2", 1), ("dns", ["999.1.1.1"]),
+])
+def test_awg_relational_semantics_refuse(tmp_path, example, field, value):
+    doc = copy.deepcopy(example)
+    doc["amneziawg"][0][field] = value
+    entry = doc["amneziawg"][0]
+    entry["cohort_fingerprint"] = cohort_fingerprint({key: entry[key] for key in ORDER if key in entry})
+    path = tmp_path / "bundle.json"
+    path.write_text(json.dumps(doc))
+    assert _run_validator(path).returncode == 1
+
+
+@pytest.mark.parametrize("field,value", [
+    ("ports", "50000:20000"), ("ports", "0:50000"), ("ports", "1:65536"),
+    ("ports", "1:" + "9" * 5000), ("interval", "0s"),
+    ("interval", "9" * 5000 + "s"),
+])
+def test_hopping_semantics_refuse_without_traceback(tmp_path, example, field, value):
+    doc = copy.deepcopy(example)
+    next(iter(doc["hysteria_extras"].values()))["port_hopping"][field] = value
+    path = tmp_path / "bundle.json"
+    path.write_text(json.dumps(doc))
+    proc = _run_validator(path)
+    assert proc.returncode == 1
+    assert "Traceback" not in proc.stderr
+    assert value not in proc.stderr
+
+
+@pytest.mark.parametrize("expiry", ["2026-02-30", "2026-13-01", "2026-12-01T25:00:00Z", "2026-12-01T00:00:00+24:00"])
+def test_shape_valid_invalid_calendar_expiry_refuses(tmp_path, example, expiry):
+    doc = copy.deepcopy(example)
+    doc["expires"] = expiry
+    path = tmp_path / "bundle.json"
+    path.write_text(json.dumps(doc))
+    proc = _run_validator(path)
+    assert proc.returncode == 1
+    assert expiry not in proc.stderr
+
+
+@pytest.mark.parametrize("endpoint", ["peer.test:1", "203.0.113.5:65535", "[2001:db8::1]:51820"])
+def test_valid_endpoint_boundaries_pass(tmp_path, example, endpoint):
+    doc = copy.deepcopy(example)
+    doc["amneziawg"][0]["peer"]["endpoint"] = endpoint
+    path = tmp_path / "bundle.json"
+    path.write_text(json.dumps(doc))
+    proc = _run_validator(path)
+    assert proc.returncode == 0, proc.stderr
+
+
+@pytest.mark.parametrize("doc", [[], None, "synthetic-secret-marker", {"schema_version": "synthetic-secret-marker"}])
+def test_schema_diagnostics_never_echo_values_or_crash(tmp_path, doc):
+    path = tmp_path / "bundle.json"
+    path.write_text(json.dumps(doc))
+    proc = _run_validator(path)
+    assert proc.returncode == 1
+    assert "synthetic-secret-marker" not in proc.stderr
+    assert "Traceback" not in proc.stderr
+
+
+@pytest.mark.parametrize('doc', [None, [], 'synthetic-private-marker'])
+def test_runtime_mode_nonobject_refuses_without_traceback(tmp_path, doc):
+    path = tmp_path / 'runtime.json'
+    _write_runtime(path, doc)
+    proc = _run_validator(path, '--runtime-materialized')
+    assert proc.returncode == 1
+    assert 'Traceback' not in proc.stderr and 'synthetic-private-marker' not in proc.stderr

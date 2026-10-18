@@ -51,19 +51,27 @@ key = sys.argv[-1]
 print({'server_ipv4':'192.0.2.10','server_hostname':'vpn.example.com','admin_user':'admin'}.get(key, ''))
 ''')
     (bin_dir / 'ssh').write_text('''#!/usr/bin/env python3
-import os, pathlib, sys
+import base64, json, os, pathlib, sys
 fault = os.environ.get('DELIVERY_FAULT', '')
-if '.vpn-sub-mirror' in sys.argv[-1]:
-    raise SystemExit(23 if fault == 'preflight' else 0)
+if '--publication-ready' in sys.argv[-1]:
+    if fault == 'preflight':
+        raise SystemExit(23)
+    print('subscription-publisher-v1')
+    raise SystemExit(0)
 data = sys.stdin.buffer.read()
-metadata = sys.argv[-1].endswith(".meta'")
-if fault == 'payload-before-write' and not metadata:
+if fault == 'document-before-write':
     sys.stderr.buffer.write(data)
     raise SystemExit(23)
-pathlib.Path(os.environ['PAYLOAD_CAPTURE'] + ('.meta' if metadata else '')).write_bytes(data)
-if fault == ('metadata-after-write' if metadata else 'payload-after-write'):
+doc = json.loads(data)
+pathlib.Path(os.environ['PAYLOAD_CAPTURE']).write_bytes(base64.b64decode(doc['payload_b64']))
+meta = dict(client=doc['client'])
+if doc['expires']:
+    meta['expires'] = doc['expires']
+pathlib.Path(os.environ['PAYLOAD_CAPTURE'] + '.meta').write_text(json.dumps(meta))
+if fault == 'document-after-write':
     sys.stderr.buffer.write(data)
     raise SystemExit(23)
+print('subscription-published-v1')
 ''')
     for file in bin_dir.iterdir():
         file.chmod(0o700)
@@ -510,9 +518,9 @@ def test_explicit_cohort_needs_only_endpoint(lab):
 
 @pytest.mark.parametrize('state,fault', [
     *((state, fault) for state in ('first', 'refresh') for fault in
-      ('metadata-after-write', 'payload-before-write', 'payload-after-write', 'local-replace', 'local-sync')),
-    *(('unchanged-refresh', fault) for fault in ('metadata-after-write', 'payload-before-write', 'payload-after-write')),
-    ('refresh', 'metadata-interrupt'),
+      ('document-before-write', 'document-after-write', 'local-replace', 'local-sync')),
+    *(('unchanged-refresh', fault) for fault in ('document-before-write', 'document-after-write')),
+    ('refresh', 'document-interrupt'),
 ])
 def test_partial_publication_reports_reconcile_before_retry(lab, monkeypatch, capsys, state, fault):
     from datetime import datetime, timezone
@@ -532,7 +540,7 @@ def test_partial_publication_reports_reconcile_before_retry(lab, monkeypatch, ca
     original_command, original_replace, original_sync = issuer.command, os.replace, os.fsync
     def command(arguments, **kwargs):
         result = original_command(arguments, **kwargs)
-        if fault == 'metadata-interrupt' and arguments[0] == 'ssh' and arguments[-1].endswith(".meta'"):
+        if fault == 'document-interrupt' and arguments[0] == 'ssh' and '--publish-sub' in arguments[-1]:
             raise KeyboardInterrupt
         return result
     def replace(source, destination):
@@ -551,7 +559,7 @@ def test_partial_publication_reports_reconcile_before_retry(lab, monkeypatch, ca
     observed = capsys.readouterr()
     assert result == 3 and not observed.out
     assert 'reconcile remote delivery and encrypted registry before retrying' in observed.err
-    assert capture.with_suffix(capture.suffix + '.meta').exists()
+    assert capture.with_suffix(capture.suffix + '.meta').exists() == (state != 'first' or fault != 'document-before-write')
     if fault == 'local-sync':
         assert path.read_bytes() != before and drift._verdict('phone')[0] == 'current'
         assert 'committed-durability-uncertain' in observed.err
@@ -559,7 +567,7 @@ def test_partial_publication_reports_reconcile_before_retry(lab, monkeypatch, ca
         assert path.read_bytes() == before
         assert 'remote-publication-uncertain' in observed.err
     current = capture.read_bytes() if capture.exists() else None
-    if fault in ('metadata-after-write', 'payload-before-write', 'metadata-interrupt'):
+    if fault == 'document-before-write':
         assert current == previous
     else:
         assert current is not None and MARKER.encode() in current

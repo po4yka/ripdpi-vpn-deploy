@@ -2,6 +2,20 @@
 
 ## Design decisions
 
+The audited Bearer clients share authenticated_http.py and refuse every redirect.
+Protocol notifications require an HTTPS origin without userinfo, path, query or
+fragment. Local HTTP tests inject transport after origin admission; production
+has no plaintext bypass. State backups expose final names only after completed
+age encryption and uses no-replace publication to preserve timestamp collisions.
+Hardware enrollment binds explicit serial/slot selectors through literal Make
+inputs. Resume retains its identity, migration preserves each file's recipients,
+and staged ciphertext shares the existing per-document writer lock. Grouped
+policies require separate quorum-aware migration. Generation diagnostics stay
+on the operator's private controlling terminal. Subscription issuance requires
+the installed publisher-v1 readiness protocol before external publication. One
+service-owned atomic envelope binds exact payload bytes and expiry under the
+existing lock; a lost acknowledgement remains an uncertain external outcome.
+
 Blue-green treats each Make phase as a separate ordered command with inherited
 Make controls removed. Dry-run accepts only 0 or 1 and resolves before private
 inputs. CI commands use the retained bootstrap session supervisor; keep private

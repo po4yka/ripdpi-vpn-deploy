@@ -829,7 +829,7 @@ def test_relay_refuses_response_above_finite_ceiling_once() -> None:
     assert len(calls) == 1
 
 
-def _http_error(status: int, retry_after: str | None = None) -> error.HTTPError:
+def _http_error(status: int, retry_after: str | None = None, *, parameters=None) -> error.HTTPError:
     headers = Message()
     if retry_after is not None:
         headers["Retry-After"] = retry_after
@@ -838,13 +838,16 @@ def _http_error(status: int, retry_after: str | None = None) -> error.HTTPError:
         status,
         "fixture",
         headers,
-        io.BytesIO(b'{"ok":false}'),
+        io.BytesIO(json.dumps({"ok": False, "parameters": parameters or {}}).encode()),
     )
 
 
 @pytest.mark.parametrize(
     ("first", "expected_sleep"),
-    [(_http_error(429, "99"), 5), (_http_error(503), 1), (TimeoutError(), 1)],
+    [(_http_error(429, parameters={"retry_after": 0}), 0),
+     (_http_error(429, parameters={"retry_after": 3}), 3),
+     (_http_error(429, parameters={"retry_after": 5}), 5),
+     (_http_error(429, "4"), 4), (_http_error(503), 1), (TimeoutError(), 1)],
 )
 def test_relay_retries_only_transient_failures_with_bounded_delay(
     first: BaseException, expected_sleep: int
@@ -873,6 +876,46 @@ def test_relay_retries_only_transient_failures_with_bounded_delay(
 
     assert attempts == []
     assert sleeps == [expected_sleep]
+
+
+@pytest.mark.parametrize("delay", [6, 30, 3600, -1, True, "3"])
+def test_relay_never_retries_before_a_flood_wait_or_above_its_budget(delay) -> None:
+    relay = _relay()
+    calls, sleeps = [], []
+
+    def opener(outbound, timeout):
+        calls.append(outbound)
+        raise _http_error(429, "0", parameters={"retry_after": delay})
+
+    with pytest.raises(relay.DeliveryFailure, match="upstream-flood-wait"):
+        relay.deliver(
+            api_url="https://api.telegram.org",
+            token="123456789:fixture-token-not-real",
+            chat_id="-100000000001", topic_id=0, message="bounded",
+            opener=opener, sleeper=sleeps.append,
+        )
+    assert len(calls) == 1
+    assert sleeps == []
+
+
+@pytest.mark.parametrize("body", [b"not-json", b"[]", b'{"parameters":[]}', b" " * 65537])
+def test_relay_refuses_malformed_or_unbounded_flood_response(body) -> None:
+    relay = _relay()
+    calls, sleeps = [], []
+
+    def opener(outbound, timeout):
+        calls.append(outbound)
+        raise error.HTTPError("https://api.telegram.org/redacted", 429, "fixture", Message(), io.BytesIO(body))
+
+    with pytest.raises(relay.DeliveryFailure, match="upstream-flood-response"):
+        relay.deliver(
+            api_url="https://api.telegram.org",
+            token="123456789:fixture-token-not-real",
+            chat_id="-100000000001", topic_id=0, message="bounded",
+            opener=opener, sleeper=sleeps.append,
+        )
+    assert len(calls) == 1
+    assert sleeps == []
 
 
 @pytest.mark.parametrize(

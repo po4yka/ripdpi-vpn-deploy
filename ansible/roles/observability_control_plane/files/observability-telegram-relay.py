@@ -218,11 +218,31 @@ def render_message(payload: dict[str, object], *, max_alerts: int = MAX_ALERTS) 
     return message
 
 
-def _retry_after(headers: object) -> int:
-    raw = headers.get("Retry-After") if headers is not None else None
-    if not isinstance(raw, str) or re.fullmatch(r"[0-9]{1,4}", raw) is None:
-        return 1
-    return min(int(raw), MAX_RETRY_AFTER_SECONDS)
+def _retry_after(response: error.HTTPError) -> int:
+    try:
+        raw = response.read(MAX_RESPONSE_BYTES + 1)
+    except OSError as exc:
+        raise DeliveryFailure("upstream-flood-response") from exc
+    if len(raw) > MAX_RESPONSE_BYTES:
+        raise DeliveryFailure("upstream-flood-response")
+    try:
+        payload = json.loads(raw)
+        parameters = payload.get("parameters", {})
+        delay = parameters.get("retry_after")
+    except (ValueError, AttributeError) as exc:
+        raise DeliveryFailure("upstream-flood-response") from exc
+    if delay is None:
+        header = response.headers.get("Retry-After")
+        if header is None:
+            return 1
+        if re.fullmatch(r"[0-9]{1,4}", header) is None:
+            raise DeliveryFailure("upstream-flood-response")
+        delay = int(header)
+    # Two five-second requests plus at most five seconds of waiting fit the
+    # fixed twenty-second webhook budget. Longer waits belong to a later call.
+    if type(delay) is not int or not 0 <= delay <= MAX_RETRY_AFTER_SECONDS:
+        raise DeliveryFailure("upstream-flood-wait")
+    return delay
 
 
 def deliver(
@@ -277,7 +297,7 @@ def deliver(
         except error.HTTPError as exc:
             try:
                 retryable = exc.code == 429 or 500 <= exc.code <= 599
-                delay = _retry_after(exc.headers) if exc.code == 429 else 1
+                delay = _retry_after(exc) if exc.code == 429 else 1
             finally:
                 exc.close()
         except (TimeoutError, OSError):

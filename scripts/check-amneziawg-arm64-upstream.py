@@ -11,6 +11,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from authenticated_http import open_no_redirect
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_POLICY = REPO_ROOT / "contract" / "amneziawg-arm64-version-floor.json"
 API_ROOT = "https://api.github.com"
@@ -113,7 +115,7 @@ def _github_get(path: str) -> object:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(f"{API_ROOT}{path}", headers=headers)
-    with urllib.request.urlopen(request, timeout=30) as response:
+    with open_no_redirect(request, timeout=30) as response:
         return json.load(response)
 
 

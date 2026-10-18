@@ -9,6 +9,8 @@ import sys
 import urllib.error
 import urllib.request
 
+from authenticated_http import open_no_redirect
+
 
 API_URL = "https://api.vultr.com/v2/account"
 TIMEOUT_SECONDS = 10
@@ -32,7 +34,7 @@ def main() -> int:
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+        with open_no_redirect(request, timeout=TIMEOUT_SECONDS) as response:
             status = response.status
     except urllib.error.HTTPError as exc:
         body = exc.read(4096).decode("utf-8", errors="replace")

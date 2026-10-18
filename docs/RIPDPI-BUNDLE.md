@@ -37,6 +37,13 @@ transport. Operators serving those clients must use the `/sub` plain endpoint.
 }
 ```
 
+The validator also checks protocol semantics without changing the JSON schema:
+AWG public and preshared keys use canonical base64 for exactly 32 bytes;
+endpoints have a valid host and port; addresses and allowed networks use valid
+CIDRs; junk bounds are ordered and header values are distinct. DNS addresses,
+port-hop ranges and calendar expiry must be valid. Refusals report categories
+without credential values. Public examples use deterministic synthetic keys.
+
 ## `ripdpi.schema_version`
 
 Integer.  Currently `1`.  The RIPDPI client rejects (ignores) a `ripdpi` block
@@ -217,7 +224,7 @@ subscription format.
   // (= hysteria.version from SOPS).  Present only alongside salamander obfs.
   "salamander_upstream_tag": "v2.9.0",
 
-  // Present only when hysteria_port_range is configured in group_vars.
+  // Retained schema compatibility field; current RIPDPI emission refuses hopping.
   // ports is the range string "low:high"; interval is the hop cadence.
   "port_hopping": {
     "ports":    "20000:50000",
@@ -270,13 +277,13 @@ identifiers fail closed.
 
 Optional RFC-3339 / ISO-8601 UTC instant after which the subscription token
 stops serving this bundle (the server returns `410 Gone`). Carried **inside**
-the `ripdpi` object — in addition to the existing `.meta` sidecar — so the
+the `ripdpi` object and atomic subscription document so the
 client can warn "subscription expires in N days, refresh" proactively, instead
 of only finding out when the next `/sub` fetch already failed.
 
 `emit-bundle.sh` emits it when `BUNDLE_EXPIRES` is set. The supported issuance
 path normalizes `EXPIRES` once and writes the identical UTC instant into the
-authoritative `.meta` sidecar and the bundle's early-warning copy. Date-only
+authoritative subscription document (or legacy `.meta` sidecar) and the bundle's early-warning copy. Date-only
 input means midnight UTC. The field is absent for non-expiring tokens:
 
 ```bash
@@ -325,6 +332,13 @@ unchanged; public ECH configuration is never silently stripped. Use the canonica
 belong in either artifact.
 The new BBR recipient profiles use the same qualified official engine and also
 refuse RIPDPI export. The bandwidth-capped classical profile remains supported.
+
+
+Hysteria port hopping remains an unqualified RIPDPI recipient feature. The
+emitter refuses a selected `hysteria_port_range` before output; it does not
+strip `server_ports` or `hop_interval`. Official sing-box output retains its
+port-hopping profile. Multi-host RIPDPI output includes extras for every exact
+Hysteria outbound tag, independently of host order.
 
 ### Dual-stack device contract
 

@@ -56,13 +56,30 @@ Defaults and supported bounds are documented in `docs/SECRETS.md` and the role.
 | HTTPS endpoint with no access log of paths | required | `access_log off` on `/sub/` and `/bootstrap/` | ✓ shipped |
 | Revocation list | implemented in v1.2 | `subscription.revoked_tokens` | ✓ shipped |
 | Rate-limit | implemented in v1.2 | `subscription.rate_limit` + burst | ✓ shipped |
-| Token expiry per device | required | `<token>.meta` sidecar (ISO date or epoch); vpn-bootstrap returns 410 after `expires`. Works for BOTH /sub/ and /bootstrap/. | ✓ shipped |
-| RIPDPI client expiry warning | required | `make issue-sub-token FORMAT=ripdpi EXPIRES=…` normalizes one UTC instant into both the sidecar and `ripdpi.expires`; Android warns before the enforcement point. | ✓ shipped |
+| Token expiry per device | required | Atomic `<sha256>.document` for new `/sub/` delivery; legacy payload/`.meta` remains readable. vpn-bootstrap returns 410 at expiry for both routes. | ✓ shipped |
+| RIPDPI client expiry warning | required | `make issue-sub-token FORMAT=ripdpi EXPIRES=…` normalizes one UTC instant into both the atomic document and `ripdpi.expires`; Android warns before the enforcement point. | ✓ shipped |
 | Delivery host separate from VPN node | required | `vpn_subscription_only` inventory var skips every transport role; pairs with multi-operator SOPS split | ✓ shipped (see `docs/SUBSCRIPTION-HOST-SEPARATION.md`) |
 | QR bootstrap flow | required | `issue-bootstrap.sh --qr` + `issue-sub-token.sh --qr` writes a PNG | ✓ shipped |
 | Audit log of token reads | recommended | `/var/log/vpn-subscription/reads.log` JSONL; one record per read (consumed/unknown/revoked/expired) with hash prefix + src_ip + bytes; pull via `make sub-reads` | ✓ shipped |
 | Hashed token storage | recommended | disk paths use `<route>/<sha256(token)>`; plaintext token never on disk | ✓ shipped |
 | No `Referer` / no `cache` | required | explicit `Cache-Control: no-store` + `Referrer-Policy: no-referrer` on both `/sub/` and `/bootstrap/` | ✓ shipped |
+
+## Atomic subscription publication
+
+Converge the subscription-host role before new issuance. The issuer requires
+`subscription-publisher-v1` from the installed service, as `vpn-bootstrap`,
+before any remote write. A missing publisher, wrong namespace or mirror mode
+refuses delivery. The publisher accepts one bounded version-1 document with
+`payload_b64`, `client` and `expires`; it validates JSON without changing the
+payload bytes. Empty expiry clears the prior deadline.
+
+The service holds the existing private state lock, writes and syncs a private
+sibling, then replaces `<sha256>.document` and syncs its directory. Readers
+prefer this complete document. A malformed or unsafe document fails closed;
+it never exposes a stale legacy payload. Older payload/`.meta` pairs remain a
+read-only compatibility path when no document exists. Mirror generations copy
+the complete document with the payload tree. A failed publication reply requires
+reconciliation of remote delivery and the encrypted registry before retry.
 
 ## What to ship next
 
