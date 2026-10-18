@@ -18,7 +18,7 @@ Repair all eight confirmed audit findings and retain the current safety gates.
 
 ## Execution
 
-- [ ] SEC-1792301639236422 Protect every subscription vhost outcome and add native logging regressions #bug !high @item:SEC-1792301529650686
+- [x] SEC-1792301639236422 Protect every subscription vhost outcome and add native logging regressions #bug !high @item:SEC-1792301529650686
 - [x] SEC-1792301639972825 Generate served sing-box import and QR targets with delivery regressions #bug !high @item:SEC-1792301529650686
 - [x] SEC-1792301641075453 Reject pinned Xray authentication UUID aliases with identity regressions #bug !high @item:SEC-1792301529650686
 - [x] SEC-1792301641874277 Reject AWG peer claims covering any instance server address #bug !high @item:SEC-1792301529650686
@@ -26,8 +26,8 @@ Repair all eight confirmed audit findings and retain the current safety gates.
 - [x] SEC-1792301643438614 Refuse unsupported RIPDPI Hysteria hopping before publication #bug !high @item:SEC-1792301529650686
 - [x] SEC-1792301644239886 Verify exact certificate SAN coverage with negative wildcard regressions #bug !high @item:SEC-1792301529650686
 - [x] SEC-1792301645045399 Retain Hysteria extension metadata for every emitted host #bug !high @item:SEC-1792301529650686
-- [ ] SEC-1792301645900459 Pass focused and complete local checks plus security and structured review #bug !high @item:SEC-1792301529650686
-- [ ] SEC-1792301646714747 Pass PR CI merge the reviewed source and verify all required main checks #bug !high @item:SEC-1792301529650686
+- [x] SEC-1792301645900459 Pass focused and complete local checks plus security and structured review #bug !high @item:SEC-1792301529650686
+- [x] SEC-1792301646714747 Pass PR CI merge the reviewed source and verify all required main checks #bug !high @item:SEC-1792301529650686
 
 ## Verification
 

@@ -2,7 +2,7 @@
 id: SEC-1792301529650686
 title: Repair protocol identity and delivery audit boundaries
 kind: bug
-status: doing
+status: review
 area: security
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: protocol-audit-boundaries
 created: 2026-10-18
 updated: 2026-10-18
 related_tasks: []
+status_detail: PR 328 merged; PR CI and exact main CI passed 92 jobs each and all nine required contexts. Acceptance evidence is complete.
 ---
 
 ## Goal
