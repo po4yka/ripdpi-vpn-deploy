@@ -1,7 +1,10 @@
 import asyncio
 import io
 import os
+import re
+from html import unescape
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlsplit
 import pytest
 from artifact_helpers import SAMPLE, scaffold, context, private, cli
 from vpnd.commands import share
@@ -29,7 +32,15 @@ def args(root, out=None):
 
 
 # Rust test: vpnd/tests/share_command.rs::share_generates_a_bundle_for_a_canonical_xray_client
-def test_share_generates_a_bundle_for_a_canonical_xray_client(tmp_path):
+def test_share_generates_a_bundle_for_a_canonical_xray_client(tmp_path, monkeypatch):
+    qr_targets = {}
+    write_svg = qr.write_svg
+
+    def record_qr_target(value, path):
+        qr_targets[path.name] = value
+        write_svg(value, path)
+
+    monkeypatch.setattr(qr, "write_svg", record_qr_target)
     ctx = setup(
         tmp_path, SAMPLE + "\nsubscription:\n  server_name: sub.example.com\n  port: 8444\n"
     )
@@ -42,6 +53,11 @@ def test_share_generates_a_bundle_for_a_canonical_xray_client(tmp_path):
     assert (out / "config.singbox.json").read_text() == '{"outbounds":[]}\n'
     page = (out / "index.html").read_text()
     assert "phone" in page and "https://sub.example.com:8444/sub/test-token_123" in page
+    link = re.search(r'href="(sing-box://[^"]+)"', page)
+    assert link is not None
+    target = parse_qs(urlsplit(unescape(link.group(1))).query)["url"][0]
+    assert target == "https://sub.example.com:8444/sub/test-token_123"
+    assert qr_targets["qr.svg"] == target
     assert out.stat().st_mode & 0o777 == 0o700
     for name in ["config.singbox.json", "index.html", "qr.svg", "qr-ripdpi.svg"]:
         assert (out / name).stat().st_mode & 0o777 == 0o600

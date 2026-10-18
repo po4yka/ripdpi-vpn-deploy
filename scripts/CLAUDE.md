@@ -25,7 +25,7 @@ deployment mappings before convergence. A restored root snapshot is not fresh
 SSH or promotion proof. Keep dependent Make goals in separate invocations.
 
 Canonical client payload materialization refuses nonempty Hysteria port ranges
-for RIPDPI with `unsupported-recipient-hysteria-port-hopping` before publication.
+for RIPDPI with `RIPDPI Hysteria port hopping requires a qualified client` before publication.
 Official sing-box hopping remains supported; the XHTTP-only native Xray selection
 ignores unselected Hysteria. Keep the other engine compatibility guards.
 
@@ -37,6 +37,20 @@ P0 recipient admission distinguishes sing-mux from Xray Mux.Cool; a valid JSON
 document does not establish wire compatibility. REALITY shortIds compare as
 decoded, zero-padded wire values, and mtg accepts only structured FakeTLS secrets.
 Field-level refusals must keep private input out of diagnostics.
+
+VLESS UUID uniqueness follows the pinned engine's parsed authentication bytes,
+including its reserved routing bytes. Different strings cannot share that
+identity. AWG reserves every instance server host address against all device
+and routed peer prefixes before binding, export, enrollment or publication.
+
+Certificate preflight requires DNS SAN authority and complete wildcard labels
+before native hostname matching. Do not restore domain-name regular expressions,
+CN fallback or partial wildcards. Use `verify -verify_hostname`: OpenSSL 3.0
+`x509 -checkhost` can exit zero on mismatch. Keep expiry and public-key checks separate.
+
+RIPDPI Hysteria delivery refuses port hopping until its actual consumer is
+qualified. The official sing-box path retains hopping. Per-host Hysteria
+extension entries follow every emitted tag, not only the first host.
 
 The REALITY monitor supervisor handles INT, TERM, HUP and QUIT before launching any decrypting child. The shell creates its work directory using an explicit parent path; BSD mktemp -t can ignore TMPDIR. Parent-owned temporary authority is removed after session cleanup on cancellation. Bounded child stderr is forwarded separately from the JSON stdout protocol. The monitor requests SOPS JSON directly into its private owned file; the general decrypt cache retains its YAML contract.
 

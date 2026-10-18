@@ -2,6 +2,12 @@
 
 ## Design decisions
 
+Shared protocol admission rejects VLESS authentication aliases and AWG peer
+prefixes containing any instance server address before publication. Snell and
+Trojan templates retain exact credential bytes through JSON serialization.
+Subscription privacy defaults cover the whole virtual host, including refused
+paths, while route-specific rate limits remain unchanged.
+
 Debian13 Molecule consumers share one immutable image digest. Refresh it through
 the existing CI publisher, require its current HIGH/CRITICAL scan to pass, and
 update every Molecule consumer plus the pin guard together. The parent image

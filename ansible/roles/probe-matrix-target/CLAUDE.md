@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+Trojan passwords use JSON serialization for both TCP and XHTTP target inbounds.
+The parsed target value must equal the original authority and the Python probe
+driver value for every schema-valid string. Parser success alone cannot prove
+that credential bytes are unchanged.
+
 FakeTLS admission runs on the controller before any target mutation. It accepts
 hex or unpadded URL-safe base64 with an ee prefix, nonzero sixteen-byte key and
 valid ASCII hostname. It reports field categories only. The official mtg tar.gz

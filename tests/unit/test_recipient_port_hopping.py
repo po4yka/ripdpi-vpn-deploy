@@ -36,7 +36,7 @@ def materialize(monkeypatch):
 @pytest.mark.parametrize('extended', [False, True])
 def test_ripdpi_refuses_hopping_without_returning_partial_payload(materialize, extended):
     _, emit = materialize
-    with pytest.raises(ValueError, match='^unsupported-recipient-hysteria-port-hopping$'):
+    with pytest.raises(ValueError, match='^RIPDPI Hysteria port hopping requires a qualified client$'):
         emit('ripdpi', extended=extended)
 
 
@@ -73,4 +73,4 @@ def test_actual_cli_refusal_has_no_partial_stdout(materialize, monkeypatch, caps
     assert client_payload.main() == 2
     output = capsys.readouterr()
     assert output.out == ''
-    assert output.err == 'client-payload: unsupported-recipient-hysteria-port-hopping\n'
+    assert output.err == 'client-payload: RIPDPI Hysteria port hopping requires a qualified client\n'

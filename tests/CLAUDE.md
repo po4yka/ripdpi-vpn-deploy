@@ -35,6 +35,15 @@ The native hopping suite additionally sends real UDP across owned network
 namespaces through the complete rendered firewall; wrong interfaces, ports and
 unapproved global server addresses remain negative cases.
 
+Protocol audit regressions use schema-valid synthetic inputs and actual
+controller preflight in ordinary and check mode. They prove identity/address
+refusal before later publication, exact parsed server/client credential bytes,
+and retained positive controls. Delivery cases consume generated remote URLs
+through the real local backend; native nginx checks unmatched and disabled
+bearer routes as well as successful and failed proxy outcomes. Certificate
+cases run the complete script with issued certificates and matching CNs, so
+missing or mismatched SANs cannot pass through subject fallback.
+
 Disposable CI admits the fixed root-owned executable and acquisition directories through no-follow directory descriptors before it installs clients. Only the `/usr/local/bin` and `/opt` leaf modes change to 0755; unsafe ancestors, symlinks and foreign ownership refuse. Executable regressions run the exact inline admission code in an owned temporary tree, with only its paths and expected UID changed, and preserve existing child bytes and inodes. The complete AWG native fixture creates its fresh claimed acquisition root and release directory with explicit 0755 modes; actual umask 0000 and 0777 regressions prevent unsafe default intermediate permissions, without changing existing authority.
 
 The early AWG rollback step runs the complete canonical dual-stack goal with the same pinned sources and isolated environment. The final native bundle retains that goal to check the complete runtime context.

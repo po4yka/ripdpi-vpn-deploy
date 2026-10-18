@@ -88,17 +88,34 @@ check_block() {
     report "appears self-signed (subject == issuer)"
   fi
 
-  # SAN coverage
+  # Require DNS SAN authority and complete wildcard labels before the native
+  # matcher. OpenSSL otherwise permits CN fallback and partial wildcards.
   if [[ -n "$host" ]]; then
-    local san_lines
-    san_lines="$(openssl x509 -in "$cert_file" -noout -ext subjectAltName 2>/dev/null \
-      | grep DNS: || true)"
-    if ! grep -qiE "(^|[[:space:]],?[[:space:]]*)DNS:${host//./\\.}(,|$)" <<< "$san_lines"; then
-      # also tolerate single wildcard one-level above
-      local parent_re="(^|[[:space:]],?[[:space:]]*)DNS:\\*\\.${host#*.}(,|$)"
-      if ! grep -qiE "$parent_re" <<< "$san_lines"; then
-        report "SAN does not cover ${host}"
-      fi
+    if ! python3 - "$cert_file" >/dev/null 2>&1 <<'PY'
+from pathlib import Path
+import sys
+from cryptography import x509
+
+try:
+    cert = x509.load_pem_x509_certificate(Path(sys.argv[1]).read_bytes())
+    names = cert.extensions.get_extension_for_class(
+        x509.SubjectAlternativeName
+    ).value.get_values_for_type(x509.DNSName)
+except (OSError, ValueError, x509.ExtensionNotFound):
+    raise SystemExit(1)
+if not names or any(
+    "*" in name and (not name.startswith("*.") or name.count("*") != 1)
+    for name in names
+):
+    raise SystemExit(1)
+PY
+    then
+      report "SAN does not cover ${host}"
+    # OpenSSL 3.0 x509 -checkhost can exit zero on mismatch. Trust only this
+    # supplied leaf for the native identity check; issuance stays operator-owned.
+    elif ! openssl verify -no-CAfile -no-CApath -no-CAstore -trusted "$cert_file" \
+      -partial_chain -verify_hostname "$host" "$cert_file" >/dev/null 2>&1; then
+      report "SAN does not cover ${host}"
     fi
   fi
 
