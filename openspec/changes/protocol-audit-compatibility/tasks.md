@@ -20,6 +20,7 @@ supported paths with real pinned engines.
   docs/CLIENT-NOTES.md and docs/SNELL-REFINEMENT.md.
 - Integration lane: vpnd/tests/test_update_cache.py, vpnd/CLAUDE.md,
   scripts/render-inventory.sh, its metadata regressions,
+  contract/ripdpi-bundle.example.json, contract/ripdpi-bundle.golden-full.json,
   CONTRIBUTING.md, Makefile, .github/workflows/, snapshots, tests/CLAUDE.md,
   scripts/CLAUDE.md, ansible/CLAUDE.md, docs/TESTING.md, task and OpenSpec files,
   PR metadata and all commits. Shared files are serialized through this lane.

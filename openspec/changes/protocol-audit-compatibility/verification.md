@@ -93,3 +93,19 @@ that fixture and rerun complete validation; do not increase the CI timeout.
 
 No deployment, fleet inventory, real Telegram connection or operator secret
 operation ran.
+
+## Current source integration
+
+The complete local gate runs unchanged at fa3433719de3ea21674c68529bed15e34e395fa4.
+A separate checkout integrated four documentation files from main 3c4b5500.
+Its task contract, seven instruction tests, 14 documentation tests and real
+reproducible package/install/rollback check passed. These checks do not replace
+the running full gate or the new source candidate's exact-head CI.
+
+The client main then advanced to fdc42a19f8701216b727f76ab5dc7fd5b73abcde.
+An actual Git-blob comparison found two differing files among 31 contract files.
+Reuse of the agreed public fixture blobs from cc6e171e9edfe8555bbc7800aa584e8a571a865c
+changes only four synthetic peer public-key and preshared-key literals.
+The schema and fingerprints remain unchanged. All 31 contract files now match
+that client revision byte for byte; affected tests and fresh exact-head CI
+remain required for this added fixture delta.
