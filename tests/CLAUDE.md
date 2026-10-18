@@ -39,6 +39,13 @@ unapproved global server addresses remain negative cases.
 An expected local OUTPUT drop accepts only EPERM from sendto on an explicit
 negative probe; the receiver must still see no packet. Positive sends and other
 errno values remain fatal.
+The DHCPv6 receiver binds and joins its multicast group before readiness. Its
+complete observation window starts only after the parent confirms the sender
+result through a bounded control acknowledgement. Portable real loopback UDP
+regressions delay sender startup beyond that window and require missing control
+acknowledgement to refuse. Native probe diagnostics contain fixed phase names,
+bounded millisecond counts and packet-presence booleans only; the runner keeps
+these logs private and publishes only safe failure source locations.
 
 Protocol audit regressions use schema-valid synthetic inputs and actual
 controller preflight in ordinary and check mode. They prove identity/address

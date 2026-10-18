@@ -7,6 +7,7 @@ import secrets
 import select
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -22,7 +23,7 @@ def run(*args, data=None):
 
 
 RECEIVER = """
-import json,socket,sys
+import json,os,select,socket,sys
 interface,address,port,multicast=sys.argv[1:]
 s=socket.socket(socket.AF_INET6,socket.SOCK_DGRAM)
 s.setsockopt(socket.SOL_SOCKET,socket.SO_BINDTODEVICE,interface.encode()+b'\\0')
@@ -32,8 +33,12 @@ if multicast == 'yes':
  import struct
  s.setsockopt(socket.IPPROTO_IPV6,socket.IPV6_JOIN_GROUP,
               socket.inet_pton(socket.AF_INET6,'ff02::1:2')+struct.pack('@I',socket.if_nametoindex(interface)))
-s.settimeout(.7)
 print('ready',flush=True)
+if not select.select([sys.stdin],[],[],20)[0]:
+ raise SystemExit('dhcpv6-receiver-send-ack-timeout')
+if os.read(sys.stdin.fileno(),14) != b'send-complete\\n':
+ raise SystemExit('dhcpv6-receiver-send-ack-invalid')
+s.settimeout(.7)
 try:
  data,peer=s.recvfrom(128)
  print(json.dumps([data.decode(),peer[0],peer[1]]),flush=True)
@@ -65,21 +70,37 @@ def packet(sender, receiver, *, source="fe80::20", target="fe80::10",
         ["ip", "netns", "exec", receiver, sys.executable, "-c", RECEIVER,
          receive_interface, "::" if target.startswith("ff02") else target,
          str(dport), "yes" if target.startswith("ff02") else "no"],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )
+    started = time.monotonic()
+    diagnostic = {"phase": "readiness", "packet_received": None}
     try:
         assert select.select([listener.stdout], [], [], 3)[0], "dhcpv6-receiver-timeout"
         assert listener.stdout.readline().strip() == "ready", "dhcpv6-receiver-not-ready"
-        run("ip", "netns", "exec", sender, sys.executable, "-c", SENDER,
-            send_interface, source, str(sport), target, str(dport),
-            "yes" if expected_output_deny else "no")
-        output, error = listener.communicate(timeout=3)
-        assert listener.returncode == 0, error
+        diagnostic["ready_ms"] = min(30000, int((time.monotonic() - started) * 1000))
+        diagnostic["phase"] = "send"
+        try:
+            run("ip", "netns", "exec", sender, sys.executable, "-c", SENDER,
+                send_interface, source, str(sport), target, str(dport),
+                "yes" if expected_output_deny else "no")
+        except subprocess.SubprocessError:
+            raise AssertionError("dhcpv6-send-result-refused") from None
+        diagnostic["send_ms"] = min(30000, int((time.monotonic() - started) * 1000))
+        diagnostic["phase"] = "receive"
+        try:
+            output, _error = listener.communicate(input="send-complete\n", timeout=3)
+        except subprocess.SubprocessError:
+            raise AssertionError("dhcpv6-receive-result-refused") from None
+        assert listener.returncode == 0, "dhcpv6-receiver-control-refused"
         received = json.loads(output)
         if received is not None:
             assert received[0] == "dhcpv6-regression"
+        diagnostic["phase"] = "packet"
+        diagnostic["packet_received"] = received is not None
         return received
     finally:
+        diagnostic["elapsed_ms"] = min(30000, int((time.monotonic() - started) * 1000))
+        print("dhcpv6-probe:" + json.dumps(diagnostic, sort_keys=True), flush=True)
         if listener.poll() is None:
             listener.kill()
             listener.communicate(timeout=3)
