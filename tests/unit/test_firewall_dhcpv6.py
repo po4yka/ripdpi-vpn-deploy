@@ -106,3 +106,17 @@ def test_real_ansible_admission_refuses_before_mutation(tmp_path, override, fact
 def test_dhcpv6_admission_is_first_before_consumer_installation():
     tasks = yaml.safe_load((ROLE / "tasks/main.yml").read_text())
     assert tasks[0]["ansible.builtin.import_tasks"] == "dhcpv6-admission.yml"
+
+
+def test_synthetic_awg_default_route_cannot_move_fixture_dhcpv6_on_second_gather():
+    scenario = yaml.safe_load((ROLE / "molecule/default/converge.yml").read_text())[0]
+    before = {"default_ipv4": {"interface": "eth0"}, "default_ipv6": {}}
+    after = {"default_ipv4": {"interface": "eth0"},
+             "default_ipv6": {"interface": "awg-test-up"}}
+    # The real preparation adds a default route after the first gather. New
+    # gathered facts must change auto selection, but not this explicit fixture.
+    assert render(facts=before) != render(facts=after)
+    uplink = scenario["vars"]["firewall_dhcpv6_uplink_interface"]
+    assert uplink == "eth0"
+    assert render(facts=before, interface=uplink) == render(facts=after, interface=uplink)
+    assert 'iifname "eth0" ip6 saddr fe80::/10' in render(facts=after, interface=uplink)

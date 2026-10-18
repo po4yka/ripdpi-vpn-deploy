@@ -14,6 +14,14 @@
         cmd: nft -c -f /etc/nftables.conf
       changed_when: false
 
+    - name: DHCPv6 remains on the real fixture uplink after repeated convergence
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          nft list chain inet filter input | grep -F 'iifname "eth0"' | grep -F 'comment "dhcpv6-client-reply"'
+        executable: /bin/bash
+      changed_when: false
+
     - name: Validate complete nftables candidate with representative Tailnet sets
       ansible.builtin.command:
         cmd: nft -c -f /etc/nftables.conf

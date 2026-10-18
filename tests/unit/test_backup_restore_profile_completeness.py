@@ -21,6 +21,7 @@ BASELINE = {
     'etc/nginx/nginx.conf': 'events {}\n',
 }
 ARTIFACTS = {
+    'snell': {'etc/snell/config.json': '{}'},
     'subscription-only': {'var/lib/vpn-subscription/revoked': '',
                           'etc/nginx/sites-available/vpn-sub.conf': 'server {}',
                           'etc/nginx/sites-enabled/vpn-sub.conf': 'server {}',
@@ -80,7 +81,8 @@ def variables(profile: str, repository: Path) -> dict:
 
 
 def run_drill(tmp_path: Path, profile: str, *, missing: str | None = None,
-              realm_link: str | None = None) -> tuple[subprocess.CompletedProcess, Path]:
+              realm_link: str | None = None,
+              malformed: str | None = None) -> tuple[subprocess.CompletedProcess, Path]:
     restic = shutil.which('restic')
     assert restic, 'real restic required for selected restore artifact coverage'
     tree = tmp_path / 'snapshot-source'
@@ -90,6 +92,8 @@ def run_drill(tmp_path: Path, profile: str, *, missing: str | None = None,
         path.write_text(content)
     if missing:
         (tree / missing).unlink()
+    if malformed:
+        (tree / malformed).write_text('{')
     sources = [str(tree)]
     if realm_link:
         external = tmp_path / 'external-tls'
@@ -145,6 +149,12 @@ def test_complete_selected_profile_restores_and_cleans(tmp_path, profile):
     result, marker = run_drill(tmp_path, profile)
     assert result.returncode == 0, result.stderr
     assert json.loads(marker.read_text())['repository_source'] == 'local'
+
+
+def test_malformed_snell_config_cannot_replace_success(tmp_path):
+    result, marker = run_drill(tmp_path, 'snell', malformed='etc/snell/config.json')
+    assert result.returncode != 0
+    assert json.loads(marker.read_text()) == {'prior': True}
 
 
 @pytest.mark.parametrize('mode', ['captured', 'live-only'])

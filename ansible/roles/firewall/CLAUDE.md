@@ -121,6 +121,10 @@ and active CDN origin sets retain the prefix refresher's current authority.
 
 ## Pitfalls
 
+- The Molecule fixture pins DHCPv6 to its Docker uplink because AWG preparation
+  adds an isolated IPv6 default route after the first fact gather. Keep this test
+  authority explicit so the second gather cannot change the rendered candidate.
+
 - **`ufw` is not installed by us, but VPS images may pre-install it** — if
   it's enabled, our nftables ruleset is masked. The role disables `ufw` before
   applying nftables.
