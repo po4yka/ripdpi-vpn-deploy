@@ -19,7 +19,9 @@ pytestmark = pytest.mark.native_runtime
 def test_native_hopping_no_net_admin_outbound_preserved_and_repeated_removal(family):
     stack = fixture.NativeStack()
     client_ns = stack.token + "c"
+    forward_ns = stack.token + "f"
     created = False
+    forward_created = False
     try:
         stack.start()
         stack.start_frontend("hysteria")
@@ -50,6 +52,32 @@ def test_native_hopping_no_net_admin_outbound_preserved_and_repeated_removal(fam
                 ["ip", "-n", namespace, "addr", "add", v6, "dev", link, "nodad"]
             )
             fixture.command(["ip", "-n", namespace, "link", "set", link, "up"])
+        fixture.command(["ip", "netns", "add", forward_ns])
+        forward_created = True
+        fixture.command(["ip", "-n", forward_ns, "link", "set", "lo", "up"])
+        fixture.command(["ip", "link", "add", stack.token + "d", "type", "veth", "peer", "name", stack.token + "e"])
+        for namespace, link, v4, v6 in (
+            (server_ns, stack.token + "d", "198.19.0.1/30", "fd88::1/64"),
+            (forward_ns, stack.token + "e", "198.19.0.2/30", "fd88::2/64"),
+        ):
+            fixture.command(["ip", "link", "set", link, "netns", namespace])
+            fixture.command(["ip", "-n", namespace, "addr", "add", v4, "dev", link])
+            fixture.command(["ip", "-n", namespace, "addr", "add", v6, "dev", link, "nodad"])
+            fixture.command(["ip", "-n", namespace, "link", "set", link, "up"])
+        for namespace, prefix, gateway in (
+            (forward_ns, "198.18.0.0/30", "198.19.0.1"),
+            (client_ns, "198.19.0.0/30", "198.18.0.1"),
+            (forward_ns, "fd87::/64", "fd88::1"),
+            (client_ns, "fd88::/64", "fd87::1"),
+        ):
+            fixture.command(["ip", "-n", namespace, "-6" if ":" in prefix else "-4", "route", "add", prefix, "via", gateway])
+        fixture.command(["ip", "netns", "exec", server_ns, "sysctl", "-q", "-w", "net.ipv4.ip_forward=1", "net.ipv6.conf.all.forwarding=1"])
+        stack.values["ansible_facts"]["default_ipv4"]["interface"] = stack.token + "a"
+        stack.values["ansible_facts"].setdefault("default_ipv6", {})["interface"] = stack.token + "d"
+        stack.values["firewall_forward_interface_contract"] = [{
+            "name": "owned-transit", "input_interface": stack.token + "d",
+            "output_interface": stack.token + "a",
+        }]
         stack.values["vpn"]["enable_hysteria"] = True
         stack.values["hysteria_port_range"] = "46000-46015"
         stack.values.update(
@@ -147,7 +175,8 @@ def test_native_hopping_no_net_admin_outbound_preserved_and_repeated_removal(fam
         echo = """import socket,sys
 s=socket.socket(socket.AF_INET6 if ':' in sys.argv[1] else socket.AF_INET,socket.SOCK_DGRAM)
 s.bind((sys.argv[1],46001));s.settimeout(10)
-data,peer=s.recvfrom(4096);s.sendto(data,peer)
+for _ in range(2):
+ data,peer=s.recvfrom(4096);s.sendto(data,peer)
 """
         address = "198.18.0.2" if family == 4 else "fd87::2"
         process = subprocess.Popen(
@@ -163,6 +192,14 @@ data,peer=s.recvfrom(4096);s.sendto(data,peer)
             "import socket,sys;s=socket.socket(socket.AF_INET6 if ':' in sys.argv[1] else socket.AF_INET,socket.SOCK_DGRAM);s.settimeout(5);s.sendto(b'foreign-destination',(sys.argv[1],46001));assert s.recv(4096)==b'foreign-destination'",
             address,
         )
+        # A second client enters the same canonical PREROUTING chain on an
+        # admitted public interface, but its destination belongs to the echo
+        # namespace beyond the server. Hopping must preserve transit UDP too.
+        fixture.command([
+            "ip", "netns", "exec", forward_ns, sys.executable, "-c",
+            "import socket,sys;s=socket.socket(socket.AF_INET6 if ':' in sys.argv[1] else socket.AF_INET,socket.SOCK_DGRAM);s.settimeout(5);s.sendto(b'forwarded-destination',(sys.argv[1],46001));assert s.recv(4096)==b'forwarded-destination'",
+            address,
+        ])
         assert process.wait(timeout=12) == 0
         stack.values["hysteria_port_range"] = ""
         without = render_template(
@@ -187,5 +224,7 @@ data,peer=s.recvfrom(4096);s.sendto(data,peer)
         # Unit stop must precede namespace retirement.
         stack.namespace = stack.token
         stack.close()
+        if forward_created:
+            fixture.command(["ip", "netns", "delete", forward_ns])
         if created:
             fixture.command(["ip", "netns", "delete", client_ns])

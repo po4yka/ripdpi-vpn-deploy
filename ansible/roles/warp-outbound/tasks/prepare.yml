@@ -119,13 +119,13 @@
 - name: Install Cloudflare WARP GPG key
   ansible.builtin.get_url:
     url: https://pkg.cloudflareclient.com/pubkey.gpg
-    dest: /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+    dest: /usr/share/keyrings/cloudflare-warp-archive-keyring.asc
     mode: '0644'
     force: false
   when: warp_outbound.install_warp_cli | default(true)
 - name: Verify Cloudflare WARP GPG key checksum against the pin
   ansible.builtin.stat:
-    path: /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+    path: /usr/share/keyrings/cloudflare-warp-archive-keyring.asc
     checksum_algorithm: sha256
   register: _warp_gpg_stat
   when: warp_outbound.install_warp_cli | default(true)
@@ -143,7 +143,7 @@
     owner: root
     group: root
     mode: '0644'
-    content: deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/
+    content: deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.asc] https://pkg.cloudflareclient.com/
       {{ ansible_facts['distribution_release'] }} main
   register: _warp_apt_source
   when: warp_outbound.install_warp_cli | default(true)

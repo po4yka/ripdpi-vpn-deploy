@@ -77,6 +77,11 @@ reviewed `binary_sha256`; there is no public upstream daemon release. P5 require
 `linux_arm64_sha256` for the role's pinned release. These prerequisites are
 checked before provision. Both still prove P0 through the canonical sentinel;
 their additional service checks are not P4/P5 client-path acceptance.
+The disposable `vpn-ci-p0p4` profile explicitly sets
+`dns_morph_bridge_allow_echo_only: true`. Its empty endpoint checks configuration
+and process state only. Ordinary DNS-Morph profiles require a data-plane endpoint
+and retain the default `false` echo selector. Neither the CI service check nor
+Molecule's shell stub proves a DNS-Morph handshake or forwarding.
 
 The old template, SSH-key and age-key workflow secrets are no longer consumed.
 Each job generates its own admin SSH key, age key and per-device transport

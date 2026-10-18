@@ -14,6 +14,8 @@ import uuid
 import pytest
 import yaml
 
+from template_render import merge_render_vars, render_template
+
 ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.native_runtime
 
@@ -48,6 +50,45 @@ def test_inactive_split_hop_retires_only_its_tables_and_route_authority(tmp_path
             "-",
             data="table inet split_hop_ingress {}\ntable inet split_hop_egress {}\ntable inet p2_foreign {}\n",
         )
+        ingress_tasks = yaml.safe_load(
+            (ROOT / "ansible/roles/split-hop-ingress/tasks/disable.yml").read_text()
+        )
+        checker = next(task for task in ingress_tasks if "ansible.builtin.command" in task)
+        retirement = next(task for task in ingress_tasks if "ansible.builtin.include_role" in task)
+        assert ingress_tasks.index(checker) < ingress_tasks.index(retirement)
+        checker_argv = ["ip", "netns", "exec", namespace,
+                        *checker["ansible.builtin.command"]["argv"]]
+
+        def owned_state():
+            return (ns("nft", "-j", "list", "ruleset"),
+                    ns("ip", "-j", "rule", "show"),
+                    ns("ip", "-j", "-4", "route", "show", "table", "all"))
+
+        guards = [
+                "table inet filter { chain output { type filter hook output priority 0; "
+                f'policy accept; meta nfproto ipv{family} meta skuid 65532 reject '
+                f'comment "split-hop-ingress-boundary-v{family}"; }}; }}\n'
+                for family in (4, 6)
+        ]
+        values = merge_render_vars()
+        values["vpn"]["enable_split_hop_ingress"] = True
+        values["split_hop_ingress_role_enabled"] = True
+        canonical = render_template(ROOT / "ansible/roles/firewall/templates/nftables.conf.j2", values)
+        chain_start = "  chain split_hop_ingress_egress_guard {"
+        chain = chain_start + canonical.split(chain_start, 1)[1].split("\n  }", 1)[0] + "\n  }\n"
+        guards.append("table inet filter {\n" + chain + "}\n")
+        for guard in guards:
+            ns("nft", "-f", "-", data=guard)
+            before = owned_state()
+            refusal = subprocess.run(checker_argv, capture_output=True, text=True, timeout=20)
+            assert refusal.returncode != 0 and refusal.stdout == ""
+            assert refusal.stderr.strip() == (
+                "Reconcile the canonical firewall with split-hop ingress disabled before retirement."
+            )
+            assert owned_state() == before, "preflight refusal must retain all owned kernel state"
+            ns("nft", "delete", "table", "inet", "filter")
+            accepted = subprocess.run(checker_argv, capture_output=True, text=True, timeout=20)
+            assert accepted.returncode == 0, accepted.stderr
         task_list = []
         for role in ("split-hop-ingress", "split-hop-egress"):
             tasks = yaml.safe_load(

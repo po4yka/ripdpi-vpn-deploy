@@ -2,6 +2,12 @@
 
 ## Design decisions
 
+DNS-Morph controller admission runs after exact-node ownership in site pre_tasks, before host changes and
+at standalone role entry. Both use the same bounded YAML validator and rendered
+role contract; malformed seed material and implicit echo-only inputs refuse in
+normal and check mode. Split-hop ingress retains its UID output boundary when
+the WireGuard route stops, independently from its policy-routing lifecycle.
+
 Shared protocol admission rejects VLESS authentication aliases and AWG peer
 prefixes containing any instance server address before publication. Snell and
 Trojan templates retain exact credential bytes through JSON serialization.

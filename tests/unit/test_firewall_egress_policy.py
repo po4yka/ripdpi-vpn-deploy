@@ -105,7 +105,7 @@ def test_firewall_discovers_ssh_port_in_check_mode() -> None:
 def _output_chain(rendered: str) -> str:
     marker = "  chain output {"
     start = rendered.index(marker)
-    end = rendered.index("  }\n}", start)
+    end = rendered.index("\n  }", start) + 1
     return rendered[start:end]
 
 
