@@ -85,9 +85,9 @@ def test_build_sub_urls_token_path_with_host_and_port():
     urls = build_sub_urls("https://sub.example.com:8444", "abc123_XYZ-token")
     assert urls.subscription_url == "https://sub.example.com:8444/sub/abc123_XYZ-token"
     assert urls.singbox_deeplink == "sing-box://import-remote-profile?url=" + urlencode(
-        urls.subscription_url + ".json"
+        urls.subscription_url
     )
-    assert urls.qr_singbox == urls.subscription_url + ".json"
+    assert urls.qr_singbox == urls.subscription_url
     assert urls.qr_uri == urls.subscription_url
 
 

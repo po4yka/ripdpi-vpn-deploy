@@ -6,6 +6,11 @@ Explicit diagnostic hosts carry their validated public address through each host
 
 Recipient URLs use the canonical inventory-host subscription port resolver when secrets omit a port. QR output is conditional in both rendering and publication; refreshing without QR removes only admitted owned QR files before publishing the page.
 
+Remote import and QR targets use the existing bare `/sub/<token>` endpoint.
+The backend serves JSON there; a filename suffix is not a second public alias.
+Generated targets are tested against the actual local delivery handler and
+the native nginx frontend, including expiry and revocation.
+
 **Make owns operations.** Python command handlers delegate infrastructure work
 to documented Make targets. Reconverge resolves exact inventory keys for the
 selected environment/provider before the deployment controller's dry-run,

@@ -9,6 +9,11 @@ server {
 
     server_tokens off;
 
+    # Every outcome can carry a bearer path, including unmatched requests.
+    # Child locations inherit URI-free diagnostics from this server boundary.
+    error_log /dev/null crit;
+    access_log /var/log/nginx/vpn-sub.categorical.log vpn_sub_category;
+
     ssl_certificate     /etc/nginx/tls/subscription-host/server.fullchain.pem;
     ssl_certificate_key /etc/nginx/tls/subscription-host/server.key;
 
@@ -81,8 +86,8 @@ server {
 {% if vpn.share_bundles | default([]) | length > 0 %}
     # Static recipient pages produced by `vpnd share <client>`.
     # Served from the local filesystem; no proxy, no rate-limit (static HTML).
-    # Raw token MUST NOT appear in logs — access_log is disabled here for the
-    # same reason it is disabled on /sub/. The vpnd audit trail is maintained
+    # Raw token MUST NOT appear in logs — categorical logging applies here
+    # as it does on /sub/. The vpnd audit trail is maintained
     # out-of-band; nginx never sees the plaintext token in a logged field.
     location ~ "^/share/(?<vpn_share_token>[A-Za-z0-9_-]{16,64})(/.*)?$" {
         alias /var/www/subscription-host/share/$vpn_share_token/;
@@ -100,5 +105,4 @@ server {
         return 404;
     }
 
-    error_log /var/log/nginx/vpn-sub.error.log warn;
 }

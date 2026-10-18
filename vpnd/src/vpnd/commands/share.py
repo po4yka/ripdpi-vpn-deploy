@@ -32,7 +32,7 @@ def urlencode(value):
 def build_sub_urls(base, segment):
     url = f"{base}/sub/{segment}"
     return SubUrls(
-        url, "sing-box://import-remote-profile?url=" + urlencode(url + ".json"), url + ".json", url
+        url, "sing-box://import-remote-profile?url=" + urlencode(url), url, url
     )
 
 

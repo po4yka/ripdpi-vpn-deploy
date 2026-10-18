@@ -8,7 +8,12 @@
 
 **Independent TLS ownership** — `subscription.cert_pem` and `subscription.key_pem` are required independently of XHTTP. The memory-only preflight proves key match, current validity and the effective delivery hostname before complete nginx transaction publication under `/etc/nginx/tls/subscription-host/`. An existing check-mode host performs the same preflight; a fresh missing validator requires its package installation plan.
 
-**Bearer failures retain only categorical diagnostics** — bearer locations suppress URI-bearing nginx error records and use an explicit format containing only HTTP status, upstream status and limit outcome. No URI, header, address or token field enters this log; native stopped-upstream and rate-limit tests check every nginx log.
+**Every delivery outcome retains only categorical diagnostics** — the complete
+subscription vhost suppresses URI-bearing nginx error records and uses only
+HTTP status, upstream status and limit outcome. Unmatched paths and disabled
+bootstrap/share routes retain that boundary. Native tests check every nginx
+log for successful delivery, expiry/revocation, stopped upstreams, rate limits
+and malformed paths.
 
 
 **v1 = nginx vhost with static payloads** — `/sub/<token>` returns the
@@ -36,7 +41,7 @@ Token-bearing share directory and bundle operations set both `no_log` and
 - **Tokens are hashed-at-rest** — SHA-256 hex digest. The inbound URL token is a high-entropy opaque random value (128–384 bit); a plain hash is adequate and avoids KDF overhead on the hot path.
 - **Share-bundle ingest is zero-trust on nginx** — `tasks/share-bundles.yml`
   copies operator-built bundles (`ansible.builtin.copy`) to `/var/www/subscription-host/share/<token>/`
-  with `access_log off` on the location; the raw token never appears in any
+  with the vhost's categorical log policy; the raw token never appears in any
   nginx log line.
 
 ## Pitfalls
