@@ -78,13 +78,14 @@ case "${{1:-}}" in
       jq -jr --arg key "$key" \
         'if has($key) then .[$key].value else halt_error(1) end' \
         "${{FIXTURE}}"
-      exit 0
+      exit $?
     fi
     exit 0
     ;;
   console)
     expression="$(cat)"
     case "$expression" in
+      *var.enable_provider_firewall*) printf '%s\\n' "${{STUB_PROVIDER_FIREWALL:-false}}"; exit 0 ;;
       *var.build_env*) printf '"\\\\"prod\\\\""\\n'; exit 0 ;;
     esac
     # Return a JSON-encoded JSON array for allowed_ssh_cidrs.
@@ -101,7 +102,25 @@ esac
     _make_stub(bin_dir, "terraform", body)
 
 
-def test_render_inventory_matches_fixture(tmp_path):
+@pytest.mark.parametrize("provider_firewall,nat_range,valid", [
+    (False, "", True),
+    (True, "", True),
+    (False, "32768-60999", True),
+    (False, None, False),
+    (True, "32768-60999", True),
+    (True, "40000-45000", True),
+    (True, None, False),
+    (True, "1023-65535", False),
+    (True, "1024-65535", False),
+    (True, "2222-60999", False),
+    (True, "1024-2222", False),
+    (True, "32768-65536", False),
+    (True, "45000-40000", False),
+    (True, "true", False),
+    (True, "01-65535", False),
+    (True, "32768-60999 extra=unsafe", False),
+])
+def test_render_inventory_matches_fixture(tmp_path, provider_firewall, nat_range, valid):
     """render-inventory.sh output must match inventory-sample.ini exactly.
 
     The script requires:
@@ -119,7 +138,14 @@ def test_render_inventory_matches_fixture(tmp_path):
 
     stub_bin = tmp_path / "bin"
     stub_bin.mkdir()
-    _build_terraform_stub(stub_bin, FIXTURES / "tf-output-sample.json")
+    data = json.loads((FIXTURES / "tf-output-sample.json").read_text())
+    if nat_range is None:
+        data.pop("nat_source_port_range", None)
+    else:
+        data["nat_source_port_range"] = {"value": nat_range}
+    fixture = tmp_path / "tf-output.json"
+    fixture.write_text(json.dumps(data))
+    _build_terraform_stub(stub_bin, fixture)
 
     # The script checks for the tfvars file before invoking terraform.
     # Create a minimal placeholder (content is irrelevant — only existence matters
@@ -143,6 +169,7 @@ def test_render_inventory_matches_fixture(tmp_path):
     env.pop("COHORTS", None)
     env.pop("AWG_EVIDENCE_MODES", None)
     env["STUB_LOG"] = str(tmp_path / "stub.log")
+    env["STUB_PROVIDER_FIREWALL"] = str(provider_firewall).lower()
 
     try:
         result = subprocess.run(
@@ -164,6 +191,10 @@ def test_render_inventory_matches_fixture(tmp_path):
         elif tfvars_existed and tfvars_original is not None:
             tfvars_path.write_bytes(tfvars_original)
 
+    if not valid:
+        assert result.returncode != 0
+        assert "wrote " not in result.stdout
+        return
     if result.returncode != 0:
         pytest.fail(
             f"render-inventory.sh exited {result.returncode}:\n"
@@ -180,6 +211,10 @@ def test_render_inventory_matches_fixture(tmp_path):
         inventory_out = stdout
 
     expected = EXPECTED_INVENTORY.read_text()
+    if nat_range:
+        lines = expected.splitlines()
+        lines[1] = lines[1].replace(" server_ipv6=", f" terraform_nat_source_port_range={nat_range} server_ipv6=")
+        expected = "\n".join(lines) + "\n"
     assert inventory_out == expected, (
         f"Inventory output does not match fixture.\n"
         f"--- expected ---\n{expected}\n"

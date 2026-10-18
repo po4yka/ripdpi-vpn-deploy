@@ -388,7 +388,7 @@ for i in "${!host_pairs[@]}"; do
   fi
   host_sources["$hostname"]="$pair"
   public_listeners="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -json public_listeners | jq -c .)"
-  public_listeners_b64="$(printf '%s' "$public_listeners" | base64 | tr -d '\n')"
+  public_listeners_b64="$(printf '%s' "$public_listeners" | base64 | tr -d '\r\n')"
   allowed_ssh_cidrs="$(terraform_json_var "$prov" "$env" "$tfvars_rel" "var.allowed_ssh_cidrs")"
   build_environment_json="$(terraform_json_var "$prov" "$env" "$tfvars_rel" "var.build_env")"
   if ! jq -e 'type == "string" and length > 0 and length <= 128' <<< "$build_environment_json" >/dev/null; then
@@ -405,6 +405,25 @@ for i in "${!host_pairs[@]}"; do
   if ! [[ "$ssh_port" =~ ^[1-9][0-9]*$ ]] || (( ssh_port > 65535 )); then
     echo "invalid ssh_port output for ${prov}:${env}: ${ssh_port}" >&2
     exit 1
+  fi
+  nat_source_port_range=""
+  if [[ "$prov" == upcloud ]]; then
+    if ! nat_source_port_range="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw nat_source_port_range)"; then
+      echo "missing applied provider NAT source-port range for ${prov}:${env}; refresh Terraform outputs" >&2
+      exit 1
+    fi
+    if [[ -n "$nat_source_port_range" ]]; then
+      if ! [[ "$nat_source_port_range" =~ ^[1-9][0-9]{0,4}-[1-9][0-9]{0,4}$ ]]; then
+        echo "invalid provider NAT source-port range for ${prov}:${env}" >&2
+        exit 1
+      fi
+      nat_port_start="${nat_source_port_range%-*}"
+      nat_port_end="${nat_source_port_range#*-}"
+      if (( nat_port_start < 1024 || nat_port_end > 65535 || nat_port_start > nat_port_end || (nat_port_start <= ssh_port && ssh_port <= nat_port_end) )); then
+        echo "unsafe provider NAT source-port range for ${prov}:${env}" >&2
+        exit 1
+      fi
+    fi
   fi
   # Keep the Terraform-owned public service endpoint independent from the
   # selected SSH transport; data-plane probes always use the public address.
@@ -429,6 +448,9 @@ for i in "${!host_pairs[@]}"; do
   # quotes survive and Ansible receives a list instead of a malformed string.
   vpn_line+=" allowed_ssh_cidrs='${allowed_ssh_cidrs}'"
   vpn_line+=" terraform_public_listeners_b64=${public_listeners_b64}"
+  if [[ -n "$nat_source_port_range" ]]; then
+    vpn_line+=" terraform_nat_source_port_range=${nat_source_port_range}"
+  fi
   if [[ "$observability_enabled" == true ]]; then
     node_id="${prov}-${env}"
     capabilities="$(jq -nc --arg value "$capability" '$value | split("+") | sort')"
@@ -500,7 +522,7 @@ if [[ "$observability_enabled" == true ]]; then
     echo "observability topology source is not clean and stable" >&2
     exit 1
   fi
-  observability_topology_b64="$(printf '%s' "$topology_json" | base64 | tr -d '\n')"
+  observability_topology_b64="$(printf '%s' "$topology_json" | base64 | tr -d '\r\n')"
 fi
 
 {

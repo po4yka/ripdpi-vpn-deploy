@@ -14,6 +14,13 @@
 
 ## Design decisions
 
+Network protocol regressions retain real socket delivery after both TCP FIN
+directions, bounded blocked-writer behavior and empty UDP payloads. Certificate
+fixtures use isolated test CA trust and distinct root/intermediate identities;
+untrusted supplied roots cannot certify themselves. Resolver tests execute
+actual relocated Ansible tasks through enable, interrupted apply, deferred
+retirement, disable and repeat convergence, preserving custom resolver authority.
+
 Protocol audit regressions use schema-valid synthetic inputs and actual
 controller preflight in ordinary and check mode. They prove identity/address
 refusal before later publication, exact parsed server/client credential bytes,

@@ -470,6 +470,7 @@ def prepare_host_playbooks(root, directory, index, host, memberships, metadata, 
     paths.append(str(secrets))
     if overrides:
         paths.append(str(overrides))
+    certificate_variables = list(paths)
     paths.append(str(private_file(directory / f"{index}-transport.json",
                                   json.dumps(transport_variables(host, command)).encode())))
     transaction_vars = dict(transaction, ssh_transaction_inventory_path=str(inventory),
@@ -484,9 +485,10 @@ def prepare_host_playbooks(root, directory, index, host, memberships, metadata, 
                   "ansible.builtin.include_vars": {"file": "{{ deployment_input_file }}", "hash_behaviour": "replace"},
                   "loop": "{{ deployment_input_files[inventory_hostname] }}",
                   "loop_control": {"loop_var": "deployment_input_file"}, "no_log": True}]}
-    return {name: private_file(directory / f"{index}-{name}.json", json.dumps([
-        loader, {"import_playbook": str(root / "ansible/playbooks" / (name + ".yml"))}]).encode())
-            for name in ("site", "source-drift")}
+    return {"certificate_variables": certificate_variables,
+            **{name: private_file(directory / f"{index}-{name}.json", json.dumps([
+                loader, {"import_playbook": str(root / "ansible/playbooks" / (name + ".yml"))}]).encode())
+               for name in ("site", "source-drift")}}
 
 
 def transaction_inputs(mode, hosts, identity, directory, root, environment, *,
@@ -709,7 +711,11 @@ def controller(mode):
                     environment=precheck_environment, cwd=directory)
             checked([sys.executable, str(root / "scripts/spot-check-secrets.py")],
                     environment=precheck_environment, cwd=directory)
-            checked([str(root / "scripts/check-certs.sh")], environment=precheck_environment, cwd=directory)
+            for _host, _command, playbooks, _arguments in prepared:
+                certificate_environment = {**precheck_environment, "VPN_CERT_VARS_FILES":
+                                           json.dumps(playbooks["certificate_variables"])}
+                checked([str(root / "scripts/check-certs.sh")],
+                        environment=certificate_environment, cwd=directory)
         for fence in input_fences:
             verify_input_fence(fence)
         if mode == "deploy":

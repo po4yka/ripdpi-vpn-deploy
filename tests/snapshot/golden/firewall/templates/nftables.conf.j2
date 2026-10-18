@@ -182,7 +182,9 @@ table inet nat {
   chain postrouting {
     type nat hook postrouting priority 100;
 
+
     iifname "awg0" oifname "eth0" counter masquerade comment "awg-nat-awg0"
+
 
   }
 

@@ -2,6 +2,12 @@
 
 ## Design decisions
 
+Provider-filtered UpCloud inventory carries `terraform_nat_source_port_range`.
+The role validates that range before mutation and maps forwarded TCP/UDP into
+it, preserving address-only NAT for other protocols. Native nft JSON drift
+admission checks both exact rules, including the transport set and port range.
+Without this authority the historical single-rule policy remains unchanged.
+
 Disabled role intent stops only declared owned services and removes exact runtime
 configuration; shared packages, immutable release receipts and unrelated state
 remain. The unique `split_hop_egress_role_enabled` selector defaults true for direct calls.

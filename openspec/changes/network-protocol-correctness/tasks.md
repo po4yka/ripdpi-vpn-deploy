@@ -1,0 +1,43 @@
+# SEC-1792307003680932: Repair network protocol correctness audit defects
+
+## Objective
+
+Close the confirmed network audit defects with source regressions and an
+integrated, reviewed PR. Keep deployment and conditional risks separate.
+
+## Ownership
+
+- Network worker owns terraform/providers/upcloud outputs/tests and CLAUDE.md,
+  scripts/render-inventory.sh NAT metadata, firewall and split-hop-egress NAT
+  templates/admission/notes, ansible/roles/nginx-xhttp HSTS template/CLAUDE.md, matching tests,
+  docs/PROVIDER-NOTES.md and docs/PUBLIC-SITE.md if present.
+- Certificate worker owns scripts/check-certs.sh and certificate helper/callers,
+  tests/unit/test_check_certs_key_match.py and focused new certificate tests,
+  docs/CERTIFICATES.md if present. Coordinate any Makefile/controller caller
+  change with the primary before editing.
+- Client worker owns scripts/check-singbox-killswitch.py,
+  scripts/transport_destination_policy.py, scripts/cascade-classifier-proxy.py,
+  scripts/transport_egress_normalizer.py, matching test files and
+  docs/CLIENT-NOTES.md. No client_payload.py changes.
+- Primary owns baseline resolver and DNS-Morph retirement integration,
+  ansible/playbooks/site.yml, shared scripts/CLAUDE.md and tests/CLAUDE.md,
+  snapshots, docs/TESTING.md, docs/NETWORK-PROTOCOL-AUDIT.md, task artifacts,
+  integration, commits, review, CI and PR lifecycle.
+- Other sessions retain Hysteria redirect, SSH, state backup, DHCPv6, and token
+  lifecycle ownership. No agent edits another session's worktree. Shared notes
+  are appended in separate paragraphs; board changes use taskctl only.
+
+## Execution
+
+- [x] SEC-1792307138300077 Repair UpCloud return policy and nginx HSTS with regressions #bug !high @item:SEC-1792307003680932
+- [x] SEC-1792307139966331 Verify public certificate trust and enabled profile scope #bug !high @item:SEC-1792307003680932
+- [x] SEC-1792307141621739 Preserve strict TUN capture DNS identity and socket lifecycles #bug !high @item:SEC-1792307003680932
+- [x] SEC-1792307142612713 Restore managed DNS resolver after bridge retirement #bug !high @item:SEC-1792307003680932
+- [ ] SEC-1792307143659844 Integrate coordinated fixes run complete gates review and merge #bug !high @item:SEC-1792307003680932
+
+## Verification
+
+Run focused behavior tests, provider tests, reviewed snapshots, complete make
+check, security review, structured review and protected PR checks. Retain source
+merge and exact integration CI evidence separately from local and device proof.
+No deployment, live credentials, provider mutation or real notification occurs.

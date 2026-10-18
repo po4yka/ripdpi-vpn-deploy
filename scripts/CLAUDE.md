@@ -2,6 +2,20 @@
 
 ## Design decisions
 
+Strict full-device kill-switch certification refuses partial TUN capture
+selectors, including route sets, interfaces, users, packages, namespaces and
+MPTCP exclusions. Parser validity alone does not prove device traffic capture.
+SOCKS Unicode names require a lossless codec round-trip; deviation forms refuse
+and require an explicit ASCII A-label. Do not use casefold for this identity
+check. Cascade TCP directions drain independently after FIN with bounded
+buffers and idle time, while empty UDP payloads retain ordinary association
+admission and tuple quarantine.
+
+Certificate preflight verifies enabled profile authorities against the operator
+trust store and server-auth purpose. Canonical per-host inputs retain Ansible
+replacement order; standalone default-profile checks are labeled accordingly.
+Supplied certificate chains provide intermediates, never trusted roots.
+
 Blue-green treats each Make phase as a separate ordered command with inherited
 Make controls removed. Dry-run accepts only 0 or 1 and resolves before private
 inputs. CI commands use the retained bootstrap session supervisor; keep private

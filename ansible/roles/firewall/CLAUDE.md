@@ -2,6 +2,13 @@
 
 ## Design decisions
 
+Provider-filtered UpCloud inventory carries `terraform_nat_source_port_range`.
+Validate it before mutation and against the effective SSH port. AWG TCP/UDP NAT
+uses that exact range; other protocols retain address-only NAT. The primary
+`awg-nat-<interface>` counter continues to cover TCP/UDP probes; the separate
+`awg-nat-other-<interface>` counter covers other protocols. Disabled provider
+filtering and other providers preserve ordinary source-port selection.
+
 Fresh site convergence creates the shared runtime parent before the first retained firewall publication. Admit existing ancestry and the private firewall leaf first; create only an absent parent and preserve existing trusted ownership and mode. The generic publisher still refuses missing or unsafe mutation parents. Check mode predicts creation without creating runtime state.
 
 The inline accepted-policy reader preserves the common source file newline with the file lookup rstrip option. Test the actual Ansible-rendered command; a literal escaped separator can make valid source modules an invalid Python program.

@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+Site baseline defers managed DNS stub restoration until DNS-Morph has retired
+its listener. The retiring role calls only baseline's resolver tasks; tagged
+runs that omit retirement retain the working upstream resolver.
+
 Shared protocol admission rejects VLESS authentication aliases and AWG peer
 prefixes containing any instance server address before publication. Snell and
 Trojan templates retain exact credential bytes through JSON serialization.

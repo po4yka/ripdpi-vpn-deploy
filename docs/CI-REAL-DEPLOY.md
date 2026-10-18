@@ -191,7 +191,12 @@ DNS, outbound TCP/UDP and every required public listener. Confirm the live
 kernel ephemeral range equals `provider_return_ephemeral_ports` (the repository
 default is `32768..60999`). Then set `enable_provider_firewall=true`, inspect a
 plan that updates only the same server's firewall flag, apply it, and repeat the
-same acceptance. A server/storage/network replacement or any failed probe is a
+same acceptance. Regenerate inventory from the exact enabled state and
+reconverge the guest before accepting routed traffic: its exported NAT
+source-port range makes AWG and split-hop TCP/UDP replies fit the stateless
+provider range, including clients that start with low or high source ports.
+Keep the SSH CIDR guard and guest stateful denial in place. A
+server/storage/network replacement or any failed probe is a
 stop condition. Roll back by setting the flag false on that exact node and
 rechecking strict SSH; guarded cleanup is still required. After each authorized
 same-node firewall update or rollback, explicitly reissue the cleanup manifest at a new

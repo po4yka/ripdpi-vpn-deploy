@@ -1,6 +1,10 @@
 # Managed by Ansible role `nginx-xhttp`. Direct (no CDN) baseline.
 # CDN-fronted variant lives in docs/CDN-DECISION.md as opt-in.
 {% set nginx_redirect_port = nginx_xhttp_public_port | int %}
+{% set nginx_fallback_enabled = nginx_xhttp.fallback_enabled | default(false) %}
+{% set nginx_fallback_name = nginx_xhttp.fallback_server_name | default(nginx_xhttp.server_name) %}
+{% set nginx_same_public_host = (nginx_fallback_name | lower) == (nginx_xhttp.server_name | lower) %}
+{% set nginx_primary_hsts = nginx_redirect_port == 443 or (nginx_fallback_enabled and (nginx_xhttp_fallback_port | int) == 443 and nginx_same_public_host) %}
 {% if (vpn.enable_snell | default(false)) and (snell | default({})).evaluation_enabled | default(false) %}
 limit_req_zone $binary_remote_addr zone=snell_evaluation:1m rate=10r/s;
 {% endif %}
@@ -26,7 +30,7 @@ server {
     ssl_session_timeout 1d;
     ssl_session_tickets off;
 
-    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header Strict-Transport-Security "max-age={{ 31536000 if nginx_primary_hsts else 0 }}" always;
     add_header Content-Security-Policy "default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
     add_header Referrer-Policy "no-referrer" always;
@@ -84,8 +88,8 @@ server {
     access_log /var/log/nginx/vpn-xhttp.access.log;
     error_log  /var/log/nginx/vpn-xhttp.error.log warn;
 }
-{% if nginx_xhttp.fallback_enabled | default(false) %}
-{% set nginx_fallback_name = nginx_xhttp.fallback_server_name | default(nginx_xhttp.server_name) %}
+{% if nginx_fallback_enabled %}
+{% set nginx_fallback_hsts = (nginx_xhttp_fallback_port | int) == 443 or (nginx_redirect_port == 443 and nginx_same_public_host) %}
 
 # Secondary DIRECT (non-CDN) HTTPS XHTTP frontend. Distinct public port so
 # XHTTP delivery survives a Cloudflare outage without touching the primary
@@ -114,7 +118,7 @@ server {
     ssl_session_timeout 1d;
     ssl_session_tickets off;
 
-    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header Strict-Transport-Security "max-age={{ 31536000 if nginx_fallback_hsts else 0 }}" always;
     add_header Content-Security-Policy "default-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
     add_header Referrer-Policy "no-referrer" always;

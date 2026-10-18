@@ -418,3 +418,27 @@ run "rejects_invalid_ssh_cidr" {
 
   expect_failures = [var.allowed_ssh_cidrs]
 }
+
+
+run "enabled_provider_filter_exports_required_nat_translation_range" {
+  command = plan
+  variables {
+    enable_provider_firewall = true
+    provider_return_ephemeral_ports = {
+      start = 40000
+      end   = 45000
+    }
+  }
+  assert {
+    condition     = output.nat_source_port_range == "40000-45000"
+    error_message = "Forwarded TCP/UDP must translate into the exact admitted stateless return range."
+  }
+}
+
+run "disabled_provider_filter_does_not_constrain_nat" {
+  command = plan
+  assert {
+    condition     = output.nat_source_port_range == ""
+    error_message = "Disabled provider filtering must preserve ordinary NAT port selection."
+  }
+}

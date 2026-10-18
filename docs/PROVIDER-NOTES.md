@@ -86,6 +86,24 @@ UpCloud is the primary provider in v1. Resource shape:
   This is a hypervisor-level safety net **separate from** restic backups,
   which contain the configs you can restore onto a fresh VPS.
 
+### Forwarded NAT and stateless filtering
+
+With `enable_provider_firewall=true`, return rules admit only the configured
+`provider_return_ephemeral_ports`. Terraform exports that range through
+`nat_source_port_range`; generated inventory carries it as
+`terraform_nat_source_port_range`. AWG and split-hop egress remap forwarded
+TCP/UDP source ports into it, including client ports 3074 and 62000. Other
+protocols retain address-only NAT. Disabled provider filtering and other
+providers retain ordinary NAT source-port selection.
+
+Regenerate inventory and converge the guest NAT policy as part of the authorized
+promotion before accepting routed client traffic. Missing applied output refuses inventory publication; refresh outputs through
+the reviewed Terraform workflow before regeneration. Applied output, not tfvars
+intent, selects NAT. Keep SSH outside the
+return range and retain the guest default-drop input and stateful forwarding
+policy. A local render or mock-provider test does not prove live provider
+traffic or promotion readiness.
+
 ### Useful UpCloud zones for EU baseline
 
 The UpCloud root validates `zone` against an allowlist: `fi-hel1`,

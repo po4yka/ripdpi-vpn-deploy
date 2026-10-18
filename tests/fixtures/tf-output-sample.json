@@ -72,5 +72,10 @@
         "port_range": null
       }
     ]
+  },
+  "nat_source_port_range": {
+    "sensitive": false,
+    "type": "string",
+    "value": ""
   }
 }

@@ -23,6 +23,28 @@ Regenerate and redistribute existing profiles after upgrading.
 `--per-app-bypass` still emits an intentional non-lockdown profile, but
 `make check-killswitch BUNDLE=…` rejects that profile by design.
 
+The checker certifies one full-device TUN only. It refuses address, interface,
+user, package and MAC inclusion or exclusion policies, including route rule sets.
+MPTCP bypass and capture inside a separate network namespace also fail.
+An empty selection list retains the default capture policy. A partial TUN
+profile can be intentional, but it cannot pass this full-device check.
+Malformed profile structures and non-boolean route flags also fail.
+
+## SOCKS destination identity and stream lifecycle
+
+The server normalizer accepts lossless Unicode DNS names such as
+`bücher.example` and explicit ASCII A-labels such as `xn--fa-hia.de`.
+Its dependency-free name policy refuses Unicode that the available IDNA codec
+maps to another identity, including sharp-s, final sigma and joiners. Supply
+the intended ASCII A-label for those names. The policy never maps `faß.de`
+silently to `fass.de`.
+
+The cascade adapter forwards each TCP FIN only after pending data drains.
+The opposite direction can send a response after that FIN. Bounded buffers and
+the idle deadline apply in both directions. The authenticated UDP normalizer
+forwards empty datagrams as data, with the same destination, source binding,
+size limits and association quarantine as non-empty datagrams.
+
 ## AmneziaWG Android split-tunnel localhost leak (issue #2457)
 
 Status: **open, unresolved** as of 2026-05-09. Source:

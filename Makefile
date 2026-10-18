@@ -704,7 +704,7 @@ help:
 	@echo ""
 	@echo "── PRE-DEPLOY GUARDS ──────────────────────────────────────────────────"
 	@echo "  spot-check-secrets         Decrypted-secrets audit (placeholders, certs, …)"
-	@echo "  check-certs                SAN / expiry / self-signed / modulus match"
+	@echo "  check-certs                selected-profile SAN / trust / validity / server purpose / key match"
 	@echo "  audit-permissions          Local FS: age key 0600, no stray plaintext"
 	@echo "  diff-secrets               Drift: deployed config vs current secrets"
 	@echo ""
@@ -875,7 +875,9 @@ pre-deploy-check:
 	else \
 	  python3 ./scripts/validate-secrets.py $(SECRETS_FILE) --strict --environment "$(ENV)" && \
 	  VPN_SECRETS_FILE=$(SECRETS_FILE) python3 ./scripts/spot-check-secrets.py && \
-	  VPN_SECRETS_FILE=$(SECRETS_FILE) ./scripts/check-certs.sh; \
+	  VPN_SECRETS_FILE=$(SECRETS_FILE) VPN_CERT_COHORTS="$(COHORTS)" \
+	  VPN_CERT_INVENTORY="$(wildcard $(ANSIBLE_DIR)/inventory/generated.ini)" VPN_CERT_LIMIT="$(ANSIBLE_LIMIT)" \
+	  VPN_CERT_EXTRA_VARS_FILE="$(ANSIBLE_EXTRA_VARS_FILE)" ./scripts/check-certs.sh; \
 	fi
 
 # Preserve literal operator inputs before Make exports them. Source identity is
@@ -1561,7 +1563,9 @@ emit-qr:
 
 check-certs:
 	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run 'make decrypt'"; exit 1; }
-	VPN_SECRETS_FILE=$(SECRETS_FILE) ./scripts/check-certs.sh
+	VPN_SECRETS_FILE=$(SECRETS_FILE) VPN_CERT_COHORTS="$(COHORTS)" \
+	VPN_CERT_INVENTORY="$(wildcard $(ANSIBLE_DIR)/inventory/generated.ini)" VPN_CERT_LIMIT="$(ANSIBLE_LIMIT)" \
+	  VPN_CERT_EXTRA_VARS_FILE="$(ANSIBLE_EXTRA_VARS_FILE)" ./scripts/check-certs.sh
 
 audit-permissions:
 	./scripts/audit-permissions.sh

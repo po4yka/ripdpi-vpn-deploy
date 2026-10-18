@@ -242,6 +242,10 @@
 
   roles:
     - role: baseline
+      vars:
+        baseline_defer_resolver_restore: true
+        baseline_dns_morph_active: >-
+          {{ (vpn.enable_dns_morph_bridge | default(false)) and not (vpn_subscription_only | default(false)) }}
       tags: [baseline, always]
 
     - role: package_updates

@@ -14,6 +14,14 @@ after the real replay completes; failure categories contain no setting values.
 
 **Resolver transitions preserve DNS first** — ordinary profiles retain the resolved stub. DNS-Morph migrates only known stub symlinks to a verified upstream resolver before disabling the stub; custom stub files or absent upstreams fail before mutation. The restart happens before dependent listeners converge.
 
+Managed stub migration retains its exact original target in a private root-owned
+record. A separate pending-apply marker precedes configuration publication, so
+an interrupted enable retries the restart without restarting on every converge.
+Site baseline defers restoration until DNS-Morph retirement releases port 53.
+Only retained managed symlinks are restored; custom resolver replacement refuses
+without overwrite. Legacy migrations without a retained original target cannot
+be safely inferred from an upstream symlink and need explicit reconciliation.
+
 **Forwarding has one owner** — `tasks/forwarding.yml` removes the retired split-hop fragment and publishes priority-91 IPv4 forwarding for AWG or split-hop egress, with IPv6 only for AWG. Direct split-hop convergence reuses this entry point and explicitly passes `baseline_forwarding_split_hop_egress_active`; an active role requires forwarding even when the site-selection toggle is false. Without an active caller or enabled routing profile, baseline removes the override.
 
 For SSH recovery helper or unit changes, inspect the [bundle and controller consumers](../../../scripts/DESIGN-NOTES.md#ssh-recovery--install-sshd-recoverypy-make-install-ssh-recovery).
