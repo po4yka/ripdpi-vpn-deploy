@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-10-18T03:56:25Z",
+  "change": "deployment-vpn-reliability",
+  "commit_sha": "632b42f599c5c6c58c92b44f62b5b95d120b3bc7",
+  "outcome": "review",
+  "schema": 1,
+  "task_id": "OPS-1792263187492070"
+}
