@@ -1,0 +1,11 @@
+{
+  "change": "security-delivery-audit",
+  "evidence_summary": "PR 332 merged as b9c2eb8071590f2b9e672034bbab575450970a6c; candidate CI 39131984939 and exact-main CI 39136968257 passed all 92 jobs. All 16 requirements, local gate, native artifacts and peer contract evidence are accepted. Source-only closure; no deployment or real credential operation.",
+  "execution_sha256": "8814b2ea5d81cf83b4c19c00890e199beae5059794526f58235afe82cde20f2f",
+  "issue_sha256": "b2defca024696f7665139a41f9ca47e0e0b418d4bc4b5ea9c5fb6e361517cd3b",
+  "outcome": "done",
+  "prepared_at": "2026-10-18T16:06:47Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SEC-1792306869763633"
+}
