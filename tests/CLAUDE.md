@@ -18,6 +18,8 @@ Recovery boundary tests use real age ciphertext and preserve the prior state
 inode on failed decryption or structure validation. Same-second writers publish
 distinct complete private backups; reserved environment aliases refuse before
 Terraform or private inputs.
+File and directory sync failures refuse success and retention; directory sync
+failure retains the complete, decryptable private backup already published.
 
 Real restic restore cases remove one selected artifact at a time, including
 delivery TLS/vhost, auxiliary transports, topology policy and watchdog inputs.
@@ -70,6 +72,27 @@ retained split-hop denial during tunnel stops, strict overlay allowances,
 complete multi-host metadata and exact client bandwidth hints. DNS-Morph
 preflight tests run the real controller validator before synthetic mutation
 sentinels. Render fixtures and research stubs establish no live protocol claim.
+
+Checkout metadata regressions use real Git with large NUL-framed input,
+non-UTF-8 path bytes and an owned attributes FIFO. Retain active-filter refusal,
+index identity, empty-input EOF and the query deadline. Telegram flood tests
+cross actual local HTTP handlers into a synthetic upstream and require later
+webhooks and canary send/edit to share the same monotonic deadline.
+
+Security delivery regressions use real local redirect servers, synthetic SOPS
+and age authorities, and actual private filesystem publication. Failure and
+interruption checks preserve the last complete generation. SSH planner tests
+exercise the exact prior managed policy, hybrid promotion, retained rollback
+bytes, contextual effective policy and idempotency. A successful parser test
+does not prove a live SSH or hardware migration. Subscription tests race real
+HTTP readers against filesystem publication and cover fsync, rename, signals,
+legacy input, mirror generations and private namespace admission.
+Legacy HTTP fixtures use the role's exact 0700 route modes and distinguish
+expiry parsing failures from unsafe file authority. Inventory cases send LF and
+CRLF encoder output through the real renderer and strict host parser.
+Synthetic SOPS decryptors consume all ciphertext from stdin before they return
+fixture JSON. A payload larger than pipe capacity checks this contract on
+Darwin and Linux.
 
 Protocol audit regressions use schema-valid synthetic inputs and actual
 controller preflight in ordinary and check mode. They prove identity/address

@@ -81,7 +81,8 @@ def monitor_env(tmp_path: Path):
             "PROTOCOL_LIVENESS": str(evaluator),
             "FAKE_DECISION": str(decision),
             "EVALUATOR_ARGS": str(tmp_path / "evaluator-args"),
-            "NTFY_URL": f"http://127.0.0.1:{server.server_port}",
+            "NTFY_URL": "https://notification.example",
+            "TEST_NTFY_HTTP_ORIGIN": f"http://127.0.0.1:{server.server_port}",
             "NTFY_TOPIC": "private-monitor-topic",
             "NTFY_TOKEN": "private-monitor-token",
         }
@@ -124,8 +125,26 @@ def _decision(path: Path, decision: str) -> None:
 
 
 def _run(env: dict[str, str], config: Path, state: Path) -> subprocess.CompletedProcess[str]:
+    # Inject only the transport in this test process. Production still admits
+    # the real HTTPS origin and has no environment flag to allow plaintext.
+    launcher = '''
+import os,runpy,sys
+from pathlib import Path
+from urllib import parse,request
+sys.path.insert(0,str(Path(sys.argv[1]).parent))
+module=runpy.run_path(sys.argv[1])
+transport=module["open_no_redirect"]
+def local_transport(outbound, *, timeout):
+    assert outbound.full_url.startswith("https://notification.example/")
+    local=request.Request(os.environ["TEST_NTFY_HTTP_ORIGIN"]+parse.urlsplit(outbound.full_url).path,
+        data=outbound.data,headers=dict(outbound.header_items()),method=outbound.method)
+    return transport(local,timeout=timeout)
+module["send_notification"].__globals__["open_no_redirect"]=local_transport
+sys.argv=sys.argv[1:]
+raise SystemExit(module["main"]())
+'''
     return subprocess.run(
-        ["python3", str(MONITOR), "--config", str(config), "--state-dir", str(state)],
+        ["python3", "-c", launcher, str(MONITOR), "--config", str(config), "--state-dir", str(state)],
         cwd=REPO_ROOT,
         env=env,
         text=True,

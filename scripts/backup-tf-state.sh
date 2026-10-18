@@ -7,8 +7,9 @@
 #   scripts/backup-tf-state.sh                 # uses default destination
 #   BACKUP_DEST=/path/to/dir scripts/backup-tf-state.sh
 #
-# Requires: age, the AGE_RECIPIENT env var (or AGE_RECIPIENT_FILE).
+# Requires: age, python3, and AGE_RECIPIENT (or AGE_RECIPIENT_FILE).
 set -euo pipefail
+umask 077
 
 PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
@@ -68,11 +69,25 @@ fi
 mkdir -p "$BACKUP_DEST"
 chmod 0700 "$BACKUP_DEST"
 
-umask 077
-pending="$(mktemp "${BACKUP_DEST}/.state-backup.XXXXXXXX")"
-trap 'rm -f -- "$pending"' EXIT
-trap 'exit 1' HUP INT TERM
+# Register cleanup before allocating this invocation's private sibling.
+pending=""
+trap '[[ -z "$pending" ]] || rm -f -- "$pending"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+trap 'exit 131' QUIT
+pending="$(mktemp "${BACKUP_DEST}/.state-backup.XXXXXXXXXX")"
 age "${RECIPIENTS[@]}" "$STATE_FILE" > "$pending"
+python3 - "$pending" <<'PY_SYNC'
+import os
+import sys
+
+try:
+    with open(sys.argv[1], "rb") as ciphertext:
+        os.fsync(ciphertext.fileno())
+except OSError:
+    sys.exit("state backup file sync failed")
+PY_SYNC
 
 # A hard link publishes complete ciphertext without overwriting another writer.
 # Keep the established timestamp contract and wait at most ten collision retries.
@@ -84,19 +99,41 @@ import os
 import sys
 
 try:
-    os.link(sys.argv[1], sys.argv[2])
+    os.link(sys.argv[1], sys.argv[2], follow_symlinks=False)
+except FileExistsError:
+    sys.exit(17)
 except OSError:
     sys.exit(1)
 PYTHON
   then
     break
+  else
+    publication_status=$?
   fi
-  if [[ ! -e "$OUT" && ! -L "$OUT" ]] || (( attempt == 10 )); then
+  if (( publication_status != 17 || attempt == 10 )); then
     echo 'state backup publication failed; existing backups were retained' >&2
     exit 1
   fi
   sleep 1
 done
+
+# Persist both the complete final name and removal of the private staging name.
+# A sync failure retains the complete backup but cannot announce success or prune.
+python3 - "$pending" "$BACKUP_DEST" <<'PY_SYNC'
+import os
+import sys
+
+try:
+    os.unlink(sys.argv[1])
+    parent = os.open(sys.argv[2], os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(parent)
+    finally:
+        os.close(parent)
+except OSError:
+    sys.exit("state backup directory sync failed")
+PY_SYNC
+pending=""
 
 echo "wrote $OUT"
 

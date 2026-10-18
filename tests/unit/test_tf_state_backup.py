@@ -259,3 +259,150 @@ def test_collision_exhaustion_preserves_accepted_backup(backup_workspace, tmp_pa
     assert len(retry_log.read_text().splitlines()) == 10
     assert accepted.read_bytes() == previous
     assert list(destination.iterdir()) == [accepted]
+
+
+def synthetic_state(repo):
+    path = repo / 'terraform/providers/upcloud/terraform.tfstate'
+    path.parent.mkdir(parents=True)
+    path.write_bytes(state_bytes(123))
+    return path
+
+
+def age_fault_wrapper(tmp_path, settings, *, wait=False):
+    """Inject an interrupted write after obtaining real age ciphertext."""
+    binary = shutil.which('age')
+    assert binary, 'real age is required'
+    tools = tmp_path / 'fault-bin'
+    tools.mkdir()
+    wrapper = tools / 'age'
+    wrapper.write_text(
+        '#!' + shutil.which('python3') + '\n'
+        'import os, pathlib, signal, subprocess, sys\n'
+        f'result = subprocess.run([{binary!r}, *sys.argv[1:]], capture_output=True, check=True)\n'
+        'sys.stdout.buffer.write(result.stdout[:len(result.stdout)//2]); sys.stdout.buffer.flush()\n'
+        'pathlib.Path(os.environ["FAULT_READY"]).write_text("ready")\n'
+        + ('signal.pause()\n' if wait else 'raise SystemExit(23)\n')
+    )
+    wrapper.chmod(0o700)
+    return settings | {'PATH': str(tools) + os.pathsep + settings['PATH'], 'FAULT_READY': str(tmp_path / 'ready')}
+
+
+def test_failed_encryption_never_publishes_a_recovery_name(backup_workspace, tmp_path):
+    repo, destination, identity, settings = backup_workspace
+    synthetic_state(repo)
+    old = publish_backup(destination, 'upcloud-prod-20260101T000000Z.tfstate.age',
+                         encrypt(b'prior synthetic state', settings['AGE_RECIPIENT']), 1)
+    foreign = destination / '.state-backup.foreign'
+    foreign.write_bytes(b'not owned by this invocation')
+    before = {path: path.read_bytes() for path in (old, foreign)}
+    result = subprocess.run(['bash', str(repo / 'scripts/backup-tf-state.sh')],
+                            check=False, env=age_fault_wrapper(tmp_path, settings), capture_output=True, timeout=20)
+    assert result.returncode != 0
+    assert {path: path.read_bytes() for path in destination.iterdir()} == before
+    assert subprocess.run(['age', '-d', '-i', str(identity), str(old)], capture_output=True, check=True).stdout == b'prior synthetic state'
+
+
+def test_signal_removes_only_owned_incomplete_ciphertext(backup_workspace, tmp_path):
+    import signal
+    import time
+
+    repo, destination, _, settings = backup_workspace
+    synthetic_state(repo)
+    old = publish_backup(destination, 'upcloud-prod-20260101T000000Z.tfstate.age',
+                         encrypt(b'prior synthetic state', settings['AGE_RECIPIENT']), 1)
+    before = old.read_bytes()
+    environment = age_fault_wrapper(tmp_path, settings, wait=True)
+    child = subprocess.Popen(['bash', str(repo / 'scripts/backup-tf-state.sh')], env=environment,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+    try:
+        deadline = time.monotonic() + 10
+        while not Path(environment['FAULT_READY']).exists() and time.monotonic() < deadline:
+            assert child.poll() is None, 'backup exited before interruption boundary'
+            time.sleep(0.01)
+        assert Path(environment['FAULT_READY']).exists()
+        os.killpg(child.pid, signal.SIGTERM)
+        child.communicate(timeout=10)
+        assert child.returncode != 0
+    finally:
+        if child.poll() is None:
+            os.killpg(child.pid, signal.SIGKILL)
+            child.communicate(timeout=10)
+    assert list(destination.iterdir()) == [old]
+    assert old.read_bytes() == before
+
+
+def test_same_timestamp_refuses_overwriting_complete_snapshot(backup_workspace, tmp_path):
+    repo, destination, identity, settings = backup_workspace
+    state = synthetic_state(repo)
+    tools = tmp_path / 'time-bin'
+    tools.mkdir()
+    clock = tools / 'date'
+    clock.write_text('#!/bin/sh\nprintf "%s\\n" 20260101T000000Z\n')
+    clock.chmod(0o700)
+    sleep = tools / 'sleep'
+    sleep.write_text('#!/bin/sh\nexit 0\n')
+    sleep.chmod(0o700)
+    environment = settings | {'PATH': str(tools) + os.pathsep + settings['PATH']}
+    argv = ['bash', str(repo / 'scripts/backup-tf-state.sh')]
+    first = subprocess.run(argv, check=False, env=environment, capture_output=True, timeout=20)
+    assert first.returncode == 0
+    output = destination / 'upcloud-prod-20260101T000000Z.tfstate.age'
+    before = output.read_bytes()
+    state.write_bytes(state_bytes(124))
+    second = subprocess.run(argv, check=False, env=environment, capture_output=True, timeout=20)
+    assert second.returncode != 0
+    assert output.read_bytes() == before
+    assert list(destination.iterdir()) == [output]
+    assert subprocess.run(['age', '-d', '-i', str(identity), str(output)], capture_output=True, check=True).stdout != state.read_bytes()
+
+
+@pytest.mark.parametrize("phase", ["file", "directory"])
+def test_fsync_failure_never_announces_success_or_prunes(backup_workspace, tmp_path, phase):
+    import sys
+
+    repo, destination, identity, settings = backup_workspace
+    state = prepare_state(repo)
+    ciphertext = encrypt(state_bytes(2), settings["AGE_RECIPIENT"])
+    for day in range(1, 32):
+        publish_backup(destination, f"upcloud-prod-202501{day:02d}T000000Z.tfstate.age",
+                       ciphertext, day)
+    foreign = destination / ".state-backup.foreign"
+    foreign.write_bytes(b"not owned by this invocation")
+    before = {path: path.read_bytes() for path in destination.iterdir()}
+    tools = tmp_path / "sync-fault-bin"
+    tools.mkdir()
+    wrapper = tools / "python3"
+    wrapper.write_text(
+        "#!" + sys.executable + "\n"
+        "import os, stat, sys\n"
+        "program = sys.stdin.buffer.read()\n"
+        "sys.argv = sys.argv[1:]\n"
+        "original_fsync = os.fsync\n"
+        + f"phase = {phase!r}\n"
+        + "def fail_selected_sync(fd):\n"
+        "    directory = stat.S_ISDIR(os.fstat(fd).st_mode)\n"
+        "    if directory == (phase == 'directory'):\n"
+        "        raise OSError('synthetic sync failure')\n"
+        "    return original_fsync(fd)\n"
+        "os.fsync = fail_selected_sync\n"
+        "exec(compile(program, '<owned-sync-fault>', 'exec'))\n"
+    )
+    wrapper.chmod(0o700)
+    result = subprocess.run(["bash", str(repo / "scripts/backup-tf-state.sh")],
+        env=settings | {"ENV": "prod", "PATH": str(tools) + os.pathsep + settings["PATH"]},
+        capture_output=True, text=True, timeout=20)
+    assert result.returncode != 0
+    assert "sync failed" in result.stderr
+    assert "wrote " not in result.stdout and "removed old backup" not in result.stdout
+    assert {path: path.read_bytes() for path in before} == before
+    added = set(destination.iterdir()) - before.keys()
+    if phase == "file":
+        assert not added
+    else:
+        assert len(added) == 1
+        published = next(iter(added))
+        assert published.name.endswith(".tfstate.age")
+        assert published.stat().st_mode & 0o777 == 0o600
+        assert subprocess.run(["age", "-d", "-i", str(identity), str(published)],
+                              capture_output=True, check=True).stdout == state.read_bytes()
+    assert set(destination.glob(".state-backup.*")) == {foreign}

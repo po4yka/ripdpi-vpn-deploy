@@ -42,8 +42,8 @@ server {
     # Long-lived /sub/<token>. Proxied to the local vpn-bootstrap
     # service, which:
     #   * hashes the URL token with sha256
-    #   * reads payload from <subscription_dir>/sub/<hash>
-    #   * checks <hash>.meta for expiry
+    #   * reads exact payload and expiry from sub/<hash>.document
+    #   * supports legacy <hash>/<hash>.meta only when no document exists
     #   * consults the revocation file
     #   * writes a read-audit JSONL record
     # nginx fronts only TLS + rate-limit.

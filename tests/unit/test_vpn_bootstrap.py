@@ -99,7 +99,10 @@ def service(tmp_path):
         from http.server import ThreadingHTTPServer
 
         for route in ("bootstrap", "sub"):
-            (sub_dir / route).mkdir(parents=True, exist_ok=True)
+            route_dir = sub_dir / route
+            route_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            # Match the role's private route contract independently of umask.
+            route_dir.chmod(0o700)
         sub_dir.chmod(0o700)
         consumed_dir = sub_dir / ".vpn-bootstrap-consumed"
         consumed_dir.mkdir(mode=0o700)
@@ -217,6 +220,31 @@ def test_sub_is_idempotent(service):
     assert service.get(f"/sub/{token}").read() == b"payload-A"
     assert service.get(f"/sub/{token}").read() == b"payload-A"
     assert len(service.reads()) == 2
+
+
+@pytest.mark.parametrize("route", ["sub", "bootstrap"])
+@pytest.mark.parametrize("mode", [0o755, 0o770])
+def test_unsafe_legacy_route_refuses_without_consuming_payload(service, route, mode):
+    token = _bootstrap_token("unsafe-route") if route == "bootstrap" else "unsafe00unsafe00"
+    payload = b"synthetic-private-legacy-payload"
+    service.place(route, token, payload, expires="2099-01-01")
+    route_dir = service.sub_dir / route
+    digest = hashlib.sha256(token.encode()).hexdigest()
+    metadata = route_dir / f"{digest}.meta"
+    before = metadata.read_bytes()
+    route_dir.chmod(mode)
+
+    with service.get(f"/{route}/{token}") as response:
+        assert response.status == 503
+        assert payload not in response.read()
+    assert service.reads()[-1]["outcome"] == "state-unavailable"
+    assert (route_dir / digest).read_bytes() == payload
+    assert metadata.read_bytes() == before
+
+    route_dir.chmod(0o700)
+    with service.get(f"/{route}/{token}") as response:
+        assert response.status == 200
+        assert response.read() == payload
 
 
 # ---------------------------------------------------------------------------
@@ -359,14 +387,52 @@ def test_revocation_match_is_case_insensitive(service):
     assert service.reads()[-1]["outcome"] == "revoked"
 
 
-def test_invalid_expiry_metadata_fails_closed_and_is_audited(service):
+@pytest.mark.parametrize("metadata", ["not-json", "[]", "null", "42", '{"expires": 1, "expires": 2}', "[" * 1500 + "]" * 1500])
+def test_invalid_expiry_metadata_fails_closed_and_is_audited(service, metadata):
     token = "A" * 32
     service.place("sub", token, b"payload")
     h = service.module._hash(token)
-    (service.sub_dir / "sub" / f"{h}.meta").write_text("not-json")
+    (service.sub_dir / "sub" / f"{h}.meta").write_text(metadata)
 
     assert service.get(f"/sub/{token}").status == 503
     assert service.reads()[-1]["outcome"] == "expiry-unavailable"
+
+
+@pytest.mark.parametrize("route", ["sub", "bootstrap"])
+def test_legacy_payload_without_expiry_metadata_remains_readable(service, route):
+    token = _bootstrap_token("no-expiry") if route == "bootstrap" else "legacy00legacy00"
+    payload = b"synthetic-legacy-without-expiry"
+    service.place(route, token, payload)
+    digest = hashlib.sha256(token.encode()).hexdigest()
+    assert not (service.sub_dir / route / f"{digest}.meta").exists()
+
+    with service.get(f"/{route}/{token}") as response:
+        assert response.status == 200
+        assert response.read() == payload
+    assert service.reads()[-1]["outcome"] == "consumed"
+
+
+@pytest.mark.parametrize("fault", ["mode", "symlink", "hardlink"])
+def test_unsafe_legacy_metadata_keeps_state_failure_category(service, fault):
+    token = "unsafe11unsafe11"
+    payload = b"synthetic-private-legacy-payload"
+    service.place("sub", token, payload, expires="2099-01-01")
+    digest = hashlib.sha256(token.encode()).hexdigest()
+    metadata = service.sub_dir / "sub" / f"{digest}.meta"
+    if fault == "mode":
+        metadata.chmod(0o666)
+    else:
+        original = metadata.with_suffix(".original")
+        metadata.rename(original)
+        if fault == "symlink":
+            metadata.symlink_to(original)
+        else:
+            metadata.hardlink_to(original)
+
+    with service.get(f"/sub/{token}") as response:
+        assert response.status == 503
+        assert payload not in response.read()
+    assert service.reads()[-1]["outcome"] == "state-unavailable"
 
 
 def test_unreadable_revocation_state_fails_closed_and_is_audited(service, monkeypatch):

@@ -29,7 +29,7 @@ def test_allowlist_rejection_is_actionable_and_redacted(monkeypatch, capsys) -> 
             io.BytesIO(b'{"error":"Unauthorized IP address"}'),
         )
 
-    monkeypatch.setattr(module["urllib"].request, "urlopen", reject)
+    monkeypatch.setitem(module["main"].__globals__, "open_no_redirect", reject)
     monkeypatch.setenv("TF_VAR_vultr_api_key", token)
 
     assert module["main"]() == 78
@@ -51,7 +51,7 @@ def test_other_unauthorized_response_is_classified_as_credentials(monkeypatch, c
             io.BytesIO(b'{"error":"Invalid API key"}'),
         )
 
-    monkeypatch.setattr(module["urllib"].request, "urlopen", reject)
+    monkeypatch.setitem(module["main"].__globals__, "open_no_redirect", reject)
     monkeypatch.setenv("VULTR_API_KEY", "invalid-secret")
 
     assert module["main"]() == 77
@@ -70,7 +70,7 @@ def test_successful_authenticated_probe_passes(monkeypatch, capsys) -> None:
         def __exit__(self, *_args: object) -> None:
             return None
 
-    monkeypatch.setattr(module["urllib"].request, "urlopen", lambda *_args, **_kwargs: Response())
+    monkeypatch.setitem(module["main"].__globals__, "open_no_redirect", lambda *_args, **_kwargs: Response())
     monkeypatch.setenv("TF_VAR_vultr_api_key", "valid-secret")
 
     assert module["main"]() == 0

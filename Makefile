@@ -7,6 +7,25 @@ endif
 .PHONY: workspace-status
 workspace-status:
 	@python3 scripts/workspace-status.py
+else ifneq ($(filter setup-yubikey,$(MAKECMDGOALS)),)
+ifneq ($(MAKECMDGOALS),setup-yubikey)
+$(error hardware enrollment requires exactly one make goal)
+endif
+override YUBIKEY_SERIAL_LITERAL := $(value YUBIKEY_SERIAL)
+override YUBIKEY_SLOT_LITERAL := $(value YUBIKEY_SLOT)
+override YUBIKEY_GENERATE_LITERAL := $(value YUBIKEY_GENERATE)
+override YUBIKEY_REENCRYPT_LITERAL := $(value REENCRYPT)
+export YUBIKEY_SERIAL_LITERAL YUBIKEY_SLOT_LITERAL YUBIKEY_GENERATE_LITERAL YUBIKEY_REENCRYPT_LITERAL
+unexport YUBIKEY_SERIAL YUBIKEY_SLOT YUBIKEY_GENERATE REENCRYPT MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+.PHONY: setup-yubikey
+setup-yubikey:
+	@set -eu; \
+	  case "$${YUBIKEY_SERIAL_LITERAL}:$${YUBIKEY_SLOT_LITERAL}" in *[!0-9:]*|:*|*:) echo 'numeric YUBIKEY_SERIAL and YUBIKEY_SLOT are required' >&2; exit 2 ;; esac; \
+	  set -- --serial "$${YUBIKEY_SERIAL_LITERAL}" --slot "$${YUBIKEY_SLOT_LITERAL}"; \
+	  case "$${YUBIKEY_GENERATE_LITERAL:-0}" in 1) set -- "$$@" --generate ;; 0) ;; *) echo 'YUBIKEY_GENERATE must be 0 or 1' >&2; exit 2 ;; esac; \
+	  case "$${YUBIKEY_REENCRYPT_LITERAL:-0}" in 1|yes|true) set -- "$$@" --reencrypt ;; 0) ;; *) echo 'REENCRYPT must be 0 or 1' >&2; exit 2 ;; esac; \
+	  exec ./scripts/setup-yubikey-age.sh "$$@"
 else ifneq ($(filter emit-xray,$(MAKECMDGOALS)),)
 ifneq ($(MAKECMDGOALS),emit-xray)
 $(error native Xray emission requires exactly one make goal)
@@ -1744,9 +1763,6 @@ audit-log-append:
 	  --action $(ACTION) \
 	  $(if $(CLIENT),--client $(CLIENT)) \
 	  $(if $(NOTE),--note "$(NOTE)")
-
-setup-yubikey:
-	./scripts/setup-yubikey-age.sh $(if $(filter 1 yes true,$(REENCRYPT)),--reencrypt)
 
 check-killswitch:
 	@test -n "$(BUNDLE)" || { echo "usage: make check-killswitch BUNDLE=phone.singbox.json"; exit 1; }

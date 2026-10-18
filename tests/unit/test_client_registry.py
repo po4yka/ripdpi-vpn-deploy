@@ -87,15 +87,30 @@ def _harness(tmp_path: Path) -> tuple[dict[str, str], Path, Path, Path]:
     )
     _write_executable(
         bin_dir / "ssh",
-        f"""#!/bin/sh
-case "$*" in
-  *'.vpn-sub-mirror-current'*)
-    [ "${{MIRROR_MODE:-0}}" = 1 ] && exit 1
-    exit 0
-    ;;
-esac
-touch {ssh_marker}
-case "$*" in *.meta*) cat > {meta_file} ;; *) cat > {payload_file} ;; esac
+        f"""#!{sys.executable}
+import base64, json, os, pathlib, sys
+cmd = sys.argv[-1]
+if '--publication-ready' in cmd:
+    if os.environ.get('PUBLISHER_PROTOCOL') == 'legacy':
+        raise SystemExit(0)
+    if os.environ.get('MIRROR_MODE') == '1':
+        raise SystemExit(1)
+    print('subscription-publisher-v1')
+    raise SystemExit(0)
+if '.vpn-sub-mirror-current' in cmd:
+    raise SystemExit(1 if os.environ.get('MIRROR_MODE') == '1' else 0)
+pathlib.Path({str(ssh_marker)!r}).touch()
+data = sys.stdin.buffer.read()
+if '--publish-sub' in cmd:
+    doc = json.loads(data)
+    pathlib.Path({str(payload_file)!r}).write_bytes(base64.b64decode(doc['payload_b64']))
+    meta = dict(client=doc['client'])
+    if doc['expires']:
+        meta['expires'] = doc['expires']
+    pathlib.Path({str(meta_file)!r}).write_text(json.dumps(meta))
+    print('subscription-published-v1')
+else:
+    pathlib.Path({str(meta_file)!r} if '.meta' in cmd else {str(payload_file)!r}).write_bytes(data)
 """,
     )
     env = os.environ.copy()
@@ -634,4 +649,16 @@ def test_invalid_delivery_selector_refuses_before_publication(tmp_path, selector
     result = _run_issuer(env, "--print-token-only")
     assert result.returncode != 0 and "private transaction refused" in result.stderr
     assert not ssh_marker.exists()
+    assert secrets_file.read_bytes() == before
+
+
+def test_old_delivery_runtime_refuses_before_any_remote_publication(tmp_path):
+    env, payload_file, ssh_marker, secrets_file = _harness(tmp_path)
+    env["PUBLISHER_PROTOCOL"] = "legacy"
+    before = secrets_file.read_bytes()
+    result = subprocess.run(["bash", str(ISSUER), "phone"], capture_output=True,
+                            text=True, env=env, cwd=REPO_ROOT, check=False)
+    assert result.returncode == 2
+    assert "publisher unavailable" in result.stderr
+    assert not payload_file.exists() and not ssh_marker.exists()
     assert secrets_file.read_bytes() == before

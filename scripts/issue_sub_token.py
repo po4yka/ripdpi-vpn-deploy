@@ -2,21 +2,21 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+import base64
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import secrets
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
+from pathlib import Path
 
 import yaml
-
 from client_delivery_identity import authority, digest
-from client_payload import ROOT, command, materialize, options, validate_options, paths
+from client_payload import ROOT, command, materialize, options, paths, validate_options
 from encrypted_client_document import CommittedPublication, ExternalPublicationUncertain, operate
 
 
@@ -89,20 +89,24 @@ def issue(args):
         if not port.isascii() or not port.isdigit() or not 1 <= int(port) <= 65535:
             raise ValueError('invalid-subscription-port')
         publication['url'] = 'https://' + sub_host + ':' + port + '/sub/' + token
-        remote = directory + '/sub/' + token_hash
         target = admin + '@' + server_ip
+        publisher = "sudo -u vpn-bootstrap /usr/local/bin/vpn-bootstrap.py"
+        # The installed runtime owns its configured namespace and publication lock.
+        # An old service has no readiness protocol and refuses before mutation.
         try:
-            command(['ssh', target, "sudo test ! -e '" + directory + "/.vpn-sub-mirror-generations' -a ! -L '" + directory + "/.vpn-sub-mirror-current'"])
+            ready = command(['ssh', target, publisher + " --publication-ready '" + directory + "'"]).decode().strip()
         except ValueError:
-            raise ValueError('subscription mirror mode is active or delivery unavailable') from None
-        # Refresh always replaces expiry metadata, including clearing an old expiry.
-        meta = dict(client=args.client)
-        if publication['expires']:
-            meta['expires'] = publication['expires']
-        # A failed SSH reply cannot prove that its remote write was absent.
+            raise ValueError('subscription publisher unavailable or mirror mode is active') from None
+        if ready != 'subscription-publisher-v1':
+            raise ValueError('subscription publisher unavailable or mirror mode is active')
+        document = dict(schema_version=1, payload_b64=base64.b64encode(publication['payload']).decode('ascii'),
+                        client=args.client, expires=publication['expires'])
+        # A failed SSH reply cannot prove that its one atomic remote write was absent.
         mark_external_started()
-        command(['ssh', target, "sudo install -o vpn-bootstrap -g vpn-bootstrap -m 0600 /dev/stdin '" + remote + ".meta'"], data=json.dumps(meta).encode())
-        command(['ssh', target, "sudo install -o vpn-bootstrap -g vpn-bootstrap -m 0600 /dev/stdin '" + remote + "'"], data=publication['payload'])
+        receipt = command(['ssh', target, publisher + " --publish-sub " + token_hash + " '" + directory + "'"],
+                          data=json.dumps(document, separators=(',', ':')).encode()).decode().strip()
+        if receipt != 'subscription-published-v1':
+            raise ValueError('subscription publisher acknowledgement unavailable')
 
     operate(path, transform, before_publish=publish)
     # Only categorical audit fields; payload, authority and keyed digest stay private.
@@ -162,7 +166,7 @@ def main():
     except ValueError as error:
         # Only our fixed categories are exposed; downstream parsers may echo input.
         allowed = {'no client_registry entry; re-issue the token', 'ambiguous client_registry entries; re-issue', 'token does not belong to requested client',
-                   'registry lacks AWG delivery selection or delivery options; re-issue', 'subscription mirror mode is active or delivery unavailable'}
+                   'registry lacks AWG delivery selection or delivery options; re-issue', 'subscription mirror mode is active or delivery unavailable', 'subscription publisher unavailable or mirror mode is active'}
         print('subscription-delivery: ' + (str(error) if str(error) in allowed else 'private transaction refused'), file=sys.stderr)
         return 2
     except (OSError, KeyError, TypeError, AttributeError, RecursionError, StopIteration, subprocess.SubprocessError, yaml.YAMLError):

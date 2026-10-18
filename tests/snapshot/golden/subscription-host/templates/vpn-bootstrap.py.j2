@@ -10,9 +10,9 @@ Three properties matter:
     subscription_dir/<route>/<hex>. A disk copy alone is not a usable
     subscription URL.
 
-  * Per-token expiry. The sidecar <hash>.meta JSON file can carry an
-    `expires` field (ISO date string or unix epoch). The service
-    refuses to serve and on /bootstrap/ also deletes both files.
+  * Per-token expiry. New subscriptions use one atomic <hash>.document
+    containing exact payload bytes and expiry. Legacy payload/<hash>.meta
+    pairs remain readable. Expired bootstrap pairs are removed on access.
 
   * Audit log of reads. One JSONL record per successful or rejected
     fetch, written to reads_log. Records carry only the hash prefix
@@ -28,6 +28,8 @@ Managed by Ansible role subscription-host; do not hand-edit.
 from __future__ import annotations
 
 import datetime as _dt
+import base64
+import binascii
 import contextlib
 import fcntl
 import time
@@ -62,6 +64,9 @@ READS_LOG_BACKUP_COUNT = 4
 BOOTSTRAP_TOKEN_RE = re.compile(r"^b1_([0-9]{10})_([A-Za-z0-9_-]{43})$")
 FENCE_NAME = ".vpn-bootstrap-retired-before"
 STATE_LOCK_NAME = ".vpn-bootstrap-state.lock"
+
+MAX_PAYLOAD_BYTES = 4 * 1024 * 1024
+MAX_DOCUMENT_BYTES = 6 * 1024 * 1024
 
 PATH_RE = re.compile(r"^/(bootstrap|sub)/([A-Za-z0-9_-]{16,64})$")
 
@@ -155,9 +160,33 @@ def _private_file(directory, name, flags=os.O_RDONLY, *, create=False):
     return descriptor
 
 
+def _open_subscription_root():
+    if not SUBSCRIPTION_DIR.is_absolute():
+        raise ValueError("absolute subscription authority required")
+    descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for component in SUBSCRIPTION_DIR.parts[1:]:
+            if component in (".", ".."):
+                raise ValueError("invalid subscription authority path")
+            next_descriptor = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                                      dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = next_descriptor
+            metadata = os.fstat(descriptor)
+            sticky_root = metadata.st_uid == 0 and metadata.st_mode & stat.S_ISVTX
+            if metadata.st_uid not in {0, os.geteuid()} or metadata.st_mode & 0o022 and not sticky_root:
+                raise ValueError("unsafe subscription ancestry")
+        retained = descriptor
+        descriptor = None
+        return retained
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
 @contextlib.contextmanager
 def _state_authority():
-    root = os.open(SUBSCRIPTION_DIR, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    root = _open_subscription_root()
     lock = None
     try:
         metadata = os.fstat(root)
@@ -175,6 +204,154 @@ def _state_authority():
         if lock is not None:
             os.close(lock)
         os.close(root)
+
+
+def _private_route(root, name):
+    descriptor = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root)
+    metadata = os.fstat(descriptor)
+    if metadata.st_uid != os.geteuid() or stat.S_IMODE(metadata.st_mode) != 0o700:
+        os.close(descriptor)
+        raise ValueError("unsafe subscription route")
+    return descriptor
+
+
+def _read_bounded(directory, name, maximum, *, private=True):
+    descriptor = os.open(name, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=directory)
+    with os.fdopen(descriptor, "rb") as stream:
+        metadata = os.fstat(stream.fileno())
+        if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.geteuid()
+                or metadata.st_nlink != 1 or metadata.st_mode & 0o022
+                or private and stat.S_IMODE(metadata.st_mode) != 0o600):
+            raise ValueError("unsafe subscription file")
+        if metadata.st_size > maximum:
+            raise ValueError("oversized subscription document")
+        content = stream.read(maximum + 1)
+    if len(content) > maximum:
+        raise ValueError("oversized subscription document")
+    return content
+
+
+def _document(content):
+    value = json.loads(content, object_pairs_hook=_unique_authority_object)
+    if (not isinstance(value, dict) or set(value) != {"schema_version", "payload_b64", "client", "expires"}
+            or type(value["schema_version"]) is not int or value["schema_version"] != 1
+            or not isinstance(value["client"], str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", value["client"])
+            or not isinstance(value["payload_b64"], str) or not isinstance(value["expires"], str)):
+        raise ValueError("invalid subscription document")
+    try:
+        payload = base64.b64decode(value["payload_b64"], validate=True)
+    except (ValueError, binascii.Error):
+        raise ValueError("invalid subscription document") from None
+    if (not payload or len(payload) > MAX_PAYLOAD_BYTES
+            or base64.b64encode(payload).decode("ascii") != value["payload_b64"]
+            or not isinstance(json.loads(payload, object_pairs_hook=_unique_authority_object), dict)):
+        raise ValueError("invalid subscription payload")
+    # An empty string deliberately clears expiry on refresh.
+    expires = value["expires"]
+    if expires:
+        parsed = _dt.datetime.fromisoformat(expires.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            raise ValueError("subscription document requires an offset")
+    return payload, expires
+
+
+def _publication_route(root):
+    for name in (".vpn-sub-mirror-generations", ".vpn-sub-mirror-current"):
+        try:
+            os.stat(name, dir_fd=root, follow_symlinks=False)
+        except FileNotFoundError:
+            continue
+        raise ValueError("mirror publication is separate authority")
+    return _private_route(root, "sub")
+
+
+def _retire_interrupted_documents(directory):
+    # The same kernel lock excludes every live publisher. Only this reserved
+    # private staging footprint can be retired after process death.
+    names = [name for name in os.listdir(directory)
+             if re.fullmatch(r"\.document-[0-9a-f]{32}", name)]
+    if len(names) > 128:
+        raise ValueError("interrupted publication capacity exceeded")
+    for name in names:
+        descriptor = _private_file(directory, name)
+        try:
+            if os.fstat(descriptor).st_size > MAX_DOCUMENT_BYTES:
+                raise ValueError("unsafe interrupted publication")
+        finally:
+            os.close(descriptor)
+    for name in names:
+        os.unlink(name, dir_fd=directory)
+    if names:
+        _sync_directory(directory)
+
+
+def _publish_subscription(token_hash, content):
+    if not re.fullmatch(r"[0-9a-f]{64}", token_hash) or len(content) > MAX_DOCUMENT_BYTES:
+        raise ValueError("invalid publication request")
+    _document(content)
+    with _state_authority() as root:
+        directory = _publication_route(root)
+        temporary = None
+        temporary_owned = False
+        try:
+            _retire_interrupted_documents(directory)
+            name = token_hash + ".document"
+            try:
+                existing = _read_bounded(directory, name, MAX_DOCUMENT_BYTES)
+            except FileNotFoundError:
+                pass
+            else:
+                _document(existing)
+            temporary = ".document-" + uuid.uuid4().hex
+            descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                                 0o600, dir_fd=directory)
+            temporary_owned = True
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, name, src_dir_fd=directory, dst_dir_fd=directory)
+            _sync_directory(directory)
+        finally:
+            try:
+                if temporary_owned:
+                    try:
+                        os.unlink(temporary, dir_fd=directory)
+                    except FileNotFoundError:
+                        pass
+            finally:
+                os.close(directory)
+
+
+def _delivery(route_dir, token_hash, *, document=True):
+    directory = os.open(route_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        metadata = os.fstat(directory)
+        if metadata.st_uid != os.geteuid() or stat.S_IMODE(metadata.st_mode) != 0o700:
+            raise ValueError("unsafe subscription route")
+        if document:
+            try:
+                content = _read_bounded(directory, token_hash + ".document", MAX_DOCUMENT_BYTES)
+            except FileNotFoundError:
+                pass
+            else:
+                payload, expires = _document(content)
+                return payload, _expiry_due(expires) if expires else False
+        payload = _read_bounded(directory, token_hash, MAX_PAYLOAD_BYTES, private=False)
+        try:
+            content = _read_bounded(directory, token_hash + ".meta", 65536, private=False)
+        except FileNotFoundError:
+            return payload, False
+        try:
+            metadata = json.loads(content, object_pairs_hook=_unique_authority_object)
+        except (ValueError, RecursionError):
+            return payload, None
+        if not isinstance(metadata, dict):
+            return payload, None
+        expires = metadata.get("expires")
+        return payload, False if expires is None else _expiry_due(expires)
+    finally:
+        os.close(directory)
 
 
 def _read_fence(root):
@@ -550,23 +727,23 @@ def _expired(meta_path: pathlib.Path) -> bool | None:
     expires = meta.get("expires")
     if expires is None:
         return False
+    return _expiry_due(expires)
+
+
+def _expiry_due(expires):
     now = _now_utc()
-    if isinstance(expires, (int, float)):
-        try:
+    try:
+        if isinstance(expires, (int, float)) and not isinstance(expires, bool):
             exp_dt = _dt.datetime.fromtimestamp(float(expires), tz=_dt.timezone.utc)
-        except (OSError, OverflowError, ValueError) as exc:
-            logging.error("expiry timestamp is invalid: %s", exc)
-            return None
-    else:
-        try:
-            exp_dt = _dt.datetime.fromisoformat(str(expires))
+        elif isinstance(expires, str):
+            exp_dt = _dt.datetime.fromisoformat(expires.replace("Z", "+00:00"))
             if exp_dt.tzinfo is None:
                 exp_dt = exp_dt.replace(tzinfo=_dt.timezone.utc)
-            else:
-                exp_dt = exp_dt.astimezone(_dt.timezone.utc)
-        except ValueError as exc:
-            logging.error("expiry metadata is invalid: %s", exc)
-            return None
+        else:
+            raise ValueError("invalid expiry metadata")
+    except (OSError, OverflowError, ValueError):
+        logging.error("expiry metadata is invalid")
+        return None
     return exp_dt <= now
 
 
@@ -626,12 +803,11 @@ class Handler(BaseHTTPRequestHandler):
                 path = route_dir / token_hash
                 meta_path = route_dir / f"{token_hash}.meta"
                 try:
-                    data = path.read_bytes()
+                    data, expired = _delivery(route_dir, token_hash, document=not single_use)
                 except FileNotFoundError:
                     _audit(route, token_hash, "unknown", src_ip, 0)
                     self.send_error(410, "Gone")
                     return
-                expired = _expired(meta_path)
                 if expired is None:
                     _audit(route, token_hash, "expiry-unavailable", src_ip, 0)
                     self.send_error(503, "Service Unavailable")
@@ -639,8 +815,8 @@ class Handler(BaseHTTPRequestHandler):
                 if expired:
                     _audit(route, token_hash, "expired", src_ip, 0)
                     # On /bootstrap/, purge the payload so the next read for
-                    # the same token also returns 410 fast. On /sub/, leave
-                    # the payload — an admin may bump the .meta date.
+                    # the same token also returns 410 fast. On /sub/, retain
+                    # delivery authority for an atomic issuer refresh.
                     if single_use:
                         try: path.unlink()
                         except FileNotFoundError: pass
@@ -674,7 +850,7 @@ class Handler(BaseHTTPRequestHandler):
                     if meta_path.is_file():
                         try: meta_path.unlink()
                         except FileNotFoundError: pass
-        except (OSError, ValueError):
+        except (OSError, ValueError, RecursionError):
             _audit(route, token_hash, "state-unavailable", src_ip, 0)
             self.send_error(503, "Service Unavailable")
             return
@@ -692,6 +868,18 @@ class Handler(BaseHTTPRequestHandler):
 
 def main(arguments=()):
     _validate_bounds()
+    if (len(arguments) == 2 and arguments[0] == "--publication-ready"
+            and arguments[1] == str(SUBSCRIPTION_DIR)):
+        with _state_authority() as authority:
+            directory = _publication_route(authority)
+            os.close(directory)
+        print("subscription-publisher-v1")
+        return
+    if (len(arguments) == 3 and arguments[0] == "--publish-sub"
+            and arguments[2] == str(SUBSCRIPTION_DIR)):
+        _publish_subscription(arguments[1], sys.stdin.buffer.read(MAX_DOCUMENT_BYTES + 1))
+        print("subscription-published-v1")
+        return
     if list(arguments) == ["--maintain"]:
         with _state_authority() as authority:
             _maintain_locked(authority, int(time.time()))
@@ -720,4 +908,8 @@ def main(arguments=()):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    try:
+        main(sys.argv[1:])
+    except (OSError, ValueError, UnicodeError, RecursionError):
+        print("subscription runtime: private authority or request refused", file=sys.stderr)
+        raise SystemExit(2)

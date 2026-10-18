@@ -13,6 +13,25 @@ positive whole-Mbps rounding; liveness requires the same hints and includes
 them in the public generation digest. These are negotiated per-connection
 values. RIPDPI does not currently apply them, so no server-wide cap is claimed.
 
+The audited Bearer clients share authenticated_http.py and refuse every redirect.
+Protocol notifications require an HTTPS origin without userinfo, path, query or
+fragment. Local HTTP tests inject transport after origin admission; production
+has no plaintext bypass. State backups expose final names only after completed
+age encryption and uses no-replace publication to preserve timestamp collisions.
+Hardware enrollment binds explicit serial/slot selectors through literal Make
+inputs. Resume retains its identity, migration preserves each file's recipients,
+and staged ciphertext shares the existing per-document writer lock. Grouped
+policies require separate quorum-aware migration. Generation diagnostics stay
+on the operator's private controlling terminal. Subscription issuance requires
+the installed publisher-v1 readiness protocol before external publication. One
+service-owned atomic envelope binds exact payload bytes and expiry under the
+existing lock; a lost acknowledgement remains an uncertain external outcome.
+
+Inventory publication removes CR and LF from wrapped base64 before it constructs
+INI fields. Strict host selection still rejects split records. Renderer tests
+cover both line endings and verify typed listener and observability data through
+the strict parser.
+
 Blue-green treats each Make phase as a separate ordered command with inherited
 Make controls removed. Dry-run accepts only 0 or 1 and resolves before private
 inputs. CI commands use the retained bootstrap session supervisor; keep private
@@ -25,7 +44,11 @@ distinct state paths. Cohort creation and state backup/restore reject the alias 
 
 State encryption writes an owner-only pending file and publishes a complete
 backup with an exclusive hard link. Timestamp collisions wait at most ten retries;
-retention never sees an incomplete ciphertext. `restore-tf-state.sh` selects the
+retention never sees an incomplete ciphertext. File sync precedes publication;
+directory sync follows removal of the private staging name. A sync failure refuses
+success and retention, while a complete published backup remains recoverable.
+Cleanup registers before allocation and removes only this invocation's pending file.
+`restore-tf-state.sh` selects the
 exact environment, decrypts into a private sibling, validates Terraform v4 state
 structure and replaces accepted state atomically. Failure removes only its own
 candidate; stop concurrent Terraform operations before recovery.
