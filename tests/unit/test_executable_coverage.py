@@ -86,6 +86,18 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
             f"$GITHUB_WORKSPACE/.cache/native-transport-semantics/{source}-{pins[pin]}"
         )
 
+    early = next(step for step in native if step.get("name") ==
+                 "Check native AWG rollback before the complete runtime suite")
+    early_command = shlex.split(early["run"].replace("\\\n", ""))
+    assert early_command[:2] == ["sudo", "env"]
+    assert early_command[-2:] == ["make", "test-awg-dualstack-runtime"]
+    assert native.index(early) < next(index for index, step in enumerate(native)
+                                    if "make test-hysteria-ech-runtime" in step.get("run", ""))
+    early_environment = dict(assignment.split("=", 1) for assignment in early_command[2:-2])
+    for variable in ("TRANSPORT_NATIVE_ISOLATED", "AWG_NATIVE_GO_SOURCE", "AWG_NATIVE_TOOLS_SOURCE", "PATH"):
+        assert early_environment[variable] == environment[variable]
+    assert "continue-on-error" not in early and "if" not in early
+
 
 def test_local_and_ci_partition_native_tests_without_silent_skips():
     makefile = (ROOT / "Makefile").read_text()

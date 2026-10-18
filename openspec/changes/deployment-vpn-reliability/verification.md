@@ -300,3 +300,23 @@ a second fixed-leaf symlink refuses without modifying its target. The focused
 bundle passed 31 tests; the complete CI source-contract bundle passed 55.
 Actionlint, Zizmor, YAML lint, AST and diff checks passed. Nine native cases
 collect. Production guards remain unchanged; hosted runtime remains required.
+
+## Final activation toolchain repair
+
+Run 39078013453 at source 3d2a0d6a9a13681652cfa474fa037948ad5970ad
+passed 7,901 unit cases and 45 subtests, all 38 Molecule jobs, 44 core/recovery
+cases with confirmed cleanup and 12 transport cases with successful retirement.
+Early warm passed; ECH passed 13, the native recipe passed 156, endpoint and
+delivery recipes passed 10 and four, and topology passed 167 including late warm.
+The last dual-stack recipe actually ran and passed seven cases. Three previous
+generation cases failed before Ansible started: the fixture replaced PATH with
+fixed system directories, losing the installed non-global ansible-playbook.
+The Debian core host has global Ansible and did not expose this test defect.
+
+The fixture now prepends its namespace adapter while retaining the complete
+inherited toolchain path. A real Ansible executable selected through an owned
+non-global symlink reproduced the path regression before its repair and passes
+afterward. The focused renderer, diagnostics and directory bundle passed 32
+cases. CI wiring and protective bundles passed 78 tests; the early canonical
+dual-stack goal retains the same pins and the final goal still executes.
+The final exact-source full hosted gate remains required before merge.

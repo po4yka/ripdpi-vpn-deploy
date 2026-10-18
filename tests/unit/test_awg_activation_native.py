@@ -38,6 +38,10 @@ def render_native_awg_config(instance):
     return environment.get_template(template.name).render(_inst=instance)
 
 
+def native_publisher_environment(bin_dir):
+    return {'PATH': str(bin_dir) + os.pathsep + os.environ['PATH']}
+
+
 class CompletePublisher:
     """Use the installed production helper and real immutable acquisition bytes."""
 
@@ -212,7 +216,7 @@ def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes
     retained_firewall=firewall_text(effective,previous)
     def run(ns,argv,data=None): return command(['ip','netns','exec',ns,*map(str,argv)],data=data)
     try:
-        publisher=ownership.enter_context(complete_publisher(directory, {'PATH':str(bin_dir)+':/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'}))
+        publisher=ownership.enter_context(complete_publisher(directory, native_publisher_environment(bin_dir)))
         acquired=publisher.acquire(go,tools,quick)
         shared=render_template(ROOT/'ansible/roles/amneziawg/templates/awg-quick@.service.j2', merge_render_vars())
         firewall.write_text(retained_firewall); firewall.chmod(0o644)
