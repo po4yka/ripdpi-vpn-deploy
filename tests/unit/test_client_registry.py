@@ -9,12 +9,16 @@ REQ-REGISTRY-LIFECYCLE:
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import hashlib
 import importlib.util
 import json
 import os
 import re
+import select
+import signal
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -59,7 +63,7 @@ for source_file do :; done
 if [ "${3:-}" = '["client_registry"]' ]; then
   python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("client_registry", {})))' < "$source_file"
 else
-  cat "$source_file"
+  python3 -c 'import sys; data = sys.stdin.buffer.read(); sys.stdout.buffer.write(data)' < "$source_file"
 fi
 """
     return body.replace("${ARG1:-}", "${1:-}")
@@ -121,13 +125,83 @@ def shutil_which(name: str):
     return which(name)
 
 
+@contextmanager
+def _owned_command(arguments, **kwargs):
+    child = subprocess.Popen(
+        arguments, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        start_new_session=True, **kwargs,
+    )
+    try:
+        yield child
+    finally:
+        # Do not poll/reap the session leader before group cleanup: its PID
+        # must remain reserved while this invocation can still own descendants.
+        if child.returncode is None:
+            try:
+                os.killpg(child.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                child.communicate(timeout=2)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(child.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                child.communicate(timeout=2)
+
+
 def _run_issuer(env: dict[str, str], *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["bash", str(ISSUER), "phone", *args],
-        capture_output=True,
-        text=True,
-        env=env,
-        cwd=REPO_ROOT,
+    arguments = ["bash", str(ISSUER), "phone", *args]
+    with _owned_command(arguments, text=True, env=env, cwd=REPO_ROOT) as child:
+        stdout, stderr = child.communicate(timeout=30)
+        return subprocess.CompletedProcess(arguments, child.returncode, stdout, stderr)
+
+
+def test_sops_fixture_reads_complete_document_before_output(tmp_path):
+    fake = tmp_path / "sops"
+    _write_executable(fake, _sops_stub().replace(
+        "set -eu\n", "set -eu\nprintf 'fixture-ready\\n' >&2\n", 1,
+    ))
+    prefix = b'{"synthetic":'
+    suffix = json.dumps("payload" * 2048).encode() + b"}"
+    arguments = [str(fake), "--decrypt", "--input-type", "json",
+                 "--output-type", "json", "/dev/stdin"]
+    with _owned_command(arguments, stdin=subprocess.PIPE) as child:
+        assert select.select([child.stderr], [], [], 3)[0], "fixture did not start"
+        assert child.stderr.readline() == b"fixture-ready\n"
+        child.stdin.write(prefix)
+        child.stdin.flush()
+        assert not select.select([child.stdout], [], [], 0.2)[0], (
+            "the SOPS fixture must consume the complete input before publication"
+        )
+        stdout, stderr = child.communicate(input=suffix, timeout=5)
+        assert child.returncode == 0, stderr
+        assert stdout == prefix + suffix
+
+
+def test_issuer_harness_timeout_reaps_its_owned_session():
+    descendant = (
+        "import os,signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        "print(os.getpid(), flush=True); time.sleep(60)"
+    )
+    launcher = (
+        "import subprocess,sys; "
+        "child=subprocess.Popen([sys.executable, '-c', sys.argv[1]]); child.wait()"
+    )
+    with pytest.raises(subprocess.TimeoutExpired):
+        with _owned_command([sys.executable, "-c", launcher, descendant], text=True) as child:
+            assert select.select([child.stdout], [], [], 3)[0], "descendant did not start"
+            descendant_pid = int(child.stdout.readline())
+            child.communicate(timeout=0.2)
+    assert child.returncode is not None
+    assert child.stdout.closed and child.stderr.closed
+    status = subprocess.run(
+        ["ps", "-p", str(descendant_pid), "-o", "stat="],
+        capture_output=True, text=True, timeout=2,
+    )
+    assert not status.stdout.strip() or status.stdout.strip().startswith("Z"), (
+        "the TERM-resistant descendant escaped its owned session cleanup"
     )
 
 
