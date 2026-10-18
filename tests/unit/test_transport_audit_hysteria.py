@@ -10,7 +10,7 @@ import client_payload
 from test_liveness_profiles import inputs, load
 
 
-def emit(monkeypatch, *, rates=("100 mbps", "200 mbps"), profile="bandwidth-capped", format="singbox"):
+def emit(monkeypatch, *, rates=("100 mbps", "200 mbps"), profile="bandwidth-capped", format="singbox", hopping=False):
     document = {"hysteria": {
         "version": "v2.13.0", "resource_profile": profile,
         "bandwidth_up": rates[0], "bandwidth_down": rates[1],
@@ -20,7 +20,7 @@ def emit(monkeypatch, *, rates=("100 mbps", "200 mbps"), profile="bandwidth-capp
     }}
     context = {"vpn": {"enable_xray_reality": False, "enable_nginx_xhttp": False,
                        "enable_hysteria": True},
-               "hysteria_port_range": "46000-46015", "hysteria_hop_interval": "30s"}
+               "hysteria_port_range": "46000-46015" if hopping else "", "hysteria_hop_interval": "30s"}
     # Provider resolution is outside this pure export boundary; no private IO.
     monkeypatch.setattr(client_payload, "command", lambda *args, **kwargs: b"192.0.2.1")
     monkeypatch.setattr(client_payload, "context", lambda cohort: deepcopy(context))
@@ -31,7 +31,7 @@ def emit(monkeypatch, *, rates=("100 mbps", "200 mbps"), profile="bandwidth-capp
     return payload
 
 
-def test_every_bundle_endpoint_retains_hopping_and_salamander_metadata(monkeypatch):
+def test_every_supported_bundle_endpoint_retains_salamander_metadata(monkeypatch):
     payload = emit(monkeypatch, format="ripdpi")
     outbounds = [item for item in payload["outbounds"] if item["type"] == "hysteria2"]
     extras = payload["ripdpi"]["hysteria_extras"]
@@ -40,8 +40,17 @@ def test_every_bundle_endpoint_retains_hopping_and_salamander_metadata(monkeypat
         assert extras[outbound["tag"]] == {
             "insecure": False, "obfs": outbound["obfs"],
             "salamander_upstream_tag": "v2.13.0",
-            "port_hopping": {"ports": "46000:46015", "interval": "30s"},
         }
+        assert "server_ports" not in outbound and "hop_interval" not in outbound
+
+
+def test_every_official_singbox_endpoint_retains_hopping(monkeypatch):
+    payload = emit(monkeypatch, hopping=True)
+    outbounds = [item for item in payload["outbounds"] if item["type"] == "hysteria2"]
+    assert len(outbounds) == 2
+    for outbound in outbounds:
+        assert outbound["server_ports"] == ["46000:46015"]
+        assert outbound["hop_interval"] == "30s"
 
 
 @pytest.mark.parametrize("rates,expected", [

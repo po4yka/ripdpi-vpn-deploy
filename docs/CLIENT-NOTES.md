@@ -230,8 +230,10 @@ and `down_mbps` from the server upload rate. Positive rates round up to integer
 Mbps; server negotiation clamps them to the exact configured rates. These hints
 select Brutal and apply per connection. They are not an aggregate server limit
 or a security bandwidth ceiling. Set rates that the client path can sustain.
-RIPDPI bundles remain compatible, but the current RIPDPI importer does not apply
-these bandwidth hints. Do not rely on this profile to limit that client's rate.
+RIPDPI bundles without hopping remain compatible, but the current RIPDPI importer
+does not apply these bandwidth hints. Do not rely on this profile to limit that
+client's rate. Hopping remains supported for official sing-box. RIPDPI export
+refuses hopping until its actual client is qualified.
 BBR profiles omit bandwidth hints and set both runtime congestion and recipient
 BBR policy; the server ignores advertised client bandwidth for its BBR selection.
 Kernel UDP ceilings belong to baseline,

@@ -23,6 +23,20 @@ document does not establish wire compatibility. REALITY shortIds compare as
 decoded, zero-padded wire values, and mtg accepts only structured FakeTLS secrets.
 Field-level refusals must keep private input out of diagnostics.
 
+VLESS UUID uniqueness follows the pinned engine's parsed authentication bytes,
+including its reserved routing bytes. Different strings cannot share that
+identity. AWG reserves every instance server host address against all device
+and routed peer prefixes before binding, export, enrollment or publication.
+
+Certificate preflight requires DNS SAN authority and complete wildcard labels
+before native hostname matching. Do not restore domain-name regular expressions,
+CN fallback or partial wildcards. Use `verify -verify_hostname`: OpenSSL 3.0
+`x509 -checkhost` can exit zero on mismatch. Keep expiry and public-key checks separate.
+
+RIPDPI Hysteria delivery refuses port hopping until its actual consumer is
+qualified. The official sing-box path retains hopping. Per-host Hysteria
+extension entries follow every emitted tag, not only the first host.
+
 The REALITY monitor supervisor handles INT, TERM, HUP and QUIT before launching any decrypting child. The shell creates its work directory using an explicit parent path; BSD mktemp -t can ignore TMPDIR. Parent-owned temporary authority is removed after session cleanup on cancellation. Bounded child stderr is forwarded separately from the JSON stdout protocol. The monitor requests SOPS JSON directly into its private owned file; the general decrypt cache retains its YAML contract.
 
 Federation preserves dependency edges between receipt-validated cancelled records. A cancelled prerequisite still refuses every non-cancelled dependent and never makes a task ready.

@@ -54,7 +54,8 @@ upload from the server download rate and client download from the server upload
 rate. Official sing-box accepts integer Mbps hints, rounded up; server negotiation
 clamps the exact configured rates. BBR profiles omit these hints. This is not an
 aggregate or security rate limit, and RIPDPI currently ignores the hints. Each
-bundle endpoint retains its own hopping and Salamander metadata.
+supported bundle endpoint retains its own Salamander metadata. Hopping is
+supported by official sing-box; RIPDPI export refuses it until the client is qualified.
 
 **Pinned binary** — Hysteria version and architecture checksums are pinned;
 the role delegates verified candidate publication and `current`/public/previous

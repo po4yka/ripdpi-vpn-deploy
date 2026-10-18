@@ -228,7 +228,7 @@ def _run_snell_only_script(
     secrets.chmod(0o600)
     fake_bin = tmp_path / "snell-bin"
     fake_bin.mkdir()
-    (fake_bin / "sops").write_text('#!/bin/sh\ncat "$SOPS_FILE"\n')
+    (fake_bin / "sops").write_text('#!/bin/sh\ncat >/dev/null\ncat "$SOPS_FILE"\n')
     (fake_bin / "terraform").write_text(
         "#!/bin/sh\n"
         'case "$*" in\n'
@@ -346,7 +346,7 @@ def _run_shape_only_emitter(
     secrets.write_text(json.dumps(payload))
     bin_dir = tmp_path / "shape-bin"
     bin_dir.mkdir()
-    (bin_dir / "sops").write_text('#!/bin/sh\ncat "$SOPS_FILE"\n')
+    (bin_dir / "sops").write_text('#!/bin/sh\ncat >/dev/null\ncat "$SOPS_FILE"\n')
     (bin_dir / "terraform").write_text(
         '#!/bin/sh\ncase "$*" in\n'
         "  *'workspace select'*) exit 0 ;;\n"

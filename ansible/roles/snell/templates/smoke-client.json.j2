@@ -8,7 +8,7 @@
   "outbounds": [
 {% for variant in snell.variants %}
 {% set secret = snell_secrets.variants | selectattr('id', 'equalto', variant.id) | first %}
-    {"type": "snell", "tag": "snell-out-{{ loop.index }}", "server": "127.0.0.1", "server_port": {{ variant.listen_port }}, "version": {{ variant.client_version }}, "psk": "{{ secret.psk }}", "userkey": "{{ secret.users[0].userkey }}", "reuse": false, "network": "tcp"{% if variant.client_version == 4 %}, "obfs_mode": "none"{% else %}, "mode": "{{ variant.mode }}"{% endif %}}{% if not loop.last %},{% endif %}
+    {"type": "snell", "tag": "snell-out-{{ loop.index }}", "server": "127.0.0.1", "server_port": {{ variant.listen_port }}, "version": {{ variant.client_version }}, "psk": {{ secret.psk | to_json }}, "userkey": {{ secret.users[0].userkey | to_json }}, "reuse": false, "network": "tcp"{% if variant.client_version == 4 %}, "obfs_mode": "none"{% else %}, "mode": "{{ variant.mode }}"{% endif %}}{% if not loop.last %},{% endif %}
 {% endfor %}
   ],
   "route": {

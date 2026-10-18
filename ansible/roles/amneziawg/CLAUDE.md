@@ -23,6 +23,9 @@ tables and named timed-set membership remain outside this rollback.
 Device peers carry typed `allowed_ips.ipv4` /32 and `allowed_ips.ipv6` /128
 identities; routed peers declare `address_kind: routed` and explicit family
 prefixes. Shared normalization rejects old scalar claims and family collisions.
+Every peer prefix must exclude all configured instance server host addresses.
+This applies to routed peers as well as devices; overlapping pools remain valid
+when their peer claims do not contain a server address or another peer claim.
 MTU resolves instance > technical cohort > role default > 1420, with integer
 bounds 1280–1420. Server, standalone, bundle and liveness use that value.
 Before mutation the exact uplink needs an IPv6 default route with a global

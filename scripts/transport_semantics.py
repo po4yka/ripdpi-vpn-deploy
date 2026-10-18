@@ -380,6 +380,20 @@ def cohort_errors(raw: object, *, allow_placeholders: bool = False) -> list[tupl
         if wire_id in wire_ids:
             errors.append(("xray.clients", "duplicate short_id wire value"))
         wire_ids.add(wire_id)
+    authentication_ids = set()
+    for item in clients:
+        value = item.get("uuid")
+        # Schema owns UUID structure; relationship-only callers may omit it.
+        if not isinstance(value, str) or re.fullmatch(
+                r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", value) is None:
+            continue
+        authentication_id = bytearray.fromhex(value.replace("-", ""))
+        # Pinned Xray ProcessUUID reserves bytes 6 and 7 for VLESS routing.
+        authentication_id[6:8] = b"\x00\x00"
+        authentication_id = bytes(authentication_id)
+        if authentication_id in authentication_ids:
+            errors.append(("xray.clients", "duplicate UUID authentication identity"))
+        authentication_ids.add(authentication_id)
     names = [item.get("name") for item in clients]
     string_names = [name for name in names if isinstance(name, str)]
     known_names = set(string_names)
@@ -491,6 +505,7 @@ def awg_errors(raw: object, defaults: object = None, cohort: object = None, *,
                 errors.append(("amneziawg_secrets", "S3/S4 must remain zero"))
     selected = [(f"amneziawg_secrets.instances.{index}", item) for index, item in enumerate(instances)]
     names, ports, claims = set(), set(), []
+    server_addresses = set()
     key_owners: dict[str, str] = {}
     device_names = set()
     for path, item in selected:
@@ -524,6 +539,7 @@ def awg_errors(raw: object, defaults: object = None, cohort: object = None, *,
                     if (address.version != version or address.ip.is_multicast or address.ip.is_unspecified
                             or address.ip.is_loopback or address.ip.is_link_local):
                         raise ValueError
+                    server_addresses.add((version, int(address.ip)))
                 except (ValueError, TypeError):
                     errors.append((f"{path}.{field}", "invalid interface address family or CIDR"))
         errors.extend(parameter_errors(item, path, allow_placeholders=allow_placeholders))
@@ -600,6 +616,9 @@ def awg_errors(raw: object, defaults: object = None, cohort: object = None, *,
                                int(network.broadcast_address), f"{peer_path}.allowed_ips.{family}"))
     family, previous_end = 0, -1
     for version, start, end, claim_path in sorted(claims):
+        if any(version == server_version and start <= address <= end
+               for server_version, address in server_addresses):
+            errors.append((claim_path, "peer prefix contains an instance server address"))
         if version != family:
             family, previous_end = version, -1
         if start <= previous_end:
