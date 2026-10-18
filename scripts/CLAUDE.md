@@ -2,6 +2,39 @@
 
 ## Design decisions
 
+The offline AWG sentinel installer binds the same correction into its existing
+toolchain inputs and returns those public inputs to its provenance caller.
+Liveness and real-VPS lane readers require that complete identity from the
+fixed trusted installed helper. Old five-field manifests refuse qualification;
+retain their directories for rollback rather than rewriting their receipts.
+The verified vendor archive is extracted only in the private build workspace
+and removed there before strict postimage verification.
+
+Native AWG builders share the role's exact source correction and one native
+build receipt helper. Source qualification, compiled binary digest and the
+relative canonical alias must agree. All three builders execute real checksum
+unit cases with a temporary Go overlay before building; the overlay adds no
+untracked source input to the admitted tree.
+
+Checkout discovery passes Git metadata input through a private temporary file.
+Large NUL-delimited path lists can otherwise block both stdin and captured
+output before the query timeout applies. Preserve UTF-8 surrogateescape bytes,
+the empty-input EOF, the deadline and all active-content-filter refusals.
+
+Strict full-device kill-switch certification refuses partial TUN capture
+selectors, including route sets, interfaces, users, packages, namespaces and
+MPTCP exclusions. Parser validity alone does not prove device traffic capture.
+SOCKS Unicode names require a lossless codec round-trip; deviation forms refuse
+and require an explicit ASCII A-label. Do not use casefold for this identity
+check. Cascade TCP directions drain independently after FIN with bounded
+buffers and idle time, while empty UDP payloads retain ordinary association
+admission and tuple quarantine.
+
+Certificate preflight verifies enabled profile authorities against the operator
+trust store and server-auth purpose. Canonical per-host inputs retain Ansible
+replacement order; standalone default-profile checks are labeled accordingly.
+Supplied certificate chains provide intermediates, never trusted roots.
+
 Hysteria export retains metadata for each endpoint. Official-client bandwidth
 hints use the shared exact-rate conversion with reversed client directions and
 positive whole-Mbps rounding; liveness requires the same hints and includes

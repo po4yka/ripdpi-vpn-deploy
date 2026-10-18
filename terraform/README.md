@@ -24,7 +24,9 @@ make PROVIDER=scaleway  init plan apply
 ```
 
 The Ansible layer is provider-neutral — only the inventory render script
-reads provider-specific Terraform outputs.
+reads the common Terraform output contract. `nat_source_port_range` is empty
+for stateful provider firewalls and the inert exception root. Enabled UpCloud
+stateless filtering exports its exact admitted return range for guest NAT.
 
 ## Native tests
 

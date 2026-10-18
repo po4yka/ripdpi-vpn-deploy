@@ -22,6 +22,7 @@ def test_absent_host_web_roles_check_and_repeated_retirement_preserve_shared_ngi
         "cdn-front-prefix-refresh.service",
         "vpn-geodata-refresh.timer",
         "vpn-geodata-refresh.service",
+        "split-hop-egress-policy.service",
     ]
     for unit in units:
         result = subprocess.run(
@@ -32,6 +33,14 @@ def test_absent_host_web_roles_check_and_repeated_retirement_preserve_shared_ngi
         assert (
             result.stdout.strip() == "not-found"
         ), "requires no preexisting canonical owned runtime"
+    # A distro wg-quick template can exist without any owned instance.
+    wireguard = subprocess.run(
+        ["systemctl", "show", "wg-quick@shop0.service", "--property=ActiveState", "--value"],
+        capture_output=True, text=True,
+    )
+    assert wireguard.stdout.strip() == "inactive", "requires no active canonical split-hop instance"
+    assert not Path("/etc/wireguard/shop0.conf").exists()
+    assert not Path("/etc/systemd/system/split-hop-egress-policy.service").exists()
     nginx_before = subprocess.run(
         ["systemctl", "show", "nginx.service", "--property=ActiveState,UnitFileState"],
         capture_output=True,
@@ -54,6 +63,9 @@ def test_absent_host_web_roles_check_and_repeated_retirement_preserve_shared_ngi
       geodata_role_enabled: false
     - role: intrusion_prevention
       intrusion_prevention_role_enabled: false
+    - role: split-hop-egress
+      split_hop_egress_role_enabled: false
+      terraform_nat_source_port_range: malformed-disabled-input
 """
     with tempfile.TemporaryDirectory(prefix="vpn-p2-disable-") as directory:
         play = Path(directory) / "play.yml"

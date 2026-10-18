@@ -36,6 +36,11 @@ output "public_listeners" {
   description = "Canonical public listener contract enforced by the provider firewall."
 }
 
+output "nat_source_port_range" {
+  value       = var.enable_provider_firewall ? "${var.provider_return_ephemeral_ports.start}-${var.provider_return_ephemeral_ports.end}" : ""
+  description = "Required forwarded TCP/UDP source-port translation range while the stateless provider firewall is enabled."
+}
+
 # Do NOT output:
 #   - REALITY private keys
 #   - VLESS UUIDs / shortIds

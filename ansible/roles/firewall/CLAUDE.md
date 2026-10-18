@@ -2,6 +2,13 @@
 
 ## Design decisions
 
+Provider-filtered UpCloud inventory carries `terraform_nat_source_port_range`.
+Validate it before mutation and against the effective SSH port. AWG TCP/UDP NAT
+uses that exact range; other protocols retain address-only NAT. The primary
+`awg-nat-<interface>` counter continues to cover TCP/UDP probes; the separate
+`awg-nat-other-<interface>` counter covers other protocols. Disabled provider
+filtering and other providers preserve ordinary source-port selection.
+
 Split-hop IPv4 guard rules use POSTROUTING to inspect the final interface after
 route marking. OUTPUT can retain the earlier interface. The IPv6 original-traffic
 guard remains in OUTPUT before established acceptance; neither guard depends on

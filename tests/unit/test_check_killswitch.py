@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = REPO_ROOT / "tests" / "fixtures"
 SCRIPT = REPO_ROOT / "scripts" / "check-singbox-killswitch.py"
@@ -292,3 +294,78 @@ def test_k5_prefer_ipv4_domain_strategy_passes(tmp_path):
     bundle["outbounds"][0]["domain_strategy"] = "prefer_ipv4"
     result = _run_dict(bundle, tmp_path)
     assert result.returncode == 0
+
+
+@pytest.mark.parametrize("field,value", [
+    ("route_address", ["192.0.2.0/24"]), ("route_address_set", ["partial-set"]),
+    ("route_exclude_address", ["0.0.0.0/0", "::/0"]), ("route_exclude_address_set", ["excluded-set"]),
+    ("include_interface", ["eth0"]), ("exclude_interface", ["eth0"]),
+    ("include_uid", [1000]), ("exclude_uid", [1000]),
+    ("include_uid_range", ["1000:2000"]), ("exclude_uid_range", ["1000:2000"]),
+    ("include_android_user", [0]), ("include_package", ["example.app"]),
+    ("exclude_package", ["example.app"]), ("inet4_route_address", ["192.0.2.0/24"]),
+    ("include_mac_address", ["00:11:22:33:44:55"]), ("exclude_mac_address", ["00:11:22:33:44:55"]),
+    ("inet6_route_address", ["2001:db8::/32"]), ("inet4_route_exclude_address", ["0.0.0.0/0"]),
+    ("inet6_route_exclude_address", ["::/0"]), ("include_uid", ""),
+    ("exclude_package", None), ("route_exclude_address", False),
+    ("exclude_mptcp", True), ("exclude_mptcp", "false"), ("exclude_mptcp", None),
+    ("netns", "partial"), ("netns", None),
+])
+def test_partial_or_malformed_capture_policy_cannot_certify_full_device(tmp_path, field, value):
+    bundle = _load_valid()
+    bundle["inbounds"][0][field] = value
+    result = _run_dict(bundle, tmp_path)
+    assert result.returncode == 1
+    assert f"inbound.{field}" in result.stdout
+
+
+def test_empty_capture_selections_leave_default_full_device_policy(tmp_path):
+    bundle = _load_valid()
+    bundle["inbounds"][0].update(include_uid=[], exclude_package=[], route_exclude_address=[])
+    bundle["inbounds"][0].update(exclude_mptcp=False, netns="")
+    assert _run_dict(bundle, tmp_path).returncode == 0
+
+
+@pytest.mark.parametrize("field,value", [
+    ("auto_route", 1), ("strict_route", "true"),
+])
+def test_route_flags_require_actual_booleans(tmp_path, field, value):
+    bundle = _load_valid()
+    bundle["inbounds"][0][field] = value
+    assert _run_dict(bundle, tmp_path).returncode == 1
+
+
+@pytest.mark.parametrize("field,value", [
+    ("inbounds", {}), ("inbounds", [None]), ("outbounds", [None]),
+    ("route", []), ("dns", []), ("outbounds", [{"tag": "select"}]),
+    ("outbounds", [{"tag": "select", "type": "selector"}]),
+])
+def test_malformed_bundle_shapes_fail_without_traceback(tmp_path, field, value):
+    bundle = _load_valid()
+    bundle[field] = value
+    result = _run_dict(bundle, tmp_path)
+    assert result.returncode == 1
+    assert "Traceback" not in result.stderr
+
+
+@pytest.mark.parametrize("bundle", [[], None, "profile", 123])
+def test_non_object_bundle_fails_without_traceback(tmp_path, bundle):
+    result = _run_dict(bundle, tmp_path)
+    assert result.returncode == 1
+    assert "bundle must be an object" in result.stdout
+
+
+def test_invalid_json_returns_categorical_input_error(tmp_path):
+    path = tmp_path / "invalid.json"
+    path.write_text('{"private-marker":')
+    result = _run(path)
+    assert result.returncode == 2
+    assert result.stderr.strip() == "invalid or unreadable bundle JSON"
+
+
+def test_multiple_tun_scopes_cannot_certify_full_device(tmp_path):
+    bundle = _load_valid()
+    bundle["inbounds"].append({"type": "tun", "auto_route": False})
+    result = _run_dict(bundle, tmp_path)
+    assert result.returncode == 1
+    assert "exactly one TUN" in result.stdout

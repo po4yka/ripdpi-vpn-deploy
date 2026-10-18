@@ -2,6 +2,15 @@
 
 ## Design decisions
 
+HSTS follows the hostname's complete managed public HTTPS topology. A primary
+or fallback hostname served on TCP/443 keeps a one-year policy on all its direct
+frontends. Alternate-port-only names send `max-age=0` to clear cached policy;
+a browser would otherwise upgrade HTTP/80 to unrelated HTTPS/443 before the
+configured redirect. Compare DNS names without case. A distinct fallback name
+has its own policy. A previously cached policy clears only after a successful
+HTTPS visit to a managed alternate port; certificate errors at 443 cannot be
+repaired by an HTTP redirect.
+
 Site capture precedes initial firewall convergence. Fresh-host compensation skips stopping an absent nginx unit, while a unit installed after capture is still stopped and disabled before the journal is closed.
 
 The site commit can select `--finish-firewall`. It records that flag in the same durable `committing` journal as `--finish-egress`, invokes only the fixed firewall consumer `finish --owner site`, and removes the ingress journal only after both owners acknowledge completion. Recovery repeats those exact completion actions. A failed or lost acknowledgement retains the decision and never permits ingress/firewall compensation to cross it.

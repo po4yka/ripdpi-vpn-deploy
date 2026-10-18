@@ -121,13 +121,14 @@ def test_amneziawg_molecule_verifies_the_exact_commit_keyed_checkouts():
     assert clone_path == (
         "/opt/src/{{ item.name }}-{{ "
         "molecule_awg_fixture_heads.results[item.index].stdout | trim }}"
+        "{{ ('-' ~ molecule_awg_correction.digest) if item.index == 0 else '' }}"
     )
     assert "/opt/src/amneziawg-go/amneziawg-go" not in paths
     assert "/opt/src/amneziawg-tools/src/wg" not in paths
     assert paths[0] == (
         "/opt/src/amneziawg-go-{{ "
         "molecule_awg_fixture_heads.results[0].stdout | trim "
-        "}}/amneziawg-go"
+        "}}-{{ molecule_awg_correction.digest }}/amneziawg-go"
     )
     assert paths[2] == (
         "/opt/src/amneziawg-tools-{{ "

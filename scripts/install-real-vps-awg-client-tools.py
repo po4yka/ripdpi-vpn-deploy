@@ -12,6 +12,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tarfile
 import tempfile
 from contextlib import contextmanager
@@ -30,6 +31,8 @@ MAX_VENDOR_MEMBERS = 50_000
 ROOT_UID = 0
 ROOT_GID = 0
 MANIFEST_SCHEMA = 1
+CORRECTION_BASE = Path("/usr/local/libexec/ripdpi")
+CORRECTION_FILES = ("awg_source_correction.py", "awg-source-correction.json", "awg-udp-checksum-zero.patch.json")
 
 
 def validate_secure_directory(path: Path, mode: int, label: str) -> None:
@@ -182,6 +185,28 @@ def verify_checkout(path: Path, commit: str) -> None:
     git("fsck", "--full", "--strict", cwd=path)
 
 
+def source_correction(args: argparse.Namespace, action: str, source: Path | None = None) -> dict:
+    directory = args.correction_directory
+    if directory != CORRECTION_BASE / ("awg-source-" + args.correction_digest):
+        raise ValueError("source correction directory differs from its immutable identity")
+    for parent in (directory, *directory.parents):
+        info = parent.lstat()
+        if (not stat.S_ISDIR(info.st_mode) or info.st_uid not in {0, ROOT_UID}
+                or (info.st_mode & 0o022 and not (info.st_uid == 0 and info.st_mode & stat.S_ISVTX))):
+            raise ValueError("source correction ancestry is unsafe")
+    for name in CORRECTION_FILES:
+        info = (directory / name).lstat()
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != ROOT_UID or info.st_gid != ROOT_GID
+                or info.st_nlink != 1 or info.st_mode & 0o022 or info.st_size > 4 * 1024 * 1024):
+            raise ValueError("source correction asset is unsafe")
+    command = [sys.executable, "-Es", str(directory / CORRECTION_FILES[0]), action,
+               "--commit", args.go_commit, "--identity-digest", args.correction_digest]
+    if source is not None:
+        command.extend(["--source", str(source)])
+    result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=120)
+    return json.loads(result.stdout)
+
+
 def run_offline_make(path: Path) -> None:
     env = {
         **os.environ,
@@ -271,7 +296,7 @@ def tree_digest(root: Path) -> str:
 
 
 def validate_existing(
-    target: Path, inputs: dict[str, str], *, owner_only: bool = True
+    target: Path, inputs: dict[str, object], *, owner_only: bool = True
 ) -> dict[str, str]:
     validate_tree_metadata(target, owner_only=owner_only)
     manifest_path = target / "manifest.json"
@@ -300,7 +325,7 @@ def validate_existing(
     return binaries
 
 
-def harden_legacy_tree(target: Path, inputs: dict[str, str]) -> dict[str, str]:
+def harden_legacy_tree(target: Path, inputs: dict[str, object]) -> dict[str, str]:
     binaries = validate_existing(target, inputs, owner_only=False)
     manifest_path = target / "manifest.json"
     manifest = json.loads(manifest_path.read_bytes())
@@ -425,9 +450,11 @@ def build_locked(args: argparse.Namespace) -> dict[str, object]:
         (args.go_bundle_sha256, SHA256),
         (args.tools_bundle_sha256, SHA256),
         (args.vendor_sha256, SHA256),
+        (args.correction_digest, SHA256),
     ):
         if pattern.fullmatch(value) is None:
             raise ValueError("invalid toolchain pin")
+    inputs["goSourceCorrection"] = source_correction(args, "describe")
     for path, expected in (
         (args.go_bundle, args.go_bundle_sha256),
         (args.tools_bundle, args.tools_bundle_sha256),
@@ -457,9 +484,17 @@ def build_locked(args: argparse.Namespace) -> dict[str, object]:
             git("bundle", "verify", str(args.go_bundle), cwd=go_source)
             git("checkout", "--detach", args.go_commit, cwd=go_source)
             verify_checkout(go_source, args.go_commit)
+            source_correction(args, "apply", go_source)
             with tarfile.open(args.vendor_archive, mode="r:*") as archive:
                 extract_vendor(archive, go_source)
             run_offline_make(go_source)
+            # The vendor archive has its own immutable digest and strict extractor.
+            # Remove that owned workspace before the shared whole-tree admission.
+            vendor = go_source / "vendor"
+            if vendor.is_symlink() or not vendor.is_dir():
+                raise ValueError("owned vendor build workspace is unsafe")
+            shutil.rmtree(vendor)
+            source_correction(args, "verify", go_source)
             git("clone", "--no-checkout", str(args.tools_bundle), str(tools_source))
             git("bundle", "verify", str(args.tools_bundle), cwd=tools_source)
             git("checkout", "--detach", args.tools_commit, cwd=tools_source)
@@ -498,7 +533,7 @@ def build_locked(args: argparse.Namespace) -> dict[str, object]:
             shutil.rmtree(staging, ignore_errors=True)
     if activate_toolchain(target, binaries):
         changed = True
-    result = {"toolchainId": toolchain_id, "binaries": binaries, "changed": changed}
+    result = {"toolchainId": toolchain_id, "inputs": inputs, "binaries": binaries, "changed": changed}
     return result
 
 
@@ -517,6 +552,8 @@ def main() -> int:
     parser.add_argument("--tools-commit", required=True)
     parser.add_argument("--vendor-archive", type=Path, required=True)
     parser.add_argument("--vendor-sha256", required=True)
+    parser.add_argument("--correction-directory", type=Path, required=True)
+    parser.add_argument("--correction-digest", required=True)
     args = parser.parse_args()
     try:
         print(json.dumps(build(args), sort_keys=True, separators=(",", ":")))

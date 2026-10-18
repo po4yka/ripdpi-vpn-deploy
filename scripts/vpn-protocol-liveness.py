@@ -35,6 +35,12 @@ AUTH_ERROR = re.compile(r"auth|credential|invalid user|rejected|bad certificate"
 AWG_TOOLCHAIN_BASE = Path("/opt/ripdpi-real-vps-awg-nat/toolchains")
 AWG_TOOLCHAIN_UID = 0
 AWG_TOOLCHAIN_GID = 0
+AWG_CORRECTION_BASE = Path("/usr/local/libexec/ripdpi")
+AWG_CORRECTION_UID = 0
+AWG_CORRECTION_GID = 0
+AWG_CORRECTION_FILES = (
+    "awg_source_correction.py", "awg-source-correction.json", "awg-udp-checksum-zero.patch.json",
+)
 NETNS_RESOLV_ROOT = Path("/etc/netns")
 TARGET_IDENTITY_KEYS = {
     "inventory_alias", "public_service_address_sha256", "deployable_digest", "applied_at",
@@ -92,6 +98,39 @@ def validate_sing_box(config: dict) -> None:
         raise ValueError("sing-box settings invalid")
 
 
+def verify_awg_source_correction(inputs: dict) -> None:
+    """Admit the full identity through the installed, reviewed source helper."""
+    correction = inputs.get("goSourceCorrection")
+    if (not isinstance(correction, dict) or type(correction.get("schema")) is not int
+            or not isinstance(correction.get("digest"), str)
+            or re.fullmatch(r"[0-9a-f]{64}", correction["digest"]) is None):
+        raise ValueError("AWG source correction invalid")
+    directory = AWG_CORRECTION_BASE / ("awg-source-" + correction["digest"])
+    try:
+        for parent in (directory, *directory.parents):
+            info = parent.lstat()
+            sticky_root = info.st_uid == 0 and info.st_mode & stat.S_ISVTX
+            if (not stat.S_ISDIR(info.st_mode) or info.st_uid not in {0, AWG_CORRECTION_UID}
+                    or info.st_mode & 0o022 and not sticky_root):
+                raise ValueError("AWG source correction ancestry invalid")
+        for name in AWG_CORRECTION_FILES:
+            info = (directory / name).lstat()
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != AWG_CORRECTION_UID
+                    or info.st_gid != AWG_CORRECTION_GID or info.st_nlink != 1
+                    or info.st_mode & 0o022 or not 0 < info.st_size <= 4 * 1024 * 1024):
+                raise ValueError("AWG source correction asset invalid")
+        result = subprocess.run(
+            [sys.executable, "-Es", str(directory / AWG_CORRECTION_FILES[0]), "describe",
+             "--commit", inputs["goCommit"], "--identity-digest", correction["digest"]],
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True, timeout=10,
+        )
+        expected = json.loads(result.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        raise ValueError("AWG source correction unavailable") from exc
+    if correction != expected or expected.get("profile") != "upstream":
+        raise ValueError("AWG source correction identity mismatch")
+
+
 def verify_awg_toolchain(expected_id: str) -> dict:
     """Verify the immutable installer's canonical input, tree and binary hashes."""
     if not isinstance(expected_id, str) or re.fullmatch(r"[0-9a-f]{64}", expected_id) is None:
@@ -127,10 +166,11 @@ def verify_awg_toolchain(expected_id: str) -> dict:
         raise ValueError("toolchain manifest invalid")
     inputs = manifest["inputs"]
     fields = {"goBundleSha256": 64, "goCommit": 40, "toolsBundleSha256": 64, "toolsCommit": 40, "vendorSha256": 64}
-    if (not isinstance(inputs, dict) or set(inputs) != set(fields)
+    if (not isinstance(inputs, dict) or set(inputs) != set(fields) | {"goSourceCorrection"}
             or any(not isinstance(inputs[k], str) or re.fullmatch(r"[0-9a-f]{" + str(n) + "}", inputs[k]) is None for k, n in fields.items())
             or hashlib.sha256(canonical(inputs)).hexdigest() != expected_id):
         raise ValueError("toolchain inputs invalid")
+    verify_awg_source_correction(inputs)
     names = {"amneziawg-go", "awg", "awg-quick"}
     if not isinstance(manifest["binaries"], dict) or set(manifest["binaries"]) != names:
         raise ValueError("toolchain binaries invalid")

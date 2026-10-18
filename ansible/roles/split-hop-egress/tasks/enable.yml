@@ -1,6 +1,22 @@
 ---
 # split-hop-egress — see defaults/main.yml for rationale.
 
+- name: Validate provider NAT source-port range before mutation
+  ansible.builtin.assert:
+    that:
+      - terraform_nat_source_port_range is string
+      - terraform_nat_source_port_range is match('^[1-9][0-9]{0,4}-[1-9][0-9]{0,4}$')
+      - (terraform_nat_source_port_range.split('-')[0] | int) >= 1024
+      - (terraform_nat_source_port_range.split('-')[1] | int) <= 65535
+      - (terraform_nat_source_port_range.split('-')[0] | int) <= (terraform_nat_source_port_range.split('-')[1] | int)
+      - >-
+        _nat_ssh_port | int < (terraform_nat_source_port_range.split('-')[0] | int)
+        or _nat_ssh_port | int > (terraform_nat_source_port_range.split('-')[1] | int)
+    fail_msg: provider-nat-source-port-range-invalid
+  vars:
+    _nat_ssh_port: "{{ ansible_port | default(22) }}"
+  when: terraform_nat_source_port_range | default('') != ''
+
 - name: Pre-flight — egress secrets must be set
   ansible.builtin.assert:
     that:
@@ -57,7 +73,10 @@
         import json
         import sys
 
-        interface, forward_iface = sys.argv[1:]
+        interface, forward_iface, port_range = sys.argv[1:]
+        masquerade = None if not port_range else {
+            "port": {"range": [int(port) for port in port_range.split("-")]}
+        }
         try:
             objects = json.load(sys.stdin)["nftables"]
         except (json.JSONDecodeError, KeyError, TypeError):
@@ -69,7 +88,7 @@
         rules = [item["rule"] for item in objects if set(item) == {"rule"}]
         if len(metainfo) > 1 or len(objects) != len(metainfo) + len(tables) + len(chains) + len(rules):
             raise SystemExit(1)
-        if len(tables) != 1 or len(chains) != 1 or len(rules) != 1:
+        if len(tables) != 1 or len(chains) != 1 or len(rules) != (2 if port_range else 1):
             raise SystemExit(1)
         if metainfo:
             info = metainfo[0]
@@ -105,12 +124,21 @@
         expected = [
             {"match": {"op": "==", "left": {"meta": {"key": "iifname"}}, "right": interface}},
             {"match": {"op": "==", "left": {"meta": {"key": "oifname"}}, "right": forward_iface}},
-            {"masquerade": None},
+            {"masquerade": masquerade},
         ]
-        if rule.get("expr") != expected:
-            raise SystemExit(1)
+        expected_rules = [expected]
+        if port_range:
+            transport = {"match": {"op": "==", "left": {"meta": {"key": "l4proto"}}, "right": {"set": ["tcp", "udp"]}}}
+            other = {"match": {"op": "!=", "left": {"meta": {"key": "l4proto"}}, "right": {"set": ["tcp", "udp"]}}}
+            expected_rules = [expected[:2] + [transport, expected[2]], expected[:2] + [other, {"masquerade": None}]]
+        for rule, expected in zip(rules, expected_rules):
+            if (rule.get("family"), rule.get("table"), rule.get("chain")) != ("inet", "split_hop_egress", "postrouting"):
+                raise SystemExit(1)
+            if rule.get("expr") != expected:
+                raise SystemExit(1)
       - "{{ split_hop_egress.wg_interface }}"
       - "{{ split_hop_egress.forward_iface }}"
+      - "{{ terraform_nat_source_port_range | default('') }}"
     stdin: "{{ split_hop_egress_policy_state.stdout }}"
   register: split_hop_egress_policy_shape
   changed_when: false

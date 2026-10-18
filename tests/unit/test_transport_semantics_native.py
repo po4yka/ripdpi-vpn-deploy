@@ -8,6 +8,7 @@ unsupported host or missing prerequisite may become a skipped success.
 from __future__ import annotations
 
 import os
+import importlib.util
 import re
 from pathlib import Path
 import shutil
@@ -54,6 +55,22 @@ def exact_awg_sources():
         source = Path(raw)
         if command(["git", "-C", str(source), "rev-parse", "HEAD"]).strip() != pins[pin]:
             pytest.fail("AWG native source does not match the pinned immutable commit")
+        if variable == "AWG_NATIVE_GO_SOURCE":
+            spec = importlib.util.spec_from_file_location(
+                "native_awg_build_identity",
+                ROOT / "tests/integration/awg_source_candidate/corrected_build.py",
+            )
+            build = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(build)
+            try:
+                receipt = build.verify(source, pins[pin], ROOT / "ansible/roles/amneziawg/files")
+                if receipt["correction"]["profile"] != "upstream":
+                    raise ValueError("unqualified-source-profile")
+            except (OSError, ValueError, KeyError):
+                pytest.fail("AWG native build correction identity is unavailable or mismatched")
+        else:
+            command(["git", "-C", str(source), "diff", "--exit-code"])
+            command(["git", "-C", str(source), "diff", "--cached", "--exit-code"])
         binary = source / artifact
         if not binary.is_file() or not os.access(binary, os.X_OK):
             pytest.fail("AWG pinned native build output is unavailable")

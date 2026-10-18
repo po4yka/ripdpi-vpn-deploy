@@ -298,7 +298,12 @@ table inet nat {
   chain postrouting {
     type nat hook postrouting priority 100;
 {% for inst in _awg_inst %}
+{% if terraform_nat_source_port_range | default('') != '' %}
+    iifname "{{ inst.name }}" oifname "{{ awg_uplink_interface }}" meta l4proto { tcp, udp } counter masquerade to :{{ terraform_nat_source_port_range }} comment "awg-nat-{{ inst.name }}"
+    iifname "{{ inst.name }}" oifname "{{ awg_uplink_interface }}" meta l4proto != { tcp, udp } counter masquerade comment "awg-nat-other-{{ inst.name }}"
+{% else %}
     iifname "{{ inst.name }}" oifname "{{ awg_uplink_interface }}" counter masquerade comment "awg-nat-{{ inst.name }}"
+{% endif %}
 {% endfor %}
   }
 {% endif %}

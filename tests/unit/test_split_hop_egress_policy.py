@@ -278,3 +278,13 @@ def test_existing_wrong_table_is_reconciled_once_then_becomes_idempotent(
     second = subprocess.run(command, capture_output=True, text=True, env=environment)
     assert second.returncode == 0, second.stdout + second.stderr
     assert "changed=0" in second.stdout
+
+
+def test_provider_nat_range_changes_split_hop_translation_and_drift_authority():
+    variables = merge_render_vars()
+    variables["terraform_nat_source_port_range"] = "40000-45000"
+    rendered = render_template(ROLE / "templates/split-hop-egress.nft.j2", variables)
+    assert 'iifname "shop0" oifname "eth0" meta l4proto { tcp, udp } masquerade to :40000-45000' in rendered
+    tasks = yaml.safe_load((ROLE / "tasks/enable.yml").read_text())
+    command = next(task for task in tasks if task["name"] == "Check exact split-hop egress policy shape")["ansible.builtin.command"]["argv"]
+    assert command[-1] == "{{ terraform_nat_source_port_range | default('') }}"

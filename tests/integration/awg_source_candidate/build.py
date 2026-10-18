@@ -5,9 +5,12 @@ import json
 import os
 import platform
 import subprocess
+import sys
 import urllib.request
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import corrected_build
 
 def run(*argv, **kwargs):
     subprocess.run(argv, check=True, timeout=1800, **kwargs)
@@ -61,15 +64,23 @@ def main():
                 f"/sources/{pair}-{component}.bundle",
                 str(directory),
             )
-            verify_source(directory, source["commit"])
+            correction = Path("/lab/awg-source-correction")
+            if component == "go":
+                corrected_build.prepare(directory, source["commit"], correction)
+                corrected_build.test_checksums(directory, source["commit"], correction, env=env)
+            else:
+                verify_source(directory, source["commit"])
             run(
                 "make",
+                *(["-B"] if component == "go" else []),
                 "-j2",
                 cwd=directory if component == "go" else directory / "src",
                 env=env,
             )
-            run("git", "diff", "--exit-code", cwd=directory)
-            run("git", "diff", "--cached", "--exit-code", cwd=directory)
+            if component == "go":
+                corrected_build.publish(directory, source["commit"], correction)
+            else:
+                verify_source(directory, source["commit"])
     run("/usr/local/go/bin/go", "version")
 
 

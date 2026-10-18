@@ -200,14 +200,14 @@ def test_amneziawg_checkouts_are_immutable_per_exact_commit() -> None:
         "ansible.builtin.set_fact"
     ]["_amneziawg_build_descriptors"]
 
-    assert go_clone["dest"] == "/opt/src/amneziawg-go-{{ amneziawg_go_commit }}"
+    assert go_clone["dest"] == "{{ _awg_go_source_dir }}"
     assert tools_clone["dest"] == (
         "/opt/src/amneziawg-tools-{{ amneziawg_tools_commit }}"
     )
     assert go_clone["update"] is False
     assert tools_clone["update"] is False
     assert all(
-        step["chdir"].startswith("/opt/src/amneziawg-go-{{ amneziawg_go_commit }}")
+        step["chdir"] == "{{ _awg_go_source_dir }}"
         for step in descriptors[0]["steps"]
     )
     assert all(
@@ -219,7 +219,7 @@ def test_amneziawg_checkouts_are_immutable_per_exact_commit() -> None:
     assert descriptors[0]["outputs"] == [{
         "name": "installed",
         "staged_path": "/var/lib/ripdpi/runtime-build-staging/amneziawg-go/amneziawg-go",
-        "path": "/opt/amneziawg/releases/go-{{ amneziawg_go_commit }}/amneziawg-go",
+        "path": "{{ _awg_go_release_dir }}/amneziawg-go",
     }]
     assert descriptors[1]["outputs"] == [
         {"name": name,

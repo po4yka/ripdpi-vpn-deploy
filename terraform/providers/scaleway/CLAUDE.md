@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+The shared `nat_source_port_range` output is empty here: this root does not
+require forwarded TCP/UDP source-port remapping for stateless return filtering.
+Keep the same output names as every provider root and the inert exception root.
+
 **Reserved routed IPs are explicit resources** — the primary IPv4, optional IPv6, and optional honeypot IPv4 use `scaleway_instance_ip` and attach through `ip_ids`; inventory never depends on a transient dynamic address.
 
 **Provider-edge policy is typed and fail-closed** — one stateful security group default-drops inbound traffic and renders only CIDR-scoped SSH plus the canonical `public_listeners` contract for IPv4 and IPv6.

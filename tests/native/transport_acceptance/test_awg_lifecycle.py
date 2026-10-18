@@ -35,27 +35,29 @@ def test_exact_pair_wire_warm_adoption_and_canonical_retirement(tmp_path):
     ), "isolated-AWG-lab-already-owned"
     sys.path.insert(0, str(ROOT / "ansible/roles/runtime-release/files"))
     Path("/lab").mkdir(mode=0o700)
-    sources = []
+    lab = None
+    original_source_root = None
     tunnels = []
     ownership = ExitStack()
     try:
         publisher = ownership.enter_context(complete_publisher(Path("/lab")))
-        for name in ("sources.json", "acceptance.py"):
+        for name in ("sources.json", "acceptance.py", "corrected_build.py"):
             shutil.copyfile(area / name, Path("/lab") / name)
+        correction = Path("/lab/awg-source-correction")
+        correction.mkdir(mode=0o755)
+        for name in ("awg_source_correction.py", "awg-source-correction.json", "awg-udp-checksum-zero.patch.json"):
+            shutil.copyfile(ROOT / "ansible/roles/amneziawg/files" / name, correction / name)
         shutil.copyfile(
             ROOT / "ansible/roles/amneziawg/templates/awg-quick@.service.j2",
             "/lab/awg-quick@.service",
         )
-        for pair in ("baseline", "candidate"):
-            destination = Path("/opt") / pair
-            assert not destination.exists(), "isolated-AWG-source-already-owned"
-            destination.symlink_to(ROOT / ".cache/four-transport-sources" / pair)
-            sources.append(destination)
         spec = importlib.util.spec_from_file_location(
             "four_awg_lab", area / "acceptance.py"
         )
         lab = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(lab)
+        original_source_root = lab.SOURCE_ROOT
+        lab.SOURCE_ROOT = ROOT / ".cache/four-transport-sources"
         # The lab's disconnected-root assertion applies to its own namespaces;
         # this source lane retains external access only to acquire pinned engines.
         # Join only the network namespace: ip-netns exec also isolates mounts,
@@ -66,13 +68,13 @@ def test_exact_pair_wire_warm_adoption_and_canonical_retirement(tmp_path):
         )
         script = tmp_path / "acceptance"
         script.write_text(
-            'import sys;sys.path.insert(0,sys.argv[1]);import acceptance;acceptance.unittest.main(module=acceptance,argv=["acceptance"],verbosity=2)'
+            'import sys;from pathlib import Path;sys.path.insert(0,sys.argv[1]);import acceptance;acceptance.SOURCE_ROOT=Path(sys.argv[2]);acceptance.unittest.main(module=acceptance,argv=["acceptance"],verbosity=2)'
         )
         namespace = "four-awg-root"
         lab.command("ip", "netns", "add", namespace)
         try:
             observed = subprocess.run(
-                ["nsenter", "--net=/run/netns/" + namespace, sys.executable, str(script), "/lab"],
+                ["nsenter", "--net=/run/netns/" + namespace, sys.executable, str(script), "/lab", str(lab.SOURCE_ROOT)],
                 env={
                     **os.environ,
                     "PYTHONPATH": str(ROOT / "ansible/roles/runtime-release/files"),
@@ -135,8 +137,9 @@ def test_exact_pair_wire_warm_adoption_and_canonical_retirement(tmp_path):
                                     "Environment=WG_QUICK_USERSPACE_IMPLEMENTATION=/usr/local/bin/amneziawg-go")
 
             def acquire(pair):
-                return publisher.acquire(f"/opt/{pair}/go/amneziawg-go", f"/opt/{pair}/tools/src/wg",
-                                         f"/opt/{pair}/tools/src/wg-quick/linux.bash")
+                selected = lab.source(pair)
+                return publisher.acquire(str(selected / "go/amneziawg-go"), str(selected / "tools/src/wg"),
+                                         str(selected / "tools/src/wg-quick/linux.bash"))
 
             def publish(acquired, selected=configs, unit=shared, absent=(), accepted=True):
                 result = publisher.apply(publisher.request(acquired, selected, unit, absent=absent))
@@ -187,14 +190,15 @@ def test_exact_pair_wire_warm_adoption_and_canonical_retirement(tmp_path):
             candidate = acquire("candidate")
             publish(candidate)
             for tunnel in tunnels[:2]:
-                assert lab.digest(f"/proc/{tunnel.pid()}/exe") == lab.digest("/opt/candidate/go/amneziawg-go")
+                assert lab.digest(f"/proc/{tunnel.pid()}/exe") == lab.digest(lab.source("candidate") / "go/amneziawg-go")
             probe_owned()
             retained_paths = [Path(item["path"]) for item in candidate] + [Path("/etc/systemd/system/awg-quick@.service"),
                               Path("/etc/systemd/system/awg-quick.target"), publisher.record, *[Path('/lab') / (name+'.conf') for name in configs]]
             before = {str(path): (path.stat().st_ino, path.stat().st_mode, path.read_bytes()) for path in retained_paths}
             rejected = Path('/lab/rejected-amneziawg-go')
             rejected.write_text('#!/bin/sh\nexit 71\n'); rejected.chmod(0o755)
-            broken = publisher.acquire(rejected, '/opt/candidate/tools/src/wg', '/opt/candidate/tools/src/wg-quick/linux.bash')
+            broken = publisher.acquire(rejected, str(lab.source('candidate') / 'tools/src/wg'),
+                                       str(lab.source('candidate') / 'tools/src/wg-quick/linux.bash'))
             publish(broken, accepted=False)
             assert {str(path): (path.stat().st_ino, path.stat().st_mode, path.read_bytes()) for path in retained_paths} == before
             probe_owned()
@@ -233,12 +237,12 @@ def test_exact_pair_wire_warm_adoption_and_canonical_retirement(tmp_path):
                 tunnel.close()
             lab.command("systemctl", "daemon-reload")
     finally:
+        if original_source_root is not None:
+            lab.SOURCE_ROOT = original_source_root
         ownership.close()
         for tunnel in tunnels:
             for unit in tunnel.units:
                 subprocess.run(['systemctl', 'reset-failed', unit], capture_output=True, timeout=15)
-        for path in sources:
-            path.unlink()
         for path in owned_roots:
             if path.exists():
                 assert (

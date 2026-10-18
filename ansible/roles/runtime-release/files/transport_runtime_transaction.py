@@ -259,7 +259,7 @@ class Transaction:
         """Only the AWG consumer may select its fixed, bounded executables."""
         path = Path(path)
         return str(path) in {'/usr/local/bin/amneziawg-go', '/usr/bin/awg', '/usr/bin/awg-quick'} or re.fullmatch(
-            r'/opt/amneziawg/releases/(?:go|tools)-(?:[0-9a-f]{40}|[0-9a-f]{64})/(?:amneziawg-go|awg|awg-quick)', str(path)) is not None
+            r'/opt/amneziawg/releases/(?:go-(?:[0-9a-f]{40}|[0-9a-f]{64})(?:-[0-9a-f]{64})?|tools-(?:[0-9a-f]{40}|[0-9a-f]{64}))/(?:amneziawg-go|awg|awg-quick)', str(path)) is not None
 
     def _node(self, path, _uid=None, *, links=1):
         maximum = 128 * 1024 * 1024 if self.awg and self.executable(path) else None

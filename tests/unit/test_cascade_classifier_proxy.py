@@ -12,6 +12,8 @@ import time
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[2]
 PROXY = ROOT / "scripts" / "cascade-classifier-proxy.py"
@@ -302,3 +304,117 @@ def test_route_state_selects_distinct_configured_interfaces() -> None:
 
     assert module.interface_for_state("ru", "physical0", "tunnel0") == "physical0"
     assert module.interface_for_state("foreign", "physical0", "tunnel0") == "tunnel0"
+
+
+def _relay_module():
+    spec = importlib.util.spec_from_file_location("cascade_classifier_proxy_relay", PROXY)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _tcp_pair():
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        peer = socket.create_connection(listener.getsockname(), timeout=2)
+        relay, _ = listener.accept()
+    relay.settimeout(2)
+    return peer, relay
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_relay_drains_response_after_peer_fin_with_bounded_buffers(reverse):
+    module = _relay_module()
+    client, left = _tcp_pair()
+    backend, right = _tcp_pair()
+    request = b"request-before-fin" * 10000
+    response = b"response-after-fin" * 20000
+    errors = []
+
+    def relay():
+        try:
+            module._relay(left, right, idle_seconds=2)
+        except Exception as error:
+            errors.append(error)
+
+    def answer():
+        try:
+            received = bytearray()
+            while data := backend.recv(4096):
+                received.extend(data)
+            assert received == request
+            backend.sendall(response)
+            backend.shutdown(socket.SHUT_WR)
+        except Exception as error:
+            errors.append(error)
+
+    if reverse:
+        left, right = right, left
+    worker = threading.Thread(target=relay, daemon=True)
+    responder = threading.Thread(target=answer, daemon=True)
+    try:
+        worker.start()
+        responder.start()
+        client.sendall(request)
+        client.shutdown(socket.SHUT_WR)
+        received = bytearray()
+        while data := client.recv(4096):
+            received.extend(data)
+        assert received == response
+        responder.join(2)
+        worker.join(2)
+        assert not responder.is_alive() and not worker.is_alive()
+        assert errors == []
+    finally:
+        for connection in (client, left, backend, right):
+            connection.close()
+        worker.join(2)
+        responder.join(2)
+
+
+def test_half_closed_relay_keeps_idle_deadline():
+    module = _relay_module()
+    client, left = _tcp_pair()
+    backend, right = _tcp_pair()
+    worker = threading.Thread(target=module._relay, args=(left, right), kwargs={"idle_seconds": 0.1}, daemon=True)
+    try:
+        worker.start()
+        client.shutdown(socket.SHUT_WR)
+        assert backend.recv(1) == b""
+        worker.join(1)
+        assert not worker.is_alive()
+    finally:
+        for connection in (client, left, backend, right):
+            connection.close()
+        worker.join(1)
+
+
+def test_relay_backpressure_cannot_block_past_idle_deadline():
+    module = _relay_module()
+    client, left = socket.socketpair()
+    backend, right = socket.socketpair()
+    right.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
+    right.setblocking(False)
+    for _ in range(1024):
+        try:
+            right.send(b"prefill" * 1024)
+        except BlockingIOError:
+            break
+    else:
+        pytest.fail("fixture did not establish blocked stream writer")
+    client.settimeout(0.5)
+    worker = threading.Thread(target=module._relay, args=(left, right), kwargs={"idle_seconds": 0.1}, daemon=True)
+    try:
+        worker.start()
+        # The peer stays open without reading. Finite relay buffers must apply
+        # backpressure, and a blocked writer must retain the idle deadline.
+        with pytest.raises(socket.timeout):
+            client.sendall(b"x" * (8 * 1024 * 1024))
+        worker.join(1)
+        assert not worker.is_alive()
+    finally:
+        for connection in (client, left, backend, right):
+            connection.close()
+        worker.join(1)

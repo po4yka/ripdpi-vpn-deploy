@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+The shared `nat_source_port_range` output is empty here: this root does not
+require forwarded TCP/UDP source-port remapping for stateless return filtering.
+Keep the same output names as every provider root and the inert exception root.
+
 **Floating IP assignment and guest configuration are separate** — Terraform allocates and routes optional honeypot IPv4; the honeypot role installs its persistent guest `/32` and validates it before binding. No service should treat the provider's assigned address as proof that it exists on a guest interface.
 
 **Mirrors UpCloud's output schema** — `server_ipv4`, `server_ipv6`,

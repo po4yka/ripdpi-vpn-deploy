@@ -23,11 +23,28 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "vpn-protocol-liveness.py"
 
 
+AWG_GO_COMMIT = "2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf"
+
+
+def _correction_fixture(tmp_path):
+    assets = REPO_ROOT / "ansible/roles/amneziawg/files"
+    identity = json.loads(subprocess.check_output(
+        [sys.executable, "-Es", str(assets / "awg_source_correction.py"), "describe",
+         "--commit", AWG_GO_COMMIT], text=True))
+    directory = tmp_path / "corrections" / ("awg-source-" + identity["digest"])
+    directory.mkdir(parents=True, mode=0o755)
+    for name in ("awg_source_correction.py", "awg-source-correction.json", "awg-udp-checksum-zero.patch.json"):
+        shutil.copyfile(assets / name, directory / name)
+        (directory / name).chmod(0o644)
+    return identity, directory
+
+
 def _toolchain_fixture(tmp_path, bin_dir):
     spec = importlib.util.spec_from_file_location("awg_toolchain_fixture", REPO_ROOT / "scripts/install-real-vps-awg-client-tools.py")
     installer = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(installer)
-    inputs = {"goBundleSha256": "a" * 64, "goCommit": "b" * 40,
+    correction, _directory = _correction_fixture(tmp_path)
+    inputs = {"goBundleSha256": "a" * 64, "goCommit": AWG_GO_COMMIT, "goSourceCorrection": correction,
               "toolsBundleSha256": "c" * 64, "toolsCommit": "d" * 40, "vendorSha256": "e" * 64}
     identity = hashlib.sha256(installer.canonical(inputs)).hexdigest()
     target = tmp_path / "toolchains" / identity
@@ -55,6 +72,8 @@ spec = importlib.util.spec_from_file_location('fixture_sentinel', sys.argv[1])
 module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
 module.AWG_TOOLCHAIN_BASE = pathlib.Path(sys.argv[2]).parent / 'toolchains'
 module.AWG_TOOLCHAIN_UID = os.geteuid(); module.AWG_TOOLCHAIN_GID = os.getegid()
+module.AWG_CORRECTION_BASE = pathlib.Path(sys.argv[2]).parent / 'corrections'
+module.AWG_CORRECTION_UID = os.geteuid(); module.AWG_CORRECTION_GID = os.getegid()
 module.NETNS_RESOLV_ROOT = pathlib.Path(sys.argv[2]).parent / 'netns-resolv'
 original_getaddrinfo = socket.getaddrinfo
 module.socket.getaddrinfo = lambda host, *a, **k: [(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('192.0.2.20', 443))] if host == 'www.gstatic.com' else original_getaddrinfo(host, *a, **k)
@@ -551,6 +570,83 @@ def test_awg_toolchain_is_verified_before_any_network_or_namespace(tmp_path, inv
     assert result.returncode == 2
     assert "invalid AWG toolchain" in result.stderr
     assert not (tmp_path / "calls.log").exists()
+
+
+@pytest.mark.parametrize("invalid", [
+    "legacy", "extra-input", "extra-correction", "bool-schema", "wrong-schema", "wrong-name",
+    "wrong-profile", "wrong-digest", "wrong-helper", "wrong-manifest", "wrong-patch",
+    "unknown-commit", "synthetic-commit", "missing-asset", "symlink-asset", "hardlink-asset",
+    "writable-asset", "writable-parent", "mixed-assets",
+])
+def test_awg_correction_refuses_before_any_network_and_preserves_toolchain(tmp_path, invalid):
+    config, env = _setup(tmp_path)
+    document = json.loads(config.read_text())
+    target = tmp_path / "toolchains" / document["expected_runtime"]["awg_toolchain"]
+    path = target / "manifest.json"
+    manifest = json.loads(path.read_bytes())
+    inputs = manifest["inputs"]
+    correction = inputs["goSourceCorrection"]
+    directory = tmp_path / "corrections" / ("awg-source-" + correction["digest"])
+    if invalid == "legacy":
+        del inputs["goSourceCorrection"]
+    elif invalid == "extra-input":
+        inputs["unknown"] = "0" * 64
+    elif invalid == "extra-correction":
+        correction["unknown"] = "0" * 64
+    elif invalid == "bool-schema":
+        correction["schema"] = True
+    elif invalid == "wrong-schema":
+        correction["schema"] = 2
+    elif invalid == "wrong-name":
+        correction["name"] = "unreviewed"
+    elif invalid == "wrong-profile":
+        correction["profile"] = "synthetic-no-tun"
+    elif invalid == "wrong-digest":
+        correction["digest"] = "0" * 64
+    elif invalid in {"wrong-helper", "wrong-manifest", "wrong-patch"}:
+        correction[invalid.removeprefix("wrong-") + "_sha256"] = "0" * 64
+    elif invalid == "unknown-commit":
+        inputs["goCommit"] = "b" * 40
+    elif invalid == "synthetic-commit":
+        inputs["goCommit"] = "c477e2aa7b49a02381861e8ce41170e9c1f615eb"
+        correction["profile"] = "synthetic-no-tun"
+    elif invalid == "missing-asset":
+        (directory / "awg-source-correction.json").unlink()
+    elif invalid == "symlink-asset":
+        asset = directory / "awg-source-correction.json"
+        retained = tmp_path / "manifest-retained.json"
+        asset.rename(retained)
+        asset.symlink_to(retained)
+    elif invalid == "hardlink-asset":
+        os.link(directory / "awg-source-correction.json", tmp_path / "manifest-linked.json")
+    elif invalid == "writable-asset":
+        (directory / "awg-source-correction.json").chmod(0o666)
+    elif invalid == "writable-parent":
+        directory.parent.chmod(0o777)
+    elif invalid == "mixed-assets":
+        with (directory / "awg-source-correction.json").open("a") as stream:
+            stream.write("\n")
+    # Rebind the complete input hash, so these cases reach correction admission.
+    path.chmod(0o600)
+    raw = (json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    path.write_bytes(raw)
+    path.chmod(0o400)
+    canonical_inputs = (json.dumps(inputs, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    identity = hashlib.sha256(canonical_inputs).hexdigest()
+    retained = target.with_name(identity)
+    if retained != target:
+        target.rename(retained)
+    document["expected_runtime"]["awg_toolchain"] = identity
+    config.write_text(json.dumps(document))
+
+    result = _run(config, env)
+
+    assert result.returncode == 2
+    assert "invalid AWG toolchain" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert not (tmp_path / "calls.log").exists()
+    assert (retained / "manifest.json").read_bytes() == raw
+    assert (retained / "bin/amneziawg-go").is_file()
 
 
 @pytest.mark.parametrize("url", ["http://probe.example/", "https://probe.example:8443/", "https://[::1]/", "https://user:pass@probe.example/", "https://probe.example/#fragment"])

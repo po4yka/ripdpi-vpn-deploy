@@ -2,6 +2,15 @@
 
 ## Design decisions
 
+The offline sentinel AWG build uses the same reviewed source correction as the
+family role. Its full correction identity participates in immutable toolchain
+inputs, so an older uncorrected generation cannot satisfy the new manifest.
+Controller admission refuses unknown commits before host changes. The existing
+lane lock covers correction, offline build and activation. Vendor inputs retain
+their own digest and extraction guards; their owned build workspace is removed
+before strict post-build source verification. Synthetic no-TUN profiles remain
+limited to installer tests and are refused by sentinel provisioning.
+
 **SSH admission precedes server provisioning** — publish the explicit evidence account using the canonical recoverable baseline transaction and both public/management context proofs first. Server-local tasks only read sshd effective account admission and forwarding/PTY/rc restrictions before provisioning state; they never write SSH policy or manufacture controller confirmation. The dedicated key remains constrained to its fixed command. Admission conservatively rejects nonempty DenyUsers/AllowGroups/DenyGroups, additional authentication factors and any server ForceCommand: the future account’s group membership cannot be inferred, and server command policy can supersede the forced key. Canonical any/publickey authentication remains supported.
 
 

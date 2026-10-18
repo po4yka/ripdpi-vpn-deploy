@@ -2,6 +2,13 @@
 
 ## Design decisions
 
+AWG executable admission also accepts the exact Go release path with a
+64-character lowercase correction digest after the immutable source commit.
+Legacy commit-only paths remain available for retained rollback. Tools paths
+retain their commit-only grammar; malformed or uppercase correction digests
+refuse. The existing source-build identity already includes the complete source
+mapping, so correction assets belong there rather than in a parallel cache.
+
 The AWG consumer selects the existing transaction with `awg=True` in its own private state root. This profile admits at most 128 nodes for 32 current and 32 retiring configurations plus fixed runtime files. Executable source candidates are limited to the three declared AWG `/usr` paths and immutable go/tools commit paths, with an explicit 128 MiB bound. Other callers keep the 64-node, 1 MiB configuration and read-only asset rules. Consumer-specific retirement cleanup stays in the AWG adapter; it does not broaden the shared receipt contract.
 
 Authenticated REALITY acceptance clients copy the candidate's typed

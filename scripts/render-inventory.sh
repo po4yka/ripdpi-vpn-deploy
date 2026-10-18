@@ -406,6 +406,25 @@ for i in "${!host_pairs[@]}"; do
     echo "invalid ssh_port output for ${prov}:${env}: ${ssh_port}" >&2
     exit 1
   fi
+  nat_source_port_range=""
+  if [[ "$prov" == upcloud ]]; then
+    if ! nat_source_port_range="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -raw nat_source_port_range)"; then
+      echo "missing applied provider NAT source-port range for ${prov}:${env}; refresh Terraform outputs" >&2
+      exit 1
+    fi
+    if [[ -n "$nat_source_port_range" ]]; then
+      if ! [[ "$nat_source_port_range" =~ ^[1-9][0-9]{0,4}-[1-9][0-9]{0,4}$ ]]; then
+        echo "invalid provider NAT source-port range for ${prov}:${env}" >&2
+        exit 1
+      fi
+      nat_port_start="${nat_source_port_range%-*}"
+      nat_port_end="${nat_source_port_range#*-}"
+      if (( nat_port_start < 1024 || nat_port_end > 65535 || nat_port_start > nat_port_end || (nat_port_start <= ssh_port && ssh_port <= nat_port_end) )); then
+        echo "unsafe provider NAT source-port range for ${prov}:${env}" >&2
+        exit 1
+      fi
+    fi
+  fi
   # Keep the Terraform-owned public service endpoint independent from the
   # selected SSH transport; data-plane probes always use the public address.
   handoff="${tailnet_handoff_list[$i]:--}"
@@ -429,6 +448,9 @@ for i in "${!host_pairs[@]}"; do
   # quotes survive and Ansible receives a list instead of a malformed string.
   vpn_line+=" allowed_ssh_cidrs='${allowed_ssh_cidrs}'"
   vpn_line+=" terraform_public_listeners_b64=${public_listeners_b64}"
+  if [[ -n "$nat_source_port_range" ]]; then
+    vpn_line+=" terraform_nat_source_port_range=${nat_source_port_range}"
+  fi
   if [[ "$observability_enabled" == true ]]; then
     node_id="${prov}-${env}"
     capabilities="$(jq -nc --arg value "$capability" '$value | split("+") | sort')"

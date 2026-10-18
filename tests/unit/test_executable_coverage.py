@@ -1,9 +1,11 @@
 """Execute skip-policy regressions and guard mandatory native/Go lane wiring."""
 
-from pathlib import Path
+import os
+import re
 import shlex
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 import yaml
@@ -27,6 +29,7 @@ def test_required_lane_rejects_skips_and_failures(tmp_path, body, expected):
     result = subprocess.run(
         [sys.executable, "-m", "pytest", str(tmp_path), "--fail-on-skip", "-q"],
         cwd=tmp_path,
+        check=False,
         capture_output=True,
         text=True,
         timeout=30,
@@ -60,7 +63,8 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
     assert terraform["with"]["terraform_wrapper"] is False
     ech_step = next(step["run"] for step in native if "make test-hysteria-ech-runtime" in step.get("run", ""))
     assert "PATH=$PATH" in shlex.split(ech_step.replace("\\\n", ""))
-    command = shlex.split(native[-1]["run"].replace("\\\n", ""))
+    complete = next(step for step in native if step.get("name") == "Execute native tests with UID and GID capabilities")
+    command = shlex.split(complete["run"].replace("\\\n", ""))
     assert command[:2] == ["sudo", "env"]
     assert command[-5:] == ["make", "test-native-runtime", "test-xhttp-delivery-matrix", "test-topology-authenticated-probes", "test-awg-dualstack-runtime"]
     environment = {}
@@ -69,13 +73,13 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
         assert name not in environment, f"duplicate native environment override: {name}"
         environment[name] = value
     assert environment["PATH"] == (
-        "$GITHUB_WORKSPACE/.cache/native-transport-semantics/bin:$PATH"
+        "$NATIVE_RUNTIME_ROOT/.cache/native-transport-semantics/bin:$PATH"
     )
     assert environment["ALERTMANAGER_BIN"] == (
-        "$RUNNER_TEMP/alertmanager-0.28.1.linux-amd64/alertmanager"
+        "$NATIVE_RUNTIME_ROOT/.cache/native-alertmanager/alertmanager"
     )
     assert environment["NAIVE_NATIVE_BINARY"] == (
-        "$GITHUB_WORKSPACE/.cache/p2-native-caddy/caddy"
+        "$NATIVE_RUNTIME_ROOT/.cache/p2-native-caddy/caddy"
     )
     pins = yaml.safe_load((ROOT / "secrets/prod.secrets.example.yaml").read_text())
     for variable, source, pin in (
@@ -83,7 +87,7 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
         ("AWG_NATIVE_TOOLS_SOURCE", "amneziawg-tools", "amneziawg_tools_commit"),
     ):
         assert environment[variable] == (
-            f"$GITHUB_WORKSPACE/.cache/native-transport-semantics/{source}-{pins[pin]}"
+            f"$NATIVE_RUNTIME_ROOT/.cache/native-transport-semantics/{source}-{pins[pin]}"
         )
 
     early = next(step for step in native if step.get("name") ==
@@ -97,6 +101,84 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
     for variable in ("TRANSPORT_NATIVE_ISOLATED", "AWG_NATIVE_GO_SOURCE", "AWG_NATIVE_TOOLS_SOURCE", "PATH"):
         assert early_environment[variable] == environment[variable]
     assert "continue-on-error" not in early and "if" not in early
+
+
+def native_staging_steps():
+    steps = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]["native-runtime"]["steps"]
+    stage = next(step for step in steps if step.get("name") == "Stage trusted native runtime sources and artifacts")
+    cleanup = next(step for step in steps if step.get("name") == "Remove owned native runtime staging")
+    return steps, stage, cleanup
+
+
+def test_native_root_consumers_follow_owned_staging_and_always_cleanup():
+    steps, stage, cleanup = native_staging_steps()
+    builds = [index for index, step in enumerate(steps) if "make native-" in step.get("run", "")]
+    assert max(builds) < steps.index(stage)
+    consumers = steps[steps.index(stage) + 1:steps.index(cleanup)]
+    assert len(consumers) == 4
+    for step in consumers:
+        assert step["working-directory"] == "${{ env.NATIVE_RUNTIME_ROOT }}"
+        assert "$GITHUB_WORKSPACE" not in step["run"]
+    assert "sudo chown -hR 0:0" in stage["run"]
+    assert "always()" in cleanup["if"] and "env.NATIVE_RUNTIME_ROOT != ''" in cleanup["if"]
+
+
+@pytest.mark.parametrize("missing_artifact", [False, True])
+def test_actual_native_staging_preserves_sources_and_scopes_cleanup(tmp_path, missing_artifact):
+    _, stage_step, cleanup_step = native_staging_steps()
+    workspace, runner, owned = (tmp_path / name for name in ("workspace", "runner", "owned"))
+    for path in (workspace / ".cache", runner, owned):
+        path.mkdir(parents=True)
+    source = workspace / ".cache/binary"
+    source.write_bytes(b"reviewed fixture artifact")
+    source.chmod(0o755)
+    (workspace / ".cache/alias").symlink_to("binary")
+    foreign = tmp_path / "foreign"
+    foreign.write_bytes(b"preserve unrelated authority")
+    (workspace / "external-link").symlink_to(foreign)
+    previous = [(path.stat().st_ino, path.stat().st_ctime_ns, path.read_bytes()) for path in (source, foreign)]
+    if not missing_artifact:
+        alertmanager = runner / "alertmanager-0.28.1.linux-amd64"
+        alertmanager.mkdir()
+        (alertmanager / "alertmanager").write_bytes(b"verified fixture download")
+    environment_file = tmp_path / "github-env"
+    environment_file.touch()
+    environment = {**os.environ, "GITHUB_WORKSPACE": str(workspace), "RUNNER_TEMP": str(runner),
+                   "GITHUB_ENV": str(environment_file)}
+    prefix = owned / "ripdpi-native-runtime"
+    # Execute the workflow shell. Only the privileged location, UID/GID and
+    # sudo boundary change; cp, symlinks, ownership, traps and rm stay real.
+    sudo = f'''sudo() {{
+      if [[ "$1" == chown ]]; then
+        [[ "$2" == -hR && "$3" == 0:0 ]] || return 91
+        command chown -hR {os.geteuid()}:{os.getegid()} "$4"
+      else
+        command "$@"
+      fi
+    }}
+'''
+    stage_script = stage_step["run"].replace("/opt/ripdpi-native-runtime.XXXXXXXX", shlex.quote(str(prefix) + ".XXXXXXXX"))
+    result = subprocess.run(["bash", "-c", sudo + stage_script], env=environment, capture_output=True, text=True, timeout=20, check=False)
+    assert (result.returncode != 0) == missing_artifact, result.stdout + result.stderr
+    assert previous == [(path.stat().st_ino, path.stat().st_ctime_ns, path.read_bytes()) for path in (source, foreign)]
+    if missing_artifact:
+        assert not list(owned.iterdir()) and environment_file.read_text() == ""
+        return
+    stage = Path(environment_file.read_text().strip().split("=", 1)[1])
+    assert stage.parent == owned and stage.stat().st_mode & 0o777 == 0o755
+    assert (stage / ".cache/binary").read_bytes() == source.read_bytes()
+    assert (stage / ".cache/binary").stat().st_ino != source.stat().st_ino
+    assert os.readlink(stage / ".cache/alias") == "binary"
+    assert os.readlink(stage / "external-link") == str(foreign)
+    assert (stage / ".cache/native-alertmanager/alertmanager").read_bytes() == b"verified fixture download"
+    cleanup_script = cleanup_step["run"].replace("^/opt/ripdpi-native-runtime\\.", "^" + re.escape(str(prefix)) + "\\.")
+    for target in (foreign, stage / "..", owned / "ripdpi-native-runtime.ABC12345"):
+        if target.name == "ripdpi-native-runtime.ABC12345":
+            target.symlink_to(foreign)
+        refused = subprocess.run(["bash", "-c", sudo + cleanup_script], env={**environment, "NATIVE_RUNTIME_ROOT": str(target)}, capture_output=True, timeout=20, check=False)
+        assert refused.returncode != 0 and stage.exists() and foreign.exists()
+    removed = subprocess.run(["bash", "-c", sudo + cleanup_script], env={**environment, "NATIVE_RUNTIME_ROOT": str(stage)}, capture_output=True, timeout=20, check=False)
+    assert removed.returncode == 0 and not stage.exists() and foreign.exists()
 
 
 def test_local_and_ci_partition_native_tests_without_silent_skips():
@@ -234,6 +316,7 @@ def test_make_test_unit_covers_both_suites_without_nested_make_noise(tmp_path):
     result = subprocess.run(
         ["make", "-f", str(ROOT / "Makefile"), "test-unit"],
         cwd=tmp_path,
+        check=False,
         env=env,
         capture_output=True,
         text=True,

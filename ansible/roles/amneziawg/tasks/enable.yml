@@ -41,6 +41,31 @@
       not clone moving branches such as main, master, or HEAD, and it no longer
       accepts tag-only pinning for family deploys.
 
+- name: Resolve the reviewed AmneziaWG source correction on the controller
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - -Es
+      - "{{ role_path }}/files/awg_source_correction.py"
+      - describe
+      - --commit
+      - "{{ amneziawg_go_commit }}"
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+  register: _awg_correction_description
+
+- name: Select exact AmneziaWG source correction identity
+  ansible.builtin.set_fact:
+    _awg_source_correction: "{{ _awg_correction_description.stdout | from_json }}"
+
+- name: Select correction-qualified AmneziaWG acquisition paths
+  ansible.builtin.set_fact:
+    _awg_go_source_dir: "/opt/src/amneziawg-go-{{ amneziawg_go_commit }}-{{ _awg_source_correction.digest }}"
+    _awg_go_release_dir: "/opt/amneziawg/releases/go-{{ amneziawg_go_commit }}-{{ _awg_source_correction.digest }}"
+    _awg_correction_dir: "/usr/local/libexec/ripdpi/awg-source-{{ _awg_source_correction.digest }}"
+
 - name: Prepare and recover complete retained AmneziaWG runtime
   ansible.builtin.import_tasks: consumer-prepare.yml
 
@@ -66,7 +91,7 @@
 - name: Clone amneziawg-go
   ansible.builtin.git:
     repo: https://github.com/amnezia-vpn/amneziawg-go
-    dest: "/opt/src/amneziawg-go-{{ amneziawg_go_commit }}"
+    dest: "{{ _awg_go_source_dir }}"
     version: "{{ amneziawg_go_version }}"
     update: false
   when: not ansible_check_mode
@@ -74,7 +99,7 @@
 - name: Resolve the amneziawg-go checked-out commit
   ansible.builtin.command:
     cmd: git rev-parse HEAD
-    chdir: "/opt/src/amneziawg-go-{{ amneziawg_go_commit }}"
+    chdir: "{{ _awg_go_source_dir }}"
   register: _awg_go_head
   check_mode: false
   changed_when: false
@@ -128,24 +153,53 @@
           repository: https://github.com/amnezia-vpn/amneziawg-go
           ref: "{{ amneziawg_go_version }}"
           commit: "{{ amneziawg_go_commit }}"
+          patches: "{{ _awg_source_correction }}"
         steps:
-          - argv: [/usr/bin/make]
-            chdir: "/opt/src/amneziawg-go-{{ amneziawg_go_commit }}"
+          - argv:
+              - /usr/bin/python3
+              - -Es
+              - "{{ _awg_correction_dir }}/awg_source_correction.py"
+              - apply
+              - --commit
+              - "{{ amneziawg_go_commit }}"
+              - --identity-digest
+              - "{{ _awg_source_correction.digest }}"
+              - --source
+              - "{{ _awg_go_source_dir }}"
+            chdir: "{{ _awg_go_source_dir }}"
+            environment: {}
+            timeout_seconds: 60
+          - argv: [/usr/bin/make, -B]
+            chdir: "{{ _awg_go_source_dir }}"
             environment: {}
             timeout_seconds: 1800
+          - argv:
+              - /usr/bin/python3
+              - -Es
+              - "{{ _awg_correction_dir }}/awg_source_correction.py"
+              - verify
+              - --commit
+              - "{{ amneziawg_go_commit }}"
+              - --identity-digest
+              - "{{ _awg_source_correction.digest }}"
+              - --source
+              - "{{ _awg_go_source_dir }}"
+            chdir: "{{ _awg_go_source_dir }}"
+            environment: {}
+            timeout_seconds: 60
           - argv:
               - /usr/bin/install
               - -m
               - "0755"
-              - "/opt/src/amneziawg-go-{{ amneziawg_go_commit }}/amneziawg-go"
+              - "{{ _awg_go_source_dir }}/amneziawg-go"
               - /var/lib/ripdpi/runtime-build-staging/amneziawg-go/amneziawg-go
-            chdir: "/opt/src/amneziawg-go-{{ amneziawg_go_commit }}"
+            chdir: "{{ _awg_go_source_dir }}"
             environment: {}
             timeout_seconds: 60
         outputs:
           - name: installed
             staged_path: /var/lib/ripdpi/runtime-build-staging/amneziawg-go/amneziawg-go
-            path: "/opt/amneziawg/releases/go-{{ amneziawg_go_commit }}/amneziawg-go"
+            path: "{{ _awg_go_release_dir }}/amneziawg-go"
       - schema_version: 1
         name: amneziawg-tools
         source:
@@ -177,7 +231,8 @@
   ansible.builtin.import_tasks: "{{ role_path }}/../runtime-release/tasks/consumer-authority.yml"
   vars:
     consumer_guard_directories:
-      - "/opt/amneziawg/releases/go-{{ amneziawg_go_commit }}"
+      - "{{ _awg_correction_dir }}"
+      - "{{ _awg_go_release_dir }}"
       - "/opt/amneziawg/releases/tools-{{ amneziawg_tools_commit }}"
 
 - name: Prepare immutable AmneziaWG acquisition directories
@@ -188,8 +243,21 @@
     group: root
     mode: "0755"
   loop:
-    - "/opt/amneziawg/releases/go-{{ amneziawg_go_commit }}"
+    - "{{ _awg_correction_dir }}"
+    - "{{ _awg_go_release_dir }}"
     - "/opt/amneziawg/releases/tools-{{ amneziawg_tools_commit }}"
+
+- name: Install the exact AmneziaWG source correction assets
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ _awg_correction_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - awg_source_correction.py
+    - awg-source-correction.json
+    - awg-udp-checksum-zero.patch.json
 
 - name: Converge pinned AmneziaWG source builds
   ansible.builtin.include_role:
