@@ -29,6 +29,8 @@ shares without a new upload and unchanged repeats. Molecule separately checks
 nginx-group read access, unrelated-UID refusal and mirror true-to-false execution
 retirement with accepted payload and replay authority retained. RIPDPI hopping
 refuses before output; official sing-box keeps supported hopping.
+Expression-only Jinja test environments enable autoescape explicitly; their
+compiled predicates keep the same boolean results.
 
 DHCPv6 portable tests exercise actual admission and both rendered egress policies.
 The native hopping suite additionally sends real UDP across owned network

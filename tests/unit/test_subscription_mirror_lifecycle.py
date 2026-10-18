@@ -8,7 +8,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 ROLE = ROOT / 'ansible/roles/subscription-host'
 TASKS = yaml.safe_load((ROLE / 'tasks/mirror-disable.yml').read_text())
-ENV = Environment(undefined=StrictUndefined)
+ENV = Environment(undefined=StrictUndefined, autoescape=True)
 
 
 def evaluate(expression, values):
