@@ -2,7 +2,7 @@
 id: SEC-1792306834441683
 title: Repair confirmed transport audit boundaries
 kind: bug
-status: doing
+status: review
 area: security
 priority: high
 risk: high
