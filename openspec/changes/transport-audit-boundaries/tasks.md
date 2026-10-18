@@ -14,7 +14,7 @@ Repair each confirmed audit failure and merge the reviewed source with regressio
 
 ## Execution
 
-- [ ] SEC-1792306951999782 Repair hopping strict egress and split-hop failure boundaries with regressions #bug !high @item:SEC-1792306834441683
+- [x] SEC-1792306951999782 Repair hopping strict egress and split-hop failure boundaries with regressions #bug !high @item:SEC-1792306834441683
 - [x] SEC-1792306952664722 Repair Hysteria client metadata bandwidth hints and qualified documentation #bug !high @item:SEC-1792306834441683
 - [x] SEC-1792306953297349 Repair AWG wire admission and WARP key format with operator notes #bug !high @item:SEC-1792306834441683
 - [x] SEC-1792306953944270 Validate DNS-Morph before mutation and require explicit echo mode #bug !high @item:SEC-1792306834441683
