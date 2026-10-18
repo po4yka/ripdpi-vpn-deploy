@@ -120,3 +120,12 @@ The recoverable SSH transaction MUST consistently admit a supported hybrid KEX w
 
 - **WHEN** the managed OpenSSH supports the baseline hybrid
 - **THEN** the effective policy offers it and recovery remains available
+
+### Requirement: REQ-AUDIT-INVENTORY-ENCODING — Portable typed inventory
+
+Inventory rendering MUST preserve one complete typed host line when its base64 encoder uses CRLF. Bootstrap parsing MUST retain its existing host and lifecycle checks.
+
+#### Scenario: CRLF encoder at the bootstrap boundary
+
+- **WHEN** a host record contains listener or topology data from a CRLF-producing base64 encoder
+- **THEN** the renderer removes transport line endings and bootstrap reads the original typed label from one host line

@@ -22,6 +22,9 @@ bytes, contextual effective policy and idempotency. A successful parser test
 does not prove a live SSH or hardware migration. Subscription tests race real
 HTTP readers against filesystem publication and cover fsync, rename, signals,
 legacy input, mirror generations and private namespace admission.
+Legacy HTTP fixtures use the role's exact 0700 route modes and distinguish
+expiry parsing failures from unsafe file authority. Inventory cases send LF and
+CRLF encoder output through the real renderer and strict host parser.
 
 Protocol audit regressions use schema-valid synthetic inputs and actual
 controller preflight in ordinary and check mode. They prove identity/address

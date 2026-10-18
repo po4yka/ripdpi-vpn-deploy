@@ -17,11 +17,7 @@ from pathlib import Path
 import yaml
 from client_delivery_identity import authority, digest
 from client_payload import ROOT, command, materialize, options, paths, validate_options
-from encrypted_client_document import (
-    CommittedPublication,
-    ExternalPublicationUncertain,
-    operate,
-)
+from encrypted_client_document import CommittedPublication, ExternalPublicationUncertain, operate
 
 
 def issue(args):

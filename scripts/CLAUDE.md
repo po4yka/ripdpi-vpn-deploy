@@ -16,6 +16,11 @@ the installed publisher-v1 readiness protocol before external publication. One
 service-owned atomic envelope binds exact payload bytes and expiry under the
 existing lock; a lost acknowledgement remains an uncertain external outcome.
 
+Inventory publication removes CR and LF from wrapped base64 before it constructs
+INI fields. Strict host selection still rejects split records. Renderer tests
+cover both line endings and verify typed listener and observability data through
+the strict parser.
+
 Blue-green treats each Make phase as a separate ordered command with inherited
 Make controls removed. Dry-run accepts only 0 or 1 and resolves before private
 inputs. CI commands use the retained bootstrap session supervisor; keep private

@@ -5,7 +5,7 @@ The audit found thirteen source defects. The current checkout is based on integr
 ## Goals / Non-Goals
 
 - Goal: close every confirmed finding with a regression and an explicit requirement-to-evidence mapping.
-- Non-goal: optional upstream version upgrades, broader monitoring features, peer repository changes or real infrastructure operations.
+- Non-goal: optional upstream version upgrades, broader monitoring features, peer production changes or real infrastructure operations.
 
 ## Decisions
 
@@ -15,6 +15,9 @@ The audit found thirteen source defects. The current checkout is based on integr
 - Authenticated HTTP rejects redirects. Notification URLs require HTTPS. Tests may use an explicit injected transport; production admission is unchanged by tests.
 - Subscription delivery uses one versioned atomic envelope containing exact payload bytes and metadata, published by the installed service CLI. Readers retain legacy payload/sidecar support; current issuers require the installed publisher and fail safely on older hosts. The atomic document is preferred over legacy files. Mirror generations preserve this representation. Publisher admission retains service-user ownership, no-follow checks, fixed names and bounded input.
 - Inherit the two Hysteria repairs and their regressions from integrated PR #328. Preserve the schema wire shape. Add semantic bundle checks with categorical diagnostics. Refuse unsupported RIPDPI Hysteria port hopping rather than silently stripping fields.
+- The contract comparison includes both JSON examples. Synchronize their four synthetic key literals through `po4yka/RIPDPI#TST-1792309202117414` and merge the client fixture copy first. Client CI has no reverse main-branch comparison, so this sequence has no circular dependency.
+- Keep malformed legacy expiry metadata in the existing expiry-unavailable audit category. Unsafe route and file authority stays state-unavailable; neither failure serves the payload. Test route modes match the role's exact 0700 policy.
+- Strip both CR and LF from inventory base64 encoding. A CRLF encoder must not split the typed build-environment label into multiple host lines. Parser admission remains strict.
 - Alert environment uses the same configured authority as finite-silence. Telegram parses bounded JSON flood errors and refuses premature retry when wait exceeds the request budget.
 - SSH adds the supported OpenSSH 9.0 hybrid with classical fallback and removes finite-field DH. Renderer, ownership controller, source bundle and effective verifier must change together. No live convergence is performed.
 

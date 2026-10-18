@@ -768,3 +768,57 @@ def test_tailnet_handoff_binding_digest_mismatch_preserves_inventory(tmp_path):
     assert result.returncode != 0
     assert "confirmed Tailnet handoff" in result.stderr
     assert (root / "ansible/inventory/generated.ini").read_text() == "last-good\n"
+
+
+@pytest.mark.parametrize('line_ending', ['lf', 'crlf'])
+@pytest.mark.parametrize('observability', [False, True])
+def test_wrapped_base64_keeps_one_typed_host_line(tmp_path, line_ending, observability):
+    """Valid wrapped encoder output must not split a physical INI host record."""
+    import base64
+
+    import fleet_inspection
+
+    if observability:
+        spec = importlib.util.spec_from_file_location(
+            'observability_inventory_helpers', REPO_ROOT / 'tests/unit/test_observability_topology.py',
+        )
+        helpers = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(helpers)
+        root, environment = helpers._inventory_repo(tmp_path)
+    else:
+        root, environment = _isolated_inventory_repo(tmp_path)
+    encoder = tmp_path / 'bin/base64'
+    encoder.write_text(
+        '#!/usr/bin/env python3\n'
+        'import base64, sys\n'
+        'encoded = base64.encodebytes(sys.stdin.buffer.read())\n'
+        + ('encoded = encoded.replace(b"\\n", b"\\r\\n")\n' if line_ending == 'crlf' else '')
+        + 'sys.stdout.buffer.write(encoded)\n'
+    )
+    encoder.chmod(0o700)
+    key = tmp_path / 'identity'
+    subprocess.run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', str(key)],
+                   check=True, capture_output=True, timeout=10)
+    environment['ANSIBLE_SSH_PRIVATE_KEY_FILE'] = str(key)
+    result = subprocess.run(['bash', str(root / 'scripts/render-inventory.sh')],
+                            env=environment, capture_output=True, text=True, timeout=20, check=False)
+    assert result.returncode == 0, result.stderr
+    generated = root / 'ansible/inventory/generated.ini'
+    raw = generated.read_bytes()
+    fixture = json.loads((FIXTURES / 'tf-output-sample.json').read_text())
+    alias = 'upcloud-test' if observability else fixture['server_hostname']['value']
+    assert b'\r' not in raw
+    assert len([line for line in raw.splitlines() if line.startswith(alias.encode() + b' ')]) == 1
+    host, = fleet_inspection.select_hosts(generated, [alias], include_variables=True)
+    variables = host['variables']
+    decoded = base64.b64decode(variables['terraform_public_listeners_b64'], validate=True)
+    expected = ([{'name': 'xray', 'protocol': 'tcp', 'port': 443, 'port_range': None}]
+                if observability else fixture['public_listeners']['value'])
+    assert json.loads(decoded) == expected
+    if observability:
+        topology = json.loads(base64.b64decode(variables['observability_topology_b64'], validate=True))
+        assert topology['schema_version'] == 2
+        assert topology['source_revision'] == '1' * 40
+        assert [node['node_id'] for node in topology['nodes']] == ['hetzner-test', 'upcloud-test', 'vultr-test']
+    assert json.loads(variables['vpn_build_environment']) == 'prod'
+    assert json.loads(variables['allowed_ssh_cidrs']) == ['203.0.113.0/24']

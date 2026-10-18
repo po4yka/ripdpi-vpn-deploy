@@ -13,12 +13,13 @@ spec_mode: required
 openspec_change: security-delivery-audit
 created: 2026-10-18
 updated: 2026-10-18
-related_tasks: []
+related_tasks:
+  - po4yka/RIPDPI#TST-1792309202117414
 ---
 
 ## Goal
 
-Repair the thirteen confirmed security, recovery, delivery and alert audit findings without external infrastructure mutation.
+Repair the thirteen confirmed security, recovery, delivery and alert audit findings and verified integration failures without external infrastructure mutation.
 
 ## Acceptance criteria
 

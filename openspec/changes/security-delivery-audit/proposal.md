@@ -13,6 +13,7 @@ Thirteen confirmed audit findings affect recovery, administrative encryption, au
 - Refuse credential redirects, incoherent bundle inputs and unsupported RIPDPI port hopping; retain every selected Hysteria metadata entry.
 - Align alert environment identity and Telegram flood-control handling.
 - Admit supported hybrid SSH key exchange through the existing recovery transaction.
+- Keep legacy expiry audit categories and private route fixtures consistent with the production role. Normalize CRLF encoder output before publishing a typed inventory host line.
 - BREAKING: previously accepted invalid bundles, non-HTTPS notification origins and unsupported recipient profiles are refused. Valid deployed profile structure remains compatible.
 
 ## Capabilities
@@ -28,4 +29,5 @@ Thirteen confirmed audit findings affect recovery, administrative encryption, au
 ## Impact
 
 - Ansible baseline, subscription-host and observability control-plane roles; operator scripts; bundle semantic validation; recovery documentation and tests.
-- No new production dependency, provider mutation, secret material, live rollout or changes to the peer client repository.
+- The paired client task `po4yka/RIPDPI#TST-1792309202117414` vendors only the two synthetic JSON examples. Schema, fingerprints and client production source do not change. Merge that copy before repeating this repository's contract byte comparison.
+- No new production dependency, provider mutation, secret material or live rollout.

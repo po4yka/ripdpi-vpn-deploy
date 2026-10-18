@@ -342,9 +342,12 @@ def _delivery(route_dir, token_hash, *, document=True):
             content = _read_bounded(directory, token_hash + ".meta", 65536, private=False)
         except FileNotFoundError:
             return payload, False
-        metadata = json.loads(content, object_pairs_hook=_unique_authority_object)
+        try:
+            metadata = json.loads(content, object_pairs_hook=_unique_authority_object)
+        except (ValueError, RecursionError):
+            return payload, None
         if not isinstance(metadata, dict):
-            raise ValueError("invalid expiry metadata")
+            return payload, None
         expires = metadata.get("expires")
         return payload, False if expires is None else _expiry_due(expires)
     finally:

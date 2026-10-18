@@ -37,3 +37,4 @@ artifact_evidence: null
 | REQ-AUDIT-ALERT-ENVIRONMENT | SEC-1792306996420715 | Focused regression, role rendering and protected source gate | pending |
 | REQ-AUDIT-TELEGRAM-FLOOD | SEC-1792306996420715 | Focused regression, role rendering and protected source gate | pending |
 | REQ-AUDIT-SSH-HYBRID | SEC-1792306997783845 | Focused regression, role rendering and protected source gate | pending |
+| REQ-AUDIT-INVENTORY-ENCODING | SEC-1792309914259442 | Real CRLF encoder boundary, inventory renderer and bootstrap regressions | pending |
