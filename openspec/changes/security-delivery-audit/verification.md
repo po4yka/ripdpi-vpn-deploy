@@ -38,13 +38,25 @@ artifact_evidence: null
 | REQ-AUDIT-TELEGRAM-FLOOD | SEC-1792306996420715 | Focused regression, role rendering and protected source gate | pending |
 | REQ-AUDIT-SSH-HYBRID | SEC-1792306997783845 | Focused regression, role rendering and protected source gate | pending |
 | REQ-AUDIT-INVENTORY-ENCODING | SEC-1792309914259442 | Real CRLF encoder boundary, inventory renderer and bootstrap regressions | pending |
+| REQ-AUDIT-WORKSPACE-DISCOVERY | SEC-1792315298976050 | Large real Git metadata, byte-exact paths, empty EOF, FIFO deadline and active-filter refusal | pending |
 
 ## Workspace discovery diagnostics
 
-An earlier local workspace-discovery process blocked in Python's stdin writer.
-The cause was not established. The unchanged helper then completed two large
-synthetic Git requests, one real workspace request and twelve canonical
-`make workspace-status` calls. The canonical calls took 0.233 to 0.628 seconds.
-`python3 -m pytest -q tests/unit/test_workspace_status.py` passed all 33 tests.
-These observations do not prove a repair of the earlier transient failure.
-The Git helper and its authority guards remain unchanged.
+Initial large-input probes and all 33 existing tests did not reproduce the
+intermittent failure. A later full-gate run captured both Python and Git blocked
+in pipe writes for more than two minutes despite the 30-second query timeout.
+The imported dependency repair uses private seekable metadata input. Its
+regressions retain the timeout, exact path bytes, empty EOF and content-filter
+refusal. The complete module passed 38 tests; independent review repeated all
+38 tests and verified temporary-file closure on success, failure and timeout.
+
+## Shared Telegram flood deadline
+
+Two real local HTTP webhooks previously made two upstream requests 0.107 seconds
+apart after `retry_after=60`. The complete repaired delivery module passed all
+95 tests, including the pinned Alertmanager 0.28.1 timeout case. Independent
+review repeated all 95 tests with selected skips forbidden. A separate real-clock
+HTTP probe sent nine sequential/concurrent alert and canary requests: exactly
+one upstream POST occurred, all webhooks failed promptly, about 60 seconds of
+cooldown remained and no canary freshness was published. The full source gate
+and exact-head CI remain required for final acceptance.

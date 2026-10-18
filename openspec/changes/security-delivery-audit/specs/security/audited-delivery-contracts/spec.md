@@ -105,12 +105,17 @@ Expected-target alerts MUST use the same configured environment authority as the
 
 ### Requirement: REQ-AUDIT-TELEGRAM-FLOOD — Bounded flood control
 
-Telegram delivery MUST honor the official JSON retry_after without an early retry or unbounded webhook work.
+Telegram delivery MUST honor the official JSON retry_after across requests without an early retry or unbounded webhook work. All delivery paths MUST share a thread-safe monotonic deadline.
 
 #### Scenario: Bounded flood control failure boundary
 
 - **WHEN** flood wait exceeds the current request budget
-- **THEN** delivery returns a retryable failure or retains a bounded cooldown instead of retrying early
+- **THEN** delivery returns a retryable failure promptly and retains the full cooldown for later webhooks and canary send/edit operations
+
+#### Scenario: Repeated and concurrent webhook requests
+
+- **WHEN** a later or concurrent request starts after a Telegram flood deadline is learned
+- **THEN** it makes no upstream request before that deadline and retains the existing work and attempt bounds
 
 ### Requirement: REQ-AUDIT-SSH-HYBRID — Supported SSH key agreement
 
@@ -129,3 +134,12 @@ Inventory rendering MUST preserve one complete typed host line when its base64 e
 
 - **WHEN** a host record contains listener or topology data from a CRLF-producing base64 encoder
 - **THEN** the renderer removes transport line endings and bootstrap reads the original typed label from one host line
+
+### Requirement: REQ-AUDIT-WORKSPACE-DISCOVERY — Bounded checkout metadata
+
+Checkout discovery MUST avoid a duplex pipe deadlock for large Git metadata input. It MUST retain byte-exact paths, explicit empty-input EOF, the existing query timeout and active content-filter refusal.
+
+#### Scenario: Large metadata and blocked Git
+
+- **WHEN** metadata exceeds both pipe capacities or Git blocks on an owned attributes input
+- **THEN** discovery completes without changing the index or terminates at its query deadline, and never executes an active content filter

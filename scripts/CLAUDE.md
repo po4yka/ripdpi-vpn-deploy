@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+Checkout discovery passes Git metadata input through a private temporary file.
+Large NUL-delimited path lists can otherwise block both stdin and captured
+output before the query timeout applies. Preserve UTF-8 surrogateescape bytes,
+the empty-input EOF, the deadline and all active-content-filter refusals.
+
 The audited Bearer clients share authenticated_http.py and refuse every redirect.
 Protocol notifications require an HTTPS origin without userinfo, path, query or
 fragment. Local HTTP tests inject transport after origin admission; production

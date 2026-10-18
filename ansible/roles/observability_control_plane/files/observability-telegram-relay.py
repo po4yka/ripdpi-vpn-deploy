@@ -49,6 +49,28 @@ class DeliveryFailure(RuntimeError):
     """Telegram delivery failed with a categorical, non-secret reason."""
 
 
+class FloodControl:
+    """One monotonic deadline for every request to this process's bot."""
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic):
+        self.clock = clock
+        self.lock = threading.Lock()
+        self.deadline = 0.0
+
+    def defer(self, delay: int) -> None:
+        # Called with the attempt lock held, before another POST can start.
+        try:
+            deadline = self.clock() + delay
+        except OverflowError as exc:
+            raise DeliveryFailure("upstream-flood-response") from exc
+        if not math.isfinite(deadline):
+            raise DeliveryFailure("upstream-flood-response")
+        self.deadline = max(self.deadline, deadline)
+
+
+_FLOOD_CONTROL = FloodControl()
+
+
 class _NoRedirect(request.HTTPRedirectHandler):
     """Keep the Telegram request body on the one validated API origin."""
 
@@ -238,9 +260,7 @@ def _retry_after(response: error.HTTPError) -> int:
         if re.fullmatch(r"[0-9]{1,4}", header) is None:
             raise DeliveryFailure("upstream-flood-response")
         delay = int(header)
-    # Two five-second requests plus at most five seconds of waiting fit the
-    # fixed twenty-second webhook budget. Longer waits belong to a later call.
-    if type(delay) is not int or not 0 <= delay <= MAX_RETRY_AFTER_SECONDS:
+    if type(delay) is not int or delay < 0:
         raise DeliveryFailure("upstream-flood-wait")
     return delay
 
@@ -285,25 +305,40 @@ def deliver(
     for attempt in range(RETRY_ATTEMPTS):
         delay = 1
         retryable = False
+        # A second webhook must not wait behind an upstream request or pass a
+        # newly learned deadline. The relay has one configured bot authority.
+        if not _FLOOD_CONTROL.lock.acquire(blocking=False):
+            raise DeliveryFailure("upstream-busy")
         try:
-            with open_request(outbound, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-                raw = response.read(MAX_RESPONSE_BYTES + 1)
-                if response.status != 200 or len(raw) > MAX_RESPONSE_BYTES:
-                    raise DeliveryFailure("upstream-response")
-                parsed = json.loads(raw)
-                if not isinstance(parsed, dict) or parsed.get("ok") is not True:
-                    raise DeliveryFailure("upstream-response")
-                return parsed
-        except error.HTTPError as exc:
+            if _FLOOD_CONTROL.deadline > _FLOOD_CONTROL.clock():
+                raise DeliveryFailure("upstream-flood-wait")
             try:
-                retryable = exc.code == 429 or 500 <= exc.code <= 599
-                delay = _retry_after(exc) if exc.code == 429 else 1
-            finally:
-                exc.close()
-        except (TimeoutError, OSError):
-            retryable = True
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise DeliveryFailure("upstream-response") from exc
+                with open_request(outbound, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+                    raw = response.read(MAX_RESPONSE_BYTES + 1)
+                    if response.status != 200 or len(raw) > MAX_RESPONSE_BYTES:
+                        raise DeliveryFailure("upstream-response")
+                    parsed = json.loads(raw)
+                    if not isinstance(parsed, dict) or parsed.get("ok") is not True:
+                        raise DeliveryFailure("upstream-response")
+                    return parsed
+            except error.HTTPError as exc:
+                try:
+                    retryable = exc.code == 429 or 500 <= exc.code <= 599
+                    if exc.code == 429:
+                        delay = _retry_after(exc)
+                        _FLOOD_CONTROL.defer(delay)
+                finally:
+                    exc.close()
+            except (TimeoutError, OSError):
+                retryable = True
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise DeliveryFailure("upstream-response") from exc
+        finally:
+            _FLOOD_CONTROL.lock.release()
+        # Keep full flood deadlines between calls; only short waits fit the
+        # two-attempt webhook budget. Sleep without holding the attempt lock.
+        if delay > MAX_RETRY_AFTER_SECONDS:
+            raise DeliveryFailure("upstream-flood-wait")
         if not retryable or attempt + 1 == RETRY_ATTEMPTS:
             raise DeliveryFailure("upstream-failure")
         sleeper(delay)

@@ -14,6 +14,7 @@ Thirteen confirmed audit findings affect recovery, administrative encryption, au
 - Align alert environment identity and Telegram flood-control handling.
 - Admit supported hybrid SSH key exchange through the existing recovery transaction.
 - Keep legacy expiry audit categories and private route fixtures consistent with the production role. Normalize CRLF encoder output before publishing a typed inventory host line.
+- Keep checkout discovery bounded when Git metadata exceeds both pipe buffers. Preserve filter refusal and byte-exact path handling.
 - BREAKING: previously accepted invalid bundles, non-HTTPS notification origins and unsupported recipient profiles are refused. Valid deployed profile structure remains compatible.
 
 ## Capabilities

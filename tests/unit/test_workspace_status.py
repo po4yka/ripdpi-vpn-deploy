@@ -9,6 +9,7 @@ import shutil
 import shlex
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -127,6 +128,76 @@ def test_unused_content_filter_does_not_block_discovery(repo):
     result = run(repo, "--json")
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["changes"] == {"staged": 0, "unstaged": 0, "untracked": 0}
+
+
+def _workspace_module():
+    spec = importlib.util.spec_from_file_location("workspace_metadata_input", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _metadata_paths():
+    # More than pipe capacity in each direction, including undecodable bytes,
+    # line and field separators that must remain inside each NUL-framed path.
+    return [f"metadata-{index:05d}-" + "p" * 96 + "-\udcff\n\t name" for index in range(8192)]
+
+
+def test_large_git_metadata_duplex_preserves_every_path_byte(repo):
+    module = _workspace_module()
+    paths = _metadata_paths()
+    metadata = "".join(path + "\0" for path in paths)
+    before = (repo / ".git/index").read_bytes()
+    result = module.git(repo, "check-attr", "--stdin", "-z", "filter", input=metadata)
+    assert result.stdout == "".join(path + "\0filter\0unspecified\0" for path in paths)
+    assert result.stderr == ""
+    assert (repo / ".git/index").read_bytes() == before
+
+
+@pytest.mark.parametrize("driver_type", ["clean", "process"])
+def test_large_index_keeps_active_filter_refusal_without_execution(repo, tmp_path, driver_type):
+    module = _workspace_module()
+    blob = git(repo, "hash-object", "tracked.txt")
+    entries = "".join(f"100644 {blob}\t{path}\0" for path in _metadata_paths())
+    subprocess.run(["git", "-C", str(repo), "update-index", "-z", "--index-info"],
+                   input=entries.encode("utf-8", "surrogateescape"), capture_output=True, check=True, timeout=10)
+    marker = tmp_path / "filter-effect"
+    hook = tmp_path / "filter.sh"
+    hook.write_text(f"#!/bin/sh\ntouch {shlex.quote(str(marker))}\ncat\n")
+    git(repo, "config", f"filter.recording.{driver_type}", f"sh {shlex.quote(str(hook))}")
+    before = (repo / ".git/index").read_bytes()
+    # The configured driver is unused until its attribute is present.
+    module.reject_content_filters(repo)
+    (repo / ".git/info/attributes").write_text("* filter=recording\n")
+    with pytest.raises(ValueError, match="active content filter requires external execution"):
+        module.reject_content_filters(repo)
+    assert not marker.exists()
+    assert (repo / ".git/index").read_bytes() == before
+
+
+def test_empty_metadata_input_delivers_eof_to_real_git(repo):
+    result = _workspace_module().git(repo, "check-attr", "--stdin", "-z", "filter", input="")
+    assert result.stdout == result.stderr == ""
+
+
+def test_blocked_git_metadata_query_keeps_its_deadline(repo, monkeypatch):
+    module = _workspace_module()
+    # Git itself blocks reading this owned attributes FIFO; there is no shell
+    # or descendant whose inherited output descriptors can hide the timeout.
+    os.mkfifo(repo / ".git/info/attributes", 0o600)
+    original = subprocess.run
+
+    def scaled_query(argv, *args, **kwargs):
+        assert kwargs["timeout"] == 30
+        kwargs["timeout"] = 0.2
+        return original(argv, *args, **kwargs)
+
+    monkeypatch.setattr(module.subprocess, "run", scaled_query)
+    started = time.monotonic()
+    with pytest.raises(subprocess.TimeoutExpired):
+        module.git(repo, "check-attr", "--stdin", "-z", "filter",
+                   input="".join(path + "\0" for path in _metadata_paths()))
+    assert time.monotonic() - started < 3
 
 
 def test_submodule_filter_cannot_execute_during_discovery(repo, tmp_path):

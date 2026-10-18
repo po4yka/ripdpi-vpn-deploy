@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from email.message import Message
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
@@ -855,6 +856,12 @@ def test_relay_retries_only_transient_failures_with_bounded_delay(
     relay = _relay()
     attempts: list[object] = [first, _Response(200, b'{"ok":true}')]
     sleeps: list[int] = []
+    clock = [1000.0]
+    relay._FLOOD_CONTROL = relay.FloodControl(lambda: clock[0])
+
+    def sleeper(delay):
+        sleeps.append(delay)
+        clock[0] += delay
 
     def opener(outbound, timeout):  # type: ignore[no-untyped-def]
         assert outbound.full_url.startswith("https://api.telegram.org/bot")
@@ -871,14 +878,14 @@ def test_relay_retries_only_transient_failures_with_bounded_delay(
         topic_id=42,
         message="bounded",
         opener=opener,
-        sleeper=sleeps.append,
+        sleeper=sleeper,
     )
 
     assert attempts == []
     assert sleeps == [expected_sleep]
 
 
-@pytest.mark.parametrize("delay", [6, 30, 3600, -1, True, "3"])
+@pytest.mark.parametrize("delay", [6, 30, 3600, 2**63, -1, True, "3", 1.5])
 def test_relay_never_retries_before_a_flood_wait_or_above_its_budget(delay) -> None:
     relay = _relay()
     calls, sleeps = [], []
@@ -896,6 +903,221 @@ def test_relay_never_retries_before_a_flood_wait_or_above_its_budget(delay) -> N
         )
     assert len(calls) == 1
     assert sleeps == []
+    if type(delay) is int and delay >= 0:
+        assert relay._FLOOD_CONTROL.deadline > relay._FLOOD_CONTROL.clock()
+    else:
+        assert relay._FLOOD_CONTROL.deadline == 0
+
+
+@pytest.fixture
+def flood_http_relay(tmp_path, monkeypatch):
+    relay = _relay()
+    clock = [1000.0]
+    relay._FLOOD_CONTROL = relay.FloodControl(lambda: clock[0])
+    calls = []
+
+    class Telegram(BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802
+            self.rfile.read(int(self.headers["Content-Length"]))
+            calls.append(self.path)
+            body = (
+                {"ok": False, "parameters": {"retry_after": 60}}
+                if len(calls) == 1
+                else {"ok": True, "result": {"message_id": 42}}
+            )
+            encoded = json.dumps(body).encode()
+            self.send_response(429 if len(calls) == 1 else 200)
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def log_message(self, *_args):
+            pass
+
+    upstream = ThreadingHTTPServer(("127.0.0.1", 0), Telegram)
+    opener = request.build_opener(request.ProxyHandler({}), relay._NoRedirect())
+
+    def transport(outbound, *, timeout):
+        assert outbound.full_url.startswith("https://api.telegram.org/bot")
+        assert timeout == 5
+        # Inject only transport to a real synthetic HTTP upstream. Production
+        # still validates and builds the fixed Telegram origin and request.
+        local = request.Request(
+            f"http://127.0.0.1:{upstream.server_port}/"
+            + outbound.full_url.rsplit("/", 1)[-1],
+            data=outbound.data,
+            headers=dict(outbound.header_items()),
+            method=outbound.get_method(),
+        )
+        return opener.open(local, timeout=timeout)
+
+    monkeypatch.setattr(relay, "_open_without_redirect", transport)
+    receipts = relay.Receipts(tmp_path / "receipts.json")
+    server = relay.RelayServer(
+        ("127.0.0.1", 0),
+        relay.handler(dict(
+            api_url="https://api.telegram.org",
+            bot_token="123456789:fixture-token-not-real", chat_id="1",
+            topic_id=0, auth_token="a" * 64, receipts=receipts,
+        )),
+    )
+    threads = [threading.Thread(target=s.serve_forever, daemon=True)
+               for s in (upstream, server)]
+    for thread in threads:
+        thread.start()
+
+    def post(path="/alert"):
+        outbound = request.Request(
+            f"http://127.0.0.1:{server.server_port}" + path,
+            data=json.dumps(_payload() if path == "/alert" else {}).encode(),
+            headers={"Content-Type": "application/json",
+                     "Authorization": "Bearer " + "a" * 64},
+        )
+        try:
+            response = opener.open(outbound, timeout=2)
+        except error.HTTPError as exc:
+            response = exc
+        with response:
+            response.read()
+            return response.status
+
+    try:
+        yield post, calls, clock, receipts
+    finally:
+        for service in (server, upstream):
+            service.shutdown()
+            service.server_close()
+        for thread in threads:
+            thread.join(timeout=2)
+
+
+def test_flood_deadline_survives_sequential_real_http_webhooks_and_expires(
+    flood_http_relay,
+):
+    post, calls, clock, _ = flood_http_relay
+    assert post() == 502
+    assert post() == 502
+    clock[0] += 59.999
+    assert post() == 502
+    assert calls == ["/sendMessage"]
+    clock[0] = 1060.0
+    assert post() == 200
+    assert calls == ["/sendMessage", "/sendMessage"]
+
+
+def test_learned_flood_deadline_blocks_concurrent_real_http_webhooks(
+    flood_http_relay,
+):
+    post, calls, _, _ = flood_http_relay
+    assert post() == 502
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        assert list(pool.map(lambda _: post(), range(6))) == [502] * 6
+    assert calls == ["/sendMessage"]
+
+
+@pytest.mark.parametrize("existing_message", [False, True])
+@pytest.mark.parametrize("first_path", ["/alert", "/v1/delivery-canary"])
+def test_canary_send_and_edit_share_alert_flood_deadline(
+    flood_http_relay, existing_message, first_path,
+):
+    post, calls, clock, receipts = flood_http_relay
+    if existing_message:
+        receipts.value.update(message_id=42, send_at=int(time.time()))
+    assert post(first_path) == 502
+    assert post("/alert") == 502
+    assert post("/v1/delivery-canary") == 502
+    assert len(calls) == 1
+    assert receipts.snapshot()["edit_at"] == 0
+    clock[0] += 60
+    assert post("/v1/delivery-canary") == 200
+    assert calls[1:] == (["/editMessageText"] if existing_message
+                         else ["/sendMessage", "/editMessageText"])
+
+
+def test_flood_deadline_rechecked_if_short_retry_sleeper_wakes_early():
+    relay = _relay()
+    relay._FLOOD_CONTROL = relay.FloodControl(lambda: 1000.0)
+    calls, sleeps = [], []
+
+    def opener(outbound, timeout):
+        calls.append(outbound)
+        raise _http_error(429, parameters={"retry_after": 3})
+
+    with pytest.raises(relay.DeliveryFailure, match="upstream-flood-wait"):
+        relay.deliver(
+            api_url="https://api.telegram.org",
+            token="123456789:fixture-token-not-real", chat_id="1",
+            topic_id=0, message="bounded", opener=opener, sleeper=sleeps.append,
+        )
+    assert len(calls) == 1
+    assert sleeps == [3]
+
+
+def test_last_attempt_flood_response_retains_deadline_for_next_delivery():
+    relay = _relay()
+    clock = [1000.0]
+    relay._FLOOD_CONTROL = relay.FloodControl(lambda: clock[0])
+    calls, sleeps = [], []
+
+    def opener(outbound, timeout):
+        calls.append(outbound)
+        assert timeout == 5
+        raise _http_error(503) if len(calls) == 1 else _http_error(
+            429, parameters={"retry_after": 60}
+        )
+
+    def send():
+        relay.deliver(
+            api_url="https://api.telegram.org",
+            token="123456789:fixture-token-not-real", chat_id="1",
+            topic_id=0, message="bounded", opener=opener, sleeper=sleeps.append,
+        )
+
+    with pytest.raises(relay.DeliveryFailure, match="upstream-flood-wait"):
+        send()
+    assert len(calls) == relay.RETRY_ATTEMPTS == 2
+    assert sleeps == [1]
+    assert relay._FLOOD_CONTROL.deadline == 1060
+    with pytest.raises(relay.DeliveryFailure, match="upstream-flood-wait"):
+        send()
+    assert len(calls) == 2
+
+
+def test_concurrent_attempt_refuses_without_waiting_then_observes_flood_deadline():
+    relay = _relay()
+    relay._FLOOD_CONTROL = relay.FloodControl(lambda: 1000.0)
+    entered, release = threading.Event(), threading.Event()
+    calls = []
+
+    def opener(outbound, timeout):
+        calls.append(outbound)
+        entered.set()
+        assert release.wait(2)
+        raise _http_error(429, parameters={"retry_after": 60})
+
+    def send():
+        with pytest.raises(relay.DeliveryFailure, match="upstream-flood-wait"):
+            relay.deliver(
+                api_url="https://api.telegram.org",
+                token="123456789:fixture-token-not-real", chat_id="1",
+                topic_id=0, message="bounded", opener=opener,
+            )
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        first = pool.submit(send)
+        try:
+            assert entered.wait(2)
+            with pytest.raises(relay.DeliveryFailure, match="upstream-busy"):
+                relay.deliver(
+                    api_url="https://api.telegram.org",
+                    token="123456789:fixture-token-not-real", chat_id="1",
+                    topic_id=0, message="bounded", opener=opener,
+                )
+        finally:
+            release.set()
+        first.result(timeout=2)
+    send()
+    assert len(calls) == 1
 
 
 @pytest.mark.parametrize("body", [b"not-json", b"[]", b'{"parameters":[]}', b" " * 65537])

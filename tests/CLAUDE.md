@@ -14,6 +14,12 @@
 
 ## Design decisions
 
+Checkout metadata regressions use real Git with large NUL-framed input,
+non-UTF-8 path bytes and an owned attributes FIFO. Retain active-filter refusal,
+index identity, empty-input EOF and the query deadline. Telegram flood tests
+cross actual local HTTP handlers into a synthetic upstream and require later
+webhooks and canary send/edit to share the same monotonic deadline.
+
 Security delivery regressions use real local redirect servers, synthetic SOPS
 and age authorities, and actual private filesystem publication. Failure and
 interruption checks preserve the last complete generation. SSH planner tests

@@ -6,10 +6,13 @@ Expected-target alerts use the finite-silence gateway's configured environment.
 Do not replace it with a fleet label: exact maintenance matchers must select
 the alerts produced in that same environment.
 
-Telegram flood control reads bounded JSON `parameters.retry_after`. A wait of
-more than five seconds fails the current webhook without another request;
-later Alertmanager delivery owns the retry. Never cap a longer wait and retry
-early. The two request attempts and short wait retain the webhook work bound.
+Telegram flood control retains the full JSON `parameters.retry_after` as one
+process-wide monotonic deadline for alert and canary send/edit requests. Each
+upstream attempt checks it under a nonblocking lock; busy or cooling requests
+fail immediately. Only waits of at most five seconds fit an in-call retry.
+Alertmanager 0.28.1 generic webhooks do not honor response `Retry-After`, so a
+retryable failure alone cannot enforce this deadline. The deadline clears on
+relay restart; the two-attempt limit and short wait retain the webhook work bound.
 
 **Producer time owns freshness** — central evaluation expires producer and
 adapter completion timestamps even when node_exporter keeps serving a retained

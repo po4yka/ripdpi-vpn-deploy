@@ -1,6 +1,6 @@
 ## Context
 
-The audit found thirteen source defects. The current checkout is based on integrated main a14c339c. The approved scope is source repair, regression tests, documentation, PR and merge. External deployment and private operator inputs remain outside this change.
+The audit found thirteen source defects. Integration also exposed inventory encoding and checkout-discovery failures. The approved scope is source repair, regression tests, documentation, PR and merge. External deployment and private operator inputs remain outside this change.
 
 ## Goals / Non-Goals
 
@@ -18,7 +18,8 @@ The audit found thirteen source defects. The current checkout is based on integr
 - The contract comparison includes both JSON examples. Synchronize their four synthetic key literals through `po4yka/RIPDPI#TST-1792309202117414` and merge the client fixture copy first. Client CI has no reverse main-branch comparison, so this sequence has no circular dependency.
 - Keep malformed legacy expiry metadata in the existing expiry-unavailable audit category. Unsafe route and file authority stays state-unavailable; neither failure serves the payload. Test route modes match the role's exact 0700 policy.
 - Strip both CR and LF from inventory base64 encoding. A CRLF encoder must not split the typed build-environment label into multiple host lines. Parser admission remains strict.
-- Alert environment uses the same configured authority as finite-silence. Telegram parses bounded JSON flood errors and refuses premature retry when wait exceeds the request budget.
+- Alert environment uses the same configured authority as finite-silence. Telegram retains a shared thread-safe monotonic deadline from bounded JSON flood errors. Every delivery path checks it before a new upstream request, including later webhooks and canary send/edit. Long waits fail promptly and retain the deadline; short retries remain within the request budget.
+- Checkout discovery passes non-null Git metadata input through a private temporary file. This removes the duplex pipe write deadlock while retaining the existing 30-second query timeout, empty-input EOF, UTF-8 surrogateescape bytes and active content-filter refusal. Reuse the independently reviewed dependency fix without unrelated network changes.
 - SSH adds the supported OpenSSH 9.0 hybrid with classical fallback and removes finite-field DH. Renderer, ownership controller, source bundle and effective verifier must change together. No live convergence is performed.
 
 ## Contracts and ownership
