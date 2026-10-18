@@ -20,6 +20,7 @@ import urllib.request
 from pathlib import Path
 
 import yaml
+from authenticated_http import https_origin, open_no_redirect
 from liveness_generation import JOB_TIMEOUT_SECONDS
 
 
@@ -164,7 +165,10 @@ def send_notification(event: str, report: dict) -> str:
         title = f"VPN VLESS user path {decision.replace('_', ' ')}"
         priority = "urgent" if decision == "rotation_candidate" else "high"
         tags = "warning,vpn,vless,protocol-liveness"
-    base_url = os.environ.get("NTFY_URL", "https://ntfy.sh").rstrip("/")
+    try:
+        base_url = https_origin(os.environ.get("NTFY_URL", "https://ntfy.sh"))
+    except ValueError:
+        return "failed"
     url = f"{base_url}/{urllib.parse.quote(topic, safe='')}"
     request = urllib.request.Request(
         url,
@@ -175,7 +179,7 @@ def send_notification(event: str, report: dict) -> str:
     if token:
         request.add_header("Authorization", f"Bearer {token}")
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:
+        with open_no_redirect(request, timeout=10) as response:
             if not 200 <= response.status < 300:
                 return "failed"
     except (OSError, urllib.error.URLError):

@@ -2,6 +2,14 @@
 
 ## Design decisions
 
+**Hybrid SSH agreement has a recoverable upgrade path** — managed policy
+prefers `sntrup761x25519-sha512@openssh.com`, supported by the OpenSSH 9.x
+baseline, with Curve25519 fallback. Finite-field DH is not offered. ML-KEM
+needs a separate minimum-version qualification before it can enter this exact
+allowlist. The planner accepts the exact previous managed list only as an
+upgrade source, retains its bytes for rollback, and requires the current list
+for every candidate and effective context. Custom or partial lists still refuse.
+
 **Site staging retains accepted AWG forwarding** — the site-only defer flag reads the existing exact IPv4/IPv6 forwarding fragment before mutation. The bounded no-follow reader requires root ownership and non-writable ancestry. A selected AWG consumer reconciles desired forwarding only after its lifecycle completes. Failed protected staging and tagged runs that omit AWG keep accepted forwarding. Standalone baseline remains desired-authoritative; no kernel transaction is added.
 
 UDP receive/send socket ceilings are integer role inputs bounded from 1 MiB to 64 MiB before host mutation. Their optional performance application uses the existing per-setting exception boundary; it cannot mask mandatory hardening failure and does not demonstrate QUIC congestion behavior.

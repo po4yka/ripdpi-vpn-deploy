@@ -25,6 +25,27 @@ complete multi-host metadata and exact client bandwidth hints. DNS-Morph
 preflight tests run the real controller validator before synthetic mutation
 sentinels. Render fixtures and research stubs establish no live protocol claim.
 
+Checkout metadata regressions use real Git with large NUL-framed input,
+non-UTF-8 path bytes and an owned attributes FIFO. Retain active-filter refusal,
+index identity, empty-input EOF and the query deadline. Telegram flood tests
+cross actual local HTTP handlers into a synthetic upstream and require later
+webhooks and canary send/edit to share the same monotonic deadline.
+
+Security delivery regressions use real local redirect servers, synthetic SOPS
+and age authorities, and actual private filesystem publication. Failure and
+interruption checks preserve the last complete generation. SSH planner tests
+exercise the exact prior managed policy, hybrid promotion, retained rollback
+bytes, contextual effective policy and idempotency. A successful parser test
+does not prove a live SSH or hardware migration. Subscription tests race real
+HTTP readers against filesystem publication and cover fsync, rename, signals,
+legacy input, mirror generations and private namespace admission.
+Legacy HTTP fixtures use the role's exact 0700 route modes and distinguish
+expiry parsing failures from unsafe file authority. Inventory cases send LF and
+CRLF encoder output through the real renderer and strict host parser.
+Synthetic SOPS decryptors consume all ciphertext from stdin before they return
+fixture JSON. A payload larger than pipe capacity checks this contract on
+Darwin and Linux.
+
 Protocol audit regressions use schema-valid synthetic inputs and actual
 controller preflight in ordinary and check mode. They prove identity/address
 refusal before later publication, exact parsed server/client credential bytes,
@@ -80,6 +101,8 @@ Native transport fixtures retain each owned unit before starting it and verify s
 Alternate XHTTP regression cases exercise canonical materialization through the real semantic resolver and native profile adapter; mocked provider metadata is input selection only, never traffic proof.
 
 AWG constrained-path failures retain the bounded client exception, traffic phase and IPv6 UDP error counters alongside route and peer evidence. Probe diagnostics contain only owned synthetic traffic metadata, never AWG credentials.
+
+AWG constrained-path failures publish one bounded `awg-probe-summary` JUnit property. It contains only IP family, reconnect cycle, the last complete exact traffic phase, expected admission and process result. The four-transport runner admits its strict five-field JSON only for the two failed or errored dual-stack cases. It drops duplicate properties or keys and invalid fields. Portable regressions execute the actual probe failure and timeout hooks through real pytest JUnit and preserve their original failures. This evidence does not establish native traffic acceptance or explain older artifacts.
 
 Ingress/egress commit tests kill a separate process before and after the durable decision, native outer finish and ingress journal deletion. Portable tests model only the egress adapter; the native lane retains a real accepted outer route and proves authenticated canary traffic after roll-forward or whole-route rollback. Ansible composition also covers a lost acknowledgement after journal deletion so rescue cannot revert committed egress. Native acceptance uses the least-duration split so new boundary cases mix with existing lifecycle cases instead of accumulating in one contiguous partition.
 

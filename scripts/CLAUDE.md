@@ -8,6 +8,30 @@ positive whole-Mbps rounding; liveness requires the same hints and includes
 them in the public generation digest. These are negotiated per-connection
 values. RIPDPI does not currently apply them, so no server-wide cap is claimed.
 
+Checkout discovery passes Git metadata input through a private temporary file.
+Large NUL-delimited path lists can otherwise block both stdin and captured
+output before the query timeout applies. Preserve UTF-8 surrogateescape bytes,
+the empty-input EOF, the deadline and all active-content-filter refusals.
+
+The audited Bearer clients share authenticated_http.py and refuse every redirect.
+Protocol notifications require an HTTPS origin without userinfo, path, query or
+fragment. Local HTTP tests inject transport after origin admission; production
+has no plaintext bypass. State backups expose final names only after completed
+age encryption and uses no-replace publication to preserve timestamp collisions.
+Hardware enrollment binds explicit serial/slot selectors through literal Make
+inputs. Resume retains its identity, migration preserves each file's recipients,
+and staged ciphertext shares the existing per-document writer lock. Grouped
+policies require separate quorum-aware migration. Generation diagnostics stay
+on the operator's private controlling terminal. Subscription issuance requires
+the installed publisher-v1 readiness protocol before external publication. One
+service-owned atomic envelope binds exact payload bytes and expiry under the
+existing lock; a lost acknowledgement remains an uncertain external outcome.
+
+Inventory publication removes CR and LF from wrapped base64 before it constructs
+INI fields. Strict host selection still rejects split records. Renderer tests
+cover both line endings and verify typed listener and observability data through
+the strict parser.
+
 Blue-green treats each Make phase as a separate ordered command with inherited
 Make controls removed. Dry-run accepts only 0 or 1 and resolves before private
 inputs. CI commands use the retained bootstrap session supervisor; keep private

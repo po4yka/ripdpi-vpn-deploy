@@ -78,8 +78,8 @@ transport host generates. Options:
     simplest path.
   * For continuous-issuance scenarios, the subscription host can PULL
     the hashed-on-disk payload tree (`{{ subscription.subscription_dir }}`,
-    default `/var/lib/vpn-subscription`, holding `sub/<hash>`,
-    `bootstrap/<hash>`, and `.meta` sidecars) from a build worker on a
+    default `/var/lib/vpn-subscription`, holding atomic `sub/<hash>.document`
+    files and legacy `sub/` or `bootstrap/` payload/`.meta` pairs) from a build worker on a
     timer. This is the **continuous payload mirror** — opt-in via
     `subscription.mirror.enabled` (default `false`). A systemd oneshot
     (`vpn-sub-mirror.service`, `User=vpn-bootstrap`) driven by

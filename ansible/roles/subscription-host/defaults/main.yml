@@ -20,7 +20,7 @@ subscription:
   # use) and /sub/<token> (long-lived). Both routes use hashed-on-disk
   # storage: the operator hands the client a plaintext token, the
   # service hashes the inbound URL with sha256 and reads from
-  # subscription_dir/<route>/<hash>. Disk theft alone never yields a
+  # subscription_dir/<route>/<hash>[.document]. Disk theft alone never yields a
   # usable subscription URL.
   subscription_dir: /var/lib/vpn-subscription
   bootstrap_listen_addr: "127.0.0.1"
@@ -43,7 +43,7 @@ subscription:
   # Continuous payload mirror (SUBSCRIPTION-HOST-SEPARATION.md
   # "continuous-issuance" path). When enabled, a systemd oneshot +
   # timer periodically PULLs the hashed-on-disk payload tree
-  # (subscription_dir/{sub,bootstrap}/<hash> + .meta sidecars) from a
+  # (sub/<hash>.document plus legacy payload/.meta pairs) from a
   # build worker, keeping this delivery host fresh without manual scp.
   # This is an outbound pull only — it opens no new public surface and
   # preserves the host's loopback-only serving posture.

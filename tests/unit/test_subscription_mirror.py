@@ -514,3 +514,23 @@ def test_concurrent_publishers_are_serialized_and_keep_current_pointer_valid(
     generations = list((dest / ".vpn-sub-mirror-generations").glob("generation-*"))
     assert len(generations) == 2
     assert current in generations
+
+
+def test_atomic_document_survives_complete_mirror_generation(tmp_path):
+    import base64
+    import json
+    source = _private_directory(tmp_path / "source")
+    for route in ("sub", "bootstrap"):
+        _private_directory(source / route)
+    digest = "a" * 64
+    exact = b'{ "generation": "atomic-mirror" }\n'
+    content = json.dumps(dict(schema_version=1, client="phone", expires="",
+                             payload_b64=base64.b64encode(exact).decode()))
+    (source / "sub" / (digest + ".document")).write_text(content)
+    dest = _private_directory(tmp_path / "dest")
+    helper = _render_helper(tmp_path, dest, source=str(source) + "/")
+    result = _run(helper)
+    assert result.returncode == 0, result.stderr
+    namespace = _render_bootstrap(tmp_path, dest)
+    root = namespace["_payload_root"]()
+    assert namespace["_delivery"](root / "sub", digest) == (exact, False)

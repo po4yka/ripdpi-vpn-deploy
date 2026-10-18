@@ -363,6 +363,13 @@ at least one exact `node` or `policy`; optional allowed stable labels further
 narrow the scope. Do not use `node_id`, regex matchers, an owner field, tokens,
 free-text diagnostics or an indefinite end time in this file.
 
+Expected-target alerts use this same environment. A maintenance silence can
+therefore match missing-family, stale-evidence and source-identity alerts for
+its exact node. On a Telegram flood response, the relay reads JSON
+`parameters.retry_after`. It retries within the current webhook only for a
+wait of at most five seconds; a longer wait returns delivery failure and leaves
+the next attempt to Alertmanager.
+
 ```sh
 export OBSERVABILITY_SILENCE_OWNER="operator"
 export OBSERVABILITY_SILENCE_REQUEST="/owner/private/path/maintenance.json"

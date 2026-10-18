@@ -173,6 +173,54 @@ def case_cleanup_differences(case):
     return {}
 
 
+AWG_PROBE_CASES = frozenset(
+    "tests.unit.test_awg_dualstack_native."
+    "test_owned_uplink_nat_mtu_dns_reconnect_revocation_and_no_native_bypass["
+    + str(member) + "]" for member in (1, 2)
+)
+MAX_AWG_PROBE_SUMMARY_BYTES = 256
+
+
+def awg_probe_summary(case, case_id, result):
+    if case_id not in AWG_PROBE_CASES or result not in {"failure", "error"}:
+        return None
+    properties = [node for node in case.findall("./properties/property")
+                  if node.get("name") == "awg-probe-summary"]
+    if len(properties) != 1:
+        return None
+    raw = properties[0].get("value", "")
+    if len(raw.encode("utf-8")) > MAX_AWG_PROBE_SUMMARY_BYTES:
+        return None
+
+    def unique_object(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate-summary-key")
+            value[key] = item
+        return value
+
+    try:
+        value = json.loads(raw, object_pairs_hook=unique_object)
+    except (ValueError, TypeError, RecursionError):
+        return None
+    enums = {
+        "family": {"ipv4", "ipv6"},
+        "phase": {"tcp", "udp", "dns-1", "dns-28", "unknown"},
+        "expected": {"accepted", "rejected"},
+        "result": {"success", "nonzero-exit", "signal", "process-timeout"},
+    }
+    if not isinstance(value, dict) or set(value) != {*enums, "cycle"}:
+        return None
+    if any(type(value[key]) is not str or value[key] not in allowed
+           for key, allowed in enums.items()):
+        return None
+    cycle = value["cycle"]
+    if cycle is not None and (type(cycle) is not int or not 0 <= cycle <= 3):
+        return None
+    return value
+
+
 def case_results(path):
     root = ET.parse(path).getroot()
     rows = []
@@ -188,6 +236,9 @@ def case_results(path):
         cleanup = case_cleanup_differences(case)
         if cleanup:
             row["cleanup_differences"] = cleanup
+        probe = awg_probe_summary(case, row["case"], result)
+        if probe is not None:
+            row["probe"] = probe
         rows.append(row)
     return rows
 

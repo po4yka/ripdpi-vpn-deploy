@@ -7,8 +7,9 @@
 #   scripts/backup-tf-state.sh                 # uses default destination
 #   BACKUP_DEST=/path/to/dir scripts/backup-tf-state.sh
 #
-# Requires: age, the AGE_RECIPIENT env var (or AGE_RECIPIENT_FILE).
+# Requires: age, python3, and AGE_RECIPIENT (or AGE_RECIPIENT_FILE).
 set -euo pipefail
+umask 077
 
 PROVIDER="${PROVIDER:-upcloud}"
 ENV="${ENV:-prod}"
@@ -65,8 +66,34 @@ fi
 mkdir -p "$BACKUP_DEST"
 chmod 0700 "$BACKUP_DEST"
 
-age "${RECIPIENTS[@]}" -o "$OUT" "$STATE_FILE"
-chmod 0600 "$OUT"
+# Incomplete ciphertext never has a name accepted by the recovery selector.
+# Register cleanup before creating the invocation-owned private sibling.
+temporary=""
+trap '[[ -z "$temporary" ]] || rm -f -- "$temporary"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+trap 'exit 131' QUIT
+temporary="$(mktemp "${BACKUP_DEST}/.state-backup.XXXXXXXXXX")"
+age "${RECIPIENTS[@]}" "$STATE_FILE" > "$temporary"
+# A same-directory hard link publishes complete bytes atomically and refuses
+# same-second collisions instead of replacing an existing recovery snapshot.
+python3 - "$temporary" "$OUT" <<'PY_PUBLISH'
+import os
+import sys
+
+source, destination = sys.argv[1:]
+with open(source, "rb") as ciphertext:
+    os.fsync(ciphertext.fileno())
+os.link(source, destination, follow_symlinks=False)
+os.unlink(source)
+parent = os.open(os.path.dirname(destination), os.O_RDONLY | os.O_DIRECTORY)
+try:
+    os.fsync(parent)
+finally:
+    os.close(parent)
+PY_PUBLISH
+temporary=""
 
 echo "wrote $OUT"
 

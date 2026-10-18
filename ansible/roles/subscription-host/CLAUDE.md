@@ -2,6 +2,21 @@
 
 ## Design decisions
 
+**Atomic subscription delivery** — new `/sub/` publications use one bounded
+version-1 `<sha256>.document` with exact base64 payload bytes, client and expiry.
+The installed runtime exposes a fixed readiness/publish protocol under the
+service UID, exact configured namespace and existing no-follow state lock.
+Publication syncs a private sibling before rename and directory sync. A later
+publisher retires only the bounded, private reserved staging footprint under
+that same lock after process death. Readers
+prefer that document; malformed authority refuses without legacy fallback.
+Legacy payload/sidecar pairs remain readable only when no document exists.
+Mirror generations preserve whole documents. Lost acknowledgements require
+remote/registry reconciliation; they never prove that publication was absent.
+Malformed legacy expiry metadata retains the expiry-unavailable HTTP 503 audit
+category. Unsafe route or file authority remains state-unavailable; a malformed
+atomic document never falls back to legacy delivery.
+
 **Bounded bootstrap history** — bootstrap grants use `b1_<10-digit-issued-epoch>_<43-character-random>`; legacy bootstrap formats are refused. Intrinsic maximum lifetime is independent of restored expiry metadata. Private request/maintenance locking serializes admission, consume and GC. The durable monotonic retired-before fence commits before removing expired markers, so restoring old payloads, increasing the configured lifetime or rolling the clock backward cannot revive retired URIs. Capacity never discards fresh consumption authority. Compaction uses the conservative 30-day maximum supported lifetime, independently of the currently selected shorter policy or an expired marker; expired short-lived records remain until that replay-proof horizon retires their issuance. Cheap format/fence and direct known/consumed checks precede full history scanning, so rejected guesses do not trigger O(history) GC. Ordinary subscription tokens retain their existing format. Legacy empty markers remain conservative consumed authority; migration does not guess their issuance and may require explicit reviewed retirement when they occupy capacity. Missing lock/fence is provisioned only for a genuinely new payload namespace without an installed bootstrap runtime. Retained or partially initialized state refuses missing authority instead of resetting replay proof; recovery/migration must restore or establish separately reviewed authority.
 
 **Audit bounds** — append uses private no-follow files and a separate writer lock, rotates by configured bytes/archive count, and trims oversized historical files to complete trailing records. Policy contractions reconcile all fourteen supported archive names under the same writer lock, validate the whole set before writes, and remove only safe owned excess archives. A persistent five-minute maintenance timer collects retired markers and reconciles audit size bounds; disable retires that timer while preserving replay authority.
