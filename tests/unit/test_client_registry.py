@@ -155,6 +155,7 @@ def _owned_command(arguments, **kwargs):
             try:
                 os.killpg(child.pid, signal.SIGTERM)
             except ProcessLookupError:
+                # The owned group can exit before this signal; drain and reap below.
                 pass
             try:
                 child.communicate(timeout=2)
@@ -162,6 +163,7 @@ def _owned_command(arguments, **kwargs):
                 try:
                     os.killpg(child.pid, signal.SIGKILL)
                 except ProcessLookupError:
+                    # TERM can finish before KILL; communicate below still drains and reaps.
                     pass
                 child.communicate(timeout=2)
 

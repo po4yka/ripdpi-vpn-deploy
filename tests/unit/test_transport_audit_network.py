@@ -86,9 +86,9 @@ def test_strict_overlay_only_profile_admits_only_scoped_udp(address, enabled, up
         assert (rule in chain) is enabled
     udp_rules = [line.strip() for line in chain.splitlines() if re.search(r"\budp\b", line)]
     assert udp_rules == [
-        f'oifname "{uplink}" ip6 saddr fe80::/10 ip6 daddr {{ ff02::1:2, fe80::/10 }} '
+        f'oifname "{uplink}" ip6 saddr fe80::/10 ip6 daddr {{ ff02::1:2, fe80::/10 }} ' +
         'udp sport 546 udp dport 547 counter accept comment "dhcpv6-client-request"',
-        'meta nfproto ipv6 udp sport 546 udp dport 547 counter drop '
+        'meta nfproto ipv6 udp sport 546 udp dport 547 counter drop ' +
         'comment "dhcpv6-client-request-denied"',
         "udp dport 53 accept", "udp dport 123 accept",
         *(overlay_rules if enabled else []),
