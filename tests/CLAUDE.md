@@ -72,6 +72,9 @@ retained split-hop denial during tunnel stops, strict overlay allowances,
 complete multi-host metadata and exact client bandwidth hints. DNS-Morph
 preflight tests run the real controller validator before synthetic mutation
 sentinels. Render fixtures and research stubs establish no live protocol claim.
+Strict overlay-only render tests compare the complete UDP allowlist in both
+toggle states. Link-local DHCPv6 stays on the explicit uplink despite unrelated
+overlay default-route facts; broad UDP and unapproved global servers stay absent.
 
 Checkout metadata regressions use real Git with large NUL-framed input,
 non-UTF-8 path bytes and an owned attributes FIFO. Retain active-filter refusal,
