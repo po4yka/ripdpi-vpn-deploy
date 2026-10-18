@@ -54,3 +54,7 @@ secrets/local/clients/  # generated client profiles and QR artifacts
 
 Point the ignored `.fleet.mk` at the encrypted and runtime files as documented
 in `docs/SECRETS.md`. Never use `git add -f` for this tree.
+
+For the complete local kit and private access catalog, follow
+[the local operator kit contract](../docs/LOCAL-OPERATOR-KIT.md). It defines
+authority, tool-specific paths, backup coverage and the completeness checks.
