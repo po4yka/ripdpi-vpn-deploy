@@ -4,6 +4,9 @@
     - name: Publish current typed AWG firewall claims with retained prior authority
       ansible.builtin.include_role:
         name: firewall
+      vars:
+        firewall_stage_candidate: true
+        firewall_site_transaction: false
 
     - name: Reconcile rotated AmneziaWG authority through the complete role lifecycle
       ansible.builtin.include_role:

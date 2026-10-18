@@ -8,9 +8,11 @@ PartOf=awg-quick.target
 Type=oneshot
 RemainAfterExit=yes
 Environment=WG_ENDPOINT_RESOLUTION_RETRIES=infinity
-ExecStart=/usr/bin/awg-quick up %i
-ExecStop=/usr/bin/awg-quick down %i
-ExecReload=/bin/bash -c '/usr/bin/awg syncconf %i <(/usr/bin/awg-quick strip %i)'
+# An unattended boot must not adopt an interrupted candidate generation.
+ExecStartPre=/usr/bin/python3 -Es /usr/local/libexec/ripdpi-consumer/amneziawg_consumer.py admit
+ExecStart=/usr/bin/awg-quick up /etc/amnezia/amneziawg/%i.conf
+ExecStop=/usr/bin/awg-quick down /etc/amnezia/amneziawg/%i.conf
+ExecReload=/bin/bash -c '/usr/bin/awg syncconf %i <(/usr/bin/awg-quick strip /etc/amnezia/amneziawg/%i.conf)'
 
 # Hardening
 NoNewPrivileges=yes

@@ -14,28 +14,21 @@ UNIT_TEMPLATE = ROLE_DIR / "templates" / "awg-quick@.service.j2"
 ROTATION_PLAYBOOK = REPO_ROOT / "ansible" / "playbooks" / "rotate-credentials.yml"
 
 
-def test_role_restart_applies_full_state_via_the_awg_quick_unit():
-    """Config changes apply through a full unit restart: the reload verb
-    cannot apply address/route changes and aborts on inactive instances,
-    which silently skipped the rest of the handler loop."""
-    content = HANDLER.read_text()
-
-    assert 'name: "awg-quick@{{ item.name }}"' in content
-    assert "state: restarted" in content
-    assert "state: reloaded" not in content
-    assert "awg syncconf" not in content
+def test_acquisition_has_no_restart_handler_outside_consumer_acceptance():
+    assert yaml.safe_load(HANDLER.read_text()) == []
+    tasks = yaml.safe_load((ROLE_DIR / "tasks/enable.yml").read_text())
+    assert all("notify" not in task for task in tasks)
 
 
-def test_config_render_notifies_the_installed_restart_handler():
-    tasks = next(task["block"] for task in yaml.safe_load((ROLE_DIR / "tasks" / "configure.yml").read_text()) if "block" in task)
-    handlers = yaml.safe_load(HANDLER.read_text())
-    render = next(
-        task for task in tasks if task["name"] == "Render AmneziaWG interface configs"
-    )
-    handler = next(
-        handler for handler in handlers if handler["name"] == render["notify"]
-    )
-    assert handler["ansible.builtin.systemd_service"]["state"] == "restarted"
+def test_all_private_configs_enter_one_complete_retained_consumer():
+    tasks = yaml.safe_load((ROLE_DIR / "tasks/configure.yml").read_text())
+    render = next(task for task in tasks if task["name"] == "Stage every complete private AmneziaWG configuration")
+    assert render["loop"] == "{{ _awg_instances }}"
+    assert render["no_log"] is True
+    accept = next(task for task in tasks if task["name"] == "Accept complete AmneziaWG runtime and firewall together")
+    assert accept["ansible.builtin.command"]["argv"][-1] == "apply"
+    assert "'candidates': _awg_consumer_candidates" in accept["ansible.builtin.command"]["stdin"]
+    assert "'firewall': _firewall_consumer_candidate" in accept["ansible.builtin.command"]["stdin"]
 
 
 def test_awg_quick_unit_strips_config_before_syncconf():
@@ -43,7 +36,7 @@ def test_awg_quick_unit_strips_config_before_syncconf():
     content = UNIT_TEMPLATE.read_text()
 
     assert "awg syncconf %i" in content
-    assert "awg-quick strip %i" in content
+    assert "awg-quick strip {{ amneziawg_config_dir }}/%i.conf" in content
 
 
 def test_rotation_uses_the_role_instance_normalization_for_every_instance():
@@ -63,13 +56,9 @@ def test_rotation_uses_the_role_instance_normalization_for_every_instance():
     assert 0 < play["tasks"].index(admission) < play["tasks"].index(activation)
     assert "Re-render AmneziaWG peers" not in content
     assert "Restart amneziawg" not in content
-    tasks = yaml.safe_load((ROLE_DIR / "tasks/configure.yml").read_text())
-    transaction = next(task for task in tasks if "block" in task)
-    render = next(task for task in transaction["block"] if task["name"] == "Render AmneziaWG interface configs")
-    assert render["notify"] == "Restart amneziawg"
-    assert render["loop"] == "{{ _awg_instances }}"
-    assert render["ansible.builtin.template"]["dest"] == "{{ amneziawg_config_dir }}/{{ item.name }}.conf"
-    assert transaction["rescue"][-1]["ansible.builtin.fail"]["msg"] == "awg-complete-config-activation-failed"
+    staging = rotation["block"][0]
+    assert staging["vars"]["firewall_stage_candidate"] is True
+    assert staging["vars"]["firewall_site_transaction"] is False
 
 
 def test_instance_normalization_remains_role_owned():

@@ -94,13 +94,21 @@ Recovery path 0 — restore from `make backup-state` snapshot (preferred):
 
 ```bash
 # State backups live in ~/.config/vpn-provision/state-backups/<provider>-<env>-<timestamp>.tfstate.age
-LATEST=$(ls -1t ~/.config/vpn-provision/state-backups/upcloud-prod-*.tfstate.age | head -1)
+# Match the complete UTC timestamp; prod-green is a different environment.
+LATEST=$(
+    shopt -s nullglob
+    backups=("${HOME}/.config/vpn-provision/state-backups/upcloud-prod-"[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z.tfstate.age)
+    if (( ${#backups[@]} == 0 )); then
+        echo "no state backup for upcloud/prod" >&2
+        exit 1
+    fi
+    ls -1t "${backups[@]}" | sed -n '1p'
+) &&
 age -d -i ~/.config/vpn-provision/age.key \
     -o terraform/providers/upcloud/terraform.tfstate \
-    "$LATEST"
-chmod 0600 terraform/providers/upcloud/terraform.tfstate
-
-PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh plan
+    "$LATEST" &&
+chmod 0600 terraform/providers/upcloud/terraform.tfstate &&
+PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh plan -var-file=environments/prod.tfvars
 # Expect: no changes
 ```
 

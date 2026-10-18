@@ -22,6 +22,9 @@ FILES = (
     "tests/integration/awg_source_candidate/build.py",
     "tests/integration/awg_source_candidate/acceptance.py",
     "ansible/roles/runtime-release/files/runtime_build_receipt.py",
+    "ansible/roles/runtime-release/files/transport_runtime_transaction.py",
+    "ansible/roles/firewall/files/firewall_consumer.py",
+    "ansible/roles/amneziawg/files/consumer.py",
     "ansible/roles/amneziawg/templates/awg-quick@.service.j2",
 )
 WAIT_SYSTEMD = """

@@ -16,7 +16,6 @@ STUB_BIN="${REPO_ROOT}/tests/stubs/bin"
 setup() {
   STUB_LOG="$(mktemp -t stub_log.XXXXXX)"
   FAKE_SOPS="$(mktemp -t prod_secrets.XXXXXX)"
-  # blue-green.sh checks SOPS_FILE exists before reaching the dry-run branch
   export PATH="${STUB_BIN}:${PATH}"
   export STUB_LOG
   export BLUE_ENV="prod"
@@ -38,6 +37,24 @@ _run_dry() {
 @test "dry-run exits 0" {
   _run_dry
   assert_success
+}
+
+@test "environment dry-run needs no private inputs and runs no tools" {
+  run env -u ANSIBLE_SSH_PRIVATE_KEY_FILE DRY_RUN=1 \
+    SOPS_FILE="${BATS_TEST_TMPDIR}/absent.sops.yaml" bash "$SCRIPT"
+  assert_success
+  assert_output --partial "[dry-run] blue-green sequence"
+  [[ ! -s "$STUB_LOG" ]]
+}
+
+@test "invalid explicit dry-run values refuse before private inputs" {
+  local value
+  for value in '' 2 -1 true '1+1' 'DRY_RUN=1'; do
+    run env -u ANSIBLE_SSH_PRIVATE_KEY_FILE DRY_RUN="$value" bash "$SCRIPT"
+    assert_failure
+    assert_output --partial "DRY_RUN must be 0 or 1"
+    [[ ! -s "$STUB_LOG" ]]
+  done
 }
 
 @test "dry-run output mentions terraform plan" {

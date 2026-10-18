@@ -17,7 +17,11 @@
 #   DRY_RUN     set to 1 (or pass --dry-run) to print plan without mutating
 set -euo pipefail
 
-DRY_RUN=0
+DRY_RUN="${DRY_RUN-0}"
+case "$DRY_RUN" in
+  0|1) ;;
+  *) echo 'DRY_RUN must be 0 or 1' >&2; exit 1 ;;
+esac
 
 # Parse flags before consuming positional env vars so callers can do either
 # BLUE_ENV=x GREEN_ENV=y scripts/blue-green.sh --dry-run  or use env vars.
@@ -79,6 +83,11 @@ fi
 
 step() { echo; echo "==> $*"; }
 
+run_make() {
+  env -u MAKELEVEL -u MAKEFLAGS -u MAKEFILES -u MFLAGS -u GNUMAKEFLAGS -u MAKEOVERRIDES \
+    make -C "$REPO_ROOT" "$@"
+}
+
 require_vpn_alias() {
   local alias="$1"
   [[ "$alias" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || {
@@ -136,7 +145,7 @@ BLUE_ALIAS="$(PROVIDER="$PROVIDER" ENV="$BLUE_ENV" "$REPO_ROOT/scripts/terraform
 require_vpn_alias "$BLUE_ALIAS"
 SECRETS_FILE="$SECRETS_FILE" ANSIBLE_LIMIT="$BLUE_ALIAS" \
   ENV="${BLUE_ENV}" PROVIDER="${PROVIDER}" \
-  make -C "$REPO_ROOT" verify
+  run_make verify
 
 # ---------------------------------------------------------------------------
 # 2. Bootstrap green tfvars from blue (if missing)
@@ -157,7 +166,9 @@ fi
 step "3/8  Provision green (ENV=${GREEN_ENV})"
 : "${GREEN_TAILNET_HANDOFF:?set the private GREEN_TAILNET_HANDOFF output path before provisioning}"
 : "${DEPLOY_SSH_CONTEXTS_FILE:?set the private DEPLOY_SSH_CONTEXTS_FILE path before provisioning}"
-ENV="$GREEN_ENV" PROVIDER="$PROVIDER" make -C "$REPO_ROOT" init plan apply
+for goal in init plan apply; do
+  ENV="$GREEN_ENV" PROVIDER="$PROVIDER" run_make "$goal"
+done
 
 # ---------------------------------------------------------------------------
 # 4. Render multi-host inventory and deploy green
@@ -191,7 +202,7 @@ TAILNET_HANDOFFS="${BLUE_TAILNET_HANDOFF:--},-" \
   "$REPO_ROOT/scripts/render-inventory.sh"
 require_vpn_alias "$GREEN_ALIAS"
 ANSIBLE_LIMIT="$GREEN_ALIAS" ENV="$GREEN_ENV" PROVIDER="$PROVIDER" \
-  make -C "$REPO_ROOT" wait
+  run_make wait
 cat <<'EOF'
 Before convergence, prepare the new node's pinned public and Tailnet SSH paths:
   make install-ssh-recovery
@@ -214,15 +225,19 @@ COHORTS="${BLUE_COHORT},${GREEN_COHORT}" \
 TAILNET_HANDOFFS="${BLUE_TAILNET_HANDOFF:--},${GREEN_TAILNET_HANDOFF}" \
   "$REPO_ROOT/scripts/render-inventory.sh"
 require_vpn_alias "$GREEN_ALIAS"
-SECRETS_FILE="$SECRETS_FILE" ANSIBLE_LIMIT="$GREEN_ALIAS" \
-  ENV="$GREEN_ENV" PROVIDER="$PROVIDER" make -C "$REPO_ROOT" dry-run deploy
+for goal in dry-run deploy; do
+  SECRETS_FILE="$SECRETS_FILE" ANSIBLE_LIMIT="$GREEN_ALIAS" \
+    ENV="$GREEN_ENV" PROVIDER="$PROVIDER" run_make "$goal"
+done
 
 # ---------------------------------------------------------------------------
 # 5. Verify + smoke test green
 # ---------------------------------------------------------------------------
 step "5/8  Verify + smoke-test green"
-SECRETS_FILE="$SECRETS_FILE" ANSIBLE_LIMIT="$GREEN_ALIAS" \
-  ENV="$GREEN_ENV" PROVIDER="$PROVIDER" make -C "$REPO_ROOT" verify smoke-test
+for goal in verify smoke-test; do
+  SECRETS_FILE="$SECRETS_FILE" ANSIBLE_LIMIT="$GREEN_ALIAS" \
+    ENV="$GREEN_ENV" PROVIDER="$PROVIDER" run_make "$goal"
+done
 
 # ---------------------------------------------------------------------------
 # 6. Operator pivot — flip clients / DNS / floating IP

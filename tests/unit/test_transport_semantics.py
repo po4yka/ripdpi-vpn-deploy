@@ -165,7 +165,11 @@ def test_early_controller_preflight_precedes_every_mutation_boundary(tmp_path):
     assert rotation["tasks"][0]["ansible.builtin.import_tasks"] == "tasks/transport-input-preflight.yml"
     for role in ("xray", "hysteria", "amneziawg"):
         tasks = yaml.safe_load((ROOT / "ansible/roles" / role / "tasks/enable.yml").read_text())
-        assert "transport-input-preflight.yml" in tasks[0]["ansible.builtin.import_tasks"]
+        position = next(index for index, task in enumerate(tasks)
+                        if "transport-input-preflight.yml" in task.get("ansible.builtin.import_tasks", ""))
+        # Read-only assertions may reject unsafe role inputs before the shared
+        # preflight; no other task may precede this mutation boundary.
+        assert all("ansible.builtin.assert" in task for task in tasks[:position])
 
 
 @pytest.mark.parametrize("input_kind", ["accepted", "empty-membership", "duplicate-client-name", "odd-short-id", "alias-short-id"])

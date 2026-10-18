@@ -14,6 +14,26 @@
 
 ## Design decisions
 
+Disposable CI admits the fixed root-owned executable and acquisition directories through no-follow directory descriptors before it installs clients. Only the `/usr/local/bin` and `/opt` leaf modes change to 0755; unsafe ancestors, symlinks and foreign ownership refuse. Executable regressions run the exact inline admission code in an owned temporary tree, with only its paths and expected UID changed, and preserve existing child bytes and inodes. The complete AWG native fixture creates its fresh claimed acquisition root and release directory with explicit 0755 modes; actual umask 0000 and 0777 regressions prevent unsafe default intermediate permissions, without changing existing authority.
+
+The early AWG rollback step runs the complete canonical dual-stack goal with the same pinned sources and isolated environment. The final native bundle retains that goal to check the complete runtime context.
+
+Warm AWG startup failure evidence reports only fixed unit-state values, bounded numeric status and parent/source metadata, fixed journal categories and literal known role task names. A separate process loads unchanged installed helpers without bytecode writes and probes transaction check-mode validation plus adapter validation/inspection; it never applies or recovers. Refusal text is admitted only when it equals a literal categorical code in those helpers. Unknown values, exception messages and raw journal text never enter test output. The early CI warm case does not replace the complete native runtime suite.
+
+AWG namespace adapters prepend their owned executable directory to the inherited toolchain PATH. A portable regression resolves a non-global symlink to the actual pinned Ansible executable and runs `ansible-playbook --version`; real role publication and compensation remain native CI checks.
+
+AWG native configuration expectations use Ansible block trimming and retain the final newline. A portable comparison executes the actual template lookup and checks exact bytes; generic snapshot rendering keeps its existing contract. Warm adoption uses the actual initial role and complete publication task. A changed complete generation may replace unchanged file inodes; retain exact bytes and modes across binary-only changes, and assert inode stability on unchanged convergence. Custom unit candidates use the publication task rather than claiming the full role would retain fixture-only settings.
+
+Private authority fixtures set their owned root to the process GID. Darwin may
+inherit another group from the home directory; matching the production storage
+contract here keeps strict ownership checks active in portable tests.
+
+Deployment recovery regressions execute real Make scheduling with inherited
+parallel controls and require no deploy after a failed check. Process cleanup
+regressions include exited command leaders with live descendants. State backup
+tests use actual age encryption over synthetic state and execute the documented
+recovery selector; preserve valid backup names for sibling environments.
+
 Protocol compatibility checks use pinned real engines and synthetic local
 credentials. P0, Snell and Naive failure paths prove authentication and privacy;
 mtg release/parser checks make no Telegram requests. An inert service fixture
@@ -42,7 +62,6 @@ Alternate XHTTP regression cases exercise canonical materialization through the 
 AWG constrained-path failures retain the bounded client exception, traffic phase and IPv6 UDP error counters alongside route and peer evidence. Probe diagnostics contain only owned synthetic traffic metadata, never AWG credentials.
 
 Ingress/egress commit tests kill a separate process before and after the durable decision, native outer finish and ingress journal deletion. Portable tests model only the egress adapter; the native lane retains a real accepted outer route and proves authenticated canary traffic after roll-forward or whole-route rollback. Ansible composition also covers a lost acknowledgement after journal deletion so rescue cannot revert committed egress. Native acceptance uses the least-duration split so new boundary cases mix with existing lifecycle cases instead of accumulating in one contiguous partition.
-
 
 Native interruption fixtures launch Ansible in a uniquely owned transient
 systemd scope. Module workers may create separate sessions, so process-group
@@ -140,7 +159,6 @@ instances, constrained MTU, DNS A/AAAA, bidirectional TCP/UDP, source spoofing,
 cross-instance denial, revocation and native fallback denial. Measured counters
 and traffic distinguish that Linux proof from Android emulator/native-core,
 physical-client and fleet acceptance.
-
 
 Runtime publisher tests verify retained directory descriptors remain valid
 inside normal and predictive transactions and close after success, exceptions,
@@ -293,7 +311,6 @@ pinned Xray with adjacent GeoIP and checksum-pinned Hysteria. It fails missing
 prerequisites rather than skipping. Native synthetic credentials are valid
 runtime keys/UUIDs; source placeholders cannot prove parser acceptance.
 
-
 **Review regressions preserve first-use boundaries** — invalid CI configuration
 publishes categorical results before deployment; blue-green waits for bootstrap
 after pinning and refuses before recovery instructions when readiness fails.
@@ -304,7 +321,6 @@ block device in a private mount namespace and runs the guest installer. The
 native sentinel test starts a real pinned loopback SSH daemon, rejects an altered
 pin and stops only its owned unit. These tests supplement orchestration and
 mock-provider checks; they do not claim a provider deployment.
-
 
 **Audit regressions use executable boundaries** — localhost Ansible tests exercise synthetic-key redaction, DNS and forwarding transitions, canonical Xray drift, and rollback validation/activation failures. Saved-plan tests replace the original after inspection and verify apply still uses the inspected private snapshot. These prove local behavior, not provider or guest acceptance. Construct time-sensitive lease inputs at test execution, so a long collection-to-execution delay cannot turn an overlong lease into a valid one.
 
@@ -481,7 +497,6 @@ repository cannot block this gate. Missing Ubuntu sources and failed updates
 remain fatal; package signatures and the real schema validator stay enforced.
 
 Runtime acceptance has a separate canonical-role Linux lab. It uses exact checksum-pinned runtimes, generated dedicated client/TLS authority and an owned routed namespace canary. Credential mount propagation is established before creating namespace references, so parent bind mounts cannot hide those references at cleanup. Upgrade, retry, check mode, failure compensation and real process-death cases must retain actual authenticated traffic and fail selected skips. Portable inode/state tests complement that lab and never claim service or client acceptance. The operator runtime rollback case asserts frontend and generation-selected gateway unit text, accepted claims and native `/proc/<MainPID>/exe` identity. A real gateway sandbox refusal and SIGKILL after gateway publication or adoption must restore all exact original unit inodes and authenticated forwarding. A following ordinary converge with the newer pin restores the whole generation and retains the rolled-back release as `previous`. Portable tests cover direct-only and paired gateway candidate selection, validated topology refusal and the sole publication lane. The isolated native lab exercises its selected direct gateway; this is not vendor tunnel or production acceptance. Native retirement follows the re-converged receipt. First-adoption interruption failures retain only bounded task/frame categories, the last static task and owned publication-state booleans for diagnosis. Keep the real interruption predicate and deadline intact.
-
 
 ## What's done well
 

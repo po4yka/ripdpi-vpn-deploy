@@ -889,9 +889,9 @@ def read_site(state):
         return None
     if (not isinstance(journal, dict) or set(journal) != {
             "schema", "requests", "files", "receipts", "allowed", "allowed_receipts", "service", "phase"}
-            | ({"finish_egress"} if journal.get("phase") == "committing" else set())
+            | (({"finish_egress", "finish_firewall"} if "finish_firewall" in journal else {"finish_egress"}) if journal.get("phase") == "committing" else set())
             or type(journal["schema"]) is not int or journal["schema"] != 1 or journal["phase"] not in {"open", "restoring", "committing"}
-            or (journal["phase"] == "committing" and type(journal["finish_egress"]) is not bool)
+            or (journal["phase"] == "committing" and (type(journal["finish_egress"]) is not bool or type(journal.get("finish_firewall", False)) is not bool))
             or not isinstance(journal["requests"], list) or len(journal["requests"]) != 2
             or {value.get("owner") for value in journal["requests"]} != SITE_OWNERS):
         raise TransactionError("unsafe-site-journal")
@@ -1003,7 +1003,7 @@ def site_authorize(state, document, expected_receipt):
     persist(state / "site.json", journal)
 
 
-def site_transaction(action, document, *, finish_egress=False):
+def site_transaction(action, document, *, finish_egress=False, finish_firewall=False):
     requests = site_request(document)
     state = STATE_ROOT / "nginx.service"
     if document["check"]:
@@ -1102,16 +1102,20 @@ def site_transaction(action, document, *, finish_egress=False):
                     owner: [capture(state / (owner + ".activated.json"))] for owner in SITE_OWNERS}
                 journal["phase"] = "committing"
                 journal["finish_egress"] = finish_egress
+                journal["finish_firewall"] = finish_firewall
                 persist(state / "site.json", journal)
             if journal["finish_egress"]:
                 command(["/usr/bin/python3", "-Es",
                          "/usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py", "finish"])
+            if journal.get("finish_firewall", False):
+                command(["/usr/bin/python3", "-Es",
+                         "/usr/local/libexec/ripdpi-consumer/firewall_consumer.py", "finish", "--owner", "site"])
             clear(state / "site.json")
             return {"status": "committed", "changed": False}
         journal["phase"] = "restoring"
         persist(state / "site.json", journal)
         prior = journal["service"]
-        if not prior["active"]:
+        if not prior["active"] and service_state("nginx.service")["exists"]:
             command(["systemctl", "stop", "nginx.service"])
         changed = False
         for path, row in journal["files"].items():
@@ -1637,6 +1641,7 @@ def main():
     parser.add_argument("--validate")
     parser.add_argument("--site", choices=("begin", "restore", "commit", "recover-commit"))
     parser.add_argument("--finish-egress", action="store_true")
+    parser.add_argument("--finish-firewall", action="store_true")
     args = parser.parse_args()
     try:
         if args.validate:
@@ -1646,7 +1651,7 @@ def main():
         if len(data) > LIMIT:
             raise TransactionError("request-size")
         document = json.loads(data)
-        print(json.dumps(site_transaction(args.site, document, finish_egress=args.finish_egress) if args.site else publish(document)))
+        print(json.dumps(site_transaction(args.site, document, finish_egress=args.finish_egress, finish_firewall=args.finish_firewall) if args.site else publish(document)))
     except (TransactionError, OSError, ValueError, KeyError, TypeError):
         print("nginx publication failed", file=sys.stderr)
         return 1

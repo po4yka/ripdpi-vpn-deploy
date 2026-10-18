@@ -1,4 +1,52 @@
 ---
+- name: Admit accepted AWG forwarding before site staging
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -Es
+      - -c
+      - |
+        import os
+        import stat
+        from pathlib import Path
+
+        def accepted_forwarding(path, uid=0, anchor=Path('/')):
+            path = Path(path)
+            parts = path.relative_to(anchor).parts
+            descriptor = os.open(anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                for component in parts[:-1]:
+                    node = os.fstat(descriptor)
+                    if node.st_uid != uid or node.st_mode & 0o022:
+                        raise ValueError('forwarding-directory-authority')
+                    next_descriptor = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+                    os.close(descriptor)
+                    descriptor = next_descriptor
+                node = os.fstat(descriptor)
+                if node.st_uid != uid or node.st_mode & 0o022:
+                    raise ValueError('forwarding-directory-authority')
+                try:
+                    source = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=descriptor)
+                except FileNotFoundError:
+                    return False
+                with os.fdopen(source, 'rb') as stream:
+                    node = os.fstat(stream.fileno())
+                    if (not stat.S_ISREG(node.st_mode) or node.st_uid != uid or
+                            node.st_mode & 0o022 or node.st_nlink != 1 or node.st_size > 128):
+                        raise ValueError('forwarding-file-authority')
+                    return stream.read(129) == b'net.ipv4.ip_forward = 1\nnet.ipv6.conf.all.forwarding = 1\n'
+            finally:
+                os.close(descriptor)
+
+        if __name__ == '__main__':
+            print('1' if accepted_forwarding('/etc/sysctl.d/91-vpn-forward.conf') else '0')
+  register: baseline_retained_awg_forwarding
+  changed_when: false
+  check_mode: false
+  when:
+    - baseline_defer_awg_forwarding | default(false) | bool
+    - not (baseline_forwarding_amneziawg_active | default(vpn.enable_amneziawg | default(false)) | bool)
+
 - name: Remove the superseded split-hop forwarding fragment
   ansible.builtin.file:
     path: /etc/sysctl.d/60-split-hop-egress.conf
@@ -12,9 +60,14 @@
     mode: "0644"
     content: |
       net.ipv4.ip_forward = 1
-      net.ipv6.conf.all.forwarding = {{ 1 if (vpn.enable_amneziawg | default(false) | bool) else 0 }}
+      net.ipv6.conf.all.forwarding = {{ 1 if (
+         (baseline_forwarding_amneziawg_active | default(vpn.enable_amneziawg | default(false)) | bool) or
+         (baseline_defer_awg_forwarding | default(false) | bool and
+          baseline_retained_awg_forwarding.stdout | default('0') == '1')) else 0 }}
   when: >-
-    (vpn.enable_amneziawg | default(false) | bool) or
+    (baseline_forwarding_amneziawg_active | default(vpn.enable_amneziawg | default(false)) | bool) or
+    (baseline_defer_awg_forwarding | default(false) | bool and
+     baseline_retained_awg_forwarding.stdout | default('0') == '1') or
     (vpn.enable_split_hop_egress | default(false) | bool) or
     (baseline_forwarding_split_hop_egress_active | default(false) | bool)
 
@@ -23,7 +76,9 @@
     path: /etc/sysctl.d/91-vpn-forward.conf
     state: absent
   when: >-
-    not (vpn.enable_amneziawg | default(false) | bool) and
+    not (baseline_forwarding_amneziawg_active | default(vpn.enable_amneziawg | default(false)) | bool) and
+    not (baseline_defer_awg_forwarding | default(false) | bool and
+         baseline_retained_awg_forwarding.stdout | default('0') == '1') and
     not (vpn.enable_split_hop_egress | default(false) | bool) and
     not (baseline_forwarding_split_hop_egress_active | default(false) | bool)
 

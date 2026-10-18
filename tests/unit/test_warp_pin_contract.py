@@ -92,7 +92,14 @@ def test_health_gate_runs_before_xray_can_activate_warp_routes() -> None:
     activation = next(task for task in block if task.get("ansible.builtin.import_tasks") == "tasks/transport-egress-activate.yml")
     commit = next(task for task in block if task.get("ansible.builtin.import_tasks") == "tasks/transport-ingress-commit.yml")
     assert block.index(activation) < block.index(commit)
-    assert set(roles[names.index("xray")]["tags"]) <= set(protected_block["tags"])
+    xray_tags = set(roles[names.index("xray")]["tags"])
+    for role in ("transport-egress", "xray", "reality-self-steal", "nginx-xhttp", "hysteria"):
+        step = next(task for task in block if task.get("ansible.builtin.import_role", {}).get("name") == role)
+        assert xray_tags <= set(step["tags"]), role
+    for path in ("tasks/transport-ingress-begin.yml", "tasks/transport-egress-activate.yml",
+                 "tasks/transport-ingress-commit.yml"):
+        step = next(task for task in block if task.get("ansible.builtin.import_tasks") == path)
+        assert xray_tags <= set(step["tags"]), path
     vendor = yaml.safe_load((ROLE / "tasks/activate.yml").read_text())[0]["block"]
     readiness = next(task for task in vendor if task["name"] == "Require actual UP TUN identity before recipient gateway admission")
     identity = next(task for task in vendor if task["name"] == "Retain actual verified tunnel identity")

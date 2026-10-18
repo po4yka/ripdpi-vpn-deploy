@@ -1,0 +1,43 @@
+---
+- name: Prepare and recover retained AWG authority before retirement
+  ansible.builtin.import_tasks: consumer-prepare.yml
+  vars:
+    awg_consumer_retiring: true
+
+- name: Resolve exact accepted AWG ownership before retirement
+  ansible.builtin.import_tasks: ownership.yml
+
+- name: Select the complete accepted AWG retirement plan
+  ansible.builtin.set_fact:
+    _awg_consumer_candidates:
+      - {path: /etc/systemd/system/awg-quick@.service, absent: true}
+      - {path: /etc/systemd/system/awg-quick.target, absent: true}
+      - {path: /var/lib/ripdpi/amneziawg/instances.json, absent: true}
+  no_log: true
+
+- name: Select only recorded private AWG configurations for retirement
+  ansible.builtin.set_fact:
+    _awg_consumer_candidates: >-
+      {{ _awg_consumer_candidates + [{'path': _awg_previous.config_dir ~ '/' ~ item ~ '.conf', 'absent': true}] }}
+  loop: "{{ _awg_previous.instances }}"
+  no_log: true
+
+- name: Stage AWG policy retirement after the protected site has committed
+  ansible.builtin.include_role:
+    name: firewall
+  vars:
+    firewall_stage_candidate: true
+    firewall_site_transaction: false
+  when: _firewall_site_enabled | default(false) | bool
+
+- name: Accept complete AWG retirement with retained runtime compensation
+  ansible.builtin.command:
+    argv: [python3, -Es, /usr/local/libexec/ripdpi-consumer/amneziawg_consumer.py, apply]
+    stdin: >-
+      {{ {'check': ansible_check_mode, 'candidates': _awg_consumer_candidates,
+          'firewall': _firewall_consumer_candidate | default(none)} | to_json }}
+    stdin_add_newline: false
+  register: _awg_consumer_retirement
+  changed_when: (_awg_consumer_retirement.stdout | from_json).changed | bool
+  check_mode: false
+  no_log: true

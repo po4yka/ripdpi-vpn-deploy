@@ -84,7 +84,8 @@ finally:
 
 
 def run_command(command, *, timeout, environment=None, cwd=None, capture=False, stream=False,
-                input_data=None, defer_cancellation=False, output_limit=65536, forward_stderr=False):
+                input_data=None, defer_cancellation=False, output_limit=65536, forward_stderr=False,
+                stderr_output=None):
     """Bound an owned session, retaining its leader until descendants stop."""
     if not defer_cancellation:
         check_cancelled()
@@ -92,6 +93,8 @@ def run_command(command, *, timeout, environment=None, cwd=None, capture=False, 
         raise ReadinessError("command output limit invalid")
     if input_data is not None and (type(input_data) is not bytes or len(input_data) > 65536):
         raise ReadinessError("command input invalid")
+    if stderr_output is not None and (not capture or type(stderr_output) is not bytearray):
+        raise ReadinessError("command stderr capture invalid")
     output = bytearray()
     target = subprocess.PIPE if capture else (None if stream else subprocess.DEVNULL)
     input_stream, descriptors = None, []
@@ -177,9 +180,12 @@ def run_command(command, *, timeout, environment=None, cwd=None, capture=False, 
                         raise ReadinessError("command output limit")
                     if key.fileobj is child.stdout:
                         output.extend(data)
-                    elif forward_stderr:
-                        sys.stderr.buffer.write(data)
-                        sys.stderr.buffer.flush()
+                    else:
+                        if stderr_output is not None:
+                            stderr_output.extend(data)
+                        if forward_stderr:
+                            sys.stderr.buffer.write(data)
+                            sys.stderr.buffer.flush()
                 if status is not None and not selector.get_map():
                     return status, bytes(output)
     finally:

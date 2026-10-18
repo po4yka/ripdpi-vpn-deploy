@@ -37,7 +37,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
         ),
         ("geodata", ("Reload xray geodata",)),
         ("nginx-xhttp", ("Reload nginx-xhttp",)),
-        ("amneziawg", ("Restart amneziawg",)),
     ],
 )
 def test_restart_handlers_skip_runtime_checks_in_check_mode(
@@ -91,3 +90,16 @@ def test_protected_frontends_have_no_competing_handler_in_any_mode(role):
     readiness = activate["block"][1]
     assert "status" in readiness["ansible.builtin.command"]["argv"]
     assert readiness["until"] == "_transport_egress_readiness.rc == 0"
+
+
+def test_awg_check_mode_uses_retained_consumer_without_restart_handler():
+    role = REPO_ROOT / 'ansible/roles/amneziawg'
+    assert yaml.safe_load((role / 'handlers/main.yml').read_text()) == []
+    for name in ['enable.yml', 'configure.yml']:
+        tasks = yaml.safe_load((role / 'tasks' / name).read_text())
+        assert all('notify' not in task for task in tasks)
+    tasks = yaml.safe_load((role / 'tasks/configure.yml').read_text())
+    accept = next(task for task in tasks if task['name'] == 'Accept complete AmneziaWG runtime and firewall together')
+    assert accept['check_mode'] is False
+    assert accept['ansible.builtin.command']['argv'][-1] == 'apply'
+    assert "'check': ansible_check_mode" in accept['ansible.builtin.command']['stdin']

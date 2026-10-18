@@ -221,7 +221,9 @@ if 'deploy' in args and os.environ['DEPLOY_FAILURE']=='1': sys.exit(23)
     deploy = next(c for c in calls if 'deploy' in c['args'])
     assert calls.index(wait) < calls.index(deploy)
     assert deploy['limit']=='node-green'
-    assert 'dry-run' in deploy['args']
+    dry_run = next(c for c in calls if 'dry-run' in c['args'])
+    assert calls.index(dry_run) < calls.index(deploy)
+    assert 'dry-run' not in deploy['args']
     assert calls[0]['limit']=='node-prod'
     assert deploy['secrets']==calls[0]['secrets']
     assert not Path(deploy['secrets']).exists()

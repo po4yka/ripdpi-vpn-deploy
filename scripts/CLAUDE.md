@@ -2,6 +2,16 @@
 
 ## Design decisions
 
+Blue-green treats each Make phase as a separate ordered command with inherited
+Make controls removed. Dry-run accepts only 0 or 1 and resolves before private
+inputs. CI commands use the retained bootstrap session supervisor; keep private
+stderr capture separate from machine-readable stdout and reclaim descendants
+before teardown even when the command leader has already exited.
+
+State backup retention and recovery match the complete UTC timestamp suffix
+after the exact provider/environment prefix. A broad prefix glob also selects
+hyphenated sibling environments and can delete or restore their state.
+
 P0 recipient admission distinguishes sing-mux from Xray Mux.Cool; a valid JSON
 document does not establish wire compatibility. REALITY shortIds compare as
 decoded, zero-padded wire values, and mtg accepts only structured FakeTLS secrets.
@@ -70,7 +80,6 @@ MTU resolution with liveness; runner settings carry `addresses` and `mtu` and
 install both default routes in the owned namespace. Public uplink admission is
 read-only, requires the selected IPv6 default route, and refuses RA ownership
 that would expire after forwarding enables.
-
 
 AWG device issuance, revocation, export and recovery bind provider/environment,
 instance and device through `awg_device_binding.py`. Only the nonempty instance
@@ -235,7 +244,6 @@ onto a live service path. The native lane verifies source commits, compiled ELF
 outputs, actual parser/startup behavior and owned cleanup; fixtures and missing
 prerequisites cannot become a native pass.
 
-
 **Naive devices have independent encrypted identities** — `naive-client.py`
 centralizes the three explicit Make verbs for issuance, revocation, and selected
 credential readout. Selected readout requires an explicit new `0600` output in a
@@ -272,7 +280,6 @@ metadata is installed before the payload. No old-format bootstrap URLs are issue
   validation and retains PAM account/session checks with public-key-only
   authentication. Tighten an owned `.ssh` directory before publishing config;
   reject writable or foreign directories and report categorical stage errors.
-
 
 **Blue-green authenticates before first contact** — verify the green public key through an authenticated channel and confirm its standard known_hosts entry before inventory rendering. Vultr secondary-IP discovery uses strict host-key checking; it never enrolls a new key. Wait for cloud-init through the pinned public path before presenting recovery-installation steps. Then establish Tailnet/recovery ownership, render the confirmed handoff, and let the canonical controller perform pinned readiness. Blue and green aliases must be exact VPN inventory members before verification or deployment.
 
