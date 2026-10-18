@@ -335,6 +335,49 @@ def socks_readiness_summary(case, case_id, result):
     return value
 
 
+DHCPV6_READINESS_CASE = (
+    "tests.native.transport_acceptance.test_dhcpv6."
+    "test_native_scoped_dhcpv6_bootstrap_rebind_and_legacy_server"
+)
+
+
+def dhcpv6_readiness_summary(case, case_id, result):
+    """Publish only fixed pre-ready refusal data from the exact failing case."""
+    if case_id != DHCPV6_READINESS_CASE or result not in {"failure", "error"}:
+        return None
+    properties = [node for node in case.findall("./properties/property")
+                  if node.get("name") == "dhcpv6-readiness"]
+    if len(properties) != 1:
+        return None
+    raw = properties[0].get("value", "")
+    try:
+        if len(raw.encode("utf-8")) > 256:
+            return None
+    except UnicodeError:
+        return None
+
+    def unique_object(pairs):
+        value = dict(pairs)
+        if len(value) != len(pairs):
+            raise ValueError("duplicate-readiness-field")
+        return value
+
+    try:
+        value = json.loads(raw, object_pairs_hook=unique_object)
+    except ValueError:
+        return None
+    if not isinstance(value, dict) or set(value) != {"stage", "authority_mismatch"}:
+        return None
+    stage, mask = value["stage"], value["authority_mismatch"]
+    if type(stage) is not str or stage not in {
+        "start", "read-deadline", "oversize", "exit", "json", "authority", "bind-join", "unknown",
+    } or type(mask) is not int:
+        return None
+    if not (1 <= mask <= 63 if stage == "authority" else mask == 0):
+        return None
+    return value
+
+
 def case_results(path):
     root = ET.parse(path).getroot()
     rows = []
@@ -354,6 +397,8 @@ def case_results(path):
         if probe is not None:
             row["probe"] = probe
         readiness = socks_readiness_summary(case, row["case"], result)
+        if readiness is None:
+            readiness = dhcpv6_readiness_summary(case, row["case"], result)
         if readiness is not None:
             row["readiness"] = readiness
         rows.append(row)

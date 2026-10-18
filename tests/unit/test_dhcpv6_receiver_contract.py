@@ -106,7 +106,10 @@ def admission_branch_source():
                  and node.value.args[0].value == "ready")
     assert admission.lineno < ready.lineno
     branch = ast.If(test=group.test, body=[admission], orelse=[])
-    program = ast.fix_missing_locations(ast.Module(body=[helper, branch, ready], type_ignores=[]))
+    helpers = [node for node in receiver_tree.body if isinstance(node, ast.FunctionDef)
+               or isinstance(node, ast.Assign) and any(isinstance(target, ast.Name)
+                   and target.id == "readiness_reported" for target in node.targets)]
+    program = ast.fix_missing_locations(ast.Module(body=[*helpers, branch, ready], type_ignores=[]))
     return "import json,os,select,sys\ninterface,multicast=sys.argv[1:]\n" + ast.unparse(program)
 
 
@@ -137,7 +140,8 @@ def execute_input_admission(tmp_path, body, *, multicast="yes", available=True):
             os.kill(int(pid_file.read_text()), 0)
     if result.returncode:
         assert result.stdout == ""
-        assert result.stderr.strip() == "dhcpv6-input-fib-refused"
+        assert result.stderr.splitlines()[-1] == "dhcpv6-input-fib-refused"
+        assert sum(line.startswith("dhcpv6-readiness:") for line in result.stderr.splitlines()) == 1
     return result, json.loads(argv_file.read_text()) if argv_file.exists() else None
 
 

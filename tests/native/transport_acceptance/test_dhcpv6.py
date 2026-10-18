@@ -24,32 +24,56 @@ def run(*args, data=None):
 
 RECEIVER = """
 import json,os,select,socket,sys
+readiness_reported=False
+def emit_readiness(stage,mask=0):
+ global readiness_reported
+ if not readiness_reported:
+  readiness_reported=True
+  try:
+   print('dhcpv6-readiness:'+json.dumps({'stage':stage,'authority_mismatch':mask}),file=sys.stderr,flush=True)
+  except OSError:pass
+def bind_join_failure(kind,error,traceback):
+ emit_readiness('bind-join')
+ sys.__excepthook__(kind,error,traceback)
 def admit_multicast_input_route(interface):
  import subprocess,time
  route=None
+ stage='start'
+ mismatch=0
  try:
   route=subprocess.Popen(['ip','-j','-6','route','get','ff02::1:2','from','fe80::10',
                           'iif',interface,'ipproto','udp','sport','546','dport','547'],
                          stdout=subprocess.PIPE,stderr=subprocess.DEVNULL)
+  stage='unknown'
   deadline=time.monotonic()+1
   body=bytearray()
   while True:
    remaining=deadline-time.monotonic()
    if remaining<=0 or not select.select([route.stdout],[],[],remaining)[0]:
+    stage='read-deadline'
     raise ValueError('route-read-refused')
    chunk=os.read(route.stdout.fileno(),4097-len(body))
    if not chunk:break
    body.extend(chunk)
-   if len(body)>4096:raise ValueError('route-output-refused')
+   if len(body)>4096:
+    stage='oversize'
+    raise ValueError('route-output-refused')
+  stage='read-deadline'
   if route.wait(timeout=max(.001,deadline-time.monotonic()))!=0:
+   stage='exit'
    raise ValueError('route-command-refused')
+  stage='json'
   rows=json.loads(body)
   if not isinstance(rows,list) or len(rows)!=1:raise ValueError('route-document-refused')
   expected={'type':'multicast','dev':interface,'iif':interface,'table':'local',
             'dst':'ff02::1:2','from':'fe80::10'}
-  if not isinstance(rows[0],dict) or any(rows[0].get(key)!=value for key,value in expected.items()):
+  if not isinstance(rows[0],dict):raise ValueError('route-authority-refused')
+  mismatch=sum(1<<index for index,(key,value) in enumerate(expected.items()) if rows[0].get(key)!=value)
+  if mismatch:
+   stage='authority'
    raise ValueError('route-authority-refused')
  except Exception:
+  emit_readiness(stage,mismatch if stage=='authority' else 0)
   raise SystemExit('dhcpv6-input-fib-refused') from None
  finally:
   if route is not None:
@@ -58,7 +82,9 @@ def admit_multicast_input_route(interface):
      route.kill();route.wait(timeout=1)
     route.stdout.close()
    except Exception:
+    emit_readiness('unknown')
     raise SystemExit('dhcpv6-input-fib-refused') from None
+sys.excepthook=bind_join_failure
 interface,address,port,multicast=sys.argv[1:]
 s=socket.socket(socket.AF_INET6,socket.SOCK_DGRAM)
 s.setsockopt(socket.SOL_SOCKET,socket.SO_BINDTODEVICE,interface.encode()+b'\\0')
@@ -76,6 +102,7 @@ if multicast == 'yes':
  except OSError:
   print('dhcpv6-membership:unknown',file=sys.stderr,flush=True)
  admit_multicast_input_route(interface)
+sys.excepthook=sys.__excepthook__
 print('ready',flush=True)
 if not select.select([sys.stdin],[],[],20)[0]:
  raise SystemExit('dhcpv6-receiver-send-ack-timeout')
@@ -139,9 +166,45 @@ def multicast_udp_errors(namespace):
     return selected
 
 
+def readiness_record(error):
+    """Admit one closed refusal marker without retaining private child output."""
+    if not isinstance(error, str):
+        return None
+    try:
+        encoded = error.encode("utf-8")
+    except UnicodeError:
+        return None
+    if len(encoded) > 4096:
+        return None
+    lines = [line for line in error.splitlines() if line.startswith("dhcpv6-readiness:")]
+    if len(lines) != 1 or len(lines[0].encode("utf-8")) > 256:
+        return None
+
+    def unique_object(pairs):
+        value = dict(pairs)
+        if len(value) != len(pairs):
+            raise ValueError("duplicate-readiness-field")
+        return value
+
+    try:
+        value = json.loads(lines[0].split(":", 1)[1], object_pairs_hook=unique_object)
+    except ValueError:
+        return None
+    if not isinstance(value, dict) or set(value) != {"stage", "authority_mismatch"}:
+        return None
+    stage, mask = value["stage"], value["authority_mismatch"]
+    if type(stage) is not str or stage not in {
+        "start", "read-deadline", "oversize", "exit", "json", "authority", "bind-join", "unknown",
+    } or type(mask) is not int:
+        return None
+    if not (1 <= mask <= 63 if stage == "authority" else mask == 0):
+        return None
+    return value
+
+
 def packet(sender, receiver, *, source="fe80::20", target="fe80::10",
            sport=547, dport=546, send_interface="peer0", receive_interface="up0",
-           expected_output_deny=False, observe_multicast=False):
+           expected_output_deny=False, observe_multicast=False, record_property=None):
     observed_namespaces = []
     errors_before = None
     receiver_member = None
@@ -194,10 +257,20 @@ def packet(sender, receiver, *, source="fe80::20", target="fe80::10",
     finally:
         diagnostic["elapsed_ms"] = min(30000, int((time.monotonic() - started) * 1000))
         print("dhcpv6-probe:" + json.dumps(diagnostic, sort_keys=True), flush=True)
+        readiness_error = ""
         if listener is not None and listener.poll() is None:
             listener.kill()
-            listener.communicate(timeout=3)
+            _unused, readiness_error = listener.communicate(timeout=3)
+        elif listener is not None and diagnostic["phase"] == "readiness":
+            try:
+                _unused, readiness_error = listener.communicate(timeout=3)
+            except (subprocess.SubprocessError, OSError, UnicodeError):
+                print("dhcpv6-readiness-unavailable", flush=True)
         try:
+            if observe_multicast and diagnostic["phase"] == "readiness" and record_property is not None:
+                refusal = readiness_record(readiness_error)
+                if refusal is not None:
+                    record_property("dhcpv6-readiness", json.dumps(refusal, sort_keys=True))
             # Publish only a completed attempt with every observation measured.
             if (observe_multicast and diagnostic["phase"] == "packet"
                     and len(observed_namespaces) == 2 and errors_before is not None
@@ -233,7 +306,7 @@ def packet(sender, receiver, *, source="fe80::20", target="fe80::10",
                     print("dhcpv6-observation-cleanup-unavailable", flush=True)
 
 
-def test_native_scoped_dhcpv6_bootstrap_rebind_and_legacy_server():
+def test_native_scoped_dhcpv6_bootstrap_rebind_and_legacy_server(record_property):
     assert sys.platform == "linux" and os.geteuid() == 0, "isolated-Linux-root-required"
     token = "dh" + secrets.token_hex(4)
     client, peer = token + "c", token + "p"
@@ -276,7 +349,8 @@ def test_native_scoped_dhcpv6_bootstrap_rebind_and_legacy_server():
         # Reply has no matching multicast reverse tuple and must pass independently.
         assert packet(peer, client)
         assert packet(client, peer, source="fe80::10", target="ff02::1:2", sport=546,
-                      dport=547, send_interface="up0", receive_interface="peer0", observe_multicast=True)
+                      dport=547, send_interface="up0", receive_interface="peer0", observe_multicast=True,
+                      record_property=record_property)
         run("ip", "-n", peer, "addr", "add", "fe80::21/64", "dev", "peer0", "nodad")
         assert packet(client, peer, source="fe80::10", target="fe80::21", sport=546,
                       dport=547, send_interface="up0", receive_interface="peer0")

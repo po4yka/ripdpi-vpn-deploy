@@ -71,6 +71,15 @@ the validated CI record. Observation errors
 retain the packet outcome and raw logs stay private. Unknown fields, duplicate probes
 and oversized or malformed records publish no diagnostics.
 
+Only the failed bootstrap multicast case can publish a DHCPv6 readiness
+property before ready. It contains a fixed stage and a six-bit route-authority
+mismatch mask. Zero is not applicable outside authority failures. No raw child
+or route output enters public evidence. An actual pytest JUnit regression
+retains the original receiver refusal and verifies this property through the
+runner parser. Readiness evidence is separate from complete packet observations;
+it does not establish the underlying refusal cause. The sender remains blocked
+until ready, and all probe assertions and deadlines stay fixed.
+
 Offline sentinel regressions use the exact deterministic no-TUN Git fixture
 and real source admission, installation, input hashing and standalone readers.
 They prove refusal before mutation for wrong assets and input identities, plus

@@ -527,3 +527,121 @@ def test_final_cleanup_refuses_engine_or_source_drift_with_categorical_evidence(
     assert observed["success"] is False and observed["cleanup"] is False
     assert set(observed["cleanup_differences"]) == {changed}
     assert "private" not in output.read_text()
+
+
+DHCP_READINESS_CASE = (
+    "tests.native.transport_acceptance.test_dhcpv6."
+    "test_native_scoped_dhcpv6_bootstrap_rebind_and_legacy_server"
+)
+
+
+def _dhcp_readiness_report(tmp_path, values, *, case_id=DHCP_READINESS_CASE, result="failure"):
+    return _probe_report(tmp_path, values, case_id=case_id, result=result,
+                         property_name="dhcpv6-readiness")
+
+
+@pytest.mark.parametrize("stage,mask", [
+    (stage, 0) for stage in ("start", "read-deadline", "oversize", "exit", "json", "bind-join", "unknown")
+] + [("authority", 1), ("authority", 63)])
+@pytest.mark.parametrize("result", ["failure", "error"])
+def test_dhcp_readiness_admits_only_closed_failure_summary(tmp_path, stage, mask, result):
+    summary = {"stage": stage, "authority_mismatch": mask}
+    assert runner.case_results(_dhcp_readiness_report(tmp_path, [json.dumps(summary)], result=result)) == [
+        {"case": DHCP_READINESS_CASE, "result": result, "readiness": summary}]
+
+
+@pytest.mark.parametrize("raw", [
+    "not-json", "null", "[]", '"private"',
+    '{"stage":"private","stage":"exit","authority_mismatch":0}',
+    *(json.dumps(value) for value in [
+        {"stage": "exit", "authority_mismatch": 0, "credential": "private"},
+        {"stage": "exit"}, {"stage": "private", "authority_mismatch": 0},
+        {"stage": [], "authority_mismatch": 0}, {"stage": True, "authority_mismatch": 0},
+        {"stage": "authority", "authority_mismatch": 0},
+        {"stage": "exit", "authority_mismatch": 1},
+        *({"stage": "authority", "authority_mismatch": mask}
+          for mask in (-1, 64, True, 1.0, "private", [], None)),
+    ]),
+])
+def test_dhcp_readiness_invalid_property_keeps_private_data_out(tmp_path, raw):
+    rows = runner.case_results(_dhcp_readiness_report(tmp_path, [raw]))
+    assert rows == [{"case": DHCP_READINESS_CASE, "result": "failure"}]
+    assert "private" not in json.dumps(rows)
+
+
+def test_dhcp_readiness_property_byte_bound_and_duplicates(tmp_path):
+    summary = {"stage": "exit", "authority_mismatch": 0}
+    exact = json.dumps(summary).ljust(256)
+    assert runner.case_results(_dhcp_readiness_report(tmp_path, [exact]))[0]["readiness"] == summary
+    for values in ([exact + " "], [exact, exact], [exact, "private"], []):
+        assert runner.case_results(_dhcp_readiness_report(tmp_path, values)) == [
+            {"case": DHCP_READINESS_CASE, "result": "failure"}]
+
+
+@pytest.mark.parametrize("case_id,result", [
+    (DHCP_READINESS_CASE, "passed"), (DHCP_READINESS_CASE, "skipped"),
+    (DHCP_READINESS_CASE.replace("bootstrap_rebind_and_legacy_server", "foreign"), "error"),
+    (READINESS_CASE, "failure"), (AWG_CASE, "failure"), ("foreign.test_probe", "failure"),
+])
+def test_dhcp_readiness_never_admits_foreign_cases_or_nonfailures(tmp_path, case_id, result):
+    assert runner.case_results(_dhcp_readiness_report(
+        tmp_path, [json.dumps({"stage": "exit", "authority_mismatch": 0})], case_id=case_id, result=result)) == [
+            {"case": case_id, "result": result}]
+
+
+def test_socks_and_dhcp_readiness_cannot_cross_or_overwrite(tmp_path):
+    dhcp = {"stage": "exit", "authority_mismatch": 0}
+    for case_id, property_name, summary, foreign_name, foreign_summary in [
+        (READINESS_CASE, "native-socks-readiness", _readiness_summary(), "dhcpv6-readiness", dhcp),
+        (DHCP_READINESS_CASE, "dhcpv6-readiness", dhcp, "native-socks-readiness", _readiness_summary()),
+    ]:
+        report = _probe_report(tmp_path, [json.dumps(summary)], case_id=case_id, property_name=property_name)
+        document = runner.ET.parse(report)
+        runner.ET.SubElement(document.find(".//properties"), "property", name=foreign_name,
+                             value=json.dumps(foreign_summary))
+        document.write(report)
+        assert runner.case_results(report) == [{"case": case_id, "result": "failure", "readiness": summary}]
+
+
+def test_real_pytest_junit_preserves_dhcp_receiver_refusal_for_runner(tmp_path):
+    """A real failing receiver child crosses pytest's actual property transport."""
+    directory = tmp_path / "tests/native/transport_acceptance"
+    directory.mkdir(parents=True)
+    test_file = directory / "test_dhcpv6.py"
+    test_file.write_text(
+        "import importlib.util, subprocess, sys\n"
+        f"spec=importlib.util.spec_from_file_location('dhcp_producer', {str(ROOT / 'tests/native/transport_acceptance/test_dhcpv6.py')!r})\n"
+        "producer=importlib.util.module_from_spec(spec);sys.modules[spec.name]=producer;spec.loader.exec_module(producer)\n"
+        "def test_native_scoped_dhcpv6_bootstrap_rebind_and_legacy_server(monkeypatch, record_property):\n"
+        "    real_popen=subprocess.Popen;children=[]\n"
+        "    def listener(*args, **kwargs):\n"
+        "        child=real_popen([sys.executable,'-c',producer.RECEIVER,'not-a-real-device','::','547','yes'],stdin=kwargs['stdin'],stdout=kwargs['stdout'],stderr=kwargs['stderr'],text=kwargs['text'])\n"
+        "        children.append(child);return child\n"
+        "    def run(*args, **kwargs):\n"
+        "        assert '-c' not in args, 'sender-launched-after-readiness-refusal'\n"
+        "        return ''\n"
+        "    monkeypatch.setattr(producer.subprocess,'Popen',listener)\n"
+        "    monkeypatch.setattr(producer,'run',run)\n"
+        "    try:\n"
+        "        producer.packet('sender','receiver',source='fe80::10',target='ff02::1:2',sport=546,dport=547,send_interface='up0',receive_interface='peer0',observe_multicast=True,record_property=record_property)\n"
+        "    finally:\n"
+        "        assert children and all(child.poll() is not None for child in children)\n"
+    )
+    report = tmp_path / "actual-dhcp.xml"
+    environment = {key: value for key, value in os.environ.items()
+                   if key not in {"PYTEST_ADDOPTS", "PYTEST_PLUGINS"}}
+    environment["PYTHONPATH"] = os.pathsep.join(map(str, (ROOT, ROOT / "scripts", ROOT / "tests/unit")))
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", str(test_file), "--rootdir=" + str(tmp_path),
+         "--confcutdir=" + str(tmp_path), "--junitxml=" + str(report)],
+        cwd=tmp_path, env=environment, capture_output=True, text=True, timeout=20, check=False,
+    )
+    assert result.returncode == 1
+    original = runner.ET.parse(report)
+    failure, = list(original.iter("failure"))
+    assert "dhcpv6-receiver-not-ready" in failure.get("message")
+    properties = [node for node in original.iter("property") if node.get("name") == "dhcpv6-readiness"]
+    assert len(properties) == 1
+    assert json.loads(properties[0].get("value")) == {"stage": "bind-join", "authority_mismatch": 0}
+    assert runner.case_results(report) == [{"case": DHCP_READINESS_CASE, "result": "failure",
+                                           "readiness": {"stage": "bind-join", "authority_mismatch": 0}}]
