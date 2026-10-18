@@ -1,0 +1,11 @@
+{
+  "change": "protocol-audit-compatibility",
+  "evidence_summary": "Accepted source main 4f7b54e4480039526d9c8febca033932506f4a56 equals tested fbfc7af8; source CI39113178648 and main CI39117467457 each passed92 jobs. Full local make check at fa343371 exited0:7957 portable,45 subtests,65 Bats,322 vpnd and206 transfer cases; later docs and fixture deltas passed their checks. PQE HOLD preserved; no deployment.",
+  "execution_sha256": "e108134b3fe28377b75a68686ffd0440d130ce64dc5fb299f103f87357e4e01c",
+  "issue_sha256": "974344a296cca8e78467fbfab4c9e24f151c5f743a0f3a4df5d01ed4393f5b31",
+  "outcome": "done",
+  "prepared_at": "2026-10-18T11:21:16Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "XRY-1792265213021342"
+}
