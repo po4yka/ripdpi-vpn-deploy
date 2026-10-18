@@ -364,6 +364,8 @@ and repeat after process death at its removal boundary.
   The permanent-workspace bootstrap regression runs the real inventory renderer
   with synthetic Terraform output, then consumes its INI through bootstrap's
   custom parser. Handwritten unquoted labels cannot cover that codec boundary.
+  Inventory Base64 regressions wrap real encoder output with CRLF, inspect raw
+  INI bytes and require exact payload decoding for listeners and topology.
 
 **Bootstrap failure diagnostics exercise the real child process** — assert
 that failed installer output reaches stderr, structured stdout stays empty,
