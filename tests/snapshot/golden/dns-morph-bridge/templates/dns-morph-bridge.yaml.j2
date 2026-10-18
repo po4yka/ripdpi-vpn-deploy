@@ -1,8 +1,7 @@
 # Managed by Ansible role `dns-morph-bridge`. Hand edits will be overwritten.
 #
-# Schema matches the reference daemon. When swapping for a re-implementation,
-# keep the top-level keys (`listen`, `forward`, `morph`, `limits`) stable so
-# this template renders the same shape.
+# Role-owned daemon input contract. The operator-supplied binary must accept
+# these fields; render checks do not establish protocol compatibility.
 
 listen:
   address: "0.0.0.0"
@@ -11,18 +10,19 @@ listen:
 forward:
   # Active-probing-defense path. Every query that does not match the
   # DNS-Morph handshake shape is forwarded verbatim to the localhost
-  # recursor so the bridge answers like a normal DNS server.
+  # responder, which returns local authoritative answers or REFUSED.
   address: "127.0.0.1"
   port: 5353
   protocol: udp
 
 morph:
-  # Per-bridge signing key (Ed25519, base64). Clients pin this in their
+  # Per-bridge private Ed25519 seed (32 bytes, canonical padded base64).
+  # Clients pin its derived public key in their
   # bootstrap config. Rotation invalidates every issued client config.
   signing_key: "REPLACE_WITH_ED25519_BASE64_OR_LEAVE_BLANK_IF_DISABLED"
 
-  # Where decoded fragments egress to. Empty string keeps the bridge in
-  # echo-only mode (smoke testing).
+  # Where decoded fragments egress to. Empty string requires explicit
+  # dns_morph_bridge_allow_echo_only for isolated tests.
   upstream_endpoint: ""
 
 limits:

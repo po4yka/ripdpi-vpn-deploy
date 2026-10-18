@@ -13,6 +13,22 @@ legacy unicast authority; prefixes and broad global UDP accepts are refused.
 Set overrides in reviewed cohort `group_vars`; they are not live CLI overrides.
 The default uses observed facts and needs no new operator input.
 
+Split-hop IPv4 guard rules use POSTROUTING to inspect the final interface after
+route marking. OUTPUT can retain the earlier interface. The IPv6 original-traffic
+guard remains in OUTPUT before established acceptance; neither guard depends on
+the tunnel's lifecycle. Retirement checks both owned canonical chain names.
+
+Hopping REDIRECT matches only default-route ingress interfaces and destinations
+classified local by the kernel FIB. Forwarded UDP keeps its destination even
+when its port belongs to the hopping range. Strict output retains bounded
+Tailnet root UDP allowances (default source 41641 and STUN destination 3478)
+and the exact split-hop peer destination. Custom tailscaled socket ports need
+a reviewed firewall contract. Enabled split-hop ingress denies protected UID
+originals outside its tunnel before conntrack acceptance in every output mode.
+The shared guard also follows an explicit false role selector. A direct role
+retirement cannot remove firewall-owned rules; converge the canonical disabled
+policy first.
+
 Fresh site convergence creates the shared runtime parent before the first retained firewall publication. Admit existing ancestry and the private firewall leaf first; create only an absent parent and preserve existing trusted ownership and mode. The generic publisher still refuses missing or unsafe mutation parents. Check mode predicts creation without creating runtime state.
 
 The inline accepted-policy reader preserves the common source file newline with the file lookup rstrip option. Test the actual Ansible-rendered command; a literal escaped separator can make valid source modules an invalid Python program.

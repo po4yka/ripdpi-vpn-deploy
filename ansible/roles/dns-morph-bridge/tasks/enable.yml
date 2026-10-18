@@ -1,6 +1,9 @@
 ---
 # DNS-Morph bridge — see defaults/main.yml for rationale.
 
+- name: Preflight DNS-Morph before standalone role changes
+  ansible.builtin.import_tasks: preflight.yml
+
 - name: Pre-flight — bridge binary URL + sha256 must be set
   ansible.builtin.assert:
     that:
@@ -262,6 +265,7 @@
     mode: "0640"
     validate: >-
       /usr/local/libexec/ripdpi-validate-yaml-mapping
+      {{ '--allow-dns-morph-echo-only' if dns_morph_bridge_allow_echo_only else '' }}
       --profile dns-morph %s
   no_log: true
   diff: false

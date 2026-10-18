@@ -31,7 +31,46 @@
     group: root
     mode: "0644"
     validate: "{{ 'nft -c -f %s' if split_hop_ingress.validate_policy | bool else omit }}"
+  register: _split_hop_ingress_policy
   notify: Restart split-hop ingress
+
+- name: Install split-hop ingress boot policy loader
+  ansible.builtin.template:
+    src: split-hop-ingress-policy.service.j2
+    dest: /etc/systemd/system/split-hop-ingress-policy.service
+    owner: root
+    group: root
+    mode: "0644"
+  register: _split_hop_ingress_policy_unit
+
+- name: Ensure the owned WireGuard policy dependency directory
+  ansible.builtin.file:
+    path: "/etc/systemd/system/wg-quick@{{ split_hop_ingress.wg_interface }}.service.d"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Require the recipient boundary before starting WireGuard
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/wg-quick@{{ split_hop_ingress.wg_interface }}.service.d/split-hop-policy.conf"
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Requires=split-hop-ingress-policy.service
+      After=split-hop-ingress-policy.service
+
+- name: Load and retain the ingress boundary before tunnel activation
+  ansible.builtin.systemd_service:
+    name: split-hop-ingress-policy.service
+    enabled: true
+    state: "{{ 'restarted' if (_split_hop_ingress_policy.changed or _split_hop_ingress_policy_unit.changed) else 'started' }}"
+    daemon_reload: true
+  when:
+    - split_hop_ingress.manage_service | bool
+    - not ansible_check_mode
 
 - name: Render split-hop ingress WireGuard configuration
   ansible.builtin.template:

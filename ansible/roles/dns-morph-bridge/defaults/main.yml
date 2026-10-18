@@ -22,9 +22,8 @@ dns_morph_bridge:
   install_root: /opt/dns-morph-bridge
   bin_path: /usr/local/bin/dns-morph-bridge
 
-  # Listener binding. 0.0.0.0 is the operational baseline because UDP/53
-  # is unauthenticated and any address-specific bind would require a
-  # second public IP (out of scope for v1 single-VPS deploys).
+  # Listener binding. 0.0.0.0 accepts UDP/53 on all IPv4 interfaces.
+  # An address-specific bind must use an address assigned to this host.
   listen_addr: "0.0.0.0"
   listen_port: "{{ dns_morph_bridge_listen_port }}"
 
@@ -36,8 +35,8 @@ dns_morph_bridge:
   # Upstream data-plane endpoint that decoded handshakes are stitched
   # into. The operator points this at an existing transport on this
   # host (e.g. 127.0.0.1:443 to the local REALITY listener) or at a
-  # remote VPS. Empty string makes the bridge run in "echo-only" mode
-  # for smoke testing without forwarding anywhere.
+  # remote VPS. A nonempty host:port (or [IPv6]:port) is required unless
+  # the explicit test-only echo selector below is true.
   upstream_endpoint: ""
 
   # Per-minute query cap. UDP/53 attracts indiscriminate scanner
@@ -60,3 +59,6 @@ dns_morph_bridge_secrets:
   binary_sha256: ""
 
 dns_morph_bridge_role_enabled: true
+
+# Test fixtures only. This does not prove a DNS-Morph handshake or data plane.
+dns_morph_bridge_allow_echo_only: false

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
 import shutil
 import select
@@ -13,7 +14,7 @@ import uuid
 
 import pytest
 
-from template_render import render_template
+from template_render import merge_render_vars, render_template
 
 ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.native_runtime
@@ -182,6 +183,11 @@ server.serve_forever()
                 "fwmark": 1,
                 "wg_interface": "shop0",
                 "node_a_address": "10.200.0.1/30",
+                "listen_port": 51821,
+                "routing_table": 200,
+            },
+            "split_hop_ingress_secrets": {
+                "node_a_private_key": keys["a"], "node_b_public_key": pubs["b"],
             },
             "probe_matrix_runtime_users": {"xray_uid": 65532, "mtg_uid": 65533},
         }
@@ -193,6 +199,22 @@ server.serve_forever()
             ROOT / "ansible/roles/split-hop-egress/templates/split-hop-egress.nft.j2",
             dict(split_hop_egress={"wg_interface": "shop0", "forward_iface": "toe"}),
         )
+        shared_values = merge_render_vars()
+        shared_values.update(values)
+        shared_values["vpn"]["enable_split_hop_ingress"] = True
+        shared_values["split_hop_ingress_role_enabled"] = True
+        canonical = render_template(
+            ROOT / "ansible/roles/firewall/templates/nftables.conf.j2", shared_values,
+        )
+        ipv6_guard = next(line for line in canonical.splitlines()
+                          if 'comment "split-hop-ingress-boundary-v6"' in line)
+        chain_start = "  chain split_hop_ingress_egress_guard {"
+        ipv4_chain = chain_start + canonical.split(chain_start, 1)[1].split("\n  }", 1)[0] + "\n  }\n"
+        shared_guard = (
+            "table inet owned_shared_guard {\n"
+            "  chain output {\n    type filter hook output priority 0; policy accept;\n"
+            + ipv6_guard + "\n  }\n" + ipv4_chain + "}\n"
+        )
         # The unprivileged listener can write only its private test evidence.
         tmp_path.chmod(0o777)
         for parent in tmp_path.parents:
@@ -202,6 +224,7 @@ server.serve_forever()
         serve("e", "203.0.113.2", 18080)
         serve("a", "fd00:2::1", 18083, 65532)
         ipv6_log = serve("c", "fd00:2::2", 18081)
+        ipv4_log = serve("c", "198.51.100.2", 18084)
         # Establish an owned IPv6 original before installing the policy.
         # Its later packets must not escape through the previous public path.
         stream_log = tmp_path / "ipv6-stream.log"
@@ -264,15 +287,48 @@ s.sendall(b'after');assert s.recv(32)==b'after'
         ], "pre-policy IPv6 connection must establish"
         assert client.stdout.readline().strip() == "established"
         ns("a", "nft", "-f", "-", data=ingress)
+        # Retain both source-owned boundaries together. The complete canonical
+        # IPv4 chain must also permit the final marked route while it is up.
+        ns("a", "nft", "-f", "-", data=shared_guard)
+
+        def ingress_rules():
+            loaded = json.loads(ns("a", "nft", "-j", "list", "table", "inet", "split_hop_ingress"))
+            return [(row["rule"]["chain"], row["rule"]["expr"])
+                    for row in loaded["nftables"] if "rule" in row]
+
+        accepted_rules = ingress_rules()
+        assert accepted_rules, "actual ingress policy must contain rules"
+        for _ in range(2):
+            ns("a", "nft", "-f", "-", data=ingress)
+            assert ingress_rules() == accepted_rules, "repeated policy loading must replace rules without duplication"
+        changed_values = {**values, "split_hop_ingress": {
+            **values["split_hop_ingress"], "node_a_address": "10.200.0.9/30",
+        }}
+        changed_policy = render_template(
+            ROOT / "ansible/roles/split-hop-ingress/templates/policy.nft.j2", changed_values,
+        )
+        ns("a", "nft", "-f", "-", data=changed_policy)
+        changed_rules = ingress_rules()
+        assert len(changed_rules) == len(accepted_rules)
+        snat_addresses = [expression["snat"]["addr"]
+                          for _, expressions in changed_rules for expression in expressions
+                          if "snat" in expression]
+        assert snat_addresses == ["10.200.0.9"], "changed policy must replace the previous owned SNAT address"
+        ns("a", "nft", "-f", "-", data=ingress)
+        assert ingress_rules() == accepted_rules
         ns("b", "nft", "-f", "-", data=egress)
         client.communicate("x", timeout=4)
         assert client.returncode != 0, "established owned IPv6 original must be fenced"
         assert (
             stream_log.read_bytes() == b"before"
         ), "post-policy original must not leak"
-        result = request("a", "http://203.0.113.2:18080/", 65532)
-        assert result.returncode == 0, result.stderr
-        assert result.stdout == "203.0.113.1", "egress must be Node B"
+        for uid in (65532, 65533):
+            result = request("a", "http://203.0.113.2:18080/", uid)
+            assert result.returncode == 0, (
+                result.stderr + ns("a", "ip", "route", "get", "203.0.113.2", "mark", "1")
+                + ns("a", "nft", "list", "table", "inet", "split_hop_ingress")
+            )
+            assert result.stdout == "203.0.113.1", "egress must be Node B"
         assert (
             request("c", "http://198.51.100.1:18080/").stdout == "198.51.100.2"
         ), "accepted-client reply must remain on A"
@@ -290,6 +346,38 @@ s.sendall(b'after');assert s.recv(32)==b'after'
         assert allowed.returncode == 0 and allowed.stdout == "fd00:2::1", allowed.stderr
         received = int(ns("b", "wg", "show", "shop0", "transfer").split()[1])
         assert received > 0, "real encrypted WG transport must carry the request"
+        configuration = render_template(
+            ROOT / "ansible/roles/split-hop-ingress/templates/split-hop-ingress.conf.j2",
+            values,
+        )
+        post_down = next(line.split(" = ", 1)[1] for line in configuration.splitlines()
+                         if line.startswith("PostDown = "))
+        ns("a", "sh", "-c", post_down)
+        ns("a", "ip", "link", "set", "shop0", "down")
+        assert "egress_guard" in ns("a", "nft", "list", "table", "inet", "split_hop_ingress")
+        direct_before = {path: path.read_bytes() if path.exists() else b""
+                         for path in (ipv4_log, ipv6_log)}
+        for uid in (65532, 65533):
+            for url in ("http://198.51.100.2:18084/", "http://[fd00:2::2]:18081/"):
+                denied = request("a", url, uid)
+                assert denied.returncode != 0, "stopped tunnel must not expose owned direct egress"
+        assert all((path.read_bytes() if path.exists() else b"") == before
+                   for path, before in direct_before.items()), "owned originals reached a direct listener"
+        for url, address in (("http://198.51.100.2:18084/", "198.51.100.1"),
+                             ("http://[fd00:2::2]:18081/", "fd00:2::1")):
+            control = request("a", url)
+            assert control.returncode == 0 and control.stdout == address, control.stderr
+        for url, address in (("http://198.51.100.1:18080/", "198.51.100.2"),
+                             ("http://[fd00:2::1]:18083/", "fd00:2::2")):
+            reply = request("c", url)
+            assert reply.returncode == 0 and reply.stdout == address, reply.stderr
+        ns("a", "ip", "link", "set", "shop0", "up")
+        ns("a", "ip", "route", "add", "default", "dev", "shop0", "table", "200")
+        ns("a", "ip", "rule", "add", "fwmark", "1", "table", "200")
+        for uid in (65532, 65533):
+            recovered = request("a", "http://203.0.113.2:18080/", uid)
+            assert recovered.returncode == 0 and recovered.stdout == "203.0.113.1", recovered.stderr
+        assert int(ns("b", "wg", "show", "shop0", "transfer").split()[1]) > received
     finally:
         for proc in children:
             proc.terminate()

@@ -40,7 +40,7 @@ reconnection cycle" rather than RST. AmneziaWG randomises the size
 | Profile | Jc | Jmin | Jmax | S1 | S2 | H1..H4 | Cohort file |
 |---|---|---|---|---|---|---|---|
 | `narrow-junk-sequential` | 4 | 10 | 50 | 0 | 0 | 1, 2, 3, 4 | `ansible/roles/amneziawg/vars/cohorts/narrow-junk-sequential.yml` |
-| broad-rule baseline (role default) | 4 | 40 | 70 | 50 | 100 | random per peer | — (role defaults) |
+| broad-rule baseline (role default) | 4 | 40 | 70 | 50 | 100 | random per instance | — (role defaults) |
 
 `narrow-junk-sequential` targets DPI rules that discriminate against
 the broad-baseline shape (long junks + non-zero S1/S2) but still
@@ -65,10 +65,17 @@ network without a documented profile.
 `vpn.awg_cohort` supplies defaults for every instance; explicit per-instance
 parameters win. A single instance uses the same nonempty list contract.
 
-H1..H4 should be **random integers per peer** outside the
+H1..H4 should be **random integers per instance** outside the
 `narrow-junk-sequential` profile — using the literal sequential set
 `1, 2, 3, 4` everywhere creates a template the censor can train on.
-Generate four random 32-bit unsigned ints with:
+All peers of an instance use the same headers. Use separate instances for
+different wire profiles. Each header must equal its standard message type
+(`H1=1`, `H2=2`, `H3=3`, `H4=4`) or exceed four. The pinned engine silently
+rewrites other values at most four. All four headers must differ, and
+`148 + S1` must differ from `92 + S2`. Admission refuses these invalid inputs
+before deployment or export.
+
+Generate four candidate random 32-bit unsigned integers with:
 
 ```bash
 for i in 1 2 3 4; do
@@ -76,16 +83,19 @@ for i in 1 2 3 4; do
 done
 ```
 
+Repeat generation if a value is at most four or two values match.
+
 ## When to deviate from the profile
 
 - The handshake never completes from a specific network → try the
   `narrow-junk-sequential` values as a known-good shape, then
   re-randomise H1..H4 for any non-matching deployment.
-- Handshake completes but stalls every ~30 s → keep current H1..H4;
-  the issue is upstream rate-limiting, not the Initiation shape.
-- Handshake works but client reports "sometimes 3–4 retries" → that
-  matches the documented `narrow-junk-sequential` probabilistic
-  behaviour; no further change needed.
+- Handshake completes but stalls every ~30 s → capture packet loss, MTU,
+  NAT state and traffic counters before changing the profile. Timing alone
+  does not establish rate limiting or exclude a wire-profile mismatch.
+- Handshake needs 3–4 retries → compare the selected profile with a control
+  on the same path and record handshake and sustained-transfer results.
+  The observation above does not establish acceptable reliability.
 
 ## arm64 Android / S3-S4 (must stay zero)
 
@@ -154,6 +164,11 @@ automatic migration of private operator documents.
 
 Standalone export supports `OUTPUT=<new-file> scripts/emit-awg.sh <device>`
 for a no-clobber owner-only recipient artifact in a private `0700` directory.
+The configuration contains `PrivateKey = <CLIENT_PRIVATE_KEY>` and cannot
+connect until the device's matching key is supplied separately. Issuance stores
+that key in the encrypted registry and emits metadata; it does not create a
+plaintext key file. Follow [Private-key handoff](RIPDPI-BUNDLE.md#private-key-handoff)
+for the existing manual delivery process.
 Existing, linked, shared or tracked output destinations refuse; ordinary stdout
 remains available for an explicitly selected recipient. Device addresses are
 unreserved IPv4 /32 and IPv6 /128 identities inside the selected instance's
