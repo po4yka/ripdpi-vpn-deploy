@@ -28,6 +28,8 @@ def peer():
  raise AssertionError('namespace-not-ready')
 # Docker can mount /proc/sys read-only while procps reports a successful
 # ignored write. The caller owns a private mount namespace as well as netns.
+# On a VM this can be a plain proc directory; bind it before remounting.
+run('mount','--bind','/proc/sys','/proc/sys')
 run('mount','-o','remount,rw','/proc/sys')
 client=peer(); upstream=peer(); server=None
 def inside(process,*args,check=True):
