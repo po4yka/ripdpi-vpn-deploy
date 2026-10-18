@@ -113,15 +113,16 @@ table inet filter {
     # requests before conntrack can accept an established echo stream.
     ip protocol icmp icmp type echo-request limit rate over 10/second burst 20 packets drop
     meta l4proto ipv6-icmp icmpv6 type echo-request limit rate over 10/second burst 20 packets drop
-    ct state established,related accept
     ct state invalid drop
 
-    # Multicast discovery replies have a different conntrack tuple. Admit
-    # only the local client's server port pair on the observed uplink.
+    # Conntrack tuples do not retain the interface. Keep this client scope
+    # before generic established acceptance, including unicast renewals.
     iifname "{{ dhcpv6_uplink }}" ip6 saddr fe80::/10 fib daddr type local udp sport 547 udp dport 546 counter accept comment "dhcpv6-client-reply"
 {% if dhcpv6_servers %}
     iifname "{{ dhcpv6_uplink }}" ip6 saddr { {{ dhcpv6_servers | join(', ') }} } fib daddr type local udp sport 547 udp dport 546 counter accept comment "dhcpv6-approved-server-reply"
 {% endif %}
+    meta nfproto ipv6 udp sport 547 udp dport 546 counter drop comment "dhcpv6-client-reply-denied"
+    ct state established,related accept
 {% if (security_controls | default({})).fail2ban | default(false) %}
 
     # Fail2Ban sshd bans. This stays ahead of the SSH allowlist so a source
@@ -239,7 +240,6 @@ table inet filter {
     policy drop;
 
     oif "lo" accept
-    ct state established,related accept
     ct state invalid drop
 
     # Initial discovery and rebind stay on the local link. Exact legacy
@@ -248,6 +248,8 @@ table inet filter {
 {% if dhcpv6_servers %}
     oifname "{{ dhcpv6_uplink }}" meta nfproto ipv6 fib saddr type local ip6 daddr { {{ dhcpv6_servers | join(', ') }} } udp sport 546 udp dport 547 counter accept comment "dhcpv6-approved-server-request"
 {% endif %}
+    meta nfproto ipv6 udp sport 546 udp dport 547 counter drop comment "dhcpv6-client-request-denied"
+    ct state established,related accept
 
     # Neighbour discovery is untracked; established/related cannot admit it.
     meta l4proto ipv6-icmp icmpv6 type { nd-router-solicit, nd-neighbor-solicit, nd-neighbor-advert } ip6 hoplimit 255 accept

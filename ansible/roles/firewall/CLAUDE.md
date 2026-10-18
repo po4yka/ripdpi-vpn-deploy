@@ -13,6 +13,13 @@ legacy unicast authority; prefixes and broad global UDP accepts are refused.
 Set overrides in reviewed cohort `group_vars`; they are not live CLI overrides.
 The default uses observed facts and needs no new operator input.
 
+DHCPv6 scope applies before generic conntrack acceptance. After invalid-state
+refusal, scoped replies and strict-output requests pass their exact rules; the
+remaining canonical IPv6 client port pair drops before established acceptance.
+Conntrack does not retain interface scope, so identical link-local tuples on
+different interfaces must remain denied after a valid unicast request/reply.
+Legacy server accepts stay bounded and permissive/logged output keeps its policy.
+
 Split-hop IPv4 guard rules use POSTROUTING to inspect the final interface after
 route marking. OUTPUT can retain the earlier interface. The IPv6 original-traffic
 guard remains in OUTPUT before established acceptance; neither guard depends on

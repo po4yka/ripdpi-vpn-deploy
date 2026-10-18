@@ -273,3 +273,74 @@ def test_native_scoped_dhcpv6_bootstrap_rebind_and_legacy_server():
                 failures.append(namespace)
         if failures:
             raise RuntimeError("dhcpv6-owned-namespace-cleanup-refused")
+
+
+def test_native_established_dhcpv6_tuple_cannot_cross_uplink_scope():
+    assert sys.platform == "linux" and os.geteuid() == 0, "isolated-Linux-root-required"
+    token = "dh" + secrets.token_hex(4)
+    client, peer = token + "c", token + "p"
+    namespaces = []
+    try:
+        for namespace in (client, peer):
+            run("ip", "netns", "add", namespace)
+            namespaces.append(namespace)
+            run("ip", "-n", namespace, "link", "set", "lo", "up")
+        for left, right in (("up0", "peer0"), ("wrong0", "other0")):
+            run("ip", "-n", client, "link", "add", left, "type", "veth",
+                "peer", "name", right, "netns", peer)
+            # Link-local scope permits the same address on independent links.
+            for namespace, interface, address in (
+                (client, left, "fe80::10/64"), (peer, right, "fe80::20/64"),
+            ):
+                run("ip", "-n", namespace, "addr", "add", address, "dev", interface, "nodad")
+                run("ip", "-n", namespace, "link", "set", interface, "up")
+        values = merge_render_vars()
+        values.update(
+            ansible_facts={"default_ipv4": {"interface": "up0"}},
+            firewall_egress_policy="strict", firewall_dhcpv6_uplink_interface="",
+            firewall_dhcpv6_server_addresses=[], public_listener_contract=[],
+            security_controls={"fail2ban": False}, _firewall_effective_check_mode=True,
+            _firewall_tailnet_ssh_sets_was_absent=True,
+            _firewall_tailnet_initial_fragment=(ROOT / "ansible/roles/firewall/files/vpn-tailnet-ssh-sets.empty.nft").read_text(),
+        )
+        values["vpn"] = {key: False for key in values["vpn"]}
+        rendered = render_template(ROOT / "ansible/roles/firewall/templates/nftables.conf.j2", values)
+        run("ip", "netns", "exec", client, "nft", "-c", "-f", "-", data=rendered)
+        run("ip", "netns", "exec", client, "nft", "-f", "-", data=rendered)
+        # Observe after conntrack attachment and before the canonical filter.
+        run("ip", "netns", "exec", client, "nft", "-f", "-", data="""
+add table inet dhcpv6_established_probe
+add chain inet dhcpv6_established_probe input { type filter hook input priority -1; }
+add chain inet dhcpv6_established_probe output { type filter hook output priority -1; }
+add rule inet dhcpv6_established_probe input iifname "wrong0" ip6 saddr fe80::20 ip6 daddr fe80::10 udp sport 547 udp dport 546 ct state established counter comment "established-input"
+add rule inet dhcpv6_established_probe output oifname "wrong0" ip6 saddr fe80::10 ip6 daddr fe80::20 udp sport 546 udp dport 547 ct state established counter comment "established-output"
+""")
+        assert packet(peer, client, source="fe80::20", target="fe80::10",
+                      send_interface="other0", receive_interface="wrong0") is None
+        assert packet(client, peer, source="fe80::10", target="fe80::20", sport=546,
+                      dport=547, send_interface="wrong0", receive_interface="other0",
+                      expected_output_deny=True) is None
+        assert packet(client, peer, source="fe80::10", target="fe80::20", sport=546,
+                      dport=547, send_interface="up0", receive_interface="peer0")
+        assert packet(peer, client, source="fe80::20", target="fe80::10")
+        # Keep both directions in the same conntrack zone and retained tuple.
+        assert packet(peer, client, source="fe80::20", target="fe80::10",
+                      send_interface="other0", receive_interface="wrong0") is None
+        assert packet(client, peer, source="fe80::10", target="fe80::20", sport=546,
+                      dport=547, send_interface="wrong0", receive_interface="other0",
+                      expected_output_deny=True) is None
+        observed = json.loads(run("ip", "netns", "exec", client, "nft", "-j", "list",
+                                  "table", "inet", "dhcpv6_established_probe"))
+        counts = {row["rule"]["comment"]: expression["counter"]["packets"]
+                  for row in observed["nftables"] if "rule" in row
+                  for expression in row["rule"]["expr"] if "counter" in expression}
+        assert counts == {"established-input": 1, "established-output": 1}
+    finally:
+        failures = []
+        for namespace in reversed(namespaces):
+            try:
+                run("ip", "netns", "delete", namespace)
+            except subprocess.SubprocessError:
+                failures.append(namespace)
+        if failures:
+            raise RuntimeError("dhcpv6-owned-namespace-cleanup-refused")

@@ -99,12 +99,22 @@ def test_observer_is_counter_only_and_keeps_native_packet_matrix():
     assert not any(word in observer.split() for word in ("accept", "drop", "reject", "policy"))
     native_cases = [node for node in tree.body if isinstance(node, ast.FunctionDef)
                     and node.name.startswith("test_")]
-    assert len(native_cases) == 1
-    probes = [node for node in ast.walk(native_cases[0]) if isinstance(node, ast.Call)
+    assert {node.name for node in native_cases} == {
+        "test_native_scoped_dhcpv6_bootstrap_rebind_and_legacy_server",
+        "test_native_established_dhcpv6_tuple_cannot_cross_uplink_scope",
+    }
+    original = next(node for node in native_cases if node.name == "test_native_scoped_dhcpv6_bootstrap_rebind_and_legacy_server")
+    probes = [node for node in ast.walk(original) if isinstance(node, ast.Call)
               and isinstance(node.func, ast.Name) and node.func.id == "packet"]
     assert len(probes) == 12
     assert sum(any(key.arg == "observe_multicast" and ast.literal_eval(key.value) is True
                    for key in call.keywords) for call in probes) == 1
+    established = next(node for node in native_cases if node.name == "test_native_established_dhcpv6_tuple_cannot_cross_uplink_scope")
+    warm_probes = [node for node in ast.walk(established) if isinstance(node, ast.Call)
+                   and isinstance(node.func, ast.Name) and node.func.id == "packet"]
+    assert len(warm_probes) == 6
+    assert sum(any(key.arg == "expected_output_deny" and ast.literal_eval(key.value) is True
+                   for key in call.keywords) for call in warm_probes) == 2
 
 
 def test_failed_suite_publishes_only_validated_observation(tmp_path, monkeypatch):

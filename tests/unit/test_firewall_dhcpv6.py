@@ -120,3 +120,35 @@ def test_synthetic_awg_default_route_cannot_move_fixture_dhcpv6_on_second_gather
     assert uplink == "eth0"
     assert render(facts=before, interface=uplink) == render(facts=after, interface=uplink)
     assert 'iifname "eth0" ip6 saddr fe80::/10' in render(facts=after, interface=uplink)
+
+
+@pytest.mark.parametrize("servers", [(), ("2001:db8::20",)])
+@pytest.mark.parametrize("policy", ["permissive", "logged", "strict"])
+def test_dhcpv6_reply_scope_precedes_generic_conntrack(servers, policy):
+    chain = render(servers=servers, policy=policy).split("  chain input {", 1)[1].split("  chain forward {", 1)[0]
+    invalid = chain.index("ct state invalid drop")
+    allowed = chain.index('comment "dhcpv6-client-reply"')
+    refused = chain.index('meta nfproto ipv6 udp sport 547 udp dport 546 counter drop comment "dhcpv6-client-reply-denied"')
+    established = chain.index("ct state established,related accept")
+    assert invalid < allowed < refused < established
+    if servers:
+        assert allowed < chain.index('comment "dhcpv6-approved-server-reply"') < refused
+
+
+@pytest.mark.parametrize("servers", [(), ("2001:db8::20",)])
+def test_dhcpv6_request_scope_precedes_generic_conntrack(servers):
+    chain = render(servers=servers).split("  chain output {", 1)[1]
+    invalid = chain.index("ct state invalid drop")
+    allowed = chain.index('comment "dhcpv6-client-request"')
+    refused = chain.index('meta nfproto ipv6 udp sport 546 udp dport 547 counter drop comment "dhcpv6-client-request-denied"')
+    established = chain.index("ct state established,related accept")
+    assert invalid < allowed < refused < established
+    if servers:
+        assert allowed < chain.index('comment "dhcpv6-approved-server-request"') < refused
+
+
+@pytest.mark.parametrize("policy", ["permissive", "logged"])
+def test_permissive_output_keeps_existing_dhcpv6_policy(policy):
+    chain = render(policy=policy).split("  chain output {", 1)[1]
+    assert "policy accept;" in chain
+    assert 'comment "dhcpv6-client-request-denied"' not in chain

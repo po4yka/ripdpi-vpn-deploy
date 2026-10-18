@@ -41,7 +41,11 @@ failure diagnostics expose only fixed component names and change booleans.
 DHCPv6 portable tests exercise actual admission and both rendered egress policies.
 The native hopping suite additionally sends real UDP across owned network
 namespaces through the complete rendered firewall; wrong interfaces, ports and
-unapproved global server addresses remain negative cases.
+unapproved global server addresses remain negative cases. A separate native case
+keeps the original twelve probes intact and warms one unicast tuple before wrong
+interface checks in both directions. It repeats the same link-local addresses on
+two links, observes established state at priority -1 without a verdict and
+requires both cold and established denials. No conntrack flush separates probes.
 An expected local OUTPUT drop accepts only EPERM from sendto on an explicit
 negative probe; the receiver must still see no packet. Positive sends and other
 errno values remain fatal.
