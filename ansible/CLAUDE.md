@@ -2,7 +2,7 @@
 
 ## Design decisions
 
-DNS-Morph controller admission runs in site pre_tasks before host changes and
+DNS-Morph controller admission runs after exact-node ownership in site pre_tasks, before host changes and
 at standalone role entry. Both use the same bounded YAML validator and rendered
 role contract; malformed seed material and implicit echo-only inputs refuse in
 normal and check mode. Split-hop ingress retains its UID output boundary when

@@ -121,6 +121,10 @@ def test_actual_role_preflight_precedes_mutation_in_normal_and_check_mode(tmp_pa
         site = yaml.safe_load((ROOT / "ansible/playbooks/site.yml").read_text())[0]
         first = next(task for task in site["pre_tasks"]
                      if task.get("ansible.builtin.import_role") == {"name": "dns-morph-bridge", "tasks_from": "preflight"})
+        ownership = next(task for task in site["pre_tasks"]
+                         if "ansible_play_hosts_all | length == 1"
+                         in task.get("ansible.builtin.assert", {}).get("that", []))
+        assert site["pre_tasks"].index(ownership) < site["pre_tasks"].index(first)
     sentinel = tmp_path / "host-mutation"
     play = tmp_path / "play.yml"
     play.write_text(yaml.safe_dump([{

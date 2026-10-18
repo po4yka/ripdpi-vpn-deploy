@@ -23,6 +23,14 @@
       ansible.builtin.import_tasks: tasks/transport-input-preflight.yml
       tags: [always]
 
+    - name: Require exact-node controller ownership before convergence
+      tags: [always]
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all | length == 1
+          - ssh_transaction_controller_managed | default(false) | bool
+        fail_msg: site.yml must run through the exact-node deployment controller
+
     - name: Preflight enabled DNS-Morph inputs before host changes
       ansible.builtin.import_role:
         name: dns-morph-bridge
@@ -31,14 +39,6 @@
         - vpn.enable_dns_morph_bridge | default(false) | bool
         - not (vpn_subscription_only | default(false) | bool)
       tags: [always]
-
-    - name: Require exact-node controller ownership before convergence
-      tags: [always]
-      ansible.builtin.assert:
-        that:
-          - ansible_play_hosts_all | length == 1
-          - ssh_transaction_controller_managed | default(false) | bool
-        fail_msg: site.yml must run through the exact-node deployment controller
 
     - name: Validate reviewed network exposure policy before host changes
       ansible.builtin.import_role:
