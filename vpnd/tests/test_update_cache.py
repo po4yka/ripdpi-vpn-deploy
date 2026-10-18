@@ -69,25 +69,54 @@ def server(status, body, stall=0):
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
     listener.listen()
+    listener.settimeout(3)
     url = f"http://127.0.0.1:{listener.getsockname()[1]}/releases/latest"
     requests = []
 
     def serve():
-        conn, _ = listener.accept()
-        with conn:
-            conn.settimeout(5)
-            requests.append(conn.recv(4096).decode())
-            if stall:
-                time.sleep(stall)
-            else:
-                conn.sendall(
-                    f"HTTP/1.1 {status}\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n{body}".encode()
-                )
-        listener.close()
+        try:
+            conn, _ = listener.accept()
+            with conn:
+                conn.settimeout(5)
+                requests.append(conn.recv(4096).decode())
+                if stall:
+                    time.sleep(stall)
+                else:
+                    conn.sendall(
+                        f"HTTP/1.1 {status}\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n{body}".encode()
+                    )
+        except TimeoutError:
+            # A failed client startup must not strand the fixture in accept().
+            pass
+        finally:
+            listener.close()
 
     thread = threading.Thread(target=serve)
     thread.start()
     return url, thread, requests
+
+
+def test_release_server_without_client_stops_and_closes_listener():
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    source = f'''
+import runpy, socket, sys
+from urllib.parse import urlsplit
+sys.path[:0] = {[str(Path(__file__).resolve().parent), str(Path(__file__).resolve().parents[1] / "src")]!r}
+fixture = runpy.run_path({str(Path(__file__).resolve())!r})
+url, thread, requests = fixture["server"]("200 OK", "{{}}")
+thread.join(timeout=4)
+assert not thread.is_alive(), "unused release fixture must stop"
+assert requests == []
+endpoint = urlsplit(url)
+with socket.socket() as probe:
+    probe.settimeout(1)
+    assert probe.connect_ex((endpoint.hostname, endpoint.port)) != 0, "listener must close"
+'''
+    result = subprocess.run([sys.executable, "-c", source], capture_output=True, text=True, timeout=6)
+    assert result.returncode == 0, result.stderr
 
 
 # Rust test: vpnd/src/commands/update.rs::release_fetch_uses_real_http_json_and_rejects_http_or_schema_errors
@@ -106,7 +135,8 @@ def test_release_fetch_uses_real_http_json_and_rejects_http_or_schema_errors():
             else:
                 assert update.fetch_latest_tag(url) == expected
         finally:
-            thread.join()
+            thread.join(timeout=4)
+            assert not thread.is_alive()
         assert (
             requests[0].startswith("GET /releases/latest HTTP/1.1")
             and "user-agent: vpnd/" in requests[0].lower()
@@ -160,14 +190,16 @@ def test_notice_requires_a_strictly_newer_parseable_release():
 
 # Rust test: vpnd/src/commands/update.rs::stalled_connection_fails_within_the_explicit_timeout
 def test_stalled_connection_fails_within_the_explicit_timeout():
-    url, thread, _ = server("200 OK", "", stall=2)
+    url, thread, requests = server("200 OK", "", stall=2)
     start = time.monotonic()
     try:
         with pytest.raises(Exception):
             update.fetch_latest_tag_with_timeout(url, 1)
         assert time.monotonic() - start < 4
     finally:
-        thread.join()
+        thread.join(timeout=4)
+        assert not thread.is_alive()
+    assert requests and requests[0].startswith("GET /releases/latest HTTP/1.1")
 
 
 def test_total_timeout_bounds_a_trickling_header():

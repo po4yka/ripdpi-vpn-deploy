@@ -21,6 +21,8 @@ stable-release restriction. Existing synthetic checks do not prove engine compat
 - Correct related Naive compatibility notes and qualify Snell using its real runtime.
 - Refresh reviewed Naive and Snell pins where native compatibility is established.
 - Correct the opt-in Finalmask contract so it cannot silently ignore the setting.
+- Remove CR and LF from encoded inventory metadata before publication.
+- Bound the real HTTP test server cleanup when an update client never connects.
 
 ## Capabilities
 
