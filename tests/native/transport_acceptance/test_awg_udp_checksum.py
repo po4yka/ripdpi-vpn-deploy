@@ -1,7 +1,6 @@
 """Real zero-checksum DNS traffic through the canonical AWG/NAT policy."""
 
 import json
-from pathlib import Path
 import select
 import socket
 import struct
