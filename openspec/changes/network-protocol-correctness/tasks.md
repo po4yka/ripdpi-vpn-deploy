@@ -20,6 +20,10 @@ integrated, reviewed PR. Keep deployment and conditional risks separate.
   scripts/transport_destination_policy.py, scripts/cascade-classifier-proxy.py,
   scripts/transport_egress_normalizer.py, matching test files and
   docs/CLIENT-NOTES.md. No client_payload.py changes.
+- Client worker also owns scripts/workspace-status.py,
+  tests/unit/test_workspace_status.py and one separate scripts/CLAUDE.md
+  paragraph for the confirmed metadata pipe deadlock. The primary serializes
+  that shared note and task artifacts; no other session implements this fix.
 - Primary owns baseline resolver and DNS-Morph retirement integration,
   ansible/playbooks/site.yml, shared scripts/CLAUDE.md and tests/CLAUDE.md,
   snapshots, docs/TESTING.md, docs/NETWORK-PROTOCOL-AUDIT.md, task artifacts,
@@ -42,3 +46,4 @@ Run focused behavior tests, provider tests, reviewed snapshots, complete make
 check, security review, structured review and protected PR checks. Retain source
 merge and exact integration CI evidence separately from local and device proof.
 No deployment, live credentials, provider mutation or real notification occurs.
+- [x] SEC-1792317891777907 Bound checkout metadata input without a duplex pipe deadlock #bug !high @item:SEC-1792307003680932

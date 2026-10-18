@@ -54,6 +54,15 @@ record or force a stub before the bridge has stopped.
 - Version bumps, new crypto groups, and optional protocol promotion are outside
   this repair. PQE HOLD and per-device credential authority remain unchanged.
 
+## Validation transport correction
+
+The complete local gate also confirmed a checkout-discovery deadlock: Python
+and Git both blocked writing pipe data beyond the command timeout. Metadata
+input now uses a private temporary file. The correction keeps exact path bytes,
+empty-input EOF, command deadlines and all content-filter refusals.
+`test_workspace_status.py` covers large real Git input, non-UTF-8 names, clean
+and process filter refusal, and a real blocked-query deadline.
+
 ## Remaining independent evidence
 
 Strict split-hop reverse-path filtering and Android per-package DNS attribution

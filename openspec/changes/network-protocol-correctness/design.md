@@ -37,6 +37,10 @@ and deployment recovery changes in separate worktrees.
   compatible same-host 443 site.
 - Reuse already merged and separately owned fixes through source integration,
   not cherry-picked duplicate implementations.
+- Pass non-null Git metadata input through a private temporary file. Native
+  samples from the complete gate show Python and Git blocked in writes beyond
+  the 30-second timeout. A seekable input removes the duplex pipe cycle while
+  preserving UTF-8 surrogateescape, output capture, deadlines and filter refusal.
 
 ## Contracts and ownership
 
@@ -48,6 +52,8 @@ and deployment recovery changes in separate worktrees.
   and operator certificate documentation.
 - Client worker: kill-switch checker, destination name policy, cascade relay,
   normalizer UDP payload path, matching tests and client documentation.
+- Client worker also owns the checkout metadata input transport and its tests.
+  Its separate scripts/CLAUDE.md paragraph is serialized with the primary.
 - Primary: resolver role and site retirement ordering, task artifacts, shared
   scripts/tests notes, evidence ledger, snapshots, integration and publication.
 - Workers leave shared scripts/CLAUDE.md and tests/CLAUDE.md to the primary.

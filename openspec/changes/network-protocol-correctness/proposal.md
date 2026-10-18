@@ -19,6 +19,8 @@ matrix that separates source acceptance from deployment and device acceptance.
 - Retain the SAN and validity fixes already integrated in PR #328. Accept the
   separately owned Hysteria transit redirect fix only after its source merges.
 - Retain the two conditional audit risks as explicit verification gaps.
+- Bound checkout discovery after the complete gate confirmed a metadata pipe
+  deadlock. Preserve Git filter refusal and path byte identity.
 - No deployment, credential rotation, new protocol, or runtime version change.
 
 ## Capabilities

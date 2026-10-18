@@ -31,6 +31,7 @@ artifact_evidence: null
 | REQ-NPC-NAME | SEC-1792307141621739 | 156 client boundary tests on Python 3.12.13 and 3.12.15 include lossless IDNA and explicit A-label cases | Passed locally |
 | REQ-NPC-RELAY | SEC-1792307141621739 | 156 client boundary tests on Python 3.12.13 and 3.12.15 include real TCP half-close, bounded buffers and authenticated empty UDP | Passed locally |
 | REQ-NPC-RESOLVER | SEC-1792307142612713 | 49 resolver/runtime tests; interrupted apply replay; independent focused review APPROVE | Passed locally |
+| REQ-NPC-DISCOVERY | SEC-1792317891777907 | 38 checkout-discovery tests; real large-input, byte-identity, filter-refusal and FIFO deadline cases; actual Make and selected-task commands | Passed locally |
 | REQ-NPC-EVIDENCE | SEC-1792307143659844 | Full gate, source ledger, reviews, coordinated fixes and protected merge | Pending |
 
 ## Coordination
@@ -61,8 +62,11 @@ The source change does not claim production networking, browser, or device proof
 - Inventory and observability topology tests: 83 passed after reuse of the
   exact PR #329 substitutions.
 - Structured review: no accepted actionable findings. Security review: APPROVE.
-- The complete local gate is queued behind another active build. Exact-head
-  hosted CI and source merge remain pending. No runtime acceptance is claimed.
+- Complete gate on 801eca79 exited 2: 8108 tests and 45 subtests passed;
+  228 native cases were deselected by the portable lane. Five cases could not
+  find the official ansible-playbook entry point in the private virtualenv.
+  Two checkout-discovery cases failed after the owned blocked process tree
+  was interrupted. Shell and CLI stages did not run. No full-gate pass is claimed.
 
 ## CI integration corrections
 
@@ -80,7 +84,7 @@ unit failures. The existing assertions remain active.
   3.12.15, with no new deployed dependency.
 
 Another 154 Tailnet/bootstrap and AWG provisioning tests pass. The complete
-local gate remains queued with stdin bound to /dev/null. Incremental structured review is clean; security review of the delta is APPROVE.
+local gate ran with stdin bound to /dev/null. Incremental structured review is clean; security review of the delta is APPROVE.
 The replacement CI run and final integrated source proof remain required.
 
 The inherited PR #328 source a14c339ccf8db8bce10bce5da22380a813a41605 has
@@ -92,3 +96,37 @@ is a temporary shared-source dependency for the local Darwin gate. It drains
 synthetic ciphertext before emitting JSON and tests input above pipe capacity.
 The owning security change retains this source; no alternate implementation is
 created. Its final main integration remains required before source closure.
+
+## Checkout metadata deadlock
+
+The complete gate reproduced a workspace-status helper blocked beyond its
+30-second Git deadline. Native samples show both Python input and Git output
+blocked in writes. The helper invoked check-attr with the real tracked-path
+list; no fleet or credential input was used. The primary checked the exact
+owned process tree before stopping it. A second blocked helper required the
+same cleanup. The resulting failed gate remains failed evidence.
+
+SEC-1792317891777907 owns the minimal metadata transport correction. The
+security audit session will reuse this exact source instead of implementing
+another workaround. Filter refusal, path byte identity and bounded command
+failure remain mandatory.
+
+The correction is source commit 2c48e719f67a832d27445d36ad9ca16f5357471a.
+The full discovery module passes 38 cases in 18.63 seconds. The real Make
+discovery command completes in 0.239 seconds; selected-task JSON completes in
+0.662 seconds. Security review is APPROVE; structured review is clean at 0.98.
+All commit hooks pass. A replacement complete gate remains required.
+
+The five transport preflight cases now pass in 4.02 seconds after the official
+hash-locked ansible-core 2.21.5 wheel installs its entry point into the private
+virtualenv. Dependency checks pass. No production admission code changed for
+those environment failures.
+
+## Additional native diagnostic
+
+Run 39109079489 passes both new native NAT cases and the 166-case native suite.
+Its later repeated AWG dual-stack goal fails an IPv6 DNS AAAA probe with an
+upstream UDP checksum error. The empty-range NAT render is identical to the
+baseline after blank-line normalization. No causal production change is
+established. An isolated packet experiment will test a specific pinned-runtime
+checksum hypothesis; it remains pending and no offload or guard is disabled.

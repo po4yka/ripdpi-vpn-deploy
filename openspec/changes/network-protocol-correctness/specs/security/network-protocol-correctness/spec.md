@@ -97,6 +97,23 @@ same-host public HTTPS/443 site MUST retain HSTS.
 - **THEN** its response does not persist an HSTS policy that redirects it to
   an unrelated REALITY identity.
 
+### Requirement: REQ-NPC-DISCOVERY — Bound checkout metadata discovery
+
+Checkout discovery MUST preserve NUL-delimited Git path bytes and its existing
+content-filter refusal. Large metadata input MUST not create a duplex pipe
+deadlock. A blocked Git command MUST remain subject to its existing deadline.
+
+#### Scenario: Large and unusual tracked paths
+
+- **WHEN** Git metadata exceeds pipe capacity and includes non-UTF-8 path bytes
+- **THEN** discovery retains the exact path identity and completes or refuses
+  within its command deadline without executing a content filter.
+
+#### Scenario: Git cannot read metadata
+
+- **WHEN** an owned Git metadata operation blocks before it reads the input
+- **THEN** the command deadline terminates the operation and reports failure.
+
 ### Requirement: REQ-NPC-EVIDENCE — Retain the complete audit ledger
 
 Verification MUST account for every confirmed audit defect, including the
