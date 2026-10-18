@@ -1,6 +1,6 @@
 ## Context
 
-The audit found thirteen source defects. Integration also exposed inventory encoding and checkout-discovery failures. The approved scope is source repair, regression tests, documentation, PR and merge. External deployment and private operator inputs remain outside this change.
+The audit found thirteen source defects. Integration also exposed inventory encoding, checkout-discovery failures and missing categorical native failure evidence. The approved scope is source repair, regression tests, documentation, PR and merge. External deployment and private operator inputs remain outside this change.
 
 ## Goals / Non-Goals
 
@@ -20,6 +20,7 @@ The audit found thirteen source defects. Integration also exposed inventory enco
 - Strip both CR and LF from inventory base64 encoding. A CRLF encoder must not split the typed build-environment label into multiple host lines. Parser admission remains strict.
 - Alert environment uses the same configured authority as finite-silence. Telegram retains a shared thread-safe monotonic deadline from bounded JSON flood errors. Every delivery path checks it before a new upstream request, including later webhooks and canary send/edit. Long waits fail promptly and retain the deadline; short retries remain within the request budget.
 - Checkout discovery passes non-null Git metadata input through a private temporary file. This removes the duplex pipe write deadlock while retaining the existing 30-second query timeout, empty-input EOF, UTF-8 surrogateescape bytes and active content-filter refusal. Reuse the independently reviewed dependency fix without unrelated network changes.
+- Failed native AWG probes retain one bounded JUnit property with the transport family, reconnect cycle, protocol phase and categorical expected/result values. The result publisher admits only an exact schema on the two named failed cases. Raw stdout, stderr, failure bodies, addresses and private identities remain private. This repairs evidence loss and does not establish the cause of the earlier traffic failure or change its acceptance checks.
 - SSH adds the supported OpenSSH 9.0 hybrid with classical fallback and removes finite-field DH. Renderer, ownership controller, source bundle and effective verifier must change together. No live convergence is performed.
 
 ## Contracts and ownership
