@@ -9,12 +9,16 @@ stdout.  We capture stdout for the comparison.
 """
 from __future__ import annotations
 
-import importlib.util
+import base64
 import hashlib
+import importlib.util
 import json
 import os
+import re
+import shutil
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -618,6 +622,52 @@ def _isolated_inventory_repo(tmp_path):
     ):
         env.pop(key, None)
     return root, env
+
+
+@pytest.mark.parametrize("topology", [False, True], ids=["public-listeners", "topology"])
+def test_inventory_base64_crlf_wrapping_preserves_payload(tmp_path, topology):
+    """Keep real encoder output on one INI line, including CRLF implementations."""
+    if topology:
+        from tests.unit.test_observability_topology import _inventory_repo
+
+        root, env = _inventory_repo(tmp_path)
+    else:
+        root, env = _isolated_inventory_repo(tmp_path)
+    encoder = shutil.which("base64")
+    assert encoder, "a real Base64 encoder is required"
+    captured = tmp_path / "encoded"
+    captured.mkdir()
+    wrapper = tmp_path / "bin" / "base64"
+    wrapper.write_text(f'''#!{sys.executable}
+import subprocess, sys
+from pathlib import Path
+captured = Path({str(captured)!r})
+payload = sys.stdin.buffer.read()
+encoded = subprocess.run([{encoder!r}], input=payload, capture_output=True, check=True).stdout
+encoded = b"".join(encoded.splitlines())
+wrapped = b"\\r\\n".join(encoded[i:i + 64] for i in range(0, len(encoded), 64)) + b"\\r\\n"
+index = len(list(captured.glob("*.input")))
+(captured / f"{{index}}.input").write_bytes(payload)
+(captured / f"{{index}}.output").write_bytes(wrapped)
+sys.stdout.buffer.write(wrapped)
+''')
+    wrapper.chmod(0o700)
+
+    result = subprocess.run(
+        ["bash", str(root / "scripts/render-inventory.sh")],
+        cwd=root, env=env, capture_output=True, timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr
+    inventory = (root / "ansible/inventory/generated.ini").read_bytes()
+    field = b"observability_topology_b64" if topology else b"terraform_public_listeners_b64"
+    encoded = re.search(rb"(?:^|[ \n])" + field + rb"=([^ \n]+)", inventory).group(1)
+    index = 3 if topology else 0
+    wrapped = (captured / f"{index}.output").read_bytes()
+    assert wrapped.count(b"\r\n") > 1
+    assert b"\r" not in encoded
+    assert base64.b64decode(encoded, validate=True) == (captured / f"{index}.input").read_bytes()
+    assert b"\r" not in inventory
 
 
 def _tailnet_handoff(tmp_path, *, alias="vpn-test.example.com",

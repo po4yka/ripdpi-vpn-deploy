@@ -2,7 +2,7 @@
 id: XRY-1792265213021342
 title: Repair protocol compatibility and audit validation defects
 kind: bug
-status: blocked
+status: doing
 area: xray-config
 priority: high
 risk: high
@@ -14,7 +14,7 @@ openspec_change: protocol-audit-compatibility
 created: 2026-10-17
 updated: 2026-10-18
 related_tasks: [CIC-1792268380780556]
-status_detail: PR324 merged as a620c9dfb0ef41e13410a932016d88ec6785b66d after exact-head full CI success. Local make check remains blocked by Docker timeout 125 and unverified container cleanup; the local validation step stays open.
+status_detail: Finish local acceptance after Docker recovery. The full gate exposed a missing local flock prerequisite and one unreproduced TLS fixture failure; retain all guards and rerun the unchanged full make check.
 ---
 
 ## Goal
