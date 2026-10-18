@@ -10,7 +10,7 @@ import pytest
 import yaml
 
 from awg_device_binding import resolve_binding
-from test_awg_activation_native import native_publisher_environment, render_native_awg_config
+import test_awg_activation_native as native
 from test_awg_device_binding import document
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -42,7 +42,7 @@ def test_native_expected_configuration_equals_actual_ansible_lookup(tmp_path):
         capture_output=True, text=True, timeout=30,
     )
     assert result.returncode == 0, 'synthetic local Ansible template lookup failed'
-    expected = render_native_awg_config(effective).encode()
+    expected = native.render_native_awg_config(effective).encode()
     actual = destination.read_bytes()
     if expected != actual:
         pytest.fail(f'native configuration differs from Ansible: expected={len(expected)} actual={len(actual)} bytes')
@@ -59,7 +59,7 @@ def test_native_publisher_preserves_non_global_ansible_path(tmp_path, monkeypatc
     selected.symlink_to(actual_ansible)
     inherited = str(toolchain) + os.pathsep + os.environ['PATH']
     monkeypatch.setenv('PATH', inherited)
-    environment = {**os.environ, **native_publisher_environment(adapter)}
+    environment = {**os.environ, **native.native_publisher_environment(adapter)}
     preserved = environment['PATH'] == str(adapter) + os.pathsep + inherited
     assert preserved, 'the namespace adapter must precede the complete inherited PATH'
     selected_toolchain = shutil.which('ansible-playbook', path=environment['PATH']) == str(selected)
@@ -71,8 +71,6 @@ def test_native_publisher_preserves_non_global_ansible_path(tmp_path, monkeypatc
 
 def test_native_publication_plan_uses_the_actual_acquired_go_directory(tmp_path, monkeypatch):
     """Check generated Ansible input; this is not native activation evidence."""
-    import test_awg_activation_native as native
-
     release_root = tmp_path / 'releases'
     actual_path = Path
     monkeypatch.setattr(native, 'Path', lambda value: (
