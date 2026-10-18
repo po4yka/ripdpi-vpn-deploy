@@ -126,8 +126,34 @@ def path_evidence(spaces, peers, tools, address):
     return result
 
 
+def record_probe_summary(record_property, address, result, *, accepted=True, cycle=None):
+    """Expose only finite traffic categories when the original probe fails."""
+    timed_out = isinstance(result, subprocess.TimeoutExpired)
+    if not timed_out and (result.returncode == 0) == accepted:
+        return
+    stderr = result.stderr or ""
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode("utf-8", errors="replace")
+    phases = {"phase=" + phase + "\n": phase
+              for phase in ("tcp", "udp", "dns-1", "dns-28")}
+    phase = "unknown"
+    for line in stderr.splitlines(keepends=True):
+        if line in phases:
+            phase = phases[line]
+    category = (
+        "process-timeout" if timed_out else
+        "signal" if result.returncode < 0 else
+        "nonzero-exit" if result.returncode else "success"
+    )
+    record_property("awg-probe-summary", json.dumps({
+        "family": "ipv6" if ":" in address else "ipv4",
+        "cycle": cycle, "phase": phase,
+        "expected": "accepted" if accepted else "rejected", "result": category,
+    }, separators=(",", ":")))
+
+
 @pytest.mark.parametrize('members', [1, 2])
-def test_owned_uplink_nat_mtu_dns_reconnect_revocation_and_no_native_bypass(tmp_path, members):
+def test_owned_uplink_nat_mtu_dns_reconnect_revocation_and_no_native_bypass(tmp_path, members, record_property):
     go, tools = exact_awg_sources()
     token = uuid.uuid4().hex[:7]
     namespaces, processes = [], []
@@ -164,10 +190,15 @@ def test_owned_uplink_nat_mtu_dns_reconnect_revocation_and_no_native_bypass(tmp_
         for address in addresses: link(ns,iface,address)
         command(['ip','-n',ns,'link','set',iface,'mtu','1280','up'])
         assert json.loads(command(['ip','-n',ns,'-j','link','show',iface]))[0]['mtu']==1280
-    def probe(i, address, *, source=None, accepted=True):
-        result=subprocess.run(['ip','netns','exec',clients[i],sys.executable,'-c',PROBE,address,
-                               *([source] if source else [])],capture_output=True,text=True,timeout=12)
+    def probe(i, address, *, source=None, accepted=True, cycle=None):
+        try:
+            result=subprocess.run(['ip','netns','exec',clients[i],sys.executable,'-c',PROBE,address,
+                                   *([source] if source else [])],capture_output=True,text=True,timeout=12)
+        except subprocess.TimeoutExpired as exc:
+            record_probe_summary(record_property, address, exc, accepted=accepted, cycle=cycle)
+            raise
         if (result.returncode == 0) != accepted:
+            record_probe_summary(record_property, address, result, accepted=accepted, cycle=cycle)
             evidence = path_evidence(
                 (clients[i], server, uplink),
                 ((clients[i], 'c'+token+str(i)), (server, interfaces[i])), tools, address,
@@ -273,7 +304,7 @@ def test_owned_uplink_nat_mtu_dns_reconnect_revocation_and_no_native_bypass(tmp_
                 for address in ('198.18.1.2','fd88::2'):
                     route=json.loads(command(['ip','-n',ns,'-j','route','get',address]))
                     assert route[0]['dev']==ci
-                for address in ('198.18.1.2','fd88::2'): probe(i,address)
+                for address in ('198.18.1.2','fd88::2'): probe(i,address,cycle=cycle)
         counters=json.loads(run(server,['nft','-j','list','chain','inet','nat','postrouting']))
         for iface in interfaces:
             rules=[entry['rule'] for entry in counters['nftables'] if entry.get('rule',{}).get('comment')=='awg-nat-'+iface]

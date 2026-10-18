@@ -19,6 +19,7 @@ separate evidence categories. No deployment is part of this repair.
 | Cascade relay closes both directions on the first FIN | Drain bounded independent directions and enforce idle time | `test_cascade_classifier_proxy.py` |
 | Alternate-port HSTS upgrades the hostname to an unrelated port 443 identity | Retain HSTS only for a compatible same-host public HTTPS/443 site; otherwise clear it | `test_public_site_contract.py` |
 | Normalizer drops empty UDP payloads | Treat empty datagrams as data and retain all association guards | `test_transport_destination_boundary.py` |
+| Sentinel installer omits the provenance inputs its caller requires | Return the exact public input map; require the full correction identity in both standalone readers | `test_real_vps_awg_nat_provisioning.py`, `test_protocol_liveness_sentinel.py`, `test_real_vps_awg_nat_lane.py` |
 | AWG emits a computed zero UDP checksum as 0000 | Correct both userspace completion paths; bind the source correction to build identity and immutable binaries | Exact-source admission, native build provenance and deterministic IPv6 packet regression; repair acceptance remains pending |
 
 The task verification document records observed results and exact integrated
@@ -79,6 +80,21 @@ authentication. Production and native acceptance builds must use the same
 strictly admitted source correction. An unchanged upstream commit must not
 allow reuse of an uncorrected binary or overwrite its immutable release path.
 Source, build and corrected packet acceptance remain separate checks.
+
+The source inventory covers five builders: the server role, the native semantics
+script, the native acceptance preparation module, the source-candidate container
+builder and the offline sentinel installer. They all use the same correction.
+The offline installer binds it into its existing toolchain ID before selection.
+Its pinned vendor workspace remains part of the existing offline build contract;
+only that owned staging workspace is removed before strict source verification.
+
+Old sentinel manifests with only five input fields cannot qualify as corrected.
+A separately authorized sentinel convergence builds and selects a new immutable
+toolchain. Until that convergence, updated readers refuse the old qualification.
+Keep the previous directory for rollback; do not add identity fields to old
+manifests by hand. Both standalone readers resolve the exact trusted installed
+helper and compare the complete correction identity. No runtime or arm64
+candidate promotion follows from this source correction.
 
 ## Remaining independent evidence
 

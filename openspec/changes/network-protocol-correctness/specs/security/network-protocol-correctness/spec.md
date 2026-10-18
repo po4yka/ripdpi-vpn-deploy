@@ -134,6 +134,12 @@ correction, and build receipts MUST bind its content to the installed binary.
 - **THEN** source-build identity changes and an old uncorrected binary cannot
   satisfy the new receipt or immutable acquisition path.
 
+#### Scenario: Sentinel verifies its installed toolchain
+
+- **WHEN** the offline sentinel installer publishes a corrected AWG toolchain
+- **THEN** its immutable identity includes the correction and its response
+  returns the exact input map required by the existing provenance caller.
+
 ### Requirement: REQ-NPC-EVIDENCE — Retain the complete audit ledger
 
 Verification MUST account for every confirmed audit defect, including the

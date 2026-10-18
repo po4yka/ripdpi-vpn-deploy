@@ -579,39 +579,61 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             nftables=1.0.9-1ubuntu0.1 libnftables1=1.0.9-1ubuntu0.1 openssh-server e2fsprogs util-linux mount nginx iproute2 openssl wireguard-tools unbound lynis prometheus-node-exporter tcpdump tshark
+      - name: Stage trusted native runtime sources and artifacts
+        run: |
+          set -Eeuo pipefail
+          stage="$(sudo mktemp -d /opt/ripdpi-native-runtime.XXXXXXXX)"
+          trap 'sudo rm -rf -- "$stage"' ERR
+          sudo cp -a "$GITHUB_WORKSPACE/." "$stage/"
+          sudo cp -a "$RUNNER_TEMP/alertmanager-0.28.1.linux-amd64" "$stage/.cache/native-alertmanager"
+          sudo chown -hR 0:0 "$stage"
+          sudo chmod 0755 "$stage"
+          printf 'NATIVE_RUNTIME_ROOT=%s\n' "$stage" >> "$GITHUB_ENV"
+          trap - ERR
       - name: Check native AWG warm publication before the complete runtime suite
+        working-directory: ${{ env.NATIVE_RUNTIME_ROOT }}
         run: |
           sudo env \
             "TRANSPORT_NATIVE_ISOLATED=1" \
-            "AWG_NATIVE_GO_SOURCE=$GITHUB_WORKSPACE/.cache/native-transport-semantics/amneziawg-go-2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf" \
-            "AWG_NATIVE_TOOLS_SOURCE=$GITHUB_WORKSPACE/.cache/native-transport-semantics/amneziawg-tools-c0b400c6dfc046f5cae8f3051b14cb61686fcf55" \
-            "PATH=$GITHUB_WORKSPACE/.cache/native-transport-semantics/bin:$PATH" \
+            "AWG_NATIVE_GO_SOURCE=$NATIVE_RUNTIME_ROOT/.cache/native-transport-semantics/amneziawg-go-2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf" \
+            "AWG_NATIVE_TOOLS_SOURCE=$NATIVE_RUNTIME_ROOT/.cache/native-transport-semantics/amneziawg-tools-c0b400c6dfc046f5cae8f3051b14cb61686fcf55" \
+            "PATH=$NATIVE_RUNTIME_ROOT/.cache/native-transport-semantics/bin:$PATH" \
             python3 -m pytest tests/unit/test_topology_awg_warm_native.py --fail-on-skip -v --tb=short
       - name: Check native AWG rollback before the complete runtime suite
+        working-directory: ${{ env.NATIVE_RUNTIME_ROOT }}
         run: |
           sudo env \
             "TRANSPORT_NATIVE_ISOLATED=1" \
-            "AWG_NATIVE_GO_SOURCE=$GITHUB_WORKSPACE/.cache/native-transport-semantics/amneziawg-go-2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf" \
-            "AWG_NATIVE_TOOLS_SOURCE=$GITHUB_WORKSPACE/.cache/native-transport-semantics/amneziawg-tools-c0b400c6dfc046f5cae8f3051b14cb61686fcf55" \
-            "PATH=$GITHUB_WORKSPACE/.cache/native-transport-semantics/bin:$PATH" \
+            "AWG_NATIVE_GO_SOURCE=$NATIVE_RUNTIME_ROOT/.cache/native-transport-semantics/amneziawg-go-2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf" \
+            "AWG_NATIVE_TOOLS_SOURCE=$NATIVE_RUNTIME_ROOT/.cache/native-transport-semantics/amneziawg-tools-c0b400c6dfc046f5cae8f3051b14cb61686fcf55" \
+            "PATH=$NATIVE_RUNTIME_ROOT/.cache/native-transport-semantics/bin:$PATH" \
             "PYTEST_ADDOPTS=--tb=short" \
             make test-awg-dualstack-runtime
       - name: Exercise ECH recipients, privacy and resource profiles
+        working-directory: ${{ env.NATIVE_RUNTIME_ROOT }}
         run: |
           sudo env "PATH=$PATH" TRANSPORT_NATIVE_ISOLATED=1 PYTEST_ADDOPTS=--tb=short \
             make test-hysteria-ech-runtime
       - name: Execute native tests with UID and GID capabilities
+        working-directory: ${{ env.NATIVE_RUNTIME_ROOT }}
         run: |
           sudo env \
             "TRANSPORT_NATIVE_ISOLATED=1" \
             "PYTEST_ADDOPTS=--tb=short" \
-            "ALERTMANAGER_BIN=$RUNNER_TEMP/alertmanager-0.28.1.linux-amd64/alertmanager" \
-            "NAIVE_NATIVE_BINARY=$GITHUB_WORKSPACE/.cache/p2-native-caddy/caddy" \
+            "ALERTMANAGER_BIN=$NATIVE_RUNTIME_ROOT/.cache/native-alertmanager/alertmanager" \
+            "NAIVE_NATIVE_BINARY=$NATIVE_RUNTIME_ROOT/.cache/p2-native-caddy/caddy" \
             "SNELL_NATIVE_BINARY=/usr/local/bin/sing-box" \
-            "AWG_NATIVE_GO_SOURCE=$GITHUB_WORKSPACE/.cache/native-transport-semantics/amneziawg-go-2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf" \
-            "AWG_NATIVE_TOOLS_SOURCE=$GITHUB_WORKSPACE/.cache/native-transport-semantics/amneziawg-tools-c0b400c6dfc046f5cae8f3051b14cb61686fcf55" \
-            "PATH=$GITHUB_WORKSPACE/.cache/native-transport-semantics/bin:$PATH" \
+            "AWG_NATIVE_GO_SOURCE=$NATIVE_RUNTIME_ROOT/.cache/native-transport-semantics/amneziawg-go-2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf" \
+            "AWG_NATIVE_TOOLS_SOURCE=$NATIVE_RUNTIME_ROOT/.cache/native-transport-semantics/amneziawg-tools-c0b400c6dfc046f5cae8f3051b14cb61686fcf55" \
+            "PATH=$NATIVE_RUNTIME_ROOT/.cache/native-transport-semantics/bin:$PATH" \
             make test-native-runtime test-xhttp-delivery-matrix test-topology-authenticated-probes test-awg-dualstack-runtime
+      - name: Remove owned native runtime staging
+        if: ${{ always() && env.NATIVE_RUNTIME_ROOT != '' }}
+        run: |
+          set -euo pipefail
+          [[ "$NATIVE_RUNTIME_ROOT" =~ ^/opt/ripdpi-native-runtime\.[A-Za-z0-9]{8}$ ]]
+          test ! -L "$NATIVE_RUNTIME_ROOT"
+          sudo rm -rf -- "$NATIVE_RUNTIME_ROOT"
 
   transport-runtime-acceptance:
     needs: selection

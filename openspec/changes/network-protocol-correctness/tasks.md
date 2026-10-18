@@ -27,8 +27,13 @@ integrated, reviewed PR. Keep deployment and conditional risks separate.
 - Primary owns the AWG source correction helper/assets, production role
   integration and build identity after the network worker stopped. Certificate
   worker owns focused source-admission tests and independent review. Client worker
-  owns native build consumers and the deterministic checksum regression. They
+  owns native build consumers, the deterministic checksum regression and the
+  real-VPS sentinel installer, its two standalone identity readers and focused
+  provenance tests. They
   agree the shared helper interface before edits; no runtime-cache core edits.
+- CI worker owns the native host root staging in .github/workflows/ci.yml,
+  tests/unit/test_executable_coverage.py and its separate tests note. It keeps
+  the correction helper trust policy unchanged.
 - Primary owns baseline resolver and DNS-Morph retirement integration,
   ansible/playbooks/site.yml, shared scripts/CLAUDE.md and tests/CLAUDE.md,
   snapshots, docs/TESTING.md, docs/NETWORK-PROTOCOL-AUDIT.md, task artifacts,

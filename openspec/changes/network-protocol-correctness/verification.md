@@ -162,3 +162,43 @@ collection/selection suite passes 21 cases. The actual baseline and candidate
 Git trees both pass strict application, unchanged repeated application and
 postimage verification; no compiler or native acceptance is claimed by that
 source-admission check.
+
+## Offline sentinel and diagnostic integration
+
+A bounded builder inventory covers the server role and all four other source
+builders in scripts, Ansible, workflows and integration fixtures. The offline
+sentinel installer was an additional uncorrected path. Its response also omitted
+the input map already required by the caller. That path now uses the same source
+correction and immutable input identity. Both standalone readers verify that
+identity through the trusted installed helper and keep their strict input schema.
+
+The installer and role suite passes 79 cases in 11.53 seconds; focused
+ansible-lint passes. The two complete reader modules pass 236 cases in 48.92
+seconds. Independent focused security reviews approve both changes. The native
+publication fixture now passes its actual acquired Go directory to configure;
+three portable renderer/publication-input cases pass in 3.05 seconds.
+
+The exact code-only diagnostic patch af31772dd017fa15b35b7e386fa125693075ea3b
+belongs to the coordinated security session. It preserves packet assertions,
+retries and deadlines while publishing only a strict categorical failed-probe
+summary. The integrated runner keeps this change and the checksum suite/engine
+identity additions. The combined diagnostic and publication-input suite passes
+84 cases with fail-on-skip in 4.31 seconds. The owning independent privacy and
+structured P0-P2 reviews approve the diagnostic patch. Historical CI failure
+attribution remains unproved; the new summary improves the next exact-source run.
+
+## Native host ownership boundary
+
+The checksum helper rejects the runner-owned checkout when the native host
+consumer switches to root. This is a deterministic source admission conflict,
+not a reproduced packet failure. CI now copies the completed public checkout
+and artifacts into an owned directory under /opt. Root tests use that copy;
+the original checkout and the strict source owner policy remain intact.
+The staging regressions execute the actual shell, preserve source inodes and
+symlinks, remove a failed copy and refuse cleanup outside the owned directory.
+
+The executable coverage and tooling cache modules pass 13 cases. The complete
+transport semantics module passes 70 cases after its build ordering assertion
+includes correction, checksum tests, forced build and publication. Actionlint,
+offline Zizmor, focused Ruff and diff whitespace checks pass. Full native host
+execution remains a required exact-head CI gate.

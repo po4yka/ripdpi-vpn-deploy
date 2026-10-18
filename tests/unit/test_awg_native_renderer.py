@@ -67,3 +67,28 @@ def test_native_publisher_preserves_non_global_ansible_path(tmp_path, monkeypatc
     result = subprocess.run(['ansible-playbook', '--version'], env=environment,
                             capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, 'the native publisher must retain the actual Ansible toolchain'
+
+
+def test_native_publication_plan_uses_the_actual_acquired_go_directory(tmp_path, monkeypatch):
+    """Check generated Ansible input; this is not native activation evidence."""
+    import test_awg_activation_native as native
+
+    release_root = tmp_path / 'releases'
+    actual_path = Path
+    monkeypatch.setattr(native, 'Path', lambda value: (
+        release_root if value == '/opt/amneziawg/releases' else actual_path(value)))
+    publisher = native.CompletePublisher(tmp_path, {'PATH': os.environ['PATH']})
+    publisher.record = tmp_path / 'absent-membership.json'
+    binaries = []
+    for name in ('go', 'tools', 'quick'):
+        file = tmp_path / name
+        file.write_bytes(('synthetic acquisition ' + name).encode())
+        binaries.append(file)
+    acquired = publisher.acquire(*binaries)
+    monkeypatch.setattr(native.subprocess, 'run', lambda args, **kwargs: (
+        subprocess.CompletedProcess(args, 0, '', '')))
+    publisher.role([])
+    generated = yaml.safe_load((tmp_path / 'converge.yml').read_text())[0]
+    expected = str(actual_path(acquired[0]['source']).parent)
+    assert generated['vars']['_awg_go_release_dir'] == expected
+    assert actual_path(expected, 'amneziawg-go').read_bytes() == binaries[0].read_bytes()

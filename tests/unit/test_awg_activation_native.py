@@ -69,6 +69,7 @@ class CompletePublisher:
                 source.write_bytes(content); source.chmod(0o755)
             candidates.append({'path': target, 'source': str(source), 'sha256': hashlib.sha256(content).hexdigest(), 'mode': 0o755, 'gid': 0})
         self.go_commit, self.tools_commit = go_commit, tools_commit
+        self.go_release_dir = str(Path(candidates[0]['source']).parent)
         return candidates
 
     def request(self, acquired, configs, shared, *, firewall=None, absent=()):
@@ -97,6 +98,7 @@ class CompletePublisher:
             'environment': {'PATH': self.environment['PATH']},
             'vars': {'amneziawg_config_dir': str(self.directory), '_awg_instances': instances,
                      'amneziawg_go_commit': self.go_commit, 'amneziawg_tools_commit': self.tools_commit,
+                     '_awg_go_release_dir': self.go_release_dir,
                      '_awg_previous': previous, '_awg_obsolete': [], '_awg_configuration_owns_lifecycle': True,
                      '_firewall_consumer_candidate': None if firewall is None else base64.b64encode(firewall.encode()).decode()},
             'tasks': [{'ansible.builtin.include_role': {'name': 'amneziawg', 'tasks_from': 'consumer-prepare'}},

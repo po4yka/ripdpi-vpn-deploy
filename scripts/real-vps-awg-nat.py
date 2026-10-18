@@ -24,6 +24,12 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
+AWG_CORRECTION_BASE = Path("/usr/local/libexec/ripdpi")
+AWG_CORRECTION_UID = 0
+AWG_CORRECTION_GID = 0
+AWG_CORRECTION_FILES = (
+    "awg_source_correction.py", "awg-source-correction.json", "awg-udp-checksum-zero.patch.json",
+)
 CONFIG_VERSION = "real_vps_awg_nat_runner_v1"
 MANIFEST_VERSION = "real_vps_awg_nat_evidence_v4"
 CLIENT_ACCEPTANCE_FORMAT = "ripdpi_awg_live_acceptance_v1"
@@ -722,6 +728,39 @@ def create_client_acceptance_request(
     return nonce
 
 
+def verify_awg_source_correction(inputs: dict) -> None:
+    """Admit the full identity through the installed, reviewed source helper."""
+    correction = inputs.get("goSourceCorrection")
+    if (not isinstance(correction, dict) or type(correction.get("schema")) is not int
+            or not isinstance(correction.get("digest"), str)
+            or re.fullmatch(r"[0-9a-f]{64}", correction["digest"]) is None):
+        raise ValueError("AWG source correction invalid")
+    directory = AWG_CORRECTION_BASE / ("awg-source-" + correction["digest"])
+    try:
+        for parent in (directory, *directory.parents):
+            info = parent.lstat()
+            sticky_root = info.st_uid == 0 and info.st_mode & stat.S_ISVTX
+            if (not stat.S_ISDIR(info.st_mode) or info.st_uid not in {0, AWG_CORRECTION_UID}
+                    or info.st_mode & 0o022 and not sticky_root):
+                raise ValueError("AWG source correction ancestry invalid")
+        for name in AWG_CORRECTION_FILES:
+            info = (directory / name).lstat()
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != AWG_CORRECTION_UID
+                    or info.st_gid != AWG_CORRECTION_GID or info.st_nlink != 1
+                    or info.st_mode & 0o022 or not 0 < info.st_size <= 4 * 1024 * 1024):
+                raise ValueError("AWG source correction asset invalid")
+        result = subprocess.run(
+            [sys.executable, "-Es", str(directory / AWG_CORRECTION_FILES[0]), "describe",
+             "--commit", inputs["goCommit"], "--identity-digest", correction["digest"]],
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True, timeout=10,
+        )
+        expected = json.loads(result.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        raise ValueError("AWG source correction unavailable") from exc
+    if correction != expected or expected.get("profile") != "upstream":
+        raise ValueError("AWG source correction identity mismatch")
+
+
 def validate_runtime_engine_identity(binary_path: Path) -> dict[str, str]:
     """Bind the engine identity to the immutable toolchain binary in use."""
     binary = _secure_path(str(binary_path), executable=True)
@@ -743,7 +782,7 @@ def validate_runtime_engine_identity(binary_path: Path) -> dict[str, str]:
         {"schemaVersion", "inputs", "binaries", "treeSha256"},
         "client runtime manifest",
     )
-    if manifest["schemaVersion"] != 1:
+    if type(manifest["schemaVersion"]) is not int or manifest["schemaVersion"] != 1:
         raise ValueError("client runtime manifest is invalid")
     inputs = manifest["inputs"]
     binaries = manifest["binaries"]
@@ -754,6 +793,7 @@ def validate_runtime_engine_identity(binary_path: Path) -> dict[str, str]:
         {
             "goBundleSha256",
             "goCommit",
+            "goSourceCorrection",
             "toolsBundleSha256",
             "toolsCommit",
             "vendorSha256",
@@ -765,7 +805,11 @@ def validate_runtime_engine_identity(binary_path: Path) -> dict[str, str]:
         {"amneziawg-go", "awg", "awg-quick"},
         "client runtime binaries",
     )
+    for name in ("goBundleSha256", "toolsBundleSha256", "vendorSha256"):
+        require_sha(inputs[name], SHA256_RE, "client runtime input")
+    require_sha(inputs["toolsCommit"], SHA1_RE, "client runtime tools source")
     source_sha = require_sha(inputs["goCommit"], SHA1_RE, "client runtime source")
+    verify_awg_source_correction(inputs)
     artifact_sha256 = require_sha(
         binaries["amneziawg-go"], SHA256_RE, "client runtime artifact"
     )

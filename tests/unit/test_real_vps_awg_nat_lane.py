@@ -906,26 +906,40 @@ def test_local_launcher_budgets_handoff_wait_inside_service_deadline() -> None:
     assert "--valid-seconds 300" in launcher
 
 
-def test_runtime_engine_identity_binds_actual_toolchain_binary(tmp_path: Path) -> None:
+AWG_GO_COMMIT = "2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf"
+
+
+def _runtime_toolchain_fixture(tmp_path, monkeypatch):
+    assets = REPO_ROOT / "ansible/roles/amneziawg/files"
+    correction = json.loads(subprocess.check_output(
+        [lane.sys.executable, "-Es", str(assets / "awg_source_correction.py"), "describe",
+         "--commit", AWG_GO_COMMIT], text=True))
+    monkeypatch.setattr(lane, "AWG_CORRECTION_BASE", tmp_path / "corrections")
+    monkeypatch.setattr(lane, "AWG_CORRECTION_UID", os.geteuid())
+    monkeypatch.setattr(lane, "AWG_CORRECTION_GID", os.getegid())
+    directory = lane.AWG_CORRECTION_BASE / ("awg-source-" + correction["digest"])
+    directory.mkdir(parents=True, mode=0o755)
+    for name in lane.AWG_CORRECTION_FILES:
+        shutil.copyfile(assets / name, directory / name)
+        (directory / name).chmod(0o644)
     toolchain = tmp_path / "toolchains" / ("a" * 64)
     binary_dir = toolchain / "bin"
     binary_dir.mkdir(parents=True, mode=0o700)
     binary = binary_dir / "amneziawg-go"
     binary.write_bytes(b"exact-awg-runtime")
     binary.chmod(0o700)
-    artifact_sha = lane.sha256_bytes(binary.read_bytes())
-    source_sha = "b" * 40
     manifest = {
         "schemaVersion": 1,
         "inputs": {
             "goBundleSha256": "c" * 64,
-            "goCommit": source_sha,
+            "goCommit": AWG_GO_COMMIT,
+            "goSourceCorrection": correction,
             "toolsBundleSha256": "d" * 64,
             "toolsCommit": "e" * 40,
             "vendorSha256": "f" * 64,
         },
         "binaries": {
-            "amneziawg-go": artifact_sha,
+            "amneziawg-go": lane.sha256_bytes(binary.read_bytes()),
             "awg": "1" * 64,
             "awg-quick": "2" * 64,
         },
@@ -934,13 +948,82 @@ def test_runtime_engine_identity_binds_actual_toolchain_binary(tmp_path: Path) -
     manifest_path = toolchain / "manifest.json"
     manifest_path.write_bytes(lane.canonical_json_bytes(manifest))
     manifest_path.chmod(0o600)
+    return binary, manifest_path, manifest, directory
+
+
+def test_runtime_engine_identity_binds_actual_toolchain_binary(tmp_path, monkeypatch) -> None:
+    binary, _path, manifest, _directory = _runtime_toolchain_fixture(tmp_path, monkeypatch)
     assert lane.validate_runtime_engine_identity(binary) == {
-        "amneziawgGoBinarySha256": artifact_sha,
-        "amneziawgGoCommit": source_sha,
+        "amneziawgGoBinarySha256": manifest["binaries"]["amneziawg-go"],
+        "amneziawgGoCommit": AWG_GO_COMMIT,
     }
     binary.write_bytes(b"replaced-runtime")
     with pytest.raises(ValueError, match="artifact digest mismatch"):
         lane.validate_runtime_engine_identity(binary)
+
+
+@pytest.mark.parametrize("invalid", [
+    "legacy", "extra-input", "extra-correction", "bool-schema", "wrong-schema", "wrong-name",
+    "wrong-profile", "wrong-digest", "wrong-helper", "wrong-manifest", "wrong-patch",
+    "unknown-commit", "synthetic-commit", "missing-asset", "symlink-asset", "hardlink-asset",
+    "writable-asset", "writable-parent", "mixed-assets", "bad-go-bundle", "bad-tools-bundle",
+    "bad-tools-commit", "bad-vendor", "bool-manifest-schema",
+])
+def test_runtime_engine_identity_requires_reviewed_correction(tmp_path, monkeypatch, invalid):
+    binary, path, manifest, directory = _runtime_toolchain_fixture(tmp_path, monkeypatch)
+    inputs = manifest["inputs"]
+    correction = inputs["goSourceCorrection"]
+    if invalid == "legacy":
+        del inputs["goSourceCorrection"]
+    elif invalid == "extra-input":
+        inputs["unknown"] = "0" * 64
+    elif invalid == "extra-correction":
+        correction["unknown"] = "0" * 64
+    elif invalid == "bool-schema":
+        correction["schema"] = True
+    elif invalid == "wrong-schema":
+        correction["schema"] = 2
+    elif invalid == "wrong-name":
+        correction["name"] = "unreviewed"
+    elif invalid == "wrong-profile":
+        correction["profile"] = "synthetic-no-tun"
+    elif invalid == "wrong-digest":
+        correction["digest"] = "0" * 64
+    elif invalid in {"wrong-helper", "wrong-manifest", "wrong-patch"}:
+        correction[invalid.removeprefix("wrong-") + "_sha256"] = "0" * 64
+    elif invalid == "unknown-commit":
+        inputs["goCommit"] = "b" * 40
+    elif invalid == "synthetic-commit":
+        inputs["goCommit"] = "c477e2aa7b49a02381861e8ce41170e9c1f615eb"
+        correction["profile"] = "synthetic-no-tun"
+    elif invalid == "missing-asset":
+        (directory / "awg-source-correction.json").unlink()
+    elif invalid == "symlink-asset":
+        asset = directory / "awg-source-correction.json"
+        retained = tmp_path / "manifest-retained.json"
+        asset.rename(retained)
+        asset.symlink_to(retained)
+    elif invalid == "hardlink-asset":
+        os.link(directory / "awg-source-correction.json", tmp_path / "manifest-linked.json")
+    elif invalid == "writable-asset":
+        (directory / "awg-source-correction.json").chmod(0o666)
+    elif invalid == "writable-parent":
+        directory.parent.chmod(0o777)
+    elif invalid == "mixed-assets":
+        with (directory / "awg-source-correction.json").open("a") as stream:
+            stream.write("\n")
+    elif invalid == "bool-manifest-schema":
+        manifest["schemaVersion"] = True
+    else:
+        field = {"bad-go-bundle": "goBundleSha256", "bad-tools-bundle": "toolsBundleSha256",
+                 "bad-tools-commit": "toolsCommit", "bad-vendor": "vendorSha256"}[invalid]
+        inputs[field] = "invalid"
+    path.write_bytes(lane.canonical_json_bytes(manifest))
+    before = path.read_bytes()
+    with pytest.raises(ValueError):
+        lane.validate_runtime_engine_identity(binary)
+    assert path.read_bytes() == before
+    assert binary.read_bytes() == b"exact-awg-runtime"
 
 
 def test_preflight_failures_are_redacted_nonpass_evidence_without_latest_mutation() -> (

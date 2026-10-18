@@ -65,7 +65,13 @@ and deployment recovery changes in separate worktrees.
 - Primary: AWG source correction, production role integration and build
   identity. Certificate worker: focused source-admission tests and independent
   review. Client worker: native build
-  consumers and deterministic checksum packet regression. Coordinate their
+  consumers and deterministic checksum packet regression. This includes the
+  real-VPS sentinel offline installer: apply before pinned vendor extraction,
+  remove only that owned vendor workspace before strict postimage verification,
+  and bind correction identity into its existing immutable toolchain ID. Return
+  that existing input map so its caller can verify source provenance. Both
+  standalone readers validate that full identity against the trusted installed
+  helper; legacy manifests cannot claim corrected qualification. Coordinate their
   shared helper interface before edits; primary owns shared notes and evidence.
 - Primary: resolver role and site retirement ordering, task artifacts, shared
   scripts/tests notes, evidence ledger, snapshots, integration and publication.

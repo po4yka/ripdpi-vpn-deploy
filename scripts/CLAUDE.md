@@ -2,6 +2,14 @@
 
 ## Design decisions
 
+The offline AWG sentinel installer binds the same correction into its existing
+toolchain inputs and returns those public inputs to its provenance caller.
+Liveness and real-VPS lane readers require that complete identity from the
+fixed trusted installed helper. Old five-field manifests refuse qualification;
+retain their directories for rollback rather than rewriting their receipts.
+The verified vendor archive is extracted only in the private build workspace
+and removed there before strict postimage verification.
+
 Native AWG builders share the role's exact source correction and one native
 build receipt helper. Source qualification, compiled binary digest and the
 relative canonical alias must agree. All three builders execute real checksum

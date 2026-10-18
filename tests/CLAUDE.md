@@ -14,6 +14,26 @@
 
 ## Design decisions
 
+Offline sentinel regressions use the exact deterministic no-TUN Git fixture
+and real source admission, installation, input hashing and standalone readers.
+They prove refusal before mutation for wrong assets and input identities, plus
+retention of the prior toolchain. They do not claim a physical client result.
+Publication-only native fixtures pass their actual acquired Go directory to
+configure; a binary content digest is not an upstream source commit.
+
+Host native CI copies the completed runner checkout and artifacts into a unique
+root-owned directory under `/opt` before root AWG admission. Tests execute the
+actual staging and cleanup shell on an owned temporary tree, with only the
+privilege boundary and paths changed. They retain original bytes and inodes,
+preserve symlinks, remove failed copies and reject cleanup outside the owned
+stage. Root runtime steps use that copy; source ownership checks stay strict.
+
+Native AWG failure summaries reuse the reviewed strict three-file projection.
+Only fixed family, phase, result and expected enums plus a bounded cycle reach
+public case evidence. The actual pytest JUnit regression retains raw child
+output in private local files and refuses unknown, duplicate or oversized
+properties. Packet assertions, source policy, retries and deadlines stay fixed.
+
 AWG checksum regressions execute the actual pinned Go completion and
 segmentation functions through an overlay. Independent checksum arithmetic
 covers zero and nonzero UDP, both address families, TCP zero preservation and
