@@ -8,6 +8,27 @@ inputs. CI commands use the retained bootstrap session supervisor; keep private
 stderr capture separate from machine-readable stdout and reclaim descendants
 before teardown even when the command leader has already exited.
 
+Terraform environment admission reserves `default` for the legacy `prod` mapping.
+Blue-green admits both names before private inputs; distinct admitted names have
+distinct state paths. Cohort creation and state backup/restore reject the alias too.
+
+State encryption writes an owner-only pending file and publishes a complete
+backup with an exclusive hard link. Timestamp collisions wait at most ten retries;
+retention never sees an incomplete ciphertext. `restore-tf-state.sh` selects the
+exact environment, decrypts into a private sibling, validates Terraform v4 state
+structure and replaces accepted state atomically. Failure removes only its own
+candidate; stop concurrent Terraform operations before recovery.
+
+Recovery dry-run output and both runbook paths require authenticated host pins,
+installed recovery generation, Tailnet handoff, SSH ownership and all three private
+deployment mappings before convergence. A restored root snapshot is not fresh
+SSH or promotion proof. Keep dependent Make goals in separate invocations.
+
+Canonical client payload materialization refuses nonempty Hysteria port ranges
+for RIPDPI with `unsupported-recipient-hysteria-port-hopping` before publication.
+Official sing-box hopping remains supported; the XHTTP-only native Xray selection
+ignores unselected Hysteria. Keep the other engine compatibility guards.
+
 State backup retention and recovery match the complete UTC timestamp suffix
 after the exact provider/environment prefix. A broad prefix glob also selects
 hyphenated sibling environments and can delete or restore their state.
@@ -418,7 +439,7 @@ redacts the key in memory, and never rewrites or logs the artifact.
 `audit-log.sh append-best-effort` after a successful run; there is no
 opt-out flag.
 
-**Terraform is workspace-routed centrally** — scripts call `scripts/terraform-env.sh`, which maps `PROVIDER` + `ENV` to the correct local state workspace. `prod` intentionally selects Terraform's legacy `default` workspace; new environments must be initialized through `make ... init`.
+**Terraform is workspace-routed centrally** — scripts call `scripts/terraform-env.sh`, which maps `PROVIDER` + `ENV` to the correct local state workspace. `prod` intentionally selects Terraform's legacy `default` workspace; the environment alias `default` is refused. New environments must be initialized through `make ... init`.
 
 **Provider roots share one inventory schema** — UpCloud, Hetzner, Vultr, and Scaleway export the same canonical outputs, so `render-inventory.sh` stays provider-neutral. Add provider-specific inventory code only when a control-plane address needs extra guest convergence proof, as Vultr's secondary IPv4 does.
 

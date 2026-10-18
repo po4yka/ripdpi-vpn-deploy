@@ -228,6 +228,8 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
                                 transport=dict(type='xhttp', host=server_name, path=x.get('xhttp_path', '/app-sync'), mode=mode,
                                                **({'xmux': tuning} if tuning else {}))))
         if enabled('enable_hysteria'):
+            if o['format'] == 'ripdpi' and c.get('hysteria_port_range'):
+                raise ValueError('unsupported-recipient-hysteria-port-hopping')
             hy = d['hysteria']
             ech = hy.get('ech')
             resource = hy.get('resource_profile', 'bandwidth-capped')
@@ -349,7 +351,7 @@ def main():
         print(json.dumps(payload, indent=2))
         return 0
     except (OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError, StopIteration, subprocess.SubprocessError, yaml.YAMLError) as error:
-        safe = {'--xhttp-only requires --profile-format ripdpi', 'ECH requires the verified official sing-box engine; RIPDPI export is unsupported', 'BBR resource profiles require the verified official sing-box engine; RIPDPI export is unsupported', 'P0 REALITY finalmask requires an Xray client', 'P0 REALITY Mux.Cool requires an Xray client; sing-mux is incompatible', 'conflicting vpn.hysteria_realm values across HOSTS', 'ambiguous-device-binding', 'missing-device-binding', 'plaintext secrets cannot be combined with SOPS_FILES', 'missing-snell-variant'}
+        safe = {'unsupported-recipient-hysteria-port-hopping', '--xhttp-only requires --profile-format ripdpi', 'ECH requires the verified official sing-box engine; RIPDPI export is unsupported', 'BBR resource profiles require the verified official sing-box engine; RIPDPI export is unsupported', 'P0 REALITY finalmask requires an Xray client', 'P0 REALITY Mux.Cool requires an Xray client; sing-mux is incompatible', 'conflicting vpn.hysteria_realm values across HOSTS', 'ambiguous-device-binding', 'missing-device-binding', 'plaintext secrets cannot be combined with SOPS_FILES', 'missing-snell-variant'}
         detail = str(error) if isinstance(error, ValueError) and str(error) in safe else ('plaintext secrets unavailable' if 'VPN_SECRETS_FILE' in os.environ else 'materialization refused')
         print('client-payload: ' + detail, file=__import__('sys').stderr)
         return 2

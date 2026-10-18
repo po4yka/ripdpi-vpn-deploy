@@ -51,6 +51,16 @@ done
 
 [ -n "$ENV" ] || { printf 'error: --env <name> is required\n' >&2; exit 1; }
 
+case "$ENV" in
+  default|*[!A-Za-z0-9-]*|-*)
+    printf 'error: invalid environment; default is reserved for prod\n' >&2
+    exit 1 ;;
+esac
+case "$PROVIDER" in
+  upcloud|hetzner|vultr|scaleway) ;;
+  *) printf 'error: unsupported provider\n' >&2; exit 1 ;;
+esac
+
 if [ "$PATH_A" -eq 0 ] && [ "$PATH_B" -eq 0 ]; then
   printf 'error: specify --path-a or --path-b\n' >&2
   exit 1
@@ -64,45 +74,59 @@ fi
 # ---------------------------------------------------------------------------
 # Path A — full rebuild from scratch (RUNBOOK-restore.md § Path A)
 # ---------------------------------------------------------------------------
+print_prerequisites() {
+  printf '  Follow docs/RUNBOOK-restore.md Fresh-node prerequisites and RUNBOOK-deploy.md.\n'
+  printf '  Select reviewed operator SSH key, provider, environment and exact deploy_alias.\n'
+  printf '  Provision with separate ordered goals (PROVIDER=%s ENV=%s):\n' "$PROVIDER" "$ENV"
+  printf '          make init\n          make plan\n'
+  printf '  Review and authorize the exact saved plan before apply.\n'
+  printf '          make apply\n          make inventory\n'
+  printf '  Authenticate and pin public SSH identity before first SSH contact.\n'
+  printf '          make wait\n'
+  printf "          make install-ssh-recovery ANSIBLE_LIMIT=\"\$deploy_alias\" SSH_RECOVERY_EXCLUSIVE_WINDOW=1\n"
+  printf '  Prepare the reviewed private bootstrap input and its output handoff path.\n'
+  printf "          make bootstrap-tailnet ANSIBLE_LIMIT=\"\$deploy_alias\" TAILNET_BOOTSTRAP_CONFIG=<private-config>\n"
+  printf '          TAILNET_HANDOFFS=<confirmed-private-handoff> make inventory\n'
+  printf '  Prepare DEPLOY_SSH_CONTEXTS_FILE from observed public and Tailnet sockets.\n'
+  printf '          SSH_OWNERSHIP_CONFIG=<private-config> make migrate-ssh-ownership\n'
+  printf '  Prepare DEPLOY_PROMOTION_CONFIG_FILE and DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE.\n'
+  printf '  Use exact-alias private mappings; receipt sinks must be fresh and absent.\n'
+  printf '  Do not fabricate contexts or create empty mappings.\n'
+}
+
+print_convergence() {
+  printf '          make decrypt\n          make validate\n'
+  printf "          make dry-run ANSIBLE_LIMIT=\"\$deploy_alias\" ANSIBLE_TAGS=\n"
+  printf '  Review every changed line before continuing.\n'
+  printf "          make deploy ANSIBLE_LIMIT=\"\$deploy_alias\" ANSIBLE_TAGS=\n"
+  printf "          make verify ANSIBLE_LIMIT=\"\$deploy_alias\"\n"
+  printf "          make source-drift ANSIBLE_LIMIT=\"\$deploy_alias\"\n"
+  printf '          make clean\n'
+  printf '  Clean plaintext on failure or abandonment; run scoped authenticated client acceptance.\n'
+}
+
 print_path_a() {
   printf '[restore dry-run] Path A — full rebuild from scratch\n'
-  printf '  ENV=%s  PROVIDER=%s\n\n' "$ENV" "$PROVIDER"
-  printf '  Step 1: git clone <repo> and cd into it\n'
-  printf '  Step 2: restore age key + SOPS file to ~/.config/vpn-provision/\n'
-  printf '          cp <backup>/%s.secrets.sops.yaml ~/.config/vpn-provision/\n' "$ENV"
-  printf '          cp <backup>/age.key ~/.config/vpn-provision/\n'
-  printf '  Step 3: provision fresh VPS\n'
-  printf '          make init plan apply inventory wait  (PROVIDER=%s ENV=%s)\n' "$PROVIDER" "$ENV"
-  printf '  Step 4: deploy from secrets\n'
-  printf '          make decrypt\n'
-  printf '          make dry-run\n'
-  printf '          make deploy\n'
-  printf '          make verify\n'
-  printf '          make clean\n'
+  printf '  Step 1: clone the repo; restore operator age key and encrypted SOPS file.\n'
+  print_prerequisites
+  print_convergence
   printf '\n[restore dry-run] Path A complete — no state modified\n'
 }
 
-# ---------------------------------------------------------------------------
-# Path B — restore from restic snapshot (RUNBOOK-restore.md § Path B)
-# ---------------------------------------------------------------------------
 print_path_b() {
   printf '[restore dry-run] Path B — restore from restic snapshot\n'
-  printf '  ENV=%s  PROVIDER=%s\n\n' "$ENV" "$PROVIDER"
-  printf '  Step 1: provision fresh VPS\n'
-  printf '          make init plan apply inventory wait  (PROVIDER=%s ENV=%s)\n' "$PROVIDER" "$ENV"
-  printf '  Step 2: decrypt secrets before the first playbook\n'
-  printf '          make decrypt\n'
-  printf '  Step 3: deploy baseline + firewall + backup role\n'
-  printf '          ANSIBLE_TAGS="baseline,firewall,backup" make deploy\n'
-  printf '  Step 4: point new VPS at restic repository (remote target or SCP)\n'
-  printf '  Step 5: restore configs on new VPS\n'
-  printf '          ssh deploy@<new-vps>\n'
-  printf '          sudo restic -r /var/backups/vpn-restic \\\n'
-  printf '            --password-file /etc/restic/password restore latest --target /\n'
-  printf '  Step 6: reconcile with Ansible\n'
-  printf '          make dry-run\n'
-  printf '  Step 7: (if drift acceptable) overwrite with template-rendered configs\n'
-  printf '          make deploy && make verify && make clean\n'
+  print_prerequisites
+  printf '          make decrypt\n          make validate\n'
+  printf "          make dry-run ANSIBLE_LIMIT=\"\$deploy_alias\" ANSIBLE_TAGS=\"baseline,firewall,backup\"\n"
+  printf '  Review the selected changes before the first tagged deploy.\n'
+  printf "          ANSIBLE_TAGS=\"baseline,firewall,backup\" make deploy ANSIBLE_LIMIT=\"\$deploy_alias\"\n"
+  printf '          make clean\n'
+  printf '  Make the trusted restic repository available; inspect its selected snapshot.\n'
+  printf '  In the pinned exact-node SSH session:\n'
+  printf '          sudo restic -r /var/backups/vpn-restic --password-file /etc/restic/password restore latest --target /\n'
+  printf '  Root restoration can overwrite SSH/recovery/source authority. Stop and inspect it.\n'
+  printf '  Repeat required foundation, bootstrap and ownership admission; refresh private mappings.\n'
+  print_convergence
   printf '\n[restore dry-run] Path B complete — no state modified\n'
 }
 

@@ -14,6 +14,27 @@
 
 ## Design decisions
 
+Recovery boundary tests use real age ciphertext and preserve the prior state
+inode on failed decryption or structure validation. Same-second writers publish
+distinct complete private backups; reserved environment aliases refuse before
+Terraform or private inputs.
+
+Real restic restore cases remove one selected artifact at a time, including
+delivery TLS/vhost, auxiliary transports, topology policy and watchdog inputs.
+Empty revocation sets remain valid. Archived absolute links resolve only within
+the restored filesystem; a live-only target cannot satisfy verification.
+
+Recipient regressions execute actual Ansible share mode repair, including retained
+shares without a new upload and unchanged repeats. Molecule separately checks
+nginx-group read access, unrelated-UID refusal and mirror true-to-false execution
+retirement with accepted payload and replay authority retained. RIPDPI hopping
+refuses before output; official sing-box keeps supported hopping.
+
+DHCPv6 portable tests exercise actual admission and both rendered egress policies.
+The native hopping suite additionally sends real UDP across owned network
+namespaces through the complete rendered firewall; wrong interfaces, ports and
+unapproved global server addresses remain negative cases.
+
 Disposable CI admits the fixed root-owned executable and acquisition directories through no-follow directory descriptors before it installs clients. Only the `/usr/local/bin` and `/opt` leaf modes change to 0755; unsafe ancestors, symlinks and foreign ownership refuse. Executable regressions run the exact inline admission code in an owned temporary tree, with only its paths and expected UID changed, and preserve existing child bytes and inodes. The complete AWG native fixture creates its fresh claimed acquisition root and release directory with explicit 0755 modes; actual umask 0000 and 0777 regressions prevent unsafe default intermediate permissions, without changing existing authority.
 
 The early AWG rollback step runs the complete canonical dual-stack goal with the same pinned sources and isolated environment. The final native bundle retains that goal to check the complete runtime context.

@@ -28,6 +28,19 @@ closed if authority is lost. Convergence owns initial authority publication.
 Token-bearing share directory and bundle operations set both `no_log` and
 `diff: false`, including loops and verbose callbacks.
 
+**Share files have OS read boundaries** — the dedicated subscription-host and
+share directories are root:www-data 0750; token directories use 0750 and files
+0640. Copy repairs current files before recursive mode repair fixes retained
+nested directories. Token paths remain censored in verbose and diff callbacks.
+
+**Mirror false retires execution first** — enabled-role convergence inspects the
+exact timer and service before payload changes. It stops and disables loaded
+units, stops masked units without removing their masks, and retains unit files,
+private credentials, accepted generations, consumption fences and revocation
+state. Check mode only predicts systemd changes. The timer restart handler also
+requires the current mirror toggle. A retained generation pointer still blocks
+direct issuance; disabling pulls is not an implicit authority migration.
+
 ## What's done well
 
 - **Token store is local-only** — never leaves the host. Bootstrap tokens

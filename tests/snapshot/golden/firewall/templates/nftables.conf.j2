@@ -41,6 +41,8 @@ destroy table inet nat
 
 
 
+
+
 table inet filter {
   # This transaction-owned fragment may declare only the two typed SSH source
   # sets below.  It is validated before this complete candidate is installed.
@@ -62,6 +64,11 @@ table inet filter {
     meta l4proto ipv6-icmp icmpv6 type echo-request limit rate over 10/second burst 20 packets drop
     ct state established,related accept
     ct state invalid drop
+
+    # Multicast discovery replies have a different conntrack tuple. Admit
+    # only the local client's server port pair on the observed uplink.
+    iifname "eth0" ip6 saddr fe80::/10 fib daddr type local udp sport 547 udp dport 546 counter accept comment "dhcpv6-client-reply"
+
 
 
     # ICMP follows the shaping floor: stateless error reports pass so

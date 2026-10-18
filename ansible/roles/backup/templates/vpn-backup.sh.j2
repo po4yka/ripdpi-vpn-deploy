@@ -181,6 +181,12 @@ INCLUDES=(
 {% endif %}
 {% if primary and vpn.enable_cascade_ingress | default(false) %}
   /etc/cascade
+  "{{ (cascade_ingress | default({})).classifier_proxy_password_path | default('/etc/cascade/classifier-proxy.password') }}"
+  "{{ (cascade_ingress | default({})).classifier_interface_path | default('/etc/cascade/classifier-interface.json') }}"
+  "{{ (cascade_ingress | default({})).policy_path | default('/etc/wireguard/cascade-ingress.nft') }}"
+{% endif %}
+{% if primary and vpn.enable_cdn_front | default(false) %}
+  "{{ cdn_front.cf_prefix_dir | default('/etc/cdn-front') }}"
 {% endif %}
 {% if primary and vpn.enable_probe_matrix_target | default(false) %}
   /etc/probe-matrix
@@ -214,6 +220,16 @@ for input in "${REALM_TLS_INPUTS[@]}"; do
   INCLUDES+=("$input")
   if [[ "$target" != "$input" ]]; then INCLUDES+=("$target"); fi
 done
+{% endif %}
+
+{% if primary and vpn.enable_cdn_front | default(false) and cdn_front.aop_cert_path | default('') %}
+# Preserve an external origin-pull certificate and its archived link target.
+CDN_TLS_INPUT="{{ cdn_front.aop_cert_path }}"
+if ! target="$(python3 -c 'import pathlib, sys; print(pathlib.Path(sys.argv[1]).resolve(strict=True))' "$CDN_TLS_INPUT" 2>/dev/null)"; then
+  printf '%s\n' 'backup: required enabled TLS authority is absent' >&2
+  exit 1
+fi
+INCLUDES+=("$CDN_TLS_INPUT" "$target")
 {% endif %}
 
 # restic may tolerate a partially unreadable tree. Required selected inputs
@@ -276,6 +292,35 @@ REQUIRED_FILES=(
   "/etc/wireguard/{{ settings.wg_interface | default({'cascade_ingress': 'csi0', 'cascade_egress': 'cse0', 'split_hop_ingress': 'shop0', 'split_hop_egress': 'shop0'}[flag]) }}.conf"
 {% endif %}
 {% endfor %}
+{% if primary and vpn.enable_cascade_ingress | default(false) %}
+  "{{ (cascade_ingress | default({})).classifier_proxy_password_path | default('/etc/cascade/classifier-proxy.password') }}"
+  "{{ (cascade_ingress | default({})).classifier_interface_path | default('/etc/cascade/classifier-interface.json') }}"
+  "{{ (cascade_ingress | default({})).policy_path | default('/etc/wireguard/cascade-ingress.nft') }}"
+{% endif %}
+{% if primary and vpn.enable_probe_matrix_target | default(false) %}
+  /etc/probe-matrix/xray.json
+  /etc/probe-matrix/mtg.toml
+  /etc/probe-matrix/tls.crt
+  /etc/probe-matrix/tls.key
+  /etc/nginx/sites-available/probe-matrix-tls.conf
+  /etc/nginx/sites-enabled/probe-matrix-tls.conf
+{% endif %}
+{% if primary and vpn.enable_cdn_front | default(false) %}
+  /etc/nginx/sites-available/cdn-front.conf
+  /etc/nginx/sites-enabled/cdn-front.conf
+  /etc/nginx/tls/{{ cdn_front.server_name }}.fullchain.pem
+  /etc/nginx/tls/{{ cdn_front.server_name }}.key
+  "{{ cdn_front.cf_prefix_dir | default('/etc/cdn-front') }}/cloudflare.real_ip"
+  "{{ cdn_front.cf_prefix_dir | default('/etc/cdn-front') }}/cloudflare.v4"
+  "{{ cdn_front.cf_prefix_dir | default('/etc/cdn-front') }}/cloudflare.v6"
+{% endif %}
+{% if (vpn.enable_subscription_host | default(false)) or (vpn_subscription_only | default(false)) %}
+  /etc/nginx/sites-available/vpn-sub.conf
+  /etc/nginx/sites-enabled/vpn-sub.conf
+  /etc/nginx/conf.d/vpn-sub-ratelimit.conf
+  /etc/nginx/tls/subscription-host/server.fullchain.pem
+  /etc/nginx/tls/subscription-host/server.key
+{% endif %}
 )
 for input in "${REQUIRED_FILES[@]}"; do
   if [[ ! -f "$input" || ! -s "$input" ]]; then

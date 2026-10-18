@@ -2,6 +2,17 @@
 
 ## Design decisions
 
+DHCPv6 uses one admitted uplink: an explicit override, then the observed
+IPv6 default interface, then IPv4 for initial acquisition. Admission runs before
+firewall helper installation and excludes absent, loopback, Tailnet and AWG
+interfaces. UDP 547-to-546 replies require a local destination and link-local
+source on that interface; strict output permits the inverse port pair to the
+local multicast group or a link-local server. Multicast replies do not depend
+on reverse conntrack matching. A bounded exact canonical IPv6 server list adds
+legacy unicast authority; prefixes and broad global UDP accepts are refused.
+Set overrides in reviewed cohort `group_vars`; they are not live CLI overrides.
+The default uses observed facts and needs no new operator input.
+
 Fresh site convergence creates the shared runtime parent before the first retained firewall publication. Admit existing ancestry and the private firewall leaf first; create only an absent parent and preserve existing trusted ownership and mode. The generic publisher still refuses missing or unsafe mutation parents. Check mode predicts creation without creating runtime state.
 
 The inline accepted-policy reader preserves the common source file newline with the file lookup rstrip option. Test the actual Ansible-rendered command; a literal escaped separator can make valid source modules an invalid Python program.

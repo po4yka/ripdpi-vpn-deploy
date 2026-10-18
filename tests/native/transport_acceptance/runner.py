@@ -34,7 +34,8 @@ SUITES = (
             "tests/unit/test_nginx_transaction_native.py",
         ],
     ),
-    ("hopping", ["tests/native/transport_acceptance/test_hopping.py"]),
+    ("hopping", ["tests/native/transport_acceptance/test_hopping.py",
+                 "tests/native/transport_acceptance/test_dhcpv6.py"]),
     (
         "compensation",
         [

@@ -37,6 +37,12 @@ Realm includes both configured TLS entries and resolved symlink targets;
 selected topology interface configs and DNS bridge forwarding config are
 required, so an otherwise populated directory cannot conceal missing authority.
 
+**Restore checks use the same effective surface** — subscription directories and
+revocation authority, auxiliary transport TLS/configuration, topology interfaces,
+nginx and watchdog inputs are required when selected. Empty revocation sets are
+valid; missing authority refuses. Resolve archived absolute symlinks inside the
+restored filesystem, never against live host files, before checking bytes or JSON.
+
 ## What's done well
 
 - **Daily by default; manual trigger via `scripts/`** — no surprise weekend

@@ -43,6 +43,8 @@ destroy table inet nat
 {% set nginx_collides_with_xray = (vpn.enable_xray_reality | default(true)) and (nginx_tcp_port in xray_tcp_ports) %}
 {% set _awg_inst = (amneziawg_secrets.instances | default([])) if amneziawg_secrets is defined else [] %}
 {% set awg_uplink_interface = firewall_awg_uplink_interface | default(ansible_facts.get('default_ipv4', {}).get('interface', 'eth0')) %}
+{% set dhcpv6_uplink = firewall_dhcpv6_uplink_interface | default('') or ansible_facts.get('default_ipv6', {}).get('interface', '') or ansible_facts.get('default_ipv4', {}).get('interface', '') %}
+{% set dhcpv6_servers = firewall_dhcpv6_server_addresses | default([]) %}
 {% set egress_policy = firewall_egress_policy | default('permissive') -%}
 {% set transport_needs_open_egress = (vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(false)) or (vpn.enable_hysteria | default(false)) or (vpn.enable_naive | default(false)) or (vpn.enable_snell | default(false)) -%}
 
@@ -113,6 +115,13 @@ table inet filter {
     meta l4proto ipv6-icmp icmpv6 type echo-request limit rate over 10/second burst 20 packets drop
     ct state established,related accept
     ct state invalid drop
+
+    # Multicast discovery replies have a different conntrack tuple. Admit
+    # only the local client's server port pair on the observed uplink.
+    iifname "{{ dhcpv6_uplink }}" ip6 saddr fe80::/10 fib daddr type local udp sport 547 udp dport 546 counter accept comment "dhcpv6-client-reply"
+{% if dhcpv6_servers %}
+    iifname "{{ dhcpv6_uplink }}" ip6 saddr { {{ dhcpv6_servers | join(', ') }} } fib daddr type local udp sport 547 udp dport 546 counter accept comment "dhcpv6-approved-server-reply"
+{% endif %}
 {% if (security_controls | default({})).fail2ban | default(false) %}
 
     # Fail2Ban sshd bans. This stays ahead of the SSH allowlist so a source
@@ -228,6 +237,13 @@ table inet filter {
     oif "lo" accept
     ct state established,related accept
     ct state invalid drop
+
+    # Initial discovery and rebind stay on the local link. Exact legacy
+    # servers below are separate from the default multicast authority.
+    oifname "{{ dhcpv6_uplink }}" ip6 saddr fe80::/10 ip6 daddr { ff02::1:2, fe80::/10 } udp sport 546 udp dport 547 counter accept comment "dhcpv6-client-request"
+{% if dhcpv6_servers %}
+    oifname "{{ dhcpv6_uplink }}" meta nfproto ipv6 fib saddr type local ip6 daddr { {{ dhcpv6_servers | join(', ') }} } udp sport 546 udp dport 547 counter accept comment "dhcpv6-approved-server-request"
+{% endif %}
 
     # Neighbour discovery is untracked; established/related cannot admit it.
     meta l4proto ipv6-icmp icmpv6 type { nd-router-solicit, nd-neighbor-solicit, nd-neighbor-advert } ip6 hoplimit 255 accept

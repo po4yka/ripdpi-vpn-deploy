@@ -96,7 +96,7 @@ def test_drill_requires_baseline_and_enabled_transport_artifacts() -> None:
         "etc/amnezia/amneziawg/awg-test.conf",
     ):
         assert path in script
-    assert 'python3 -m json.tool "$restore_target/etc/xray/config.json"' in script
+    assert 'validate_json "etc/xray/config.json"' in script
 
 
 def test_drill_does_not_invent_a_legacy_awg_interface() -> None:
@@ -166,12 +166,16 @@ elif "restore" in args:
         "etc/systemd/system/vpn-test.service": "[Service]\\nExecStart=/bin/true\\n",
         "etc/xray/config.json": "{}\\n",
         "etc/nginx/sites-available/vpn-xhttp.conf": "server {}\\n",
+        "etc/nginx/nginx.conf": "events {}\\n",
         "etc/nginx/tls/vpn.example.com.fullchain.pem": "certificate\\n",
         "etc/nginx/tls/vpn.example.com.key": "private key\\n",
         "etc/hysteria/config.yaml": "listen: :443\\n",
         "etc/hysteria/server.fullchain.pem": "certificate\\n",
         "etc/hysteria/server.key": "private key\\n",
         "etc/amnezia/amneziawg/awg-test.conf": "[Interface]\\n",
+        "etc/vpn-watchdog.env": "SYNTHETIC=1\\n",
+        "etc/vpn-watchdog-notifications.json": "{}\\n",
+        "etc/vpn-watchdog-reality.json": "{}\\n",
     }
     for relative, content in files.items():
         destination = target / relative

@@ -45,9 +45,10 @@ def entries(text, name):
 
 
 def provision(text):
+    required_files = set(entries(text, 'REQUIRED_FILES'))
     for entry in entries(text, 'INCLUDES'):
         entry.parent.mkdir(parents=True, exist_ok=True)
-        if entry.name == 'nftables.conf' or entry.name.startswith('vpn-watchdog') or entry.name == 'revoked':
+        if entry in required_files or entry.name == 'nftables.conf' or entry.name.startswith('vpn-watchdog') or entry.name == 'revoked':
             entry.write_text('synthetic nonempty configuration\n')
         else:
             entry.mkdir(exist_ok=True)

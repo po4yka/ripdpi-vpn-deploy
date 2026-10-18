@@ -2,6 +2,7 @@
 - name: Verify subscription-host role
   hosts: all
   become: true
+  vars_files: [vars/main.yml]
   tasks:
     - name: nginx -t
       ansible.builtin.command:
@@ -201,3 +202,154 @@
             | grep -iE 'traceback|fatal|critical'
         executable: /bin/bash
       changed_when: false
+
+    - name: Verify nginx worker access and deny other local users
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import pathlib, subprocess
+            base = pathlib.Path('/var/www/subscription-host')
+            for path in (base, base / 'share', base / 'share/synthetic-share-token', base / 'share/synthetic-share-token/nested'):
+                assert path.stat().st_mode & 0o777 == 0o750
+            config = base / 'share/synthetic-share-token/nested/config.json'
+            assert config.stat().st_mode & 0o777 == 0o640
+            result = subprocess.run(['runuser', '-u', 'www-data', '--', 'cat', str(config)], capture_output=True)
+            assert result.returncode == 0 and result.stdout == b'{"synthetic":true}\n'
+            for command in (['ls', str(base / 'share')], ['cat', str(config)]):
+                result = subprocess.run(['runuser', '-u', 'nobody', '--', *command], capture_output=True)
+                assert result.returncode != 0 and not result.stdout
+      changed_when: false
+      no_log: true
+      diff: false
+
+    - name: Seed conservative consumed bootstrap authority before retirement
+      ansible.builtin.copy:
+        dest: "/var/lib/vpn-subscription/.vpn-bootstrap-consumed/{{ 'synthetic-consumed-bootstrap' | hash('sha256') }}"
+        content: ''
+        owner: vpn-bootstrap
+        group: vpn-bootstrap
+        mode: '0600'
+      no_log: true
+      diff: false
+
+    - name: Capture retained delivery authority before mirror retirement
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - |
+            import hashlib, json, os, pathlib
+            root = pathlib.Path('/var/lib/vpn-subscription')
+            names = ['revoked', '.vpn-bootstrap-retired-before', '.vpn-bootstrap-state.lock',
+                     '.vpn-sub-mirror-current/sub/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                     '/etc/vpn-subscription/mirror_ssh_key']
+            print(json.dumps({'pointer': os.readlink(root / '.vpn-sub-mirror-current'),
+                              'files': {name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in names},
+                              'consumed': sorted(path.name for path in (root / '.vpn-bootstrap-consumed').iterdir())}, sort_keys=True))
+      register: _mirror_authority_before
+      changed_when: false
+      no_log: true
+
+    - name: Read the retained synthetic independent subscription certificate
+      ansible.builtin.slurp:
+        src: /etc/nginx/tls/sub.example.test.fullchain.pem
+      register: _subscription_verify_certificate
+      no_log: true
+
+    - name: Read the retained synthetic independent subscription key
+      ansible.builtin.slurp:
+        src: /etc/nginx/tls/sub.example.test.key
+      register: _subscription_verify_key
+      no_log: true
+
+    - name: Select the disabled mirror toggle on the enabled delivery role
+      ansible.builtin.set_fact:
+        subscription: >-
+          {{ subscription | combine({'mirror': subscription.mirror | combine({'enabled': false}),
+                                     'cert_pem': _subscription_verify_certificate.content | b64decode,
+                                     'key_pem': _subscription_verify_key.content | b64decode}) }}
+      no_log: true
+      diff: false
+
+    - name: Predict mirror retirement without changing running units
+      ansible.builtin.include_role:
+        name: subscription-host
+        apply:
+          check_mode: true
+
+    - name: Check mode retains the enabled active mirror timer
+      ansible.builtin.command:
+        argv: [systemctl, show, vpn-sub-mirror.timer, '--property=ActiveState,UnitFileState']
+      register: _mirror_after_check
+      changed_when: false
+      failed_when: >-
+        'ActiveState=active' not in _mirror_after_check.stdout or
+        'UnitFileState=enabled' not in _mirror_after_check.stdout
+
+    - name: Retire mirror execution while preserving accepted authority
+      ansible.builtin.include_role:
+        name: subscription-host
+
+    - name: Repeat mirror retirement without changes
+      ansible.builtin.include_role:
+        name: subscription-host
+
+    - name: Repeated mirror retirement is idempotent
+      ansible.builtin.assert:
+        that: not _subscription_mirror_stopped.changed
+
+    - name: Verify mirror stays disabled after manager reload
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: Verify no scheduled mirror publication remains
+      ansible.builtin.command:
+        argv: [systemctl, show, '{{ item }}', '--property=ActiveState,UnitFileState']
+      loop: [vpn-sub-mirror.timer, vpn-sub-mirror.service]
+      register: _mirror_retired
+      changed_when: false
+      failed_when: >-
+        'ActiveState=inactive' not in _mirror_retired.stdout or
+        'UnitFileState=disabled' not in _mirror_retired.stdout
+
+    - name: Capture retained delivery authority after mirror retirement
+      ansible.builtin.command:
+        argv: '{{ _mirror_authority_before.cmd }}'
+      register: _mirror_authority_after
+      changed_when: false
+      no_log: true
+
+    - name: Retired mirror preserves accepted payload and replay authority
+      ansible.builtin.assert:
+        that: _mirror_authority_after.stdout == _mirror_authority_before.stdout
+      no_log: true
+
+    - name: Remove only the retired fixture timer definition before masking
+      ansible.builtin.file:
+        path: /etc/systemd/system/vpn-sub-mirror.timer
+        state: absent
+
+    - name: Establish an administrative mask on the retired fixture timer
+      ansible.builtin.systemd_service:
+        name: vpn-sub-mirror.timer
+        masked: true
+        daemon_reload: true
+
+    - name: Retire an administratively masked mirror without unmasking it
+      ansible.builtin.include_role:
+        name: subscription-host
+        tasks_from: mirror-disable
+
+    - name: Inspect preserved mirror administrative mask
+      ansible.builtin.stat:
+        path: /etc/systemd/system/vpn-sub-mirror.timer
+        follow: false
+      register: _mirror_preserved_mask
+
+    - name: Mirror retirement retains the exact administrative mask
+      ansible.builtin.assert:
+        that:
+          - _mirror_preserved_mask.stat.islnk
+          - _mirror_preserved_mask.stat.lnk_source == '/dev/null'

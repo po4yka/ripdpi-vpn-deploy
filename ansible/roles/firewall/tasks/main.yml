@@ -1,4 +1,7 @@
 ---
+- name: Admit scoped DHCPv6 prerequisites before firewall mutation
+  ansible.builtin.import_tasks: dhcpv6-admission.yml
+
 - name: Prepare retained firewall consumer authority
   ansible.builtin.import_tasks: consumer-prepare.yml
   when: (firewall_site_transaction | default(false) | bool) or (firewall_stage_candidate | default(false) | bool)

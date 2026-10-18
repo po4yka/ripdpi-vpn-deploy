@@ -25,6 +25,11 @@ if [[ ! "$ENV" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]]; then
   exit 2
 fi
 
+if [[ "$ENV" == "default" ]]; then
+  echo 'ENV=default is reserved for the legacy prod workspace; use ENV=prod or a distinct environment' >&2
+  exit 2
+fi
+
 if [[ "$ENV" == "prod" ]]; then
   # Legacy production deployments intentionally remain in Terraform's default
   # workspace so adopting environment workspaces does not require a state move.
@@ -34,8 +39,6 @@ else
 fi
 
 BACKUP_DEST="${BACKUP_DEST:-${HOME}/.config/vpn-provision/state-backups}"
-TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-OUT="${BACKUP_DEST}/${PROVIDER}-${ENV}-${TIMESTAMP}.tfstate.age"
 
 command -v age >/dev/null 2>&1 || { echo "missing: age" >&2; exit 1; }
 
@@ -65,8 +68,35 @@ fi
 mkdir -p "$BACKUP_DEST"
 chmod 0700 "$BACKUP_DEST"
 
-age "${RECIPIENTS[@]}" -o "$OUT" "$STATE_FILE"
-chmod 0600 "$OUT"
+umask 077
+pending="$(mktemp "${BACKUP_DEST}/.state-backup.XXXXXXXX")"
+trap 'rm -f -- "$pending"' EXIT
+trap 'exit 1' HUP INT TERM
+age "${RECIPIENTS[@]}" "$STATE_FILE" > "$pending"
+
+# A hard link publishes complete ciphertext without overwriting another writer.
+# Keep the established timestamp contract and wait at most ten collision retries.
+for ((attempt = 0; attempt <= 10; attempt++)); do
+  TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+  OUT="${BACKUP_DEST}/${PROVIDER}-${ENV}-${TIMESTAMP}.tfstate.age"
+  if python3 - "$pending" "$OUT" <<'PYTHON'
+import os
+import sys
+
+try:
+    os.link(sys.argv[1], sys.argv[2])
+except OSError:
+    sys.exit(1)
+PYTHON
+  then
+    break
+  fi
+  if [[ ! -e "$OUT" && ! -L "$OUT" ]] || (( attempt == 10 )); then
+    echo 'state backup publication failed; existing backups were retained' >&2
+    exit 1
+  fi
+  sleep 1
+done
 
 echo "wrote $OUT"
 
