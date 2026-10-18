@@ -21,6 +21,8 @@ matrix that separates source acceptance from deployment and device acceptance.
 - Retain the two conditional audit risks as explicit verification gaps.
 - Bound checkout discovery after the complete gate confirmed a metadata pipe
   deadlock. Preserve Git filter refusal and path byte identity.
+- Correct computed zero UDP checksums in the pinned AWG source build. Bind
+  the reviewed source correction to build identity and native regression builds.
 - No deployment, credential rotation, new protocol, or runtime version change.
 
 ## Capabilities

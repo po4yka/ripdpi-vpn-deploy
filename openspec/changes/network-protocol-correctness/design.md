@@ -42,6 +42,14 @@ and deployment recovery changes in separate worktrees.
   the 30-second timeout. A seekable input removes the duplex pipe cycle while
   preserving UTF-8 surrogateescape, output capture, deadlines and filter refusal.
 
+- A packet-level experiment confirms that the pinned AWG userspace runtime
+  writes a computed UDP checksum of zero as 0000 instead of ffff. Correct both
+  checksum-completion paths with a strictly admitted source correction. Bind
+  correction bytes to source-build receipts and immutable acquisition paths;
+  native acceptance must use the same correction. Preserve TCP checksums,
+  offload behavior, authentication, and all packet guards. Refuse unreviewed
+  source shapes rather than apply a fuzzy correction.
+
 ## Contracts and ownership
 
 - Network worker: NAT outputs and related tests/docs in all provider roots
@@ -54,6 +62,10 @@ and deployment recovery changes in separate worktrees.
   normalizer UDP payload path, matching tests and client documentation.
 - Client worker also owns the checkout metadata input transport and its tests.
   Its separate scripts/CLAUDE.md paragraph is serialized with the primary.
+- Network worker: AWG source correction, production role integration, build
+  identity and focused source-admission tests. Client worker: native build
+  consumers and deterministic checksum packet regression. Coordinate their
+  shared helper interface before edits; primary owns shared notes and evidence.
 - Primary: resolver role and site retirement ordering, task artifacts, shared
   scripts/tests notes, evidence ledger, snapshots, integration and publication.
 - Workers leave shared scripts/CLAUDE.md and tests/CLAUDE.md to the primary.

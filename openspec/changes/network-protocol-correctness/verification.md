@@ -32,6 +32,7 @@ artifact_evidence: null
 | REQ-NPC-RELAY | SEC-1792307141621739 | 156 client boundary tests on Python 3.12.13 and 3.12.15 include real TCP half-close, bounded buffers and authenticated empty UDP | Passed locally |
 | REQ-NPC-RESOLVER | SEC-1792307142612713 | 49 resolver/runtime tests; interrupted apply replay; independent focused review APPROVE | Passed locally |
 | REQ-NPC-DISCOVERY | SEC-1792317891777907 | 38 checkout-discovery tests; real large-input, byte-identity, filter-refusal and FIFO deadline cases; actual Make and selected-task commands | Passed locally |
+| REQ-NPC-UDP-CHECKSUM | SEC-1792321613767971 | Baseline/current packet proof; strict source correction, build-identity tests and corrected real-packet regression | Repair pending |
 | REQ-NPC-EVIDENCE | SEC-1792307143659844 | Full gate, source ledger, reviews, coordinated fixes and protected merge | Pending |
 
 ## Coordination
@@ -127,6 +128,13 @@ those environment failures.
 Run 39109079489 passes both new native NAT cases and the 166-case native suite.
 Its later repeated AWG dual-stack goal fails an IPv6 DNS AAAA probe with an
 upstream UDP checksum error. The empty-range NAT render is identical to the
-baseline after blank-line normalization. No causal production change is
-established. An isolated packet experiment will test a specific pinned-runtime
-checksum hypothesis; it remains pending and no offload or guard is disabled.
+baseline after blank-line normalization. The isolated experiment now confirms a pre-existing pinned-runtime defect on
+both policies. For each policy all three source-port 37737 datagrams fail and
+all three adjacent 37738 controls pass. Decrypted server TUN captures have
+checksum 0000, independently computed zero, and CSUMNOTREADY=false; the wire
+representation must be ffff. The upstream increments Udp6InCsumErrors once
+per failed datagram. Client TUN captures retain the expected partial seed.
+Linux 7.0.14-linuxkit arm64, Go 1.27.1, GCC 13.3.0 and nftables 1.0.9 are
+recorded with source and artifact digests. This establishes the runtime defect,
+but the original CI source port was not captured, so exact CI attribution
+remains unproved. No offload, checksum validation or packet guard is disabled.

@@ -24,6 +24,10 @@ integrated, reviewed PR. Keep deployment and conditional risks separate.
   tests/unit/test_workspace_status.py and one separate scripts/CLAUDE.md
   paragraph for the confirmed metadata pipe deadlock. The primary serializes
   that shared note and task artifacts; no other session implements this fix.
+- Network worker also owns the AWG source correction helper/assets, production
+  role integration, build identity and focused admission tests. Client worker
+  owns native build consumers and the deterministic checksum regression. They
+  agree the shared helper interface before edits; no runtime-cache core edits.
 - Primary owns baseline resolver and DNS-Morph retirement integration,
   ansible/playbooks/site.yml, shared scripts/CLAUDE.md and tests/CLAUDE.md,
   snapshots, docs/TESTING.md, docs/NETWORK-PROTOCOL-AUDIT.md, task artifacts,
@@ -47,3 +51,4 @@ check, security review, structured review and protected PR checks. Retain source
 merge and exact integration CI evidence separately from local and device proof.
 No deployment, live credentials, provider mutation or real notification occurs.
 - [x] SEC-1792317891777907 Bound checkout metadata input without a duplex pipe deadlock #bug !high @item:SEC-1792307003680932
+- [ ] SEC-1792321613767971 Normalize computed zero UDP checksums in pinned AWG builds #bug !high @item:SEC-1792307003680932

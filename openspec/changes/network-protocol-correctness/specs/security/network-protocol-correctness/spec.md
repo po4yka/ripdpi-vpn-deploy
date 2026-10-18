@@ -114,6 +114,26 @@ deadlock. A blocked Git command MUST remain subject to its existing deadline.
 - **WHEN** an owned Git metadata operation blocks before it reads the input
 - **THEN** the command deadline terminates the operation and reports failure.
 
+### Requirement: REQ-NPC-UDP-CHECKSUM — Preserve computed UDP checksum zero
+
+Pinned AWG builds MUST transmit a computed UDP checksum of zero as ffff in
+checksum completion and segmentation. TCP checksum behavior MUST remain
+unchanged. Production and native builds MUST use the same strictly admitted
+correction, and build receipts MUST bind its content to the installed binary.
+
+#### Scenario: IPv6 UDP checksum sums to zero
+
+- **WHEN** an authenticated AWG client sends an IPv6 UDP datagram whose
+  completed checksum equals zero
+- **THEN** the tunnel emits ffff and the upstream receives the datagram;
+  an adjacent nonzero control also passes with no checksum errors.
+
+#### Scenario: Corrected build replaces an existing source receipt
+
+- **WHEN** the source commit stays fixed and the admitted correction changes
+- **THEN** source-build identity changes and an old uncorrected binary cannot
+  satisfy the new receipt or immutable acquisition path.
+
 ### Requirement: REQ-NPC-EVIDENCE — Retain the complete audit ledger
 
 Verification MUST account for every confirmed audit defect, including the
