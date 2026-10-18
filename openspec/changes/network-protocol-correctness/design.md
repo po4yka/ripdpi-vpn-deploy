@@ -18,13 +18,18 @@ and deployment recovery changes in separate worktrees.
   split-hop NAT, which remap TCP/UDP source ports into it. This preserves the
   existing SSH CIDR guard and stateless return rules. Other protocols retain
   their ordinary masquerade rule; other providers retain current behavior.
+  All five Terraform roots keep the same output names. Roots without this
+  provider constraint publish an empty range. Validate the range only in the
+  split-hop enable path so malformed enabled-role inputs cannot block retirement.
 - Full-device certification rejects partial TUN capture and malformed shape.
 - Certificate checks use OpenSSL trust and server-purpose verification and
   effective profile selection. Synthetic CA tests use an isolated trust store.
 - DNS-Morph records managed stub migration ownership and restores it only after
   listener retirement. Custom resolvers are never adopted or rewritten.
 - Keep deployed name handling dependency-free. Accept lossless Unicode codec
-  round-trips; refuse lossy mappings and require explicit ASCII A-label input.
+  round-trips after lowercase normalization before encoding; refuse lossy
+  mappings and require explicit ASCII A-label input. The same policy must hold
+  across supported Python patch releases.
 - Relay FINs independently and keep bounded buffers and idle budgets. Empty UDP
   is data; it is not EOF.
 - HSTS depends on a compatible public HTTPS/443 identity for the same hostname.
@@ -35,7 +40,8 @@ and deployment recovery changes in separate worktrees.
 
 ## Contracts and ownership
 
-- Network worker: UpCloud output and related tests/docs; inventory NAT range
+- Network worker: NAT outputs and related tests/docs in all provider roots
+  and the inert cascade root; inventory NAT range
   metadata, AWG/firewall and split-hop-egress NAT admission and templates;
   nginx HSTS template, role notes, and public-site tests/docs.
 - Certificate worker: check-certs, its profile-aware callers, certificate tests

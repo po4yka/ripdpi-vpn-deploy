@@ -27,7 +27,8 @@ ROOT = Path(__file__).resolve().parents[2]
     ("32768-60999 extra=unsafe", 22, False),
 ])
 def test_role_refuses_unsafe_source_range_before_mutation(tmp_path, role, value, ssh_port, valid):
-    task = yaml.safe_load((ROOT / f"ansible/roles/{role}/tasks/main.yml").read_text())[0]
+    filename = "enable.yml" if role == "split-hop-egress" else "main.yml"
+    task = yaml.safe_load((ROOT / f"ansible/roles/{role}/tasks/{filename}").read_text())[0]
     assert task["name"] == "Validate provider NAT source-port range before mutation"
     play = [{"hosts": "localhost", "gather_facts": False, "vars": {
         "terraform_nat_source_port_range": value, "ansible_port": ssh_port,

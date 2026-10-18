@@ -29,11 +29,14 @@ def canonical_name(value: str) -> str:
     if not isinstance(value, str) or not value or len(value) > 254:
         raise PolicyError("invalid-name")
     try:
-        requested = value.rstrip(".")
+        # Normalize case before the codec so patch-level Unicode handling cannot
+        # give uppercase deviation characters a different admission policy.
+        # Do not casefold: that would erase the sharp-s identity before checking.
+        requested = value.rstrip(".").lower()
         name = requested.encode("idna").decode("ascii").lower()
         # The stdlib codec uses IDNA2003. Never let its compatibility mappings
         # silently select a different DNS identity. ASCII A-labels stay explicit.
-        if not requested.isascii() and name.encode("ascii").decode("idna").lower() != requested.lower():
+        if not requested.isascii() and name.encode("ascii").decode("idna").lower() != requested:
             raise PolicyError("invalid-name")
     except UnicodeError:
         raise PolicyError("invalid-name") from None

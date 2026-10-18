@@ -1,6 +1,22 @@
 ---
 # split-hop-egress — see defaults/main.yml for rationale.
 
+- name: Validate provider NAT source-port range before mutation
+  ansible.builtin.assert:
+    that:
+      - terraform_nat_source_port_range is string
+      - terraform_nat_source_port_range is match('^[1-9][0-9]{0,4}-[1-9][0-9]{0,4}$')
+      - (terraform_nat_source_port_range.split('-')[0] | int) >= 1024
+      - (terraform_nat_source_port_range.split('-')[1] | int) <= 65535
+      - (terraform_nat_source_port_range.split('-')[0] | int) <= (terraform_nat_source_port_range.split('-')[1] | int)
+      - >-
+        _nat_ssh_port | int < (terraform_nat_source_port_range.split('-')[0] | int)
+        or _nat_ssh_port | int > (terraform_nat_source_port_range.split('-')[1] | int)
+    fail_msg: provider-nat-source-port-range-invalid
+  vars:
+    _nat_ssh_port: "{{ ansible_port | default(22) }}"
+  when: terraform_nat_source_port_range | default('') != ''
+
 - name: Pre-flight — egress secrets must be set
   ansible.builtin.assert:
     that:

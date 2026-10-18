@@ -35,3 +35,8 @@ output "public_listeners" {
   value       = local.effective_public_listeners
   description = "Canonical public listener contract enforced by the provider firewall."
 }
+
+output "nat_source_port_range" {
+  value       = ""
+  description = "No provider-edge source-port translation constraint."
+}

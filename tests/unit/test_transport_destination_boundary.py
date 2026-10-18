@@ -86,7 +86,7 @@ def test_names_are_absolute_canonical_and_idna():
     assert str(normalize_address("::ffff:192.0.2.80")) == "192.0.2.80"
 
 
-@pytest.mark.parametrize("value", ["faß.de", "FAẞ.de", "βόλος.example", "a\u200cb.example", "a\u200db.example",
+@pytest.mark.parametrize("value", ["faß.de", "FAẞ.de", "Faẞ.de", "faẞ.de", "βόλος.example", "a\u200cb.example", "a\u200db.example",
                                    "fullwidth\uff0eexample", "\uff41.example", "soft\u00adhyphen.example"])
 def test_lossy_unicode_names_refuse_in_policy_and_socks_wire(value):
     with pytest.raises(PolicyError, match="invalid-name"):
@@ -99,6 +99,7 @@ def test_lossy_unicode_names_refuse_in_policy_and_socks_wire(value):
 
 @pytest.mark.parametrize("value,expected", [
     ("BÜCHER.example", "xn--bcher-kva.example."), ("xn--fa-hia.de", "xn--fa-hia.de."),
+    ("XN--FA-HIA.DE", "xn--fa-hia.de."),
     ("xn--nxasmm1c.example", "xn--nxasmm1c.example."),
 ])
 def test_lossless_names_and_explicit_alabel_identity_remain_supported(value, expected):

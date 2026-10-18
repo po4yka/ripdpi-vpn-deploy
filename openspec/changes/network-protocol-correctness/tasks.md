@@ -7,7 +7,8 @@ integrated, reviewed PR. Keep deployment and conditional risks separate.
 
 ## Ownership
 
-- Network worker owns terraform/providers/upcloud outputs/tests and CLAUDE.md,
+- Network worker owns NAT outputs/tests/docs in all four provider roots and
+  the inert cascade root, terraform/CLAUDE.md and terraform/README.md,
   scripts/render-inventory.sh NAT metadata, firewall and split-hop-egress NAT
   templates/admission/notes, ansible/roles/nginx-xhttp HSTS template/CLAUDE.md, matching tests,
   docs/PROVIDER-NOTES.md and docs/PUBLIC-SITE.md if present.

@@ -27,9 +27,9 @@ artifact_evidence: null
 | REQ-NPC-EDGE | SEC-1792307138300077 | 71 UpCloud Terraform tests, 108 network tests, real AWG IPv4/IPv6 and split-hop IPv4 TCP/UDP packets through rendered nftables | Passed locally |
 | REQ-NPC-HSTS | SEC-1792307138300077 | Public-site topology matrix in 108 network tests; reviewed nginx snapshot | Passed locally |
 | REQ-NPC-CERT | SEC-1792307139966331 | 48 certificate/caller tests and 204 controller/backup tests | Passed locally |
-| REQ-NPC-TUN | SEC-1792307141621739 | 153 client boundary tests include strict capture exclusions and malformed selectors | Passed locally |
-| REQ-NPC-NAME | SEC-1792307141621739 | 153 client boundary tests include lossless IDNA and explicit A-label cases | Passed locally |
-| REQ-NPC-RELAY | SEC-1792307141621739 | 153 client boundary tests include real TCP half-close, bounded buffers and authenticated empty UDP | Passed locally |
+| REQ-NPC-TUN | SEC-1792307141621739 | 156 client boundary tests on Python 3.12.13 and 3.12.15 include strict capture exclusions and malformed selectors | Passed locally |
+| REQ-NPC-NAME | SEC-1792307141621739 | 156 client boundary tests on Python 3.12.13 and 3.12.15 include lossless IDNA and explicit A-label cases | Passed locally |
+| REQ-NPC-RELAY | SEC-1792307141621739 | 156 client boundary tests on Python 3.12.13 and 3.12.15 include real TCP half-close, bounded buffers and authenticated empty UDP | Passed locally |
 | REQ-NPC-RESOLVER | SEC-1792307142612713 | 49 resolver/runtime tests; interrupted apply replay; independent focused review APPROVE | Passed locally |
 | REQ-NPC-EVIDENCE | SEC-1792307143659844 | Full gate, source ledger, reviews, coordinated fixes and protected merge | Pending |
 
@@ -63,3 +63,26 @@ The source change does not claim production networking, browser, or device proof
 - Structured review: no accepted actionable findings. Security review: APPROVE.
 - The complete local gate is queued behind another active build. Exact-head
   hosted CI and source merge remain pending. No runtime acceptance is claimed.
+
+## CI integration corrections
+
+Run 39109079489 on aa0c48d744cd7d750ad49916d4792511772e1b75 found three
+unit failures. The existing assertions remain active.
+
+- The fixed Terraform output contract now includes the NAT range in all five
+  roots; unconstrained roots return an empty string. All three added provider
+  mock assertions pass within 25 server cases.
+- The split-hop enable guard now follows the sole lifecycle selector. A new
+  native case retires the disabled role with an invalid NAT input; Linux CI
+  must execute it. The focused contract/lifecycle/NAT suite passes 60 cases.
+- Python 3.12.15 changed uppercase sharp-s codec behavior. Lowercase the DNS
+  identity before encoding. All 156 client cases pass on both 3.12.13 and
+  3.12.15, with no new deployed dependency.
+
+Another 154 Tailnet/bootstrap and AWG provisioning tests pass. The complete
+local gate remains queued with stdin bound to /dev/null. Incremental structured review is clean; security review of the delta is APPROVE.
+The replacement CI run and final integrated source proof remain required.
+
+The inherited PR #328 source a14c339ccf8db8bce10bce5da22380a813a41605 has
+observed successful main CI run 39106128582. This does not replace the
+required acceptance of the current source.
