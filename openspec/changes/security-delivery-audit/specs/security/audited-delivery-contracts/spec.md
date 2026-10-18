@@ -143,3 +143,17 @@ Checkout discovery MUST avoid a duplex pipe deadlock for large Git metadata inpu
 
 - **WHEN** metadata exceeds both pipe capacities or Git blocks on an owned attributes input
 - **THEN** discovery completes without changing the index or terminates at its query deadline, and never executes an active content filter
+
+### Requirement: REQ-AUDIT-NATIVE-EVIDENCE — Private categorical probe failures
+
+Failed native AWG dual-stack probes MUST retain bounded categorical family, reconnect cycle, protocol phase and expected/result context in published evidence. The publisher MUST admit only the exact property schema for the two named failed cases. Raw logs, addresses, device identities, nonces and credentials MUST NOT be published. Traffic assertions, retries and time limits MUST remain unchanged.
+
+#### Scenario: Allowed traffic fails
+
+- **WHEN** a native probe returns an unexpected result or reaches its process timeout
+- **THEN** the test still fails and its result contains only the admitted diagnostic categories
+
+#### Scenario: Untrusted diagnostic property
+
+- **WHEN** a JUnit property has extra fields, invalid types, duplicate properties or mapping keys, an unknown case or a passed result
+- **THEN** the publisher omits the property and does not copy raw failure text or output into the artifact

@@ -157,6 +157,8 @@ Alternate XHTTP regression cases exercise canonical materialization through the 
 
 AWG constrained-path failures retain the bounded client exception, traffic phase and IPv6 UDP error counters alongside route and peer evidence. Probe diagnostics contain only owned synthetic traffic metadata, never AWG credentials.
 
+AWG constrained-path failures publish one bounded `awg-probe-summary` JUnit property. It contains only IP family, reconnect cycle, the last complete exact traffic phase, expected admission and process result. The four-transport runner admits its strict five-field JSON only for the two failed or errored dual-stack cases. It drops duplicate properties or keys and invalid fields. Portable regressions execute the actual probe failure and timeout hooks through real pytest JUnit and preserve their original failures. This evidence does not establish native traffic acceptance or explain older artifacts.
+
 Ingress/egress commit tests kill a separate process before and after the durable decision, native outer finish and ingress journal deletion. Portable tests model only the egress adapter; the native lane retains a real accepted outer route and proves authenticated canary traffic after roll-forward or whole-route rollback. Ansible composition also covers a lost acknowledgement after journal deletion so rescue cannot revert committed egress. Native acceptance uses the least-duration split so new boundary cases mix with existing lifecycle cases instead of accumulating in one contiguous partition.
 
 Native interruption fixtures launch Ansible in a uniquely owned transient

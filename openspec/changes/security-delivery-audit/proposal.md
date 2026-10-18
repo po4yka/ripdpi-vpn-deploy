@@ -15,6 +15,7 @@ Thirteen confirmed audit findings affect recovery, administrative encryption, au
 - Admit supported hybrid SSH key exchange through the existing recovery transaction.
 - Keep legacy expiry audit categories and private route fixtures consistent with the production role. Normalize CRLF encoder output before publishing a typed inventory host line.
 - Keep checkout discovery bounded when Git metadata exceeds both pipe buffers. Preserve filter refusal and byte-exact path handling.
+- Retain bounded categorical context for failed native AWG probes. Keep raw logs, addresses and private identities out of published evidence.
 - BREAKING: previously accepted invalid bundles, non-HTTPS notification origins and unsupported recipient profiles are refused. Valid deployed profile structure remains compatible.
 
 ## Capabilities

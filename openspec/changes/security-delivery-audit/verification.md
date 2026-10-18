@@ -39,6 +39,7 @@ artifact_evidence: null
 | REQ-AUDIT-SSH-HYBRID | SEC-1792306997783845 | Focused regression, role rendering and protected source gate | pending |
 | REQ-AUDIT-INVENTORY-ENCODING | SEC-1792309914259442 | Real CRLF encoder boundary, inventory renderer and bootstrap regressions | pending |
 | REQ-AUDIT-WORKSPACE-DISCOVERY | SEC-1792315298976050 | Large real Git metadata, byte-exact paths, empty EOF, FIFO deadline and active-filter refusal | pending |
+| REQ-AUDIT-NATIVE-EVIDENCE | SEC-1792324119267556 | Producer categories, real JUnit admission and private-data refusal regressions | pending |
 
 ## Workspace discovery diagnostics
 
@@ -60,3 +61,21 @@ HTTP probe sent nine sequential/concurrent alert and canary requests: exactly
 one upstream POST occurred, all webhooks failed promptly, about 60 seconds of
 cooldown remained and no canary freshness was published. The full source gate
 and exact-head CI remain required for final acceptance.
+
+## First final-head native failure
+
+CI run `39122516322` on source `dcc25c2745cf97a7dbc82e210bb55c27ef407ca8`
+failed the core completion case with one AWG member. Sixteen other completion
+cases passed and cleanup reported no differences. Artifact `12134503970`
+contains only generic failure locations, so the transport family, reconnect
+cycle and TCP/UDP/DNS phase cannot be recovered. The private detailed log was
+removed with the owned container. The cause is unproved; no checksum defect is
+attributed to this historical run. The diagnostic repair retains only bounded
+categories for future failures. This run is not final source acceptance.
+
+The diagnostic module passed all 81 portable regressions. These checks exercise
+the actual nested probe failure and timeout hooks through real pytest JUnit.
+Strict admission rejects duplicate properties and JSON keys, unknown cases,
+non-failures, invalid categories and private payloads. The native traffic
+assertions, retry counts and timeouts are unchanged. Native acceptance remains
+a separate exact-head CI requirement.
