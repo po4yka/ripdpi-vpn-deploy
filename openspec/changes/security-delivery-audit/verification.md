@@ -38,3 +38,13 @@ artifact_evidence: null
 | REQ-AUDIT-TELEGRAM-FLOOD | SEC-1792306996420715 | Focused regression, role rendering and protected source gate | pending |
 | REQ-AUDIT-SSH-HYBRID | SEC-1792306997783845 | Focused regression, role rendering and protected source gate | pending |
 | REQ-AUDIT-INVENTORY-ENCODING | SEC-1792309914259442 | Real CRLF encoder boundary, inventory renderer and bootstrap regressions | pending |
+
+## Workspace discovery diagnostics
+
+An earlier local workspace-discovery process blocked in Python's stdin writer.
+The cause was not established. The unchanged helper then completed two large
+synthetic Git requests, one real workspace request and twelve canonical
+`make workspace-status` calls. The canonical calls took 0.233 to 0.628 seconds.
+`python3 -m pytest -q tests/unit/test_workspace_status.py` passed all 33 tests.
+These observations do not prove a repair of the earlier transient failure.
+The Git helper and its authority guards remain unchanged.

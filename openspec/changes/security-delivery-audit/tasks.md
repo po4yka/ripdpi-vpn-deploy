@@ -25,3 +25,4 @@ Close the thirteen original audit findings and verified integration failures thr
 
 Focused regressions, rendered snapshots, complete make check, structured security review, protected exact-source CI and observed main merge. No external deployment or private credentials are part of this task.
 - [x] SEC-1792309914259442 Repair portable inventory encoding at the bootstrap boundary #bug !high @item:SEC-1792306869763633
+- [x] SEC-1792315298976050 Record bounded workspace-discovery diagnostics and retained Git guards #bug !high @item:SEC-1792306869763633
