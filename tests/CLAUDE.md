@@ -25,6 +25,9 @@ legacy input, mirror generations and private namespace admission.
 Legacy HTTP fixtures use the role's exact 0700 route modes and distinguish
 expiry parsing failures from unsafe file authority. Inventory cases send LF and
 CRLF encoder output through the real renderer and strict host parser.
+Synthetic SOPS decryptors consume all ciphertext from stdin before they return
+fixture JSON. A payload larger than pipe capacity checks this contract on
+Darwin and Linux.
 
 Protocol audit regressions use schema-valid synthetic inputs and actual
 controller preflight in ordinary and check mode. They prove identity/address
