@@ -86,6 +86,13 @@ public case evidence. The actual pytest JUnit regression retains raw child
 output in private local files and refuses unknown, duplicate or oversized
 properties. Packet assertions, source policy, retries and deadlines stay fixed.
 
+The native AWG lifecycle lab passes one explicit canonical source root to its
+parent adapter and isolated child. Source descriptors, tools and executable
+paths share that root. Do not recreate `/opt` aliases: source admission refuses
+symlink ancestors before it verifies the exact correction and binary receipt.
+Portable admission tests use synthetic Git and executable bytes only; they do
+not establish AWG traffic or compiler acceptance.
+
 AWG checksum regressions execute the actual pinned Go completion and
 segmentation functions through an overlay. Independent checksum arithmetic
 covers zero and nonzero UDP, both address families, TCP zero preservation and

@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import corrected_build
 
 ROOT = Path("/lab")
+SOURCE_ROOT = Path("/opt")
 PINS = json.loads((ROOT / "sources.json").read_text())
 RECEIPTS = Path("/var/lib/ripdpi/runtime-build-receipts")
 STAGE = Path("/var/lib/ripdpi/runtime-build-staging/awg-candidate")
@@ -44,15 +45,21 @@ def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def source(pair):
+    if pair not in {"baseline", "candidate"}:
+        raise ValueError("native-AWG-source-pair-invalid")
+    return SOURCE_ROOT / pair
+
+
 def descriptor(pair):
-    source = Path("/opt") / pair
-    build = corrected_build.verify(source / "go", PINS[pair]["go"]["commit"], ROOT / "awg-source-correction")
+    selected = source(pair)
+    build = corrected_build.verify(selected / "go", PINS[pair]["go"]["commit"], ROOT / "awg-source-correction")
     if build["correction"]["profile"] != "upstream":
         raise AssertionError("native-AWG-source-profile-unqualified")
     outputs = [
-        ("amneziawg-go", source / "go/amneziawg-go"),
-        ("awg", source / "tools/src/wg"),
-        ("awg-quick", source / "tools/src/wg-quick/linux.bash"),
+        ("amneziawg-go", selected / "go/amneziawg-go"),
+        ("awg", selected / "tools/src/wg"),
+        ("awg-quick", selected / "tools/src/wg-quick/linux.bash"),
     ]
     return {
         "schema_version": 1,
@@ -165,7 +172,7 @@ class Tunnel:
                 interface,
             )
             command("ip", "-n", name, "link", "set", interface, "up")
-        tools = "/opt/candidate/tools/src/wg"
+        tools = str(source("candidate") / "tools/src/wg")
         private = [command(tools, "genkey") for _ in self.names]
         public = [command(tools, "pubkey", data=key) for key in private]
         psk = command(tools, "genpsk")
@@ -174,7 +181,7 @@ class Tunnel:
             binary = (
                 str(LIVE / "amneziawg-go")
                 if pair == "live"
-                else f"/opt/{pair}/go/amneziawg-go"
+                else str(source(pair) / "go/amneziawg-go")
             )
             unit = (ROOT / "awg-quick@.service").read_text()
             unit = unit.replace("Type=oneshot", "Type=simple").replace(
@@ -248,7 +255,7 @@ class Tunnel:
 
     def tools(self, side):
         pair = self.server_pair if side == 0 else self.client_pair
-        return str(LIVE / "awg") if pair == "live" else f"/opt/{pair}/tools/src/wg"
+        return str(LIVE / "awg") if pair == "live" else str(source(pair) / "tools/src/wg")
 
     def configure(self, side):
         command(
@@ -500,7 +507,7 @@ class Acceptance(unittest.TestCase):
                 tunnel.restart()
                 tunnel.probe()
             self.assertEqual(
-                digest(LIVE / "amneziawg-go"), digest("/opt/baseline/go/amneziawg-go")
+                digest(LIVE / "amneziawg-go"), digest(source("baseline") / "go/amneziawg-go")
             )
             self.assertTrue(publisher.converge(RECEIPTS, candidate)["changed"])
             for tunnel in owned:
