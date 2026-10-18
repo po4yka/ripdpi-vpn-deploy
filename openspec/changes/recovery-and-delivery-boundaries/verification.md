@@ -3,7 +3,7 @@ task_id: OPS-1792305989358872
 change: recovery-and-delivery-boundaries
 commit_sha: null
 local: required
-local_evidence: Focused unit, Bats, Ansible lint and snapshot checks pass; full make check is queued behind the shared build slot.
+local_evidence: Focused unit, Bats, Ansible lint and snapshot checks pass; full make check awaits repeat with direct pinned parser and SOPS binaries after local shim failures.
 remote_ci: required
 remote_ci_evidence: null
 dry_run: required
@@ -31,7 +31,7 @@ artifact_evidence: Three reviewed template snapshots; real age and restic preser
 | REQ-DR-RESTORE-COMPLETE | OPS-1792306167846329 | Rendered drill with real restic missing-input cases | Pass locally |
 | REQ-DR-MIRROR-STOP | OPS-1792306168913886 | Toggle, check-mode, idempotency and retained-authority tests | Portable checks pass; required native CI pending |
 | REQ-DR-PROCEDURE | OPS-1792306169855109 | Recovery dry-run and current prerequisite contracts | Pass locally |
-| REQ-DR-DHCPV6 | OPS-1792306170781535 | Portable admission and isolated native UDP tests | Portable checks pass; required native CI pending |
+| REQ-DR-DHCPV6 | OPS-1792306170781535 | Portable admission; exact real Linux UDP matrix with nft 1.0.9; namespace and container cleanup | Pass locally including Linux; final amd64 CI pending |
 
 ## Source review
 

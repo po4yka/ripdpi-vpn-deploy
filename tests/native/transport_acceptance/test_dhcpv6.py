@@ -42,19 +42,25 @@ except TimeoutError:
 """
 
 SENDER = """
-import socket,sys
-interface,source,sport,target,dport=sys.argv[1:]
+import errno,socket,sys
+interface,source,sport,target,dport,expected_deny=sys.argv[1:]
 s=socket.socket(socket.AF_INET6,socket.SOCK_DGRAM)
 index=socket.if_nametoindex(interface)
 s.setsockopt(socket.SOL_SOCKET,socket.SO_BINDTODEVICE,interface.encode()+b'\\0')
 s.setsockopt(socket.IPPROTO_IPV6,socket.IPV6_MULTICAST_IF,index)
 s.bind((source,int(sport),0,index if source.startswith('fe80') else 0))
-s.sendto(b'dhcpv6-regression',(target,int(dport),0,index if target.startswith(('fe80','ff02')) else 0))
+try:
+ s.sendto(b'dhcpv6-regression',(target,int(dport),0,index if target.startswith(('fe80','ff02')) else 0))
+except OSError as error:
+ if expected_deny != 'yes' or error.errno != errno.EPERM:
+  raise
+ print('expected-output-deny',flush=True)
 """
 
 
 def packet(sender, receiver, *, source="fe80::20", target="fe80::10",
-           sport=547, dport=546, send_interface="peer0", receive_interface="up0"):
+           sport=547, dport=546, send_interface="peer0", receive_interface="up0",
+           expected_output_deny=False):
     listener = subprocess.Popen(
         ["ip", "netns", "exec", receiver, sys.executable, "-c", RECEIVER,
          receive_interface, "::" if target.startswith("ff02") else target,
@@ -65,7 +71,8 @@ def packet(sender, receiver, *, source="fe80::20", target="fe80::10",
         assert select.select([listener.stdout], [], [], 3)[0], "dhcpv6-receiver-timeout"
         assert listener.stdout.readline().strip() == "ready", "dhcpv6-receiver-not-ready"
         run("ip", "netns", "exec", sender, sys.executable, "-c", SENDER,
-            send_interface, source, str(sport), target, str(dport))
+            send_interface, source, str(sport), target, str(dport),
+            "yes" if expected_output_deny else "no")
         output, error = listener.communicate(timeout=3)
         assert listener.returncode == 0, error
         received = json.loads(output)
@@ -130,11 +137,13 @@ def test_native_scoped_dhcpv6_bootstrap_rebind_and_legacy_server():
         assert packet(peer, client, sport=548) is None
         assert packet(peer, client, dport=545) is None
         assert packet(client, peer, source="fe80::30", target="fe80::40", sport=546,
-                      dport=547, send_interface="wrong0", receive_interface="other0") is None
+                      dport=547, send_interface="wrong0", receive_interface="other0",
+                      expected_output_deny=True) is None
         assert packet(peer, client, source="fd42:0::20", target="fd42:0::10") is None
         run("ip", "-n", peer, "addr", "add", "fd42::22/64", "dev", "peer0", "nodad")
         assert packet(client, peer, source="fd42::10", target="fd42::22", sport=546,
-                      dport=547, send_interface="up0", receive_interface="peer0") is None
+                      dport=547, send_interface="up0", receive_interface="peer0",
+                      expected_output_deny=True) is None
         values["firewall_dhcpv6_server_addresses"] = ["fd42::20", "fd42::22"]
         publish()
         assert packet(peer, client, source="fd42:0::20", target="fd42:0::10")

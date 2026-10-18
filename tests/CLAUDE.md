@@ -34,6 +34,9 @@ DHCPv6 portable tests exercise actual admission and both rendered egress policie
 The native hopping suite additionally sends real UDP across owned network
 namespaces through the complete rendered firewall; wrong interfaces, ports and
 unapproved global server addresses remain negative cases.
+An expected local OUTPUT drop accepts only EPERM from sendto on an explicit
+negative probe; the receiver must still see no packet. Positive sends and other
+errno values remain fatal.
 
 Protocol audit regressions use schema-valid synthetic inputs and actual
 controller preflight in ordinary and check mode. They prove identity/address
