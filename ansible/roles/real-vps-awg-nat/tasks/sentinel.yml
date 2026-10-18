@@ -67,6 +67,33 @@
   loop_control:
     label: "{{ item.item }}"
 
+- name: Resolve the reviewed sentinel AWG source correction before mutation
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - -Es
+      - "{{ role_path }}/../amneziawg/files/awg_source_correction.py"
+      - describe
+      - --commit
+      - "{{ real_vps_awg_nat_awg_go_commit }}"
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+  register: _evidence_awg_correction_description
+
+- name: Select the exact sentinel AWG source correction
+  ansible.builtin.set_fact:
+    _evidence_awg_correction: "{{ _evidence_awg_correction_description.stdout | from_json }}"
+    _evidence_awg_correction_dir: >-
+      /usr/local/libexec/ripdpi/awg-source-{{ (_evidence_awg_correction_description.stdout | from_json).digest }}
+
+- name: Require an upstream sentinel AWG source correction profile
+  ansible.builtin.assert:
+    that:
+      - _evidence_awg_correction.profile == 'upstream'
+    fail_msg: Sentinel AWG builds require an admitted upstream source profile.
+
 - name: Install sentinel build and runtime prerequisites
   ansible.builtin.apt:
     name:
@@ -105,6 +132,32 @@
       destination: /var/tmp/amneziawg-go-vendor.tar
   loop_control:
     label: "{{ item.destination }}"
+
+- name: Admit immutable sentinel AWG correction ancestry before convergence
+  ansible.builtin.import_tasks: "{{ role_path }}/../runtime-release/tasks/consumer-authority.yml"
+  vars:
+    consumer_guard_directories:
+      - "{{ _evidence_awg_correction_dir }}"
+
+- name: Prepare immutable sentinel AWG correction directory
+  ansible.builtin.file:
+    path: "{{ _evidence_awg_correction_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the exact sentinel AWG source correction assets
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../amneziawg/files/{{ item }}"
+    dest: "{{ _evidence_awg_correction_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - awg_source_correction.py
+    - awg-source-correction.json
+    - awg-udp-checksum-zero.patch.json
 
 - name: Install immutable offline AWG toolchain builder
   ansible.builtin.copy:
@@ -173,6 +226,10 @@
       - /var/tmp/amneziawg-go-vendor.tar
       - --vendor-sha256
       - "{{ real_vps_awg_nat_awg_go_vendor_archive_sha256 }}"
+      - --correction-directory
+      - "{{ _evidence_awg_correction_dir }}"
+      - --correction-digest
+      - "{{ _evidence_awg_correction.digest }}"
   register: _evidence_awg_toolchain
   changed_when: (_evidence_awg_toolchain.stdout | from_json).changed | bool
 
@@ -185,6 +242,7 @@
     that:
       - _evidence_awg_toolchain_manifest.toolchainId is match('^[0-9a-f]{64}$')
       - _evidence_awg_toolchain_manifest.inputs.goCommit == real_vps_awg_nat_awg_go_commit
+      - _evidence_awg_toolchain_manifest.inputs.goSourceCorrection == _evidence_awg_correction
       - _evidence_awg_toolchain_manifest.binaries['amneziawg-go'] is match('^[0-9a-f]{64}$')
       - _evidence_awg_toolchain_manifest.binaries.awg is match('^[0-9a-f]{64}$')
       - _evidence_awg_toolchain_manifest.binaries['awg-quick'] is match('^[0-9a-f]{64}$')

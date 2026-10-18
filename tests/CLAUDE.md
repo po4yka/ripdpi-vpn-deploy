@@ -66,6 +66,42 @@ the validated CI record. Observation errors
 retain the packet outcome and raw logs stay private. Unknown fields, duplicate probes
 and oversized or malformed records publish no diagnostics.
 
+Offline sentinel regressions use the exact deterministic no-TUN Git fixture
+and real source admission, installation, input hashing and standalone readers.
+They prove refusal before mutation for wrong assets and input identities, plus
+retention of the prior toolchain. They do not claim a physical client result.
+Publication-only native fixtures pass their actual acquired Go directory to
+configure; a binary content digest is not an upstream source commit.
+
+Host native CI copies the completed runner checkout and artifacts into a unique
+root-owned directory under `/opt` before root AWG admission. Tests execute the
+actual staging and cleanup shell on an owned temporary tree, with only the
+privilege boundary and paths changed. They retain original bytes and inodes,
+preserve symlinks, remove failed copies and reject cleanup outside the owned
+stage. Root runtime steps use that copy; source ownership checks stay strict.
+
+Native AWG failure summaries reuse the reviewed strict three-file projection.
+Only fixed family, phase, result and expected enums plus a bounded cycle reach
+public case evidence. The actual pytest JUnit regression retains raw child
+output in private local files and refuses unknown, duplicate or oversized
+properties. Packet assertions, source policy, retries and deadlines stay fixed.
+
+AWG checksum regressions execute the actual pinned Go completion and
+segmentation functions through an overlay. Independent checksum arithmetic
+covers zero and nonzero UDP, both address families, TCP zero preservation and
+later zero segments. The native packet case sends the exact zero-producing
+IPv6 tuple and an adjacent control through unchanged production guards. It
+requires six real DNS replies, completed pre-NAT ffff/fffe checksums and no
+checksum errors. Synthetic Git and no-TUN Molecule cases prove admission and
+lifecycle only. Native build receipts bind corrected source to binary bytes.
+
+Network protocol regressions retain real socket delivery after both TCP FIN
+directions, bounded blocked-writer behavior and empty UDP payloads. Certificate
+fixtures use isolated test CA trust and distinct root/intermediate identities;
+untrusted supplied roots cannot certify themselves. Resolver tests execute
+actual relocated Ansible tasks through enable, interrupted apply, deferred
+retirement, disable and repeat convergence, preserving custom resolver authority.
+
 The native upgrade fixture renders hopping ingress for its owned host veth in
 both IP families. This render-only context preserves the facts used by canonical
 Ansible convergence. The exact local-destination redirect, native authentication
@@ -79,6 +115,9 @@ sentinels. Render fixtures and research stubs establish no live protocol claim.
 Strict overlay-only render tests compare the complete UDP allowlist in both
 toggle states. Link-local DHCPv6 stays on the explicit uplink despite unrelated
 overlay default-route facts; broad UDP and unapproved global servers stay absent.
+Provider NAT guard tests allow only the exact DHCPv6 preflight import before the
+firewall assertion; the split-hop assertion stays first. IPv6 control ordering
+uses the unique standalone terminal drop, independently of earlier scoped denies.
 
 Checkout metadata regressions use real Git with large NUL-framed input,
 non-UTF-8 path bytes and an owned attributes FIFO. Retain active-filter refusal,

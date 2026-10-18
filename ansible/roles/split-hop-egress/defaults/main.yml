@@ -64,3 +64,6 @@ split_hop_egress_secrets:
   preshared_key: ""
 
 split_hop_egress_role_enabled: true
+
+# Provider-owned inventory constraint; empty preserves ordinary NAT selection.
+terraform_nat_source_port_range: ""

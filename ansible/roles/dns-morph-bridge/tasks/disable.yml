@@ -105,3 +105,12 @@
     - name: Refuse failed DNS-Morph fragment retirement after compensation
       ansible.builtin.fail:
         msg: DNS-Morph fragment retirement failed; prior shared Unbound authority was restored.
+
+- name: Restore the managed host DNS stub after the bridge releases its listener
+  ansible.builtin.include_role:
+    name: baseline
+    tasks_from: resolver
+  vars:
+    baseline_dns_morph_active: false
+    baseline_defer_resolver_restore: false
+  when: "'systemd-resolved.service' in ansible_facts.services"

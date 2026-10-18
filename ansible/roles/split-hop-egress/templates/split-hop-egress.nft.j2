@@ -2,6 +2,11 @@ destroy table inet split_hop_egress
 table inet split_hop_egress {
   chain postrouting {
     type nat hook postrouting priority 100; policy accept;
+{% if terraform_nat_source_port_range | default('') != '' %}
+    iifname "{{ split_hop_egress.wg_interface }}" oifname "{{ split_hop_egress.forward_iface }}" meta l4proto { tcp, udp } masquerade to :{{ terraform_nat_source_port_range }}
+    iifname "{{ split_hop_egress.wg_interface }}" oifname "{{ split_hop_egress.forward_iface }}" meta l4proto != { tcp, udp } masquerade
+{% else %}
     iifname "{{ split_hop_egress.wg_interface }}" oifname "{{ split_hop_egress.forward_iface }}" masquerade
+{% endif %}
   }
 }

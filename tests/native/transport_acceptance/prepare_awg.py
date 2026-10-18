@@ -4,8 +4,11 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "tests/integration/awg_source_candidate"))
+import corrected_build
 
 
 def main():
@@ -55,21 +58,25 @@ def main():
             ).strip()
             if head != pin["commit"]:
                 raise RuntimeError("AWG-source-commit-mismatch")
-            for args in (["diff", "--exit-code"], ["diff", "--cached", "--exit-code"]):
-                subprocess.run(
-                    ["git", "-C", str(directory), *args], check=True, timeout=30
-                )
+            correction = ROOT / "ansible/roles/amneziawg/files"
+            if component == "go":
+                corrected_build.prepare(directory, pin["commit"], correction)
+                corrected_build.test_checksums(directory, pin["commit"], correction, env=env)
+            else:
+                for args in (["diff", "--exit-code"], ["diff", "--cached", "--exit-code"]):
+                    subprocess.run(["git", "-C", str(directory), *args], check=True, timeout=30)
             subprocess.run(
-                ["make", "-j2"],
+                ["make", *(["-B"] if component == "go" else []), "-j2"],
                 cwd=directory if component == "go" else directory / "src",
                 env=env,
                 check=True,
                 timeout=600,
             )
-            for args in (["diff", "--exit-code"], ["diff", "--cached", "--exit-code"]):
-                subprocess.run(
-                    ["git", "-C", str(directory), *args], check=True, timeout=30
-                )
+            if component == "go":
+                corrected_build.publish(directory, pin["commit"], correction)
+            else:
+                for args in (["diff", "--exit-code"], ["diff", "--cached", "--exit-code"]):
+                    subprocess.run(["git", "-C", str(directory), *args], check=True, timeout=30)
 
 
 if __name__ == "__main__":

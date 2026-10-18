@@ -157,3 +157,11 @@ run "server_secondary_public_ip_when_honeypot_enabled" {
     error_message = "additional_public_ip=true must allocate the honeypot IPv4 and reboot for guest convergence"
   }
 }
+
+run "stateful_provider_preserves_unconstrained_nat_output" {
+  command = plan
+  assert {
+    condition     = output.nat_source_port_range == ""
+    error_message = "Stateful provider filtering must preserve ordinary guest NAT source-port selection."
+  }
+}

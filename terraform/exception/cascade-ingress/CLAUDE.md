@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+The shared `nat_source_port_range` output is empty here: this root does not
+require forwarded TCP/UDP source-port remapping for stateless return filtering.
+Keep the same output names as every provider root and the inert exception root.
+
 This root owns a physically separate local state path and the fixed provider-neutral output contract. It contains only an inert `terraform_data` resource and an `external` data source that runs the attestation checker; it has no hosting provider or server resource. A future governance reversal must add a provider adapter explicitly rather than making the current scaffold live by variable alone.
 
 ## What's done well

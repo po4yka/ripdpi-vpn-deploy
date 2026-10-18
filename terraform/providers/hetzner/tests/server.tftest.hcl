@@ -106,3 +106,11 @@ run "server_secondary_public_ip_when_honeypot_enabled" {
     error_message = "additional_public_ip=true must allocate a honeypot floating IPv4"
   }
 }
+
+run "stateful_provider_preserves_unconstrained_nat_output" {
+  command = plan
+  assert {
+    condition     = output.nat_source_port_range == ""
+    error_message = "Stateful provider filtering must preserve ordinary guest NAT source-port selection."
+  }
+}

@@ -35,3 +35,8 @@ output "public_listeners" {
   value       = []
   description = "No provider-edge listeners exist while the root is inert."
 }
+
+output "nat_source_port_range" {
+  value       = ""
+  description = "No provider-edge source-port translation constraint."
+}

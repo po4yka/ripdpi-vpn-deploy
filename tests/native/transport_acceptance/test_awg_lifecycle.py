@@ -40,8 +40,12 @@ def test_exact_pair_wire_warm_adoption_and_canonical_retirement(tmp_path):
     ownership = ExitStack()
     try:
         publisher = ownership.enter_context(complete_publisher(Path("/lab")))
-        for name in ("sources.json", "acceptance.py"):
+        for name in ("sources.json", "acceptance.py", "corrected_build.py"):
             shutil.copyfile(area / name, Path("/lab") / name)
+        correction = Path("/lab/awg-source-correction")
+        correction.mkdir(mode=0o755)
+        for name in ("awg_source_correction.py", "awg-source-correction.json", "awg-udp-checksum-zero.patch.json"):
+            shutil.copyfile(ROOT / "ansible/roles/amneziawg/files" / name, correction / name)
         shutil.copyfile(
             ROOT / "ansible/roles/amneziawg/templates/awg-quick@.service.j2",
             "/lab/awg-quick@.service",

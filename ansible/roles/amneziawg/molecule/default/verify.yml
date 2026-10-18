@@ -15,6 +15,24 @@
       register: molecule_awg_fixture_heads
       changed_when: false
 
+    - name: Resolve the exact fixture source correction identity
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_playbook_python }}"
+          - -Es
+          - "{{ playbook_dir }}/../../files/awg_source_correction.py"
+          - describe
+          - --commit
+          - "{{ molecule_awg_fixture_heads.results[0].stdout | trim }}"
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      register: molecule_awg_correction_description
+
+    - name: Decode the exact fixture source correction identity
+      ansible.builtin.set_fact:
+        molecule_awg_correction: "{{ molecule_awg_correction_description.stdout | from_json }}"
+
     - name: Read the role-cloned source repository commits
       ansible.builtin.command:
         argv:
@@ -23,7 +41,7 @@
           - >-
             /opt/src/{{ item.name }}-{{
               molecule_awg_fixture_heads.results[item.index].stdout | trim
-            }}
+            }}{{ ('-' ~ molecule_awg_correction.digest) if item.index == 0 else '' }}
           - rev-parse
           - HEAD
       loop:
@@ -59,12 +77,18 @@
           - molecule_awg_receipt_payloads[item].outputs | length == (1 if item == 0 else 2)
       loop: [0, 1]
 
+    - name: Require the source receipt to retain the exact synthetic correction identity
+      ansible.builtin.assert:
+        that:
+          - molecule_awg_receipt_payloads[0].source.patches == molecule_awg_correction
+          - molecule_awg_correction.profile == 'synthetic-no-tun'
+
     - name: Require old per-checkout receipt files to remain retired
       ansible.builtin.stat:
         path: >-
           /opt/src/{{ item.name }}-{{
             molecule_awg_fixture_heads.results[item.index].stdout | trim
-          }}/.ripdpi-built-commit
+          }}{{ ('-' ~ molecule_awg_correction.digest) if item.index == 0 else '' }}/.ripdpi-built-commit
       loop:
         - {name: amneziawg-go, index: 0}
         - {name: amneziawg-tools, index: 1}
@@ -83,7 +107,7 @@
         - >-
           /opt/src/amneziawg-go-{{
             molecule_awg_fixture_heads.results[0].stdout | trim
-          }}/amneziawg-go
+          }}-{{ molecule_awg_correction.digest }}/amneziawg-go
         - /usr/local/bin/amneziawg-go
         - >-
           /opt/src/amneziawg-tools-{{

@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+The shared `nat_source_port_range` output is empty here: this root does not
+require forwarded TCP/UDP source-port remapping for stateless return filtering.
+Keep the same output names as every provider root and the inert exception root.
+
 **Same output schema as UpCloud + Hetzner** — including `ssh_port`, so
 inventory and cloud-init waiting use the provider-declared listener rather
 than assuming TCP/22.

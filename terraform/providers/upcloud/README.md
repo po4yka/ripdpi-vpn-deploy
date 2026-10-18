@@ -38,7 +38,14 @@ be an in-place update of the same server; any replacement is a stop condition.
 Return packets are accepted only into
 `provider_return_ephemeral_ports` (default `32768..60999`) for TCP and UDP over
 both address families, plus exact DHCP client ports. The provider range is not
-a stateful allowlist: guest nftables remains the enforcement layer for
+a stateful allowlist. The `nat_source_port_range` output passes the enabled
+range through generated inventory. AWG and split-hop egress translate forwarded
+TCP/UDP source ports into it; retain this inventory authority when deploying
+those roles. Existing inventories must be regenerated after provider promotion.
+The applied output is required even when it is empty. For an older state,
+refresh outputs through the reviewed Terraform workflow before inventory
+regeneration. Changing tfvars alone does not change the applied NAT authority.
+Guest nftables remains the enforcement layer for
 unsolicited packets. Outbound provider traffic is explicitly accepted; guest
 nftables continues to own egress policy.
 
@@ -95,6 +102,7 @@ No modules.
 | ---- | ----------- |
 | <a name="output_admin_user"></a> [admin\_user](#output\_admin\_user) | n/a |
 | <a name="output_honeypot_ipv4"></a> [honeypot\_ipv4](#output\_honeypot\_ipv4) | Secondary public IPv4 used by the honeypot when additional\_public\_ip = true. Null when not allocated. |
+| <a name="output_nat_source_port_range"></a> [nat\_source\_port\_range](#output\_nat\_source\_port\_range) | Required forwarded TCP/UDP source-port translation range while the stateless provider firewall is enabled. |
 | <a name="output_public_listeners"></a> [public\_listeners](#output\_public\_listeners) | Canonical public listener contract enforced by the provider firewall. |
 | <a name="output_server_hostname"></a> [server\_hostname](#output\_server\_hostname) | n/a |
 | <a name="output_server_ipv4"></a> [server\_ipv4](#output\_server\_ipv4) | Public IPv4 address (primary). |

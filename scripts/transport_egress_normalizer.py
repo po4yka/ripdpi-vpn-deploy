@@ -626,8 +626,6 @@ class Normalizer:
                         continue
                     try:
                         host, port, payload = datagram(frame, maximum)
-                        if not payload:
-                            continue
                         key = (host, port)
                         if key not in bindings:
                             if len(bindings) >= self.limits["max_bindings_per_association"]:

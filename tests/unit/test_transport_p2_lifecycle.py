@@ -33,7 +33,7 @@ def run(play, path):
 def test_awg_acquisition_does_not_restart_accepted_instances_before_complete_plan():
     acquire = tasks("amneziawg")
     descriptors = next(task for task in acquire if task["name"] == "Define pinned AmneziaWG source-build descriptors")["ansible.builtin.set_fact"]["_amneziawg_build_descriptors"]
-    assert all(output["path"].startswith("/opt/amneziawg/releases/") for descriptor in descriptors for output in descriptor["outputs"])
+    assert all(output["path"].startswith(("/opt/amneziawg/releases/", "{{ _awg_go_release_dir }}/")) for descriptor in descriptors for output in descriptor["outputs"])
     assert all("notify" not in task for task in acquire)
     configure = tasks("amneziawg", "configure.yml")
     accept = next(task for task in configure if task["name"] == "Accept complete AmneziaWG runtime and firewall together")

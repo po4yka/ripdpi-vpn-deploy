@@ -30,9 +30,7 @@ def test_pinned_source_bumps_use_distinct_immutable_checkouts_before_attestation
     assert len(clones) == 2
     assert all(task["ansible.builtin.git"]["update"] is False for task in clones)
     assert all(task.get("when") == "not ansible_check_mode" for task in clones)
-    assert clones[0]["ansible.builtin.git"]["dest"].endswith(
-        "-{{ amneziawg_go_commit }}"
-    )
+    assert clones[0]["ansible.builtin.git"]["dest"] == "{{ _awg_go_source_dir }}"
     assert clones[1]["ansible.builtin.git"]["dest"].endswith(
         "-{{ amneziawg_tools_commit }}"
     )
@@ -58,7 +56,7 @@ def test_build_receipts_make_check_mode_commit_aware_without_building():
         {
             "name": "installed",
             "staged_path": "/var/lib/ripdpi/runtime-build-staging/amneziawg-go/amneziawg-go",
-            "path": "/opt/amneziawg/releases/go-{{ amneziawg_go_commit }}/amneziawg-go",
+            "path": "{{ _awg_go_release_dir }}/amneziawg-go",
         },
     ]
     assert descriptors[1]["outputs"] == [

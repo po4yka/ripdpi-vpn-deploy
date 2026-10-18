@@ -97,6 +97,7 @@ No modules.
 | ---- | ----------- |
 | <a name="output_admin_user"></a> [admin\_user](#output\_admin\_user) | n/a |
 | <a name="output_honeypot_ipv4"></a> [honeypot\_ipv4](#output\_honeypot\_ipv4) | Secondary public IPv4 used by the honeypot when additional\_public\_ip = true. Null when not allocated. |
+| <a name="output_nat_source_port_range"></a> [nat\_source\_port\_range](#output\_nat\_source\_port\_range) | No provider-edge source-port translation constraint. |
 | <a name="output_public_listeners"></a> [public\_listeners](#output\_public\_listeners) | Canonical public listener contract enforced by the provider firewall. |
 | <a name="output_server_hostname"></a> [server\_hostname](#output\_server\_hostname) | n/a |
 | <a name="output_server_ipv4"></a> [server\_ipv4](#output\_server\_ipv4) | Public IPv4 address (primary). |

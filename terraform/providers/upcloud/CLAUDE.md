@@ -2,6 +2,14 @@
 
 ## Design decisions
 
+Enabled provider filtering exports its exact return range as
+`nat_source_port_range`. Inventory passes it as `terraform_nat_source_port_range`;
+AWG and split-hop egress remap forwarded TCP/UDP source ports into that range.
+Client ports below and above the host ephemeral range cannot otherwise receive
+replies. Keep the provider SSH exclusion and guest stateful filter unchanged.
+The applied output is mandatory even when filtering is disabled; its empty
+value is the accepted disabled state. Missing output refuses publication.
+
 **Per-provider root, identical outputs** — Terraform module sources cannot be
 variable-driven, so each provider gets its own root. The output schema
 (`server_ipv4`, `server_ipv6`, `admin_user`, `ssh_port`, `server_hostname`) is fixed
@@ -74,4 +82,5 @@ Destroy authorization includes the exact seed storage UUID and its absence.
 - **Return rule ≠ established-state proof** — the provider accepts packets to
   the configured ephemeral range because it cannot track flows. Never activate
   it before guest nftables is verified, and keep the Terraform range equal to
-  the live kernel `ip_local_port_range`.
+  the host-originated traffic range. Forwarded TCP/UDP is explicitly remapped into
+  the exported range rather than inheriting client source ports.

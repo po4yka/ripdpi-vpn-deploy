@@ -7,6 +7,8 @@ import io
 import json
 import os
 import re
+import shlex
+import shutil
 import stat
 import subprocess
 import tarfile
@@ -326,6 +328,34 @@ def test_client_toolchain_is_source_pinned_without_remote_shell_pipe() -> None:
     assert "pkg-config" in tasks
 
 
+@pytest.mark.parametrize("commit,accepted", [
+    ("2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf", True),
+    ("0" * 40, False),
+    ("c477e2aa7b49a02381861e8ce41170e9c1f615eb", False),
+])
+def test_sentinel_controller_admits_only_reviewed_upstream_before_mutation(tmp_path, commit, accepted):
+    selected = yaml.safe_load((ROLE / "tasks/sentinel.yml").read_text())
+    names = {
+        "Resolve the reviewed sentinel AWG source correction before mutation",
+        "Select the exact sentinel AWG source correction",
+        "Require an upstream sentinel AWG source correction profile",
+    }
+    tasks = [task for task in selected if task["name"] in names]
+    assert len(tasks) == 3
+    marker = tmp_path / "mutation"
+    tasks.append({"ansible.builtin.copy": {"content": "admitted", "dest": str(marker), "mode": "0600"}})
+    play = tmp_path / "source-admission.yml"
+    play.write_text(yaml.safe_dump([{
+        "hosts": "localhost", "gather_facts": False, "become": False,
+        "vars": {"role_path": str(ROLE), "real_vps_awg_nat_awg_go_commit": commit},
+        "tasks": tasks,
+    }]))
+    result = subprocess.run(["ansible-playbook", "-i", "localhost,", "-c", "local", str(play)],
+                            capture_output=True, text=True, timeout=30)
+    assert (result.returncode == 0) == accepted, result.stdout + result.stderr
+    assert marker.exists() == accepted
+
+
 def test_server_requires_existing_p2_awg_and_forwarding_before_mutation() -> None:
     tasks = (ROLE / "tasks/server.yml").read_text()
 
@@ -540,7 +570,31 @@ def test_digest_keyed_build_activates_complete_clean_host_command_set(
         output.chmod(0o600)
         return output, commit
 
-    go_bundle, go_commit = bundle("go", {"Makefile": b"all:\n\t@true\n"})
+    # The Go source passes the same exact production helper admission. This is
+    # its registered no-TUN Molecule profile, not an arbitrary accepted commit.
+    fixture = tmp_path / "canonical-fixture"
+    script = (ROOT / "ansible/roles/amneziawg/molecule/default/files/prepare-sources.sh").read_text()
+    script = script.replace("fixture=/opt/molecule-awg-fixture", "fixture=" + shlex.quote(str(fixture)))
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    environment["GIT_DEFAULT_HASH"] = "sha1"
+    subprocess.run(["sh", "-c", script], env=environment, check=True, capture_output=True, timeout=30)
+    go_source = fixture / "amneziawg-go"
+    go_commit = subprocess.check_output(["git", "-C", str(go_source), "rev-parse", "HEAD"], text=True).strip()
+    assert go_commit == "c477e2aa7b49a02381861e8ce41170e9c1f615eb"
+    go_bundle = tmp_path / "go.bundle"
+    subprocess.run(["git", "-C", str(go_source), "bundle", "create", str(go_bundle), "HEAD"],
+                   check=True, capture_output=True, timeout=30)
+    go_bundle.chmod(0o600)
+    assets = ROOT / "ansible/roles/amneziawg/files"
+    correction = json.loads(subprocess.check_output(
+        [module.sys.executable, str(assets / "awg_source_correction.py"), "describe", "--commit", go_commit], text=True))
+    monkeypatch.setattr(module, "CORRECTION_BASE", tmp_path / "corrections")
+    correction_directory = module.CORRECTION_BASE / ("awg-source-" + correction["digest"])
+    correction_directory.mkdir(parents=True, mode=0o755)
+    for name in module.CORRECTION_FILES:
+        shutil.copyfile(assets / name, correction_directory / name)
+        (correction_directory / name).chmod(0o644)
+        os.chown(correction_directory / name, os.geteuid(), os.getegid())
     tools_bundle, tools_commit = bundle(
         "tools",
         {
@@ -559,13 +613,21 @@ def test_digest_keyed_build_activates_complete_clean_host_command_set(
     outside = tmp_path / "outside-build"
     outside.write_bytes(b"preserve external link target")
 
-    def fake_make(path: Path) -> None:
-        output = path / ("wg" if path.name == "src" else "amneziawg-go")
-        output.write_bytes(path.name.encode())
-        output.chmod(0o755)
-        (path / "build-link").symlink_to(outside)
+    builds = []
 
-    monkeypatch.setattr(module, "run_offline_make", fake_make)
+    def fixture_make(path: Path) -> None:
+        builds.append(path.name)
+        if path.name == "amneziawg-go":
+            # The canonical fixture performs an actual install-only Make rule.
+            # No Go compiler, network namespace or AWG traffic is claimed here.
+            subprocess.run(["make"], cwd=path, check=True, capture_output=True, timeout=30)
+        else:
+            output = path / "wg"
+            output.write_bytes(b"synthetic tools activation fixture; no tunnel")
+            output.chmod(0o755)
+            (path / "build-link").symlink_to(outside)
+
+    monkeypatch.setattr(module, "run_offline_make", fixture_make)
     args = SimpleNamespace(
         go_bundle=go_bundle,
         go_bundle_sha256=module.digest(go_bundle),
@@ -575,11 +637,41 @@ def test_digest_keyed_build_activates_complete_clean_host_command_set(
         tools_commit=tools_commit,
         vendor_archive=vendor,
         vendor_sha256=module.digest(vendor),
+        correction_directory=correction_directory,
+        correction_digest=correction["digest"],
     )
+
+    # Retain a complete previously accepted, uncorrected generation. The new
+    # correction must select another identity and must not rewrite this tree.
+    legacy_inputs = {"goBundleSha256": args.go_bundle_sha256, "goCommit": args.go_commit,
+                     "toolsBundleSha256": args.tools_bundle_sha256, "toolsCommit": args.tools_commit,
+                     "vendorSha256": args.vendor_sha256}
+    legacy_id = __import__("hashlib").sha256(module.canonical(legacy_inputs)).hexdigest()
+    legacy = module.BASE / legacy_id
+    (legacy / "bin").mkdir(parents=True)
+    for name in module.BINARY_NAMES:
+        path = legacy / "bin" / name
+        path.write_bytes(b"retained legacy activation fixture: " + name.encode())
+        path.chmod(0o700)
+    (legacy / "manifest.json").write_bytes(b"{}\n")
+    module.freeze_tree(legacy)
+    legacy_binaries = {name: module.digest(legacy / "bin" / name) for name in module.BINARY_NAMES}
+    legacy_manifest = {"schemaVersion": module.MANIFEST_SCHEMA, "inputs": legacy_inputs,
+                       "binaries": legacy_binaries, "treeSha256": module.tree_digest(legacy)}
+    (legacy / "manifest.json").chmod(0o600)
+    (legacy / "manifest.json").write_bytes(module.canonical(legacy_manifest))
+    (legacy / "manifest.json").chmod(0o400)
+    assert module.validate_existing(legacy, legacy_inputs) == legacy_binaries
+    module.activate_toolchain(legacy, legacy_binaries)
+    retained = ((legacy / "manifest.json").read_bytes(), module.tree_digest(legacy))
 
     first = module.build(args)
     assert outside.read_bytes() == b"preserve external link target"
     assert first["changed"] is True
+    assert first["inputs"]["goSourceCorrection"] == correction
+    assert first["inputs"]["goSourceCorrection"]["profile"] == "synthetic-no-tun"
+    assert first["toolchainId"] != legacy_id
+    assert ((legacy / "manifest.json").read_bytes(), module.tree_digest(legacy)) == retained
     target = module.BASE / first["toolchainId"]
     assert target.is_dir()
     assert {path.name for path in target.iterdir()} == {"bin", "manifest.json"}
@@ -600,6 +692,23 @@ def test_digest_keyed_build_activates_complete_clean_host_command_set(
     repaired = module.build(args)
     assert repaired["changed"] is True
     assert os.readlink(command) == str(module.ACTIVE_LINK / "awg")
+    assert builds == ["amneziawg-go", "src"]
+
+    # Unreviewed pins and mixed correction assets refuse before another build
+    # or activation and preserve the complete accepted generation.
+    accepted = (module.ACTIVE_LINK.resolve(), (target / "manifest.json").read_bytes())
+    args.go_commit = "0" * 40
+    with pytest.raises(subprocess.CalledProcessError):
+        module.build(args)
+    args.go_commit = go_commit
+    manifest_asset = correction_directory / "awg-source-correction.json"
+    original_asset = manifest_asset.read_bytes()
+    manifest_asset.write_bytes(original_asset + b"\n")
+    with pytest.raises(subprocess.CalledProcessError):
+        module.build(args)
+    manifest_asset.write_bytes(original_asset)
+    assert builds == ["amneziawg-go", "src"]
+    assert (module.ACTIVE_LINK.resolve(), (target / "manifest.json").read_bytes()) == accepted
 
 
 def test_activation_failure_preserves_previous_complete_toolchain(

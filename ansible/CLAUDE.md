@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+Site baseline defers managed DNS stub restoration until DNS-Morph has retired
+its listener. The retiring role calls only baseline's resolver tasks; tagged
+runs that omit retirement retain the working upstream resolver.
+
 DNS-Morph controller admission runs after exact-node ownership in site pre_tasks, before host changes and
 at standalone role entry. Both use the same bounded YAML validator and rendered
 role contract; malformed seed material and implicit echo-only inputs refuse in

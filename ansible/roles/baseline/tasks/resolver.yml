@@ -1,17 +1,84 @@
 ---
+- name: Ensure systemd-resolved drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/resolved.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Inspect the resolver before releasing the DNS stub port
   ansible.builtin.stat:
     path: /etc/resolv.conf
     follow: false
   register: baseline_resolver
-  when: vpn.enable_dns_morph_bridge | default(false) | bool
+
+- name: Inspect the retained DNS stub migration authority
+  ansible.builtin.stat:
+    path: /etc/systemd/resolved.conf.d/vpn-dns-morph-stub.path
+    follow: false
+  register: baseline_stub_receipt
+
+- name: Require a bounded root-owned DNS stub migration record
+  ansible.builtin.assert:
+    that:
+      - >-
+        (not baseline_stub_receipt.stat.exists and
+         not baseline_stub_receipt.stat.islnk | default(false)) or
+        (baseline_stub_receipt.stat.isreg | default(false) and
+         not baseline_stub_receipt.stat.islnk | default(false) and
+         baseline_stub_receipt.stat.uid == 0 and
+         baseline_stub_receipt.stat.nlink == 1 and
+         baseline_stub_receipt.stat.size <= 128 and
+         baseline_stub_receipt.stat.mode == '0600')
+    fail_msg: DNS stub migration authority is not a private owned regular file.
+
+- name: Read the retained DNS stub migration target
+  ansible.builtin.slurp:
+    src: /etc/systemd/resolved.conf.d/vpn-dns-morph-stub.path
+  register: baseline_stub_receipt_content
+  when: baseline_stub_receipt.stat.exists
+
+- name: Resolve the retained DNS stub migration target
+  ansible.builtin.set_fact:
+    baseline_stub_original_target: >-
+      {{ (baseline_stub_receipt_content.content | b64decode | trim)
+         if baseline_stub_receipt.stat.exists else '' }}
+
+- name: Require a known DNS stub migration target
+  ansible.builtin.assert:
+    that:
+      - >-
+        (not baseline_stub_receipt.stat.exists and baseline_stub_original_target == '') or
+        baseline_stub_original_target in ['/run/systemd/resolve/stub-resolv.conf', '/usr/lib/systemd/resolv.conf']
+    fail_msg: DNS stub migration target is not a managed systemd stub.
+
+- name: Inspect pending DNS stub application before any publication
+  ansible.builtin.stat:
+    path: /etc/systemd/resolved.conf.d/vpn-dns-morph-apply.pending
+    follow: false
+  register: baseline_stub_pending
+
+- name: Require owned pending DNS stub application authority
+  ansible.builtin.assert:
+    that:
+      - >-
+        (not baseline_stub_pending.stat.exists and
+         not baseline_stub_pending.stat.islnk | default(false)) or
+        (baseline_stub_pending.stat.isreg | default(false) and
+         not baseline_stub_pending.stat.islnk | default(false) and
+         baseline_stub_pending.stat.uid == 0 and
+         baseline_stub_pending.stat.nlink == 1 and
+         baseline_stub_pending.stat.size <= 32 and
+         baseline_stub_pending.stat.mode == '0600')
+    fail_msg: Pending DNS stub application authority is unsafe.
 
 - name: Read the effective resolver before releasing the DNS stub port
   ansible.builtin.slurp:
     src: /etc/resolv.conf
   register: baseline_resolver_content
   no_log: true
-  when: vpn.enable_dns_morph_bridge | default(false) | bool
+  when: baseline_dns_morph_active | default(vpn.enable_dns_morph_bridge | default(false)) | bool
 
 - name: Refuse an unmanaged resolver that still needs the DNS stub
   ansible.builtin.assert:
@@ -24,11 +91,11 @@
              is search('(?m)^\s*nameserver\s+127\.0\.0\.(53|54)(?:\s|$)'))
     fail_msg: DNS-Morph requires a working non-stub resolver; custom stub resolver files must be migrated explicitly.
   no_log: true
-  when: vpn.enable_dns_morph_bridge | default(false) | bool
+  when: baseline_dns_morph_active | default(vpn.enable_dns_morph_bridge | default(false)) | bool
 
 - name: Validate the upstream resolver before migrating its stub symlink
   when:
-    - vpn.enable_dns_morph_bridge | default(false) | bool
+    - baseline_dns_morph_active | default(vpn.enable_dns_morph_bridge | default(false)) | bool
     - baseline_resolver.stat.islnk | default(false)
     - baseline_resolver.stat.lnk_source in ['/run/systemd/resolve/stub-resolv.conf', '/usr/lib/systemd/resolv.conf']
   block:
@@ -48,6 +115,15 @@
         fail_msg: systemd-resolved has no usable upstream resolver; keep the DNS stub active.
       no_log: true
 
+    - name: Retain the original managed DNS stub before migration
+      ansible.builtin.copy:
+        content: "{{ baseline_resolver.stat.lnk_source }}\n"
+        dest: /etc/systemd/resolved.conf.d/vpn-dns-morph-stub.path
+        owner: root
+        group: root
+        mode: "0600"
+        force: false
+
     - name: Point the managed stub resolver symlink at the verified upstream resolver
       ansible.builtin.file:
         src: /run/systemd/resolve/resolv.conf
@@ -55,13 +131,30 @@
         state: link
         force: true
 
-- name: Ensure systemd-resolved drop-in directory
-  ansible.builtin.file:
-    path: /etc/systemd/resolved.conf.d
-    state: directory
+- name: Predict the DNS stub configuration change before publication
+  ansible.builtin.copy:
+    dest: /etc/systemd/resolved.conf.d/no-stub.conf
     owner: root
     group: root
-    mode: "0755"
+    mode: "0644"
+    content: |
+      [Resolve]
+      DNSStubListener=no
+  check_mode: true
+  register: baseline_stub_disable_plan
+  when: baseline_dns_morph_active | default(vpn.enable_dns_morph_bridge | default(false)) | bool
+
+- name: Retain pending DNS stub application before changing the configuration
+  ansible.builtin.copy:
+    dest: /etc/systemd/resolved.conf.d/vpn-dns-morph-apply.pending
+    owner: root
+    group: root
+    mode: "0600"
+    content: "pending\n"
+  register: baseline_stub_pending_created
+  when:
+    - baseline_dns_morph_active | default(vpn.enable_dns_morph_bridge | default(false)) | bool
+    - baseline_stub_disable_plan.changed
 
 - name: Release the DNS stub port only for DNS-Morph
   ansible.builtin.copy:
@@ -73,14 +166,27 @@
       [Resolve]
       DNSStubListener=no
   register: baseline_stub_disabled
-  when: vpn.enable_dns_morph_bridge | default(false) | bool
+  when: baseline_dns_morph_active | default(vpn.enable_dns_morph_bridge | default(false)) | bool
+
+- name: Refuse replacement resolver authority before restoring the managed stub
+  ansible.builtin.assert:
+    that:
+      - baseline_resolver.stat.islnk | default(false)
+      - baseline_resolver.stat.lnk_source in ['/run/systemd/resolve/resolv.conf', baseline_stub_original_target]
+    fail_msg: DNS resolver changed after migration; preserve it for explicit reconciliation.
+  when:
+    - not (baseline_dns_morph_active | default(vpn.enable_dns_morph_bridge | default(false)) | bool)
+    - not (baseline_defer_resolver_restore | default(false) | bool)
+    - baseline_stub_original_target | length > 0
 
 - name: Restore the ordinary host DNS stub when DNS-Morph is disabled
   ansible.builtin.file:
     path: /etc/systemd/resolved.conf.d/no-stub.conf
     state: absent
   register: baseline_stub_restored
-  when: not (vpn.enable_dns_morph_bridge | default(false) | bool)
+  when:
+    - not (baseline_dns_morph_active | default(vpn.enable_dns_morph_bridge | default(false)) | bool)
+    - not (baseline_defer_resolver_restore | default(false) | bool)
 
 - name: Apply the resolver transition before dependent roles run
   ansible.builtin.systemd_service:
@@ -88,4 +194,39 @@
     state: restarted
   when:
     - not ansible_check_mode
-    - baseline_stub_disabled.changed or baseline_stub_restored.changed
+    - >-
+      baseline_stub_disabled.changed or baseline_stub_restored.changed or
+      baseline_stub_pending.stat.exists or baseline_stub_pending_created.changed or
+      (baseline_stub_original_target | length > 0 and
+       not (baseline_dns_morph_active | default(vpn.enable_dns_morph_bridge | default(false)) | bool))
+    - >-
+      (baseline_dns_morph_active | default(vpn.enable_dns_morph_bridge | default(false)) | bool) or
+      not (baseline_defer_resolver_restore | default(false) | bool)
+
+- name: Restore only the retained managed DNS stub symlink after restart
+  ansible.builtin.file:
+    src: "{{ baseline_stub_original_target }}"
+    dest: /etc/resolv.conf
+    state: link
+    force: true
+  when:
+    - not (baseline_dns_morph_active | default(vpn.enable_dns_morph_bridge | default(false)) | bool)
+    - not (baseline_defer_resolver_restore | default(false) | bool)
+    - baseline_stub_original_target | length > 0
+
+- name: Retire the DNS stub migration record after successful restoration
+  ansible.builtin.file:
+    path: /etc/systemd/resolved.conf.d/vpn-dns-morph-stub.path
+    state: absent
+  when:
+    - not (baseline_dns_morph_active | default(vpn.enable_dns_morph_bridge | default(false)) | bool)
+    - not (baseline_defer_resolver_restore | default(false) | bool)
+    - baseline_stub_original_target | length > 0
+
+- name: Clear pending DNS stub application only after successful restart
+  ansible.builtin.file:
+    path: /etc/systemd/resolved.conf.d/vpn-dns-morph-apply.pending
+    state: absent
+  when: >-
+    (baseline_dns_morph_active | default(vpn.enable_dns_morph_bridge | default(false)) | bool) or
+    not (baseline_defer_resolver_restore | default(false) | bool)

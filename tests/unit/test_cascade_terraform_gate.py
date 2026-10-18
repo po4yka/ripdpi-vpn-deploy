@@ -29,6 +29,9 @@ def test_isolated_root_has_fixed_provider_neutral_output_contract() -> None:
     )
 
     assert names == existing
+    for provider in ("hetzner", "vultr", "scaleway"):
+        provider_outputs = (ROOT / f"terraform/providers/{provider}/outputs.tf").read_text()
+        assert set(re.findall(r'^output "([^"]+)"', provider_outputs, flags=re.MULTILINE)) == existing
     assert not any(part.name == "providers" for part in TF_ROOT.parents if part != ROOT)
 
 

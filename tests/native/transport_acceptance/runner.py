@@ -24,6 +24,7 @@ SUITES = (
             "tests/unit/test_xhttp_endpoint_contract_native.py",
             "tests/unit/test_awg_device_binding_native.py",
             "tests/unit/test_awg_dualstack_native.py",
+            "tests/native/transport_acceptance/test_awg_udp_checksum.py",
         ],
     ),
     (
@@ -359,6 +360,9 @@ def engines():
     pins = json.loads(
         (ROOT / "tests/integration/awg_source_candidate/sources.json").read_text()
     )
+    sys.path.insert(0, str(ROOT / "tests/integration/awg_source_candidate"))
+    from corrected_build import verify as verify_corrected_build
+
     for pair in ("baseline", "candidate"):
         for component, artifact in [("go", "amneziawg-go"), ("tools", "src/wg")]:
             source = ROOT / ".cache/four-transport-sources" / pair / component
@@ -367,6 +371,13 @@ def engines():
                 != pins[pair][component]["commit"]
             ):
                 raise RuntimeError("AWG-pair-source-mismatch")
+            if component == "go":
+                receipt = verify_corrected_build(
+                    source, pins[pair][component]["commit"],
+                    ROOT / "ansible/roles/amneziawg/files",
+                )
+                result["awg-" + pair + "-go-correction"] = receipt["correction"]["digest"]
+                result["awg-" + pair + "-go-commit"] = receipt["commit"]
             result["awg-" + pair + "-" + component] = hashlib.sha256(
                 (source / artifact).read_bytes()
             ).hexdigest()

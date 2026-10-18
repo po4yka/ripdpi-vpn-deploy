@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "name": "udp-computed-zero-v1",
+  "patch_sha256": "39006379f8ba731858fb67b4a448bba10022478228e7ad41e62d3bcffe14004a",
+  "commits": {
+    "2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf": {
+      "profile": "upstream",
+      "tree": "415ae17c2f65f8bbed7dff0b97895a0dba04d753",
+      "preimage_sha256": "5a49f9e4a741348d811b8da2b8db55f09e581dc3e6825fe2dd9acec9de76bdec",
+      "postimage_sha256": "befda8615b3d68a3690dd101264bb890b61c46fea904c8d2a25dec5828cb47aa",
+      "generated_version_sha256": [
+        "cbe0fc6015aff35b7898a485c621699f5555d0966059c093fca0f70617e28435",
+        "cc7c4188e5c9900fa71d78db39a3e63dae251bc41854813a26a73195c23de713"
+      ]
+    },
+    "b5928efb6ca19f0153958460c3d141f04abc5c2e": {
+      "profile": "upstream",
+      "tree": "3b71b7fe835939879c609130fac3c2f84ef06532",
+      "preimage_sha256": "a9b72c72a09bb850826c4ee060454af9c306f22fde2b6dca6f1d02a039c928b8",
+      "postimage_sha256": "b66da128a3cfe5e1533d6c3d3c5b738ff897cb8ebb878eef9c85d2a1ba92cef1",
+      "generated_version_sha256": [
+        "ae64d142b95208c9580075b645d295c82b2ec842592934c412aad863279e0b4b",
+        "d04276e2bb027b0caac93fcde5b653e316042f0aa287cbff0ce2d8a17b7c7168"
+      ]
+    },
+    "c477e2aa7b49a02381861e8ce41170e9c1f615eb": {
+      "profile": "synthetic-no-tun",
+      "tree": "7625c4d59c0b32169f4a384d7f8450edf990cc1a",
+      "files_sha256": {
+        "Makefile": "6e59ca65f53edca2ecce452d168f2e92a50ea9c0512052c126b420a2b9c2b88a",
+        "fixture-go": "6824a34e7d546f5cc061c70f6dee30387e5d07fc1c94a325c62c4b6f82fa0f95"
+      }
+    }
+  }
+}

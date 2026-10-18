@@ -86,6 +86,26 @@ def test_names_are_absolute_canonical_and_idna():
     assert str(normalize_address("::ffff:192.0.2.80")) == "192.0.2.80"
 
 
+@pytest.mark.parametrize("value", ["faß.de", "FAẞ.de", "Faẞ.de", "faẞ.de", "βόλος.example", "a\u200cb.example", "a\u200db.example",
+                                   "fullwidth\uff0eexample", "\uff41.example", "soft\u00adhyphen.example"])
+def test_lossy_unicode_names_refuse_in_policy_and_socks_wire(value):
+    with pytest.raises(PolicyError, match="invalid-name"):
+        canonical_name(value)
+    encoded = value.encode("utf-8")
+    frame = bytes(3) + bytes([3, len(encoded)]) + encoded + struct.pack("!H", 9000)
+    with pytest.raises(wire.WireError, match="invalid-name"):
+        wire.datagram(frame, 4096)
+
+
+@pytest.mark.parametrize("value,expected", [
+    ("BÜCHER.example", "xn--bcher-kva.example."), ("xn--fa-hia.de", "xn--fa-hia.de."),
+    ("XN--FA-HIA.DE", "xn--fa-hia.de."),
+    ("xn--nxasmm1c.example", "xn--nxasmm1c.example."),
+])
+def test_lossless_names_and_explicit_alabel_identity_remain_supported(value, expected):
+    assert canonical_name(value) == expected
+
+
 @pytest.mark.parametrize("frame", [b"", b"\0\0\1\1" + bytes(6), b"\1\0\0\1" + bytes(6),
                                    b"\0\0\0\x09" + bytes(6), b"\0\0\0\3\xffx", b"\0\0\0\1" + bytes(6)])
 def test_malformed_udp_never_becomes_a_destination(frame):
@@ -387,6 +407,30 @@ def test_named_udp_bindings_and_new_families_deliver_exactly_once():
         finally:
             control.close()
             client.close()
+
+
+def test_empty_udp_payload_round_trips_and_keeps_destination_and_source_policy():
+    with running() as (_, value, resolver, gateway):
+        control, client, relay = udp_control(value)
+        foreign = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        foreign.settimeout(0.1)
+        try:
+            assert send_name(client, relay, "public.test", b"") == ("192.0.2.80", 9000, b"")
+            assert send_name(client, relay, "v6.test", b"") == ("2001:db8::80", 9000, b"")
+            with pytest.raises(socket.timeout):
+                send_name(client, relay, "private.test", b"")
+            with pytest.raises(socket.timeout):
+                send_name(foreign, relay, "public.test", b"")
+            assert send_name(client, relay, "public.test", b"after-empty")[2] == b"after-empty"
+            assert [record for record in gateway.records if record[0] == "udp"] == [
+                ("udp", "192.0.2.80", 9000, b""), ("udp", "2001:db8::80", 9000, b""),
+                ("udp", "192.0.2.80", 9000, b"after-empty"),
+            ]
+            assert resolver.calls.count(("public.test.", 9000, "udp")) == 1
+        finally:
+            control.close()
+            client.close()
+            foreign.close()
 
 
 def test_active_tcp_and_udp_have_idle_not_absolute_age():

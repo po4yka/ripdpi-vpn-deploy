@@ -13,6 +13,7 @@ import socket
 import socketserver
 import sys
 import threading
+import time
 from pathlib import Path
 
 from cascade_classifier_lib import DatasetUnavailable, load_ru_networks, resolve_and_classify
@@ -73,18 +74,46 @@ def _bind_to_interface(outbound: socket.socket, interface: str) -> None:
         raise OSError("platform cannot bind an outbound socket to an interface")
 
 
-def _relay(left: socket.socket, right: socket.socket) -> None:
-    sockets = [left, right]
-    while sockets:
-        readable, _, _ = select.select(sockets, [], [], 30)
-        if not readable:
+def _relay(left: socket.socket, right: socket.socket, *, idle_seconds: float = 30) -> None:
+    peers = {left: right, right: left}
+    buffers = {connection: bytearray() for connection in peers}
+    read_open, pending_fin = set(peers), set()
+    limit = 65536
+    last = time.monotonic()
+    for connection in peers:
+        connection.setblocking(False)
+    while True:
+        remaining = idle_seconds - (time.monotonic() - last)
+        readers = [connection for connection in read_open if len(buffers[peers[connection]]) < limit]
+        writers = [connection for connection in peers if buffers[connection]]
+        if remaining <= 0 or not readers and not writers:
             return
-        for source in readable:
-            data = source.recv(65536)
-            if not data:
+        readable, writable, _ = select.select(readers, writers, [], remaining)
+        for destination in writable:
+            try:
+                sent = destination.send(buffers[destination])
+            except BlockingIOError:
+                continue
+            if not sent:
                 return
-            destination = right if source is left else left
-            destination.sendall(data)
+            del buffers[destination][:sent]
+            last = time.monotonic()
+        for source in readable:
+            destination = peers[source]
+            try:
+                data = source.recv(limit - len(buffers[destination]))
+            except BlockingIOError:
+                continue
+            if not data:
+                read_open.remove(source)
+                pending_fin.add(destination)
+            else:
+                buffers[destination].extend(data)
+                last = time.monotonic()
+        for destination in tuple(pending_fin):
+            if not buffers[destination]:
+                destination.shutdown(socket.SHUT_WR)
+                pending_fin.remove(destination)
 
 
 def interface_for_state(state: str, direct_interface: str, foreign_interface: str) -> str:

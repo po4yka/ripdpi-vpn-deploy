@@ -123,6 +123,43 @@ def test_primary_and_fallback_vhosts_share_the_hardened_tls_http_identity() -> N
         assert rendered.count(header) == 2
 
 
+@pytest.mark.parametrize(
+    "primary_port,fallback_enabled,fallback_port,distinct_host,expected",
+    [
+        (8443, False, 2083, False, [0]),
+        (443, False, 2083, False, [31536000]),
+        (8443, False, 443, False, [0]),
+        (8443, True, 2083, False, [0, 0]),
+        (8443, True, 2083, True, [0, 0]),
+        (443, True, 2083, False, [31536000, 31536000]),
+        (443, True, 2083, True, [31536000, 0]),
+        (8443, True, 443, False, [31536000, 31536000]),
+        (8443, True, 443, True, [0, 31536000]),
+    ],
+)
+def test_hsts_requires_same_hostname_public_https_443(
+    primary_port, fallback_enabled, fallback_port, distinct_host, expected
+) -> None:
+    variables = renderer.merge_render_vars()
+    variables["nginx_xhttp_public_port"] = primary_port
+    variables["nginx_xhttp_fallback_port"] = fallback_port
+    variables["nginx_xhttp"] = {
+        **variables["nginx_xhttp"],
+        "server_name": "notes.example.test",
+        "fallback_enabled": fallback_enabled,
+        "fallback_server_name": (
+            "alternate.example.test" if distinct_host else "NOTES.example.test"
+        ),
+    }
+    rendered = renderer.render_template(TEMPLATE, variables)
+    ages = re.findall(
+        r'add_header Strict-Transport-Security "max-age=(\d+)" always;', rendered
+    )
+    assert [int(age) for age in ages] == expected
+    # Every TLS response, including error pages, clears or refreshes the policy.
+    assert len(ages) == rendered.count("ssl_protocols       TLSv1.3;")
+
+
 def test_primary_and_fallback_vhosts_serve_the_atom_media_type() -> None:
     rendered = _render(fallback=True)
     assert rendered.count("location = /feed.xml {") == 2

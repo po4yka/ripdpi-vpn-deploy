@@ -174,7 +174,7 @@ def test_dns_stub_transition_preserves_or_migrates_resolver_before_restart(
             "/run/systemd/resolve/": str(run) + "/",
         },
     )
-    restart = selected[-1]
+    restart = next(row for row in selected if row.get("name") == "Apply the resolver transition before dependent roles run")
     restart.pop("ansible.builtin.systemd_service")
     marker = tmp_path / "restart"
     restart["ansible.builtin.command"] = {

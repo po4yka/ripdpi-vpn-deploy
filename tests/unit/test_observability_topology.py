@@ -296,6 +296,7 @@ case "$key" in
   ssh_port) printf 22 ;;
   server_hostname) printf '%s-test' "$provider" ;;
   honeypot_ipv4) printf '' ;;
+  nat_source_port_range) printf '' ;;
   public_listeners)
     case "$provider" in
       upcloud)

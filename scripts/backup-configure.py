@@ -486,14 +486,6 @@ def controller(inventory, alias, secrets):
         private_file(snapshot_file, materialized_bytes(secrets))
         environment.update(VPN_SECRETS_FILE=str(snapshot_file), BACKUP_CONFIGURE_HOST=alias,
                            BACKUP_CONFIGURATION_VARS_FILES=json.dumps(canonical_variables(root, cohorts)))
-        commands = ([sys.executable, str(root / "scripts/validate-secrets.py"), str(snapshot_file),
-                     "--strict", "--environment", host["variables"].get("env", "")],
-                    [sys.executable, str(root / "scripts/spot-check-secrets.py")],
-                    [str(root / "scripts/check-certs.sh")])
-        for command in commands:
-            result = subprocess.run(command, env=environment, capture_output=True, timeout=120)
-            if result.returncode:
-                raise ConfigError("canonical-secrets-precheck-failed")
         command = ["ansible-playbook", str(root / "ansible/playbooks/backup-configure.yml"),
                    "-i", str(selected), "--limit", alias]
         extra_vars = os.environ.get("BACKUP_CONFIGURE_EXTRA_VARS_FILE", "")
@@ -510,6 +502,18 @@ def controller(inventory, alias, secrets):
             import yaml
             overrides = yaml.safe_load(extra_snapshot.read_bytes())
             command += ["--extra-vars", "@" + str(extra_snapshot)]
+        certificate_variables = [*canonical_variables(root, cohorts), str(snapshot_file)]
+        if extra_vars:
+            certificate_variables.append(str(extra_snapshot))
+        environment["VPN_CERT_VARS_FILES"] = json.dumps(certificate_variables)
+        commands = ([sys.executable, str(root / "scripts/validate-secrets.py"), str(snapshot_file),
+                     "--strict", "--environment", host["variables"].get("env", "")],
+                    [sys.executable, str(root / "scripts/spot-check-secrets.py")],
+                    [str(root / "scripts/check-certs.sh")])
+        for precheck in commands:
+            result = subprocess.run(precheck, env=environment, capture_output=True, timeout=120)
+            if result.returncode:
+                raise ConfigError("canonical-secrets-precheck-failed")
         command += ["--extra-vars", json.dumps(transport_variables(host, overrides, Path.home() / ".ssh/known_hosts"))]
         result = subprocess.run(command, cwd=private, env=environment, capture_output=True, timeout=600, check=False)
         if result.returncode:

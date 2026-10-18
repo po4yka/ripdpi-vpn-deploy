@@ -388,4 +388,19 @@ def test_strict_egress_admits_untracked_ipv6_control_without_opening_other_proto
     assert "ipv6-icmp accept" not in chain
     assert "echo-request" not in chain
     assert "nd-router-advert" not in chain
-    assert chain.index("nd-neighbor-solicit") < chain.index("counter drop")
+    terminal_drop = "\n    counter drop\n"
+    assert chain.splitlines().count("    counter drop") == 1
+    assert chain.rstrip().endswith(terminal_drop.rstrip("\n"))
+    assert chain.index("nd-neighbor-solicit") < chain.index(terminal_drop)
+
+
+def test_provider_nat_range_is_applied_to_every_awg_instance_without_input_changes():
+    variables = ctr.merge_render_vars()
+    ordinary = ctr.render_template(TEMPLATE, variables)
+    variables["terraform_nat_source_port_range"] = "32768-60999"
+    constrained = ctr.render_template(TEMPLATE, variables)
+    assert ordinary.split("table inet nat")[0] == constrained.split("table inet nat")[0]
+    assert 'counter masquerade to :32768-60999 comment "awg-nat-' in constrained
+    assert constrained.count("masquerade to :32768-60999") == len(
+        variables["amneziawg_secrets"]["instances"]
+    )

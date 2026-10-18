@@ -6,8 +6,10 @@
 be variable-driven, so each provider gets its own root under
 `providers/<name>/`. Every root exports the same outputs: `server_ipv4`,
 `server_ipv6`, `honeypot_ipv4`, `admin_user`, `ssh_port`, `server_hostname`,
-`zone`, `public_listeners`. `scripts/render-inventory.sh` reads all but `zone`
-and is therefore provider-neutral.
+`zone`, `public_listeners`, `nat_source_port_range`. The NAT range is nonempty
+only when UpCloud stateless filtering requires source-port remapping; stateful
+providers and the inert exception root export an empty string.
+`scripts/render-inventory.sh` consumes the common inventory contract.
 
 **SSH port is one cross-layer input** — `var.ssh_port` configures cloud-init,
 the provider edge allowlist, the canonical Terraform output, inventory's

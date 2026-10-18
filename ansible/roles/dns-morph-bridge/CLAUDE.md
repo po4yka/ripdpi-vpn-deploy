@@ -8,6 +8,11 @@ Disabled role intent stops only declared owned services and removes exact runtim
 configuration; shared packages, immutable release receipts and unrelated state
 remain. The unique `dns_morph_bridge_role_enabled` selector defaults true for direct calls.
 
+After successful bridge retirement, the role invokes only baseline's resolver
+tasks with inactive bridge intent. This releases port 53 before restarting the
+resolved stub and restoring its retained managed symlink. Failed retirement
+does not prematurely restore a stub that would conflict with the live bridge.
+
 **Config validation is role-specific** — the unpublished bridge binary has no
 stable validation CLI. The shared bounded YAML validator rejects malformed or
 duplicate-key candidates and invalid nested listener, forwarder, morph, limit,
