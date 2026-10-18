@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+Credential strings use JSON serialization in both server and smoke templates.
+Parsed PSKs and userkeys must match the canonical Python recipient values,
+including quotes, backslashes, control characters and UTF-8 text. Matching
+server and smoke corruption is not authentication evidence.
+
 **Research only** — Snell is a staging evaluation surface, not a family-profile transport. `vpn.enable_snell` is false everywhere and the role is tagged RESEARCH. A lab host must explicitly list `snell` in `allow_research_roles`.
 
 **One pinned binary, three server variants** — a single checksum-pinned sing-box release serves the v4-compatible stream and the v6 default/unshaped variants on separate TCP listeners. The shared `runtime-release` role owns extraction, receipts, and compensated current/public/previous link publication. Separate listeners keep evaluation attribution explicit without multiplying daemons.

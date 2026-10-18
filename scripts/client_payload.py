@@ -229,6 +229,8 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
                                                **({'xmux': tuning} if tuning else {}))))
         if enabled('enable_hysteria'):
             hy = d['hysteria']
+            if o['format'] == 'ripdpi' and c.get('hysteria_port_range'):
+                raise ValueError('RIPDPI Hysteria port hopping requires a qualified client')
             ech = hy.get('ech')
             resource = hy.get('resource_profile', 'bandwidth-capped')
             if ech and o['format'] != 'singbox':
@@ -257,8 +259,7 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
                 hyout.update(server_ports=[ports], hop_interval=interval)
                 extra['port_hopping'] = dict(ports=ports, interval=interval)
             out.append(hyout)
-            if not extras:
-                extras[hyout['tag']] = extra
+            extras[hyout['tag']] = extra
         if enabled('enable_snell'):
             for variant in c['snell']['variants']:
                 secret = next((v for v in d['snell_secrets']['variants'] if v['id'] == variant['id']), None)
@@ -349,7 +350,7 @@ def main():
         print(json.dumps(payload, indent=2))
         return 0
     except (OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError, StopIteration, subprocess.SubprocessError, yaml.YAMLError) as error:
-        safe = {'--xhttp-only requires --profile-format ripdpi', 'ECH requires the verified official sing-box engine; RIPDPI export is unsupported', 'BBR resource profiles require the verified official sing-box engine; RIPDPI export is unsupported', 'P0 REALITY finalmask requires an Xray client', 'P0 REALITY Mux.Cool requires an Xray client; sing-mux is incompatible', 'conflicting vpn.hysteria_realm values across HOSTS', 'ambiguous-device-binding', 'missing-device-binding', 'plaintext secrets cannot be combined with SOPS_FILES', 'missing-snell-variant'}
+        safe = {'--xhttp-only requires --profile-format ripdpi', 'ECH requires the verified official sing-box engine; RIPDPI export is unsupported', 'BBR resource profiles require the verified official sing-box engine; RIPDPI export is unsupported', 'RIPDPI Hysteria port hopping requires a qualified client', 'P0 REALITY finalmask requires an Xray client', 'P0 REALITY Mux.Cool requires an Xray client; sing-mux is incompatible', 'conflicting vpn.hysteria_realm values across HOSTS', 'ambiguous-device-binding', 'missing-device-binding', 'plaintext secrets cannot be combined with SOPS_FILES', 'missing-snell-variant'}
         detail = str(error) if isinstance(error, ValueError) and str(error) in safe else ('plaintext secrets unavailable' if 'VPN_SECRETS_FILE' in os.environ else 'materialization refused')
         print('client-payload: ' + detail, file=__import__('sys').stderr)
         return 2

@@ -240,8 +240,9 @@ def socks_echo(port, destination, payload, *, allowed):
 
 @pytest.mark.parametrize("variant_id", ["v4-stream", "v6-default", "v6-unshaped"])
 @pytest.mark.parametrize("reuse", [False, True], ids=["fresh", "reuse"])
+@pytest.mark.parametrize("credential_style", ["hex", "json-escaped"])
 def test_real_snell_variants_authentication_and_connection_reuse(
-    tmp_path, snell_binary, variant_id, reuse
+    tmp_path, snell_binary, variant_id, reuse, credential_style
 ):
     defaults = yaml.safe_load(
         (ROOT / "ansible/roles/snell/defaults/main.yml").read_text()
@@ -250,14 +251,15 @@ def test_real_snell_variants_authentication_and_connection_reuse(
         {**variant, "listen_port": free_port()} for variant in defaults["variants"]
     ]
     selected = next(variant for variant in variants if variant["id"] == variant_id)
+    suffix = "" if credential_style == "hex" else '"\\\n\t\r'
     secrets = [
         {
             "id": variant["id"],
-            "psk": token_hex(32),
+            "psk": token_hex(32) + suffix,
             "users": [
                 {
                     "name": "native-device",
-                    "userkey": token_hex(32),
+                    "userkey": token_hex(32) + suffix,
                 }
             ],
         }
@@ -270,6 +272,9 @@ def test_real_snell_variants_authentication_and_connection_reuse(
     server = json.loads(
         render_template(ROOT / "ansible/roles/snell/templates/config.json.j2", values)
     )
+    for inbound, secret in zip(server["inbounds"], secrets):
+        assert inbound["psk"] == secret["psk"], "server PSK changed during rendering"
+        assert inbound["users"] == secret["users"], "server userkeys changed during rendering"
     server["log"] = {"level": "info"}
     with ExitStack() as stack:
         stack.enter_context(engine(snell_binary, tmp_path / "server.json", server))
@@ -288,6 +293,8 @@ def test_real_snell_variants_authentication_and_connection_reuse(
         )
         index = variants.index(selected)
         inbound, outbound = client["inbounds"][index], client["outbounds"][index]
+        assert outbound["psk"] == secrets[index]["psk"], "smoke PSK changed during rendering"
+        assert outbound["userkey"] == secrets[index]["users"][0]["userkey"], "smoke userkey changed during rendering"
         inbound["listen_port"] = free_port()
         outbound.update(server_port=counted.server_address[1], reuse=reuse)
         wrong_userkey = token_hex(32)
