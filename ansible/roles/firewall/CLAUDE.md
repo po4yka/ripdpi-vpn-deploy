@@ -151,6 +151,10 @@ and active CDN origin sets retain the prefix refresher's current authority.
 
 ## Pitfalls
 
+- The timed-ban Molecule refresh marks only the exact terminal INPUT drop before
+  the forward chain. A substring match can add a second comment to a scoped
+  DHCPv6 deny. Keep both DHCPv6 comments and the timed-set expiry checks intact.
+
 - The Molecule fixture pins DHCPv6 to its Docker uplink because AWG preparation
   adds an isolated IPv6 default route after the first fact gather. Keep this test
   authority explicit so the second gather cannot change the rendered candidate.
