@@ -150,7 +150,9 @@ as an alternative to the hash-pinned lock.
 
 For a complete reference gate on macOS, use the Ubuntu VM above. Native Mac
 checks need equivalent host tools, Darwin Xray/sing-box builds at the same
-source pins, and GNU `timeout` named `timeout` on PATH. The cloud-init target
+source pins, GNU `timeout` named `timeout` and a real `flock` executable on PATH. The
+watchdog tests exercise actual process locks; a stub does not satisfy this
+prerequisite. The cloud-init target
 requires a native `cloud-init` or a running Docker engine for the digest-pinned
 fallback image in `Makefile`. A cached Docker Xray image alone does not satisfy
 the native liveness parser gate. Run native compiler-backed gates through
