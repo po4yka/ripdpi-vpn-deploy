@@ -22,6 +22,9 @@ vpn-deploy/secrets/local/                # optional, git-ignored operator layout
 The external directory is the default. The `secrets/local/` layout is an
 explicitly supported convenience for this checkout and is excluded by
 `.gitignore`; it is still sensitive local state, not repository content.
+For the complete MacBook operator kit, including access records, configuration,
+identities and recovery, follow [the local kit contract](LOCAL-OPERATOR-KIT.md).
+It extends this layout without changing command defaults or the secrets schema.
 Keep VPN secrets out of Git, Terraform variables/outputs, cloud-init `user_data`,
 and debug logs; provider credentials come only from environment variables.
 Terraform state and saved plans remain sensitive: providers can persist generated
