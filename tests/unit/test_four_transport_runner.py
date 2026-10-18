@@ -316,7 +316,6 @@ def test_missing_or_fake_engine_is_categorical_failure(tmp_path, monkeypatch, mi
 def test_cleanup_change_or_inspection_failure_persists_failure_without_private_diagnostics(
     tmp_path, monkeypatch, unavailable
 ):
-    import json
 
     def inspect():
         if unavailable:
@@ -340,7 +339,6 @@ def test_cleanup_change_or_inspection_failure_persists_failure_without_private_d
 def test_supported_host_preflight_failure_keeps_private_categorical_evidence(
     tmp_path, monkeypatch, category
 ):
-    import json
 
     monkeypatch.setattr(runner.sys, "platform", "linux")
     monkeypatch.setattr(runner.os, "geteuid", lambda: 0)
@@ -398,7 +396,6 @@ def test_new_failure_diagnostic_is_private_and_byte_complete(tmp_path):
 
 
 def test_cleanup_inventory_reports_counts_without_private_identities():
-    import json
 
     difference = runner.resource_differences(
         {"users": [], "private-field": ["private-before"]},
@@ -412,7 +409,6 @@ def test_cleanup_inventory_reports_counts_without_private_identities():
 
 
 def test_case_cleanup_evidence_filters_private_messages_and_unknown_fields(tmp_path):
-    import json
 
     root = runner.ET.Element("testsuite")
     case = runner.ET.SubElement(root, "testcase", classname="native", name="cleanup")
@@ -436,7 +432,6 @@ def test_case_cleanup_evidence_filters_private_messages_and_unknown_fields(tmp_p
 def test_final_cleanup_refuses_engine_or_source_drift_with_categorical_evidence(
     tmp_path, monkeypatch, changed
 ):
-    import json
 
     before = {"namespaces": []}
     monkeypatch.setattr(runner, "resources", lambda: before)
