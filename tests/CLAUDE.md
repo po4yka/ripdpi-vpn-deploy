@@ -14,6 +14,15 @@
 
 ## Design decisions
 
+AWG checksum regressions execute the actual pinned Go completion and
+segmentation functions through an overlay. Independent checksum arithmetic
+covers zero and nonzero UDP, both address families, TCP zero preservation and
+later zero segments. The native packet case sends the exact zero-producing
+IPv6 tuple and an adjacent control through unchanged production guards. It
+requires six real DNS replies, completed pre-NAT ffff/fffe checksums and no
+checksum errors. Synthetic Git and no-TUN Molecule cases prove admission and
+lifecycle only. Native build receipts bind corrected source to binary bytes.
+
 Network protocol regressions retain real socket delivery after both TCP FIN
 directions, bounded blocked-writer behavior and empty UDP payloads. Certificate
 fixtures use isolated test CA trust and distinct root/intermediate identities;

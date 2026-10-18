@@ -48,14 +48,24 @@ source_checkout() {
     echo 'native source fixture commit differs from immutable pin' >&2
     exit 1
   }
-  git -C "$destination" diff --quiet
-  git -C "$destination" diff --cached --quiet
+  if [[ "$name" != amneziawg-go ]]; then
+    git -C "$destination" diff --quiet
+    git -C "$destination" diff --cached --quiet
+  fi
 }
 source_checkout amneziawg-go "$go_version" "$go_commit"
 source_checkout amneziawg-tools "$tools_version" "$tools_commit"
 export GOMAXPROCS=2 CGO_ENABLED=0 GOTOOLCHAIN=local GOWORK=off
 export GOFLAGS='-mod=readonly -p=2'
-make -C "${native_root}/amneziawg-go-${go_commit}" -j2
+correction_directory="${repo_root}/ansible/roles/amneziawg/files"
+corrected_build="${repo_root}/tests/integration/awg_source_candidate/corrected_build.py"
+python3 "$corrected_build" prepare --source "${native_root}/amneziawg-go-${go_commit}" \
+  --commit "$go_commit" --correction-directory "$correction_directory"
+python3 "$corrected_build" test-checksums --source "${native_root}/amneziawg-go-${go_commit}" \
+  --commit "$go_commit" --correction-directory "$correction_directory"
+make -B -C "${native_root}/amneziawg-go-${go_commit}" -j2
+python3 "$corrected_build" publish --source "${native_root}/amneziawg-go-${go_commit}" \
+  --commit "$go_commit" --correction-directory "$correction_directory"
 make -C "${native_root}/amneziawg-tools-${tools_commit}/src" -j2
 
 native_download="$(mktemp -d "${native_root}/download.XXXXXXXX")"

@@ -12,6 +12,8 @@ RUN dpkg-deb -x /tmp/bootstrap-ca.deb /tmp/bootstrap-ca \
     && rm -rf /var/lib/apt/lists/* /tmp/bootstrap-ca /tmp/bootstrap-ca.deb
 COPY tests/integration/awg_source_candidate/sources.json /lab/sources.json
 COPY tests/integration/awg_source_candidate/build.py /lab/build.py
+COPY tests/integration/awg_source_candidate/corrected_build.py /lab/corrected_build.py
+COPY ansible/roles/amneziawg/files/awg_source_correction.py ansible/roles/amneziawg/files/awg-source-correction.json ansible/roles/amneziawg/files/awg-udp-checksum-zero.patch.json ansible/roles/amneziawg/files/awg_checksum_regression_test.go /lab/awg-source-correction/
 COPY sources/ /sources/
 RUN python3 /lab/build.py
 COPY ansible/roles/runtime-release/files/runtime_build_receipt.py /lab/runtime_build_receipt.py

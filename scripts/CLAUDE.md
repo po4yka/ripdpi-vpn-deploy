@@ -2,6 +2,12 @@
 
 ## Design decisions
 
+Native AWG builders share the role's exact source correction and one native
+build receipt helper. Source qualification, compiled binary digest and the
+relative canonical alias must agree. All three builders execute real checksum
+unit cases with a temporary Go overlay before building; the overlay adds no
+untracked source input to the admitted tree.
+
 Checkout discovery passes Git metadata input through a private temporary file.
 Large NUL-delimited path lists can otherwise block both stdin and captured
 output before the query timeout applies. Preserve UTF-8 surrogateescape bytes,

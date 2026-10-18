@@ -68,6 +68,10 @@ def canonical_files(core, area, monkeypatch):
 
 @pytest.mark.parametrize("awg,target,source,mode,accepted", [
     (True, "/usr/local/bin/amneziawg-go", "/opt/amneziawg/releases/go-" + "a" * 40 + "/amneziawg-go", 0o755, True),
+    (True, "/usr/local/bin/amneziawg-go", "/opt/amneziawg/releases/go-" + "a" * 40 + "-" + "d" * 64 + "/amneziawg-go", 0o755, True),
+    (True, "/usr/local/bin/amneziawg-go", "/opt/amneziawg/releases/go-" + "a" * 40 + "-" + "d" * 63 + "/amneziawg-go", 0o755, False),
+    (True, "/usr/local/bin/amneziawg-go", "/opt/amneziawg/releases/go-" + "a" * 40 + "-" + "D" * 64 + "/amneziawg-go", 0o755, False),
+    (True, "/usr/bin/awg", "/opt/amneziawg/releases/tools-" + "b" * 40 + "-" + "d" * 64 + "/awg", 0o755, False),
     (True, "/usr/bin/awg", "/opt/amneziawg/releases/tools-" + "b" * 64 + "/awg", 0o755, True),
     (True, "/usr/bin/awg-quick", "/opt/amneziawg/releases/tools-" + "c" * 40 + "/awg-quick", 0o755, True),
     (False, "/usr/bin/awg", "/opt/amneziawg/releases/tools-" + "b" * 40 + "/awg", 0o755, False),

@@ -19,6 +19,7 @@ separate evidence categories. No deployment is part of this repair.
 | Cascade relay closes both directions on the first FIN | Drain bounded independent directions and enforce idle time | `test_cascade_classifier_proxy.py` |
 | Alternate-port HSTS upgrades the hostname to an unrelated port 443 identity | Retain HSTS only for a compatible same-host public HTTPS/443 site; otherwise clear it | `test_public_site_contract.py` |
 | Normalizer drops empty UDP payloads | Treat empty datagrams as data and retain all association guards | `test_transport_destination_boundary.py` |
+| AWG emits a computed zero UDP checksum as 0000 | Correct both userspace completion paths; bind the source correction to build identity and immutable binaries | Exact-source admission, native build provenance and deterministic IPv6 packet regression; repair acceptance remains pending |
 
 The task verification document records observed results and exact integrated
 source evidence. A listed test is not a claim that it ran successfully.
@@ -62,6 +63,22 @@ input now uses a private temporary file. The correction keeps exact path bytes,
 empty-input EOF, command deadlines and all content-filter refusals.
 `test_workspace_status.py` covers large real Git input, non-UTF-8 names, clean
 and process filter refusal, and a real blocked-query deadline.
+
+## AWG UDP checksum diagnostic
+
+An isolated Linux packet experiment confirms a defect in the pinned AWG Go
+runtime before NAT. For both baseline and current firewall policies, three
+IPv6 UDP requests whose completed checksum equals zero are lost; three
+adjacent-port controls pass. Server TUN captures show 0000 with no pending
+checksum offload. The required UDP wire value is ffff. Each lost request adds
+one upstream checksum error. These observations do not establish the exact
+cause of the earlier CI failure, whose source port was not captured.
+
+The repair must preserve offloads, TCP checksum behavior, packet guards and
+authentication. Production and native acceptance builds must use the same
+strictly admitted source correction. An unchanged upstream commit must not
+allow reuse of an uncorrected binary or overwrite its immutable release path.
+Source, build and corrected packet acceptance remain separate checks.
 
 ## Remaining independent evidence
 

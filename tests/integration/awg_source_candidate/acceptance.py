@@ -20,6 +20,9 @@ from pathlib import Path
 
 import runtime_build_receipt as publisher
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import corrected_build
+
 ROOT = Path("/lab")
 PINS = json.loads((ROOT / "sources.json").read_text())
 RECEIPTS = Path("/var/lib/ripdpi/runtime-build-receipts")
@@ -43,6 +46,9 @@ def digest(path):
 
 def descriptor(pair):
     source = Path("/opt") / pair
+    build = corrected_build.verify(source / "go", PINS[pair]["go"]["commit"], ROOT / "awg-source-correction")
+    if build["correction"]["profile"] != "upstream":
+        raise AssertionError("native-AWG-source-profile-unqualified")
     outputs = [
         ("amneziawg-go", source / "go/amneziawg-go"),
         ("awg", source / "tools/src/wg"),
@@ -53,6 +59,7 @@ def descriptor(pair):
         "name": "awg-candidate",
         "source": {
             "pair": PINS[pair],
+            "patches": build["correction"],
             "go_toolchain": PINS["go_toolchain"],
             "go_module_proxy": PINS["go_module_proxy"],
             "package_sources_sha256": digest("/etc/apt/sources.list.d/ubuntu.sources"),

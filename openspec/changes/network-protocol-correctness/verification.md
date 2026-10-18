@@ -38,8 +38,13 @@ artifact_evidence: null
 ## Coordination
 
 PR #328 at a14c339ccf8db8bce10bce5da22380a813a41605 supplies the native
-SAN and validity checks. Task SEC-1792306834441683 owns Hysteria redirect and
-its transit regression; its accepted merge remains required for the audit ledger.
+SAN and validity checks. Task SEC-1792306834441683 supplies Hysteria redirect
+and its transit regression through PR #334, merged as
+365b08b680963d1bdd8c879b005467e24913b482. Its tested head had all protected
+contexts successful. Normal integration 2344d5ed retains both sets of shared
+notes and regenerates the task board. All merge hooks pass. The focused NAT,
+firewall, Hysteria and resolver integration suite passes 126 cases in 111.71
+seconds. This does not replace final integrated complete-gate and CI evidence.
 
 ## Residual risks
 
@@ -138,3 +143,22 @@ Linux 7.0.14-linuxkit arm64, Go 1.27.1, GCC 13.3.0 and nftables 1.0.9 are
 recorded with source and artifact digests. This establishes the runtime defect,
 but the original CI source port was not captured, so exact CI attribution
 remains unproved. No offload, checksum validation or packet guard is disabled.
+
+The correction now has 75 passing source-admission, native-build identity and
+source-candidate cases, plus 74 passing role, consumer and lifecycle contracts.
+The strict filesystem regressions first exposed writable-file and directory
+admission gaps in the new helper; these were corrected without relaxing the
+receipt authority. A separate native-consumer rerun passes 28 cases after the
+Go test asset and all three overlay invocations are present. Real Go and packet
+acceptance remain pending in the shared build queue.
+
+The earlier exact head 9dcf9329508c006f7fbd9fe574bd3a0002040aa9 completes CI
+run 39118640694 with 98 successful contexts and one neutral context. It predates
+the checksum correction and does not certify that correction or final source.
+
+The current source correction passes independent security review (APPROVE) and
+structured review with no accepted P0 findings, confidence 0.98. The runner
+collection/selection suite passes 21 cases. The actual baseline and candidate
+Git trees both pass strict application, unchanged repeated application and
+postimage verification; no compiler or native acceptance is claimed by that
+source-admission check.

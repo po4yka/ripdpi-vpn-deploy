@@ -2,7 +2,7 @@
 - name: Select immutable acquired AmneziaWG executables
   ansible.builtin.set_fact:
     _awg_executables:
-      - {path: /usr/local/bin/amneziawg-go, source: "/opt/amneziawg/releases/go-{{ amneziawg_go_commit }}/amneziawg-go"}
+      - {path: /usr/local/bin/amneziawg-go, source: "{{ _awg_go_release_dir }}/amneziawg-go"}
       - {path: /usr/bin/awg, source: "/opt/amneziawg/releases/tools-{{ amneziawg_tools_commit }}/awg"}
       - {path: /usr/bin/awg-quick, source: "/opt/amneziawg/releases/tools-{{ amneziawg_tools_commit }}/awg-quick"}
     _awg_consumer_candidates: []

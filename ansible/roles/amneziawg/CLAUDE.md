@@ -2,6 +2,17 @@
 
 ## Design decisions
 
+The reviewed UDP checksum correction applies only to exact admitted source
+commits and complete tree bytes. Its manifest, helper and replacement asset
+hashes form build identity and qualify both checkout and release paths. Apply
+and verify run inside the source-build lock around a forced build. Unknown
+pins, extra source inputs, unsafe files and staged changes refuse; pin updates
+need an explicit correction review. The deterministic synthetic Molecule tree
+has a separate no-TUN profile and establishes lifecycle behavior only. Native
+builders use the same correction and retain commit, correction and binary hash.
+The current candidate does not gain production or arm64 eligibility from this
+correction. Existing accepted releases remain available for compensation.
+
 Retirement keeps exactly the two canonical shared-unit absence claims and the membership-record absence claim. These three bounded claims let repeated disable convergence use accepted readiness and firewall checks without publishing another runtime generation. Dynamic retired configuration claims and backups still prune after commit. Recovery accepts only the exact previous all-absence cleanup journal or the new bounded cleanup journal.
 
 The fixed `awg-quick.target` has no service `MainPID` property. Normalize only that target's absent PID to zero in retained unit state; a missing service PID still refuses activation.

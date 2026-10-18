@@ -732,3 +732,15 @@ Finalmask traffic runs in `tests/unit/test_p0_client_compatibility_native.py`.
 Naive native checks cover authenticated CONNECT and failed/reset request-log
 privacy. These checks use synthetic local identities and do not prove deployed
 versions, production reachability or physical-client behavior.
+
+## Computed-zero AWG UDP checksum
+
+`test_awg_source_correction.py` checks exact source and asset admission without
+claiming native traffic. `test_awg_corrected_native_build.py` checks the native
+build receipt and alias. Each native AWG builder runs the actual pinned Go
+completion and segmentation functions with the reviewed test overlay before
+compilation. The complete native core plan also runs
+`tests/native/transport_acceptance/test_awg_udp_checksum.py`. It requires the
+zero-producing IPv6 UDP tuple and an adjacent control to deliver six real DNS
+replies, with complete pre-NAT checksums and no checksum errors. Keep offloads,
+authentication and packet guards active in this lane.

@@ -24,8 +24,9 @@ integrated, reviewed PR. Keep deployment and conditional risks separate.
   tests/unit/test_workspace_status.py and one separate scripts/CLAUDE.md
   paragraph for the confirmed metadata pipe deadlock. The primary serializes
   that shared note and task artifacts; no other session implements this fix.
-- Network worker also owns the AWG source correction helper/assets, production
-  role integration, build identity and focused admission tests. Client worker
+- Primary owns the AWG source correction helper/assets, production role
+  integration and build identity after the network worker stopped. Certificate
+  worker owns focused source-admission tests and independent review. Client worker
   owns native build consumers and the deterministic checksum regression. They
   agree the shared helper interface before edits; no runtime-cache core edits.
 - Primary owns baseline resolver and DNS-Morph retirement integration,

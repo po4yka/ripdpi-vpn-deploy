@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "path": "tun/offload_linux.go",
+  "replacements": [
+    {
+      "before": "\t\ttransportCSum := ^checksum(out[hdr.csumStart:totalLen], transportCSumNoFold)\n\t\tbinary.BigEndian.PutUint16(out[hdr.csumStart+hdr.csumOffset:], transportCSum)",
+      "after": "\t\ttransportCSum := ^checksum(out[hdr.csumStart:totalLen], transportCSumNoFold)\n\t\tif protocol == unix.IPPROTO_UDP && transportCSum == 0 {\n\t\t\ttransportCSum = 0xffff\n\t\t}\n\t\tbinary.BigEndian.PutUint16(out[hdr.csumStart+hdr.csumOffset:], transportCSum)"
+    },
+    {
+      "before": "\tbinary.BigEndian.PutUint16(in[cSumAt:], ^checksum(in[cSumStart:], uint64(initial)))",
+      "after": "\ttransportCSum := ^checksum(in[cSumStart:], uint64(initial))\n\t// UDP checksum offset is 6; TCP checksum offset is 16.\n\tif cSumOffset == 6 && transportCSum == 0 {\n\t\ttransportCSum = 0xffff\n\t}\n\tbinary.BigEndian.PutUint16(in[cSumAt:], transportCSum)"
+    }
+  ]
+}

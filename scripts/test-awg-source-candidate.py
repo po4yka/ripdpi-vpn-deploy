@@ -20,11 +20,16 @@ FILES = (
     "tests/integration/awg_source_candidate/Dockerfile",
     "tests/integration/awg_source_candidate/ubuntu.sources",
     "tests/integration/awg_source_candidate/build.py",
+    "tests/integration/awg_source_candidate/corrected_build.py",
     "tests/integration/awg_source_candidate/acceptance.py",
     "ansible/roles/runtime-release/files/runtime_build_receipt.py",
     "ansible/roles/runtime-release/files/transport_runtime_transaction.py",
     "ansible/roles/firewall/files/firewall_consumer.py",
     "ansible/roles/amneziawg/files/consumer.py",
+    "ansible/roles/amneziawg/files/awg_source_correction.py",
+    "ansible/roles/amneziawg/files/awg-source-correction.json",
+    "ansible/roles/amneziawg/files/awg-udp-checksum-zero.patch.json",
+    "ansible/roles/amneziawg/files/awg_checksum_regression_test.go",
     "ansible/roles/amneziawg/templates/awg-quick@.service.j2",
 )
 WAIT_SYSTEMD = """

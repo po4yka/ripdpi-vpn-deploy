@@ -62,8 +62,9 @@ and deployment recovery changes in separate worktrees.
   normalizer UDP payload path, matching tests and client documentation.
 - Client worker also owns the checkout metadata input transport and its tests.
   Its separate scripts/CLAUDE.md paragraph is serialized with the primary.
-- Network worker: AWG source correction, production role integration, build
-  identity and focused source-admission tests. Client worker: native build
+- Primary: AWG source correction, production role integration and build
+  identity. Certificate worker: focused source-admission tests and independent
+  review. Client worker: native build
   consumers and deterministic checksum packet regression. Coordinate their
   shared helper interface before edits; primary owns shared notes and evidence.
 - Primary: resolver role and site retirement ordering, task artifacts, shared
