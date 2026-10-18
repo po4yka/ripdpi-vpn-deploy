@@ -25,6 +25,17 @@ Synthetic SOPS decryptors consume all ciphertext from stdin before they return
 fixture JSON. A payload larger than pipe capacity checks this contract on
 Darwin and Linux.
 
+The native upgrade fixture renders hopping ingress for its owned host veth in
+both IP families. This render-only context preserves the facts used by canonical
+Ansible convergence. The exact local-destination redirect, native authentication
+and observed multi-port traffic remain required.
+
+Transport audit regressions cover local-only hopping NAT, forwarded UDP,
+retained split-hop denial during tunnel stops, strict overlay allowances,
+complete multi-host metadata and exact client bandwidth hints. DNS-Morph
+preflight tests run the real controller validator before synthetic mutation
+sentinels. Render fixtures and research stubs establish no live protocol claim.
+
 Protocol audit regressions use schema-valid synthetic inputs and actual
 controller preflight in ordinary and check mode. They prove identity/address
 refusal before later publication, exact parsed server/client credential bytes,

@@ -94,7 +94,7 @@ def test_role_profiles_reject_wrong_types_and_missing_nested_fields(
         "dns-morph": {
             "listen": {"address": "0.0.0.0", "port": 53},
             "forward": {"address": "127.0.0.1", "port": 5353, "protocol": "udp"},
-            "morph": {"signing_key": "fixture", "upstream_endpoint": ""},
+            "morph": {"signing_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", "upstream_endpoint": "127.0.0.1:443"},
             "limits": {"events_per_minute_max": 1},
             "log": {"dir": "/var/log/dns-morph"},
         },

@@ -248,9 +248,11 @@ tiered RESEARCH in `ROLE-TIERING.md`. Operational profile:
 - **Active-probing defense:** the role co-installs `unbound` bound to
   `127.0.0.1:5353`. Any query the bridge does not recognise as a
   handshake fragment is forwarded verbatim so the listener responds
-  like a normal recursive resolver under probe.
-- **Reflection-attack posture:** unbound refuses recursion for every
-  source outside `127.0.0.0/8`. The listener is not an open resolver.
+  with local authoritative answers or REFUSED. It does not provide public
+  recursive resolution.
+- **Reflection-attack posture:** unbound uses `refuse_non_local` for loopback
+  and `refuse` for other sources. Forwarding through loopback does not grant
+  recursive access. The listener is not an open resolver.
 - **Operational noise:** UDP/53 attracts indiscriminate scanner
   traffic. The role caps the active-probing-defense path via
   `dns_morph_bridge.events_per_minute_max` (default 5000/min) to keep
@@ -264,6 +266,14 @@ binary_url` + `.binary_sha256`); no public release artifact exists.
 Build on a trusted workstation and publish to an internal artifact
 store before enabling. See `ansible/roles/dns-morph-bridge/CLAUDE.md`
 for the per-role design notes.
+
+The signing key is a private 32-byte Ed25519 seed in canonical padded base64.
+Set `dns_morph_bridge.upstream_endpoint` to a data-plane `host:port` or
+`[IPv6]:port`. Controller preflight rejects invalid keys and missing endpoints
+before host changes, including in check mode. Only isolated tests may set the
+explicit boolean `dns_morph_bridge_allow_echo_only: true` to permit an empty
+endpoint. Molecule uses a shell stub to check files and lifecycle; it does not
+prove a DNS-Morph handshake, wire compatibility or end-to-end forwarding.
 
 ## P5 rendezvous transport tier
 

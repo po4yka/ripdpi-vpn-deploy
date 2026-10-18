@@ -1,5 +1,7 @@
 ---
 # Disposable test profile; deployment still requires canonical SSH ownership.
+# DNS-Morph checks process/configuration only; no bootstrap data plane is proved.
+dns_morph_bridge_allow_echo_only: true
 vpn:
   enable_xray_reality: true
   enable_nginx_xhttp: false

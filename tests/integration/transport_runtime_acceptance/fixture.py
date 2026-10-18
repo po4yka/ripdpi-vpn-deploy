@@ -410,7 +410,14 @@ server.serve_forever()
         command(['ip', '-n', self.namespace, 'addr', 'add', '2001:db8:247::2/64', 'dev', self.peer_link, 'nodad'])
         self.context['hysteria'].update(salamander_enabled=True,
             salamander_password='synthetic-' + secrets.token_hex(24))
-        rendered = render_template(ROOT / 'ansible/roles/firewall/templates/nftables.conf.j2', self.context)
+        # These clients enter through the owned veth, independently of the
+        # default-route facts that canonical Ansible convergence discovers.
+        hopping_context = {**self.context, 'ansible_facts': {
+            **self.context['ansible_facts'],
+            **{name: {**self.context['ansible_facts'].get(name, {}), 'interface': self.host_link}
+               for name in ('default_ipv4', 'default_ipv6')},
+        }}
+        rendered = render_template(ROOT / 'ansible/roles/firewall/templates/nftables.conf.j2', hopping_context)
         redirects = [line.strip() for line in rendered.splitlines() if 'comment "hysteria-port-hopping"' in line]
         assert len(redirects) == 1
         self.hopping_table = self.token + 'hops'

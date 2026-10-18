@@ -28,7 +28,8 @@
       binary_sha256: ""
 
     dns_morph_bridge_secrets:
-      signing_key: "MOLECULE_STUB_SIGNING_KEY_NOT_REAL_AAAAAAAAAAAAAAAAAAAA="
+      # Synthetic 32-byte seed; this stub never performs cryptography.
+      signing_key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
       binary_url: "file:///opt/dns-morph-bridge/stub-binary"
       # sha256 of the stub binary content rendered in pre_tasks below.
       binary_sha256: "REPLACED_AT_RUNTIME"

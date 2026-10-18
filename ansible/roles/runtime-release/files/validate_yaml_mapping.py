@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import ipaddress
 import importlib.util
 from pathlib import Path
 import os
@@ -141,7 +143,7 @@ def _validate_hysteria(document: dict) -> None:
             raise ValueError('Hysteria receive window exceeds resource bounds')
 
 
-def _validate_dns_morph(document: dict) -> None:
+def _validate_dns_morph(document: dict, *, allow_echo_only: bool = False) -> None:
     listen = _mapping(document, "listen")
     _string(listen, "address")
     _port(listen, "port")
@@ -151,9 +153,30 @@ def _validate_dns_morph(document: dict) -> None:
     if forward.get("protocol") != "udp":
         raise ValueError("DNS-Morph forward protocol is invalid")
     morph = _mapping(document, "morph")
-    _string(morph, "signing_key")
-    if not isinstance(morph.get("upstream_endpoint"), str):
+    key = _string(morph, "signing_key")
+    if len(key) != 44:
+        raise ValueError("DNS-Morph requires a base64 Ed25519 seed")
+    seed = base64.b64decode(key, validate=True)
+    if len(seed) != 32 or base64.b64encode(seed).decode("ascii") != key:
+        raise ValueError("DNS-Morph requires a canonical 32-byte Ed25519 seed")
+    endpoint = morph.get("upstream_endpoint")
+    if not isinstance(endpoint, str):
         raise ValueError("DNS-Morph upstream endpoint is invalid")
+    if endpoint or not allow_echo_only:
+        match = re.fullmatch(r"(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+):([1-9][0-9]{0,4})", endpoint)
+        if match is None or int(match[2]) > 65535:
+            raise ValueError("DNS-Morph requires a data-plane host and port")
+        host = match[1]
+        if host.startswith("["):
+            ipaddress.IPv6Address(host[1:-1])
+        else:
+            try:
+                ipaddress.IPv4Address(host)
+            except ValueError:
+                if (len(host) > 253 or re.fullmatch(r"[0-9.]+", host)
+                        or any(re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", label) is None
+                               for label in host.split("."))):
+                    raise ValueError("DNS-Morph upstream host is invalid") from None
     _positive_int(_mapping(document, "limits"), "events_per_minute_max")
     log_dir = _string(_mapping(document, "log"), "dir")
     if not log_dir.startswith("/"):
@@ -166,13 +189,12 @@ PROFILE_VALIDATORS = {
 }
 
 
-def validate(
-    path: str,
-    required: list[str],
-    required_mappings: list[str],
-    required_strings: list[str],
-    profile: str | None,
-) -> None:
+def _read_payload(path: str) -> bytes:
+    if path == "-":
+        payload = sys.stdin.buffer.read(MAX_CONFIG_BYTES + 1)
+        if len(payload) > MAX_CONFIG_BYTES:
+            raise ValueError("configuration exceeds its bound")
+        return payload
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.open(path, flags)
     try:
@@ -203,7 +225,19 @@ def validate(
             raise ValueError("configuration changed while reading")
     finally:
         os.close(descriptor)
+    return payload
 
+
+def validate(
+    path: str,
+    required: list[str],
+    required_mappings: list[str],
+    required_strings: list[str],
+    profile: str | None,
+    *,
+    allow_dns_morph_echo_only: bool = False,
+) -> None:
+    payload = _read_payload(path)
     document = yaml.load(payload, Loader=UniqueKeyLoader)
     if not isinstance(document, dict):
         raise ValueError("configuration root must be a mapping")
@@ -217,7 +251,11 @@ def validate(
         for key in required_strings
     ):
         raise ValueError("configuration string has an invalid type")
-    if profile is not None:
+    if profile == "dns-morph":
+        _validate_dns_morph(document, allow_echo_only=allow_dns_morph_echo_only)
+    elif allow_dns_morph_echo_only:
+        raise ValueError("echo-only selection requires DNS-Morph")
+    elif profile is not None:
         PROFILE_VALIDATORS[profile](document)
 
 
@@ -227,6 +265,7 @@ def main() -> int:
     parser.add_argument("--require-mapping", action="append", default=[])
     parser.add_argument("--require-string", action="append", default=[])
     parser.add_argument("--profile", choices=sorted(PROFILE_VALIDATORS))
+    parser.add_argument("--allow-dns-morph-echo-only", action="store_true")
     parser.add_argument("path")
     arguments = parser.parse_args()
     try:
@@ -236,6 +275,7 @@ def main() -> int:
             arguments.require_mapping,
             arguments.require_string,
             arguments.profile,
+            allow_dns_morph_echo_only=arguments.allow_dns_morph_echo_only,
         )
     except (OSError, TypeError, UnicodeError, ValueError, yaml.YAMLError):
         print("configuration validation failed", file=sys.stderr)

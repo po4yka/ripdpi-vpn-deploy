@@ -218,6 +218,10 @@ table inet filter {
 
   chain output {
     type filter hook output priority 0;
+{% if (vpn.enable_split_hop_ingress | default(false) | bool) and (split_hop_ingress_role_enabled | default(true) | bool) %}
+    # Keep the recipient boundary when wg-quick removes its routes on stop.
+    meta nfproto ipv6 ct direction original meta skuid { {{ probe_matrix_runtime_users.xray_uid }}, {{ probe_matrix_runtime_users.mtg_uid }} } reject with icmpv6 type admin-prohibited comment "split-hop-ingress-boundary-v6"
+{% endif %}
 {% if (_network_exposure_plan | default({})).mode | default('disabled') in ['canary', 'enforce'] %}
 {% for prefix in _network_exposure_plan.directions.host_egress %}
     {{ 'ip6' if ':' in prefix else 'ip' }} daddr {{ prefix }} counter drop comment "exposure-host-egress"
@@ -239,6 +243,14 @@ table inet filter {
     tcp dport 53 accept
     udp dport 123 accept
     tcp dport { 80, 443 } accept
+{% if vpn.enable_tailnet_management | default(false) %}
+    # tailscaled uses the default UDP socket for direct peer traffic.
+    meta skuid 0 udp sport 41641 accept
+    meta skuid 0 udp dport 3478 accept
+{% endif %}
+{% if vpn.enable_split_hop_egress | default(false) %}
+    {{ 'ip6' if ':' in split_hop_egress_secrets.node_a_public_ip else 'ip' }} daddr {{ split_hop_egress_secrets.node_a_public_ip }} udp dport {{ split_hop_egress.peer_listen_port }} accept
+{% endif %}
 {% if vpn.enable_warp_outbound | default(false) %}
     # Cloudflare WARP control/data plane; the owned namespace carries its underlay.
     udp dport { 2408, 500, 4500 } accept
@@ -262,6 +274,14 @@ table inet filter {
     policy accept;
 {%- endif %}
   }
+{% if (vpn.enable_split_hop_ingress | default(false) | bool) and (split_hop_ingress_role_enabled | default(true) | bool) %}
+
+  chain split_hop_ingress_egress_guard {
+    # The final interface is available after the marked OUTPUT route lookup.
+    type filter hook postrouting priority 0; policy accept;
+    meta nfproto ipv4 ct direction original meta skuid { {{ probe_matrix_runtime_users.xray_uid }}, {{ probe_matrix_runtime_users.mtg_uid }} } oifname != { "lo", "{{ split_hop_ingress.wg_interface }}" } drop comment "split-hop-ingress-boundary-v4"
+  }
+{% endif %}
 }
 
 {% set hysteria_hopping = (vpn.enable_hysteria | default(false)) and (hysteria_port_range | default('') | length > 0) %}
@@ -270,7 +290,8 @@ table inet nat {
 {% if hysteria_hopping %}
   chain prerouting {
     type nat hook prerouting priority dstnat;
-    udp dport {{ hysteria_port_range }} counter redirect to :{{ hysteria_port }} comment "hysteria-port-hopping"
+{% set public_ifaces = [ansible_facts.get('default_ipv4', {}).get('interface', 'eth0'), ansible_facts.get('default_ipv6', {}).get('interface', ansible_facts.get('default_ipv4', {}).get('interface', 'eth0'))] | unique | list %}
+    iifname { {% for iface in public_ifaces %}"{{ iface }}"{{ ', ' if not loop.last else '' }}{% endfor %} } fib daddr type local udp dport {{ hysteria_port_range }} counter redirect to :{{ hysteria_port }} comment "hysteria-port-hopping"
   }
 {% endif %}
 {% if vpn.enable_amneziawg | default(false) %}
