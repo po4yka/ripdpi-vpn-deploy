@@ -87,3 +87,8 @@ Keep strict inventory admission unchanged. Integration owns this renderer fix
 and its regression tests. Test real CRLF encoder output as well as LF output.
 The host watchdog regressions require a real flock executable; document this
 prerequisite instead of changing production locking or test selection.
+
+The update-cache HTTP test fixture must bound accept and thread cleanup even
+when the bounded client exits before connecting. Require actual request
+observation for the stalled-connection claim. Keep production deadlines and the
+CI job limit unchanged. Integration owns this test-only lifecycle repair.

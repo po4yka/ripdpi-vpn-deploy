@@ -32,6 +32,7 @@ artifact_evidence: The official checksummed mtg archive, native parser, legacy i
 | REQ-PROTOCOL-NATIVE | XRY-1792265287536541 | Job 117507132861 and all five separate acceptance/recovery jobs passed with real pinned engines | passed |
 
 | REQ-PROTOCOL-INVENTORY | XRY-1792265288315040 | CRLF repair and complete source-candidate validation remain required | required |
+| REQ-PROTOCOL-TEST-LIFECYCLE | XRY-1792265288315040 | Bounded fixture regression and complete validation remain required | required |
 
 ## Review and merge
 
@@ -70,7 +71,9 @@ The complete gate then reported 7883 passed and 19 failed portable tests.
 Eighteen failures came from a missing real flock executable. After installing
 flock 0.4.0, both complete watchdog files passed all 30 tests in one run. The
 remaining trusted TLS fixture failure did not repeat in three focused runs;
-no trust guard or timeout was relaxed. The next full gate remains required.
+no trust guard or timeout was relaxed. A later exact-candidate gate was intentionally interrupted to repair a confirmed
+unbounded update-cache test fixture. It had passed 4036 tests with no failures;
+its exit 130 is not a successful gate. The next complete gate remains required.
 
 The inventory renderer also retained CR from valid wrapped Base64 output.
 Both metadata fields must remove CR and LF before publication. Regression and
@@ -81,7 +84,12 @@ real encoder checks must pass before the new source candidate is accepted.
 Execution step XRY-1792265288315040 remains open. The unchanged make check command
 must pass for the final source candidate before local acceptance and archive.
 Historical hosted Linux success does not replace this required local result.
-The task remains open and is not archived or closed.
+The task remains open and is not archived or closed. The Intel CI job at
+6e6b6ec651f6ad2304aaa2dbfb3988e12e0b66fc exceeded its unchanged 30-minute
+limit. Logs narrow the stall to the update-cache file, but do not prove the
+exact test or stack. Independent source inspection confirmed that its server
+accept and cleanup could wait forever if the client never connected. Repair
+that fixture and rerun complete validation; do not increase the CI timeout.
 
 No deployment, fleet inventory, real Telegram connection or operator secret
 operation ran.

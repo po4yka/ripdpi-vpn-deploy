@@ -36,6 +36,8 @@ of descriptor-gated YAML. Shared strict loading preserves scalar semantics and
 rejects duplicate mappings with categorical errors.
 
 Lifecycle fixtures publish complete PID manifests by rename before readers observe them; file existence alone cannot admit a partially written process list.
+Loopback release fixtures bound accept and thread cleanup even when no client
+connects. Timeout tests require an observed request before claiming network proof.
 
 After a successful cancellation signal, wait retries only reap the retained leader. Darwin rejects a repeated group signal once only its unreaped zombie remains; signal errors still propagate rather than counting as successful termination.
 

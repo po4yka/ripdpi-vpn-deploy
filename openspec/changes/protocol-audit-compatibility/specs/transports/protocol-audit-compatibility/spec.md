@@ -90,3 +90,14 @@ observability-topology metadata. Strict inventory admission MUST remain unchange
 
 - **WHEN** the Base64 encoder emits wrapped CRLF output
 - **THEN** each inventory metadata value remains on one line and decodes unchanged
+
+### Requirement: REQ-PROTOCOL-TEST-LIFECYCLE — Bounded compatibility fixtures
+
+The real HTTP update test server MUST finish and release its listener when a
+client exits before connecting. A stalled-connection timeout claim MUST require
+an actual observed request. Production deadlines and CI limits MUST not weaken.
+
+#### Scenario: Client exits before connecting
+
+- **WHEN** no client reaches the owned test listener
+- **THEN** server cleanup completes within a finite bound without a live thread
