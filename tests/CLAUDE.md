@@ -49,7 +49,12 @@ requires both cold and established denials. No conntrack flush separates probes.
 An expected local OUTPUT drop accepts only EPERM from sendto on an explicit
 negative probe; the receiver must still see no packet. Positive sends and other
 errno values remain fatal.
-The DHCPv6 receiver binds and joins its multicast group before readiness. Its
+The DHCPv6 receiver binds and joins its multicast group before readiness. A
+multicast receiver then admits its exact UDP input FIB route on the joined
+interface before it reports ready. The one-shot command has a bounded reader
+and deadline; unavailable, malformed or mismatched route authority refuses
+before the sender runs. This admits the test topology and can affect kernel
+route state; it does not identify the underlying kernel loss mechanism. Its
 complete observation window starts only after the parent confirms the sender
 result through a bounded control acknowledgement. Portable real loopback UDP
 regressions delay sender startup beyond that window and require missing control

@@ -24,6 +24,41 @@ def run(*args, data=None):
 
 RECEIVER = """
 import json,os,select,socket,sys
+def admit_multicast_input_route(interface):
+ import subprocess,time
+ route=None
+ try:
+  route=subprocess.Popen(['ip','-j','-6','route','get','ff02::1:2','from','fe80::10',
+                          'iif',interface,'ipproto','udp','sport','546','dport','547'],
+                         stdout=subprocess.PIPE,stderr=subprocess.DEVNULL)
+  deadline=time.monotonic()+1
+  body=bytearray()
+  while True:
+   remaining=deadline-time.monotonic()
+   if remaining<=0 or not select.select([route.stdout],[],[],remaining)[0]:
+    raise ValueError('route-read-refused')
+   chunk=os.read(route.stdout.fileno(),4097-len(body))
+   if not chunk:break
+   body.extend(chunk)
+   if len(body)>4096:raise ValueError('route-output-refused')
+  if route.wait(timeout=max(.001,deadline-time.monotonic()))!=0:
+   raise ValueError('route-command-refused')
+  rows=json.loads(body)
+  if not isinstance(rows,list) or len(rows)!=1:raise ValueError('route-document-refused')
+  expected={'type':'multicast','dev':interface,'iif':interface,'table':'local',
+            'dst':'ff02::1:2','from':'fe80::10'}
+  if not isinstance(rows[0],dict) or any(rows[0].get(key)!=value for key,value in expected.items()):
+   raise ValueError('route-authority-refused')
+ except Exception:
+  raise SystemExit('dhcpv6-input-fib-refused') from None
+ finally:
+  if route is not None:
+   try:
+    if route.poll() is None:
+     route.kill();route.wait(timeout=1)
+    route.stdout.close()
+   except Exception:
+    raise SystemExit('dhcpv6-input-fib-refused') from None
 interface,address,port,multicast=sys.argv[1:]
 s=socket.socket(socket.AF_INET6,socket.SOCK_DGRAM)
 s.setsockopt(socket.SOL_SOCKET,socket.SO_BINDTODEVICE,interface.encode()+b'\\0')
@@ -40,6 +75,7 @@ if multicast == 'yes':
   print('dhcpv6-membership:'+('yes' if member else 'no'),file=sys.stderr,flush=True)
  except OSError:
   print('dhcpv6-membership:unknown',file=sys.stderr,flush=True)
+ admit_multicast_input_route(interface)
 print('ready',flush=True)
 if not select.select([sys.stdin],[],[],20)[0]:
  raise SystemExit('dhcpv6-receiver-send-ack-timeout')
