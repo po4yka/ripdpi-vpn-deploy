@@ -406,6 +406,7 @@ def test_expected_targets_use_real_health_families_and_exact_role_bindings(tmp_p
             template,
             {
                 "observability_control_plane": {
+                    "alerting": {"silence_gateway": {"environment": "staging"}},
                     "expected_targets": {
                         "inventory": inventory,
                         "expected_source_revision": "c" * 40,

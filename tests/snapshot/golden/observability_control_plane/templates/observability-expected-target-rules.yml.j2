@@ -15,7 +15,7 @@ groups:
         labels:
           severity: warning
           component: expected-target
-          environment: fleet
+          environment: "staging"
         annotations:
           incident_family: expected-target-absence
           evidence_class: no-required-family
@@ -28,7 +28,7 @@ groups:
         labels:
           severity: warning
           component: expected-target
-          environment: fleet
+          environment: "staging"
         annotations:
           incident_family: target-evidence-freshness
           evidence_class: stale-evidence
@@ -44,7 +44,7 @@ groups:
         labels:
           severity: warning
           component: expected-target
-          environment: fleet
+          environment: "staging"
         annotations:
           incident_family: source-identity
           evidence_class: identity-mismatch
@@ -58,7 +58,7 @@ groups:
         labels:
           severity: warning
           component: expected-target
-          environment: fleet
+          environment: "staging"
         annotations:
           incident_family: control-plane-health
           evidence_class: resource-or-pipeline-unhealthy

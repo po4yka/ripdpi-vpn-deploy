@@ -81,15 +81,30 @@ this.
 
 ## Rotating the age key
 
-When the age key itself is rotated (because a share was compromised, or
-recipients changed):
+For a planned recipient change, add and verify the replacement before you
+retire the previous recipient. Keep every other authorized recovery recipient.
 
-1. Generate a new age keypair: `age-keygen -o ~/.config/vpn-provision/age.key.new`.
-2. Re-encrypt the SOPS file under the new recipient: `sops updatekeys`
-   pointing to the new public key.
-3. Split the new private key with `age-recovery-split.sh`.
-4. Distribute fresh shares; revoke old ones from their storage.
-5. Delete the old age key and any old shares.
+If an age private key or enough recovery shares are compromised, use this order:
+
+1. Generate an independent age keypair in private storage. Update the explicit
+   `.sops.yaml` policy: remove compromised recipients, add the new recipient,
+   and retain the other authorized recipients.
+2. Run `sops updatekeys` for each encrypted document with that explicit config.
+   Then run `sops rotate --in-place` on each document. `updatekeys` changes the
+   recipients of the existing data key; it does not replace that data key.
+   An owner of the old key and an older ciphertext may already know it.
+3. Verify decryption with only the replacement identity enabled. Only after
+   data-key rotation, replace the application credentials stored in the files
+   and deploy them through the authorized rotation workflow. Earlier ciphertext
+   and earlier credentials remain exposed to the compromised identity.
+4. Split the new age private key, distribute fresh shares, and test recovery.
+   Retire the previous key and shares only after the replacement recovery path
+   passes. Deleting shares from storage does not revoke a copy held elsewhere.
+
+Use the same explicit config for `updatekeys` that you reviewed. Do not rotate
+application credentials before replacing the data key: the prior key could
+otherwise decrypt those new values. A single compromised share below the
+threshold does not by itself reveal the age key; assess the remaining shares.
 
 ## What NOT to do
 

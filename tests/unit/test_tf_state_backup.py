@@ -1,13 +1,12 @@
 """Exercise exact environment retention and recovery with real age ciphertext."""
 
-from datetime import datetime, timedelta, timezone
 import os
-from pathlib import Path
 import shutil
 import subprocess
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
-
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -54,7 +53,7 @@ def test_retention_preserves_other_exact_environments(backup_workspace, environm
     payload = b'{"version":4,"resources":[],"serial":7,"lineage":"synthetic"}\n'
     state.write_bytes(payload)
     prior_ciphertext = encrypt(b"prior synthetic state", settings["AGE_RECIPIENT"])
-    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    start = datetime(2026, 1, 1, tzinfo=UTC)
     selected = []
     for index in range(31):
         timestamp = start + timedelta(days=index)
@@ -75,7 +74,7 @@ def test_retention_preserves_other_exact_environments(backup_workspace, environm
 
     result = subprocess.run(
         ["bash", str(repo / "scripts/backup-tf-state.sh")],
-        env=settings | {"ENV": environment}, text=True, capture_output=True, timeout=20,
+        check=False, env=settings | {"ENV": environment}, text=True, capture_output=True, timeout=20,
     )
 
     assert result.returncode == 0, result.stderr
@@ -124,7 +123,7 @@ def test_documented_recovery_selects_only_exact_environment(backup_workspace, av
 
     result = subprocess.run(
         ["bash", "-euo", "pipefail", "-c", recovery_recipe()], cwd=repo,
-        env=settings, text=True, capture_output=True, timeout=20,
+        check=False, env=settings, text=True, capture_output=True, timeout=20,
     )
 
     restored = provider_root / "terraform.tfstate"
@@ -137,3 +136,95 @@ def test_documented_recovery_selects_only_exact_environment(backup_workspace, av
         assert "no state backup for upcloud/prod" in result.stderr
         assert not restored.exists()
     assert {path: path.read_bytes() for path in destination.iterdir()} == before
+
+
+def synthetic_state(repo):
+    path = repo / 'terraform/providers/upcloud/terraform.tfstate'
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b'{"version":4,"serial":123,"resources":[]}\n')
+    return path
+
+
+def age_fault_wrapper(tmp_path, settings, *, wait=False):
+    """Inject an interrupted write after obtaining real age ciphertext."""
+    binary = shutil.which('age')
+    assert binary, 'real age is required'
+    tools = tmp_path / 'fault-bin'
+    tools.mkdir()
+    wrapper = tools / 'age'
+    wrapper.write_text(
+        '#!' + shutil.which('python3') + '\n'
+        'import os, pathlib, signal, subprocess, sys\n'
+        f'result = subprocess.run([{binary!r}, *sys.argv[1:]], capture_output=True, check=True)\n'
+        'sys.stdout.buffer.write(result.stdout[:len(result.stdout)//2]); sys.stdout.buffer.flush()\n'
+        'pathlib.Path(os.environ["FAULT_READY"]).write_text("ready")\n'
+        + ('signal.pause()\n' if wait else 'raise SystemExit(23)\n')
+    )
+    wrapper.chmod(0o700)
+    return settings | {'PATH': str(tools) + os.pathsep + settings['PATH'], 'FAULT_READY': str(tmp_path / 'ready')}
+
+
+def test_failed_encryption_never_publishes_a_recovery_name(backup_workspace, tmp_path):
+    repo, destination, identity, settings = backup_workspace
+    synthetic_state(repo)
+    old = publish_backup(destination, 'upcloud-prod-20260101T000000Z.tfstate.age',
+                         encrypt(b'prior synthetic state', settings['AGE_RECIPIENT']), 1)
+    foreign = destination / '.state-backup.foreign'
+    foreign.write_bytes(b'not owned by this invocation')
+    before = {path: path.read_bytes() for path in (old, foreign)}
+    result = subprocess.run(['bash', str(repo / 'scripts/backup-tf-state.sh')],
+                            check=False, env=age_fault_wrapper(tmp_path, settings), capture_output=True, timeout=20)
+    assert result.returncode != 0
+    assert {path: path.read_bytes() for path in destination.iterdir()} == before
+    assert subprocess.run(['age', '-d', '-i', str(identity), str(old)], capture_output=True, check=True).stdout == b'prior synthetic state'
+
+
+def test_signal_removes_only_owned_incomplete_ciphertext(backup_workspace, tmp_path):
+    import signal
+    import time
+
+    repo, destination, _, settings = backup_workspace
+    synthetic_state(repo)
+    old = publish_backup(destination, 'upcloud-prod-20260101T000000Z.tfstate.age',
+                         encrypt(b'prior synthetic state', settings['AGE_RECIPIENT']), 1)
+    before = old.read_bytes()
+    environment = age_fault_wrapper(tmp_path, settings, wait=True)
+    child = subprocess.Popen(['bash', str(repo / 'scripts/backup-tf-state.sh')], env=environment,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+    try:
+        deadline = time.monotonic() + 10
+        while not Path(environment['FAULT_READY']).exists() and time.monotonic() < deadline:
+            assert child.poll() is None, 'backup exited before interruption boundary'
+            time.sleep(0.01)
+        assert Path(environment['FAULT_READY']).exists()
+        os.killpg(child.pid, signal.SIGTERM)
+        child.communicate(timeout=10)
+        assert child.returncode != 0
+    finally:
+        if child.poll() is None:
+            os.killpg(child.pid, signal.SIGKILL)
+            child.communicate(timeout=10)
+    assert list(destination.iterdir()) == [old]
+    assert old.read_bytes() == before
+
+
+def test_same_timestamp_refuses_overwriting_complete_snapshot(backup_workspace, tmp_path):
+    repo, destination, identity, settings = backup_workspace
+    state = synthetic_state(repo)
+    tools = tmp_path / 'time-bin'
+    tools.mkdir()
+    clock = tools / 'date'
+    clock.write_text('#!/bin/sh\nprintf "%s\\n" 20260101T000000Z\n')
+    clock.chmod(0o700)
+    environment = settings | {'PATH': str(tools) + os.pathsep + settings['PATH']}
+    argv = ['bash', str(repo / 'scripts/backup-tf-state.sh')]
+    first = subprocess.run(argv, check=False, env=environment, capture_output=True, timeout=20)
+    assert first.returncode == 0
+    output = destination / 'upcloud-prod-20260101T000000Z.tfstate.age'
+    before = output.read_bytes()
+    state.write_bytes(b'newer synthetic state')
+    second = subprocess.run(argv, check=False, env=environment, capture_output=True, timeout=20)
+    assert second.returncode != 0
+    assert output.read_bytes() == before
+    assert list(destination.iterdir()) == [output]
+    assert subprocess.run(['age', '-d', '-i', str(identity), str(output)], capture_output=True, check=True).stdout != state.read_bytes()

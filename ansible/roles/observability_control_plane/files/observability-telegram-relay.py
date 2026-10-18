@@ -49,6 +49,28 @@ class DeliveryFailure(RuntimeError):
     """Telegram delivery failed with a categorical, non-secret reason."""
 
 
+class FloodControl:
+    """One monotonic deadline for every request to this process's bot."""
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic):
+        self.clock = clock
+        self.lock = threading.Lock()
+        self.deadline = 0.0
+
+    def defer(self, delay: int) -> None:
+        # Called with the attempt lock held, before another POST can start.
+        try:
+            deadline = self.clock() + delay
+        except OverflowError as exc:
+            raise DeliveryFailure("upstream-flood-response") from exc
+        if not math.isfinite(deadline):
+            raise DeliveryFailure("upstream-flood-response")
+        self.deadline = max(self.deadline, deadline)
+
+
+_FLOOD_CONTROL = FloodControl()
+
+
 class _NoRedirect(request.HTTPRedirectHandler):
     """Keep the Telegram request body on the one validated API origin."""
 
@@ -218,11 +240,29 @@ def render_message(payload: dict[str, object], *, max_alerts: int = MAX_ALERTS) 
     return message
 
 
-def _retry_after(headers: object) -> int:
-    raw = headers.get("Retry-After") if headers is not None else None
-    if not isinstance(raw, str) or re.fullmatch(r"[0-9]{1,4}", raw) is None:
-        return 1
-    return min(int(raw), MAX_RETRY_AFTER_SECONDS)
+def _retry_after(response: error.HTTPError) -> int:
+    try:
+        raw = response.read(MAX_RESPONSE_BYTES + 1)
+    except OSError as exc:
+        raise DeliveryFailure("upstream-flood-response") from exc
+    if len(raw) > MAX_RESPONSE_BYTES:
+        raise DeliveryFailure("upstream-flood-response")
+    try:
+        payload = json.loads(raw)
+        parameters = payload.get("parameters", {})
+        delay = parameters.get("retry_after")
+    except (ValueError, AttributeError) as exc:
+        raise DeliveryFailure("upstream-flood-response") from exc
+    if delay is None:
+        header = response.headers.get("Retry-After")
+        if header is None:
+            return 1
+        if re.fullmatch(r"[0-9]{1,4}", header) is None:
+            raise DeliveryFailure("upstream-flood-response")
+        delay = int(header)
+    if type(delay) is not int or delay < 0:
+        raise DeliveryFailure("upstream-flood-wait")
+    return delay
 
 
 def deliver(
@@ -265,25 +305,40 @@ def deliver(
     for attempt in range(RETRY_ATTEMPTS):
         delay = 1
         retryable = False
+        # A second webhook must not wait behind an upstream request or pass a
+        # newly learned deadline. The relay has one configured bot authority.
+        if not _FLOOD_CONTROL.lock.acquire(blocking=False):
+            raise DeliveryFailure("upstream-busy")
         try:
-            with open_request(outbound, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-                raw = response.read(MAX_RESPONSE_BYTES + 1)
-                if response.status != 200 or len(raw) > MAX_RESPONSE_BYTES:
-                    raise DeliveryFailure("upstream-response")
-                parsed = json.loads(raw)
-                if not isinstance(parsed, dict) or parsed.get("ok") is not True:
-                    raise DeliveryFailure("upstream-response")
-                return parsed
-        except error.HTTPError as exc:
+            if _FLOOD_CONTROL.deadline > _FLOOD_CONTROL.clock():
+                raise DeliveryFailure("upstream-flood-wait")
             try:
-                retryable = exc.code == 429 or 500 <= exc.code <= 599
-                delay = _retry_after(exc.headers) if exc.code == 429 else 1
-            finally:
-                exc.close()
-        except (TimeoutError, OSError):
-            retryable = True
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise DeliveryFailure("upstream-response") from exc
+                with open_request(outbound, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+                    raw = response.read(MAX_RESPONSE_BYTES + 1)
+                    if response.status != 200 or len(raw) > MAX_RESPONSE_BYTES:
+                        raise DeliveryFailure("upstream-response")
+                    parsed = json.loads(raw)
+                    if not isinstance(parsed, dict) or parsed.get("ok") is not True:
+                        raise DeliveryFailure("upstream-response")
+                    return parsed
+            except error.HTTPError as exc:
+                try:
+                    retryable = exc.code == 429 or 500 <= exc.code <= 599
+                    if exc.code == 429:
+                        delay = _retry_after(exc)
+                        _FLOOD_CONTROL.defer(delay)
+                finally:
+                    exc.close()
+            except (TimeoutError, OSError):
+                retryable = True
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise DeliveryFailure("upstream-response") from exc
+        finally:
+            _FLOOD_CONTROL.lock.release()
+        # Keep full flood deadlines between calls; only short waits fit the
+        # two-attempt webhook budget. Sleep without holding the attempt lock.
+        if delay > MAX_RETRY_AFTER_SECONDS:
+            raise DeliveryFailure("upstream-flood-wait")
         if not retryable or attempt + 1 == RETRY_ATTEMPTS:
             raise DeliveryFailure("upstream-failure")
         sleeper(delay)

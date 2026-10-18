@@ -92,6 +92,10 @@ Terraform's local state is the only record of which provider resources belong to
 
 Recovery path 0 — restore from `make backup-state` snapshot (preferred):
 
+The producer publishes a timestamped name only after encryption completes.
+Its private `.state-backup.*` staging files are not recovery snapshots. Do not
+rename or restore an interrupted staging file.
+
 ```bash
 # State backups live in ~/.config/vpn-provision/state-backups/<provider>-<env>-<timestamp>.tfstate.age
 # Match the complete UTC timestamp; prod-green is a different environment.

@@ -52,7 +52,7 @@ AUTHENTICATION_DIRECTIVES = (
 CANONICAL_ALGORITHMS = (
     b"Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com\n"
     b"MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com\n"
-    b"KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512\n"
+    b"KexAlgorithms sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org\n"
 )
 BASELINE_HARDENING = (
     b"X11Forwarding no\nAllowTcpForwarding no\nAllowAgentForwarding no\n"
@@ -145,7 +145,8 @@ def test_verify_requires_exact_effective_canonical_algorithm_lines():
         == "macs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com"
     )
     assert "curve25519-sha256@libssh.org" in variables["_ssh_kex"]
-    assert "diffie-hellman-group18-sha512" in variables["_ssh_kex"]
+    assert "sntrup761x25519-sha512@openssh.com" in variables["_ssh_kex"]
+    assert "diffie-hellman-" not in variables["_ssh_kex"]
 
 
 def test_baseline_molecule_only_checks_sshd_algorithm_compatibility():
@@ -1075,7 +1076,7 @@ def test_baseline_refuses_noncanonical_effective_context_algorithm_policy(
         BASELINE_HARDENING.replace(b",aes128-gcm@openssh.com", b""),
         BASELINE_HARDENING.replace(b"hmac-sha2-256-etm@openssh.com", b"hmac-sha1"),
         BASELINE_HARDENING.replace(
-            b"KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512\n",
+            b"KexAlgorithms sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org\n",
             b"",
         ),
     ],
@@ -1218,3 +1219,37 @@ def test_extra_account_cannot_expand_fixed_match_grammar(
             baseline_config, contexts=CONTEXTS, hardening=BASELINE_HARDENING + suffix
         )
     assert configuration_records(baseline_config) == before
+
+
+def test_managed_policy_prefers_supported_hybrid_and_refuses_modp(planner):
+    value = planner.CANONICAL_ALGORITHMS["kexalgorithms"][0].split(",")
+    assert value[0] == "sntrup761x25519-sha512@openssh.com"
+    assert "curve25519-sha256" in value
+    assert not any(name.startswith("diffie-hellman-") for name in value)
+
+
+def test_baseline_promotes_exact_previous_policy_and_retains_rollback(
+    planner, baseline_config
+):
+    old_kex = b"curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512"
+    new_kex = b"sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org"
+    old_policy = BASELINE_HARDENING.replace(new_kex, old_kex)
+    (baseline_config / "sshd_config").write_bytes(
+        (baseline_config / "sshd_config").read_bytes().replace(PACKAGED_SFTP, b"# " + PACKAGED_SFTP)
+    )
+    (baseline_config / MANAGED).write_bytes(old_policy)
+    originals = configuration_records(baseline_config)
+    plan = planner.build_baseline_plan(
+        baseline_config, contexts=CONTEXTS, hardening=BASELINE_HARDENING
+    )
+    assert plan["changed"] is True
+    assert configuration_records(baseline_config) == originals
+    assert base64.b64decode(plan["files"][MANAGED]["before"]["data_b64"]) == old_policy
+    assert base64.b64decode(plan["files"][MANAGED]["after"]["data_b64"]) == BASELINE_HARDENING
+    planner.assert_effective(plan, baseline_config, phase="before")
+    for relative, pair in plan["files"].items():
+        (baseline_config / relative).write_bytes(base64.b64decode(pair["after"]["data_b64"]))
+    planner.assert_effective(plan, baseline_config, phase="after")
+    assert planner.build_baseline_plan(
+        baseline_config, contexts=CONTEXTS, hardening=BASELINE_HARDENING
+    )["changed"] is False

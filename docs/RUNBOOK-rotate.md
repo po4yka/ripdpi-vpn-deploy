@@ -145,30 +145,44 @@ server cert / Salamander password changed if applicable).
 
 ## 4. Restic password
 
-`backup.restic_password` rotation is destructive — old snapshots become
-unreadable. Procedure:
+A planned password change and compromise recovery use different procedures.
+Restic stores a repository master key wrapped by one or more password keys.
+`restic key passwd` changes the password wrapping and retains the snapshot
+history. It does not replace a master key that an attacker already obtained.
+
+### Planned password change
+
+1. Keep the current password and a verified recovery path. Stop the backup and
+   restore timers and wait for both services to become inactive.
+2. In the authorized private operator session, use `restic key passwd` against
+   the current repository. Supply passwords through its private password-file
+   interface or protected prompt, never command arguments or logs. Update the
+   remote repository key material before testing the new remote password.
+3. Store the new password in SOPS and converge the password file through the
+   reviewed deployment workflow. A change to `backup.restic_password` alone
+   does not update the keys of an existing repository.
+4. Run a backup and an isolated restore with the new password. When offsite
+   replication is enabled, the restore must use the remote repository. Restore
+   the intended timer states only after these checks pass. Retire the old
+   password after successful verification.
+
+### Repository master-key compromise
+
+If an attacker had the old password and repository key material, assume the
+repository master key is exposed. A wrapping-password change cannot revoke
+that knowledge or protect copies of earlier ciphertext.
+
+1. Keep the prior repository and its recovery password. Stop both timers and
+   wait for inactive services before changing configuration.
+2. Select a distinct local `restic_repo_dir` and, when replication is enabled,
+   a distinct `backup.remote.rclone_path` generation in the reviewed profile.
+   Generate a new `backup.restic_password`. Never point the replacement
+   `rclone sync` at the prior remote generation.
+3. Review and deploy those inputs. The role initializes the new repository;
+   it does not need to delete or overwrite the previous repository. Use the
+   guarded decrypt, deploy and verify sequence from section 1:
 
 ```bash
-# Take a fresh full backup under the OLD password
-ssh deploy@<vps> sudo systemctl start vpn-backup.service
-
-# Gate deletion on a real isolated restore from the selected repository
-ssh deploy@<vps> sudo systemctl start vpn-backup-restore-drill.service
-ssh deploy@<vps> sudo python3 -m json.tool /var/lib/vpn-backup/restore-drill-last-success.json
-
-# Generate new password
-openssl rand -base64 32
-
-# Update secrets
-sops ~/.config/vpn-provision/prod.secrets.sops.yaml
-
-# On the server: re-init the restic repo with the new password
-ssh deploy@<vps>
-sudo rm -rf /var/backups/vpn-restic
-exit
-
-# Run the role; it will re-init and take the first new snapshot.
-# The subshell shreds the decrypted file on every exit (see section 1).
 (
   trap 'rc=$?; trap "" INT QUIT TERM HUP; make clean || [ "$rc" -ne 0 ] || rc=1; exit "$rc"' EXIT
   trap 'exit 130' INT
@@ -180,13 +194,19 @@ exit
     make verify
 )
 
-# Take the first snapshot under the NEW password and verify it by real restore
-ssh deploy@<vps> sudo systemctl start vpn-backup.service
-ssh deploy@<vps> sudo systemctl start vpn-backup-restore-drill.service
-ssh deploy@<vps> sudo python3 -m json.tool /var/lib/vpn-backup/restore-drill-last-success.json
-
-# Discard the old password ONLY after the new restore drill succeeds.
 ```
+
+4. Explicitly run `vpn-backup.service`, then
+   `vpn-backup-restore-drill.service`. Both commands must succeed. Check the
+   new success marker and confirm that it used the selected generation and,
+   when enabled, the remote source. Timer installation alone is not a backup.
+5. If any deployment, backup or restore check fails, keep the previous local
+   and remote generations and their passwords. Repair or restore the reviewed
+   configuration without deleting recovery material.
+6. Resume the intended timers after successful verification. Retire the prior
+   repository generation and its password only through a separate authorized
+   cleanup. Earlier snapshots may still contain exposed application secrets;
+   rotate those credentials through their own workflows.
 
 ## 5. SSH key for the deploy user
 

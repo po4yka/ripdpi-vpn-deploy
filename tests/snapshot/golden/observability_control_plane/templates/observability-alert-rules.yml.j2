@@ -8,7 +8,7 @@ groups:
         keep_firing_for: 0s
         labels:
           severity: watchdog
-          environment: ""
+          environment: "staging"
           node: collector
           component: observability-pipeline
         annotations:
@@ -23,16 +23,16 @@ groups:
 
       - alert: ObservabilityExternalCoverageUnavailable
         expr: >-
-          max((observability_push_success{ environment="",node="node-01",kind="node" } == 0)
-          or (time() - observability_push_last_success_timestamp_seconds{ environment="",node="node-01",kind="node" } > 180)
-          or absent(observability_push_success{ environment="",node="node-01",kind="node" })
-          or absent(observability_push_last_success_timestamp_seconds{ environment="",node="node-01",kind="node" }))
+          max((observability_push_success{ environment="staging",node="node-01",kind="node" } == 0)
+          or (time() - observability_push_last_success_timestamp_seconds{ environment="staging",node="node-01",kind="node" } > 180)
+          or absent(observability_push_success{ environment="staging",node="node-01",kind="node" })
+          or absent(observability_push_last_success_timestamp_seconds{ environment="staging",node="node-01",kind="node" }))
         for: 1m
         keep_firing_for: 3m
         labels:
           severity: critical
           component: observability-external-coverage
-          environment: ""
+          environment: "staging"
           node: "node-01"
           kind: "node"
         annotations:
@@ -45,16 +45,16 @@ groups:
 
       - alert: ObservabilityExternalCoverageUnavailable
         expr: >-
-          max((observability_push_success{ environment="",node="node-02",kind="node" } == 0)
-          or (time() - observability_push_last_success_timestamp_seconds{ environment="",node="node-02",kind="node" } > 180)
-          or absent(observability_push_success{ environment="",node="node-02",kind="node" })
-          or absent(observability_push_last_success_timestamp_seconds{ environment="",node="node-02",kind="node" }))
+          max((observability_push_success{ environment="staging",node="node-02",kind="node" } == 0)
+          or (time() - observability_push_last_success_timestamp_seconds{ environment="staging",node="node-02",kind="node" } > 180)
+          or absent(observability_push_success{ environment="staging",node="node-02",kind="node" })
+          or absent(observability_push_last_success_timestamp_seconds{ environment="staging",node="node-02",kind="node" }))
         for: 1m
         keep_firing_for: 3m
         labels:
           severity: critical
           component: observability-external-coverage
-          environment: ""
+          environment: "staging"
           node: "node-02"
           kind: "node"
         annotations:
@@ -69,16 +69,16 @@ groups:
 
       - alert: ObservabilityExternalCoverageUnavailable
         expr: >-
-          max((observability_push_success{ environment="",node="node-01",kind="pipeline" } == 0)
-          or (time() - observability_push_last_success_timestamp_seconds{ environment="",node="node-01",kind="pipeline" } > 180)
-          or absent(observability_push_success{ environment="",node="node-01",kind="pipeline" })
-          or absent(observability_push_last_success_timestamp_seconds{ environment="",node="node-01",kind="pipeline" }))
+          max((observability_push_success{ environment="staging",node="node-01",kind="pipeline" } == 0)
+          or (time() - observability_push_last_success_timestamp_seconds{ environment="staging",node="node-01",kind="pipeline" } > 180)
+          or absent(observability_push_success{ environment="staging",node="node-01",kind="pipeline" })
+          or absent(observability_push_last_success_timestamp_seconds{ environment="staging",node="node-01",kind="pipeline" }))
         for: 1m
         keep_firing_for: 3m
         labels:
           severity: critical
           component: observability-external-coverage
-          environment: ""
+          environment: "staging"
           node: "node-01"
           kind: "pipeline"
         annotations:
@@ -93,16 +93,16 @@ groups:
 
       - alert: ObservabilityExternalCoverageUnavailable
         expr: >-
-          max((observability_push_success{ environment="",node="node-01",kind="delivery" } == 0)
-          or (time() - observability_push_last_success_timestamp_seconds{ environment="",node="node-01",kind="delivery" } > 660)
-          or absent(observability_push_success{ environment="",node="node-01",kind="delivery" })
-          or absent(observability_push_last_success_timestamp_seconds{ environment="",node="node-01",kind="delivery" }))
+          max((observability_push_success{ environment="staging",node="node-01",kind="delivery" } == 0)
+          or (time() - observability_push_last_success_timestamp_seconds{ environment="staging",node="node-01",kind="delivery" } > 660)
+          or absent(observability_push_success{ environment="staging",node="node-01",kind="delivery" })
+          or absent(observability_push_last_success_timestamp_seconds{ environment="staging",node="node-01",kind="delivery" }))
         for: 1m
         keep_firing_for: 3m
         labels:
           severity: critical
           component: observability-external-coverage
-          environment: ""
+          environment: "staging"
           node: "node-01"
           kind: "delivery"
         annotations:
@@ -305,7 +305,7 @@ groups:
           or absent(vpn_observability_adapter_collected_timestamp_seconds{node="node-01"}))
         for: 3m
         keep_firing_for: 3m
-        labels: {severity: warning, component: producer-evidence, node: "node-01", environment: ""}
+        labels: {severity: warning, component: producer-evidence, node: "node-01", environment: "staging"}
         annotations: {incident_family: producer-evidence, evidence_class: required-adapter-never-published, source_generation: "", summary: A required node adapter has no completion clock; monitoring health is unknown., runbook: docs/RUNBOOK-incident.md}
 
       - alert: ObservabilityAdapterCompletionMissing
@@ -314,7 +314,7 @@ groups:
           or absent(vpn_observability_adapter_collected_timestamp_seconds{node="node-02"}))
         for: 3m
         keep_firing_for: 3m
-        labels: {severity: warning, component: producer-evidence, node: "node-02", environment: ""}
+        labels: {severity: warning, component: producer-evidence, node: "node-02", environment: "staging"}
         annotations: {incident_family: producer-evidence, evidence_class: required-adapter-never-published, source_generation: "", summary: A required node adapter has no completion clock; monitoring health is unknown., runbook: docs/RUNBOOK-incident.md}
 
 

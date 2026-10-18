@@ -48,6 +48,14 @@ CANONICAL_ALGORITHMS = {
     ),
     "macs": ("hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com",),
     "kexalgorithms": (
+        "sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org",
+    ),
+}
+# Only the exact previous managed policy may be an upgrade source. Desired
+# candidates must use the current policy; arbitrary drift still refuses.
+PREVIOUS_ALGORITHMS = {
+    **CANONICAL_ALGORITHMS,
+    "kexalgorithms": (
         "curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512",
     ),
 }
@@ -399,7 +407,10 @@ def _algorithm_directives(directives, *, required):
         for key, (_, values) in directives.items()
         if key in CANONICAL_ALGORITHMS
     }
-    if actual and actual != CANONICAL_ALGORITHMS:
+    accepted = (CANONICAL_ALGORITHMS,) if required else (
+        CANONICAL_ALGORITHMS, PREVIOUS_ALGORITHMS
+    )
+    if actual and actual not in accepted:
         raise OwnershipError("algorithm-policy-changed")
     if required and actual != CANONICAL_ALGORITHMS:
         raise OwnershipError("algorithm-policy-changed")
@@ -786,8 +797,12 @@ def build_baseline_plan(config_dir=Path("/etc/ssh"), *, contexts, hardening):
 
         if any(value != CANONICAL_EFFECTIVE_ALGORITHMS for value in after_algorithms):
             raise OwnershipError("algorithm-policy-changed")
+        existing_effective_algorithms = {
+            key.encode(): f"{key} {','.join(values)}".encode()
+            for key, values in existing_algorithms.items()
+        }
         if existing_algorithms and any(
-            value != CANONICAL_EFFECTIVE_ALGORITHMS for value in before_algorithms
+            value != existing_effective_algorithms for value in before_algorithms
         ):
             raise OwnershipError("algorithm-policy-changed")
         created_metadata = {"mode": 0o644, "uid": OWNER_UID, "gid": 0}
