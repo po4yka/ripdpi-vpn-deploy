@@ -2,7 +2,7 @@
 id: XRY-1792265213021342
 title: Repair protocol compatibility and audit validation defects
 kind: bug
-status: doing
+status: review
 area: xray-config
 priority: high
 risk: high
@@ -14,7 +14,7 @@ openspec_change: protocol-audit-compatibility
 created: 2026-10-17
 updated: 2026-10-18
 related_tasks: [CIC-1792268380780556]
-status_detail: Finish local acceptance after Docker recovery. The full gate exposed a missing local flock prerequisite and one unreproduced TLS fixture failure; retain all guards and rerun the unchanged full make check.
+status_detail: Local make check and exact source/main CI passed. Preserve accepted main source 4f7b54e4480039526d9c8febca033932506f4a56 and commit the review snapshot before canonical archival.
 ---
 
 ## Goal
