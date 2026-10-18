@@ -78,3 +78,12 @@ accepted inbound into its generated Xray client. Copy it independently so probe
 generation cannot change the source candidate. Real Vision and Mux.Cool cases
 must pass traffic with this generated client and refuse a valid identity when
 the required mask is absent. The legacy sockopt location is not a fallback.
+
+## Local gate recovery
+
+Inventory metadata encoders can emit CRLF line breaks. Remove both bytes from
+public-listener and observability-topology Base64 output before INI publication.
+Keep strict inventory admission unchanged. Integration owns this renderer fix
+and its regression tests. Test real CRLF encoder output as well as LF output.
+The host watchdog regressions require a real flock executable; document this
+prerequisite instead of changing production locking or test selection.

@@ -388,7 +388,7 @@ for i in "${!host_pairs[@]}"; do
   fi
   host_sources["$hostname"]="$pair"
   public_listeners="$(PROVIDER="$prov" ENV="$env" "${REPO_ROOT}/scripts/terraform-env.sh" output -json public_listeners | jq -c .)"
-  public_listeners_b64="$(printf '%s' "$public_listeners" | base64 | tr -d '\n')"
+  public_listeners_b64="$(printf '%s' "$public_listeners" | base64 | tr -d '\r\n')"
   allowed_ssh_cidrs="$(terraform_json_var "$prov" "$env" "$tfvars_rel" "var.allowed_ssh_cidrs")"
   build_environment_json="$(terraform_json_var "$prov" "$env" "$tfvars_rel" "var.build_env")"
   if ! jq -e 'type == "string" and length > 0 and length <= 128' <<< "$build_environment_json" >/dev/null; then
@@ -500,7 +500,7 @@ if [[ "$observability_enabled" == true ]]; then
     echo "observability topology source is not clean and stable" >&2
     exit 1
   fi
-  observability_topology_b64="$(printf '%s' "$topology_json" | base64 | tr -d '\n')"
+  observability_topology_b64="$(printf '%s' "$topology_json" | base64 | tr -d '\r\n')"
 fi
 
 {

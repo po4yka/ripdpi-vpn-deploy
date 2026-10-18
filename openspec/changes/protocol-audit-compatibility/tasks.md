@@ -18,7 +18,8 @@ supported paths with real pinned engines.
 - Alternative lane: ansible/roles/naive/, ansible/roles/snell/,
   scripts/build-native-naive-test.sh, related Naive/Snell tests,
   docs/CLIENT-NOTES.md and docs/SNELL-REFINEMENT.md.
-- Integration lane: Makefile, .github/workflows/, snapshots, tests/CLAUDE.md,
+- Integration lane: scripts/render-inventory.sh, its metadata regressions,
+  CONTRIBUTING.md, Makefile, .github/workflows/, snapshots, tests/CLAUDE.md,
   scripts/CLAUDE.md, ansible/CLAUDE.md, docs/TESTING.md, task and OpenSpec files,
   PR metadata and all commits. Shared files are serialized through this lane.
 
