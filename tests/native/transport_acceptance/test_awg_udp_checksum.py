@@ -166,7 +166,8 @@ def test_computed_zero_udp_checksum_keeps_ffff_and_real_dns_reply(tmp_path):
           oifname "{client_tun}" accept
           oifname "uc0" ip daddr 192.0.2.1 udp dport {instance['listen_port']} accept
           meta l4proto ipv6-icmp icmpv6 type {{ nd-neighbor-solicit, nd-neighbor-advert }} ip6 hoplimit 255 accept
-        }} }}\n''')
+        }}
+        }}\n''')
         values = merge_render_vars()
         values.update(amneziawg_secrets=doc["amneziawg_secrets"], firewall_awg_uplink_interface="up0",
                       security_controls={"fail2ban": False}, public_listener_contract=[
