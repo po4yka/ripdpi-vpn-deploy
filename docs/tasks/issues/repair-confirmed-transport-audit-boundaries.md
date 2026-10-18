@@ -2,7 +2,7 @@
 id: SEC-1792306834441683
 title: Repair confirmed transport audit boundaries
 kind: bug
-status: review
+status: done
 area: security
 priority: high
 risk: high
@@ -14,6 +14,9 @@ openspec_change: transport-audit-boundaries
 created: 2026-10-18
 updated: 2026-10-18
 related_tasks: []
+closed_at: "2026-10-18T12:54:23Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: PR 334 merged at 365b08b680963d1bdd8c879b005467e24913b482. Post-merge CI run 39122200716 and all nine required checks passed. Focused portable/native coverage and source/security reviews passed; source-only scope.
 ---
 
 ## Goal
