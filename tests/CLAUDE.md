@@ -28,6 +28,13 @@ privilege boundary and paths changed. They retain original bytes and inodes,
 preserve symlinks, remove failed copies and reject cleanup outside the owned
 stage. Root runtime steps use that copy; source ownership checks stay strict.
 
+Native SOCKS readiness reads the full two-byte method selection within its
+original ten-second deadline. EOF, wrong version and wrong method refuse.
+Only failed hopping cases may publish a bounded five-field readiness summary:
+family, phase, cycle, reason and unit state. Source strings, endpoint details,
+unit names and raw child output remain private. Real socket regressions cover
+fragmented replies and stalled peers; they do not establish native QUIC traffic.
+
 Native AWG failure summaries reuse the reviewed strict three-file projection.
 Only fixed family, phase, result and expected enums plus a bounded cycle reach
 public case evidence. The actual pytest JUnit regression retains raw child
