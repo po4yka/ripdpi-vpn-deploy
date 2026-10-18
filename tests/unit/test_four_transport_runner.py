@@ -26,7 +26,7 @@ def _probe_summary(**changes):
                 result="nonzero-exit") | changes
 
 
-def _probe_report(tmp_path, values, *, case_id=AWG_CASE, result="failure"):
+def _probe_report(tmp_path, values, *, case_id=AWG_CASE, result="failure", property_name="awg-probe-summary"):
     root = runner.ET.Element("testsuite")
     classname, name = case_id.rsplit(".", 1)
     case = runner.ET.SubElement(root, "testcase", classname=classname, name=name)
@@ -35,7 +35,7 @@ def _probe_report(tmp_path, values, *, case_id=AWG_CASE, result="failure"):
         failure.text = "private raw failure with address and credential"
     properties = runner.ET.SubElement(case, "properties")
     for value in values:
-        runner.ET.SubElement(properties, "property", name="awg-probe-summary", value=value)
+        runner.ET.SubElement(properties, "property", name=property_name, value=value)
     runner.ET.SubElement(properties, "property", name="credential", value="private-credential")
     runner.ET.SubElement(case, "system-out").text = "private stdout"
     runner.ET.SubElement(case, "system-err").text = "private stderr"
@@ -112,6 +112,89 @@ def test_probe_property_never_admits_other_cases_or_nonfailures(tmp_path, case_i
         tmp_path, [json.dumps(_probe_summary())], case_id=case_id, result=result,
     ))
     assert rows == [{"case": case_id, "result": result}]
+
+
+READINESS_CASE = (
+    "tests.native.transport_acceptance.test_hopping."
+    "test_native_hopping_no_net_admin_outbound_preserved_and_repeated_removal[6]"
+)
+
+
+def _readiness_summary(**changes):
+    return dict(family="ipv6", phase="retirement", cycle=1,
+                reason="reply-deadline", unit_state="active") | changes
+
+
+def _readiness_report(tmp_path, values, *, case_id=READINESS_CASE, result="failure"):
+    return _probe_report(tmp_path, values, case_id=case_id, result=result,
+                         property_name="native-socks-readiness")
+
+
+@pytest.mark.parametrize("family", [4, 6])
+@pytest.mark.parametrize("result", ["failure", "error"])
+def test_hopping_readiness_admits_only_closed_failure_summary(tmp_path, family, result):
+    case_id = READINESS_CASE[:-2] + str(family) + "]"
+    summary = _readiness_summary(family="ipv" + str(family))
+    rows = runner.case_results(_readiness_report(
+        tmp_path, [json.dumps(summary)], case_id=case_id, result=result))
+    assert rows == [{"case": case_id, "result": result, "readiness": summary}]
+    assert "private" not in json.dumps(rows)
+
+
+@pytest.mark.parametrize("changes", [
+    {"phase": "hopping", "cycle": None}, {"cycle": 0},
+    *({"reason": reason} for reason in (
+        "connect-deadline", "eof", "wrong-version", "wrong-method", "process-timeout", "probe-error")),
+    *({"unit_state": state} for state in ("activating", "inactive", "deactivating", "failed", "unknown")),
+])
+def test_readiness_summary_admits_finite_categories_and_context(tmp_path, changes):
+    summary = _readiness_summary(**changes)
+    row, = runner.case_results(_readiness_report(tmp_path, [json.dumps(summary)]))
+    assert row["readiness"] == summary
+
+
+@pytest.mark.parametrize("raw", [
+    "not-json", "null", "[]", '"private"',
+    json.dumps(_readiness_summary()) + " " * 256,
+    json.dumps(_readiness_summary())[:-1] + ',"cycle":0}',
+    json.dumps(_readiness_summary(private="private-authority")),
+    json.dumps({key: value for key, value in _readiness_summary().items() if key != "reason"}),
+    *(json.dumps(_readiness_summary(**{key: value})) for key, value in (
+        ("family", "ipv4"), ("family", "private-address"), ("family", 6), ("family", True),
+        ("phase", "unknown"), ("phase", []), ("phase", True),
+        ("reason", "private-stderr"), ("reason", {}), ("reason", False),
+        ("unit_state", "private-unit"), ("unit_state", []), ("unit_state", True),
+        ("cycle", -1), ("cycle", 2), ("cycle", True), ("cycle", 1.0), ("cycle", "1"),
+        ("cycle", []), ("cycle", None),
+    )),
+    json.dumps(_readiness_summary(phase="hopping", cycle=0)),
+])
+def test_invalid_readiness_property_never_publishes_private_data(tmp_path, raw):
+    rows = runner.case_results(_readiness_report(tmp_path, [raw]))
+    assert rows == [{"case": READINESS_CASE, "result": "failure"}]
+    assert "private" not in json.dumps(rows)
+
+
+def test_readiness_summary_size_and_duplicate_properties_refuse(tmp_path):
+    raw = json.dumps(_readiness_summary())
+    exact = raw.ljust(runner.MAX_SOCKS_READINESS_BYTES)
+    row, = runner.case_results(_readiness_report(tmp_path, [exact]))
+    assert row["readiness"] == _readiness_summary()
+    for values in ([exact + " "], [raw, raw], [raw, "private-value"], []):
+        assert runner.case_results(_readiness_report(tmp_path, values)) == [
+            {"case": READINESS_CASE, "result": "failure"}]
+
+
+@pytest.mark.parametrize("case_id,result", [
+    (READINESS_CASE, "passed"), (READINESS_CASE, "skipped"),
+    (READINESS_CASE.replace("[6]", "[5]"), "failure"),
+    (READINESS_CASE.replace("test_hopping", "foreign"), "error"),
+    (AWG_CASE, "failure"), ("foreign.test_probe", "failure"),
+])
+def test_readiness_property_never_admits_other_cases_or_nonfailures(tmp_path, case_id, result):
+    assert runner.case_results(_readiness_report(
+        tmp_path, [json.dumps(_readiness_summary())], case_id=case_id, result=result)) == [
+            {"case": case_id, "result": result}]
 
 
 def _awg_probe_producer():
