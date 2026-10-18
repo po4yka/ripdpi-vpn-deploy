@@ -28,6 +28,27 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def _build_streaming_env(tmp_path, source):
+    """Consume the complete synthetic ciphertext before returning its fixture."""
+    environment = _build_env(tmp_path, source)
+    (tmp_path / "bin/sops").write_text(
+        '#!/bin/sh\nset -eu\ncat >/dev/null\nexec cat "$SOPS_FILE"\n'
+    )
+    return environment
+
+
+def test_synthetic_decryptor_consumes_input_beyond_pipe_capacity(tmp_path):
+    from fleet_inspection import LIMIT, bounded_command
+
+    source = _secrets_as_json(tmp_path)
+    environment = _build_streaming_env(tmp_path, source)
+    assert bounded_command(
+        ["sops", "--decrypt", "--output-type", "json", "/dev/stdin"],
+        input_bytes=b"synthetic-ciphertext".ljust(LIMIT * 2, b"x"),
+        environment=environment,
+    ) == source.read_bytes()
+
+
 def authority(public_name="outer.example", inner_name="vpn.example.com"):
     private = X25519PrivateKey.generate()
 
@@ -249,7 +270,7 @@ def test_emitter_keeps_ech_and_refuses_unqualified_bundle(tmp_path, identity):
     )
     document["client_registry"] = {"laptop": {"status": "active"}}
     source.write_text(json.dumps(document))
-    env = _build_env(tmp_path, source)
+    env = _build_streaming_env(tmp_path, source)
     result = subprocess.run(
         ["bash", str(SCRIPT), "laptop"],
         env=env,
@@ -335,7 +356,7 @@ def test_bundle_refuses_internal_monitoring_flag_before_emission(tmp_path, profi
     else:
         document['hysteria']['resource_profile'] = profile
     source.write_text(json.dumps(document))
-    environment = _build_env(tmp_path, source)
+    environment = _build_streaming_env(tmp_path, source)
     result = subprocess.run(['bash', str(BUNDLE_SCRIPT), 'laptop', '--xhttp-only'],
                             env=environment, capture_output=True, text=True, timeout=30)
     assert result.returncode != 0 and not result.stdout
@@ -349,7 +370,7 @@ def test_bbr_recipient_requires_qualified_engine_and_retains_paired_xhttp(tmp_pa
     document = json.loads(source.read_text())
     document['hysteria'].update(version='v2.13.0', resource_profile=profile)
     source.write_text(json.dumps(document))
-    environment = _build_env(tmp_path, source)
+    environment = _build_streaming_env(tmp_path, source)
     def emit(*arguments):
         return subprocess.run(['bash', str(SCRIPT), 'laptop', *arguments],
                               env=environment, capture_output=True, text=True, timeout=30)

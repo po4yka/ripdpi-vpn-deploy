@@ -21,6 +21,10 @@ untrusted supplied roots cannot certify themselves. Resolver tests execute
 actual relocated Ansible tasks through enable, interrupted apply, deferred
 retirement, disable and repeat convergence, preserving custom resolver authority.
 
+Synthetic SOPS decryptors consume all ciphertext from stdin before they return
+fixture JSON. A payload larger than pipe capacity checks this contract on
+Darwin and Linux.
+
 Protocol audit regressions use schema-valid synthetic inputs and actual
 controller preflight in ordinary and check mode. They prove identity/address
 refusal before later publication, exact parsed server/client credential bytes,

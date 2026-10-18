@@ -86,3 +86,9 @@ The replacement CI run and final integrated source proof remain required.
 The inherited PR #328 source a14c339ccf8db8bce10bce5da22380a813a41605 has
 observed successful main CI run 39106128582. This does not replace the
 required acceptance of the current source.
+
+The exact ECH test fixture patch from 7ee95c34de14892d238a2ccc27c9b4189c791c79
+is a temporary shared-source dependency for the local Darwin gate. It drains
+synthetic ciphertext before emitting JSON and tests input above pipe capacity.
+The owning security change retains this source; no alternate implementation is
+created. Its final main integration remains required before source closure.
