@@ -73,6 +73,15 @@ and oversized or malformed records publish no diagnostics.
 The two transit counters use the same fixed tuple and install/query calls as
 the OUTPUT/INPUT counters. They locate loss between output and local input;
 they do not prove that the packet crossed the veth link or identify its cause.
+The receiver also measures late PREROUTING and expected-interface presence.
+Five IPv6 counter deltas share the existing UDP baseline reads; automatic
+control traffic can contribute, so these deltas do not identify a cause alone.
+Only a completed NULL result can query the exact local multicast prefix with
+bounded route SHOW. Its closed six-boolean snapshot describes state after the
+attempt. An unavailable snapshot is explicit null and preserves the primary
+counters; successful packets always publish null. Missing primary metrics
+refuse publication instead of becoming zero. Route SHOW never changes routes
+or runs before the packet, and its raw output remains private.
 
 Only the failed bootstrap multicast case can publish a DHCPv6 readiness
 property before ready. It contains only the fixed bind-join stage and a zero

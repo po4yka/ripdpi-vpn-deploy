@@ -96,6 +96,13 @@ add rule inet dhcpv6_probe after ip6 saddr fe80::10 ip6 daddr ff02::1:2 udp spor
 add rule inet dhcpv6_probe transit ip6 saddr fe80::10 ip6 daddr ff02::1:2 udp sport 546 udp dport 547 counter
 """
 
+MULTICAST_RECEIVER_OBSERVER = """
+add chain inet dhcpv6_probe transit_after { type filter hook prerouting priority 301; }
+add chain inet dhcpv6_probe expected_iif { type filter hook prerouting priority -301; }
+add rule inet dhcpv6_probe transit_after ip6 saddr fe80::10 ip6 daddr ff02::1:2 udp sport 546 udp dport 547 counter
+add rule inet dhcpv6_probe expected_iif iifname "peer0" ip6 saddr fe80::10 ip6 daddr ff02::1:2 udp sport 546 udp dport 547 counter
+"""
+
 
 def multicast_counters(namespace):
     table = json.loads(run("ip", "netns", "exec", namespace, "nft", "-j",
@@ -109,15 +116,84 @@ def multicast_counters(namespace):
 
 def multicast_udp_errors(namespace):
     counters = run("ip", "netns", "exec", namespace, "cat", "/proc/net/snmp6")
-    expected = {"Udp6InErrors", "Udp6InCsumErrors", "Udp6NoPorts", "Udp6IgnoredMulti"}
+    expected = {"Udp6InErrors", "Udp6InCsumErrors", "Udp6NoPorts", "Udp6IgnoredMulti",
+                "Ip6InNoRoutes", "Ip6InMcastPkts", "Ip6InDiscards", "Ip6InAddrErrors", "Ip6InDelivers"}
     selected = {}
     for line in counters.splitlines():
         key, value = line.split()
         if key in expected:
+            if key in selected or int(value) < 0:
+                raise ValueError("dhcpv6-observation-metric-unavailable")
             selected[key] = int(value)
     if set(selected) != expected:
         raise ValueError("dhcpv6-observation-metric-unavailable")
     return selected
+
+
+def multicast_local_routes(namespace):
+    """Optional post-NULL SHOW; an unavailable snapshot never means no route."""
+    child = None
+    try:
+        deadline = time.monotonic() + 1
+        child = subprocess.Popen(
+            ["ip", "-n", namespace, "-j", "-6", "route", "show", "table", "local", "exact", "ff00::/8"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        )
+        raw = bytearray()
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not select.select([child.stdout], [], [], remaining)[0]:
+                raise ValueError("route-show-deadline")
+            chunk = os.read(child.stdout.fileno(), 4097 - len(raw))
+            if not chunk:
+                break
+            raw.extend(chunk)
+            if len(raw) > 4096:
+                raise ValueError("route-show-size")
+        child.wait(timeout=max(0, deadline - time.monotonic()))
+        if child.returncode:
+            raise ValueError("route-show-exit")
+
+        def unique_object(pairs):
+            value = dict(pairs)
+            if len(value) != len(pairs):
+                raise ValueError("route-show-duplicate")
+            return value
+
+        rows = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object)
+        if not isinstance(rows, list) or len(rows) > 2:
+            raise ValueError("route-show-rows")
+        result = {prefix + "_" + field: False for prefix in ("peer", "other")
+                  for field in ("present", "multicast", "linkdown")}
+        seen = set()
+        for row in rows:
+            if (not isinstance(row, dict) or not {"dst", "dev", "type", "flags"} <= row.keys()
+                    or row["dst"] != "ff00::/8" or type(row["dev"]) is not str
+                    or row["dev"] not in {"peer0", "other0"} or row["dev"] in seen
+                    or type(row["type"]) is not str or row["type"] not in {"multicast", "unicast", "local"}):
+                raise ValueError("route-show-authority")
+            flags = row["flags"]
+            if (not isinstance(flags, list) or any(type(flag) is not str for flag in flags)
+                    or len(set(flags)) != len(flags) or set(flags) - {"linkdown", "dead", "onlink", "pervasive"}):
+                raise ValueError("route-show-flags")
+            seen.add(row["dev"])
+            prefix = {"peer0": "peer", "other0": "other"}[row["dev"]]
+            result.update({prefix + "_present": True, prefix + "_multicast": row["type"] == "multicast",
+                           prefix + "_linkdown": "linkdown" in flags})
+        return result
+    except Exception:
+        # Preserve the completed packet failure and primary counters without raw child output.
+        return None
+    finally:
+        if child is not None:
+            try:
+                if child.poll() is None:
+                    child.kill()
+                child.wait(timeout=1)
+            except (OSError, subprocess.SubprocessError):
+                # Namespace cleanup remains mandatory if this optional child cannot be reaped.
+                print("dhcpv6-route-cleanup-unavailable", flush=True)
+            child.stdout.close()
 
 
 def readiness_record(error):
@@ -168,7 +244,8 @@ def packet(sender, receiver, *, source="fe80::20", target="fe80::10",
                     (sender, "output", "postrouting", 301), (receiver, "input", "prerouting", -301)
                 ):
                     run("ip", "netns", "exec", namespace, "nft", "-f", "-",
-                        data=MULTICAST_OBSERVER % (hook, hook, transit, priority))
+                        data=(MULTICAST_OBSERVER % (hook, hook, transit, priority)
+                              + (MULTICAST_RECEIVER_OBSERVER if namespace == receiver else "")))
                     observed_namespaces.append(namespace)
                 errors_before = multicast_udp_errors(receiver)
             except Exception:
@@ -233,6 +310,16 @@ def packet(sender, receiver, *, source="fe80::20", target="fe80::10",
                 error_deltas = {key: errors_after[key] - errors_before[key] for key in errors_before}
                 if any(value < 0 for value in error_deltas.values()):
                     raise ValueError("dhcpv6-observation-counter-reset")
+                if (type(received_counts["expected_iif"]) is not int
+                        or not 0 <= received_counts["expected_iif"] <= received_counts["transit"]):
+                    raise ValueError("dhcpv6-observation-interface-refused")
+                route_state = None
+                if not diagnostic["packet_received"]:
+                    try:
+                        route_state = multicast_local_routes(receiver)
+                    except Exception:
+                        # A supplementary SHOW failure must preserve the complete primary observation.
+                        print("dhcpv6-route-observation-unavailable", flush=True)
                 observation = {
                     "probe_id": "multicast-request", "phase": "packet",
                     "ready_ms": diagnostic["ready_ms"], "send_ms": diagnostic["send_ms"],
@@ -240,11 +327,19 @@ def packet(sender, receiver, *, source="fe80::20", target="fe80::10",
                     "packet_received": diagnostic["packet_received"],
                     "output_before": sent["before"], "output_after": sent["after"],
                     "postrouting_after": sent["transit"], "prerouting_before": received_counts["transit"],
+                    "prerouting_after": received_counts["transit_after"],
+                    "ingress_expected": received_counts["expected_iif"] > 0,
                     "input_before": received_counts["before"], "input_after": received_counts["after"],
                     "udp_errors": min(65535, error_deltas["Udp6InErrors"]),
                     "udp_checksum_errors": min(65535, error_deltas["Udp6InCsumErrors"]),
                     "udp_no_ports": min(65535, error_deltas["Udp6NoPorts"]),
                     "udp_ignored_multicast": min(65535, error_deltas["Udp6IgnoredMulti"]),
+                    "ipv6_no_routes": min(65535, error_deltas["Ip6InNoRoutes"]),
+                    "ipv6_multicast": min(65535, error_deltas["Ip6InMcastPkts"]),
+                    "ipv6_discards": min(65535, error_deltas["Ip6InDiscards"]),
+                    "ipv6_address_errors": min(65535, error_deltas["Ip6InAddrErrors"]),
+                    "ipv6_delivers": min(65535, error_deltas["Ip6InDelivers"]),
+                    "local_multicast_routes": route_state,
                 }
                 print("dhcpv6-observation:" + json.dumps(observation, sort_keys=True), flush=True)
         except Exception:

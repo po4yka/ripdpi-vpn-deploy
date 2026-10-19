@@ -660,6 +660,9 @@ def test_runner_early_regression_never_substitutes_full_suite_or_accepts_failure
         'send_ms': 2, 'elapsed_ms': 703, 'receiver_member': True,
         'packet_received': False, 'output_before': 1, 'output_after': 1,
         'postrouting_after': 11, 'prerouting_before': 13,
+        'prerouting_after': 17, 'ingress_expected': True,
+        'ipv6_no_routes': 19, 'ipv6_multicast': 23, 'ipv6_discards': 29,
+        'ipv6_address_errors': 31, 'ipv6_delivers': 37, 'local_multicast_routes': None,
         'input_before': 0, 'input_after': 0, 'udp_errors': 0,
         'udp_checksum_errors': 0, 'udp_no_ports': 0, 'udp_ignored_multicast': 0,
     }

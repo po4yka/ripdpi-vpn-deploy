@@ -180,6 +180,8 @@ DHCPV6_DIAGNOSTIC_FIELDS = {
     "probe_id", "phase", "ready_ms", "send_ms", "elapsed_ms", "receiver_member",
     "packet_received", "output_before", "output_after", "input_before", "input_after",
     "postrouting_after", "prerouting_before",
+    "prerouting_after", "ingress_expected", "ipv6_no_routes", "ipv6_multicast", "ipv6_discards",
+    "ipv6_address_errors", "ipv6_delivers", "local_multicast_routes",
     "udp_errors", "udp_checksum_errors", "udp_no_ports", "udp_ignored_multicast",
 }
 
@@ -219,10 +221,21 @@ def dhcpv6_diagnostics(log):
                     "packet",
                 }:
                     return []
-                if any(type(value[field]) is not bool for field in ("receiver_member", "packet_received")):
+                if any(type(value[field]) is not bool for field in ("receiver_member", "packet_received", "ingress_expected")):
                     return []
+                routes = value["local_multicast_routes"]
+                if routes is not None:
+                    route_fields = {prefix + "_" + field for prefix in ("peer", "other")
+                                    for field in ("present", "multicast", "linkdown")}
+                    if (value["packet_received"] or not isinstance(routes, dict) or set(routes) != route_fields
+                            or any(type(item) is not bool for item in routes.values())):
+                        return []
+                    if any(not routes[prefix + "_present"] and
+                           (routes[prefix + "_multicast"] or routes[prefix + "_linkdown"])
+                           for prefix in ("peer", "other")):
+                        return []
                 for field in DHCPV6_DIAGNOSTIC_FIELDS - {
-                    "probe_id", "phase", "receiver_member", "packet_received",
+                    "probe_id", "phase", "receiver_member", "packet_received", "ingress_expected", "local_multicast_routes",
                 }:
                     limit = 30000 if field.endswith("_ms") else 65535
                     if type(value[field]) is not int or not 0 <= value[field] <= limit:
