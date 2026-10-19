@@ -79,6 +79,11 @@ retains the original receiver refusal and verifies this property through the
 runner parser. Readiness evidence is separate from complete packet observations;
 it does not establish the underlying refusal cause. The sender remains blocked
 until ready, and all probe assertions and deadlines stay fixed.
+The route child shares its original one-second deadline and total 4096-byte cap
+across stdout and stderr. Only exact known error strings select fixed refusal
+categories; unknown or modified output remains an unclassified exit. No raw
+child output enters the readiness property. These categories diagnose a failed
+attempt and do not establish its cause or native traffic acceptance.
 
 Offline sentinel regressions use the exact deterministic no-TUN Git fixture
 and real source admission, installation, input hashing and standalone readers.

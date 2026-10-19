@@ -34,6 +34,63 @@ def test_actual_route_child_refusal_has_only_closed_category(tmp_path, body, sta
     assert result.stdout == ''
 
 
+
+@pytest.mark.parametrize('error,stage', [
+    (b'RTNETLINK answers: Network is unreachable\n', 'exit-network-unreachable'),
+    (b'RTNETLINK answers: Invalid argument\n', 'exit-invalid-argument'),
+    (b'RTNETLINK answers: Operation not permitted\n', 'exit-operation-not-permitted'),
+    (b'RTNETLINK answers: Permission denied\n', 'exit-permission-denied'),
+    (b'RTNETLINK answers: Operation not supported\n', 'exit-operation-not-supported'),
+    (b'Error: argument "udp" is wrong: Invalid "ipproto" value\n\n', 'exit-protocol'),
+])
+def test_actual_route_exit_keeps_only_exact_known_stderr_category(tmp_path, error, stage):
+    result, _ = execute_input_admission(tmp_path, 'os.write(2,' + repr(error) + ');sys.exit(2)')
+    assert native.readiness_record(result.stderr) == {'stage': stage, 'authority_mismatch': 0}
+    assert error.decode().strip() not in result.stderr
+
+
+@pytest.mark.parametrize('error', [
+    b'RTNETLINK answers: Network is unreachable\nprivate-secret',
+    b'private-secret\nRTNETLINK answers: Network is unreachable\n',
+    b'RTNETLINK answers: Network is unreachable\n' * 2,
+    b'RTNETLINK answers: private-secret\n', b'\xff', b'',
+])
+def test_actual_unknown_or_modified_stderr_remains_unclassified_private_exit(tmp_path, error):
+    result, _ = execute_input_admission(tmp_path, 'os.write(2,' + repr(error) + ');sys.exit(2)')
+    assert native.readiness_record(result.stderr) == {'stage': 'exit', 'authority_mismatch': 0}
+    assert 'private-secret' not in result.stderr
+
+
+@pytest.mark.parametrize('size,stage', [(4096, 'exit'), (4097, 'oversize')])
+def test_actual_route_stderr_shares_the_original_total_output_cap(tmp_path, size, stage):
+    body = "os.write(1,b'x'*2000);os.write(2,b'y'*" + str(size - 2000) + ");sys.exit(2)"
+    result, _ = execute_input_admission(tmp_path, body)
+    assert native.readiness_record(result.stderr) == {'stage': stage, 'authority_mismatch': 0}
+
+
+
+@pytest.mark.parametrize('size,accepted', [(4096, True), (4097, False)])
+def test_successful_route_stderr_cannot_bypass_combined_cap_or_leak(tmp_path, size, accepted):
+    document = json.dumps(input_route()).encode()
+    body = 'os.write(1,' + repr(document) + ");os.write(2,b'x'*" + str(size - len(document)) + ')'
+    result, _ = execute_input_admission(tmp_path, body)
+    assert (result.returncode == 0) is accepted
+    if accepted:
+        assert result.stdout == 'ready\n' and result.stderr == ''
+    else:
+        assert native.readiness_record(result.stderr) == {'stage': 'oversize', 'authority_mismatch': 0}
+
+
+@pytest.mark.parametrize('body', [
+    "os.write(2,b'x');time.sleep(10)",
+    "while True:os.write(2,b'x'*1024)",
+    "os.close(1);os.write(2,b'x');time.sleep(10)",
+])
+def test_actual_stderr_writer_keeps_original_deadline_and_is_reaped(tmp_path, body):
+    result, _ = execute_input_admission(tmp_path, body)
+    assert native.readiness_record(result.stderr)['stage'] in {'read-deadline', 'oversize'}
+
+
 def test_actual_missing_route_command_is_classified(tmp_path):
     result, _ = execute_input_admission(tmp_path, 'pass', available=False)
     assert native.readiness_record(result.stderr) == {'stage': 'start', 'authority_mismatch': 0}
@@ -58,7 +115,9 @@ def test_actual_receiver_socket_setup_failure_is_classified_and_not_ready():
 
 
 @pytest.mark.parametrize('stage', ['start', 'read-deadline', 'oversize', 'exit',
-                                  'json', 'bind-join', 'unknown'])
+                                  'json', 'bind-join', 'unknown', 'exit-network-unreachable',
+                                  'exit-invalid-argument', 'exit-operation-not-permitted',
+                                  'exit-permission-denied', 'exit-operation-not-supported', 'exit-protocol'])
 def test_closed_non_authority_record_has_not_applicable_mask(stage):
     assert native.readiness_record('private stderr\n' + encoded(stage)) == {
         'stage': stage, 'authority_mismatch': 0}

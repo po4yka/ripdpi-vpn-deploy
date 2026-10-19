@@ -43,24 +43,40 @@ def admit_multicast_input_route(interface):
  try:
   route=subprocess.Popen(['ip','-j','-6','route','get','ff02::1:2','from','fe80::10',
                           'iif',interface,'ipproto','udp','sport','546','dport','547'],
-                         stdout=subprocess.PIPE,stderr=subprocess.DEVNULL)
+                         stdout=subprocess.PIPE,stderr=subprocess.PIPE)
   stage='unknown'
   deadline=time.monotonic()+1
-  body=bytearray()
-  while True:
+  streams={route.stdout:bytearray(),route.stderr:bytearray()}
+  active=list(streams)
+  total=0
+  while active:
    remaining=deadline-time.monotonic()
-   if remaining<=0 or not select.select([route.stdout],[],[],remaining)[0]:
+   ready=select.select(active,[],[],max(0,remaining))[0] if remaining>0 else []
+   if not ready:
     stage='read-deadline'
     raise ValueError('route-read-refused')
-   chunk=os.read(route.stdout.fileno(),4097-len(body))
-   if not chunk:break
-   body.extend(chunk)
-   if len(body)>4096:
-    stage='oversize'
-    raise ValueError('route-output-refused')
+   for stream in ready:
+    chunk=os.read(stream.fileno(),4097-total)
+    if not chunk:
+     active.remove(stream)
+     continue
+    streams[stream].extend(chunk)
+    total+=len(chunk)
+    if total>4096:
+     stage='oversize'
+     raise ValueError('route-output-refused')
+  body=streams[route.stdout]
   stage='read-deadline'
   if route.wait(timeout=max(.001,deadline-time.monotonic()))!=0:
-   stage='exit'
+   known_errors={
+    b'RTNETLINK answers: Network is unreachable\\n':'exit-network-unreachable',
+    b'RTNETLINK answers: Invalid argument\\n':'exit-invalid-argument',
+    b'RTNETLINK answers: Operation not permitted\\n':'exit-operation-not-permitted',
+    b'RTNETLINK answers: Permission denied\\n':'exit-permission-denied',
+    b'RTNETLINK answers: Operation not supported\\n':'exit-operation-not-supported',
+    b'Error: argument "udp" is wrong: Invalid "ipproto" value\\n\\n':'exit-protocol',
+   }
+   stage=known_errors.get(bytes(streams[route.stderr]),'exit')
    raise ValueError('route-command-refused')
   stage='json'
   rows=json.loads(body)
@@ -80,7 +96,7 @@ def admit_multicast_input_route(interface):
    try:
     if route.poll() is None:
      route.kill();route.wait(timeout=1)
-    route.stdout.close()
+    route.stdout.close();route.stderr.close()
    except Exception:
     emit_readiness('unknown')
     raise SystemExit('dhcpv6-input-fib-refused') from None
@@ -195,6 +211,8 @@ def readiness_record(error):
     stage, mask = value["stage"], value["authority_mismatch"]
     if type(stage) is not str or stage not in {
         "start", "read-deadline", "oversize", "exit", "json", "authority", "bind-join", "unknown",
+        "exit-network-unreachable", "exit-invalid-argument", "exit-operation-not-permitted",
+        "exit-permission-denied", "exit-operation-not-supported", "exit-protocol",
     } or type(mask) is not int:
         return None
     if not (1 <= mask <= 63 if stage == "authority" else mask == 0):

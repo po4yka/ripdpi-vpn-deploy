@@ -541,7 +541,9 @@ def _dhcp_readiness_report(tmp_path, values, *, case_id=DHCP_READINESS_CASE, res
 
 
 @pytest.mark.parametrize("stage,mask", [
-    (stage, 0) for stage in ("start", "read-deadline", "oversize", "exit", "json", "bind-join", "unknown")
+    (stage, 0) for stage in ("start", "read-deadline", "oversize", "exit", "json", "bind-join", "unknown",
+                            "exit-network-unreachable", "exit-invalid-argument", "exit-operation-not-permitted",
+                            "exit-permission-denied", "exit-operation-not-supported", "exit-protocol")
 ] + [("authority", 1), ("authority", 63)])
 @pytest.mark.parametrize("result", ["failure", "error"])
 def test_dhcp_readiness_admits_only_closed_failure_summary(tmp_path, stage, mask, result):
@@ -603,19 +605,28 @@ def test_socks_and_dhcp_readiness_cannot_cross_or_overwrite(tmp_path):
         assert runner.case_results(report) == [{"case": case_id, "result": "failure", "readiness": summary}]
 
 
-def test_real_pytest_junit_preserves_dhcp_receiver_refusal_for_runner(tmp_path):
+@pytest.mark.parametrize("stage", ["bind-join", "exit-network-unreachable"])
+def test_real_pytest_junit_preserves_dhcp_receiver_refusal_for_runner(tmp_path, stage):
     """A real failing receiver child crosses pytest's actual property transport."""
+    from test_dhcpv6_receiver_contract import admission_branch_source
+
+    command = "producer.RECEIVER,'not-a-real-device','::','547','yes'"
+    if stage == "exit-network-unreachable":
+        executable = tmp_path / "ip"
+        executable.write_text("#!" + sys.executable + "\nimport os;os.write(2,b'RTNETLINK answers: Network is unreachable\\n');raise SystemExit(2)\n")
+        executable.chmod(0o700)
+        command = repr(admission_branch_source()) + ",'peer0','yes'"
     directory = tmp_path / "tests/native/transport_acceptance"
     directory.mkdir(parents=True)
     test_file = directory / "test_dhcpv6.py"
     test_file.write_text(
-        "import importlib.util, subprocess, sys\n"
+        "import importlib.util, os, subprocess, sys\n"
         f"spec=importlib.util.spec_from_file_location('dhcp_producer', {str(ROOT / 'tests/native/transport_acceptance/test_dhcpv6.py')!r})\n"
         "producer=importlib.util.module_from_spec(spec);sys.modules[spec.name]=producer;spec.loader.exec_module(producer)\n"
         "def test_native_scoped_dhcpv6_bootstrap_rebind_and_legacy_server(monkeypatch, record_property):\n"
         "    real_popen=subprocess.Popen;children=[]\n"
         "    def listener(*args, **kwargs):\n"
-        "        child=real_popen([sys.executable,'-c',producer.RECEIVER,'not-a-real-device','::','547','yes'],stdin=kwargs['stdin'],stdout=kwargs['stdout'],stderr=kwargs['stderr'],text=kwargs['text'])\n"
+        f"        child=real_popen([sys.executable,'-c',{command}],env={{**os.environ,'PATH':{str(tmp_path)!r}}},stdin=kwargs['stdin'],stdout=kwargs['stdout'],stderr=kwargs['stderr'],text=kwargs['text'])\n"
         "        children.append(child);return child\n"
         "    def run(*args, **kwargs):\n"
         "        assert '-c' not in args, 'sender-launched-after-readiness-refusal'\n"
@@ -642,6 +653,6 @@ def test_real_pytest_junit_preserves_dhcp_receiver_refusal_for_runner(tmp_path):
     assert "dhcpv6-receiver-not-ready" in failure.get("message")
     properties = [node for node in original.iter("property") if node.get("name") == "dhcpv6-readiness"]
     assert len(properties) == 1
-    assert json.loads(properties[0].get("value")) == {"stage": "bind-join", "authority_mismatch": 0}
+    assert json.loads(properties[0].get("value")) == {"stage": stage, "authority_mismatch": 0}
     assert runner.case_results(report) == [{"case": DHCP_READINESS_CASE, "result": "failure",
-                                           "readiness": {"stage": "bind-join", "authority_mismatch": 0}}]
+                                           "readiness": {"stage": stage, "authority_mismatch": 0}}]

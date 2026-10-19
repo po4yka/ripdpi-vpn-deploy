@@ -371,6 +371,8 @@ def dhcpv6_readiness_summary(case, case_id, result):
     stage, mask = value["stage"], value["authority_mismatch"]
     if type(stage) is not str or stage not in {
         "start", "read-deadline", "oversize", "exit", "json", "authority", "bind-join", "unknown",
+        "exit-network-unreachable", "exit-invalid-argument", "exit-operation-not-permitted",
+        "exit-permission-denied", "exit-operation-not-supported", "exit-protocol",
     } or type(mask) is not int:
         return None
     if not (1 <= mask <= 63 if stage == "authority" else mask == 0):
