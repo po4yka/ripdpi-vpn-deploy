@@ -24,16 +24,16 @@ artifact_evidence: Source 69ba5de4 passes 45 canonical cases, complete local gat
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-NPC-EDGE | SEC-1792307138300077 | 71 UpCloud Terraform tests, 108 network tests, real AWG IPv4/IPv6 and split-hop IPv4 TCP/UDP packets through rendered nftables | Passed locally |
-| REQ-NPC-HSTS | SEC-1792307138300077 | Public-site topology matrix in 108 network tests; reviewed nginx snapshot | Passed locally |
-| REQ-NPC-CERT | SEC-1792307139966331 | 48 certificate/caller tests and 204 controller/backup tests | Passed locally |
-| REQ-NPC-TUN | SEC-1792307141621739 | 156 client boundary tests on Python 3.12.13 and 3.12.15 include strict capture exclusions and malformed selectors | Passed locally |
-| REQ-NPC-NAME | SEC-1792307141621739 | 156 client boundary tests on Python 3.12.13 and 3.12.15 include lossless IDNA and explicit A-label cases | Passed locally |
-| REQ-NPC-RELAY | SEC-1792307141621739 | 156 client boundary tests on Python 3.12.13 and 3.12.15 include real TCP half-close, bounded buffers and authenticated empty UDP | Passed locally |
-| REQ-NPC-RESOLVER | SEC-1792307142612713 | 49 resolver/runtime tests; interrupted apply replay; independent focused review APPROVE | Passed locally |
-| REQ-NPC-DISCOVERY | SEC-1792317891777907 | 38 checkout-discovery tests; real large-input, byte-identity, filter-refusal and FIFO deadline cases; actual Make and selected-task commands | Passed locally |
-| REQ-NPC-UDP-CHECKSUM | SEC-1792321613767971 | Baseline/current packet proof; strict source correction, build-identity tests and corrected real-packet regression | Passed isolated proof, source PR CI and actual main bc849f60 CI 39216524425 |
-| REQ-NPC-EVIDENCE | SEC-1792307143659844 | Complete local gate, final integration, protected PRs 333 and 338, and exact merged-source main CI below | Source acceptance passed on actual main bc849f60 |
+| REQ-NPC-EDGE | SEC-1792307138300077 | 71 UpCloud Terraform tests, 108 network tests, real AWG IPv4/IPv6 and split-hop IPv4 TCP/UDP packets through rendered nftables; scope: Passed locally | passed |
+| REQ-NPC-HSTS | SEC-1792307138300077 | Public-site topology matrix in 108 network tests; reviewed nginx snapshot; scope: Passed locally | passed |
+| REQ-NPC-CERT | SEC-1792307139966331 | 48 certificate/caller tests and 204 controller/backup tests; scope: Passed locally | passed |
+| REQ-NPC-TUN | SEC-1792307141621739 | 156 client boundary tests on Python 3.12.13 and 3.12.15 include strict capture exclusions and malformed selectors; scope: Passed locally | passed |
+| REQ-NPC-NAME | SEC-1792307141621739 | 156 client boundary tests on Python 3.12.13 and 3.12.15 include lossless IDNA and explicit A-label cases; scope: Passed locally | passed |
+| REQ-NPC-RELAY | SEC-1792307141621739 | 156 client boundary tests on Python 3.12.13 and 3.12.15 include real TCP half-close, bounded buffers and authenticated empty UDP; scope: Passed locally | passed |
+| REQ-NPC-RESOLVER | SEC-1792307142612713 | 49 resolver/runtime tests; interrupted apply replay; independent focused review APPROVE; scope: Passed locally | passed |
+| REQ-NPC-DISCOVERY | SEC-1792317891777907 | 38 checkout-discovery tests; real large-input, byte-identity, filter-refusal and FIFO deadline cases; actual Make and selected-task commands; scope: Passed locally | passed |
+| REQ-NPC-UDP-CHECKSUM | SEC-1792321613767971 | Baseline/current packet proof; strict source correction, build-identity tests and corrected real-packet regression; scope: Passed isolated proof, source PR CI and actual main bc849f60 CI 39216524425 | passed |
+| REQ-NPC-EVIDENCE | SEC-1792307143659844 | Complete local gate, final integration, protected PRs 333 and 338, and exact merged-source main CI below; scope: Source acceptance passed on actual main bc849f60 | passed |
 
 ## Coordination
 

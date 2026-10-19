@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-10-19T08:50:54Z",
+  "change": "network-protocol-correctness",
+  "commit_sha": "bc849f60a7422682c8f21826807ceee792ab9953",
+  "outcome": "review",
+  "schema": 1,
+  "task_id": "SEC-1792307003680932"
+}
