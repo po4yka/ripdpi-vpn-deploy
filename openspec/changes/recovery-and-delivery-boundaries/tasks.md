@@ -29,13 +29,13 @@ regressions, pass required source checks and merge reviewed source without deplo
 
 - [x] OPS-1792306162286391 Refuse reserved environment aliases before provisioning #bug !high @item:OPS-1792305989358872
 - [x] OPS-1792306163221571 Publish and restore Terraform state atomically #bug !high @item:OPS-1792305989358872
-- [ ] OPS-1792306164184160 Protect published share bundle read permissions #bug !high @item:OPS-1792305989358872
+- [x] OPS-1792306164184160 Protect published share bundle read permissions #bug !high @item:OPS-1792305989358872
 - [x] OPS-1792306165929686 Refuse unsupported RIPDPI Hysteria port hopping #bug !high @item:OPS-1792305989358872
 - [x] OPS-1792306167846329 Verify complete effective-profile restore artifacts #bug !high @item:OPS-1792305989358872
-- [ ] OPS-1792306168913886 Retire disabled mirror execution without losing authority #bug !high @item:OPS-1792305989358872
+- [x] OPS-1792306168913886 Retire disabled mirror execution without losing authority #bug !high @item:OPS-1792305989358872
 - [x] OPS-1792306169855109 Repair complete disaster recovery procedures #bug !high @item:OPS-1792305989358872
 - [x] OPS-1792306170781535 Admit scoped DHCPv6 bootstrap and rebind traffic #bug !high @item:OPS-1792305989358872
-- [ ] OPS-1792306171697997 Run integration security and CI gates and land reviewed source #bug !high @item:OPS-1792305989358872
+- [x] OPS-1792306171697997 Run integration security and CI gates and land reviewed source #bug !high @item:OPS-1792305989358872
 
 ## Verification
 

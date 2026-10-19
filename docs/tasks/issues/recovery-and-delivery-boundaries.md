@@ -2,7 +2,7 @@
 id: OPS-1792305989358872
 title: Repair recovery and delivery boundaries
 kind: bug
-status: doing
+status: review
 area: operations
 priority: high
 risk: high
@@ -12,8 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: recovery-and-delivery-boundaries
 created: 2026-10-18
-updated: 2026-10-18
+updated: 2026-10-19
 related_tasks: []
+status_detail: Record exact source, local gate, protected merge and complete main CI acceptance without deployment.
 ---
 
 ## Goal
