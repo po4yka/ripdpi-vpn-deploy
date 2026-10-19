@@ -22,6 +22,7 @@ def record():
         "probe_id": "multicast-request", "phase": "packet", "ready_ms": 1,
         "send_ms": 2, "elapsed_ms": 703, "receiver_member": True,
         "packet_received": False, "output_before": 1, "output_after": 1,
+        "postrouting_after": 11, "prerouting_before": 13,
         "input_before": 0, "input_after": 0, "udp_errors": 0, "udp_checksum_errors": 0,
         "udp_no_ports": 0, "udp_ignored_multicast": 0,
     }
@@ -54,6 +55,8 @@ def test_fixed_record_survives_private_surrounding_output(tmp_path):
     ("receiver_member", 1), ("packet_received", None),
     ("udp_errors", "private-secret"), ("udp_checksum_errors", -1),
     ("udp_no_ports", "private-secret"), ("udp_ignored_multicast", True),
+    *[(field, value) for field in ("postrouting_after", "prerouting_before")
+      for value in (None, True, 1.5, "private-secret", -1, 65536)],
 ])
 def test_untrusted_field_or_value_refuses_whole_record(tmp_path, field, value):
     value_record = record()
@@ -76,11 +79,21 @@ def test_duplicate_probe_or_json_field_refuses(tmp_path):
     assert extract(tmp_path, duplicate) == []
 
 
+@pytest.mark.parametrize("field", ["postrouting_after", "prerouting_before"])
+def test_missing_or_duplicate_transit_counter_refuses(tmp_path, field):
+    missing = record()
+    del missing[field]
+    assert extract(tmp_path, encoded(missing)) == []
+    duplicate = encoded(record()).replace(b'{', ('{"' + field + '": 0,').encode(), 1)
+    assert extract(tmp_path, duplicate) == []
+
+
 @pytest.mark.parametrize("field,limit", [
     ("ready_ms", 30000), ("send_ms", 30000), ("elapsed_ms", 30000),
     ("output_before", 65535), ("output_after", 65535), ("input_before", 65535),
     ("input_after", 65535), ("udp_errors", 65535), ("udp_checksum_errors", 65535),
     ("udp_no_ports", 65535), ("udp_ignored_multicast", 65535),
+    ("postrouting_after", 65535), ("prerouting_before", 65535),
 ])
 def test_each_numeric_bound_is_exact(tmp_path, field, limit):
     value = record()
@@ -97,6 +110,12 @@ def test_observer_is_counter_only_and_keeps_native_packet_matrix():
         and target.id == "MULTICAST_OBSERVER" for target in node.targets)))
     assert all(line.endswith(" counter") for line in observer.splitlines() if line.startswith("add rule"))
     assert not any(word in observer.split() for word in ("accept", "drop", "reject", "policy"))
+    for hook, transit, priority in (("output", "postrouting", 301), ("input", "prerouting", -301)):
+        installed = observer % (hook, hook, transit, priority)
+        assert "add chain inet dhcpv6_probe transit { type filter hook " + transit + " priority " + str(priority) + "; }" in installed
+        rules = [line for line in installed.splitlines() if line.startswith("add rule")]
+        assert len(rules) == 3
+        assert all(line.endswith("ip6 saddr fe80::10 ip6 daddr ff02::1:2 udp sport 546 udp dport 547 counter") for line in rules)
     native_cases = [node for node in tree.body if isinstance(node, ast.FunctionDef)
                     and node.name.startswith("test_")]
     assert {node.name for node in native_cases} == {
@@ -157,7 +176,9 @@ def test_failed_suite_publishes_only_validated_observation(tmp_path, monkeypatch
     assert "private" not in output.read_text()
 
 
-@pytest.mark.parametrize("stage", ["install", "stats", "membership", "counters", "cleanup"])
+@pytest.mark.parametrize("stage", [
+    "measured", "install", "stats", "membership", "counters", "postrouting", "prerouting", "cleanup",
+])
 @pytest.mark.parametrize("outcome", ["absent", "received", "send-error"])
 def test_observation_failure_preserves_actual_packet_outcome(stage, outcome, capsys):
     """Execute the actual controller with injected observer failures; no native claim."""
@@ -177,6 +198,8 @@ def test_observation_failure_preserves_actual_packet_outcome(stage, outcome, cap
     exec(compile(ast.Module(body=selected, type_ignores=[]), "retained-native-controller", "exec"), namespace)
 
     events = []
+    queries = []
+    installs = []
 
     class Ready(io.StringIO):
         def readline(self):
@@ -208,12 +231,21 @@ def test_observation_failure_preserves_actual_packet_outcome(stage, outcome, cap
             raise subprocess.CalledProcessError(1, ["synthetic-sender"])
         if (stage == "install" and kwargs.get("data")) or (stage == "cleanup" and "delete" in args):
             raise RuntimeError("private-observer-error")
+        if kwargs.get("data"):
+            installs.append(kwargs["data"])
+        if "list" in args:
+            assert "send" in events, "counter-query-before-original-send"
+            queries.append(args)
+            if stage == "counters":
+                raise RuntimeError("private-observer-error")
+            counts = ({"before": 2, "after": 3, "transit": 11} if args[3] == "sender"
+                      else {"before": 5, "after": 7, "transit": 13})
+            if ((stage == "postrouting" and args[3] == "sender")
+                    or (stage == "prerouting" and args[3] == "receiver")):
+                del counts["transit"]
+            return json.dumps({"nftables": [{"rule": {"chain": chain,
+                "expr": [{"counter": {"packets": count}}]}} for chain, count in counts.items()]})
         return ""
-
-    def counters(_namespace):
-        if stage == "counters":
-            raise RuntimeError("private-observer-error")
-        return {"before": 1, "after": 1}
 
     def errors(_namespace):
         events.append("udp-baseline")
@@ -222,7 +254,7 @@ def test_observation_failure_preserves_actual_packet_outcome(stage, outcome, cap
         return {"Udp6InErrors": 0, "Udp6InCsumErrors": 0, "Udp6NoPorts": 0, "Udp6IgnoredMulti": 0}
 
     metric_getter = namespace["multicast_udp_errors"]
-    namespace.update(run=run, multicast_counters=counters,
+    namespace.update(run=run,
                      multicast_udp_errors=metric_getter if stage == "stats" else errors)
     if outcome == "send-error":
         with pytest.raises(AssertionError, match="dhcpv6-send-result-refused"):
@@ -231,14 +263,29 @@ def test_observation_failure_preserves_actual_packet_outcome(stage, outcome, cap
         received = namespace["packet"]("sender", "receiver", observe_multicast=True)
         assert (received is not None) is (outcome == "received")
     assert events[events.index("ready") + 1] == "send", "observer-command-between-ready-and-send"
+    assert events.count("send") == 1
     if stage != "install":
         assert events.index("udp-baseline") < events.index("listener")
     output = capsys.readouterr().out
     assert "private-observer-error" not in output
-    if (stage, outcome) not in {("counters", "send-error"), ("membership", "send-error"), ("membership", "absent"), ("membership", "received")}:
+    if stage != "measured" and (stage, outcome) not in {
+        ("counters", "send-error"), ("postrouting", "send-error"), ("prerouting", "send-error"),
+        ("membership", "send-error"), ("membership", "absent"), ("membership", "received"),
+    }:
         assert "dhcpv6-observation-unavailable" in output or "dhcpv6-observation-cleanup-unavailable" in output
-    if stage != "cleanup" or outcome == "send-error":
+    if stage not in {"measured", "cleanup"} or outcome == "send-error":
         assert "dhcpv6-observation:" not in output
+    else:
+        observation, = [json.loads(line.split(":", 1)[1]) for line in output.splitlines()
+                        if line.startswith(runner.DHCPV6_DIAGNOSTIC_PREFIX)]
+        assert {field: observation[field] for field in (
+            "output_before", "output_after", "postrouting_after", "prerouting_before", "input_before", "input_after"
+        )} == {"output_before": 2, "output_after": 3, "postrouting_after": 11,
+              "prerouting_before": 13, "input_before": 5, "input_after": 7}
+        assert observation["packet_received"] is (outcome == "received")
+        assert len(installs) == len(queries) == 2
+        log = types.SimpleNamespace(open=lambda _mode: io.BytesIO(output.encode()))
+        assert runner.dhcpv6_diagnostics(log) == [observation]
 
 
 def test_unavailable_private_log_does_not_replace_native_failure():

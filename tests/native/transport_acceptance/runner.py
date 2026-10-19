@@ -179,6 +179,7 @@ DHCPV6_DIAGNOSTIC_PREFIX = "dhcpv6-observation:"
 DHCPV6_DIAGNOSTIC_FIELDS = {
     "probe_id", "phase", "ready_ms", "send_ms", "elapsed_ms", "receiver_member",
     "packet_received", "output_before", "output_after", "input_before", "input_after",
+    "postrouting_after", "prerouting_before",
     "udp_errors", "udp_checksum_errors", "udp_no_ports", "udp_ignored_multicast",
 }
 

@@ -90,8 +90,10 @@ MULTICAST_OBSERVER = """
 add table inet dhcpv6_probe
 add chain inet dhcpv6_probe before { type filter hook %s priority -301; }
 add chain inet dhcpv6_probe after { type filter hook %s priority 301; }
+add chain inet dhcpv6_probe transit { type filter hook %s priority %s; }
 add rule inet dhcpv6_probe before ip6 saddr fe80::10 ip6 daddr ff02::1:2 udp sport 546 udp dport 547 counter
 add rule inet dhcpv6_probe after ip6 saddr fe80::10 ip6 daddr ff02::1:2 udp sport 546 udp dport 547 counter
+add rule inet dhcpv6_probe transit ip6 saddr fe80::10 ip6 daddr ff02::1:2 udp sport 546 udp dport 547 counter
 """
 
 
@@ -162,9 +164,11 @@ def packet(sender, receiver, *, source="fe80::20", target="fe80::10",
     try:
         if observe_multicast:
             try:
-                for namespace, hook in ((sender, "output"), (receiver, "input")):
+                for namespace, hook, transit, priority in (
+                    (sender, "output", "postrouting", 301), (receiver, "input", "prerouting", -301)
+                ):
                     run("ip", "netns", "exec", namespace, "nft", "-f", "-",
-                        data=MULTICAST_OBSERVER % (hook, hook))
+                        data=MULTICAST_OBSERVER % (hook, hook, transit, priority))
                     observed_namespaces.append(namespace)
                 errors_before = multicast_udp_errors(receiver)
             except Exception:
@@ -235,6 +239,7 @@ def packet(sender, receiver, *, source="fe80::20", target="fe80::10",
                     "elapsed_ms": diagnostic["elapsed_ms"], "receiver_member": receiver_member,
                     "packet_received": diagnostic["packet_received"],
                     "output_before": sent["before"], "output_after": sent["after"],
+                    "postrouting_after": sent["transit"], "prerouting_before": received_counts["transit"],
                     "input_before": received_counts["before"], "input_after": received_counts["after"],
                     "udp_errors": min(65535, error_deltas["Udp6InErrors"]),
                     "udp_checksum_errors": min(65535, error_deltas["Udp6InCsumErrors"]),

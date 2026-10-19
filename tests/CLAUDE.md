@@ -59,7 +59,8 @@ result through a bounded control acknowledgement. Portable real loopback UDP
 regressions delay sender startup beyond that window and require missing control
 acknowledgement to refuse. Native probe diagnostics contain fixed phase names,
 bounded millisecond counts and packet-presence booleans only. The multicast
-probe also records group membership, no-verdict OUTPUT/INPUT counters and UDP
+probe also records group membership, no-verdict OUTPUT/INPUT counters, late
+POSTROUTING and early PREROUTING counters, and UDP
 error, no-port and ignored-multicast deltas in its owned namespaces. Counter setup and UDP baselines precede
 listener creation; the receiver reads membership before readiness, so the parent
 adds no observer command between readiness and send. The runner admits one exact-schema record
@@ -69,6 +70,9 @@ the record absent. Passing pytest output remains private; failure output supplie
 the validated CI record. Observation errors
 retain the packet outcome and raw logs stay private. Unknown fields, duplicate probes
 and oversized or malformed records publish no diagnostics.
+The two transit counters use the same fixed tuple and install/query calls as
+the OUTPUT/INPUT counters. They locate loss between output and local input;
+they do not prove that the packet crossed the veth link or identify its cause.
 
 Only the failed bootstrap multicast case can publish a DHCPv6 readiness
 property before ready. It contains only the fixed bind-join stage and a zero
