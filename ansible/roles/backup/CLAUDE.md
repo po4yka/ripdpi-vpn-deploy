@@ -33,7 +33,11 @@ inputs are selected by effective toggles and subscription-only mode. Missing
 selected inputs or empty required transport configuration fails the local stage
 before snapshot retention, integrity or replication. Disabled transports require
 no placeholder trees. XHTTP-only nodes include their Xray configuration too.
-Realm includes both configured TLS entries and resolved symlink targets;
+Realm and CDN origin-pull TLS inputs retain every symlink component and the
+final file, including links in parent directories. The shared collector follows
+at most 40 links and refuses cycles, missing targets and non-file authority
+before restic runs. It selects link nodes through resolved parents, not entire
+external directories or virtual children under archived symlink directories;
 selected topology interface configs and DNS bridge forwarding config are
 required, so an otherwise populated directory cannot conceal missing authority.
 

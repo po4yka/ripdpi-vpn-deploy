@@ -261,3 +261,98 @@ def test_real_restic_realm_tls_symlink_dependencies_are_captured(tmp_path):
         assert (restored / str(entry).lstrip('/')).is_symlink()
         captured_target = restored / str(entry.resolve()).lstrip('/')
         assert captured_target.read_bytes() == entry.resolve().read_bytes()
+
+
+@pytest.mark.parametrize('profile', ['cdn_front', 'hysteria_realm'])
+@pytest.mark.parametrize('parent_link', [False, True])
+@pytest.mark.parametrize('fault', [None, 'cycle', 'missing', 'too-many-links'])
+def test_real_restic_tls_multihop_dependencies_survive_restore(tmp_path, profile, parent_link, fault):
+    restic = shutil.which('restic')
+    assert restic, 'real restic required for complete TLS symlink recovery'
+    variables = merge_render_vars()
+    variables['vpn'] = {key: False for key in variables['vpn']}
+    variables['vpn']['enable_' + profile] = True
+    variables['backup']['remote']['enabled'] = False
+    variables['restic_repo_dir'] = str(tmp_path / 'repository')
+    variables['hysteria_realm'] = {'config_dir': str(tmp_path / 'realm'),
+                                 'tls_cert_path': str(tmp_path / 'realm/cert.pem'),
+                                 'tls_key_path': str(tmp_path / 'realm/key.pem')}
+    variables['cdn_front']['aop_cert_path'] = '/etc/nginx/aop.pem'
+    variables['cdn_front']['server_name'] = 'cdn.example.com'
+    text = render_template(TEMPLATE, variables).replace('/etc/', str(tmp_path / 'etc') + '/')
+    assert all(path.is_absolute() for path in entries(text, 'REQUIRED_FILES'))
+    provision(text)
+    configured = (entries(text, 'REALM_TLS_INPUTS') if profile == 'hysteria_realm'
+                  else [tmp_path / 'etc/nginx/aop.pem'])
+    outside = tmp_path / 'outside-authority'
+    authority = outside / 'authority'
+    authority.mkdir(parents=True)
+    unrelated = authority / 'unrelated-private-input'
+    unrelated.write_text('unselected private fixture\n')
+    alias = outside / 'active'
+    if parent_link:
+        alias.symlink_to('authority', target_is_directory=True)
+    captured_links = [alias] if parent_link else []
+    for entry in configured:
+        target = outside / ('final-' + entry.name)
+        target.write_bytes(b'synthetic complete TLS authority\n')
+        middle = authority / ('current-' + entry.name)
+        middle.symlink_to('../' + target.name)
+        entry.unlink(missing_ok=True)
+        entry.symlink_to((alias if parent_link else authority) / middle.name)
+        captured_links.extend([entry, middle])
+    if fault:
+        middle = authority / ('current-' + configured[0].name)
+        middle.unlink()
+        if fault == 'cycle':
+            middle.symlink_to(middle.name)
+        elif fault == 'missing':
+            middle.symlink_to('private-canary-missing.pem')
+        else:
+            middle.symlink_to('hop-0')
+            for index in range(40):
+                (authority / ('hop-' + str(index))).symlink_to(
+                    'hop-' + str(index + 1) if index < 39 else '../final-' + configured[0].name)
+    password = tmp_path / 'etc/restic/password'
+    password.parent.mkdir(parents=True, exist_ok=True)
+    password.write_text('synthetic-multihop-repository-password\n')
+    password.chmod(0o600)
+    state = tmp_path / 'state'
+    state.mkdir(mode=0o700)
+    env = {**os.environ, 'STATE_DIRECTORY': str(state), 'RESTIC_PASSWORD_FILE': str(password),
+           'RESTIC_CACHE_DIR': str(tmp_path / 'cache')}
+    if not fault:
+        subprocess.run([restic, '-r', variables['restic_repo_dir'], 'init'], env=env,
+                       capture_output=True, check=True, timeout=30)
+    result = subprocess.run(['bash', '-c', text], env=env, capture_output=True, text=True, timeout=60, check=False)
+    marker = json.loads((state / 'backup-stage-status.json').read_text())
+    if fault:
+        assert result.returncode != 0
+        assert marker['local_backup']['result'] == 'failed'
+        assert marker['integrity']['result'] == 'pending'
+        assert marker['remote_copy']['result'] == 'disabled'
+        assert 'private-canary' not in result.stderr
+        assert result.stderr.strip() == 'backup: required enabled TLS authority is absent'
+        assert not Path(variables['restic_repo_dir']).exists()
+        return
+    assert result.returncode == 0, result.stderr
+    assert marker['local_backup']['result'] == marker['integrity']['result'] == 'success'
+    restored = tmp_path / 'restored'
+    subprocess.run([restic, '-r', variables['restic_repo_dir'], 'restore', 'latest', '--target', str(restored)],
+                   env=env, capture_output=True, check=True, timeout=30)
+    for link in captured_links:
+        archived = restored / str(link).lstrip('/')
+        assert archived.is_symlink(), f'missing archived TLS link: {link.name}'
+        assert os.readlink(archived) == os.readlink(link)
+    assert not (restored / str(unrelated).lstrip('/')).exists()
+    drill = (ROOT / 'ansible/roles/backup/templates/vpn-backup-restore-drill.sh.j2').read_text()
+    resolver = re.search(r'restored_path\(\) \{.*?\n\}', drill, re.DOTALL)[0]
+    for entry in configured:
+        expected = entry.read_bytes()
+        resolved = subprocess.run(['bash', '-c', 'restore_target=$1\n' + resolver + '\nrestored_path "$2"',
+                                   'restored-tls', str(restored), str(entry).lstrip('/')],
+                                  capture_output=True, text=True, timeout=15, check=False)
+        assert resolved.returncode == 0, resolved.stderr
+        recovered = Path(resolved.stdout.strip())
+        assert recovered.is_relative_to(restored)
+        assert recovered.read_bytes() == expected

@@ -16,9 +16,12 @@ regressions, pass required source checks and merge reviewed source without deplo
   tests/unit/test_subscription_share_permissions.py and
   tests/unit/test_subscription_mirror_lifecycle.py.
 - Network worker: ansible/roles/firewall/, tests/unit/test_firewall_dhcpv6.py,
-  tests/native/transport_acceptance/test_dhcpv6.py and its minimal runner registration.
-- Integration owner: ansible/roles/backup/, matching backup tests,
-  tests/CLAUDE.md, snapshot refresh, task/spec files and all Git operations.
+  tests/native/transport_acceptance/test_dhcpv6.py, its runner diagnostics and
+  matching diagnostic unit tests. The integration owner assigns this worker
+  the serialized tests/CLAUDE.md lane for these diagnostics.
+- Backup worker: ansible/roles/backup/ and matching backup tests.
+- Integration owner: shared-file lanes, snapshot refresh, task/spec files
+  and all Git operations.
 - Shared-file changes and commits are serialized by the integration owner.
   Workers retain other agents' changes and do not stage or commit files.
 
