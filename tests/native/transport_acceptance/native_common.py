@@ -66,7 +66,7 @@ def unit_state(unit):
                 return value
         except (OSError, subprocess.TimeoutExpired):
             # Optional state inspection retains the closed unknown category.
-            pass
+            return "unknown"
     return "unknown"
 
 
