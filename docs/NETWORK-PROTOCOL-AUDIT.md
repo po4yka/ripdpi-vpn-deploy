@@ -8,7 +8,7 @@ separate evidence categories. No deployment is part of this repair.
 
 | Finding | Repair boundary | Regression evidence |
 |---|---|---|
-| Hysteria hopping intercepts forwarded UDP | Separately owned by `SEC-1792306834441683`; require its integrated public-ingress and local-destination guard | Native transit UDP regression in that source change |
+| Hysteria hopping intercepts forwarded UDP | Integrated through PR #334, owned by `SEC-1792306834441683`; public-ingress and local-destination guards remain active | Native transit UDP regression in that source change |
 | UpCloud return range excludes client NAT ports | Export the enabled provider range through inventory and remap forwarded AWG/split-hop TCP/UDP into it; retain SSH CIDR and guest stateful checks | `test_provider_nat_source_ports.py`, `test_provider_nat_native.py`, provider Terraform and inventory tests |
 | Full-device checker accepts capture exclusions | Refuse partial capture selectors and malformed capture authority | `test_check_killswitch.py` |
 | Wildcard SAN accepts another DNS suffix | Already integrated in PR #328; retain native complete-label hostname verification | `test_check_certs_key_match.py` |
@@ -19,8 +19,9 @@ separate evidence categories. No deployment is part of this repair.
 | Cascade relay closes both directions on the first FIN | Drain bounded independent directions and enforce idle time | `test_cascade_classifier_proxy.py` |
 | Alternate-port HSTS upgrades the hostname to an unrelated port 443 identity | Retain HSTS only for a compatible same-host public HTTPS/443 site; otherwise clear it | `test_public_site_contract.py` |
 | Normalizer drops empty UDP payloads | Treat empty datagrams as data and retain all association guards | `test_transport_destination_boundary.py` |
+| Native SOCKS readiness assumes a complete TCP reply in one read | Correction ef911bd4 accumulates the exact two-byte SOCKS5 reply within the existing deadline; PR #338 integrates it as bc849f60, accepted by complete main CI 39216524425 | `test_native_socks_readiness.py`, strict failed-case projection in `test_four_transport_runner.py` |
 | Sentinel installer omits the provenance inputs its caller requires | Return the exact public input map; require the full correction identity in both standalone readers | `test_real_vps_awg_nat_provisioning.py`, `test_protocol_liveness_sentinel.py`, `test_real_vps_awg_nat_lane.py` |
-| AWG emits a computed zero UDP checksum as 0000 | Correct both userspace completion paths; bind the source correction to build identity and immutable binaries | Exact-source admission, native build provenance and deterministic IPv6 packet regression; repair acceptance remains pending |
+| AWG emits a computed zero UDP checksum as 0000 | Correct both userspace completion paths; bind the source correction to build identity and immutable binaries | Exact-source admission, native build provenance, corrected isolated packet proof and integrated real AAAA regression; actual main bc849f60 passes all 45 canonical cases and complete CI 39216524425 |
 
 The task verification document records observed results and exact integrated
 source evidence. A listed test is not a claim that it ran successfully.
@@ -55,6 +56,27 @@ record or force a stub before the bridge has stopped.
   BBR, actual queue discipline, and Hysteria QUIC congestion are distinct.
 - Version bumps, new crypto groups, and optional protocol promotion are outside
   this repair. PQE HOLD and per-device credential authority remain unchanged.
+
+## Requested protocol coverage
+
+| Topics | Source contract and evidence boundary |
+|---|---|
+| IPv4/IPv6, TCP/UDP, nftables/NAT | AWG is dual-stack; split-hop supports IPv4. Provider return-port NAT has real namespace packet regressions for both transports. |
+| ICMP, ND and MTU | Firewall rules retain required ICMP errors and link-scoped ND admission. Complete path MTU discovery and fragmentation acceptance remain unverified. |
+| DNS UDP/TCP, DoH and DoT | Server resolver traffic uses UDP/TCP DNS. Client HTTPS DNS is DoH. These settings do not establish a DoT listener or client. |
+| IDNA | Lossless Unicode mapping and explicit A-label cases pass on Python 3.12.13 and 3.12.15. |
+| SNTP | The baseline installs and starts systemd-timesyncd; strict egress permits UDP/123. Service enablement does not prove clock synchronization or NTS. |
+| TLS, X25519, SNI/ALPN and HTTP/1/2 | The direct nginx profile keeps TLS 1.3 and X25519; public HTTP/2 and loopback HTTP/1.1 have distinct roles. SNI and protocol settings are source contracts, not a live VPS handshake observation. |
+| SOCKS5 and TUN | Capture authority, TCP half-close, authenticated empty UDP and fragmented SOCKS readiness replies have regressions. Physical Android kill-switch acceptance remains separate. |
+| TFO and BBR | Kernel controls and optional availability do not prove socket TFO opt-in, the active qdisc or TCP congestion control. Hysteria QUIC congestion is independent. |
+| HSTS and CSP | HSTS follows the same-host HTTPS/443 topology. CSP render contracts remain active. Browser cache state and enforcement remain unverified. |
+
+Source contracts are in the baseline tasks and sysctl template, firewall and
+nginx templates, and client payload builder. Their regressions include
+`test_firewall_egress_policy.py`, `test_firewall_native.py`,
+`test_public_site_contract.py`, `test_baseline_vps_packages.py` and
+`test_baseline_sysctl_recovery.py`. A source contract does not establish live
+negotiation or effective kernel state.
 
 ## Validation transport correction
 
@@ -112,3 +134,49 @@ were conditional audit risks, not demonstrated outages. They need exact
 baseline-plus-topology and Android engine tests before a repair is selected.
 The source tests do not establish physical-client kill-switch behavior, complete
 PMTUD/fragmentation coverage, browser HSTS cache state, or live provider routes.
+
+## Source merge and acceptance
+
+PR #333 is merged as `f4e094c7a69b3b066d4c1562c20fe2a429376929`. Final source CI 39146510843 passed. Actual main CI 39150921761 failed in IPv6 hopping readiness
+and was not accepted. The checksum and lifecycle cases pass; the readiness
+failure occurs before the packet driver and its underlying cause is unproved. The verification record
+retains the exact local, native and source scopes. This source merge does
+not authorize or establish deployment, sentinel convergence, live provider
+routes, browser state or physical-client acceptance.
+
+Corrective PR #331 candidate e415ec41 passes both SOCKS hopping families but
+fails DHCPv6 readiness before multicast sending in CI 39156237467. The route
+lookup exits nonzero; its precise cause remains unknown. The candidate is not
+accepted. At that checkpoint, whole source acceptance remained open.
+
+The next diagnostic candidate 1a3a627e repeats that same failure in CI
+39196976196. Its fixed error categories do not identify the command error;
+neither diagnostic run establishes a packet or firewall failure. The exact
+cause remains unproved; this candidate was not accepted.
+
+Candidate 86ffdad7 fails its early DHCPv6 preflight in CI 39202116288. The
+verified `ip` reports `RTNETLINK answers: Message too long` before multicast
+sending. The full core has not run. This does not establish a data-plane MTU
+or firewall defect. This candidate was not accepted.
+
+Corrective candidate 899c6308 replaces the multicast input route query with
+socket binding and exact group-membership checks before receiver readiness.
+The input query can enter multicast forwarding, although this fixture needs
+local delivery. The focused suite passes 374 cases. One earlier local null
+result remains unexplained; a later bounded comparison receives multicast
+in both fresh default-route and explicit-route arms. No route workaround is
+added. CI 39205012239 fails the early positive multicast packet assertion
+after receiver readiness; the full core suites remain empty. This candidate
+is not accepted. PR #331 keeps its separate DHCPv6 work. PR #338 publishes
+the existing SOCKS readiness correction alone. Its final source 69ba5de4
+passes the complete local make check, all 45 canonical native cases, hosted
+CI 39210543551 and all companion workflows. The protected merge bc849f60
+has the exact tested tree 254121d7. Its own CI 39216524425 attempt 1 completes
+successfully with all 92 jobs successful, including native runtime integration
+and the required-check aggregate. All nine required checks and all five
+workflows succeed. Its three canonical artifacts pass all 45 cases on exact
+source bc849f60 with matching engine identity and successful cleanup.
+Source acceptance is complete on bc849f60; the earlier main failure stays
+failed and its cause remains unproved. PR #331 remains separate and unaccepted.
+This acceptance does not establish deployment, live routes, browser state or
+physical-client behavior. All packet assertions remain required.
