@@ -786,47 +786,6 @@ jobs:
           path: native-evidence/result.json
           if-no-files-found: error
           retention-days: 14
-      - name: Retain optional synthetic DHCPv6 route refusal
-        id: native_route_diagnostic
-        if: always()
-        env:
-          NATIVE_SOURCE: ${{ github.sha }}
-          NATIVE_PLAN: ${{ matrix.plan }}
-        run: |
-          set -euo pipefail
-          stage="$(mktemp -d "$RUNNER_TEMP/native-route-diagnostic.XXXXXXXX")"
-          chmod 0700 "$stage"
-          if docker exec four-transport-native python3 -c '
-          import json,os,stat,sys
-          try:
-              with open("/var/tmp/transport-native-evidence.json", "rb") as source:
-                  raw=source.read(65537)
-              if len(raw)>65536: raise ValueError("bounded-result-required")
-              result=json.loads(raw)
-              if not isinstance(result,dict): raise ValueError("closed-result-required")
-              if (result.get("source")!=sys.argv[1] or result.get("plan")!=sys.argv[2]
-                      or result.get("route_diagnostic")!="retained"):
-                  raise ValueError("owned-diagnostic-marker-required")
-              fd=os.open("/var/tmp/transport-native-evidence.dhcpv6-route.json",os.O_RDONLY|os.O_NONBLOCK|os.O_NOFOLLOW)
-              with os.fdopen(fd,"rb") as diagnostic:
-                  info=os.fstat(diagnostic.fileno())
-                  if (not stat.S_ISREG(info.st_mode) or info.st_uid!=0
-                          or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>8192):
-                      raise ValueError("private-diagnostic-authority-required")
-          except (OSError,ValueError,TypeError):
-              raise SystemExit(1) from None
-          ' "$NATIVE_SOURCE" "$NATIVE_PLAN"; then
-            docker cp four-transport-native:/var/tmp/transport-native-evidence.dhcpv6-route.json "$stage/route.json"
-            chmod 0600 "$stage/route.json"
-            printf 'path=%s\n' "$stage/route.json" >> "$GITHUB_OUTPUT"
-          fi
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
-        if: ${{ always() && steps.native_route_diagnostic.outputs.path != '' }}
-        with:
-          name: native-dhcpv6-route-diagnostic-${{ matrix.plan }}
-          path: ${{ steps.native_route_diagnostic.outputs.path }}
-          if-no-files-found: error
-          retention-days: 1
       - name: Remove and confirm exact owned environment
         if: always()
         env:

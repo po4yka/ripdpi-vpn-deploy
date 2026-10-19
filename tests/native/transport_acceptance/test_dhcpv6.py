@@ -25,116 +25,24 @@ def run(*args, data=None):
 RECEIVER = """
 import json,os,select,socket,sys
 readiness_reported=False
-def emit_readiness(stage,mask=0):
+def emit_readiness():
  global readiness_reported
  if not readiness_reported:
   readiness_reported=True
   try:
-   print('dhcpv6-readiness:'+json.dumps({'stage':stage,'authority_mismatch':mask}),file=sys.stderr,flush=True)
+   print('dhcpv6-readiness:'+json.dumps({'stage':'bind-join','authority_mismatch':0}),file=sys.stderr,flush=True)
   except OSError:pass
 def bind_join_failure(kind,error,traceback):
- emit_readiness('bind-join')
+ emit_readiness()
  sys.__excepthook__(kind,error,traceback)
-def retain_route_refusal(returncode,error):
- import base64,hashlib,shutil,stat
- directory=os.environ.get('DHCPV6_ROUTE_DIAGNOSTIC_DIR')
- if not directory or type(returncode) is not int or not -128<=returncode<=255 or returncode==0 or len(error)>4096:return
- try:
-  executable=shutil.which('ip')
-  canonical=os.path.realpath(executable) if executable else ''
-  expected=os.environ.get('DHCPV6_ROUTE_IP_SHA256','')
-  verified=False
-  if canonical in ('/usr/sbin/ip','/usr/bin/ip'):
-   fd=os.open(canonical,os.O_RDONLY|os.O_NONBLOCK|os.O_NOFOLLOW)
-   with os.fdopen(fd,'rb') as binary:
-    info=os.fstat(binary.fileno())
-    data=binary.read(4194305) if stat.S_ISREG(info.st_mode) else b''
-   verified=(stat.S_ISREG(info.st_mode) and info.st_uid==0 and not info.st_mode&0o022
-             and data[:4]==b'\\x7fELF' and len(data)<=4194304 and len(expected)==64
-             and hashlib.sha256(data).hexdigest()==expected)
-  record={'returncode':returncode,'command_authority':'verified' if verified else 'unverified',
-          'stderr_base64':base64.b64encode(error).decode('ascii') if verified else None}
-  body=json.dumps(record,separators=(',',':')).encode()
-  parent=os.open(directory,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
-  try:
-   info=os.fstat(parent)
-   if info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o700:return
-   fd=os.open('dhcpv6-route.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=parent)
-   with os.fdopen(fd,'wb') as stream:
-    os.fchmod(stream.fileno(),0o600)
-    stream.write(body)
-  finally:os.close(parent)
- except Exception:
-  # Optional private evidence cannot change the original readiness refusal.
-  return
-def admit_multicast_input_route(interface):
- import subprocess,time
- route=None
- stage='start'
- mismatch=0
- try:
-  route=subprocess.Popen(['ip','-j','-6','route','get','ff02::1:2','from','fe80::10',
-                          'iif',interface,'ipproto','udp','sport','546','dport','547'],
-                         stdout=subprocess.PIPE,stderr=subprocess.PIPE,
-                         env={'PATH':os.environ.get('PATH',''),'LANG':'C','LC_ALL':'C'})
-  stage='unknown'
-  deadline=time.monotonic()+1
-  streams={route.stdout:bytearray(),route.stderr:bytearray()}
-  active=list(streams)
-  total=0
-  while active:
-   remaining=deadline-time.monotonic()
-   ready=select.select(active,[],[],max(0,remaining))[0] if remaining>0 else []
-   if not ready:
-    stage='read-deadline'
-    raise ValueError('route-read-refused')
-   for stream in ready:
-    chunk=os.read(stream.fileno(),4097-total)
-    if not chunk:
-     active.remove(stream)
-     continue
-    streams[stream].extend(chunk)
-    total+=len(chunk)
-    if total>4096:
-     stage='oversize'
-     raise ValueError('route-output-refused')
-  body=streams[route.stdout]
-  stage='read-deadline'
-  returncode=route.wait(timeout=max(.001,deadline-time.monotonic()))
-  if returncode!=0:
-   known_errors={
-    b'RTNETLINK answers: Network is unreachable\\n':'exit-network-unreachable',
-    b'RTNETLINK answers: Invalid argument\\n':'exit-invalid-argument',
-    b'RTNETLINK answers: Operation not permitted\\n':'exit-operation-not-permitted',
-    b'RTNETLINK answers: Permission denied\\n':'exit-permission-denied',
-    b'RTNETLINK answers: Operation not supported\\n':'exit-operation-not-supported',
-    b'Error: argument "udp" is wrong: Invalid "ipproto" value\\n\\n':'exit-protocol',
-   }
-   stage=known_errors.get(bytes(streams[route.stderr]),'exit')
-   retain_route_refusal(returncode,bytes(streams[route.stderr]))
-   raise ValueError('route-command-refused')
-  stage='json'
-  rows=json.loads(body)
-  if not isinstance(rows,list) or len(rows)!=1:raise ValueError('route-document-refused')
-  expected={'type':'multicast','dev':interface,'iif':interface,'table':'local',
-            'dst':'ff02::1:2','from':'fe80::10'}
-  if not isinstance(rows[0],dict):raise ValueError('route-authority-refused')
-  mismatch=sum(1<<index for index,(key,value) in enumerate(expected.items()) if rows[0].get(key)!=value)
-  if mismatch:
-   stage='authority'
-   raise ValueError('route-authority-refused')
- except Exception:
-  emit_readiness(stage,mismatch if stage=='authority' else 0)
-  raise SystemExit('dhcpv6-input-fib-refused') from None
- finally:
-  if route is not None:
-   try:
-    if route.poll() is None:
-     route.kill();route.wait(timeout=1)
-    route.stdout.close();route.stderr.close()
-   except Exception:
-    emit_readiness('unknown')
-    raise SystemExit('dhcpv6-input-fib-refused') from None
+def admit_multicast_membership(interface,receiver):
+ if receiver.getsockopt(socket.SOL_SOCKET,socket.SO_BINDTODEVICE,16).rstrip(b'\\0')!=interface.encode():
+  raise ValueError('dhcpv6-bound-interface-refused')
+ with open('/proc/net/igmp6') as groups:
+  member=any(len(fields)>=3 and fields[1]==interface and fields[2].lower()=='ff020000000000000000000000010002'
+             for fields in (line.split() for line in groups))
+ if not member:raise ValueError('dhcpv6-membership-refused')
+ print('dhcpv6-membership:yes',file=sys.stderr,flush=True)
 sys.excepthook=bind_join_failure
 interface,address,port,multicast=sys.argv[1:]
 s=socket.socket(socket.AF_INET6,socket.SOCK_DGRAM)
@@ -145,14 +53,7 @@ if multicast == 'yes':
  import struct
  s.setsockopt(socket.IPPROTO_IPV6,socket.IPV6_JOIN_GROUP,
               socket.inet_pton(socket.AF_INET6,'ff02::1:2')+struct.pack('@I',socket.if_nametoindex(interface)))
- try:
-  with open('/proc/net/igmp6') as groups:
-   member=any(len(fields)>=3 and fields[1]==interface and fields[2].lower()=='ff020000000000000000000000010002'
-              for fields in (line.split() for line in groups))
-  print('dhcpv6-membership:'+('yes' if member else 'no'),file=sys.stderr,flush=True)
- except OSError:
-  print('dhcpv6-membership:unknown',file=sys.stderr,flush=True)
- admit_multicast_input_route(interface)
+ admit_multicast_membership(interface,s)
 sys.excepthook=sys.__excepthook__
 print('ready',flush=True)
 if not select.select([sys.stdin],[],[],20)[0]:
@@ -244,13 +145,7 @@ def readiness_record(error):
     if not isinstance(value, dict) or set(value) != {"stage", "authority_mismatch"}:
         return None
     stage, mask = value["stage"], value["authority_mismatch"]
-    if type(stage) is not str or stage not in {
-        "start", "read-deadline", "oversize", "exit", "json", "authority", "bind-join", "unknown",
-        "exit-network-unreachable", "exit-invalid-argument", "exit-operation-not-permitted",
-        "exit-permission-denied", "exit-operation-not-supported", "exit-protocol",
-    } or type(mask) is not int:
-        return None
-    if not (1 <= mask <= 63 if stage == "authority" else mask == 0):
+    if stage != "bind-join" or type(mask) is not int or mask != 0:
         return None
     return value
 

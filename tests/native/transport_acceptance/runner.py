@@ -369,13 +369,7 @@ def dhcpv6_readiness_summary(case, case_id, result):
     if not isinstance(value, dict) or set(value) != {"stage", "authority_mismatch"}:
         return None
     stage, mask = value["stage"], value["authority_mismatch"]
-    if type(stage) is not str or stage not in {
-        "start", "read-deadline", "oversize", "exit", "json", "authority", "bind-join", "unknown",
-        "exit-network-unreachable", "exit-invalid-argument", "exit-operation-not-permitted",
-        "exit-permission-denied", "exit-operation-not-supported", "exit-protocol",
-    } or type(mask) is not int:
-        return None
-    if not (1 <= mask <= 63 if stage == "authority" else mask == 0):
+    if stage != "bind-join" or type(mask) is not int or mask != 0:
         return None
     return value
 
@@ -486,80 +480,6 @@ def engines():
 
 
 
-def route_capture_baseline():
-    """Match the actual system ip bytes to its installed package checksum."""
-    import stat
-
-    try:
-        executable = shutil.which("ip")
-        canonical = Path(executable).resolve() if executable else None
-        if canonical not in {Path("/usr/sbin/ip"), Path("/usr/bin/ip")}:
-            return ""
-        fd = os.open(canonical, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
-        with os.fdopen(fd, "rb") as stream:
-            info = os.fstat(stream.fileno())
-            data = stream.read(4194305) if stat.S_ISREG(info.st_mode) else b""
-        if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022
-                or data[:4] != b"\x7fELF" or len(data) > 4194304):
-            return ""
-        package = subprocess.run(["/usr/bin/dpkg-query", "--listfiles", "iproute2"],
-                                 capture_output=True, timeout=10, check=False)
-        if package.returncode or package.stderr or len(package.stdout) > 65536:
-            return ""
-        registered = {name for name in package.stdout.decode().splitlines()
-                      if name.startswith("/") and Path(name).resolve() == canonical}
-        if not registered:
-            return ""
-        fd = os.open("/var/lib/dpkg/info/iproute2.md5sums", os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
-        with os.fdopen(fd, "rb") as stream:
-            info = os.fstat(stream.fileno())
-            metadata = stream.read(1048577) if stat.S_ISREG(info.st_mode) else b""
-        if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022
-                or len(metadata) > 1048576):
-            return ""
-        checksums = set()
-        for line in metadata.decode().splitlines():
-            fields = line.split(maxsplit=1)
-            if len(fields) != 2 or not re.fullmatch("[0-9a-f]{32}", fields[0]):
-                return ""
-            if "/" + fields[1] in registered:
-                checksums.add(fields[0])
-        # dpkg records MD5 for installed-file integrity, not authentication.
-        # SHA256 binds the admitted bytes to each later receiver observation.
-        if checksums != {hashlib.md5(data, usedforsecurity=False).hexdigest()}:
-            return ""
-        return hashlib.sha256(data).hexdigest()
-    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError):
-        return ""
-
-
-def retain_route_diagnostic(private, output):
-    """Keep one bounded private sibling; absence or write failure stays optional."""
-    source = private / "dhcpv6-route.json"
-    try:
-        import stat
-
-        if not source.exists():
-            return False
-        fd = os.open(source, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
-        with os.fdopen(fd, "rb") as stream:
-            info = os.fstat(stream.fileno())
-            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
-                    or stat.S_IMODE(info.st_mode) != 0o600 or info.st_size > 8192):
-                return
-            data = stream.read(8193)
-        if len(data) > 8192:
-            return
-        destination = output.with_suffix(".dhcpv6-route.json")
-        with destination.open("xb") as stream:
-            os.fchmod(stream.fileno(), 0o600)
-            stream.write(data)
-        return True
-    except OSError:
-        # Optional evidence must not replace the original failed native case.
-        return False
-
-
 def main():
     if (
         sys.platform != "linux"
@@ -596,9 +516,6 @@ def main():
         with tempfile.TemporaryDirectory(
             prefix="transport-native-", dir="/var/tmp"
         ) as private:
-            baseline = route_capture_baseline() if plan in {"all", "core"} else ""
-            environment = {**os.environ, "DHCPV6_ROUTE_DIAGNOSTIC_DIR": private,
-                           "DHCPV6_ROUTE_IP_SHA256": baseline}
             for name, paths, selection in executions:
                 evidence["phase"] = name
                 report = Path(private) / (name + ".xml")
@@ -618,7 +535,6 @@ def main():
                             "--junitxml=" + str(report),
                         ],
                         cwd=ROOT,
-                        env=environment,
                         stdout=log,
                         stderr=subprocess.STDOUT,
                         timeout=2400,
@@ -626,8 +542,6 @@ def main():
                 if name == "hopping":
                     evidence["dhcpv6_diagnostics"] = dhcpv6_diagnostics(Path(private) / (name + ".log"))
                 if result.returncode:
-                    if retain_route_diagnostic(Path(private), output):
-                        evidence["route_diagnostic"] = "retained"
                     # Keep diagnostics on this isolated machine only, with private modes.
                     if report.exists():
                         if name != "dhcpv6-preflight":

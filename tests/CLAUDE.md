@@ -49,12 +49,11 @@ requires both cold and established denials. No conntrack flush separates probes.
 An expected local OUTPUT drop accepts only EPERM from sendto on an explicit
 negative probe; the receiver must still see no packet. Positive sends and other
 errno values remain fatal.
-The DHCPv6 receiver binds and joins its multicast group before readiness. A
-multicast receiver then admits its exact UDP input FIB route on the joined
-interface before it reports ready. The one-shot command has a bounded reader
-and deadline; unavailable, malformed or mismatched route authority refuses
-before the sender runs. This admits the test topology and can affect kernel
-route state; it does not identify the underlying kernel loss mechanism. Its
+The DHCPv6 receiver binds and joins its multicast group before readiness. It
+checks the actual socket's bound interface and exact group membership on that
+interface. Missing, unreadable or mismatched membership refuses before the
+sender runs. It does not query an input multicast FIB route: that query can
+require multicast forwarding state which local UDP delivery does not use. Its
 complete observation window starts only after the parent confirms the sender
 result through a bounded control acknowledgement. Portable real loopback UDP
 regressions delay sender startup beyond that window and require missing control
@@ -72,32 +71,17 @@ retain the packet outcome and raw logs stay private. Unknown fields, duplicate p
 and oversized or malformed records publish no diagnostics.
 
 Only the failed bootstrap multicast case can publish a DHCPv6 readiness
-property before ready. It contains a fixed stage and a six-bit route-authority
-mismatch mask. Zero is not applicable outside authority failures. No raw child
-or route output enters public evidence. An actual pytest JUnit regression
+property before ready. It contains only the fixed bind-join stage and a zero
+not-applicable authority mask. Obsolete route stages and masks are refused. No
+raw child output enters public evidence. An actual pytest JUnit regression
 retains the original receiver refusal and verifies this property through the
-runner parser. Readiness evidence is separate from complete packet observations;
-it does not establish the underlying refusal cause. The sender remains blocked
-until ready, and all probe assertions and deadlines stay fixed.
-The route child shares its original one-second deadline and total 4096-byte cap
-across stdout and stderr. Only exact known error strings select fixed refusal
-categories; unknown or modified output remains an unclassified exit. No raw
-child output enters the readiness property. These categories diagnose a failed
-attempt and do not establish its cause or native traffic acceptance.
+runner parser. Readiness evidence is separate from complete packet observations.
+The sender remains blocked until ready, and all probe assertions and deadlines
+stay fixed.
 The core runner first runs both complete canonical DHCPv6 cases in its private
 scratch directory. A pass still requires the unchanged complete core suites;
 a failure leaves the main suites incomplete with success false and verified
 cleanup. Early JUnit never substitutes cases in the complete suite manifest.
-Only a nonzero fixed synthetic route command can retain a separate private
-refusal artifact. The child receives only PATH and C locale variables. Raw
-stderr requires the canonical root-owned ELF to match a package-verified hash;
-other commands retain only an authority mismatch and exit status. Exclusive
-no-follow 0600 files refuse existing authority. Only successful exclusive
-retention adds a fixed retained marker; CI checks current source, plan and file
-authority before it copies that one diagnostic into a fresh private host stage.
-Only a successful copy exposes its exact upload path. Optional diagnostic failures
-cannot change the original packet assertion. The separate repo-readable CI artifact has a
-one-day retention period; public case evidence keeps its closed schema.
 
 Offline sentinel regressions use the exact deterministic no-TUN Git fixture
 and real source admission, installation, input hashing and standalone readers.

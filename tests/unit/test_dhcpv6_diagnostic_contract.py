@@ -153,6 +153,7 @@ def test_failed_suite_publishes_only_validated_observation(tmp_path, monkeypatch
     evidence = json.loads(output.read_text())
     assert evidence["dhcpv6_diagnostics"] == [record()]
     assert evidence["success"] is False
+    assert "route_diagnostic" not in evidence
     assert "private" not in output.read_text()
 
 

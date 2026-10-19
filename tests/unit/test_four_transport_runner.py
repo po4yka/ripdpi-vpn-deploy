@@ -540,11 +540,7 @@ def _dhcp_readiness_report(tmp_path, values, *, case_id=DHCP_READINESS_CASE, res
                          property_name="dhcpv6-readiness")
 
 
-@pytest.mark.parametrize("stage,mask", [
-    (stage, 0) for stage in ("start", "read-deadline", "oversize", "exit", "json", "bind-join", "unknown",
-                            "exit-network-unreachable", "exit-invalid-argument", "exit-operation-not-permitted",
-                            "exit-permission-denied", "exit-operation-not-supported", "exit-protocol")
-] + [("authority", 1), ("authority", 63)])
+@pytest.mark.parametrize("stage,mask", [("bind-join", 0)])
 @pytest.mark.parametrize("result", ["failure", "error"])
 def test_dhcp_readiness_admits_only_closed_failure_summary(tmp_path, stage, mask, result):
     summary = {"stage": stage, "authority_mismatch": mask}
@@ -572,7 +568,7 @@ def test_dhcp_readiness_invalid_property_keeps_private_data_out(tmp_path, raw):
 
 
 def test_dhcp_readiness_property_byte_bound_and_duplicates(tmp_path):
-    summary = {"stage": "exit", "authority_mismatch": 0}
+    summary = {"stage": "bind-join", "authority_mismatch": 0}
     exact = json.dumps(summary).ljust(256)
     assert runner.case_results(_dhcp_readiness_report(tmp_path, [exact]))[0]["readiness"] == summary
     for values in ([exact + " "], [exact, exact], [exact, "private"], []):
@@ -587,12 +583,12 @@ def test_dhcp_readiness_property_byte_bound_and_duplicates(tmp_path):
 ])
 def test_dhcp_readiness_never_admits_foreign_cases_or_nonfailures(tmp_path, case_id, result):
     assert runner.case_results(_dhcp_readiness_report(
-        tmp_path, [json.dumps({"stage": "exit", "authority_mismatch": 0})], case_id=case_id, result=result)) == [
+        tmp_path, [json.dumps({"stage": "bind-join", "authority_mismatch": 0})], case_id=case_id, result=result)) == [
             {"case": case_id, "result": result}]
 
 
 def test_socks_and_dhcp_readiness_cannot_cross_or_overwrite(tmp_path):
-    dhcp = {"stage": "exit", "authority_mismatch": 0}
+    dhcp = {"stage": "bind-join", "authority_mismatch": 0}
     for case_id, property_name, summary, foreign_name, foreign_summary in [
         (READINESS_CASE, "native-socks-readiness", _readiness_summary(), "dhcpv6-readiness", dhcp),
         (DHCP_READINESS_CASE, "dhcpv6-readiness", dhcp, "native-socks-readiness", _readiness_summary()),
@@ -605,17 +601,10 @@ def test_socks_and_dhcp_readiness_cannot_cross_or_overwrite(tmp_path):
         assert runner.case_results(report) == [{"case": case_id, "result": "failure", "readiness": summary}]
 
 
-@pytest.mark.parametrize("stage", ["bind-join", "exit-network-unreachable"])
+@pytest.mark.parametrize("stage", ["bind-join"])
 def test_real_pytest_junit_preserves_dhcp_receiver_refusal_for_runner(tmp_path, stage):
     """A real failing receiver child crosses pytest's actual property transport."""
-    from test_dhcpv6_receiver_contract import admission_branch_source
-
     command = "producer.RECEIVER,'not-a-real-device','::','547','yes'"
-    if stage == "exit-network-unreachable":
-        executable = tmp_path / "ip"
-        executable.write_text("#!" + sys.executable + "\nimport os;os.write(2,b'RTNETLINK answers: Network is unreachable\\n');raise SystemExit(2)\n")
-        executable.chmod(0o700)
-        command = repr(admission_branch_source()) + ",'peer0','yes'"
     directory = tmp_path / "tests/native/transport_acceptance"
     directory.mkdir(parents=True)
     test_file = directory / "test_dhcpv6.py"
@@ -658,49 +647,9 @@ def test_real_pytest_junit_preserves_dhcp_receiver_refusal_for_runner(tmp_path, 
                                            "readiness": {"stage": stage, "authority_mismatch": 0}}]
 
 
-@pytest.mark.parametrize('kind', ['symlink', 'mode', 'oversize', 'existing', 'fifo'])
-def test_route_diagnostic_retention_refuses_foreign_or_unbounded_source(tmp_path, kind):
-    private = tmp_path / 'private'
-    private.mkdir(mode=0o700)
-    source = private / 'dhcpv6-route.json'
-    output = tmp_path / 'result.json'
-    retained = output.with_suffix('.dhcpv6-route.json')
-    foreign = tmp_path / 'foreign'
-    foreign.write_bytes(b'foreign-bytes')
-    before = (foreign.stat().st_ino, foreign.read_bytes())
-    if kind == 'symlink':
-        source.symlink_to(foreign)
-    elif kind == 'fifo':
-        os.mkfifo(source, 0o600)
-    else:
-        source.write_bytes(b'x' * 8193 if kind == 'oversize' else b'bounded-refusal')
-        source.chmod(0o644 if kind == 'mode' else 0o600)
-    if kind == 'existing':
-        retained.symlink_to(foreign)
-    assert not runner.retain_route_diagnostic(private, output)
-    assert (foreign.stat().st_ino, foreign.read_bytes()) == before
-    assert retained.is_symlink() if kind == 'existing' else not retained.exists()
-
-
-def test_route_diagnostic_retains_exact_private_bytes_in_separate_sibling(tmp_path):
-    private = tmp_path / 'private'
-    private.mkdir(mode=0o700)
-    source = private / 'dhcpv6-route.json'
-    source.write_bytes(b'x' * 8192)
-    source.chmod(0o600)
-    output = tmp_path / 'result.json'
-    output.write_bytes(b'closed-public-evidence')
-    assert runner.retain_route_diagnostic(private, output) is True
-    retained = output.with_suffix('.dhcpv6-route.json')
-    assert retained.read_bytes() == source.read_bytes()
-    assert retained.stat().st_mode & 0o777 == 0o600
-    assert output.read_bytes() == b'closed-public-evidence'
-
-
 @pytest.mark.parametrize('early_pass,full_pass', [(True, True), (True, False), (False, True)])
-@pytest.mark.parametrize('diagnostic', ['absent', 'retained', 'foreign'])
 def test_runner_early_regression_never_substitutes_full_suite_or_accepts_failure(
-    tmp_path, monkeypatch, early_pass, full_pass, diagnostic
+    tmp_path, monkeypatch, early_pass, full_pass
 ):
     """Real pytest children prove scheduling; no native traffic is claimed here."""
     area = tmp_path / 'tests/native/transport_acceptance'
@@ -724,7 +673,6 @@ def test_runner_early_regression_never_substitutes_full_suite_or_accepts_failure
         f'    assert {full_pass!r}\n'
     )
     output = tmp_path / 'result.json'
-    actual_uid = os.geteuid()
     monkeypatch.setattr(runner, 'ROOT', tmp_path)
     monkeypatch.setattr(runner.sys, 'platform', 'linux')
     monkeypatch.setattr(runner.os, 'geteuid', lambda: 0)
@@ -734,30 +682,14 @@ def test_runner_early_regression_never_substitutes_full_suite_or_accepts_failure
     monkeypatch.setattr(runner, 'preflight', lambda evidence: {})
     monkeypatch.setattr(runner, 'resources', dict)
     monkeypatch.setattr(runner, 'engines', dict)
-    monkeypatch.setattr(runner, 'route_capture_baseline', lambda: '')
-    actual_retain = runner.retain_route_diagnostic
-
-    def portable_retention(private, destination):
-        # The portable controller fixture owns files as its real user.
-        with monkeypatch.context() as authority:
-            authority.setattr(runner.os, 'geteuid', lambda: actual_uid)
-            return actual_retain(private, destination)
-
-    monkeypatch.setattr(runner, 'retain_route_diagnostic', portable_retention)
     monkeypatch.setattr(runner, 'run', lambda *args, **kwargs: b'')
     monkeypatch.setattr(runner, 'suite_commands', lambda plan: [('completion', [str(complete)], [])])
     actual_run = subprocess.run
     observed = []
-    retained = output.with_suffix('.dhcpv6-route.json')
-    if diagnostic == 'foreign':
-        retained.write_bytes(b'foreign-diagnostic')
-
     def portable_pytest(argv, **kwargs):
         assert '--native-resource-checks' in argv and '--fail-on-skip' in argv
         observed.append(argv)
-        if diagnostic != 'absent':
-            private = Path(kwargs['env']['DHCPV6_ROUTE_DIAGNOSTIC_DIR']) / 'dhcpv6-route.json'
-            private.write_bytes(b'bounded-synthetic-refusal');private.chmod(0o600)
+        assert 'env' not in kwargs, "runner-injected-obsolete-route-environment"
         # The owned portable child has no Linux inventory plugin. Keep actual
         # pytest collection, assertions, exit status, JUnit and every other arg.
         argv = [arg for arg in argv if arg not in {'--native-resource-checks', '--fail-on-skip'}]
@@ -773,12 +705,7 @@ def test_runner_early_regression_never_substitutes_full_suite_or_accepts_failure
     assert evidence['success'] is (early_pass and full_pass)
     assert evidence['cleanup'] is True
     assert 'dhcpv6-preflight' not in evidence['suites']
-    if diagnostic == 'retained' and not (early_pass and full_pass):
-        assert evidence['route_diagnostic'] == 'retained'
-    else:
-        assert 'route_diagnostic' not in evidence
-    if diagnostic == 'foreign':
-        assert retained.read_bytes() == b'foreign-diagnostic'
+    assert 'route_diagnostic' not in evidence
     assert event_file.read_text().splitlines() == (
         ['bootstrap', 'established', 'full'] if early_pass else ['bootstrap', 'established'])
     assert len(observed) == (2 if early_pass else 1)
@@ -789,17 +716,13 @@ def test_runner_early_regression_never_substitutes_full_suite_or_accepts_failure
         assert evidence['failure_category'] == 'native-suite-failed:dhcpv6-preflight'
 
 
-def test_ci_route_artifact_is_separate_optional_short_lived_and_cleanup_remains_required():
+def test_ci_only_uploads_closed_evidence_and_keeps_mandatory_cleanup():
     import yaml
 
     workflow = yaml.safe_load((ROOT / '.github/workflows/ci.yml').read_text())
     steps = workflow['jobs']['transport-native-acceptance']['steps']
-    upload, = [step for step in steps if step.get('with', {}).get('name') ==
-               'native-dhcpv6-route-diagnostic-${{ matrix.plan }}']
-    assert upload['with']['path'] == '${{ steps.native_route_diagnostic.outputs.path }}'
-    assert upload['if'] == "${{ always() && steps.native_route_diagnostic.outputs.path != '' }}"
-    assert upload['with']['retention-days'] == 1
-    assert upload['with']['if-no-files-found'] == 'error'
+    assert not any(step.get('id') == 'native_route_diagnostic' for step in steps)
+    assert not any('native-dhcpv6-route-diagnostic' in str(step) for step in steps)
     public, = [step for step in steps if step.get('with', {}).get('name') ==
                'native-four-transport-evidence-${{ matrix.plan }}']
     assert public['with']['path'] == 'native-evidence/result.json'
@@ -807,143 +730,4 @@ def test_ci_route_artifact_is_separate_optional_short_lived_and_cleanup_remains_
     cleanup, = [step for step in steps if step.get('name') == 'Remove and confirm exact owned environment']
     assert cleanup['if'] == 'always()'
     assert 'test -z' in cleanup['run']
-    assert steps.index(cleanup) > steps.index(upload)
-
-
-@pytest.mark.parametrize('refusal', ['', 'foreign-package', 'package-changed', 'writable', 'non-elf',
-                                      'metadata-writable', 'metadata-symlink', 'metadata-fifo', 'metadata-oversize'])
-def test_private_route_baseline_requires_verified_package_and_trusted_binary(tmp_path, monkeypatch, refusal):
-    import ast
-    import hashlib
-
-    tree = ast.parse((ROOT / 'tests/native/transport_acceptance/runner.py').read_text())
-    helper = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
-                  and node.name == 'route_capture_baseline')
-    executable, metadata, alias = (tmp_path / name for name in ('canonical-ip', 'md5sums', 'package-alias-ip'))
-    executable.write_bytes(b'\x7fELFsynthetic-package-binary')
-    executable.chmod(0o777 if refusal == 'writable' else 0o755)
-    alias.symlink_to(executable)
-    checksum = hashlib.md5(executable.read_bytes(), usedforsecurity=False).hexdigest()
-    metadata.write_text(checksum + '  ' + str(alias).lstrip('/') + '\n')
-    metadata.chmod(0o666 if refusal == 'metadata-writable' else 0o644)
-    if refusal == 'non-elf':
-        executable.write_bytes(b'#!/bin/sh\n')
-    elif refusal == 'package-changed':
-        executable.write_bytes(b'\x7fELFchanged-package-binary')
-    elif refusal == 'metadata-symlink':
-        saved = metadata.with_suffix('.foreign')
-        metadata.rename(saved)
-        metadata.symlink_to(saved)
-    elif refusal == 'metadata-fifo':
-        metadata.unlink()
-        os.mkfifo(metadata, 0o600)
-    elif refusal == 'metadata-oversize':
-        metadata.write_bytes(b'x' * 1048577)
-
-    class FixtureAuthority(ast.NodeTransformer):
-        def visit_Constant(self, node):
-            if node.value in ('/usr/sbin/ip', '/usr/bin/ip'):
-                return ast.copy_location(ast.Constant(str(executable)), node)
-            if node.value == '/var/lib/dpkg/info/iproute2.md5sums':
-                return ast.copy_location(ast.Constant(str(metadata)), node)
-            return node
-
-        def visit_Compare(self, node):
-            if (isinstance(node.left, ast.Attribute) and node.left.attr == 'st_uid'
-                    and len(node.comparators) == 1 and isinstance(node.comparators[0], ast.Constant)
-                    and node.comparators[0].value == 0):
-                node.comparators[0] = ast.Constant(os.geteuid())
-            return self.generic_visit(node)
-
-    namespace = dict(vars(runner))
-    exec(compile(ast.fix_missing_locations(ast.Module(body=[FixtureAuthority().visit(helper)], type_ignores=[])),  # noqa: S102 - trusted repository helper
-                 str(ROOT / 'tests/native/transport_acceptance/runner.py'), 'exec'), namespace)
-    monkeypatch.setattr(runner.shutil, 'which', lambda name: str(executable))
-
-    def package_query(argv, **kwargs):
-        assert kwargs == {'capture_output': True, 'timeout': 10, 'check': False}
-        assert argv == ['/usr/bin/dpkg-query', '--listfiles', 'iproute2']
-        return subprocess.CompletedProcess(argv, 1 if refusal == 'foreign-package' else 0,
-                                           (str(alias) + '\n').encode(), b'')
-
-    monkeypatch.setattr(runner.subprocess, 'run', package_query)
-    result = namespace['route_capture_baseline']()
-    assert result == ('' if refusal else hashlib.sha256(executable.read_bytes()).hexdigest())
-
-
-@pytest.mark.parametrize('refusal', ['', 'source', 'plan', 'marker', 'mode', 'symlink', 'oversize', 'malformed', 'fifo'])
-def test_actual_ci_copy_admission_never_adopts_foreign_diagnostic(tmp_path, refusal):
-    import yaml
-
-    workflow = yaml.safe_load((ROOT / '.github/workflows/ci.yml').read_text())
-    step, = [item for item in workflow['jobs']['transport-native-acceptance']['steps']
-             if item.get('name') == 'Retain optional synthetic DHCPv6 route refusal']
-    program = step['run'].split("python3 -c '\n", 1)[1].split("\n' ", 1)[0]
-    # Relocate the two fixed paths and expected root UID; execute all admission.
-    evidence = tmp_path / 'result.json'
-    diagnostic = tmp_path / 'route.json'
-    program = program.replace('/var/tmp/transport-native-evidence.json', str(evidence))
-    program = program.replace('/var/tmp/transport-native-evidence.dhcpv6-route.json', str(diagnostic))
-    program = program.replace('info.st_uid!=0', 'info.st_uid!=' + str(os.geteuid()))
-    body = {'source': 'a' * 40, 'plan': 'core', 'route_diagnostic': 'retained'}
-    if refusal in {'source', 'plan', 'marker'}:
-        body[{'source': 'source', 'plan': 'plan', 'marker': 'route_diagnostic'}[refusal]] = 'foreign'
-    evidence.write_text('[]' if refusal == 'malformed' else json.dumps(body))
-    diagnostic.write_bytes(b'x' * (8193 if refusal == 'oversize' else 64))
-    diagnostic.chmod(0o644 if refusal == 'mode' else 0o600)
-    if refusal == 'symlink':
-        foreign = tmp_path / 'foreign'
-        diagnostic.rename(foreign)
-        diagnostic.symlink_to(foreign)
-    if refusal == 'fifo':
-        diagnostic.unlink()
-        os.mkfifo(diagnostic, 0o600)
-    result = subprocess.run([sys.executable, '-c', program, 'a' * 40, 'core'],
-                            capture_output=True, text=True, timeout=3, check=False)
-    assert result.returncode == (1 if refusal else 0)
-    assert result.stdout == result.stderr == ''
-
-
-@pytest.mark.parametrize('guard_accepts', [False, True])
-def test_actual_ci_host_copy_never_selects_preexisting_workspace_canary(tmp_path, guard_accepts):
-    import shlex
-
-    import yaml
-
-    workflow = yaml.safe_load((ROOT / '.github/workflows/ci.yml').read_text())
-    step, = [item for item in workflow['jobs']['transport-native-acceptance']['steps']
-             if item.get('id') == 'native_route_diagnostic']
-    workspace = tmp_path / 'workspace'
-    workspace.mkdir()
-    old = workspace / 'native-route-diagnostic'
-    old.mkdir()
-    canary = old / 'route.json'
-    canary.write_bytes(b'foreign-workspace-canary')
-    before = (canary.stat().st_ino, canary.read_bytes())
-    runner_temp = tmp_path / 'runner-temp'
-    runner_temp.mkdir()
-    output = tmp_path / 'github-output'
-    output.write_bytes(b'')
-    controlled = tmp_path / 'controlled-container-refusal'
-    controlled.write_bytes(b'bounded-synthetic-refusal')
-    # The container guard itself executes in the preceding regression. This
-    # boundary controls only Docker's success result and its copied file bytes.
-    adapter = ('docker() { if [[ "$1" == exec ]]; then return '
-               + ('0' if guard_accepts else '1')
-               + '; fi; [[ "$1" == cp ]]; cp -- ' + shlex.quote(str(controlled)) + ' "$3"; }\n')
-    result = subprocess.run(['bash', '-eu', '-o', 'pipefail', '-c', adapter + step['run']],
-                            cwd=workspace, env={**os.environ, 'RUNNER_TEMP': str(runner_temp),
-                                                'GITHUB_OUTPUT': str(output),
-                                                'NATIVE_SOURCE': 'a' * 40, 'NATIVE_PLAN': 'core'},
-                            capture_output=True, text=True, timeout=3, check=False)
-    assert result.returncode == 0 and result.stdout == result.stderr == ''
-    assert (canary.stat().st_ino, canary.read_bytes()) == before
-    if guard_accepts:
-        key, value = output.read_text().strip().split('=', 1)
-        selected = Path(value)
-        assert key == 'path' and selected.parent.parent == runner_temp
-        assert selected != canary and selected.read_bytes() == controlled.read_bytes()
-        assert selected.parent.stat().st_mode & 0o777 == 0o700
-        assert selected.stat().st_mode & 0o777 == 0o600
-    else:
-        assert output.read_bytes() == b''
+    assert steps.index(cleanup) > steps.index(public)
