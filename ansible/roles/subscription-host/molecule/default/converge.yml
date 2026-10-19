@@ -2,31 +2,24 @@
 - name: Converge subscription-host role
   hosts: all
   become: true
-  vars:
-    nginx_xhttp:
-      server_name: sub.example.test
-    subscription:
-      port: 8444
-      rate_limit: "5r/m"
-      rate_burst: 3
-      enable_bootstrap: true
-      revoked_tokens:
-        - "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
-      # Exercise the continuous payload mirror. rsync with a colon-free
-      # local source path performs a local copy (the -e ssh shell is
-      # ignored), so the timer-driven pull works self-contained in the
-      # container without sshd. The source lives outside /tmp because the
-      # systemd unit uses PrivateTmp=true.
-      mirror:
-        enabled: true
-        backend: rsync
-        interval: "5min"
-        source: "/var/lib/vpn-subscription-mirror-src/"
-        # A stub credential exercises the "Drop rsync ssh key" task so the
-        # regression guard in verify.yml can prove the key survives a
-        # `--delete` pull (it lives outside subscription_dir by design).
-        ssh_key: "STUB-NOT-A-REAL-KEY\n"
+  vars_files: [vars/main.yml]
   pre_tasks:
+    - name: Inspect mirror definition before the first fixture convergence
+      ansible.builtin.stat:
+        path: /etc/systemd/system/vpn-sub-mirror.timer
+      register: _mirror_fixture_before
+    - name: Verify fresh disabled mirror check mode needs no installed units
+      ansible.builtin.include_role:
+        name: subscription-host
+        tasks_from: mirror-disable
+        apply:
+          check_mode: true
+      when: not _mirror_fixture_before.stat.exists
+    - name: Verify fresh disabled mirror convergence is inert
+      ansible.builtin.include_role:
+        name: subscription-host
+        tasks_from: mirror-disable
+      when: not _mirror_fixture_before.stat.exists
     - name: Seed a fake mirror source payload tree
       ansible.builtin.file:
         path: "/var/lib/vpn-subscription-mirror-src/{{ item }}"

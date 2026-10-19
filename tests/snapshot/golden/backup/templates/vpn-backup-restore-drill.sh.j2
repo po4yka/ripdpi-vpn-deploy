@@ -69,18 +69,81 @@ snapshot_time="${snapshot[1]:?snapshot time missing}"
 
 restic -r "$REPO" --no-cache restore "$snapshot_id" --target "$restore_target"
 
+restored_path() {
+  # Absolute links belong to the archived filesystem, never the live host.
+  python3 - "$restore_target" "$1" <<'PY'
+import os
+import stat
+import sys
+from pathlib import Path, PurePosixPath
+
+root = Path(sys.argv[1]).resolve(strict=True)
+pending = list(PurePosixPath(sys.argv[2]).parts)
+parts = []
+links = 0
+try:
+    while pending:
+        part = pending.pop(0)
+        if part in ('', '.'):
+            continue
+        if part == '/' or (part == '..' and not parts):
+            raise ValueError
+        if part == '..':
+            parts.pop()
+            continue
+        candidate = root.joinpath(*parts, part)
+        info = candidate.lstat()
+        if stat.S_ISLNK(info.st_mode):
+            links += 1
+            if links > 40:
+                raise ValueError
+            target = PurePosixPath(os.readlink(candidate))
+            if target.is_absolute():
+                parts = []
+                target = target.relative_to('/')
+            pending = list(target.parts) + pending
+        else:
+            parts.append(part)
+    print(root.joinpath(*parts))
+except (OSError, ValueError):
+    raise SystemExit('restore drill: required artifact unavailable in snapshot') from None
+PY
+}
+
 require_file() {
   local relative_path="$1"
-  if [[ ! -s "$restore_target/$relative_path" ]]; then
+  local artifact
+  artifact="$(restored_path "$relative_path")" || return 1
+  if [[ ! -f "$artifact" || ! -s "$artifact" ]]; then
     echo "restore drill: required artifact missing or empty: $relative_path" >&2
     return 1
   fi
 }
 
+require_regular_file() {
+  local artifact
+  artifact="$(restored_path "$1")" || return 1
+  [[ -f "$artifact" ]] || return 1
+}
+
+require_directory() {
+  local artifact
+  artifact="$(restored_path "$1")" || return 1
+  [[ -d "$artifact" ]] || return 1
+}
+
+validate_json() {
+  local artifact
+  artifact="$(restored_path "$1")" || return 1
+  python3 -m json.tool "$artifact" >/dev/null
+}
+
 require_nonempty_directory() {
   local relative_path="$1"
-  if [[ ! -d "$restore_target/$relative_path" ]] ||
-     ! find "$restore_target/$relative_path" -maxdepth 1 -type f -size +0c -print -quit | grep -q .; then
+  local artifact
+  artifact="$(restored_path "$relative_path")" || return 1
+  if [[ ! -d "$artifact" ]] ||
+     ! find "$artifact" -maxdepth 1 -type f -size +0c -print -quit | grep -q .; then
     echo "restore drill: required artifact directory empty: $relative_path" >&2
     return 1
   fi
@@ -92,7 +155,7 @@ require_file "etc/sysctl.d/90-vpn.conf"
 require_nonempty_directory "etc/systemd/system"
 
 require_file "etc/xray/config.json"
-python3 -m json.tool "$restore_target/etc/xray/config.json" >/dev/null
+validate_json "etc/xray/config.json"
 
 
 require_file "etc/nginx/sites-available/vpn-xhttp.conf"
@@ -109,6 +172,34 @@ require_file "etc/hysteria/server.key"
 
 
 require_file "etc/amnezia/amneziawg/awg0.conf"
+
+
+
+
+
+require_nonempty_directory "etc/nginx"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+require_file "etc/vpn-watchdog.env"
+require_file "etc/vpn-watchdog-notifications.json"
+
+require_file "etc/vpn-watchdog-reality.json"
 
 
 

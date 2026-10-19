@@ -527,3 +527,234 @@ def test_final_cleanup_refuses_engine_or_source_drift_with_categorical_evidence(
     assert observed["success"] is False and observed["cleanup"] is False
     assert set(observed["cleanup_differences"]) == {changed}
     assert "private" not in output.read_text()
+
+
+DHCP_READINESS_CASE = (
+    "tests.native.transport_acceptance.test_dhcpv6."
+    "test_native_scoped_dhcpv6_bootstrap_rebind_and_legacy_server"
+)
+
+
+def _dhcp_readiness_report(tmp_path, values, *, case_id=DHCP_READINESS_CASE, result="failure"):
+    return _probe_report(tmp_path, values, case_id=case_id, result=result,
+                         property_name="dhcpv6-readiness")
+
+
+@pytest.mark.parametrize("stage,mask", [("bind-join", 0)])
+@pytest.mark.parametrize("result", ["failure", "error"])
+def test_dhcp_readiness_admits_only_closed_failure_summary(tmp_path, stage, mask, result):
+    summary = {"stage": stage, "authority_mismatch": mask}
+    assert runner.case_results(_dhcp_readiness_report(tmp_path, [json.dumps(summary)], result=result)) == [
+        {"case": DHCP_READINESS_CASE, "result": result, "readiness": summary}]
+
+
+@pytest.mark.parametrize("raw", [
+    "not-json", "null", "[]", '"private"',
+    '{"stage":"private","stage":"exit","authority_mismatch":0}',
+    *(json.dumps(value) for value in [
+        {"stage": "exit", "authority_mismatch": 0, "credential": "private"},
+        {"stage": "exit"}, {"stage": "private", "authority_mismatch": 0},
+        {"stage": [], "authority_mismatch": 0}, {"stage": True, "authority_mismatch": 0},
+        {"stage": "authority", "authority_mismatch": 0},
+        {"stage": "exit", "authority_mismatch": 1},
+        *({"stage": "authority", "authority_mismatch": mask}
+          for mask in (-1, 64, True, 1.0, "private", [], None)),
+    ]),
+])
+def test_dhcp_readiness_invalid_property_keeps_private_data_out(tmp_path, raw):
+    rows = runner.case_results(_dhcp_readiness_report(tmp_path, [raw]))
+    assert rows == [{"case": DHCP_READINESS_CASE, "result": "failure"}]
+    assert "private" not in json.dumps(rows)
+
+
+def test_dhcp_readiness_property_byte_bound_and_duplicates(tmp_path):
+    summary = {"stage": "bind-join", "authority_mismatch": 0}
+    exact = json.dumps(summary).ljust(256)
+    assert runner.case_results(_dhcp_readiness_report(tmp_path, [exact]))[0]["readiness"] == summary
+    for values in ([exact + " "], [exact, exact], [exact, "private"], []):
+        assert runner.case_results(_dhcp_readiness_report(tmp_path, values)) == [
+            {"case": DHCP_READINESS_CASE, "result": "failure"}]
+
+
+@pytest.mark.parametrize("case_id,result", [
+    (DHCP_READINESS_CASE, "passed"), (DHCP_READINESS_CASE, "skipped"),
+    (DHCP_READINESS_CASE.replace("bootstrap_rebind_and_legacy_server", "foreign"), "error"),
+    (READINESS_CASE, "failure"), (AWG_CASE, "failure"), ("foreign.test_probe", "failure"),
+])
+def test_dhcp_readiness_never_admits_foreign_cases_or_nonfailures(tmp_path, case_id, result):
+    assert runner.case_results(_dhcp_readiness_report(
+        tmp_path, [json.dumps({"stage": "bind-join", "authority_mismatch": 0})], case_id=case_id, result=result)) == [
+            {"case": case_id, "result": result}]
+
+
+def test_socks_and_dhcp_readiness_cannot_cross_or_overwrite(tmp_path):
+    dhcp = {"stage": "bind-join", "authority_mismatch": 0}
+    for case_id, property_name, summary, foreign_name, foreign_summary in [
+        (READINESS_CASE, "native-socks-readiness", _readiness_summary(), "dhcpv6-readiness", dhcp),
+        (DHCP_READINESS_CASE, "dhcpv6-readiness", dhcp, "native-socks-readiness", _readiness_summary()),
+    ]:
+        report = _probe_report(tmp_path, [json.dumps(summary)], case_id=case_id, property_name=property_name)
+        document = runner.ET.parse(report)
+        runner.ET.SubElement(document.find(".//properties"), "property", name=foreign_name,
+                             value=json.dumps(foreign_summary))
+        document.write(report)
+        assert runner.case_results(report) == [{"case": case_id, "result": "failure", "readiness": summary}]
+
+
+@pytest.mark.parametrize("stage", ["bind-join"])
+def test_real_pytest_junit_preserves_dhcp_receiver_refusal_for_runner(tmp_path, stage):
+    """A real failing receiver child crosses pytest's actual property transport."""
+    command = "producer.RECEIVER,'not-a-real-device','::','547','yes'"
+    directory = tmp_path / "tests/native/transport_acceptance"
+    directory.mkdir(parents=True)
+    test_file = directory / "test_dhcpv6.py"
+    test_file.write_text(
+        "import importlib.util, os, subprocess, sys\n"
+        f"spec=importlib.util.spec_from_file_location('dhcp_producer', {str(ROOT / 'tests/native/transport_acceptance/test_dhcpv6.py')!r})\n"
+        "producer=importlib.util.module_from_spec(spec);sys.modules[spec.name]=producer;spec.loader.exec_module(producer)\n"
+        "def test_native_scoped_dhcpv6_bootstrap_rebind_and_legacy_server(monkeypatch, record_property):\n"
+        "    real_popen=subprocess.Popen;children=[]\n"
+        "    def listener(*args, **kwargs):\n"
+        f"        child=real_popen([sys.executable,'-c',{command}],env={{**os.environ,'PATH':{str(tmp_path)!r}}},stdin=kwargs['stdin'],stdout=kwargs['stdout'],stderr=kwargs['stderr'],text=kwargs['text'])\n"
+        "        children.append(child);return child\n"
+        "    def run(*args, **kwargs):\n"
+        "        assert '-c' not in args, 'sender-launched-after-readiness-refusal'\n"
+        "        return ''\n"
+        "    monkeypatch.setattr(producer.subprocess,'Popen',listener)\n"
+        "    monkeypatch.setattr(producer,'run',run)\n"
+        "    try:\n"
+        "        producer.packet('sender','receiver',source='fe80::10',target='ff02::1:2',sport=546,dport=547,send_interface='up0',receive_interface='peer0',observe_multicast=True,record_property=record_property)\n"
+        "    finally:\n"
+        "        assert children and all(child.poll() is not None for child in children)\n"
+    )
+    report = tmp_path / "actual-dhcp.xml"
+    environment = {key: value for key, value in os.environ.items()
+                   if key not in {"PYTEST_ADDOPTS", "PYTEST_PLUGINS"}}
+    environment["PYTHONPATH"] = os.pathsep.join(map(str, (ROOT, ROOT / "scripts", ROOT / "tests/unit")))
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", str(test_file), "--rootdir=" + str(tmp_path),
+         "--confcutdir=" + str(tmp_path), "--junitxml=" + str(report)],
+        cwd=tmp_path, env=environment, capture_output=True, text=True, timeout=20, check=False,
+    )
+    assert result.returncode == 1
+    original = runner.ET.parse(report)
+    failure, = list(original.iter("failure"))
+    assert "dhcpv6-receiver-not-ready" in failure.get("message")
+    properties = [node for node in original.iter("property") if node.get("name") == "dhcpv6-readiness"]
+    assert len(properties) == 1
+    assert json.loads(properties[0].get("value")) == {"stage": stage, "authority_mismatch": 0}
+    assert runner.case_results(report) == [{"case": DHCP_READINESS_CASE, "result": "failure",
+                                           "readiness": {"stage": stage, "authority_mismatch": 0}}]
+
+
+@pytest.mark.parametrize('early_pass,full_pass', [(True, True), (True, False), (False, True)])
+def test_runner_early_regression_never_substitutes_full_suite_or_accepts_failure(
+    tmp_path, monkeypatch, early_pass, full_pass
+):
+    """Real pytest children prove scheduling; no native traffic is claimed here."""
+    area = tmp_path / 'tests/native/transport_acceptance'
+    area.mkdir(parents=True)
+    event_file = tmp_path / 'events'
+    observation = {
+        'probe_id': 'multicast-request', 'phase': 'packet', 'ready_ms': 1,
+        'send_ms': 2, 'elapsed_ms': 703, 'receiver_member': True,
+        'packet_received': False, 'output_before': 1, 'output_after': 1,
+        'postrouting_after': 11, 'prerouting_before': 13,
+        'prerouting_after': 17, 'ingress_expected': True,
+        'ipv6_no_routes': 19, 'ipv6_multicast': 23, 'ipv6_discards': 29,
+        'ipv6_address_errors': 31, 'ipv6_delivers': 37, 'local_multicast_routes': None,
+        'input_before': 0, 'input_after': 0, 'udp_errors': 0,
+        'udp_checksum_errors': 0, 'udp_no_ports': 0, 'udp_ignored_multicast': 0,
+    }
+    early = area / 'test_dhcpv6.py'
+    early.write_text(
+        'from pathlib import Path\n'
+        f'events=Path({str(event_file)!r})\n'
+        'def test_bootstrap():\n'
+        "    with events.open('a') as stream:stream.write('bootstrap\\n')\n"
+        "    print('private-preflight-canary')\n"
+        f"    print({'dhcpv6-observation:' + json.dumps(observation)!r})\n"
+        f'    assert {early_pass!r}\n'
+        'def test_established():\n'
+        "    with events.open('a') as stream:stream.write('established\\n')\n"
+    )
+    complete = area / 'test_complete.py'
+    complete.write_text(
+        'from pathlib import Path\n'
+        'def test_full_suite():\n'
+        f"    with Path({str(event_file)!r}).open('a') as stream:stream.write('full\\n')\n"
+        f'    assert {full_pass!r}\n'
+    )
+    output = tmp_path / 'result.json'
+    monkeypatch.setattr(runner, 'ROOT', tmp_path)
+    monkeypatch.setattr(runner.sys, 'platform', 'linux')
+    monkeypatch.setattr(runner.os, 'geteuid', lambda: 0)
+    monkeypatch.setenv('TRANSPORT_NATIVE_ISOLATED', '1')
+    monkeypatch.setenv('TRANSPORT_NATIVE_PLAN', 'core')
+    monkeypatch.setenv('TRANSPORT_NATIVE_EVIDENCE', str(output))
+    monkeypatch.setattr(runner, 'preflight', lambda evidence: {})
+    monkeypatch.setattr(runner, 'resources', dict)
+    monkeypatch.setattr(runner, 'engines', dict)
+    monkeypatch.setattr(runner, 'run', lambda *args, **kwargs: b'')
+    monkeypatch.setattr(runner, 'suite_commands', lambda plan: [('hopping', [str(complete)], [])])
+    actual_run = subprocess.run
+    observed = []
+    diagnostic_logs = []
+    actual_projector = runner.dhcpv6_diagnostics
+
+    def project(log):
+        diagnostic_logs.append(log.name)
+        return actual_projector(log)
+
+    monkeypatch.setattr(runner, 'dhcpv6_diagnostics', project)
+    def portable_pytest(argv, **kwargs):
+        assert '--native-resource-checks' in argv and '--fail-on-skip' in argv
+        observed.append(argv)
+        assert 'env' not in kwargs, "runner-injected-obsolete-route-environment"
+        # The owned portable child has no Linux inventory plugin. Keep actual
+        # pytest collection, assertions, exit status, JUnit and every other arg.
+        argv = [arg for arg in argv if arg not in {'--native-resource-checks', '--fail-on-skip'}]
+        return actual_run(argv, **kwargs)
+
+    monkeypatch.setattr(runner.subprocess, 'run', portable_pytest)
+    if early_pass and full_pass:
+        runner.main()
+    else:
+        with pytest.raises(RuntimeError, match='native-suite-failed:'):
+            runner.main()
+    evidence = json.loads(output.read_text())
+    assert evidence['success'] is (early_pass and full_pass)
+    assert evidence['cleanup'] is True
+    assert 'dhcpv6-preflight' not in evidence['suites']
+    assert 'route_diagnostic' not in evidence
+    assert event_file.read_text().splitlines() == (
+        ['bootstrap', 'established', 'full'] if early_pass else ['bootstrap', 'established'])
+    assert len(observed) == (2 if early_pass else 1)
+    if early_pass:
+        assert set(evidence['suites']) == {'hopping'}
+        assert diagnostic_logs == ['hopping.log']
+        assert evidence['dhcpv6_diagnostics'] == []
+    else:
+        assert evidence['suites'] == {}
+        assert diagnostic_logs == ['dhcpv6-preflight.log']
+        assert evidence['failure_category'] == 'native-suite-failed:dhcpv6-preflight'
+        assert evidence['phase'] == 'dhcpv6-preflight'
+        assert evidence['dhcpv6_diagnostics'] == [observation]
+        assert 'private-preflight-canary' not in output.read_text()
+
+
+def test_ci_only_uploads_closed_evidence_and_keeps_mandatory_cleanup():
+    import yaml
+
+    workflow = yaml.safe_load((ROOT / '.github/workflows/ci.yml').read_text())
+    steps = workflow['jobs']['transport-native-acceptance']['steps']
+    assert not any(step.get('id') == 'native_route_diagnostic' for step in steps)
+    assert not any('native-dhcpv6-route-diagnostic' in str(step) for step in steps)
+    public, = [step for step in steps if step.get('with', {}).get('name') ==
+               'native-four-transport-evidence-${{ matrix.plan }}']
+    assert public['with']['path'] == 'native-evidence/result.json'
+    assert public['with']['if-no-files-found'] == 'error'
+    cleanup, = [step for step in steps if step.get('name') == 'Remove and confirm exact owned environment']
+    assert cleanup['if'] == 'always()'
+    assert 'test -z' in cleanup['run']
+    assert steps.index(cleanup) > steps.index(public)

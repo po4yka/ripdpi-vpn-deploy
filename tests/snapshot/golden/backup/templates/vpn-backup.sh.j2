@@ -172,6 +172,7 @@ INCLUDES=(
 
 
 
+
   /etc/vpn-watchdog.env
   /etc/vpn-watchdog-notifications.json
 
@@ -180,9 +181,63 @@ INCLUDES=(
 
 )
 
-# Realm may store its TLS authority outside its configuration tree or link to
-# Hysteria's files. Archive both configured entries and their actual targets;
-# restic preserves symlinks rather than following them into backup content.
+# restic preserves links. Retain every link component and the final file,
+# using resolved parent paths so a symlink is never also archived as a directory.
+append_tls_input() {
+  local input="$1" target complete=false
+  while IFS= read -r -d '' target; do
+    if [[ -z "$target" ]]; then complete=true; else INCLUDES+=("$target"); fi
+  done < <(python3 - "$input" 2>/dev/null <<'PY'
+import os
+import stat
+import sys
+from collections import deque
+from pathlib import Path
+
+entry = Path(sys.argv[1]).absolute()
+pending = deque(entry.parts[1:])
+parent = Path('/')
+paths = []
+seen = set()
+links = 0
+while pending:
+    part = pending.popleft()
+    if part == '..':
+        parent = parent.parent
+        continue
+    candidate = parent / part
+    info = candidate.lstat()
+    if stat.S_ISLNK(info.st_mode):
+        links += 1
+        state = (candidate, tuple(pending))
+        if links > 40 or state in seen:
+            raise ValueError('TLS link chain refused')
+        seen.add(state)
+        paths.append(candidate)
+        target = Path(os.readlink(candidate))
+        if target.is_absolute():
+            parent = Path('/')
+            target = target.relative_to('/')
+        pending.extendleft(reversed(target.parts))
+    else:
+        if pending and not stat.S_ISDIR(info.st_mode):
+            raise ValueError('TLS parent is not a directory')
+        parent = candidate
+if not stat.S_ISREG(parent.lstat().st_mode):
+    raise ValueError('TLS target is not a regular file')
+paths.append(parent)
+# The empty NUL record confirms that the entire chain was validated.
+sys.stdout.buffer.write(b'\0'.join(os.fsencode(path) for path in paths) + b'\0\0')
+PY
+)
+  if [[ "$complete" != true ]]; then
+    printf '%s\n' 'backup: required enabled TLS authority is absent' >&2
+    exit 1
+  fi
+}
+
+
+
 
 
 # restic may tolerate a partially unreadable tree. Required selected inputs
@@ -216,6 +271,10 @@ REQUIRED_FILES=(
   /etc/nginx/sites-available/vpn-xhttp.conf
   /etc/nginx/tls/vpn.example.com.fullchain.pem
   /etc/nginx/tls/vpn.example.com.key
+
+
+
+
 
 
 

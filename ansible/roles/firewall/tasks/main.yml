@@ -1,4 +1,7 @@
 ---
+- name: Admit scoped DHCPv6 prerequisites before firewall mutation
+  ansible.builtin.import_tasks: dhcpv6-admission.yml
+
 - name: Validate provider NAT source-port range before mutation
   ansible.builtin.assert:
     that:

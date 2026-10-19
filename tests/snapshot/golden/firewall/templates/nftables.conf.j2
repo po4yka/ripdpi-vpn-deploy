@@ -41,6 +41,8 @@ destroy table inet nat
 
 
 
+
+
 table inet filter {
   # This transaction-owned fragment may declare only the two typed SSH source
   # sets below.  It is validated before this complete candidate is installed.
@@ -60,8 +62,14 @@ table inet filter {
     # requests before conntrack can accept an established echo stream.
     ip protocol icmp icmp type echo-request limit rate over 10/second burst 20 packets drop
     meta l4proto ipv6-icmp icmpv6 type echo-request limit rate over 10/second burst 20 packets drop
-    ct state established,related accept
     ct state invalid drop
+
+    # Conntrack tuples do not retain the interface. Keep this client scope
+    # before generic established acceptance, including unicast renewals.
+    iifname "eth0" ip6 saddr fe80::/10 fib daddr type local udp sport 547 udp dport 546 counter accept comment "dhcpv6-client-reply"
+
+    meta nfproto ipv6 udp sport 547 udp dport 546 counter drop comment "dhcpv6-client-reply-denied"
+    ct state established,related accept
 
 
     # ICMP follows the shaping floor: stateless error reports pass so

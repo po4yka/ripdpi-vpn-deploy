@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import base64
 import importlib.util
 import json
@@ -9,6 +10,7 @@ from pathlib import Path
 import subprocess
 import sys
 
+import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -190,6 +192,50 @@ def test_firewall_replaces_only_its_owned_tables():
     assert "destroy table inet filter" not in rendered
     assert "destroy table inet nat" in rendered
     assert "destroy table inet split_hop_egress" not in rendered
+
+
+@pytest.mark.parametrize("policy", ["permissive", "strict"])
+def test_molecule_rule_refresh_preserves_dhcp_comments_and_timed_bans(tmp_path, policy):
+    verify = yaml.safe_load((TEMPLATE.parents[1] / "molecule/default/verify.yml").read_text())
+    task = next(task for task in verify[0]["tasks"]
+                if task["name"] == "Timed IPv4 and IPv6 bans survive actual atomic ruleset replacement")
+    program = ast.parse(task["ansible.builtin.command"]["stdin"])
+    source_index = next(index for index, node in enumerate(program.body)
+                        if isinstance(node, ast.Assign) and node.targets[0].id == "source")
+    try_index = next(index for index, node in enumerate(program.body) if isinstance(node, ast.Try))
+    builder = ast.Module(body=program.body[source_index + 1:try_index], type_ignores=[])
+    variables = ctr.merge_render_vars()
+    variables["firewall_egress_policy"] = policy
+    variables["security_controls"] = {"fail2ban": True}
+    variables["vpn"]["enable_policy_ratelimit"] = True
+    rendered = ctr.render_template(TEMPLATE, variables)
+    candidate = tmp_path / "candidate.nft"
+    exec(compile(builder, "molecule-rule-refresh", "exec"),
+         {"source": rendered, "candidate": candidate})
+    refreshed = candidate.read_text()
+    marker = 'counter drop comment "molecule-rule-refresh"'
+    assert refreshed.count(marker) == 1
+    assert refreshed.replace(marker, "counter drop") == rendered
+    for line in rendered.splitlines():
+        if 'comment "dhcpv6-client-' in line:
+            assert line in refreshed.splitlines()
+    input_chain = refreshed.split("  chain input {", 1)[1].split("  chain forward {", 1)[0]
+    assert input_chain.endswith('    ' + marker + '\n  }\n\n')
+    selected = ast.literal_eval(next(node.value for node in program.body
+                                    if isinstance(node, ast.Assign) and node.targets[0].id == "selected"))
+    assert selected == [('f2b_sshd4', '198.51.100.22'), ('f2b_sshd6', '2001:db8::22'),
+                        ('policy_offenders', '198.51.100.23'), ('policy_offenders6', '2001:db8::23')]
+    for name, address in selected:
+        version = 6 if ':' in address else 4
+        assert f'set {name} {{\n    type ipv{version}_addr\n    flags timeout\n  }}' in refreshed
+    expiry_assertion = next(node for node in ast.walk(program) if isinstance(node, ast.Assert)
+                            and isinstance(node.msg, ast.Constant)
+                            and node.msg.value == "ban timeout was refreshed instead of preserved")
+    expiry_check = compile(ast.Module(body=[expiry_assertion], type_ignores=[]), "ban-expiry", "exec")
+    for remaining in (0, 90000, 90001):
+        with pytest.raises(AssertionError):
+            exec(expiry_check, {"remaining": remaining, "previous": {"ban": 90000}, "name": "ban"})
+    exec(expiry_check, {"remaining": 89000, "previous": {"ban": 90000}, "name": "ban"})
 
 
 def test_awg_forwarding_is_default_drop_with_only_uplink_egress():
@@ -388,7 +434,10 @@ def test_strict_egress_admits_untracked_ipv6_control_without_opening_other_proto
     assert "ipv6-icmp accept" not in chain
     assert "echo-request" not in chain
     assert "nd-router-advert" not in chain
-    assert chain.index("nd-neighbor-solicit") < chain.index("counter drop")
+    terminal_drop = "\n    counter drop\n"
+    assert chain.splitlines().count("    counter drop") == 1
+    assert chain.rstrip().endswith(terminal_drop.rstrip("\n"))
+    assert chain.index("nd-neighbor-solicit") < chain.index(terminal_drop)
 
 
 def test_provider_nat_range_is_applied_to_every_awg_instance_without_input_changes():

@@ -21,6 +21,10 @@
       - subscription.reads_log_backup_count | default(4) | int <= 14
     fail_msg: Subscription retention settings must be within their explicit storage and lifetime bounds.
 
+- name: Retire disabled mirror execution before payload changes
+  ansible.builtin.import_tasks: mirror-disable.yml
+  when: not (subscription.mirror.enabled | default(false))
+
 - name: Capture prior payload namespace before any initial provisioning
   ansible.builtin.stat:
     path: "{{ subscription.subscription_dir | default('/var/lib/vpn-subscription') }}"

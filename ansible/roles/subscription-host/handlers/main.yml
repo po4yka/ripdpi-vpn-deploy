@@ -16,3 +16,4 @@
     name: vpn-sub-mirror.timer
     state: restarted
     daemon_reload: true
+  when: subscription.mirror.enabled | default(false)

@@ -24,6 +24,11 @@ if [[ ! "$NEW_ENV" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]]; then
   exit 1
 fi
 
+if [[ ! "$SOURCE_ENV" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ || "$SOURCE_ENV" == "default" || "$NEW_ENV" == "default" ]]; then
+  echo 'default is reserved for prod; source and new environments must be valid distinct names' >&2
+  exit 1
+fi
+
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
 SRC="${TF_DIR}/environments/${SOURCE_ENV}.tfvars"
@@ -91,13 +96,16 @@ Next steps:
   1. Edit $DST — at minimum verify server_name uniqueness, and consider a
      different storage_template or plan if needed.
   2. Provision and deploy:
-       PROVIDER=${PROVIDER} ENV=${NEW_ENV} make init plan apply inventory wait
-  3. Decide cohort:
-       same stack as prod         → make ENV=${NEW_ENV} dry-run deploy verify
-       split stack (P0 only here) → render multi-host inventory:
-         HOSTS="${PROVIDER}:${SOURCE_ENV},${PROVIDER}:${NEW_ENV}" \\
-         COHORTS="fullstack,p0" \\
-         ANSIBLE_SSH_PRIVATE_KEY_FILE=~/.ssh/vpn_deploy \\
-         ./scripts/render-inventory.sh
-         make PROVIDER=${PROVIDER} ENV=${NEW_ENV} dry-run deploy verify
+       export PROVIDER=${PROVIDER} ENV=${NEW_ENV}
+       make init
+       make plan
+       make apply
+       make inventory
+       # Authenticate and pin the public SSH identity before make wait.
+       make wait
+  3. Select the cohort and exact inventory alias. Follow docs/RUNBOOK-restore.md
+     (Fresh-node prerequisites): install SSH recovery, bootstrap Tailnet, render
+     inventory with its confirmed handoff, migrate SSH ownership and prepare
+     private contexts, promotion and fresh failure-receipt mappings.
+  4. Follow docs/RUNBOOK-deploy.md for separate dry-run, deploy and verify steps.
 EOF
