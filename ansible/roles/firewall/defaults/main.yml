@@ -3,5 +3,10 @@
 # The canonical forward chain remains default-drop when this list is empty.
 firewall_forward_interface_contract: []
 
+# Empty selects the observed IPv6 route, then IPv4 for first IPv6 acquisition.
+firewall_dhcpv6_uplink_interface: ""
+# Exact canonical IPv6 server addresses for legacy unicast; no prefixes.
+firewall_dhcpv6_server_addresses: []
+
 # Provider-owned inventory constraint; empty preserves ordinary NAT selection.
 terraform_nat_source_port_range: ""

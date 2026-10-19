@@ -109,7 +109,7 @@ def test_backup_restore_drill_requires_valid_snell_config() -> None:
         variables,
     )
     assert 'require_file "etc/snell/config.json"' in rendered
-    assert 'python3 -m json.tool "$restore_target/etc/snell/config.json"' in rendered
+    assert 'validate_json "etc/snell/config.json"' in rendered
 
 
 def test_client_emitter_keeps_snell_out_of_automatic_selection() -> None:

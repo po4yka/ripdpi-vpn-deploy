@@ -60,23 +60,39 @@ def test_tunnel_postdown_preserves_the_final_interface_guard():
 
 @pytest.mark.parametrize("address", ["203.0.113.40", "2001:db8::40"])
 @pytest.mark.parametrize("enabled", [False, True])
-def test_strict_overlay_only_profile_admits_only_scoped_udp(address, enabled):
+@pytest.mark.parametrize("uplink", ["uplink0", "uplink1"])
+def test_strict_overlay_only_profile_admits_only_scoped_udp(address, enabled, uplink):
     values = merge_render_vars()
     values["vpn"] = {key: False for key in values["vpn"]}
     values["vpn"].update(enable_tailnet_management=enabled, enable_split_hop_egress=enabled)
     values["split_hop_egress_secrets"]["node_a_public_ip"] = address
     values["split_hop_egress"]["peer_listen_port"] = 51821
     values["firewall_egress_policy"] = "strict"
+    # Unrelated overlay route facts must not move explicitly admitted DHCPv6
+    # traffic onto an overlay interface or grant global server destinations.
+    values["ansible_facts"] = {
+        "default_ipv6": {"interface": "tailscale0"},
+        "interfaces": [uplink, "tailscale0"],
+    }
+    values["firewall_dhcpv6_uplink_interface"] = uplink
+    values["firewall_dhcpv6_server_addresses"] = []
     chain = output_chain(render_template(FIREWALL, values))
     assert "policy drop;" in chain
     assert "meta l4proto udp accept" not in chain
     assert "meta l4proto tcp accept" not in chain
     peer = f'{"ip6" if ":" in address else "ip"} daddr {address} udp dport 51821 accept'
-    for rule in ("meta skuid 0 udp sport 41641 accept", "meta skuid 0 udp dport 3478 accept", peer):
+    overlay_rules = ["meta skuid 0 udp sport 41641 accept", "meta skuid 0 udp dport 3478 accept", peer]
+    for rule in overlay_rules:
         assert (rule in chain) is enabled
-    if not enabled:
-        udp_rules = [line.strip() for line in chain.splitlines() if re.search(r"\budp\b", line)]
-        assert udp_rules == ["udp dport 53 accept", "udp dport 123 accept"]
+    udp_rules = [line.strip() for line in chain.splitlines() if re.search(r"\budp\b", line)]
+    assert udp_rules == [
+        f'oifname "{uplink}" ip6 saddr fe80::/10 ip6 daddr {{ ff02::1:2, fe80::/10 }} ' +
+        'udp sport 546 udp dport 547 counter accept comment "dhcpv6-client-request"',
+        'meta nfproto ipv6 udp sport 546 udp dport 547 counter drop ' +
+        'comment "dhcpv6-client-request-denied"',
+        "udp dport 53 accept", "udp dport 123 accept",
+        *(overlay_rules if enabled else []),
+    ]
 
 
 def test_canonical_firewall_retains_original_traffic_guard_before_established_accept():

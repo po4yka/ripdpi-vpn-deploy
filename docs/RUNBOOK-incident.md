@@ -98,20 +98,10 @@ rename or restore an interrupted staging file.
 
 ```bash
 # State backups live in ~/.config/vpn-provision/state-backups/<provider>-<env>-<timestamp>.tfstate.age
-# Match the complete UTC timestamp; prod-green is a different environment.
-LATEST=$(
-    shopt -s nullglob
-    backups=("${HOME}/.config/vpn-provision/state-backups/upcloud-prod-"[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z.tfstate.age)
-    if (( ${#backups[@]} == 0 )); then
-        echo "no state backup for upcloud/prod" >&2
-        exit 1
-    fi
-    ls -1t "${backups[@]}" | sed -n '1p'
-) &&
-age -d -i ~/.config/vpn-provision/age.key \
-    -o terraform/providers/upcloud/terraform.tfstate \
-    "$LATEST" &&
-chmod 0600 terraform/providers/upcloud/terraform.tfstate &&
+# Stop concurrent Terraform operations first. The helper selects only the exact
+# environment, decrypts into a private sibling, validates state structure and
+# atomically replaces state only after success. A failed restore retains old state.
+PROVIDER=upcloud ENV=prod ./scripts/restore-tf-state.sh &&
 PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh plan -var-file=environments/prod.tfvars
 # Expect: no changes
 ```

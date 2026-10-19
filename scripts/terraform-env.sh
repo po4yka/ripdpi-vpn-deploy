@@ -25,6 +25,11 @@ if [[ ! "$ENV" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]]; then
   exit 2
 fi
 
+if [[ "$ENV" == "default" ]]; then
+  echo 'ENV=default is reserved for the legacy prod workspace; use ENV=prod or a distinct environment' >&2
+  exit 2
+fi
+
 TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
 [[ -d "$TF_DIR" ]] || { echo "missing Terraform root: $TF_DIR" >&2; exit 2; }
 [[ $# -gt 0 ]] || { echo "usage: $0 <terraform command> [args...]" >&2; exit 2; }

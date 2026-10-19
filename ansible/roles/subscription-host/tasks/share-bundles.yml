@@ -4,24 +4,34 @@
 # produced by `vpnd share <client>`. nginx serves them at
 # /share/<token>/ via the subscription vhost.
 #
-# Activated only when vpn.share_bundles is populated in group_vars.
+# Upload only selected bundles; harden retained shares on every convergence.
+
+- name: Protect dedicated share ancestry
+  ansible.builtin.file:
+    path: /var/www/subscription-host
+    state: directory
+    follow: false
+    owner: root
+    group: www-data
+    mode: "0750"
 
 - name: Ensure share root directory
   ansible.builtin.file:
     path: /var/www/subscription-host/share
     state: directory
+    follow: false
     owner: root
     group: www-data
-    mode: "0755"
-  when: vpn.share_bundles | default([]) | length > 0
+    mode: "0750"
 
 - name: Ensure per-token share directories
   ansible.builtin.file:
     path: "/var/www/subscription-host/share/{{ item.token }}"
     state: directory
+    follow: false
     owner: root
     group: www-data
-    mode: "0755"
+    mode: "0750"
   no_log: true
   diff: false
   loop: "{{ vpn.share_bundles | default([]) }}"
@@ -35,8 +45,8 @@
     dest: "/var/www/subscription-host/share/{{ item.token }}/"
     owner: root
     group: www-data
-    mode: "0644"
-    directory_mode: "0755"
+    mode: "0640"
+    directory_mode: "0750"
     force: true
   no_log: true
   diff: false
@@ -45,3 +55,15 @@
     label: "{{ item.client }}"
   when: vpn.share_bundles | default([]) | length > 0
   notify: Reload nginx
+
+- name: Repair retained share tree permissions
+  ansible.builtin.file:
+    path: /var/www/subscription-host/share
+    state: directory
+    follow: false
+    recurse: true
+    owner: root
+    group: www-data
+    mode: u=rwX,g=rX,o=
+  no_log: true
+  diff: false

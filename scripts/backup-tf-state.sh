@@ -26,6 +26,11 @@ if [[ ! "$ENV" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]]; then
   exit 2
 fi
 
+if [[ "$ENV" == "default" ]]; then
+  echo 'ENV=default is reserved for the legacy prod workspace; use ENV=prod or a distinct environment' >&2
+  exit 2
+fi
+
 if [[ "$ENV" == "prod" ]]; then
   # Legacy production deployments intentionally remain in Terraform's default
   # workspace so adopting environment workspaces does not require a state move.
@@ -35,8 +40,6 @@ else
 fi
 
 BACKUP_DEST="${BACKUP_DEST:-${HOME}/.config/vpn-provision/state-backups}"
-TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-OUT="${BACKUP_DEST}/${PROVIDER}-${ENV}-${TIMESTAMP}.tfstate.age"
 
 command -v age >/dev/null 2>&1 || { echo "missing: age" >&2; exit 1; }
 
@@ -66,34 +69,71 @@ fi
 mkdir -p "$BACKUP_DEST"
 chmod 0700 "$BACKUP_DEST"
 
-# Incomplete ciphertext never has a name accepted by the recovery selector.
-# Register cleanup before creating the invocation-owned private sibling.
-temporary=""
-trap '[[ -z "$temporary" ]] || rm -f -- "$temporary"' EXIT
+# Register cleanup before allocating this invocation's private sibling.
+pending=""
+trap '[[ -z "$pending" ]] || rm -f -- "$pending"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 trap 'exit 129' HUP
 trap 'exit 131' QUIT
-temporary="$(mktemp "${BACKUP_DEST}/.state-backup.XXXXXXXXXX")"
-age "${RECIPIENTS[@]}" "$STATE_FILE" > "$temporary"
-# A same-directory hard link publishes complete bytes atomically and refuses
-# same-second collisions instead of replacing an existing recovery snapshot.
-python3 - "$temporary" "$OUT" <<'PY_PUBLISH'
+pending="$(mktemp "${BACKUP_DEST}/.state-backup.XXXXXXXXXX")"
+age "${RECIPIENTS[@]}" "$STATE_FILE" > "$pending"
+python3 - "$pending" <<'PY_SYNC'
 import os
 import sys
 
-source, destination = sys.argv[1:]
-with open(source, "rb") as ciphertext:
-    os.fsync(ciphertext.fileno())
-os.link(source, destination, follow_symlinks=False)
-os.unlink(source)
-parent = os.open(os.path.dirname(destination), os.O_RDONLY | os.O_DIRECTORY)
 try:
-    os.fsync(parent)
-finally:
-    os.close(parent)
-PY_PUBLISH
-temporary=""
+    with open(sys.argv[1], "rb") as ciphertext:
+        os.fsync(ciphertext.fileno())
+except OSError:
+    sys.exit("state backup file sync failed")
+PY_SYNC
+
+# A hard link publishes complete ciphertext without overwriting another writer.
+# Keep the established timestamp contract and wait at most ten collision retries.
+for ((attempt = 0; attempt <= 10; attempt++)); do
+  TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+  OUT="${BACKUP_DEST}/${PROVIDER}-${ENV}-${TIMESTAMP}.tfstate.age"
+  if python3 - "$pending" "$OUT" <<'PYTHON'
+import os
+import sys
+
+try:
+    os.link(sys.argv[1], sys.argv[2], follow_symlinks=False)
+except FileExistsError:
+    sys.exit(17)
+except OSError:
+    sys.exit(1)
+PYTHON
+  then
+    break
+  else
+    publication_status=$?
+  fi
+  if (( publication_status != 17 || attempt == 10 )); then
+    echo 'state backup publication failed; existing backups were retained' >&2
+    exit 1
+  fi
+  sleep 1
+done
+
+# Persist both the complete final name and removal of the private staging name.
+# A sync failure retains the complete backup but cannot announce success or prune.
+python3 - "$pending" "$BACKUP_DEST" <<'PY_SYNC'
+import os
+import sys
+
+try:
+    os.unlink(sys.argv[1])
+    parent = os.open(sys.argv[2], os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(parent)
+    finally:
+        os.close(parent)
+except OSError:
+    sys.exit("state backup directory sync failed")
+PY_SYNC
+pending=""
 
 echo "wrote $OUT"
 
