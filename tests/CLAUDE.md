@@ -82,6 +82,11 @@ The core runner first runs both complete canonical DHCPv6 cases in its private
 scratch directory. A pass still requires the unchanged complete core suites;
 a failure leaves the main suites incomplete with success false and verified
 cleanup. Early JUnit never substitutes cases in the complete suite manifest.
+On an early packet failure, the runner retains the completed observation through
+the hopping suite's closed parser and field. Successful early gates publish no
+sample; canonical hopping owns the single record otherwise. A pre-ready refusal
+still has no structured readiness entry in the main result. Retention does not
+establish the cause of a lost packet.
 
 Offline sentinel regressions use the exact deterministic no-TUN Git fixture
 and real source admission, installation, input hashing and standalone readers.

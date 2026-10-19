@@ -539,7 +539,9 @@ def main():
                         stderr=subprocess.STDOUT,
                         timeout=2400,
                     )
-                if name == "hopping":
+                # Hopping owns the one-record observation. An early failure has no
+                # canonical result, so retain that failed attempt instead.
+                if name == "hopping" or (name == "dhcpv6-preflight" and result.returncode):
                     evidence["dhcpv6_diagnostics"] = dhcpv6_diagnostics(Path(private) / (name + ".log"))
                 if result.returncode:
                     # Keep diagnostics on this isolated machine only, with private modes.

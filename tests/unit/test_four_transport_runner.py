@@ -655,12 +655,21 @@ def test_runner_early_regression_never_substitutes_full_suite_or_accepts_failure
     area = tmp_path / 'tests/native/transport_acceptance'
     area.mkdir(parents=True)
     event_file = tmp_path / 'events'
+    observation = {
+        'probe_id': 'multicast-request', 'phase': 'packet', 'ready_ms': 1,
+        'send_ms': 2, 'elapsed_ms': 703, 'receiver_member': True,
+        'packet_received': False, 'output_before': 1, 'output_after': 1,
+        'input_before': 0, 'input_after': 0, 'udp_errors': 0,
+        'udp_checksum_errors': 0, 'udp_no_ports': 0, 'udp_ignored_multicast': 0,
+    }
     early = area / 'test_dhcpv6.py'
     early.write_text(
         'from pathlib import Path\n'
         f'events=Path({str(event_file)!r})\n'
         'def test_bootstrap():\n'
         "    with events.open('a') as stream:stream.write('bootstrap\\n')\n"
+        "    print('private-preflight-canary')\n"
+        f"    print({'dhcpv6-observation:' + json.dumps(observation)!r})\n"
         f'    assert {early_pass!r}\n'
         'def test_established():\n'
         "    with events.open('a') as stream:stream.write('established\\n')\n"
@@ -683,9 +692,17 @@ def test_runner_early_regression_never_substitutes_full_suite_or_accepts_failure
     monkeypatch.setattr(runner, 'resources', dict)
     monkeypatch.setattr(runner, 'engines', dict)
     monkeypatch.setattr(runner, 'run', lambda *args, **kwargs: b'')
-    monkeypatch.setattr(runner, 'suite_commands', lambda plan: [('completion', [str(complete)], [])])
+    monkeypatch.setattr(runner, 'suite_commands', lambda plan: [('hopping', [str(complete)], [])])
     actual_run = subprocess.run
     observed = []
+    diagnostic_logs = []
+    actual_projector = runner.dhcpv6_diagnostics
+
+    def project(log):
+        diagnostic_logs.append(log.name)
+        return actual_projector(log)
+
+    monkeypatch.setattr(runner, 'dhcpv6_diagnostics', project)
     def portable_pytest(argv, **kwargs):
         assert '--native-resource-checks' in argv and '--fail-on-skip' in argv
         observed.append(argv)
@@ -710,10 +727,16 @@ def test_runner_early_regression_never_substitutes_full_suite_or_accepts_failure
         ['bootstrap', 'established', 'full'] if early_pass else ['bootstrap', 'established'])
     assert len(observed) == (2 if early_pass else 1)
     if early_pass:
-        assert set(evidence['suites']) == {'completion'}
+        assert set(evidence['suites']) == {'hopping'}
+        assert diagnostic_logs == ['hopping.log']
+        assert evidence['dhcpv6_diagnostics'] == []
     else:
         assert evidence['suites'] == {}
+        assert diagnostic_logs == ['dhcpv6-preflight.log']
         assert evidence['failure_category'] == 'native-suite-failed:dhcpv6-preflight'
+        assert evidence['phase'] == 'dhcpv6-preflight'
+        assert evidence['dhcpv6_diagnostics'] == [observation]
+        assert 'private-preflight-canary' not in output.read_text()
 
 
 def test_ci_only_uploads_closed_evidence_and_keeps_mandatory_cleanup():
