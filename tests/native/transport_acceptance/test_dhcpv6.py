@@ -35,6 +35,38 @@ def emit_readiness(stage,mask=0):
 def bind_join_failure(kind,error,traceback):
  emit_readiness('bind-join')
  sys.__excepthook__(kind,error,traceback)
+def retain_route_refusal(returncode,error):
+ import base64,hashlib,shutil,stat
+ directory=os.environ.get('DHCPV6_ROUTE_DIAGNOSTIC_DIR')
+ if not directory or type(returncode) is not int or not -128<=returncode<=255 or returncode==0 or len(error)>4096:return
+ try:
+  executable=shutil.which('ip')
+  canonical=os.path.realpath(executable) if executable else ''
+  expected=os.environ.get('DHCPV6_ROUTE_IP_SHA256','')
+  verified=False
+  if canonical in ('/usr/sbin/ip','/usr/bin/ip'):
+   fd=os.open(canonical,os.O_RDONLY|os.O_NONBLOCK|os.O_NOFOLLOW)
+   with os.fdopen(fd,'rb') as binary:
+    info=os.fstat(binary.fileno())
+    data=binary.read(4194305) if stat.S_ISREG(info.st_mode) else b''
+   verified=(stat.S_ISREG(info.st_mode) and info.st_uid==0 and not info.st_mode&0o022
+             and data[:4]==b'\\x7fELF' and len(data)<=4194304 and len(expected)==64
+             and hashlib.sha256(data).hexdigest()==expected)
+  record={'returncode':returncode,'command_authority':'verified' if verified else 'unverified',
+          'stderr_base64':base64.b64encode(error).decode('ascii') if verified else None}
+  body=json.dumps(record,separators=(',',':')).encode()
+  parent=os.open(directory,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+  try:
+   info=os.fstat(parent)
+   if info.st_uid!=os.geteuid() or stat.S_IMODE(info.st_mode)!=0o700:return
+   fd=os.open('dhcpv6-route.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=parent)
+   with os.fdopen(fd,'wb') as stream:
+    os.fchmod(stream.fileno(),0o600)
+    stream.write(body)
+  finally:os.close(parent)
+ except Exception:
+  # Optional private evidence cannot change the original readiness refusal.
+  return
 def admit_multicast_input_route(interface):
  import subprocess,time
  route=None
@@ -43,7 +75,8 @@ def admit_multicast_input_route(interface):
  try:
   route=subprocess.Popen(['ip','-j','-6','route','get','ff02::1:2','from','fe80::10',
                           'iif',interface,'ipproto','udp','sport','546','dport','547'],
-                         stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                         stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+                         env={'PATH':os.environ.get('PATH',''),'LANG':'C','LC_ALL':'C'})
   stage='unknown'
   deadline=time.monotonic()+1
   streams={route.stdout:bytearray(),route.stderr:bytearray()}
@@ -67,7 +100,8 @@ def admit_multicast_input_route(interface):
      raise ValueError('route-output-refused')
   body=streams[route.stdout]
   stage='read-deadline'
-  if route.wait(timeout=max(.001,deadline-time.monotonic()))!=0:
+  returncode=route.wait(timeout=max(.001,deadline-time.monotonic()))
+  if returncode!=0:
    known_errors={
     b'RTNETLINK answers: Network is unreachable\\n':'exit-network-unreachable',
     b'RTNETLINK answers: Invalid argument\\n':'exit-invalid-argument',
@@ -77,6 +111,7 @@ def admit_multicast_input_route(interface):
     b'Error: argument "udp" is wrong: Invalid "ipproto" value\\n\\n':'exit-protocol',
    }
    stage=known_errors.get(bytes(streams[route.stderr]),'exit')
+   retain_route_refusal(returncode,bytes(streams[route.stderr]))
    raise ValueError('route-command-refused')
   stage='json'
   rows=json.loads(body)

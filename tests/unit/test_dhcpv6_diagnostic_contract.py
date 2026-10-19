@@ -123,6 +123,9 @@ def test_failed_suite_publishes_only_validated_observation(tmp_path, monkeypatch
     monkeypatch.setattr(runner.os, "geteuid", lambda: 0)
     monkeypatch.setenv("TRANSPORT_NATIVE_ISOLATED", "1")
     monkeypatch.setenv("TRANSPORT_NATIVE_EVIDENCE", str(output))
+    # This isolated controller fixture tests hopping observation publication;
+    # the core's separate early DHCP gate has its own complete regressions.
+    monkeypatch.setenv("TRANSPORT_NATIVE_PLAN", "recovery-1")
     monkeypatch.setattr(runner, "preflight", lambda evidence: {})
     monkeypatch.setattr(runner, "suite_commands", lambda plan: [("hopping", [], [])])
     original_temporary = runner.tempfile.TemporaryDirectory

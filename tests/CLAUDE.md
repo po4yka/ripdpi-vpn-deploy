@@ -84,6 +84,20 @@ across stdout and stderr. Only exact known error strings select fixed refusal
 categories; unknown or modified output remains an unclassified exit. No raw
 child output enters the readiness property. These categories diagnose a failed
 attempt and do not establish its cause or native traffic acceptance.
+The core runner first runs both complete canonical DHCPv6 cases in its private
+scratch directory. A pass still requires the unchanged complete core suites;
+a failure leaves the main suites incomplete with success false and verified
+cleanup. Early JUnit never substitutes cases in the complete suite manifest.
+Only a nonzero fixed synthetic route command can retain a separate private
+refusal artifact. The child receives only PATH and C locale variables. Raw
+stderr requires the canonical root-owned ELF to match a package-verified hash;
+other commands retain only an authority mismatch and exit status. Exclusive
+no-follow 0600 files refuse existing authority. Only successful exclusive
+retention adds a fixed retained marker; CI checks current source, plan and file
+authority before it copies that one diagnostic into a fresh private host stage.
+Only a successful copy exposes its exact upload path. Optional diagnostic failures
+cannot change the original packet assertion. The separate repo-readable CI artifact has a
+one-day retention period; public case evidence keeps its closed schema.
 
 Offline sentinel regressions use the exact deterministic no-TUN Git fixture
 and real source admission, installation, input hashing and standalone readers.
