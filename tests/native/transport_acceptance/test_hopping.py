@@ -16,7 +16,7 @@ pytestmark = pytest.mark.native_runtime
 
 
 @pytest.mark.parametrize("family", [4, 6])
-def test_native_hopping_no_net_admin_outbound_preserved_and_repeated_removal(family):
+def test_native_hopping_no_net_admin_outbound_preserved_and_repeated_removal(family, record_property):
     stack = fixture.NativeStack()
     client_ns = stack.token + "c"
     forward_ns = stack.token + "f"
@@ -152,7 +152,8 @@ def test_native_hopping_no_net_admin_outbound_preserved_and_repeated_removal(fam
         value["transport"] = {"udp": {"hopInterval": "5s"}}
         path.write_text(yaml.safe_dump(value))
         fixture.command(["systemctl", "restart", stack.units[-1]])
-        wait_client(client_ns, port)
+        wait_client(client_ns, port, unit=stack.units[-1], record_property=record_property,
+                    family=family, phase="hopping")
         # The actual daemon must lack CAP_NET_ADMIN, independently of fixture root.
         unit = stack.token + "-hysteria"
         pid = int(
@@ -206,7 +207,7 @@ for _ in range(2):
             ROOT / "ansible/roles/firewall/templates/nftables.conf.j2", stack.values
         )
         assert 'comment "hysteria-port-hopping"' not in without
-        for _ in range(2):
+        for cycle in range(2):
             run("nft", "-f", "-", data=without)
             assert "hysteria-port-hopping" not in run("nft", "list", "ruleset")
             assert (
@@ -216,7 +217,8 @@ for _ in range(2):
             value.pop("transport", None)
             path.write_text(yaml.safe_dump(value))
             fixture.command(["systemctl", "restart", stack.units[-1]])
-            wait_client(client_ns, port)
+            wait_client(client_ns, port, unit=stack.units[-1], record_property=record_property,
+                        family=family, phase="retirement", cycle=cycle)
             stack.namespace = client_ns
             stack.run_driver(port)
             stack.namespace = server_ns

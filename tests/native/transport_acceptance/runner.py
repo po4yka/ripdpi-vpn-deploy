@@ -222,6 +222,57 @@ def awg_probe_summary(case, case_id, result):
     return value
 
 
+SOCKS_READINESS_CASES = frozenset(
+    "tests.native.transport_acceptance.test_hopping."
+    "test_native_hopping_no_net_admin_outbound_preserved_and_repeated_removal["
+    + str(family) + "]" for family in (4, 6)
+)
+MAX_SOCKS_READINESS_BYTES = 256
+
+
+def socks_readiness_summary(case, case_id, result):
+    if case_id not in SOCKS_READINESS_CASES or result not in {"failure", "error"}:
+        return None
+    properties = [node for node in case.findall("./properties/property")
+                  if node.get("name") == "native-socks-readiness"]
+    if len(properties) != 1:
+        return None
+    raw = properties[0].get("value", "")
+    if len(raw.encode("utf-8")) > MAX_SOCKS_READINESS_BYTES:
+        return None
+
+    def unique_object(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate-readiness-key")
+            value[key] = item
+        return value
+
+    try:
+        value = json.loads(raw, object_pairs_hook=unique_object)
+    except (ValueError, TypeError, RecursionError):
+        return None
+    enums = {
+        "family": {"ipv4", "ipv6"}, "phase": {"hopping", "retirement"},
+        "reason": {"connect-deadline", "reply-deadline", "eof", "wrong-version",
+                   "wrong-method", "process-timeout", "probe-error"},
+        "unit_state": {"active", "activating", "inactive", "deactivating", "failed", "unknown"},
+    }
+    if not isinstance(value, dict) or set(value) != {*enums, "cycle"}:
+        return None
+    if any(type(value[key]) is not str or value[key] not in allowed
+           for key, allowed in enums.items()):
+        return None
+    if value["family"] != ("ipv4" if case_id.endswith("[4]") else "ipv6"):
+        return None
+    cycle = value["cycle"]
+    if not ((value["phase"] == "hopping" and cycle is None)
+            or (value["phase"] == "retirement" and type(cycle) is int and cycle in {0, 1})):
+        return None
+    return value
+
+
 def case_results(path):
     root = ET.parse(path).getroot()
     rows = []
@@ -240,6 +291,9 @@ def case_results(path):
         probe = awg_probe_summary(case, row["case"], result)
         if probe is not None:
             row["probe"] = probe
+        readiness = socks_readiness_summary(case, row["case"], result)
+        if readiness is not None:
+            row["readiness"] = readiness
         rows.append(row)
     return rows
 
