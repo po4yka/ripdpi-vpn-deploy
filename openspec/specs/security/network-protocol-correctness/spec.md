@@ -139,6 +139,27 @@ correction, and build receipts MUST bind its content to the installed binary.
 - **THEN** its immutable identity includes the correction and its response
   returns the exact input map required by the existing provenance caller.
 
+### Requirement: REQ-NPC-SOCKS-READINESS — Read complete SOCKS5 replies
+
+Native SOCKS5 readiness MUST accumulate exactly two reply bytes within its
+existing per-connection timeout and overall readiness deadline. A valid 05 00
+reply delivered in separate TCP reads MUST pass when it completes within both
+bounds. EOF, invalid versions or methods, and timeouts MUST not establish
+readiness. Existing traffic, firewall and engine-identity assertions MUST remain
+active.
+
+#### Scenario: Fragmented method-selection reply
+
+- **WHEN** a valid server reply arrives as 05 and then 00 in separate TCP
+  reads within the existing per-connection and overall time bounds
+- **THEN** native readiness accepts the complete valid SOCKS5 reply.
+
+#### Scenario: Incomplete or invalid reply
+
+- **WHEN** the reply is truncated, has an invalid version or method, or exceeds
+  an existing time bound
+- **THEN** that reply does not establish readiness.
+
 ### Requirement: REQ-NPC-EVIDENCE — Retain the complete audit ledger
 
 Verification MUST account for every confirmed audit defect, including the

@@ -33,6 +33,7 @@ artifact_evidence: Source 69ba5de4 passes 45 canonical cases, complete local gat
 | REQ-NPC-RESOLVER | SEC-1792307142612713 | 49 resolver/runtime tests; interrupted apply replay; independent focused review APPROVE; scope: Passed locally | passed |
 | REQ-NPC-DISCOVERY | SEC-1792317891777907 | 38 checkout-discovery tests; real large-input, byte-identity, filter-refusal and FIFO deadline cases; actual Make and selected-task commands; scope: Passed locally | passed |
 | REQ-NPC-UDP-CHECKSUM | SEC-1792321613767971 | Baseline/current packet proof; strict source correction, build-identity tests and corrected real-packet regression; scope: Passed isolated proof, source PR CI and actual main bc849f60 CI 39216524425 | passed |
+| REQ-NPC-SOCKS-READINESS | SEC-1792307143659844 | `test_native_socks_readiness.py` and `test_four_transport_runner.py`: real TCP fragmented 05/00 replies, EOF/version/method/deadline refusals and strict failed-case diagnostics; 148 focused cases passed, followed by the exact-tree complete local gate and actual main bc849f60 CI 39216524425 | passed |
 | REQ-NPC-EVIDENCE | SEC-1792307143659844 | Complete local gate, final integration, protected PRs 333 and 338, and exact merged-source main CI below; scope: Source acceptance passed on actual main bc849f60 | passed |
 
 ## Coordination
@@ -543,3 +544,12 @@ remain failed evidence. The cause of the historical SOCKS failure and the
 earlier local multicast null result remain unexplained. PR #331 owns its separate
 unaccepted DHCPv6 work. No deployment, private fleet access, sentinel
 convergence, live route, browser or physical-client acceptance is claimed.
+
+## Post-review contract clarification
+
+An additive documentation follow-up after review 8aa6cbda and terminal record
+adca1393 states REQ-NPC-SOCKS-READINESS explicitly in the archived delta and
+main specification. The accepted implementation, regressions and source proof
+on bc849f60 predate this clarification. The new row maps that existing proof;
+it does not claim a new runtime change or a new test run. The issue, execution,
+lifecycle receipts and accepted commit_sha remain unchanged.
