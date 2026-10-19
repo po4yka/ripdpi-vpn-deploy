@@ -2,7 +2,7 @@
 id: SEC-1792307003680932
 title: Repair network protocol correctness audit defects
 kind: bug
-status: doing
+status: review
 area: security
 priority: high
 risk: high
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: network-protocol-correctness
 created: 2026-10-18
-updated: 2026-10-18
+updated: 2026-10-19
 related_tasks: []
 ---
 
