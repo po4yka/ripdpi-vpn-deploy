@@ -154,6 +154,76 @@ def test_observer_is_counter_only_and_keeps_native_packet_matrix():
                    for key in call.keywords) for call in warm_probes) == 2
 
 
+@pytest.mark.parametrize("case_name,address_count", [
+    ("test_native_scoped_dhcpv6_bootstrap_rebind_and_legacy_server", 8),
+    ("test_native_established_dhcpv6_tuple_cannot_cross_uplink_scope", 4),
+])
+def test_actual_initialization_raises_both_veth_ends_before_addressing(case_name, address_count):
+    """Exercise actual setup order at a portable RTNL boundary, before any packet."""
+    import subprocess
+
+    class BeforePolicy(Exception):
+        pass
+
+    namespaces, up, deleted, addresses, pairs, routes = set(), set(), [], [], [], []
+    endpoint_pair = {}
+
+    def run(*argv, **kwargs):
+        assert not kwargs, "policy-or-packet-command-before-setup-sentinel"
+        if argv[:3] == ("ip", "netns", "add"):
+            assert argv[3] not in namespaces
+            namespaces.add(argv[3])
+        elif argv[:3] == ("ip", "netns", "delete"):
+            namespaces.remove(argv[3])
+            deleted.append(argv[3])
+        else:
+            assert argv[:2] == ("ip", "-n") and argv[2] in namespaces
+            namespace = argv[2]
+            if argv[3:5] == ("link", "add"):
+                assert argv[6:10] == ("type", "veth", "peer", "name")
+                assert argv[11] == "netns" and argv[12] in namespaces
+                pair = ((namespace, argv[5]), (argv[12], argv[10]))
+                pairs.append(pair)
+                for endpoint in pair:
+                    assert endpoint not in endpoint_pair
+                    endpoint_pair[endpoint] = pair
+            elif argv[3:5] == ("link", "set"):
+                assert argv[6:] == ("up",)
+                if argv[5] != "lo":
+                    endpoint = (namespace, argv[5])
+                    assert endpoint in endpoint_pair and endpoint not in up
+                    up.add(endpoint)
+            elif argv[3:5] == ("addr", "add"):
+                assert argv[6] == "dev" and argv[8:] == ("nodad",)
+                endpoint = (namespace, argv[7])
+                assert all(end in up for end in endpoint_pair[endpoint]), "address-before-both-veth-ends-up"
+                addresses.append(argv)
+            else:
+                assert argv[3:] == ("-6", "route", "add", "ff02::/16", "dev", "up0")
+                routes.append(argv)
+        return ""
+
+    def before_policy():
+        raise BeforePolicy
+
+    def refuse_packet_or_policy(*_args, **_kwargs):
+        pytest.fail("packet-or-policy-executed-by-initialization-regression")
+
+    tree = ast.parse((ROOT / "tests/native/transport_acceptance/test_dhcpv6.py").read_text())
+    case = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == case_name)
+    namespace = {"run": run, "merge_render_vars": before_policy, "packet": refuse_packet_or_policy,
+                 "render_template": refuse_packet_or_policy, "subprocess": subprocess,
+                 "sys": types.SimpleNamespace(platform="linux"),
+                 "os": types.SimpleNamespace(geteuid=lambda: 0),
+                 "secrets": types.SimpleNamespace(token_hex=lambda length: "01" * length)}
+    exec(compile(ast.Module(body=[case], type_ignores=[]), "actual-native-initialization", "exec"), namespace)
+    with pytest.raises(BeforePolicy):
+        namespace[case_name](*([refuse_packet_or_policy] if case.args.args else []))
+    assert not namespaces and len(deleted) == 2
+    assert len(pairs) == 2 and len(up) == 4 and len(addresses) == address_count
+    assert len(routes) == (1 if address_count == 8 else 0)
+
+
 def test_failed_suite_publishes_only_validated_observation(tmp_path, monkeypatch):
     output = tmp_path / "evidence.json"
     monkeypatch.setattr(runner.sys, "platform", "linux")

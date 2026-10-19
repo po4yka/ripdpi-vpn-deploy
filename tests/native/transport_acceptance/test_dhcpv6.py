@@ -367,13 +367,16 @@ def test_native_scoped_dhcpv6_bootstrap_rebind_and_legacy_server(record_property
         for index, (left, right) in enumerate((("up0", "peer0"), ("wrong0", "other0"))):
             run("ip", "-n", client, "link", "add", left, "type", "veth",
                 "peer", "name", right, "netns", peer)
+            # Bring both ends UP before addresses: DOWN devices reject multicast routes.
+            # This avoids waiting for a later link-readiness notification.
+            run("ip", "-n", client, "link", "set", left, "up")
+            run("ip", "-n", peer, "link", "set", right, "up")
             for namespace, name, local in (
                 (client, left, "10" if index == 0 else "30"),
                 (peer, right, "20" if index == 0 else "40"),
             ):
                 run("ip", "-n", namespace, "addr", "add", "fe80::" + local + "/64", "dev", name, "nodad")
                 run("ip", "-n", namespace, "addr", "add", "fd42:" + str(index) + "::" + local + "/64", "dev", name, "nodad")
-                run("ip", "-n", namespace, "link", "set", name, "up")
         run("ip", "-n", client, "-6", "route", "add", "ff02::/16", "dev", "up0")
         values = merge_render_vars()
         values.update(
@@ -446,12 +449,15 @@ def test_native_established_dhcpv6_tuple_cannot_cross_uplink_scope():
         for left, right in (("up0", "peer0"), ("wrong0", "other0")):
             run("ip", "-n", client, "link", "add", left, "type", "veth",
                 "peer", "name", right, "netns", peer)
+            # Bring both ends UP before addresses: DOWN devices reject multicast routes.
+            # This avoids waiting for a later link-readiness notification.
+            run("ip", "-n", client, "link", "set", left, "up")
+            run("ip", "-n", peer, "link", "set", right, "up")
             # Link-local scope permits the same address on independent links.
             for namespace, interface, address in (
                 (client, left, "fe80::10/64"), (peer, right, "fe80::20/64"),
             ):
                 run("ip", "-n", namespace, "addr", "add", address, "dev", interface, "nodad")
-                run("ip", "-n", namespace, "link", "set", interface, "up")
         values = merge_render_vars()
         values.update(
             ansible_facts={"default_ipv4": {"interface": "up0"}},

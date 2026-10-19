@@ -91,6 +91,11 @@ retains the original receiver refusal and verifies this property through the
 runner parser. Readiness evidence is separate from complete packet observations.
 The sender remains blocked until ready, and all probe assertions and deadlines
 stay fixed.
+Both veth endpoints must be UP before manual nodad addresses are added in either
+DHCPv6 case. Address creation can succeed while multicast route creation rejects
+a DOWN device; waiting for a later link notification makes cold delivery depend
+on setup timing. The portable initialization regression stops before policy or
+packets and checks command order and namespace cleanup, not native acceptance.
 The core runner first runs both complete canonical DHCPv6 cases in its private
 scratch directory. A pass still requires the unchanged complete core suites;
 a failure leaves the main suites incomplete with success false and verified
