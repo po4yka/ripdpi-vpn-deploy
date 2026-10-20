@@ -8,7 +8,11 @@
     sharedscripts
     postrotate
         if systemctl is-active --quiet xray.service; then
-{%- if vpn.enable_transport_egress | default(false) | bool %}
+{#- Same predicate as transport-egress-prepare.yml: profiles replace the vpn map. #}
+{%- if not (vpn_subscription_only | default(false) | bool) and
+       ((vpn.enable_xray_reality | default(true) | bool) or
+        (vpn.enable_nginx_xhttp | default(true) | bool) or
+        (vpn.enable_hysteria | default(true) | bool)) %}
             python3 -Es /usr/local/libexec/ripdpi-transport-egress/generation.py recover --config /etc/ripdpi/transport-egress/generation.json --normalizer-config /etc/ripdpi/transport-egress/normalizer.json --unit xray.service
 {%- else %}
             systemctl restart xray.service && systemctl is-active --quiet xray.service
