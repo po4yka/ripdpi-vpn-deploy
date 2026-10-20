@@ -7,6 +7,7 @@ import asyncio
 import os
 import pty
 import select
+import signal
 import subprocess
 import sys
 import time
@@ -126,7 +127,10 @@ exit "${PLAYBOOK_EXIT:-0}"
         )
 
     def interactive(self, args, answer):
-        """Answer the first terminal prompt that the review gate prints."""
+        """Answer the first terminal prompt that the review gate prints.
+
+        An integer answer delivers that signal to vpnd instead of typing a line.
+        """
         master, slave = pty.openpty()
         child = subprocess.Popen(
             self.argv(args, True),
@@ -143,7 +147,10 @@ exit "${PLAYBOOK_EXIT:-0}"
                 assert time.monotonic() < deadline and child.poll() is None, transcript
                 if select.select([master], [], [], 0.05)[0]:
                     transcript += os.read(master, 8192)
-            os.write(master, answer)
+            if isinstance(answer, int):
+                os.kill(child.pid, answer)
+            else:
+                os.write(master, answer)
             # Keep draining: a full terminal buffer would block the child.
             while True:
                 assert time.monotonic() < deadline + 15, transcript
@@ -490,4 +497,15 @@ def test_terminal_review_gates_the_mutation(tmp_path, name, reviewed, gated, ans
     calls = fixture.calls()
     assert (returncode == 0) is accepted, transcript
     assert f"make {reviewed}\n" in calls and (f"make {gated}\n" in calls) is accepted
+    assert calls.endswith("make clean\n") and not fixture.secrets().exists()
+
+
+@pytest.mark.parametrize(("name", "reviewed", "gated"), REVIEW_GATES)
+@pytest.mark.parametrize("number", (signal.SIGINT, signal.SIGTERM))
+def test_signal_at_the_review_still_cleans_plaintext(tmp_path, name, reviewed, gated, number):
+    fixture = Fixture(tmp_path)
+    returncode, transcript = fixture.interactive([name], int(number))
+    calls = fixture.calls()
+    assert returncode != 0, transcript
+    assert f"make {reviewed}\n" in calls and f"make {gated}\n" not in calls
     assert calls.endswith("make clean\n") and not fixture.secrets().exists()
