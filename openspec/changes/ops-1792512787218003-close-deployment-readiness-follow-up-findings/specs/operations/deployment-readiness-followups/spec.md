@@ -52,9 +52,9 @@ from `ENV`.
 
 ### Requirement: REQ-DRF-DESTROY — Destroy gate and plan hygiene
 
-Interactive `destroy.sh` MUST refuse when the tfvars file yields no expected
-server hostname. It MUST remove the saved destroy plan from the provider root
-on every exit.
+`destroy.sh` MUST refuse, with a message and before Terraform, when the tfvars
+file has no quoted nonempty `server_name`. It MUST remove the saved destroy
+plan from the provider root on every exit.
 
 #### Scenario: The operator declines the destroy plan
 

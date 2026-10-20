@@ -107,6 +107,9 @@ cleanup() {
   rm -f "$OVERRIDE"
   if [[ -n "$PRIVATE_PLAN_DIR" ]]; then
     rm -rf "$PRIVATE_PLAN_DIR"
+  else
+    # A declined or failed run must not leave the saved destroy plan behind.
+    rm -f "${TF_DIR}/${PLAN_PATH}"
   fi
   if [[ "$STAGING_EVIDENCE_RESERVED" == "true" && "$APPLY_STARTED" != "true" ]]; then
     "$STAGING_GUARD" release-evidence \
@@ -131,7 +134,11 @@ audit trail.
 
 EOF
 
-expected="$(grep -E '^server_name' "$TFVARS" | head -1 | sed -E 's/.*=[[:space:]]*"([^"]+)".*/\1/')"
+expected="$(sed -nE 's/^server_name[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$TFVARS" | head -1)"
+if [[ -z "$expected" ]]; then
+  echo "no quoted server_name in ${TFVARS}; refusing destroy without a hostname to confirm" >&2
+  exit 1
+fi
 if [[ "$NON_INTERACTIVE" == "true" ]]; then
   echo "CI destroy authorization accepted for ${ENV} (${expected})"
 else
