@@ -3,7 +3,7 @@
 server_name = "vpn-staging-hel1"
 location    = "hel1"
 server_type = "cpx22"
-image       = "debian-12"
+image       = "debian-13"
 
 admin_user           = "deploy"
 admin_ssh_public_key = "ssh-ed25519 AAAA_STAGING_PUBLIC_KEY operator@laptop"

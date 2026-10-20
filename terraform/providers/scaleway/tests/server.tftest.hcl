@@ -119,3 +119,13 @@ run "stateful_provider_preserves_unconstrained_nat_output" {
     error_message = "Stateful provider filtering must preserve ordinary guest NAT source-port selection."
   }
 }
+
+run "server_rejects_debian12_without_nft_destroy" {
+  command = plan
+
+  variables {
+    image = "debian_bookworm"
+  }
+
+  expect_failures = [var.image]
+}

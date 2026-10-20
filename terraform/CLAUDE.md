@@ -80,6 +80,11 @@ never compose each other as modules.
 
 ## Pitfalls
 
+- **Image allowlists follow the host OS floor** — Hetzner, Vultr and Scaleway
+  admit only Debian 13 and Ubuntu 24.04 images (Scaleway: `ubuntu_noble` until
+  a Debian 13 label is verified). Debian 12 and Ubuntu 22.04 nftables cannot run
+  the firewall role's `destroy table`.
+
 - **Evaluate every policy family on the exact saved plan** — `scripts/check-tf-plan.sh` requires all policy namespaces and a nonempty complete result. Management-port checks include port intervals and unrestricted provider defaults. UpCloud's default public IPv6 interface is not a secondary-IPv4 opt-in.
 
 - **State and saved plans are sensitive** — providers may persist generated

@@ -59,7 +59,7 @@ No modules.
 | <a name="input_enable_backups"></a> [enable\_backups](#input\_enable\_backups) | Enable provider-side server backups. | `bool` | `true` | no |
 | <a name="input_enable_hysteria"></a> [enable\_hysteria](#input\_enable\_hysteria) | Include the Hysteria2 UDP/443 listener in the legacy default set. Explicit public\_listeners ignore this toggle; add hysteria there directly. | `bool` | `true` | no |
 | <a name="input_enable_ipv6"></a> [enable\_ipv6](#input\_enable\_ipv6) | Allocate and expose a public IPv6 address. | `bool` | `true` | no |
-| <a name="input_image"></a> [image](#input\_image) | Hetzner image slug. Allowed: debian-12, ubuntu-24.04. | `string` | `"debian-12"` | no |
+| <a name="input_image"></a> [image](#input\_image) | Hetzner image slug. Allowed: debian-13, ubuntu-24.04. | `string` | `"debian-13"` | no |
 | <a name="input_labels"></a> [labels](#input\_labels) | Provider-specific resource tags/labels. | `map(string)` | `{}` | no |
 | <a name="input_location"></a> [location](#input\_location) | Hetzner Cloud location. Allowed: nbg1 (Nuremberg), fsn1 (Falkenstein), hel1 (Helsinki). | `string` | n/a | yes |
 | <a name="input_nginx_xhttp_public_port"></a> [nginx\_xhttp\_public\_port](#input\_nginx\_xhttp\_public\_port) | Public TCP port for nginx-xhttp. Keep this in sync with Ansible nginx\_xhttp\_public\_port. | `number` | `8443` | no |

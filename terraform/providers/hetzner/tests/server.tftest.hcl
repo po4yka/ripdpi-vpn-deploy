@@ -6,7 +6,7 @@ variables {
   server_name          = "vpn-test"
   location             = "hel1"
   server_type          = "cpx22"
-  image                = "debian-12"
+  image                = "debian-13"
   admin_ssh_public_key = "ssh-ed25519 AAAATESTKEY test@harness"
   allowed_ssh_cidrs    = ["203.0.113.42/32"]
   build_env            = "test"
@@ -112,5 +112,28 @@ run "stateful_provider_preserves_unconstrained_nat_output" {
   assert {
     condition     = output.nat_source_port_range == ""
     error_message = "Stateful provider filtering must preserve ordinary guest NAT source-port selection."
+  }
+}
+
+run "server_rejects_debian12_without_nft_destroy" {
+  command = plan
+
+  variables {
+    image = "debian-12"
+  }
+
+  expect_failures = [var.image]
+}
+
+run "server_selects_ubuntu2404_image" {
+  command = plan
+
+  variables {
+    image = "ubuntu-24.04"
+  }
+
+  assert {
+    condition     = hcloud_server.vpn.image == "ubuntu-24.04"
+    error_message = "Ubuntu 24.04 must remain selectable"
   }
 }

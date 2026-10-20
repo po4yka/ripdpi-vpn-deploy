@@ -41,9 +41,10 @@ off under the restic+age backup contract.
   complete key list, so mismatched inputs fail during planning. Helper and
   build-label updates remain ignored; these checks do not observe guest drift.
 
-- **OS IDs identify actual provider images** — Debian 13 x64 is 2625;
-  2284 is Ubuntu 24.04, 1743 is Ubuntu 22.04, and 2136 is Debian 12.
-  ID 1869 selects Rocky Linux 9 and is rejected by the Debian/Ubuntu contract.
+- **OS IDs identify actual provider images** — Debian 13 x64 is 2625 and
+  2284 is Ubuntu 24.04; only these two are admitted. 1743 (Ubuntu 22.04) and
+  2136 (Debian 12) ship nftables without `destroy`, so the firewall role cannot
+  converge them. ID 1869 selects Rocky Linux 9 and is rejected too.
   Check the provider OS catalog and the created node's actual OS before live acceptance;
   mock-provider plans cannot prove the provider image contents.
 

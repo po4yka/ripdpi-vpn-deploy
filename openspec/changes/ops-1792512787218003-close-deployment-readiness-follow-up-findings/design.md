@@ -45,8 +45,10 @@ and in boundaries that the runtime repair `ANS-1792499727513191` left out.
   that needs a newer Go release fails visibly instead of fetching one.
 - Images: Hetzner admits `debian-13` and `ubuntu-24.04` (default
   `debian-13`); Vultr keeps OS IDs 2284 and 2625; Scaleway keeps
-  `ubuntu_noble`. No unverified Scaleway Debian 13 label is added. The firewall
-  assertion uses gathered distribution facts.
+  `ubuntu_noble`. No unverified Scaleway Debian 13 label is added. The OS
+  assertion is a `site.yml` pre-task on gathered facts. Rejected: an assertion
+  in the firewall role, because playbooks without fact gathering and the
+  firewall task-order contracts also run that role.
 - Logs: follow the subscription vhost pattern with `access_log off` and
   `error_log /dev/null crit`. Rejected: a categorical log format for port 80,
   because the role has no format to reuse and the redirect needs no audit.
