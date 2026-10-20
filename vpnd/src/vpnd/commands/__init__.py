@@ -23,9 +23,17 @@ async def finish_with_cleanup(ctx, outcome=None):
 class ReviewInterrupted(RuntimeError):
     """A signal ended the review while decrypted secrets existed."""
 
+    def __init__(self, number: int):
+        super().__init__(f"review interrupted by signal {number}; stopped before mutation")
+        self.exit_code = 128 + number
+
 
 def _interrupt_review(number, _frame):
-    raise ReviewInterrupted(f"review interrupted by signal {number}; stopped before mutation")
+    raise ReviewInterrupted(number)
+
+
+# Terminal interrupts, a dropped session and service stops all end the review.
+REVIEW_SIGNALS = (signal.SIGINT, signal.SIGQUIT, signal.SIGTERM, signal.SIGHUP)
 
 
 def require_review(ctx, label):
@@ -37,7 +45,7 @@ def require_review(ctx, label):
     """
     if ctx.explain:
         return
-    previous = {number: signal.signal(number, _interrupt_review) for number in (signal.SIGINT, signal.SIGTERM)}
+    previous = {number: signal.signal(number, _interrupt_review) for number in REVIEW_SIGNALS}
     try:
         approved = confirm(label, default=False)
     finally:

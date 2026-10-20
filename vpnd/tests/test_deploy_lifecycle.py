@@ -501,11 +501,11 @@ def test_terminal_review_gates_the_mutation(tmp_path, name, reviewed, gated, ans
 
 
 @pytest.mark.parametrize(("name", "reviewed", "gated"), REVIEW_GATES)
-@pytest.mark.parametrize("number", (signal.SIGINT, signal.SIGTERM))
+@pytest.mark.parametrize("number", (signal.SIGINT, signal.SIGQUIT, signal.SIGTERM, signal.SIGHUP))
 def test_signal_at_the_review_still_cleans_plaintext(tmp_path, name, reviewed, gated, number):
     fixture = Fixture(tmp_path)
     returncode, transcript = fixture.interactive([name], int(number))
     calls = fixture.calls()
-    assert returncode != 0, transcript
+    assert returncode == 128 + number, transcript
     assert f"make {reviewed}\n" in calls and f"make {gated}\n" not in calls
     assert calls.endswith("make clean\n") and not fixture.secrets().exists()
