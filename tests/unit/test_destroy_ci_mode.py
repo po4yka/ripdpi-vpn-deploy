@@ -1750,3 +1750,48 @@ def test_staging_make_refuses_alternate_home_command_field(tmp_path: Path) -> No
     assert result.returncode != 0
     assert "trusted controller environment" in result.stderr
     assert not (tmp_path / "make-staging.jsonl").exists()
+
+
+@pytest.mark.parametrize("server_name", ['zone = "fi-hel1"\n', 'server_name = ""\n', "server_name = var.name\n"])
+@pytest.mark.parametrize(("env_name", "non_interactive"), [("prod", False), ("ci-123-cleanup", True)])
+def test_destroy_refuses_without_a_quoted_hostname_to_confirm(
+    tmp_path: Path, server_name: str, env_name: str, non_interactive: bool
+) -> None:
+    root = _test_repo(tmp_path)
+    (root / f"terraform/providers/upcloud/environments/{env_name}.tfvars").write_text(server_name)
+    stub = _terraform_stub(tmp_path)
+
+    result = _run(root, stub.parent, env_name, non_interactive=non_interactive,
+                  input_text=server_name + "DESTROY\nyes\n")
+
+    assert result.returncode == 1
+    assert "refusing destroy without a hostname to confirm" in result.stderr
+    assert not (stub.parent / "terraform.log").exists()
+    assert not (root / "terraform/providers/upcloud/_destroy_override.tf").exists()
+
+
+@pytest.mark.parametrize(("answer", "fail_apply"), [("no\n", False), ("yes\n", True)])
+def test_interactive_destroy_removes_its_saved_plan_on_every_exit(
+    tmp_path: Path, answer: str, fail_apply: bool
+) -> None:
+    root = _test_repo(tmp_path)
+    (root / "terraform/providers/upcloud/environments/prod.tfvars").write_text(
+        'server_name = "vpn-prod.test"\n'
+    )
+    stub = _terraform_stub(tmp_path, fail_apply=fail_apply)
+
+    result = _run(
+        root,
+        stub.parent,
+        "prod",
+        fail_apply=fail_apply,
+        non_interactive=False,
+        input_text="vpn-prod.test\nDESTROY\n" + answer,
+    )
+
+    log = (stub.parent / "terraform.log").read_text()
+    assert result.returncode != 0
+    assert "plan -destroy" in log
+    assert ("apply-plan-content" in log) is fail_apply
+    assert not (root / "terraform/providers/upcloud/prod.destroy.tfplan").exists()
+    assert not (root / "terraform/providers/upcloud/_destroy_override.tf").exists()

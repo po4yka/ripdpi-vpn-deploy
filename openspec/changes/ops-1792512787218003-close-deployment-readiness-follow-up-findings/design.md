@@ -34,8 +34,10 @@ and in boundaries that the runtime repair `ANS-1792499727513191` left out.
   owns host selection and runs before the secrets read. Rejected: a `site.yml`
   assert, because the controller passes no `ENV` to Ansible and the check would
   run after secrets were copied.
-- Destroy: remove `${TF_DIR}/${PLAN_PATH}` in the existing EXIT trap for the
-  ordinary path; the staging path keeps its private directory cleanup.
+- Destroy: parse only a quoted `server_name` value and refuse when it is absent,
+  in both modes, before Terraform. Remove `${TF_DIR}/${PLAN_PATH}` in the
+  existing EXIT trap for the ordinary path; the staging path keeps its private
+  directory cleanup.
 - Runbook: the preflight block cleans only on a non-zero exit, so the reviewed
   plaintext remains for the deploy block; the deploy block uses the guarded
   subshell from the rotation runbook.

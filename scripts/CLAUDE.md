@@ -522,6 +522,10 @@ materialized bundle is not an Ansible secrets document. The explicit
 same-owner `0600` regular file through a symlink-free, owner-controlled path,
 redacts the key in memory, and never rewrites or logs the artifact.
 
+**Destroy confirms a parsed hostname** — `destroy.sh` reads only a quoted
+`server_name` from the tfvars file and refuses before Terraform when there is
+none. Its EXIT trap removes the ordinary saved destroy plan on every exit.
+
 **Destructive scripts always audit** — they append to
 `audit-log.sh append-best-effort` after a successful run; there is no
 opt-out flag.

@@ -17,8 +17,9 @@ operator-path and host-boundary defects that its runtime repair left out:
 - The deploy controller converges every selected inventory host with one
   decrypted secrets file. It does not compare the host `env` with `ENV`, so an
   inventory with several environments can receive the wrong secrets.
-- `scripts/destroy.sh` accepts an empty typed hostname when the tfvars file has
-  no `server_name`, and it leaves the saved destroy plan in the provider root
+- `scripts/destroy.sh` compares the typed hostname with the raw tfvars line
+  when `server_name` is empty or not a quoted string, exits without a message
+  when it is missing, and leaves the saved destroy plan in the provider root
   when the operator declines or a later step fails.
 - The ordinary re-deploy recipe in `docs/RUNBOOK-deploy.md` leaves decrypted
   secrets on disk after a failed or interrupted preflight or deploy block.
@@ -41,8 +42,8 @@ operator-path and host-boundary defects that its runtime repair left out:
   explicit `ENV` that disagrees with `BLUE_ENV`.
 - The deploy controller refuses, before it reads secrets, a selection that
   contains a host whose inventory `env` is not `ENV`.
-- `destroy.sh` refuses an empty expected hostname and removes its saved plan on
-  every exit.
+- `destroy.sh` refuses, with a message, a tfvars file without a quoted
+  `server_name`, and removes its saved plan on every exit.
 - The re-deploy recipe cleans decrypted secrets after a failed preflight and
   after every deploy-block exit.
 - AWG and sentinel Go builds run with `GOTOOLCHAIN=local`; the sentinel no
