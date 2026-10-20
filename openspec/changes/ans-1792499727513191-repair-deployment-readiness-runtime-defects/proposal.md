@@ -36,8 +36,9 @@ rollout would expose:
   reserved recipient destinations before the uplink accept rule.
 - The watchdog still reports and alerts on a failed configuration validation,
   but it withholds restart or recovery for that unit in the same run.
-- BREAKING: the Hysteria role refuses a version that is not an exact stable
-  `vMAJOR.MINOR.PATCH` tag before acquisition.
+- The Hysteria role refuses a version that is not an exact stable
+  `vMAJOR.MINOR.PATCH` tag before acquisition. This enforces the existing
+  rule that pre-releases never reach production; it is not a contract break.
 
 ## Capabilities
 
