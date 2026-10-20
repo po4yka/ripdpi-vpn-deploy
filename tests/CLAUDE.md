@@ -14,6 +14,98 @@
 
 ## Design decisions
 
+Recovery boundary tests use real age ciphertext and preserve the prior state
+inode on failed decryption or structure validation. Same-second writers publish
+distinct complete private backups; reserved environment aliases refuse before
+Terraform or private inputs.
+File and directory sync failures refuse success and retention; directory sync
+failure retains the complete, decryptable private backup already published.
+
+Real restic restore cases remove one selected artifact at a time, including
+delivery TLS/vhost, auxiliary transports, topology policy and watchdog inputs.
+Empty revocation sets remain valid. Archived absolute links resolve only within
+the restored filesystem; a live-only target cannot satisfy verification.
+
+Recipient regressions execute actual Ansible share mode repair, including retained
+shares without a new upload and unchanged repeats. Molecule separately checks
+nginx-group read access, unrelated-UID refusal and mirror true-to-false execution
+retirement with accepted payload and replay authority retained. RIPDPI hopping
+refuses before output; official sing-box keeps supported hopping.
+Expression-only Jinja test environments enable autoescape explicitly; their
+compiled predicates keep the same boolean results.
+The mirror retirement fixture defers independent timer schedules and drains their
+services before its exact authority baseline. Timers stay enabled and active for
+the check-mode control. All seven authority categories remain exactly compared;
+failure diagnostics expose only fixed component names and change booleans.
+
+DHCPv6 portable tests exercise actual admission and both rendered egress policies.
+The native hopping suite additionally sends real UDP across owned network
+namespaces through the complete rendered firewall; wrong interfaces, ports and
+unapproved global server addresses remain negative cases. A separate native case
+keeps the original twelve probes intact and warms one unicast tuple before wrong
+interface checks in both directions. It repeats the same link-local addresses on
+two links, observes established state at priority -1 without a verdict and
+requires both cold and established denials. No conntrack flush separates probes.
+An expected local OUTPUT drop accepts only EPERM from sendto on an explicit
+negative probe; the receiver must still see no packet. Positive sends and other
+errno values remain fatal.
+The DHCPv6 receiver binds and joins its multicast group before readiness. It
+checks the actual socket's bound interface and exact group membership on that
+interface. Missing, unreadable or mismatched membership refuses before the
+sender runs. It does not query an input multicast FIB route: that query can
+require multicast forwarding state which local UDP delivery does not use. Its
+complete observation window starts only after the parent confirms the sender
+result through a bounded control acknowledgement. Portable real loopback UDP
+regressions delay sender startup beyond that window and require missing control
+acknowledgement to refuse. Native probe diagnostics contain fixed phase names,
+bounded millisecond counts and packet-presence booleans only. The multicast
+probe also records group membership, no-verdict OUTPUT/INPUT counters, late
+POSTROUTING and early PREROUTING counters, and UDP
+error, no-port and ignored-multicast deltas in its owned namespaces. Counter setup and UDP baselines precede
+listener creation; the receiver reads membership before readiness, so the parent
+adds no observer command between readiness and send. The runner admits one exact-schema record
+only after a complete attempt and successful observation, with fixed labels,
+bounded integers and booleans. Missing UDP metrics or unmeasured values leave
+the record absent. Passing pytest output remains private; failure output supplies
+the validated CI record. Observation errors
+retain the packet outcome and raw logs stay private. Unknown fields, duplicate probes
+and oversized or malformed records publish no diagnostics.
+The two transit counters use the same fixed tuple and install/query calls as
+the OUTPUT/INPUT counters. They locate loss between output and local input;
+they do not prove that the packet crossed the veth link or identify its cause.
+The receiver also measures late PREROUTING and expected-interface presence.
+Five IPv6 counter deltas share the existing UDP baseline reads; automatic
+control traffic can contribute, so these deltas do not identify a cause alone.
+Only a completed NULL result can query the exact local multicast prefix with
+bounded route SHOW. Its closed six-boolean snapshot describes state after the
+attempt. An unavailable snapshot is explicit null and preserves the primary
+counters; successful packets always publish null. Missing primary metrics
+refuse publication instead of becoming zero. Route SHOW never changes routes
+or runs before the packet, and its raw output remains private.
+
+Only the failed bootstrap multicast case can publish a DHCPv6 readiness
+property before ready. It contains only the fixed bind-join stage and a zero
+not-applicable authority mask. Obsolete route stages and masks are refused. No
+raw child output enters public evidence. An actual pytest JUnit regression
+retains the original receiver refusal and verifies this property through the
+runner parser. Readiness evidence is separate from complete packet observations.
+The sender remains blocked until ready, and all probe assertions and deadlines
+stay fixed.
+Both veth endpoints must be UP before manual nodad addresses are added in either
+DHCPv6 case. Address creation can succeed while multicast route creation rejects
+a DOWN device; waiting for a later link notification makes cold delivery depend
+on setup timing. The portable initialization regression stops before policy or
+packets and checks command order and namespace cleanup, not native acceptance.
+The core runner first runs both complete canonical DHCPv6 cases in its private
+scratch directory. A pass still requires the unchanged complete core suites;
+a failure leaves the main suites incomplete with success false and verified
+cleanup. Early JUnit never substitutes cases in the complete suite manifest.
+On an early packet failure, the runner retains the completed observation through
+the hopping suite's closed parser and field. Successful early gates publish no
+sample; canonical hopping owns the single record otherwise. A pre-ready refusal
+still has no structured readiness entry in the main result. Retention does not
+establish the cause of a lost packet.
+
 Offline sentinel regressions use the exact deterministic no-TUN Git fixture
 and real source admission, installation, input hashing and standalone readers.
 They prove refusal before mutation for wrong assets and input identities, plus
@@ -64,10 +156,6 @@ untrusted supplied roots cannot certify themselves. Resolver tests execute
 actual relocated Ansible tasks through enable, interrupted apply, deferred
 retirement, disable and repeat convergence, preserving custom resolver authority.
 
-Synthetic SOPS decryptors consume all ciphertext from stdin before they return
-fixture JSON. A payload larger than pipe capacity checks this contract on
-Darwin and Linux.
-
 The native upgrade fixture renders hopping ingress for its owned host veth in
 both IP families. This render-only context preserves the facts used by canonical
 Ansible convergence. The exact local-destination redirect, native authentication
@@ -78,6 +166,12 @@ retained split-hop denial during tunnel stops, strict overlay allowances,
 complete multi-host metadata and exact client bandwidth hints. DNS-Morph
 preflight tests run the real controller validator before synthetic mutation
 sentinels. Render fixtures and research stubs establish no live protocol claim.
+Strict overlay-only render tests compare the complete UDP allowlist in both
+toggle states. Link-local DHCPv6 stays on the explicit uplink despite unrelated
+overlay default-route facts; broad UDP and unapproved global servers stay absent.
+Provider NAT guard tests allow only the exact DHCPv6 preflight import before the
+firewall assertion; the split-hop assertion stays first. IPv6 control ordering
+uses the unique standalone terminal drop, independently of earlier scoped denies.
 
 Checkout metadata regressions use real Git with large NUL-framed input,
 non-UTF-8 path bytes and an owned attributes FIFO. Retain active-filter refusal,
@@ -366,6 +460,11 @@ Host-selection tests cross the actual CLI and
 shell boundaries; token refresh, private locks and promotion tests exercise
 rejection and concurrent callers. These checks do not establish live host,
 provider, release or Linux systemd acceptance.
+
+Registry issuance uses a fake SOPS consumer that reads the complete document
+before writing output, as the real parser does. A partial-JSON EOF regression
+retains exact output bytes. Issuer calls have a 30-second deadline and reclaim
+only their owned process session before reporting timeout or failure.
 
 **Operator incident verbs run real Ansible guards** — `test_operator_verb_scope.py` derives each play head (hosts, serial, any_errors_fatal, pre_tasks) from the shipped playbook and runs it with real `ansible-playbook` against a local inventory for no limit, a node list, a one-host group and a one-host pattern, asserting the marker task never runs on refusal. It also checks rotation against an inventory `env` that differs from `ENV`, uses the real `make require-exact-node` recipe and `make -n` wiring, and compares the alias grammar of both the Make guard and the vpnd rotation builder (`vpnd.runner.ansible.rotate`) with the play guard's, which cannot be tested from `vpnd/tests` because mutation copies lack `ansible/`. It also covers hostile `ANSIBLE_LIMIT` spellings (the marker is never created and the text never appears in `make -n` output) and refusal of any other goal in the same invocation. Recording `ansible-playbook` and `ansible-inventory` stand-ins show that inherited `ANSIBLE_SKIP_TAGS` and `ANSIBLE_RUN_TAGS` are scrubbed and that verbs sharing an invocation run one at a time under `-j4`, and a recording `make` stand-in runs the four guarded blocks the runbooks print, under `bash` only like their fences: the per-node revocation sequence of `RUNBOOK-rotate.md` and `RUNBOOK-deploy.md` and the REALITY keypair and restic password sections of `RUNBOOK-rotate.md`. Each is a subshell whose EXIT trap runs `make clean`. The revocation cases assert that every node is rotated and verified, the visible stop messages, that one `e` assignment sets the environment of every call (the harness reruns the block as staging), that the sequence exits zero on success and with the failing step's own status otherwise (the cleanup does not mask it), and that SIGINT, SIGQUIT, SIGTERM and SIGHUP delivered during a rotation, whether to the subshell alone or to its whole process group as a terminal does, or SIGINT during decrypt, stop the loop with `make clean` still the last step and a non-zero status. The two deploy sections assert that cleanup runs last with the failing status for decrypt, deploy and verify failures and for signals delivered to the subshell during deploy, and that a failed decrypt never reaches deploy. All four blocks also run with a `make clean` that fails (exit 1 after a successful run, the failing step's own status after a failure) and with a second signal of each kind delivered to the whole process group while `make clean` runs after an interrupt, which must still complete. SIGKILL and power loss cannot run cleanup and are not simulated. This establishes source behaviour only, not live host selection or SSH reachability.
 

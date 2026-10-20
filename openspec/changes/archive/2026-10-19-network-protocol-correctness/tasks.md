@@ -48,7 +48,7 @@ integrated, reviewed PR. Keep deployment and conditional risks separate.
 - [x] SEC-1792307139966331 Verify public certificate trust and enabled profile scope #bug !high @item:SEC-1792307003680932
 - [x] SEC-1792307141621739 Preserve strict TUN capture DNS identity and socket lifecycles #bug !high @item:SEC-1792307003680932
 - [x] SEC-1792307142612713 Restore managed DNS resolver after bridge retirement #bug !high @item:SEC-1792307003680932
-- [ ] SEC-1792307143659844 Integrate coordinated fixes run complete gates review and merge #bug !high @item:SEC-1792307003680932
+- [x] SEC-1792307143659844 Integrate coordinated fixes run complete gates review and merge #bug !high @item:SEC-1792307003680932
 
 ## Verification
 

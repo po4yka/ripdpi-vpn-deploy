@@ -112,3 +112,25 @@ teardown() {
   run sh "${SCRIPT}" --dry-run --env prod
   assert_failure
 }
+
+
+@test "both recovery paths include current SSH and deployment admission" {
+  for path in --path-a --path-b; do
+    run sh "${SCRIPT}" --dry-run --env prod "$path"
+    assert_success
+    assert_output --partial 'make install-ssh-recovery'
+    assert_output --partial 'make bootstrap-tailnet'
+    assert_output --partial 'TAILNET_HANDOFFS='
+    assert_output --partial 'make migrate-ssh-ownership'
+    assert_output --partial 'DEPLOY_SSH_CONTEXTS_FILE'
+    assert_output --partial 'DEPLOY_PROMOTION_CONFIG_FILE'
+    assert_output --partial 'DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE'
+    assert_output --partial 'receipt sinks must be fresh and absent'
+  done
+}
+
+@test "reserved default environment is refused" {
+  run sh "${SCRIPT}" --dry-run --env default --path-a
+  assert_failure
+  assert_output --partial 'default is reserved'
+}

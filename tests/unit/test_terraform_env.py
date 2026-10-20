@@ -147,3 +147,25 @@ def test_backup_rejects_unsafe_environment_before_reading_state() -> None:
 
     assert result.returncode == 2
     assert "ENV must contain only letters, numbers, and hyphens" in result.stderr
+
+
+def test_default_alias_refuses_before_terraform(tmp_path):
+    result = _run(tmp_path, env_name="default", args=["init"])
+    assert result.returncode == 2
+    assert "reserved" in result.stderr
+    assert not (tmp_path / "terraform.log").exists()
+
+
+def test_reserved_alias_refuses_backup_restore_and_cohort_before_private_inputs():
+    for script, arguments, settings in (
+        ("backup-tf-state.sh", [], {"ENV": "default"}),
+        ("restore-tf-state.sh", [], {"ENV": "default"}),
+        ("new-cohort.sh", ["default"], {"SOURCE_ENV": "prod"}),
+        ("new-cohort.sh", ["green"], {"SOURCE_ENV": "default"}),
+    ):
+        result = subprocess.run(["bash", str(REPO_ROOT / "scripts" / script), *arguments],
+            env=os.environ | {"PROVIDER": "upcloud", **settings},
+            capture_output=True, text=True, timeout=10)
+        assert result.returncode != 0
+        assert "reserved" in result.stderr
+        assert "missing" not in result.stderr

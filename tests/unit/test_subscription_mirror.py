@@ -212,7 +212,11 @@ def test_crash_after_pointer_switch_keeps_complete_generation_and_next_run_recon
 def test_molecule_revocation_authority_is_accepted_under_umask_022(tmp_path, umask_022):
     """The real parser must admit the same authority that Molecule converges."""
     converge = yaml.safe_load((MOLECULE_VERIFY.parent / "converge.yml").read_text())[0]
-    entries = converge["vars"]["subscription"]["revoked_tokens"]
+    values = {}
+    for filename in converge.get("vars_files", []):
+        values.update(yaml.safe_load((MOLECULE_VERIFY.parent / filename).read_text()))
+    values.update(converge.get("vars", {}))
+    entries = values["subscription"]["revoked_tokens"]
     dest = _private_directory(tmp_path / "destination")
     namespace = _render_bootstrap(tmp_path, dest)
     authority = tmp_path / "revoked"

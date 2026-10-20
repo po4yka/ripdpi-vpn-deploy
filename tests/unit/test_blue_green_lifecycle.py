@@ -105,3 +105,17 @@ def test_child_make_does_not_load_inherited_makefiles(tmp_path):
     assert result.returncode == 2
     assert "inherited Makefile was parsed" not in result.stderr
     assert "Error 23" in result.stderr
+
+
+@pytest.mark.parametrize("blue,green", [("prod", "default"), ("default", "prod"),
+                                       ("default", "green"), ("prod", "../prod")])
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_state_alias_collision_refuses_before_private_inputs(blue, green, dry_run):
+    result = subprocess.run(["bash", str(ROOT / "scripts/blue-green.sh"),
+                             *(["--dry-run"] if dry_run else [])],
+        env={**os.environ, "BLUE_ENV": blue, "GREEN_ENV": green,
+             "SOPS_FILE": "/absent-private-source", "ANSIBLE_SSH_PRIVATE_KEY_FILE": ""},
+        capture_output=True, text=True, timeout=10)
+    assert result.returncode != 0
+    assert "default is reserved" in result.stderr
+    assert "missing" not in result.stderr and "must be set" not in result.stderr
