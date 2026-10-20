@@ -69,7 +69,7 @@ def validate_json(text: str, label: str) -> str | None:
         return f"{label}: invalid JSON — {exc}"
 
 
-def validate_xray(text: str, label: str) -> str | None:
+def validate_xray(text: str, label: str, log_dir: str | None = None) -> str | None:
     """Run `xray run -test -config <rendered>` to catch semantic errors that
     JSON parsing misses. Caught classes:
      - routing rule of "type": "field" with no selector (port/network/domain/
@@ -113,12 +113,12 @@ def validate_xray(text: str, label: str) -> str | None:
         if xray_bin:
             cmd = [xray_bin, "run", "-test", "-config", cfg_path]
         else:
-            cmd = [
-                docker_bin, "run", "--rm",
-                "-v", f"{cfg_path}:/cfg.json:ro",
-                image,
-                "xray", "run", "-test", "-config", "/cfg.json",
-            ]
+            # The image entrypoint is the xray binary. The rendered config
+            # opens its log files, so the log directory keeps its host path.
+            cmd = [docker_bin, "run", "--rm", "-v", f"{cfg_path}:/cfg.json:ro"]
+            if log_dir:
+                cmd += ["-v", f"{log_dir}:{log_dir}"]
+            cmd += [image, "run", "-test", "-config", "/cfg.json"]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         if result.returncode != 0:
             msg = (result.stderr.strip() or result.stdout.strip()).splitlines()
@@ -263,7 +263,7 @@ def main() -> int:
             # start time (and that the existing molecule converge only
             # surfaces ~10 min into a run).
             if tpl.parent.parent.name == "xray":
-                err = validate_xray(output, str(rel))
+                err = validate_xray(output, str(rel), xray_log_dir)
                 if err:
                     failures.append(err)
         elif "nginx" in tpl.parent.parent.name and tpl.name.endswith(".conf.j2"):
