@@ -187,7 +187,8 @@ if 'deploy' in args and os.environ['DEPLOY_FAILURE']=='1': sys.exit(23)
     sops = tmp_path / 'synthetic.sops.yaml'
     sops.touch()
     log = tmp_path / 'calls'
-    result = subprocess.run(['bash',str(scripts / 'blue-green.sh')], input='\n\nyes\n',
+    # Answers in prompt order: plan review, SSH pin, SSH ownership, dry-run review, traffic swing.
+    result = subprocess.run(['bash',str(scripts / 'blue-green.sh')], input='yes\n\n\nyes\nyes\n',
         capture_output=True,text=True,env={**os.environ, 'PATH':str(tmp_path / 'bin')+os.pathsep+os.environ['PATH'],
         'CALLS':str(log),'RENDER_CALLS':str(tmp_path / 'rendered'),'DEPLOY_FAILURE':str(int(deploy_failure)),
         'WAIT_FAILURE':str(int(wait_failure)), 'BLUE_ENV':'prod','GREEN_ENV':'green',
