@@ -64,6 +64,10 @@ root-only variables file, and only then publishes source SHA/digest state.
 
 ## Pitfalls
 
+- **Never install resolvconf on the sentinel** — on Debian 13 apt removes
+  `systemd-resolved` for it. The sentinel runs `awg-quick strip` and writes
+  namespace `resolv.conf` files, so no path calls resolvconf.
+
 - Re-running the role does not overwrite rotated client/server state. Resetting
   credentials is an explicit maintenance operation, not convergence.
 - A prepare crash before its durable receipt leaves no transaction: reconcile

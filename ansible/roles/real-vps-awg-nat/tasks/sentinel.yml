@@ -109,7 +109,6 @@
       - openssl
       - pkg-config
       - python3
-      - resolvconf
       - tcpdump
       - util-linux
     state: present

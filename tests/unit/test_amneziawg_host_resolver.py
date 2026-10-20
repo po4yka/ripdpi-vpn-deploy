@@ -6,6 +6,9 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ROLE = REPO_ROOT / "ansible" / "roles" / "amneziawg"
+# The real-VPS sentinel shares the host resolver contract; it runs `awg-quick strip`
+# and owns namespace resolv.conf files, so it never needs resolvconf either.
+SENTINEL = REPO_ROOT / "ansible" / "roles" / "real-vps-awg-nat"
 
 
 def _apt_packages(tasks):
@@ -17,10 +20,10 @@ def _apt_packages(tasks):
         yield from [names] if isinstance(names, str) else names
 
 
-def test_role_never_installs_resolvconf():
+def test_awg_roles_never_install_resolvconf():
     # On Debian 13, systemd-resolved conflicts with resolvconf: apt removes the
     # resolver that baseline configures and host DNS stops working.
-    for path in sorted((ROLE / "tasks").glob("*.yml")):
+    for path in sorted([*(ROLE / "tasks").glob("*.yml"), *(SENTINEL / "tasks").glob("*.yml")]):
         tasks = yaml.safe_load(path.read_text(encoding="utf-8")) or []
         assert "resolvconf" not in set(_apt_packages(tasks)), path.name
 
