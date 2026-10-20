@@ -81,7 +81,7 @@ before mutation, including read-only comparison in check mode. Rotation performs
 transport semantic admission first and retains the prior firewall through AWG activation and
 restores it on any refusal. Snell and Naive retain independent rotation flows.
 
-Complete-map rehearsal profiles explicitly retain `enable_transport_egress: true` with their enabled protected frontends because the controller replaces the canonical `vpn` map.
+The controller replaces the canonical `vpn` map, so most production profiles omit `enable_transport_egress`. Consumers must derive guarded-generation ownership from the transport egress preparation predicate (`transport-egress-prepare.yml`), never from that optional key with a false default.
 
 **Transport semantic admission precedes mutation** — site and credential
 rotation import `playbooks/tasks/transport-input-preflight.yml` before host

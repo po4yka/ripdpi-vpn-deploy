@@ -29,7 +29,8 @@ def test_real_nonempty_rotation_restores_authenticated_service_and_retains_inact
         unit = stack.token + "-frontend.service"
         before = fixture.command(["systemctl", "show", unit, "--property=MainPID", "--value"]).strip()
         values = deepcopy(stack.values)
-        values["vpn"]["enable_transport_egress"] = False
+        # Render the unguarded branch: it applies only without a protected frontend.
+        values["vpn"].update(enable_xray_reality=False, enable_nginx_xhttp=False, enable_hysteria=False)
         values.update(xray_log_dir=str(stack.library / "logs"), xray_runtime_user=stack.users["x"], xray_runtime_group=stack.users["x"])
         policy = render_template(ROOT / "ansible/roles/monitoring/templates/logrotate-xray.j2", values)
         # The complete production policy runs against this invocation's owned
