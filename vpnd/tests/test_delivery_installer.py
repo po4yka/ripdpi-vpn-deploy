@@ -10,6 +10,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+import tomllib
 import zipfile
 
 import pytest
@@ -362,7 +363,8 @@ def test_real_offline_install_uses_packaged_assets_outside_checkout(tmp_path):
         cwd=tmp_path,
         env=installer.installation_environment(),
     )
-    assert installed_version.strip() == "vpnd " + VERSION
+    project = tomllib.loads((ROOT / "vpnd" / "pyproject.toml").read_text())["project"]
+    assert installed_version.strip() == "vpnd " + project["version"]
     for name, _ in render_page_set():
         assert (prefix / "share/man/man1" / (name + ".1")).is_file()
     runtime = scaffold(tmp_path / "isolated")
