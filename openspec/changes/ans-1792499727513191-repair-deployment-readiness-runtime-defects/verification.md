@@ -1,9 +1,9 @@
 ---
 task_id: ANS-1792499727513191
 change: ans-1792499727513191-repair-deployment-readiness-runtime-defects
-commit_sha: null
+commit_sha: 6ec346d3e235a027f7c27f1c633f363f42a9b0cd
 local: required
-local_evidence: null
+local_evidence: Each new regression fails on the parent and passes after its fix. make check passed every step through ansible syntax, including the template render check (165), snapshots, terraform tests and shellcheck. liveness-profile-check did not run: the workstation has no Xray binary. test-unit ran 9131 passed; all 76 failures were SOPS/sing-box mise-shim cases, and 74 passed with real binaries; the other 2 fail identically on base 25ed8d5e. vpnd-lint, vpnd-test (322), vpnd-parity-check and bats passed. Independent review found one native fixture defect, fixed in 6ec346d3. AmneziaWG Molecule fails at the same consumer task on base and head in local Docker; firewall Molecule has no arm64 image here.
 remote_ci: required
 remote_ci_evidence: null
 dry_run: not_applicable
@@ -15,7 +15,7 @@ live_evidence: No provider, host, credential or production operation is included
 client: not_applicable
 client_evidence: No client payload, bundle or recipient contract changes.
 artifact: required
-artifact_evidence: null
+artifact_evidence: nft -c accepts the rendered ruleset on Debian 13 nftables 1.1.3. A Debian 13 apt simulation shows resolvconf removes systemd-resolved and libnss-resolve.
 ---
 
 # Verification
@@ -24,9 +24,9 @@ artifact_evidence: null
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-DRR-ROTATE | ANS-1792500035125072 | Every-profile rotation render regression | pending |
-| REQ-DRR-RESOLVER | ANS-1792500035840245 | AWG package list regression; Debian 13 apt simulation | pending |
-| REQ-DRR-AWGDEST | ANS-1792500036500839 | Forward-chain render and policy equality regressions | pending |
-| REQ-DRR-WATCHDOG | ANS-1792500037164561 | Watchdog recovery-withholding regressions | pending |
-| REQ-DRR-HYSTERIA | ANS-1792500037843465 | Hysteria pre-flight regex regression | pending |
-| All | ANS-1792500038523299 | Focused checks, snapshots, make check, independent review | pending |
+| REQ-DRR-ROTATE | ANS-1792500035125072 | test_every_protected_profile_rotates_xray_through_guarded_recovery | passed |
+| REQ-DRR-RESOLVER | ANS-1792500035840245 | test_amneziawg_host_resolver.py; Debian 13 apt simulation | passed |
+| REQ-DRR-AWGDEST | ANS-1792500036500839 | test_awg_forwarding_refuses_canonical_private_destinations; nft -c | passed |
+| REQ-DRR-WATCHDOG | ANS-1792500037164561 | test_invalid_nginx/xray_config regressions (57 watchdog tests) | passed |
+| REQ-DRR-HYSTERIA | ANS-1792500037843465 | test_hysteria_version_pin.py (6 cases, real Ansible) | passed |
+| All | ANS-1792500038523299 | Local gates above; native lanes, Molecule and liveness parser check pending CI | pending |
