@@ -59,7 +59,9 @@ supported by official sing-box; RIPDPI export refuses it until the client is qua
 
 **Pinned binary** — Hysteria version and architecture checksums are pinned;
 the role delegates verified candidate publication and `current`/public/previous
-rollback links to `runtime-release`.
+rollback links to `runtime-release`. Like Xray, the version must be an exact
+stable `vMAJOR.MINOR.PATCH` tag; empty and pre-release pins refuse before
+acquisition.
 
 **Masquerade follows an owned site** — `hysteria.masquerade_url` is required in production secrets and must equal `public_site_canonical_url` exactly (asserted in `tasks/main.yml`). This keeps QUIC probes on the same public identity without coupling the UDP-only role to nginx state.
 
