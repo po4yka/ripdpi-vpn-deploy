@@ -49,7 +49,7 @@ operator-path and host-boundary defects that its runtime repair left out:
 - AWG and sentinel Go builds run with `GOTOOLCHAIN=local`; the sentinel no
   longer installs `resolvconf`.
 - Provider image allowlists admit only Debian 13 and Ubuntu 24.04 images, and
-  the firewall role refuses an older host before it changes nftables.
+  `site.yml` refuses an older host before any host change.
 - The port-80 redirect servers and the Snell location write no access or
   error log entries.
 
@@ -70,7 +70,8 @@ operator-path and host-boundary defects that its runtime repair left out:
 - Scripts: `blue-green.sh`, `deploy-controller.py`, `destroy.sh`, Makefile
   blue-green, promote-spare and watch-spare recipes.
 - vpnd: `deploy` and `reconverge` command handlers.
-- Ansible roles: `amneziawg`, `real-vps-awg-nat`, `firewall`, `nginx-xhttp`.
+- Ansible: `site.yml` pre-tasks and the `amneziawg`, `real-vps-awg-nat` and
+  `nginx-xhttp` roles.
 - Terraform: Hetzner, Vultr and Scaleway image validation and examples.
 - Docs: `RUNBOOK-deploy.md`, `RUNBOOK-rollback.md`, folder notes.
 - A Hetzner root that omitted `image` now defaults to `debian-13`; its next

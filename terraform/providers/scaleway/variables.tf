@@ -34,8 +34,8 @@ variable "image" {
   description = "Scaleway Marketplace image label."
 
   validation {
-    condition     = contains(["debian_bookworm", "ubuntu_noble"], var.image)
-    error_message = "image must be one of: debian_bookworm, ubuntu_noble."
+    condition     = contains(["ubuntu_noble"], var.image)
+    error_message = "image must be ubuntu_noble; Debian 12 nftables lacks destroy."
   }
 }
 

@@ -211,6 +211,11 @@ count in `docs/TESTING.md`.
 
 ## Pitfalls
 
+- **Supported hosts are Debian 13+ and Ubuntu 24.04+** — the firewall replaces
+  its ruleset with `destroy table`, which older nftables rejects. A `site.yml`
+  pre-task refuses older releases before any host change; provider image
+  allowlists admit only these releases.
+
 - **`changed_when:` on `command:` is mandatory** — otherwise it reports
   changed every run, breaking idempotency assertions.
 - **`gather_facts: true` on every play** — needed for OS-specific branches.

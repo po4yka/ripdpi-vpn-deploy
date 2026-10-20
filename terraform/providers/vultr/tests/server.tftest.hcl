@@ -6,7 +6,7 @@ variables {
   server_name          = "vpn-test"
   region               = "ams"
   plan                 = "vc2-1c-1gb"
-  os_id                = 2136
+  os_id                = 2625
   admin_ssh_public_key = "ssh-ed25519 AAAATESTKEY test@harness"
   allowed_ssh_cidrs    = ["203.0.113.42/32"]
   build_env            = "test"
@@ -127,6 +127,26 @@ run "server_rejects_mislabeled_rocky9_image" {
 
   variables {
     os_id = 1869
+  }
+
+  expect_failures = [var.os_id]
+}
+
+run "server_rejects_releases_without_nft_destroy" {
+  command = plan
+
+  variables {
+    os_id = 2136
+  }
+
+  expect_failures = [var.os_id]
+}
+
+run "server_rejects_ubuntu2204_without_nft_destroy" {
+  command = plan
+
+  variables {
+    os_id = 1743
   }
 
   expect_failures = [var.os_id]

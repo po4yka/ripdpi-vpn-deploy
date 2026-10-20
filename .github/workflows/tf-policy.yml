@@ -85,7 +85,7 @@ jobs:
                 'server_name = "ci-policy"' \
                 'region = "ams"' \
                 'plan = "vc2-1c-1gb"' \
-                'os_id = 2136' \
+                'os_id = 2625' \
                 'admin_ssh_public_key = "ssh-ed25519 AAAACI ci@invalid"' \
                 'allowed_ssh_cidrs = ["192.0.2.33/32"]' \
                 'public_listeners = [' \

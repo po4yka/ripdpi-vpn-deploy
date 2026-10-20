@@ -85,8 +85,8 @@ The AmneziaWG role and the real-VPS AWG sentinel MUST build Go sources with
 ### Requirement: REQ-DRF-IMAGE — Supported host operating systems
 
 Hetzner, Vultr and Scaleway image validation MUST admit only Debian 13 and
-Ubuntu 24.04 images. The firewall role MUST refuse a host older than Debian 13
-or Ubuntu 24.04 before it changes nftables.
+Ubuntu 24.04 images. `site.yml` MUST refuse a host older than Debian 13 or
+Ubuntu 24.04 before any host change.
 
 #### Scenario: A Debian 12 tfvars file
 
