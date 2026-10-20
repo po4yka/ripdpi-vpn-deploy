@@ -17,6 +17,10 @@ from template_render import merge_render_vars, render_template
 from test_awg_device_binding import document
 from test_awg_device_binding_native import native_config
 from test_transport_semantics_native import command, exact_awg_sources
+from transport_destination_policy import IPV6_DENY
+
+# The lab's public stand-in is ULA fd88::/64, so only fc00::/7 stays forwardable.
+LAB_AWG_DESTINATION_DENY_V6 = [prefix for prefix in IPV6_DENY if prefix != "fc00::/7"]
 
 pytestmark = pytest.mark.native_runtime
 ROOT = Path(__file__).resolve().parents[2]
@@ -272,7 +276,9 @@ def test_owned_uplink_nat_mtu_dns_reconnect_revocation_and_no_native_bypass(tmp_
               counter drop comment "native-bypass-denied"
             }}\n }}\n''')
         values=merge_render_vars()
+        # The lab uplink stands in for the public internet with ULA fd88::/64.
         values.update(amneziawg_secrets=doc['amneziawg_secrets'],firewall_awg_uplink_interface='up0',
+                      firewall_awg_destination_deny_v6=LAB_AWG_DESTINATION_DENY_V6,
                       security_controls={'fail2ban':False},public_listener_contract=[
                           {'name':name,'protocol':'udp','port':51820+i,'port_range':None} for i,name in enumerate(interfaces)],
                       _firewall_effective_check_mode=True,_firewall_tailnet_ssh_sets_was_absent=True,

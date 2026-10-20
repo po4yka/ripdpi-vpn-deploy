@@ -259,6 +259,30 @@ def test_awg_forwarding_is_default_drop_with_only_uplink_egress():
             assert forward.index(guard) < established
 
 
+def test_awg_forwarding_refuses_canonical_private_destinations():
+    from scripts.transport_destination_policy import IPV4_DENY, IPV6_DENY
+
+    defaults = yaml.safe_load(
+        (REPO_ROOT / "ansible/roles/firewall/defaults/main.yml").read_text()
+    )
+    # One recipient boundary for every transport, including forwarded AWG.
+    assert defaults["firewall_awg_destination_deny_v4"] == list(IPV4_DENY)
+    assert defaults["firewall_awg_destination_deny_v6"] == list(IPV6_DENY)
+    vars_ = ctr.merge_render_vars()
+    vars_["vpn"] = {**vars_["vpn"], "enable_amneziawg": True}
+    vars_["firewall_awg_uplink_interface"] = "eth0"
+    rendered = ctr.render_template(TEMPLATE, vars_)
+    forward = rendered[
+        rendered.index("  chain forward {") : rendered.index("  chain output {")
+    ]
+    v4 = f'iifname "awg0" ip daddr {{ {", ".join(IPV4_DENY)} }} counter drop'
+    v6 = f'iifname "awg0" ip6 daddr {{ {", ".join(IPV6_DENY)} }} counter drop'
+    accept = forward.index('ct state new iifname "awg0" oifname "eth0" accept')
+    established = forward.index("ct state established,related accept")
+    for rule in (v4, v6):
+        assert forward.index(rule) < min(accept, established)
+
+
 def test_additive_forward_contract_stays_inside_canonical_drop_chain():
     vars_ = ctr.merge_render_vars()
     vars_["firewall_forward_interface_contract"] = [

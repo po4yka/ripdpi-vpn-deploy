@@ -17,7 +17,7 @@ from awg_device_binding import resolve_binding
 from template_render import merge_render_vars, render_template
 from test_awg_device_binding import document
 from test_awg_device_binding_native import native_config
-from test_awg_dualstack_native import ECHO
+from test_awg_dualstack_native import ECHO, LAB_AWG_DESTINATION_DENY_V6
 from test_transport_semantics_native import command, exact_awg_sources
 
 pytestmark = pytest.mark.native_runtime
@@ -168,7 +168,9 @@ def test_computed_zero_udp_checksum_keeps_ffff_and_real_dns_reply(tmp_path):
         }}
         }}\n''')
         values = merge_render_vars()
+        # The lab uplink stands in for the public internet with ULA fd88::/64.
         values.update(amneziawg_secrets=doc["amneziawg_secrets"], firewall_awg_uplink_interface="up0",
+                      firewall_awg_destination_deny_v6=LAB_AWG_DESTINATION_DENY_V6,
                       security_controls={"fail2ban": False}, public_listener_contract=[
                           {"name": server_tun, "protocol": "udp", "port": instance["listen_port"], "port_range": None}],
                       _firewall_effective_check_mode=True, _firewall_tailnet_ssh_sets_was_absent=True,

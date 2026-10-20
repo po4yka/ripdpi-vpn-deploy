@@ -190,6 +190,12 @@ table inet filter {
 {% for inst in _awg_inst %}
     iifname "{{ inst.name }}" oifname != "{{ awg_uplink_interface }}" counter drop
     oifname "{{ inst.name }}" iifname != "{{ awg_uplink_interface }}" counter drop
+{% if firewall_awg_destination_deny_v4 %}
+    iifname "{{ inst.name }}" ip daddr { {{ firewall_awg_destination_deny_v4 | join(', ') }} } counter drop comment "awg-private-destination"
+{% endif %}
+{% if firewall_awg_destination_deny_v6 %}
+    iifname "{{ inst.name }}" ip6 daddr { {{ firewall_awg_destination_deny_v6 | join(', ') }} } counter drop comment "awg-private-destination-v6"
+{% endif %}
 {% for family, protocol in [('ipv4', 'ip'), ('ipv6', 'ip6')] %}
 {% set sources = [] %}
 {% for peer in inst.peers %}
