@@ -212,10 +212,15 @@ export DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE="$HOME/.config/vpn-provision/ss
 unset TAILSCALE_AUTH_KEY
 
 (
-set -e
-make decrypt           # writes the configured SECRETS_FILE, mode 0600
-make validate          # gitleaks + lint must pass
-make dry-run ANSIBLE_LIMIT="$deploy_alias" ANSIBLE_TAGS=
+  trap 'rc=$?; trap "" INT QUIT TERM HUP; [ "$rc" -eq 0 ] || make clean || :; exit "$rc"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  trap 'exit 129' HUP
+  trap 'exit 131' QUIT
+  set -e
+  make decrypt           # writes the configured SECRETS_FILE, mode 0600
+  make validate          # gitleaks + lint must pass
+  make dry-run ANSIBLE_LIMIT="$deploy_alias" ANSIBLE_TAGS=
 )
 ```
 
@@ -224,18 +229,25 @@ reviewed every changed line. Stop and investigate unexpected changes.
 
 ```bash
 (
-set -e
-make deploy ANSIBLE_LIMIT="$deploy_alias" ANSIBLE_TAGS=
-make verify ANSIBLE_LIMIT="$deploy_alias"
-make source-drift ANSIBLE_LIMIT="$deploy_alias" # Also run by deploy/verify.
-make clean
+  trap 'rc=$?; trap "" INT QUIT TERM HUP; make clean || [ "$rc" -ne 0 ] || rc=1; exit "$rc"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  trap 'exit 129' HUP
+  trap 'exit 131' QUIT
+  set -e
+  make deploy ANSIBLE_LIMIT="$deploy_alias" ANSIBLE_TAGS=
+  make verify ANSIBLE_LIMIT="$deploy_alias"
+  make source-drift ANSIBLE_LIMIT="$deploy_alias" # Also run by deploy/verify.
 )
 ```
 
-Each subshell stops on a failed command. Do not run the deploy block after a
-failed preflight.
-Run `make clean` when finishing or abandoning the operation, including after
-a failed preflight.
+Each subshell stops on a failed command and keeps its status. A failed or
+interrupted preflight runs `make clean` itself; a successful preflight keeps
+the decrypted file for the deploy block. The deploy block runs `make clean`
+on every exit, and exits 1 when only `make clean` fails. Do not run the deploy
+block after a failed preflight. Run `make clean` if you abandon the operation
+after a successful preflight. SIGKILL and power loss skip the traps; run
+`make clean` by hand after them.
 The exported mapping paths are consumed by both controller commands;
 `dry-run` uses only the contexts mapping and does not write failure receipts.
 The empty command-line `ANSIBLE_TAGS=` forces the full graph even if the shell
@@ -272,10 +284,21 @@ between the deployed and current revisions in place of the preview the dry-run
 cannot give, followed by the recovery from the current revision. When the refusal matches, the changes it reports before the
 refusal are the pre-block changes this recovery applies: review those, because
 the refused dry-run you reviewed above came from the newer revision. Then run,
-with the same exported inputs as the deploy block, for that exact alias:
+with the same exported inputs as the deploy block, for that exact alias. The
+failed preflight already removed its decrypted file, so this block decrypts
+again and cleans on every exit:
 
 ```bash
-make deploy ANSIBLE_LIMIT='<exact-alias>' ANSIBLE_TAGS=
+(
+  trap 'rc=$?; trap "" INT QUIT TERM HUP; make clean || [ "$rc" -ne 0 ] || rc=1; exit "$rc"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  trap 'exit 129' HUP
+  trap 'exit 131' QUIT
+  set -e
+  make decrypt
+  make deploy ANSIBLE_LIMIT='<exact-alias>' ANSIBLE_TAGS=
+)
 ```
 
 The explicit empty `ANSIBLE_TAGS=` is required: an operator `.fleet.mk` may

@@ -289,7 +289,11 @@ when only `make clean` fails, as the cleanup blocks in `docs/QUICKSTART.md` leav
 the block unsuccessful. The REALITY keypair and restic password sections of
 `RUNBOOK-rotate.md` print the same guard around their `decrypt`, `deploy` and
 `verify` calls; `test_operator_verb_scope.py` runs all four blocks, including
-interruption.
+interruption. The ordinary re-deploy recipe in `RUNBOOK-deploy.md` splits
+preflight and deploy around the operator's review: a failed or interrupted
+preflight cleans up, a successful one keeps the plaintext for the deploy block,
+and the deploy and journal-recovery blocks clean on every exit; the same test
+file runs those three blocks.
 
 The release installer verifies the exact repository and fully qualified signer
 workflow before installation. Cloud-init acceptance checks the actual loopback
