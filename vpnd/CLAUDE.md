@@ -89,6 +89,7 @@ a complete prior verified environment, without migrating operator state.
   a private prefix, use packaged assets outside the checkout, verify every manual,
   and exercise failed/interrupted replacement. The five runtime packages have
   locked hashes plus reviewed license/source policy.
+  Real installation assertions read the expected version from `pyproject.toml`.
 
 ## Pitfalls
 
