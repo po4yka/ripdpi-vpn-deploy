@@ -81,7 +81,6 @@
       - gcc
       - libc6-dev
       - libmnl-dev
-      - resolvconf
       - iproute2
       - iptables
     state: present

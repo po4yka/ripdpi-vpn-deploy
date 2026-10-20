@@ -10,15 +10,6 @@
         update_cache: true
         cache_valid_time: 3600
 
-    # Debian resolvconf 1.94 debian/postinst only replaces resolv.conf when
-    # this documented debconf boolean is true. Docker owns the mounted file.
-    - name: Keep Docker-owned resolv.conf when the real role installs resolvconf
-      ansible.builtin.debconf:
-        name: resolvconf
-        question: resolvconf/linkify-resolvconf
-        value: "false"
-        vtype: boolean
-
     - name: Inspect outputs that must be created by the role
       ansible.builtin.stat:
         path: "{{ item }}"
