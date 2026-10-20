@@ -88,7 +88,7 @@
 
 - name: Select the pinned Go toolchain for this architecture
   ansible.builtin.set_fact:
-    _awg_go_toolchain_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_architecture] | default('') }}"
+    _awg_go_toolchain_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_facts['architecture']] | default('') }}"
 
 - name: Refuse an AmneziaWG build without a pinned Go toolchain
   ansible.builtin.assert:
@@ -127,12 +127,22 @@
     mode: "0644"
   when: not ansible_check_mode
 
+# The marker follows a completed extraction; an interrupted one is redone.
 - name: Extract the pinned Go toolchain
   ansible.builtin.unarchive:
     src: "{{ _awg_go_toolchain_archive }}"
     dest: "{{ _awg_go_toolchain_root }}"
     remote_src: true
-    creates: "{{ _awg_go_toolchain_root }}/go/bin/go"
+    creates: "{{ _awg_go_toolchain_root }}/.extracted"
+  when: not ansible_check_mode
+
+- name: Record the completed Go toolchain extraction
+  ansible.builtin.copy:
+    dest: "{{ _awg_go_toolchain_root }}/.extracted"
+    content: "{{ amneziawg_go_toolchain_sha256[_awg_go_toolchain_arch] }}\n"
+    owner: root
+    group: root
+    mode: "0644"
   when: not ansible_check_mode
 
 - name: Clone amneziawg-go
