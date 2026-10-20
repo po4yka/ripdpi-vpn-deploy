@@ -1,0 +1,31 @@
+---
+# Retain unit definitions and private data for a reversible stop. No direct
+# issuance migration is implied while the accepted generation pointer remains.
+- name: Inspect exact mirror units before retirement
+  ansible.builtin.command:
+    argv: [systemctl, show, '{{ item }}', '--property=LoadState', --value]
+  loop: [vpn-sub-mirror.timer, vpn-sub-mirror.service]
+  register: _subscription_mirror_units
+  changed_when: false
+  check_mode: false
+  failed_when: >-
+    _subscription_mirror_units.stdout not in ['loaded', 'masked', 'not-found'] or
+    _subscription_mirror_units.rc not in [0, 1] or
+    (_subscription_mirror_units.rc == 1 and
+     _subscription_mirror_units.stdout != 'not-found')
+
+- name: Stop and disable loaded mirror execution
+  ansible.builtin.systemd_service:
+    name: '{{ item.item }}'
+    state: stopped
+    enabled: false
+  loop: '{{ _subscription_mirror_units.results }}'
+  register: _subscription_mirror_stopped
+  when: item.stdout == 'loaded'
+
+- name: Stop masked mirror execution while preserving its mask
+  ansible.builtin.systemd_service:
+    name: '{{ item.item }}'
+    state: stopped
+  loop: '{{ _subscription_mirror_units.results }}'
+  when: item.stdout == 'masked'

@@ -1,0 +1,11 @@
+{
+  "change": "network-protocol-correctness",
+  "evidence_summary": "Accepted source bc849f60a7422682c8f21826807ceee792ab9953 passed CI 39216524425 with all 92 jobs, all nine required checks and all five workflows successful. All 45 canonical native cases verify exact source, corrected engine identity and clean cleanup. Exact-tree local make check passed 8660 portable tests, 45 subtests, 65 BATS and 322 CLI tests. PRs 333 and 338 are merged; committed review 8aa6cbda and canonical archive retain historical failures and runtime limits. No deployment or private fleet access.",
+  "execution_sha256": "6feb5352ac5fedea3d95e27e20ace3f1af64541dae443aca6081f7052c321cee",
+  "issue_sha256": "8038d1b1deb56a068e03f9ae2dccea364dd5a77030ab6fe8c49c03319ff7fe9b",
+  "outcome": "done",
+  "prepared_at": "2026-10-19T08:57:35Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "SEC-1792307003680932"
+}

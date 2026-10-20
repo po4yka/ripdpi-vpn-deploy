@@ -35,7 +35,8 @@ SUITES = (
             "tests/unit/test_nginx_transaction_native.py",
         ],
     ),
-    ("hopping", ["tests/native/transport_acceptance/test_hopping.py"]),
+    ("hopping", ["tests/native/transport_acceptance/test_hopping.py",
+                 "tests/native/transport_acceptance/test_dhcpv6.py"]),
     (
         "compensation",
         [
@@ -174,6 +175,81 @@ def case_cleanup_differences(case):
     return {}
 
 
+DHCPV6_DIAGNOSTIC_PREFIX = "dhcpv6-observation:"
+DHCPV6_DIAGNOSTIC_FIELDS = {
+    "probe_id", "phase", "ready_ms", "send_ms", "elapsed_ms", "receiver_member",
+    "packet_received", "output_before", "output_after", "input_before", "input_after",
+    "postrouting_after", "prerouting_before",
+    "prerouting_after", "ingress_expected", "ipv6_no_routes", "ipv6_multicast", "ipv6_discards",
+    "ipv6_address_errors", "ipv6_delivers", "local_multicast_routes",
+    "udp_errors", "udp_checksum_errors", "udp_no_ports", "udp_ignored_multicast",
+}
+
+
+def dhcpv6_diagnostics(log):
+    """Admit one fixed synthetic probe record; raw log data stays private."""
+    records = []
+    scanned = 0
+
+    def unique_object(pairs):
+        value = dict(pairs)
+        if len(value) != len(pairs):
+            raise ValueError("duplicate-diagnostic-field")
+        return value
+
+    # A bounded scan also refuses truncated overlong lines and duplicate probes.
+    try:
+        with log.open("rb") as stream:
+            for _ in range(65536):
+                line = stream.readline(4097)
+                if not line:
+                    break
+                scanned += len(line)
+                if len(line) > 4096 or scanned > 1048576:
+                    return []
+                if not line.startswith(DHCPV6_DIAGNOSTIC_PREFIX.encode()):
+                    continue
+                try:
+                    value = json.loads(line[len(DHCPV6_DIAGNOSTIC_PREFIX):], object_pairs_hook=unique_object)
+                except (ValueError, UnicodeError):
+                    return []
+                if not isinstance(value, dict) or set(value) != DHCPV6_DIAGNOSTIC_FIELDS:
+                    return []
+                if type(value["probe_id"]) is not str or type(value["phase"]) is not str:
+                    return []
+                if value["probe_id"] != "multicast-request" or value["phase"] not in {
+                    "packet",
+                }:
+                    return []
+                if any(type(value[field]) is not bool for field in ("receiver_member", "packet_received", "ingress_expected")):
+                    return []
+                routes = value["local_multicast_routes"]
+                if routes is not None:
+                    route_fields = {prefix + "_" + field for prefix in ("peer", "other")
+                                    for field in ("present", "multicast", "linkdown")}
+                    if (value["packet_received"] or not isinstance(routes, dict) or set(routes) != route_fields
+                            or any(type(item) is not bool for item in routes.values())):
+                        return []
+                    if any(not routes[prefix + "_present"] and
+                           (routes[prefix + "_multicast"] or routes[prefix + "_linkdown"])
+                           for prefix in ("peer", "other")):
+                        return []
+                for field in DHCPV6_DIAGNOSTIC_FIELDS - {
+                    "probe_id", "phase", "receiver_member", "packet_received", "ingress_expected", "local_multicast_routes",
+                }:
+                    limit = 30000 if field.endswith("_ms") else 65535
+                    if type(value[field]) is not int or not 0 <= value[field] <= limit:
+                        return []
+                records.append(value)
+                if len(records) > 1:
+                    return []
+            else:
+                return []
+    except OSError:
+        return []
+    return records
+
+
 AWG_PROBE_CASES = frozenset(
     "tests.unit.test_awg_dualstack_native."
     "test_owned_uplink_nat_mtu_dns_reconnect_revocation_and_no_native_bypass["
@@ -273,6 +349,45 @@ def socks_readiness_summary(case, case_id, result):
     return value
 
 
+DHCPV6_READINESS_CASE = (
+    "tests.native.transport_acceptance.test_dhcpv6."
+    "test_native_scoped_dhcpv6_bootstrap_rebind_and_legacy_server"
+)
+
+
+def dhcpv6_readiness_summary(case, case_id, result):
+    """Publish only fixed pre-ready refusal data from the exact failing case."""
+    if case_id != DHCPV6_READINESS_CASE or result not in {"failure", "error"}:
+        return None
+    properties = [node for node in case.findall("./properties/property")
+                  if node.get("name") == "dhcpv6-readiness"]
+    if len(properties) != 1:
+        return None
+    raw = properties[0].get("value", "")
+    try:
+        if len(raw.encode("utf-8")) > 256:
+            return None
+    except UnicodeError:
+        return None
+
+    def unique_object(pairs):
+        value = dict(pairs)
+        if len(value) != len(pairs):
+            raise ValueError("duplicate-readiness-field")
+        return value
+
+    try:
+        value = json.loads(raw, object_pairs_hook=unique_object)
+    except ValueError:
+        return None
+    if not isinstance(value, dict) or set(value) != {"stage", "authority_mismatch"}:
+        return None
+    stage, mask = value["stage"], value["authority_mismatch"]
+    if stage != "bind-join" or type(mask) is not int or mask != 0:
+        return None
+    return value
+
+
 def case_results(path):
     root = ET.parse(path).getroot()
     rows = []
@@ -292,6 +407,8 @@ def case_results(path):
         if probe is not None:
             row["probe"] = probe
         readiness = socks_readiness_summary(case, row["case"], result)
+        if readiness is None:
+            readiness = dhcpv6_readiness_summary(case, row["case"], result)
         if readiness is not None:
             row["readiness"] = readiness
         rows.append(row)
@@ -376,6 +493,7 @@ def engines():
     return result
 
 
+
 def main():
     if (
         sys.platform != "linux"
@@ -402,6 +520,9 @@ def main():
     before = None
     plan = os.environ.get("TRANSPORT_NATIVE_PLAN", "all")
     commands = suite_commands(plan)
+    executions = commands
+    if plan in {"all", "core"}:
+        executions = [("dhcpv6-preflight", ["tests/native/transport_acceptance/test_dhcpv6.py"], []), *commands]
     evidence["plan"] = plan
     evidence["phase"] = "prerequisites"
     try:
@@ -409,7 +530,7 @@ def main():
         with tempfile.TemporaryDirectory(
             prefix="transport-native-", dir="/var/tmp"
         ) as private:
-            for name, paths, selection in commands:
+            for name, paths, selection in executions:
                 evidence["phase"] = name
                 report = Path(private) / (name + ".xml")
                 with (Path(private) / (name + ".log")).open("wb") as log:
@@ -432,10 +553,15 @@ def main():
                         stderr=subprocess.STDOUT,
                         timeout=2400,
                     )
+                # Hopping owns the one-record observation. An early failure has no
+                # canonical result, so retain that failed attempt instead.
+                if name == "hopping" or (name == "dhcpv6-preflight" and result.returncode):
+                    evidence["dhcpv6_diagnostics"] = dhcpv6_diagnostics(Path(private) / (name + ".log"))
                 if result.returncode:
                     # Keep diagnostics on this isolated machine only, with private modes.
                     if report.exists():
-                        evidence["suites"][name] = case_results(report)
+                        if name != "dhcpv6-preflight":
+                            evidence["suites"][name] = case_results(report)
                         evidence["failure_locations"] = sorted(
                             set(
                                 re.findall(
@@ -447,7 +573,9 @@ def main():
                     diagnostic = output.with_suffix("." + name + ".log")
                     retain_diagnostic(Path(private) / (name + ".log"), diagnostic)
                     raise RuntimeError("native-suite-failed:" + name)
-                evidence["suites"][name] = cases(report)
+                complete = cases(report)
+                if name != "dhcpv6-preflight":
+                    evidence["suites"][name] = complete
                 difference = resource_differences(before, resources())
                 if difference:
                     evidence["cleanup_differences"] = difference
@@ -474,8 +602,8 @@ def main():
             "engine-missing:" + name
             for name in ("xray", "hysteria", "amneziawg-go", "awg")
         )
-        known.update("native-suite-failed:" + name for name, _paths, _selection in commands)
-        known.update("native-suite-cleanup-unconfirmed:" + name for name, _paths, _selection in commands)
+        known.update("native-suite-failed:" + name for name, _paths, _selection in executions)
+        known.update("native-suite-cleanup-unconfirmed:" + name for name, _paths, _selection in executions)
         evidence["failure_category"] = code if code in known else type(error).__name__
         raise
     finally:
