@@ -23,10 +23,12 @@ operator-path and host-boundary defects that its runtime repair left out:
   when the operator declines or a later step fails.
 - The ordinary re-deploy recipe in `docs/RUNBOOK-deploy.md` leaves decrypted
   secrets on disk after a failed or interrupted preflight or deploy block.
-- The AmneziaWG role and the real-VPS AWG sentinel build Go code with the
-  distribution toolchain and no explicit `GOTOOLCHAIN`, so the go.env default
-  can download a different toolchain during deployment. The sentinel also
-  installs `resolvconf`, which removes `systemd-resolved` on Debian 13.
+- The AmneziaWG role builds amneziawg-go with the distribution Go, whose
+  go.env sets `GOTOOLCHAIN=auto`. Ubuntu 24.04 ships Go 1.22.2 and the pinned
+  source requires go 1.22.3, so an Ubuntu host downloads an unpinned toolchain
+  during deployment, and Debian and Ubuntu hosts build with different
+  compilers. The real-VPS AWG sentinel installs `resolvconf`, which removes
+  `systemd-resolved` on Debian 13.
 - Hetzner (`debian-12`), Vultr (Debian 12, Ubuntu 22.04) and Scaleway
   (`debian_bookworm`) still admit images whose nftables cannot run
   `destroy table`, so the firewall role fails after host changes start.
@@ -46,7 +48,8 @@ operator-path and host-boundary defects that its runtime repair left out:
   `server_name`, and removes its saved plan on every exit.
 - The re-deploy recipe cleans decrypted secrets after a failed preflight and
   after every deploy-block exit.
-- AWG and sentinel Go builds run with `GOTOOLCHAIN=local`; the sentinel no
+- The AmneziaWG role downloads one Go release, verifies its go.dev sha256,
+  and builds with that toolchain and `GOTOOLCHAIN=local`; the sentinel no
   longer installs `resolvconf`.
 - Provider image allowlists admit only Debian 13 and Ubuntu 24.04 images, and
   `site.yml` refuses an older host before any host change.
@@ -76,4 +79,5 @@ operator-path and host-boundary defects that its runtime repair left out:
 - Docs: `RUNBOOK-deploy.md`, `RUNBOOK-rollback.md`, folder notes.
 - A Hetzner root that omitted `image` now defaults to `debian-13`; its next
   plan shows a server replacement for review. A tfvars file with a removed
-  image refuses validation. This change authorizes no deployment.
+  image refuses validation. The next AWG converge rebuilds amneziawg-go with
+  the pinned toolchain and publishes it as a new release. This change authorizes no deployment.

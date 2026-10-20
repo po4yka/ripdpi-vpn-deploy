@@ -74,13 +74,15 @@ block MUST keep the failing step's status.
 
 ### Requirement: REQ-DRF-GOTOOL — Local Go toolchain for host builds
 
-The AmneziaWG role and the real-VPS AWG sentinel MUST build Go sources with
-`GOTOOLCHAIN=local`. The sentinel MUST NOT install `resolvconf`.
+The AmneziaWG role MUST build amneziawg-go with one pinned Go release whose
+archive digest it verifies before extraction, and with `GOTOOLCHAIN=local`. It
+MUST refuse an architecture without a pinned digest before the download. The
+real-VPS AWG sentinel MUST NOT install `resolvconf`.
 
-#### Scenario: A source requires a newer Go release
+#### Scenario: An Ubuntu 24.04 host
 
-- **WHEN** the pinned source declares a Go version newer than the host toolchain
-- **THEN** the build fails without downloading a toolchain
+- **WHEN** the distribution Go is older than the pinned source requires
+- **THEN** the build uses the verified pinned toolchain and downloads no other
 
 ### Requirement: REQ-DRF-IMAGE — Supported host operating systems
 

@@ -11,6 +11,15 @@ amneziawg_tools_version: ""
 amneziawg_go_commit: ""
 amneziawg_tools_commit: ""
 
+# Every host builds amneziawg-go with this exact Go release, verified by its
+# go.dev archive digest. Distro Go differs by OS (Ubuntu 24.04 ships 1.22.2,
+# below the pinned source's go 1.22.3), and GOTOOLCHAIN=local forbids a silent
+# toolchain download during the build. Keep aligned with mise.toml.
+amneziawg_go_toolchain_version: "1.27.1"
+amneziawg_go_toolchain_sha256:
+  amd64: 63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445
+  arm64: 3450b45a3f9ee8568792736a5c5e70a1f2e9b36c35a8f74958c03e51d7d92bec
+
 amneziawg:
   listen_port: "{{ amneziawg_listen_port }}"
   interface: awg0

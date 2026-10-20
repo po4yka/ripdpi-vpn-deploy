@@ -75,7 +75,6 @@
 - name: Install build dependencies for AmneziaWG userspace
   ansible.builtin.apt:
     name:
-      - golang
       - git
       - make
       - gcc
@@ -86,6 +85,55 @@
     state: present
     update_cache: true
     cache_valid_time: 3600
+
+- name: Select the pinned Go toolchain for this architecture
+  ansible.builtin.set_fact:
+    _awg_go_toolchain_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_architecture] | default('') }}"
+
+- name: Refuse an AmneziaWG build without a pinned Go toolchain
+  ansible.builtin.assert:
+    that:
+      - amneziawg_go_toolchain_version is match('^[1-9][0-9]*[.][0-9]+[.][0-9]+$')
+      - _awg_go_toolchain_arch in amneziawg_go_toolchain_sha256
+      - amneziawg_go_toolchain_sha256[_awg_go_toolchain_arch] is match('^[0-9a-f]{64}$')
+    fail_msg: amneziawg-go-toolchain-unpinned
+
+- name: Select the pinned Go toolchain paths
+  ansible.builtin.set_fact:
+    _awg_go_toolchain_archive: >-
+      /var/cache/ripdpi/go{{ amneziawg_go_toolchain_version }}.linux-{{ _awg_go_toolchain_arch }}.tar.gz
+    _awg_go_toolchain_root: >-
+      /opt/ripdpi-go/go{{ amneziawg_go_toolchain_version }}-linux-{{ _awg_go_toolchain_arch }}
+
+- name: Ensure pinned Go toolchain directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /var/cache/ripdpi
+    - /opt/ripdpi-go
+    - "{{ _awg_go_toolchain_root }}"
+
+- name: Download the checksum-pinned Go toolchain
+  ansible.builtin.get_url:
+    url: "https://go.dev/dl/go{{ amneziawg_go_toolchain_version }}.linux-{{ _awg_go_toolchain_arch }}.tar.gz"
+    dest: "{{ _awg_go_toolchain_archive }}"
+    checksum: "sha256:{{ amneziawg_go_toolchain_sha256[_awg_go_toolchain_arch] }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: not ansible_check_mode
+
+- name: Extract the pinned Go toolchain
+  ansible.builtin.unarchive:
+    src: "{{ _awg_go_toolchain_archive }}"
+    dest: "{{ _awg_go_toolchain_root }}"
+    remote_src: true
+    creates: "{{ _awg_go_toolchain_root }}/go/bin/go"
+  when: not ansible_check_mode
 
 - name: Clone amneziawg-go
   ansible.builtin.git:
@@ -170,7 +218,9 @@
             timeout_seconds: 60
           - argv: [/usr/bin/make, -B]
             chdir: "{{ _awg_go_source_dir }}"
-            environment: {}
+            environment:
+              PATH: "{{ _awg_go_toolchain_root }}/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+              GOTOOLCHAIN: local
             timeout_seconds: 1800
           - argv:
               - /usr/bin/python3
