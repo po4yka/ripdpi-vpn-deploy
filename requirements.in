@@ -1,8 +1,8 @@
 ansible-core==2.21.5
-ansible-lint==26.9.0
+ansible-lint==26.10.0
 jmespath==1.1.0
-molecule==26.9.0
-molecule-plugins[docker]==26.9.28
+molecule==26.10.0
+molecule-plugins[docker]==26.10.12
 yamllint==1.38.0
 
 # Used by validators in CI (scripts/check-secrets-coverage.py +
@@ -34,7 +34,7 @@ setuptools==84.0.0
 wheel==0.48.0
 ruff==0.17.0
 mypy==2.4.0
-hypothesis==6.168.5
+hypothesis==6.169.0
 mutmut==3.8.0
 pip-audit==2.10.1
 pip==26.2.1

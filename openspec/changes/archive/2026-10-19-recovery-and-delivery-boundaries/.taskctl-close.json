@@ -1,0 +1,11 @@
+{
+  "change": "recovery-and-delivery-boundaries",
+  "evidence_summary": "Accepted source 78a50c6c93f8e9fbfe1126925ff4905401b669ca and protected main 2f6ca0478e2578ea87ceb60ae28fd63fbddfc5d1 have the same tree. Full local check, PR CI 39244332000 and main CI 39258619952 passed; all 47 exact native cases and cleanup passed. Eight requirements and all source evidence are recorded in verification. No deployment.",
+  "execution_sha256": "8bfe1889d8b78b9f0e5f771b5fac73b675ca6e0a7f10724cb807b31b44d17f72",
+  "issue_sha256": "35418f7a22a179930268df96ffefa936c49b29bf8514fd0450a797115b74595e",
+  "outcome": "done",
+  "prepared_at": "2026-10-19T14:46:37Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "OPS-1792305989358872"
+}
