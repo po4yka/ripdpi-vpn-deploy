@@ -145,7 +145,7 @@ PY
 
 To promote the warm-spare, run from the operator workstation:
 
-  make promote-spare OTP=${otp}
+  make promote-spare PROVIDER=${PROVIDER} BLUE_ENV=${BLUE_ENV} GREEN_ENV=${GREEN_ENV} OTP=${otp}
 
 The OTP is bound to this environment, policy, and liveness configuration and expires in $((otp_ttl / 60)) min."
   msg+=$'\n'"Evidence: ${evidence}"
@@ -219,7 +219,7 @@ msg="Blue VPS unreachable for ${streak} probes (${blue_ip}:443).
 
 To promote the warm-spare, run from the operator workstation:
 
-  make promote-spare OTP=${otp}
+  make promote-spare PROVIDER=${PROVIDER} BLUE_ENV=${BLUE_ENV} GREEN_ENV=${GREEN_ENV} OTP=${otp}
 
 OTP expires in $((OTP_TTL_SECONDS / 60)) min. Re-running watch-spare
 keeps refreshing the OTP until consumed."

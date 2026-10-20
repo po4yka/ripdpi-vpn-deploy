@@ -145,7 +145,8 @@ def test_otp_is_issued_only_after_sustained_quorum_failure(tmp_path: Path) -> No
 
     assert result.returncode == 0
     assert otp.stat().st_mode & 0o777 == 0o600
-    assert "make promote-spare OTP=" in result.stdout
+    # The printed command selects the environments that the OTP context binds.
+    assert "make promote-spare PROVIDER=upcloud BLUE_ENV=prod GREEN_ENV=spare OTP=" in result.stdout
     assert not blue_green_log.exists()
 
 
