@@ -59,7 +59,7 @@ Overriding `ansible_host` for Tailscale administration must never redirect a
 data-plane probe onto the management path.
 
 **Bounded recovery** — failures must cross `fail_threshold` before the watchdog
-requests targeted Xray/Hysteria recovery from the guarded generation controller; other failed units retain their direct recovery. Only the controller may replace a protected frontend and acknowledge its new admitted PID while retaining healthy frontend and mapping processes. A failed controller request has no direct-restart fallback. Restart attempts remain
+requests targeted Xray/Hysteria recovery from the guarded generation controller; other failed units retain their direct recovery. A failed configuration check (`xray config valid`, `nginx -t`) stays red and alerts, but withholds recovery for that unit in the same run: a restart would stop a service that still holds its last valid configuration. Only the controller may replace a protected frontend and acknowledge its new admitted PID while retaining healthy frontend and mapping processes. A failed controller request has no direct-restart fallback. Restart attempts remain
 capped by `kicks_per_hour_max`, notifications by `alerts_per_hour_max`, and a
 red probe run exits non-zero so systemd and external checks retain the signal.
 

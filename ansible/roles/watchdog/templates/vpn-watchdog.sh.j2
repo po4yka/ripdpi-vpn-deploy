@@ -50,6 +50,7 @@ probe_results=()
 probe_failures=()
 probe_failure_count=0
 declare -A failed_units=()
+declare -A invalid_units=()
 
 probe() {
   local name="$1"; shift
@@ -68,6 +69,17 @@ probe_unit() {
   probe "$@"
   if (( probe_failure_count > failures_before )); then
     failed_units["$unit"]=1
+  fi
+}
+
+# A failed configuration check withholds recovery for its unit: a restart
+# would stop a running service that still holds its last valid configuration.
+probe_config() {
+  local unit="$1"; shift
+  local failures_before=$probe_failure_count
+  probe_unit "$unit" "$@"
+  if (( probe_failure_count > failures_before )); then
+    invalid_units["$unit"]=1
   fi
 }
 
@@ -246,7 +258,7 @@ if [[ "${ENABLE_XRAY:-true}" == "true" ]]; then
     probe_unit "xray.service" "xray TCP/${server_port} listening" \
       bash -c "ss -lnt | awk '{print \$4}' | grep -q ':${server_port}\$'"
   done
-  probe_unit "xray.service" "xray config valid" \
+  probe_config "xray.service" "xray config valid" \
     "$XRAY_VALIDATE_BIN" --config /etc/xray/config.json
   probe_unit "xray.service" "xray StatsService query" \
     "$XRAY_BIN" api statsquery "--server=${XRAY_API_SERVER}"
@@ -254,7 +266,7 @@ fi
 
 if [[ "${ENABLE_NGINX_XHTTP:-true}" == "true" ]]; then
   probe_unit "nginx.service" "nginx.service active" systemctl is-active --quiet nginx
-  probe_unit "nginx.service" "nginx -t" nginx -t
+  probe_config "nginx.service" "nginx -t" nginx -t
   for port in "${NGINX_PORT:?NGINX_PORT is required}" "${NGINX_FALLBACK_PORT:-0}"; do
     if (( port > 0 )); then
       probe_unit "nginx.service" "nginx XHTTP TCP/${port} listening" \
@@ -348,6 +360,10 @@ fi
 kick_results=()
 if (( STATE[consecutive_fails] >= FAIL_THRESHOLD )); then
   for unit in "${!failed_units[@]}"; do
+    if [[ -n "${invalid_units[$unit]:-}" ]]; then
+      kick_results+=("RESTART WITHHELD  $unit (config invalid)")
+      continue
+    fi
     if (( STATE[kicks_this_hour] >= KICKS_PER_HOUR_MAX )); then
       break
     fi

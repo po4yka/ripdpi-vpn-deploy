@@ -45,6 +45,8 @@ def _run_watchdog(
     nginx_xhttp: bool = False,
     backend_failed: bool = False,
     reality_enabled: bool = True,
+    nginx_config_invalid: bool = False,
+    xray_config_invalid: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -64,7 +66,7 @@ def _run_watchdog(
         "fi\nexit 0\n",
     )
     _executable(bin_dir / "timeout", 'if [[ "$*" == *127.0.0.1/10085* && "${FAILED_BACKEND:-0}" == 1 ]]; then exit 1; fi\nexit 0\n')
-    _executable(bin_dir / "nginx", "exit 0\n")
+    _executable(bin_dir / "nginx", 'if [[ "${NGINX_INVALID:-0}" == 1 && "$1" == -t ]]; then exit 1; fi\nexit 0\n')
     _executable(
         bin_dir / "watchdog-notify",
         (
@@ -118,6 +120,7 @@ def _run_watchdog(
 
     _executable(
         bin_dir / "xray-validate",
+        'if [[ "${XRAY_CONFIG_INVALID:-0}" == 1 ]]; then exit 1; fi\n'
         f'args=("$@"); args[${{#args[@]}}-1]="{server_config}"; exec "{sys.executable}" "{REPO_ROOT / "ansible/roles/xray/files/xray_validate.py"}" "${{args[@]}}"\n',
     )
 
@@ -148,6 +151,8 @@ def _run_watchdog(
             "XRAY_XHTTP_PROBES": "8443:31083" if nginx_xhttp else "",
             "NGINX_PORT": "8443", "NGINX_FALLBACK_PORT": "0", "XHTTP_BACKEND_PORT": "10085",
             "FAILED_BACKEND": "1" if backend_failed else "0",
+            "NGINX_INVALID": "1" if nginx_config_invalid else "0",
+            "XRAY_CONFIG_INVALID": "1" if xray_config_invalid else "0",
             "ENABLE_HYSTERIA": "false",
             "ENABLE_AMNEZIAWG": "true" if awg_interfaces else "false",
             "AWG_INTERFACES": ",".join(awg_interfaces),
@@ -375,3 +380,26 @@ def test_listener_replacement_during_canary_cannot_certify_or_restart_server(tmp
     assert (tmp_path / "canary-called").exists()
     assert (tmp_path / "xray-terminated").exists()
     assert not (tmp_path / "recovery.log").exists()
+
+
+def test_invalid_nginx_config_alerts_without_restarting_nginx(tmp_path):
+    # A restart runs ExecStartPre nginx -t and stops a nginx that still serves
+    # its last valid in-memory configuration.
+    result = _run_watchdog(tmp_path, nginx_xhttp=True, nginx_config_invalid=True)
+
+    assert result.returncode != 0
+    assert "FAIL  nginx -t" in result.stdout
+    assert "RESTART WITHHELD  nginx.service (config invalid)" in result.stdout
+    assert "restart nginx" not in (tmp_path / "systemctl.log").read_text()
+    assert "kicks_this_hour=0" in (tmp_path / "state").read_text()
+
+
+def test_invalid_xray_config_withholds_guarded_recovery(tmp_path):
+    result = _run_watchdog(tmp_path, xray_config_invalid=True, stats_service_ready=False)
+
+    assert result.returncode != 0
+    assert "FAIL  xray config valid" in result.stdout
+    assert "RESTART WITHHELD  xray.service (config invalid)" in result.stdout
+    recovery = tmp_path / "recovery.log"
+    assert not recovery.exists() or "--unit xray.service" not in recovery.read_text()
+    assert "restart xray.service" not in (tmp_path / "systemctl.log").read_text()
