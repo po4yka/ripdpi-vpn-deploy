@@ -3,6 +3,7 @@
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -39,13 +40,13 @@ def test_site_admits_only_supported_host_releases(tmp_path, distribution, major,
         "hosts": "localhost",
         "gather_facts": False,
         "become": False,
-        "vars": {"ansible_distribution": distribution, "ansible_distribution_major_version": major,
-                 "ansible_distribution_version": version},
+        # The repository config disables fact injection; only ansible_facts carries them.
+        "vars": {"ansible_python_interpreter": sys.executable,
+                 "ansible_facts": {"distribution": distribution, "distribution_major_version": major,
+                                   "distribution_version": version}},
         "tasks": [_guard_task()],
     }]))
-    config = tmp_path / "ansible.cfg"
-    config.write_text("[defaults]\n")
-    env = {**os.environ, "ANSIBLE_CONFIG": str(config), "ANSIBLE_HOME": str(tmp_path / "home"),
+    env = {**os.environ, "ANSIBLE_CONFIG": str(REPO_ROOT / "ansible/ansible.cfg"), "ANSIBLE_HOME": str(tmp_path / "home"),
            "ANSIBLE_LOCAL_TEMP": str(tmp_path / "tmp")}
     result = subprocess.run(
         [shutil.which("ansible-playbook") or "ansible-playbook", "-i", "localhost,", "-c", "local", str(playbook)],

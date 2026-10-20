@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -33,7 +34,12 @@ def test_build_uses_only_the_verified_toolchain():
     assert "golang" not in packages
     download = task("Download the checksum-pinned Go toolchain")["ansible.builtin.get_url"]
     assert download["checksum"] == "sha256:{{ amneziawg_go_toolchain_sha256[_awg_go_toolchain_arch] }}"
-    assert NAMES.index("Extract the pinned Go toolchain") < NAMES.index("Converge pinned AmneziaWG source builds")
+    extract = task("Extract the pinned Go toolchain")["ansible.builtin.unarchive"]
+    marker = task("Record the completed Go toolchain extraction")["ansible.builtin.copy"]
+    # Only a completed extraction writes the marker that lets a later run skip it.
+    assert extract["creates"] == marker["dest"] == "{{ _awg_go_toolchain_root }}/.extracted"
+    assert (NAMES.index("Extract the pinned Go toolchain") < NAMES.index("Record the completed Go toolchain extraction")
+            < NAMES.index("Converge pinned AmneziaWG source builds"))
     descriptors = task("Define pinned AmneziaWG source-build descriptors")["ansible.builtin.set_fact"]
     go_steps = descriptors["_amneziawg_build_descriptors"][0]["steps"]
     build = next(step for step in go_steps if step["argv"][0] == "/usr/bin/make")
@@ -51,13 +57,13 @@ def test_unpinned_architectures_refuse_before_download(tmp_path, architecture, a
         "become": False,
         "vars": {**{key: DEFAULTS[key] for key in ("amneziawg_go_toolchain_version",
                                                    "amneziawg_go_toolchain_sha256")},
-                 "ansible_architecture": architecture},
+                 # The repository config disables fact injection; only ansible_facts carries them.
+                 "ansible_python_interpreter": sys.executable,
+                 "ansible_facts": {"architecture": architecture}},
         "tasks": [task("Select the pinned Go toolchain for this architecture"),
                   task("Refuse an AmneziaWG build without a pinned Go toolchain")],
     }]))
-    config = tmp_path / "ansible.cfg"
-    config.write_text("[defaults]\n")
-    env = {**os.environ, "ANSIBLE_CONFIG": str(config), "ANSIBLE_HOME": str(tmp_path / "home"),
+    env = {**os.environ, "ANSIBLE_CONFIG": str(REPO_ROOT / "ansible/ansible.cfg"), "ANSIBLE_HOME": str(tmp_path / "home"),
            "ANSIBLE_LOCAL_TEMP": str(tmp_path / "tmp")}
     result = subprocess.run(
         [shutil.which("ansible-playbook") or "ansible-playbook", "-i", "localhost,", "-c", "local", str(playbook)],
