@@ -134,6 +134,12 @@ interfaces. Fresh absence and recorded enable/disable transitions stay idempoten
 
 ## Pitfalls
 
+- **amneziawg-go builds with the pinned Go, never distro Go** — the role
+  downloads `amneziawg_go_toolchain_version` from go.dev, verifies its sha256
+  and builds with `GOTOOLCHAIN=local`. Distro go.env defaults to `auto`, and
+  Ubuntu 24.04 Go 1.22.2 is older than the pinned source requires. Keep the pin
+  aligned with `mise.toml`; `test_amneziawg_go_toolchain.py` checks it.
+
 - **Never install `resolvconf`** — on Debian 13, `systemd-resolved` conflicts
   with it, so apt removes the resolver that baseline configures. Server
   interfaces set no `DNS=`, so `awg-quick` never calls resolvconf.
