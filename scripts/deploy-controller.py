@@ -636,6 +636,12 @@ def controller(mode):
         validate_discovery_paths(root)
         hosts, memberships, metadata, _inventory, _rows, _global_lines = inventory_selection(
             root / "ansible/inventory/generated.ini", os.environ.get("DEPLOY_LIMIT", ""), directory)
+        # One decrypted secrets file belongs to one environment; a mixed
+        # inventory must never receive it on another environment's host.
+        selected_environment = os.environ.get("DEPLOY_ENV", "")
+        if not selected_environment or any(
+                str(metadata[host["name"]].get("env", "")) != selected_environment for host in hosts):
+            raise DeployError("selected inventory hosts must belong to ENV")
         secret_data = read_input(os.environ["DEPLOY_SECRETS_FILE"], private=True, exact_mode=0o600)
         validate_yaml(secret_data)
         secrets = private_file(directory / "secrets.yaml", secret_data)

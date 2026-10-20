@@ -428,6 +428,21 @@ def test_invalid_deploy_selection_refuses_before_any_transport(workspace, limit)
 
 
 @pytest.mark.parametrize("target", ["deploy", "dry-run"])
+@pytest.mark.parametrize(("limit", "environment"), [("", "prod"), ("node-two", "prod"), ("vpn-p1p2", "prod"),
+                                                    ("node-one", "staging"), ("", "staging")])
+def test_selection_outside_env_refuses_before_secrets_and_transport(workspace, target, limit, environment):
+    inventory = workspace["inventory"]
+    inventory.write_text(inventory.read_text().replace("provider=vultr env=prod", "provider=vultr env=staging"))
+    secrets = workspace["secrets"]
+    secrets.chmod(0o644)  # The secrets read would refuse this mode; the env check must refuse first.
+    result = invoke(workspace, target, limit=limit, ENV=environment)
+    assert result.returncode != 0
+    assert "selected inventory hosts must belong to ENV" in result.stderr
+    assert not any(entry["program"] in ("ssh", "ansible-playbook", "validate-secrets.py")
+                   for entry in calls(workspace))
+
+
+@pytest.mark.parametrize("target", ["deploy", "dry-run"])
 def test_make_debug_refusal_precedes_git_and_ansible(workspace, target):
     binary = Path(workspace["env"]["PATH"].split(os.pathsep)[0])
     git_marker = workspace["root"].parent / "git-called"
@@ -1030,7 +1045,8 @@ def test_precheck_environment_comes_from_inventory_not_ambient_scope(workspace):
     inventory = workspace["root"] / "ansible/inventory/generated.ini"
     inventory.write_text(inventory.read_text().replace("env=prod", "env=staging"))
     workspace["env"]["ENV"] = "prod"
-    result = invoke(workspace, limit="node-one")
+    # The command-line ENV must match the host; the ambient prod value is still ignored.
+    result = invoke(workspace, limit="node-one", ENV="staging")
     assert result.returncode == 0, result.stderr
     validation = next(entry for entry in calls(workspace) if entry["program"] == "validate-secrets.py")
     assert validation["args"][1:] == ["--strict", "--environment", "staging"]
@@ -1134,6 +1150,7 @@ def test_audit_remains_best_effort_and_uses_only_approved_audit_environment(work
             "AUDIT_ACTOR": "fixture-operator"}
     workspace["env"].update(keys, AWS_SECRET_ACCESS_KEY="synthetic-provider-credential")
     write(root / ".fleet.mk", "ENV = canary\nPROVIDER = scaleway\n")
+    workspace["inventory"].write_text(workspace["inventory"].read_text().replace("env=prod", "env=canary"))
     write(audit, f"""#!{sys.executable}
 import json, os, pathlib
 pathlib.Path({str(environment_record)!r}).write_text(json.dumps(dict(os.environ)))
@@ -1481,7 +1498,7 @@ files=play[0]['vars']['deployment_input_files']['node-one']
 transaction=json.loads(pathlib.Path(next(p for p in files if p.endswith('-ssh-transaction.json'))).read_text())
 pathlib.Path({str(record)!r}).write_text(json.dumps(transaction))
 ''', 0o700)
-    result = invoke(workspace, limit='node-one')
+    result = invoke(workspace, limit='node-one', ENV='ci-staging-one')
     if fault:
         assert result.returncode != 0
         expected = 'SSH contexts invalid' if fault == 'transport' else 'CI Tailnet handoff refused'
