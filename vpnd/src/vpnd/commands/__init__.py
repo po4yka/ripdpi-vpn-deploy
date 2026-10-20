@@ -1,5 +1,6 @@
 """Shared command safety contracts."""
 
+import signal
 import sys
 from ..runner.make import target
 from ..wizard import confirm
@@ -19,9 +20,30 @@ async def finish_with_cleanup(ctx, outcome=None):
         raise outcome
 
 
+class ReviewInterrupted(RuntimeError):
+    """A signal ended the review while decrypted secrets existed."""
+
+
+def _interrupt_review(number, _frame):
+    raise ReviewInterrupted(f"review interrupted by signal {number}; stopped before mutation")
+
+
 def require_review(ctx, label):
-    """Gate a mutation on a reviewed plan; --yes never answers this prompt."""
-    if not ctx.explain and not confirm(label, default=False):
+    """Gate a mutation on a reviewed plan; --yes never answers this prompt.
+
+    Dispatch keeps default terminal signals, which would kill the process with
+    plaintext on disk. During the review a signal becomes an ordinary failure,
+    so the caller's cleanup boundary still runs `make clean`.
+    """
+    if ctx.explain:
+        return
+    previous = {number: signal.signal(number, _interrupt_review) for number in (signal.SIGINT, signal.SIGTERM)}
+    try:
+        approved = confirm(label, default=False)
+    finally:
+        for number, handler in previous.items():
+            signal.signal(number, handler)
+    if not approved:
         raise RuntimeError("review declined; stopped before mutation")
 
 

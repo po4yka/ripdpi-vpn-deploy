@@ -23,7 +23,9 @@ parent process environment remains unchanged.
 `make plan` and before `make apply`; `reconverge` asks after `make dry-run` and
 before `make deploy`. `require_review` defaults to no, ignores `--yes` and runs
 inside the cleanup boundary, so a declined or unavailable review still runs
-`make clean`.
+`make clean`. Dispatch keeps default terminal signals, so the review alone maps
+SIGINT and SIGTERM to an ordinary failure; otherwise Ctrl-C at the prompt would
+kill vpnd with plaintext on disk.
 
 **One command definition.** `src/vpnd/cli.py` owns the standard-library parser,
 global-flag precedence, help, completions and all twenty man pages. Add commands
