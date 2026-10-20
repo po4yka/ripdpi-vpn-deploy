@@ -3,7 +3,7 @@ from ..runner import ansible
 from ..runner.make import target
 from ..state import Registry
 from ..state.version import warn_on_skew
-from . import confirm, finish_with_cleanup, render_summary
+from . import confirm, finish_with_cleanup, render_summary, require_review
 
 
 async def run(ctx, args):
@@ -39,6 +39,7 @@ async def run(ctx, args):
         if args.dry_run:
             print("dry-run only — stopping before apply", file=sys.stderr)
         else:
+            require_review(ctx, "Review the dry-run above. Deploy it?")
             for name in ("deploy", "verify"):
                 await target(ctx, name).env("ANSIBLE_LIMIT", limit).run(ctx.explain)
     except Exception as outcome:

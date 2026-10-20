@@ -86,6 +86,10 @@ The twelve top-level commands preserve the existing operator interface:
 | `update` | Bounded advisory release check with a 24-hour cache |
 | `completions` | Bash, Zsh, Fish and PowerShell; `pwsh` is an alias |
 
+`deploy` stops after `make plan` and `reconverge` stops after `make dry-run`
+for a terminal review. `--yes` skips only the settings confirmation, not these
+reviews; use the Make targets for scripted runs.
+
 ```bash
 vpnd deploy --explain
 vpnd reconverge --env prod --dry-run

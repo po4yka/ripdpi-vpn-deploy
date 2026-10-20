@@ -378,6 +378,10 @@ metadata is installed before the payload. No old-format bootstrap URLs are issue
   authentication. Tighten an owned `.ssh` directory before publishing config;
   reject writable or foreign directories and report categorical stage errors.
 
+**Blue-green stops for review** — apply follows the green plan and deploy
+follows the green dry-run only after a typed `yes`. `promote-spare` reaches
+the same prompts; its OTP authorizes the swap, not an unreviewed plan.
+
 **Blue-green authenticates before first contact** — verify the green public key through an authenticated channel and confirm its standard known_hosts entry before inventory rendering. Vultr secondary-IP discovery uses strict host-key checking; it never enrolls a new key. Wait for cloud-init through the pinned public path before presenting recovery-installation steps. Then establish Tailnet/recovery ownership, render the confirmed handoff, and let the canonical controller perform pinned readiness. Blue and green aliases must be exact VPN inventory members before verification or deployment.
 
 **Audit operator boundaries** — saved Terraform plans pass `check-tf-plan.sh` across all required policy namespaces; `policy-plan.sh` snapshots once, checks and applies that exact private file. Never replace it with a second plan. Reconverge, replacement and drift check-mode call the Make deployment controller. `diff-secrets.sh` uses the inventory transport and read-only Ansible comparison against the canonical Xray template; it never prints remote configuration or treats rendering failure as clean drift.

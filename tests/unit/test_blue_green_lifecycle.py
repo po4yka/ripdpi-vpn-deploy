@@ -19,8 +19,11 @@ def executable(path, source):
     path.chmod(0o700)
 
 
-@pytest.mark.parametrize("failed_phase", [None, "plan", "dry-run", "verify"])
-def test_phases_are_serial_and_failures_stop_dependents(tmp_path, failed_phase):
+# Answers in prompt order: plan review, SSH pin, SSH ownership, dry-run review, traffic swing.
+APPROVE_ALL = "yes\n\n\nyes\nyes\n"
+
+
+def run_blue_green(tmp_path, failed_phase=None, answers=APPROVE_ALL):
     root, binary = tmp_path / "repo", tmp_path / "bin"
     scripts = root / "scripts"
     scripts.mkdir(parents=True)
@@ -73,13 +76,32 @@ esac
                    "DEPLOY_SSH_CONTEXTS_FILE": str(tmp_path / "contexts"),
                    "MAKEFLAGS": "-j4", "FAILED_PHASE": failed_phase or ""}
     result = subprocess.run(["bash", str(scripts / "blue-green.sh")], cwd=root, env=environment,
-                            input="\n\nyes\n", capture_output=True, text=True, timeout=15)
-    calls = [json.loads(line) for line in (root / "calls").read_text().splitlines()]
+                            input=answers, capture_output=True, text=True, timeout=15)
+    return result, [json.loads(line) for line in (root / "calls").read_text().splitlines()]
+
+
+@pytest.mark.parametrize("failed_phase", [None, "plan", "dry-run", "verify"])
+def test_phases_are_serial_and_failures_stop_dependents(tmp_path, failed_phase):
+    result, calls = run_blue_green(tmp_path, failed_phase)
     expected = ["init", "plan", "apply", "wait", "dry-run", "deploy", "verify", "smoke-test"]
     if failed_phase:
         expected = expected[:expected.index(failed_phase) + 1]
     assert result.returncode == (2 if failed_phase else 0), result.stdout + result.stderr
     assert calls == [["prod", "verify"], *[["green", phase] for phase in expected]]
+
+
+@pytest.mark.parametrize(("answers", "last_phase", "message"), [
+    ("\n", "plan", "Aborting before apply"),
+    ("no\n", "plan", "Aborting before apply"),
+    ("yes\n\n\n\n", "dry-run", "Aborting before deploy"),
+    ("yes\n\n\nno\n", "dry-run", "Aborting before deploy"),
+])
+def test_green_apply_and_deploy_wait_for_a_typed_review(tmp_path, answers, last_phase, message):
+    result, calls = run_blue_green(tmp_path, answers=answers)
+    phases = ["init", "plan", "apply", "wait", "dry-run"]
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert message in result.stderr
+    assert calls == [["prod", "verify"], *[["green", phase] for phase in phases[:phases.index(last_phase) + 1]]]
 
 
 def test_child_make_does_not_load_inherited_makefiles(tmp_path):

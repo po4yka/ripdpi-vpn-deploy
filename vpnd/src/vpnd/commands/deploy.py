@@ -2,23 +2,15 @@
 
 import sys
 from ..runner.make import target, target_with
-from . import confirm, finish_with_cleanup, render_summary
+from . import confirm, finish_with_cleanup, render_summary, require_review
+
+# The operator reviews the saved plan between these two groups.
+PLAN_TARGETS = ("check-prereqs", "validate", "decrypt", "init", "plan")
+APPLY_TARGETS = ("apply", "inventory", "wait")
 
 
 def plan_steps(ctx, args):
-    steps = [
-        target(ctx, name)
-        for name in (
-            "check-prereqs",
-            "validate",
-            "decrypt",
-            "init",
-            "plan",
-            "apply",
-            "inventory",
-            "wait",
-        )
-    ]
+    steps = [target(ctx, name) for name in PLAN_TARGETS + APPLY_TARGETS]
     steps.append(
         target_with(ctx, "deploy", [("SKIP_PRECHECK", "1")])
         if args.skip_precheck
@@ -56,7 +48,9 @@ async def run(ctx, args):
     steps = plan_steps(ctx, args)
     error = None
     try:
-        for cmd in steps:
+        for index, cmd in enumerate(steps):
+            if index == len(PLAN_TARGETS):
+                require_review(ctx, "Review the Terraform plan above. Apply it?")
             await cmd.run(ctx.explain)
     except Exception as outcome:
         error = outcome
