@@ -502,3 +502,48 @@ def test_runbook_second_signal_during_cleanup_does_not_cut_the_shred_short(tmp_p
                                                      "INT", clean_signal=name)
     assert steps[-1][0] == "clean" and (tmp_path / SHREDDED).exists(), stderr
     assert returncode == 128 + signal.SIGINT, stderr
+
+
+def redeploy_blocks() -> list[str]:
+    """The preflight, deploy and journal-recovery subshells of the ordinary re-deploy recipe, in order."""
+    section = (ROOT / "docs/RUNBOOK-deploy.md").read_text().split("### Ordinary re-deploy recipe", 1)[1]
+    section = section.split("\n## ", 1)[0]
+    blocks = re.findall(r"^\(\n.*?^\)$", section, re.S | re.M)
+    assert len(blocks) == 3, "the re-deploy recipe no longer prints its three guarded subshells"
+    return blocks
+
+
+# A block index, a faulted step as `target:node`, the signal delivered there (None: the step fails), the make targets
+# that must run, and the exit status of the block.
+REDEPLOY_CASES = [
+    pytest.param(0, None, None, ["decrypt", "validate", "dry-run"], 0, id="preflight-success-keeps-plaintext-for-review"),
+    pytest.param(0, "decrypt:", None, ["decrypt", "clean"], STAND_IN_FAILURE, id="preflight-decrypt-fails"),
+    pytest.param(0, "dry-run:", None, ["decrypt", "validate", "dry-run", "clean"], STAND_IN_FAILURE,
+                 id="preflight-dry-run-fails"),
+    *(pytest.param(0, "dry-run:", name, ["decrypt", "validate", "dry-run", "clean"], 128 + number,
+                   id=f"preflight-sig{name.lower()}-cleans-up") for name, number in SIGNALS),
+    pytest.param(1, None, None, ["deploy", "verify", "source-drift", "clean"], 0, id="deploy-success-cleans-up"),
+    pytest.param(1, "deploy:", None, ["deploy", "clean"], STAND_IN_FAILURE, id="deploy-fails"),
+    pytest.param(1, "verify:", None, ["deploy", "verify", "clean"], STAND_IN_FAILURE, id="verify-fails"),
+    *(pytest.param(1, "deploy:", name, ["deploy", "clean"], 128 + number,
+                   id=f"deploy-sig{name.lower()}-cleans-up") for name, number in SIGNALS),
+    pytest.param(2, None, None, ["decrypt", "deploy", "clean"], 0, id="recovery-success-cleans-up"),
+    pytest.param(2, "deploy:<exact-alias>", None, ["decrypt", "deploy", "clean"], STAND_IN_FAILURE,
+                 id="recovery-deploy-fails"),
+]
+
+
+@pytest.mark.parametrize("block, fault, signal_name, ran, status", REDEPLOY_CASES)
+def test_redeploy_recipe_cleans_plaintext_unless_a_successful_preflight_awaits_review(
+        tmp_path, block, fault, signal_name, ran, status):
+    steps, stderr, returncode = run_guarded_sequence(redeploy_blocks()[block], tmp_path, fault, signal_name)
+    assert [target for target, _ in steps] == ran, stderr
+    assert returncode == status, stderr
+
+
+@pytest.mark.parametrize("block, fault, status", [(0, "dry-run:", STAND_IN_FAILURE), (1, None, 1),
+                                                   (1, "deploy:", STAND_IN_FAILURE)])
+def test_redeploy_recipe_failed_cleanup_never_hides_a_failure(tmp_path, block, fault, status):
+    steps, stderr, returncode = run_guarded_sequence(redeploy_blocks()[block], tmp_path, fault, clean_fails=True)
+    assert steps[-1][0] == "clean", stderr
+    assert returncode == status, stderr

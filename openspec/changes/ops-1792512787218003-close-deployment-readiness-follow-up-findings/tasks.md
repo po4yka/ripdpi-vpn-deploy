@@ -22,7 +22,7 @@ audit that `ANS-1792499727513191` left out, and keep every existing gate.
 - [x] OPS-1792514260874788 Honor BLUE_ENV in blue-green and warm-spare Make recipes with conflict regressions #bug !high @item:OPS-1792512787218003
 - [x] OPS-1792514261666762 Refuse deploy selections whose inventory env differs from ENV before secrets #bug !high @item:OPS-1792512787218003
 - [x] OPS-1792514262478677 Refuse an empty destroy hostname and remove the saved destroy plan on every exit #bug !high @item:OPS-1792512787218003
-- [ ] OPS-1792514263378823 Clean decrypted secrets on failed re-deploy preflight and every deploy-block exit #bug !high @item:OPS-1792512787218003
+- [x] OPS-1792514263378823 Clean decrypted secrets on failed re-deploy preflight and every deploy-block exit #bug !high @item:OPS-1792512787218003
 - [ ] OPS-1792514264261067 Build AWG and sentinel Go sources with GOTOOLCHAIN=local and drop sentinel resolvconf #bug !high @item:OPS-1792512787218003
 - [ ] OPS-1792514265195751 Admit only Debian 13 and Ubuntu 24.04 provider images and refuse older firewall hosts #bug !high @item:OPS-1792512787218003
 - [ ] OPS-1792514266159002 Keep bearer paths out of nginx-xhttp redirect and Snell logs #bug !high @item:OPS-1792512787218003
