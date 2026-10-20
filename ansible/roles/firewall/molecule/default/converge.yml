@@ -21,6 +21,9 @@
         - "100.64.10.20"
         - "fd7a:115c:a1e0::1234"
     firewall_awg_uplink_interface: awg-test-up
+    # The fixture adds a synthetic IPv6 default after the first fact gather.
+    # DHCPv6 remains on the Docker uplink on both idempotence passes.
+    firewall_dhcpv6_uplink_interface: eth0
     amneziawg:
       listen_port: 51820
     amneziawg_secrets:

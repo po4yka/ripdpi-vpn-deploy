@@ -73,18 +73,81 @@ snapshot_time="${snapshot[1]:?snapshot time missing}"
 
 restic -r "$REPO" --no-cache restore "$snapshot_id" --target "$restore_target"
 
+restored_path() {
+  # Absolute links belong to the archived filesystem, never the live host.
+  python3 - "$restore_target" "$1" <<'PY'
+import os
+import stat
+import sys
+from pathlib import Path, PurePosixPath
+
+root = Path(sys.argv[1]).resolve(strict=True)
+pending = list(PurePosixPath(sys.argv[2]).parts)
+parts = []
+links = 0
+try:
+    while pending:
+        part = pending.pop(0)
+        if part in ('', '.'):
+            continue
+        if part == '/' or (part == '..' and not parts):
+            raise ValueError
+        if part == '..':
+            parts.pop()
+            continue
+        candidate = root.joinpath(*parts, part)
+        info = candidate.lstat()
+        if stat.S_ISLNK(info.st_mode):
+            links += 1
+            if links > 40:
+                raise ValueError
+            target = PurePosixPath(os.readlink(candidate))
+            if target.is_absolute():
+                parts = []
+                target = target.relative_to('/')
+            pending = list(target.parts) + pending
+        else:
+            parts.append(part)
+    print(root.joinpath(*parts))
+except (OSError, ValueError):
+    raise SystemExit('restore drill: required artifact unavailable in snapshot') from None
+PY
+}
+
 require_file() {
   local relative_path="$1"
-  if [[ ! -s "$restore_target/$relative_path" ]]; then
+  local artifact
+  artifact="$(restored_path "$relative_path")" || return 1
+  if [[ ! -f "$artifact" || ! -s "$artifact" ]]; then
     echo "restore drill: required artifact missing or empty: $relative_path" >&2
     return 1
   fi
 }
 
+require_regular_file() {
+  local artifact
+  artifact="$(restored_path "$1")" || return 1
+  [[ -f "$artifact" ]] || return 1
+}
+
+require_directory() {
+  local artifact
+  artifact="$(restored_path "$1")" || return 1
+  [[ -d "$artifact" ]] || return 1
+}
+
+validate_json() {
+  local artifact
+  artifact="$(restored_path "$1")" || return 1
+  python3 -m json.tool "$artifact" >/dev/null
+}
+
 require_nonempty_directory() {
   local relative_path="$1"
-  if [[ ! -d "$restore_target/$relative_path" ]] ||
-     ! find "$restore_target/$relative_path" -maxdepth 1 -type f -size +0c -print -quit | grep -q .; then
+  local artifact
+  artifact="$(restored_path "$relative_path")" || return 1
+  if [[ ! -d "$artifact" ]] ||
+     ! find "$artifact" -maxdepth 1 -type f -size +0c -print -quit | grep -q .; then
     echo "restore drill: required artifact directory empty: $relative_path" >&2
     return 1
   fi
@@ -96,7 +159,7 @@ require_file "etc/sysctl.d/90-vpn.conf"
 require_nonempty_directory "etc/systemd/system"
 {% if not (vpn_subscription_only | default(false)) and ((vpn.enable_xray_reality | default(true)) or (vpn.enable_nginx_xhttp | default(true))) %}
 require_file "{{ xray_etc_dir | default(xray_config_dir | default('/etc/xray')) | regex_replace('^/', '') }}/config.json"
-python3 -m json.tool "$restore_target/{{ xray_etc_dir | default(xray_config_dir | default('/etc/xray')) | regex_replace('^/', '') }}/config.json" >/dev/null
+validate_json "{{ xray_etc_dir | default(xray_config_dir | default('/etc/xray')) | regex_replace('^/', '') }}/config.json"
 {% endif %}
 {% if not (vpn_subscription_only | default(false)) and (vpn.enable_nginx_xhttp | default(true)) %}
 require_file "etc/nginx/sites-available/vpn-xhttp.conf"
@@ -108,19 +171,92 @@ require_file "etc/nginx/tls/{{ nginx_xhttp.fallback_server_name }}.fullchain.pem
 require_file "etc/nginx/tls/{{ nginx_xhttp.fallback_server_name }}.key"
 {% endif %}
 {% endif %}
-{% if not (vpn_subscription_only | default(false)) and (vpn.enable_hysteria | default(false)) %}
+{% if not (vpn_subscription_only | default(false)) and (vpn.enable_hysteria | default(true)) %}
 require_file "{{ hysteria_config_dir | default('/etc/hysteria') | regex_replace('^/', '') }}/config.yaml"
 require_file "{{ hysteria_config_dir | default('/etc/hysteria') | regex_replace('^/', '') }}/server.fullchain.pem"
 require_file "{{ hysteria_config_dir | default('/etc/hysteria') | regex_replace('^/', '') }}/server.key"
 {% endif %}
 {% if not (vpn_subscription_only | default(false)) and (vpn.enable_snell | default(false)) %}
 require_file "etc/snell/config.json"
-python3 -m json.tool "$restore_target/etc/snell/config.json" >/dev/null
+validate_json "etc/snell/config.json"
 {% endif %}
-{% if not (vpn_subscription_only | default(false)) and (vpn.enable_amneziawg | default(false)) %}
+{% if not (vpn_subscription_only | default(false)) and (vpn.enable_amneziawg | default(true)) %}
 {% for instance in amneziawg_secrets.instances %}
 require_file "{{ amneziawg_config_dir | regex_replace('^/', '') }}/{{ instance.name }}.conf"
 {% endfor %}
+{% endif %}
+
+{% set primary = not (vpn_subscription_only | default(false)) %}
+{% if (primary and ((vpn.enable_nginx_xhttp | default(true)) or (vpn.enable_cdn_front | default(false)) or (vpn.enable_probe_matrix_target | default(false)))) or (vpn.enable_subscription_host | default(false)) or (vpn_subscription_only | default(false)) %}
+require_nonempty_directory "etc/nginx"
+{% endif %}
+{% if primary and vpn.enable_naive | default(false) %}
+require_file "{{ (naive | default({})).config_dir | default('/etc/naive') | regex_replace('^/', '') }}/Caddyfile"
+require_file "{{ (naive | default({})).config_dir | default('/etc/naive') | regex_replace('^/', '') }}/server.fullchain.pem"
+require_file "{{ (naive | default({})).config_dir | default('/etc/naive') | regex_replace('^/', '') }}/server.key"
+{% endif %}
+{% if primary and vpn.enable_hysteria_realm | default(false) %}
+require_file "{{ (hysteria_realm | default({})).config_dir | default('/etc/hysteria-realm') | regex_replace('^/', '') }}/config.json"
+validate_json "{{ (hysteria_realm | default({})).config_dir | default('/etc/hysteria-realm') | regex_replace('^/', '') }}/config.json"
+require_file "{{ (hysteria_realm | default({})).tls_cert_path | default(((hysteria_realm | default({})).config_dir | default('/etc/hysteria-realm')) ~ '/server.fullchain.pem') | regex_replace('^/', '') }}"
+require_file "{{ (hysteria_realm | default({})).tls_key_path | default(((hysteria_realm | default({})).config_dir | default('/etc/hysteria-realm')) ~ '/server.key') | regex_replace('^/', '') }}"
+{% endif %}
+{% if primary and vpn.enable_dns_morph_bridge | default(false) %}
+require_file "{{ (dns_morph_bridge | default({})).config_dir | default('/etc/dns-morph-bridge') | regex_replace('^/', '') }}/dns-morph-bridge.yaml"
+require_file "etc/unbound/unbound.conf.d/dns-morph-bridge-fwd.conf"
+{% endif %}
+{% for flag, settings in [
+    ('cascade_ingress', cascade_ingress | default({})),
+    ('cascade_egress', cascade_egress | default({})),
+    ('split_hop_ingress', split_hop_ingress | default({})),
+    ('split_hop_egress', split_hop_egress | default({}))] %}
+{% if primary and vpn['enable_' ~ flag] | default(false) %}
+require_file "etc/wireguard/{{ settings.wg_interface | default({'cascade_ingress': 'csi0', 'cascade_egress': 'cse0', 'split_hop_ingress': 'shop0', 'split_hop_egress': 'shop0'}[flag]) }}.conf"
+{% endif %}
+{% endfor %}
+{% if primary and vpn.enable_cascade_ingress | default(false) %}
+require_file "{{ (cascade_ingress | default({})).classifier_proxy_password_path | default('/etc/cascade/classifier-proxy.password') | regex_replace('^/', '') }}"
+require_file "{{ (cascade_ingress | default({})).classifier_interface_path | default('/etc/cascade/classifier-interface.json') | regex_replace('^/', '') }}"
+validate_json "{{ (cascade_ingress | default({})).classifier_interface_path | default('/etc/cascade/classifier-interface.json') | regex_replace('^/', '') }}"
+require_file "{{ (cascade_ingress | default({})).policy_path | default('/etc/wireguard/cascade-ingress.nft') | regex_replace('^/', '') }}"
+{% endif %}
+{% if primary and vpn.enable_probe_matrix_target | default(false) %}
+require_file "etc/probe-matrix/xray.json"
+validate_json "etc/probe-matrix/xray.json"
+require_file "etc/probe-matrix/mtg.toml"
+require_file "etc/probe-matrix/tls.crt"
+require_file "etc/probe-matrix/tls.key"
+require_file "etc/nginx/sites-available/probe-matrix-tls.conf"
+require_file "etc/nginx/sites-enabled/probe-matrix-tls.conf"
+{% endif %}
+{% if primary and vpn.enable_cdn_front | default(false) %}
+require_file "etc/nginx/sites-available/cdn-front.conf"
+require_file "etc/nginx/sites-enabled/cdn-front.conf"
+require_file "etc/nginx/tls/{{ cdn_front.server_name }}.fullchain.pem"
+require_file "etc/nginx/tls/{{ cdn_front.server_name }}.key"
+require_file "{{ cdn_front.cf_prefix_dir | default('/etc/cdn-front') | regex_replace('^/', '') }}/cloudflare.real_ip"
+require_file "{{ cdn_front.cf_prefix_dir | default('/etc/cdn-front') | regex_replace('^/', '') }}/cloudflare.v4"
+require_file "{{ cdn_front.cf_prefix_dir | default('/etc/cdn-front') | regex_replace('^/', '') }}/cloudflare.v6"
+{% if cdn_front.aop_cert_path | default('') %}
+require_file "{{ cdn_front.aop_cert_path | regex_replace('^/', '') }}"
+{% endif %}
+{% endif %}
+{% if (vpn.enable_subscription_host | default(false)) or (vpn_subscription_only | default(false)) %}
+require_file "etc/nginx/sites-available/vpn-sub.conf"
+require_file "etc/nginx/sites-enabled/vpn-sub.conf"
+require_file "etc/nginx/conf.d/vpn-sub-ratelimit.conf"
+require_file "etc/nginx/tls/subscription-host/server.key"
+require_file "etc/nginx/tls/subscription-host/server.fullchain.pem"
+require_directory "{{ (subscription | default({})).subscription_dir | default('/var/lib/vpn-subscription') | regex_replace('^/', '') }}"
+# An empty revocation set is valid authority; absence is not.
+require_regular_file "{{ (subscription | default({})).revoked_file | default('/var/lib/vpn-subscription/revoked') | regex_replace('^/', '') }}"
+{% endif %}
+{% if vpn.enable_watchdog | default(true) %}
+require_file "etc/vpn-watchdog.env"
+require_file "etc/vpn-watchdog-notifications.json"
+{% if primary and vpn.enable_xray_reality | default(true) %}
+require_file "etc/vpn-watchdog-reality.json"
+{% endif %}
 {% endif %}
 
 # Restored files contain live credentials. Remove and verify cleanup before

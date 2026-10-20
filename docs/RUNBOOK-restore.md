@@ -12,37 +12,86 @@ workstation back to a fully functional VPN node. Two paths.
 - Optional: a recent restic snapshot from the old VPS, if you want to
   restore configs verbatim instead of re-rendering from secrets.
 
-## Path A — full rebuild from scratch (recommended)
+## Fresh-node prerequisites
 
-This is the path the architecture is designed for. Don't restore configs;
-rebuild them deterministically from secrets and templates.
+Both paths require the current [deployment prerequisites](RUNBOOK-deploy.md#ordinary-re-deploy-recipe).
+Restore the operator key and encrypted SOPS source first. Select the exact
+provider, environment, reviewed SSH key and inventory alias. `default` is reserved;
+use `prod` for legacy production state. Review the existing state and plan before
+provisioning a replacement. Do not apply over the old node by mistake.
+
+Run each dependent Make goal separately. An inherited parallel Make setting must
+not start provisioning, inventory generation and deployment at the same time.
 
 ```bash
-# 1. Clone the repo on a clean operator workstation
-git clone <repo> ~/GitRep/ripdpi-vpn-deploy
-cd ~/GitRep/ripdpi-vpn-deploy
-
-# 2. Restore your age key + SOPS file
-mkdir -p ~/.config/vpn-provision
-# (copy from your encrypted backup / hardware key / 1Password)
-
-# 3. Provision a fresh VPS — possibly in a different ASN if the old one burned
-$EDITOR terraform/providers/upcloud/environments/prod.tfvars
-make init plan apply inventory wait
-
-# 4. Deploy
-make decrypt
-make dry-run
-make deploy
-make verify
-make clean
+export PROVIDER=upcloud ENV=prod
+export ANSIBLE_SSH_PRIVATE_KEY_FILE="$HOME/.ssh/vpn_deploy" # Reviewed node key.
+make init
+make plan
+# Review the saved plan and obtain authorization for its exact resource changes.
+make apply
+make inventory
+# Authenticate the new public host key through the provider console or another
+# authenticated channel. Pin it in known_hosts before the first SSH contact.
+# ssh-keyscan output alone is not identity proof.
+make wait
 ```
 
-You're done. The new VPS has identical service surface to the old one
-(same Xray version, same nginx config shape, same Hysteria policy, same
-AWG peers), generated from the same secrets file. Clients reconnect with
-their existing URIs (which encode UUIDs/passwords, not IPs — assuming
-you used DNS or floating IP).
+Before the first ordinary `dry-run` or `deploy`, complete these steps for the
+exact alias. The example paths refer to reviewed private inputs, not generated
+empty files. Keep JSON inputs at `0600` under an owner-only directory. A fresh
+node has no accepted Tailnet handoff or socket contexts until bootstrap succeeds.
+
+```bash
+deploy_alias='<exact-inventory-alias>'
+make install-ssh-recovery ANSIBLE_LIMIT="$deploy_alias" SSH_RECOVERY_EXCLUSIVE_WINDOW=1
+# Prepare the one-node private config as documented in TAILNET-MANAGEMENT.md.
+make bootstrap-tailnet ANSIBLE_LIMIT="$deploy_alias" \
+  TAILNET_BOOTSTRAP_CONFIG="$HOME/.config/vpn-provision/bootstrap-tailnet.json"
+# Use the handoff actually produced by successful bootstrap.
+TAILNET_HANDOFFS="$HOME/.config/vpn-provision/tailnet-handoff.json" make inventory
+export DEPLOY_SSH_CONTEXTS_FILE="$HOME/.config/vpn-provision/ssh-contexts.json"
+# Assemble this exact-alias mapping from observed public and Tailnet sockets.
+# Prepare the ownership config with the current source identity and contexts path.
+SSH_OWNERSHIP_CONFIG="$HOME/.config/vpn-provision/ssh-ownership.json" make migrate-ssh-ownership
+export DEPLOY_PROMOTION_CONFIG_FILE="$HOME/.config/vpn-provision/promotion-configs.json"
+export DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE="$HOME/.config/vpn-provision/ssh-baseline-failure-receipts.json"
+unset TAILSCALE_AUTH_KEY
+```
+
+Follow [one-node bootstrap](TAILNET-MANAGEMENT.md#bootstrap-one-node) for its
+private inputs and output path. Follow [the deployment input table](RUNBOOK-deploy.md)
+for both exact-alias mappings. Promotion configuration must bind this node and
+source; each failure-receipt sink must be distinct and absent. Do not fabricate
+socket contexts or use empty mappings. Before every retry, review retained
+failure state and select fresh failure-receipt paths.
+
+## Path A — full rebuild from scratch (recommended)
+
+Rebuild configurations from current secrets and templates. Clone the repository,
+restore the operator key and encrypted secrets, then complete **Fresh-node
+prerequisites** above. Use the clean reviewed source revision required by the
+controller.
+
+```bash
+(
+set -e
+trap 'make clean' EXIT
+make decrypt
+make validate
+make dry-run ANSIBLE_LIMIT="$deploy_alias" ANSIBLE_TAGS=
+# Stop and review every change before the next command.
+make deploy ANSIBLE_LIMIT="$deploy_alias" ANSIBLE_TAGS=
+make verify ANSIBLE_LIMIT="$deploy_alias"
+make source-drift ANSIBLE_LIMIT="$deploy_alias"
+)
+```
+
+Run `make clean` when abandoning recovery, including after an interrupted shell.
+Successful convergence is source evidence. Complete the selected authenticated
+client checks in [deployment acceptance](RUNBOOK-deploy.md#acceptance-scope-and-completion)
+before declaring service restored. Existing clients require the correct endpoint;
+DNS or floating-IP changes are separate authorized actions.
 
 If clients used bare IP, regenerate selected client exports with the canonical
 emitter and updated endpoint. New device issuance with `scripts/new-client.sh
@@ -51,48 +100,46 @@ refuses an existing client identity and does not serve as read-only recovery.
 
 ## Path B — restore from restic snapshot
 
-Use only when (a) you have a recent restic backup, (b) you trust the
-secrets at the time of the snapshot, and (c) you want to come back up
-faster than path A. Note: secrets in the restic snapshot are server-side
-artifacts (rendered configs); the canonical source is still the SOPS
-file.
+Use a trusted recent snapshot only when its rendered server artifacts are needed.
+The encrypted SOPS source remains authoritative. Complete **Fresh-node
+prerequisites**, including all three private deployment mappings, before the
+first tagged deploy. Tag selection does not bypass controller admission.
 
 ```bash
-# 1. Provision a fresh VPS
-$EDITOR terraform/providers/upcloud/environments/prod.tfvars
-make init plan apply inventory wait
-
-# 2. Decrypt secrets before the first playbook; the backup role needs the
-#    restic password and site.yml rejects a missing VPN_SECRETS_FILE.
+(
+set -e
+trap 'make clean' EXIT
 make decrypt
-
-# 3. Push baseline + firewall + backup role only. The make target passes its
-#    runtime secrets path as VPN_SECRETS_FILE and writes /etc/restic/password.
-ANSIBLE_TAGS="baseline,firewall,backup" make deploy
-
-# 4. Copy restic repo from old backup target — this depends on where you sync
-#    restic. Local-only repo means SCP from a forensic snapshot of the old
-#    disk. Operators with remote restic targets (S3, BorgBase, etc.) point
-#    the new VPS at the same target.
-
-# 5. Restore configs
-ssh deploy@<new-vps>
-sudo restic -r /var/backups/vpn-restic --password-file /etc/restic/password \
-    restore latest --target /
-
-# 6. Reconcile with Ansible (may show drift — investigate before accepting)
-make dry-run
-
-# 7. If drift is acceptable / expected, deploy to overwrite restored files
-#    with template-rendered ones from current secrets:
-make deploy
-make verify
-make clean
+make validate
+make dry-run ANSIBLE_LIMIT="$deploy_alias" ANSIBLE_TAGS="baseline,firewall,backup"
+# Review the baseline, firewall and backup changes before continuing.
+ANSIBLE_TAGS="baseline,firewall,backup" make deploy ANSIBLE_LIMIT="$deploy_alias"
+)
 ```
 
-Do not hand-repair a snowflake server. Path A is the default. Path B
-exists for the "I need to be live in 15 minutes and have a known-good
-restic snapshot" case.
+Make the approved restic repository available on the replacement node. A
+local-only repository requires a trusted disk snapshot; a remote repository
+requires its reviewed credentials and target. Open the pinned exact-node SSH
+session with the selected operator key. On that node, inspect the selected
+snapshot before restoring its server artifacts:
+
+```bash
+sudo restic -r /var/backups/vpn-restic --password-file /etc/restic/password snapshots
+sudo restic -r /var/backups/vpn-restic --password-file /etc/restic/password \
+    restore latest --target /
+```
+
+A root restore can overwrite recovery files, SSH policy and deployment source
+metadata. Stop before ordinary deployment: inspect those changes, reinstall the
+current recovery foundation if its generation changed, and repeat the bootstrap,
+ownership and fresh dual-path admission required by **Fresh-node prerequisites**.
+Retain the observed handoff and refresh the three private mappings; restored
+files are not fresh proof. Do not delete a failure receipt to make a retry pass.
+
+After that admission succeeds, use the full **Path A** convergence block to
+compare and reconcile restored files with current source. Review unexpected drift
+before deploy, then run scoped authenticated client acceptance. Path B does not
+make a fresh node ready by copying configuration files alone.
 
 ## Configure an existing offsite replica without running backup
 

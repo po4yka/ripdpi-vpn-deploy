@@ -14,6 +14,14 @@
         cmd: nft -c -f /etc/nftables.conf
       changed_when: false
 
+    - name: DHCPv6 remains on the real fixture uplink after repeated convergence
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          nft list chain inet filter input | grep -F 'iifname "eth0"' | grep -F 'comment "dhcpv6-client-reply"'
+        executable: /bin/bash
+      changed_when: false
+
     - name: Validate complete nftables candidate with representative Tailnet sets
       ansible.builtin.command:
         cmd: nft -c -f /etc/nftables.conf
@@ -128,7 +136,11 @@
           previous = {name: expiry(name, address) for name, address in selected}
           candidate = pathlib.Path('/run/vpn-firewall-dynamic-regression.nft')
           source = pathlib.Path('/etc/nftables.conf').read_text()
-          candidate.write_text(source.replace('counter drop', 'counter drop comment "molecule-rule-refresh"', 1))
+          terminal = '\n    counter drop\n  }\n\n  chain forward {'
+          assert source.count(terminal) == 1
+          assert 'molecule-rule-refresh' not in source
+          refreshed = terminal.replace('counter drop', 'counter drop comment "molecule-rule-refresh"', 1)
+          candidate.write_text(source.replace(terminal, refreshed, 1))
           try:
               nft('-c', '-f', str(candidate))
               time.sleep(1.1)

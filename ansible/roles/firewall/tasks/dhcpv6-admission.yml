@@ -1,0 +1,49 @@
+---
+- name: Admit the observed DHCPv6 uplink
+  ansible.builtin.assert:
+    that:
+      - firewall_dhcpv6_uplink_interface | default('') is string
+      - _dhcpv6_uplink is string
+      - _dhcpv6_uplink is match('^[A-Za-z0-9][A-Za-z0-9_.-]{0,14}$')
+      - _dhcpv6_uplink in ansible_facts.get('interfaces', [])
+      - _dhcpv6_uplink not in ['lo', 'tailscale0']
+      - _dhcpv6_uplink not in ((amneziawg_secrets | default({})).get('instances', []) | map(attribute='name') | list)
+    fail_msg: dhcpv6-invalid-uplink-interface
+  vars:
+    _dhcpv6_uplink: >-
+      {{ firewall_dhcpv6_uplink_interface | default('')
+         or ansible_facts.get('default_ipv6', {}).get('interface', '')
+         or ansible_facts.get('default_ipv4', {}).get('interface', '') }}
+
+- name: Admit exact legacy DHCPv6 server addresses
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -c
+      - |
+        import ipaddress
+        import json
+        import sys
+
+        values = json.load(sys.stdin)
+        if not isinstance(values, list) or len(values) > 16:
+            raise SystemExit('dhcpv6-invalid-server-addresses')
+        seen = set()
+        for value in values:
+            try:
+                if not isinstance(value, str) or '%' in value:
+                    raise ValueError
+                address = ipaddress.IPv6Address(value)
+                if (str(address) != value or address.is_unspecified
+                        or address.is_multicast or address.is_loopback
+                        or address.ipv4_mapped is not None or value in seen):
+                    raise ValueError
+            except (ValueError, TypeError):
+                raise SystemExit('dhcpv6-invalid-server-addresses') from None
+            seen.add(value)
+    stdin: "{{ firewall_dhcpv6_server_addresses | default([]) | to_json }}"
+    stdin_add_newline: false
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  check_mode: false

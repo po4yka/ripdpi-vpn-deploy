@@ -50,6 +50,14 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TF_DIR="${REPO_ROOT}/terraform/providers/${PROVIDER}"
 SOPS_FILE="${SOPS_FILE:-${HOME}/.config/vpn-provision/${BLUE_ENV}.secrets.sops.yaml}"
 
+for environment in "$BLUE_ENV" "$GREEN_ENV"; do
+  if [[ ! "$environment" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ || "$environment" == "default" ]]; then
+    echo 'blue-green requires valid distinct environments; default is reserved for prod' >&2
+    exit 1
+  fi
+done
+# prod alone owns the legacy default workspace; all admitted other names map
+# directly to themselves, so distinct admitted names have distinct state paths.
 if [[ "${BLUE_ENV}" == "${GREEN_ENV}" ]]; then
   echo "BLUE_ENV and GREEN_ENV must differ" >&2
   exit 1

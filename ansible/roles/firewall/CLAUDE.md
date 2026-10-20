@@ -2,6 +2,24 @@
 
 ## Design decisions
 
+DHCPv6 uses one admitted uplink: an explicit override, then the observed
+IPv6 default interface, then IPv4 for initial acquisition. Admission runs before
+firewall helper installation and excludes absent, loopback, Tailnet and AWG
+interfaces. UDP 547-to-546 replies require a local destination and link-local
+source on that interface; strict output permits the inverse port pair to the
+local multicast group or a link-local server. Multicast replies do not depend
+on reverse conntrack matching. A bounded exact canonical IPv6 server list adds
+legacy unicast authority; prefixes and broad global UDP accepts are refused.
+Set overrides in reviewed cohort `group_vars`; they are not live CLI overrides.
+The default uses observed facts and needs no new operator input.
+
+DHCPv6 scope applies before generic conntrack acceptance. After invalid-state
+refusal, scoped replies and strict-output requests pass their exact rules; the
+remaining canonical IPv6 client port pair drops before established acceptance.
+Conntrack does not retain interface scope, so identical link-local tuples on
+different interfaces must remain denied after a valid unicast request/reply.
+Legacy server accepts stay bounded and permissive/logged output keeps its policy.
+
 Provider-filtered UpCloud inventory carries `terraform_nat_source_port_range`.
 Validate it before mutation and against the effective SSH port. AWG TCP/UDP NAT
 uses that exact range; other protocols retain address-only NAT. The primary
@@ -132,6 +150,14 @@ and active CDN origin sets retain the prefix refresher's current authority.
   lock themselves out.
 
 ## Pitfalls
+
+- The timed-ban Molecule refresh marks only the exact terminal INPUT drop before
+  the forward chain. A substring match can add a second comment to a scoped
+  DHCPv6 deny. Keep both DHCPv6 comments and the timed-set expiry checks intact.
+
+- The Molecule fixture pins DHCPv6 to its Docker uplink because AWG preparation
+  adds an isolated IPv6 default route after the first fact gather. Keep this test
+  authority explicit so the second gather cannot change the rendered candidate.
 
 - **`ufw` is not installed by us, but VPS images may pre-install it** — if
   it's enabled, our nftables ruleset is masked. The role disables `ufw` before
