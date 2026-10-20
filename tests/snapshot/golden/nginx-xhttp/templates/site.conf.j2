@@ -86,5 +86,8 @@ server {
     listen [::]:80;
     server_name vpn.example.com;
     server_tokens off;
+    # The redirected path can carry a bearer token; never log it.
+    access_log off;
+    error_log /dev/null crit;
     return 301 https://$host:8443$request_uri;
 }

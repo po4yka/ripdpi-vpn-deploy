@@ -39,6 +39,7 @@ server {
 {% if (vpn.enable_snell | default(false)) and (snell | default({})).evaluation_enabled | default(false) %}
     location ~ ^/{{ snell_secrets.evaluation_path_token }}/([0-9]+)\.bin$ {
         access_log off;
+        error_log /dev/null crit;
         limit_req zone=snell_evaluation burst=30 nodelay;
         gzip off;
         default_type application/octet-stream;
@@ -174,6 +175,9 @@ server {
     listen [::]:80;
     server_name {{ nginx_fallback_name }};
     server_tokens off;
+    # The redirected path can carry a bearer token; never log it.
+    access_log off;
+    error_log /dev/null crit;
     return 301 https://$host{% if (nginx_xhttp_fallback_port | int) != 443 %}:{{ nginx_xhttp_fallback_port }}{% endif %}$request_uri;
 }
 {% endif %}
@@ -185,5 +189,8 @@ server {
     listen [::]:80;
     server_name {{ nginx_xhttp.server_name }};
     server_tokens off;
+    # The redirected path can carry a bearer token; never log it.
+    access_log off;
+    error_log /dev/null crit;
     return 301 https://$host{% if nginx_redirect_port != 443 %}:{{ nginx_redirect_port }}{% endif %}$request_uri;
 }

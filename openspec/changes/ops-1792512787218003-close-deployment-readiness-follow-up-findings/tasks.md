@@ -25,7 +25,7 @@ audit that `ANS-1792499727513191` left out, and keep every existing gate.
 - [x] OPS-1792514263378823 Clean decrypted secrets on failed re-deploy preflight and every deploy-block exit #bug !high @item:OPS-1792512787218003
 - [ ] OPS-1792514264261067 Build AWG and sentinel Go sources with GOTOOLCHAIN=local and drop sentinel resolvconf #bug !high @item:OPS-1792512787218003
 - [ ] OPS-1792514265195751 Admit only Debian 13 and Ubuntu 24.04 provider images and refuse older firewall hosts #bug !high @item:OPS-1792512787218003
-- [ ] OPS-1792514266159002 Keep bearer paths out of nginx-xhttp redirect and Snell logs #bug !high @item:OPS-1792512787218003
+- [x] OPS-1792514266159002 Keep bearer paths out of nginx-xhttp redirect and Snell logs #bug !high @item:OPS-1792512787218003
 - [ ] OPS-1792514267045582 Pass focused and complete local checks plus independent review #bug !high @item:OPS-1792512787218003
 
 ## Verification

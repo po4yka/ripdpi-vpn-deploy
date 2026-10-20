@@ -120,8 +120,11 @@ shared-role idempotence without claiming an inactive unit adopted configuration.
 - **Fresh-host check mode plans nginx without activating it** — the role checks for the distro unit and requires a planned package installation when it is absent. Reload and start remain runtime actions on a real converge; check mode does not claim a nonexistent service is active.
 - **No public admin path** — there is no admin/status/management endpoint on
   this vhost. The only non-XHTTP public path is the opt-in, secret-token Snell
-  evaluation fixture location; it disables access logging and compression and
-  remains rate-limited.
+  evaluation fixture location; it disables access and error logging and
+  compression and remains rate-limited.
+- **Plain-HTTP redirects log nothing** — both TCP/80 redirect servers set
+  `access_log off` and `error_log /dev/null crit`, because a client can send
+  any bearer path over HTTP before the redirect.
 - **Coherent HTTP identity** — canonical pages, discovery files, favicon, and error behavior are repository-owned and versioned; TCP/80 is part of the same Terraform-to-Ansible listener contract as HTTPS.
 - **Profile-aware port choice** — REALITY-disabled cohorts can set
   `nginx_xhttp_public_port: 443`. Full-stack hosts must keep it off 443
