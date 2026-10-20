@@ -92,8 +92,11 @@ PROVIDER=upcloud BLUE_ENV=prod GREEN_ENV=green-2026-05 \
 #
 # scripts/blue-green.sh walks 8 phases (verify blue → bootstrap green
 # tfvars → provision → multi-host inventory → deploy + verify + smoke-test
-# → operator pivot → drain → optional retire). It pauses at the operator
-# pivot step so you flip DNS / floating IP yourself.
+# → operator pivot → drain → optional retire). It waits for a typed yes
+# after the green plan and after the green dry-run, and pauses at the
+# operator pivot step so you flip DNS / floating IP yourself.
+# BLUE_ENV selects the live source node; without it, ENV does. A
+# different explicit ENV beside BLUE_ENV refuses.
 #
 # Manual form (for finer control):
 # 1. Bring up a green node alongside blue. Use a different server_name in tfvars
