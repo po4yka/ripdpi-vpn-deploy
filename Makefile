@@ -1649,12 +1649,22 @@ fleet-rotate:
 	  $(if $(filter 1 yes true,$(RESUME)),--resume) \
 	  $(if $(filter 1 yes true,$(DRY_RUN)),--dry-run)
 
+# BLUE_ENV names the live source environment and falls back to ENV. An explicit
+# ENV that selects another environment refuses instead of silently winning.
+blue_env = $(or $(BLUE_ENV),$(ENV))
+define require-blue-env
+@if [ -n "$(BLUE_ENV)" ] && [ -n "$(filter command line environment,$(origin ENV))" ] && [ "$(BLUE_ENV)" != "$(ENV)" ]; then \
+  echo "BLUE_ENV and ENV select different environments; set only one" >&2; exit 1; fi
+endef
+
 watch-spare:
-	PROVIDER=$(PROVIDER) BLUE_ENV=$(ENV) LIVENESS_CONFIG="$(LIVENESS_CONFIG)" ./scripts/warm-spare-watcher.sh
+	$(require-blue-env)
+	PROVIDER=$(PROVIDER) BLUE_ENV=$(blue_env) LIVENESS_CONFIG="$(LIVENESS_CONFIG)" ./scripts/warm-spare-watcher.sh
 
 promote-spare:
 	@test -n "$(OTP)" || { echo "usage: make promote-spare OTP=<value>"; exit 1; }
-	PROVIDER=$(PROVIDER) BLUE_ENV=$(ENV) LIVENESS_CONFIG="$(LIVENESS_CONFIG)" ./scripts/promote-spare.sh $(OTP)
+	$(require-blue-env)
+	PROVIDER=$(PROVIDER) BLUE_ENV=$(blue_env) LIVENESS_CONFIG="$(LIVENESS_CONFIG)" ./scripts/promote-spare.sh $(OTP)
 
 protocol-liveness:
 	@test -n "$(LIVENESS_CONFIG)" || { echo "usage: make protocol-liveness LIVENESS_CONFIG=~/.config/vpn-provision/liveness.yaml"; exit 1; }
@@ -1950,7 +1960,8 @@ scan-targets:
 
 blue-green:
 	@test -n "$(GREEN_ENV)" || { echo "GREEN_ENV=<name> required (e.g. green, spare2)"; exit 1; }
-	PROVIDER=$(PROVIDER) BLUE_ENV=$(ENV) GREEN_ENV=$(GREEN_ENV) ./scripts/blue-green.sh
+	$(require-blue-env)
+	PROVIDER=$(PROVIDER) BLUE_ENV=$(blue_env) GREEN_ENV=$(GREEN_ENV) ./scripts/blue-green.sh
 
 bats-test:
 	bats tests/bats/

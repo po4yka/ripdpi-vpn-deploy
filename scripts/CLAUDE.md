@@ -381,6 +381,8 @@ metadata is installed before the payload. No old-format bootstrap URLs are issue
 **Blue-green stops for review** — apply follows the green plan and deploy
 follows the green dry-run only after a typed `yes`. `promote-spare` reaches
 the same prompts; its OTP authorizes the swap, not an unreviewed plan.
+The blue-green, promote-spare and watch-spare recipes pass `BLUE_ENV` when it
+is set, else `ENV`, and refuse an explicit `ENV` that names another environment.
 
 **Blue-green authenticates before first contact** — verify the green public key through an authenticated channel and confirm its standard known_hosts entry before inventory rendering. Vultr secondary-IP discovery uses strict host-key checking; it never enrolls a new key. Wait for cloud-init through the pinned public path before presenting recovery-installation steps. Then establish Tailnet/recovery ownership, render the confirmed handoff, and let the canonical controller perform pinned readiness. Blue and green aliases must be exact VPN inventory members before verification or deployment.
 

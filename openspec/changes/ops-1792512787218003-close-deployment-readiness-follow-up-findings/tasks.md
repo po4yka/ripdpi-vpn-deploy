@@ -19,7 +19,7 @@ audit that `ANS-1792499727513191` left out, and keep every existing gate.
 ## Execution
 
 - [x] OPS-1792514260026468 Require review after blue-green and vpnd plans and dry-runs with prompt regressions #bug !high @item:OPS-1792512787218003
-- [ ] OPS-1792514260874788 Honor BLUE_ENV in blue-green and warm-spare Make recipes with conflict regressions #bug !high @item:OPS-1792512787218003
+- [x] OPS-1792514260874788 Honor BLUE_ENV in blue-green and warm-spare Make recipes with conflict regressions #bug !high @item:OPS-1792512787218003
 - [ ] OPS-1792514261666762 Refuse deploy selections whose inventory env differs from ENV before secrets #bug !high @item:OPS-1792512787218003
 - [ ] OPS-1792514262478677 Refuse an empty destroy hostname and remove the saved destroy plan on every exit #bug !high @item:OPS-1792512787218003
 - [ ] OPS-1792514263378823 Clean decrypted secrets on failed re-deploy preflight and every deploy-block exit #bug !high @item:OPS-1792512787218003
