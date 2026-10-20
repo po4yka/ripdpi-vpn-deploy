@@ -72,8 +72,8 @@ if (( DRY_RUN )); then
 
   1/8  Verify blue health  (sops --decrypt, make verify) — read-only
   2/8  Bootstrap green tfvars if missing  (scripts/new-cohort.sh)
-  3/8  terraform plan via workspace wrapper: PROVIDER=${PROVIDER} ENV=${GREEN_ENV} scripts/terraform-env.sh plan -var-file=environments/${GREEN_ENV}.tfvars
-  4/8  Establish pinned SSH + Tailnet ownership, then make dry-run (--check) and deploy for the exact green alias
+  3/8  terraform plan via workspace wrapper: PROVIDER=${PROVIDER} ENV=${GREEN_ENV} scripts/terraform-env.sh plan -var-file=environments/${GREEN_ENV}.tfvars, then apply after a typed yes
+  4/8  Establish pinned SSH + Tailnet ownership, then make dry-run (--check) and, after a typed yes, deploy for the exact green alias
   5/8  make verify and smoke-test for the exact green alias
   6/8  Operator pivot (traffic swing) — manual step
   7/8  Drain blue — no automation
@@ -174,9 +174,14 @@ fi
 step "3/8  Provision green (ENV=${GREEN_ENV})"
 : "${GREEN_TAILNET_HANDOFF:?set the private GREEN_TAILNET_HANDOFF output path before provisioning}"
 : "${DEPLOY_SSH_CONTEXTS_FILE:?set the private DEPLOY_SSH_CONTEXTS_FILE path before provisioning}"
-for goal in init plan apply; do
+for goal in init plan; do
   ENV="$GREEN_ENV" PROVIDER="$PROVIDER" run_make "$goal"
 done
+if ! confirm "Review the green plan above. Apply it?"; then
+  echo "Aborting before apply; no green resources were changed." >&2
+  exit 1
+fi
+ENV="$GREEN_ENV" PROVIDER="$PROVIDER" run_make apply
 
 # ---------------------------------------------------------------------------
 # 4. Render multi-host inventory and deploy green
@@ -233,10 +238,14 @@ COHORTS="${BLUE_COHORT},${GREEN_COHORT}" \
 TAILNET_HANDOFFS="${BLUE_TAILNET_HANDOFF:--},${GREEN_TAILNET_HANDOFF}" \
   "$REPO_ROOT/scripts/render-inventory.sh"
 require_vpn_alias "$GREEN_ALIAS"
-for goal in dry-run deploy; do
-  SECRETS_FILE="$SECRETS_FILE" ANSIBLE_LIMIT="$GREEN_ALIAS" \
-    ENV="$GREEN_ENV" PROVIDER="$PROVIDER" run_make "$goal"
-done
+SECRETS_FILE="$SECRETS_FILE" ANSIBLE_LIMIT="$GREEN_ALIAS" \
+  ENV="$GREEN_ENV" PROVIDER="$PROVIDER" run_make dry-run
+if ! confirm "Review the green dry-run above. Deploy it?"; then
+  echo "Aborting before deploy. Green is provisioned; clean up later with: ENV=${GREEN_ENV} make destroy" >&2
+  exit 1
+fi
+SECRETS_FILE="$SECRETS_FILE" ANSIBLE_LIMIT="$GREEN_ALIAS" \
+  ENV="$GREEN_ENV" PROVIDER="$PROVIDER" run_make deploy
 
 # ---------------------------------------------------------------------------
 # 5. Verify + smoke test green

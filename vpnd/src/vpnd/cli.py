@@ -58,7 +58,7 @@ def globals_on(parser, root=False, host_add=False):
         "-y",
         action=UniqueFlag,
         **({"default": False} if root else default),
-        help="Skip interactive confirmation.",
+        help="Skip settings confirmation; plan and dry-run reviews still prompt.",
     )
     parser.add_argument(
         "--root",

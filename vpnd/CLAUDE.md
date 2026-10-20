@@ -19,6 +19,12 @@ Each child Make invocation removes inherited recursion, flags and injected
 Makefile controls. Structured output stays free of directory banners, and the
 parent process environment remains unchanged.
 
+**Reviews gate mutation.** `deploy` asks for terminal confirmation after
+`make plan` and before `make apply`; `reconverge` asks after `make dry-run` and
+before `make deploy`. `require_review` defaults to no, ignores `--yes` and runs
+inside the cleanup boundary, so a declined or unavailable review still runs
+`make clean`.
+
 **One command definition.** `src/vpnd/cli.py` owns the standard-library parser,
 global-flag precedence, help, completions and all twenty man pages. Add commands
 there and an async `run(ctx, args)` handler under `src/vpnd/commands/`; dispatch

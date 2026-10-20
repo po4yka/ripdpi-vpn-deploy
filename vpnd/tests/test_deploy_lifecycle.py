@@ -5,8 +5,11 @@ from dataclasses import replace
 from argparse import Namespace
 import asyncio
 import os
+import pty
+import select
 import subprocess
 import sys
+import time
 import tarfile
 import pytest
 from vpnd.config import Context
@@ -113,6 +116,66 @@ exit "${PLAYBOOK_EXIT:-0}"
         path.chmod(0o700)
 
     def command(self, args, extra=None, remove=(), yes=True, input=None):
+        return subprocess.run(
+            self.argv(args, yes),
+            capture_output=True,
+            text=True,
+            env=self.environment(extra, remove),
+            timeout=20,
+            input=input,
+        )
+
+    def interactive(self, args, answer):
+        """Answer the first terminal prompt that the review gate prints."""
+        master, slave = pty.openpty()
+        child = subprocess.Popen(
+            self.argv(args, True),
+            stdin=slave,
+            stderr=slave,
+            stdout=subprocess.DEVNULL,
+            env=self.environment(),
+        )
+        os.close(slave)
+        transcript = b""
+        try:
+            deadline = time.monotonic() + 15
+            while b"[y/N]" not in transcript:
+                assert time.monotonic() < deadline and child.poll() is None, transcript
+                if select.select([master], [], [], 0.05)[0]:
+                    transcript += os.read(master, 8192)
+            os.write(master, answer)
+            # Keep draining: a full terminal buffer would block the child.
+            while True:
+                assert time.monotonic() < deadline + 15, transcript
+                if select.select([master], [], [], 0.05)[0]:
+                    try:
+                        chunk = os.read(master, 8192)
+                    except OSError:
+                        chunk = b""
+                    transcript += chunk
+                    if chunk:
+                        continue
+                if child.poll() is not None:
+                    return child.returncode, transcript.decode(errors="replace")
+        finally:
+            os.close(master)
+            if child.poll() is None:
+                child.kill()
+            child.wait()
+
+    def argv(self, args, yes):
+        return [
+            sys.executable,
+            str(LAUNCHER),
+            "--root",
+            str(self.root),
+            "--env",
+            "test",
+            *(["--yes"] if yes else []),
+            *args,
+        ]
+
+    def environment(self, extra=None, remove=()):
         env = os.environ.copy()
         env.update(
             HOME=str(self.root / "home"),
@@ -124,23 +187,7 @@ exit "${PLAYBOOK_EXIT:-0}"
         env.update({key: str(value) for key, value in (extra or {}).items()})
         for key in remove:
             env.pop(key, None)
-        return subprocess.run(
-            [
-                sys.executable,
-                str(LAUNCHER),
-                "--root",
-                str(self.root),
-                "--env",
-                "test",
-                *(["--yes"] if yes else []),
-                *args,
-            ],
-            capture_output=True,
-            text=True,
-            env=env,
-            timeout=20,
-            input=input,
-        )
+        return env
 
     def calls(self):
         path = self.root / "calls"
@@ -419,3 +466,28 @@ def test_piped_default_confirmation_cannot_start_deployment(tmp_path):
         explained = fixture.command(["--explain", name], yes=False, input="\n")
         successful(explained)
         assert "make " not in fixture.calls()
+
+
+# Each command, the last target before its review, and the mutation it gates.
+REVIEW_GATES = (("deploy", "plan", "apply"), ("reconverge", "dry-run", "deploy"))
+
+
+@pytest.mark.parametrize(("name", "reviewed", "gated"), REVIEW_GATES)
+def test_yes_cannot_answer_the_plan_or_dry_run_review(tmp_path, name, reviewed, gated):
+    fixture = Fixture(tmp_path)
+    output = fixture.command([name])
+    calls = fixture.calls()
+    assert output.returncode != 0 and "not a terminal" in output.stderr
+    assert f"make {reviewed}\n" in calls and f"make {gated}\n" not in calls
+    assert calls.endswith("make clean\n") and not fixture.secrets().exists()
+
+
+@pytest.mark.parametrize(("name", "reviewed", "gated"), REVIEW_GATES)
+@pytest.mark.parametrize(("answer", "accepted"), ((b"\n", False), (b"n\n", False), (b"y\n", True)))
+def test_terminal_review_gates_the_mutation(tmp_path, name, reviewed, gated, answer, accepted):
+    fixture = Fixture(tmp_path)
+    returncode, transcript = fixture.interactive([name], answer)
+    calls = fixture.calls()
+    assert (returncode == 0) is accepted, transcript
+    assert f"make {reviewed}\n" in calls and (f"make {gated}\n" in calls) is accepted
+    assert calls.endswith("make clean\n") and not fixture.secrets().exists()
