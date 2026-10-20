@@ -28,7 +28,9 @@ def test_xray_rotation_restarts_active_service_and_propagates_failure(tmp_path):
     import subprocess
 
     variables = merge_render_vars()
-    variables["vpn"]["enable_transport_egress"] = False
+    variables["vpn"].update(
+        {"enable_xray_reality": False, "enable_nginx_xhttp": False, "enable_hysteria": False}
+    )
     policy = render_template(ROLE / "templates/logrotate-xray.j2", variables)
     body = policy.split("postrotate", 1)[1].split("endscript", 1)[0]
     assert "HUP" not in body
@@ -65,7 +67,6 @@ def test_guarded_xray_rotation_uses_admitted_recovery_without_direct_restart(tmp
     import subprocess
 
     variables = merge_render_vars()
-    variables["vpn"]["enable_transport_egress"] = True
     policy = render_template(ROLE / "templates/logrotate-xray.j2", variables)
     body = policy.split("postrotate", 1)[1].split("endscript", 1)[0]
     calls = tmp_path / "calls"
@@ -102,3 +103,29 @@ def test_xhttp_only_retains_xray_logs_and_subscription_only_has_no_xray_policy()
     assert render_fragment("xray-diagnostics-selector.txt.j2", selector, variables).strip() == "True"
     variables["vpn_subscription_only"] = True
     assert render_fragment("xray-diagnostics-selector.txt.j2", selector, variables).strip() == "False"
+
+
+def test_every_protected_profile_rotates_xray_through_guarded_recovery():
+    import yaml
+
+    # Profiles replace the canonical vpn map, so an omitted optional toggle must
+    # not select a direct restart that the generation controller treats as a fault.
+    guarded = "generation.py recover"
+    profiles = sorted((REPO_ROOT / "ansible" / "group_vars").glob("vpn-*.yml"))
+    assert profiles
+    for profile in profiles:
+        data = yaml.safe_load(profile.read_text(encoding="utf-8")) or {}
+        variables = merge_render_vars()
+        variables.update(data)
+        vpn = variables["vpn"]
+        protected = not data.get("vpn_subscription_only", False) and any(
+            vpn.get(key, True)
+            for key in ("enable_xray_reality", "enable_nginx_xhttp", "enable_hysteria")
+        )
+        policy = render_template(ROLE / "templates/logrotate-xray.j2", variables)
+        body = policy.split("postrotate", 1)[1].split("endscript", 1)[0]
+        if protected:
+            assert guarded in body, profile.name
+            assert "systemctl restart" not in body, profile.name
+        else:
+            assert guarded not in body, profile.name

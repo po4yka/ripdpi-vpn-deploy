@@ -36,6 +36,9 @@ instead of granting group or world read access.
 supported HUP log-reopen contract. Rotation recovers only an active Xray through
 the generation controller when guarded. Unguarded services restart directly and
 require active state afterward; either failure propagates from logrotate.
+The guarded branch uses the transport egress preparation predicate, not the
+optional `enable_transport_egress` key: profiles replace the `vpn` map, and a
+direct restart under the controller restarts the whole protected generation.
 
 ## What's done well
 
