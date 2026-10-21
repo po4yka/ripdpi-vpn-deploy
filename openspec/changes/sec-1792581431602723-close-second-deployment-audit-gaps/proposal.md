@@ -42,10 +42,10 @@ the first audit (`ANS-1792499727513191`, `OPS-1792512787218003`) left open:
   `always`-tagged pre-task that refuses a host whose inventory `env` is not
   `ENV`. Their Make recipes pass `ENV` explicitly; `make smoke-test` requires
   the inventory.
-- The Hetzner root accepts an optional `admin_ssh_key_name`. When it is set,
-  the root reads that project key, requires that its public key equals
-  `admin_ssh_public_key`, and does not create a key. Existing state moves to
-  the indexed key address without change.
+- Each Hetzner environment keeps its own operator key. Blue-green refuses,
+  before the green plan, a green tfvars whose `admin_ssh_public_key` has the
+  same type and body as the blue key; `new-cohort.sh` tells the operator to
+  set a separate key for a Hetzner environment.
 
 ## Capabilities
 
@@ -65,8 +65,10 @@ the first audit (`ANS-1792499727513191`, `OPS-1792512787218003`) left open:
 - Ansible: `playbooks/smoke-test.yml`, `verify.yml`, `security-verify.yml`,
   a new `playbooks/tasks/selected-env.yml`.
 - Makefile: `verify`, `security-verify` and `smoke-test` recipes.
-- Terraform: Vultr and Hetzner provider roots, variables, examples and tests.
-- Docs: folder notes, blue-green guidance for Hetzner.
+- Terraform: Vultr provider root and tests.
+- Scripts: `blue-green.sh` and `new-cohort.sh` for Hetzner.
+- Docs: folder notes.
 - A Vultr tfvars `os_id` that differs from an existing node now refuses at
   plan. A verify or smoke-test run with a host from another environment now
-  refuses before any host task. This change authorizes no deployment.
+  refuses before any host task. A Hetzner blue-green run with one operator key
+  for both environments refuses before the green plan. This change authorizes no deployment.

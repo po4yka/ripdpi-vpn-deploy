@@ -2,7 +2,8 @@
 
 Keep decrypted secrets off disk after an operator interrupt, keep provider OS
 changes from rebuilding a live node, keep verification plays inside the
-selected environment, and let several environments share one operator key.
+selected environment, and refuse a Hetzner environment that repeats another
+environment's operator key before it can fail during apply.
 
 ## ADDED Requirements
 
@@ -48,20 +49,19 @@ refuse an empty `ENV`. Tag selection MUST NOT skip this check.
 - **THEN** the play fails for the `prod` host before it writes any client
   credential
 
-### Requirement: REQ-DAB-SHAREDKEY — Reuse one operator key per project
+### Requirement: REQ-DAB-SHAREDKEY — One operator key per Hetzner environment
 
-The Hetzner root MUST accept the name of an existing project SSH key and MUST
-NOT create a key when that name is set. It MUST refuse a named key whose public
-key differs from `admin_ssh_public_key`. A change of the admin public key MUST
-still require a node replacement.
+Blue-green on Hetzner MUST refuse, before the green plan, a green tfvars whose
+`admin_ssh_public_key` has the same key type and body as the blue tfvars. The
+existing Terraform identity guards MUST remain unchanged.
 
-#### Scenario: A green environment reuses the blue key
+#### Scenario: The green tfvars copy the blue key
 
-- **WHEN** `admin_ssh_key_name` names the key that the blue environment created
-- **THEN** the green plan creates no `hcloud_ssh_key`
-- **AND** the green server uses the named key
+- **WHEN** blue-green runs with `PROVIDER=hetzner` and both tfvars hold the
+  same key with different comments
+- **THEN** the script exits non-zero before any green Make phase
 
-#### Scenario: Existing state keeps its key
+#### Scenario: The green environment has its own key
 
-- **WHEN** an existing environment plans without `admin_ssh_key_name`
-- **THEN** the key moves to its indexed address with no change
+- **WHEN** the green tfvars hold a different key
+- **THEN** blue-green provisions green as before

@@ -109,3 +109,6 @@ Next steps:
      private contexts, promotion and fresh failure-receipt mappings.
   4. Follow docs/RUNBOOK-deploy.md for separate dry-run, deploy and verify steps.
 EOF
+if [[ "$PROVIDER" == hetzner ]]; then
+  echo "Hetzner keeps one SSH key per fingerprint in a project: set a separate admin_ssh_public_key in $DST."
+fi

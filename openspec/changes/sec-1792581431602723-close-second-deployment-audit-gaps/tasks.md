@@ -13,8 +13,8 @@ keep every existing gate.
 - Play lane: `ansible/playbooks/` smoke-test, verify and security-verify,
   the shared env task, Makefile recipes, `tests/unit/test_operator_verb_scope.py`,
   `ansible/CLAUDE.md`.
-- Hetzner lane: `terraform/providers/hetzner/` root, variables, examples,
-  tests and notes; blue-green guidance.
+- Hetzner lane: `scripts/blue-green.sh`, `scripts/new-cohort.sh`,
+  `tests/unit/test_blue_green_lifecycle.py`, Hetzner notes.
 - Primary owns planning, task and board writes, review and commits.
 
 ## Execution
@@ -22,7 +22,7 @@ keep every existing gate.
 - [x] SEC-1792581854245311 Keep vpnd plaintext cleanup active from decrypt until cleanup with signal regressions #bug !high @item:SEC-1792581431602723
 - [x] SEC-1792581855014542 Refuse Vultr os_id changes before an in-place reinstall with lifecycle regressions #bug !high @item:SEC-1792581431602723
 - [x] SEC-1792581856404337 Bind smoke-test verify and security-verify plays to the selected ENV with refusal regressions #bug !high @item:SEC-1792581431602723
-- [ ] SEC-1792581857264775 Reuse an existing Hetzner project SSH key for additional environments with plan regressions #bug !high @item:SEC-1792581431602723
+- [x] SEC-1792581857264775 Refuse a Hetzner green environment that repeats the blue admin key before plan #bug !high @item:SEC-1792581431602723
 - [ ] SEC-1792581857974419 Pass focused and complete local checks plus independent review #bug !high @item:SEC-1792581431602723
 
 ## Verification
