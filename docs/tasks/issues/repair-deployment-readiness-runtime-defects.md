@@ -2,7 +2,7 @@
 id: ANS-1792499727513191
 title: Repair deployment readiness runtime defects
 kind: bug
-status: doing
+status: review
 area: ansible
 priority: high
 risk: high
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: ans-1792499727513191-repair-deployment-readiness-runtime-defects
 created: 2026-10-20
-updated: 2026-10-20
+updated: 2026-10-21
 related_tasks: []
 ---
 

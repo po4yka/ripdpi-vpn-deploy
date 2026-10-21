@@ -27,7 +27,7 @@ validation, pre-release Hysteria pins) and keep every existing safety gate.
 - [x] ANS-1792500036500839 Drop AWG forwarding to canonical private destinations with policy equality regressions #bug !high @item:ANS-1792499727513191
 - [x] ANS-1792500037164561 Withhold watchdog recovery after failed configuration validation with state regressions #bug !high @item:ANS-1792499727513191
 - [x] ANS-1792500037843465 Require exact stable Hysteria version pins with pre-flight regressions #bug !high @item:ANS-1792499727513191
-- [ ] ANS-1792500038523299 Pass focused and complete local checks plus independent review #bug !high @item:ANS-1792499727513191
+- [x] ANS-1792500038523299 Pass focused and complete local checks plus independent review #bug !high @item:ANS-1792499727513191
 
 ## Verification
 

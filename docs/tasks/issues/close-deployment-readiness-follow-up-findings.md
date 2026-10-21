@@ -2,7 +2,7 @@
 id: OPS-1792512787218003
 title: Close deployment readiness follow-up findings
 kind: bug
-status: doing
+status: review
 area: operations
 priority: high
 risk: high
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: ops-1792512787218003-close-deployment-readiness-follow-up-findings
 created: 2026-10-20
-updated: 2026-10-20
+updated: 2026-10-21
 related_tasks: [ANS-1792499727513191]
 ---
 

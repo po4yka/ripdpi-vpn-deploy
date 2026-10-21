@@ -5,7 +5,7 @@ commit_sha: 6ec346d3e235a027f7c27f1c633f363f42a9b0cd
 local: required
 local_evidence: Each new regression fails on the parent and passes after its fix. make check passed every step through ansible syntax, including the template render check (165), snapshots, terraform tests and shellcheck. liveness-profile-check did not run: the workstation has no Xray binary. test-unit ran 9131 passed; all 76 failures were SOPS/sing-box mise-shim cases, and 74 passed with real binaries; the other 2 fail identically on base 25ed8d5e. vpnd-lint, vpnd-test (322), vpnd-parity-check and bats passed. Independent review found one native fixture defect, fixed in 6ec346d3. AmneziaWG Molecule fails at the same consumer task on base and head in local Docker; firewall Molecule has no arm64 image here.
 remote_ci: required
-remote_ci_evidence: null
+remote_ci_evidence: PR #347 at 5807bec4 passed all 97 reported checks (Trivy skipped), including the 9 required contexts, pytest groups 1-4 with make liveness-profile-check on real pinned Xray and sing-box, all Molecule default, failure and full-stack scenarios, native runtime integration, native transport and four-transport acceptance, terraform test and conftest for all providers, and vpnd test and package lanes on Linux and macOS; run https://github.com/po4yka/ripdpi-vpn-deploy/actions/runs/39543684353. Molecule amneziawg, firewall, xray and watchdog passed in CI.
 dry_run: not_applicable
 dry_run_evidence: Source repair only; no deployment controller or private inventory operation.
 staging: not_applicable
@@ -29,4 +29,4 @@ artifact_evidence: nft -c accepts the rendered ruleset on Debian 13 nftables 1.1
 | REQ-DRR-AWGDEST | ANS-1792500036500839 | test_awg_forwarding_refuses_canonical_private_destinations; nft -c | passed |
 | REQ-DRR-WATCHDOG | ANS-1792500037164561 | test_invalid_nginx/xray_config regressions (57 watchdog tests) | passed |
 | REQ-DRR-HYSTERIA | ANS-1792500037843465 | test_hysteria_version_pin.py (6 cases, real Ansible) | passed |
-| All | ANS-1792500038523299 | Local gates above; native lanes, Molecule and liveness parser check pending CI | pending |
+| All | ANS-1792500038523299 | Local gates above; PR #347 CI run 39543684353 (Molecule, native lanes, liveness parser check) | passed |
