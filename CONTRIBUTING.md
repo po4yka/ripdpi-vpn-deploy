@@ -21,7 +21,8 @@ the documentation rules are in [docs/STYLE.md](docs/STYLE.md). Please read
   rationale: a CDN as the filtered-path baseline
   ([decision 0001](docs/decisions/0001-cdn-not-filtered-path-baseline.md)),
   a web admin panel, calendar-based credential rotation, Docker or
-  Kubernetes on the data plane, auto-deploy from `main`
+  Kubernetes on the data plane (Ansible plus systemd own runtime state),
+  auto-deploy from `main`
   ([architecture rationale](docs/explanation/architecture-rationale.md)).
 
 ## First-time setup
@@ -190,7 +191,7 @@ release-please reads them on every push to `main` to maintain
 | `docs:` | Documentation only | none |
 | `test:` | Molecule scenarios, validators, smoke tests | none |
 | `refactor:` / `perf:` | Restructure or performance change without behaviour change | none |
-| `chore:` / `build:` / `ci:` | Tooling, dependencies, workflows | none |
+| `chore:` / `build:` / `ci:` | Tooling, dependencies (including Renovate PRs), workflows | none |
 | `revert:` | Reverts a prior commit | as reverted |
 
 `feat!:`, `fix!:` or a `BREAKING CHANGE:` trailer bumps the major version.

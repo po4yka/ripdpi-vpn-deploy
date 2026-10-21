@@ -78,8 +78,8 @@ def test_governance_counts_match_live_repository():
         assert stale_claim not in role_tiering
 
     contributing = (ROOT / "CONTRIBUTING.md").read_text()
-    contributor_guidance = contributing.split("## Local pre-flight", 1)[1].split(
-        "## Adding a new role / template / script", 1
+    contributor_guidance = contributing.split("## Pull request flow", 1)[1].split(
+        "## Commit messages", 1
     )[0]
     for pointer in ("make check", ".github/workflows/ci.yml", "docs/reference/testing.md", "required checks"):
         assert pointer in contributor_guidance
