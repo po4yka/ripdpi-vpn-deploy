@@ -23,7 +23,7 @@ keep every existing gate.
 - [x] SEC-1792581855014542 Refuse Vultr os_id changes before an in-place reinstall with lifecycle regressions #bug !high @item:SEC-1792581431602723
 - [x] SEC-1792581856404337 Bind smoke-test verify and security-verify plays to the selected ENV with refusal regressions #bug !high @item:SEC-1792581431602723
 - [x] SEC-1792581857264775 Refuse a Hetzner green environment that repeats the blue admin key before plan #bug !high @item:SEC-1792581431602723
-- [ ] SEC-1792581857974419 Pass focused and complete local checks plus independent review #bug !high @item:SEC-1792581431602723
+- [x] SEC-1792581857974419 Pass focused and complete local checks plus independent review #bug !high @item:SEC-1792581431602723
 
 ## Verification
 

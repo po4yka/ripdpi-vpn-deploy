@@ -2,7 +2,7 @@
 id: SEC-1792581431602723
 title: Close second deployment audit secrets and lifecycle gaps
 kind: bug
-status: doing
+status: review
 area: security
 priority: high
 risk: high
