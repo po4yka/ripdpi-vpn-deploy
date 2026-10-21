@@ -3,7 +3,7 @@ from ..runner import ansible
 from ..runner.make import target
 from ..state import Registry
 from ..state.version import warn_on_skew
-from . import StopSignals, confirm, finish_with_cleanup, render_summary, require_review
+from . import StopSignals, confirm, render_summary, require_review
 
 
 async def run(ctx, args):
@@ -49,6 +49,6 @@ async def run(ctx, args):
                     stop.check()
         except Exception as outcome:
             error = stop.outcome(outcome)
-        await finish_with_cleanup(ctx, error)
+        await stop.cleanup(ctx, error)
     if not ctx.explain:
         print("\nReconverge complete.")

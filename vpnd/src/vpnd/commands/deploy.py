@@ -2,7 +2,7 @@
 
 import sys
 from ..runner.make import target, target_with
-from . import StopSignals, confirm, finish_with_cleanup, render_summary, require_review
+from . import StopSignals, confirm, render_summary, require_review
 
 # The operator reviews the saved plan between these two groups.
 PLAN_TARGETS = ("check-prereqs", "validate", "decrypt", "init", "plan")
@@ -57,7 +57,7 @@ async def run(ctx, args):
             stop.check()
         except Exception as outcome:
             error = stop.outcome(outcome)
-        await finish_with_cleanup(ctx, error)
+        await stop.cleanup(ctx, error)
     if not ctx.explain:
         print(
             f"\nDeploy complete.\n\n  active profiles:  P0 REALITY, P1 nginx-xhttp, P2 hysteria + amneziawg (per group_vars)\n  env:              {ctx.env}\n  provider:         {ctx.provider}\n\n  next:\n    share a client: vpnd share <name> --qr\n    diagnose: vpnd doctor\n    re-deploy: vpnd reconverge\n\n  runbooks: docs/RUNBOOK-deploy.md, docs/RUNBOOK-rollback.md, docs/RUNBOOK-incident.md"
