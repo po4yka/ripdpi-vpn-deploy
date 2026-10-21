@@ -982,7 +982,7 @@ verify: require-clean-source require-inventory validate-ansible-extra-vars pre-d
 	  echo "TAG_ON_SUCCESS=1 requires an unbounded fleet verification"; \
 	  exit 1; \
 	fi
-	ENV=$(ENV) VPN_SECRETS_FILE=$(SECRETS_FILE) \
+	env -u ANSIBLE_SKIP_TAGS -u ANSIBLE_RUN_TAGS ENV=$(ENV) VPN_SECRETS_FILE=$(SECRETS_FILE) \
 	ansible-playbook $(ANSIBLE_DIR)/playbooks/verify.yml \
 	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \
 	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)")
@@ -998,7 +998,7 @@ source-drift: require-clean-source require-inventory validate-ansible-extra-vars
 	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)")
 
 security-verify: require-inventory validate-ansible-extra-vars pre-deploy-check
-	ENV=$(ENV) VPN_SECRETS_FILE=$(SECRETS_FILE) \
+	env -u ANSIBLE_SKIP_TAGS -u ANSIBLE_RUN_TAGS ENV=$(ENV) VPN_SECRETS_FILE=$(SECRETS_FILE) \
 	ansible-playbook $(ANSIBLE_DIR)/playbooks/security-verify.yml \
 	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)") \
 	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)")
@@ -1496,7 +1496,7 @@ molecule-full-stack:
 
 smoke-test: require-inventory
 	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run 'make decrypt'"; exit 1; }
-	ENV=$(ENV) VPN_SECRETS_FILE=$(SECRETS_FILE) \
+	env -u ANSIBLE_SKIP_TAGS -u ANSIBLE_RUN_TAGS ENV=$(ENV) VPN_SECRETS_FILE=$(SECRETS_FILE) \
 	ansible-playbook $(ANSIBLE_DIR)/playbooks/smoke-test.yml \
 	  $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)")
 
