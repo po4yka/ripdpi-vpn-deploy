@@ -54,7 +54,8 @@ def run_play(tmp_path: Path, verb: str, limit: str | None, *, hosts: str = "", e
                 tasks=[{"name": "Publish mutation marker",
                         "ansible.builtin.copy": {"dest": str(marker), "content": "mutated"}}])
     (tmp_path / "tasks").mkdir()
-    shutil.copy(PLAYBOOKS / "tasks/exact-node.yml", tmp_path / "tasks/exact-node.yml")
+    for guard in ("exact-node.yml", "selected-env.yml"):
+        shutil.copy(PLAYBOOKS / "tasks" / guard, tmp_path / "tasks" / guard)
     (tmp_path / "play.yml").write_text(yaml.safe_dump([play]))
     (tmp_path / "hosts.ini").write_text(hosts or inventory())
     (tmp_path / "ansible.cfg").write_text("[defaults]\nhost_key_checking = False\nretry_files_enabled = False\n")
@@ -119,6 +120,47 @@ def test_rotation_refuses_a_host_outside_the_selected_environment(tmp_path, host
     assert result.returncode != 0, output
     assert ENVIRONMENT_MESSAGE in output
     assert not marker.exists()
+
+
+# Verification plays load one environment's secrets for every selected host.
+ENV_BOUND_PLAYS = ("smoke-test", "verify", "security-verify")
+
+
+@pytest.mark.parametrize("verb", ENV_BOUND_PLAYS)
+def test_verification_play_binds_its_environment_before_any_other_task(verb):
+    play = yaml.safe_load((PLAYBOOKS / f"{verb}.yml").read_text())[0]
+    (guard,) = yaml.safe_load((PLAYBOOKS / "tasks/selected-env.yml").read_text())
+    assert play["pre_tasks"][0]["ansible.builtin.import_tasks"] == "tasks/selected-env.yml"
+    assert "always" in play["pre_tasks"][0]["tags"] and "always" in guard["tags"]
+
+
+@pytest.mark.parametrize("host_env,selected", [("staging", "prod"), ("prod", "staging"), ("prod", None), (None, None)])
+@pytest.mark.parametrize("verb", ENV_BOUND_PLAYS)
+def test_verification_play_refuses_a_host_outside_the_selected_environment(tmp_path, verb, host_env, selected):
+    result, output, marker = run_play(tmp_path, verb, None, hosts=inventory(host_env), environment=selected)
+    assert result.returncode != 0, output
+    assert ENVIRONMENT_MESSAGE in output
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize("verb", ENV_BOUND_PLAYS)
+def test_verification_play_runs_only_on_hosts_of_the_selected_environment(tmp_path, verb):
+    hosts = "[vpn]\nnode-a ansible_connection=local env=prod\nnode-b ansible_connection=local env=staging\n"
+    result, output, marker = run_play(tmp_path, verb, None, hosts=hosts, environment="prod")
+    recap = output.rsplit("PLAY RECAP", 1)[1]
+    assert result.returncode != 0, output
+    assert re.search(r"node-a\s*:.*changed=1.*failed=0", recap), recap
+    assert re.search(r"node-b\s*:.*changed=0.*failed=1", recap), recap
+
+
+@pytest.mark.parametrize("verb", ENV_BOUND_PLAYS)
+def test_verification_recipes_pass_the_selected_environment(verb):
+    result = make("-n", verb, "ENV=staging", "SECRETS_FILE=/nonexistent/runtime.yaml",
+                  "DEPLOY_SOURCE_REVISION=revision", "DEPLOYABLE_SOURCE_DIGEST=digest")
+    assert result.returncode == 0, result.stdout + result.stderr
+    text = " ".join(re.sub(r"\\\n", " ", result.stdout).split())
+    assert f"ENV=staging VPN_SECRETS_FILE=/nonexistent/runtime.yaml ansible-playbook ansible/playbooks/{verb}.yml" in text
+    assert "inventory/generated.ini" in text
 
 
 def test_inherited_skip_tags_would_bypass_the_guard(tmp_path):

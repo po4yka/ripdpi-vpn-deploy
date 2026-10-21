@@ -1,0 +1,10 @@
+---
+# One decrypted secrets file belongs to one environment. Refuse a selected host
+# from another environment before any task reads or publishes its secrets.
+- name: Require the target inventory environment to match the selected ENV
+  ansible.builtin.assert:
+    that:
+      - lookup('env', 'ENV') | length > 0
+      - hostvars[inventory_hostname]['env'] | default('') == lookup('env', 'ENV')
+    fail_msg: The target inventory environment must equal ENV; run with the ENV and secrets of that node
+  tags: [always]
