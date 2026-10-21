@@ -14,7 +14,8 @@
 - name: Smoke-test the deployed VPN stack from inside the host
   hosts: vpn
   become: true
-  gather_facts: true
+  # Facts are gathered after the environment check, not from a refused host.
+  gather_facts: false
 
   vars:
     vpn_secrets_file: >-
@@ -27,6 +28,15 @@
 
   vars_files:
     - "{{ vpn_secrets_file }}"
+
+  pre_tasks:
+    - name: Bind the play to the selected environment
+      ansible.builtin.import_tasks: tasks/selected-env.yml
+      tags: [always]
+
+    - name: Gather facts for the selected environment
+      ansible.builtin.setup:
+      tags: [always]
 
   tasks:
     - name: Ensure VPN_SECRETS_FILE was provided

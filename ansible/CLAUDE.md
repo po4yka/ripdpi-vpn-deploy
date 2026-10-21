@@ -107,6 +107,12 @@ notification credentials, then checks only journal records after a captured
 cursor; it never recreates a secret-bearing shell environment.
 
 **One playbook per intent** — `site.yml` (deploy), `os-maintenance.yml` (serial OS upgrades/reboots), `verify.yml`, `security-verify.yml`, `smoke-test.yml`, `rollback-config.yml`, `rollback-xray.yml`, `rotate-credentials.yml`. No mega-playbook with conditional flags; new intent = new playbook. `rotate-credentials.yml`, `rollback-xray.yml` and `rollback-config.yml` are exact-node plays: they import `playbooks/tasks/exact-node.yml` as their first `pre_tasks` entry (one inventory alias equal to `--limit`) and run `serial: 1` with `any_errors_fatal`; rotation additionally requires the host inventory `env` to equal `ENV`.
+`verify.yml`, `security-verify.yml` and `smoke-test.yml` load one environment's
+secrets for every selected host, so their first `always` pre-task imports
+`playbooks/tasks/selected-env.yml`, which refuses a host whose `env` is not
+`ENV`; their Make recipes pass `ENV` explicitly and drop inherited
+`ANSIBLE_SKIP_TAGS`/`ANSIBLE_RUN_TAGS`. `smoke-test.yml` gathers facts in a
+pre-task after that check, so a refused host is never contacted.
 `observability-host-bootstrap.yml` retains only the historical dedicated-host
 contract; the current operator refuses that bootstrap. Current observability
 adds bounded collector/agent slices to existing VPN hosts and a pinned Kuma

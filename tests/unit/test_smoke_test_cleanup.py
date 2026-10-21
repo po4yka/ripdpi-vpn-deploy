@@ -201,9 +201,12 @@ def smoke_run(tmp_path):
         _replace_waits(included, remove_failure)
         (playbook_dir / 'tasks').mkdir(exist_ok=True)
         (playbook_dir / 'tasks/smoke-reality.yml').write_text(yaml.safe_dump(included, sort_keys=False))
+        shutil.copyfile(ROOT / 'ansible/playbooks/tasks/selected-env.yml', playbook_dir / 'tasks/selected-env.yml')
         source = _replace_paths(source, workdir, units)
         _replace_waits(source['tasks'], remove_failure)
         source.update(hosts='localhost', become=False, gather_facts=False)
+        # Fact gathering probes systemctl on Linux; keep only the environment guard.
+        source['pre_tasks'] = [task for task in source['pre_tasks'] if 'ansible.builtin.setup' not in task]
         source['vars']['ansible_python_interpreter'] = sys.executable
         shared_vars = yaml.safe_load(
             (ROOT / 'ansible/group_vars/all.yml').read_text()
@@ -262,8 +265,12 @@ def smoke_run(tmp_path):
             SMOKE_COLLECTED='1' if collected else '0',
             SMOKE_OCCUPIED_PORT='' if occupied_port is None else str(occupied_port),
             SMOKE_UNIT_DIES=unit_dies, SMOKE_PROBE_COUNT=str(snell_count if protocol == 'snell' else 1),
+            ENV='fixture',
         )
-        return [executable, '-i', 'localhost,', '-c', 'local', str(playbook)], env
+        # The play's environment guard compares this inventory label with ENV.
+        inventory = tmp_path / 'hosts.ini'
+        inventory.write_text('localhost env=fixture\n')
+        return [executable, '-i', str(inventory), '-c', 'local', str(playbook)], env
 
     def execute(**options):
         argv, env = prepare(**options)
