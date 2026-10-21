@@ -171,8 +171,9 @@ in a clean checkout without `.fleet.mk` before attributing it to source.
 3. Fill in [the pull request template](.github/PULL_REQUEST_TEMPLATE.md):
    Task ID, scope, the exact commands you ran and what they showed. A
    skipped or failing check is reported as such.
-4. CI's `required checks` aggregator requires every selected job to
-   succeed and every unselected job to be planned as skipped.
+4. `.github/workflows/ci.yml` owns the required PR workflow. Its
+   `required checks` aggregator requires every selected job to succeed and
+   every unselected job to be planned as skipped.
    [Branch protection](docs/how-to/branch-protection.md) lists the required
    statuses. Squash-merge is preferred; task lifecycle PRs that contain a
    terminal record followed by archival keep their separate commits through
