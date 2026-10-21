@@ -3,7 +3,7 @@ from ..runner import ansible
 from ..runner.make import target
 from ..state import Registry
 from ..state.version import warn_on_skew
-from . import confirm, finish_with_cleanup, render_summary, require_review
+from . import StopSignals, confirm, finish_with_cleanup, render_summary, require_review
 
 
 async def run(ctx, args):
@@ -30,20 +30,25 @@ async def run(ctx, args):
         print("aborted by user", file=sys.stderr)
         return
     error = None
-    try:
-        await target(ctx, "decrypt").run(ctx.explain)
-        ctx.secure_secrets_file()
-        for name in ("init", "plan"):
-            await target(ctx, name).run(ctx.explain)
-        await target(ctx, "dry-run").env("ANSIBLE_LIMIT", limit).run(ctx.explain)
-        if args.dry_run:
-            print("dry-run only — stopping before apply", file=sys.stderr)
-        else:
-            require_review(ctx, "Review the dry-run above. Deploy it?")
-            for name in ("deploy", "verify"):
-                await target(ctx, name).env("ANSIBLE_LIMIT", limit).run(ctx.explain)
-    except Exception as outcome:
-        error = outcome
-    await finish_with_cleanup(ctx, error)
+    with StopSignals() as stop:
+        try:
+            await target(ctx, "decrypt").run(ctx.explain)
+            stop.check()
+            ctx.secure_secrets_file()
+            for name in ("init", "plan"):
+                await target(ctx, name).run(ctx.explain)
+                stop.check()
+            await target(ctx, "dry-run").env("ANSIBLE_LIMIT", limit).run(ctx.explain)
+            stop.check()
+            if args.dry_run:
+                print("dry-run only — stopping before apply", file=sys.stderr)
+            else:
+                require_review(ctx, "Review the dry-run above. Deploy it?")
+                for name in ("deploy", "verify"):
+                    await target(ctx, name).env("ANSIBLE_LIMIT", limit).run(ctx.explain)
+                    stop.check()
+        except Exception as outcome:
+            error = stop.outcome(outcome)
+        await finish_with_cleanup(ctx, error)
     if not ctx.explain:
         print("\nReconverge complete.")

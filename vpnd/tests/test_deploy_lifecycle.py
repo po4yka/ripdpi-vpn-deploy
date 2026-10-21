@@ -88,6 +88,7 @@ case "$target" in
 esac
 if [ "${ECHO_SECRET_PATH:-0}" = 1 ]; then printf 'reading %s\n' "$secret"; fi
 if [ "$target" = "${FAIL_TARGET:-none}" ]; then exit 31; fi
+if [ "$target" = "${SLOW_TARGET:-none}" ]; then : > "$FIXTURE_ROOT/started"; sleep 2; fi
 """,
         )
         self.executable(
@@ -169,6 +170,29 @@ exit "${PLAYBOOK_EXIT:-0}"
             if child.poll() is None:
                 child.kill()
             child.wait()
+
+    def signalled(self, args, slow, number, group):
+        """Signal vpnd while the stub runs `slow`; a group signal also reaches that step."""
+        child = subprocess.Popen(
+            self.argv(args, True),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            env=self.environment({"SLOW_TARGET": slow}),
+            start_new_session=True,
+        )
+        try:
+            deadline = time.monotonic() + 15
+            while not (self.root / "started").exists():
+                assert time.monotonic() < deadline and child.poll() is None, child.stderr.read()
+                time.sleep(0.02)
+            (os.killpg if group else os.kill)(child.pid, number)
+            _, stderr = child.communicate(timeout=20)
+            return child.returncode, stderr.decode(errors="replace")
+        finally:
+            if child.poll() is None:
+                os.killpg(child.pid, signal.SIGKILL)
+                child.wait()
 
     def argv(self, args, yes):
         return [
@@ -498,6 +522,22 @@ def test_terminal_review_gates_the_mutation(tmp_path, name, reviewed, gated, ans
     assert (returncode == 0) is accepted, transcript
     assert f"make {reviewed}\n" in calls and (f"make {gated}\n" in calls) is accepted
     assert calls.endswith("make clean\n") and not fixture.secrets().exists()
+
+
+@pytest.mark.parametrize(("name", "reviewed", "gated"), REVIEW_GATES)
+@pytest.mark.parametrize("slow", ("decrypt", "reviewed"))
+@pytest.mark.parametrize("number", (signal.SIGINT, signal.SIGQUIT, signal.SIGTERM, signal.SIGHUP))
+@pytest.mark.parametrize("group", (False, True), ids=("vpnd", "group"))
+def test_signal_during_a_step_still_cleans_plaintext(tmp_path, name, reviewed, gated, slow, number, group):
+    fixture = Fixture(tmp_path)
+    step = reviewed if slow == "reviewed" else slow
+    returncode, stderr = fixture.signalled([name], step, int(number), group)
+    calls = fixture.calls()
+    assert returncode == 128 + number, stderr
+    assert f"make {step}\n" in calls and f"make {gated}\n" not in calls
+    # A signal to vpnd alone lets the step finish; no later step starts.
+    assert calls.split(f"make {step}\n", 1)[1] == "make clean\n", calls
+    assert not fixture.secrets().exists()
 
 
 @pytest.mark.parametrize(("name", "reviewed", "gated"), REVIEW_GATES)

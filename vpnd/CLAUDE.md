@@ -26,7 +26,12 @@ inside the cleanup boundary, so a declined or unavailable review still runs
 `make clean`. Dispatch keeps default terminal signals, so the review alone maps
 SIGINT, SIGQUIT, SIGTERM and SIGHUP to an ordinary failure that exits
 128 + signal; otherwise Ctrl-C or a dropped session at the prompt would kill
-vpnd with plaintext on disk.
+vpnd with plaintext on disk. Around the whole pipeline and its cleanup,
+`StopSignals` records the same four signals on the event loop; the pipeline
+stops at the next step boundary, runs `make clean` and exits 128 + signal.
+The prompt keeps its own handler because a blocking prompt stops the loop.
+vpnd never kills the running Make step: terminal signals reach it directly,
+and a killed Make could leave a child that writes plaintext after cleanup.
 
 **One command definition.** `src/vpnd/cli.py` owns the standard-library parser,
 global-flag precedence, help, completions and all twenty man pages. Add commands
