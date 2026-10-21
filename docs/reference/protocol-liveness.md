@@ -1,5 +1,7 @@
 # Protocol-level liveness and rotation
 
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+
 Process state, a listening socket, and a bare TLS response do not prove that a real client can authenticate and carry traffic across a filtered path. Rotation uses a separate operator-side module that pulls authenticated data-plane probes from managed sentinels and requires sustained failure from a configured quorum. The local watchdog remains process supervision.
 
 ## Passive fleet inspection
@@ -345,8 +347,8 @@ There is no caller-provided binding timestamp or command/hook field.
 The supported entry point is `make deploy` with this intent as the selected
 alias's value in the private `DEPLOY_PROMOTION_CONFIG_FILE`. Prepare the intent
 with the local `make prepare-disposable-promotion-intent` command, which reuses
-the exact [validator](../scripts/disposable_promotion.py) and
-[liveness schema](../contract/protocol-liveness.schema.json): one dedicated client
+the exact [validator](../../scripts/disposable_promotion.py) and
+[liveness schema](../../contract/protocol-liveness.schema.json): one dedicated client
 already present in the selected encrypted staging secrets, one all-four-profile
 policy/sentinel, exact inventory/source/address identity, the current registered
 cleanup manifest and an executor manifest from `make prepare-disposable-liveness`.

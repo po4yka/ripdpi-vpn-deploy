@@ -1,5 +1,7 @@
 # Deployment status — last verified snapshot
 
+> **Status:** Snapshot (2026-08-23) · **Type:** explanation · **Tier:** — · **Reviewed:** 2026-10-21
+
 This document records the last verified deployment snapshot, observed on
 **2026-08-23** at source commit
 `0c22a24cff5733947900ad345da4b9fe830a528e`. It does not establish the current

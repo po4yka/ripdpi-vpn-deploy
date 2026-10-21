@@ -1,5 +1,7 @@
 # Deploy-side regression baseline
 
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-21
+
 `scripts/run-rkn-block-checker.sh` runs the upstream
 [`rkn-block-checker`](https://pypi.org/project/rkn-block-checker/)
 Python tool against the canonical URL set
@@ -46,7 +48,7 @@ pip install --user rkn-block-checker==0.1.0
 
 The pinned version lives in **two** places, in sync:
 
-- `scripts/run-rkn-block-checker.sh` → `RKN_BLOCK_CHECKER_VERSION="0.1.0"`
+- `scripts/run-rkn-block-checker.sh` → `the regulator_BLOCK_CHECKER_VERSION="0.1.0"`
 - `requirements.in` / `requirements.txt` → `rkn-block-checker==0.1.0`
 
 Bumping the pin = edit both and regenerate the hash-locked
@@ -129,7 +131,7 @@ Common patterns:
 - **Blacklist `TLS_BLOCK → OK`** after a `--proxy` flag: the bypass
   channel works. Document the proxy in the linked deploy.
 - **Blacklist `TLS_BLOCK → DNS_BLOCK`**: the filtering layer
-  upstream of you tightened — TSPU moved from TLS-RST to DNS-stub
+  upstream of you tightened — the DPI moved from TLS-RST to DNS-stub
   on this entry. Not a deploy regression; record it.
 - **Whitelist and blacklist both `OK`**: the path you're probing
   through has no filtering. Either you ran the harness from outside

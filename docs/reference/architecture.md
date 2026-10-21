@@ -1,5 +1,7 @@
 # Architecture
 
+> **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-10-21
+
 This repo implements a four-tier multi-profile access stack:
 
 ```
@@ -93,7 +95,7 @@ becomes manual. See `../how-to/incident.md` § "State loss".
 ## Why direct nginx (no CDN)
 
 `docs/decisions/0001-cdn-not-filtered-path-baseline.md` is the ADR. Short version: as of April–May 2026,
-Cloudflare into Russia goes through TSPU-enabled RU PoPs, VK CDN closed
+Cloudflare into the filtered network goes through DPI-enabled domestic PoPs, VK CDN closed
 write methods, Yandex CDN dropped anonymous endpoints. CDN-fronted P1 is
 no longer a baseline — it is a tactical option.
 

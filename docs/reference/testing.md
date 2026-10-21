@@ -1,11 +1,13 @@
 # Testing — what's covered and what isn't
 
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+
 The repo's defense-in-depth philosophy applies to its own correctness: every
 config, role, and script is checked at multiple layers before it can hit a
 real VPS. This doc enumerates each layer and where coverage gaps exist
 (with explicit reasons).
 
-The [canonical first-time setup](../CONTRIBUTING.md#first-time-setup) lists the
+The [canonical first-time setup](../../CONTRIBUTING.md#first-time-setup) lists the
 complete local-gate installation inputs and the supported Ubuntu reference
 recipe, including tools outside `mise.toml` and the Python/tasking locks.
 
@@ -66,7 +68,7 @@ matrix records coverage and commands rather than manually maintained totals.
 | **Ansible role: snell** | ansible-lint | render check + snapshots | **molecule** (converge + idempotence + verify) | RESEARCH-tier staging candidate. Molecule uses an inert executable for lifecycle, permissions and release layout only. Required native-runtime checks use the real pinned engine for all three variants, authentication refusal and connection reuse (`tests/unit/test_snell_native.py`). |
 | **Ansible role: split-hop-egress** | ansible-lint | render check | **molecule** (converge + idempotence + verify) | WireGuard peer config rendered from placeholder keys; verify play checks wg-quick unit and key file perms on Node B. |
 | **Ansible role: split-hop-ingress** | ansible-lint | render check | **molecule** (converge + idempotence + verify) | Verifies Node A has no peer endpoint/keepalive and policy routing marks only new original-direction probe runtime flows. |
-| **Ansible role: cascade-ingress** | ansible-lint + structural guard tests | render check + classifier/probe socket-process fixtures | **required paired molecule** (`populated` + `forced-empty`) | EXCEPTION-tier and absent from family profiles. Tests cover the RU/foreign interface-selection mapping, authenticated SOCKS boundary, IP-only handoff, startup/runtime dataset loss, DNS/WARP bypass prevention, authenticated leg/control health transitions, and redacted evidence. Molecule proves the adapter/probe units remain literally disabled; forced-empty must block before any unit, proxy secret, tunnel configuration, or serving state and is required independently from the happy path. |
+| **Ansible role: cascade-ingress** | ansible-lint + structural guard tests | render check + classifier/probe socket-process fixtures | **required paired molecule** (`populated` + `forced-empty`) | EXCEPTION-tier and absent from family profiles. Tests cover the domestic/foreign interface-selection mapping, authenticated SOCKS boundary, IP-only handoff, startup/runtime dataset loss, DNS/WARP bypass prevention, authenticated leg/control health transitions, and redacted evidence. Molecule proves the adapter/probe units remain literally disabled; forced-empty must block before any unit, proxy secret, tunnel configuration, or serving state and is required independently from the happy path. |
 | **Ansible role: cascade-egress** | ansible-lint + classifier-isolation test | render check | **molecule** (converge + idempotence + verify) | Owns only the private tunnel listener and forwarding scaffold; tests prohibit classifier/geodata knowledge and client-facing behavior. |
 | **Ansible role: probe-matrix-target** | ansible-lint | render check | **molecule** (converge + idempotence + verify) | Verifies all five rendered listener configs, systemd hardening directives, and protected Xray, mtg, and TLS key files; service startup remains a live-staging gate. |
 | **Ansible role: xray-runtime** | ansible-lint | n/a | covered by Xray and probe-matrix-target scenarios | One pinned installer shared by the family and research Xray services. |
@@ -391,7 +393,7 @@ gh attestation verify ./vpnd-x86_64-unknown-linux-gnu.tar.gz \
 `VPND_SKIP_ATTESTATION` is unset. Missing `gh` retains the existing warning;
 `VPND_SKIP_ATTESTATION=1` explicitly opts out. The native-executable to Python
 wheel-bundle installation break and Python 3.12 prerequisite are documented in
-[vpnd/README.md](../vpnd/README.md) and [../how-to/release-please.md](../how-to/release-please.md).
+[vpnd/README.md](../../vpnd/README.md) and [../how-to/release-please.md](../how-to/release-please.md).
 
 `make vpnd-package-check` builds reproducible wheel/source artifacts, installs
 locked dependency wheels offline into a private environment, validates actual
@@ -404,7 +406,7 @@ hosted CI, other-platform execution, mutation results or live deployment.
 
 | Surface | Probe | Vantage | Notes |
 |---|---|---|---|
-| **TCP/443 (REALITY)** | `make burn-check` via check-host.net nodes | RU + EU third-party | Exits non-zero when ≥`FAIL_THRESHOLD` vantages can't connect — the IP-burn signal. |
+| **TCP/443 (REALITY)** | `make burn-check` via check-host.net nodes | filtered-network and EU third-party | Exits non-zero when ≥`FAIL_THRESHOLD` vantages can't connect — the IP-burn signal. |
 | **UDP/443 (Hysteria2/QUIC)** | `make burn-check` QUIC Version-Negotiation probe | operator workstation | **Always non-fatal (WARN).** Sends an unauthenticated QUIC long-header packet with a `0x?a?a?a?a` force-VN version, padded to QUIC's 1200-byte minimum; any reply proves UDP/443 was delivered end-to-end. Skips (WARN) when `ENABLE_HYSTERIA=false` or `HYSTERIA_SALAMANDER=true` (obfs makes external blackbox probing impossible). Exports `vpn_burn_udp_reachable`. |
 
 When `NODE_EXPORTER_TEXTFILE_DIR` is set, burn-check refreshes
@@ -462,7 +464,7 @@ Generated `terraform/providers/<name>/README.md` files are committed; the
   SOPS secrets, re-provisions real infrastructure) is only safe to exercise
   against a throwaway VPS; a maintainer TODO covers adding it to the
   `ci-real-deploy` label workflow.
-- **End-to-end traffic against geographic locations** (RU, EU, US). Would
+- **End-to-end traffic against geographic locations** (filtered network, EU, US). Would
   require live infrastructure with the right BGP. This is what
   `make burn-check` (operator-side cron) covers post-deploy — including the
   external UDP/443 edge-reachability probe (see "External reachability" above).

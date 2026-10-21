@@ -1,5 +1,7 @@
 # Client-side known issues and version pins
 
+> **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-10-21
+
 The server stack is only one half of the story. These items are
 client-side, but the operator distributing clients should know about
 them because a vulnerable client undoes the server's protections.
@@ -153,7 +155,7 @@ Operationally:
 - The firewall role already opens both ports; no manual nftables
   edits are needed when toggling the fallback on or off.
 
-## uTLS fingerprint + the "TLS frozen" failover caveat (RU-AS cascade only)
+## uTLS fingerprint + the "TLS frozen" failover caveat (domestic-AS cascade only)
 
 The client uTLS fingerprint for the REALITY and XHTTP outbounds is configurable
 per profile via `xray_utls_fingerprint` (xray role default `chrome`; override in
@@ -161,18 +163,18 @@ group_vars, or `UTLS_FINGERPRINT=firefox make emit-singbox CLIENT=name` for a
 single run). Hysteria2's QUIC TLS has no uTLS knob, so this does not apply to it.
 
 **Honest scope — not active on the baseline.** This matters only under the
-June-2026 RKN three-condition TLS pattern
+June-2026 three-condition TLS pattern
 (`june-2026-rkn-tls-three-condition-block`), whose Condition 1 requires the
 *server* to sit on a flagged cloud AS
 Cloud.ru). The baseline runs foreign VPS (UpCloud / Hetzner / Vultr), which take
 a different enforcement path (TCP port-range, not this TLS-rate rule). So this is
-a **latent** caveat for any RU-hosted relay/cascade node and general client
+a **latent** caveat for any domestically hosted relay/cascade node and general client
 guidance — **not** an active baseline threat. Do not over-state it elsewhere.
 
-Under that RU-AS pattern:
+Under that domestic-AS pattern:
 
 - **Fingerprint class (Condition 2)** flags Chrome/Safari/iOS; Firefox and
-  standard Android currently pass. For a RU-hosted cohort, pre-selecting
+  standard Android currently pass. For a domestically hosted cohort, pre-selecting
   `xray_utls_fingerprint: firefox` sidesteps Condition 2 — but pick once and
   hold it (see the caveat below).
 - **Failover-backoff caveat.** When the observed failure shape is **"TCP

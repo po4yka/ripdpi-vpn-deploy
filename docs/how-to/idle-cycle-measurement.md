@@ -1,5 +1,7 @@
 # Runbook: idle-cycle access-attempt measurement spike
 
+> **Status:** Current · **Type:** how-to · **Tier:** RESEARCH · **Reviewed:** 2026-10-21
+
 Operator-side procedure for measuring whether a filtering pipeline
 applies a per-flow idle-LRU rule to bare-HTTPS endpoints: first
 access after a long idle stalls for ~1 minute, subsequent accesses

@@ -1,5 +1,7 @@
 # REALITY active-target ASN monitoring
 
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+
 `make validate-target` is a point-in-time hygiene check. A target that passed it can later become unsafe when the filtered path begins dropping traffic associated with one of the target's hosting prefixes. `make monitor-reality-target` closes that gap with an observed-path signal; it is not a global ASN reputation service and does not contain a permanent ASN denylist.
 
 ## Signal and vantage

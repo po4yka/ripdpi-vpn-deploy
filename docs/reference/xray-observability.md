@@ -1,5 +1,7 @@
 # Xray observability
 
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+
 Xray diagnostics stay local to each node. `StatsService` listens only on
 `127.0.0.1:10086`; node_exporter listens only on `127.0.0.1:9100`. Neither
 endpoint belongs in the Terraform public-listener contract or the firewall

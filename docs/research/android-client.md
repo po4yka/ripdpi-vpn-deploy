@@ -1,5 +1,7 @@
 # Android client research for the deployed VPN fleet
 
+> **Status:** Research · **Type:** research · **Tier:** — · **Reviewed:** 2026-10-21
+
 **Research snapshot:** 2026-08-08
 
 **Scope:** Android clients for the P0/P1/P2 fleet recorded in
@@ -197,7 +199,7 @@ tagged source at `ac063853776a325772080a2b1b18de21ba4a33d3`:
 - was published with receipt-bound source provenance, signed builds, checksums,
   Android/Rust SBOMs, and update metadata.
 
-The repo-owned [Pixel 7 live-client matrix](measurements/pixel7-live-client-matrix-2026-07-15.md)
+The repo-owned [Pixel 7 live-client matrix](../measurements/pixel7-live-client-matrix-2026-07-15.md)
 proves that an earlier hardened source snapshot passed live REALITY primary and
 fallback, XHTTP, Hysteria2, AWG, routing, leak, and Hysteria2-to-AWG failover
 checks on a physical non-rooted device. It does **not** prove `v0.1.4` on the

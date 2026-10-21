@@ -1,5 +1,7 @@
 # Deploy profiles
 
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+
 Deploy profiles are `ansible/group_vars/vpn-*.yml` files that define the
 transport surface and host-hardening posture for a cohort. New hosts should use
 an explicit profile rather than relying on inherited `all.yml` defaults.

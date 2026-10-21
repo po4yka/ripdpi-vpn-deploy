@@ -548,6 +548,15 @@ role's guards with loaded units absent from service facts, planned and unplanned
 missing units, and failed load-state discovery. These unit inputs supplement
 real systemd and post-convergence staging checks.
 
+**The documentation tree is a tested contract** — `test_docs_index.py` requires
+every page under `docs/` (outside `tasks/`, `demo/` and `measurements/`) to be
+listed in `docs/README.md`, to open with the status line from `docs/STYLE.md`
+whose type matches its folder, to use a kebab-case or numbered-decision file
+name, and to carry no geographic, carrier or censorship-apparatus label in its
+name or headings. It also resolves every relative link in the tree and the root
+README, CONTRIBUTING and AGENTS files against the Git index, so an untracked
+target or a moved page fails here before lychee runs in CI.
+
 **Coverage claims follow contracts** — `test_governance_counts.py` checks role
 and template inventories plus hosted scenarios. Suite sizes come from runner
 output for a specific revision; this test does not recollect the suite.

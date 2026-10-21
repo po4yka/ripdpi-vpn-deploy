@@ -1,5 +1,7 @@
 # REALITY target selection — 2026-07-12
 
+> **Status:** Research · **Type:** research · **Tier:** — · **Reviewed:** 2026-10-21
+
 
 > Redaction note (2026-08): the operator-owned production target measured in this document is a
 > registered domain that is deliberately not named here. Every occurrence of `<redacted-domain>`
@@ -55,7 +57,7 @@ The current target is therefore an acceptable temporary production target and is
 | `download.docker.com` | 0 failures, 1 warning | HTTP 200; AS16509 | Reject: variant warning and third-party CDN |
 | `releases.ubuntu.com` | 1 failure, 2 warnings | ALPN selected HTTP/1.1 | Reject: mandatory H2 requirement fails |
 
-The research identified `dl.google.com` as an example with favorable post-ServerHello behavior and the strongest external fallback in this sample. The captured measurement dataset contained 408 Russian measurements across 79 probe ASNs from 2026-07-05 through 2026-07-12: 14 anomalies, 2 failures, and no confirmed blocks. This supports current ordinary HTTPS reachability but does not prove that a REALITY flow with that SNI survives every filtered path; anomalies can be false positives and must be examined over time.
+The research identified `dl.google.com` as an example with favorable post-ServerHello behavior and the strongest external fallback in this sample. The captured measurement dataset contained 408 in-country measurements across 79 probe ASNs from 2026-07-05 through 2026-07-12: 14 anomalies, 2 failures, and no confirmed blocks. This supports current ordinary HTTPS reachability but does not prove that a REALITY flow with that SNI survives every filtered path; anomalies can be false positives and must be examined over time.
 
 No OONI measurements exist yet for `<redacted-domain>`, which is expected for a new low-profile domain. Absence of measurements is not evidence of either reachability or blocking.
 
@@ -63,7 +65,7 @@ No OONI measurements exist yet for `<redacted-domain>`, which is expected for a 
 
 The pinned RealiTLScanner v0.2.1 was run locally, never on the VPS, against the complete P0 prefix `<redacted-network>`. The scanner's captured operating guidance recommends local execution because cloud execution may flag the VPS.
 
-The scan found only unsuitable same-ASN alternatives: a target returning HTTP 444 and failing the Chrome-like request, an invalid Kubernetes ingress certificate, a hostname whose normal DNS path terminates in a Russian ASN, and a target that subsequently failed the TLS handshake. None is safer or more operationally sound than the owned target. The scan therefore supports creating a controlled same-ASN endpoint instead of borrowing an arbitrary neighboring tenant certificate.
+The scan found only unsuitable same-ASN alternatives: a target returning HTTP 444 and failing the Chrome-like request, an invalid Kubernetes ingress certificate, a hostname whose normal DNS path terminates in a domestic ASN, and a target that subsequently failed the TLS handshake. None is safer or more operationally sound than the owned target. The scan therefore supports creating a controlled same-ASN endpoint instead of borrowing an arbitrary neighboring tenant certificate.
 
 The scan also exposed a local wrapper defect: the macOS install path requests `github.com/XTLS/RealiTLScanner@v0.2.1`, while that release declares the lowercase module path `github.com/xtls/RealiTLScanner`. The research used the same pinned release through the correct lowercase module path; the wrapper itself was not modified in this research change.
 
@@ -78,7 +80,7 @@ baseline remain evidence that must be refreshed independently.
 3. Run an nginx or equivalent TLS listener only on a private loopback port, with TLS 1.3, ALPN h2, the real static landing content, bounded request handling, and no admin or health surface.
 4. Set `xray.target` to the private listener and `xray.server_names` to `edge.<redacted-domain>`; keep public Xray on TCP/443.
 5. Validate the target directly and through the public P0 address, including `xray tls ping`, certificate SAN, ordinary browser behavior, invalid-REALITY fallback behavior, config test, authenticated REALITY round trip, and restart/rollback behavior.
-6. Run the repository's unfiltered checks and then `scripts/probe-sni-survival.sh` from an actual filtered Russian network. A local or Georgian observation cannot establish TSPU survival.
+6. Run the repository's unfiltered checks and then `scripts/probe-sni-survival.sh` from an actual filtered network. A local or observation from an unfiltered network cannot establish DPI survival.
 7. Establish the filtered target-monitor baseline only after the SNI survives, then keep daily monitoring active.
 
 ## Confidence and limitation

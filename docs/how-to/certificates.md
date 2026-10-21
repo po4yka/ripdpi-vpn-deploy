@@ -1,5 +1,7 @@
 # Certificate preflight
 
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-21
+
 `make check-certs` validates the certificate material for the selected runtime
 profile. The check requires a DNS SAN for the configured TLS name, current
 validity, at least 14 days before expiry, a matching private key, TLS server

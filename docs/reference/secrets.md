@@ -1,5 +1,7 @@
 # Secrets — SOPS + age model
 
+> **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-10-21
+
 ## Where things live
 
 ```

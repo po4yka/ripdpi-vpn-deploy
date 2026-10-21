@@ -1,5 +1,7 @@
 # Recurring real-VPS AWG/NAT evidence lane
 
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-21
+
 The primary executor is the local systemd timer installed by
 `scripts/install-real-vps-awg-nat-local.sh`. It runs on a dedicated Linux
 sentinel, connects to an owner-controlled real VPS, and fails when its private

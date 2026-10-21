@@ -1,5 +1,7 @@
 # ASN Exposure Denylist Gate
 
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+
 This note defines a safe design boundary for the server-side denylist gate based on external ASN and service-network feeds. It is intentionally non-deployable: it contains no ranges, no generated rule payloads, no firewall commands, and no provider-specific policy.
 
 Status: the review-only first pass has landed (PR #137). The operator contract for the delivered gate is `docs/reference/network-exposure-gate.md`.

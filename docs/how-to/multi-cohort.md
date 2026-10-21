@@ -1,5 +1,7 @@
 # Multi-cohort host
 
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-21
+
 A single VPS can serve several cohorts at once, each with its own port,
 flow mode, finalmask setting, and client list, while sharing one REALITY
 identity (target + server_names + private key).
@@ -10,11 +12,11 @@ A typical mix:
 
 | Cohort | Port | Flow mode | Why |
 |---|---|---|---|
-| `home-isp` | 443 | `mux` | Avoid the ~12-concurrent-TLS rule on RU home ISPs (`tls-policing-home-isps`) |
+| `home-isp` | 443 | `mux` | Avoid the ~12-concurrent-TLS rule on home ISPs (`tls-policing-home-isps`) |
 | `mobile`   | 8444 | `vision` | TCP/443 elsewhere on the IP is policed; mobile is fine on a different port |
 | `foreign`  | 9443 | `vision` | Default behaviour, no policing observed |
 
-A single REALITY identity is what TSPU active-probing measures. Adding
+A single REALITY identity is what DPI active probing measures. Adding
 more cohort ports does not multiply your fingerprint surface — every
 inbound mimics the same donor site.
 

@@ -1,5 +1,7 @@
 # iOS split routing: curated direct allowlist, fail-closed VPN default
 
+> **Status:** Research · **Type:** research · **Tier:** — · **Reviewed:** 2026-10-21
+
 **Evidence date:** 2026-07-14
 
 **Scope:** repository-owned conclusions from physical tests of Shadowrocket,

@@ -1,5 +1,7 @@
 # Subscription delivery host separation
 
+> **Status:** Current · **Type:** how-to · **Tier:** TACTICAL · **Reviewed:** 2026-10-21
+
 The `subscription-host` role can run on the same VPS as the transport
 (xray / hysteria / amneziawg) — that's the v1 default. For tighter
 operator separation, run subscription on a dedicated VPS with no
@@ -108,7 +110,7 @@ transport host generates. Options:
 
 ## What this does not buy you
 
-  * Hiding the subscription host from a TSPU operator who already
+  * Hiding the subscription host from a DPI operator who already
     knows the transport host's IP. The subscription host is still a
     public HTTPS endpoint with its own IP, vulnerable to the same
     IP-reputation analysis as the transport.

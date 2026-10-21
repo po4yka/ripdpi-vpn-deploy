@@ -1,5 +1,7 @@
 # AmneziaWG cohort obfuscation profiles
 
+> **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-10-21
+
 The `amneziawg_secrets.instances[].{jc,jmin,jmax,s1,s2,h1,h2,h3,h4}` block is what
 turns plain WireGuard into AmneziaWG. The role's broad defaults work
 on most networks, but some DPI deployments apply WireGuard-shaped

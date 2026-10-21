@@ -1,5 +1,7 @@
 # Branch protection
 
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-21
+
 `main` requires all configured required statuses to pass before merge. The CI
 aggregate requires selected jobs to succeed and permits only explicitly planned
 skips for unselected jobs. Protection also requires a pull request, linear

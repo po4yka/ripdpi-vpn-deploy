@@ -1,5 +1,7 @@
 # Runbook — incidents
 
+> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-10-21
+
 Decision matrix for things going wrong. Pick the row that matches the
 symptom; cross-reference the linked runbook for the recovery procedure.
 
@@ -13,7 +15,7 @@ symptom; cross-reference the linked runbook for the recovery procedure.
 | Bootstrap URL leaked before client fetched | Token | re-issue with `make issue-bootstrap CLIENT=… --expires DATE` (old token returns 410 on first GET) |
 | TLS handshake to VPS fails from many networks | IP burned | `make burn-check` confirms; warm-spare → `make promote-spare OTP=…` (if pre-provisioned), else blue-green to new ASN |
 | Protocol sentinels report sustained authenticated failure while direct controls pass | Targeted path block | Inspect `make protocol-liveness LIVENESS_CONFIG=…`; after quorum and three consecutive evaluations, use the bound OTP from `watch-spare` to start the normal operator-confirmed warm-spare promotion |
-| Slow / lossy on one network only, fine elsewhere | Routing / ISP-specific | try Hysteria2 fallback; if persistent, blue-green to different region; for the RU home-ISP TLS-policing rule run `make test-tls-policing HOST=…` then flip the cohort to `xray_flow_mode: mux` |
+| Slow / lossy on one network only, fine elsewhere | Routing / ISP-specific | try Hysteria2 fallback; if persistent, blue-green to different region; for the home-ISP TLS-policing rule run `make test-tls-policing HOST=…` then flip the cohort to `xray_flow_mode: mux` |
 | `xray run -test -config` fails after deploy | Config bug | `rollback.md` § 1 (config rollback, automatic via handler rescue); `make drift-since-tag` shows what changed since last known-good |
 | New Xray release crashes / leaks | Binary | `rollback.md` § 2 (binary rollback) |
 | watchdog alerts with `class=policy_reject_spike` | Spike of policy-blackholed or VLESS-rejected events from authenticated clients | `make probing-summary` for the rollup; review routing rules for unexpected blackhole hits; consider tightening `policy_ratelimit` thresholds if abuse is confirmed |
@@ -27,8 +29,8 @@ symptom; cross-reference the linked runbook for the recovery procedure.
 | Lost SOPS age private key | Operator | see § "Lost age key" below; if Shamir-split (`docs/how-to/age-recovery.md`) or YubiKey-backed (`docs/reference/secrets.md`), reconstruct first |
 | Lost Terraform state file | Operator | see § "State loss" below |
 | 3x-ui / Marzban / Remnawave panel exposed | Architecture deviation | this stack has no panel by design; if you added one, take it offline NOW |
-| Suspected RKN / TSPU active probing | Threat-model | `make probing-summary` for class breakdown; rerun `make validate-target` for SNI hygiene; consider rotating SNI target; check honeypot textfile metrics |
-| TSPU rule-set drift suspected | Threat-model | `make tspu-canary` from an in-cohort RU test client (diff vs yesterday) |
+| Suspected DPI active probing | Threat-model | `make probing-summary` for class breakdown; rerun `make validate-target` for SNI hygiene; consider rotating SNI target; check honeypot textfile metrics |
+| DPI rule-set drift suspected | Threat-model | `make tspu-canary` from an in-cohort test client (diff vs yesterday) |
 | Mobile network whitelist rolled out for the operator | Threat-model | P3 reachability — automation can't help; switch network (roaming, fixed broadband) or stand up an in-country relay |
 
 ## Lost SSH access

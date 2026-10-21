@@ -1,24 +1,26 @@
 # Provider notes
 
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+
 The sanitized mapping and last observed convergence state of the active
 three-provider fleet are recorded in
 [../explanation/deployment-status.md](../explanation/deployment-status.md). Provider support in this file is
 a capability statement; only a refreshed plan against the named environment
 is evidence of current provider state.
 
-## ASN / hoster risk tiers (RU threat model, 2026-05)
+## ASN / hoster risk tiers (filtered-network threat model, 2026-05)
 
 Source: repository-local deployment measurements and operator validation.
 
 | Tier | Provider / ASN | Notes |
 |---|---|---|
-| Avoid | Cloudflare AS13335 | TSPU peering at DME/KJA/LED; 8–16 KB cut; see `../decisions/0001-cdn-not-filtered-path-baseline.md` |
-| Avoid | OVH AS16276, Hetzner AS24940, DigitalOcean AS14061 | "Foreign datacenter" ASN bucket triggers TCP freeze (~14–25 KB on mobile RU) |
+| Avoid | Cloudflare AS13335 | DPI peering at several exchange points; 8–16 KB cut; see `../decisions/0001-cdn-not-filtered-path-baseline.md` |
+| Avoid | OVH AS16276, Hetzner AS24940, DigitalOcean AS14061 | "Foreign datacenter" ASN bucket triggers TCP freeze (~14–25 KB on filtered mobile paths) |
 | Avoid | JustHost AS26383, VDSina AS216071 | Frequently flagged as VPN-tenant ranges; high churn |
-| Acceptable | UpCloud (current primary) | Not on the public RKN/TSPU watch lists as of 2026-05; verify ASN before rollout |
+| Acceptable | UpCloud (current primary) | Not on the public public DPI watch lists as of 2026-05; verify ASN before rollout |
 | Unmeasured | Scaleway | Independent provider root is implemented, but no repository-local filtered-path baseline exists yet; verify the assigned IP and ASN before rollout |
 | Preferred | Hostkey, nuxt.cloud (DE/NL), hostvds.com (FI) | Smaller, less-flagged ranges per community testing |
-| Jurisdiction-Exception (opt-in only, never Preferred/Acceptable) | *(no provider/ASN preselected — see note)* | RU-hosted cascade entry node for temporary whitelist-riding only. No brand/ASN is listed here on purpose: eligibility is a per-ASN empirical, expiring, fail-closed attestation, never a brand assumption (Yandex.Cloud LLC vs YANDEX LLC are distinct ASNs). First hosting-jurisdiction exception in this repo; accepts bounded RU legal/data-retention/seizure exposure for a temporary node. See `../decisions/0004-geoip-split-cascade.md` + `../decisions/0005-per-asn-allowlist-attestation.md` + the EXCEPTION tier in `../decisions/0002-role-and-doc-tiering.md` |
+| Jurisdiction-Exception (opt-in only, never Preferred/Acceptable) | *(no provider/ASN preselected — see note)* | domestically hosted cascade entry node for temporary whitelist-riding only. No brand/ASN is listed here on purpose: eligibility is a per-ASN empirical, expiring, fail-closed attestation, never a brand assumption (Yandex.Cloud LLC vs YANDEX LLC are distinct ASNs). First hosting-jurisdiction exception in this repo; accepts bounded domestic legal/data-retention/seizure exposure for a temporary node. See `../decisions/0004-geoip-split-cascade.md` + `../decisions/0005-per-asn-allowlist-attestation.md` + the EXCEPTION tier in `../decisions/0002-role-and-doc-tiering.md` |
 
 For a full deploy this primarily affects the **egress** IP, not the
 ingress: a node that ingresses on REALITY/TCP and egresses through the
@@ -67,7 +69,7 @@ cannot reach. The fix is provider-side and manual: open/confirm UDP/443 in the
 provider's web console security group, or file a support request to lift a
 UDP-default-closed policy. Do not chase the on-host firewall — it is not the
 cause. (Note Hysteria2 also supports a non-443 UDP port via `hysteria_port`;
-moving to e.g. UDP/8443 sidesteps both edge friction and RU QUIC-throttling on
+moving to e.g. UDP/8443 sidesteps both edge friction and QUIC throttling on the filtered path on
 UDP/443.)
 
 ## UpCloud
@@ -184,8 +186,8 @@ Uses:
 - `hcloud_server`, `hcloud_ssh_key`, `hcloud_firewall`,
   `hcloud_firewall_attachment`, and optional `hcloud_floating_ip`
   for the honeypot secondary IPv4.
-- ASN AS24940 — flagged in the TCP-freeze rule on RU mobile networks
-  (see the "Avoid" tier above). Hetzner remains useful for non-RU-mobile
+- ASN AS24940 — flagged in the TCP-freeze rule on mobile access networks
+  (see the "Avoid" tier above). Hetzner remains useful for non-domestic mobile
   cohorts and for development; rotate IPs more aggressively than UpCloud.
 - Cheaper than UpCloud per spec; smaller geographic surface (EU-heavy +
   US East/West, no APAC).
@@ -202,7 +204,7 @@ Uses:
   for the honeypot secondary IPv4.
 - Wider region coverage than UpCloud / Hetzner.
 - IP reputation is more variable; rotate regions when burn-check shows
-  a region's prefix is RKN-blocked.
+  a region's prefix is regulator-blocked.
 - The provider schema marks its API key as required but fills it from the
   `VULTR_API_KEY` environment variable; the provider block stays empty and
   tokens never enter tfvars or state inputs.

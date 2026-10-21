@@ -1,5 +1,7 @@
 # Recipient destination boundary
 
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+
 P0 REALITY, P1 XHTTP and P2 Hysteria recipient TCP/UDP traffic uses an
 unprivileged metadata normalizer, followed by the same pinned native Xray
 runtime as a literal-only gateway. WARP-selected Xray routes use a separate

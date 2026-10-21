@@ -1,5 +1,7 @@
 # Multi-operator RBAC
 
+> **Status:** Current · **Type:** how-to · **Tier:** TACTICAL · **Reviewed:** 2026-10-21
+
 The v1 model assumes one operator (or one trusted operator-set sharing
 the same age recipients). Larger deployments need finer separation:
 the subscription-operator should not be able to decrypt the REALITY

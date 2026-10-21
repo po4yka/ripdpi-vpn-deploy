@@ -1,5 +1,7 @@
 # Runbook: stand up a split-hop pilot
 
+> **Status:** Current · **Type:** how-to · **Tier:** RESEARCH · **Reviewed:** 2026-10-21
+
 Operator procedure for the two-node research topology in
 `docs/decisions/0003-split-hop-relay-topology.md`. Both halves are Ansible-managed. The current
 ingress role policy-routes only dedicated probe-matrix runtime users, so this

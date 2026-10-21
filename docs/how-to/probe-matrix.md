@@ -1,5 +1,7 @@
 # Topology-aware multi-protocol probe matrix
 
+> **Status:** Current · **Type:** how-to · **Tier:** RESEARCH · **Reviewed:** 2026-10-21
+
 `vpnd probe-matrix` runs all configured protocol × target cells concurrently on a fixed schedule. It records authenticated data-plane verdicts without writing endpoint addresses or credentials to the report, then emits conservative observations for protocol-specific filtering, destination-class-wide collateral, and topology-specific dual-role targeting candidates.
 
 This is a RESEARCH measurement workflow. Run it only from an authorized filtered path against owned targets, keep the default five-minute interval unless a reviewed experiment requires otherwise, and corroborate any observation independently before treating it as a filtering mechanism.

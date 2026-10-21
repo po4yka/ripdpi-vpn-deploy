@@ -1,11 +1,13 @@
 # Runbook — deploy
 
+> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-10-21
+
 Fresh or recreated nodes need provisioning and first enrollment before deployment;
 start with `../tutorials/quickstart.md` or the [disposable staging recipe](#staging-first).
 An already managed node uses the [ordinary re-deploy recipe](#ordinary-re-deploy-recipe).
 
 Run commands from the repository root in the pinned Bash session from the
-[canonical workstation setup](../CONTRIBUTING.md#first-time-setup).
+[canonical workstation setup](../../CONTRIBUTING.md#first-time-setup).
 
 For the last verified release snapshot, provider-to-role mapping, recorded gate
 results, and unresolved operator limitations, start with
@@ -450,8 +452,8 @@ when transport ports or enabled transports change.
 
 This disposable recipe uses **UpCloud only**: the linked UUID-bound cleanup
 instructions describe its exact resource set and initial manifest inputs.
-Read the [provider credentials and inputs](../terraform/providers/upcloud/README.md),
-the [staging tfvars example](../terraform/providers/upcloud/environments/staging.tfvars.example)
+Read the [provider credentials and inputs](../../terraform/providers/upcloud/README.md),
+the [staging tfvars example](../../terraform/providers/upcloud/environments/staging.tfvars.example)
 and the [cleanup prerequisites](ci-real-deploy.md#uuid-bound-operator-staging-cleanup)
 before planning. Record the run's owner, maximum concurrent VPS/executors,
 reviewed provider plan/storage, monetary ceiling, retry count and cleanup deadline

@@ -1,5 +1,7 @@
 # Runbook — disaster recovery / restore
 
+> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-10-21
+
 The architecture targets **15–30 minute restore** from a clean operator
 workstation back to a fully functional VPN node. Two paths.
 

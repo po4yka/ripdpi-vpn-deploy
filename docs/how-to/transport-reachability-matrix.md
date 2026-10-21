@@ -1,5 +1,7 @@
 # Transport reachability matrix
 
+> **Status:** Current · **Type:** how-to · **Tier:** TACTICAL · **Reviewed:** 2026-10-21
+
 The harness deploys one tracked transport profile to a fresh disposable node,
 then requires canonical server verification and smoke tests before collecting
 SNI probes and a direct runner URL baseline. CI must provision a separate node
@@ -70,17 +72,17 @@ client acceptance.
 
 The matrix also measures **which SNI variant of each REALITY `server_name`
 survives**. Per the censorship-bypass concept
-`sni-exact-match-vs-suffix-classification-2026`, TSPU on several non-CF paths
+`sni-exact-match-vs-suffix-classification-2026`, DPI on several non-CF paths
 matches the SNI by **exact dot-component string, not by suffix**: the bare
 `foo.com` and `www.foo.com` form of the *same* name can survive very
 differently, in either direction. The topologically "canonical" form is not
 privileged — you must pick `xray.server_names` by the variant that actually
-survives the RU vantage.
+survives the filtered vantage.
 
 **This decision cannot be made locally.** `scripts/validate-reality-target.sh`
-runs from the operator/non-RU vantage and can only validate TLS/cert *hygiene*
-of each variant (step 9). The asymmetry is observable only from inside an RU
-TSPU path, so the survival verdict comes from `scripts/probe-sni-survival.sh`,
+runs from the operator/foreign vantage and can only validate TLS/cert *hygiene*
+of each variant (step 9). The asymmetry is observable only from inside a filtered
+DPI path, so the survival verdict comes from `scripts/probe-sni-survival.sh`,
 which probes both variants per name against the exit IP and records
 `survived | blocked | error` per variant.
 
@@ -91,7 +93,7 @@ Like the rkn-block-checker, it runs in **both vantages**:
   alongside the profile reports. Here every variant is expected to survive —
   this is the hygiene/baseline half. A `blocked`/`error` from this vantage
   means the server or cert is wrong, not the filter.
-- **Filtered (operator, RU vantage):** run the same probe from the filtered
+- **Filtered (operator, filtered vantage):** run the same probe from the filtered
   network against the same exit IP:
   ```bash
   EXIT_IP="$EXIT_IP" VANTAGE=filtered make probe-sni-survival

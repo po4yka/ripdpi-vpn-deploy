@@ -1,5 +1,7 @@
 # Runbook — credential rotation
 
+> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-10-21
+
 Three rotation scopes. Pick the smallest one that addresses the threat.
 
 Infrastructure rotation caused by sustained protocol failure is separate from credential rotation. Follow `docs/reference/protocol-liveness.md`: only fresh authenticated client-path failures with a successful direct control can create a quorum candidate, and the resulting OTP still enters the normal blue-green verification and operator-confirmation flow.

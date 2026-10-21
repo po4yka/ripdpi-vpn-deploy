@@ -34,7 +34,7 @@ disposable: when an IP burns, recreate from git + secrets, do not repair.
 
 ## Stack
 
-P0 is the RU baseline. P1 and P2 run alongside it as alternate transports;
+P0 is the filtered-path baseline. P1 and P2 run alongside it as alternate transports;
 clients carry selector + urltest logic so they automatically fail over to
 whichever profile is still reachable. P3 is the operator-level recovery —
 a burned IP is replaced, not repaired.
@@ -46,12 +46,12 @@ flowchart LR
         SB["RIPDPI / sing-box<br/>selector + urltest"]
         AC["AmneziaWG client"]
     end
-    subgraph TSPU["RU internet · TSPU"]
+    subgraph FN["filtered network · DPI"]
         DPI["DPI · SNI inspection · active probing"]
     end
     subgraph VPS["disposable VPS · nftables · geoblock"]
         direction TB
-        P0X["<b>P0</b> · xray REALITY + Vision / mux<br/>TCP/443 · RU baseline"]
+        P0X["<b>P0</b> · xray REALITY + Vision / mux<br/>TCP/443 · filtered-path baseline"]
         P1X["<b>P1</b> · nginx XHTTP direct<br/>TCP/8443 or 443"]
         P2H["<b>P2</b> · Hysteria2<br/>UDP/443 · port-hop opt"]
         P2A["<b>P2</b> · AmneziaWG<br/>UDP/cohort · obfuscated"]
@@ -151,7 +151,7 @@ Then:
    observed live gates, and remaining verification boundaries.
 2. `docs/tutorials/quickstart.md` — zero-to-working in ~30 minutes.
 3. `docs/reference/architecture.md` — how this repo maps to the P0–P3 stack.
-4. `docs/decisions/0001-cdn-not-filtered-path-baseline.md` — explicit ADR: Cloudflare CDN is **not** the RU
+4. `docs/decisions/0001-cdn-not-filtered-path-baseline.md` — explicit ADR: Cloudflare CDN is **not** the filtered-path
    baseline; nginx-xhttp role is direct-only by default.
 5. `docs/reference/secrets.md` — SOPS+age model, age-key recovery, rotation.
 6. `docs/how-to/age-recovery.md` — Shamir-split the age key for k-of-n recovery.

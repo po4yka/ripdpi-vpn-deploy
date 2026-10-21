@@ -1,5 +1,7 @@
 # ADR — Cloudflare CDN is not the filtered-network baseline
 
+> **Status:** Current · **Type:** decision · **Tier:** CORE · **Reviewed:** 2026-10-21
+
 **Date:** 2026-05-10
 **Last reviewed:** 2026-05-11
 **Status:** accepted
@@ -35,7 +37,7 @@ April–May 2026:
 | Other regional CDNs | Functional, candidates for closure within weeks. |
 | Akamai / CDN77 / Fastly (GET-only) | Work but expensive or narrow. |
 
-Putting CDN in front of P1 in this regime gains nothing (the RU egress is
+Putting CDN in front of P1 in this regime gains nothing (the domestic egress is
 still through the same filtering boundary) and adds a dependency that can fail or change policy
 overnight.
 
@@ -83,7 +85,7 @@ on `nginx-xhttp`.
 - This document is referenced from `README.md` and `../reference/architecture.md` as
   the canonical answer when someone asks "why isn't CDN the default."
 - A separate `cdn-front` role exists for operators who deliberately
-  want browser-shaped XHTTP via a non-RU CDN PoP. It is off by
+  want browser-shaped XHTTP via a foreign CDN PoP. It is off by
   default (`vpn.enable_cdn_front: false`) and physically separate from
   `nginx-xhttp` — turning it on does not flip a flag in the baseline
   vhost. The role configures real-IP restoration from
@@ -98,11 +100,11 @@ on `nginx-xhttp`.
 
 Re-evaluate this decision if:
 
-- Cloudflare reverses the RU-PoP-via-TSPU situation (re-check the
+- Cloudflare reverses the domestic-PoP-via-DPI situation (re-check the
   measurements recorded under "Evidence anchor" before flipping this
   decision).
-- A non-RU CDN provides documented, stable, non-TSPU paths into RU.
-- The threat model changes (e.g., the operator is no longer targeting RU,
+- A foreign CDN provides documented, stable, unfiltered paths into the filtered network.
+- The threat model changes (e.g., the operator is no longer targeting the filtered network,
   or the operator wants browser camouflage as the dominant property).
 
 Until then, `nginx-xhttp` is direct.

@@ -1,5 +1,7 @@
 # Xray-core release-line tracker
 
+> **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-10-21
+
 Pinned version: see `secrets/prod.secrets.example.yaml` →
 `xray.version`. The repo policy is: stay on the GitHub-tagged Latest
 build, never on a Pre-release in production.

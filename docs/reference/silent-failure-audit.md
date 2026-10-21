@@ -1,5 +1,7 @@
 # Audit: silent-failure on an unverified or unstable external contract
 
+> **Status:** Snapshot (2026-07-26) · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-10-21
+
 Status: audit completed 2026-06-11; current dispositions reviewed 2026-07-26
 Method: multi-agent audit, one analyst per control plus an independent adversarial verifier per verdict. Upstream behaviour (Xray-core, sing-box, restic, rclone, openssl, check-host.net, node_exporter) verified against source/docs, not assumed.
 
@@ -196,7 +198,7 @@ execution error.
 **Why it is BROKEN:**
 - `curl -fsS` treats HTTP 429/4xx (check-host.net rate-limiting a cron) as a non-zero exit; `set -euo pipefail` aborts before line 74. `vpn_burn.prom` is never rewritten, so `vpn_burn_failed_nodes` and `vpn_burn_last_run_unixtime` retain their last *healthy* values (e.g. `0 failed`). node_exporter keeps exporting the stale green gauge. No `trap … EXIT` writes a sentinel.
 - The assumed downstream staleness alert **does not exist** in the repo (no PrometheusRule, no `*.rules`, no reference to `vpn_burn_last_run_unixtime` outside the script). The only failure signal is `logger -t vpn-burn` in syslog, which has no automated path to anything.
-- The pending-node jq logic is **correct** and not the bug: a `null` node yields `{}`, `select(.address==null)` is true, so pending nodes are conservatively counted as failures. (A separate tuning weakness — 1 of 3 RU nodes blocked with `FAIL_THRESHOLD=2` reports healthy — is noted but is configuration, not a contract breach.)
+- The pending-node jq logic is **correct** and not the bug: a `null` node yields `{}`, `select(.address==null)` is true, so pending nodes are conservatively counted as failures. (A separate tuning weakness — 1 of 3 filtered-network nodes blocked with `FAIL_THRESHOLD=2` reports healthy — is noted but is configuration, not a contract breach.)
 
 **Silent failure mode.** check-host.net rate-limits the cron; every subsequent run exits 2; the dashboard shows the IP reachable indefinitely while it may be burned.
 

@@ -1,5 +1,7 @@
 # Restricted Tailnet management
 
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-21
+
 This opt-in role adds a second path to the existing OpenSSH listener. It does
 not enable Tailscale SSH, replace host keys, change the SSH port, take over DNS
 or routes, advertise routes or an exit node, or manage the Tailnet ACL policy.

@@ -1,5 +1,7 @@
 # Runbook — add a fallback VPS
 
+> **Status:** Current · **Type:** how-to · **Tier:** TACTICAL · **Reviewed:** 2026-10-21
+
 v1 ships single-VPS. For a multi-VPS / multi-ASN posture, here's how to
 extend.
 

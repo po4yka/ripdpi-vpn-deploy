@@ -1,5 +1,7 @@
 # Automatic vpnd releases
 
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-21
+
 The `release-please` workflow runs on `main` by default. It maintains the
 release PR from conventional commits. Merging that PR creates the `vpnd-vX.Y.Z`
 tag and a draft GitHub Release. Release PR approval and merge remain operator decisions.

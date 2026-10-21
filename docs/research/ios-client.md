@@ -1,5 +1,7 @@
 # iOS client research for the deployed VPN fleet
 
+> **Status:** Research · **Type:** research · **Tier:** — · **Reviewed:** 2026-10-21
+
 **Research date:** 2026-07-13
 
 **Evidence basis:** conclusions retained from the dated first-party review.

@@ -1,5 +1,7 @@
 # Local operator kit
 
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-21
+
 ## Contract
 
 Use `secrets/local/` as the private operator kit on the deployment MacBook.

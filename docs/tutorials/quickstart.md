@@ -1,12 +1,14 @@
 # Quickstart — zero to working VPN in ~30 minutes
 
+> **Status:** Current · **Type:** tutorial · **Tier:** CORE · **Reviewed:** 2026-10-21
+
 This walks through deploying the full P0+P1+P2 stack to a single UpCloud VPS.
 All commands run from your operator workstation; you should never SSH the
 target VPS by hand for routine setup.
 
 ## 0. Prerequisites
 
-Complete the canonical [first-time workstation setup](../CONTRIBUTING.md#first-time-setup)
+Complete the canonical [first-time workstation setup](../../CONTRIBUTING.md#first-time-setup)
 before following this deployment guide. It installs the exact pins from
 `mise.toml`, the hash-pinned Python toolchain, task tools and local hooks,
 then checks operator prerequisites. Run the Make commands below in the pinned

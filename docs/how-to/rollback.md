@@ -1,5 +1,7 @@
 # Runbook — rollback
 
+> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-10-21
+
 Three rollback levels. Pick the smallest one that fixes the failure.
 A deploy that was killed mid-run is not a rollback case: if `make dry-run`
 reports `interrupted-protected-ingress-transaction` or

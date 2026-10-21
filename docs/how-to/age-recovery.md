@@ -1,5 +1,7 @@
 # age key recovery — Shamir split
 
+> **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-10-21
+
 The single point of failure in the SOPS+age model is the operator's age
 private key. Lose it → see `incident.md § Lost age key` — the only
 recovery is full credential rotation.

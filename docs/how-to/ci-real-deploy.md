@@ -1,5 +1,7 @@
 # Disposable real-VPS CI deployment
 
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-21
+
 `real-vps-deploy` provisions one fresh UpCloud node per selected distribution,
 executes the canonical recovery, Tailnet bootstrap, SSH ownership and deployment
 controllers, verifies real protocol promotion, and destroys its owned resources.

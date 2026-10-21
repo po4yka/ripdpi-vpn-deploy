@@ -1,5 +1,7 @@
 # Direct XHTTP delivery profiles
 
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+
 The primary endpoint retains its existing tag. Enabling
 `nginx_xhttp.fallback_enabled` in the host profile also exports a separately
 selectable `:alternate` endpoint using `nginx_xhttp_fallback_port`. Its TLS SNI

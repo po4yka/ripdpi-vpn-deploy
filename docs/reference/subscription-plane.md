@@ -1,5 +1,7 @@
 # Subscription plane — gap matrix
 
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+
 Source: repository-local subscription requirements.
 
 This document compares the documented subscription-delivery

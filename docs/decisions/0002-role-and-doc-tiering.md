@@ -1,5 +1,7 @@
 # ADR: Role and doc tiering — CORE / TACTICAL / RESEARCH
 
+> **Status:** Current · **Type:** decision · **Tier:** — · **Reviewed:** 2026-10-21
+
 Status: Accepted — 2026-06-11
 Decision drivers: three independent priority angles, reconciled below.
 Implements (this change): the tier tags (`ansible/role-tiers.yml`) and the
@@ -7,7 +9,7 @@ two-layer guard. Deprecation/removal of any role is a **recommendation only**.
 
 ## Context and problem
 
-The stated purpose is keeping a few non-technical family devices in RU online
+The stated purpose is keeping a few non-technical family devices in the filtered network online
 with minimal remote intervention. The repo has grown to **39 Ansible roles**
 plus research-grade machinery (split-hop dual-role defense, probe-matrix,
 idle-cycle measurement, multi-operator). On a single operator the
@@ -34,7 +36,7 @@ Tier definitions:
   technique-maturity rationale. Opt-in only via a literal (non-boolean)
   acknowledgment, provisioned from isolated Terraform state, never in any
   default family profile, and gated by an empirical, expiring, fail-closed
-  per-ASN attestation. Introduced for the RU-entry cascade ingress/egress role
+  per-ASN attestation. Introduced for the domestic-entry cascade ingress/egress role
   pair (implemented as inert, default-off scaffolds). See `0004-geoip-split-cascade.md` and
   `0005-per-asn-allowlist-attestation.md`. This is the repo's first hosting-jurisdiction
   exception; do not fold jurisdiction risk into RESEARCH.
@@ -52,7 +54,7 @@ Tier definitions:
 
 - **Cadence:** candidate-ASN evidence is valid for seven UTC calendar days. The next-recheck date must equal the attestation date plus seven days, and the checker blocks on or after that date without a grace period.
 - **Owner and evidence:** only the Cascade Attestation Operator role may sign or re-sign. Each record points to a dated measurement report by opaque identifier and SHA-256; raw probe output, endpoints, provider identity, and ASN/CIDR inventories stay outside the repo.
-- **Method unavailable:** loss of the RU-side comparison method, candidate access, report path, or authorized signer is a permanent fail-closed block while unavailable. This residual availability risk is accepted and does not create an override.
+- **Method unavailable:** loss of the in-country comparison method, candidate access, report path, or authorized signer is a permanent fail-closed block while unavailable. This residual availability risk is accepted and does not create an override.
 - **Family exclusion:** EXCEPTION roles are absent from every `family_profiles` effective-enable set indefinitely. A future promotion or default-profile inclusion requires a separate governance decision; neither a passing attestation nor an exact host allowlist changes family profiles automatically.
 
 ## The three angles (argued independently, then reconciled)
@@ -60,7 +62,7 @@ Tier definitions:
 | Angle | Optimizes | Core count | Headline |
 |---|---|---|---|
 | **(a) operator burden** | fewest moving parts that keep the family online; self-healing; recoverability | **7** | Keep an irreducible CORE; push every research prototype and expensive transport variant to TACTICAL/RESEARCH so on-call surface matches what a family VPN needs. |
-| **(b) censorship-resistance** | transport diversity + proven defenses vs the TSPU threat model | **11** | Keep every *confirmed* transport path and *proven* defense hot; hold *unconfirmed* machinery at arm's length — an unproven defense that adds a detectable signature is net-negative against an adaptive adversary. |
+| **(b) censorship-resistance** | transport diversity + proven defenses vs the DPI threat model | **11** | Keep every *confirmed* transport path and *proven* defense hot; hold *unconfirmed* machinery at arm's length — an unproven defense that adds a detectable signature is net-negative against an adaptive adversary. |
 | **(c) attack surface / silent-failure** | smallest surface that still delivers the baseline | **11** | Demote every extra listener, unverified external dependency, second trusted host, or control whose own failure is invisible. |
 
 The angles converged more than expected: (b) and (c) arrived at the same core
@@ -93,7 +95,7 @@ Final tier with each angle's vote. "Contested" = the three did not agree.
 | subscription-host | TACTICAL | CORE | CORE | **TACTICAL** *(contested)* | (a) wins: `enable_subscription_host: false` (default-off); ARCHITECTURE lists it "optional"; v1 delivery is `emit-singbox.sh` + scp. (b)/(c)'s "zero-intervention reconfig" is a later hardening aspiration, not the current baseline. |
 | policy-ratelimit | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; re-scoped to a routing-blackhole abuse limiter that cannot see external REALITY probes by design. |
 | honeypot | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; bounded retention and alert-pipeline behavior are tested, but the extra public listeners remain situational. |
-| cdn-front | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; `0001-cdn-not-filtered-path-baseline.md` ADR rules CDN out as the RU baseline. Short-term IP-rotation cover only. |
+| cdn-front | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; `0001-cdn-not-filtered-path-baseline.md` ADR rules CDN out as the filtered-path baseline. Short-term IP-rotation cover only. |
 | naive | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; xcaddy from-source build + v147 preamble breakage. Enable only when HTTP/2+Chromium fingerprint is specifically the threat. |
 | warp-outbound | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; changes egress ASN (breaks burn-check/ASN-drift). Enable only when the upstream ASN path is burned. |
 | reality-self-steal | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Default-off; replaces a borrowed cross-ASN REALITY target with an operator-owned loopback TLS/H2 site without adding a public listener. Promotion still requires DNS, certificate, client SNI, and filtered-vantage evidence. |
@@ -102,7 +104,7 @@ Final tier with each angle's vote. "Contested" = the three did not agree.
 | security_audit | TACTICAL | TACTICAL | TACTICAL | **TACTICAL** | Operator-run non-blocking report collection; it does not mutate or gate the data plane. |
 | split-hop-egress | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | Pilot/unconfirmed; paired ingress coverage now exists, but routing is scoped to probe users and no family production proof exists. |
 | hysteria-realm | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | sing-box **alpha** pin ("treat every minor bump as breaking"); P5 fallback; hole-punch failure is silent server-side. No family NAT-traversal need justifies alpha-upstream risk. |
-| dns-morph-bridge | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | No upstream release artifact (self-built binary); P4 fallback; opens public UDP/53 (reflection surface); only works if the client uses the bridge IP as resolver — not true for RU carrier-DNS family devices. |
+| dns-morph-bridge | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | No upstream release artifact (self-built binary); P4 fallback; opens public UDP/53 (reflection surface); only works if the client uses the bridge IP as resolver — not true for carrier-DNS family devices. |
 | probe-matrix-target | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | Five-listener owner-controlled measurement target, intentionally outside the family data plane. |
 | split-hop-ingress | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | Node A responder and nftables policy-routing half of the split-hop measurement topology. |
 | snell | RESEARCH | RESEARCH | RESEARCH | **RESEARCH** | sing-box 1.14 prerelease, no independent field evidence, and a measurement matrix that must remain outside automatic selection and rotation. |
@@ -162,7 +164,7 @@ the recurring operator tax; silent-failure column is what bites unattended.
 | geodata | CORE | MaxMind GeoLite2 license-free tier | **medium** | "License-free tier dies on a schedule" (role CLAUDE.md). Weekly job fails silently on key revocation → stale GeoIP; named fallbacks (IPinfo/DB-IP) are manual. |
 | naive | TACTICAL | klzgrad/naiveproxy (xcaddy from-source) | **medium** | Go toolchain on host; v147 preamble already burned one cycle; major versions need coordinated client+server push. |
 | warp-outbound | TACTICAL | Cloudflare WARP CLI (apt) | **medium** | apt-key rotation history; `warp-cli register` may need manual first-boot fix; IPv6 conflicts on some kernels. |
-| cdn-front | TACTICAL | Cloudflare IP ranges (daily) | **medium** | Origin-firewall sets rebuilt daily; CDN policy/PoP-TSPU change triggers a CDN-DECISION re-evaluation. |
+| cdn-front | TACTICAL | Cloudflare IP ranges (daily) | **medium** | Origin-firewall sets rebuilt daily; CDN policy/PoP-DPI change triggers a CDN-DECISION re-evaluation. |
 | hysteria | CORE | apernet/hysteria2 | **medium** | Pinned+sha256 (xray discipline). Main risk: cert renewal shared with nginx — one failure silently breaks P1 and P2. |
 | split-hop ingress/egress | RESEARCH | plain WireGuard kernel (stable) | **low** | Both nodes are Ansible-managed; the burden is operational: two provider states and secret scopes, probe-user-only policy routing, and no general family-path per-leg health proof. |
 

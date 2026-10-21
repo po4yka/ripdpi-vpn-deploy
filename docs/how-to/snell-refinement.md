@@ -1,5 +1,7 @@
 # Snell refinement evaluation
 
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-21
+
 Snell is a RESEARCH-tier, staging-only transport candidate. It is disabled in every shipped profile, excluded from the main automatic selector, and never participates in protocol-liveness rotation decisions. The implementation compares the v4-compatible stream with Snell v6 default and unshaped traffic modes, both with fresh and reused connections.
 
 ## Deployment boundary

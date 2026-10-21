@@ -1,5 +1,7 @@
 # ADR: Split-hop relay topology against flow-level dual-role detection
 
+> **Status:** Current · **Type:** decision · **Tier:** RESEARCH · **Reviewed:** 2026-10-21
+
 Status: **Pilot** (reviewed 2026-07-26). Paired Ansible ingress and egress
 roles are implemented; authenticated flow-data verification and family-path
 promotion evidence remain operator-driven.

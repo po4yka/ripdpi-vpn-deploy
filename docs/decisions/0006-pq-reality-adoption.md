@@ -1,5 +1,7 @@
 # PQ-REALITY adoption policy
 
+> **Status:** Current · **Type:** decision · **Tier:** — · **Reviewed:** 2026-10-21
+
 Status: **HOLD**; last reviewed 2026-10-17.
 
 The canonical capability name is **VLESS Encryption (PQE) over REALITY**. This document uses **PQ-REALITY** only as an operator shorthand. VLESS PQE is an encryption layer inside VLESS; it is not the `X25519MLKEM768` key share used by browser-shaped uTLS profiles.
