@@ -1,0 +1,11 @@
+{
+  "change": "ans-1792499727513191-repair-deployment-readiness-runtime-defects",
+  "evidence_summary": "Accepted protected main 86d76430707a0e6febedaf4c7c8c19351b224d36 has the same tree as PR #347 head c1c5828b. PR CI 39543684353 and 39549714130 and main CI 39557145005 passed all 92 jobs, including Molecule, native lanes and the liveness parser check. Each finding has a regression that fails on its parent. No deployment.",
+  "execution_sha256": "7ec59e9f7ded9a0d8630c061377593e87c75b9a4473d49db61ecfd462736a0ad",
+  "issue_sha256": "761627de7c646b2a2c15518c0a7855d1370c727af4b431f627edd5105da8558e",
+  "outcome": "done",
+  "prepared_at": "2026-10-21T08:22:01Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "ANS-1792499727513191"
+}

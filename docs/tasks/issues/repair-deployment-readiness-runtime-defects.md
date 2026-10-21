@@ -2,7 +2,7 @@
 id: ANS-1792499727513191
 title: Repair deployment readiness runtime defects
 kind: bug
-status: review
+status: done
 area: ansible
 priority: high
 risk: high
@@ -14,6 +14,9 @@ openspec_change: ans-1792499727513191-repair-deployment-readiness-runtime-defect
 created: 2026-10-20
 updated: 2026-10-21
 related_tasks: []
+closed_at: "2026-10-21T08:22:01Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: "Accepted protected main 86d76430707a0e6febedaf4c7c8c19351b224d36 has the same tree as PR #347 head c1c5828b. PR CI 39543684353 and 39549714130 and main CI 39557145005 passed all 92 jobs, including Molecule, native lanes and the liveness parser check. Each finding has a regression that fails on its parent. No deployment."
 ---
 
 ## Goal
