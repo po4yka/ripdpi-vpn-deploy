@@ -2,7 +2,7 @@
 id: DOC-1792603004056378
 title: "Documentation rewrite: Diátaxis tree, neutral vocabulary, public README"
 kind: chore
-status: doing
+status: review
 area: docs
 priority: high
 risk: standard
@@ -15,6 +15,7 @@ created: 2026-10-21
 updated: 2026-10-21
 spec_reason: docs-only
 related_tasks: []
+status_detail: "Pull request #354 opened with local check evidence; hosted checks and merge pending."
 ---
 
 ## Goal
