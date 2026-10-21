@@ -45,6 +45,12 @@ state must not invoke provider detach.
 - **SSH key handling differs from UpCloud** — Hetzner creates a named
   `hcloud_ssh_key` resource referenced by ID; UpCloud has no key resource and
   inlines the public key through `login.keys`.
+- **One operator key per environment** — a project keeps one SSH key per
+  fingerprint, so a second environment with the same `admin_ssh_public_key`
+  fails at apply. Give each environment its own key pair; blue-green refuses a
+  green tfvars that repeats the blue key before the green plan. Reusing a named
+  key is not possible here: the server's replace triggers need this root's key
+  resource in every plan to keep the first-adoption identity guard.
 - **Volume attachment is async** — adding a separate volume needs a
   `depends_on` against the server resource; otherwise `cloud-init` boots
   without the volume mounted.

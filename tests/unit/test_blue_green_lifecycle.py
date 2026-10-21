@@ -23,14 +23,15 @@ def executable(path, source):
 APPROVE_ALL = "yes\n\n\nyes\nyes\n"
 
 
-def run_blue_green(tmp_path, failed_phase=None, answers=APPROVE_ALL):
+def run_blue_green(tmp_path, failed_phase=None, answers=APPROVE_ALL, provider="upcloud", tfvars=None):
     root, binary = tmp_path / "repo", tmp_path / "bin"
     scripts = root / "scripts"
     scripts.mkdir(parents=True)
     shutil.copy2(ROOT / "scripts/blue-green.sh", scripts / "blue-green.sh")
-    variables = root / "terraform/providers/upcloud/environments/green.tfvars"
-    variables.parent.mkdir(parents=True)
-    variables.write_text("# synthetic input\n")
+    environments = root / f"terraform/providers/{provider}/environments"
+    environments.mkdir(parents=True)
+    for name, text in (tfvars or {"green": "# synthetic input\n"}).items():
+        (environments / f"{name}.tfvars").write_text(text)
     phases = ("init", "plan", "apply", "wait", "dry-run", "deploy", "verify", "smoke-test")
     (root / "Makefile").write_text(
         ".PHONY: " + " ".join(phases) + "\n" + "".join(
@@ -70,14 +71,36 @@ esac
     encrypted = tmp_path / "synthetic.sops.yaml"
     encrypted.write_text("synthetic encrypted input\n")
     environment = {**os.environ, "PATH": os.pathsep.join((str(binary), str(Path(sys.executable).parent), os.environ["PATH"])),
-                   "BLUE_ENV": "prod", "GREEN_ENV": "green", "PROVIDER": "upcloud",
+                   "BLUE_ENV": "prod", "GREEN_ENV": "green", "PROVIDER": provider,
                    "SOPS_FILE": str(encrypted), "ANSIBLE_SSH_PRIVATE_KEY_FILE": str(tmp_path / "key"),
                    "GREEN_TAILNET_HANDOFF": str(tmp_path / "handoff"),
                    "DEPLOY_SSH_CONTEXTS_FILE": str(tmp_path / "contexts"),
                    "MAKEFLAGS": "-j4", "FAILED_PHASE": failed_phase or ""}
     result = subprocess.run(["bash", str(scripts / "blue-green.sh")], cwd=root, env=environment,
                             input=answers, capture_output=True, text=True, timeout=15)
-    return result, [json.loads(line) for line in (root / "calls").read_text().splitlines()]
+    calls = root / "calls"
+    return result, [json.loads(line) for line in calls.read_text().splitlines()] if calls.exists() else []
+
+
+def key_tfvars(key):
+    return f'server_name = "node"\nadmin_ssh_public_key = "{key}"\n'
+
+
+@pytest.mark.parametrize("green_key", ["ssh-ed25519 AAAABLUEKEY operator@laptop", "ssh-ed25519 AAAABLUEKEY other@host"])
+def test_hetzner_green_with_the_blue_key_refuses_before_plan(tmp_path, green_key):
+    tfvars = {"prod": key_tfvars("ssh-ed25519 AAAABLUEKEY operator@laptop"), "green": key_tfvars(green_key)}
+    result, calls = run_blue_green(tmp_path, provider="hetzner", tfvars=tfvars)
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "one SSH key per fingerprint" in result.stderr
+    assert calls == [["prod", "verify"]]
+
+
+def test_hetzner_green_with_its_own_key_provisions(tmp_path):
+    tfvars = {"prod": key_tfvars("ssh-ed25519 AAAABLUEKEY operator@laptop"),
+              "green": key_tfvars("ssh-ed25519 AAAAGREENKEY operator@laptop")}
+    result, calls = run_blue_green(tmp_path, provider="hetzner", tfvars=tfvars)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert calls[-1] == ["green", "smoke-test"]
 
 
 @pytest.mark.parametrize("failed_phase", [None, "plan", "dry-run", "verify"])

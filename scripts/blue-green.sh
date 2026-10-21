@@ -168,6 +168,28 @@ if [[ ! -f "$GREEN_TFVARS" ]]; then
   read -r -p "Press Enter when ready, or Ctrl-C to abort: " _
 fi
 
+# Hetzner keeps one SSH key per fingerprint in a project and every root creates
+# its own key, so the green apply would fail on blue's key. Refuse before plan.
+if [[ "$PROVIDER" == hetzner ]]; then
+  python3 - "${TF_DIR}/environments/${BLUE_ENV}.tfvars" "$GREEN_TFVARS" <<'PY'
+import re
+import sys
+
+pattern = re.compile(r'^\s*admin_ssh_public_key\s*=\s*"([^"]*)"', re.MULTILINE)
+keys = []
+for path in sys.argv[1:]:
+    try:
+        match = pattern.search(open(path, encoding="utf-8").read())
+    except OSError:
+        match = None
+    # Key type and body; a comment does not change the fingerprint.
+    keys.append(" ".join(match.group(1).split()[:2]) if match else None)
+if keys[0] is not None and keys[0] == keys[1]:
+    sys.exit("Hetzner keeps one SSH key per fingerprint in a project: set a separate "
+             f"admin_ssh_public_key (a new operator key pair) in {sys.argv[2]}")
+PY
+fi
+
 # ---------------------------------------------------------------------------
 # 3. Provision green
 # ---------------------------------------------------------------------------

@@ -12,7 +12,7 @@ change at each owner.
 - Non-goal: change Hetzner, Scaleway or UpCloud image handling. Their image
   arguments are not shown to update in place; the Vultr provider documents an
   in-place OS change.
-- Non-goal: Scaleway SSH key reuse. No duplicate-key refusal is confirmed for
+- Non-goal: Scaleway SSH keys. No duplicate-key refusal is confirmed for
   that provider.
 - Non-goal: deploy, apply or touch any host or provider.
 
@@ -41,14 +41,15 @@ change at each owner.
   the first pre-task of the three plays. The recipes set `ENV=$(ENV)` because
   the default `ENV` is not exported to the recipe environment. The rotation play
   keeps its own assertion unchanged.
-- Hetzner key: `hcloud_ssh_key.admin` gets `count` and a `moved` block from the
-  unindexed address; a `data "hcloud_ssh_key"` reads the named key when
-  `admin_ssh_key_name` is set, with a postcondition that compares the key type
-  and body with `admin_ssh_public_key`. The server replace triggers keep the
-  indexed key name and public key and add the public-key digest that the other
-  roots use, so a key change still forces a refused replacement in both modes.
-  An indexed trigger to an absent instance is valid, and a moved key causes no
-  change (checked with Terraform).
+- Hetzner key: each environment keeps its own operator key pair, and
+  blue-green compares the key type and body of the blue and green tfvars
+  before the green plan. The operator approved this choice.
+  Rejected: an optional existing-key name with a data source and a counted key
+  resource. `replace_triggered_by` requires an instance of the referenced key
+  resource in every plan (Terraform reports `no change found` for an absent
+  instance, indexed or not), and moving the trigger to a new guard resource
+  loses the first-adoption refusal of identity edits that
+  `test_provider_bootstrap_lifecycle.py` requires.
 
 ## Risks / Trade-offs
 
