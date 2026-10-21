@@ -69,3 +69,13 @@ run "fresh_public_key_with_file_newline" {
     error_message = "A fresh node must accept a newline-terminated public key."
   }
 }
+
+run "os_change_refuses_in_place_reinstall" {
+  command = plan
+
+  variables {
+    os_id = 2284
+  }
+
+  expect_failures = [vultr_instance.vpn]
+}
