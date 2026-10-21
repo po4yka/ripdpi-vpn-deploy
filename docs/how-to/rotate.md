@@ -2,9 +2,25 @@
 
 > **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-10-21
 
+## Purpose and scope
+
+Rotate credentials at the smallest scope that addresses the threat: one
+device, the server-wide REALITY keypair, the Hysteria or AmneziaWG server
+keys, the restic password, or the deploy user's SSH key.
+
 Three rotation scopes. Pick the smallest one that addresses the threat.
 
 Infrastructure rotation caused by sustained protocol failure is separate from credential rotation. Follow `docs/reference/protocol-liveness.md`: only fresh authenticated client-path failures with a successful direct control can create a quorum candidate, and the resulting OTP still enters the normal blue-green verification and operator-confirmation flow.
+
+## Preconditions
+
+- The threat is identified and the scope chosen; a sustained protocol failure is an infrastructure rotation under [protocol liveness](../reference/protocol-liveness.md), not a credential rotation.
+- The encrypted secrets file is the only durable copy; keep its previous generation until the rotation is verified.
+- Each guarded block below decrypts, acts on one exact node and shreds plaintext on every exit path; run one block per node.
+
+## Authorization
+
+Every target below that uses cloud credentials, inventory, SSH or decrypted secrets needs the operator's authorization for this environment, target and plan before it runs ([decision boundaries](../../AGENTS.md#decision-boundaries)). A reviewable plan or dry-run precedes every mutation. `rotate-credentials` is an exact-node verb: one alias per invocation, one authorization per node.
 
 ## 1. Single client leak
 
@@ -248,3 +264,21 @@ If you've truly lost the old key (no remaining SSH access), see
 - Don't leave the old client entry in secrets and just disable on the
   server. The server is the only enforcement point — secrets are a record
   of what should be enforced. Mismatch breaks rotation hygiene.
+
+## Verification
+
+`make verify ANSIBLE_LIMIT=<alias>` on every rotated node; the rotated device
+reconnects with its new material and the revoked identity is refused. The
+audit log (`make audit-log`) shows the issuance record.
+
+## Rollback
+
+Keep the previous encrypted generation until verification passes. If a
+rotation breaks a device, re-issue that device's material; never restore a
+revoked identity. A failed server-wide rotation is recovered by deploying the
+previous encrypted generation to the same exact node.
+
+## Evidence to record
+
+The scope rotated, the aliases and devices affected (names only), the verify
+results per node and the audit-log entry, in the task or incident record.

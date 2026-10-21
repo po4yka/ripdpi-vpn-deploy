@@ -2,8 +2,24 @@
 
 > **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-10-21
 
+## Purpose and scope
+
+Recover a working node after host loss, either by rebuilding from git plus
+the encrypted secrets (the designed path) or by restoring the restic
+snapshot, inside the 15 to 30 minute target.
+
 The architecture targets **15–30 minute restore** from a clean operator
 workstation back to a fully functional VPN node. Two paths.
+
+## Preconditions
+
+- The items under [What you need](#what-you-need): the age key or its Shamir shares, the encrypted secrets file, provider credentials and the restic repository access.
+- A fresh node meets [the fresh-node prerequisites](#fresh-node-prerequisites) before any deployment step.
+- The operator kit catalogue in [the local operator kit](local-operator-kit.md) says where each item lives.
+
+## Authorization
+
+Every target below that uses cloud credentials, inventory, SSH or decrypted secrets needs the operator's authorization for this environment, target and plan before it runs ([decision boundaries](../../AGENTS.md#decision-boundaries)). A reviewable plan or dry-run precedes every mutation. Provisioning a replacement node and deploying to it are separate authorizations; a restore request covers both only when it says so.
 
 ## What you need
 
@@ -273,3 +289,23 @@ remote target was breached, or the password leaked):
 
 If your operational target is tighter than 30 minutes RTO, you should be
 running multi-VPS already. See `add-fallback.md`.
+
+## Verification
+
+[Backup verification](#backup-verification-recurring-task) proves the
+restored node serves every profile; `make verify`, `make security-verify` and
+`make smoke-test` complete the acceptance. Compare the observed time with the
+[RTO and RPO targets](#rto--rpo-targets).
+
+## Rollback
+
+Path A is the fallback for Path B: when a snapshot restore fails or looks
+inconsistent, rebuild from git plus secrets. A suspected repository leak is
+handled under [Backup repository leak](#backup-repository-leak) before any
+restore.
+
+## Evidence to record
+
+Which path was used, the snapshot identity for Path B, the observed restore
+time, the verify results and any prerequisite that was missing from the
+operator kit, so the kit catalogue can be corrected.

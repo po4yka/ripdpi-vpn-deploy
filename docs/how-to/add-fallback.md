@@ -2,8 +2,23 @@
 
 > **Status:** Current · **Type:** how-to · **Tier:** TACTICAL · **Reviewed:** 2026-10-21
 
+## Purpose and scope
+
+Add a second VPS as a hot spare, a different-provider fallback or a
+split-role host, and understand what multi-VPS operation changes.
+
 v1 ships single-VPS. For a multi-VPS / multi-ASN posture, here's how to
 extend.
+
+## Preconditions
+
+- A working primary node and a reviewed reason for the second one (burn risk, ASN diversity, role separation).
+- A provider account and Terraform root for the fallback; ASN tiers in [the provider notes](../reference/provider-notes.md).
+- Distinct per-device credentials for the second node are issued, never copied from the first.
+
+## Authorization
+
+Every target below that uses cloud credentials, inventory, SSH or decrypted secrets needs the operator's authorization for this environment, target and plan before it runs ([decision boundaries](../../AGENTS.md#decision-boundaries)). A reviewable plan or dry-run precedes every mutation. Provisioning the fallback is a new resource with its own cost bound; authorize it explicitly.
 
 ## Two patterns
 
@@ -135,3 +150,19 @@ Legacy aliases stay supported for existing inventories:
 
 For v1 the answer is: pick a pattern above, run it twice, and treat the
 second run as deliberate operator action.
+
+## Verification
+
+`make verify` against the new alias, `make burn-check` from outside, and a
+client failing over to the fallback profile while the primary is paused.
+
+## Rollback
+
+Destroy the fallback with the safe `make destroy` flow for its provider and
+environment; clients keep working on the primary because their credentials
+were never shared.
+
+## Evidence to record
+
+The pattern chosen, the provider and ASN tier of the fallback, the verify and
+burn-check results and the client failover observation.

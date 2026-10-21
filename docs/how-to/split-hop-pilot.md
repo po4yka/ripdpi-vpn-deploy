@@ -2,10 +2,24 @@
 
 > **Status:** Current · **Type:** how-to · **Tier:** RESEARCH · **Reviewed:** 2026-10-21
 
+## Purpose and scope
+
+Stand up the two-node split-hop research topology from
+[decision 0003](../decisions/0003-split-hop-relay-topology.md) to prove the
+ingress and egress separation, not to migrate family production traffic.
+
 Operator procedure for the two-node research topology in
 `docs/decisions/0003-split-hop-relay-topology.md`. Both halves are Ansible-managed. The current
 ingress role policy-routes only dedicated probe-matrix runtime users, so this
 runbook proves the research topology, not a family production migration.
+
+## Preconditions
+
+See [Preconditions](#preconditions-1) below; this procedure lists them in its own section.
+
+## Authorization
+
+Every target below that uses cloud credentials, inventory, SSH or decrypted secrets needs the operator's authorization for this environment, target and plan before it runs ([decision boundaries](../../AGENTS.md#decision-boundaries)). A reviewable plan or dry-run precedes every mutation. The pilot is RESEARCH tier: it runs on lab or staging hosts only and never in a family profile.
 
 ## Preconditions
 
@@ -156,3 +170,21 @@ remove already-created files or services, so a toggle-only redeploy is not a
 complete cleanup. End the pilot by destroying its disposable provider
 environments; do not repurpose those nodes or invent broad firewall cleanup
 commands in this runbook.
+
+## Verification
+
+[Verify the topology](#4-verify-the-topology) and
+[observation and acceptance](#5-observation-and-acceptance) define the
+evidence; a passing pilot proves the research topology only.
+
+## Rollback
+
+[Tear-down](#tear-down) removes both nodes and their policy routing. The
+family profiles are untouched by the pilot, so there is nothing to roll back
+on production hosts.
+
+## Evidence to record
+
+The two node identities (aliases only), the probe-matrix observations, the
+acceptance verdict and the tear-down confirmation, attached to the research
+task.

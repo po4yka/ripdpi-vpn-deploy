@@ -99,8 +99,12 @@ omitted.
 `Authorization` names what the operator must have approved before the
 steps run and links the decision boundaries in `AGENTS.md`. `Steps` are
 numbered, one copy-paste command per step, with the environment named once.
-`Evidence to record` lists what goes into the task record or acceptance
-report.
+A runbook that covers several procedures (deploy has re-deploy, Terraform
+change and add-a-device; rotate has five scopes) keeps one H2 per procedure
+in place of a single `Steps` section, between `Authorization` and
+`Verification`; tests slice those sections by heading, so rename them with
+care. `Evidence to record` lists what goes into the task record or
+acceptance report.
 
 ## Decision record template
 
@@ -118,7 +122,9 @@ Status: Accepted — YYYY-MM-DD
 ```
 
 Decisions are immutable once accepted. Change course with a new numbered
-record and mark the old one `Superseded by`.
+record and mark the old one `Superseded by`. Records accepted before the
+2026-10 rewrite keep their original section structure; only their status
+line and file name were normalised.
 
 ## Writing
 

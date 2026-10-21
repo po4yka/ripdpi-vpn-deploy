@@ -5,14 +5,50 @@
 [![scorecard](https://api.securityscorecards.dev/projects/github.com/po4yka/ripdpi-vpn-deploy/badge)](https://securityscorecards.dev/viewer/?uri=github.com/po4yka/ripdpi-vpn-deploy)
 [![release](https://img.shields.io/github/v/release/po4yka/ripdpi-vpn-deploy?sort=semver)](https://github.com/po4yka/ripdpi-vpn-deploy/releases)
 
-Reproducible VPN deployment automation for the multi-profile access stack
-(`P0` VLESS+REALITY+Vision → `P1` nginx+XHTTP direct → `P2` Hysteria2 +
-AmneziaWG). Layered architecture: Terraform owns cloud resources,
-cloud-init does first-boot bootstrap, Ansible owns runtime state, and
-secrets stay outside Git tracking (SOPS + age), either in the external
-operator directory or under the repository's git-ignored `secrets/local/`.
+Reproducible infrastructure-as-code for a small, disposable VPN fleet that
+keeps a handful of devices online through a filtered network. Terraform
+creates the VPS, cloud-init hardens first boot, Ansible owns every byte of
+runtime state, SOPS with age keeps secrets out of Git, and `vpnd` wraps the
+whole thing for an operator. The threat model is active L7 fingerprinting,
+active probing and aggressive QoS; the answer is several independent
+transports per node and nodes that are recreated, never repaired.
 
-## Layers
+## Table of contents
+
+- [Security](#security)
+- [What you get](#what-you-get)
+- [How it is built](#how-it-is-built)
+- [Quick start](#quick-start)
+- [Documentation](#documentation)
+- [Providers](#providers)
+- [For contributors and agents](#for-contributors-and-agents)
+- [Hard rules](#hard-rules)
+- [License](#license)
+
+## Security
+
+Report active probing of a live node, a burned address or a leaked key
+through the private channel in [SECURITY.md](.github/SECURITY.md); never in
+a public issue. Never post credentials, addresses, hostnames, client
+identifiers, Terraform state or inventory anywhere, redacted or not.
+
+## What you get
+
+| Profile | Transport | Listener | Purpose |
+|---|---|---|---|
+| P0 | VLESS + REALITY + XTLS-Vision (Xray) | TCP/443 | Filtered-path baseline; borrows an allowlisted TLS identity |
+| P1 | VLESS + XHTTP behind a real nginx site | TCP/8443 or 443 | Browser-shaped HTTPS, direct, no CDN |
+| P2 | Hysteria2 with Salamander | UDP/443 | QUIC-class alternative with optional port hopping |
+| P2 | AmneziaWG 2.0 cohorts | UDP, per cohort | Device-wide tunnel with tuned obfuscation profiles |
+| P3 | Manual reachability fallbacks | — | Alternate addresses and ports, egress isolation, recreate on burn |
+
+Clients carry selector and urltest logic, so a device fails over to whichever
+profile is still reachable. Deploy profiles in `ansible/group_vars/vpn-*.yml`
+choose which transports a host exposes; `vpn-family-standard` is P0 + P1 + P2
+Hysteria2 and `vpn-device-full` adds AmneziaWG. The reasoning behind each layer
+is in [the threat model](docs/explanation/threat-model.md).
+
+## How it is built
 
 ```mermaid
 flowchart LR
@@ -20,7 +56,7 @@ flowchart LR
     CI["cloud-init<br/><sub>admin user · SSH hardening · python3</sub>"]
     AN["Ansible<br/><sub>nftables · xray · nginx · hysteria · AWG · monitoring · backup</sub>"]
     SC[("SOPS + age<br/><sub>secrets at rest, outside Git tracking</sub>")]
-    VD["vpnd CLI<br/><sub>Python convenience over Make / TF / Ansible / SOPS</sub>"]
+    VD["vpnd<br/><sub>Python convenience over Make / Terraform / Ansible / SOPS</sub>"]
 
     TF --> CI --> AN
     SC -. VPN_SECRETS_FILE .-> AN
@@ -29,275 +65,92 @@ flowchart LR
     VD -. wraps .-> SC
 ```
 
-Every layer is dry-runnable. Every layer has a rollback path. Nodes are
-disposable: when an IP burns, recreate from git + secrets, do not repair.
+Layer ownership is strict and documented in
+[the architecture reference](docs/reference/architecture.md); the reasons are
+in [the architecture rationale](docs/explanation/architecture-rationale.md).
+Every layer is dry-runnable and has a rollback path. The Makefile is the
+canonical operator surface; [the generated target reference](docs/reference/make-targets.md)
+mirrors `make help`.
 
-## Stack
+## Quick start
 
-P0 is the filtered-path baseline. P1 and P2 run alongside it as alternate transports;
-clients carry selector + urltest logic so they automatically fail over to
-whichever profile is still reachable. P3 is the operator-level recovery —
-a burned IP is replaced, not repaired.
-
-```mermaid
-flowchart LR
-    subgraph CL[client]
-        direction TB
-        SB["RIPDPI / sing-box<br/>selector + urltest"]
-        AC["AmneziaWG client"]
-    end
-    subgraph FN["filtered network · DPI"]
-        DPI["DPI · SNI inspection · active probing"]
-    end
-    subgraph VPS["disposable VPS · nftables · geoblock"]
-        direction TB
-        P0X["<b>P0</b> · xray REALITY + Vision / mux<br/>TCP/443 · filtered-path baseline"]
-        P1X["<b>P1</b> · nginx XHTTP direct<br/>TCP/8443 or 443"]
-        P2H["<b>P2</b> · Hysteria2<br/>UDP/443 · port-hop opt"]
-        P2A["<b>P2</b> · AmneziaWG<br/>UDP/cohort · obfuscated"]
-    end
-    subgraph UP[upstream]
-        WI["internet<br/>geosite-routed egress"]
-    end
-
-    SB -- VLESS --> DPI
-    SB -- XHTTP --> DPI
-    SB -- QUIC --> DPI
-    AC -- WG --> DPI
-    DPI --> P0X
-    DPI --> P1X
-    DPI --> P2H
-    DPI --> P2A
-    P0X --> WI
-    P1X --> WI
-    P2H --> WI
-    P2A --> WI
-
-    P3(("<b>P3</b><br/>manual fallback:<br/>alt IPs · alt ports<br/>WARP outbound<br/>recreate on burn"))
-    P3 -. recovery .-> VPS
-```
-
-## Provider support
-
-| Provider | Terraform root | Locked provider version |
-|---|---|---|
-| UpCloud | supported; P0 in `.fleet.mk.example` | 5.43.0 |
-| Hetzner | supported | 1.68.0 |
-| Vultr | supported; P2 in `.fleet.mk.example` | 2.32.0 |
-| Scaleway | supported; P1 in `.fleet.mk.example` | 2.78.0 |
-
-Switch via `make PROVIDER=upcloud …`.
-
-## Deploy profiles
-
-Default remains the historical device-full surface from `all.yml`. New deploys should choose an explicit cohort `group_vars` file in `ansible/group_vars/`:
-
-- `vpn-p0-minimal.yml` — Xray REALITY only, plus monitoring/watchdog/backup.
-- `vpn-family-standard.yml` — Xray REALITY + nginx-xhttp + Hysteria2, plus monitoring/watchdog/backup; no AmneziaWG.
-- `vpn-device-full.yml` — family-standard + AmneziaWG; this matches the historical `all.yml` / `vpn-fullstack.yml` surface.
-- `vpn-lab.yml` — lab/pilot profile. Research roles still require an explicit `allow_research_roles` opt-in in the same inventory scope.
-- Legacy aliases remain: `vpn-p0.yml` for `vpn-p0-minimal`, `vpn-fullstack.yml` for `vpn-device-full`, and `vpn-p1p2.yml` for the older no-REALITY split host.
-
-```mermaid
-flowchart LR
-    subgraph CH[cohort]
-        direction TB
-        P0[vpn-p0-minimal]
-        STD[vpn-family-standard]
-        DEV[vpn-device-full]
-        LAB[vpn-lab]
-    end
-    subgraph TR[transports on the VPS]
-        direction TB
-        XR["xray REALITY<br/><sub>P0 · TCP/443</sub>"]
-        NG["nginx XHTTP<br/><sub>P1 · TCP/8443 or 443</sub>"]
-        HY["Hysteria2<br/><sub>P2 · UDP/443</sub>"]
-        AW["AmneziaWG<br/><sub>P2 · UDP/cohort</sub>"]
-    end
-
-    P0 --> XR
-    STD --> XR
-    STD --> NG
-    STD --> HY
-    DEV --> XR
-    DEV --> NG
-    DEV --> HY
-    DEV --> AW
-    LAB --> XR
-    LAB --> NG
-    LAB --> HY
-    LAB --> AW
-```
-
-Assign a host to a cohort with `COHORTS=` on `render-inventory.sh`:
+[The quickstart](docs/tutorials/quickstart.md) takes a new operator from an
+empty provider account to a working node and a first client in about thirty
+minutes. The spine of it:
 
 ```bash
-HOSTS="upcloud:prod" COHORTS="family-standard" ./scripts/render-inventory.sh
+make init PROVIDER=upcloud       # terraform init for the chosen provider
+make validate                    # fmt, validate, gitleaks, ansible-lint
+make decrypt && make plan        # plaintext secrets exist only until `make clean`
+make apply && make inventory && make wait
+make dry-run && make deploy && make verify
+make emit-singbox CLIENT=laptop  # first client config
 ```
 
-For a persistent local multi-provider mapping, copy `.fleet.mk.example` to the git-ignored `.fleet.mk`; `make inventory` forwards its `HOSTS` and `COHORTS` values to the renderer.
+Every target that touches cloud credentials, inventory, SSH or decrypted
+secrets stops for review and runs only when an operator has authorised it.
 
-Or skip the inventory rebuild and tag-scope the play:
-`ansible-playbook site.yml --tags p0` runs baseline + firewall + the P0
-role only. Multi-VPS layouts: `docs/how-to/add-fallback.md`.
+## Documentation
 
-## Where to start
+[docs/README.md](docs/README.md) lists every page by type and tier. The pages
+most operators open:
 
-Agents and contributors: `AGENTS.md` and `CLAUDE.md` at the repo root carry
-the working rules (per-folder variants apply when working inside a subtree).
-Then:
+| Need | Page |
+|---|---|
+| Deploy or re-deploy, add a device | [how-to/deploy.md](docs/how-to/deploy.md) |
+| Something broke after a change | [how-to/rollback.md](docs/how-to/rollback.md) |
+| An address burned, a key leaked, SSH is gone | [how-to/incident.md](docs/how-to/incident.md) |
+| Rotate one device or a server-wide key | [how-to/rotate.md](docs/how-to/rotate.md) |
+| Rebuild after host loss | [how-to/restore.md](docs/how-to/restore.md) |
+| The secrets model and age key recovery | [reference/secrets.md](docs/reference/secrets.md), [how-to/age-recovery.md](docs/how-to/age-recovery.md) |
+| Why the design looks like this | [explanation/threat-model.md](docs/explanation/threat-model.md), [decisions/](docs/decisions/README.md) |
+| What CI covers and what it cannot | [reference/testing.md](docs/reference/testing.md) |
 
-1. `docs/explanation/deployment-status.md` — sanitized last verified deployment snapshot,
-   observed live gates, and remaining verification boundaries.
-2. `docs/tutorials/quickstart.md` — zero-to-working in ~30 minutes.
-3. `docs/reference/architecture.md` — how this repo maps to the P0–P3 stack.
-4. `docs/decisions/0001-cdn-not-filtered-path-baseline.md` — explicit ADR: Cloudflare CDN is **not** the filtered-path
-   baseline; nginx-xhttp role is direct-only by default.
-5. `docs/reference/secrets.md` — SOPS+age model, age-key recovery, rotation.
-6. `docs/how-to/age-recovery.md` — Shamir-split the age key for k-of-n recovery.
-7. `docs/reference/testing.md` — coverage matrix and what's intentionally not tested.
-8. `docs/how-to/branch-protection.md` — apply required-status-check rules via GH API.
-9. `docs/how-to/deploy.md` — full deploy procedure.
-10. `docs/reference/client-notes.md` — client-side bugs and version pins (AWG #2457,
-   sing-box NaiveProxy padding leak, NaiveProxy v147 preamble).
-11. `docs/reference/subscription-plane.md` — subscription-delivery contract matrix.
-12. `docs/reference/xray-release-line.md` — Xray-core 2026 release-line tracker
-    (v26.2.6 → v26.7.11) with breaking-change notes for upgrades.
-13. `docs/decisions/0006-pq-reality-adoption.md` — enforced HOLD/STAGING/PRODUCTION policy
-    for VLESS Encryption (PQE) over REALITY.
-14. `docs/reference/awg-cohorts.md` — AmneziaWG cohort obfuscation profiles by
-    packet-shape signature (e.g. `narrow-junk-sequential`).
-15. `docs/how-to/multi-cohort.md` — multiple VLESS+REALITY inbounds per host,
-    each with its own port/flow_mode/finalmask/clients.
-16. `docs/how-to/multi-operator.md` — per-scope SOPS rules, role-scoped secrets
-    files, audit-log boundaries.
-17. `docs/how-to/subscription-host-separation.md` — run the subscription
-    delivery role on a dedicated VPS via `vpn_subscription_only`.
-18. `docs/how-to/ci-real-deploy.md` — workflow_dispatch ephemeral-UpCloud
-    deploy gate for PRs labelled `ci-real-deploy`.
-19. `docs/how-to/regression-baseline.md` — `rkn-block-checker` four-layer
-    verdict harness for before/after deploy measurement.
-20. `docs/how-to/probe-matrix.md` — topology-aware authenticated probe matrix with
-    paired single-IP and split-hop targets, permission-checked profiles, and
-    conservative protocol/class/topology observations.
-21. `docs/how-to/transport-reachability-matrix.md` — two-vantage per-profile
-    reachability sweep, CI-driven non-filtered half + operator-driven
-    filtered half.
-22. `docs/decisions/0003-split-hop-relay-topology.md` + `docs/how-to/split-hop-pilot.md`
-    — ADR + operator runbook for the two-VPS split-hop topology that
-    breaks the FOCI 2026 per-IP dual-role flow classifier.
-23. `docs/how-to/idle-cycle-measurement.md` + `docs/measurements/`
-    — measurement spike for the bare-HTTPS idle-cycle access-attempt
-    pattern: driver + correlation tool + dated-report template.
-24. `docs/how-to/real-vps-awg-nat.md` — standalone three-host AWG/NAT evidence lane;
-    provision through `make awg-evidence-provision` after decrypting SOPS.
-25. `docs/reference/xray-observability.md` — loopback-only StatsService, redacted
-    node_exporter counters, freshness checks, and failure interpretation.
-26. `docs/how-to/tailnet-management.md` — opt-in ordinary OpenSSH over Tailnet,
-    one-node enrollment capability handling, and the separate ACL/live gates.
-27. `docs/reference/observability-operations.md` — bounded co-hosted metrics, private
-    independent Uptime Kuma, local render, exact-host admission and lifecycle,
-    encrypted backup/restore, and separate client/notification acceptance.
+Coding agents get the same tree as `docs/llms.txt`, generated by `vpnd ai-docs`.
+Releases are listed in [CHANGELOG.md](CHANGELOG.md).
 
-28. `docs/reference/transport-egress.md` — resolved recipient TCP/UDP policy, private
-    normalizer/gateway authority, WARP namespace isolation and rollback.
+## Providers
 
-Operational runbooks: `docs/RUNBOOK-{rotate,rollback,incident,restore,add-fallback}.md`.
+Each provider has its own Terraform root with identical outputs, so the
+Ansible layer stays provider-neutral. Select one with `make PROVIDER=<name> …`.
 
-## Contributing
+| Provider | Root | Locked provider version |
+|---|---|---|
+| UpCloud | [`terraform/providers/upcloud`](terraform/providers/upcloud) | [lock file](terraform/providers/upcloud/.terraform.lock.hcl) |
+| Hetzner | [`terraform/providers/hetzner`](terraform/providers/hetzner) | [lock file](terraform/providers/hetzner/.terraform.lock.hcl) |
+| Vultr | [`terraform/providers/vultr`](terraform/providers/vultr) | [lock file](terraform/providers/vultr/.terraform.lock.hcl) |
+| Scaleway | [`terraform/providers/scaleway`](terraform/providers/scaleway) | [lock file](terraform/providers/scaleway/.terraform.lock.hcl) |
 
-PRs welcome — see `CONTRIBUTING.md`. Subjects follow Conventional Commits;
-release-please picks them up automatically.
+Capabilities, ASN tiers to avoid and fallback transport tiers are in
+[the provider notes](docs/reference/provider-notes.md).
 
-## Security
+## For contributors and agents
 
-Critical issues (active probing, IP burn, key leak) → private channel per
-`.github/SECURITY.md`. Don't open public issues for those.
-
-## Make targets
-
-```
-# Core lifecycle
-make init        # terraform init for the chosen PROVIDER
-make validate    # fmt, validate, gitleaks, ansible-lint
-make decrypt     # sops --decrypt → $(SECRETS_FILE), mode 0600
-make plan        # terraform plan -out=<env>.tfplan
-make apply       # terraform apply <env>.tfplan
-make inventory   # render Ansible inventory from terraform outputs
-make wait        # wait for cloud-init to finish on the new VPS
-make dry-run     # ansible-playbook --check --diff
-make deploy      # ansible-playbook site.yml
-make deploy-canary # same deploy flow with ENV=canary
-make os-maintenance # serial OS upgrade/reboot, then verify + security-verify
-make verify      # post-deploy verification playbook
-make source-drift # deployable-content parity against live node manifests
-make security-verify # host hardening verification playbook
-make clean       # shred decrypted secrets
-
-# Rollback / rotation: each verb acts on exactly one inventory alias, one run per node; only these verbs may share a make invocation, and they then run in sequence
-make rollback-xray ANSIBLE_LIMIT=<alias> ROLLBACK_XRAY_VERSION=vX.Y.Z
-make rollback-config ANSIBLE_LIMIT=<alias>
-make rotate-credentials ANSIBLE_LIMIT=<alias>
-
-# Operations
-make destroy                              # safe, double-confirmation destroy
-make backup-state                         # age-encrypt local TF state
-make backup-configure ANSIBLE_LIMIT=node   # offsite configuration only; requires stopped backup timers/services
-make burn-check                           # external IP reachability probe
-make diff-secrets                         # drift detection
-make decrypt                             # materialize the private runtime secrets file
-make emit-singbox CLIENT=<name>           # official sing-box P0/P2 JSON from that file
-make clean                               # remove the runtime plaintext after use
-make emit-awg CLIENT=<name>              # AmneziaWG wg-quick .conf for a named peer
-make emit-bundle CLIENT=<name>           # RIPDPI P0/P1/P2 JSON with ripdpi extension
-make emit-xray CLIENT=<name>             # native Xray P1 JSON; explicit HOSTS/COHORTS and optional SECRETS_FILE
-make install-hooks                        # one-time pre-commit setup
-# vpnd subcommands (run from repo root or set VPN_DEPLOY_ROOT)
-vpnd ai-docs [--out DIR]                  # emit repo docs as structured markdown for AI context
-make molecule-test ROLE=<name>            # role-level idempotence test
-make validate-target                      # bounded REALITY target TLS/HTTP hygiene
-make scan-targets CIDR=<range>            # discover REALITY targets via RealiTLScanner
-make security-audit                       # non-blocking host audit report
-PYINFRA_HOSTS=host make pyinfra-audit      # experimental read-only pyinfra audit
-make smoke-test                           # end-to-end traffic test (real proxy dial)
-make xray-diagnostics                     # fresh redacted Xray counters over SSH
-make snell-refinement BUNDLE=<json> CONFIG=<yaml> VANTAGE=<technical-id> # staging-only Snell payload/refinement matrix
-make blue-green GREEN_ENV=<name>          # orchestrate blue-green replacement
-```
-
-Watchdog authentication requires a dedicated `xray.clients` identity (default
-`watchdog`) for REALITY and XHTTP, and a separate `hysteria.clients` identity
-when Hysteria is enabled. Enroll distinct probe credentials before deploying
-this change; recipient credentials are never selected as a fallback. Hysteria
-uses verified TLS and matching Salamander. A failed authenticated request stays
-unhealthy without restarting a locally healthy service; backend diagnostics
-recover only their owned runtime. AWG interface diagnostics remain separate
-from authenticated external client-path evidence.
-
-`vpnd` requires Python 3.12; installation, development checks and the native-binary
-to Python wheel-bundle transition are documented in [vpnd/README.md](vpnd/README.md).
-
-`make help` is the canonical target inventory. `SOPS_FILE`, `SECRETS_FILE`,
-`HOSTS`, and `COHORTS` may be set in the git-ignored `.fleet.mk`; the default
-plaintext runtime path is
-`${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}/vpn-provision-$(id -u)}/`.
-
-`make deploy-canary` refuses production secrets, including production filenames
-under a canary-named directory. Supply both `SECRETS_FILE` with basename
-`vpn-canary.secrets.yaml` and `SOPS_FILE` with basename `canary.secrets.sops.yaml`.
+- [CONTRIBUTING.md](CONTRIBUTING.md): development setup, the pull request
+  flow and commit conventions. [SUPPORT.md](SUPPORT.md) says where to ask.
+- [AGENTS.md](AGENTS.md): the working rules for every coding agent and
+  contributor; the root `CLAUDE.md` imports it, and each subtree carries its
+  own folder note with design decisions and pitfalls.
+- [docs/STYLE.md](docs/STYLE.md): how documentation is organised, named and
+  written. [docs/tasks/README.md](docs/tasks/README.md): the task board that
+  tracks all work.
+- `vpnd` needs Python 3.12; installation and development checks are in
+  [vpnd/README.md](vpnd/README.md).
 
 ## Hard rules
 
-- Keep VPN secrets out of Git, Terraform variables/outputs, cloud-init
-  `user_data`, Ansible debug output, and screenshots. Provider credentials live
-  in environment variables only. Treat Terraform state and saved plans as
-  sensitive: providers may persist generated secrets. Keep them private, encrypt
-  state backups with age, and never print their contents into session logs.
-- No public admin panel. No remote installer piped into a root shell.
-- One UUID / one shortId / one peer key **per device**, never shared.
-- Pinned versions. Pre-release versions go through staging only.
-- CI gate: gitleaks must pass with the `.gitleaks.toml` rules in this repo.
+The full list, with the reasons, is in [AGENTS.md](AGENTS.md#hard-rules).
+
+- Secrets never enter Git, Terraform inputs or outputs, cloud-init
+  `user_data`, Ansible output or screenshots; provider credentials live in
+  environment variables only, and state files are treated as sensitive.
+- One UUID, one REALITY shortId and one AmneziaWG peer key per device, never
+  shared, so that one device can be revoked without touching another.
+- No public admin panel and no remote installer piped into a root shell.
+- A CDN is not the filtered-path baseline
+  ([decision 0001](docs/decisions/0001-cdn-not-filtered-path-baseline.md)).
+- Every version is pinned; pre-releases go through staging only.
 
 ## License
 
-BSD 3-Clause (see `LICENSE`).
+[BSD 3-Clause](LICENSE).

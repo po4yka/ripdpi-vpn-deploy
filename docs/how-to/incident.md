@@ -2,8 +2,23 @@
 
 > **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-10-21
 
+## Purpose and scope
+
+Decide what to do when something goes wrong: match the symptom in the
+decision matrix, then follow the linked procedure for lost SSH access, a
+lost age key, state loss or a suspected compromise.
+
 Decision matrix for things going wrong. Pick the row that matches the
 symptom; cross-reference the linked runbook for the recovery procedure.
+
+## Preconditions
+
+- The symptom is observed, not guessed: a failed `make verify`, a watchdog alert, a client report or a provider notice.
+- Nodes are disposable. When management access is gone, recreation is the default; rescue consoles are an owner-chosen emergency path.
+
+## Authorization
+
+Every target below that uses cloud credentials, inventory, SSH or decrypted secrets needs the operator's authorization for this environment, target and plan before it runs ([decision boundaries](../../AGENTS.md#decision-boundaries)). A reviewable plan or dry-run precedes every mutation. Every row of the matrix names the verb it leads to; authorize that verb for the affected node only.
 
 ## Decision matrix
 
@@ -151,3 +166,19 @@ escalation, persistent attacker, unknown process):
 
 The "disposable nodes" property of this stack means step 5 is fast: it's
 the same procedure as a normal first-time deploy.
+
+## Verification
+
+Each linked procedure ends in `make verify` for the affected node or in a
+recreated node that passes the full deploy acceptance.
+
+## Rollback
+
+Recovery procedures are forward-only: recreation, rotation and restore. There
+is no rollback of an incident response other than completing it.
+
+## Evidence to record
+
+The matrix row, the time of detection, the verb run and its result, and the
+rotation or recreation that followed. Suspected compromise also records what
+was rotated and when the old node was destroyed.

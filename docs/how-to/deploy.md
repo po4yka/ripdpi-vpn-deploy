@@ -2,6 +2,14 @@
 
 > **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-10-21
 
+## Purpose and scope
+
+Deploy reviewed runtime changes to exact existing nodes through the canonical
+dry-run and deployment transaction, add a client device, or re-run after a
+Terraform change. Fresh nodes are provisioned and enrolled first; this guide
+starts where [the quickstart](../tutorials/quickstart.md) and
+[Tailnet bootstrap](tailnet-management.md#bootstrap-one-node) end.
+
 Fresh or recreated nodes need provisioning and first enrollment before deployment;
 start with `../tutorials/quickstart.md` or the [disposable staging recipe](#staging-first).
 An already managed node uses the [ordinary re-deploy recipe](#ordinary-re-deploy-recipe).
@@ -12,6 +20,18 @@ Run commands from the repository root in the pinned Bash session from the
 For the last verified release snapshot, provider-to-role mapping, recorded gate
 results, and unresolved operator limitations, start with
 [../explanation/deployment-status.md](../explanation/deployment-status.md).
+
+## Preconditions
+
+- The pinned Bash session from [the workstation setup](../../CONTRIBUTING.md#first-time-setup), run from the repository root.
+- A clean checkout at the revision you intend to deploy; `make source-drift` compares it with the live node afterwards.
+- The node is enrolled: SSH recovery installed, Tailnet bootstrap confirmed, SSH ownership migrated, inventory rendered with its `TAILNET_HANDOFFS`.
+- The private deploy inputs exist with mode `0600`: `DEPLOY_SSH_CONTEXTS_FILE`, the promotion mapping and a fresh `DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE` sink.
+- Secrets decrypt inside the guarded subshell printed below; plaintext never outlives the block.
+
+## Authorization
+
+Every target below that uses cloud credentials, inventory, SSH or decrypted secrets needs the operator's authorization for this environment, target and plan before it runs ([decision boundaries](../../AGENTS.md#decision-boundaries)). A reviewable plan or dry-run precedes every mutation. A request to re-deploy one environment does not authorize another environment or a Terraform replacement of an existing server.
 
 ## Acceptance scope and completion
 
@@ -538,3 +558,26 @@ Xray pre-release builds against prod users.
 
 If any of these fail, `make verify` exits non-zero. Don't sign off on a
 deploy until verify is green.
+
+## Verification
+
+`make verify` runs the active post-deploy gates described under
+[What verify actually checks](#what-verify-actually-checks); `make security-verify`
+checks host hardening and `make smoke-test` dials every enabled profile.
+`make source-drift` must match the deployed revision. A client on the
+filtered side confirming each profile is separate evidence
+([acceptance scope](#acceptance-scope-and-completion)).
+
+## Rollback
+
+Use [the rollback guide](rollback.md): level 1 is automatic handler rescue,
+level 2 pins the previous Xray version, level 3 replaces the node. An
+interrupted protected-ingress or nginx publication transaction is recovered by
+the single deploy exception in the ordinary re-deploy recipe, not by rollback.
+
+## Evidence to record
+
+The deployed revision, provider and environment, the `dry-run` summary, the
+`verify`, `security-verify` and `smoke-test` results, and the acceptance scope
+actually observed. Record categories and exit codes; never addresses, client
+identifiers or decrypted values.

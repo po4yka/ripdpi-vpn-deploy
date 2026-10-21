@@ -2,12 +2,29 @@
 
 > **Status:** Current · **Type:** how-to · **Tier:** CORE · **Reviewed:** 2026-10-21
 
+## Purpose and scope
+
+Return a node to a known-good transport state after a change broke it, at
+the smallest level that fixes the failure: configuration rescue, binary
+rollback or blue-green replacement.
+
 Three rollback levels. Pick the smallest one that fixes the failure.
 A deploy that was killed mid-run is not a rollback case: if `make dry-run`
 reports `interrupted-protected-ingress-transaction` or
 `interrupted-nginx-publication`, follow the single deploy exception in the
 [ordinary re-deploy recipe](deploy.md#ordinary-re-deploy-recipe)
 instead of the levels below.
+
+## Preconditions
+
+- You know which change broke the node (`make verify` output, the watchdog, or a client report) and which level addresses it.
+- `ANSIBLE_LIMIT` names exactly one inventory alias; the rollback verbs refuse groups and patterns.
+- For level 2, `ROLLBACK_XRAY_VERSION` names a version listed in [the release-line tracker](../reference/xray-release-line.md).
+- For level 3, a green environment name and the private inputs in [the blue-green section of tailnet management](tailnet-management.md).
+
+## Authorization
+
+Every target below that uses cloud credentials, inventory, SSH or decrypted secrets needs the operator's authorization for this environment, target and plan before it runs ([decision boundaries](../../AGENTS.md#decision-boundaries)). A reviewable plan or dry-run precedes every mutation. The rollback verbs act on one alias per run; repeat the authorization for each node.
 
 ## Level 1 — config rollback (handler rescue, automatic)
 
@@ -180,3 +197,21 @@ nodes, so the next ordinary deploy cannot undo the ownership invariant.
   `rotate.md`.
 - If the failure is "IP got blocklisted by ASN", rollback to a previous
   config doesn't help. Blue-green to a new VPS in a different ASN.
+
+## Verification
+
+`make verify ANSIBLE_LIMIT=<alias>` after every level; for level 2 confirm
+the running binary version in the verify output; for level 3 confirm the
+green node serves every profile before the blue one is destroyed.
+
+## Rollback
+
+A rollback that does not restore service is answered by the next level up,
+or by [rotation](rotate.md) when the cause is a leaked credential rather
+than a broken change. [What blocks rollback](#what-blocks-rollback) lists the
+states that need recovery first.
+
+## Evidence to record
+
+The alias, the level used, the version or environment rolled to, the verify
+result and the reason the change failed, so the forward fix can be planned.

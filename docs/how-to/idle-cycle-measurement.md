@@ -2,6 +2,12 @@
 
 > **Status:** Current · **Type:** how-to · **Tier:** RESEARCH · **Reviewed:** 2026-10-21
 
+## Purpose and scope
+
+Measure whether a filtering pipeline applies a per-flow idle rule to bare
+HTTPS endpoints, from a stable filtered vantage against a server you
+operate, with both sides logging at sub-second precision.
+
 Operator-side procedure for measuring whether a filtering pipeline
 applies a per-flow idle-LRU rule to bare-HTTPS endpoints: first
 access after a long idle stalls for ~1 minute, subsequent accesses
@@ -19,6 +25,14 @@ This spike does **not** produce a confirmed mechanism on its own.
 The deliverable is a reproducible measurement and a structured
 report that names which of the three working hypotheses the data
 supports.
+
+## Preconditions
+
+See [Pre-requisites](#pre-requisites) below; this procedure lists them in its own section.
+
+## Authorization
+
+Every target below that uses cloud credentials, inventory, SSH or decrypted secrets needs the operator's authorization for this environment, target and plan before it runs ([decision boundaries](../../AGENTS.md#decision-boundaries)). A reviewable plan or dry-run precedes every mutation. The measurement server is a disposable resource; its own probe traffic can become a signal, so keep the run bounded and tear it down.
 
 ## The three hypotheses
 
@@ -189,3 +203,19 @@ This spike does not overlap with `docs/how-to/regression-baseline.md`. The
 regression baseline measures four-layer verdicts against many URLs
 at one moment; this spike measures one URL's first-access latency
 across many idle gaps. Different signals; different reports.
+
+## Verification
+
+[Step 4](#step-4--correlate) correlates the client and server logs;
+[Step 5](#step-5--interpret--publish) states which hypothesis the data
+supports and with what confidence.
+
+## Rollback
+
+[Tear-down](#tear-down) destroys the measurement server. No production node
+is changed by this procedure.
+
+## Evidence to record
+
+The dated report from the template in `docs/measurements/`, the hypothesis
+verdict and the vantage class used (technical description only).
