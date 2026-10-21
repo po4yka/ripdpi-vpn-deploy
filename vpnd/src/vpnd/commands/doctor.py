@@ -66,8 +66,8 @@ Context:
 - env: {ctx.env}
 - provider: {ctx.provider}
 - host: {host or "(active env)"}
-- threat model: active L7 fingerprinting and aggressive QoS. CDN is NOT the baseline; see docs/CDN-DECISION.md.
-- relevant runbooks: docs/RUNBOOK-incident.md, docs/RUNBOOK-rollback.md.
+- threat model: active L7 fingerprinting and aggressive QoS. CDN is NOT the baseline; see docs/decisions/0001-cdn-not-filtered-path-baseline.md.
+- relevant runbooks: docs/how-to/incident.md, docs/how-to/rollback.md.
 
 Below is the output of `vpnd doctor`. Please identify the most likely root cause,
 propose the smallest safe remediation, and cite which runbook or script applies.

@@ -21,9 +21,9 @@ FORBIDDEN_HEX = (
 )
 FORBIDDEN = tuple(bytes.fromhex(value).decode("ascii") for value in FORBIDDEN_HEX)
 RESEARCH_DOCS = (
-    "docs/ANDROID-CLIENT-RESEARCH.md",
-    "docs/IOS-CLIENT-RESEARCH.md",
-    "docs/IOS-SPLIT-ROUTING-RESEARCH.md",
+    "docs/research/android-client.md",
+    "docs/research/ios-client.md",
+    "docs/research/ios-split-routing.md",
 )
 
 
@@ -45,7 +45,7 @@ def test_policy_excludes_its_corpus_and_encrypted_secret_fixtures():
     assert not _should_scan(SELF)
     assert not _should_scan("tests/fixtures/secrets-sample.sops.yaml")
     assert _should_scan("secrets/prod.secrets.sops.yaml")
-    assert _should_scan("docs/ARCHITECTURE.md")
+    assert _should_scan("docs/reference/architecture.md")
 
 
 def test_policy_reads_a_tracked_directory_symlink_without_following_it():
@@ -86,7 +86,7 @@ def test_tracked_files_do_not_contain_forbidden_identifiers():
 
 
 def test_physical_acceptance_evidence_contains_no_public_ip_literals():
-    research = (ROOT / "docs" / "IOS-SPLIT-ROUTING-RESEARCH.md").read_text()
+    research = (ROOT / "docs/research/ios-split-routing.md").read_text()
     evidence = research.split("## Physical acceptance matrix", 1)[1].split(
         "## Recommended repository work", 1
     )[0]
@@ -120,7 +120,7 @@ def test_client_research_is_repository_owned_and_technically_named():
 
 
 def test_android_research_tracks_physical_awg_acceptance_and_open_gaps():
-    content = (ROOT / "docs" / "ANDROID-CLIENT-RESEARCH.md").read_text()
+    content = (ROOT / "docs/research/android-client.md").read_text()
 
     assert "Pixel 7 live-client matrix" in content
     assert "physical AWG acceptance remains required" not in content

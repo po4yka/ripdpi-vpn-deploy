@@ -65,7 +65,7 @@ uses a disposable tracked working-tree copy with sibling docs, fixtures and
 scripts. `pyproject.toml` defines the mutation scope. Empty, incomplete,
 uncovered, timed-out or technically failed runs fail; exit 2 denotes verified
 completed results containing survivors. Reports are retained per invocation
-under `vpnd/mutants/`. See [testing guidance](../docs/TESTING.md).
+under `vpnd/mutants/`. See [testing guidance](../docs/reference/testing.md).
 
 ## Use
 

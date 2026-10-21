@@ -65,8 +65,8 @@ to our deployment:
 
 When you suspect any of the critical-class events:
 
-1. `docs/RUNBOOK-incident.md` — decision matrix
-2. `docs/RUNBOOK-rotate.md` — credential rotation procedures
-3. `docs/RUNBOOK-restore.md` — disaster recovery from encrypted backup
+1. `docs/how-to/incident.md` — decision matrix
+2. `docs/how-to/rotate.md` — credential rotation procedures
+3. `docs/how-to/restore.md` — disaster recovery from encrypted backup
 
 These are the same runbooks we'd point a reporter at after triage.

@@ -47,7 +47,7 @@ def test_recovery_plan_requires_admission_before_first_deploy(tmp_path, path):
 
 
 def test_runbook_both_paths_require_shared_admission_and_exact_alias():
-    text = (ROOT / "docs/RUNBOOK-restore.md").read_text()
+    text = (ROOT / "docs/how-to/restore.md").read_text()
     prerequisite = text.split("## Fresh-node prerequisites", 1)[1].split("## Path A", 1)[0]
     for item in ("install-ssh-recovery", "bootstrap-tailnet", "TAILNET_HANDOFFS",
                  "migrate-ssh-ownership", "DEPLOY_SSH_CONTEXTS_FILE",

@@ -139,7 +139,7 @@ For a persistent local multi-provider mapping, copy `.fleet.mk.example` to the g
 
 Or skip the inventory rebuild and tag-scope the play:
 `ansible-playbook site.yml --tags p0` runs baseline + firewall + the P0
-role only. Multi-VPS layouts: `docs/RUNBOOK-add-fallback.md`.
+role only. Multi-VPS layouts: `docs/how-to/add-fallback.md`.
 
 ## Where to start
 
@@ -147,59 +147,59 @@ Agents and contributors: `AGENTS.md` and `CLAUDE.md` at the repo root carry
 the working rules (per-folder variants apply when working inside a subtree).
 Then:
 
-1. `docs/DEPLOYMENT-STATUS.md` — sanitized last verified deployment snapshot,
+1. `docs/explanation/deployment-status.md` — sanitized last verified deployment snapshot,
    observed live gates, and remaining verification boundaries.
-2. `docs/QUICKSTART.md` — zero-to-working in ~30 minutes.
-3. `docs/ARCHITECTURE.md` — how this repo maps to the P0–P3 stack.
-4. `docs/CDN-DECISION.md` — explicit ADR: Cloudflare CDN is **not** the RU
+2. `docs/tutorials/quickstart.md` — zero-to-working in ~30 minutes.
+3. `docs/reference/architecture.md` — how this repo maps to the P0–P3 stack.
+4. `docs/decisions/0001-cdn-not-filtered-path-baseline.md` — explicit ADR: Cloudflare CDN is **not** the RU
    baseline; nginx-xhttp role is direct-only by default.
-5. `docs/SECRETS.md` — SOPS+age model, age-key recovery, rotation.
-6. `docs/AGE-RECOVERY.md` — Shamir-split the age key for k-of-n recovery.
-7. `docs/TESTING.md` — coverage matrix and what's intentionally not tested.
-8. `docs/BRANCH-PROTECTION.md` — apply required-status-check rules via GH API.
-9. `docs/RUNBOOK-deploy.md` — full deploy procedure.
-10. `docs/CLIENT-NOTES.md` — client-side bugs and version pins (AWG #2457,
+5. `docs/reference/secrets.md` — SOPS+age model, age-key recovery, rotation.
+6. `docs/how-to/age-recovery.md` — Shamir-split the age key for k-of-n recovery.
+7. `docs/reference/testing.md` — coverage matrix and what's intentionally not tested.
+8. `docs/how-to/branch-protection.md` — apply required-status-check rules via GH API.
+9. `docs/how-to/deploy.md` — full deploy procedure.
+10. `docs/reference/client-notes.md` — client-side bugs and version pins (AWG #2457,
    sing-box NaiveProxy padding leak, NaiveProxy v147 preamble).
-11. `docs/SUBSCRIPTION-PLANE.md` — subscription-delivery contract matrix.
-12. `docs/XRAY-RELEASE-LINE.md` — Xray-core 2026 release-line tracker
+11. `docs/reference/subscription-plane.md` — subscription-delivery contract matrix.
+12. `docs/reference/xray-release-line.md` — Xray-core 2026 release-line tracker
     (v26.2.6 → v26.7.11) with breaking-change notes for upgrades.
-13. `docs/PQ-REALITY-ADOPTION.md` — enforced HOLD/STAGING/PRODUCTION policy
+13. `docs/decisions/0006-pq-reality-adoption.md` — enforced HOLD/STAGING/PRODUCTION policy
     for VLESS Encryption (PQE) over REALITY.
-14. `docs/AWG-COHORTS.md` — AmneziaWG cohort obfuscation profiles by
+14. `docs/reference/awg-cohorts.md` — AmneziaWG cohort obfuscation profiles by
     packet-shape signature (e.g. `narrow-junk-sequential`).
-15. `docs/MULTI-COHORT.md` — multiple VLESS+REALITY inbounds per host,
+15. `docs/how-to/multi-cohort.md` — multiple VLESS+REALITY inbounds per host,
     each with its own port/flow_mode/finalmask/clients.
-16. `docs/MULTI-OPERATOR.md` — per-scope SOPS rules, role-scoped secrets
+16. `docs/how-to/multi-operator.md` — per-scope SOPS rules, role-scoped secrets
     files, audit-log boundaries.
-17. `docs/SUBSCRIPTION-HOST-SEPARATION.md` — run the subscription
+17. `docs/how-to/subscription-host-separation.md` — run the subscription
     delivery role on a dedicated VPS via `vpn_subscription_only`.
-18. `docs/CI-REAL-DEPLOY.md` — workflow_dispatch ephemeral-UpCloud
+18. `docs/how-to/ci-real-deploy.md` — workflow_dispatch ephemeral-UpCloud
     deploy gate for PRs labelled `ci-real-deploy`.
-19. `docs/REGRESSION-BASELINE.md` — `rkn-block-checker` four-layer
+19. `docs/how-to/regression-baseline.md` — `rkn-block-checker` four-layer
     verdict harness for before/after deploy measurement.
-20. `docs/PROBE-MATRIX.md` — topology-aware authenticated probe matrix with
+20. `docs/how-to/probe-matrix.md` — topology-aware authenticated probe matrix with
     paired single-IP and split-hop targets, permission-checked profiles, and
     conservative protocol/class/topology observations.
-21. `docs/TRANSPORT-REACHABILITY-MATRIX.md` — two-vantage per-profile
+21. `docs/how-to/transport-reachability-matrix.md` — two-vantage per-profile
     reachability sweep, CI-driven non-filtered half + operator-driven
     filtered half.
-22. `docs/SPLIT-HOP-TOPOLOGY.md` + `docs/RUNBOOK-split-hop-pilot.md`
+22. `docs/decisions/0003-split-hop-relay-topology.md` + `docs/how-to/split-hop-pilot.md`
     — ADR + operator runbook for the two-VPS split-hop topology that
     breaks the FOCI 2026 per-IP dual-role flow classifier.
-23. `docs/RUNBOOK-idle-cycle-measurement.md` + `docs/measurements/`
+23. `docs/how-to/idle-cycle-measurement.md` + `docs/measurements/`
     — measurement spike for the bare-HTTPS idle-cycle access-attempt
     pattern: driver + correlation tool + dated-report template.
-24. `docs/REAL-VPS-AWG-NAT.md` — standalone three-host AWG/NAT evidence lane;
+24. `docs/how-to/real-vps-awg-nat.md` — standalone three-host AWG/NAT evidence lane;
     provision through `make awg-evidence-provision` after decrypting SOPS.
-25. `docs/XRAY-OBSERVABILITY.md` — loopback-only StatsService, redacted
+25. `docs/reference/xray-observability.md` — loopback-only StatsService, redacted
     node_exporter counters, freshness checks, and failure interpretation.
-26. `docs/TAILNET-MANAGEMENT.md` — opt-in ordinary OpenSSH over Tailnet,
+26. `docs/how-to/tailnet-management.md` — opt-in ordinary OpenSSH over Tailnet,
     one-node enrollment capability handling, and the separate ACL/live gates.
-27. `docs/OBSERVABILITY-OPERATIONS.md` — bounded co-hosted metrics, private
+27. `docs/reference/observability-operations.md` — bounded co-hosted metrics, private
     independent Uptime Kuma, local render, exact-host admission and lifecycle,
     encrypted backup/restore, and separate client/notification acceptance.
 
-28. `docs/TRANSPORT-EGRESS.md` — resolved recipient TCP/UDP policy, private
+28. `docs/reference/transport-egress.md` — resolved recipient TCP/UDP policy, private
     normalizer/gateway authority, WARP namespace isolation and rollback.
 
 Operational runbooks: `docs/RUNBOOK-{rotate,rollback,incident,restore,add-fallback}.md`.

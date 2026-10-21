@@ -275,7 +275,7 @@ guard. The play asserts the one selected alias through
 `ansible/playbooks/tasks/exact-node.yml`; that binding, not the `ENV` check, is
 why each run acts on one node, so revoking a client is complete only after one run
 per node. Rotation separately refuses a host whose inventory `env` differs from
-`ENV`. `RUNBOOK-rotate.md` and `RUNBOOK-deploy.md` print the revocation
+`ENV`. `docs/how-to/rotate.md` and `docs/how-to/deploy.md` print the revocation
 sequence as a subshell that names the environment once (`e=prod`), installs a
 `make clean` EXIT trap before `make decrypt` and turns INT, QUIT, TERM and HUP
 into exits: the per-node rotate and verify loop runs only after a successful
@@ -285,11 +285,11 @@ can catch (success, failure or interruption, but not SIGKILL or power loss, afte
 which the operator runs it by hand). The EXIT trap ignores those four signals
 while `make clean` runs, so a second one cannot cut the shred short. The subshell
 exits with the failing step's status, which the cleanup does not mask, and with 1
-when only `make clean` fails, as the cleanup blocks in `docs/QUICKSTART.md` leave
+when only `make clean` fails, as the cleanup blocks in `docs/tutorials/quickstart.md` leave
 the block unsuccessful. The REALITY keypair and restic password sections of
-`RUNBOOK-rotate.md` print the same guard around their `decrypt`, `deploy` and
+`docs/how-to/rotate.md` print the same guard around their `decrypt`, `deploy` and
 `verify` calls; `test_operator_verb_scope.py` runs all four blocks, including
-interruption. The ordinary re-deploy recipe in `RUNBOOK-deploy.md` splits
+interruption. The ordinary re-deploy recipe in `docs/how-to/deploy.md` splits
 preflight and deploy around the operator's review: a failed or interrupted
 preflight cleans up, a successful one keeps the plaintext for the deploy block,
 and the deploy and journal-recovery blocks clean on every exit; the same test
@@ -629,7 +629,7 @@ remove a prepared VM or reuse a retired one-shot profile name.
 Snell is optional in issuance and unbound retirement. An absent section has no
 client edges; configured variants must still contain exactly one issued client.
 
-**Xray migrations are changelog-driven** — `docs/XRAY-RELEASE-LINE.md` embeds the declarative guard registry consumed by `check-xray-breaking-changes.py`. Add version-aware rules there instead of hardcoding release cases in unrelated validators; render-sensitive rules use `template_render.py` so every fast check sees the same canonical Ansible context.
+**Xray migrations are changelog-driven** — `docs/reference/xray-release-line.md` embeds the declarative guard registry consumed by `check-xray-breaking-changes.py`. Add version-aware rules there instead of hardcoding release cases in unrelated validators; render-sensitive rules use `template_render.py` so every fast check sees the same canonical Ansible context.
 
 **Observability staging cleanup is an aggregate all-provider transaction** —
 `observability-staging-cleanup.py` is fixed to the exact `staging` UpCloud,

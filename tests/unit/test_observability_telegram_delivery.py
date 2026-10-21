@@ -1621,7 +1621,7 @@ def test_alertmanager_v0281_enforces_the_webhook_request_timeout(
                 "annotations": {
                     "summary": "fixture",
                     "evidence_class": "fixture",
-                    "runbook": "docs/OBSERVABILITY-OPERATIONS.md",
+                    "runbook": "docs/reference/observability-operations.md",
                     "source_generation": "c" * 40,
                 },
             }

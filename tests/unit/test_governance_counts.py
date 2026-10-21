@@ -38,12 +38,12 @@ def _documented_sequence(row: str, scenario: str) -> list[str]:
 def test_governance_counts_match_live_repository():
     roles = len([path for path in (ROOT / "ansible/roles").iterdir() if path.is_dir()])
     templates = len(list((ROOT / "ansible/roles").rglob("*.j2")))
-    testing = (ROOT / "docs/TESTING.md").read_text()
+    testing = (ROOT / "docs/reference/testing.md").read_text()
     assert f"{roles} roles" in (ROOT / "AGENTS.md").read_text()
     # CLAUDE.md imports AGENTS.md rather than restating the count.
     assert (ROOT / "CLAUDE.md").read_text().startswith("@AGENTS.md\n")
     assert f"({templates} templates)" in testing
-    assert "molecule / per-role tests. v2." not in (ROOT / "docs/ARCHITECTURE.md").read_text()
+    assert "molecule / per-role tests. v2." not in (ROOT / "docs/reference/architecture.md").read_text()
 
     ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
     push_row = next(line for line in testing.splitlines() if line.startswith("| `git push` (PR) |"))
@@ -55,7 +55,7 @@ def test_governance_counts_match_live_repository():
         assert f"`{scenario['role']}/{scenario['scenario']}`" in push_row
     assert "`pytest tests/unit/`" in push_row
 
-    audit = (ROOT / "docs/AUDIT-SILENT-FAILURE.md").read_text()
+    audit = (ROOT / "docs/reference/silent-failure-audit.md").read_text()
     current = audit.split("## Current disposition", 1)[1].split("\n## ", 1)[0]
     rows = [line for line in current.splitlines() if re.match(r"\| [1-8] \|", line)]
     statuses = [
@@ -67,7 +67,7 @@ def test_governance_counts_match_live_repository():
     assert statuses.count("PARTIAL") == 1
     assert statuses.count("OPEN") == 0
 
-    role_tiering = (ROOT / "docs/ROLE-TIERING.md").read_text()
+    role_tiering = (ROOT / "docs/decisions/0002-role-and-doc-tiering.md").read_text()
     for stale_claim in (
         "8 silently-broken controls",
         "all four alert-chain links broken",
@@ -81,7 +81,7 @@ def test_governance_counts_match_live_repository():
     contributor_guidance = contributing.split("## Local pre-flight", 1)[1].split(
         "## Adding a new role / template / script", 1
     )[0]
-    for pointer in ("make check", ".github/workflows/ci.yml", "docs/TESTING.md", "required checks"):
+    for pointer in ("make check", ".github/workflows/ci.yml", "docs/reference/testing.md", "required checks"):
         assert pointer in contributor_guidance
     assert "check: task-check validate ci-fast" in (ROOT / "Makefile").read_text()
     assert not re.search(r"\b\d+\+? jobs\b|matrix:\s*\d+\s+roles", contributor_guidance, re.IGNORECASE)
@@ -115,7 +115,7 @@ def test_governance_counts_match_live_repository():
 
 
 def test_testing_documentation_matches_molecule_sequences_and_hosted_matrix():
-    testing = (ROOT / "docs/TESTING.md").read_text()
+    testing = (ROOT / "docs/reference/testing.md").read_text()
     role_rows = _testing_role_rows(testing)
     role_directories = {path.name for path in (ROOT / "ansible/roles").iterdir() if path.is_dir()}
     assert set(role_rows) == role_directories

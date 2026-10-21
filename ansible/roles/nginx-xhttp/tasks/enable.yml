@@ -1,7 +1,7 @@
 ---
 # P1 transport: nginx fronts a configurable public TCP port and proxies a path to the Xray XHTTP
 # inbound on 127.0.0.1:{{ nginx_xhttp_port }}. RU baseline = direct foreign
-# VPS, no CDN. See docs/CDN-DECISION.md.
+# VPS, no CDN. See docs/decisions/0001-cdn-not-filtered-path-baseline.md.
 
 - name: Preflight direct XHTTP endpoint semantics
   ansible.builtin.import_tasks: "{{ role_path }}/../../playbooks/tasks/transport-input-preflight.yml"

@@ -79,8 +79,8 @@ def test_role_is_a_documented_standalone_research_exception() -> None:
     site = (ROOT / "ansible/playbooks/site.yml").read_text()
     role_notes = (ROLE / "CLAUDE.md").read_text()
     tiers = (ROOT / "ansible/role-tiers.yml").read_text()
-    runbook = (ROOT / "docs/REAL-VPS-AWG-NAT.md").read_text()
-    liveness = (ROOT / "docs/PROTOCOL-LIVENESS.md").read_text()
+    runbook = (ROOT / "docs/how-to/real-vps-awg-nat.md").read_text()
+    liveness = (ROOT / "docs/reference/protocol-liveness.md").read_text()
 
     assert "real-vps-awg-nat" not in site
     assert "Standalone research-role exception" in role_notes
@@ -982,7 +982,7 @@ def test_sentinel_installs_client_acceptance_verification_key() -> None:
     )
     assert not (ROLE / "templates/sentinel-client-identity.json.j2").exists()
     role_notes = (ROLE / "CLAUDE.md").read_text()
-    runbook = (ROOT / "docs/REAL-VPS-AWG-NAT.md").read_text()
+    runbook = (ROOT / "docs/how-to/real-vps-awg-nat.md").read_text()
     assert "explicit disruptive maintenance" in role_notes
     assert "intentionally disruptive" in runbook
     assert "failed provisioning attempt leaves the timer" in runbook
@@ -2063,7 +2063,7 @@ def test_bundle_builder_emits_exact_clean_head_and_rejects_dirty_tree(
 
 
 def test_operator_runbook_names_only_private_actions_not_values() -> None:
-    runbook = (ROOT / "docs/REAL-VPS-AWG-NAT.md").read_text()
+    runbook = (ROOT / "docs/how-to/real-vps-awg-nat.md").read_text()
 
     assert "cd ansible" not in runbook
     assert "make deploy ANSIBLE_LIMIT=vpn-p1-web" in runbook
@@ -2077,7 +2077,7 @@ def test_operator_runbook_names_only_private_actions_not_values() -> None:
 
 
 def test_operator_runbook_converges_the_protected_echo_cohort() -> None:
-    runbook = (ROOT / "docs/REAL-VPS-AWG-NAT.md").read_text()
+    runbook = (ROOT / "docs/how-to/real-vps-awg-nat.md").read_text()
 
     assert 'COHORTS="p1-web,p2-udp"' in runbook
     assert "ANSIBLE_LIMIT=vpn-p1-web" in runbook
