@@ -15,5 +15,5 @@ service-level commitment.
 
 Never put credentials, host addresses, hostnames, client identifiers,
 Terraform state, decrypted secrets or inventory into an issue, a comment or
-a screenshot. Redact them before posting; a redacted sample that keeps its
+a screenshot. Do not post them at all: a redacted sample that keeps its
 shape still identifies a deployment.

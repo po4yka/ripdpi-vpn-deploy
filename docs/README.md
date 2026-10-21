@@ -46,6 +46,7 @@ Complete one task against real infrastructure. Every guide names its preconditio
 | [Local operator kit](how-to/local-operator-kit.md) | The private operator kit contract: where authoritative material lives, how to catalogue and recover it | — |
 | [Multi-cohort host](how-to/multi-cohort.md) | Run several VLESS+REALITY inbounds on one host, each with its own port, flow mode, finalmask and clients | — |
 | [Multi-operator RBAC](how-to/multi-operator.md) | Per-scope SOPS rules, role-scoped secrets files and audit-log boundaries for more than one operator | TACTICAL |
+| [Per-ASN payload-size throttling probe](how-to/payload-throttle.md) | Probe for a silent per-path throughput penalty above a response-size threshold | — |
 | [Topology-aware multi-protocol probe matrix](how-to/probe-matrix.md) | Topology-aware authenticated probe matrix with paired single-IP and split-hop targets | RESEARCH |
 | [Real-VPS AWG/NAT evidence sentinel](how-to/real-vps-awg-nat.md) | Standalone three-host AmneziaWG/NAT evidence lane provisioned after decrypting SOPS | — |
 | [Deploy-side regression baseline](how-to/regression-baseline.md) | Four-layer block-checker verdict harness for before-and-after deployment measurement | — |
@@ -66,14 +67,13 @@ Facts, tables and contracts.
 | Page | Purpose | Tier |
 |---|---|---|
 | [Architecture](reference/architecture.md) | Layer ownership, profile-to-role-to-port map, disposable-node model and what is intentionally absent | CORE |
-| [ASN Exposure Denylist Gate](reference/asn-exposure-denylist.md) | Design boundary for the server-side ASN denylist gate; non-deployable by construction | — |
 | [AmneziaWG cohort obfuscation profiles](reference/awg-cohorts.md) | AmneziaWG obfuscation cohort profiles named by packet-shape signature, and how to add one | CORE |
 | [Client-side known issues and version pins](reference/client-notes.md) | Client-side known issues and version pins for AmneziaWG, sing-box and NaiveProxy | CORE |
 | [Deploy profiles](reference/deploy-profiles.md) | The group_vars profiles: family, device-full, lab, hardened production; decoy identity; when not to use one | — |
+| [Deployment status — last verified snapshot](reference/deployment-status.md) (Snapshot (2026-08-23)) | Sanitized last verified deployment snapshot, observed live gates and remaining verification boundaries | — |
 | [Make targets](reference/make-targets.md) | Generated mirror of `make help`: every operator target with its one-line purpose | — |
 | [Reviewed network exposure policy](reference/network-exposure-gate.md) | The reviewed, default-off network exposure policy gate and its operator contract | — |
 | [Resource-bounded observability on existing hosts](reference/observability-operations.md) | Bounded co-hosted metrics, private Uptime Kuma, lifecycle verbs, encrypted backup and restore, current contract and task history | — |
-| [Per-ASN payload-size throttling probe](reference/payload-throttle.md) | Probe for a silent per-path throughput penalty above a response-size threshold | — |
 | [Protocol-level liveness and rotation](reference/protocol-liveness.md) | Authenticated protocol-level liveness sentinels, quorum evaluation and rotation decisions | — |
 | [Provider notes](reference/provider-notes.md) | Provider capabilities, ASN tiers to avoid, fallback transport tiers and sanitized fleet notes | — |
 | [REALITY active-target ASN monitoring](reference/reality-target-monitoring.md) | Recurring filtered-vantage monitoring of the active REALITY target's ASN and path | — |
@@ -95,7 +95,7 @@ Why the system is shaped this way.
 | Page | Purpose | Tier |
 |---|---|---|
 | [Architecture rationale](explanation/architecture-rationale.md) | Why nodes are disposable, why P1 is direct nginx, why one Terraform root per provider, what is left out on purpose | CORE |
-| [Deployment status — last verified snapshot](explanation/deployment-status.md) (Snapshot (2026-08-23)) | Sanitized last verified deployment snapshot, observed live gates and remaining verification boundaries | — |
+| [ASN Exposure Denylist Gate](explanation/asn-exposure-denylist.md) | Design boundary for the server-side ASN denylist gate; non-deployable by construction | — |
 | [Threat model](explanation/threat-model.md) | What the stack is built to survive, behaviour by behaviour, and which layer answers each | CORE |
 
 ## Decisions
@@ -128,7 +128,7 @@ Historical audits and notes kept for provenance. Links from these pages are not 
 
 | Page | Purpose | Tier |
 |---|---|---|
-| [KB-drift audit](archive/control-drift-audit-2026-07.md) (Archived) | Historical audit of every defensive and transport control against the governing concepts; provenance only | — |
+| [Control-drift audit (2026-07)](archive/control-drift-audit-2026-07.md) (Archived) | Historical audit of every defensive and transport control against the governing concepts; provenance only | — |
 | [Network protocol audit remediation](archive/network-protocol-audit-2026-10.md) (Archived) | Remediation ledger for the confirmed network protocol audit findings | — |
 | [Server integration notes](archive/server-integration-note.md) (Archived) | Compatibility note on opaque subscription endpoints backed by an operator-side cascade | — |
 

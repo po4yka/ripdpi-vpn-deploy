@@ -19,7 +19,7 @@ Run commands from the repository root in the pinned Bash session from the
 
 For the last verified release snapshot, provider-to-role mapping, recorded gate
 results, and unresolved operator limitations, start with
-[../explanation/deployment-status.md](../explanation/deployment-status.md).
+[../explanation/deployment-status.md](../reference/deployment-status.md).
 
 ## Preconditions
 
@@ -28,6 +28,9 @@ results, and unresolved operator limitations, start with
 - The node is enrolled: SSH recovery installed, Tailnet bootstrap confirmed, SSH ownership migrated, inventory rendered with its `TAILNET_HANDOFFS`.
 - The private deploy inputs exist with mode `0600`: `DEPLOY_SSH_CONTEXTS_FILE`, the promotion mapping and a fresh `DEPLOY_SSH_BASELINE_FAILURE_RECEIPTS_FILE` sink.
 - Secrets decrypt inside the guarded subshell printed below; plaintext never outlives the block.
+- The watchdog has its own credentials: a dedicated `xray.clients` identity (default name `watchdog`) for REALITY and XHTTP, and a separate `hysteria.clients` identity when Hysteria is enabled. Enroll them before the first deploy; recipient credentials are never used as a fallback, and a failed authenticated probe marks the node unhealthy without restarting a locally healthy service.
+- `make deploy-canary` refuses production secrets, including production file names under a canary-named directory: `SECRETS_FILE` must have the basename `vpn-canary.secrets.yaml` and `SOPS_FILE` the basename `canary.secrets.sops.yaml`.
+- `SOPS_FILE`, `SECRETS_FILE`, `HOSTS` and `COHORTS` may be set once in the git-ignored `.fleet.mk`, which every `make` call reads; the plaintext runtime path defaults to `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}/vpn-provision-$(id -u)}/`.
 
 ## Authorization
 
@@ -381,7 +384,7 @@ remains visible. A dirty or changed source after waiting prevents deployment.
 
 `infra-v1.0.0` also has a known check-mode-only failure in firewall SSH-port
 discovery. Do not weaken or skip the gate. Confirm the failure matches the
-record in [../explanation/deployment-status.md](../explanation/deployment-status.md#snapshot-operator-limitations)
+record in [../explanation/deployment-status.md](../reference/deployment-status.md#snapshot-operator-limitations)
 and fix the source before treating `make dry-run` as green.
 
 ## Re-deploy after a Terraform change (instance type, zone, firewall)

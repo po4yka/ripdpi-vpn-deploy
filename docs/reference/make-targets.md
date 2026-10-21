@@ -30,7 +30,7 @@ Variables (override on command line):
   scan-targets {SEEDS=…|CIDR=…|CRAWL=…}  Discover REALITY targets (RealiTLScanner)
   validate-target            Bounded REALITY target validation (local hygiene only)
   monitor-reality-target     Daily ASN/path signal from an explicit filtered VANTAGE
-  probe-sni-survival         EXIT_IP=… bare/www SNI survival probe (run on RU vantage)
+  probe-sni-survival         EXIT_IP=… bare/www SNI survival probe (run from a filtered vantage)
   probe-asn HOST=…           Team Cymru ASN lookup
   install-hooks              Install pre-commit hooks
   task-tools                 Install pinned mdtask and OpenSpec tools
@@ -124,7 +124,7 @@ Variables (override on command line):
   check-ip-reputation        Spamhaus / optional FireHOL file / AbuseIPDB
   probing-summary            7-day Xray/nginx/honeypot rollup
   xray-diagnostics           Fresh redacted Xray counters via local StatsService
-  tspu-canary                Daily TSPU rule-drift probes (in-cohort box)
+  tspu-canary                Daily DPI rule-drift probes (in-cohort box)
   test-tls-policing HOST=…   Probe the ~12-concurrent-TLS home-ISP rule
   probe-payload-throttle HOST=… Probe per-ASN ~16 KiB payload throttling
   snell-refinement BUNDLE=… CONFIG=… VANTAGE=…  Run staged Snell refinement matrix

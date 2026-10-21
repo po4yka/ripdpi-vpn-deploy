@@ -648,7 +648,7 @@ help:
 	@echo "  scan-targets {SEEDS=…|CIDR=…|CRAWL=…}  Discover REALITY targets (RealiTLScanner)"
 	@echo "  validate-target            Bounded REALITY target validation (local hygiene only)"
 	@echo "  monitor-reality-target     Daily ASN/path signal from an explicit filtered VANTAGE"
-	@echo "  probe-sni-survival         EXIT_IP=… bare/www SNI survival probe (run on RU vantage)"
+	@echo "  probe-sni-survival         EXIT_IP=… bare/www SNI survival probe (run from a filtered vantage)"
 	@echo "  probe-asn HOST=…           Team Cymru ASN lookup"
 	@echo "  install-hooks              Install pre-commit hooks"
 	@echo "  task-tools                 Install pinned mdtask and OpenSpec tools"
@@ -742,7 +742,7 @@ help:
 	@echo "  check-ip-reputation        Spamhaus / optional FireHOL file / AbuseIPDB"
 	@echo "  probing-summary            7-day Xray/nginx/honeypot rollup"
 	@echo "  xray-diagnostics           Fresh redacted Xray counters via local StatsService"
-	@echo "  tspu-canary                Daily TSPU rule-drift probes (in-cohort box)"
+	@echo "  tspu-canary                Daily DPI rule-drift probes (in-cohort box)"
 	@echo "  test-tls-policing HOST=…   Probe the ~12-concurrent-TLS home-ISP rule"
 	@echo "  probe-payload-throttle HOST=… Probe per-ASN ~16 KiB payload throttling"
 	@echo "  snell-refinement BUNDLE=… CONFIG=… VANTAGE=…  Run staged Snell refinement matrix"
@@ -1522,7 +1522,7 @@ monitor-reality-target:
 # Run this from the FILTERED (RU) vantage — it decides which SNI variant survives.
 # EXIT_IP=<vps-ip> make probe-sni-survival   (VANTAGE defaults to "filtered")
 probe-sni-survival:
-	@test -n "$(EXIT_IP)" || { echo "set EXIT_IP=<vps-ip> — run this from the filtered RU vantage"; exit 1; }
+	@test -n "$(EXIT_IP)" || { echo "set EXIT_IP=<vps-ip> — run this from a filtered vantage"; exit 1; }
 	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run 'make decrypt'"; exit 1; }
 	VANTAGE="$${VANTAGE:-filtered}" ./scripts/probe-sni-survival.sh "$(EXIT_IP)" --secrets "$(SECRETS_FILE)"
 

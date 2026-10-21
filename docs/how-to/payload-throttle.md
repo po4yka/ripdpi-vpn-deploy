@@ -1,6 +1,6 @@
 # Per-ASN payload-size throttling probe
 
-> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-21
 
 `scripts/probe-payload-throttle.sh` measures whether a transit path
 applies a silent throughput/latency penalty once a single response body

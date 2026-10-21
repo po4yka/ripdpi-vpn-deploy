@@ -99,12 +99,12 @@ This PENDING state must not be flipped to a passing state without a real, dated,
 ## Cross-references
 
 - `docs/decisions/0004-geoip-split-cascade.md` — the organizational sign-off accepting domestic-jurisdiction hosting for this entry node as a temporary, opt-in exception, and the broader threat-model and structural decisions this attestation gate operates under.
-- `docs/reference/asn-exposure-denylist.md` — the sibling ASN-based gate design (denylist rather than allowlist); this document reuses its non-bundled-data, schema-first, review-gate-first posture.
+- `docs/explanation/asn-exposure-denylist.md` — the sibling ASN-based gate design (denylist rather than allowlist); this document reuses its non-bundled-data, schema-first, review-gate-first posture.
 - `docs/decisions/0003-split-hop-relay-topology.md` — documents the directional invariants (initiator-must-be-B, no-listen-on-B) that defend a different threat model (dual-role flow correlation) and do not transfer to a cascade entry node, which is client-facing by definition. This is why the cascade entry/egress roles are a separate role pair rather than an extension of split-hop.
 
 ## Known caveats and open risk
 
 - The Yandex.Cloud-LLC-vs-YANDEX-LLC ASN mismatch is a single anecdotal, observation-grade report, in tension with a separate larger-sample measurement showing continued whitelist presence. It motivates recurring per-ASN re-verification, not a one-time or brand-based sign-off, and should not be read as a settled conclusion in either direction.
-- Escaping the foreign-datacenter TCP-freeze bucket by routing through an domestic-AS node is a trade into a different, already-anticipated enforcement path: regulator TLS-fingerprint and rate-based enforcement on a flagged domestic cloud AS. This is a latent risk carried by the design, not an unqualified improvement, and should be weighed as such when evaluating whether a given attestation's "reachability advantage" is worth the exposure.
+- Escaping the foreign-datacenter TCP-freeze bucket by routing through a domestic-AS node is a trade into a different, already-anticipated enforcement path: enforcement-point TLS-fingerprint and rate-based enforcement on a flagged domestic cloud AS. This is a latent risk carried by the design, not an unqualified improvement, and should be weighed as such when evaluating whether a given attestation's "reachability advantage" is worth the exposure.
 - Fail-closed behavior on missing, stale, or brand-only-justified attestation is a confidentiality and policy invariant, not an availability tradeoff. A green happy-path test of the gate is not sufficient evidence that it works — the required test is a forced-empty / forced-stale case that confirms the gate actually blocks.
 - IPv4-only and CGNAT-incompatible are entry-node preconditions for the candidate host and should be treated as class-level constraints on any host under evaluation, independent of the attestation question itself.

@@ -5,7 +5,7 @@
 **Research snapshot:** 2026-08-08
 
 **Scope:** Android clients for the P0/P1/P2 fleet recorded in
-[../explanation/deployment-status.md](../explanation/deployment-status.md). This is a compatibility and
+[../explanation/deployment-status.md](../reference/deployment-status.md). This is a compatibility and
 operational-readiness assessment, not evidence that every client has passed the
 live acceptance matrix on the intended handset and network paths.
 

@@ -4,7 +4,7 @@
 
 The sanitized mapping and last observed convergence state of the active
 three-provider fleet are recorded in
-[../explanation/deployment-status.md](../explanation/deployment-status.md). Provider support in this file is
+[../explanation/deployment-status.md](deployment-status.md). Provider support in this file is
 a capability statement; only a refreshed plan against the named environment
 is evidence of current provider state.
 
@@ -204,7 +204,7 @@ Uses:
   for the honeypot secondary IPv4.
 - Wider region coverage than UpCloud / Hetzner.
 - IP reputation is more variable; rotate regions when burn-check shows
-  a region's prefix is regulator-blocked.
+  a region's prefix is blocked at the enforcement point.
 - The provider schema marks its API key as required but fills it from the
   `VULTR_API_KEY` environment variable; the provider block stays empty and
   tokens never enter tfvars or state inputs.

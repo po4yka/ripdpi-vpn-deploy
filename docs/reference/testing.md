@@ -264,7 +264,7 @@ repeat the recipe at the merged source SHA, which may differ from the PR head.
 | scheduled Monday 08:00 UTC | **mutmut** (`.github/workflows/mutants.yml`) — full baseline and configured mutations; verified survivors create a tracking issue, technical failures fail the workflow |
 
 The repository-safe record of the last observed production deployment is
-[../explanation/deployment-status.md](../explanation/deployment-status.md). It distinguishes provider-live
+[../explanation/deployment-status.md](deployment-status.md). It distinguishes provider-live
 Terraform refresh, configuration-to-state comparison, Ansible convergence,
 host verification, and outside-in client-path evidence. At `infra-v1.0.0`,
 `make dry-run` also has a documented check-mode-only firewall discovery

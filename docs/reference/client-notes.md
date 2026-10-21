@@ -163,10 +163,8 @@ group_vars, or `UTLS_FINGERPRINT=firefox make emit-singbox CLIENT=name` for a
 single run). Hysteria2's QUIC TLS has no uTLS knob, so this does not apply to it.
 
 **Honest scope — not active on the baseline.** This matters only under the
-June-2026 three-condition TLS pattern
-(`june-2026-rkn-tls-three-condition-block`), whose Condition 1 requires the
-*server* to sit on a flagged cloud AS
-Cloud.ru). The baseline runs foreign VPS (UpCloud / Hetzner / Vultr), which take
+June-2026 three-condition TLS pattern, whose Condition 1 requires the
+*server* to sit on a flagged domestic cloud AS. The baseline runs foreign VPS (UpCloud / Hetzner / Vultr), which take
 a different enforcement path (TCP port-range, not this TLS-rate rule). So this is
 a **latent** caveat for any domestically hosted relay/cascade node and general client
 guidance — **not** an active baseline threat. Do not over-state it elsewhere.

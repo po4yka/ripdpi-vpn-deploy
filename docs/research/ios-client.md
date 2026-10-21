@@ -14,7 +14,7 @@ AmneziaWG keys, or private subscription URLs are recorded here.
 
 The deployed fleet exposes four independent client paths. Its current release
 and verification boundary are recorded in
-[../explanation/deployment-status.md](../explanation/deployment-status.md); this client comparison does not
+[../explanation/deployment-status.md](../reference/deployment-status.md); this client comparison does not
 by itself prove path reachability.
 
 | Profile | Public client surface | Required client capability |

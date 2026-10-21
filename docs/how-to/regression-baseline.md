@@ -40,18 +40,20 @@ same pinned version ad-hoc:
 
 ```bash
 # Operator workstation (recommended):
-pipx install rkn-block-checker==0.1.0
+pipx install rkn-block-checker==0.6.0
 
 # Or, per-user inside an existing venv:
-pip install --user rkn-block-checker==0.1.0
+pip install --user rkn-block-checker==0.6.0
 ```
 
-The pinned version lives in **two** places, in sync:
+The pinned version lives in **two** places that must agree:
 
-- `scripts/run-rkn-block-checker.sh` → `the regulator_BLOCK_CHECKER_VERSION="0.1.0"`
-- `requirements.in` / `requirements.txt` → `rkn-block-checker==0.1.0`
+- `scripts/run-rkn-block-checker.sh` → `RKN_BLOCK_CHECKER_VERSION` (default `0.5.0`, overridable from the environment)
+- `requirements.in` / `requirements.txt` → `rkn-block-checker==0.6.0`
 
-Bumping the pin = edit both and regenerate the hash-locked
+At the time of writing the script default lags the hash-locked requirement;
+export `RKN_BLOCK_CHECKER_VERSION=0.6.0` for the run and align the default
+when you next bump the pin. Bumping = edit both and regenerate the hash-locked
 `requirements.txt`.
 
 ## Running locally

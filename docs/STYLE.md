@@ -72,6 +72,10 @@ The first line after the H1 of every page is a status line:
 | a carrier or ISP name | the cohort's technical signature, or `the access network` |
 | `<region>-direct`, `geoip:<cc>` as labels | `domestic-direct`, `geoip-split`, `direct policy path` |
 
+Pages under `archive/` keep their historical body text, including old slugs,
+because they are provenance; their file names and headings still follow this
+rule and the index test checks them.
+
 Behavioural descriptions stay precise: SNI inspection, TLS-in-TLS detection,
 active probing of suspected servers, UDP throttling, per-IP dual-role flow
 classification.

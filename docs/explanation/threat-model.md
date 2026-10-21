@@ -54,6 +54,6 @@ design responds to it:
 - Transport-level liveness and rotation: [protocol liveness](../reference/protocol-liveness.md).
 - Two-vantage reachability: [transport reachability matrix](../how-to/transport-reachability-matrix.md).
 - Provider and ASN exposure: [provider notes](../reference/provider-notes.md) and
-  [the ASN exposure denylist design](../reference/asn-exposure-denylist.md).
+  [the ASN exposure denylist design](asn-exposure-denylist.md).
 - Why the baseline is direct: [decision 0001](../decisions/0001-cdn-not-filtered-path-baseline.md).
 - What is research and what is baseline: [decision 0002](../decisions/0002-role-and-doc-tiering.md).

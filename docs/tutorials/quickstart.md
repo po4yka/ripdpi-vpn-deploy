@@ -164,7 +164,7 @@ This section walks a first node from plan to smoke test. Re-deploys,
 tag-scoped runs, adding a device and the acceptance checklist live in
 [the deploy guide](../how-to/deploy.md); do not maintain a second copy here.
 
-Before changing an existing fleet, read [../explanation/deployment-status.md](../explanation/deployment-status.md).
+Before changing an existing fleet, read [../explanation/deployment-status.md](../reference/deployment-status.md).
 It records the last verified snapshot, named environments,
 management-path invariant, live validation boundary, and observed operator
 limitations without publishing endpoints or secrets. It does not establish
@@ -245,7 +245,7 @@ also leaves the block unsuccessful:
 )
 ```
 
-[The deployment snapshot](../explanation/deployment-status.md#snapshot-operator-limitations)
+[The deployment snapshot](../reference/deployment-status.md#snapshot-operator-limitations)
 records historical check-mode failures. Diagnose current `dry-run` errors against
 current source and node state; a recorded limitation does not authorize bypassing
 a failed prerequisite.

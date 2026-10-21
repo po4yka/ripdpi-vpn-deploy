@@ -130,14 +130,25 @@ def test_relative_links_resolve_to_tracked_files() -> None:
     assert not broken, "broken relative links:\n" + "\n".join(broken)
 
 
-def test_file_names_and_headings_carry_no_forbidden_labels() -> None:
+LABEL_WORDS = re.compile(r"\b(RU|TSPU|RKN|Russia|Russian)\b")
+
+
+def test_file_names_headings_tables_and_diagrams_carry_no_forbidden_labels() -> None:
+    """Headings, table cells and Mermaid labels are checked on every page; archive bodies keep
+    their historical prose, so only their names and headings are checked."""
     offenders = []
     for page in [*_pages(), DOCS / "README.md", DOCS / "STYLE.md", ROOT / "README.md"]:
         rel = str(page.relative_to(ROOT))
-        name = page.name.lower()
-        if any(token in name for token in FORBIDDEN_LABEL_TOKENS):
+        if any(token in page.name.lower() for token in FORBIDDEN_LABEL_TOKENS):
             offenders.append(f"{rel}: file name")
+        archived = page.relative_to(DOCS).parts[0] == "archive" if page.is_relative_to(DOCS) else False
+        in_mermaid = False
         for number, line in enumerate(page.read_text().splitlines(), 1):
-            if line.startswith("#") and re.search(r"\b(RU|TSPU|RKN|Russia|Russian)\b", line):
-                offenders.append(f"{rel}:{number}: heading")
+            if line.startswith("```"):
+                in_mermaid = line.strip() == "```mermaid"
+                continue
+            heading = line.startswith("#")
+            table_or_diagram = (line.lstrip().startswith("|") or in_mermaid) and not archived
+            if (heading or table_or_diagram) and LABEL_WORDS.search(line):
+                offenders.append(f"{rel}:{number}: {'heading' if heading else 'table cell or diagram label'}")
     assert not offenders, "forbidden labels:\n" + "\n".join(offenders)

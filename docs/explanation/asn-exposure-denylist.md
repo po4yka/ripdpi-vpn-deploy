@@ -1,6 +1,6 @@
 # ASN Exposure Denylist Gate
 
-> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** explanation · **Tier:** — · **Reviewed:** 2026-10-21
 
 This note defines a safe design boundary for the server-side denylist gate based on external ASN and service-network feeds. It is intentionally non-deployable: it contains no ranges, no generated rule payloads, no firewall commands, and no provider-specific policy.
 
@@ -36,7 +36,7 @@ Ingress and egress policy are separate decisions. Ingress filtering answers "who
 
 Any implementation proposal must produce these documents or files before enforcement is considered:
 
-- `docs/reference/asn-exposure-denylist.md` as the design boundary and safety contract.
+- `docs/explanation/asn-exposure-denylist.md` as the design boundary and safety contract.
 - A schema document or checked schema file for feed metadata, source trust, update cadence, license, policy direction, and rollout mode.
 - Placeholder-only fixtures that exercise the schema without real ranges, ASNs, generated rules, provider names, operators, carriers, or geography-specific cohorts.
 - A redacted dry-run report format that shows source URLs, validation status, added/removed counts, policy direction, and risk notes, but never prints inventories.
