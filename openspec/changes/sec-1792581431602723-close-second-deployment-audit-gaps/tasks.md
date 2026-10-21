@@ -19,7 +19,7 @@ keep every existing gate.
 
 ## Execution
 
-- [ ] SEC-1792581854245311 Keep vpnd plaintext cleanup active from decrypt until cleanup with signal regressions #bug !high @item:SEC-1792581431602723
+- [x] SEC-1792581854245311 Keep vpnd plaintext cleanup active from decrypt until cleanup with signal regressions #bug !high @item:SEC-1792581431602723
 - [ ] SEC-1792581855014542 Refuse Vultr os_id changes before an in-place reinstall with lifecycle regressions #bug !high @item:SEC-1792581431602723
 - [ ] SEC-1792581856404337 Bind smoke-test verify and security-verify plays to the selected ENV with refusal regressions #bug !high @item:SEC-1792581431602723
 - [ ] SEC-1792581857264775 Reuse an existing Hetzner project SSH key for additional environments with plan regressions #bug !high @item:SEC-1792581431602723

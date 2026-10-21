@@ -1,11 +1,19 @@
 """Shared command safety contracts."""
 
+import asyncio
 import signal
 import sys
 from ..runner.make import target
 from ..wizard import confirm
 
-__all__ = ["confirm", "finish_with_cleanup", "ensure_host_in_registry", "render_summary", "require_review"]
+__all__ = [
+    "confirm",
+    "finish_with_cleanup",
+    "ensure_host_in_registry",
+    "render_summary",
+    "require_review",
+    "StopSignals",
+]
 
 
 async def finish_with_cleanup(ctx, outcome=None):
@@ -34,6 +42,55 @@ def _interrupt_review(number, _frame):
 
 # Terminal interrupts, a dropped session and service stops all end the review.
 REVIEW_SIGNALS = (signal.SIGINT, signal.SIGQUIT, signal.SIGTERM, signal.SIGHUP)
+
+
+class OperationInterrupted(RuntimeError):
+    """A signal stopped a pipeline while decrypted secrets could exist."""
+
+    def __init__(self, number: int):
+        super().__init__(f"interrupted by signal {number}; stopped before the next step")
+        self.exit_code = 128 + number
+
+
+class StopSignals:
+    """Turn REVIEW_SIGNALS into a stop at the next pipeline step boundary.
+
+    Dispatch keeps default terminal signals, which would end vpnd before its
+    cleanup boundary. While active, the event loop only records the first
+    signal. vpnd does not kill the running Make step: terminal signals reach
+    it directly, and a killed Make could leave a child that writes plaintext
+    after `make clean`. Keep the guard active through cleanup.
+    """
+
+    def __init__(self):
+        self.received = None
+        self._installed = []
+
+    def __enter__(self):
+        loop = asyncio.get_running_loop()
+        for number in REVIEW_SIGNALS:
+            loop.add_signal_handler(number, self._record, number)
+            self._installed.append(number)
+        return self
+
+    def __exit__(self, *_exc):
+        loop = asyncio.get_running_loop()
+        while self._installed:
+            loop.remove_signal_handler(self._installed.pop())
+
+    def _record(self, number):
+        if self.received is None:
+            self.received = number
+
+    def check(self):
+        if self.received is not None:
+            raise OperationInterrupted(self.received)
+
+    def outcome(self, error):
+        """Report a recorded signal in place of the step failure it caused."""
+        if self.received is not None and getattr(error, "exit_code", None) is None:
+            return OperationInterrupted(self.received)
+        return error
 
 
 def require_review(ctx, label):
