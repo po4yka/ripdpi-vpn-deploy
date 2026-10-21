@@ -47,8 +47,9 @@ REVIEW_SIGNALS = (signal.SIGINT, signal.SIGQUIT, signal.SIGTERM, signal.SIGHUP)
 class OperationInterrupted(RuntimeError):
     """A signal stopped a pipeline while decrypted secrets could exist."""
 
-    def __init__(self, number: int):
-        super().__init__(f"interrupted by signal {number}; stopped before the next step")
+    def __init__(self, number: int, step_error=None):
+        detail = "" if step_error is None else f"; the step reported: {step_error}"
+        super().__init__(f"interrupted by signal {number}; stopped before the next step{detail}")
         self.exit_code = 128 + number
 
 
@@ -59,24 +60,33 @@ class StopSignals:
     cleanup boundary. While active, the event loop only records the first
     signal. vpnd does not kill the running Make step: terminal signals reach
     it directly, and a killed Make could leave a child that writes plaintext
-    after `make clean`. Keep the guard active through cleanup.
+    after `make clean`. Run cleanup through `cleanup` so it stays guarded.
+
+    An ignored signal (for example SIGHUP under nohup) stays ignored: a caught
+    signal resets to the default action in every Make child, so guarding it
+    would let a lost session kill a running apply.
     """
 
     def __init__(self):
         self.received = None
-        self._installed = []
+        self._previous = {}
 
     def __enter__(self):
         loop = asyncio.get_running_loop()
         for number in REVIEW_SIGNALS:
+            previous = signal.getsignal(number)
+            if previous == signal.SIG_IGN:
+                continue
             loop.add_signal_handler(number, self._record, number)
-            self._installed.append(number)
+            self._previous[number] = previous
         return self
 
     def __exit__(self, *_exc):
         loop = asyncio.get_running_loop()
-        while self._installed:
-            loop.remove_signal_handler(self._installed.pop())
+        while self._previous:
+            number, previous = self._previous.popitem()
+            loop.remove_signal_handler(number)
+            signal.signal(number, previous)
 
     def _record(self, number):
         if self.received is None:
@@ -89,8 +99,21 @@ class StopSignals:
     def outcome(self, error):
         """Report a recorded signal in place of the step failure it caused."""
         if self.received is not None and getattr(error, "exit_code", None) is None:
-            return OperationInterrupted(self.received)
+            interrupted = OperationInterrupted(self.received, error)
+            interrupted.__cause__ = error
+            return interrupted
         return error
+
+    async def cleanup(self, ctx, error):
+        """Run `make clean` under the guard and report a signal it received."""
+        try:
+            await finish_with_cleanup(ctx, error)
+        except Exception as failure:
+            mapped = self.outcome(failure)
+            if mapped is failure:
+                raise
+            raise mapped from failure
+        self.check()
 
 
 def require_review(ctx, label):

@@ -82,13 +82,19 @@ case "$target" in
       symlink) rm -f "$secret"; ln -s "$FIXTURE_ROOT/hardening-target" "$secret" ;;
       immutable) /usr/bin/chflags uchg "$secret" ;;
     esac ;;
-  clean) rm -f "$secret"; exit "${CLEAN_EXIT:-0}" ;;
+  clean)
+    rm -f "$secret"
+    if [ "${SLOW_TARGET:-none}" = clean ]; then : > "$FIXTURE_ROOT/started"; sleep 2; fi
+    exit "${CLEAN_EXIT:-0}" ;;
   test-tls-policing) test "$host" = 203.0.113.5 ;;
   emit-singbox) printf '%s\n' '{"outbounds":[]}' ;;
 esac
 if [ "${ECHO_SECRET_PATH:-0}" = 1 ]; then printf 'reading %s\n' "$secret"; fi
 if [ "$target" = "${FAIL_TARGET:-none}" ]; then exit 31; fi
 if [ "$target" = "${SLOW_TARGET:-none}" ]; then : > "$FIXTURE_ROOT/started"; sleep 2; fi
+if [ -n "${HUP_RECORD:-}" ]; then
+  python3 -c 'import signal; print(signal.getsignal(signal.SIGHUP) == signal.SIG_IGN)' >> "$HUP_RECORD"
+fi
 """,
         )
         self.executable(
@@ -171,15 +177,17 @@ exit "${PLAYBOOK_EXIT:-0}"
                 child.kill()
             child.wait()
 
-    def signalled(self, args, slow, number, group):
+    def signalled(self, args, slow, number, group, extra=None, ignore_hup=False):
         """Signal vpnd while the stub runs `slow`; a group signal also reaches that step."""
         child = subprocess.Popen(
             self.argv(args, True),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
-            env=self.environment({"SLOW_TARGET": slow}),
+            env=self.environment({"SLOW_TARGET": slow, **(extra or {})}),
             start_new_session=True,
+            # nohup leaves SIGHUP ignored for vpnd and every child it starts.
+            preexec_fn=(lambda: signal.signal(signal.SIGHUP, signal.SIG_IGN)) if ignore_hup else None,
         )
         try:
             deadline = time.monotonic() + 15
@@ -538,6 +546,27 @@ def test_signal_during_a_step_still_cleans_plaintext(tmp_path, name, reviewed, g
     # A signal to vpnd alone lets the step finish; no later step starts.
     assert calls.split(f"make {step}\n", 1)[1] == "make clean\n", calls
     assert not fixture.secrets().exists()
+
+
+# Success path (no review in dry-run reconverge) and failure path (deploy stops at the review).
+@pytest.mark.parametrize("args", (["reconverge", "--dry-run"], ["deploy"]), ids=("success", "failure"))
+@pytest.mark.parametrize("number", (signal.SIGINT, signal.SIGTERM))
+@pytest.mark.parametrize("group", (False, True), ids=("vpnd", "group"))
+def test_signal_during_cleanup_reports_the_signal(tmp_path, args, number, group):
+    fixture = Fixture(tmp_path)
+    returncode, stderr = fixture.signalled(args, "clean", int(number), group)
+    assert returncode == 128 + number, stderr
+    assert fixture.calls().endswith("make clean\n") and not fixture.secrets().exists()
+
+
+def test_an_ignored_hangup_stays_ignored_for_every_step(tmp_path):
+    fixture = Fixture(tmp_path)
+    record = tmp_path / "hup"
+    returncode, stderr = fixture.signalled(["reconverge", "--dry-run"], "plan", int(signal.SIGHUP), True,
+                                           extra={"HUP_RECORD": str(record)}, ignore_hup=True)
+    assert returncode == 0, stderr
+    assert fixture.calls().endswith("make dry-run\nmake clean\n")
+    assert set(record.read_text().split()) == {"True"}
 
 
 @pytest.mark.parametrize(("name", "reviewed", "gated"), REVIEW_GATES)

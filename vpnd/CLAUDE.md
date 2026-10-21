@@ -32,6 +32,10 @@ stops at the next step boundary, runs `make clean` and exits 128 + signal.
 The prompt keeps its own handler because a blocking prompt stops the loop.
 vpnd never kills the running Make step: terminal signals reach it directly,
 and a killed Make could leave a child that writes plaintext after cleanup.
+`StopSignals.cleanup` keeps `make clean` under the guard, so a signal there
+still exits 128 + signal. An inherited ignored signal (SIGHUP under `nohup`)
+stays ignored: a caught signal resets to the default action in Make children,
+so guarding it would let a lost session kill a running apply.
 
 **One command definition.** `src/vpnd/cli.py` owns the standard-library parser,
 global-flag precedence, help, completions and all twenty man pages. Add commands
