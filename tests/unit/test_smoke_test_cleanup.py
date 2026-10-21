@@ -205,6 +205,8 @@ def smoke_run(tmp_path):
         source = _replace_paths(source, workdir, units)
         _replace_waits(source['tasks'], remove_failure)
         source.update(hosts='localhost', become=False, gather_facts=False)
+        # Fact gathering probes systemctl on Linux; keep only the environment guard.
+        source['pre_tasks'] = [task for task in source['pre_tasks'] if 'ansible.builtin.setup' not in task]
         source['vars']['ansible_python_interpreter'] = sys.executable
         shared_vars = yaml.safe_load(
             (ROOT / 'ansible/group_vars/all.yml').read_text()
