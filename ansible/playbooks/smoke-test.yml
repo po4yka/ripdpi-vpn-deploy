@@ -28,6 +28,11 @@
   vars_files:
     - "{{ vpn_secrets_file }}"
 
+  pre_tasks:
+    - name: Bind the play to the selected environment
+      ansible.builtin.import_tasks: tasks/selected-env.yml
+      tags: [always]
+
   tasks:
     - name: Ensure VPN_SECRETS_FILE was provided
       ansible.builtin.assert:
