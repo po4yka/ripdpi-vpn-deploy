@@ -110,7 +110,9 @@ cursor; it never recreates a secret-bearing shell environment.
 `verify.yml`, `security-verify.yml` and `smoke-test.yml` load one environment's
 secrets for every selected host, so their first `always` pre-task imports
 `playbooks/tasks/selected-env.yml`, which refuses a host whose `env` is not
-`ENV`; their Make recipes pass `ENV` explicitly.
+`ENV`; their Make recipes pass `ENV` explicitly and drop inherited
+`ANSIBLE_SKIP_TAGS`/`ANSIBLE_RUN_TAGS`. `smoke-test.yml` gathers facts in a
+pre-task after that check, so a refused host is never contacted.
 `observability-host-bootstrap.yml` retains only the historical dedicated-host
 contract; the current operator refuses that bootstrap. Current observability
 adds bounded collector/agent slices to existing VPN hosts and a pinned Kuma

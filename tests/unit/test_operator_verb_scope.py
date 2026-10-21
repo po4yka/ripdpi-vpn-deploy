@@ -159,7 +159,8 @@ def test_verification_recipes_pass_the_selected_environment(verb):
                   "DEPLOY_SOURCE_REVISION=revision", "DEPLOYABLE_SOURCE_DIGEST=digest")
     assert result.returncode == 0, result.stdout + result.stderr
     text = " ".join(re.sub(r"\\\n", " ", result.stdout).split())
-    assert f"ENV=staging VPN_SECRETS_FILE=/nonexistent/runtime.yaml ansible-playbook ansible/playbooks/{verb}.yml" in text
+    assert ("env -u ANSIBLE_SKIP_TAGS -u ANSIBLE_RUN_TAGS ENV=staging VPN_SECRETS_FILE=/nonexistent/runtime.yaml "
+            f"ansible-playbook ansible/playbooks/{verb}.yml") in text
     assert "inventory/generated.ini" in text
 
 
