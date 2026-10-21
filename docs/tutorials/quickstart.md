@@ -160,6 +160,10 @@ anything below `secrets/local/`.
 
 ## 6. Deploy
 
+This section walks a first node from plan to smoke test. Re-deploys,
+tag-scoped runs, adding a device and the acceptance checklist live in
+[the deploy guide](../how-to/deploy.md); do not maintain a second copy here.
+
 Before changing an existing fleet, read [../explanation/deployment-status.md](../explanation/deployment-status.md).
 It records the last verified snapshot, named environments,
 management-path invariant, live validation boundary, and observed operator

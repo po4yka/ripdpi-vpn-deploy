@@ -2,7 +2,8 @@
 
 > **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-10-21
 
-This repo implements a four-tier multi-profile access stack:
+This page is the map: layer ownership, profile-to-role mapping and port
+ownership. This repo implements a four-tier multi-profile access stack:
 
 ```
 P0 Primary       VLESS + REALITY + XTLS-Vision over RAW/TCP/443
@@ -77,45 +78,6 @@ contract. See `docs/reference/xray-observability.md` for privacy and failure sem
 
 The tactical P0 self-steal mode makes the REALITY destination an nginx TLS site on loopback. Enabling it requires `xray.target` to equal `127.0.0.1:<reality_self_steal_port>`, requires the single `xray.server_names` entry to match the SAN of the owned certificate, and does not add TCP/80 or any other public listener. The Xray inbound remains the sole owner of public TCP/443.
 
-## Disposable nodes
+## Why it is shaped this way
 
-Every node is replaceable. When an IP burns or a config drifts, do not
-hand-repair a snowflake server — recreate from `git + secrets +
-Terraform plan`. The state lives in two places:
-
-1. The encrypted secrets file outside Git tracking: normally under
-   `~/.config/vpn-provision/`, or in the repository's git-ignored
-   `secrets/local/config/` operator layout.
-2. The Terraform state file (local and provider/`ENV` scoped; back it up out-of-band). `prod` uses the legacy `default` workspace, while other environments live in same-named Terraform workspaces.
-
-Lose the secrets file → you must rotate every credential.
-Lose the Terraform state → you can re-import the VPS, but blue-green
-becomes manual. See `../how-to/incident.md` § "State loss".
-
-## Why direct nginx (no CDN)
-
-`docs/decisions/0001-cdn-not-filtered-path-baseline.md` is the ADR. Short version: as of April–May 2026,
-Cloudflare into the filtered network goes through DPI-enabled domestic PoPs, VK CDN closed
-write methods, Yandex CDN dropped anonymous endpoints. CDN-fronted P1 is
-no longer a baseline — it is a tactical option.
-
-## Why per-provider Terraform roots
-
-Terraform module sources cannot be variable-driven, so a clean drop-in is
-a separate root per provider with identical outputs. The Ansible layer is
-provider-neutral; only `scripts/render-inventory.sh` reads
-provider-specific outputs (`server_ipv4`, `server_ipv6`, `admin_user`,
-`ssh_port`, `server_hostname`). The SSH port is a single Terraform input that
-also configures cloud-init, provider-edge rules, rendered `ansible_port`, and
-the effective nftables allowlist.
-
-## What is intentionally NOT here
-
-- Multi-region fleet automation. v1 is single-VPS; second-VPS guidance
-  is in `../how-to/add-fallback.md`.
-- Subscription delivery as a dynamic API service. `subscription-host`
-  ships static token payloads with a revoked-tokens map and a
-  rate-limit zone; there is no application server behind the vhost.
-- P3 reachability layer automation. By design — the reachability layer is
-  network-specific and operator-judged, not deterministically deployable.
-- Per-role Molecule coverage for supported roles; selected red-path scenarios run in CI.
+The reasoning behind disposable nodes, the direct nginx baseline, one Terraform root per provider and the deliberate omissions is in [the architecture rationale](../explanation/architecture-rationale.md); the adversary model is in [the threat model](../explanation/threat-model.md).

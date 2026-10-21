@@ -70,6 +70,7 @@ Facts, tables and contracts.
 | [AmneziaWG cohort obfuscation profiles](reference/awg-cohorts.md) | AmneziaWG obfuscation cohort profiles named by packet-shape signature, and how to add one | CORE |
 | [Client-side known issues and version pins](reference/client-notes.md) | Client-side known issues and version pins for AmneziaWG, sing-box and NaiveProxy | CORE |
 | [Deploy profiles](reference/deploy-profiles.md) | The group_vars profiles: family, device-full, lab, hardened production; decoy identity; when not to use one | — |
+| [Make targets](reference/make-targets.md) | Generated mirror of `make help`: every operator target with its one-line purpose | — |
 | [Reviewed network exposure policy](reference/network-exposure-gate.md) | The reviewed, default-off network exposure policy gate and its operator contract | — |
 | [Resource-bounded observability on existing hosts](reference/observability-operations.md) | Bounded co-hosted metrics, private Uptime Kuma, lifecycle verbs, encrypted backup and restore, current contract and task history | — |
 | [Per-ASN payload-size throttling probe](reference/payload-throttle.md) | Probe for a silent per-path throughput penalty above a response-size threshold | — |
@@ -82,6 +83,7 @@ Facts, tables and contracts.
 | [Subscription plane — gap matrix](reference/subscription-plane.md) | Subscription delivery contract gap matrix | — |
 | [Testing — what's covered and what isn't](reference/testing.md) | Coverage matrix, test phases mapped to the operator workflow, CI dependency selection, what is not tested | — |
 | [Recipient destination boundary](reference/transport-egress.md) | Recipient destination policy: TCP/UDP egress, private normalizer and gateway authority, namespace isolation | — |
+| [vpnd commands](reference/vpnd-commands.md) | Generated mirror of the vpnd parser: global options, commands and subcommands | — |
 | [Direct XHTTP delivery profiles](reference/xhttp-delivery-profiles.md) | Direct XHTTP delivery profiles: primary and alternate endpoints, SNI and host rules | — |
 | [Xray observability](reference/xray-observability.md) | Loopback-only StatsService, redacted node_exporter counters, freshness checks and failure interpretation | — |
 | [Xray-core release-line tracker](reference/xray-release-line.md) | Xray-core release-line tracker with per-release breaking changes and the production pin policy | CORE |
@@ -92,7 +94,9 @@ Why the system is shaped this way.
 
 | Page | Purpose | Tier |
 |---|---|---|
+| [Architecture rationale](explanation/architecture-rationale.md) | Why nodes are disposable, why P1 is direct nginx, why one Terraform root per provider, what is left out on purpose | CORE |
 | [Deployment status — last verified snapshot](explanation/deployment-status.md) (Snapshot (2026-08-23)) | Sanitized last verified deployment snapshot, observed live gates and remaining verification boundaries | — |
+| [Threat model](explanation/threat-model.md) | What the stack is built to survive, behaviour by behaviour, and which layer answers each | CORE |
 
 ## Decisions
 

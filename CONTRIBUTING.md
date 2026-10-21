@@ -1,35 +1,37 @@
 # Contributing
 
-## Conventional Commits
+Thank you for helping. This page covers the development setup, the pull
+request flow and where the detailed rules live. The project rules that
+every contributor and coding agent follows are in [AGENTS.md](AGENTS.md);
+the documentation rules are in [docs/STYLE.md](docs/STYLE.md). Please read
+[the code of conduct](CODE_OF_CONDUCT.md) and
+[the security policy](.github/SECURITY.md) first.
 
-Subjects follow [Conventional Commits](https://www.conventionalcommits.org/).
-release-please reads them on every push to `main` to populate `CHANGELOG.md`
-and tag releases.
+## What to work on
 
-| Prefix | When |
-|---|---|
-| `feat:` | New role, transport profile, script, runbook, or operator capability. |
-| `fix:` | Bug fix in a role, template, script, or doc. |
-| `docs:` | Documentation only — no code or config change. |
-| `test:` | Molecule scenarios, validators, smoke tests. |
-| `refactor:` | Code restructure with no behaviour change. |
-| `perf:` | Performance-only change. |
-| `chore:` | Tooling and dependencies (including Renovate PRs). |
-| `ci:` | CI workflow changes (`.github/workflows/*`). |
-| `build:` | Build-time change (rarely applicable here). |
-| `revert:` | Reverts a prior commit. |
-
-`feat!` / `fix!` (or a `BREAKING CHANGE:` trailer) bumps the major version.
+- Open tasks live in `docs/tasks/issues/`; `make task-list` prints them and
+  [docs/tasks/README.md](docs/tasks/README.md) explains the lifecycle. Every
+  non-trivial PR names a Task ID.
+- Features, infrastructure behaviour, schemas, security or network changes,
+  deployment lifecycle and cross-repository contracts go through an
+  OpenSpec change. Narrow work records an allowed `spec_reason`. Use
+  `./taskctl`; never edit the generated board or run archive commands
+  directly.
+- Pull requests in these directions are closed with a pointer to the
+  rationale: a CDN as the filtered-path baseline
+  ([decision 0001](docs/decisions/0001-cdn-not-filtered-path-baseline.md)),
+  a web admin panel, calendar-based credential rotation, Docker or
+  Kubernetes on the data plane, auto-deploy from `main`
+  ([architecture rationale](docs/explanation/architecture-rationale.md)).
 
 ## First-time setup
 
-The complete local-gate reference setup below targets a disposable **Ubuntu
-24.04 x86-64 developer VM**, matching the hosted runner OS. Start with `mise`,
-Git and Make available; run from the repository root. System packages below
-follow the distribution-managed dependencies in
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml); the repository does not
-claim exact version pins for those packages. They include tools used by real
-portable tests, not only commands checked by `check-prereqs`.
+The complete local-gate reference setup targets a disposable **Ubuntu
+24.04 x86-64 developer VM**, matching the hosted runner OS. Start with
+`mise`, Git and Make available and run from the repository root. System
+packages follow the distribution-managed dependencies in
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml); the repository does
+not pin their versions.
 
 ```bash
 set -euo pipefail
@@ -42,15 +44,13 @@ mise install
 mise exec -- make install-hooks
 ```
 
-[`mise.toml`](mise.toml) owns the exact runtime and standalone-tool pins.
+[`mise.toml`](mise.toml) owns the runtime and standalone-tool pins.
 `install-hooks` uses that Python to install the hash-pinned
 [`requirements.txt`](requirements.txt) with `--require-hashes --no-deps`,
-then installs both hooks. Python tooling does not provide PATH executables for
-actionlint, shellcheck, Bats, SOPS, Xray or sing-box. Continue with
-the following Bash session; it reads existing pins rather than maintaining
-another version list. Node uses CI's major selector, with its minimum declared
-in [`tools/tasking/package.json`](tools/tasking/package.json). Run both blocks
-in the same Bash session; failed installs or checksum checks stop the sequence.
+then installs the pre-commit and commit-message hooks. Python tooling does
+not provide actionlint, shellcheck, Bats, SOPS, Xray or sing-box. The next
+block reads their pins from CI instead of maintaining a second list; run
+both blocks in the same Bash session.
 
 ```bash
 set -euo pipefail
@@ -79,7 +79,8 @@ setup_gate_tools=("node@$setup_node" "aqua:rhysd/actionlint@$setup_actionlint"
   "aqua:getsops/sops@$setup_sops" "sing-box@$setup_singbox")
 ```
 
-Install those tools and initialize the local inputs used before the first gate:
+Install those tools and initialise the local inputs used before the first
+gate:
 
 ```bash
 set -euo pipefail
@@ -107,27 +108,22 @@ done
 mise exec "${setup_gate_tools[@]}" -- make check-prereqs
 ```
 
-Xray's version and Linux archive checksum come from
-[the shared CI installer](.github/actions/install-xray/action.yml).
-The Galaxy collections use [`requirements.yml`](requirements.yml), and
-`task-tools` uses `npm ci --prefix tools/tasking --ignore-scripts` against its
-lock. Provider roots come from CI's Terraform matrix; backend-disabled init
-downloads their plugins without accessing remote state or provisioning. It
-must precede the first `make check`: its `validate` prerequisites need installed
-provider schemas before `ci-fast` reaches its own Terraform test init.
-Hook installation alone does not install these dependencies.
-Terraform-specific commit hooks also invoke `terraform-docs` and `tflint`:
-see [`.pre-commit-config.yaml`](.pre-commit-config.yaml). Their external binary
-versions are not pinned here; this `make check` recipe does not claim a complete
-installer for every file hook. Prepare those tools separately before Terraform
-commits; installing the hooks is not proof they have run successfully.
-The commit-message hook rejects `Co-Authored-By:` trailers; Conventional
-Commit subjects are not validated locally, so follow the table above.
+Notes on that block:
 
-`check-prereqs` checks command availability, the Terraform minimum and PyYAML
-import; it is not the complete CI parity gate. Activate the complete tool
-selection for ordinary Make commands and runbooks in this Bash
-session. In a new session, repeat the pin-reading block above and this block:
+- Xray's version and Linux archive checksum come from
+  [the shared CI installer](.github/actions/install-xray/action.yml). On a
+  macOS workstation install the matching `Xray-macos-arm64-v8a.zip` or
+  `Xray-macos-64.zip` asset of the same release, verified against its
+  `.dgst` file; the templates-render commit hook needs the binary on `PATH`.
+- Backend-disabled Terraform init downloads provider plugins without
+  touching remote state. It must precede the first `make check`.
+- Terraform-specific commit hooks also invoke `terraform-docs` and
+  `tflint` (see [`.pre-commit-config.yaml`](.pre-commit-config.yaml)); their
+  versions are not pinned here.
+- `check-prereqs` checks command availability only; it is not the CI
+  parity gate.
+
+In a new shell, repeat the pin-reading block and activate the tools:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
@@ -137,137 +133,106 @@ eval "$setup_tool_environment"
 unset setup_tool_environment
 ```
 
-Run the full gate with `make check` in the activated session, or use
-`mise exec "${setup_gate_tools[@]}" -- make check` explicitly. Bare
-`mise exec --` recomputes the configured tool selection and can drop these
-additional pins. Activation changes this session only, without editing
-`mise.toml` or global defaults.
-Hosted-only and live lanes remain separate in [docs/reference/testing.md](docs/reference/testing.md).
+Bare `mise exec --` recomputes the configured tool selection and can drop
+these additional pins, so run the gate as
+`mise exec "${setup_gate_tools[@]}" -- make check` or in the activated
+session. An ambient `python3` can miss Ansible or use a different
+dependency set; do not install `requirements.in` as an alternative to the
+hash-pinned lock.
 
-An ambient `python3` can otherwise miss
-Ansible or use a different dependency set. Do not install `requirements.in`
-as an alternative to the hash-pinned lock.
-
-For a complete reference gate on macOS, use the Ubuntu VM above. Native Mac
-checks need equivalent host tools, Darwin Xray/sing-box builds at the same
-source pins, GNU `timeout` named `timeout` and a real `flock` executable on PATH. The
-watchdog tests exercise actual process locks; a stub does not satisfy this
-prerequisite. The cloud-init target
-requires a native `cloud-init` or a running Docker engine for the digest-pinned
-fallback image in `Makefile`. A cached Docker Xray image alone does not satisfy
-the native liveness parser gate. Run native compiler-backed gates through
-`build-gate`; local checks do not replace the hosted Linux/native, Molecule,
+For a complete reference gate on macOS use the Ubuntu VM. Native Mac
+checks need equivalent host tools, Darwin Xray and sing-box builds at the
+same pins, GNU `timeout` named `timeout` and a real `flock` on `PATH`. The
+cloud-init target needs a native `cloud-init` or a running Docker engine
+for the digest-pinned fallback image. Compiler-backed native gates run
+through `build-gate`; local checks do not replace the hosted Linux, Molecule,
 security-service or live acceptance lanes.
 
-For credential-free development, start without provider credentials or
-operator private inputs. Make reads an existing ignored `.fleet.mk` even for
-local setup and test targets. If operator configuration prevents a local
-check from starting, reproduce it in a clean checkout without `.fleet.mk`
-before attributing it to source; preserve the operator's file. A clean shell
-alone does not remove that Make include.
+Make reads an existing ignored `.fleet.mk` even for local test targets. If
+operator configuration prevents a local check from starting, reproduce it
+in a clean checkout without `.fleet.mk` before attributing it to source.
 
-## Task and OpenSpec contract
+## Pull request flow
 
-Every non-trivial PR names a portfolio Task ID from `docs/tasks/issues/`.
-Features, infrastructure behavior, schema, security/network, deployment
-lifecycle, and cross-repository changes use an OpenSpec change; narrow waived
-work records an allowed `spec_reason`. Use `./taskctl`, not direct edits to the
-generated board or direct OpenSpec archive commands.
+1. Branch from `main`. Keep diffs focused; a bug fix does not carry
+   surrounding cleanup.
+2. Run the narrowest check that exercises the change, then the full gate:
 
-Cross-repository dependencies use qualified IDs such as
-`po4yka/RIPDPI#TRN-...`. Validate them against a sibling checkout with:
+   ```bash
+   mise exec "${setup_gate_tools[@]}" -- make check
+   ```
 
-```bash
-make task-federation PEER_ROOT=../RIPDPI
-```
+   `make check` is the fail-closed union of `make task-check`,
+   `make validate`, `make ci-fast` and `make docs-check`. When changing a
+   role, also run `make molecule-test ROLE=<name>` when Docker is available.
+   [The testing reference](docs/reference/testing.md) maps each area to its
+   CI coverage and names the lanes that remain CI-only.
+3. Fill in [the pull request template](.github/PULL_REQUEST_TEMPLATE.md):
+   Task ID, scope, the exact commands you ran and what they showed. A
+   skipped or failing check is reported as such.
+4. CI's `required checks` aggregator requires every selected job to
+   succeed and every unselected job to be planned as skipped.
+   [Branch protection](docs/how-to/branch-protection.md) lists the required
+   statuses. Squash-merge is preferred; task lifecycle PRs that contain a
+   terminal record followed by archival keep their separate commits through
+   the allowed linear rebase merge.
 
-## Local pre-flight
+## Commit messages
 
-Before opening or updating a PR, in the reference setup's Bash session:
+Subjects follow [Conventional Commits](https://www.conventionalcommits.org/).
+release-please reads them on every push to `main` to maintain
+`CHANGELOG.md` and tag releases, so `CHANGELOG.md` is never edited by hand.
 
-```bash
-mise exec "${setup_gate_tools[@]}" -- make check
-```
+| Prefix | When | Bump |
+|---|---|---|
+| `feat:` | New role, transport profile, provider, vpnd subcommand, AWG cohort or operator capability | minor |
+| `fix:` | Bug fix in a role, template, script or document | patch |
+| `docs:` | Documentation only | none |
+| `test:` | Molecule scenarios, validators, smoke tests | none |
+| `refactor:` / `perf:` | Restructure or performance change without behaviour change | none |
+| `chore:` / `build:` / `ci:` | Tooling, dependencies, workflows | none |
+| `revert:` | Reverts a prior commit | as reverted |
 
-`make check` is the fail-closed union of `make task-check`, `make validate`, and `make ci-fast`.
-It is the canonical local parity gate; `docs/reference/testing.md` records the Molecule,
-GitHub-native security, and credentialed deploy checks that remain separate or
-CI-only. When changing a role, also run its focused
-`make molecule-test ROLE=<name>` scenario when the required container runtime
-is available.
+`feat!:`, `fix!:` or a `BREAKING CHANGE:` trailer bumps the major version.
+Do not add `Co-Authored-By:` trailers; the commit-message hook rejects them.
 
-## CI gates
+## Adding a role, template or script
 
-`.github/workflows/ci.yml` owns the required PR workflow. Its `required checks`
-aggregator requires every selected dependency to succeed and every unselected
-dependency to be explicitly planned as skipped. Missing jobs and unexpected
-skips fail the gate.
+- **New Ansible role:** follow the recipe in [`ansible/CLAUDE.md`](ansible/CLAUDE.md).
+  In short: write the role under `ansible/roles/<name>/`, reference it in
+  `ansible/playbooks/site.yml` behind a `vpn.enable_<name>` toggle, add the
+  toggle to `ansible/group_vars/all.yml` and every profile, classify it in
+  `ansible/role-tiers.yml`, add any new secret keys to
+  `secrets/prod.secrets.example.yaml` (the coverage validator fails PRs
+  that miss this), add a Molecule scenario and the CI matrix entry or a
+  justified skip in the coverage matrix, give the role a `CLAUDE.md` with
+  an `AGENTS.md -> CLAUDE.md` symlink, and update the governance counts.
+- **New template:** reference only variables that exist in role defaults,
+  group_vars or the secrets schema. `*.json.j2` renders are validated as
+  JSON; nginx `*.conf.j2` templates under a role whose directory name
+  contains `nginx` run through `nginx -t`. Refresh golden snapshots with
+  `make snapshot-update` after an intentional change.
+- **New script:** `bash -n` and `shellcheck -s bash -S warning` must pass;
+  add `# shellcheck disable=SCXXXX  # reason` for justified exceptions.
+  Include a top-of-file comment block describing usage, environment and
+  exit codes, and list the script in the Makefile if it is operator-facing.
+  Conventions are in [the bash-scripting skill](.agents/skills/bash-scripting/SKILL.md).
+- **New Terraform provider:** [`terraform/CLAUDE.md`](terraform/CLAUDE.md).
+- **New vpnd subcommand:** [`vpnd/CLAUDE.md`](vpnd/CLAUDE.md).
+- **New AmneziaWG cohort:** [`ansible/roles/amneziawg/CLAUDE.md`](ansible/roles/amneziawg/CLAUDE.md).
 
-`docs/reference/testing.md` is the canonical human-readable coverage matrix, including
-default Molecule roles, non-default failure scenarios, CI-only services, and
-the local-versus-remote boundary. When required coverage changes, update the
-workflow and that matrix together; governance tests verify their relationship.
+## Documentation
 
-## Adding a new role / template / script
-
-Each artefact type has a checklist in `docs/reference/testing.md`. The short
-versions:
-
-- **New role** → toggle in `group_vars/all.yml`, schema in
-  `secrets/prod.secrets.example.yaml`, molecule scenario or justified
-  skip in `docs/reference/testing.md`.
-- **New template** → variables must resolve from secrets / group_vars /
-  defaults; the validators enforce this at PR time.
-- **New script** → top-of-file usage block, `bash -n` clean, shellcheck
-  clean, listed in the Makefile if operator-facing.
-
-## Reviews and merge
-
-- `CODEOWNERS` enumerates reviewers (currently single-operator).
-- Branch protection requires all configured required statuses to pass before
-  merge; the CI aggregate enforces the dependency selector's plan — see
-  `docs/how-to/branch-protection.md` for the required-status-checks list and how
-  the operator applies it.
-- Squash-merge is preferred for clean release-please history.
-  Task lifecycle PRs that contain a terminal record followed by archival or purge
-  must preserve those separate commits; use the allowed linear rebase merge so
-  terminal-history validation can find the preceding committed state.
-
-## Versioning
-
-release-please derives the version bump from Conventional Commits subjects
-(see the table above). In practice:
-
-| Change type | Bump |
-|---|---|
-| New role, new vpnd subcommand, new provider, new AWG cohort | **minor** — use `feat:` |
-| Bug fix in a role, template, script, or doc | **patch** — use `fix:` |
-| Runbook update, knowledge-layer addition (CLAUDE.md), snapshot refresh after intentional template change | **patch** — use `docs:` or `fix:` |
-| Breaking API / secrets-schema / output-schema change | **major** — use `feat!:` or add `BREAKING CHANGE:` trailer |
-
-`CHANGELOG.md` is generated automatically; do not edit it by hand.
-
-## Knowledge layer
-
-If your PR touches `ansible/roles/<X>/`, `terraform/providers/<X>/`,
-`scripts/`, or `vpnd/src/`, also touch the corresponding `CLAUDE.md`
-(Design decisions / Done well / Pitfalls). The CI warn-gate
-(`claude-md-touch.yml`) surfaces omissions but does not block merge.
-
-Step-by-step recipes for the four most common contribution types live next
-to the code they change: new role in `ansible/CLAUDE.md`, new provider in
-`terraform/CLAUDE.md`, new vpnd subcommand in `vpnd/CLAUDE.md`, new AWG cohort
-in `ansible/roles/amneziawg/CLAUDE.md`. Agent-facing project rules are in the
-root `AGENTS.md`, which the root `CLAUDE.md` imports.
-
-## What not to PR
-
-- `Cloudflare CDN as filtered-path baseline` — see `docs/decisions/0001-cdn-not-filtered-path-baseline.md` ADR.
-- A web admin panel (Marzban / Remnawave / 3x-ui) — architectural
-  invariant.
-- Calendar-based credential auto-rotation — rotation must be event-driven.
-- Docker / K8s on the data plane — Ansible plus systemd own runtime state;
-  see `docs/reference/architecture.md`.
-- Auto-deploy from `main` — operator-driven by design.
-
-PRs in these directions will be closed with a pointer to the rationale.
+- The tree, status line, naming and templates are defined in
+  [docs/STYLE.md](docs/STYLE.md); [docs/README.md](docs/README.md) must list
+  every page. `make docs-check` runs the guards.
+- `docs/reference/make-targets.md`, `docs/reference/vpnd-commands.md` and
+  `docs/llms.txt` are generated: run `make docs-reference` after changing
+  the Makefile help text, the vpnd command tree or any page.
+- If your PR touches `ansible/roles/<X>/`, `terraform/providers/<X>/`,
+  `scripts/`, `tests/` or `vpnd/src/`, also update the folder's `CLAUDE.md`
+  (Design decisions / What's done well / Pitfalls). A CI warn-gate
+  surfaces omissions.
+- Cross-repository references use qualified IDs such as
+  `po4yka/RIPDPI#TRN-...`; validate them with
+  `make task-federation PEER_ROOT=../RIPDPI`.

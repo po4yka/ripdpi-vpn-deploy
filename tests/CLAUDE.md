@@ -556,6 +556,9 @@ name, and to carry no geographic, carrier or censorship-apparatus label in its
 name or headings. It also resolves every relative link in the tree and the root
 README, CONTRIBUTING and AGENTS files against the Git index, so an untracked
 target or a moved page fails here before lychee runs in CI.
+`test_docs_reference.py` runs `scripts/docs-reference.py --check`, so the
+Make-target reference, the vpnd command reference and `docs/llms.txt` fail
+when their sources changed without `make docs-reference`.
 
 **Coverage claims follow contracts** — `test_governance_counts.py` checks role
 and template inventories plus hosted scenarios. Suite sizes come from runner

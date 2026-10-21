@@ -2,6 +2,13 @@
 
 > **Status:** Current · **Type:** reference · **Tier:** CORE · **Reviewed:** 2026-10-21
 
+This page is the one home for the secrets model. Two how-to guides build on
+it and do not restate it: [the local operator kit](../how-to/local-operator-kit.md)
+catalogues where private material lives on the operator machine, and
+[multi-operator RBAC](../how-to/multi-operator.md) splits the schema per
+operator scope. [Age key recovery](../how-to/age-recovery.md) covers the
+Shamir split of the age key.
+
 ## Where things live
 
 ```

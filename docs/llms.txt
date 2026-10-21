@@ -46,6 +46,7 @@
 - [AmneziaWG cohort obfuscation profiles](/md/reference/awg-cohorts.md)
 - [Client-side known issues and version pins](/md/reference/client-notes.md)
 - [Deploy profiles](/md/reference/deploy-profiles.md)
+- [Make targets](/md/reference/make-targets.md)
 - [Reviewed network exposure policy](/md/reference/network-exposure-gate.md)
 - [Resource-bounded observability on existing hosts](/md/reference/observability-operations.md)
 - [Per-ASN payload-size throttling probe](/md/reference/payload-throttle.md)
@@ -58,13 +59,16 @@
 - [Subscription plane — gap matrix](/md/reference/subscription-plane.md)
 - [Testing — what's covered and what isn't](/md/reference/testing.md)
 - [Recipient destination boundary](/md/reference/transport-egress.md)
+- [vpnd commands](/md/reference/vpnd-commands.md)
 - [Direct XHTTP delivery profiles](/md/reference/xhttp-delivery-profiles.md)
 - [Xray observability](/md/reference/xray-observability.md)
 - [Xray-core release-line tracker](/md/reference/xray-release-line.md)
 
 ## Explanation
 
+- [Architecture rationale](/md/explanation/architecture-rationale.md)
 - [Deployment status — last verified snapshot](/md/explanation/deployment-status.md)
+- [Threat model](/md/explanation/threat-model.md)
 
 ## Decisions
 

@@ -626,7 +626,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         actionlint-check zizmor-check zizmor-test cloud-init-schema tf-test yamllint-check shellcheck \
         ci-fast bats-test vpnd-test vpnd-lint vpnd-dependency-check vpnd-package-check vpnd-parity-check vpnd-mutants tf-policy tf-policy-verify \
         task-tools task-check task-list task-ready task-graph task-federation \
-        check
+        docs-reference docs-check check
 
 help:
 	@echo "vpn-deploy Makefile"
@@ -1485,7 +1485,18 @@ ci-fast:
 # Union gate: everything in validate + everything in ci-fast.
 # Run this before any commit touching Ansible, Terraform, or Python to get
 # the same signal that CI produces without waiting for a remote run.
-check: task-check validate ci-fast  ## Full local gate: task contract + validate + ci-fast
+check: task-check validate ci-fast docs-check  ## Full local gate: task contract + validate + ci-fast + docs-check
+
+# Regenerate the documentation pages that mirror code: the Make target
+# reference, the vpnd command reference and the machine-readable docs index.
+docs-reference:
+	python3 scripts/docs-reference.py
+
+# Documentation guards: generated pages are current, every page is indexed,
+# status lines and file names conform, relative links resolve.
+docs-check:
+	@echo "== generated references =="; python3 scripts/docs-reference.py --check
+	@echo "== docs index and links =="; env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/test_docs_index.py tests/unit/test_docs_reference.py --fail-on-skip -q
 
 molecule-test:
 	@test -n "$(ROLE)" || { echo "ROLE=<role-name> required (e.g. baseline, firewall, xray)"; exit 1; }

@@ -415,6 +415,15 @@ changing a listed subsystem, read its matching section:
 | Cloud-init acceptance harnesses | [Cloud-init acceptance](DESIGN-NOTES.md#cloud-init-acceptance--schema-fallback-and-cloud-final-restart-harness) |
 | SSH recovery installation | [SSH recovery](DESIGN-NOTES.md#ssh-recovery--install-sshd-recoverypy-make-install-ssh-recovery) |
 
+**Generated documentation mirrors its source** — `docs-reference.py` parses the
+Makefile `help` recipe as text, builds the vpnd argparse tree without running a
+command, and calls the `ai-docs` emitter into a temporary directory to produce
+`docs/reference/make-targets.md`, `docs/reference/vpnd-commands.md` and
+`docs/llms.txt`. `--check` compares and exits 1 on drift; `make docs-check`
+runs it inside `make check`. It reads no credentials, inventory or secrets.
+Change the help text or the parser and run `make docs-reference`; never edit
+the generated pages.
+
 **Checkout discovery precedes operator configuration** — `make workspace-status`
 reports local Git metadata without parsing `.fleet.mk` or reading runtime inputs.
 `scripts/workspace-status.py` describes the caller's checkout, including detached

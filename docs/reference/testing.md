@@ -484,43 +484,11 @@ Generated `terraform/providers/<name>/README.md` files are committed; the
   (b): no nginx-stream front). See
   `ansible/roles/policy-ratelimit/README.md`.
 
-## Adding a new role
+## Test selection and groups
 
-When you add a role, the checklist is:
-
-1. Write the role under `ansible/roles/<name>/`.
-2. Reference it in `ansible/playbooks/site.yml` with a `vpn.enable_<name>`
-   toggle.
-3. Add the toggle to `ansible/group_vars/all.yml` and to every
-   `vpn-<cohort>.yml`.
-4. If the role consumes new secret keys, add them to
-   `secrets/prod.secrets.example.yaml`. **Do not skip this.** The
-   `check-secrets-coverage.py` validator will fail PRs that miss it.
-5. Either:
-   - Add `ansible/roles/<name>/molecule/default/{molecule,converge,verify}.yml`
-     and add the role to the molecule matrix in `.github/workflows/ci.yml`, or
-   - Document a justified skip in this file's coverage matrix.
-6. If the role drops shell scripts via templates, the rendered output must
-   pass `bash -n` (added to your verify play).
-
-## Adding a new template
-
-1. Reference variables that exist in role defaults, group_vars, or the
-   secrets schema. The `check-secrets-coverage.py` validator will catch
-   omissions.
-2. If it's a `*.json.j2` template, the render check will validate it as
-   JSON.
-3. If it's an nginx site config, name it `*.conf.j2` under a role whose
-   parent dir contains "nginx" — the render check will run `nginx -t`.
-
-## Adding a new script
-
-1. `bash -n` must pass (catches syntax).
-2. `shellcheck -s bash -S warning` must pass (catches common bash
-   pitfalls). Add `# shellcheck disable=SCXXXX  # reason` for justified
-   exceptions.
-3. Include a top-of-file comment block describing usage, env, and exit
-   codes.
+The checklists for adding a role, template or script live in
+[CONTRIBUTING.md](../../CONTRIBUTING.md#adding-a-role-template-or-script); the
+role recipe itself is in `ansible/CLAUDE.md`.
 
 ### Required test selection
 
