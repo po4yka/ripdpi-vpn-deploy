@@ -74,9 +74,16 @@ resource "vultr_instance" "vpn" {
       terraform_data.admin_user,
       terraform_data.admin_ssh_public_key,
     ]
+    # The provider reinstalls the OS in place when os_id changes, which
+    # prevent_destroy does not stop. Hold the value and refuse a change below.
     ignore_changes = [
       user_data,
+      os_id,
     ]
+    postcondition {
+      condition     = self.os_id == var.os_id
+      error_message = "os_id differs from the existing node's OS; an in-place change reinstalls the server. Keep the node's os_id or provision a replacement node."
+    }
     # Existing nodes predate the digest guards. Check their retained bootstrap
     # identity before recording new guard inputs, without comparing helper data.
     postcondition {
