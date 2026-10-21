@@ -1,0 +1,11 @@
+{
+  "change": "ops-1792512787218003-close-deployment-readiness-follow-up-findings",
+  "evidence_summary": "Accepted protected main 86d76430707a0e6febedaf4c7c8c19351b224d36 has the same tree as PR #347 head c1c5828b. PR CI 39543684353 and 39549714130 and main CI 39557145005 passed all 92 jobs, including Molecule, native lanes and the liveness parser check. Each finding has a regression that fails on its parent. No deployment.",
+  "execution_sha256": "f7c3477e8ae850e79b3f615e9982c28cb66f47fbc94ee4928bdeebead252e66f",
+  "issue_sha256": "638f0b30597f31c9159dd7b1bcbd001e18825c4b146db1846a8cb4133de5b674",
+  "outcome": "done",
+  "prepared_at": "2026-10-21T08:29:21Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "OPS-1792512787218003"
+}
