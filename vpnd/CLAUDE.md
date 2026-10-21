@@ -52,6 +52,14 @@ SBOM generation uses its own hash-pinned tool environment from
 `sbom-requirements.txt`. Its optional schema-format libraries must never enter
 the operator validation environment or change signed-policy acceptance.
 
+**Documentation export follows the docs tree.** `ai-docs` walks `docs/`
+recursively, skips the `tasks/`, `demo/` and `measurements/` folders that have
+their own contracts, mirrors each page under `md/<folder>/<page>.md`, and
+writes an `llms.txt` with one H2 per documentation folder in reading order and
+an `## Optional` section for `archive/`. The committed `docs/llms.txt` is that
+output; regenerate it when a page is added, moved or removed. The runbook
+excerpt map in `docs_bundle.py` names pages relative to the docs root.
+
 **State retains its formats.** The local TOML registry resolves host aliases to
 environment/provider/IPs. TOML reads use the standard library; writes use
 `tomli-w` and the private atomic writer. Secrets remain a read-only typed view
