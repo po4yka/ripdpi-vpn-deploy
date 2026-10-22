@@ -34,6 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ripdpi_cohort_fingerprint import ORDER, cohort_fingerprint  # noqa: E402
+from payload_failover_policy import validate_policy  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = REPO_ROOT / "contract" / "ripdpi-bundle.schema.json"
@@ -157,6 +158,11 @@ def _valid_endpoint(value: str) -> bool:
 
 def _semantic_errors(ripdpi: dict) -> list[str]:
     errors = []
+    if "payload_failover" in ripdpi:
+        try:
+            validate_policy(ripdpi["payload_failover"])
+        except ValueError:
+            errors.append("payload_failover: invalid control origins or timing policy")
     for index, entry in enumerate(ripdpi["amneziawg"]):
         prefix = f"amneziawg[{index}]"
         for name in ("public_key", "preshared_key"):

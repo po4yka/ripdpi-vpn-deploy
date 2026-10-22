@@ -21,7 +21,7 @@
   },
   "inbounds": [
     {
-      "tag": "vless-reality-primary",
+      "tag": "vless-reality",
       "listen": "0.0.0.0",
       "port": 443,
       "protocol": "vless",
@@ -30,54 +30,12 @@
           {
             "id": "REPLACE_WITH_UUID",
             "flow": "xtls-rprx-vision",
-            "email": "phone-primary"
+            "email": "phone"
           },
           {
             "id": "REPLACE_WITH_DEDICATED_WATCHDOG_UUID",
             "flow": "xtls-rprx-vision",
-            "email": "watchdog-primary"
-          }
-        ],
-        "decryption": "none"
-      },
-      "streamSettings": {
-        "network": "raw",
-        "security": "reality",
-        "realitySettings": {
-          "show": false,
-          "target": "REPLACE_WITH_LOW_PROFILE_HTTPS_TARGET:443",
-          "xver": 0,
-          "serverNames": ["REPLACE_WITH_LOW_PROFILE_HOSTNAME"],
-          "privateKey": "REPLACE_WITH_PRIVATE_KEY",
-          "shortIds": [
-            "REPLACE_WITH_8HEX",
-            "REPLACE_WITH_DEDICATED_WATCHDOG_8HEX"
-          ]
-        }
-      },
-      "sniffing": {
-        "enabled": true,
-        "destOverride": ["http", "tls", "quic"],
-        "metadataOnly": false,
-        "routeOnly": false
-      }
-    },
-    {
-      "tag": "vless-reality-fallback",
-      "listen": "0.0.0.0",
-      "port": 2053,
-      "protocol": "vless",
-      "settings": {
-        "clients": [
-          {
-            "id": "REPLACE_WITH_UUID",
-            "flow": "xtls-rprx-vision",
-            "email": "phone-fallback"
-          },
-          {
-            "id": "REPLACE_WITH_DEDICATED_WATCHDOG_UUID",
-            "flow": "xtls-rprx-vision",
-            "email": "watchdog-fallback"
+            "email": "watchdog"
           }
         ],
         "decryption": "none"

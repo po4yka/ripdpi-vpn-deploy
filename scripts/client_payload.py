@@ -17,6 +17,7 @@ from awg_device_binding import resolve_binding
 from encrypted_client_document import MAX_BYTES, private_file, identity
 from transport_semantics import hysteria_client_bandwidth, transport_errors, xhttp_endpoints, xhttp_tuning
 from fleet_inspection import bounded_command, InspectionError
+from payload_failover_policy import validate_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 DEADLINE = None
@@ -180,6 +181,7 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
     topology = {'split_hop_egress': False, 'hysteria_realm': None}
     awg_enabled = False
     bindings = []
+    failover_policies = []
     for i, host in enumerate(o['hosts']):
         source = str(Path(sources[i]).absolute())
         if source not in loaded:
@@ -191,6 +193,8 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
         cohort = o['cohorts'][i] if o['cohorts'] else inventory_cohort(command(
             [str(ROOT / 'scripts/terraform-env.sh'), 'output', '-raw', 'server_hostname'], env=env).decode().strip())
         c = context(cohort)
+        if extended:
+            failover_policies.append(validate_policy(c.get('client_payload_failover')))
         errors = transport_errors(d, c)
         if errors:
             raise ValueError('invalid-transport-input')
@@ -365,11 +369,18 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
                    inbounds=[dict(type='tun', tag='tun-in', interface_name='tun0', address=['172.19.0.1/30', 'fdfe:dcba:9876::1/126'], auto_route=True, strict_route=True, stack='system')],
                    outbounds=out, route=dict(rules=rules + [dict(action='sniff'), dict(protocol='dns', action='hijack-dns')], final='select', auto_detect_interface=True))
     if extended:
+        policy = failover_policies[0]
+        if any(value != policy for value in failover_policies):
+            raise ValueError('conflicting-payload-failover-policy')
+        if policy is not None and not automatic:
+            raise ValueError('payload-failover-requires-proxy-candidates')
         if len(awg) > 1:
             raise ValueError('ambiguous-device-binding')
         if o['awg_host'] and not awg:
             raise ValueError('missing-device-binding')
         payload['ripdpi'] = dict(schema_version=1, amneziawg=awg, hysteria_extras=extras, topology=topology)
+        if policy is not None:
+            payload['ripdpi']['payload_failover'] = policy
         if o['expires']:
             payload['ripdpi']['expires'] = o['expires']
     return payload, bindings

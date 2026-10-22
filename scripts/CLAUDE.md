@@ -36,6 +36,21 @@ topology-wide observability generation must be rendered by its complete owner;
 the pair wrapper refuses it before provisioning. Standalone migration consumes
 the complete reviewed inventory without re-rendering it.
 
+Payload probing requires exact canonical bytes and bounded curl output through
+`payload_probe_content.py`. Explicit SOCKS ignores ambient proxies and never
+falls back to direct. Successful-transfer slowdown compares time per byte
+within each direction so ordinary body-size growth is not throttling.
+Classify every direction before combining evidence: any proven cliff wins
+over an underconstrained direction, using the smallest proven threshold.
+HTTP/2 framing and stream failures are network evidence; certificate and
+content failures retain error priority.
+The loopback canary applies a total request deadline.
+Recipient failover uses `payload_failover_policy.py` for strict two-origin HTTPS
+policy admission; all contributing hosts must agree before extended emission.
+Control URLs reject fragment delimiters even when the fragment is empty, matching
+the recipient parser; percent-encoded path characters remain valid.
+Plain sing-box exports retain their RTT-only urltest contract.
+
 Fleet status resolves provider/environment selections through strict inventory
 inspection, preserving Tailnet transport, public host identity and custom ports.
 Its local watchdog verdict requires a recent completed result; neither a timer

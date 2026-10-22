@@ -178,7 +178,7 @@ def _run_snell_only_script(
     (repo / "ansible/roles/snell/defaults").mkdir(parents=True)
     (repo / "terraform/providers/upcloud").mkdir(parents=True)
     shutil.copy2(SCRIPT, repo / "scripts/emit-singbox.sh")
-    for module in ("client_payload.py", "fleet_inspection.py", "awg_client.py", "awg_device_binding.py", "encrypted_client_document.py", "ripdpi_cohort_fingerprint.py"):
+    for module in ("client_payload.py", "payload_failover_policy.py", "fleet_inspection.py", "awg_client.py", "awg_device_binding.py", "encrypted_client_document.py", "ripdpi_cohort_fingerprint.py"):
         shutil.copy2(REPO_ROOT / "scripts" / module, repo / "scripts" / module)
     shutil.copy2(REPO_ROOT / "scripts/transport_semantics.py", repo / "scripts/transport_semantics.py")
     shutil.copy2(
@@ -275,7 +275,7 @@ def _run_shape_only_emitter(
     (repo / "ansible/roles/snell/defaults").mkdir(parents=True)
     (repo / "terraform/providers/upcloud").mkdir(parents=True)
     shutil.copy2(SCRIPT, repo / "scripts/emit-singbox.sh")
-    for module in ("client_payload.py", "fleet_inspection.py", "awg_client.py", "awg_device_binding.py", "encrypted_client_document.py", "ripdpi_cohort_fingerprint.py"):
+    for module in ("client_payload.py", "payload_failover_policy.py", "fleet_inspection.py", "awg_client.py", "awg_device_binding.py", "encrypted_client_document.py", "ripdpi_cohort_fingerprint.py"):
         shutil.copy2(REPO_ROOT / "scripts" / module, repo / "scripts" / module)
     shutil.copy2(REPO_ROOT / "scripts/transport_semantics.py", repo / "scripts/transport_semantics.py")
     shutil.copy2(

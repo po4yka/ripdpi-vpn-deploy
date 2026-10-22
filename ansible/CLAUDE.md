@@ -12,6 +12,14 @@ so retained old credentials cannot survive a successful fleet revocation. AWG
 retirement retains its existing firewall transaction. Naive empty-client
 handling remains the canonical role's explicit authentication retirement.
 
+Alternate REALITY listeners default to disabled (`xray_fallback_port: 0`).
+An explicit alternate must match the provider listener contract and is probed
+independently from TCP/443; choosing another port does not hide its protocol.
+Full-stack Molecule declares its opt-in at host scope so canonical playbook
+group-vars discovery cannot replace the fixture port with the disabled default.
+The optional nonsecret `client_payload_failover` group input is consumed only
+by RIPDPI recipient export and requires two operator-owned HTTPS controls.
+
 Site baseline defers managed DNS stub restoration until DNS-Morph has retired
 its listener. The retiring role calls only baseline's resolver tasks; tagged
 runs that omit retirement retain the working upstream resolver.

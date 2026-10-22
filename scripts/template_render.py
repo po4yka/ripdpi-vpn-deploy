@@ -128,26 +128,12 @@ def merge_render_vars() -> dict:
                     "finalmask": False,
                 },
             },
-            {
-                "name": "fallback",
-                "port": 2053,
-                "p0_reality_shape_input": {
-                    "flow_mode": "vision",
-                    "finalmask": False,
-                },
-            },
         ],
     )
     merged.setdefault(
         "public_listener_contract",
         [
             {"name": "xray", "protocol": "tcp", "port": 443, "port_range": None},
-            {
-                "name": "xray-fallback",
-                "protocol": "tcp",
-                "port": 2053,
-                "port_range": None,
-            },
             {
                 "name": "public-site-http",
                 "protocol": "tcp",

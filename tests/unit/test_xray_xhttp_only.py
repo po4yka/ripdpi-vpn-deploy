@@ -49,20 +49,21 @@ def test_p1_web_renders_only_the_local_xhttp_inbound() -> None:
     assert config["inbounds"][0]["streamSettings"]["network"] == "xhttp"
 
 
-def test_p0_profile_inherits_the_shared_reality_shape_model() -> None:
+@pytest.mark.parametrize("alternate_port", [0, 2053])
+def test_p0_profile_inherits_the_shared_reality_shape_model(alternate_port: int) -> None:
     variables = renderer.merge_render_vars()
     profile = yaml.safe_load(
         (REPO_ROOT / "ansible" / "group_vars" / "vpn-p0-minimal.yml").read_text()
     )
     variables.update(profile)
+    variables["xray_fallback_port"] = alternate_port
 
     config = json.loads(renderer.render_template(TEMPLATE, variables))
-    primary = next(
-        inbound
-        for inbound in config["inbounds"]
-        if inbound["tag"] == "vless-reality-primary"
-    )
-    assert primary["settings"]["clients"][0]["flow"] == "xtls-rprx-vision"
+    expected_tags = ["vless-reality-primary", "vless-reality-fallback"] if alternate_port else ["vless-reality"]
+    assert [inbound["tag"] for inbound in config["inbounds"]] == expected_tags
+    assert [inbound["port"] for inbound in config["inbounds"]] == ([443, alternate_port] if alternate_port else [443])
+    assert all(inbound["settings"]["clients"][0]["flow"] == "xtls-rprx-vision"
+               for inbound in config["inbounds"])
 
 
 @pytest.mark.parametrize(

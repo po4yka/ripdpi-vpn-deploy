@@ -136,7 +136,6 @@ def test_default_runtime_manifest_matches_default_provider_contract() -> None:
     actual = json.loads(renderer.render_template(MANIFEST_TEMPLATE, variables))
     expected = [
         _expected("xray", "tcp", 443),
-        _expected("xray-fallback", "tcp", 2053),
         _expected("public-site-http", "tcp", 80),
         _expected("nginx-xhttp", "tcp", 8443),
         _expected("hysteria", "udp", 443),
@@ -311,7 +310,6 @@ def test_awg_evidence_server_listener_is_explicit_and_additive() -> None:
     actual = json.loads(renderer.render_template(MANIFEST_TEMPLATE, variables))
     expected = [
         _expected("xray", "tcp", 443),
-        _expected("xray-fallback", "tcp", 2053),
         _expected("public-site-http", "tcp", 80),
         _expected("nginx-xhttp", "tcp", 8443),
         _expected("hysteria", "udp", 443),
@@ -329,7 +327,6 @@ def test_awg_evidence_echo_listeners_are_explicit_and_additive() -> None:
     actual = json.loads(renderer.render_template(MANIFEST_TEMPLATE, variables))
     expected = [
         _expected("xray", "tcp", 443),
-        _expected("xray-fallback", "tcp", 2053),
         _expected("public-site-http", "tcp", 80),
         _expected("nginx-xhttp", "tcp", 8443),
         _expected("hysteria", "udp", 443),
@@ -349,13 +346,13 @@ def _profile_manifest(name: str) -> list[dict]:
 
 def test_p0_minimal_listener_surface_is_reality_only() -> None:
     actual = _profile_manifest("vpn-p0-minimal.yml")
-    expected = [_expected("xray", "tcp", 443), _expected("xray-fallback", "tcp", 2053)]
+    expected = [_expected("xray", "tcp", 443)]
     assert contract.check({"expected": expected, "actual": actual}) == []
 
 
 def test_p0_self_steal_keeps_the_same_public_listener_surface() -> None:
     actual = _profile_manifest("vpn-p0-self-steal.yml")
-    expected = [_expected("xray", "tcp", 443), _expected("xray-fallback", "tcp", 2053)]
+    expected = [_expected("xray", "tcp", 443)]
     assert contract.check({"expected": expected, "actual": actual}) == []
 
 
@@ -903,3 +900,22 @@ def test_shared_listener_admission_precedes_tagged_mutation(tmp_path, caller, ad
     admitted = admission in {"match", "disabled-match"} or (caller == "rotate-credentials" and admission == "subscription")
     assert (result.returncode == 0) is admitted, result.stdout + result.stderr
     assert marker.exists() is (admitted and not check_mode)
+
+
+def test_alternate_reality_listener_requires_explicit_opt_in_and_provider_parity() -> None:
+    variables = renderer.merge_render_vars()
+    assert variables["xray_fallback_port"] == 0
+    default_manifest = json.loads(renderer.render_template(MANIFEST_TEMPLATE, variables))
+    assert not any(row["role"] == "xray-fallback" and row["enabled"] for row in default_manifest)
+    variables["xray_fallback_port"] = 2053
+    actual = json.loads(renderer.render_template(MANIFEST_TEMPLATE, variables))
+    expected = variables["public_listener_contract"]
+    assert contract.check({"expected": expected, "actual": actual})
+    expected = expected + [_expected("xray-fallback", "tcp", 2053)]
+    assert contract.check({"expected": expected, "actual": actual}) == []
+    template = REPO_ROOT / "ansible/roles/xray/templates/config.json.j2"
+    rendered = json.loads(renderer.render_template(template, variables))
+    assert any(inbound.get("port") == 2053 for inbound in rendered["inbounds"])
+    variables["xray_fallback_port"] = 0
+    rendered = json.loads(renderer.render_template(template, variables))
+    assert not any(inbound.get("port") == 2053 for inbound in rendered["inbounds"])
