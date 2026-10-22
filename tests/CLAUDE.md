@@ -21,6 +21,9 @@ retain the actual installer generation across lost acknowledgements and refuse
 synthetic deployment epochs. Recovery status is retained evidence, not a new
 provider or device observation.
 
+Credential scanner exceptions bind the exact generator expression and source path.
+Real literals, other paths and appended assignments must remain detectable.
+
 Device migration regressions execute real test-only SOPS transactions and the
 actual publisher behind local HTTP. Lost acknowledgements after remote and
 cross-document writes must resume identical bytes without reallocation.
