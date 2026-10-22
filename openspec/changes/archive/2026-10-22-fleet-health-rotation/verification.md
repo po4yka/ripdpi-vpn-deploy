@@ -24,11 +24,11 @@ artifact_evidence: No separately distributed artifact; reviewed repository sourc
 
 | Requirement | Execution step | Evidence | Result |
 |---|---|---|---|
-| REQ-FLEET-SSH | OPS-1792654871067546 | Status/inspection unit regressions and independent review | Passed; local and exact-main gates passed |
-| REQ-FLEET-STATUS | OPS-1792654871067546 | Successful, failed, absent, future and stale watchdog regressions | Passed; local and exact-main gates passed |
-| REQ-FLEET-MIN-ACTIVE | OPS-1792654872580225 | Authenticated survivor and stale/wrong-target refusal tests | Passed; local and exact-main gates passed |
-| REQ-FLEET-RESUME | OPS-1792654873965490 | Positive resume and changed/malformed/legacy plan-state tests | Passed; local and exact-main gates passed |
-| REQ-FLEET-JOURNAL | OPS-1792654873965490 | Concurrent/interrupted/unsafe-state and dry-run regressions | Passed; local and exact-main gates passed |
+| REQ-FLEET-SSH | OPS-1792654871067546 | Status/inspection unit regressions and independent review | passed |
+| REQ-FLEET-STATUS | OPS-1792654871067546 | Successful, failed, absent, future and stale watchdog regressions | passed |
+| REQ-FLEET-MIN-ACTIVE | OPS-1792654872580225 | Authenticated survivor and stale/wrong-target refusal tests | passed |
+| REQ-FLEET-RESUME | OPS-1792654873965490 | Positive resume and changed/malformed/legacy plan-state tests | passed |
+| REQ-FLEET-JOURNAL | OPS-1792654873965490 | Concurrent/interrupted/unsafe-state and dry-run regressions | passed |
 
 ## Acceptance scope
 

@@ -1,0 +1,11 @@
+{
+  "change": "fleet-health-rotation",
+  "evidence_summary": "Merged PR 356 at 37939d5a; complete local make check and 224 integration tests passed. Exact-main CI 39761736896 and CodeQL 39761737020 passed all required checks. No live infrastructure operation was performed.",
+  "execution_sha256": "a529ae7ae165d5082abcc33ad3afcd68b7d857f18e07d2406a687604afd2f3df",
+  "issue_sha256": "6100b05a2f0e868c3bb9becda98fc1814e099352ff9eeb7d0a11deb4455f8042",
+  "outcome": "done",
+  "prepared_at": "2026-10-22T11:45:41Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "OPS-1792654666090980"
+}
