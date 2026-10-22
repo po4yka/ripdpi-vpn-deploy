@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+REALITY alternate listeners are opt-in: examples and the legacy listener set
+only declare the primary port. An enabled `xray_fallback_port` also requires an
+explicit matching `public_listeners` entry; runtime/provider parity stays strict.
+
 The shared `nat_source_port_range` output is empty here: this root does not
 require forwarded TCP/UDP source-port remapping for stateless return filtering.
 Keep the same output names as every provider root and the inert exception root.
