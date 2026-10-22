@@ -21,6 +21,8 @@ retain the actual installer generation across lost acknowledgements and refuse
 synthetic deployment epochs. Recovery status is retained evidence, not a new
 provider or device observation.
 
+Revocation resume tests connect the actual lifecycle controller's check/apply sequence to real AWG journals. Full retirement executes production orchestration and its shared finish task; native fixtures reuse that task rather than carrying a separate outer-completion command. Portable daemon adapters do not establish native traffic acceptance.
+
 Credential scanner exceptions bind the exact generator expression and source path.
 Real literals, other paths and appended assignments must remain detectable.
 

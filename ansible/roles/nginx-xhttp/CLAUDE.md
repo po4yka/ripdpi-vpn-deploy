@@ -2,6 +2,9 @@
 
 ## Design decisions
 
+The durable committing decision retains the revocation operation/digest alongside its egress and firewall finish choices. Recovery requires the same request authority and passes it privately to outer-route completion; an absent or different authority cannot close that decision.
+The committing journal requires both finish flags and the explicit revocation field (null for ordinary changes). Older committing shapes refuse instead of being upgraded or given inferred authority.
+
 HSTS follows the hostname's complete managed public HTTPS topology. A primary
 or fallback hostname served on TCP/443 keeps a one-year policy on all its direct
 frontends. Alternate-port-only names send `max-age=0` to clear cached policy;

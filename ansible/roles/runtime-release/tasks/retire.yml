@@ -120,6 +120,9 @@
       - -Es
       - /usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py
       - finish
+      - --revocation-stdin
+    stdin: '{{ vpn_device_revocation | default(none) | to_json }}'
+    stdin_add_newline: false
   changed_when: false
   no_log: true
   when:

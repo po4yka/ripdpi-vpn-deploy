@@ -166,8 +166,75 @@ def test_outer_route_failure_after_consumer_commit_never_restores_revoked_genera
     assert (state / 'outer.json').exists() and 'restore' not in adapter.events
     with pytest.raises(RuntimeError, match='revocation-resume-required'):
         invoke('finish', None)
+    with pytest.raises(RuntimeError, match='revocation-resume-required'):
+        invoke('finish', {**AUTH, 'intent_sha256': 'b' * 64})
     assert revoke(area)['status'] == 'accepted'
     invoke('finish')
     invoke('finish')  # Lost finish acknowledgement is an unchanged retry.
     assert not (state / 'outer.json').exists()
     assert adapter.running and 'restore' not in adapter.events
+
+
+def test_production_full_retirement_closes_exact_outer_authority(area):
+    """Real Ansible orchestration and transaction files; daemon adapters are portable."""
+    import copy
+    import json
+    from pathlib import Path
+    import subprocess
+    import sys
+    import yaml
+    import test_transport_runtime_acceptance as base
+
+    state, live, adapter, candidates = area
+    apply(area, 'A')
+    retired = [{'path': item['path'], 'absent': True} for item in candidates('A')]
+    with transaction.Transaction(state, uid=os.getuid(), revocation=AUTH) as tx:
+        tx.arm_revocation()
+        tx.record('outer.json', {'schema': 1, 'receipt': tx.accepted(), 'consumer_receipt': None, 'revocation': AUTH})
+    root = state.parent
+    source = Path(__file__).resolve().parents[2]
+    driver = root / 'outer-driver.py'
+    driver.write_text('''import json,os,runpy,sys
+from pathlib import Path
+from types import SimpleNamespace
+base=runpy.run_path(sys.argv[1]); tx=base['transaction']; state=Path(sys.argv[2]); action=sys.argv[3]
+request=json.loads(Path(sys.argv[4]).read_text()); adapter=base['Adapter']()
+if action=='accept':
+ with tx.Transaction(state,uid=os.getuid(),revocation=request['authority']) as current:
+  current.apply(request['retired'],adapter)
+elif action=='retire':
+ assert all(not Path(item['path']).exists() for item in request['retired'])
+else:
+ sys.path.insert(0,sys.argv[5]); import transport_runtime_outer as outer
+ outer.STATE=state; outer.Transaction=lambda root,**kwargs:tx.Transaction(root,uid=os.getuid(),**kwargs)
+ outer.read_private=lambda path,_uid:tx.read_private(path,os.getuid())
+ outer.adapter=lambda:adapter; outer.recover_validation=lambda _tx:None; outer.inspect_lease=lambda _tx:None
+ outer.os=SimpleNamespace(geteuid=lambda:0)
+ sys.argv=['outer',*sys.argv[6:]]; outer.main()
+''')
+    request = root / 'request.json'
+    request.write_text(json.dumps({'authority': AUTH, 'retired': retired}))
+    def argv(action):
+        return [sys.executable, str(driver), str(Path(base.__file__)), str(state), action, str(request),
+                str(source / 'ansible/roles/runtime-release/files')]
+    tasks = copy.deepcopy(yaml.safe_load((source / 'ansible/playbooks/tasks/transport-egress-activate.yml').read_text()))
+    for task in tasks[0]['block']:
+        role = task.get('ansible.builtin.include_role')
+        if role and role['tasks_from'] in ('runtime-acceptance', 'retire'):
+            del task['ansible.builtin.include_role']
+            task['ansible.builtin.command'] = {'argv': argv('accept' if role['tasks_from'] == 'runtime-acceptance' else 'retire')}
+    finish = yaml.safe_load((source / 'ansible/playbooks/tasks/transport-egress-finish.yml').read_text())
+    finish[0]['ansible.builtin.command']['argv'] = argv('finish') + finish[0]['ansible.builtin.command']['argv'][3:]
+    (root / 'transport-egress-finish.yml').write_text(yaml.safe_dump(finish))
+    play = root / 'retirement.yml'
+    play.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False,
+        'become': False, 'vars': {'ansible_python_interpreter': sys.executable,
+            'transport_egress_role_enabled': False, 'transport_runtime_candidates': retired,
+            '_transport_egress_full_retirement': True, 'vpn_device_revocation': AUTH}, 'tasks': tasks}]))
+    result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(play)],
+        capture_output=True, text=True, timeout=60, env={**os.environ, 'ANSIBLE_BECOME': 'false'})
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not (state / 'outer.json').exists()
+    assert all(not Path(item['path']).exists() for item in retired)
+    with transaction.Transaction(state, uid=os.getuid()) as tx:
+        assert tx.apply(retired, adapter)['status'] == 'accepted'

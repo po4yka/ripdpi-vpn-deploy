@@ -795,7 +795,7 @@ def test_rescue_rolls_forward_commit_and_never_compensates_after_lost_ack(tmp_pa
         commit = [commit[0], {'ansible.builtin.fail': {'msg': 'lost commit acknowledgement'}}]
     else:
         # The subprocess dies after deciding commit; retry must complete it.
-        marker = "import json,sys;from pathlib import Path;p=Path(sys.argv[1]);v=json.loads(p.read_text());v.update(phase='committing',finish_egress=False,finish_firewall=True);p.write_text(json.dumps(v))"
+        marker = "import json,sys;from pathlib import Path;p=Path(sys.argv[1]);v=json.loads(p.read_text());v.update(phase='committing',finish_egress=False,finish_firewall=True,revocation=None);p.write_text(json.dumps(v))"
         commit = [{'ansible.builtin.command': {'argv': [sys.executable, '-c', marker, str(root / 'nginx-state/nginx.service/site.json')]}, 'changed_when': False},
                   {'ansible.builtin.fail': {'msg': 'lost commit acknowledgement'}}]
     _write(root / 'tasks/transport-ingress-commit.yml', commit)
@@ -814,7 +814,7 @@ def test_next_deploy_finishes_recorded_commit_before_staging(tmp_path):
     _interrupt(root, 'open')
     journal = root / 'nginx-state/nginx.service/site.json'
     decision = json.loads(journal.read_text())
-    decision.update(phase='committing', finish_egress=True)
+    decision.update(phase='committing', finish_egress=True, finish_firewall=False, revocation=None)
     journal.write_text(json.dumps(decision))
     result = _run(root)
     assert result.returncode == 0, result.stdout + result.stderr

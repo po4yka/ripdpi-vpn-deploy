@@ -760,6 +760,33 @@ def test_commit_failure_retains_decision_refuses_restore_and_retries(fixture):
     assert tx.site_transaction('recover-commit', context)['status'] == 'committed'
 
 
+def test_revocation_commit_retries_only_exact_durable_authority(fixture):
+    tx, context, _ = fixture
+    authority = {'operation_id': '3fbb2baa-3a76-4f03-ae92-8ed9513fe268', 'intent_sha256': 'a' * 64}
+    context = {**context, 'revocation': authority}
+    state = install_accepted(tx, context)
+    tx.site_transaction('begin', context)
+    publish_candidate(tx, context)
+    calls = []
+    def finish(argv, *, data):
+        calls.append((argv, json.loads(data)))
+        if len(calls) == 1:
+            raise tx.TransactionError('runtime-command')
+        return ''
+    tx.command = finish
+    with pytest.raises(tx.TransactionError, match='runtime-command'):
+        tx.site_transaction('commit', context, finish_egress=True)
+    before = (state / 'site.json').read_bytes()
+    for value in (None, {**authority, 'intent_sha256': 'b' * 64}):
+        with pytest.raises(tx.TransactionError, match='revocation-resume-required'):
+            tx.site_transaction('recover-commit', {**context, 'revocation': value})
+        assert (state / 'site.json').read_bytes() == before
+    assert len(calls) == 1
+    assert tx.site_transaction('recover-commit', context)['status'] == 'committed'
+    assert all(argv[-2:] == ['finish', '--revocation-stdin'] and value == authority for argv, value in calls)
+    assert not (state / 'site.json').exists()
+
+
 def test_commit_decision_freezes_exact_ingress_authority(fixture):
     tx, context, _ = fixture
     state = install_accepted(tx, context)
