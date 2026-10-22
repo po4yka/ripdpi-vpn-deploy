@@ -929,7 +929,10 @@ Task deletion audits compare against the explicit trusted base while retaining
 feature first-parent lifecycle history. Importing a purge already in that base
 is not a new deletion when no issue, execution or receipt changed outside it.
 Earlier active-state imports must match the unique latest common ancestor with
-that base exactly. Stale ancestor imports after a newer base state, independent
+that base exactly, including imports carried by another feature parent that
+contains that ancestor and preserves its projection. Scan every introduced
+commit across the full DAG, including each carrier's own history.
+Stale ancestor imports after a newer base state, independent
 lifecycle edits and merge-only resurrection retain the full audit.
 
 The monitor wraps the canonical REALITY collector in one owned process session and parent-owned temporary directory. Invalid explicit target, name, mode and owned-public prerequisites refuse before missing private defaults are loaded.
