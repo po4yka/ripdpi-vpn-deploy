@@ -110,6 +110,7 @@ def _stop(process):
     try:
         os.killpg(process.pid, signal.SIGTERM)
     except ProcessLookupError:
+        # The owned process group already exited before the signal.
         pass
     try:
         process.wait(timeout=2)
@@ -117,6 +118,7 @@ def _stop(process):
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
+            # The owned process group already exited before the signal.
             pass
         process.wait(timeout=2)
     try:
@@ -285,7 +287,8 @@ class Runtime:
                                 yield from credentials(child)
                     # Require the actual server tree even when the last user's
                     # forward_proxy handler has been removed by the role.
-                    document["apps"]["http"]["servers"]
+                    if not isinstance(document["apps"]["http"]["servers"], dict):
+                        raise ProbeError("runtime-authority-invalid")
                     present = encoded in credentials(document)
         return {"peer_absent": not present, "runtime_healthy": active or (inactive and engine == "awg"),
                 "inactive_confirmed": inactive, "token": token,
@@ -386,7 +389,6 @@ class Runtime:
         marker = Path("/run/netns") / namespace
         process, attempted, location, resolver_created = None, False, None, False
         filename = _private(directory / (interface + ".conf"), config["text"].encode())
-        result, cleanup = None, True
 
         def checked(args, *, data=None):
             code, output = self.command(args, data=data)

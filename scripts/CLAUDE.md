@@ -20,15 +20,17 @@ cannot change that digest. Native-only delivery exports official AWG/Naive
 configuration without a published token.
 Its encrypted intent freezes generated credentials, grant CAS bytes, source
 identity and recipient output before mutation. Canonical role rotation and
-private native probes must succeed for each affected node. Publisher revocation
-requires an owned TLS canary accepted before authority replacement and rejected
+private native probes must succeed for each affected node. Naive revocation
+witnesses require a mapping of actual HTTP servers even after the last user
+retires. Publisher revocation requires an owned TLS canary accepted before authority replacement and rejected
 after it; snapshot flags alone are insufficient. Never recreate credentials on
 resume or treat status as fresh runtime verification.
 
 Device migration uses separate source/target SOPS authorities and an encrypted
 intent before cross-document writes. Exact inventory, host pins, alternate
-sources and endpoint fingerprints fence resume. Publisher CAS preserves every
-active URL and expiry; registry identity includes the exact migration metadata.
+sources and endpoint fingerprints fence resume. Publisher IO initializes shared
+admission callbacks without shadowing its revalidation method. Publisher CAS
+preserves every active URL and expiry; registry identity includes the exact migration metadata.
 Preparation precedes target convergence. Publication and readiness re-run
 target verification and an expiring credential-free TLS route canary, then
 re-read authority before accepting delivery. Old credentials remain until a

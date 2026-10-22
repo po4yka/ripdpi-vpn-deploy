@@ -7,11 +7,12 @@ from pathlib import Path
 
 import pytest
 import yaml
-from client_payload import read_document
+import client_payload
+import device_lifecycle_credentials
 from device_lifecycle import Lifecycle
 from device_migration_io import encoded
 from encrypted_client_document import operate
-from test_device_migration import LocalPublisher
+from test_device_migration import LocalPublisherBase
 from test_device_migration_route import route_io
 from test_device_migration_route import tls_server as tls_server  # noqa: PLC0414
 from test_subscription_document import service as service  # noqa: PLC0414
@@ -20,7 +21,7 @@ from test_vpn_consumer_reliability import context as context, data  # noqa: PLC0
 ROOT = Path(__file__).resolve().parents[2]
 
 
-class Runtime(LocalPublisher):
+class Runtime(LocalPublisherBase):
     def __init__(self, service):
         super().__init__(service)
         self.events = []
@@ -100,16 +101,16 @@ def prepare(instance):
 
 
 def test_issue_produces_real_encrypted_authority_grant_and_usable_private_output(operation):
-    initial = read_document(operation.journal_path)
+    initial = client_payload.read_document(operation.journal_path)
     prepare(operation)
-    assert read_document(operation.journal_path)['xray'] == initial['xray']
+    assert client_payload.read_document(operation.journal_path)['xray'] == initial['xray']
     result = operation.run()
     assert result['phase'] == 'complete' and result['recipient_artifact']
     artifact = json.loads(Path(operation.manifest['delivery']['output']).read_bytes())
     assert artifact['subscription_url'].startswith('https://delivery.example:8444/sub/')
     assert '<CLIENT_PRIVATE_KEY>' not in artifact['amneziawg_configs']['upcloud:prod']
     assert 'PrivateKey = ' in artifact['amneziawg_configs']['upcloud:prod']
-    doc = read_document(operation.journal_path)
+    doc = client_payload.read_document(operation.journal_path)
     assert doc['client_registry']['phone'] == initial['client_registry']['phone']
     private = doc['client_registry']['new-phone']['awg_private_key']
     assert private.encode() not in Path(operation.journal_path).read_bytes()
@@ -122,7 +123,7 @@ def test_unknown_probe_blocks_completion_without_rolling_credentials_back(operat
     with pytest.raises(ValueError, match='native-probe'):
         operation.run()
     assert operation.status()['phase'] != 'complete'
-    assert 'new-phone' in read_document(operation.journal_path)['client_registry']
+    assert 'new-phone' in client_payload.read_document(operation.journal_path)['client_registry']
     operation.io.probe_state = None
     assert operation.run()['phase'] == 'complete'
 
@@ -160,13 +161,13 @@ def test_approval_covers_full_current_authority(operation):
     operate(operation.journal_path, lambda doc: (dict(doc, timezone='UTC'), {}))
     with pytest.raises(ValueError, match='approval'):
         operation.prepare(approved)
-    assert 'device_operations' not in read_document(operation.journal_path)
+    assert 'device_operations' not in client_payload.read_document(operation.journal_path)
 
 
 def test_revoke_all_real_grants_preserves_unrelated_user_and_confirms_policy(operation):
     prepare(operation)
     operation.run()
-    original = read_document(operation.journal_path)
+    original = client_payload.read_document(operation.journal_path)
     manifest = copy.deepcopy(operation.manifest)
     manifest.update(id='22222222-2222-4222-8222-222222222222', action='revoke', delivery=None)
     revoke = Lifecycle(manifest, operation.io)
@@ -180,7 +181,7 @@ def test_revoke_all_real_grants_preserves_unrelated_user_and_confirms_policy(ope
     altered['source']['DEPLOYABLE_SOURCE_DIGEST'] = 'c'*64
     with pytest.raises(ValueError, match='intent-changed'):
         revoke._validate_journal(altered)
-    doc = read_document(operation.journal_path)
+    doc = client_payload.read_document(operation.journal_path)
     assert doc['client_registry']['new-phone']['status'] == 'revoked'
     assert doc['client_registry']['phone'] == original['client_registry']['phone']
     assert all(row['name'] != 'new-phone' for row in doc['xray']['clients'])
@@ -242,7 +243,7 @@ def test_existing_output_refuses_before_encrypted_intent(operation):
     output.chmod(0o600)
     with pytest.raises(ValueError, match='already-exists'):
         operation.inspect()
-    assert 'device_operations' not in read_document(operation.journal_path)
+    assert 'device_operations' not in client_payload.read_document(operation.journal_path)
 
 
 def test_source_change_after_review_refuses_mutation(operation, monkeypatch):
@@ -250,7 +251,7 @@ def test_source_change_after_review_refuses_mutation(operation, monkeypatch):
     monkeypatch.setattr(operation.io, 'source_identity', lambda: {'DEPLOY_SOURCE_REVISION': 'c'*40, 'DEPLOYABLE_SOURCE_DIGEST': 'd'*64})
     with pytest.raises(ValueError, match='approval'):
         operation.prepare(review['approval'])
-    assert 'device_operations' not in read_document(operation.journal_path)
+    assert 'device_operations' not in client_payload.read_document(operation.journal_path)
 
 
 def test_source_change_on_resume_preserves_pending_intent(operation, monkeypatch):
@@ -297,7 +298,7 @@ def test_refresh_keeps_all_existing_links_and_expiry(operation):
     after = refresh.snapshots()['upcloud:prod']['rows']
     assert set(after) == {first_token, second_token}
     assert json.loads(base64.b64decode(after[second_token]['document_b64']))['expires'] == other['expires']
-    assert read_document(operation.journal_path)['client_registry']['new-phone']['awg_private_key'] == read_document(operation.journal_path)['device_operations'][operation.manifest['id']]['after']['upcloud:prod']['client_registry']['new-phone']['awg_private_key']
+    assert client_payload.read_document(operation.journal_path)['client_registry']['new-phone']['awg_private_key'] == client_payload.read_document(operation.journal_path)['device_operations'][operation.manifest['id']]['after']['upcloud:prod']['client_registry']['new-phone']['awg_private_key']
 
 
 def test_running_publisher_must_actually_deny_revoked_canary(operation, monkeypatch):
@@ -338,8 +339,6 @@ def test_revoke_rechecks_running_policy_after_final_native_probes(operation, mon
 
 @pytest.mark.parametrize('engine', ['naive', 'amneziawg'])
 def test_native_only_issue_refresh_and_revoke_have_usable_private_artifacts(operation, monkeypatch, engine):
-    import client_payload
-    import device_lifecycle_credentials
     import device_lifecycle_probe
     settings = client_payload.context('device-full-tailnet')
     settings['vpn'] = {name: False for name in settings['vpn']}
@@ -363,8 +362,8 @@ def test_native_only_issue_refresh_and_revoke_have_usable_private_artifacts(oper
     else:
         config = artifact['amneziawg_configs']['upcloud:prod']
         assert '<CLIENT_PRIVATE_KEY>' not in config and '[Interface]' in config and '[Peer]' in config
-        assert read_document(issue.journal_path)['client_registry']['new-phone']['awg_private_key'] in config
-    original = read_document(issue.journal_path)
+        assert client_payload.read_document(issue.journal_path)['client_registry']['new-phone']['awg_private_key'] in config
+    original = client_payload.read_document(issue.journal_path)
     identity = original['client_registry']['new-phone']['last_payload_identity']
     manifest = copy.deepcopy(manifest)
     manifest.update(id='66666666-6666-4666-8666-666666666666', action='refresh')
@@ -373,12 +372,12 @@ def test_native_only_issue_refresh_and_revoke_have_usable_private_artifacts(oper
     prepare(refresh)
     assert refresh.run()['phase'] == 'complete'
     assert json.loads(Path(manifest['delivery']['output']).read_bytes()) == artifact
-    assert read_document(issue.journal_path)['client_registry']['new-phone']['last_payload_identity'] == identity
+    assert client_payload.read_document(issue.journal_path)['client_registry']['new-phone']['last_payload_identity'] == identity
     manifest.update(id='77777777-7777-4777-8777-777777777777', action='revoke', delivery=None)
     revoke = Lifecycle(manifest, operation.io)
     prepare(revoke)
     assert revoke.run()['phase'] == 'complete'
-    final = read_document(issue.journal_path)
+    final = client_payload.read_document(issue.journal_path)
     assert final['naive_secrets']['clients'] == []
     assert all(row['name'] != 'new-phone' for item in final['amneziawg_secrets']['instances'] for row in item['peers'])
 
@@ -408,13 +407,12 @@ def test_revocation_cleanup_lost_ack_does_not_leak_probe_documents(operation, mo
 
 
 def test_grant_only_revoke_reconciles_every_node_and_resumes_actual_tls_denial(operation):
-    from device_lifecycle_credentials import revoke as remove_credentials
     prepare(operation)
     operation.run()
     artifact = json.loads(Path(operation.manifest['delivery']['output']).read_bytes())
     token = artifact['subscription_url'].rsplit('/', 1)[1]
     def remove_authority(document):
-        result = remove_credentials({'node': document}, operation.name)['node']
+        result = device_lifecycle_credentials.revoke({'node': document}, operation.name)['node']
         del result['client_registry'][operation.name]
         return result, {}
     operate(operation.journal_path, remove_authority)
@@ -451,7 +449,7 @@ def test_revoke_requires_device_authority_or_an_exact_published_grant(operation)
     revoke = Lifecycle(manifest, operation.io)
     with pytest.raises(ValueError, match='device-not-found'):
         revoke.inspect()
-    assert 'device_operations' not in read_document(operation.journal_path)
+    assert 'device_operations' not in client_payload.read_document(operation.journal_path)
 
 
 def test_real_device_may_share_internal_canary_client_name(operation):

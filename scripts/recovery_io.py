@@ -206,6 +206,7 @@ class Journal:
             try:
                 os.unlink(temporary, dir_fd=self.fd)
             except FileNotFoundError:
+                # Successful replacement already consumed this owned temporary file.
                 pass
         return self.directory / name
 

@@ -23,7 +23,7 @@ from test_subscription_document import delivery
 from test_subscription_document import service as service  # noqa: PLC0414
 
 
-class LocalPublisher:
+class LocalPublisherBase:
     """Use the real installed service functions with an isolated filesystem."""
     admission = {'fixture': 'local-publisher-only'}
 
@@ -47,9 +47,6 @@ class LocalPublisher:
     def verify_target(self, document):
         self.verified += 1
 
-    def verify_routes(self):
-        pass
-
     def publisher(self, alias, action, token_hash=None, expected=None, document=None):
         if action == 'ready':
             return None
@@ -62,6 +59,11 @@ class LocalPublisher:
             self.fail_after = False
             raise OSError('lost acknowledgement after real publication')
         return result
+
+
+class LocalPublisher(LocalPublisherBase):
+    def verify_routes(self):
+        pass
 
 
 @pytest.fixture

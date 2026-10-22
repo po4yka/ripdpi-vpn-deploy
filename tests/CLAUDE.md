@@ -27,8 +27,11 @@ Credential scanner exceptions bind the exact generator expression and source pat
 Real literals, other paths and appended assignments must remain detectable.
 
 Device lifecycle cases exercise actual SOPS journals and subscription publisher
-state. TLS canaries distinguish on-disk revocation from a running reader that
-still accepts the token. Native Linux tests launch real pinned protocols and
+state. Shared publisher fixtures preserve actual CAS and lost acknowledgements,
+with distinct migration-wide and host-scoped lifecycle route contracts. Owned
+probe TLS servers explicitly require TLS 1.2 or newer; malformed Naive server
+trees must refuse retirement evidence. TLS canaries distinguish on-disk
+revocation from a running reader that still accepts the token. Native Linux tests launch real pinned protocols and
 systemd services for accepted and revoked access; orchestration callbacks alone
 are not native proof. Missing tools, TUN, source receipts or cleanup fail the
 isolated native lane instead of skipping it.

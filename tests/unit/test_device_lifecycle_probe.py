@@ -14,7 +14,6 @@ import select
 import shutil
 import socket
 import ssl
-import subprocess
 import sys
 import threading
 
@@ -54,7 +53,6 @@ def settings():
 
 def test_renderer_all_variants_exact_device_and_no_source_mutation(monkeypatch):
     source = authority()
-    original = copy.deepcopy(source)
     source["xray"]["cohorts"] = [
         {"name": "vision", "clients": ["device0"], "port": 443, "flow_mode": "vision"},
         {"name": "mux", "clients": ["device0"], "port": 2053, "flow_mode": "mux", "finalmask": True}]
@@ -172,6 +170,7 @@ class HttpsOrigin:
         self.server = http.server.ThreadingHTTPServer((address, 0), Handler)
         self.server.daemon_threads = True
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.set_alpn_protocols(["h2", "http/1.1"])
         context.load_cert_chain(certificate_path, key_path)
         self.server.socket = context.wrap_socket(self.server.socket, server_side=True)
@@ -218,6 +217,7 @@ class TlsConnectFixture:
         self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.server.daemon_threads = True
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.load_cert_chain(cert_path, key_path)
         self.server.socket = context.wrap_socket(self.server.socket, server_side=True)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -260,6 +260,15 @@ def naive_profile(directory, port):
             "server_name": "localhost", "username": "private-user", "password": "private-pass"},
             "witness": {"kind": "basic", "credential": credential, "instance": None,
                         "config_path": str(path), "unit": "owned.service"}}
+
+
+@pytest.mark.parametrize("servers", [None, [], "invalid", 1])
+def test_naive_witness_refuses_malformed_server_tree(tmp_path, servers):
+    profile = naive_profile(tmp_path, 12345)
+    Path(profile["witness"]["config_path"]).write_text(json.dumps({"apps": {"http": {"servers": servers}}}))
+    runtime = PortableRuntime(binaries={"systemctl": service_fixture(tmp_path)})
+    with pytest.raises(worker.ProbeError, match="runtime-authority-invalid"):
+        runtime.witness(profile)
 
 
 def test_real_https_control_and_tls_connect_receipt_is_exact_and_private(tmp_path):

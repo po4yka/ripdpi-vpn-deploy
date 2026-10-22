@@ -121,7 +121,10 @@ class PublisherIO:
     def __init__(self, publication, hosts, commands, *, revalidate):
         self.plan = {'publication': publication}
         self.hosts, self.commands = hosts, commands
-        self.revalidate = revalidate
+        self._revalidate = revalidate
+
+    def revalidate(self):
+        self._revalidate()
 
     def publisher(self, alias, action, token_hash=None, expected=None, document=None, *, cleanup=False):
         if not cleanup:
@@ -212,6 +215,8 @@ class LocalIO(PublisherIO):
         if len(pins) > 65536:
             raise MigrationRefused('migration-host-pins-limit')
         self.admission = {'hosts': self.hosts, 'pins_sha256': sha(pins)}
+        super().__init__(plan['publication'], self.hosts, self.commands, revalidate=self._revalidate_admission)
+        self.plan = plan
 
     def read(self, path):
         return read_document(path)
@@ -220,7 +225,7 @@ class LocalIO(PublisherIO):
         selected = select_hosts(self.plan['inventory'], [host], selection_kind='provider-env')[0]
         return selected['address']
 
-    def revalidate(self):
+    def _revalidate_admission(self):
         if LocalIO(self.plan).admission != self.admission:
             raise MigrationRefused('migration-inventory-or-pins-changed')
 

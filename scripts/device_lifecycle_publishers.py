@@ -61,6 +61,7 @@ def _worker(
                 try:
                     os.killpg(process.pid, signal.SIGKILL)
                 except ProcessLookupError:
+                    # The owned process group already exited before the signal.
                     pass
                 process.wait(timeout=2)
     records = {}

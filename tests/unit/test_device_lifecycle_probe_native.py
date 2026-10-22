@@ -6,7 +6,6 @@ No inventory, deployed credential or network outside the owned lab is used.
 """
 from __future__ import annotations
 
-import base64
 import copy
 from contextlib import contextmanager
 import hashlib
@@ -403,7 +402,8 @@ def test_actual_native_revocation_interruption_fences_restart_and_resumes(
             secret = next(row for row in source["snell_secrets"]["variants"] if row["id"] == "v6-default")
             users = [*secret["users"], {"name": "survivor", "userkey": "STUB_SURVIVOR_NATIVE_KEY"}]
             server = {"log": {"disabled": True}, "inbounds": [{"type": "snell", "listen": ADDRESS,
-                "listen_port": port, "version": variant["server_version"], "mode": variant["mode"],
+                "listen_port": port, "version": config["snell"]["variants"][0]["server_version"],
+                "mode": config["snell"]["variants"][0]["mode"],
                 "psk": secret["psk"], "users": users}], "outbounds": [{"type": "direct"}]}
             before = json.dumps(server).encode()
             server["inbounds"][0]["users"] = users[-1:]

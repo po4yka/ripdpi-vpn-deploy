@@ -60,6 +60,7 @@ class Destination:
                     break
                 connection.sendall(data)
         except OSError:
+            # Candidate cancellation and reset tests close these owned sockets.
             pass
         finally:
             connection.close()
@@ -142,6 +143,7 @@ class Gateway:
                 connection.sendall(wire.reply("127.0.0.1", self.port))
                 self._relay(connection, target, host)
         except (OSError, ValueError):
+            # Failed or cancelled SOCKS candidates terminate their fixture connection.
             pass
         finally:
             if target is not None:
