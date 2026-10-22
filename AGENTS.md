@@ -70,7 +70,7 @@ use rescue/GRUB only when the owner explicitly chooses that emergency path.
 
 | Goal | Command |
 |---|---|
-| Full local pre-PR gate (task contract + validate + ci-fast) | `make check` |
+| Full local pre-PR gate (task-check + validate + ci-fast + docs-check) | `make check` |
 | Credential-free CI parity bundle | `make ci-fast` |
 | Terraform fmt/validate, gitleaks, ansible-lint, playbook syntax | `make validate` |
 | One Ansible role (Docker) | `make molecule-test ROLE=<name>` |

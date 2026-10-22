@@ -12,9 +12,9 @@ A typical mix:
 
 | Cohort | Port | Flow mode | Why |
 |---|---|---|---|
-| `home-isp` | 443 | `mux` | Avoid the ~12-concurrent-TLS rule on home ISPs (`tls-policing-home-isps`) |
-| `mobile`   | 8444 | `vision` | TCP/443 elsewhere on the IP is policed; mobile is fine on a different port |
-| `foreign`  | 9443 | `vision` | Default behaviour, no policing observed |
+| `tls-cap-mux` | 443 | `mux` | The access network caps concurrent TLS sessions (~12); mux keeps one session |
+| `alt-port-vision` | 8444 | `vision` | TCP/443 is policed on this path; the same flow on another port is not |
+| `unpoliced-vision` | 9443 | `vision` | Default behaviour, no policing observed |
 
 A single REALITY identity is what DPI active probing measures. Adding
 more cohort ports does not multiply your fingerprint surface — every
@@ -36,17 +36,17 @@ xray:
     - { name: watchdog, uuid: …, short_id: … }
 
   cohorts:
-    - name: home-isp
+    - name: tls-cap-mux
       port: 443
       flow_mode: mux
       finalmask: true
       clients: [phone, watchdog]
-    - name: mobile
+    - name: alt-port-vision
       port: 8444
       flow_mode: vision
       finalmask: false
       clients: [tablet, watchdog]
-    - name: foreign
+    - name: unpoliced-vision
       port: 9443
       flow_mode: vision
       finalmask: false

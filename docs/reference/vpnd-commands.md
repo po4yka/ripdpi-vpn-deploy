@@ -11,6 +11,8 @@ from it. Installation and development notes: [`vpnd/README.md`](../../vpnd/READM
 
 ## Global options
 
+Every command and subcommand accepts these as well.
+
 | Option | Purpose |
 |---|---|
 | `-h, --help` | show this help message and exit |
@@ -38,19 +40,158 @@ from it. Installation and development notes: [`vpnd/README.md`](../../vpnd/READM
 | `vpnd update` | Check for a newer vpnd release (cached 24 h). |
 | `vpnd completions` | Emit shell completions to stdout. |
 
+### `vpnd deploy`
+
+Interactive deploy wizard.
+
+| Argument | Required | Purpose |
+|---|---|---|
+| `--skip-precheck` | no | Skip running pre-deploy guards (mirrors SKIP_PRECHECK=1). |
+| `--tag-on-success` | no | Tag a known-good commit after a successful verify run. |
+
+### `vpnd reconverge`
+
+Idempotent re-deploy against existing hosts.
+
+| Argument | Required | Purpose |
+|---|---|---|
+| `--host` | no | Limit to a single host from the registry. |
+| `--dry-run` | no | Stop after dry-run; do not apply. |
+
+### `vpnd share`
+
+Bundled recipient handoff (URL, QR, sing-box and app cards).
+
+| Argument | Required | Purpose |
+|---|---|---|
+| `<client>` | yes | Client name. |
+| `--qr` | no | Also emit a QR code image. |
+| `--type singbox\|uri` | no | QR payload type (default: singbox). |
+| `--out` | no | Output directory (default: ./share/<client>/). |
+| `--token-stdin` | no | Read the opaque subscription token from stdin. |
+| `--token-file` | no | Read the opaque subscription token from a 0600 file. |
+
+Exactly one of `--token-stdin`, `--token-file`.
+
+### `vpnd doctor`
+
+Diagnostic bundle.
+
+| Argument | Required | Purpose |
+|---|---|---|
+| `--host` | no | Host alias from the registry; omitted = active env's primary host. |
+| `--ai` | no | Format output as a clipboard-ready prompt for an AI assistant. |
+| `--clip` | no | Copy AI prompt to the system clipboard (requires --ai). |
+| `--bundle` | no | Pack a diagnostic gzip-tar bundle at this path (orthogonal to --ai). |
+
+### `vpnd probe`
+
+Profile-aware probing.
+
+| Argument | Required | Purpose |
+|---|---|---|
+| `--host` | no | Host alias from the registry; omitted = active env's primary host. |
+| `--profile p0\|p1\|p2\|all` | no | Which profile to probe (default: all). |
+
+### `vpnd probe-matrix`
+
+Multi-protocol simultaneity DPI probe across a configured matrix.
+
+| Argument | Required | Purpose |
+|---|---|---|
+| `--duration` | no | Run duration; plain seconds or NN{s,m,h,d} (default: 4h). |
+| `--poll-interval-seconds` | no | Poll interval between matrix sweeps (seconds); overrides config. |
+| `--config` | no | Matrix config YAML (default: <root>/vpnd/config/probe-matrix.yaml). |
+| `--output` | no | Report JSON output (default: <root>/vpnd/state/probe-matrix-<unix-ms>.json). |
+| `--json` | no | Emit a machine-readable run summary instead of the human path line. |
+
+### `vpnd preflight`
+
+Pre-deploy guards.
+
+| Argument | Required | Purpose |
+|---|---|---|
+| `--skip-certs` | no | Skip the certificate-validity check (faster smoke). |
+
 ### `vpnd fleet`
 
-| Subcommand | Purpose |
-|---|---|
-| `vpnd fleet status` | Summary table across every host:env pair. |
-| `vpnd fleet rotate` | Coordinated rotation across the fleet. |
-| `vpnd fleet drift` | Diff fleet state against the last known-good tag. |
+Fleet-wide operations.
+
+#### `vpnd fleet status`
+
+Summary table across every host:env pair.
+
+#### `vpnd fleet rotate`
+
+Coordinated rotation across the fleet.
+
+| Argument | Required | Purpose |
+|---|---|---|
+| `--plan` | yes | Path to the fleet plan YAML. |
+| `--resume` | no | Resume a partially-completed rotation. |
+| `--dry-run` | no | Show what would happen without making changes. |
+
+#### `vpnd fleet drift`
+
+Diff fleet state against the last known-good tag.
 
 ### `vpnd host`
 
-| Subcommand | Purpose |
-|---|---|
-| `vpnd host list` | List registered hosts. |
-| `vpnd host show` | Show one host record. |
-| `vpnd host add` | Add a host record. |
-| `vpnd host remove` | Remove a host record. |
+Local host registry.
+
+#### `vpnd host list`
+
+List registered hosts.
+
+| Argument | Required | Purpose |
+|---|---|---|
+| `--json` | no | Emit a machine-readable JSON array instead of the table. |
+
+#### `vpnd host show`
+
+Show one host record.
+
+| Argument | Required | Purpose |
+|---|---|---|
+| `<name>` | yes | Host name. |
+| `--json` | no | Emit compact single-line JSON instead of the pretty form. |
+
+#### `vpnd host add`
+
+Add a host record.
+
+| Argument | Required | Purpose |
+|---|---|---|
+| `<name>` | yes | Host name. |
+| `--env` | yes | Host environment. |
+| `--provider` | yes | Host cloud provider. |
+| `--ipv4` | no | Host IPv4 address. |
+| `--ipv6` | no | Host IPv6 address. |
+
+#### `vpnd host remove`
+
+Remove a host record.
+
+| Argument | Required | Purpose |
+|---|---|---|
+| `<name>` | yes | Host name. |
+
+### `vpnd ai-docs`
+
+Machine-readable docs endpoints.
+
+| Argument | Required | Purpose |
+|---|---|---|
+| `--out` | no | Output directory (default: ./ai-docs/). |
+
+### `vpnd update`
+
+Check for a newer vpnd release (cached 24 h).
+
+### `vpnd completions`
+
+Emit shell completions to stdout.
+
+| Argument | Required | Purpose |
+|---|---|---|
+| `<shell>` | yes | Shell to generate completions for: bash, zsh, fish, powershell (pwsh alias). |

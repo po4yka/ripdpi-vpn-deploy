@@ -249,7 +249,7 @@ repeat the recipe at the merged source SHA, which may differ from the PR head.
 | PR labeled `ci-real-deploy` | **real-vps-deploy** workflow: provisions an ephemeral UpCloud VPS, runs site.yml + verify, destroys — closest approximation to production in CI. See `docs/how-to/ci-real-deploy.md`. |
 | `make validate` (operator) | terraform fmt + validate + gitleaks + ansible-lint + ansible syntax-check |
 | `make ci-fast` (operator) | Portable credential-free CI jobs: actionlint, strict offline zizmor, cloud-init schema, all provider Terraform tests and Conftest policy tests, yamllint, shellcheck, render/schema/unit/bats, Python vpnd lint/tests/parity, package installation/reproducibility and dependency policy. Missing or wrong-version tools fail closed. Mutation testing remains an explicit `make vpnd-mutants` gate. |
-| `make check` (operator) | Union of `validate` and `ci-fast`; the local pre-PR parity gate. Molecule, GitHub-native security services, and credentialed deploy jobs remain explicit or CI-only. |
+| `make check` (operator) | `task-check`, `validate`, `ci-fast` and `docs-check` in that order; the local pre-PR parity gate. Molecule, GitHub-native security services, and credentialed deploy jobs remain explicit or CI-only. |
 | `make validate-target` | live probe of REALITY target (TLS / H2 / SAN / uTLS / ASN / template OPSEC) |
 | `make monitor-reality-target VANTAGE=<technical-label>` | filtered-vantage active-target path and ASN/prefix signal; unhealthy observations on two consecutive UTC days alert |
 | `make plan` | terraform plan (catches infrastructure drift) |

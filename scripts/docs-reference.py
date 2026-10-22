@@ -76,24 +76,54 @@ def vpnd_commands() -> str:
         "",
         "## Global options",
         "",
+        "Every command and subcommand accepts these as well.",
+        "",
         "| Option | Purpose |",
         "|---|---|",
     ]
+    global_dests = set()
     for action in parser._actions:
         if action.option_strings and action.help != argparse.SUPPRESS:
             rows.append(f"| `{', '.join(action.option_strings)}` | {_help(action.help)} |")
+            global_dests.add(action.dest)
     subparsers = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
     rows += ["", "## Commands", "", "| Command | Purpose |", "|---|---|"]
     for name in subparsers.choices:
         rows.append(f"| `vpnd {name}` | {cli.COMMANDS[name]} |")
     for name, child in subparsers.choices.items():
+        rows += ["", f"### `vpnd {name}`", "", cli.COMMANDS[name]]
+        rows += _arguments(child, global_dests)
         nested = [a for a in child._actions if isinstance(a, argparse._SubParsersAction)]
-        if not nested:
-            continue
-        rows += ["", f"### `vpnd {name}`", "", "| Subcommand | Purpose |", "|---|---|"]
-        for action_name, grandchild in nested[0].choices.items():
-            rows.append(f"| `vpnd {name} {action_name}` | {_help(grandchild.description)} |")
+        for action_name, grandchild in (nested[0].choices.items() if nested else ()):
+            rows += ["", f"#### `vpnd {name} {action_name}`", "", _help(grandchild.description)]
+            rows += _arguments(grandchild, global_dests)
     return "\n".join(rows) + "\n"
+
+
+def _arguments(parser, global_dests) -> list:
+    """Table of a parser's own positional arguments and options, without the
+    global options repeated on every subcommand or the subcommand list."""
+    rows = []
+    for action in parser._actions:
+        if isinstance(action, (argparse._SubParsersAction, argparse._HelpAction)):
+            continue
+        if action.dest in global_dests or action.help == argparse.SUPPRESS:
+            continue
+        if action.option_strings:
+            label = ", ".join(action.option_strings)
+            required = "yes" if action.required else "no"
+        else:
+            label = f"<{action.dest}>"
+            required = "no" if action.nargs in ("?", "*") else "yes"
+        if action.choices and not isinstance(action.choices, dict):
+            label += " " + "\\|".join(str(c) for c in action.choices)
+        rows.append(f"| `{label}` | {required} | {_help(action.help)} |")
+    if rows:
+        rows = ["", "| Argument | Required | Purpose |", "|---|---|---|", *rows]
+    for group in parser._mutually_exclusive_groups:
+        names = ", ".join(f"`{a.option_strings[0]}`" for a in group._group_actions)
+        rows += ["", f"{'Exactly' if group.required else 'At most'} one of {names}."]
+    return rows
 
 
 def _help(text) -> str:

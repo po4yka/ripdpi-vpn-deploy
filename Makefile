@@ -1482,7 +1482,8 @@ ci-fast:
 
 	@echo "ci-fast: OK"
 
-# Union gate: everything in validate + everything in ci-fast.
+# Union gate: task contract, everything in validate, everything in ci-fast,
+# then the documentation guards.
 # Run this before any commit touching Ansible, Terraform, or Python to get
 # the same signal that CI produces without waiting for a remote run.
 check: task-check validate ci-fast docs-check  ## Full local gate: task contract + validate + ci-fast + docs-check
