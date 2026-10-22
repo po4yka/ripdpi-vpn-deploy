@@ -108,13 +108,11 @@ Complete frontend authority is staged in the private `transport_runtime_candidat
 - **Multi-cohort support** — `vpn.xray_cohorts` is a list; each cohort gets
   its own inbound with its own `serverNames`, `shortIds`, flow_mode, and
   finalmask. See `docs/how-to/multi-cohort.md`.
-- **Default alt-port inbound** — `xray_fallback_port` (default 2053)
-  synthesises a second VLESS+REALITY+Vision inbound sharing the same
-  Reality identity but on a non-443 port. Lets a client carry both
-  endpoints in its selector group and roll over to the alt-port when a
-  home-ISP TLS-connection-count rule fires on 443 specifically. Ignored
-  when `xray.cohorts` is non-empty — multi-cohort layouts express the
-  same idea explicitly. Set the port to 0 to disable.
+- **Alternate inbound is opt-in** — `xray_fallback_port` defaults to 0.
+  A nonzero port synthesises a second VLESS+REALITY+Vision inbound sharing
+  the same identity and requires a matching explicit provider listener.
+  Multi-cohort layouts use their declared ports instead. A second port is
+  another candidate path, not proof of resilience to IP or payload blocking.
 - **Backup-before-write** — the previous config is copied to `.prev` so
   `rollback-config.yml` has a target.
 - **No client identifiers in exported metrics** — per-user counters are

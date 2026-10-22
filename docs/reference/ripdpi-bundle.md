@@ -61,6 +61,59 @@ the server starts emitting it. The `x-contract-version` integer in the schema
 is the cross-repo pin: the server contract test and the client both assert it
 equals the version they support.
 
+## `ripdpi.payload_failover`
+
+Optional payload health policy for the RIPDPI imported selector runtime. Set
+`client_payload_failover` in the contributing Ansible group/profile variables;
+every selected host must resolve to the same policy. The emitter refuses
+conflicting policies or a policy without proxy candidates. Standard sing-box
+exports do not include this field: their `urltest` remains a HEAD/RTT check,
+which does not establish useful payload transfer.
+
+```yaml
+client_payload_failover:
+  schema_version: 1
+  selector_tag: select
+  probes:
+    - url: https://control-a.example.test/__throttle_probe?bytes=32768
+      expected_bytes: 32768
+      sha256: 80e00fc9e65a58c5ad59c399511a2ed5f27140f43e3b58f93c2f00a0c0df8816
+    - url: https://control-b.example.test/__throttle_probe?bytes=32768
+      expected_bytes: 32768
+      sha256: 80e00fc9e65a58c5ad59c399511a2ed5f27140f43e3b58f93c2f00a0c0df8816
+  interval_seconds: 60
+  timeout_seconds: 10
+  failure_threshold: 2
+  recovery_threshold: 2
+  cooldown_seconds: 120
+  max_backoff_seconds: 900
+```
+
+Replace both illustrative URLs with separately operated HTTPS origins serving
+the exact canonical body described in [the probe runbook](../how-to/payload-throttle.md).
+These example domains are not working services. The repository does not enable
+this policy by default. Provisioning and accepting control origins is a separate
+live operation. HTTPS certificate verification remains required; redirects,
+short bodies and digest mismatches do not pass. A successful control can qualify
+a candidate when the other control is unavailable; failure requires both
+controls to fail through that same candidate.
+
+Each probe requires 32768–65536 bytes and a lowercase SHA-256 digest. Origins
+must differ after host/port normalization. URLs are ASCII HTTPS without userinfo
+or fragments. Bounds are: interval 30–3600 seconds, per-control timeout 1–30,
+failure/recovery thresholds 2–10, cooldown 30–3600, maximum backoff 60–3600.
+Timeout cannot exceed the interval; maximum backoff cannot be below it. Unknown
+fields and invalid input refuse the policy instead of silently dropping it.
+
+The coordinated client implementation owns failure/recovery counters, cooldown,
+backoff and network-change reset. If all candidates fail, it retains its last
+proxy selection and does not select direct. This policy applies to full imported
+selector profiles; the simple seeded-profile import surface explicitly refuses
+it. Use a coordinated client version: older clients may ignore additive fields
+and cannot be treated as payload-qualified. The paired
+`contract/ripdpi-bundle.payload-failover.json` fixture contains synthetic emitted
+input for the client parser, not live acceptance evidence.
+
 ## `ripdpi.amneziawg`
 
 Array of AWG device-VPN entries.  Empty array (`[]`) when AmneziaWG is not
