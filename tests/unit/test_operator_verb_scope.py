@@ -78,7 +78,7 @@ def test_each_play_binds_one_host_before_any_other_task(verb):
 
 
 def test_rotation_guard_ordering_matches_the_runbook():
-    """RUNBOOK-rotate.md says the refusal follows fact gathering and the controller-side secrets load; change both together."""
+    """docs/how-to/rotate.md says the refusal follows fact gathering and the controller-side secrets load; change both together."""
     play = yaml.safe_load((PLAYBOOKS / "rotate-credentials.yml").read_text())[0]
     assert play.get("gather_facts", True) is not False
     assert play.get("vars_files")
@@ -355,10 +355,10 @@ def test_make_rollbacks_stay_usable_without_clean_source_or_decrypted_secrets(ve
 # Every guarded sequence the runbooks print: its runbook, the heading of its section and the step that faults it midway,
 # the last `make` call before cleanup. The revocation sequences rotate and verify every node; the others deploy once.
 GUARDED_SEQUENCES = {
-    "rotate-revocation": ("RUNBOOK-rotate.md", "## 1. Single client leak", "rotate-credentials:node-a"),
-    "deploy-add-client": ("RUNBOOK-deploy.md", "## Add a new client device", "rotate-credentials:node-a"),
-    "reality-keypair": ("RUNBOOK-rotate.md", "## 2. Server-wide REALITY keypair", "deploy:"),
-    "restic-password": ("RUNBOOK-rotate.md", "## 4. Restic password", "deploy:"),
+    "rotate-revocation": ("how-to/rotate.md", "## 1. Single client leak", "rotate-credentials:node-a"),
+    "deploy-add-client": ("how-to/deploy.md", "## Add a new client device", "rotate-credentials:node-a"),
+    "reality-keypair": ("how-to/rotate.md", "## 2. Server-wide REALITY keypair", "deploy:"),
+    "restic-password": ("how-to/rotate.md", "## 4. Restic password", "deploy:"),
 }
 REVOCATION_SEQUENCES = ("rotate-revocation", "deploy-add-client")
 DEPLOY_SEQUENCES = ("reality-keypair", "restic-password")
@@ -549,7 +549,7 @@ def test_runbook_second_signal_during_cleanup_does_not_cut_the_shred_short(tmp_p
 
 def redeploy_blocks() -> list[str]:
     """The preflight, deploy and journal-recovery subshells of the ordinary re-deploy recipe, in order."""
-    section = (ROOT / "docs/RUNBOOK-deploy.md").read_text().split("### Ordinary re-deploy recipe", 1)[1]
+    section = (ROOT / "docs/how-to/deploy.md").read_text().split("### Ordinary re-deploy recipe", 1)[1]
     section = section.split("\n## ", 1)[0]
     blocks = re.findall(r"^\(\n.*?^\)$", section, re.S | re.M)
     assert len(blocks) == 3, "the re-deploy recipe no longer prints its three guarded subshells"

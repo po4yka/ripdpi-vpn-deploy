@@ -21,7 +21,7 @@ the `[Peer]` block, the `[Interface]` block omits `ListenPort`, and the
 `Endpoint = <Node A>:port` line is on the [Peer] (not on A's side). That
 direction is load-bearing: if A becomes the initiator, A's outbound to B
 re-introduces the dual-role flow pattern this role is designed to break.
-See `docs/SPLIT-HOP-TOPOLOGY.md` "Two-node architecture".
+See `docs/decisions/0003-split-hop-relay-topology.md` "Two-node architecture".
 
 **Plain WG, not AmneziaWG** — the tunnel sits between two of our own
 VPSes; obfuscating its shape would be defense against an adversary we

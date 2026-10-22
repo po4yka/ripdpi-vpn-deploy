@@ -35,7 +35,7 @@ its own predicted difference without runtime publication.
 The role ships nginx pointed at a public CA cert for the operator's domain,
 listening on `nginx_xhttp_public_port` (default 8443), reverse-proxying the
 XHTTP path to Xray on `127.0.0.1:10085`. No `set_real_ip_from`, no
-`CF-Connecting-IP`, no Origin CA. Rationale: `docs/CDN-DECISION.md`.
+`CF-Connecting-IP`, no Origin CA. Rationale: `docs/decisions/0001-cdn-not-filtered-path-baseline.md`.
 
 Endpoint admission runs on the controller before role mutation, including check
 mode. Paths contain 2–256 bytes with a leading slash and nonempty ASCII

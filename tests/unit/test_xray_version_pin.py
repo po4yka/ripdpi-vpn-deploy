@@ -1,7 +1,7 @@
 """Verify that the Xray-core version pin is consistent across the repo.
 
 Cross-checks:
-  docs/XRAY-RELEASE-LINE.md  — the heading marked "(current Latest"
+  docs/reference/xray-release-line.md  — the heading marked "(current Latest"
   secrets/prod.secrets.example.yaml → xray.version  — the canonical pin
 
 Both must agree. A mismatch means either the doc was updated after a release
@@ -26,7 +26,7 @@ def test_xray_version_pin_consistent():
         text=True,
     )
     assert result.returncode == 0, (
-        "Xray-core version pin mismatch between docs/XRAY-RELEASE-LINE.md "
+        "Xray-core version pin mismatch between docs/reference/xray-release-line.md "
         "and secrets/prod.secrets.example.yaml.\n"
         f"stdout: {result.stdout}\n"
         f"stderr: {result.stderr}"

@@ -805,7 +805,7 @@ import uuid
 now = datetime.datetime.now(datetime.timezone.utc)
 policy = "drill-" + uuid.uuid4().hex
 labels = {"alertname": "ObservabilitySyntheticDrill", "component": "control-plane", "environment": "staging", "node": "collector", "policy": policy, "severity": "warning"}
-base = {"labels": labels, "annotations": {"summary": "operator synthetic delivery drill", "evidence_class": "synthetic-pipeline", "source_generation": source_generation, "runbook": "docs/OBSERVABILITY-OPERATIONS.md"}, "startsAt": now.isoformat()}
+base = {"labels": labels, "annotations": {"summary": "operator synthetic delivery drill", "evidence_class": "synthetic-pipeline", "source_generation": source_generation, "runbook": "docs/reference/observability-operations.md"}, "startsAt": now.isoformat()}
 relay_token = read_gateway_token("/etc/observability-control-plane/credentials", "telegram-relay-auth-token")
 def receipt():
     outbound = urllib.request.Request("http://127.0.0.1:19095/v1/drill-receipt", headers={"Authorization": "Bearer " + relay_token})

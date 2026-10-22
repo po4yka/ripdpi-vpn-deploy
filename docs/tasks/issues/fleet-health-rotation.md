@@ -2,7 +2,7 @@
 id: OPS-1792654666090980
 title: Repair fleet health and resumable rotation boundaries
 kind: bug
-status: doing
+status: done
 area: operations
 priority: high
 risk: high
@@ -14,6 +14,9 @@ openspec_change: fleet-health-rotation
 created: 2026-10-22
 updated: 2026-10-22
 related_tasks: []
+closed_at: "2026-10-22T11:45:41Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Merged PR 356 at 37939d5a; complete local make check and 224 integration tests passed. Exact-main CI 39761736896 and CodeQL 39761737020 passed all required checks. No live infrastructure operation was performed.
 ---
 
 ## Goal

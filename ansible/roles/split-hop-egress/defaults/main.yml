@@ -11,8 +11,8 @@
 # This file carries only configuration shape. The keys, peer IPs,
 # and listen port live in SOPS as `split_hop_egress_secrets.*`.
 #
-# See docs/SPLIT-HOP-TOPOLOGY.md for the architecture rationale and
-# the threat-model coverage table; docs/RUNBOOK-split-hop-pilot.md
+# See docs/decisions/0003-split-hop-relay-topology.md for the architecture rationale and
+# the threat-model coverage table; docs/how-to/split-hop-pilot.md
 # for operator-side stand procedure.
 #
 # Off by default. Operators that opt in must provision a second VPS

@@ -1,0 +1,8 @@
+{
+  "archived_at": "2026-10-22T11:40:31Z",
+  "change": "fleet-health-rotation",
+  "commit_sha": "37939d5a412b11375b71172e7fbf1bad9d73bb5a",
+  "outcome": "review",
+  "schema": 1,
+  "task_id": "OPS-1792654666090980"
+}

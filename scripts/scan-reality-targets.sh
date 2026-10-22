@@ -14,7 +14,7 @@
 #      TLS 1.3 + ALPN h2.
 #   3. Post-filter the CSV: drop the over-template list (cloudflare.com,
 #      microsoft.com, apple.com, google.com, discord.com); drop the "Avoid"
-#      ASN tier from docs/PROVIDER-NOTES.md when GEO_CODE is missing — IP
+#      ASN tier from docs/reference/provider-notes.md when GEO_CODE is missing — IP
 #      ASN is checked separately via whois.cymru.com for the top candidates.
 #   4. Print the top candidates with ASN + ALPN + CN + issuer columns.
 #   5. Optional: feed the top result back through validate-reality-target.sh
@@ -45,7 +45,7 @@ REALI_BIN="${TOOL_CACHE}/RealiTLScanner-${REALI_VERSION}"
 # Discovery-only popularity heuristic; independent of TLS/HTTP hygiene.
 OVERUSED_RE='^(([a-zA-Z0-9_-]+\.)+)?(cloudflare\.com|microsoft\.com|apple\.com|google\.com|discord\.com|icloud\.com)$'
 
-# ASN tier blocklist (see docs/PROVIDER-NOTES.md).
+# ASN tier blocklist (see docs/reference/provider-notes.md).
 AVOID_ASNS=(13335 16276 24940 14061 26383 216071)
 
 usage() {

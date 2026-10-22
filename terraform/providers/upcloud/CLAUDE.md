@@ -21,7 +21,7 @@ across providers so `scripts/render-inventory.sh` is provider-neutral.
 
 **Local TF state by default** — we don't trust remote state with VPN secrets
 even though we keep them out of TF. State is age-encrypted via
-`make backup-state`. Loss → re-import (see `docs/RUNBOOK-incident.md`, "State loss").
+`make backup-state`. Loss → re-import (see `docs/how-to/incident.md`, "State loss").
 
 **Secondary public IP is opt-in** — `additional_public_ip = true` allocates a
 second public IPv4 for the honeypot role; there is no generic floating-IP
@@ -82,7 +82,7 @@ Destroy authorization includes the exact seed storage UUID and its absence.
   `enable_hysteria` (v4+v6), but a present rule does not guarantee the provider
   network delivers inbound UDP. After deploy, verify externally with
   `make burn-check` (QUIC probe); on-host `nft`/`ss` ACCEPT is not evidence.
-  See `docs/PROVIDER-NOTES.md` → "UDP/443 edge reachability".
+  See `docs/reference/provider-notes.md` → "UDP/443 edge reachability".
 - **Return rule ≠ established-state proof** — the provider accepts packets to
   the configured ephemeral range because it cannot track flows. Never activate
   it before guest nftables is verified, and keep the Terraform range equal to

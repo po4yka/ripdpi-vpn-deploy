@@ -295,7 +295,7 @@ def test_xray_source_pins_are_separate_optional_secret_fields() -> None:
     assert "^[0-9a-f]{64}$" in ci_bootstrap
     assert "example xray.source_commit" not in ci_bootstrap
 
-    operator_docs = (ROOT / "docs/XRAY-RELEASE-LINE.md").read_text()
+    operator_docs = (ROOT / "docs/reference/xray-release-line.md").read_text()
     assert "xray.source_commit" in operator_docs
     assert "xray.source_linux_amd64_sha256" in operator_docs
     assert "xray.source_linux_arm64_sha256" in operator_docs

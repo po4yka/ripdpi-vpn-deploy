@@ -68,7 +68,7 @@ off under the restic+age backup contract.
   v4+v6; `enable_hysteria` only affects the legacy listener fallback), but a present rule
   does not guarantee the provider network delivers inbound UDP. After deploy,
   verify externally with `make burn-check` (QUIC probe); on-host `nft`/`ss`
-  ACCEPT is not evidence. See `docs/PROVIDER-NOTES.md` → "UDP/443 edge
+  ACCEPT is not evidence. See `docs/reference/provider-notes.md` → "UDP/443 edge
   reachability".
 - **Secondary IPv4 needs live-provider evidence** — mock-provider tests prove the reboot flag and inventory gate, not Vultr's control-plane/guest timing. A real deploy completes this check when inventory rendering observes the address inside the guest; failure is blocking.
 - **The public IPv6 target is cross-root input** — after replacing the endpoint

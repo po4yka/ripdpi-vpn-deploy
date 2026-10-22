@@ -66,7 +66,7 @@ unknown modes fail before render.
 
 **Pinned binary** — the Xray version is the SOPS secret `xray.version`;
 `defaults/main.yml` holds only an empty sentinel that the role asserts is
-overridden. Upgrades go through `docs/XRAY-RELEASE-LINE.md`. The release-line tracker exists
+overridden. Upgrades go through `docs/reference/xray-release-line.md`. The release-line tracker exists
 because v26.2.6 → v26.5.3 had silent flow-mode breakage on some clients.
 Binary acquisition is delegated to `xray-runtime`; this role owns only the
 primary service user, configuration, logs, and lifecycle.
@@ -107,7 +107,7 @@ Complete frontend authority is staged in the private `transport_runtime_candidat
   guarded transaction; unchanged passes retain the accepted generation.
 - **Multi-cohort support** — `vpn.xray_cohorts` is a list; each cohort gets
   its own inbound with its own `serverNames`, `shortIds`, flow_mode, and
-  finalmask. See `docs/MULTI-COHORT.md`.
+  finalmask. See `docs/how-to/multi-cohort.md`.
 - **Alternate inbound is opt-in** — `xray_fallback_port` defaults to 0.
   A nonzero port synthesises a second VLESS+REALITY+Vision inbound sharing
   the same identity and requires a matching explicit provider listener.

@@ -12,7 +12,7 @@
 #      pager surface.
 #
 # Why this exists: an "Avoid" tier ASN can become someone's neighbour
-# overnight (provider IP reassignment). docs/PROVIDER-NOTES.md lists
+# overnight (provider IP reassignment). docs/reference/provider-notes.md lists
 # the bucket; this script makes the drift observable.
 #
 # Usage:
@@ -89,17 +89,17 @@ send_alert() {
 if [[ -z "$old_asn" ]]; then
   echo "first run: recording AS${new_asn} (${new_org})"
   if in_avoid_tier "$new_asn"; then
-    echo "WARNING: AS${new_asn} is in the Avoid tier — review docs/PROVIDER-NOTES.md" >&2
+    echo "WARNING: AS${new_asn} is in the Avoid tier — review docs/reference/provider-notes.md" >&2
   fi
 elif [[ "$old_asn" != "$new_asn" ]]; then
   msg="ASN drift on ${PROVIDER}:${ENV} IP=${IP}
 old=AS${old_asn} → new=AS${new_asn} (${new_org})
-Review docs/PROVIDER-NOTES.md tier table and rotate if Avoid."
+Review docs/reference/provider-notes.md tier table and rotate if Avoid."
   send_alert "$msg" "ASN drift ${PROVIDER}:${ENV}"
 elif in_avoid_tier "$new_asn"; then
   msg="ASN Avoid-tier on ${PROVIDER}:${ENV} IP=${IP}
 AS${new_asn} (${new_org}) is in the Avoid tier (no number change).
-Review docs/PROVIDER-NOTES.md tier table and rotate."
+Review docs/reference/provider-notes.md tier table and rotate."
   send_alert "$msg" "ASN Avoid-tier ${PROVIDER}:${ENV}"
 else
   echo "no drift: AS${new_asn} (${new_org})"

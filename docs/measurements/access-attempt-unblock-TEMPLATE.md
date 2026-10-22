@@ -1,6 +1,6 @@
 # Idle-cycle access-attempt unblock — <YYYY-MM-DD>
 
-Fill this template after running `docs/RUNBOOK-idle-cycle-measurement.md`
+Fill this template after running `docs/how-to/idle-cycle-measurement.md`
 end-to-end. Save the result as
 `docs/measurements/access-attempt-unblock-<YYYY-MM-DD>.md`. Do not
 publish carrier / ISP / operator / geographic identifiers — describe

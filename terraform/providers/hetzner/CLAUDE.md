@@ -60,7 +60,7 @@ state must not invoke provider detach.
   without the volume mounted.
 - **Floating IP is region-scoped** — moving a host across regions invalidates
   any attached FIP; plan blue-green carefully.
-- **AS24940 is in the Avoid tier** — `docs/PROVIDER-NOTES.md` records the
+- **AS24940 is in the Avoid tier** — `docs/reference/provider-notes.md` records the
   datacenter-ASN TCP freeze (~14-25 KB) on filtered mobile paths. Use this
   root for development and unaffected cohorts, and rotate IPs more often than
   on UpCloud.
@@ -69,4 +69,4 @@ state must not invoke provider detach.
   fallback), but a present rule does not
   guarantee the provider network delivers inbound UDP. After deploy, verify
   externally with `make burn-check` (QUIC probe); on-host `nft`/`ss` ACCEPT is
-  not evidence. See `docs/PROVIDER-NOTES.md` → "UDP/443 edge reachability".
+  not evidence. See `docs/reference/provider-notes.md` → "UDP/443 edge reachability".

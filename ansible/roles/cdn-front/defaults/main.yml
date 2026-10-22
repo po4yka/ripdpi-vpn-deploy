@@ -1,5 +1,5 @@
 ---
-# Tactical Cloudflare-fronted nginx vhost. ADR docs/CDN-DECISION.md
+# Tactical Cloudflare-fronted nginx vhost. ADR docs/decisions/0001-cdn-not-filtered-path-baseline.md
 # is the boundary: CDN is NOT the RU baseline. This role exists for
 # operators who deliberately want browser-shaped XHTTP via a non-RU
 # CDN PoP, accepting the trade-offs that ADR documents.
@@ -18,7 +18,7 @@
 #   * a daily systemd timer refreshes the CF prefix list from
 #     https://www.cloudflare.com/ips-v{4,6}.
 #
-# Off by default. Read CDN-DECISION.md before enabling.
+# Off by default. Read docs/decisions/0001-cdn-not-filtered-path-baseline.md before enabling.
 
 cdn_front:
   port: "{{ cdn_front_port }}"

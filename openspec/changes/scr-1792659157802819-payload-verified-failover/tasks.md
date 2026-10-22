@@ -8,10 +8,10 @@ Ship exact useful-data probes, coordinated recipient selection and opt-in altern
 
 - Probe worker owns `scripts/probe-payload-throttle.sh`,
   `scripts/payload_probe_content.py`, `scripts/serve-payload-probe.py`,
-  `tests/unit/test_probe_payload_throttle.py`, and `docs/PAYLOAD-THROTTLE.md`.
+  `tests/unit/test_probe_payload_throttle.py`, and `docs/how-to/payload-throttle.md`.
   Its delegated listener lane also owns provider listener defaults/examples/tests
   and provider notes, synthetic listener/inventory fixtures, render defaults and
-  snapshots, listener parity tests, Xray role notes and `docs/CLIENT-NOTES.md`.
+  snapshots, listener parity tests, Xray role notes and `docs/reference/client-notes.md`.
 - Parent owns `scripts/client_payload.py`, the canonical bundle schema and its
   validation tests, Ansible listener defaults, disposable CI listener inputs,
   canonical Make argument handling and shared recipient regression fixtures.

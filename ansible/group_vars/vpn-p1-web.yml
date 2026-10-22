@@ -4,7 +4,7 @@
 # subscription delivery HTTPS listener (tcp/8444; the matching
 # public_listeners entry lives in the scaleway environment tfvars).
 # Co-located subscription delivery follows the v1 default in
-# docs/SUBSCRIPTION-HOST-SEPARATION.md.
+# docs/how-to/subscription-host-separation.md.
 
 vpn:
   enable_xray_reality: false
@@ -29,6 +29,6 @@ vpn:
 
 nginx_xhttp_public_port: 443
 # Neutral placeholder. The real decoy origin is operator-supplied per deploy
-# via ANSIBLE_EXTRA_VARS_FILE (see docs/DEPLOY-PROFILES.md); nginx-xhttp's
+# via ANSIBLE_EXTRA_VARS_FILE (see docs/reference/deploy-profiles.md); nginx-xhttp's
 # converge assert pins it to https://<nginx_xhttp.server_name> from secrets.
 public_site_canonical_url: "https://vpn.example.com"
