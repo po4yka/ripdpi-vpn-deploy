@@ -32,6 +32,8 @@ reconstruct migrated delivery identity through the ordinary drift checker.
 Owned CA/TLS route tests cover exact SNI, body, redirect refusal and total
 deadlines; orchestration doubles do not establish live deployment or device
 acceptance. Preserve explicit proof requirements after publication.
+Make migration fixtures choose their own ENV selector because parent Make gates
+export it; preserve both matching-selector success and conflicting-selector refusal.
 
 Fleet regressions distinguish strict inventory-bound collection, completed
 watchdog evidence and authenticated client-path health. Rotation tests exercise
