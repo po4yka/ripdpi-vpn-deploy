@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "Merged PR 354 at 17815812 (squash). CI run 39786453067 on PR head 5dd54f57 passed every required check after a rerun of two jobs cancelled by an unreachable apt mirror; markdown-link-check, claude-md-touch, REALITY target validation and CodeQL passed on the same head. Local make docs-check, make task-check and focused unit tests passed on the merged tree. No live infrastructure operation was performed.",
+  "execution_sha256": "c4aa344067523fc245f0a79ec4c606840cae1393419bf987f49213218c1c924f",
+  "issue_sha256": "3fc3af5876e9e48be123ff6b6400db526109bda895b7f4b1541103df963299ca",
+  "outcome": "done",
+  "prepared_at": "2026-10-22T15:00:01Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "DOC-1792603004056378"
+}
