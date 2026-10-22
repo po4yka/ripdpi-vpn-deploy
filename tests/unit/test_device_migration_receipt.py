@@ -4,10 +4,9 @@ import hashlib
 import json
 from pathlib import Path
 
+import device_migration_receipt as receipts
 import jsonschema
 import pytest
-
-import device_migration_receipt as receipts
 
 ROOT = Path(__file__).resolve().parents[2]
 GOLDEN = json.loads((ROOT / "contract/device-migration.golden.json").read_text())
@@ -37,6 +36,17 @@ def test_bundle_metadata_contract_matches_standalone_schema():
     schema.pop("title")
     bundle = json.loads((ROOT / "contract/ripdpi-bundle.schema.json").read_text())
     assert bundle["properties"]["migration"] == schema
+
+
+def test_migration_preserves_the_payload_failover_contract():
+    bundle = json.loads((ROOT / "contract/ripdpi-bundle.payload-failover.json").read_text())
+    extension = bundle.get("ripdpi", bundle)
+    extension["migration"] = copy.deepcopy(GOLDEN["metadata"])
+    schema = json.loads((ROOT / "contract/ripdpi-bundle.schema.json").read_text())
+    jsonschema.validate(extension, schema)
+    del extension["payload_failover"]["probes"]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(extension, schema)
 
 
 @pytest.mark.parametrize("field,value", [

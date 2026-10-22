@@ -29,6 +29,8 @@ actual publisher behind local HTTP. Lost acknowledgements after remote and
 cross-document writes must resume identical bytes without reallocation.
 Validate complete encrypted journal states against the secrets schema and
 reconstruct migrated delivery identity through the ordinary drift checker.
+Migration metadata and the published payload-failover policy share one bundle
+schema; keep both validated when synchronizing the paired client contract.
 Owned CA/TLS route tests cover exact SNI, body, redirect refusal and total
 deadlines, with verified TLS 1.2-or-newer contexts for both origin and route
 probes; orchestration doubles do not establish live deployment or device

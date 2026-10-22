@@ -258,14 +258,13 @@ class Migration:
                                 and v.get('server') == self.io.endpoint(self.plan['target']['host'])
                                 and (v['tag'].endswith('-' + suffix) or '-' + suffix + '-' in v['tag'] or v['tag'].endswith('-' + suffix + ':alternate'))]
                         previous = {}
-                        if options['awg_host'] in ('', self.plan['target']['host']):
-                            for _awg in payload['ripdpi']['amneziawg']:
-                                tag = 'migration-awg-' + delivery_id
-                                prior = old_payload.get('ripdpi', {}).get('amneziawg', [])
-                                if len(prior) != 1:
-                                    raise MigrationRefused('migration-prior-awg-profile-unavailable')
-                                previous[tag] = prior[0]['tag']
-                                tags.append(tag)
+                        if options['awg_host'] in ('', self.plan['target']['host']) and payload['ripdpi']['amneziawg']:
+                            tag = 'migration-awg-' + delivery_id
+                            prior = old_payload.get('ripdpi', {}).get('amneziawg', [])
+                            if len(prior) != 1:
+                                raise MigrationRefused('migration-prior-awg-profile-unavailable')
+                            previous[tag] = prior[0]['tag']
+                            tags.append(tag)
                         proof = {'schema_version': 1, 'migration_id': self.plan['id'], 'delivery_id': delivery_id,
                                  'receipt_key': secrets.token_hex(32), 'target_tags': tags, 'awg_previous_tags': previous}
                         payload = wrap_payload(payload, proof)
