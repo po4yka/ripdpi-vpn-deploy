@@ -188,7 +188,7 @@ class Journal:
             try:
                 os.unlink(name)
             except FileNotFoundError:
-                pass
+                pass  # Successful os.replace already consumed the temporary file.
 
     def sync_directory(self):
         directory = os.open(self.directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
