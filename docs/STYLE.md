@@ -82,9 +82,15 @@ classification.
 
 ## Runbook template
 
-Every how-to page that touches live infrastructure uses these sections, in
-this order. Sections that do not apply say so in one line rather than being
-omitted.
+Runbooks are the how-to pages whose main procedure changes live infrastructure
+or credentials: `deploy`, `rollback`, `rotate`, `restore`, `incident`,
+`add-fallback`, `split-hop-pilot` and `idle-cycle-measurement`.
+`tests/unit/test_docs_index.py` requires exactly these sections on that set, in
+this order; sections that do not apply say so in one line rather than being
+omitted. Other how-to pages (CI procedures, repository settings, measurement
+matrices, kit layout) keep the sections their task needs and state
+preconditions and authorization inline where a step touches live resources;
+moving them onto this template is tracked as follow-up work in the task record.
 
 ```markdown
 # <verb phrase>

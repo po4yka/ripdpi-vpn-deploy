@@ -81,12 +81,20 @@ def vpnd_commands() -> str:
         "| Option | Purpose |",
         "|---|---|",
     ]
+    subparsers = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+    child_dests = set.intersection(*({a.dest for a in child._actions} for child in subparsers.choices.values()))
     global_dests = set()
+    root_only = []
     for action in parser._actions:
         if action.option_strings and action.help != argparse.SUPPRESS:
-            rows.append(f"| `{', '.join(action.option_strings)}` | {_help(action.help)} |")
-            global_dests.add(action.dest)
-    subparsers = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+            row = f"| `{', '.join(action.option_strings)}` | {_help(action.help)} |"
+            if action.dest in child_dests:
+                rows.append(row)
+                global_dests.add(action.dest)
+            else:
+                root_only.append(row)
+    if root_only:
+        rows += ["", "Accepted only before the command name:", "", "| Option | Purpose |", "|---|---|", *root_only]
     rows += ["", "## Commands", "", "| Command | Purpose |", "|---|---|"]
     for name in subparsers.choices:
         rows.append(f"| `vpnd {name}` | {cli.COMMANDS[name]} |")

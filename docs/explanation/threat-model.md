@@ -33,9 +33,11 @@ design responds to it:
 - **The secrets, not the server.** The only state that cannot be recreated
   is the encrypted secrets file and the age key. The Shamir split exists
   because losing that key means rotating everything.
-- **The operator's machine.** Plaintext secrets exist only in a private
-  runtime directory for the duration of one command and are shredded on
-  every exit path a shell can catch.
+- **The operator's machine.** `make decrypt` writes the plaintext secrets to
+  one private runtime file that persists until `make clean` shreds it; the
+  guarded blocks in the runbooks run `make clean` on every exit path a shell
+  can catch, and a run that reuses the file across commands ends with it. The
+  lifecycle is in [the secrets reference](../reference/secrets.md#day-to-day-operations).
 
 ## What the design does not claim
 

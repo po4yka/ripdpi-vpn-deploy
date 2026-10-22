@@ -1,6 +1,6 @@
 # Network protocol audit remediation
-
 > **Status:** Archived · **Type:** archive · **Tier:** — · **Reviewed:** 2026-10-21
+
 
 Task: `SEC-1792307003680932`. Source base: PR #328, `a14c339c`.
 

@@ -21,6 +21,11 @@ Every command and subcommand accepts these as well.
 | `--root` | Override repository root (VPN_DEPLOY_ROOT; default: discover from cwd). |
 | `--env, -e` | Target environment (VPN_ENV; default: prod). |
 | `--provider, -p` | Cloud provider Terraform root (VPN_PROVIDER; default: upcloud). |
+
+Accepted only before the command name:
+
+| Option | Purpose |
+|---|---|
 | `--version, -V` | show program's version number and exit |
 
 ## Commands

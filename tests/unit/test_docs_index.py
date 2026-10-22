@@ -32,6 +32,10 @@ STATUS_LINE = re.compile(
     r"(?: · \*\*Reviewed:\*\* \d{4}-\d{2}-\d{2})?$"
 )
 KEBAB = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
+# How-to pages whose main procedure changes live infrastructure or credentials carry the
+# runbook template from docs/STYLE.md; the other how-to pages are tracked as follow-ups.
+RUNBOOKS = ("deploy", "rollback", "rotate", "restore", "incident", "add-fallback", "split-hop-pilot", "idle-cycle-measurement")
+RUNBOOK_SECTIONS = ("Purpose and scope", "Preconditions", "Authorization", "Verification", "Rollback", "Evidence to record")
 DECISION = re.compile(r"^\d{4}-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
 LINK = re.compile(r"\]\(([^)\s]+)\)")
 # Lower-case tokens that name a place, a regulator, a carrier or a censorship
@@ -163,3 +167,16 @@ def test_file_names_headings_tables_and_diagrams_carry_no_forbidden_labels() -> 
             if (heading or table_or_diagram) and LABEL_WORDS.search(line):
                 offenders.append(f"{rel}:{number}: {'heading' if heading else 'table cell or diagram label'}")
     assert not offenders, "forbidden labels:\n" + "\n".join(offenders)
+
+
+def test_runbooks_carry_the_standard_sections_in_order() -> None:
+    bad = []
+    for name in RUNBOOKS:
+        page = DOCS / "how-to" / f"{name}.md"
+        headings = [line[3:].strip() for line in page.read_text().splitlines() if line.startswith("## ")]
+        positions = [headings.index(s) if s in headings else None for s in RUNBOOK_SECTIONS]
+        if None in positions:
+            bad.append(f"how-to/{name}.md: missing " + ", ".join(s for s, p in zip(RUNBOOK_SECTIONS, positions) if p is None))
+        elif positions != sorted(positions):
+            bad.append(f"how-to/{name}.md: sections out of order")
+    assert not bad, "\n".join(bad)
