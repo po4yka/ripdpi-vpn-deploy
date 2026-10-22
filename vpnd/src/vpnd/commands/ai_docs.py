@@ -6,6 +6,7 @@ H2 section per documentation folder with one link per page, and an
 """
 
 import asyncio
+import shutil
 from pathlib import Path
 from vpnd.docs_bundle import docs_path
 
@@ -50,6 +51,10 @@ def _title(slug: str, body: bytes) -> str:
 def emit_docs(docs, out):
     out = Path(out)
     md = out / "md"
+    # md/ is wholly generated; rebuild it so pages that moved or were removed
+    # from docs/ do not linger from an earlier run into the same directory.
+    if md.is_dir():
+        shutil.rmtree(md)
     md.mkdir(parents=True, exist_ok=True)
     sections: dict[str, list[tuple[str, str]]] = {}
     full = ""

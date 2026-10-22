@@ -115,3 +115,13 @@ def test_task_demo_and_measurement_folders_are_not_documentation_pages(tmp_path)
     assert not (tmp_path / "out/md/tasks").exists()
     assert not (tmp_path / "out/md/demo").exists()
     assert not (tmp_path / "out/md/measurements").exists()
+
+
+def test_stale_per_doc_copies_are_removed_on_rerun(tmp_path):
+    ctx = setup_tree(tmp_path)
+    stale = tmp_path / "out/md/RUNBOOK-deploy.md"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("# old location\n")
+    asyncio.run(run(ctx, SimpleNamespace(out=tmp_path / "out")))
+    assert not stale.exists()
+    assert (tmp_path / "out/md/how-to/deploy.md").read_text() == "# Deploy\nbody of Deploy\n"
