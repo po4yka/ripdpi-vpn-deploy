@@ -683,7 +683,7 @@ def test_native_revocation_never_restores_credentials_and_exact_resume_converges
         if interruption == 'outer-failure':
             lab.context['vpn_device_revocation'] = authority
             assert lab.converge(profile, site=True, fail_after_acceptance=True, allow_failure=True) != 0
-            assert (STATE / 'outer.json').exists()
+            assert (STATE / 'outer.json').exists(), lab.failure_categories()
             assert config.read_bytes() != old.read_bytes()
             assert subprocess.run(['systemctl', 'is-active', '--quiet', unit.name], capture_output=True).returncode != 0
             assert lab.converge(profile, site=True) == 0
