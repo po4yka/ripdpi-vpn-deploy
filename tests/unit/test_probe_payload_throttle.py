@@ -105,6 +105,7 @@ def test_tls_verified_with_owned_ca_and_rejected_without_it(tmp_path):
         "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost", "-keyout", str(key), "-out", str(cert)],
         check=True, capture_output=True)
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(cert, key)
     with origin(tls=context) as port:
         accepted = run_probe(tmp_path, port, "--scheme", "https", "--ca-file", str(cert), "--upload")

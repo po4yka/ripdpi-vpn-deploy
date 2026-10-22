@@ -10,6 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 from tests.site_role_graph import site_roles
@@ -276,12 +277,13 @@ def test_xray_molecule_uses_a_hash_pinned_local_runtime_archive() -> None:
     assert "Seed Xray binary for runtime link idempotence coverage" not in pre_task_names
 
 
-def test_published_host_override_beats_repository_all_group_default(tmp_path) -> None:
+@pytest.mark.parametrize("scenario_name, expected_port", [("full-stack", 2053), ("full-stack-published", 0)])
+def test_explicit_host_port_beats_repository_all_group_default(tmp_path, scenario_name, expected_port) -> None:
     """Prove the scenario override with the same canonical group-vars discovery."""
     executable = shutil.which("ansible-inventory")
     assert executable, "installed Ansible is required for inventory precedence proof"
-    scenario = _published_scenario()["provisioner"]["inventory"]
-    host = "vpn-fullstack-debian13-published"
+    scenario = yaml.safe_load((REPO_ROOT / f"ansible/molecule/{scenario_name}/molecule.yml").read_text())["provisioner"]["inventory"]
+    host = next(iter(scenario["hosts"]["vpn"]["hosts"]))
     inventory = tmp_path / "inventory.yml"
     inventory.write_text(yaml.safe_dump({"all": {"children": {"vpn": {"hosts": {
         host: scenario["hosts"]["vpn"]["hosts"][host],
@@ -293,7 +295,7 @@ def test_published_host_override_beats_repository_all_group_default(tmp_path) ->
         check=True, capture_output=True, text=True, timeout=15,
     )
 
-    assert json.loads(result.stdout)["xray_fallback_port"] == 0
+    assert json.loads(result.stdout)["xray_fallback_port"] == expected_port
 
 
 def test_published_listener_contract_matches_declared_runtime_inputs(tmp_path) -> None:

@@ -23,6 +23,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             self.connection.shutdown(socket.SHUT_RDWR)
         except OSError:
+            # A closed client connection already satisfies the deadline shutdown.
             pass
 
     def finish(self):
@@ -60,6 +61,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 self.send_error(400)
             except OSError:
+                # The deadline or peer can close the socket before the error reply.
                 pass
 
     def do_GET(self):

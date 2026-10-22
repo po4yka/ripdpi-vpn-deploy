@@ -114,6 +114,8 @@ provisioner:
       vpn:
         hosts:
           vpn-fullstack-debian13:
+            # Keep this explicit alternate above the canonical all-group default.
+            xray_fallback_port: 2053
   config_options:
     defaults:
       callback_result_format: json
