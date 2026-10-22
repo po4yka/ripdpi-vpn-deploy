@@ -24,6 +24,9 @@ provider or device observation.
 Credential scanner exceptions bind the exact generator expression and source path.
 Real literals, other paths and appended assignments must remain detectable.
 
+The complete native AWG rollback gate runs once before the remaining runtime
+suites; retain the complete collection union and refusal of skipped cases.
+
 Device migration regressions execute real test-only SOPS transactions and the
 actual publisher behind local HTTP. Lost acknowledgements after remote and
 cross-document writes must resume identical bytes without reallocation.
