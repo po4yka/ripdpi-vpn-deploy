@@ -110,6 +110,14 @@ Bearer tokens never belong in argv. When the secrets omit a port, `share` resolv
 
 `doctor --host` and `probe --host` pass the registered address to host-specific checks. Fleet and local permission checks are global; configured target and path canaries are labeled separately. Use the command's `--help` for all flags.
 
+`fleet status` uses the existing inventory selected by `FLEET_INVENTORY` and
+pins from `FLEET_KNOWN_HOSTS`; `HOSTS` selects exact provider/environment pairs.
+It reports passive observations and local watchdog results, not client-path
+reachability. `fleet rotate` requires a versioned plan with an explicit survivor
+pool and authenticated liveness configuration. Resume accepts only the unchanged
+plan and durable completed boundaries; uncertain in-flight work requires
+operator reconciliation. See [the fleet contract](../docs/reference/protocol-liveness.md#fleet-status-and-coordinated-rotation).
+
 ## `--explain`
 
 Global flags work before or after subcommands. Every command accepts

@@ -49,6 +49,88 @@ not backup proof, and a local marker is not offsite restore proof. `make verify`
 remains **active** and its watchdog may restart services; use `inspect` when only
 observation is authorized.
 
+## Fleet status and coordinated rotation
+
+`make fleet-status HOSTS=upcloud:prod,vultr:standby` selects exact unique
+provider/environment pairs from the existing inventory. It reuses the strict
+inspection transport above, including Tailnet routing, public host identity and
+custom SSH ports. `FLEET_INVENTORY` defaults to
+`ansible/inventory/generated.ini`; `FLEET_KNOWN_HOSTS` defaults to
+`~/.ssh/known_hosts`. Neither Terraform discovery nor automatic host-key
+acceptance occurs. `scripts/fleet-status.sh --json` emits the same observations
+as structured output.
+
+The table reports deployed source and local watchdog state instead of the old
+ASN/version/burn columns. Local watchdog success requires an active timer and
+a successful completed invocation within five minutes. A failed invocation
+remains unhealthy while its timer is active; missing, running or stale evidence
+does not become success. Client-path health stays `unknown`: passive collection
+does not authenticate VPN traffic, and a missing TCP/443 listener does not
+classify a UDP-only node as blocked.
+
+`make fleet-rotate PLAN=...` and `vpnd fleet rotate --plan ...` require a
+versioned plan with an explicit health pool:
+
+```yaml
+schema_version: 1
+id: replace-node-a
+min_active: 1
+health:
+  config: liveness.yaml
+  nodes:
+    - current: upcloud:prod
+      inventory_alias: node-a
+    - current: vultr:standby
+      inventory_alias: node-b
+rotations:
+  - current: upcloud:prod
+    new_env: green
+    new_zone: zone-a
+```
+
+The health configuration uses the schema and exact target binding documented
+below. Its relative path resolves from the plan directory. Every rotation
+source must appear once in the health pool; standby nodes may be included
+without being rotated. Inventory provider/environment and public service
+identity must agree with that mapping and the liveness target. Keep the plan
+and its operational inputs private.
+
+`min_active` counts distinct surviving nodes with fresh authenticated success
+for every required profile. A healthy UDP-only node counts without TCP/443;
+an open TCP socket, watchdog result, stale report or unknown client path does
+not count. The current target and already-completed original targets are
+excluded. Provision enough independent standby capacity for the complete plan;
+new green nodes are not silently adopted into its survivor pool. The controller
+rechecks evidence after operator confirmation, immediately before rotation.
+Normal blue-green plan, deployment and client-pivot reviews still apply.
+
+`make fleet-rotate PLAN=... DRY_RUN=1` (direct script: `--dry-run`) validates
+and describes the plan without opening its liveness file, contacting hosts or
+creating progress. `make fleet-rotate PLAN=... RESUME=1` (direct script:
+`--resume`) accepts only an unchanged
+complete plan and a valid private journal. Progress remains in
+`.omc/state/fleet-rotate-<id>.json` under a per-plan lock. The `.omc` and
+`.omc/state` directories must be owner-only (`0700`), and journal/lock files
+owner-only (`0600`). Review ownership before correcting legacy directory modes;
+never delete or rewrite a journal to satisfy admission. Successful completed
+entries are not rerun. Reordered entries, changed health mappings or thresholds,
+legacy journals, unsafe files and concurrent execution refuse.
+
+The controller persists an in-flight marker before starting blue-green. If that
+external step fails, is interrupted or cannot durably record its completion,
+automatic resume refuses because the infrastructure outcome may be uncertain.
+A retained private `.pending` file likewise fences uncertain journal publication
+and preserves the prior complete state; it is not permission to replay a step.
+Inspect the retained journal and reconcile the exact blue/green resources using
+the existing deployment and recovery runbooks before preparing a new reviewed
+plan. Do not delete progress, change its index or treat a successful source check
+as proof that the external step completed. A normal invocation never overwrites
+an existing journal.
+
+Old unversioned plans require explicit conversion to this contract. Old progress
+has no trustworthy plan identity and is not migrated automatically. These source
+changes do not authorize live status collection, sentinel execution or rotation.
+
 ## Configuration
 
 Store the operator configuration at `~/.config/vpn-provision/liveness.yaml` with mode `0600`. Sentinel IDs and policy names must describe technical path signatures, not carriers, operators, or geography.

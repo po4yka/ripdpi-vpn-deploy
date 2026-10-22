@@ -76,7 +76,7 @@ Variables (override on command line):
   backup-state               age-encrypt the local terraform state
   drift-since-tag            Diff fleet against last vpn-deploy-known-good-* tag
   blue-green GREEN_ENV=<name>  Orchestrate single-host blue-green
-  fleet-rotate PLAN=…        Coordinated rotation across fleet (--dry-run / --resume)
+  fleet-rotate PLAN=…        Authenticated survivor floor and exact-plan resume
   protocol-liveness LIVENESS_CONFIG=…  Pull sentinel probes and evaluate quorum
   monitor-protocol-liveness LIVENESS_CONFIG=…  Persist and alert on protocol-liveness transitions
   install-liveness-sentinel LIVENESS_CONFIG=… SENTINEL=… CLIENT=…  Secure sentinel onboarding
@@ -128,7 +128,7 @@ Variables (override on command line):
   test-tls-policing HOST=…   Probe the ~12-concurrent-TLS home-ISP rule
   probe-payload-throttle HOST=… Probe per-ASN ~16 KiB payload throttling
   snell-refinement BUNDLE=… CONFIG=… VANTAGE=…  Run staged Snell refinement matrix
-  fleet-status [HOSTS=…]     Summary table across every host:env pair
+  fleet-status [HOSTS=…]     Strict inventory observations; client health remains separate
   install-operator-crons     Wire all of the above into crontab as a managed block
   remove-operator-crons      Strip the vpn-deploy cron block
 
