@@ -13,6 +13,7 @@ import yaml
 
 from client_delivery_identity import authority, comparable, digest
 from client_payload import materialize, read_document, validate_options
+from device_migration import wrap_payload
 
 
 def secrets_file():
@@ -35,6 +36,8 @@ def _verdict(client):
         # Mutable registry expiry/selection is part of the current consumed contract.
         o = dict(o, expires=entry['token_expires'], hosts=entry['hosts'], cohorts=entry['cohorts'], awg_host=entry['awg_delivery_host'])
         payload, bindings = materialize(client, o, private_only=True, documents={str(path.absolute()): doc}, source_paths=entry['delivery_sources'], extended=o['format'] == 'ripdpi')
+        if 'migration_delivery' in entry:
+            payload = wrap_payload(payload, entry['migration_delivery'])
         current = digest(client, o, payload, bindings, auth)
         if hmac.compare_digest(record['digest'], current['digest']):
             return 'current', 'payload identity matches the last delivery'

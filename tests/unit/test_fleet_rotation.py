@@ -34,8 +34,10 @@ def plan(tmp_path):
             {"current": "hetzner:spare", "inventory_alias": "node-c"},
         ]},
         "rotations": [
-            {"current": "upcloud:blue", "new_env": "green"},
-            {"current": "vultr:blue", "new_env": "green", "new_zone": "zone-b"},
+            {"current": "upcloud:blue", "new_env": "green", "green_sops_file": "target-a.sops.yaml",
+             "migration_plan": "migration-a.json", "migration_approval": "a" * 64},
+            {"current": "vultr:blue", "new_env": "green", "new_zone": "zone-b", "green_sops_file": "target-b.sops.yaml",
+             "migration_plan": "migration-b.json", "migration_approval": "b" * 64},
         ],
     }
     path = tmp_path / "plan.yaml"
@@ -337,16 +339,22 @@ def test_execute_real_child_forces_real_mode_and_propagates_failure(rotation, tm
     output = tmp_path / "execution.json"
     script.write_text("#!/usr/bin/env python3\nimport json,os\n"
                       f"open({str(output)!r},'w').write(json.dumps({{k:os.environ[k] for k in "
-                      "['PROVIDER','ENV','BLUE_ENV','GREEN_ENV','GREEN_ZONE','DRY_RUN']}))\n")
+                      "['PROVIDER','ENV','BLUE_ENV','GREEN_ENV','GREEN_ZONE','DRY_RUN','SOPS_FILE','GREEN_SOPS_FILE','BLUE_COHORT','GREEN_COHORT','DEVICE_MIGRATION_PLAN','DEVICE_MIGRATION_APPROVAL']}))\n")
     script.chmod(0o700)
     monkeypatch.setenv("DRY_RUN", "1")
+    from test_blue_green_lifecycle import migration_inputs
+    inputs = migration_inputs(tmp_path, tmp_path, tmp_path / "source.sops.yaml", blue="blue")
+    entry = {"current": "upcloud:blue", "new_env": "green", "green_sops_file": inputs["GREEN_SOPS_FILE"],
+             "migration_plan": inputs["DEVICE_MIGRATION_PLAN"], "migration_approval": inputs["DEVICE_MIGRATION_APPROVAL"]}
     with rotation.Journal(tmp_path, "rotation-a") as journal:
-        rotation.execute_rotation({"current": "upcloud:blue", "new_env": "green"}, tmp_path, journal.lock)
+        rotation.execute_rotation(entry, tmp_path, journal.lock)
         assert json.loads(output.read_text()) == {"PROVIDER": "upcloud", "ENV": "blue", "BLUE_ENV": "blue",
-                                                 "GREEN_ENV": "green", "GREEN_ZONE": "", "DRY_RUN": "0"}
+                                                 "GREEN_ENV": "green", "GREEN_ZONE": "", "DRY_RUN": "0",
+                                                 "SOPS_FILE": str(tmp_path / "source.sops.yaml"), "BLUE_COHORT": "fullstack",
+                                                 "GREEN_COHORT": "device-full-tailnet", **inputs}
         script.write_text("#!/bin/sh\nexit 9\n")
         with pytest.raises(rotation.RotationError, match="rotation-failed"):
-            rotation.execute_rotation({"current": "upcloud:blue", "new_env": "green"}, tmp_path, journal.lock)
+            rotation.execute_rotation(entry, tmp_path, journal.lock)
 
 
 def test_audit_occurs_only_after_durable_success(rotation, plan, tmp_path, monkeypatch):
@@ -381,6 +389,10 @@ def cli_fixture(tmp_path, plan, liveness):
     value = yaml.safe_load(plan.read_text())
     value["health"]["nodes"] = [value["health"]["nodes"][0], value["health"]["nodes"][2]]
     value["rotations"] = value["rotations"][:1]
+    from test_blue_green_lifecycle import migration_inputs
+    inputs = migration_inputs(tmp_path, tmp_path, tmp_path / "source.sops.yaml", blue="blue")
+    value["rotations"][0].update(green_sops_file=inputs["GREEN_SOPS_FILE"],
+                                  migration_plan=inputs["DEVICE_MIGRATION_PLAN"])
     plan.write_text(yaml.safe_dump(value))
     bindir = tmp_path / "bin"
     bindir.mkdir()

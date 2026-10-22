@@ -31,7 +31,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT="${REPO_ROOT}/ansible/inventory/generated.ini"
+OUT="${INVENTORY_OUTPUT:-${REPO_ROOT}/ansible/inventory/generated.ini}"
 
 if [[ -z "${ANSIBLE_SSH_PRIVATE_KEY_FILE:-}" ]]; then
   echo "ANSIBLE_SSH_PRIVATE_KEY_FILE is not set" >&2

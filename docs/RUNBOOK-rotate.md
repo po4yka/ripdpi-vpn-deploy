@@ -4,6 +4,12 @@ Three rotation scopes. Pick the smallest one that addresses the threat.
 
 Infrastructure rotation caused by sustained protocol failure is separate from credential rotation. Follow `docs/PROTOCOL-LIVENESS.md`: only fresh authenticated client-path failures with a successful direct control can create a quorum candidate, and the resulting OTP still enters the normal blue-green verification and operator-confirmation flow.
 
+For server replacement, use [Device migration](DEVICE-MIGRATION.md). Its separate
+target authority preserves each device's existing identity during handover;
+this does not rotate a leaked credential. Fresh replacement credentials are
+required for compromise recovery. The source stays available until every
+affected device has fresh target-path evidence.
+
 ## 1. Single client leak
 
 A device was lost / stolen / decommissioned, or one client URI showed up

@@ -2,6 +2,25 @@
 
 ## Design decisions
 
+Device migration uses separate source/target SOPS authorities and an encrypted
+intent before cross-document writes. Exact inventory, host pins, alternate
+sources and endpoint fingerprints fence resume. Publisher CAS preserves every
+active URL and expiry; registry identity includes the exact migration metadata.
+Preparation precedes target convergence. Publication and readiness re-run
+target verification and an expiring credential-free TLS route canary, then
+re-read authority before accepting delivery. Old credentials remain until a
+separate retirement action. Keep published, received and fresh path-tested
+states distinct; official-client attestations are explicit operator evidence.
+Blue-green retains the target environment selector after handover because
+delivered bindings now refer to it. Never rename target tfvars into the source
+selector or recommend unconditional target destruction after publication.
+Pair inventory rendering uses an owned temporary output and retains unrelated
+publisher/alternate rows and memberships after strict admission. A changed
+global SSH authority or concurrent inventory edit refuses replacement. A
+topology-wide observability generation must be rendered by its complete owner;
+the pair wrapper refuses it before provisioning. Standalone migration consumes
+the complete reviewed inventory without re-rendering it.
+
 Fleet status resolves provider/environment selections through strict inventory
 inspection, preserving Tailnet transport, public host identity and custom ports.
 Its local watchdog verdict requires a recent completed result; neither a timer

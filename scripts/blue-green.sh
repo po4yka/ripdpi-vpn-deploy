@@ -8,6 +8,9 @@
 #   GREEN_ENV  the new env name (e.g. green, prod-2026-05-11)
 #   PROVIDER   default: upcloud
 #   ANSIBLE_SSH_PRIVATE_KEY_FILE
+#   GREEN_SOPS_FILE separate encrypted target authority
+#   DEVICE_MIGRATION_PLAN reviewed private migration plan
+#   DEVICE_MIGRATION_APPROVAL optional preapproval; otherwise enter the reviewed digest
 #
 # Optional:
 #   BLUE_COHORT existing profile (default: fullstack)
@@ -73,11 +76,11 @@ if (( DRY_RUN )); then
   1/8  Verify blue health  (sops --decrypt, make verify) — read-only
   2/8  Bootstrap green tfvars if missing  (scripts/new-cohort.sh)
   3/8  terraform plan via workspace wrapper: PROVIDER=${PROVIDER} ENV=${GREEN_ENV} scripts/terraform-env.sh plan -var-file=environments/${GREEN_ENV}.tfvars, then apply after a typed yes
-  4/8  Establish pinned SSH + Tailnet ownership, then make dry-run (--check) and, after a typed yes, deploy for the exact green alias
-  5/8  make verify and smoke-test for the exact green alias
-  6/8  Operator pivot (traffic swing) — manual step
-  7/8  Drain blue — no automation
-  8/8  Promote green tfvars — manual step
+  4/8  Establish pinned SSH + Tailnet ownership; review DEVICE_MIGRATION_PLAN and approve its exact digest; device-migration prepare, then decrypt separate GREEN_SOPS_FILE; make dry-run (--check) and, after a typed yes, deploy for the exact green alias
+  5/8  make verify and smoke-test for the exact green alias, then device-migration publish through unchanged subscription URLs
+  6/8  Operator origin pivot and explicit per-device receipt/attestation — manual step
+  7/8  device-migration ready must pass before drain guidance; retain blue while evidence is incomplete
+  8/8  Retain green's provider/environment identity for migrated devices
 
 [dry-run] no terraform apply, no ansible changes, no audit-log writes, no sops mutations
 EOF
@@ -88,6 +91,62 @@ if [[ -z "${ANSIBLE_SSH_PRIVATE_KEY_FILE:-}" ]]; then
   echo "ANSIBLE_SSH_PRIVATE_KEY_FILE must be set" >&2
   exit 1
 fi
+
+# Admit explicit separate authorities before any provider or credential action.
+: "${GREEN_SOPS_FILE:?GREEN_SOPS_FILE required; target authority must be separate}"
+: "${DEVICE_MIGRATION_PLAN:?DEVICE_MIGRATION_PLAN required}"
+if [[ -n "${DEVICE_MIGRATION_APPROVAL:-}" && ! "$DEVICE_MIGRATION_APPROVAL" =~ ^[0-9a-f]{64}$ ]]; then
+  echo 'DEVICE_MIGRATION_APPROVAL must be the exact reviewed SHA-256 digest' >&2
+  exit 1
+fi
+if [[ ! -f "$GREEN_SOPS_FILE" || "$SOPS_FILE" -ef "$GREEN_SOPS_FILE" ]]; then
+  echo 'blue-green requires an existing separate GREEN_SOPS_FILE' >&2
+  exit 1
+fi
+
+assert_migration_plan() {
+  python3 - "$DEVICE_MIGRATION_PLAN" "$PROVIDER:$BLUE_ENV" "$PROVIDER:$GREEN_ENV" \
+    "$BLUE_COHORT" "$GREEN_COHORT" "$SOPS_FILE" "$GREEN_SOPS_FILE" \
+    "$REPO_ROOT/ansible/inventory/generated.ini" "${BLUE_ALIAS:-}" "${GREEN_ALIAS:-}" <<'PLAN'
+import json, os, stat, sys
+from pathlib import Path
+
+def unique(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError
+        result[key] = value
+    return result
+
+try:
+    descriptor = os.open(sys.argv[1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, 'rb') as stream:
+        metadata = os.fstat(stream.fileno())
+        if (not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1
+                or metadata.st_uid != os.getuid() or stat.S_IMODE(metadata.st_mode) != 0o600
+                or metadata.st_size > 262144):
+            raise ValueError
+        plan = json.loads(stream.read(262145), object_pairs_hook=unique)
+    for index, name in enumerate(('source', 'target')):
+        node = plan[name]
+        if (node['host'] != sys.argv[2 + index] or node['cohort'] != sys.argv[4 + index]
+                or Path(node['secrets_file']).resolve() != Path(sys.argv[6 + index]).resolve()
+                or sys.argv[9 + index] and node['alias'] != sys.argv[9 + index]):
+            raise ValueError
+    if Path(plan['inventory']).resolve() != Path(sys.argv[8]).resolve():
+        raise ValueError
+except (OSError, ValueError, TypeError, KeyError, RecursionError):
+    sys.exit('blue-green migration plan must match the selected nodes, aliases, cohorts, secrets and inventory')
+PLAN
+}
+assert_migration_plan
+
+run_migration() {
+  local action="$1"
+  shift
+  python3 "$REPO_ROOT/scripts/device-migration.py" "$action" --plan "$DEVICE_MIGRATION_PLAN" "$@"
+}
 
 step() { echo; echo "==> $*"; }
 
@@ -140,10 +199,14 @@ fi
 umask 077
 SECRETS_DIR="$(mktemp -d -t vpn-blue-green.XXXXXX)"
 SECRETS_FILE="${SECRETS_DIR}/secrets.yaml"
+GREEN_SECRETS_FILE="${SECRETS_DIR}/green.yaml"
 cleanup_secrets() {
-  if [[ -e "$SECRETS_FILE" || -L "$SECRETS_FILE" ]]; then
-    shred -u -- "$SECRETS_FILE" 2>/dev/null || rm -f -- "$SECRETS_FILE"
-  fi
+  local file
+  for file in "$SECRETS_FILE" "$GREEN_SECRETS_FILE"; do
+    if [[ -e "$file" || -L "$file" ]]; then
+      shred -u -- "$file" 2>/dev/null || rm -f -- "$file"
+    fi
+  done
   rmdir "$SECRETS_DIR" 2>/dev/null || true
 }
 trap cleanup_secrets EXIT
@@ -151,9 +214,11 @@ sops --decrypt "$SOPS_FILE" > "$SECRETS_FILE"
 
 BLUE_ALIAS="$(PROVIDER="$PROVIDER" ENV="$BLUE_ENV" "$REPO_ROOT/scripts/terraform-env.sh" output -raw server_hostname)"
 require_vpn_alias "$BLUE_ALIAS"
+assert_migration_plan
 SECRETS_FILE="$SECRETS_FILE" ANSIBLE_LIMIT="$BLUE_ALIAS" \
   ENV="${BLUE_ENV}" PROVIDER="${PROVIDER}" \
   run_make verify
+python3 "$REPO_ROOT/scripts/device_migration_inventory.py" check --plan "$DEVICE_MIGRATION_PLAN"
 
 # ---------------------------------------------------------------------------
 # 2. Bootstrap green tfvars from blue (if missing)
@@ -197,13 +262,13 @@ step "3/8  Provision green (ENV=${GREEN_ENV})"
 : "${GREEN_TAILNET_HANDOFF:?set the private GREEN_TAILNET_HANDOFF output path before provisioning}"
 : "${DEPLOY_SSH_CONTEXTS_FILE:?set the private DEPLOY_SSH_CONTEXTS_FILE path before provisioning}"
 for goal in init plan; do
-  ENV="$GREEN_ENV" PROVIDER="$PROVIDER" run_make "$goal"
+  SOPS_FILE="$GREEN_SOPS_FILE" ENV="$GREEN_ENV" PROVIDER="$PROVIDER" run_make "$goal"
 done
 if ! confirm "Review the green plan above. Apply it?"; then
   echo "Aborting before apply; no green resources were changed." >&2
   exit 1
 fi
-ENV="$GREEN_ENV" PROVIDER="$PROVIDER" run_make apply
+SOPS_FILE="$GREEN_SOPS_FILE" ENV="$GREEN_ENV" PROVIDER="$PROVIDER" run_make apply
 
 # ---------------------------------------------------------------------------
 # 4. Render multi-host inventory and deploy green
@@ -234,9 +299,9 @@ ssh-keygen -F "$GREEN_HOST_KEY_ALIAS" -f "${HOME}/.ssh/known_hosts" >/dev/null |
 HOSTS="${PROVIDER}:${BLUE_ENV},${PROVIDER}:${GREEN_ENV}" \
 COHORTS="${BLUE_COHORT},${GREEN_COHORT}" \
 TAILNET_HANDOFFS="${BLUE_TAILNET_HANDOFF:--},-" \
-  "$REPO_ROOT/scripts/render-inventory.sh"
+  python3 "$REPO_ROOT/scripts/device_migration_inventory.py" render --plan "$DEVICE_MIGRATION_PLAN"
 require_vpn_alias "$GREEN_ALIAS"
-ANSIBLE_LIMIT="$GREEN_ALIAS" ENV="$GREEN_ENV" PROVIDER="$PROVIDER" \
+SOPS_FILE="$GREEN_SOPS_FILE" ANSIBLE_LIMIT="$GREEN_ALIAS" ENV="$GREEN_ENV" PROVIDER="$PROVIDER" \
   run_make wait
 cat <<'EOF'
 Before convergence, prepare the new node's pinned public and Tailnet SSH paths:
@@ -258,15 +323,27 @@ read -r -p "Press Enter after green SSH ownership is established: " _
 HOSTS="${PROVIDER}:${BLUE_ENV},${PROVIDER}:${GREEN_ENV}" \
 COHORTS="${BLUE_COHORT},${GREEN_COHORT}" \
 TAILNET_HANDOFFS="${BLUE_TAILNET_HANDOFF:--},${GREEN_TAILNET_HANDOFF}" \
-  "$REPO_ROOT/scripts/render-inventory.sh"
+  python3 "$REPO_ROOT/scripts/device_migration_inventory.py" render --plan "$DEVICE_MIGRATION_PLAN"
 require_vpn_alias "$GREEN_ALIAS"
-SECRETS_FILE="$SECRETS_FILE" ANSIBLE_LIMIT="$GREEN_ALIAS" \
+assert_migration_plan
+run_migration plan
+if [[ -z "${DEVICE_MIGRATION_APPROVAL:-}" ]]; then
+  read -r -p "Review the device migration above; enter its exact approval digest: " DEVICE_MIGRATION_APPROVAL
+fi
+[[ "$DEVICE_MIGRATION_APPROVAL" =~ ^[0-9a-f]{64}$ ]] || {
+  echo 'device migration requires the exact reviewed approval digest' >&2
+  exit 1
+}
+run_migration prepare --approve "$DEVICE_MIGRATION_APPROVAL"
+# Preparation committed target credentials. Decrypt that exact authority only now.
+sops --decrypt "$GREEN_SOPS_FILE" > "$GREEN_SECRETS_FILE"
+SECRETS_FILE="$GREEN_SECRETS_FILE" SOPS_FILE="$GREEN_SOPS_FILE" ANSIBLE_LIMIT="$GREEN_ALIAS" \
   ENV="$GREEN_ENV" PROVIDER="$PROVIDER" run_make dry-run
 if ! confirm "Review the green dry-run above. Deploy it?"; then
   echo "Aborting before deploy. Green is provisioned; clean up later with: ENV=${GREEN_ENV} make destroy" >&2
   exit 1
 fi
-SECRETS_FILE="$SECRETS_FILE" ANSIBLE_LIMIT="$GREEN_ALIAS" \
+SECRETS_FILE="$GREEN_SECRETS_FILE" SOPS_FILE="$GREEN_SOPS_FILE" ANSIBLE_LIMIT="$GREEN_ALIAS" \
   ENV="$GREEN_ENV" PROVIDER="$PROVIDER" run_make deploy
 
 # ---------------------------------------------------------------------------
@@ -274,9 +351,10 @@ SECRETS_FILE="$SECRETS_FILE" ANSIBLE_LIMIT="$GREEN_ALIAS" \
 # ---------------------------------------------------------------------------
 step "5/8  Verify + smoke-test green"
 for goal in verify smoke-test; do
-  SECRETS_FILE="$SECRETS_FILE" ANSIBLE_LIMIT="$GREEN_ALIAS" \
+  SECRETS_FILE="$GREEN_SECRETS_FILE" SOPS_FILE="$GREEN_SOPS_FILE" ANSIBLE_LIMIT="$GREEN_ALIAS" \
     ENV="$GREEN_ENV" PROVIDER="$PROVIDER" run_make "$goal"
 done
+run_migration publish
 
 # ---------------------------------------------------------------------------
 # 6. Operator pivot — flip clients / DNS / floating IP
@@ -288,23 +366,28 @@ cat <<EOF
 Green node is ready. Its public IPv4 is: ${GREEN_IP}
 
 Operator action required:
-  - Update DNS for vpn.example.com to point at the green IP, OR
-  - Move the floating/reserved IP from blue to green, OR
-  - Reissue subscription URLs to clients pointing at green.
+  - Preserve the reviewed subscription origin when moving its publisher: pivot
+    its DNS or floating/reserved IP only after both publishers serve the grants.
+  - Refresh each device through its unchanged subscription URL and test its exact
+    green path. Import its receipt with device-migration receipt, or record an
+    explicit per-device attestation with device-migration attest.
 
-Test from a real client (sing-box, NekoBox, husi) via the green path
-before continuing. Make sure the urltest selector picks up green.
+Publication and generic server health do not count as per-device path evidence.
+Keep blue while any device remains unverified.
 
 EOF
 if ! confirm "Has traffic been swung to green and verified from a real client?"; then
-  echo "Aborting. Green is up; clean up later with: ENV=${GREEN_ENV} make destroy"
+  echo "Handover incomplete. Retain both blue and green; devices may already use green."
+  echo "Resume device-migration receipt/attest and ready, or explicitly review device-migration rollback"
+  echo "before considering green retirement. Keep both environments and their current identities."
   exit 1
 fi
 
 # ---------------------------------------------------------------------------
 # 7. Drain — keep blue alive
 # ---------------------------------------------------------------------------
-step "7/8  Drain blue"
+run_migration ready
+step "7/8  Drain blue (all migration participants accepted)"
 echo "Convention: keep blue alive for 24-72 hours so cached client sessions"
 echo "fail over to green. Re-run the next step when you're ready to retire blue."
 echo
@@ -312,11 +395,11 @@ echo "When ready to destroy blue, run:"
 echo "    ENV=${BLUE_ENV} make destroy"
 
 # ---------------------------------------------------------------------------
-# 8. Promote green to canonical
+# 8. Retain the identity consumed by migrated devices
 # ---------------------------------------------------------------------------
-step "8/8  (Optional) promote green tfvars to ${BLUE_ENV}"
-echo "Once blue is destroyed, you can either:"
-echo "  - keep operating under ENV=${GREEN_ENV} (preferred — clean separation)"
-echo "  - or rename ${GREEN_ENV}.tfvars to ${BLUE_ENV}.tfvars to keep using ENV=${BLUE_ENV}"
+step "8/8  Retain ENV=${GREEN_ENV} as the migrated authority"
+echo "Keep operating under PROVIDER=${PROVIDER} ENV=${GREEN_ENV}."
+echo "Device hosts and delivery sources now depend on that identity."
+echo "Any future environment reassignment requires a separately reviewed migration."
 echo
 echo "Blue-green orchestration done."

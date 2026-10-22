@@ -29,7 +29,7 @@ def command(argv, *, env=None, data=None):
     if remaining <= 0:
         raise ValueError('payload-deadline-exceeded')
     try:
-        return bounded_command(argv, input_bytes=data or b'', environment=env if env is not None else os.environ.copy(), timeout=remaining, limit=MAX_BYTES)
+        return bounded_command(argv, input_bytes=data or b'', input_limit=MAX_BYTES, environment=env if env is not None else os.environ.copy(), timeout=remaining, limit=MAX_BYTES)
     except InspectionError:
         raise ValueError('payload-input-unavailable') from None
 
@@ -135,7 +135,7 @@ def materialize(client, o, **kwargs):
         DEADLINE = previous
 
 
-def _materialize(client, o, *, documents=None, source_paths=None, private_only=False, per_app_bypass='', per_app_via_tun='', extended=False, xhttp_only=False):
+def _materialize(client, o, *, documents=None, source_paths=None, private_only=False, per_app_bypass='', per_app_via_tun='', extended=False, xhttp_only=False, endpoints=None):
     validate_options(o)
     if o['format'] == 'xray' and (per_app_bypass or per_app_via_tun or o['expires']):
         raise ValueError('unsupported-native-xhttp-options')
@@ -160,7 +160,7 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
         d = loaded[source]
         provider, environment = host.split(':')
         env = dict(os.environ, PROVIDER=provider, ENV=environment)
-        ip = command([str(ROOT / 'scripts/terraform-env.sh'), 'output', '-raw', 'server_ipv4'], env=env).decode().strip()
+        ip = (endpoints[host] if endpoints is not None else command([str(ROOT / 'scripts/terraform-env.sh'), 'output', '-raw', 'server_ipv4'], env=env).decode().strip())
         cohort = o['cohorts'][i] if o['cohorts'] else inventory_cohort(command(
             [str(ROOT / 'scripts/terraform-env.sh'), 'output', '-raw', 'server_hostname'], env=env).decode().strip())
         c = context(cohort)

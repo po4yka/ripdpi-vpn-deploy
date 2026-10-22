@@ -1,9 +1,9 @@
 """Exercise policy/apply identity and canonical drift comparisons offline."""
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 import yaml
@@ -98,7 +98,10 @@ def test_fleet_passes_optional_zone_as_environment_not_command(tmp_path, zone):
     scripts.mkdir()
     executable(scripts / 'blue-green.sh', '#!/bin/sh\nprintf "%s" "$GREEN_ZONE" > "$ZONE_CAPTURE"\n')
     capture = tmp_path / 'zone'
-    entry = {'current':'upcloud:prod', 'new_env':'green'}
+    from test_blue_green_lifecycle import migration_inputs
+    inputs = migration_inputs(tmp_path, tmp_path, tmp_path / 'source.sops.yaml')
+    entry = {'current':'upcloud:prod', 'new_env':'green', 'green_sops_file': inputs['GREEN_SOPS_FILE'],
+             'migration_plan': inputs['DEVICE_MIGRATION_PLAN'], 'migration_approval': inputs['DEVICE_MIGRATION_APPROVAL']}
     if zone:
         entry['new_zone'] = zone
     # Exercise the real child launcher and inherited lock descriptor offline.
@@ -157,7 +160,7 @@ def test_binary_version_pins_compare_complete_versions(tmp_path, version, succes
     (False, False, True, True, False), (False, True, False, True, False),
     (False, True, True, False, False), (False, True, True, True, True),
 ])
-def test_blue_green_uses_exact_alias_and_one_secret_file_through_make(tmp_path, deploy_failure, blue_present, green_present, pinned, wait_failure):
+def test_blue_green_uses_exact_alias_and_separate_target_secrets_through_make(tmp_path, deploy_failure, blue_present, green_present, pinned, wait_failure):
     scripts = tmp_path / 'scripts'
     scripts.mkdir()
     shutil.copy(ROOT / 'scripts/blue-green.sh', scripts)
@@ -190,6 +193,12 @@ if 'deploy' in args and os.environ['DEPLOY_FAILURE']=='1': sys.exit(23)
     executable(tmp_path / 'bin/ssh-keygen', '#!/bin/sh\nexit ' + ('0' if pinned else '1') + '\n')
     sops = tmp_path / 'synthetic.sops.yaml'
     sops.touch()
+    from test_blue_green_lifecycle import migration_inputs
+    inputs = migration_inputs(tmp_path, tmp_path, sops)
+    (scripts / 'device-migration.py').write_text('import sys\n')
+    (scripts / 'device_migration_inventory.py').write_text(
+        "import os, pathlib, subprocess, sys\n"
+        "if sys.argv[1] == 'render': subprocess.run([str(pathlib.Path(__file__).with_name('render-inventory.sh'))], check=True)\n")
     log = tmp_path / 'calls'
     # Answers in prompt order: plan review, SSH pin, SSH ownership, dry-run review, traffic swing.
     result = subprocess.run(['bash',str(scripts / 'blue-green.sh')], input='yes\n\n\nyes\nyes\n',
@@ -197,7 +206,7 @@ if 'deploy' in args and os.environ['DEPLOY_FAILURE']=='1': sys.exit(23)
         'CALLS':str(log),'RENDER_CALLS':str(tmp_path / 'rendered'),'DEPLOY_FAILURE':str(int(deploy_failure)),
         'WAIT_FAILURE':str(int(wait_failure)), 'BLUE_ENV':'prod','GREEN_ENV':'green',
         'PROVIDER':'upcloud','SOPS_FILE':str(sops),'ANSIBLE_SSH_PRIVATE_KEY_FILE':str(tmp_path / 'key'),
-        'GREEN_TAILNET_HANDOFF':str(tmp_path / 'handoff'),'DEPLOY_SSH_CONTEXTS_FILE':str(tmp_path / 'contexts')})
+        'GREEN_TAILNET_HANDOFF':str(tmp_path / 'handoff'),'DEPLOY_SSH_CONTEXTS_FILE':str(tmp_path / 'contexts'), **inputs})
     if not blue_present:
         assert result.returncode != 0
         assert not log.exists()
@@ -230,7 +239,8 @@ if 'deploy' in args and os.environ['DEPLOY_FAILURE']=='1': sys.exit(23)
     assert calls.index(dry_run) < calls.index(deploy)
     assert 'dry-run' not in deploy['args']
     assert calls[0]['limit']=='node-prod'
-    assert deploy['secrets']==calls[0]['secrets']
+    assert deploy['secrets'] != calls[0]['secrets']
+    assert not Path(calls[0]['secrets']).exists()
     assert not Path(deploy['secrets']).exists()
     green_verifications = [c for c in calls if 'smoke-test' in c['args']]
     assert bool(green_verifications) != deploy_failure

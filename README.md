@@ -262,8 +262,13 @@ PYINFRA_HOSTS=host make pyinfra-audit      # experimental read-only pyinfra audi
 make smoke-test                           # end-to-end traffic test (real proxy dial)
 make xray-diagnostics                     # fresh redacted Xray counters over SSH
 make snell-refinement BUNDLE=<json> CONFIG=<yaml> VANTAGE=<technical-id> # staging-only Snell payload/refinement matrix
-make blue-green GREEN_ENV=<name>          # orchestrate blue-green replacement
+make blue-green GREEN_ENV=<name> GREEN_SOPS_FILE=<path> DEVICE_MIGRATION_PLAN=<path> # replace with device handover
+make device-migration ACTION=plan DEVICE_MIGRATION_PLAN=<path> # review device handover
 ```
+
+[Device migration](docs/DEVICE-MIGRATION.md) preserves active subscription URLs,
+resumes interrupted publication and requires fresh per-device path evidence
+before the source can be retired.
 
 Watchdog authentication requires a dedicated `xray.clients` identity (default
 `watchdog`) for REALITY and XHTTP, and a separate `hysteria.clients` identity

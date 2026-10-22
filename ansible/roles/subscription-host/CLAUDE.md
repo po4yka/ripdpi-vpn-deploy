@@ -2,6 +2,15 @@
 
 ## Design decisions
 
+**Migration publication** — the SSH-only `migration-publisher-v1` API exposes a
+bounded snapshot and compare-and-swap updates under the existing state lock.
+It admits only exact atomic documents, preserves client/expiry on replacement,
+rechecks revocation and expiry, and syncs identical committed bytes before an
+idempotent acknowledgement. Deletion requires the expected current document;
+it cannot expose legacy siblings. Snapshots report active bootstrap grants so
+controller handover cannot silently reset consumption authority. Mirror and
+legacy-only namespaces require their own migration before this API can run.
+
 **Atomic subscription delivery** — new `/sub/` publications use one bounded
 version-1 `<sha256>.document` with exact base64 payload bytes, client and expiry.
 The installed runtime exposes a fixed readiness/publish protocol under the
