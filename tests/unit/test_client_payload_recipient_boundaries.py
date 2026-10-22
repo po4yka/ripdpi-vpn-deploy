@@ -171,7 +171,8 @@ def test_policy_bounds_refuse(materialization, payload_policy, field, value):
 
 @pytest.mark.parametrize("url", [
     "http://control-b.example.test/", "HTTPS://control-b.example.test/", "https://user:private@control-b.example.test/",
-    "https://control-b.example.test/#fragment", "https://control-b.example.test:0/",
+    "https://control-b.example.test/#fragment", "https://control-b.example.test/#",
+    "https://control-b.example.test:0/",
     "https://control-b.example.test\\@other.test/", "https://127.1/",
     "https://0177.0.0.1/", "https://0x7f000001/", "https://bad..example.test/",
     "https://control-a.example.test:443/different", "https://CONTROL-A.example.test./",
@@ -194,7 +195,7 @@ def test_policy_cross_field_and_exact_shape(payload_policy):
     assert payload_policy["probes"][0]["sha256"] != "changed"
 
 
-@pytest.mark.parametrize("mutate", ["duplicate-origin", "backoff", "digest", "unknown", "null"])
+@pytest.mark.parametrize("mutate", ["duplicate-origin", "empty-fragment", "backoff", "digest", "unknown", "null"])
 def test_bundle_validator_rejects_invalid_payload_policy(tmp_path, mutate):
     import json
     from pathlib import Path
@@ -206,6 +207,8 @@ def test_bundle_validator_rejects_invalid_payload_policy(tmp_path, mutate):
     policy = document["ripdpi"]["payload_failover"]
     if mutate == "duplicate-origin":
         policy["probes"][1]["url"] = policy["probes"][0]["url"] + "&second=true"
+    elif mutate == "empty-fragment":
+        policy["probes"][0]["url"] += "#"
     elif mutate == "backoff":
         policy["interval_seconds"] = 1000
     elif mutate == "digest":
@@ -229,3 +232,9 @@ def test_mapped_ipv6_control_origin_alias_refuses(payload_policy):
     payload_policy["probes"][1]["url"] = "https://[::ffff:c000:20a]/control-b"
     with pytest.raises(ValueError, match="invalid-payload-failover-policy"):
         validate_policy(payload_policy)
+
+
+def test_percent_encoded_hash_in_control_path_is_not_a_fragment(payload_policy):
+    from payload_failover_policy import validate_policy
+    payload_policy["probes"][1]["url"] = "https://control-b.example.test/payload%23suffix"
+    assert validate_policy(payload_policy) == payload_policy

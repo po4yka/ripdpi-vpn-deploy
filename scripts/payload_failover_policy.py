@@ -22,14 +22,14 @@ def https_origin(url):
     """Return a canonical HTTPS origin; ambiguous authorities are refused."""
     if (not isinstance(url, str) or not 1 <= len(url) <= 2048
             or not url.isascii() or any(ord(c) <= 32 or ord(c) == 127 for c in url)
-            or "\\" in url or not url.startswith("https://")):
+            or "\\" in url or "#" in url or not url.startswith("https://")):
         raise ValueError("invalid-payload-failover-policy")
     try:
         parts = urlsplit(url)
         host = parts.hostname
         port = parts.port if parts.port is not None else 443
         if (parts.scheme != "https" or not host or parts.username is not None
-                or parts.password is not None or parts.fragment or "%" in host
+                or parts.password is not None or "%" in host
                 or not 1 <= port <= 65535):
             raise ValueError
         try:

@@ -9,6 +9,8 @@ within each direction so ordinary body-size growth is not throttling.
 The loopback canary applies a total request deadline.
 Recipient failover uses `payload_failover_policy.py` for strict two-origin HTTPS
 policy admission; all contributing hosts must agree before extended emission.
+Control URLs reject fragment delimiters even when the fragment is empty, matching
+the recipient parser; percent-encoded path characters remain valid.
 Plain sing-box exports retain their RTT-only urltest contract.
 
 Fleet status resolves provider/environment selections through strict inventory
