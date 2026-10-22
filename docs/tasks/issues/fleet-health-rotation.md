@@ -2,7 +2,7 @@
 id: OPS-1792654666090980
 title: Repair fleet health and resumable rotation boundaries
 kind: bug
-status: doing
+status: review
 area: operations
 priority: high
 risk: high

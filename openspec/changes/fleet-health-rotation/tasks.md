@@ -24,7 +24,7 @@ durable exact-plan resume, with regression coverage and protected-main acceptanc
 - [x] OPS-1792654871067546 Implement strict inventory fleet status with truthful watchdog regressions #bug !high @item:OPS-1792654666090980
 - [x] OPS-1792654872580225 Enforce authenticated survivor availability before each rotation with regressions #bug !high @item:OPS-1792654666090980
 - [x] OPS-1792654873965490 Bind serialized durable resume to the exact plan with interruption regressions #bug !high @item:OPS-1792654666090980
-- [ ] OPS-1792654875144749 Integrate operator contracts and pass local checks independent review and protected main CI #bug !high @item:OPS-1792654666090980
+- [x] OPS-1792654875144749 Integrate operator contracts and pass local checks independent review and protected main CI #bug !high @item:OPS-1792654666090980
 
 ## Verification
 
