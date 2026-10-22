@@ -80,7 +80,7 @@ def options(format, *, hosts=None, cohorts=None, awg_host=None, expires='', utls
 
 def validate_options(o):
     if (not isinstance(o, dict) or set(o) != {'format', 'hosts', 'cohorts', 'awg_host', 'expires', 'utls'}
-            or o['format'] not in ('singbox', 'ripdpi', 'xray') or not isinstance(o['hosts'], list) or not o['hosts']
+            or o['format'] not in ('singbox', 'ripdpi', 'xray', 'native') or not isinstance(o['hosts'], list) or not o['hosts']
             or any(not isinstance(h, str) or not HOST.fullmatch(h) for h in o['hosts'])
             or not isinstance(o['cohorts'], list) or (o['cohorts'] and len(o['cohorts']) != len(o['hosts']))
             or any(not isinstance(c, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,62}', c) for c in o['cohorts'])
@@ -135,6 +135,32 @@ def materialize(client, o, **kwargs):
         DEADLINE = previous
 
 
+def native_delivery(document, resolved, client, host, endpoint):
+    """Private official-client artifacts; never a subscription payload."""
+    from urllib.parse import quote
+    from awg_client import config as awg_config
+    from awg_device_binding import public_key
+    result = {'amneziawg_configs': {}, 'naive_uris': {}}
+    bindings = []
+    vpn = resolved.get('vpn', {})
+    if vpn.get('enable_amneziawg', False):
+        binding = resolve_binding(document, resolved, client, host)
+        private = document['client_registry'][client]['awg_private_key']
+        if public_key(private) != binding.peer['public_key']:
+            raise ValueError('native-device-private-key-mismatch')
+        block = awg_export(document, resolved, client, host, binding.identity['instance'], endpoint)
+        result['amneziawg_configs'][host] = awg_config(block).replace('<CLIENT_PRIVATE_KEY>', private)
+        bindings.append({**binding.identity, 'peer_public_key': binding.peer['public_key']})
+    if vpn.get('enable_naive', False):
+        users = [row for row in document['naive_secrets']['clients'] if row['name'] == client]
+        if len(users) != 1:
+            raise ValueError('missing-native-naive-device')
+        user = users[0]
+        result['naive_uris'][host] = ('naive+https://' + quote(user['username'], safe='') + ':' + quote(user['password'], safe='')
+            + '@' + document['naive_secrets']['server_name'] + ':' + str(resolved.get('naive_bind_port', 443)))
+    return result, bindings
+
+
 def _materialize(client, o, *, documents=None, source_paths=None, private_only=False, per_app_bypass='', per_app_via_tun='', extended=False, xhttp_only=False, endpoints=None):
     validate_options(o)
     if o['format'] == 'xray' and (per_app_bypass or per_app_via_tun or o['expires']):
@@ -150,6 +176,7 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
         raise ValueError('invalid-private-input-selection')
     loaded = {} if documents is None else dict(documents)
     out, snell, awg, extras = [], [], [], {}
+    native = {'amneziawg_configs': {}, 'naive_uris': {}}
     topology = {'split_hop_egress': False, 'hysteria_realm': None}
     awg_enabled = False
     bindings = []
@@ -168,6 +195,18 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
         if errors:
             raise ValueError('invalid-transport-input')
         vpn = c.get('vpn', {})
+        if o['format'] == 'native':
+            if (not private_only or o['expires'] or per_app_bypass or per_app_via_tun
+                    or any(vpn.get(key, key == 'enable_xray_reality') for key in
+                           ('enable_xray_reality', 'enable_nginx_xhttp', 'enable_hysteria', 'enable_snell'))):
+                raise ValueError('native-delivery-requires-only-official-client-transports')
+            resolved = dict(c)
+            resolved.update({key: value for key, value in host_context(cohort).items() if key in ('amneziawg', 'amneziawg_cohort')})
+            private_payload, private_bindings = native_delivery(d, resolved, client, host, ip)
+            for key in native:
+                native[key].update(private_payload[key])
+            bindings.extend(private_bindings)
+            continue
         enabled = lambda key, default=False: vpn.get(key, default) and (not (xhttp_only or o['format'] == 'xray') or key == 'enable_nginx_xhttp')
         awg_enabled |= enabled('enable_amneziawg')
         tag = provider + '-' + environment
@@ -286,6 +325,10 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
                 binding = resolve_binding(d, awg_context, client, host)
                 # A placeholder export still consumes the enrolled peer identity.
                 bindings.append({**binding.identity, 'peer_public_key': binding.peer['public_key']})
+    if o['format'] == 'native':
+        if not any(native.values()):
+            raise ValueError('no-native-device-delivery')
+        return {'native': native}, bindings
     if not out and not (o['format'] == 'ripdpi' and awg_enabled):
         raise ValueError('no enabled outbounds resolved from Ansible profile toggles')
     if o['format'] == 'xray':

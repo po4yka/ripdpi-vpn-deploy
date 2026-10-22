@@ -52,6 +52,53 @@ class Refusal(RuntimeError):
     """Categorical refusal; private input and child output never form diagnostics."""
 
 
+def revocation_authority(value):
+    if value is None:
+        return None
+    if (not isinstance(value, dict) or set(value) != {'operation_id', 'intent_sha256'}
+            or not isinstance(value['operation_id'], str)
+            or re.fullmatch('[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', value['operation_id']) is None
+            or not isinstance(value['intent_sha256'], str)
+            or re.fullmatch('[0-9a-f]{64}', value['intent_sha256']) is None):
+        raise Refusal('revocation-authority-invalid')
+    return value
+
+
+def revocation_record(root, uid):
+    value = read_private(Path(root) / 'revocation.json', uid)
+    if value is None:
+        return None
+    if (not isinstance(value, dict) or set(value) != {'schema', 'authority', 'plan', 'receipt', 'absent'}
+            or type(value['schema']) is not int or value['schema'] != 1
+            or value['authority'] is None
+            or value['plan'] is not None and (not isinstance(value['plan'], str)
+                or re.fullmatch('[0-9a-f]{64}', value['plan']) is None)):
+        raise Refusal('revocation-record-invalid')
+    if (not isinstance(value['absent'], list) or len(value['absent']) > 128
+            or any(not isinstance(path, str) for path in value['absent'])
+            or len(set(value['absent'])) != len(value['absent'])):
+        raise Refusal('revocation-record-invalid')
+    validate_receipt({'schema': 1, 'nodes': dict.fromkeys(value['absent']), 'previous': None, 'units': {}},
+                     root=Path(root), uid=uid, node_limit=128)
+    revocation_authority(value['authority'])
+    if value['receipt'] is not None:
+        validate_receipt(value['receipt'], root=Path(root), uid=uid, node_limit=128)
+        if value['plan'] is None:
+            raise Refusal('revocation-record-invalid')
+    return value
+
+
+def candidate_digest(candidates):
+    selected = []
+    for item in candidates:
+        entry = {key: value for key, value in item.items() if key not in {'data', 'source'}}
+        if 'data' in item:
+            entry['sha256'] = hashlib.sha256(base64.b64decode(item['data'], validate=True)).hexdigest()
+        selected.append(entry)
+    return hashlib.sha256(json.dumps(sorted(selected, key=lambda item: item['path']),
+                                    sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
 def identity(info):
     return [info.st_dev, info.st_ino, info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)]
 
@@ -198,9 +245,13 @@ def outer_record(root, uid, *, node_limit=64):
     value = read_private(root / 'outer.json', uid)
     if value is None:
         return None
-    if (not isinstance(value, dict) or set(value) != {'schema', 'receipt', 'consumer_receipt'}
+    if (not isinstance(value, dict) or set(value) not in ({'schema', 'receipt', 'consumer_receipt'}, {'schema', 'receipt', 'consumer_receipt', 'revocation'})
             or type(value['schema']) is not int or value['schema'] != 1):
         raise Refusal('outer-intent-invalid')
+    if 'revocation' in value:
+        if value['revocation'] is None:
+            raise Refusal('outer-intent-invalid')
+        revocation_authority(value['revocation'])
     for key in ('receipt', 'consumer_receipt'):
         if value[key] is not None:
             validate_receipt(value[key], root=root, uid=uid, node_limit=node_limit)
@@ -221,12 +272,13 @@ def admission(root, *, uid=0):
         if identity(info)[2:] != [uid, os.getgid(), 0o700]:
             raise Refusal('unsafe-state-directory')
         outer = outer_record(root, uid)
-        unfinished = False
+        revocation = revocation_record(root, uid)
+        unfinished = revocation is not None and revocation['receipt'] is None
         if outer is not None:
             accepted = read_private(root / 'accepted.json', uid)
             if accepted is not None:
                 validate_receipt(accepted, root=root, uid=uid)
-            unfinished = outer['consumer_receipt'] is None or outer['consumer_receipt'] != accepted
+            unfinished = unfinished or outer['consumer_receipt'] is None or outer['consumer_receipt'] != accepted
         for name in ('preparation.json', 'pending.json', 'compensating.json'):
             value = read_private(root / name, uid)
             if value is not None:
@@ -244,15 +296,52 @@ def admission(root, *, uid=0):
 class Transaction:
     """One retained lock and exact before/after inode journal per transport set."""
 
-    def __init__(self, root, *, uid=0, check=False, awg=False):
+    def __init__(self, root, *, uid=0, check=False, awg=False, revocation=None):
         self.root = Path(root)
         self.uid = uid
         self.check = check
         self.awg = awg
+        self.revocation = revocation_authority(revocation)
         self.node_limit = 128 if awg else 64
         self.parents = {}
         self.resources = ExitStack()
         self.storage_locks = set()
+
+    def revocation_state(self):
+        value = None if self.state_fd is None else revocation_record(self.root, self.uid)
+        if value is not None and value['receipt'] is None and value['authority'] != self.revocation:
+            raise Refusal('revocation-resume-required')
+        return value
+
+    def arm_revocation(self, candidates=None, *, check=False):
+        value = self.revocation_state()
+        if self.revocation is None:
+            return value
+        if value is None or value['authority'] != self.revocation:
+            if any(read_private(self.root / name, self.uid) is not None for name in
+                   ('pending.json', 'preparation.json', 'compensating.json')):
+                raise Refusal('revocation-requires-reconciled-runtime')
+            value = {'schema': 1, 'authority': self.revocation, 'plan': None, 'receipt': None, 'absent': []}
+        if candidates is not None:
+            digest = candidate_digest(candidates)
+            if value['plan'] is not None and value['plan'] != digest:
+                raise Refusal('revocation-candidate-changed')
+            value = {**value, 'plan': digest, 'absent': sorted(item['path'] for item in candidates if item.get('absent'))}
+        if not (self.check or check):
+            self.record('revocation.json', value)
+        return value
+
+    def accept_revocation(self, receipt):
+        value = self.revocation_state()
+        if value is not None and value['receipt'] is None:
+            if value['plan'] is None:
+                raise Refusal('revocation-candidate-required')
+            self.record('revocation.json', {**value, 'receipt': receipt})
+
+    def refuse_revocation_rollback(self, receipt=None):
+        value = None if self.state_fd is None else revocation_record(self.root, self.uid)
+        if value is not None and (value['receipt'] is None or receipt == value['receipt']):
+            raise Refusal('revocation-rollback-forbidden')
 
 
     def executable(self, path):
@@ -761,12 +850,14 @@ class Transaction:
     def compensate_latest(self, adapter, *, check=False, restore_only=False, checkpoint=lambda _stage: None):
         adapter.transaction = self
         """Reverse one exact committed intent, retaining interruption recovery."""
+        self.refuse_revocation_rollback()
         value = self.compensation()
         if value is None:
             value = read_private(self.root / 'last.json', self.uid)
             if value is None:
                 return {'status': 'compensated', 'changed': False, 'published': False}
             self.validate_compensation(value, preparing=True)
+        self.refuse_revocation_rollback(value['after_receipt'])
         adapter.validate_units(value['units'])
         adapter.validate_units(value['after_receipt']['units'])
         if check:
@@ -838,12 +929,17 @@ class Transaction:
     def recover(self, adapter, *, restore_only=False):
         adapter.transaction = self
         outer_record(self.root, self.uid, node_limit=self.node_limit)
+        revocation = self.revocation_state()
+        if restore_only:
+            self.refuse_revocation_rollback()
         prepared = self.recover_preparation()
         if read_private(self.root / 'compensating.json', self.uid) is not None:
             result = self.compensate_latest(adapter, restore_only=restore_only)
             return result if restore_only else True
         value = self.journal()
         if value is None:
+            if revocation is not None and revocation['receipt'] is None:
+                adapter.stop()
             return {'status': 'reconciled', 'changed': prepared, 'published': False, 'units': None} if restore_only else prepared
         adapter.validate_units(value['units'])
         adapter.validate_units(value['after_receipt']['units'])
@@ -852,11 +948,25 @@ class Transaction:
             if restore_only:
                 self.cleanup(value)
                 return self.compensate_latest(adapter, restore_only=True)
-            adapter.ensure()
-            adapter.ready()
+            try:
+                adapter.ensure()
+                adapter.ready()
+            except BaseException:
+                if revocation is not None:
+                    adapter.stop()
+                raise
+            self.accept_revocation(value['after_receipt'])
             self.cleanup(value)
             return True
         adapter.stop()
+        if revocation is not None and revocation['receipt'] is None:
+            # Normalize interrupted role-visible files to the retained candidate
+            # while stopped. Roles can then re-render the same membership/config
+            # without reading the old inode's temporary hard-link state.
+            for index, entry in enumerate(value['entries']):
+                if not entry['deferred']:
+                    self.replace(entry, index, 'after')
+            return True
         for index, entry in enumerate(value['entries']):
             self.replace(entry, index, 'before')
         if restore_only:
@@ -868,6 +978,31 @@ class Transaction:
             adapter.ready()
         self.cleanup(value)
         return True
+
+    def forward(self, value, adapter, checkpoint):
+        """Resume only the retained after-inodes; old credentials never start."""
+        adapter.stop()
+        checkpoint('stopped')
+        for index, entry in enumerate(value['entries']):
+            if not entry['deferred']:
+                self.replace(entry, index, 'after')
+                checkpoint('published-' + str(index))
+        adapter.retained(value['after_receipt'])
+        adapter.start()
+        checkpoint('adopted')
+        adapter.ready()
+        checkpoint('ready')
+        for index, entry in enumerate(value['entries']):
+            if entry['deferred']:
+                self.replace(entry, index, 'after')
+        value['after_receipt']['units'] = adapter.inspect()
+        self.record('pending.json', value)
+        self.record('accepted.json', value['after_receipt'])
+        checkpoint('committed')
+        self.accept_revocation(value['after_receipt'])
+        self.confirm_outer()
+        self.cleanup(value)
+        return {'status': 'accepted', 'changed': True, 'published': True}
 
     def accepted(self):
         receipt = read_private(self.root / 'accepted.json', self.uid)
@@ -894,8 +1029,16 @@ class Transaction:
         prepared = self.preparation()
         pending = self.journal()
         compensating = self.compensation()
+        fence = self.revocation_state()
+        if fence is not None and fence['authority'] == self.revocation:
+            # A deleted membership record cannot regenerate retired path names.
+            # Their exact absence remains selected by the persisted original plan.
+            paths = {item['path'] for item in candidates}
+            candidates = [*candidates, *({'path': raw, 'absent': True}
+                          for raw in fence['absent'] if raw not in paths)]
         interrupted = prepared is not None or pending is not None or compensating is not None
         self.validate(candidates, pending=interrupted)
+        revocation = self.arm_revocation(candidates, check=check)
         if pending is not None:
             adapter.validate_units(pending['units'])
             adapter.validate_units(pending['after_receipt']['units'])
@@ -908,7 +1051,18 @@ class Transaction:
                 if len(set((receipt or {}).get('nodes', {})) | {str(Path(item['path'])) for item in candidates}) > self.node_limit:
                     raise Refusal('receipt-node-limit')
             return {'status': 'predicted', 'changed': interrupted or not self.unchanged(candidates, pending=interrupted), 'published': False}
+        if revocation is not None and revocation['receipt'] is None:
+            adapter.stop()
         recovered = self.recover(adapter)
+        pending = self.journal()
+        if pending is not None:
+            if revocation is None or revocation['receipt'] is not None:
+                raise Refusal('runtime-recovery-incomplete')
+            try:
+                return self.forward(pending, adapter, checkpoint)
+            except BaseException:
+                adapter.stop()
+                raise
         self.validate(candidates)
         receipt = self.accepted()
         before_backups = self.backups(str(Path(item['path'])) for item in candidates)
@@ -916,9 +1070,12 @@ class Transaction:
             raise Refusal('receipt-node-limit')
         adapter.retained(receipt)
         if (self.unchanged(candidates) and receipt is not None
-                and all(item['path'] in receipt['nodes'] for item in candidates)):
+                and all(item['path'] in receipt['nodes'] or
+                        (revocation is not None and item.get('absent') and item['path'] in revocation['absent'])
+                        for item in candidates)):
             adopted = adapter.ensure()
             adapter.ready()
+            self.accept_revocation(receipt)
             self.confirm_outer()
             return {'status': 'accepted', 'changed': recovered or adopted, 'published': False}
         adapter.validate()
@@ -1030,8 +1187,12 @@ class Transaction:
             self.record('pending.json', value)
             self.record('accepted.json', next_receipt)
             checkpoint('committed')
+            self.accept_revocation(next_receipt)
         except Exception:
-            self.recover(adapter)
+            if revocation is not None and revocation['receipt'] is None:
+                adapter.stop()
+            else:
+                self.recover(adapter)
             raise Refusal('candidate-refused') from None
         self.confirm_outer()
         self.cleanup(value)

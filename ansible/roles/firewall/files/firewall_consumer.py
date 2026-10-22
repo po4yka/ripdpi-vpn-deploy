@@ -139,6 +139,7 @@ def restore(tx, owner):
         return False
     if value['owner'] != owner:
         raise Refusal('firewall-consumer-owner-mismatch')
+    tx.refuse_revocation_rollback()
     if owner == 'site':
         ingress = read_private(Path('/var/lib/vpn-nginx-publication/nginx.service/site.json'), tx.uid)
         if isinstance(ingress, dict) and ingress.get('phase') == 'committing':
@@ -163,12 +164,14 @@ def operate(action, payload):
     check = action == 'status' or payload.get('check', False)
     if type(check) is not bool:
         raise Refusal('firewall-check-invalid')
-    with Transaction(STATE, uid=os.geteuid(), check=check or (action in {'restore', 'status'} and not STATE.exists())) as tx:
+    with Transaction(STATE, uid=os.geteuid(), check=check or (action in {'restore', 'status'} and not STATE.exists()),
+                     revocation=payload.get('revocation')) as tx:
         if tx.state_fd is None:
             return {'owner': None} if action == 'status' else {'changed': action == 'apply'}
         value = marker(tx)
         if action == 'status':
             return {'owner': None if value is None else value['owner']}
+        tx.revocation_state()
         if action == 'restore':
             if check:
                 if value is not None:
@@ -193,8 +196,10 @@ def operate(action, payload):
         candidates = [{'path': str(CONFIG), 'data': payload['data'], 'gid': os.getgid(), 'mode': 0o644}]
         adapter = Firewall(candidates)
         if value is not None:
-            raise Refusal('firewall-consumer-recovery-required')
-        if not check and tx.accepted() is None:
+            fence = tx.revocation_state()
+            if fence is None or fence['authority'] != tx.revocation or value['owner'] != owner:
+                raise Refusal('firewall-consumer-recovery-required')
+        if not check and value is None and tx.accepted() is None:
             old = node(CONFIG, tx.uid)
             if old is not None:
                 tx.parent(CONFIG.parent)
@@ -226,7 +231,7 @@ def operate(action, payload):
                             os.unlink(temporary)
                     command(['nft', '-f', str(CONFIG)])
                     tx.record('accepted.json', {'schema': 1, 'nodes': {str(CONFIG): node(CONFIG, tx.uid)}, 'previous': None, 'units': {}})
-        if not check:
+        if not check and value is None:
             tx.record('consumer.json', {'schema': 1, 'owner': owner, 'before': tx.accepted()})
         return tx.apply(candidates, adapter, check=check)
 

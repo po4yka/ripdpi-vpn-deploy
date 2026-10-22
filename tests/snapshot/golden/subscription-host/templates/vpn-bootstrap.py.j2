@@ -442,7 +442,7 @@ def _migration_publish(token_hash, request):
     with _state_authority() as root:
         directory = _publication_route(root)
         try:
-            if token_hash in _migration_revocations():
+            if token_hash in _migration_revocations() and desired is not None:
                 raise ValueError("migration grant revoked")
             legacy_names = []
             for suffix in ("", ".meta", ".json"):

@@ -14,6 +14,16 @@
 
 ## Design decisions
 
+Credential scanner exceptions bind the exact generator expression and source path.
+Real literals, other paths and appended assignments must remain detectable.
+
+Device lifecycle cases exercise actual SOPS journals and subscription publisher
+state. TLS canaries distinguish on-disk revocation from a running reader that
+still accepts the token. Native Linux tests launch real pinned protocols and
+systemd services for accepted and revoked access; orchestration callbacks alone
+are not native proof. Missing tools, TUN, source receipts or cleanup fail the
+isolated native lane instead of skipping it.
+
 Device migration regressions execute real test-only SOPS transactions and the
 actual publisher behind local HTTP. Lost acknowledgements after remote and
 cross-document writes must resume identical bytes without reallocation.

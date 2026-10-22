@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Device revocation passes one exact operation/digest through runtime and firewall owners. Failed activation never restores the old peer or firewall; units stay stopped and retained journals require the identical candidate to resume. Retired path absence remains bound after membership cleanup, and normal later convergence preserves the accepted revoked baseline.
+
 The reviewed UDP checksum correction applies only to exact admitted source
 commits and complete tree bytes. Its manifest, helper and replacement asset
 hashes form build identity and qualify both checkout and release paths. Apply

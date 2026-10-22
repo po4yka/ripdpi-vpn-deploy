@@ -57,6 +57,15 @@ closed if authority is lost. Convergence owns initial authority publication.
 Token-bearing share directory and bundle operations set both `no_log` and
 `diff: false`, including loops and verbose callbacks.
 
+**Disabled profiles can retain a serving publisher** — device revocation uses
+`tasks/revoke-grants.yml` only with an explicit retained-publisher intent. It
+requires the canonical root-owned helper, a running existing service, matching
+namespace/denylist paths and intact replay authority, and refuses removal of
+any existing revoked hash. It shares the normal role's denylist publication
+task, without installing, enabling, starting or restarting a listener. The
+device controller must still observe its owned TLS canary change from 200 to
+410 and clean it up; stopped or incomplete retained runtime is unfinished.
+
 **Share files have OS read boundaries** — the dedicated subscription-host and
 share directories are root:www-data 0750; token directories use 0750 and files
 0640. Copy repairs current files before recursive mode repair fixes retained

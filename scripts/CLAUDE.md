@@ -2,6 +2,19 @@
 
 ## Design decisions
 
+Device lifecycle admits the complete inventory and every configured or retained
+publisher. Overlapping fleets lock every authority in sorted order, regardless
+of journal host. Revocation binds immutable encrypted intent to the canonical
+runtime forward-only barrier through a private typed override; progress updates
+cannot change that digest. Native-only delivery exports official AWG/Naive
+configuration without a published token.
+Its encrypted intent freezes generated credentials, grant CAS bytes, source
+identity and recipient output before mutation. Canonical role rotation and
+private native probes must succeed for each affected node. Publisher revocation
+requires an owned TLS canary accepted before authority replacement and rejected
+after it; snapshot flags alone are insufficient. Never recreate credentials on
+resume or treat status as fresh runtime verification.
+
 Device migration uses separate source/target SOPS authorities and an encrypted
 intent before cross-document writes. Exact inventory, host pins, alternate
 sources and endpoint fingerprints fence resume. Publisher CAS preserves every
@@ -905,3 +918,7 @@ is not a new deletion when no issue, execution or receipt changed outside it.
 Independent lifecycle edits and merge-only resurrection retain the full audit.
 
 The monitor wraps the canonical REALITY collector in one owned process session and parent-owned temporary directory. Invalid explicit target, name, mode and owned-public prerequisites refuse before missing private defaults are loaded.
+
+Device revocation also admits exact published grants after source credentials were
+already removed. Reconcile every declared runtime and report the retained native
+profile count; absent preimages never imply that an old-key probe was executed.

@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Device revocation carries the same exact operation/digest through outer begin, frontend acceptance and finish. Pending revocation refuses ordinary recovery and snapshot restoration; failure quiesces the route and leaves the immutable candidate for an authorized forward retry. Even after consumer acceptance, an unfinished outer revocation cannot compensate to its old credential snapshot.
+
 Protected site commit finishes `outer.json` through the ingress decision owner, retaining `site.json` until finish succeeds. Interrupted begin and rescue resolve a recorded commit before route status/adoption or quiescence. Do not independently roll back egress while that ingress decision remains committing.
 
 Gateway units bind an immutable Xray release and have one publisher: the shared runtime transaction. Stage retains separate gateway candidates, validates their unit syntax privately and includes them in change prediction; only configuration, helpers and controller/normalizer units use egress publication. The generation reader exposes the validated `gateway_units` selection for runtime rollback without a second topology list. Egress keeps lifecycle and whole-route compensation ownership.

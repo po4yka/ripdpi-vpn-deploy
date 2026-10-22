@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Device revocation installs root start admission before arming its exact operation/digest and config/unit hash plan. The existing role writes while the service is stopped; activation validates native configuration and loaded PID under the retained transaction lock. Partial writes, process death or activation failure leave boot and unrelated convergence fenced until the identical operation resumes.
+
 Credential strings use JSON serialization in both server and smoke templates.
 Parsed PSKs and userkeys must match the canonical Python recipient values,
 including quotes, backslashes, control characters and UTF-8 text. Matching

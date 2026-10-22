@@ -1,4 +1,19 @@
 ---
+- name: Bind exact snell credential retirement before removing authority
+  ansible.builtin.set_fact:
+    _device_revocation_plan: "{{ {'/etc/systemd/system/snell.service': none, snell.config_dir ~ '/config.json': none} }}"
+  no_log: true
+  when: vpn_device_revocation | default(none) is not none
+
+- name: Stop snell before publishing credential retirement
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: revocation-barrier
+  vars:
+    device_revocation_unit: snell.service
+    device_revocation_action: begin
+    device_revocation_plan: '{{ _device_revocation_plan | default({}) }}'
+
 - name: Retire snell runtime authority
   ansible.builtin.include_role:
     name: runtime-release
@@ -9,3 +24,12 @@
     runtime_retire_paths:
       - /etc/systemd/system/snell.service
       - '{{ snell.config_dir }}/config.json'
+
+- name: Confirm exact snell credential retirement
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: revocation-barrier
+  vars:
+    device_revocation_unit: snell.service
+    device_revocation_action: activate
+    device_revocation_plan: '{{ _device_revocation_plan | default({}) }}'

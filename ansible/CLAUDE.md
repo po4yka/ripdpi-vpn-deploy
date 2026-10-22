@@ -2,6 +2,16 @@
 
 ## Design decisions
 
+Explicit empty Xray/Hysteria client lists retire their effective transports.
+Empty named REALITY cohorts and Snell variants are excluded before admission;
+an empty variant must never fall back to shared Snell authentication. The
+Snell projection filters public variants and private runtime users together;
+it retains the complete encrypted authority outside Ansible runtime facts. Device
+credential rotation invokes the full role lifecycle even for disabled transports,
+so retained old credentials cannot survive a successful fleet revocation. AWG
+retirement retains its existing firewall transaction. Naive empty-client
+handling remains the canonical role's explicit authentication retirement.
+
 Site baseline defers managed DNS stub restoration until DNS-Morph has retired
 its listener. The retiring role calls only baseline's resolver tasks; tagged
 runs that omit retirement retain the working upstream resolver.

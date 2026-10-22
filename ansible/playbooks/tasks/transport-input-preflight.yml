@@ -1,4 +1,8 @@
 ---
+- name: Resolve active and retired device transport authority
+  ansible.builtin.import_tasks: device-runtime-context.yml
+  tags: [always]
+
 - name: Validate enabled transport semantics before mutation
   ansible.builtin.command:
     argv: >-

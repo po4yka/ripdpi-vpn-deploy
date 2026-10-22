@@ -7,6 +7,24 @@ endif
 .PHONY: workspace-status
 workspace-status:
 	@python3 scripts/workspace-status.py
+else ifneq ($(filter device-lifecycle,$(MAKECMDGOALS)),)
+ifneq ($(MAKECMDGOALS),device-lifecycle)
+$(error device lifecycle requires exactly one make goal)
+endif
+override DEVICE_COMMAND_LITERAL := $(value ACTION)
+override DEVICE_MANIFEST_LITERAL := $(value DEVICE_MANIFEST)
+override DEVICE_APPROVAL_LITERAL := $(value DEVICE_APPROVAL)
+export DEVICE_COMMAND_LITERAL DEVICE_MANIFEST_LITERAL DEVICE_APPROVAL_LITERAL
+unexport ACTION DEVICE_MANIFEST DEVICE_APPROVAL MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+.PHONY: device-lifecycle
+device-lifecycle:
+	@set -eu; \
+	  case "$${DEVICE_COMMAND_LITERAL}" in plan|prepare|run|resume|status) ;; *) echo 'ACTION=plan|prepare|run|resume|status required' >&2; exit 2 ;; esac; \
+	  test -n "$${DEVICE_MANIFEST_LITERAL}" || { echo 'DEVICE_MANIFEST required' >&2; exit 2; }; \
+	  set -- "$${DEVICE_COMMAND_LITERAL}" "--manifest=$${DEVICE_MANIFEST_LITERAL}"; \
+	  if test -n "$${DEVICE_APPROVAL_LITERAL}"; then set -- "$$@" "--approve=$${DEVICE_APPROVAL_LITERAL}"; fi; \
+	  exec python3 scripts/device-lifecycle.py "$$@"
 else ifneq ($(filter device-migration,$(MAKECMDGOALS)),)
 ifneq ($(MAKECMDGOALS),device-migration)
 $(error device migration requires exactly one make goal)
@@ -629,7 +647,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
 
 .PHONY: help init validate plan apply inventory wait decrypt require-inventory require-exact-node require-clean-source validate-ansible-extra-vars dry-run deploy tailnet-network-promote backup-configure deploy-canary os-maintenance verify source-drift security-verify security-audit clean \
         pre-deploy-check network-exposure-review \
-        rollback-xray rollback-config rotate-credentials check-prereqs \
+        rollback-xray rollback-config rotate-credentials rotate-credentials-check check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-xray emit-awg emit-bundle install-hooks \
         molecule-test smoke-test validate-target monitor-reality-target probe-sni-survival scan-targets blue-green \
         spot-check-secrets bootstrap-secrets probe-asn probe-matrix-control probe-matrix-cell probe-matrix-tools emit-probe-matrix-profile emit-qr check-certs \
@@ -719,6 +737,7 @@ help:
 	@echo "  backup-state               age-encrypt the local terraform state"
 	@echo "  drift-since-tag            Diff fleet against last vpn-deploy-known-good-* tag"
 	@echo "  blue-green GREEN_ENV=… GREEN_SOPS_FILE=… DEVICE_MIGRATION_PLAN=…  Replace with device handover"
+	@echo "  device-lifecycle ACTION=… DEVICE_MANIFEST=…  Issue, refresh or revoke one device across the declared fleet"
 	@echo "  device-migration ACTION=… DEVICE_MIGRATION_PLAN=…  Plan, prepare, publish and verify device handover"
 	@echo "  fleet-rotate PLAN=…        Authenticated survivor floor and exact-plan resume"
 	@echo "  protocol-liveness LIVENESS_CONFIG=…  Pull sentinel probes and evaluate quorum"
@@ -880,8 +899,8 @@ wait:
 # same node. The other operator variables (ENV, PROVIDER, SECRETS_FILE and
 # the rest) are still expanded as Make and shell syntax; SCR-1792057680449496
 # tracks them.
-ifneq ($(filter rotate-credentials rollback-xray rollback-config require-exact-node,$(MAKECMDGOALS)),)
-ifneq ($(filter-out rotate-credentials rollback-xray rollback-config require-exact-node,$(MAKECMDGOALS)),)
+ifneq ($(filter rotate-credentials rotate-credentials-check rollback-xray rollback-config require-exact-node,$(MAKECMDGOALS)),)
+ifneq ($(filter-out rotate-credentials rotate-credentials-check rollback-xray rollback-config require-exact-node,$(MAKECMDGOALS)),)
 $(error the exact-node verbs cannot share an invocation with other Make goals)
 endif
 .NOTPARALLEL:
@@ -896,8 +915,11 @@ endif
 require-exact-node:
 	@python3 -c 'import os, re; raise SystemExit(0 if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", os.environ.get("EXACT_NODE_ALIAS", "")) else 1)' || { echo "this live operator verb requires ANSIBLE_LIMIT=<exact inventory alias> ([A-Za-z0-9][A-Za-z0-9_.-]{0,127})"; exit 1; }
 
+ANSIBLE_INVENTORY ?= $(ANSIBLE_DIR)/inventory/generated.ini
+export ANSIBLE_INVENTORY
+
 require-inventory:
-	@test -s "$(ANSIBLE_DIR)/inventory/generated.ini" || { echo "missing generated inventory — run 'make inventory'"; exit 1; }
+	@test -s "$(ANSIBLE_INVENTORY)" || { echo "missing generated inventory — run 'make inventory'"; exit 1; }
 	@inventory=$$(ansible-inventory --list $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)")) && \
 	  printf '%s\n' "$$inventory" | python3 scripts/require-vpn-selection.py || { echo "inventory limit selects no VPN hosts or inventory is invalid"; exit 1; }
 
@@ -921,7 +943,7 @@ pre-deploy-check:
 	  python3 ./scripts/validate-secrets.py $(SECRETS_FILE) --strict --environment "$(ENV)" && \
 	  VPN_SECRETS_FILE=$(SECRETS_FILE) python3 ./scripts/spot-check-secrets.py && \
 	  VPN_SECRETS_FILE=$(SECRETS_FILE) VPN_CERT_COHORTS="$(COHORTS)" \
-	  VPN_CERT_INVENTORY="$(wildcard $(ANSIBLE_DIR)/inventory/generated.ini)" VPN_CERT_LIMIT="$(ANSIBLE_LIMIT)" \
+	  VPN_CERT_INVENTORY="$(ANSIBLE_INVENTORY)" VPN_CERT_LIMIT="$(ANSIBLE_LIMIT)" \
 	  VPN_CERT_EXTRA_VARS_FILE="$(ANSIBLE_EXTRA_VARS_FILE)" ./scripts/check-certs.sh; \
 	fi
 
@@ -1137,11 +1159,12 @@ rollback-config: require-exact-node require-inventory
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
 	ansible-playbook $(ANSIBLE_DIR)/playbooks/rollback-config.yml --limit "$(ANSIBLE_LIMIT)"
 
-rotate-credentials: require-exact-node require-clean-source require-inventory pre-deploy-check
+rotate-credentials rotate-credentials-check: require-exact-node require-clean-source require-inventory validate-ansible-extra-vars pre-deploy-check
 	env -u ANSIBLE_SKIP_TAGS -u ANSIBLE_RUN_TAGS \
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
-	ansible-playbook $(ANSIBLE_DIR)/playbooks/rotate-credentials.yml --limit "$(ANSIBLE_LIMIT)"
-	@ENV=$(ENV) PROVIDER=$(PROVIDER) ./scripts/audit-log.sh append-best-effort \
+	ansible-playbook $(ANSIBLE_DIR)/playbooks/rotate-credentials.yml --limit "$(ANSIBLE_LIMIT)" $(if $(filter rotate-credentials-check,$@),--check --diff,) \
+	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)")
+	@$(if $(filter rotate-credentials-check,$@),true,ENV=$(ENV) PROVIDER=$(PROVIDER) ./scripts/audit-log.sh append-best-effort) \
 	  --action rotate-credentials \
 	  --note "playbook=rotate-credentials.yml node=$(ANSIBLE_LIMIT) secrets_file=$(notdir $(SECRETS_FILE))"
 
@@ -1609,7 +1632,7 @@ emit-qr:
 check-certs:
 	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run 'make decrypt'"; exit 1; }
 	VPN_SECRETS_FILE=$(SECRETS_FILE) VPN_CERT_COHORTS="$(COHORTS)" \
-	VPN_CERT_INVENTORY="$(wildcard $(ANSIBLE_DIR)/inventory/generated.ini)" VPN_CERT_LIMIT="$(ANSIBLE_LIMIT)" \
+	VPN_CERT_INVENTORY="$(ANSIBLE_INVENTORY)" VPN_CERT_LIMIT="$(ANSIBLE_LIMIT)" \
 	  VPN_CERT_EXTRA_VARS_FILE="$(ANSIBLE_EXTRA_VARS_FILE)" ./scripts/check-certs.sh
 
 audit-permissions:

@@ -116,37 +116,12 @@ def migration_lock(plan):
         os.close(fd)
 
 
-class LocalIO:
-    def __init__(self, plan):
-        self.plan = plan
-        aliases = list(dict.fromkeys([plan['source']['alias'], plan['target']['alias'],
-                                     plan['publication']['source_alias'], plan['publication']['target_alias']]))
-        self.hosts = {h['name']: h for h in select_hosts(plan['inventory'], aliases, include_variables=True, include_cohorts=True)}
-        for key in ('source', 'target'):
-            node = plan[key]
-            selected = select_hosts(plan['inventory'], [node['host']], include_variables=True, selection_kind='provider-env', include_cohorts=True)[0]
-            if selected != self.hosts[node['alias']] or selected['cohorts'] != [node['cohort']]:
-                raise MigrationRefused('migration-inventory-identity-mismatch')
-        if self.hosts[plan['source']['alias']]['address'] == self.hosts[plan['target']['alias']]['address']:
-            raise MigrationRefused('distinct-migration-endpoints-required')
-        # ssh_command admits the complete private key and known-hosts paths.
-        self.commands = {alias: ssh_command(host, plan['known_hosts']) for alias, host in self.hosts.items()}
-        with open(plan['known_hosts'], 'rb') as stream:
-            pins = stream.read(65537)
-        if len(pins) > 65536:
-            raise MigrationRefused('migration-host-pins-limit')
-        self.admission = {'hosts': self.hosts, 'pins_sha256': sha(pins)}
-
-    def read(self, path):
-        return read_document(path)
-
-    def endpoint(self, host):
-        selected = select_hosts(self.plan['inventory'], [host], selection_kind='provider-env')[0]
-        return selected['address']
-
-    def revalidate(self):
-        if LocalIO(self.plan).admission != self.admission:
-            raise MigrationRefused('migration-inventory-or-pins-changed')
+class PublisherIO:
+    """One admitted subscription namespace shared by migration and device lifecycle."""
+    def __init__(self, publication, hosts, commands, *, revalidate):
+        self.plan = {'publication': publication}
+        self.hosts, self.commands = hosts, commands
+        self.revalidate = revalidate
 
     def publisher(self, alias, action, token_hash=None, expected=None, document=None, *, cleanup=False):
         if not cleanup:
@@ -183,9 +158,9 @@ class LocalIO:
         if addresses != {target}:
             raise MigrationRefused('migration-publication-origin-pivot-unconfirmed')
 
-    def read_route(self, alias, token, expected):
+    def read_route(self, alias, token, expected, *, expected_status=200):
         request = {'origin': self.plan['publication']['origin'], 'address': self.hosts[alias]['address'],
-                   'token': token, 'expected_b64': base64.b64encode(expected).decode()}
+                   'token': token, 'expected_b64': base64.b64encode(expected).decode(), 'expected_status': expected_status}
         status, _ = run_command([sys.executable, str(ROOT / 'scripts/device_migration_route.py')],
                                 input_data=encoded(request), capture=True, timeout=15, output_limit=4096,
                                 environment=os.environ.copy())
@@ -213,6 +188,39 @@ class LocalIO:
                 result = self.publisher(alias, 'publish', token_hash, sha(document), None, cleanup=True)
                 if result.get('document_sha256') is not None or result.get('token_hash') != token_hash:
                     raise MigrationRefused('migration-route-cleanup-uncertain')
+
+
+class LocalIO(PublisherIO):
+    def __init__(self, plan):
+        self.plan = plan
+        aliases = list(dict.fromkeys([plan['source']['alias'], plan['target']['alias'],
+                                     plan['publication']['source_alias'], plan['publication']['target_alias']]))
+        self.hosts = {h['name']: h for h in select_hosts(plan['inventory'], aliases, include_variables=True, include_cohorts=True)}
+        for key in ('source', 'target'):
+            node = plan[key]
+            selected = select_hosts(plan['inventory'], [node['host']], include_variables=True, selection_kind='provider-env', include_cohorts=True)[0]
+            if selected != self.hosts[node['alias']] or selected['cohorts'] != [node['cohort']]:
+                raise MigrationRefused('migration-inventory-identity-mismatch')
+        if self.hosts[plan['source']['alias']]['address'] == self.hosts[plan['target']['alias']]['address']:
+            raise MigrationRefused('distinct-migration-endpoints-required')
+        # ssh_command admits the complete private key and known-hosts paths.
+        self.commands = {alias: ssh_command(host, plan['known_hosts']) for alias, host in self.hosts.items()}
+        with open(plan['known_hosts'], 'rb') as stream:
+            pins = stream.read(65537)
+        if len(pins) > 65536:
+            raise MigrationRefused('migration-host-pins-limit')
+        self.admission = {'hosts': self.hosts, 'pins_sha256': sha(pins)}
+
+    def read(self, path):
+        return read_document(path)
+
+    def endpoint(self, host):
+        selected = select_hosts(self.plan['inventory'], [host], selection_kind='provider-env')[0]
+        return selected['address']
+
+    def revalidate(self):
+        if LocalIO(self.plan).admission != self.admission:
+            raise MigrationRefused('migration-inventory-or-pins-changed')
 
     def verify_target(self, document):
         check_cancelled()

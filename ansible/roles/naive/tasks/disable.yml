@@ -1,4 +1,22 @@
 ---
+- name: Bind exact naive credential retirement before removing authority
+  ansible.builtin.set_fact:
+    _device_revocation_plan: >-
+      {{ {'/etc/systemd/system/caddy-naive.service': none, naive.config_dir ~ '/caddy.json': none,
+          naive.config_dir ~ '/Caddyfile': none, naive.config_dir ~ '/server.fullchain.pem': none,
+          naive.config_dir ~ '/server.key': none} }}
+  no_log: true
+  when: vpn_device_revocation | default(none) is not none
+
+- name: Stop naive before publishing credential retirement
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: revocation-barrier
+  vars:
+    device_revocation_unit: caddy-naive.service
+    device_revocation_action: begin
+    device_revocation_plan: '{{ _device_revocation_plan | default({}) }}'
+
 - name: Retire naive owned runtime authority
   ansible.builtin.include_role:
     name: runtime-release
@@ -12,3 +30,12 @@
       - '{{ naive.config_dir }}/Caddyfile'
       - '{{ naive.config_dir }}/server.fullchain.pem'
       - '{{ naive.config_dir }}/server.key'
+
+- name: Confirm exact naive credential retirement
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: revocation-barrier
+  vars:
+    device_revocation_unit: caddy-naive.service
+    device_revocation_action: activate
+    device_revocation_plan: '{{ _device_revocation_plan | default({}) }}'
