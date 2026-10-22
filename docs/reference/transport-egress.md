@@ -1,6 +1,6 @@
 # Recipient destination boundary
 
-> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-22
 
 P0 REALITY, P1 XHTTP and P2 Hysteria recipient TCP/UDP traffic uses an
 unprivileged metadata normalizer, followed by the same pinned native Xray
@@ -9,15 +9,24 @@ native gateway inside the owned WARP tunnel namespace. AmneziaWG device
 forwarding keeps its existing separate contract.
 
 Each new TCP connection or UDP destination binding resolves through sealed
-libc/NSS with numeric public resolvers. Mixed answers select one admitted
-literal; an all-denied answer refuses. Each UDP packet checks that bound
-literal again. New associations, destinations and generations resolve anew.
-Frontend routing carries no separate GeoIP private-address rule; literal and
-named destinations use the same canonical address policy.
-A binding stores no raw DNS answer set and never delegates its domain to the
-native gateway. Successful TCP acknowledgement does not permit payload replay
-to another candidate. Recipient port53 TCP/UDP traffic retains the requested
-DNS authority and payload, including records other than A/AAAA.
+libc/NSS with numeric public resolvers. An all-denied answer refuses. TCP uses
+one immutable set of admitted literals, sorted within each family and
+interleaved IPv4-first. It tries at most eight candidates with at most two
+concurrent authenticated gateway controls and a 250 ms start stagger. One
+connection deadline covers all attempts after resolution; per-attempt budgets
+leave time for later candidates when earlier controls stall. Each literal is
+checked again before its CONNECT request and before selecting a winner.
+All losing controls close before application bytes reach the winner. A later
+payload failure never selects another candidate or replays application bytes.
+
+UDP keeps one stable admitted literal per destination binding and checks that
+literal on every packet. New associations, destinations and generations resolve
+anew; TCP candidates never trigger a second DNS lookup. Frontend routing carries
+no separate GeoIP private-address rule: literal and named destinations use the
+same canonical address policy. A binding stores no raw DNS answer set and never
+delegates its domain to the native gateway. Recipient port53 TCP/UDP traffic
+retains the requested DNS authority and payload, including records other than
+A/AAAA.
 
 The canonical policy rejects IPv4 unspecified, private, shared, loopback,
 link-local, multicast and reserved ranges and the corresponding IPv6 ranges.

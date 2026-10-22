@@ -62,9 +62,9 @@ def test_owned_management_and_mixed_answers_keep_public_capability():
     assert not policy.allows("::ffff:192.0.2.10", 22, "tcp")
     assert policy.allows("192.0.2.10", 443, "tcp")
     assert policy.allows("192.0.2.11", 22, "tcp")
-    assert policy.select_admitted(["127.0.0.1", "::ffff:192.0.2.80"], 443, "tcp") == "192.0.2.80"
+    assert policy.admitted_candidates(["127.0.0.1", "::ffff:192.0.2.80"], 443, "tcp") == ("192.0.2.80",)
     with pytest.raises(PolicyError, match="destination-denied"):
-        policy.select_admitted(["::ffff:127.0.0.1"], 443, "tcp")
+        policy.admitted_candidates(["::ffff:127.0.0.1"], 443, "tcp")
 
 
 def test_cli_policy_is_the_exact_canonical_table():
