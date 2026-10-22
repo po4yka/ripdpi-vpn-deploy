@@ -15,7 +15,7 @@
 # From a non-RU / unfiltered vantage every variant will "survive" and the
 # result is a reachability/hygiene baseline ONLY — never a survival verdict.
 # The decision of which variant to put in `xray.server_names` MUST come from a
-# filtered RU-vantage run of this probe (see docs/TRANSPORT-REACHABILITY-MATRIX.md).
+# filtered RU-vantage run of this probe (see docs/how-to/transport-reachability-matrix.md).
 #
 # This is the survival counterpart to `scripts/validate-reality-target.sh`,
 # which can only test TLS/cert hygiene locally and explicitly does NOT decide

@@ -19,7 +19,7 @@ later `user_data` drift, changing this creation-time input triggers node
 replacement and is held by `prevent_destroy`; use the normal disposable-node
 blue-green path rather than changing a live node in place.
 
-**Local state per provider and environment** — we don't trust remote state with VPN infrastructure. `ENV=prod` deliberately remains Terraform's legacy `default` workspace; every other `ENV` maps to its own same-named workspace. Initialize a new environment with `make PROVIDER=<provider> ENV=<env> init` before any plan, apply, or output. State is backed up via `make backup-state` (age-encrypted). Lose state → re-import (`docs/RUNBOOK-incident.md`).
+**Local state per provider and environment** — we don't trust remote state with VPN infrastructure. `ENV=prod` deliberately remains Terraform's legacy `default` workspace; every other `ENV` maps to its own same-named workspace. Initialize a new environment with `make PROVIDER=<provider> ENV=<env> init` before any plan, apply, or output. State is backed up via `make backup-state` (age-encrypted). Lose state → re-import (`docs/how-to/incident.md`).
 
 **No `local-exec` / `remote-exec`** — Terraform stays declarative.
 cloud-init owns first-boot bootstrap; Ansible owns runtime state.
@@ -65,7 +65,7 @@ provider list: Makefile loops, the `ci.yml` provider matrices,
 provider tuples in `tests/unit/` (for example
 `test_provider_listeners_parity.py`). This list drifts, so finish with
 `rg -il scaleway --hidden -g '!terraform/providers/**'` and cover every
-enumeration it finds. Then add a `docs/PROVIDER-NOTES.md` row and
+enumeration it finds. Then add a `docs/reference/provider-notes.md` row and
 `providers/<name>/CLAUDE.md` with its `AGENTS.md -> CLAUDE.md` symlink. Roots
 never compose each other as modules.
 
@@ -104,11 +104,11 @@ never compose each other as modules.
 - **`terraform destroy` does not remove backups** — the `backup` role's
   remote restic repo persists. Destroy + recreate restores node data
   from that restic repository (`ansible/roles/backup/CLAUDE.md`,
-  `docs/RUNBOOK-incident.md`); there is no `make restore` target.
+  `docs/how-to/incident.md`); there is no `make restore` target.
 - **Provider auth via env vars only** — never `provider` block credentials
   in code. The block must be empty (the provider auto-reads env).
 - **`tf-test`** uses `mock_provider`** — these tests verify the *shape*
   of plans, not that the cloud provider behaves correctly. Real-deploy
-  validation is separate (`docs/CI-REAL-DEPLOY.md`).
+  validation is separate (`docs/how-to/ci-real-deploy.md`).
 - **Raw Terraform bypasses environment selection** — operator paths must use `scripts/terraform-env.sh` (or the Makefile / `vpnd` wrappers), never direct `terraform output`, `plan`, or `apply`.
 - **A provider rule without the contract is a drift bug** — do not add static listener ports to a provider firewall or nftables template; update `public_listeners` and the runtime role configuration together.

@@ -41,7 +41,7 @@ vpn:
   enable_cdn_front: false         # opt-in; tactical CF-fronted XHTTP
                                   # vhost with real-IP restoration +
                                   # optional origin-firewall lockdown.
-                                  # Read docs/CDN-DECISION.md before
+                                  # Read docs/decisions/0001-cdn-not-filtered-path-baseline.md before
                                   # turning this on — CDN is NOT the
                                   # RU baseline in this project.
   enable_honeypot: false          # opt-in; active-probing canary listener
@@ -58,7 +58,7 @@ vpn:
                                   # unbound on 127.0.0.1:5353 for the
                                   # active-probing-defense forward path.
                                   # See roles/dns-morph-bridge/CLAUDE.md
-                                  # and docs/PROVIDER-NOTES.md.
+                                  # and docs/reference/provider-notes.md.
   enable_hysteria_realm: false    # opt-in; sing-box realm-service
                                   # rendezvous for UDP hole-punching
                                   # (P5 fallback tier). Sing-box ≥
@@ -72,8 +72,8 @@ vpn:
                                   # decapsulated client traffic to
                                   # upstream. Mitigates the FOCI 2026
                                   # per-IP dual-role flow classifier.
-                                  # See docs/SPLIT-HOP-TOPOLOGY.md
-                                  # and docs/RUNBOOK-split-hop-pilot.md.
+                                  # See docs/decisions/0003-split-hop-relay-topology.md
+                                  # and docs/how-to/split-hop-pilot.md.
   enable_split_hop_ingress: false # opt-in RESEARCH Node A responder;
                                   # requires allow_research_roles.
   enable_probe_matrix_target: false # opt-in RESEARCH five-protocol target;
@@ -107,7 +107,7 @@ vpn:
   # and uses its jc/jmin/jmax/s1/s2/h1..h4 as defaults;
   # `amneziawg_secrets` still takes precedence if the operator
   # supplies explicit values there. Empty string keeps the broad-rule
-  # baseline baked into the role defaults. See docs/AWG-COHORTS.md
+  # baseline baked into the role defaults. See docs/reference/awg-cohorts.md
   # for the shipped profiles. Ignored when `amneziawg_secrets.instances`
   # is non-empty — multi-instance layouts carry their own per-instance
   # obfuscation parameters.

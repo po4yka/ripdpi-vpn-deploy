@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Split the operator's age private key into k-of-n Shamir shares using ssss.
 # Without this, losing the age key means full credential rotation
-# (RUNBOOK-incident.md § "Lost age key").
+# (docs/how-to/incident.md § "Lost age key").
 #
 # Usage:
 #   scripts/age-recovery-split.sh <threshold> <total_shares>
@@ -60,5 +60,5 @@ IMPORTANT:
     shares can reconstruct the full key.
   - Do NOT screenshot the terminal. Do NOT paste into chat.
   - To reconstruct: scripts/age-recovery-combine.sh
-  - Test the reconstruction NOW, before you need it. See docs/AGE-RECOVERY.md.
+  - Test the reconstruction NOW, before you need it. See docs/how-to/age-recovery.md.
 EOF

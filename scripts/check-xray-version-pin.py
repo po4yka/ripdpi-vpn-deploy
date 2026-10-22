@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Check that the Xray-core version pin is consistent.
 
-Extracts the "current" pinned version asserted in docs/XRAY-RELEASE-LINE.md
+Extracts the "current" pinned version asserted in docs/reference/xray-release-line.md
 (the heading marked "(current Latest") and compares it to the canonical
 in-repo pin at secrets/prod.secrets.example.yaml → xray.version.
 
 Source-of-truth table (from CLAUDE.md):
-  Xray version pin | ansible/roles/xray/defaults/main.yml | docs/XRAY-RELEASE-LINE.md
+  Xray version pin | ansible/roles/xray/defaults/main.yml | docs/reference/xray-release-line.md
   Actual pin:      | secrets/prod.secrets.example.yaml    | xray.version key
 
 Exits 0 on match, 1 on mismatch or parse failure.
@@ -21,7 +21,7 @@ from pathlib import Path
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-RELEASE_LINE_DOC = REPO_ROOT / "docs" / "XRAY-RELEASE-LINE.md"
+RELEASE_LINE_DOC = REPO_ROOT / "docs/reference/xray-release-line.md"
 EXAMPLE_PIN_FILE = REPO_ROOT / "secrets" / "prod.secrets.example.yaml"
 
 # Matches a version heading that is marked as the current Latest, e.g.:
@@ -79,18 +79,18 @@ def main() -> int:
     if doc_version == pin_version:
         print(
             f"OK — Xray-core version pin is consistent: {pin_version}\n"
-            f"  docs/XRAY-RELEASE-LINE.md current Latest : {doc_version}\n"
+            f"  docs/reference/xray-release-line.md current Latest : {doc_version}\n"
             f"  secrets/prod.secrets.example.yaml xray.version: {pin_version}"
         )
         return 0
 
     print(
         f"MISMATCH — Xray-core version pin is inconsistent:\n"
-        f"  docs/XRAY-RELEASE-LINE.md current Latest : {doc_version}\n"
+        f"  docs/reference/xray-release-line.md current Latest : {doc_version}\n"
         f"  secrets/prod.secrets.example.yaml xray.version: {pin_version}\n"
         f"\n"
         f"Update one of the two files so they agree, then re-run this check.\n"
-        f"See docs/XRAY-RELEASE-LINE.md 'Production rollout policy' before bumping.",
+        f"See docs/reference/xray-release-line.md 'Production rollout policy' before bumping.",
         file=sys.stderr,
     )
     return 1

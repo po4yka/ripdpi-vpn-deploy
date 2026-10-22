@@ -24,6 +24,6 @@ vpn:
   enable_snell: false
 
 # Neutral placeholder. The real decoy origin is operator-supplied per deploy
-# via ANSIBLE_EXTRA_VARS_FILE (see docs/DEPLOY-PROFILES.md); the hysteria role
+# via ANSIBLE_EXTRA_VARS_FILE (see docs/reference/deploy-profiles.md); the hysteria role
 # asserts masquerade_url equals this value.
 public_site_canonical_url: "https://vpn.example.com"

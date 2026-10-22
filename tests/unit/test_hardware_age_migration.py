@@ -175,7 +175,7 @@ def test_resume_keeps_identity_and_never_generates(tmp_path, monkeypatch):
 
 
 def test_compromise_runbook_rotates_data_key_before_new_credentials():
-    text = (ROOT / 'docs/AGE-RECOVERY.md').read_text().split('## Rotating the age key', 1)[1]
+    text = (ROOT / 'docs/how-to/age-recovery.md').read_text().split('## Rotating the age key', 1)[1]
     assert text.index('sops updatekeys') < text.index('sops rotate --in-place') < text.index('application credentials')
 
 
@@ -227,7 +227,7 @@ def test_real_restic_password_change_keeps_the_prior_snapshot(tmp_path):
     subprocess.run([*base, '--password-file', str(replacement), 'restore', 'latest', '--target', str(restored)],
                    capture_output=True, check=True)
     assert (restored / content.relative_to('/')).read_text() == content.read_text()
-    text = (ROOT / 'docs/RUNBOOK-rotate.md').read_text().split('## 4. Restic password', 1)[1].split('## 5.', 1)[0]
+    text = (ROOT / 'docs/how-to/rotate.md').read_text().split('## 4. Restic password', 1)[1].split('## 5.', 1)[0]
     assert 'rm -rf' not in text
     assert 'distinct local `restic_repo_dir`' in text and 'distinct `backup.remote.rclone_path`' in text
 

@@ -21,7 +21,7 @@ jobs:
           BRANCH_PROTECTION_TOKEN: ${{ secrets.BRANCH_PROTECTION_TOKEN }}
         run: |
           if [[ -z "${BRANCH_PROTECTION_TOKEN}" ]]; then
-            echo "Missing secret BRANCH_PROTECTION_TOKEN — see docs/BRANCH-PROTECTION.md" >&2
+            echo "Missing secret BRANCH_PROTECTION_TOKEN — see docs/how-to/branch-protection.md" >&2
             exit 1
           fi
 

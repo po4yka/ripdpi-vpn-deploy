@@ -5,7 +5,7 @@
 #
 # Limitations:
 #   - Ansible Galaxy collections (requirements.yml) are NOT covered by
-#     Dependabot. Refresh manually each quarter; see docs/TESTING.md
+#     Dependabot. Refresh manually each quarter; see docs/reference/testing.md
 #     "Dependency updates".
 version: 2
 

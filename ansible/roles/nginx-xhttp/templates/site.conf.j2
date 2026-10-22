@@ -1,5 +1,5 @@
 # Managed by Ansible role `nginx-xhttp`. Direct (no CDN) baseline.
-# CDN-fronted variant lives in docs/CDN-DECISION.md as opt-in.
+# CDN-fronted variant lives in docs/decisions/0001-cdn-not-filtered-path-baseline.md as opt-in.
 {% set nginx_redirect_port = nginx_xhttp_public_port | int %}
 {% set nginx_fallback_enabled = nginx_xhttp.fallback_enabled | default(false) %}
 {% set nginx_fallback_name = nginx_xhttp.fallback_server_name | default(nginx_xhttp.server_name) %}

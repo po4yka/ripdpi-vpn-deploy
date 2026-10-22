@@ -41,7 +41,7 @@ For day-to-day editing of an already-encrypted file, use `sops <file>` —
 it decrypts to a temp file, opens your $EDITOR, re-encrypts on save, and
 never writes plaintext to disk.
 
-See `docs/SECRETS.md` for the full lifecycle, recovery, and rotation
+See `docs/reference/secrets.md` for the full lifecycle, recovery, and rotation
 procedure.
 
 ## Optional checkout-local layout
@@ -53,8 +53,8 @@ secrets/local/clients/  # generated client profiles and QR artifacts
 ```
 
 Point the ignored `.fleet.mk` at the encrypted and runtime files as documented
-in `docs/SECRETS.md`. Never use `git add -f` for this tree.
+in `docs/reference/secrets.md`. Never use `git add -f` for this tree.
 
 For the complete local kit and private access catalog, follow
-[the local operator kit contract](../docs/LOCAL-OPERATOR-KIT.md). It defines
+[the local operator kit contract](../docs/how-to/local-operator-kit.md). It defines
 authority, tool-specific paths, backup coverage and the completeness checks.

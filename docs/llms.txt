@@ -1,0 +1,96 @@
+# vpn-deploy docs index
+
+> Operator and contributor documentation for vpn-deploy: a layered Terraform, cloud-init, Ansible and SOPS deployment of a multi-profile VPN stack built for filtered networks. Pages under `md/` are verbatim copies of the repository's `docs/` tree.
+
+## Overview
+
+- [Moved: observability operations](/md/OBSERVABILITY-OPERATIONS.md)
+- [Documentation](/md/README.md)
+- [Moved: RIPDPI bundle contract](/md/RIPDPI-BUNDLE.md)
+- [Documentation style guide](/md/STYLE.md)
+
+## Tutorials
+
+- [Quickstart — zero to working VPN in ~30 minutes](/md/tutorials/quickstart.md)
+
+## How-to guides
+
+- [Runbook — add a fallback VPS](/md/how-to/add-fallback.md)
+- [age key recovery — Shamir split](/md/how-to/age-recovery.md)
+- [Branch protection](/md/how-to/branch-protection.md)
+- [Certificate preflight](/md/how-to/certificates.md)
+- [Disposable real-VPS CI deployment](/md/how-to/ci-real-deploy.md)
+- [Recurring real-VPS AWG/NAT evidence lane](/md/how-to/ci-real-vps-awg-nat.md)
+- [Runbook — deploy](/md/how-to/deploy.md)
+- [Device migration during server replacement](/md/how-to/device-migration.md)
+- [Runbook: idle-cycle access-attempt measurement spike](/md/how-to/idle-cycle-measurement.md)
+- [Runbook — incidents](/md/how-to/incident.md)
+- [Local operator kit](/md/how-to/local-operator-kit.md)
+- [Multi-cohort host](/md/how-to/multi-cohort.md)
+- [Multi-operator RBAC](/md/how-to/multi-operator.md)
+- [Per-ASN payload-size throttling probe](/md/how-to/payload-throttle.md)
+- [Topology-aware multi-protocol probe matrix](/md/how-to/probe-matrix.md)
+- [Real-VPS AWG/NAT evidence sentinel](/md/how-to/real-vps-awg-nat.md)
+- [Deploy-side regression baseline](/md/how-to/regression-baseline.md)
+- [Automatic vpnd releases](/md/how-to/release-please.md)
+- [Runbook — disaster recovery / restore](/md/how-to/restore.md)
+- [Runbook — rollback](/md/how-to/rollback.md)
+- [Runbook — credential rotation](/md/how-to/rotate.md)
+- [Snell refinement evaluation](/md/how-to/snell-refinement.md)
+- [Runbook: stand up a split-hop pilot](/md/how-to/split-hop-pilot.md)
+- [Subscription delivery host separation](/md/how-to/subscription-host-separation.md)
+- [Restricted Tailnet management](/md/how-to/tailnet-management.md)
+- [Transport reachability matrix](/md/how-to/transport-reachability-matrix.md)
+
+## Reference
+
+- [Architecture](/md/reference/architecture.md)
+- [AmneziaWG cohort obfuscation profiles](/md/reference/awg-cohorts.md)
+- [Client-side known issues and version pins](/md/reference/client-notes.md)
+- [Deploy profiles](/md/reference/deploy-profiles.md)
+- [Deployment status — last verified snapshot](/md/reference/deployment-status.md)
+- [Make targets](/md/reference/make-targets.md)
+- [Reviewed network exposure policy](/md/reference/network-exposure-gate.md)
+- [Resource-bounded observability on existing hosts](/md/reference/observability-operations.md)
+- [Protocol-level liveness and rotation](/md/reference/protocol-liveness.md)
+- [Provider notes](/md/reference/provider-notes.md)
+- [REALITY active-target ASN monitoring](/md/reference/reality-target-monitoring.md)
+- [RIPDPI Bundle — server-side schema specification](/md/reference/ripdpi-bundle.md)
+- [Secrets — SOPS + age model](/md/reference/secrets.md)
+- [Audit: silent-failure on an unverified or unstable external contract](/md/reference/silent-failure-audit.md)
+- [Subscription plane — gap matrix](/md/reference/subscription-plane.md)
+- [Testing — what's covered and what isn't](/md/reference/testing.md)
+- [Recipient destination boundary](/md/reference/transport-egress.md)
+- [vpnd commands](/md/reference/vpnd-commands.md)
+- [Direct XHTTP delivery profiles](/md/reference/xhttp-delivery-profiles.md)
+- [Xray observability](/md/reference/xray-observability.md)
+- [Xray-core release-line tracker](/md/reference/xray-release-line.md)
+
+## Explanation
+
+- [Architecture rationale](/md/explanation/architecture-rationale.md)
+- [ASN Exposure Denylist Gate](/md/explanation/asn-exposure-denylist.md)
+- [Threat model](/md/explanation/threat-model.md)
+
+## Decisions
+
+- [ADR — Cloudflare CDN is not the filtered-network baseline](/md/decisions/0001-cdn-not-filtered-path-baseline.md)
+- [ADR: Role and doc tiering — CORE / TACTICAL / RESEARCH](/md/decisions/0002-role-and-doc-tiering.md)
+- [ADR: Split-hop relay topology against flow-level dual-role detection](/md/decisions/0003-split-hop-relay-topology.md)
+- [ADR — domestic-entry AmneziaWG GeoIP-split cascade](/md/decisions/0004-geoip-split-cascade.md)
+- [ADR — Per-ASN allowlist attestation gate for the domestic cascade entry node](/md/decisions/0005-per-asn-allowlist-attestation.md)
+- [PQ-REALITY adoption policy](/md/decisions/0006-pq-reality-adoption.md)
+- [Architecture decision records](/md/decisions/README.md)
+
+## Research
+
+- [Android client research for the deployed VPN fleet](/md/research/android-client.md)
+- [iOS client research for the deployed VPN fleet](/md/research/ios-client.md)
+- [iOS split routing: curated direct allowlist, fail-closed VPN default](/md/research/ios-split-routing.md)
+- [REALITY target selection — 2026-07-12](/md/research/reality-target-selection-2026-07.md)
+
+## Optional
+
+- [Control-drift audit (2026-07)](/md/archive/control-drift-audit-2026-07.md): archive
+- [Network protocol audit remediation](/md/archive/network-protocol-audit-2026-10.md): archive
+- [Server integration notes](/md/archive/server-integration-note.md): archive

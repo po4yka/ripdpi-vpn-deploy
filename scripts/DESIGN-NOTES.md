@@ -353,7 +353,7 @@ IPv6 remain aligned across installation, sender configuration and verification.
 **Sender and staging contracts have consumers outside their entrypoint** —
 inspect these dependencies when changing a sender runtime or acceptance row.
 The retained dedicated-staging harness consumes the runtime contract but does
-not accept the current topology; see [current contract and task history](../docs/OBSERVABILITY-OPERATIONS.md#current-contract-and-task-history).
+not accept the current topology; see [current contract and task history](../docs/reference/observability-operations.md#current-contract-and-task-history).
 
 | Contract owner | Consumer / coupling | Regression coverage |
 |---|---|---|

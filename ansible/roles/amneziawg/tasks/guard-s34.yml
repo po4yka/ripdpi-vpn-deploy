@@ -27,5 +27,5 @@
 
       Tradeoff: S3=S4=0 disables H4 transport-junk, so obfuscation degrades to
       S1/S2 handshake-junk only. If transport-packet obfuscation is required on
-      arm64, use VLESS+REALITY instead. See docs/AWG-COHORTS.md.
+      arm64, use VLESS+REALITY instead. See docs/reference/awg-cohorts.md.
     success_msg: "AmneziaWG S3/S4 are zero — arm64 version-floor guard satisfied (amneziawg-go#110)."
