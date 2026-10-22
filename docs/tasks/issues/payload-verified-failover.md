@@ -2,7 +2,7 @@
 id: SCR-1792659157802819
 title: Deliver payload-verified failover and explicit alternate listeners
 kind: feature
-status: doing
+status: review
 area: scripts
 priority: high
 risk: high
@@ -13,7 +13,7 @@ spec_mode: required
 openspec_change: scr-1792659157802819-payload-verified-failover
 created: 2026-10-22
 updated: 2026-10-22
-related_tasks: [po4yka/RIPDPI#TRN-1792659369802828]
+related_tasks: ["po4yka/RIPDPI#TRN-1792659369802828"]
 ---
 
 ## Goal

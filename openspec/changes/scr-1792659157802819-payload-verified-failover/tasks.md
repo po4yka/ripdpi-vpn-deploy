@@ -24,7 +24,7 @@ Ship exact useful-data probes, coordinated recipient selection and opt-in altern
 ## Execution
 
 - [x] SCR-1792659429313208 Verify bounded download and upload payloads through explicit transports #feature !high @item:SCR-1792659157802819
-- [ ] SCR-1792659429925062 Deliver typed payload failover policy to the coordinated client #feature !high @item:SCR-1792659157802819
+- [x] SCR-1792659429925062 Deliver typed payload failover policy to the coordinated client #feature !high @item:SCR-1792659157802819
 - [x] SCR-1792659430538417 Make alternate REALITY listeners explicit across runtime and provider contracts #feature !high @item:SCR-1792659157802819
 
 ## Verification
