@@ -59,16 +59,18 @@ def test_rotation_selects_canonical_roles_then_one_shared_activation(reality, xh
     environment = template_environment(DictLoader({}))
     values = {"vpn": {"enable_xray_reality": reality, "enable_nginx_xhttp": xhttp,
                       "enable_hysteria": hysteria}, "vpn_subscription_only": False}
-    assert bool(environment.compile_expression(block["when"])(**values)) is any(selected)
+    assert bool(environment.compile_expression(block["when"])(**values)) is True
     assert block["vars"] == {"transport_egress_site_staging": True}
     stages = block["block"]
     assert [task.get("ansible.builtin.include_role") for task in stages[:3]] == [
         {"name": "transport-egress", "tasks_from": "prepare-site"},
         {"name": "xray"}, {"name": "hysteria"},
     ]
-    assert [bool(environment.compile_expression(task["when"])(**values)) for task in stages[1:3]] == selected
+    assert all("when" not in task for task in stages[1:3])
+    assert [environment.from_string(task["vars"][selector]).render(**values) == "True"
+            for task, selector in zip(stages[1:3], ("xray_role_enabled", "hysteria_role_enabled"), strict=True)] == selected
     assert stages[3]["ansible.builtin.import_tasks"] == "tasks/transport-egress-activate.yml"
-    assert not any(task.get("name") in {"Restart xray", "Restart hysteria"} for task in play["handlers"])
+    assert not any(task.get("name") in {"Restart xray", "Restart hysteria"} for task in play.get("handlers", []))
     assert all("ansible.builtin.template" not in task for task in stages)
     assert play["tasks"][0]["ansible.builtin.import_tasks"] == "tasks/transport-input-preflight.yml"
     admission = next(task for task in play["tasks"] if task.get("ansible.builtin.import_tasks") ==
@@ -82,12 +84,20 @@ def test_rotation_selects_canonical_roles_then_one_shared_activation(reality, xh
     ]
     assert admission["when"] == awg["when"]
     assert bool(environment.compile_expression(awg["when"])(**values)) is True
-    values["vpn"]["enable_amneziawg"] = False
-    assert bool(environment.compile_expression(awg["when"])(**values)) is False
-    values["vpn"]["enable_amneziawg"] = True
-    assert not any(task.get("name") == "Restart amneziawg" for task in play["handlers"])
-    assert any(task.get("name") == "Re-render Snell users" for task in play["tasks"])
-    assert any(task.get("ansible.builtin.include_role") == {"name": "naive"} for task in play["tasks"])
+    for enabled in (False, True):
+        values["vpn"]["enable_amneziawg"] = enabled
+        assert bool(environment.compile_expression(awg["when"])(**values)) is True
+        assert (environment.from_string(awg["vars"]["amneziawg_role_enabled"]).render(**values) == "True") is enabled
+    assert not any(task.get("name") == "Restart amneziawg" for task in play.get("handlers", []))
+    independent = [next(task for task in play["tasks"] if
+                        task.get("ansible.builtin.include_role") == {"name": role})
+                   for role in ("snell", "naive")]
+    for role, task in zip(("snell", "naive"), independent, strict=True):
+        assert task["when"] == awg["when"]
+        for enabled in (False, True):
+            values["vpn"][f"enable_{role}"] = enabled
+            assert (environment.from_string(task["vars"][f"{role}_role_enabled"]).render(**values) == "True") is enabled
+    assert not any("ansible.builtin.template" in task for task in play["tasks"])
     values["vpn_subscription_only"] = True
     assert environment.compile_expression(block["when"])(**values) is False
     assert bool(environment.compile_expression(awg["when"])(**values)) is False

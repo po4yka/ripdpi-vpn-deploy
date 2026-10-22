@@ -147,6 +147,29 @@ def test_transport_selector_is_unique_and_enters_disable_before_input_guard(role
     entry = yaml.safe_load(
         (ROOT / "ansible/roles" / role / "tasks/main.yml").read_text()
     )
+    if role == "naive":
+        assert len(entry) == 4
+        assert entry[0]["ansible.builtin.include_role"] == {
+            "name": "runtime-release", "tasks_from": "revocation-prepare"
+        }
+        assert entry[0]["vars"] == {"device_revocation_unit": "caddy-naive.service"}
+        assert entry[1]["ansible.builtin.stat"] == {
+            "path": "/etc/systemd/system/caddy-naive.service", "follow": False
+        }
+        assert entry[2]["ansible.builtin.template"]["src"] == "caddy-naive.service.j2"
+        assert entry[2]["when"] == [
+            "vpn_device_revocation | default(none) is not none",
+            "_device_revocation_unit_before.stat.exists",
+        ]
+        recovery = entry[3]["rescue"]
+        assert recovery[0]["ansible.builtin.include_role"] == {
+            "name": "runtime-release", "tasks_from": "revocation-barrier"
+        }
+        assert recovery[0]["vars"] == {
+            "device_revocation_unit": "caddy-naive.service", "device_revocation_action": "abort"
+        }
+        assert recovery[-1]["ansible.builtin.fail"]["msg"] == "naive-runtime-activation-failed"
+        entry = entry[3]["block"]
     assert len(entry) == 1
     if role == "amneziawg":
         recovery = entry[0]["rescue"]

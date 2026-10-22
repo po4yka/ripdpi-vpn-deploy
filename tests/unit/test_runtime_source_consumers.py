@@ -90,7 +90,10 @@ def test_naive_build_uses_compound_identity_and_pinned_output_receipt() -> None:
         "--port",
         "{{ naive.bind_port | string }}",
     ]
-    assert activation["when"] == "not ansible_check_mode"
+    assert activation["when"] == [
+        "not ansible_check_mode",
+        "vpn_device_revocation | default(none) is none",
+    ]
     assert activation["register"] == "naive_activation_result"
     assert activation["changed_when"] == (
         "(naive_activation_result.stdout | from_json).changed | bool"
@@ -105,6 +108,20 @@ def test_naive_build_uses_compound_identity_and_pinned_output_receipt() -> None:
     )
     tasks = _tasks("naive")
     assert tasks.index(wrapper) < tasks.index(helper) < tasks.index(activation)
+    revoked_activation = _task("naive", "Activate only the exact revoked Naive candidate")
+    assert revoked_activation["ansible.builtin.include_role"] == {
+        "name": "runtime-release", "tasks_from": "revocation-barrier",
+    }
+    assert revoked_activation["vars"] == {
+        "device_revocation_unit": "caddy-naive.service",
+        "device_revocation_action": "activate",
+        "device_revocation_plan": "{{ _device_revocation_plan | default({}) }}",
+        "device_revocation_activation": {
+            "server_name": "{{ naive_secrets.server_name }}",
+            "port": "{{ naive.bind_port | int }}",
+        },
+    }
+    assert tasks.index(activation) < tasks.index(revoked_activation)
     for name in (
         "Drop TLS cert + key",
         "Render authoritative native Caddy JSON",

@@ -658,10 +658,10 @@ def test_interrupted_transaction_detection_matches_the_production_contract():
                        if isinstance(node, ast.FunctionDef) and node.name == '__init__')
     defaults = {argument.arg: ast.literal_eval(value)
                 for argument, value in zip(constructor.args.kwonlyargs, constructor.args.kw_defaults)}
-    assert defaults == {'uid': 0, 'check': False, 'awg': False}
+    assert defaults == {'uid': 0, 'check': False, 'awg': False, 'revocation': None}
     assert type(defaults['uid']) is int and defaults['check'] is False and defaults['awg'] is False
     assert 'info.st_uid != self.uid or stat.S_IMODE(info.st_mode) != 0o700' in transaction
-    assert "with Transaction(STATE, check=args.action == 'status') as tx:" in (RUNTIME_FILES / 'transport_runtime_outer.py').read_text()
+    assert "with Transaction(STATE, check=args.action == 'status', revocation=authority) as tx:" in (RUNTIME_FILES / 'transport_runtime_outer.py').read_text()
     assert state_dir['ansible.builtin.stat'] == {'path': OUTER_STATE, 'follow': False}
     assert record['ansible.builtin.stat'] == {'path': OUTER_RECORD, 'follow': False}
     absent_helper = ['_transport_ingress_interrupted.stat.exists', 'not ansible_check_mode', 'not _transport_ingress_interrupted_helper.stat.exists']

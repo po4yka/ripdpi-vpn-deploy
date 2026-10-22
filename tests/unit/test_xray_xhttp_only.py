@@ -523,8 +523,9 @@ def test_rotation_preserves_immediate_restore_point(
         'when': 'transport_runtime_candidates is defined', 'no_log': True, 'diff': False})
     play = {
         "tasks": [{"name": "Exercise canonical role restore point selected by rotation",
-                   "when": selected["when"], "block": tasks}],
+                   "when": "xray_role_enabled | bool", "block": tasks}],
         "vars": {
+            **selected["vars"],
             "role_path": str(tmp_path / "roles/xray"),
             "xray_etc_dir": str(tmp_path), "xray_runtime_group": str(os.getgid()),
             "transport_egress_frontend_gids": {"xray": os.getgid()},
