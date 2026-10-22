@@ -1,0 +1,87 @@
+---
+- name: Require an explicit retained publisher revocation intent
+  ansible.builtin.assert:
+    that:
+      - vpn_device_retained_publisher is defined
+      - vpn_device_retained_publisher is boolean
+      - vpn_device_retained_publisher
+      - vpn_device_revocation is defined
+      - vpn_device_revocation is mapping
+      - vpn_device_revocation.operation_id is defined
+      - vpn_device_revocation.intent_sha256 is defined
+
+- name: Inspect retained publisher executable without following links
+  ansible.builtin.stat:
+    path: /usr/local/bin/vpn-bootstrap.py
+    follow: false
+  register: _device_retained_publisher_helper
+
+- name: Require the existing canonical publisher executable
+  ansible.builtin.assert:
+    that:
+      - _device_retained_publisher_helper.stat.isreg | default(false)
+      - not (_device_retained_publisher_helper.stat.islnk | default(false))
+      - _device_retained_publisher_helper.stat.uid | default(-1) == 0
+      - _device_retained_publisher_helper.stat.nlink | default(0) == 1
+      - _device_retained_publisher_helper.stat.mode | default('') == '0755'
+
+- name: Inspect the existing publisher process without starting it
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemctl
+      - show
+      - vpn-bootstrap.service
+      - --property=ActiveState
+      - --property=SubState
+      - --property=MainPID
+  register: _device_retained_publisher_unit
+  changed_when: false
+  check_mode: false
+
+- name: Require the retained publisher to remain running
+  ansible.builtin.assert:
+    that:
+      - "'ActiveState=active' in _device_retained_publisher_unit.stdout_lines"
+      - "'SubState=running' in _device_retained_publisher_unit.stdout_lines"
+      - _device_retained_publisher_unit.stdout is search('(?m)^MainPID=[1-9][0-9]*$')
+
+- name: Admit retained namespace and preserve existing deny authority
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python3
+      - -I
+      - -B
+      - -S
+      - -c
+      - |
+        import json, pathlib, re, runpy, sys
+        try:
+            request = json.load(sys.stdin)
+            runtime = runpy.run_path('/usr/local/bin/vpn-bootstrap.py')
+            if (runtime['SUBSCRIPTION_DIR'] != pathlib.Path(request['directory'])
+                    or runtime['REVOKED_FILE'] != pathlib.Path(request['revoked_file'])):
+                raise ValueError('retained authority path mismatch')
+            desired = request['revoked_tokens']
+            if (not isinstance(desired, list)
+                    or any(not isinstance(token, str) or not re.fullmatch('[0-9a-f]{64}', token) for token in desired)
+                    or not runtime['_migration_revocations']() <= set(desired)):
+                raise ValueError('retained deny authority would be removed')
+            runtime['_migration_snapshot']()
+            print('retained-publisher-authority-v1')
+        except Exception:
+            print('retained-publisher-authority-refused', file=sys.stderr)
+            sys.exit(2)
+    stdin: >-
+      {{ {'directory': subscription.subscription_dir | default('/var/lib/vpn-subscription'),
+          'revoked_file': subscription.revoked_file | default('/var/lib/vpn-subscription/revoked'),
+          'revoked_tokens': subscription.revoked_tokens | default([])} | to_json }}
+    stdin_add_newline: false
+  become: true
+  become_user: vpn-bootstrap
+  changed_when: false
+  check_mode: false
+  no_log: true
+  diff: false
+
+- name: Publish revocation without installing or activating the retained listener
+  ansible.builtin.import_tasks: revoked-hashes.yml

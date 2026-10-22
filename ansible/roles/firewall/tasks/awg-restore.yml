@@ -1,4 +1,11 @@
 ---
+- name: Never restore pre-revocation firewall authority
+  ansible.builtin.assert:
+    that:
+      - vpn_device_revocation | default(none) is none
+    fail_msg: revocation-rollback-forbidden
+  no_log: true
+
 - name: Restore the complete retained AWG firewall configuration
   ansible.builtin.copy:
     dest: "{{ _firewall_awg_restore.path }}"

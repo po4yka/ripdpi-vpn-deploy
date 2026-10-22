@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Device revocation binds the exact operation/digest plus config, TLS and unit bytes before credential publication. Root start admission blocks unfinished candidates without a live publisher lock. The existing activation helper still proves TLS and PID readiness; any failure stops the service, preserves forward intent and refuses unrelated convergence until exact retry succeeds.
+
 Activation probes explicitly require TLS 1.2 or newer while preserving CA,
 hostname, PID, executable and listener ownership checks. Log files need only
 the service owner and root validator; no separate group reader is granted.

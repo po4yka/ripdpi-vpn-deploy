@@ -414,8 +414,8 @@ def cohort_errors(raw: object, *, allow_placeholders: bool = False) -> list[tupl
             cohort_names.add(name)
         path = f"xray.cohorts.{index}.clients"
         refs = item.get("clients") if isinstance(item, dict) else None
-        if not isinstance(refs, list) or not refs:
-            errors.append((path, "explicit nonempty client references are required"))
+        if not isinstance(refs, list):
+            errors.append((path, "explicit client references are required"))
             continue
         if any(not isinstance(ref, str) or not ref for ref in refs):
             errors.append((path, "invalid client reference"))

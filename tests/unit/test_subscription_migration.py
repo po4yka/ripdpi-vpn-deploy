@@ -85,6 +85,11 @@ def test_every_cas_action_rechecks_revocation(service, operation, authority, tmp
         service.REVOKED_FILE.write_text(token_hash + '\n' + ('invalid\n' if authority == 'malformed-tail' else ''))
         if authority == 'mode':
             service.REVOKED_FILE.chmod(0o644)
+    if authority == 'revoked' and desired is None:
+        assert service._migration_publish(token_hash, request(expected, desired))['document_sha256'] is None
+        assert not (service.SUBSCRIPTION_DIR / 'sub' / (token_hash + '.document')).exists()
+        assert token_hash in service._migration_revocations()
+        return
     with pytest.raises((ValueError, OSError)):
         service._migration_publish(token_hash, request(expected, desired))
     path = service.SUBSCRIPTION_DIR / 'sub' / (token_hash + '.document')

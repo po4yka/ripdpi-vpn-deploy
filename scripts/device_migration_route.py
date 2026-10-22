@@ -16,14 +16,16 @@ from authenticated_http import https_origin
 
 
 def probe(value):
-    if not isinstance(value, dict) or set(value) != {'origin', 'address', 'token', 'expected_b64'}:
+    if not isinstance(value, dict) or set(value) != {'origin', 'address', 'token', 'expected_b64', 'expected_status'}:
         raise ValueError('invalid-route-input')
     origin = urlsplit(https_origin(value['origin']))
     ipaddress.ip_address(value['address'])
     if not re.fullmatch(r'[A-Za-z0-9_-]{43}', value['token']):
         raise ValueError('invalid-route-token')
     expected = base64.b64decode(value['expected_b64'], validate=True)
-    if not 1 <= len(expected) <= 1024:
+    if (value['expected_status'] not in (200, 410) or type(value['expected_status']) is not int
+            or (value['expected_status'] == 200 and not 1 <= len(expected) <= 1024)
+            or (value['expected_status'] == 410 and expected)):
         raise ValueError('invalid-route-body')
     context = ssl.create_default_context()
     connection = http.client.HTTPSConnection(origin.hostname, origin.port or 443, timeout=10, context=context)
@@ -36,7 +38,9 @@ def probe(value):
             raise
         connection.request('GET', '/sub/' + value['token'], headers={'Cache-Control': 'no-cache'})
         response = connection.getresponse()
-        if response.status != 200 or response.read(len(expected) + 1) != expected:
+        body = response.read(4097 if value['expected_status'] == 410 else len(expected) + 1)
+        if (response.status != value['expected_status'] or len(body) > 4096
+                or value['expected_status'] == 200 and body != expected):
             raise ValueError('route-body-mismatch')
     finally:
         connection.close()

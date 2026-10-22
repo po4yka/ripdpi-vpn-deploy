@@ -19,9 +19,9 @@ import yaml
 from jinja2 import FileSystemLoader
 
 from awg_client import config, export
-from awg_device_binding import resolve_binding
+from awg_device_binding import public_key, resolve_binding
 from template_render import merge_render_vars, render_template, template_environment
-from test_awg_device_binding import document
+from test_awg_device_binding import document, key
 from test_awg_device_binding_native import native_config
 from test_awg_dualstack_native import ECHO, LAB_AWG_DESTINATION_DENY_V6, PROBE, path_evidence
 from test_transport_semantics_native import command, exact_awg_sources
@@ -175,8 +175,8 @@ def userspace_digest(selected):
     return daemons[0]
 
 
-@pytest.mark.parametrize('previous', [True, False])
-@pytest.mark.parametrize('failure', ['configuration', 'binary', 'shared-unit'])
+@pytest.mark.parametrize('previous,failure', [(previous, failure)
+    for previous in (True, False) for failure in ('configuration', 'binary', 'shared-unit')] + [(True, 'revocation')])
 def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes(tmp_path, previous, failure):
     go, tools = exact_awg_sources()
     assert Path('/run/systemd/system').is_dir(), 'AWG compensation requires an isolated systemd root host'
@@ -197,6 +197,11 @@ def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes
     doc['amneziawg_secrets']['instances']= [item]
     doc['client_registry']={'device0':doc['client_registry']['device0']}
     doc['client_registry']['device0']['awg_binding']['instance']=iface
+    if failure == 'revocation':
+        survivor = copy.deepcopy(item['peers'][0])
+        survivor.update(name='survivor', public_key=public_key(key(42)), preshared_key=key(43),
+                        allowed_ips={'ipv4': '10.70.0.3/32', 'ipv6': 'fd42:10::3/128'})
+        item['peers'].append(survivor)
     effective=resolve_binding(doc,{},'device0','upcloud:fixture',iface).instance
     accepted=render_native_awg_config(effective)
     processes=[]; namespaces=[]; ownership=ExitStack()
@@ -274,6 +279,55 @@ def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes
                 if observed.returncode != 0:
                     pytest.fail('authenticated activation path failed: ' + json.dumps(path_evidence(
                         (client, server, uplink), ((client, ci), (server, iface)), tools, address)))
+        if failure == 'revocation':
+            candidate = copy.deepcopy(effective)
+            candidate['peers'] = [peer for peer in candidate['peers'] if peer['name'] == 'survivor']
+            revoked_config = render_native_awg_config(candidate)
+            request = publisher.request(acquired, {iface: revoked_config}, shared, firewall=firewall_text(candidate))
+            request['revocation'] = {'operation_id': str(uuid.uuid4()), 'intent_sha256': 'a' * 64}
+            # A real transient PID1 activation failure leaves the exact candidate
+            # stopped. It must never recover the old accepted peer or firewall.
+            injection = dropin / 'refuse.conf'
+            injection.write_text('[Service]\nExecStartPre=/bin/false\n')
+            command(['systemctl', 'daemon-reload'])
+            result = publisher.apply(request)
+            assert result.returncode != 0
+            assert subprocess.run(['systemctl', 'is-active', '--quiet', unit.name], capture_output=True).returncode != 0
+            assert path.read_text() == revoked_config
+            assert '10.70.0.2' not in firewall.read_text()
+            assert (Path('/var/lib/ripdpi/amneziawg') / 'pending.json').exists()
+            ordinary = publisher.role([candidate], firewall=firewall_text(candidate))
+            assert ordinary.returncode != 0
+            injection.unlink()
+            command(['systemctl', 'daemon-reload'])
+            result = publisher.apply(request)
+            assert result.returncode == 0, 'native-revocation-forward-resume-refused'
+            assert userspace_digest(unit.name) == hashlib.sha256(go.read_bytes()).hexdigest()
+            assert path.read_text() == revoked_config
+            assert effective['peers'][0]['public_key'] not in run(server, [tools, 'show', iface, 'peers'])
+            for address in ('198.18.1.2', 'fd88::2'):
+                refused = subprocess.run(['ip', 'netns', 'exec', client, sys.executable, '-c', PROBE, address, '', '3'],
+                                         capture_output=True, timeout=10)
+                assert refused.returncode != 0, 'revoked-native-AWG-peer-still-forwards'
+            # Replace only the invocation-owned client identity with the retained
+            # peer and prove real positive traffic over both address families.
+            surviving = cp.read_text().replace(doc['client_registry']['device0']['awg_private_key'], key(42))
+            surviving = surviving.replace(effective['peers'][0]['preshared_key'], key(43))
+            cp.write_text(surviving)
+            run(client, [tools, 'setconf', ci, cp])
+            for address in block['address']:
+                command(['ip', '-n', client, 'address', 'del', address, 'dev', ci])
+            for address in ('10.70.0.3/32', 'fd42:10::3/128'):
+                command(['ip', '-n', client, 'address', 'add', address, 'dev', ci, 'nodad'] if ':' in address
+                        else ['ip', '-n', client, 'address', 'add', address, 'dev', ci])
+            for address in ('198.18.1.2', 'fd88::2'):
+                positive = subprocess.run(['ip', 'netns', 'exec', client, sys.executable, '-c', PROBE, address, '', '20'],
+                                          capture_output=True, timeout=30)
+                assert positive.returncode == 0, 'retained-native-AWG-peer-cannot-forward'
+            assert publisher.role([candidate], firewall=firewall_text(candidate)).returncode == 0
+            assert path.read_text() == revoked_config
+            assert publisher.apply(request).returncode == 0
+            return
         candidate=copy.deepcopy(effective)
         if failure=='configuration': candidate['mtu']=1280
         candidate['peers'][0]['allowed_ips']={'ipv4':'10.70.0.9/32','ipv6':'fd42:10::9/128'}

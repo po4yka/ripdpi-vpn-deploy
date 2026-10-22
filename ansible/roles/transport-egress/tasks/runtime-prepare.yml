@@ -48,6 +48,14 @@
   changed_when: false
   no_log: true
 
+- name: Require the exact owner of an interrupted revocation
+  ansible.builtin.assert:
+    that:
+      - (_transport_runtime_outer.stdout | from_json).revocation is none or
+        (_transport_runtime_outer.stdout | from_json).revocation == vpn_device_revocation | default(none)
+    fail_msg: revocation-resume-required
+  no_log: true
+
 - name: Recover an interrupted complete route before staging another candidate
   when: (_transport_runtime_outer.stdout | from_json).open
   block:
@@ -56,6 +64,7 @@
         _transport_egress_transaction_started: true
     - name: Restore the original complete route and its native frontend authority
       ansible.builtin.include_tasks: rollback.yml
+      when: (_transport_runtime_outer.stdout | from_json).revocation is none
 
 - name: Reconcile known interrupted authority before staging another candidate
   ansible.builtin.command:
@@ -69,7 +78,8 @@
          {'candidates': [], 'clients': transport_runtime_probe_clients, 'probe_url': transport_runtime_probe_url,
           'asset_dir': transport_runtime_geodata_candidate_dir | default(none),
           'expected_status': transport_runtime_probe_expected_status | int,
-          'timeout': transport_runtime_timeout_seconds | int}) | to_json }}
+          'timeout': transport_runtime_timeout_seconds | int}) |
+          combine({'revocation': vpn_device_revocation | default(none)}) | to_json }}
     stdin_add_newline: false
   register: _transport_runtime_recovery
   changed_when: (_transport_runtime_recovery.stdout | from_json).changed

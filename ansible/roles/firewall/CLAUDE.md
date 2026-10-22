@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+An AWG device revocation shares the runtime operation/digest. Pending policy ownership permits only that exact forward retry, and neither legacy restoration nor consumer compensation may cross its accepted revocation floor. Failure retains the candidate policy and stopped runtime instead of readmitting the removed peer.
+
 DHCPv6 uses one admitted uplink: an explicit override, then the observed
 IPv6 default interface, then IPv4 for initial acquisition. Admission runs before
 firewall helper installation and excludes absent, loopback, Tailnet and AWG

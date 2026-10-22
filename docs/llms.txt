@@ -22,6 +22,7 @@
 - [Disposable real-VPS CI deployment](/md/how-to/ci-real-deploy.md)
 - [Recurring real-VPS AWG/NAT evidence lane](/md/how-to/ci-real-vps-awg-nat.md)
 - [Runbook — deploy](/md/how-to/deploy.md)
+- [Issue, refresh or revoke a device](/md/how-to/device-lifecycle.md)
 - [Device migration during server replacement](/md/how-to/device-migration.md)
 - [Recreate a lost node and resume after failure](/md/how-to/executable-recovery.md)
 - [Runbook: idle-cycle access-attempt measurement spike](/md/how-to/idle-cycle-measurement.md)

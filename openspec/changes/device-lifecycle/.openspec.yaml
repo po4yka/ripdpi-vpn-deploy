@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-10-22
+goal: OPS-1792679812321846 Unify device issuance refresh and complete revocation

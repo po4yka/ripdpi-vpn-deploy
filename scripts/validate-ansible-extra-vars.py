@@ -18,6 +18,8 @@ ALLOWED_KEYS = {
     "firewall_forward_interface_contract",
     "public_site_canonical_url",
     "network_exposure_gate",
+    "vpn_device_revocation",
+    "vpn_device_retained_publisher",
 }
 DNS_NAME = re.compile(
     r"(?=^.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*"
@@ -145,6 +147,19 @@ def validate(path: Path) -> None:
             value = contract[key]
             if not isinstance(value, str) or INTERFACE_NAME.fullmatch(value) is None:
                 raise ValueError(f"{key} is not a safe Linux interface name")
+
+    if "vpn_device_retained_publisher" in document:
+        if document["vpn_device_retained_publisher"] is not True or "vpn_device_revocation" not in document:
+            raise ValueError("retained publisher requires exact revocation authority")
+
+    if "vpn_device_revocation" in document:
+        value = document["vpn_device_revocation"]
+        if (not isinstance(value, dict) or set(value) != {"operation_id", "intent_sha256"}
+                or not isinstance(value["operation_id"], str)
+                or re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", value["operation_id"]) is None
+                or not isinstance(value["intent_sha256"], str)
+                or SHA256.fullmatch(value["intent_sha256"]) is None):
+            raise ValueError("vpn_device_revocation must bind an exact operation and intent")
 
     if "network_exposure_gate" in document:
         validate_network_exposure(document["network_exposure_gate"])

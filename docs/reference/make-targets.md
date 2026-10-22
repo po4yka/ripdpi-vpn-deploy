@@ -77,6 +77,7 @@ Variables (override on command line):
   drift-since-tag            Diff fleet against last vpn-deploy-known-good-* tag
   blue-green GREEN_ENV=… GREEN_SOPS_FILE=… DEVICE_MIGRATION_PLAN=…  Replace with device handover
   recovery ACTION=… RECOVERY_MANIFEST=…  Execute or resume an exact reviewed replacement
+  device-lifecycle ACTION=… DEVICE_MANIFEST=…  Issue, refresh or revoke one device across the declared fleet
   device-migration ACTION=… DEVICE_MIGRATION_PLAN=…  Plan, prepare, publish and verify device handover
   fleet-rotate PLAN=…        Authenticated survivor floor and exact-plan resume
   protocol-liveness LIVENESS_CONFIG=…  Pull sentinel probes and evaluate quorum

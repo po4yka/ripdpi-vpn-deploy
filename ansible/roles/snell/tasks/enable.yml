@@ -97,6 +97,34 @@
   notify: Restart snell
   when: not ansible_check_mode
 
+- name: Install Snell systemd unit
+  ansible.builtin.template:
+    src: snell.service.j2
+    dest: /etc/systemd/system/snell.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart snell
+
+- name: Bind exact Snell revocation candidate bytes before publication
+  ansible.builtin.set_fact:
+    _device_revocation_plan: >-
+      {{ {'/etc/systemd/system/snell.service': lookup('ansible.builtin.template', 'snell.service.j2') | hash('sha256'),
+          snell.config_dir ~ '/config.json': lookup('ansible.builtin.template', 'config.json.j2') | hash('sha256')} }}
+  no_log: true
+  when: vpn_device_revocation | default(none) is not none
+
+- name: Stop accepted Snell credentials under the exact durable operation
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: revocation-barrier
+  vars:
+    device_revocation_unit: snell.service
+    device_revocation_action: begin
+    device_revocation_plan: '{{ _device_revocation_plan | default({}) }}'
+
 - name: Render validated Snell configuration
   ansible.builtin.template:
     src: config.json.j2
@@ -116,20 +144,19 @@
   loop: "{{ snell.evaluation_sizes }}"
   when: snell.evaluation_enabled | bool
 
-- name: Install Snell systemd unit
-  ansible.builtin.template:
-    src: snell.service.j2
-    dest: /etc/systemd/system/snell.service
-    owner: root
-    group: root
-    mode: "0644"
-  notify:
-    - Reload systemd
-    - Restart snell
-
 - name: Enable and start Snell
   ansible.builtin.systemd_service:
     name: snell.service
     enabled: true
     state: started
     daemon_reload: true
+  when: vpn_device_revocation | default(none) is none
+
+- name: Activate only the exact revoked Snell candidate
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: revocation-barrier
+  vars:
+    device_revocation_unit: snell.service
+    device_revocation_action: activate
+    device_revocation_plan: '{{ _device_revocation_plan | default({}) }}'

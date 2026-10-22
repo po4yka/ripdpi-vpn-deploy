@@ -43,6 +43,7 @@ Complete one task against real infrastructure. Every guide names its preconditio
 | [Runbook — deploy](how-to/deploy.md) | Re-deploy after config, secrets or Terraform changes; add a client device; tag-scoped runs; acceptance scope | CORE |
 | [Device migration during server replacement](how-to/device-migration.md) | Prepare replacement device authority, preserve subscription URLs and gate retirement on explicit path evidence | CORE |
 | [Recreate a lost node and resume after failure](how-to/executable-recovery.md) | Execute reviewed UpCloud replacement, reconcile interruptions and gate completion on device readiness | CORE |
+| [Issue, refresh or revoke a device](how-to/device-lifecycle.md) | Reconcile per-device protocol access and every published grant across the declared fleet | CORE |
 | [Runbook: idle-cycle access-attempt measurement spike](how-to/idle-cycle-measurement.md) | Measurement spike for the bare-HTTPS idle-cycle access-attempt pattern: driver, log collection, correlation | RESEARCH |
 | [Runbook — incidents](how-to/incident.md) | Decision matrix for lost SSH, lost age key, state loss and suspected compromise | CORE |
 | [Local operator kit](how-to/local-operator-kit.md) | The private operator kit contract: where authoritative material lives, how to catalogue and recover it | — |

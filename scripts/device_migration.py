@@ -74,6 +74,29 @@ def merge_delivery(entry, delivery):
     return result
 
 
+def parse_snapshot(value):
+    if (not isinstance(value, dict) or set(value) != {'schema_version', 'documents', 'active_bootstrap_count'}
+            or value['schema_version'] != 1 or not isinstance(value['documents'], list)
+            or len(value['documents']) > 256 or type(value['active_bootstrap_count']) is not int
+            or value['active_bootstrap_count'] < 0):
+        raise MigrationRefused('invalid-migration-snapshot')
+    rows = {}
+    total = 0
+    for row in value['documents']:
+        if (not isinstance(row, dict) or set(row) != {'token_hash', 'document_sha256', 'document_b64', 'revoked', 'expired'}
+                or not matches(HEX, row['token_hash']) or not matches(HEX, row['document_sha256'])
+                or type(row['revoked']) is not bool or type(row['expired']) is not bool
+                or row['token_hash'] in rows):
+            raise MigrationRefused('invalid-migration-snapshot-row')
+        content = un64(row['document_b64'])
+        total += len(content)
+        if total > 2 * 1024 * 1024 or sha(content) != row['document_sha256']:
+            raise MigrationRefused('invalid-migration-snapshot-content')
+        envelope(content)
+        rows[row['token_hash']] = row
+    return {'rows': rows, 'bootstrap': value['active_bootstrap_count']}
+
+
 class Migration:
     def __init__(self, plan, io, *, writer=operate, now=None):
         self.plan, self.io, self.writer = plan, io, writer
@@ -90,26 +113,7 @@ class Migration:
             self.io.publisher(alias, 'ready')
             self.io.origin(alias)
             value = self.io.publisher(alias, 'snapshot')
-            if (not isinstance(value, dict) or set(value) != {'schema_version', 'documents', 'active_bootstrap_count'}
-                    or value['schema_version'] != 1 or not isinstance(value['documents'], list)
-                    or len(value['documents']) > 256 or type(value['active_bootstrap_count']) is not int
-                    or value['active_bootstrap_count'] < 0):
-                raise MigrationRefused('invalid-migration-snapshot')
-            rows = {}
-            total = 0
-            for row in value['documents']:
-                if (not isinstance(row, dict) or set(row) != {'token_hash', 'document_sha256', 'document_b64', 'revoked', 'expired'}
-                        or not matches(HEX, row['token_hash']) or not matches(HEX, row['document_sha256'])
-                        or type(row['revoked']) is not bool or type(row['expired']) is not bool
-                        or row['token_hash'] in rows):
-                    raise MigrationRefused('invalid-migration-snapshot-row')
-                content = un64(row['document_b64'])
-                total += len(content)
-                if total > 2 * 1024 * 1024 or sha(content) != row['document_sha256']:
-                    raise MigrationRefused('invalid-migration-snapshot-content')
-                envelope(content)
-                rows[row['token_hash']] = row
-            snapshots[alias] = {'rows': rows, 'bootstrap': value['active_bootstrap_count']}
+            snapshots[alias] = parse_snapshot(value)
         if len(self.publishers) > 1 and snapshots[self.publishers[0]]['bootstrap']:
             raise MigrationRefused('drain-active-bootstrap-grants-before-migration')
         return snapshots

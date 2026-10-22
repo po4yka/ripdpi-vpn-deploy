@@ -70,9 +70,10 @@ def unit(name):
 
 
 class Adapter:
-    def __init__(self, candidates=(), firewall_candidate=None):
+    def __init__(self, candidates=(), firewall_candidate=None, revocation=None):
         self.candidates = list(candidates)
         self.firewall_candidate = firewall_candidate
+        self.revocation = revocation
         self.known_names = set(names(record()))
         self.desired = None
         self.activation_done = False
@@ -162,7 +163,7 @@ class Adapter:
     def start(self):
         self.restored_units = None
         if self.firewall_candidate is not None:
-            firewall('apply', {'owner': 'awg', 'data': self.firewall_candidate})
+            firewall('apply', {'owner': 'awg', 'data': self.firewall_candidate, 'revocation': self.revocation})
         run(['systemctl', 'daemon-reload'])
         current = set(names(record()))
         for name in sorted(self.known_names - current):
@@ -177,9 +178,10 @@ class Adapter:
         current = set(names(record()))
         if self.firewall_candidate is not None:
             try:
-                firewall('apply', {'owner': 'awg', 'data': self.firewall_candidate})
+                firewall('apply', {'owner': 'awg', 'data': self.firewall_candidate, 'revocation': self.revocation})
             except BaseException:
-                firewall('restore', {'owner': 'awg'})
+                if self.revocation is None:
+                    firewall('restore', {'owner': 'awg'})
                 raise
         if any(fields(unit(name))['ActiveState'] != 'active' for name in current):
             # A committed retry has already published its firewall. It must not
@@ -352,7 +354,7 @@ def firewall_decision(tx, *, success=False):
         committed = True
     if committed:
         tx.record('firewall.json', {**decision, 'phase': 'committing'})
-        firewall('finish', {'owner': 'awg'})
+        firewall('finish', {'owner': 'awg', 'revocation': tx.revocation})
     else:
         firewall('restore', {'owner': 'awg'})
     os.unlink(path.name, dir_fd=tx.state_fd)
@@ -363,14 +365,15 @@ def operate(action, payload):
     check = payload.get('check', False)
     if type(check) is not bool:
         raise Refusal('awg-check-invalid')
-    with Transaction(STATE, uid=os.geteuid(), check=check, awg=True) as tx:
+    with Transaction(STATE, uid=os.geteuid(), check=check, awg=True, revocation=payload.get('revocation')) as tx:
         if tx.state_fd is None:
             return {'changed': action == 'apply'}
         if read_private(tx.root / 'retirement.json', tx.uid) is not None:
             if check:
                 raise Refusal('awg-retirement-recovery-required')
             prune_retired(tx)
-        adapter = Adapter(payload.get('candidates', []), payload.get('firewall'))
+        tx.revocation_state()
+        adapter = Adapter(payload.get('candidates', []), payload.get('firewall'), tx.revocation)
         if action == 'recover':
             if check:
                 if tx.journal() is not None or tx.preparation() is not None or tx.compensation() is not None or read_private(tx.root / 'firewall.json', tx.uid) is not None:
@@ -378,6 +381,9 @@ def operate(action, payload):
                 tx.accepted()
                 return {'changed': False}
             changed = tx.recover(adapter)
+            fence = tx.revocation_state()
+            if fence is not None and fence['receipt'] is None:
+                return {'changed': changed, 'forward_pending': True}
             firewall_decision(tx)
             adopt(tx, retiring=payload.get('retiring', False))
             prune_retired(tx)
@@ -385,14 +391,17 @@ def operate(action, payload):
         adapter.validate()
         if not check and payload.get('firewall') is not None:
             if read_private(tx.root / 'firewall.json', tx.uid) is not None:
-                raise Refusal('awg-firewall-recovery-required')
-            tx.record('firewall.json', {'schema': 1, 'before': tx.accepted(), 'phase': 'open'})
+                fence = tx.revocation_state()
+                if fence is None or fence['authority'] != tx.revocation:
+                    raise Refusal('awg-firewall-recovery-required')
+            else:
+                tx.record('firewall.json', {'schema': 1, 'before': tx.accepted(), 'phase': 'open'})
         try:
             result = tx.apply(payload['candidates'], adapter, check=check)
         except BaseException:
             # Only a fully compensated runtime may authorize old firewall
             # restoration. An unresolved runtime journal keeps both owners.
-            if not check and tx.journal() is None and tx.compensation() is None:
+            if not check and tx.journal() is None and tx.compensation() is None and tx.revocation is None:
                 firewall_decision(tx)
             raise
         if not check:

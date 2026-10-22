@@ -365,6 +365,7 @@ def main():
     if len(raw) > 33554432:
         raise Refusal('input-oversize')
     value = json.loads(raw)
+    revocation = value.pop('revocation', None) if isinstance(value, dict) else None
     if args.recover and value == {}:
         parameters = read_parameters()
         if parameters is None:
@@ -408,13 +409,13 @@ def main():
     # Last declaration of the same staged binary/asset wins within one play;
     # frontend authority is included once by its canonical consumer.
     candidates = list({item['path']: item for item in value['candidates']}.values())
-    if not args.recover and not args.bootstrap:
+    if not args.recover and not args.bootstrap and revocation is None:
         candidates = restore_points(candidates)
     if not (args.recover or args.bootstrap or args.compensate):
         candidates = [item for item in candidates if item['path'] != str(PARAMETERS)]
         candidates.append(parameter_candidate(parameters))
     adapter = Adapter(candidates, value['probe_url'], value['expected_status'], value['timeout'], value['clients'], value['asset_dir'])
-    with Transaction(STATE, check=args.check) as tx:
+    with Transaction(STATE, check=args.check, revocation=revocation) as tx:
         # The outer owner retains A until its complete route has committed.
         # Timers must not replace A's one compensation authority mid-staging.
         if args.refresh_assets:
@@ -422,6 +423,7 @@ def main():
             if read_private(STATE / 'outer.json', tx.uid) is not None:
                 raise Refusal('outer-transaction-active')
         adapter.transaction = tx
+        tx.revocation_state()
         from transport_runtime_validate import inspect_lease, recover_validation
         if args.check:
             inspect_lease(tx)
@@ -457,7 +459,10 @@ def main():
             result = tx.compensate_latest(adapter, check=args.check, restore_only=True)
         elif args.recover or args.bootstrap:
             recovered = False if args.check else tx.recover(adapter)
-            tx.accepted()
+            pending_forward = tx.revocation_state()
+            pending_forward = pending_forward is not None and pending_forward['receipt'] is None
+            if not pending_forward:
+                tx.accepted()
             if args.bootstrap and not args.check and not (STATE / 'accepted.json').exists() and Path('/var/lib/ripdpi/transport-egress/accepted.json').exists():
                 from snapshot import capture, is_accepted, managed_paths
                 from transport_runtime_transaction import node

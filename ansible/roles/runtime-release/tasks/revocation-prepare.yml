@@ -1,0 +1,37 @@
+---
+- name: Admit shared credential revocation helper ancestry
+  ansible.builtin.import_tasks: consumer-authority.yml
+  vars:
+    consumer_private_directories: [/var/lib/ripdpi/device-revocation]
+
+- name: Ensure credential revocation helper and state parents
+  ansible.builtin.file:
+    path: '{{ item.path }}'
+    state: directory
+    owner: root
+    group: root
+    mode: '{{ item.mode }}'
+  loop:
+    - {path: /usr/local/libexec/ripdpi-consumer, mode: '0755'}
+    - {path: /var/lib/ripdpi, mode: '0755'}
+    - {path: /var/lib/ripdpi/device-revocation, mode: '0700'}
+
+- name: Install shared credential revocation admission
+  ansible.builtin.copy:
+    src: '{{ item }}'
+    dest: '/usr/local/libexec/ripdpi-consumer/{{ item }}'
+    owner: root
+    group: root
+    mode: '0755'
+  loop: [transport_runtime_transaction.py, device_revocation_barrier.py]
+  register: _device_revocation_helpers
+
+- name: Refuse an unrelated caller while credential revocation is pending
+  ansible.builtin.command:
+    argv: [python3, -Es, /usr/local/libexec/ripdpi-consumer/device_revocation_barrier.py, guard, '{{ device_revocation_unit }}']
+    stdin: '{{ {"authority": vpn_device_revocation | default(none), "check": ansible_check_mode} | to_json }}'
+    stdin_add_newline: false
+  changed_when: false
+  check_mode: false
+  no_log: true
+  when: not (ansible_check_mode and _device_revocation_helpers.changed)

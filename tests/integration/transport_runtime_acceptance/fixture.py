@@ -300,7 +300,9 @@ server.serve_forever()
                     str(ROOT / 'ansible/playbooks/tasks/transport-egress-activate.yml')},
                 {'name': 'Finish complete native site', 'ansible.builtin.command': {
                     'argv': ['/usr/bin/python3', '-Es',
-                        '/usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py', 'finish']},
+                        '/usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py', 'finish',
+                        '--revocation-stdin'],
+                    'stdin': '{{ vpn_device_revocation | default(none) | to_json }}'},
                     'when': '(transport_egress_role_enabled | bool) or (_transport_egress_full_retirement | default(false) | bool)',
                     'changed_when': False, 'no_log': True}]
             if retain_commit:

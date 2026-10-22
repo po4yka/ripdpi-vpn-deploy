@@ -467,3 +467,59 @@ def test_legacy_retirement_cleanup_resumes_only_exact_old_authority(context, mon
             c.awg.prune_retired(active)
             assert active.accepted() == after
             assert not (active.root / 'retirement.json').exists()
+
+
+@pytest.mark.parametrize('failure', ['native-ready', 'firewall-apply'])
+def test_revocation_keeps_new_peers_and_policy_stopped_until_exact_forward_resume(context, monkeypatch, failure):
+    c = context
+    authority = {'operation_id': '3fbb2baa-3a76-4f03-ae92-8ed9513fe268', 'intent_sha256': 'a' * 64}
+    candidate = b'[Interface]\nListenPort=51820\n# revoked peer removed\n'
+    policy = c.fw.HEADER + b'table inet filter { # revoked claim removed\n}\n'
+    payload = {'candidates': [data(c.cfg, candidate)], 'firewall': base64.b64encode(policy).decode(), 'revocation': authority}
+    starts = []
+    native_run = c.awg.run
+    def run(argv):
+        if argv[:2] == ['systemctl', 'start']:
+            starts.append((c.cfg.read_bytes(), c.kernel['bytes']))
+        return native_run(argv)
+    monkeypatch.setattr(c.awg, 'run', run)
+    attempts = []
+    if failure == 'native-ready':
+        ready = c.awg.Adapter.ready
+        def reject(self):
+            if not attempts:
+                attempts.append('failed')
+                raise c.tx.Refusal('injected-native-ready-failure')
+            return ready(self)
+        monkeypatch.setattr(c.awg.Adapter, 'ready', reject)
+    else:
+        command = c.fw.command
+        def reject(argv, **kwargs):
+            result = command(argv, **kwargs)
+            if argv[:2] == ['nft', '-f'] and not attempts:
+                attempts.append('failed')
+                raise c.tx.Refusal('injected-firewall-apply-failure')
+            return result
+        monkeypatch.setattr(c.fw, 'command', reject)
+    with pytest.raises(c.tx.Refusal, match='candidate-refused'):
+        c.awg.operate('apply', payload)
+    assert c.cfg.read_bytes() == candidate
+    assert c.states['awg-quick@a0.service']['ActiveState'] == 'inactive'
+    assert (c.awg.STATE / 'pending.json').exists()
+    assert (c.awg.STATE / 'firewall.json').exists()
+    assert all(config == candidate and kernel == policy for config, kernel in starts)
+    with pytest.raises(c.tx.Refusal, match='revocation-resume-required'):
+        c.awg.operate('recover', {})
+    with pytest.raises(c.tx.Refusal, match='unfinished-runtime-without-publisher'):
+        c.tx.admission(c.awg.STATE, uid=os.geteuid())
+    assert c.awg.operate('recover', {'revocation': authority})['forward_pending']
+    assert c.states['awg-quick@a0.service']['ActiveState'] == 'inactive'
+    result = c.awg.operate('apply', payload)
+    assert result['status'] == 'accepted'
+    assert starts and all(config == candidate and kernel == policy for config, kernel in starts)
+    assert c.cfg.read_bytes() == candidate and c.kernel['bytes'] == policy
+    assert c.states['awg-quick@a0.service']['ActiveState'] == 'active'
+    assert not (c.awg.STATE / 'pending.json').exists()
+    assert not (c.awg.STATE / 'firewall.json').exists()
+    assert not (c.fw.STATE / 'consumer.json').exists()
+    assert not c.awg.operate('apply', payload)['changed']
