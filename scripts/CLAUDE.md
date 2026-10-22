@@ -2,6 +2,13 @@
 
 ## Design decisions
 
+Payload probing requires exact canonical bytes and bounded curl output through
+`payload_probe_content.py`. Explicit SOCKS ignores ambient proxies and never
+falls back to direct. The loopback canary applies a total request deadline.
+Recipient failover uses `payload_failover_policy.py` for strict two-origin HTTPS
+policy admission; all contributing hosts must agree before extended emission.
+Plain sing-box exports retain their RTT-only urltest contract.
+
 The offline AWG sentinel installer binds the same correction into its existing
 toolchain inputs and returns those public inputs to its provenance caller.
 Liveness and real-VPS lane readers require that complete identity from the

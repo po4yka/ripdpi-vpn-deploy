@@ -23,7 +23,7 @@
                       'nginx_xhttp_public_port': nginx_xhttp_public_port | default(8443),
                       'nginx_xhttp_fallback_port': nginx_xhttp_fallback_port | default(2083),
                       'xray_port': xray_port | default(443),
-                      'xray_fallback_port': xray_fallback_port | default(2053),
+                      'xray_fallback_port': xray_fallback_port | default(0),
                       'cdn_front_port': cdn_front.port | default(cdn_front_port | default(8443))}} | to_json }}
     stdin_add_newline: false
   delegate_to: localhost

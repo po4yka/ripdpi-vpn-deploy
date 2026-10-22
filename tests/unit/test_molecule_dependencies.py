@@ -71,7 +71,7 @@ def _published_variables() -> dict:
     }
 
 
-def test_full_stack_inventories_mirror_listener_defaults() -> None:
+def test_full_stack_inventories_mirror_defaults_with_explicit_alternate() -> None:
     canonical = yaml.safe_load(
         (REPO_ROOT / "ansible/group_vars/all.yml").read_text()
     )
@@ -91,6 +91,7 @@ def test_full_stack_inventories_mirror_listener_defaults() -> None:
         "split_hop_ingress_listen_port",
     }
     expected = {name: canonical[name] for name in names}
+    expected["xray_fallback_port"] = 2053  # Full-stack scenario explicitly exercises the alternate.
 
     for scenario in (_full_stack_scenario(), _published_scenario()):
         variables = scenario["provisioner"]["inventory"]["group_vars"]["all"]
@@ -192,7 +193,8 @@ def test_published_scenario_explicitly_disables_unpublished_xray_fallback() -> N
     groups = inventory["group_vars"]
     hosts = inventory["hosts"]["vpn"]["hosts"]
 
-    assert groups["all"]["xray_fallback_port"] == canonical["xray_fallback_port"] == 2053
+    assert groups["all"]["xray_fallback_port"] == 2053
+    assert canonical["xray_fallback_port"] == 0
     assert "xray_fallback_port" not in groups["vpn"]
     assert hosts["vpn-fullstack-debian13-published"]["xray_fallback_port"] == 0
 
@@ -229,11 +231,11 @@ def test_standalone_p0_molecule_fixtures_declare_required_canonical_inputs() -> 
     assert xray["p0_reality_shapes"] == canonical["p0_reality_shapes"]
     for name in ("watchdog/default", "watchdog/failure"):
         assert variables[name]["xray_port"] == canonical["xray_port"]
-        assert variables[name]["xray_fallback_port"] == canonical["xray_fallback_port"]
+        assert variables[name]["xray_fallback_port"] == 2053  # Explicit alternate-listener coverage.
         assert variables[name]["p0_reality_flow_mode"] == canonical["p0_reality_flow_mode"]
         assert variables[name]["p0_reality_shapes"] == canonical["p0_reality_shapes"]
     assert variables["nginx-xhttp/default"]["xray_port"] == canonical["xray_port"]
-    assert variables["nginx-xhttp/default"]["xray_fallback_port"] == canonical["xray_fallback_port"]
+    assert variables["nginx-xhttp/default"]["xray_fallback_port"] == 2053
     assert variables["nginx-xhttp/default"]["nginx_xhttp_fallback_port"] == canonical["nginx_xhttp_fallback_port"]
     assert variables["nginx-xhttp/default"]["cdn_front_port"] == canonical["cdn_front_port"]
     assert variables["firewall/default"]["nginx_xhttp_public_port"] == canonical["nginx_xhttp_public_port"]
@@ -248,7 +250,7 @@ def test_standalone_p0_molecule_fixtures_declare_required_canonical_inputs() -> 
         "policy-ratelimit/default",
     ):
         assert variables[name]["xray_port"] == canonical["xray_port"]
-        assert variables[name]["xray_fallback_port"] == canonical["xray_fallback_port"]
+        assert variables[name]["xray_fallback_port"] == 2053  # Explicit alternate-listener coverage.
     for name in ("hysteria/default", "hysteria/check-mode", "hysteria/verify"):
         assert variables[name]["hysteria_port_range"] == canonical["hysteria_port_range"]
 

@@ -1,270 +1,295 @@
-"""Unit tests for scripts/probe-payload-throttle.sh.
-
-The script drives an escalating ladder of payload sizes against an
-operator endpoint, resolves the target ASN via scripts/probe-asn.sh
-(whois → Team Cymru), and classifies the path's behaviour into the
-project probe verdict enum.
-
-Tests create per-test stub scripts on PATH (curl, whois, getent) to
-control completion / RTT / ASN-lookup behaviour and assert the verdict
-JSON shape and classification. Stdlib only — no network, no ~/ writes.
-"""
+"""Real curl/HTTP/TLS/SOCKS evidence plus deterministic classification cases."""
 from __future__ import annotations
 
+from contextlib import contextmanager
+import hashlib
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import importlib.util
 import json
 import os
-import shlex
-import stat
+from pathlib import Path
+import selectors
+import socket
+import socketserver
+import ssl
 import subprocess
 import sys
-from pathlib import Path
+import threading
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = REPO_ROOT / "scripts" / "probe-payload-throttle.sh"
+import pytest
 
-# A literal-IP host avoids getent name resolution inside probe-asn.sh.
-PROBE_HOST = "203.0.113.7"
-# A small ladder straddling the ~16 KiB throttle window.
-SIZES = "1024,4096,16384,32768"
+ROOT = Path(__file__).resolve().parents[2]
+SCRIPT = ROOT / "scripts/probe-payload-throttle.sh"
+sys.path.insert(0, str(ROOT / "scripts"))
+import payload_probe_content as probe  # noqa: E402
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _make_stub(bin_dir: Path, name: str, body: str) -> None:
-    """Write an executable /bin/sh stub into *bin_dir*."""
-    p = bin_dir / name
-    p.write_text("#!/bin/sh\n" + body + "\n")
-    p.chmod(p.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+spec = importlib.util.spec_from_file_location("payload_canary", ROOT / "scripts/serve-payload-probe.py")
+canary = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(canary)
 
 
-def _whois_stub_body() -> str:
-    """Emit a Team-Cymru `-v` style pipe-delimited line on the last row.
-
-    probe-asn.sh reads `whois -h whois.cymru.com " -v <ip>" | tail -1`
-    and parses fields by '|': AS | IP | PREFIX | CC | Registry | Alloc | Org
-    """
-    line = "64500   | 203.0.113.7    | 203.0.113.0/24    | XX | testreg | 2020-01-01 | EXAMPLE-ASN"
-    return f'printf "%s\\n" "{line}"'
-
-
-def _run(
-    tmp_path: Path,
-    curl_body: str,
-    *,
-    sizes: str = SIZES,
-    whois_body: str | None = None,
-    extra_args: list[str] | None = None,
-    drop_whois: bool = False,
-    rtt_ms: list[int] | None = None,
-) -> subprocess.CompletedProcess:
-    """Run the probe with a hermetic stub environment."""
-    stub_bin = tmp_path / "bin"
-    stub_bin.mkdir()
-
-    _make_stub(stub_bin, "curl", curl_body)
-    if not drop_whois:
-        _make_stub(stub_bin, "whois", whois_body or _whois_stub_body())
-    # getent is only hit for non-IP hosts; provide a no-op for safety.
-    _make_stub(stub_bin, "getent", "exit 0")
-
-    # Completion and elapsed time are independent classifier inputs. Host
-    # scheduling must not supply an accidental RTT spike to a unit scenario.
-    durations = rtt_ms if rtt_ms is not None else [10] * len(sizes.split(","))
-    assert len(durations) == len(sizes.split(","))
-    ticks, cursor = [], 0
-    for duration in durations:
-        ticks.extend((cursor, cursor + duration))
-        cursor += duration + 1
-    clock_data = tmp_path / "clock.json"
-    clock_data.write_text(json.dumps({"ticks": ticks, "next": 0}))
-    clock_script = tmp_path / "clock.py"
-    clock_script.write_text(
-        "import json,sys\nfrom pathlib import Path\n"
-        "path=Path(sys.argv[1]); state=json.loads(path.read_text())\n"
-        "value=state['ticks'][state['next']]; state['next']+=1\n"
-        "path.write_text(json.dumps(state)); print(value)\n"
-    )
-    clock_command = "import time; print(int(time.time()*1000))"
-    _make_stub(
-        stub_bin,
-        "python3",
-        f'if [ "$1" = "-c" ] && [ "$2" = {shlex.quote(clock_command)} ]; then\n'
-        f"  exec {shlex.quote(sys.executable)} {shlex.quote(str(clock_script))} "
-        f"{shlex.quote(str(clock_data))}\nfi\n"
-        f'exec {shlex.quote(sys.executable)} "$@"',
-    )
-
-    env = os.environ.copy()
-    # Hermetic PATH but keep python3 reachable via the inherited tail.
-    env["PATH"] = f"{stub_bin}:{env['PATH']}"
-    env["HOME"] = str(tmp_path / "home")
-    (tmp_path / "home").mkdir(exist_ok=True)
-    env["XDG_STATE_HOME"] = str(tmp_path / "state")
-
-    args = ["bash", str(SCRIPT), "--host", PROBE_HOST, "--sizes", sizes]
-    if extra_args:
-        args.extend(extra_args)
-
-    return subprocess.run(
-        args, capture_output=True, text=True, env=env, cwd=str(REPO_ROOT)
-    )
+def run_probe(tmp_path, port, *args, env_extra=None):
+    env = dict(os.environ, HOME=str(tmp_path), XDG_STATE_HOME=str(tmp_path / "state"))
+    env.update(env_extra or {})
+    result = subprocess.run(["bash", str(SCRIPT), "--host", "localhost", "--port", str(port),
+        "--scheme", "http", "--asn", "AS64500", "--sizes", "1024,16384,32768", "--no-state", *args],
+        capture_output=True, text=True, env=env, timeout=40)
+    assert result.returncode == 0, result.stderr
+    assert len(result.stdout.splitlines()) == 1, result.stdout
+    return json.loads(result.stdout)
 
 
-def _verdict(result: subprocess.CompletedProcess) -> dict:
-    """Parse the single JSON object the probe writes to stdout."""
-    out = result.stdout.strip()
-    assert out, f"empty stdout; stderr={result.stderr[:500]}"
-    # The probe emits exactly one JSON object on stdout.
-    last = out.splitlines()[-1]
-    return json.loads(last)
+@contextmanager
+def origin(handler=canary.Handler, tls=None):
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    if tls:
+        server.socket = tls.wrap_socket(server.socket, server_side=True)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield server.server_port
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
-# ---------------------------------------------------------------------------
-# Schema-shape tests
-# ---------------------------------------------------------------------------
+class Fault(BaseHTTPRequestHandler):
+    mode = "empty"
+    requests = []
 
-VERDICT_ENUM = {"ok", "throttled", "blocked", "unknown", "error"}
+    def do_GET(self):
+        type(self).requests.append(self.path)
+        size = int(self.path.rsplit("=", 1)[1])
+        if self.mode == "redirect":
+            self.send_response(302)
+            self.send_header("Location", "/redirected")
+            self.end_headers()
+            return
+        data = {"empty": b"", "short": probe.payload(size)[:-1], "corrupt": b"x" * size,
+                "oversize": probe.payload(size) + b"x", "404": b"missing", "truncated": probe.payload(size)[:-1],
+                "chunked": b"x" * (size + 200)}[self.mode]
+        self.send_response(404 if self.mode == "404" else 200)
+        if self.mode != "chunked":
+            self.send_header("Content-Length", str(size if self.mode == "truncated" else len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
-
-def test_verdict_shape_is_valid(tmp_path):
-    """Verdict must be in the 5-value enum and rtt_ms int|null."""
-    result = _run(tmp_path, "exit 0")
-    assert result.returncode == 0, result.stderr[:500]
-    v = _verdict(result)
-    assert v["verdict"] in VERDICT_ENUM
-    assert v["rtt_ms"] is None or isinstance(v["rtt_ms"], int)
-
-
-def test_asn_keyed_not_brand(tmp_path):
-    """The verdict is keyed by AS<num>; no ORG/COUNTRY brand leaks."""
-    result = _run(tmp_path, "exit 0")
-    v = _verdict(result)
-    assert v.get("asn") == "AS64500"
-    blob = json.dumps(v)
-    # The whois ORG/COUNTRY columns must never propagate into output.
-    assert "EXAMPLE-ASN" not in blob
-    assert "testreg" not in blob
+    def log_message(self, *_args):
+        pass
 
 
-# ---------------------------------------------------------------------------
-# Classification tests
-# ---------------------------------------------------------------------------
-
-def test_all_sizes_complete_is_ok(tmp_path):
-    """Every payload size completes cleanly → verdict 'ok'."""
-    result = _run(tmp_path, "exit 0")
-    v = _verdict(result)
-    assert v["verdict"] == "ok", v
-    assert all(s["completed"] for s in v["sizes"])
-    assert [s["rtt_ms"] for s in v["sizes"]] == [10, 10, 10, 10]
+@pytest.mark.parametrize("mode", ["empty", "short", "corrupt", "oversize", "404", "redirect", "chunked"])
+def test_real_success_status_cannot_fake_payload(tmp_path, mode):
+    handler = type("Response", (Fault,), {"mode": mode, "requests": []})
+    with origin(handler) as port:
+        result = run_probe(tmp_path, port)
+    assert result["verdict"] == "error"
+    assert not any(row["completed"] for row in result["sizes"])
+    assert len(handler.requests) == 3  # redirect never follows another origin/path
 
 
-def test_completed_sizes_with_an_rtt_spike_are_throttled(tmp_path):
-    result = _run(tmp_path, "exit 0", rtt_ms=[10, 10, 100, 100])
-    v = _verdict(result)
-    assert all(s["completed"] for s in v["sizes"])
-    assert [s["rtt_ms"] for s in v["sizes"]] == [10, 10, 100, 100]
-    assert v["verdict"] == "throttled", v
-    assert v["threshold_bytes"] == 16384, v
+def test_real_download_and_upload(tmp_path):
+    with origin() as port:
+        result = run_probe(tmp_path, port, "--upload")
+    assert len(result["sizes"]) == 6
+    assert all(row["completed"] for row in result["sizes"])
+    assert {row["direction"] for row in result["sizes"]} == {"download", "upload"}
+    assert all(isinstance(row["rtt_ms"], int) for row in result["sizes"])
+    assert not (tmp_path / "state").exists()
 
 
-def test_cliff_at_16k_is_throttled(tmp_path):
-    """Small payloads succeed, the 16384+ steps fail → 'throttled'.
-
-    The curl stub fails (exit 22, like an HTTP error / reset) when the
-    requested ?bytes= value is >= 16384, mirroring a size-threshold
-    throttle. Small requests succeed.
-    """
-    body = (
-        'case "$*" in\n'
-        '  *bytes=16384*|*bytes=24576*|*bytes=32768*) exit 22 ;;\n'
-        '  *) exit 0 ;;\n'
-        'esac'
-    )
-    result = _run(tmp_path, body)
-    v = _verdict(result)
-    assert v["verdict"] == "throttled", v
-    assert v["threshold_bytes"] == 16384, v
+def test_tls_verified_with_owned_ca_and_rejected_without_it(tmp_path):
+    cert, key = tmp_path / "cert.pem", tmp_path / "key.pem"
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+        "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost", "-keyout", str(key), "-out", str(cert)],
+        check=True, capture_output=True)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(cert, key)
+    with origin(tls=context) as port:
+        accepted = run_probe(tmp_path, port, "--scheme", "https", "--ca-file", str(cert), "--upload")
+        refused = run_probe(tmp_path, port, "--scheme", "https")
+    assert all(row["completed"] for row in accepted["sizes"])
+    assert refused["verdict"] == "error"
+    assert not any(row["completed"] for row in refused["sizes"])
 
 
-def test_all_drop_is_blocked(tmp_path):
-    """No size completes at all → verdict 'blocked'."""
-    result = _run(tmp_path, "exit 7")  # curl: failed to connect
-    v = _verdict(result)
-    assert v["verdict"] == "blocked", v
+def receive_exact(connection, count):
+    data = b""
+    while len(data) < count:
+        chunk = connection.recv(count - len(data))
+        if not chunk:
+            raise ConnectionError("short SOCKS message")
+        data += chunk
+    return data
 
 
-def test_whois_failure_is_error(tmp_path):
-    """probe-asn.sh failing (Cymru unreachable) → verdict 'error'."""
-    # whois stub returns an error envelope probe-asn.sh treats as failure.
-    result = _run(tmp_path, "exit 0", whois_body='echo "error: unreachable"; exit 0')
-    v = _verdict(result)
-    assert v["verdict"] == "error", v
-    assert "error_kind" in v
+class Socks(socketserver.BaseRequestHandler):
+    def handle(self):
+        client = self.request
+        client.settimeout(5)
+        version, count = receive_exact(client, 2)
+        assert version == 5
+        assert 0 in receive_exact(client, count)
+        client.sendall(b"\x05\x00")
+        header = receive_exact(client, 4)
+        assert header == b"\x05\x01\x00\x03"  # DNS is resolved at SOCKS endpoint
+        length = receive_exact(client, 1)[0]
+        host = receive_exact(client, length).decode()
+        port = int.from_bytes(receive_exact(client, 2), "big")
+        self.server.targets.append((host, port))
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as upstream:
+            client.sendall(b"\x05\x00\x00\x01\x7f\x00\x00\x01\x00\x00")
+            with selectors.DefaultSelector() as selected:
+                selected.register(client, selectors.EVENT_READ, upstream)
+                selected.register(upstream, selectors.EVENT_READ, client)
+                while True:
+                    events = selected.select(timeout=5)
+                    if not events:
+                        return
+                    for key, _ in events:
+                        data = key.fileobj.recv(65536)
+                        if not data:
+                            return
+                        key.data.sendall(data)
 
 
-def test_missing_curl_is_error(tmp_path):
-    """Missing curl tool → verdict 'error' with error_kind.
-
-    Uses a constrained PATH containing only the stub dir plus the
-    directories needed for bash/python3, so the inherited system curl
-    is not visible to the script's tool-presence check.
-    """
-    import shutil
-
-    bash_abs = shutil.which("bash") or "/bin/bash"
-
-    # Build a hermetic bin dir holding ONLY the binaries the script
-    # legitimately needs PLUS our stubs — deliberately NOT curl. Each
-    # tool is symlinked individually so a coreutils dir cannot smuggle
-    # the system curl onto PATH (which broke a whole-dir approach on
-    # macOS). bash is invoked by absolute path so it need not be linked.
-    hermetic = tmp_path / "hermetic-bin"
-    hermetic.mkdir()
-    for tool in ("python3", "sh", "env", "mktemp", "awk", "mkdir", "mv",
-                 "chmod", "cat", "sed", "rm", "dirname", "tail", "head",
-                 "grep", "getent"):
-        src = shutil.which(tool)
-        if src:
-            (hermetic / tool).symlink_to(src)
-    # whois stub (so probe-asn.sh succeeds and we exercise the curl check).
-    _make_stub(hermetic, "whois", _whois_stub_body())
-
-    env = os.environ.copy()
-    env["PATH"] = str(hermetic)
-    env["HOME"] = str(tmp_path / "home")
-    (tmp_path / "home").mkdir(exist_ok=True)
-    env["XDG_STATE_HOME"] = str(tmp_path / "state")
-
-    result = subprocess.run(
-        [bash_abs, str(SCRIPT), "--host", PROBE_HOST, "--sizes", SIZES],
-        capture_output=True, text=True, env=env, cwd=str(REPO_ROOT),
-    )
-    v = _verdict(result)
-    assert v["verdict"] == "error", v
-    assert "curl" in v.get("error_kind", "")
+@contextmanager
+def socks():
+    server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Socks)
+    server.daemon_threads = True
+    server.targets = []
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield server
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
-def test_asn_override_skips_lookup(tmp_path):
-    """--asn override bypasses whois entirely (no whois stub needed)."""
-    result = _run(
-        tmp_path, "exit 0", drop_whois=True, extra_args=["--asn", "AS64500"]
-    )
-    v = _verdict(result)
-    assert v["verdict"] == "ok", v
-    assert v["asn"] == "AS64500"
+def test_real_socks_dns_and_upload_ignore_proxy_environment(tmp_path):
+    (tmp_path / ".curlrc").write_text("proxy = http://127.0.0.1:1\nlocation\ninsecure\n")
+    with origin() as port, socks() as proxy:
+        result = run_probe(tmp_path, port, "--socks-port", str(proxy.server_address[1]), "--upload",
+            env_extra={"NO_PROXY": "*", "ALL_PROXY": "http://127.0.0.1:1"})
+        assert proxy.targets == [("localhost", port)] * 6
+    assert all(row["completed"] for row in result["sizes"])
 
 
-def test_state_written_keyed_by_asn(tmp_path):
-    """A state file keyed by AS<num> is persisted under XDG_STATE_HOME."""
-    _run(tmp_path, "exit 0")
-    state_dir = tmp_path / "state" / "vpn-deploy" / "payload-throttle"
-    files = list(state_dir.glob("*.json"))
-    assert files, "no state file written"
-    assert files[0].name == "AS64500.json"
-    # Persisted content is the same verdict JSON shape.
-    persisted = json.loads(files[0].read_text())
-    assert persisted["verdict"] in VERDICT_ENUM
-    assert persisted["asn"] == "AS64500"
+def test_failed_socks_never_falls_back(tmp_path):
+    handler = type("Response", (Fault,), {"requests": []})
+    with origin(handler) as port, socket.socket() as unavailable:
+        unavailable.bind(("127.0.0.1", 0))  # owned but deliberately not listening
+        result = run_probe(tmp_path, port, "--socks-port", str(unavailable.getsockname()[1]))
+    assert result["verdict"] == "blocked"
+    assert handler.requests == []
+
+
+def test_direct_ignores_ambient_proxy(tmp_path):
+    (tmp_path / ".curlrc").write_text("proxy = http://127.0.0.1:1\n")
+    with origin() as port:
+        result = run_probe(tmp_path, port, env_extra={"ALL_PROXY": "http://127.0.0.1:1", "http_proxy": "http://127.0.0.1:1"})
+    assert all(row["completed"] for row in result["sizes"])
+
+
+@pytest.mark.parametrize("args", [["--port", "0"], ["--timeout", "31"], ["--socks-port", "65536"],
+    ["--asn", "../../escape"], ["--sizes", "1024,65537"], ["--sizes", "1024,1024"],
+    ["--sizes", "32768,1024"], ["--echo-path", "/foo?x=1"], ["--host", "-option"], ["--port"]])
+def test_invalid_inputs_before_network(tmp_path, args):
+    handler = type("Response", (Fault,), {"requests": []})
+    with origin(handler) as port:
+        result = run_probe(tmp_path, port, *args)
+    assert result["verdict"] == "error"
+    assert handler.requests == []
+    assert not (tmp_path / "state").exists()
+
+
+def row(size, duration=10, completed=True, direction="download"):
+    result = {"bytes": size, "completed": completed, "rtt_ms": duration if completed else None, "direction": direction}
+    if not completed:
+        result["error_kind"] = "network"
+    return result
+
+
+@pytest.mark.parametrize("rows,verdict,threshold", [
+    ([row(1024), row(32768)], "ok", None),
+    ([row(1024), row(32768, 100)], "throttled", 32768),
+    ([row(1024), row(32768, completed=False)], "throttled", 32768),
+    ([row(1024, completed=False), row(32768, completed=False)], "blocked", None),
+    ([row(1024), row(4096)], "unknown", None),
+    ([row(32768)], "unknown", None),
+    ([row(1024, completed=False), row(4096), row(32768)], "unknown", None),
+])
+def test_classification_without_host_timing(rows, verdict, threshold):
+    result = probe.classify(rows)
+    assert result["verdict"] == verdict
+    assert result["threshold_bytes"] == threshold
+
+
+def test_canary_rejects_corrupt_upload_and_invalid_bounds(tmp_path):
+    with origin() as port:
+        for query, body in [("1024", b"x" * 1024), ("65537", b""), ("1&bytes=2", b"x")]:
+            result = subprocess.run(["curl", "--disable", "--silent", "--proxy", "", "--noproxy", "*",
+                "--max-time", "2", "--data-binary", "@-", "--output", os.devnull, "--write-out", "%{http_code}",
+                f"http://127.0.0.1:{port}/__throttle_probe?bytes={query}"], input=body, capture_output=True)
+            assert result.stdout == b"400"
+
+
+def test_hash_manifest_and_state(tmp_path):
+    result = subprocess.run([sys.executable, str(ROOT / "scripts/payload_probe_content.py"), "--hashes", "32768,65536"],
+        capture_output=True, text=True, check=True)
+    assert json.loads(result.stdout) == [{"expected_bytes": n, "sha256": hashlib.sha256(probe.payload(n)).hexdigest()} for n in (32768, 65536)]
+    with origin() as port:
+        args = ["--host", "localhost", "--port", str(port), "--scheme", "http", "--asn", "64500", "--sizes", "1024,32768"]
+        result = subprocess.run(["bash", str(SCRIPT), *args], env=dict(os.environ, XDG_STATE_HOME=str(tmp_path)), capture_output=True, text=True)
+    state = tmp_path / "vpn-deploy/payload-throttle/AS64500.json"
+    assert json.loads(state.read_text()) == json.loads(result.stdout)
+    assert state.stat().st_mode & 0o777 == 0o600
+    assert list(state.parent.iterdir()) == [state]
+
+
+def test_fixed_payload_vectors():
+    assert hashlib.sha256(probe.payload(32768)).hexdigest() == "80e00fc9e65a58c5ad59c399511a2ed5f27140f43e3b58f93c2f00a0c0df8816"
+    assert hashlib.sha256(probe.payload(65536)).hexdigest() == "ed487b9ebb4e4ee04d86b44bc4eff46f6689bae9b8c7d8c598c57b8110a7e993"
+
+
+def test_real_timeout_and_truncated_body_are_not_completed(tmp_path):
+    class Stall(Fault):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Length", "1024")
+            self.end_headers()
+            threading.Event().wait(1.5)
+
+    with origin(Stall) as port:
+        result = run_probe(tmp_path, port, "--sizes", "1024", "--timeout", "1")
+    assert result["verdict"] == "blocked"
+    assert result["sizes"][0]["error_kind"] == "network"
+    with origin(type("Truncated", (Fault,), {"mode": "truncated"})) as port:
+        result = run_probe(tmp_path, port, "--sizes", "1024")
+    assert not result["sizes"][0]["completed"]
+
+
+def test_canary_total_deadline_stops_trickled_upload():
+    # Use a shorter timer solely to make the real socket deadline test quick.
+    class ShortDeadline(canary.Handler):
+        def setup(self):
+            super().setup()
+            self.deadline.cancel()
+            self.deadline = threading.Timer(0.2, self.expire)
+            self.deadline.start()
+
+    with origin(ShortDeadline) as port, socket.create_connection(("127.0.0.1", port)) as connection:
+        connection.settimeout(2)
+        connection.sendall(b"POST /__throttle_probe?bytes=1024 HTTP/1.1\r\nHost: localhost\r\nContent-Length: 1024\r\n\r\nx")
+        assert connection.recv(1024) == b""
+
+
+def test_socks_requires_explicit_asn_before_any_discovery(monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail("discovery must not execute for an incomplete SOCKS request")
+    monkeypatch.setattr(probe.subprocess, "run", forbidden)
+    with pytest.raises(ValueError, match="proxy-requires-asn"):
+        probe.probe(["--host", "control.example", "--socks-port", "1080", "--no-state"])
