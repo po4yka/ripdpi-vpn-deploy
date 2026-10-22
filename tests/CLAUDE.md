@@ -37,7 +37,8 @@ cross-document writes must resume identical bytes without reallocation.
 Validate complete encrypted journal states against the secrets schema and
 reconstruct migrated delivery identity through the ordinary drift checker.
 Owned CA/TLS route tests cover exact SNI, body, redirect refusal and total
-deadlines; orchestration doubles do not establish live deployment or device
+deadlines, with verified TLS 1.2-or-newer contexts for both origin and route
+probes; orchestration doubles do not establish live deployment or device
 acceptance. Preserve explicit proof requirements after publication.
 Make migration fixtures choose their own ENV selector because parent Make gates
 export it; preserve both matching-selector success and conflicting-selector refusal.

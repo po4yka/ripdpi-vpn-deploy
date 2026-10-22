@@ -32,7 +32,9 @@ active URL and expiry; registry identity includes the exact migration metadata.
 Preparation precedes target convergence. Publication and readiness re-run
 target verification and an expiring credential-free TLS route canary, then
 re-read authority before accepting delivery. Old credentials remain until a
-separate retirement action. Keep published, received and fresh path-tested
+separate retirement action. Origin and route probes explicitly require TLS 1.2
+or newer while retaining certificate and hostname verification. Keep published,
+received and fresh path-tested
 states distinct; official-client attestations are explicit operator evidence.
 Blue-green retains the target environment selector after handover because
 delivered bindings now refer to it. Never rename target tfvars into the source

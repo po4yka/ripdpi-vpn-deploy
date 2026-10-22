@@ -5,14 +5,15 @@ import base64
 import contextlib
 import ssl
 import subprocess
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import device_migration_io as migration_io
+import device_migration_route as migration_route
 import pytest
 from bootstrap_readiness import CommandTimeout, run_command
-from device_migration_io import LocalIO, encoded
 from test_subscription_document import service as service  # noqa: PLC0414
 
 TOKEN = 'A' * 43
@@ -43,6 +44,7 @@ def tls_server(tmp_path, monkeypatch):
     @contextlib.contextmanager
     def serve(handler):
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.load_cert_chain(cert, key)
         names = []
         context.set_servername_callback(lambda _socket, name, _context: names.append(name))
@@ -63,7 +65,7 @@ def tls_server(tmp_path, monkeypatch):
 
 def route_io(port, *, hostname=HOSTNAME):
     # Only transport admission is isolated: read_route launches the real helper.
-    instance = object.__new__(LocalIO)
+    instance = object.__new__(migration_io.LocalIO)
     instance.plan = {'publication': {'origin': f'https://{hostname}:{port}',
                                      'source_alias': 'delivery', 'target_alias': 'delivery'}}
     instance.hosts = {'delivery': {'address': '127.0.0.1'}}
@@ -120,6 +122,47 @@ def short_real_deadline(monkeypatch):
     return calls
 
 
+def test_origin_and_route_require_verified_tls12_or_newer(tls_server, monkeypatch):
+    contexts = []
+    default_context = ssl.create_default_context
+
+    def observed_context():
+        context = default_context()
+        contexts.append(context)
+        return context
+
+    monkeypatch.setattr(ssl, 'create_default_context', observed_context)
+    requests, stop = [], threading.Event()
+    with tls_server(responder('exact', requests, stop)) as (port, names):
+        instance = route_io(port)
+        instance.origin('delivery')
+        migration_route.probe({'origin': instance.plan['publication']['origin'],
+                               'address': '127.0.0.1', 'token': TOKEN,
+                               'expected_b64': base64.b64encode(PAYLOAD).decode()})
+        assert names == [HOSTNAME, HOSTNAME]
+        assert requests == [('/sub/' + TOKEN, f'{HOSTNAME}:{port}')]
+    assert len(contexts) == 2
+    for context in contexts:
+        assert context.minimum_version == ssl.TLSVersion.TLSv1_2
+        assert context.verify_mode == ssl.CERT_REQUIRED
+        assert context.check_hostname
+
+
+@pytest.mark.parametrize('payload', [
+    b'[]',
+    b'[' * 2000 + b']' * 2000,
+    b'\xff',
+    migration_io.encoded({'origin': None, 'address': '127.0.0.1',
+                          'token': TOKEN, 'expected_b64': 'eA=='}),
+])
+def test_route_refuses_malformed_private_input_without_diagnostics(payload):
+    result = subprocess.run([sys.executable, migration_route.__file__],
+                            input=payload, capture_output=True, timeout=10, check=False)
+    assert result.returncode == 2
+    assert result.stdout == b''
+    assert result.stderr == b''
+
+
 @pytest.mark.parametrize('mode', ['exact', 'wrong-body', 'redirect', 'wrong-san'])
 def test_route_uses_exact_tls_virtual_host_and_never_accepts_wrong_namespace(tls_server, mode):
     requests, stop = [], threading.Event()
@@ -162,7 +205,7 @@ def test_route_canary_is_removed_by_exact_cas_after_real_io_failure(service, tls
         def publish(_alias, action, token_hash, expected, document, *, cleanup=False):
             assert action == 'publish'
             calls.append((token_hash, expected, document, cleanup))
-            request = encoded({'schema_version': 1, 'expected_document_sha256': expected,
+            request = migration_io.encoded({'schema_version': 1, 'expected_document_sha256': expected,
                                'document_b64': base64.b64encode(document).decode() if document is not None else None})
             result = service._migration_publish(token_hash, request)
             if outcome == 'lost-create-ack' and not cleanup:

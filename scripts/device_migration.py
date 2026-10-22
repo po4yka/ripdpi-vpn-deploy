@@ -259,7 +259,7 @@ class Migration:
                                 and (v['tag'].endswith('-' + suffix) or '-' + suffix + '-' in v['tag'] or v['tag'].endswith('-' + suffix + ':alternate'))]
                         previous = {}
                         if options['awg_host'] in ('', self.plan['target']['host']):
-                            for awg in payload['ripdpi']['amneziawg']:
+                            for _awg in payload['ripdpi']['amneziawg']:
                                 tag = 'migration-awg-' + delivery_id
                                 prior = old_payload.get('ripdpi', {}).get('amneziawg', [])
                                 if len(prior) != 1:
@@ -326,7 +326,7 @@ class Migration:
             expiry = envelope(un64(entry['old']))[0]['expires']
             if expiry:
                 from datetime import datetime
-                instant = datetime.fromisoformat(expiry.replace('Z', '+00:00'))
+                instant = datetime.fromisoformat(expiry)
                 if instant.tzinfo is None or int(instant.timestamp() * 1000) <= self.now():
                     raise MigrationRefused('migration-grant-no-longer-active')
             for alias in self.publishers:
@@ -358,10 +358,10 @@ class Migration:
             options = grant['options']
             payload = envelope(un64(grant['new']))[1]
             for document in (result_source, result_target):
-                delivery = dict(status='delivered', formats=[options['format']], hosts=options['hosts'], cohorts=options['cohorts'],
-                                token_hash_prefix=token[:8], token_expires=options['expires'], awg_delivery_host=options['awg_host'],
-                                delivery_options=options, delivery_sources=grant['sources'],
-                                last_payload_identity=digest(name, options, payload, grant['bindings'], authority(document, create=True)))
+                delivery = {'status': 'delivered', 'formats': [options['format']], 'hosts': options['hosts'], 'cohorts': options['cohorts'],
+                            'token_hash_prefix': token[:8], 'token_expires': options['expires'], 'awg_delivery_host': options['awg_host'],
+                            'delivery_options': options, 'delivery_sources': grant['sources'],
+                            'last_payload_identity': digest(name, options, payload, grant['bindings'], authority(document, create=True))}
                 if grant['metadata']:
                     delivery['migration_delivery'] = grant['metadata']
                 document['client_registry'][name] = merge_delivery(document['client_registry'][name], delivery)
