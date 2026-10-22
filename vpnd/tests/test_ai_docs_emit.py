@@ -117,11 +117,30 @@ def test_task_demo_and_measurement_folders_are_not_documentation_pages(tmp_path)
     assert not (tmp_path / "out/md/measurements").exists()
 
 
-def test_stale_per_doc_copies_are_removed_on_rerun(tmp_path):
+def test_pages_emitted_by_an_earlier_run_are_removed_on_rerun(tmp_path):
     ctx = setup_tree(tmp_path)
-    stale = tmp_path / "out/md/RUNBOOK-deploy.md"
-    stale.parent.mkdir(parents=True)
-    stale.write_text("# old location\n")
+    moved = tmp_path / "docs/RUNBOOK-deploy.md"
+    moved.write_text("# old location\n")
     asyncio.run(run(ctx, SimpleNamespace(out=tmp_path / "out")))
-    assert not stale.exists()
+    assert (tmp_path / "out/md/RUNBOOK-deploy.md").exists()
+    moved.unlink()
+    (tmp_path / "docs/how-to/deploy.md").rename(tmp_path / "docs/reference/deploy.md")
+    asyncio.run(run(ctx, SimpleNamespace(out=tmp_path / "out")))
+    assert not (tmp_path / "out/md/RUNBOOK-deploy.md").exists()
+    assert not (tmp_path / "out/md/how-to").exists()
+    assert (tmp_path / "out/md/reference/deploy.md").read_text() == "# Deploy\nbody of Deploy\n"
+
+
+def test_files_the_command_did_not_write_are_never_deleted(tmp_path):
+    ctx = setup_tree(tmp_path)
+    foreign = tmp_path / "out/md/notes/mine.md"
+    foreign.parent.mkdir(parents=True)
+    foreign.write_text("# not generated\n")
+    stray = tmp_path / "out/md/how-to/stray.md"
+    stray.parent.mkdir(parents=True)
+    stray.write_text("# not generated either\n")
+    for _ in range(2):  # without a manifest, then with the manifest of the first run
+        asyncio.run(run(ctx, SimpleNamespace(out=tmp_path / "out")))
+        assert foreign.read_text() == "# not generated\n"
+        assert stray.read_text() == "# not generated either\n"
     assert (tmp_path / "out/md/how-to/deploy.md").read_text() == "# Deploy\nbody of Deploy\n"

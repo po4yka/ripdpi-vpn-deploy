@@ -20,7 +20,7 @@ instead of the levels below.
 - You know which change broke the node (`make verify` output, the watchdog, or a client report) and which level addresses it.
 - `ANSIBLE_LIMIT` names exactly one inventory alias; the rollback verbs refuse groups and patterns.
 - For level 2, `ROLLBACK_XRAY_VERSION` names a version listed in [the release-line tracker](../reference/xray-release-line.md).
-- For level 3, a green environment name and the private inputs in [the blue-green section of tailnet management](tailnet-management.md).
+- For level 3, the inputs `scripts/blue-green.sh` reads: `BLUE_ENV`, `GREEN_ENV`, `PROVIDER`, `ANSIBLE_SSH_PRIVATE_KEY_FILE`, and the private `GREEN_TAILNET_HANDOFF` and `DEPLOY_SSH_CONTEXTS_FILE` paths it requires before the green node converges; the green node's enrollment config follows [Bootstrap one node](tailnet-management.md#bootstrap-one-node).
 
 ## Authorization
 

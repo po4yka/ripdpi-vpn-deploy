@@ -14,7 +14,7 @@ extend.
 
 - A working primary node and a reviewed reason for the second one (burn risk, ASN diversity, role separation).
 - A provider account and Terraform root for the fallback; ASN tiers in [the provider notes](../reference/provider-notes.md).
-- Distinct per-device credentials for the second node are issued, never copied from the first.
+- A decision on the credential scope before provisioning. Only a node with its own secrets file (`VPN_SECRETS_FILE`, as Pattern 3 shows) isolates server-wide material and device credentials. Patterns 1 and 2 as written deploy the primary's secrets file to the fallback, so the fallback carries the same authority and its exposure is the primary's exposure.
 
 ## Authorization
 
@@ -159,8 +159,11 @@ client failing over to the fallback profile while the primary is paused.
 ## Rollback
 
 Destroy the fallback with the safe `make destroy` flow for its provider and
-environment; clients keep working on the primary because their credentials
-were never shared.
+environment. A fallback that had its own secrets file takes nothing with it;
+clients keep working on the primary. A fallback that shared the primary's
+secrets file (Patterns 1 and 2 as written) still held the primary's authority:
+if it was exposed, destroying it retires nothing, so rotate the server-wide
+material on the primary and re-issue the affected devices ([rotate](rotate.md)).
 
 ## Evidence to record
 

@@ -6,7 +6,6 @@ H2 section per documentation folder with one link per page, and an
 """
 
 import asyncio
-import shutil
 from pathlib import Path
 from vpnd.docs_bundle import docs_path
 
@@ -30,6 +29,9 @@ SECTIONS = [
 OPTIONAL = {"archive": "Archive"}
 # Folders with their own contracts that are not documentation pages.
 EXCLUDED = {"tasks", "demo", "measurements"}
+# Written next to md/: the pages the previous run emitted, one relative path
+# per line. A rerun removes only those, never files it did not write.
+MANIFEST = ".vpnd-ai-docs"
 
 
 def _pages(docs):
@@ -48,16 +50,34 @@ def _title(slug: str, body: bytes) -> str:
     return slug
 
 
+def _remove_previous_pages(out, md):
+    """Delete the pages recorded by the previous run so pages that moved or
+    were removed from docs/ do not linger. An output tree without a manifest
+    was not written by this command and is left as it is; its pages are only
+    overwritten in place."""
+    manifest = out / MANIFEST
+    if not manifest.is_file():
+        return
+    for line in manifest.read_text(encoding="utf-8").splitlines():
+        relative = Path(line)
+        if not line or relative.is_absolute() or ".." in relative.parts:
+            continue
+        page = md / relative
+        if page.is_file():
+            page.unlink()
+    for directory in sorted((p for p in md.rglob("*") if p.is_dir()), reverse=True):
+        if not any(directory.iterdir()):
+            directory.rmdir()
+
+
 def emit_docs(docs, out):
     out = Path(out)
     md = out / "md"
-    # md/ is wholly generated; rebuild it so pages that moved or were removed
-    # from docs/ do not linger from an earlier run into the same directory.
-    if md.is_dir():
-        shutil.rmtree(md)
+    _remove_previous_pages(out, md)
     md.mkdir(parents=True, exist_ok=True)
     sections: dict[str, list[tuple[str, str]]] = {}
     full = ""
+    written = []
     for relative, body in _pages(docs):
         slug = relative[:-3]
         folder = relative.rsplit("/", 1)[0] if "/" in relative else ""
@@ -66,6 +86,7 @@ def emit_docs(docs, out):
         target = md / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(body)
+        written.append(relative)
     index = f"{TITLE}\n\n{SUMMARY}\n"
     ordered = []
     if "" in sections:
@@ -85,6 +106,7 @@ def emit_docs(docs, out):
             index += "".join(f"- [{title}](/md/{slug}.md): {heading.lower()}\n" for title, slug in pages)
     (out / "llms.txt").write_text(index, encoding="utf-8")
     (out / "llms-full.txt").write_text(full, encoding="utf-8")
+    (out / MANIFEST).write_text("".join(f"{relative}\n" for relative in written), encoding="utf-8")
 
 
 async def run(ctx, args):

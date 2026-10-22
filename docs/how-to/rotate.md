@@ -273,10 +273,21 @@ audit log (`make audit-log`) shows the issuance record.
 
 ## Rollback
 
-Keep the previous encrypted generation until verification passes. If a
-rotation breaks a device, re-issue that device's material; never restore a
-revoked identity. A failed server-wide rotation is recovered by deploying the
-previous encrypted generation to the same exact node.
+A rollback redeploys the previous credentials, so it exists only for a
+planned rotation, never for a leak or a compromise.
+
+- **Planned rotation** (no exposure): keep the previous encrypted generation
+  until verification passes. If the rotation breaks one device, re-issue that
+  device's material. If a server-wide rotation fails, deploy the previous
+  encrypted generation to the same exact node, then retry.
+- **Rotation after a leak or compromise** (a captured REALITY key, Hysteria or
+  AmneziaWG server material, restic password or SSH key): there is no rollback.
+  Deploying the previous generation re-authorizes the credential being retired.
+  Roll forward with fresh material; if the forward rotation fails, keep the
+  node out of service or recreate it ([incident](incident.md)) rather than
+  restoring the exposed generation.
+
+Never restore a revoked device identity in either case.
 
 ## Evidence to record
 

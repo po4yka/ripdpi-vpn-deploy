@@ -175,7 +175,10 @@ def test_runbooks_carry_the_standard_sections_in_order() -> None:
         page = DOCS / "how-to" / f"{name}.md"
         headings = [line[3:].strip() for line in page.read_text().splitlines() if line.startswith("## ")]
         positions = [headings.index(s) if s in headings else None for s in RUNBOOK_SECTIONS]
-        if None in positions:
+        duplicates = [s for s in RUNBOOK_SECTIONS if headings.count(s) > 1]
+        if duplicates:
+            bad.append(f"how-to/{name}.md: duplicate " + ", ".join(duplicates))
+        elif None in positions:
             bad.append(f"how-to/{name}.md: missing " + ", ".join(s for s, p in zip(RUNBOOK_SECTIONS, positions) if p is None))
         elif positions != sorted(positions):
             bad.append(f"how-to/{name}.md: sections out of order")

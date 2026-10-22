@@ -15,14 +15,6 @@ runbook proves the research topology, not a family production migration.
 
 ## Preconditions
 
-See [Preconditions](#preconditions-1) below; this procedure lists them in its own section.
-
-## Authorization
-
-Every target below that uses cloud credentials, inventory, SSH or decrypted secrets needs the operator's authorization for this environment, target and plan before it runs ([decision boundaries](../../AGENTS.md#decision-boundaries)). A reviewable plan or dry-run precedes every mutation. The pilot is RESEARCH tier: it runs on lab or staging hosts only and never in a family profile.
-
-## Preconditions
-
 - Two disposable VPS environments provisioned through any supported Terraform
   roots, with separate provider state and SOPS scopes.
 - Node A's typed `public_listeners` contract admits the configured
@@ -31,6 +23,10 @@ Every target below that uses cloud credentials, inventory, SSH or decrypted secr
   `docs/reference/secrets.md`.
 - WireGuard tools are available only for local key generation; Ansible installs
   them on both nodes.
+
+## Authorization
+
+Every target below that uses cloud credentials, inventory, SSH or decrypted secrets needs the operator's authorization for this environment, target and plan before it runs ([decision boundaries](../../AGENTS.md#decision-boundaries)). A reviewable plan or dry-run precedes every mutation. The pilot is RESEARCH tier: it runs on lab or staging hosts only and never in a family profile.
 
 ## 1. Generate node-specific keys
 
