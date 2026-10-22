@@ -66,9 +66,9 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
     complete = next(step for step in native if step.get("name") == "Execute native tests with UID and GID capabilities")
     command = shlex.split(complete["run"].replace("\\\n", ""))
     assert command[:2] == ["sudo", "env"]
-    assert command[-5:] == ["make", "test-native-runtime", "test-xhttp-delivery-matrix", "test-topology-authenticated-probes", "test-awg-dualstack-runtime"]
+    assert command[-4:] == ["make", "test-native-runtime", "test-xhttp-delivery-matrix", "test-topology-authenticated-probes"]
     environment = {}
-    for assignment in command[2:-5]:
+    for assignment in command[2:-4]:
         name, value = assignment.split("=", 1)
         assert name not in environment, f"duplicate native environment override: {name}"
         environment[name] = value
@@ -95,6 +95,8 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
     early_command = shlex.split(early["run"].replace("\\\n", ""))
     assert early_command[:2] == ["sudo", "env"]
     assert early_command[-2:] == ["make", "test-awg-dualstack-runtime"]
+    assert sum(shlex.split(step.get("run", "")).count("test-awg-dualstack-runtime")
+               for step in native) == 1
     assert native.index(early) < next(index for index, step in enumerate(native)
                                     if "make test-hysteria-ech-runtime" in step.get("run", ""))
     early_environment = dict(assignment.split("=", 1) for assignment in early_command[2:-2])

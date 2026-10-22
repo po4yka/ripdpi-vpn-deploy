@@ -20,6 +20,9 @@ stalled/refused/abrupt candidates, third-address success, exact admitted snapsho
 policy rechecks, shared deadlines, socket caps and winner-only application bytes.
 Cancellation and stop must restore worker and request capacity.
 
+The complete native AWG rollback gate runs once before the remaining runtime
+suites; retain the complete collection union and refusal of skipped cases.
+
 Fleet regressions distinguish strict inventory-bound collection, completed
 watchdog evidence and authenticated client-path health. Rotation tests exercise
 positive UDP-only survivors and successful resume as well as stale/wrong-target
