@@ -167,13 +167,24 @@ class HttpsOrigin:
                 self.wfile.write(owner.body)
             def log_message(self, *_):
                 pass
-        self.server = http.server.ThreadingHTTPServer((address, 0), Handler)
-        self.server.daemon_threads = True
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.set_alpn_protocols(["h2", "http/1.1"])
         context.load_cert_chain(certificate_path, key_path)
-        self.server.socket = context.wrap_socket(self.server.socket, server_side=True)
+
+        class Server(http.server.ThreadingHTTPServer):
+            daemon_threads = False
+
+            def finish_request(self, connection, address):
+                connection.settimeout(2)
+                try:
+                    secured = context.wrap_socket(connection, server_side=True)
+                except (OSError, ssl.SSLError):
+                    return
+                with secured:
+                    super().finish_request(secured, address)
+
+        self.server = Server((address, 0), Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.url = f"https://{address}:{self.server.server_port}/probe"
@@ -228,6 +239,29 @@ class TlsConnectFixture:
         self.server.server_close()
         self.thread.join(2)
         assert not self.thread.is_alive()
+
+
+def test_https_control_remains_available_during_stalled_tls_handshake(tmp_path, monkeypatch):
+    cert, key = certificate(tmp_path)
+    origin = HttpsOrigin(cert, key)
+    accepted = threading.Event()
+    get_request = origin.server.get_request
+
+    def accept_connection():
+        accepted.set()
+        return get_request()
+
+    monkeypatch.setattr(origin.server, "get_request", accept_connection)
+    try:
+        with socket.create_connection(("127.0.0.1", origin.server.server_port), timeout=1) as stalled:
+            assert accepted.wait(1), "the owned idle connection must reach the listener"
+            runtime = PortableRuntime(binaries={"curl": shutil.which("curl")}, ca_file=cert)
+            measured = runtime.http(request([], origin.url)["control"], 1, tmp_path)
+            assert measured["accepted"], measured
+            stalled.settimeout(3)
+            assert stalled.recv(1) == b"", "the unfinished TLS handshake must expire"
+    finally:
+        origin.close()
 
 
 def request(profiles, url):

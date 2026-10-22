@@ -132,13 +132,31 @@ def selected_profiles(monkeypatch, source, config):
     return renderer.render_profiles(source, "", "device0", "upcloud:fixture", ADDRESS)
 
 
+class MeasuredRuntime(worker.Runtime):
+    """Keep categorical native request diagnostics separate from probe receipts."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.measurements = []
+
+    def http(self, control, timeout, directory, **kwargs):
+        result = super().http(control, timeout, directory, **kwargs)
+        self.measurements.append({
+            "route": next((name for name in ("proxy", "namespace", "naive") if kwargs.get(name)), "control"),
+            "exit": result["exit"], "accepted": result["accepted"],
+            "elapsed_ms": round(result["elapsed"] * 1000),
+        })
+        return result
+
+
 def assert_access(runtime, profile, origin, state):
+    runtime.measurements.clear()
     value = request([profile], origin.url)
     value["mode"] = "deny" if state == "denied" else "accept"
     value["timeout_seconds"] = 5
     result = worker.run_request(value, runtime=runtime)
     row = result["profiles"][0]
-    assert row["state"] == state, result
+    assert row["state"] == state, {"result": result, "requests": runtime.measurements}
     assert all(row[key] for key in ("control_ok", "setup_ok", "cleanup_ok", "runtime_healthy")), result
     if state == "denied":
         assert row["peer_absent"], result
@@ -179,7 +197,7 @@ def test_actual_xray_profile_issue_revoke_and_last_device(native_tools, owned_or
               "outbounds": [{"protocol": "freedom"}]}
     path = tmp_path / "server.json"
     write(path, server)
-    runtime = worker.Runtime(binaries=native_tools, ca_file=cert)
+    runtime = MeasuredRuntime(binaries=native_tools, ca_file=cert)
     with service(native_tools["xray"], ["run", "-config"], path, cert) as unit:
         profile["witness"].update(config_path=str(path), unit=unit)
         assert_access(runtime, profile, origin, "accepted")
@@ -212,7 +230,7 @@ def test_actual_hysteria_issue_revoke_and_last_device(native_tools, owned_origin
         path.write_text(text)
         path.chmod(0o600)
     publish()
-    runtime = worker.Runtime(binaries=native_tools, ca_file=cert)
+    runtime = MeasuredRuntime(binaries=native_tools, ca_file=cert)
     with service(native_tools["hysteria"], ["server", "-c"], path, cert) as unit:
         profile["witness"].update(config_path=str(path), unit=unit)
         assert_access(runtime, profile, origin, "accepted")
@@ -242,7 +260,7 @@ def test_actual_snell_fresh_reuse_and_revoked_user(native_tools, owned_origin, t
     server = {"log": {"disabled": True}, "inbounds": [inbound], "outbounds": [{"type": "direct"}]}
     path = tmp_path / "server.json"
     write(path, server)
-    runtime = worker.Runtime(binaries=native_tools, ca_file=cert)
+    runtime = MeasuredRuntime(binaries=native_tools, ca_file=cert)
     with service(native_tools["snell"], ["run", "-c"], path, cert) as unit:
         for profile in profiles:
             profile["witness"].update(config_path=str(path), unit=unit)
@@ -273,7 +291,7 @@ def test_actual_naive_issue_revoke_and_last_handler(native_tools, owned_origin, 
         path.write_text(render_template(ROOT / "ansible/roles/naive/templates/caddy.json.j2", values))
         path.chmod(0o600)
     publish()
-    runtime = worker.Runtime(binaries=native_tools, ca_file=cert)
+    runtime = MeasuredRuntime(binaries=native_tools, ca_file=cert)
     with service(native_tools["naive"], ["run", "--config"], path, cert) as unit:
         profile["witness"].update(config_path=str(path), unit=unit)
         assert_access(runtime, profile, origin, "accepted")
@@ -330,7 +348,7 @@ def revocation_service(engine, binaries):
         config = directory / ("config.json" if engine == "snell" else "caddy.json")
         args = "run -c" if engine == "snell" else "run --config"
         unit_path.write_text("[Unit]\nDescription=Owned device revocation native test\n"
-            "[Service]\nType=simple\nExecStartPre=/usr/bin/python3 -Es " + str(helper) + " admit " + unit +
+            "[Service]\nType=simple\nExecStartPre=/usr/bin/python3 -BEs " + str(helper) + " admit " + unit +
             "\nExecStart=" + str(binary) + " " + args + " " + str(config) +
             "\nStandardOutput=null\nStandardError=null\n[Install]\nWantedBy=multi-user.target\n")
         unit_path.chmod(0o644)
@@ -368,7 +386,7 @@ def barrier_call(helper, action, unit, payload, *, killed=False):
                   "barrier.run=interrupted\nbarrier.main()\n")
         argv = ["/usr/bin/python3", "-I", "-B", "-S", "-c", source, action, unit]
     else:
-        argv = ["/usr/bin/python3", "-Es", str(helper), action, unit]
+        argv = ["/usr/bin/python3", "-BEs", str(helper), action, unit]
     return subprocess.run(argv, input=json.dumps(payload).encode(), capture_output=True, timeout=60, check=False)
 
 
@@ -396,7 +414,7 @@ def test_actual_native_revocation_interruption_fences_restart_and_resumes(
     else:
         survivor["config"].update(username="survivor", password="survivor-native-password")
         survivor["witness"]["credential"] = "survivor:survivor-native-password"
-    runtime = worker.Runtime(binaries=native_tools, ca_file=cert)
+    runtime = MeasuredRuntime(binaries=native_tools, ca_file=cert)
     with revocation_service(engine, native_tools) as (unit, unit_path, path, helper, state):
         if engine == "snell":
             secret = next(row for row in source["snell_secrets"]["variants"] if row["id"] == "v6-default")
@@ -501,7 +519,7 @@ def test_actual_awg_issued_peer_revoked_peer_and_ambiguous_controls(native_tools
             command(["ip", "address", "add", instance[name], "dev", interface])
         command(["ip", "link", "set", interface, "up"])
         profile["witness"].update(config_path=str(config_path), unit=unit)
-        runtime = worker.Runtime(binaries=native_tools, ca_file=cert, namespace_root=tmp_path / "netns")
+        runtime = MeasuredRuntime(binaries=native_tools, ca_file=cert, namespace_root=tmp_path / "netns")
         # ip-netns consumes /etc/netns; use the real owned namespace resolver
         # location rather than an injected fixture path for native traffic.
         runtime.namespace_root = Path("/etc/netns")
