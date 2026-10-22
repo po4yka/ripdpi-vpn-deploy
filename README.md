@@ -5,20 +5,18 @@
 [![scorecard](https://api.securityscorecards.dev/projects/github.com/po4yka/ripdpi-vpn-deploy/badge)](https://securityscorecards.dev/viewer/?uri=github.com/po4yka/ripdpi-vpn-deploy)
 [![release](https://img.shields.io/github/v/release/po4yka/ripdpi-vpn-deploy?sort=semver)](https://github.com/po4yka/ripdpi-vpn-deploy/releases)
 
-Reproducible infrastructure-as-code for a small, disposable VPN fleet that
-keeps a handful of devices online through a filtered network. Terraform
-creates the VPS, cloud-init hardens first boot, Ansible owns every byte of
-runtime state, SOPS with age keeps secrets out of Git, and `vpnd` wraps the
-whole thing for an operator. The threat model is active L7 fingerprinting,
-active probing and aggressive QoS; the answer is several independent
-transports per node and nodes that are recreated, never repaired.
+Reproducible infrastructure-as-code for a small, disposable VPN fleet that keeps a
+handful of devices online through a filtered network. Terraform creates the VPS,
+cloud-init hardens first boot, Ansible owns every byte of runtime state, SOPS with age
+keeps secrets out of Git, and `vpnd` wraps it for an operator. The threat model is
+active L7 fingerprinting, active probing and aggressive QoS; the answer is several
+independent transports per node and nodes that are recreated, never repaired.
 
 ## Security
 
-Report active probing of a live node, a burned address or a leaked key
-through the private channel in [SECURITY.md](.github/SECURITY.md); never in
-a public issue. Never post credentials, addresses, hostnames, client
-identifiers, Terraform state or inventory anywhere, redacted or not.
+Report active probing of a live node, a burned address or a leaked key through the
+private channel in [SECURITY.md](.github/SECURITY.md), never in a public issue. Never
+post credentials, addresses, hostnames, client identifiers, state or inventory anywhere.
 
 ## What you get
 
@@ -30,11 +28,10 @@ identifiers, Terraform state or inventory anywhere, redacted or not.
 | P2 | AmneziaWG 2.0 cohorts | UDP, per cohort | Device-wide tunnel with tuned obfuscation profiles |
 | P3 | Manual reachability fallbacks | — | Alternate addresses and ports, egress isolation, recreate on burn |
 
-Clients carry selector and urltest logic, so a device fails over to whichever
-profile is still reachable. Deploy profiles in `ansible/group_vars/vpn-*.yml`
-choose which transports a host exposes: `vpn-family-standard` is P0 + P1 + P2
-Hysteria2, `vpn-device-full` adds AmneziaWG. Why each layer exists is in
-[the threat model](docs/explanation/threat-model.md).
+Clients carry selector and urltest logic and fail over to whichever profile is
+still reachable. Deploy profiles in `ansible/group_vars/vpn-*.yml` choose the
+transports a host exposes; [the threat model](docs/explanation/threat-model.md)
+explains why each layer exists.
 
 ## How it is built
 
@@ -54,16 +51,15 @@ flowchart LR
 ```
 
 Layer ownership is strict ([architecture](docs/reference/architecture.md),
-[rationale](docs/explanation/architecture-rationale.md)). Every layer is
-dry-runnable and has a rollback path. The Makefile is the canonical operator
-surface; [the target reference](docs/reference/make-targets.md) mirrors `make help`.
+[rationale](docs/explanation/architecture-rationale.md)); every layer is dry-runnable
+and has a rollback path. The Makefile is the canonical operator surface and
+[the target reference](docs/reference/make-targets.md) mirrors `make help`.
 
 ## Quick start
 
-[The quickstart](docs/tutorials/quickstart.md) takes a new operator from an empty
-provider account to a working node and a first client in about thirty minutes.
-Its first block is credential-free until `make decrypt` and stops at a plan review;
-`make clean` shreds the plaintext secrets when the block ends, even after a failure.
+[The quickstart](docs/tutorials/quickstart.md) takes a new operator from an empty provider
+account to a working node and a first client in about thirty minutes. Its first block stops
+at a plan review; `make clean` shreds the plaintext secrets when the block ends, even after a failure.
 
 ```bash
 export PROVIDER=upcloud          # every make call below reads it (hetzner, vultr, scaleway)
@@ -76,24 +72,19 @@ export PROVIDER=upcloud          # every make call below reads it (hetzner, vult
 )
 ```
 
-Review the plan and stop on any unexpected update or replacement. What follows
-is not a paste-and-run sequence: after `make apply` a fresh node must be enrolled
-before its first deploy (SSH recovery installed, Tailnet bootstrapped, inventory
-rendered with the confirmed handoffs, the deployment context files prepared), and
-`make dry-run` is reviewed before `make deploy`. [The deploy section of the
-quickstart](docs/tutorials/quickstart.md#6-deploy) carries those steps with their
-review points, and [the client section](docs/tutorials/quickstart.md#7-generate-a-client-config)
-writes the first client configuration into the ignored `secrets/local/clients/`
-tree with mode 0600; the emitted document holds live per-device credentials.
-
-Targets that touch cloud credentials, inventory, SSH or decrypted secrets
-mutate real infrastructure and do not prompt; an operator authorises each
-step after reviewing the output of the one before.
+Review the plan and stop on any unexpected update or replacement. The rest is
+not paste-and-run: a fresh node is enrolled after `make apply` (SSH recovery,
+Tailnet bootstrap, inventory with the confirmed handoffs, deployment context
+files) and `make dry-run` is reviewed before `make deploy`. Targets that touch
+cloud credentials, inventory, SSH or decrypted secrets mutate real infrastructure
+and do not prompt. [The deploy section](docs/tutorials/quickstart.md#6-deploy)
+carries those steps with their review points; [the client section](docs/tutorials/quickstart.md#7-generate-a-client-config)
+writes client configurations into the ignored `secrets/local/clients/` tree with
+mode 0600, because they hold live per-device credentials.
 
 ## Documentation
 
-[docs/README.md](docs/README.md) lists every page by type and tier. The pages
-most operators open:
+[docs/README.md](docs/README.md) lists every page by type and tier; the pages most operators open:
 
 | Need | Page |
 |---|---|
@@ -111,30 +102,27 @@ Coding agents read the same tree as `docs/llms.txt`; releases are in [CHANGELOG.
 ## Providers
 
 One Terraform root per provider with identical outputs keeps Ansible provider-neutral;
-select one with `make PROVIDER=<name> …`. Versions are locked per root:
-[UpCloud](terraform/providers/upcloud/.terraform.lock.hcl), [Hetzner](terraform/providers/hetzner/.terraform.lock.hcl),
-[Vultr](terraform/providers/vultr/.terraform.lock.hcl), [Scaleway](terraform/providers/scaleway/.terraform.lock.hcl).
-Capabilities, ASN tiers to avoid and fallback transport tiers are in [the provider notes](docs/reference/provider-notes.md).
+select one with `make PROVIDER=<name> …`. Versions are locked per root ([UpCloud](terraform/providers/upcloud/.terraform.lock.hcl),
+[Hetzner](terraform/providers/hetzner/.terraform.lock.hcl), [Vultr](terraform/providers/vultr/.terraform.lock.hcl),
+[Scaleway](terraform/providers/scaleway/.terraform.lock.hcl)); capabilities, ASN tiers to avoid and
+fallback transport tiers are in [the provider notes](docs/reference/provider-notes.md).
 
 ## For contributors and agents
 
-- [CONTRIBUTING.md](CONTRIBUTING.md): setup, pull request flow, commit conventions; [SUPPORT.md](SUPPORT.md): where to ask.
+- [CONTRIBUTING.md](CONTRIBUTING.md): setup, pull request flow, commit conventions; [SUPPORT.md](SUPPORT.md): where to ask; [vpnd/README.md](vpnd/README.md): the Python 3.12 CLI.
 - [AGENTS.md](AGENTS.md): the working rules for every coding agent and contributor; the root `CLAUDE.md` imports it and each subtree carries its own folder note.
 - [docs/STYLE.md](docs/STYLE.md): how documentation is organised and written; [docs/tasks/README.md](docs/tasks/README.md): the task board.
-- `vpnd` needs Python 3.12; see [vpnd/README.md](vpnd/README.md).
 
 ## Hard rules
 
-The full list, with reasons, is in [AGENTS.md](AGENTS.md#hard-rules).
+The five that matter most; the full list, with reasons, is in [AGENTS.md](AGENTS.md#hard-rules).
 
-- Secrets never enter Git, Terraform inputs or outputs, cloud-init
-  `user_data`, Ansible output or screenshots; provider credentials live in
-  environment variables only; state files are sensitive.
-- One UUID, one REALITY shortId and one AmneziaWG peer key per device, never
-  shared, so one device can be revoked without touching another.
+- Secrets never enter Git, Terraform inputs or outputs, cloud-init `user_data`, Ansible output
+  or screenshots; provider credentials live in environment variables only; state files are sensitive.
+- One UUID, one REALITY shortId and one AmneziaWG peer key per device, never shared, so one
+  device can be revoked without touching another.
 - No public admin panel and no remote installer piped into a root shell.
-- A CDN is not the filtered-path baseline
-  ([decision 0001](docs/decisions/0001-cdn-not-filtered-path-baseline.md)).
+- A CDN is not the filtered-path baseline ([decision 0001](docs/decisions/0001-cdn-not-filtered-path-baseline.md)).
 - Every version is pinned; pre-releases go through staging only.
 
 ## License

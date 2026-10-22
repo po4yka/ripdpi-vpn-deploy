@@ -282,8 +282,17 @@ sing-box does not implement that transport. Use the RIPDPI-specific artifact
 when one client must receive P0, P1, and P2 together:
 
 ```bash
-make emit-bundle CLIENT=laptop > laptop.ripdpi.json
+(
+  set -e -o noclobber
+  umask 077
+  mkdir -p secrets/local/clients/laptop
+  make emit-bundle CLIENT=laptop > secrets/local/clients/laptop/laptop.ripdpi.json
+)
 ```
+
+The bundle carries the same live credentials as the sing-box document and goes
+to the same private directory; it reads the encrypted file directly, so no
+`make decrypt` or `make clean` is needed around it.
 
 Do not import the RIPDPI artifact into a plain sing-box client: it contains
 both the non-standard `ripdpi` object and an XHTTP outbound.
