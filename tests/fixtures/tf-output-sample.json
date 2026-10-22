@@ -48,12 +48,6 @@
     "value": [
       { "name": "xray", "protocol": "tcp", "port": 443, "port_range": null },
       {
-        "name": "xray-fallback",
-        "protocol": "tcp",
-        "port": 2053,
-        "port_range": null
-      },
-      {
         "name": "nginx-xhttp",
         "protocol": "tcp",
         "port": 8443,

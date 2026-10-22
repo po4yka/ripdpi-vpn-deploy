@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+REALITY alternate listeners are opt-in: examples and the legacy listener set
+only declare the primary port. An enabled `xray_fallback_port` also requires an
+explicit matching `public_listeners` entry; runtime/provider parity stays strict.
+
 Enabled provider filtering exports its exact return range as
 `nat_source_port_range`. Inventory passes it as `terraform_nat_source_port_range`;
 AWG and split-hop egress remap forwarded TCP/UDP source ports into that range.

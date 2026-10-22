@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+The opt-in legacy listener set and provider examples exclude alternate
+REALITY ports. Publishing one requires an explicit `public_listeners` entry
+and the matching Ansible `xray_fallback_port`; tests retain explicit opt-in
+coverage. Existing explicit operator contracts are not rewritten.
+
 **Per-provider root, identical outputs** — Terraform module sources can't
 be variable-driven, so each provider gets its own root under
 `providers/<name>/`. Every root exports the same outputs: `server_ipv4`,

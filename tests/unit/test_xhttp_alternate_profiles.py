@@ -261,6 +261,16 @@ def test_make_native_emitter_preserves_literal_inputs(tmp_path, value):
 @pytest.mark.parametrize('port', [443, 2053, 8443])
 def test_alternate_cannot_advertise_a_role_rejected_listener_collision(inputs, port):
     _, context, _, emit = inputs
+    context['xray_fallback_port'] = 2053
     context['nginx_xhttp_fallback_port'] = port
     with pytest.raises(ValueError, match='invalid-transport-input'):
         emit()
+
+
+def test_disabled_reality_alternate_does_not_reserve_its_former_port(inputs):
+    _, context, _, emit = inputs
+    assert context['xray_fallback_port'] == 0
+    context['nginx_xhttp_fallback_port'] = 2053
+    payload, _ = emit()
+    assert [outbound['server_port'] for outbound in payload['outbounds']
+            if outbound.get('transport', {}).get('type') == 'xhttp'] == [8443, 2053]

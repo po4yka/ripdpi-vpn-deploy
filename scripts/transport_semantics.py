@@ -113,7 +113,7 @@ def xhttp_endpoints(doc: dict, context: dict) -> list[dict]:
                      "port": context.get("nginx_xhttp_fallback_port", 2083)}
         served_origin(alternate["host"], alternate["port"])
         cdn = {**context.get("cdn_front", {}), **doc.get("cdn_front", {})}
-        reserved = (primary["port"], context.get("xray_port", 443), context.get("xray_fallback_port", 2053),
+        reserved = (primary["port"], context.get("xray_port", 443), context.get("xray_fallback_port", 0),
                     cdn.get("port", context.get("cdn_front_port", 8443)))
         if alternate["port"] in reserved:
             raise ValueError("invalid-xhttp-alternate")
