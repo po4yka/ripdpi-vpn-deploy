@@ -166,9 +166,12 @@ def classify(rows: list[dict]) -> dict:
         suspect = [row for row in selected if row["bytes"] >= 16384]
         if not baseline or not suspect or not all(row["completed"] for row in baseline):
             return result
-        median = statistics.median(row["rtt_ms"] for row in baseline)
+        # Total time grows with body size even at a constant healthy rate.
+        # Compare per-byte time; zero-duration samples have no timing resolution.
+        rates = [row["rtt_ms"] / row["bytes"] for row in baseline if row["rtt_ms"] > 0]
+        median = statistics.median(rates) if rates else 0
         for row in suspect:
-            if not row["completed"] or (median > 0 and row["rtt_ms"] >= 3 * median):
+            if not row["completed"] or (median > 0 and row["rtt_ms"] / row["bytes"] >= 3 * median):
                 result.update(verdict="throttled", threshold_bytes=row["bytes"])
                 return result
     result["verdict"] = "ok"

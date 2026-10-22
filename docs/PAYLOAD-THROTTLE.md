@@ -70,9 +70,9 @@ The script emits exactly one JSON object with `verdict`, `rtt_ms`, `asn`,
 probe field name, not a separate network round-trip measurement.
 
 - `ok`: every requested direction has small and large samples; all complete
-  without a large-step duration at least three times the small-step median.
+  without a large-step time per byte at least three times the small-step median.
 - `throttled`: a valid small baseline precedes a network completion cliff or
-  duration spike at a size of at least 16384 bytes.
+  time-per-byte spike at a size of at least 16384 bytes.
 - `blocked`: no transfer completes and failures are network failures.
 - `unknown`: incomplete ladder or failed small baseline with some success.
 - `error`: malformed inputs, TLS verification, unexpected HTTP/content,
@@ -80,6 +80,9 @@ probe field name, not a separate network round-trip measurement.
 
 These are observed signatures. `blocked` and `throttled` do not establish a
 censorship cause; origin failure and ordinary network faults can look similar.
+Constant-rate transfers are not throttled merely because a larger body takes
+longer. Download and upload use separate small-body rate baselines; zero-duration
+samples cannot establish a timing slowdown.
 The 16384-byte classification boundary is a diagnostic reference, not a universal
 network rule. This standalone probe does not itself authorize rotation or bypass
 the separate deployment acceptance checks.

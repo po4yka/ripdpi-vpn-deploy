@@ -20,6 +20,11 @@ timeouts and downloads and refuse malformed inputs before network access.
 - **WHEN** the endpoint returns the exact requested canonical bytes within the deadline
 - **THEN** the probe records completed transfer and measured elapsed time
 
+#### Scenario: Constant transfer rate across different body sizes
+
+- **WHEN** successful larger transfers take proportionally longer at a constant byte rate
+- **THEN** body-size growth alone MUST NOT be classified as throttling; successful-transfer slowdown uses a separate per-byte baseline for each direction
+
 ### Requirement: REQ-PAYLOAD-PATH — Keep transport choice explicit
 
 The probe MUST support direct and explicit loopback SOCKS transport, ignore

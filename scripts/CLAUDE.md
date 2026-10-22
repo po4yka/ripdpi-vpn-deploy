@@ -4,7 +4,9 @@
 
 Payload probing requires exact canonical bytes and bounded curl output through
 `payload_probe_content.py`. Explicit SOCKS ignores ambient proxies and never
-falls back to direct. The loopback canary applies a total request deadline.
+falls back to direct. Successful-transfer slowdown compares time per byte
+within each direction so ordinary body-size growth is not throttling.
+The loopback canary applies a total request deadline.
 Recipient failover uses `payload_failover_policy.py` for strict two-origin HTTPS
 policy admission; all contributing hosts must agree before extended emission.
 Plain sing-box exports retain their RTT-only urltest contract.

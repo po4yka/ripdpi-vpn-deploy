@@ -216,7 +216,8 @@ def row(size, duration=10, completed=True, direction="download"):
 
 @pytest.mark.parametrize("rows,verdict,threshold", [
     ([row(1024), row(32768)], "ok", None),
-    ([row(1024), row(32768, 100)], "throttled", 32768),
+    ([row(1024), row(32768, 100)], "ok", None),
+    ([row(1024), row(32768, 1000)], "throttled", 32768),
     ([row(1024), row(32768, completed=False)], "throttled", 32768),
     ([row(1024, completed=False), row(32768, completed=False)], "blocked", None),
     ([row(1024), row(4096)], "unknown", None),
@@ -294,3 +295,16 @@ def test_socks_requires_explicit_asn_before_any_discovery(monkeypatch):
     monkeypatch.setattr(probe.subprocess, "run", forbidden)
     with pytest.raises(ValueError, match="proxy-requires-asn"):
         probe.probe(["--host", "control.example", "--socks-port", "1080", "--no-state"])
+
+
+def test_constant_transfer_rate_is_not_payload_throttling():
+    rows = [row(size, size // 1024 * 10) for size in (1024, 4096, 16384, 32768, 65536)]
+    assert probe.classify(rows)["verdict"] == "ok"
+
+
+def test_upload_has_its_own_rate_baseline():
+    rows = [row(size, size // 1024 * 10) for size in (1024, 4096, 32768)]
+    rows += [row(1024, 100, direction="upload"), row(32768, 3200, direction="upload")]
+    assert probe.classify(rows)["verdict"] == "ok"
+    rows[-1]["rtt_ms"] = 10000
+    assert probe.classify(rows)["verdict"] == "throttled"
