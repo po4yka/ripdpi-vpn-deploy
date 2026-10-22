@@ -171,6 +171,14 @@ SSH stdin. Keep inventory parsing non-executable and local/remote reads bounded
 and no-follow. The controller validates every output field. Do not add restic,
 watchdog, readiness, Ansible or provider calls to fill absent evidence.
 
+`fleet-status.sh` uses the same collector and provider/environment selection
+mode without changing exact-name inspection. Its watchdog verdict is local and
+requires a completed fresh invocation; client-path health remains unknown.
+`fleet-rotate.sh` separately admits authenticated liveness for an explicit
+survivor pool. Its Python controller owns strict plan parsing, immutable plan
+identity and a serialized durable journal; the liveness adapter does not mutate
+the standalone monitoring state or generate rotation approvals.
+
 ## Liveness sentinels, disposable staging, and retirement
 
 **Intent preparation is an offline assembly step** —

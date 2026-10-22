@@ -45,6 +45,27 @@ def test_inventory_requires_explicit_exact_subset(tmp_path):
             m.select_hosts(path, selected)
 
 
+def test_provider_environment_selection_uses_only_exact_inventory_metadata(tmp_path):
+    m = module()
+    path = inventory(tmp_path, "provider=upcloud env=prod")
+    selected = m.select_hosts(path, ["upcloud:prod"], selection_kind="provider-env", include_variables=True)
+    assert selected[0]["name"] == "node-a"
+    assert selected[0]["variables"]["provider"] == "upcloud"
+    assert selected[0]["variables"]["env"] == "prod"
+    for pairs in ([], ["upcloud"], ["upcloud:prod:extra"], ["upcloud:*"], ["upcloud:prod", "upcloud:prod"], ["upcloud:missing"]):
+        with pytest.raises(m.InspectionError):
+            m.select_hosts(path, pairs, selection_kind="provider-env")
+    path.write_text(path.read_text().replace("node-b ansible_host", "node-b provider=upcloud env=prod ansible_host"))
+    with pytest.raises(m.InspectionError, match="ambiguous-provider-environment"):
+        m.select_hosts(path, ["upcloud:prod"], selection_kind="provider-env")
+
+
+def test_unknown_host_selection_kind_is_rejected(tmp_path):
+    m = module()
+    with pytest.raises(m.InspectionError, match="unsupported-selection-kind"):
+        m.select_hosts(inventory(tmp_path), ["node-a"], selection_kind="guess")
+
+
 def test_collector_membership_reuses_exact_vpn_host_without_redefinition(tmp_path):
     m = module()
     path = inventory(tmp_path)

@@ -360,9 +360,16 @@ def _local_file(path, private=False):
     return str(Path(path).expanduser().absolute())
 
 
-def select_hosts(inventory_path, selected, *, primary_section="vpn", include_variables=False):
-    if not selected or len(selected) != len(set(selected)) or any(not SAFE_NAME.fullmatch(s) or s == "all" for s in selected):
+def select_hosts(inventory_path, selected, *, primary_section="vpn", include_variables=False, selection_kind="name"):
+    if selection_kind not in ("name", "provider-env"):
+        raise InspectionError("unsupported-selection-kind")
+    if not selected or any(not isinstance(s, str) for s in selected) or len(selected) != len(set(selected)):
         raise InspectionError("explicit-host-subset-required")
+    for selection in selected:
+        parts = selection.split(":") if selection_kind == "provider-env" else [selection]
+        if (len(parts) != (2 if selection_kind == "provider-env" else 1)
+                or any(not SAFE_NAME.fullmatch(part) or part == "all" for part in parts)):
+            raise InspectionError("explicit-host-subset-required")
     sections = ("vpn", "vpn-observability-control", "observability-kuma")
     if primary_section not in sections:
         raise InspectionError("unsupported-inventory-section")
@@ -417,6 +424,19 @@ def select_hosts(inventory_path, selected, *, primary_section="vpn", include_var
             if key.startswith("ansible_") and key not in ("ansible_host", "ansible_user", "ansible_port", "ansible_ssh_private_key_file", "ansible_python_interpreter"):
                 raise InspectionError("unsupported-connection-option")
             target[key] = value
+    if selection_kind == "provider-env":
+        resolved = []
+        for pair in selected:
+            provider, environment = pair.split(":")
+            matches = [name for name, values in hosts.items()
+                       if primary_section in values["__sections"]
+                       and values.get("provider") == provider and values.get("env") == environment]
+            if not matches:
+                raise InspectionError("host-not-found")
+            if len(matches) != 1:
+                raise InspectionError("ambiguous-provider-environment")
+            resolved.append(matches[0])
+        selected = resolved
     result = []
     for name in selected:
         if name not in hosts or primary_section not in hosts[name].get("__sections", set()):

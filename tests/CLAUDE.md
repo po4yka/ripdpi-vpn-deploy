@@ -14,6 +14,13 @@
 
 ## Design decisions
 
+Fleet regressions distinguish strict inventory-bound collection, completed
+watchdog evidence and authenticated client-path health. Rotation tests exercise
+positive UDP-only survivors and successful resume as well as stale/wrong-target
+evidence, changed plans, unsafe state, competing processes and interrupted
+publication. Isolated external adapters prove orchestration, not live reachability.
+Keep dry-run free of state creation and private liveness reads.
+
 Recovery boundary tests use real age ciphertext and preserve the prior state
 inode on failed decryption or structure validation. Same-second writers publish
 distinct complete private backups; reserved environment aliases refuse before

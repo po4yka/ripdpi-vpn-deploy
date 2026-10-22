@@ -96,19 +96,23 @@ p.write_text('{BROKEN-PRIVATE-CANARY' if mode=='malformed' else json.dumps(d))
 def test_fleet_passes_optional_zone_as_environment_not_command(tmp_path, zone):
     scripts = tmp_path / 'scripts'
     scripts.mkdir()
-    shutil.copy(ROOT / 'scripts/fleet-rotate.sh', scripts)
-    executable(scripts / 'terraform-env.sh', '#!/bin/sh\necho 192.0.2.7\n')
     executable(scripts / 'blue-green.sh', '#!/bin/sh\nprintf "%s" "$GREEN_ZONE" > "$ZONE_CAPTURE"\n')
-    executable(scripts / 'audit-log.sh', '#!/bin/sh\nexit 0\n')
-    executable(tmp_path / 'bin/timeout', '#!/bin/sh\nexit 0\n')
-    plan = tmp_path / 'plan.yml'
-    plan.write_text(yaml.safe_dump({'id':'zone-test','min_active':1,'rotations':[
-        {'current':'upcloud:prod','new_env':'green','new_zone':zone}]}))
     capture = tmp_path / 'zone'
-    result = subprocess.run(['bash',str(scripts / 'fleet-rotate.sh'),'--plan',str(plan)],
-                            input='yes\n', capture_output=True, text=True,
-                            env={**os.environ,'ZONE_CAPTURE':str(capture),
-                                 'PATH':str(tmp_path / 'bin')+os.pathsep+os.environ['PATH']})
+    entry = {'current':'upcloud:prod', 'new_env':'green'}
+    if zone:
+        entry['new_zone'] = zone
+    # Exercise the real child launcher and inherited lock descriptor offline.
+    program = """import json, os, sys
+sys.path.insert(0, sys.argv[1])
+from fleet_rotation import execute_rotation
+with open(sys.argv[2] + '/lock', 'w') as lock:
+    execute_rotation(json.loads(sys.argv[3]), sys.argv[2], lock.fileno())
+"""
+    import sys
+    result = subprocess.run([sys.executable, '-c', program, str(ROOT / 'scripts'),
+                             str(tmp_path), json.dumps(entry)],
+                            capture_output=True, text=True,
+                            env={**os.environ,'ZONE_CAPTURE':str(capture)})
     assert result.returncode == 0, result.stdout + result.stderr
     assert capture.read_text() == zone
 
