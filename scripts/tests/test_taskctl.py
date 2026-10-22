@@ -3259,6 +3259,73 @@ class TaskctlHistoryTest(TaskctlFixture):
         self.git("merge", "--no-ff", "feature", "-m", "PR merge")
         taskctl.validate_deleted_history(self.root, base)
 
+    def test_base_purge_import_after_earlier_task_creation_merge(self) -> None:
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        self.commit_all("bootstrap owner before source exists")
+        integration = self.git("branch", "--show-current")
+        self.git("branch", "feature")
+        source = self.add_simple_task(status="review")
+        self.write_board()
+        self.commit_all("introduce source on base")
+        self.git("switch", "feature")
+        (self.root / "feature.txt").write_text("unrelated feature\n")
+        self.commit_all("implement unrelated feature")
+        self.git("merge", integration, "-m", "import active source")
+        self.git("switch", integration)
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        self.commit_all("complete source in base")
+        self.purge_simple_task(source)
+        self.write_board()
+        base = self.commit_all("purge source in base")
+        self.git("switch", "feature")
+        self.git("merge", integration, "-m", "import base purge")
+        taskctl.validate_deleted_history(self.root, base)
+        self.git("switch", integration)
+        self.git("merge", "--no-ff", "feature", "-m", "PR merge")
+        taskctl.validate_deleted_history(self.root, base)
+
+    def test_exact_stale_snapshot_import_after_base_purge_is_audited(self) -> None:
+        source = self.add_simple_task(status="review")
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        active = self.commit_all("add active source")
+        relative = source.relative_to(self.root)
+        execution = Path("docs/tasks/work/CIC-1786234567890001.md")
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        self.commit_all("complete source in base")
+        self.purge_simple_task(source)
+        self.write_board()
+        base = self.commit_all("purge source in base")
+        for path in (relative, execution):
+            (self.root / path).write_bytes(subprocess.check_output(
+                ["git", "show", f"{active}:{path.as_posix()}"], cwd=self.root,
+            ))
+        self.write_board()
+        self.git("add", ".")
+        tree = self.git("write-tree")
+        merge = self.git(
+            "commit-tree", tree, "-p", base, "-p", active,
+            "-m", "restore exact stale source in synthetic merge",
+        )
+        self.git("update-ref", "HEAD", merge, base)
+        index = taskctl.build_terminal_history_index(
+            self.root, taskctl.load_project_config(self.root),
+        )
+        self.assertTrue(taskctl.task_lifecycle_changed_outside_base(
+            self.root, base, "CIC-1786234567890001", dict(index.by_revision),
+        ))
+        source.unlink()
+        (self.root / execution).unlink()
+        self.write_board()
+        self.commit_all("purge resurrected source without closing")
+        with self.assertRaisesRegex(
+            taskctl.ContractError, "without a preceding committed terminal",
+        ):
+            taskctl.validate_deleted_history(self.root, base)
+
     def test_base_purge_cannot_hide_a_new_invalid_incarnation(self) -> None:
         source = self.add_simple_task(status="review")
         self.add_simple_task(task_id="CIC-1786234567890003")

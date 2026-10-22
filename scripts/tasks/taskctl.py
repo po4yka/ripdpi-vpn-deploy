@@ -3483,21 +3483,23 @@ def task_lifecycle_changed_outside_base(
             return True
         if not differs(parents[0], revision):
             continue
-        # A merge may import a purge from the explicit trusted base. Any
-        # independent edit, including merge-only edits or resurrection, still
-        # needs the complete terminal-history audit below.
+        # A merge may import active state before a later trusted purge. Only
+        # the latest common ancestor with the explicit base can authorize that
+        # exact projection; older ancestors cannot excuse stale resurrection.
         for parent in parents[1:]:
             ancestry = run_command(
                 ("git", "merge-base", "--is-ancestor", parent, base), root=root
             )
             if ancestry.returncode not in (0, 1):
                 fail("cannot inspect trusted task lifecycle ancestry")
-            if (
-                ancestry.returncode == 0
-                and not differs(parent, revision)
-                and not differs(base, revision)
-            ):
-                break
+            if ancestry.returncode == 0 and not differs(parent, revision):
+                common = run_command(
+                    ("git", "merge-base", "--all", base, revision), root=root
+                )
+                if common.returncode != 0:
+                    fail("cannot inspect latest trusted task lifecycle ancestor")
+                if (common.stdout or "").splitlines() == [parent]:
+                    break
         else:
             return True
     return False
