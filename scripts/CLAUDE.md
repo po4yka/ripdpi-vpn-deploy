@@ -6,6 +6,10 @@ Payload probing requires exact canonical bytes and bounded curl output through
 `payload_probe_content.py`. Explicit SOCKS ignores ambient proxies and never
 falls back to direct. Successful-transfer slowdown compares time per byte
 within each direction so ordinary body-size growth is not throttling.
+Classify every direction before combining evidence: any proven cliff wins
+over an underconstrained direction, using the smallest proven threshold.
+HTTP/2 framing and stream failures are network evidence; certificate and
+content failures retain error priority.
 The loopback canary applies a total request deadline.
 Recipient failover uses `payload_failover_policy.py` for strict two-origin HTTPS
 policy admission; all contributing hosts must agree before extended emission.

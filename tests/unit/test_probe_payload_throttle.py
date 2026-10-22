@@ -308,3 +308,84 @@ def test_upload_has_its_own_rate_baseline():
     assert probe.classify(rows)["verdict"] == "ok"
     rows[-1]["rtt_ms"] = 10000
     assert probe.classify(rows)["verdict"] == "throttled"
+
+
+@pytest.mark.parametrize("seed", ["0", "1", "2", "3"])
+@pytest.mark.parametrize("direction", ["download", "upload"])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_proven_cliff_survives_unknown_direction_and_hash_order(seed, direction, reverse):
+    other = "upload" if direction == "download" else "download"
+    rows = [row(1024, direction=direction), row(32768, completed=False, direction=direction),
+            row(1024, completed=False, direction=other), row(32768, direction=other)]
+    if reverse:
+        rows.reverse()
+    result = subprocess.run([sys.executable, "-c",
+        "import json, sys; from payload_probe_content import classify; "
+        "print(json.dumps(classify(json.load(sys.stdin))))"],
+        input=json.dumps(rows), text=True, capture_output=True, check=True,
+        env=dict(os.environ, PYTHONHASHSEED=seed, PYTHONPATH=str(ROOT / "scripts")), timeout=10)
+    classified = json.loads(result.stdout)
+    assert classified["verdict"] == "throttled"
+    assert classified["threshold_bytes"] == 32768
+
+
+@pytest.mark.parametrize("direction", ["download", "upload"])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_multiple_cliffs_report_smallest_proven_threshold(direction, reverse):
+    other = "upload" if direction == "download" else "download"
+    rows = [row(1024, direction=direction), row(65536, completed=False, direction=direction),
+            row(32768, completed=False, direction=direction), row(1024, direction=other),
+            row(32768, completed=False, direction=other), row(16384, 1000, direction=other)]
+    if reverse:
+        rows.reverse()
+    result = probe.classify(rows)
+    assert result["verdict"] == "throttled"
+    assert result["threshold_bytes"] == 16384
+
+
+@pytest.mark.parametrize("rows,verdict", [
+    ([row(1024), row(32768), row(1024, direction="upload")], "unknown"),
+    ([row(1024), row(32768), row(32768, direction="upload")], "unknown"),
+    ([row(1024), row(32768), row(1024, completed=False, direction="upload"),
+      row(32768, direction="upload")], "unknown"),
+    ([row(1024, completed=False), row(32768, completed=False),
+      row(1024, completed=False, direction="upload"), row(32768, completed=False, direction="upload")], "blocked"),
+])
+def test_combined_direction_qualification(rows, verdict):
+    result = probe.classify(rows)
+    assert result["verdict"] == verdict
+    assert result["threshold_bytes"] is None
+
+
+@pytest.mark.parametrize("exit_code,error_kind", [(16, "network"), (92, "network"),
+    (28, "network"), (35, "network"), (56, "network"), (60, "unexpected-response"),
+    (63, "unexpected-response"), (0, "payload-mismatch")])
+def test_injected_curl_exit_classification(tmp_path, monkeypatch, exit_code, error_kind):
+    # Controlled subprocess output tests the curl adapter, not live HTTP/2 reachability.
+    output = b"wrong body\n200 0.01" if exit_code == 0 else b"\n000 0.01"
+    real_popen = subprocess.Popen
+
+    def exit_process(command, **kwargs):
+        assert command[0] == "curl"
+        return real_popen([sys.executable, "-c",
+            "import sys; sys.stdout.buffer.write(bytes.fromhex(sys.argv[1])); sys.exit(int(sys.argv[2]))",
+            output.hex(), str(exit_code)], **kwargs)
+
+    monkeypatch.setattr(probe.subprocess, "Popen", exit_process)
+    args = probe.arguments(["--host", "localhost", "--asn", "64500"])
+    failure = probe.transfer(args, 32768, tmp_path)
+    assert failure["completed"] is False
+    assert failure["error_kind"] == error_kind
+    blocked = probe.classify([failure])
+    cliff = probe.classify([row(1024), failure])
+    if error_kind == "network":
+        assert blocked["verdict"] == "blocked"
+        assert cliff["verdict"] == "throttled"
+        assert cliff["threshold_bytes"] == 32768
+    else:
+        # Security/content errors outrank both total failure and a proven cliff.
+        assert blocked["verdict"] == "error"
+        cliff = probe.classify([row(1024), row(65536, completed=False), failure])
+        assert cliff["verdict"] == "error"
+        assert cliff["error_kind"] == error_kind
+        assert cliff["threshold_bytes"] is None

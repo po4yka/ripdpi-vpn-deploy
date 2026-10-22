@@ -14,6 +14,7 @@ openspec_change: scr-1792659157802819-payload-verified-failover
 created: 2026-10-22
 updated: 2026-10-22
 related_tasks: ["po4yka/RIPDPI#TRN-1792659369802828"]
+status_detail: Both payload-probe review defects are corrected and all 70 probe regressions pass; complete local and hosted acceptance remain required.
 ---
 
 ## Goal

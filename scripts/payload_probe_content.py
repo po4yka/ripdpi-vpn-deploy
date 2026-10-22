@@ -18,7 +18,7 @@ import time
 
 MAX_BYTES = 65536
 PREFIX = b"vpn-deploy-payload-v1:"
-NETWORK_ERRORS = {5, 6, 7, 18, 28, 35, 52, 55, 56, 97}
+NETWORK_ERRORS = {5, 6, 7, 16, 18, 28, 35, 52, 55, 56, 92, 97}
 
 
 def payload(size: int) -> bytes:
@@ -149,6 +149,20 @@ def transfer(args, size: int, directory: Path, upload: bool = False) -> dict:
     return result
 
 
+def classify_direction(rows: list[dict]) -> tuple[str, int | None]:
+    baseline = [row for row in rows if row["bytes"] < 16384]
+    suspect = [row for row in rows if row["bytes"] >= 16384]
+    if not baseline or not suspect or not all(row["completed"] for row in baseline):
+        return "unknown", None
+    # Total time grows with body size even at a constant healthy rate.
+    # Compare per-byte time; zero-duration samples have no timing resolution.
+    rates = [row["rtt_ms"] / row["bytes"] for row in baseline if row["rtt_ms"] > 0]
+    median = statistics.median(rates) if rates else 0
+    thresholds = [row["bytes"] for row in suspect
+                  if not row["completed"] or (median > 0 and row["rtt_ms"] / row["bytes"] >= 3 * median)]
+    return ("throttled", min(thresholds)) if thresholds else ("ok", None)
+
+
 def classify(rows: list[dict]) -> dict:
     completed = [row for row in rows if row["completed"]]
     rtt = int(statistics.median(row["rtt_ms"] for row in completed)) if completed else None
@@ -160,21 +174,13 @@ def classify(rows: list[dict]) -> dict:
     if not completed:
         result["verdict"] = "blocked"
         return result
-    for direction in {row["direction"] for row in rows}:
-        selected = [row for row in rows if row["direction"] == direction]
-        baseline = [row for row in selected if row["bytes"] < 16384]
-        suspect = [row for row in selected if row["bytes"] >= 16384]
-        if not baseline or not suspect or not all(row["completed"] for row in baseline):
-            return result
-        # Total time grows with body size even at a constant healthy rate.
-        # Compare per-byte time; zero-duration samples have no timing resolution.
-        rates = [row["rtt_ms"] / row["bytes"] for row in baseline if row["rtt_ms"] > 0]
-        median = statistics.median(rates) if rates else 0
-        for row in suspect:
-            if not row["completed"] or (median > 0 and row["rtt_ms"] / row["bytes"] >= 3 * median):
-                result.update(verdict="throttled", threshold_bytes=row["bytes"])
-                return result
-    result["verdict"] = "ok"
+    directions = [classify_direction([row for row in rows if row["direction"] == direction])
+                  for direction in sorted({row["direction"] for row in rows})]
+    thresholds = [threshold for verdict, threshold in directions if verdict == "throttled"]
+    if thresholds:
+        result.update(verdict="throttled", threshold_bytes=min(thresholds))
+    elif all(verdict == "ok" for verdict, _ in directions):
+        result["verdict"] = "ok"
     return result
 
 
