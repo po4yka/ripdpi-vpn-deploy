@@ -584,7 +584,7 @@ def _primary_canary_payload(generation: str, now: int) -> bytes:
         "source_generation": generation,
         "summary": "Primary Telegram route canary.",
         "evidence_class": "synthetic-primary-canary",
-        "runbook": "docs/RUNBOOK-incident.md",
+        "runbook": "docs/how-to/incident.md",
     }
     return json.dumps(
         {

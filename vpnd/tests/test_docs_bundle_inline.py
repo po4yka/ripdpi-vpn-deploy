@@ -14,25 +14,25 @@ def test_report_with_no_keywords_produces_empty_excerpts():
 # Rust test: vpnd/src/docs_bundle.rs::fleet_status_keyword_triggers_excerpt
 def test_fleet_status_keyword_triggers_excerpt():
     result = docs.relevant_runbook_excerpts("fleet-status check failed on host")
-    assert result and "RUNBOOK-incident.md" in result
+    assert result and "how-to/incident.md" in result
 
 
 # Rust test: vpnd/src/docs_bundle.rs::asn_drift_keyword_triggers_incident_runbook
 def test_asn_drift_keyword_triggers_incident_runbook():
-    assert "RUNBOOK-incident.md" in docs.relevant_runbook_excerpts("asn-drift detected")
+    assert "how-to/incident.md" in docs.relevant_runbook_excerpts("asn-drift detected")
 
 
 # Rust test: vpnd/src/docs_bundle.rs::burn_check_keyword_triggers_multiple_runbooks
 def test_burn_check_keyword_triggers_multiple_runbooks():
     result = docs.relevant_runbook_excerpts("burn-check alert")
-    assert "RUNBOOK-incident.md" in result and "RUNBOOK-rotate.md" in result
+    assert "how-to/incident.md" in result and "how-to/rotate.md" in result
 
 
 # Rust test: vpnd/src/docs_bundle.rs::duplicate_runbook_suppressed_for_two_matching_keywords
 def test_duplicate_runbook_suppressed_for_two_matching_keywords():
     assert (
         docs.relevant_runbook_excerpts("fleet-status asn-drift").count(
-            "Runbook excerpt: RUNBOOK-incident.md"
+            "Runbook excerpt: how-to/incident.md"
         )
         == 1
     )
@@ -50,7 +50,8 @@ def test_runbook_excerpts_preserve_lf_boundaries_and_unicode_separators(tmp_path
         + "\r\n"
         + "\n".join(f"line-{i}" for i in range(61))
     )
-    (tmp_path / "RUNBOOK-incident.md").write_bytes(text.encode())
+    (tmp_path / "how-to").mkdir()
+    (tmp_path / "how-to/incident.md").write_bytes(text.encode())
     monkeypatch.setattr(docs, "docs_path", lambda: tmp_path)
     result = docs.relevant_runbook_excerpts("asn-drift")
     first = "first\vsecond\fthird\u0085fourth\u2028fifth\u2029sixth\rseventh"

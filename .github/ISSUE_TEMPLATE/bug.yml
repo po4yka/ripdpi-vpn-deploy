@@ -1,0 +1,56 @@
+name: Bug report
+description: Something in the repository behaves differently from what its documentation says.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include credentials, host addresses, hostnames, client identifiers, Terraform state,
+        decrypted secrets, inventory or screenshots that show them. A redacted sample that keeps its
+        shape still identifies a deployment. Security problems with a live node go through the
+        private channel in `.github/SECURITY.md`, never through an issue.
+  - type: input
+    id: revision
+    attributes:
+      label: Revision
+      description: Output of `git rev-parse HEAD` on the checkout that showed the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What the documentation or code promises
+      description: Name the page or target, for example `docs/how-to/deploy.md` or `make validate`.
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: What happened instead
+      description: Exact command, exit code and the relevant part of the output, redacted as described above.
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Layer
+      options:
+        - Terraform
+        - cloud-init
+        - Ansible
+        - Secrets (SOPS, age)
+        - vpnd or scripts
+        - CI or GitHub automation
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I ran the problem against a clean checkout without a local `.fleet.mk` where that was possible.
+        - label: This issue contains no credentials, addresses, hostnames, client identifiers or state.
+          required: true

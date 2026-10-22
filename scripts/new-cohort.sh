@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Add a Terraform root for a second VPS in the same provider (cohort
-# pattern from RUNBOOK-add-fallback.md). Copies the existing
+# pattern from docs/how-to/add-fallback.md). Copies the existing
 # `environments/<env>.tfvars` to a new ENV name, swaps `server_name` and
 # (optionally) `zone`, prints next steps.
 #
@@ -103,11 +103,11 @@ Next steps:
        make inventory
        # Authenticate and pin the public SSH identity before make wait.
        make wait
-  3. Select the cohort and exact inventory alias. Follow docs/RUNBOOK-restore.md
+  3. Select the cohort and exact inventory alias. Follow docs/how-to/restore.md
      (Fresh-node prerequisites): install SSH recovery, bootstrap Tailnet, render
      inventory with its confirmed handoff, migrate SSH ownership and prepare
      private contexts, promotion and fresh failure-receipt mappings.
-  4. Follow docs/RUNBOOK-deploy.md for separate dry-run, deploy and verify steps.
+  4. Follow docs/how-to/deploy.md for separate dry-run, deploy and verify steps.
 EOF
 if [[ "$PROVIDER" == hetzner ]]; then
   echo "Hetzner keeps one SSH key per fingerprint in a project: set a separate admin_ssh_public_key in $DST."

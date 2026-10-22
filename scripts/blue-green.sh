@@ -243,7 +243,7 @@ Before convergence, prepare the new node's pinned public and Tailnet SSH paths:
   make install-ssh-recovery
   make bootstrap-tailnet
   make migrate-ssh-ownership
-Use the exact green alias and the private inputs documented in docs/TAILNET-MANAGEMENT.md.
+Use the exact green alias and the private inputs documented in docs/how-to/tailnet-management.md.
 Set GREEN_TAILNET_HANDOFF to the confirmed handoff path and
 DEPLOY_SSH_CONTEXTS_FILE to the prepared socket-context file before starting
 this script. Those paths may be populated during this pause.
