@@ -224,7 +224,7 @@ class LocalIO:
     def publication_io(self, host):
         from device_migration_io import PublisherIO
         publication = dict(self.publications[host], source_alias=host, target_alias=host)
-        return PublisherIO(publication, self.hosts, self.commands, revalidate=self.revalidate)
+        return PublisherIO({'publication': publication}, self.hosts, self.commands, revalidate=self.revalidate)
 
     def publisher(self, host, action, token_hash=None, expected=None, document=None, *, cleanup=False):
         self.revalidate()

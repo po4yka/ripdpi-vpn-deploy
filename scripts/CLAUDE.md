@@ -28,8 +28,9 @@ resume or treat status as fresh runtime verification.
 
 Device migration uses separate source/target SOPS authorities and an encrypted
 intent before cross-document writes. Exact inventory, host pins, alternate
-sources and endpoint fingerprints fence resume. Publisher IO initializes shared
-admission callbacks without shadowing its revalidation method. Publisher CAS
+sources and endpoint fingerprints fence resume. Publisher IO owns initialization
+of the complete plan, hosts, commands and admission callback; subclasses admit
+local values before the single base initialization. Publisher CAS
 preserves every active URL and expiry; registry identity includes the exact migration metadata.
 Preparation precedes target convergence. Publication and readiness re-run
 target verification and an expiring credential-free TLS route canary, then

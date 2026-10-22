@@ -118,8 +118,8 @@ def migration_lock(plan):
 
 class PublisherIO:
     """One admitted subscription namespace shared by migration and device lifecycle."""
-    def __init__(self, publication, hosts, commands, *, revalidate):
-        self.plan = {'publication': publication}
+    def __init__(self, plan, hosts, commands, *, revalidate):
+        self.plan = plan
         self.hosts, self.commands = hosts, commands
         self._revalidate = revalidate
 
@@ -197,26 +197,24 @@ class PublisherIO:
 
 class LocalIO(PublisherIO):
     def __init__(self, plan):
-        self.plan = plan
         aliases = list(dict.fromkeys([plan['source']['alias'], plan['target']['alias'],
                                      plan['publication']['source_alias'], plan['publication']['target_alias']]))
-        self.hosts = {h['name']: h for h in select_hosts(plan['inventory'], aliases, include_variables=True, include_cohorts=True)}
+        hosts = {h['name']: h for h in select_hosts(plan['inventory'], aliases, include_variables=True, include_cohorts=True)}
         for key in ('source', 'target'):
             node = plan[key]
             selected = select_hosts(plan['inventory'], [node['host']], include_variables=True, selection_kind='provider-env', include_cohorts=True)[0]
-            if selected != self.hosts[node['alias']] or selected['cohorts'] != [node['cohort']]:
+            if selected != hosts[node['alias']] or selected['cohorts'] != [node['cohort']]:
                 raise MigrationRefused('migration-inventory-identity-mismatch')
-        if self.hosts[plan['source']['alias']]['address'] == self.hosts[plan['target']['alias']]['address']:
+        if hosts[plan['source']['alias']]['address'] == hosts[plan['target']['alias']]['address']:
             raise MigrationRefused('distinct-migration-endpoints-required')
         # ssh_command admits the complete private key and known-hosts paths.
-        self.commands = {alias: ssh_command(host, plan['known_hosts']) for alias, host in self.hosts.items()}
+        commands = {alias: ssh_command(host, plan['known_hosts']) for alias, host in hosts.items()}
         with open(plan['known_hosts'], 'rb') as stream:
             pins = stream.read(65537)
         if len(pins) > 65536:
             raise MigrationRefused('migration-host-pins-limit')
-        self.admission = {'hosts': self.hosts, 'pins_sha256': sha(pins)}
-        super().__init__(plan['publication'], self.hosts, self.commands, revalidate=self._revalidate_admission)
-        self.plan = plan
+        self.admission = {'hosts': hosts, 'pins_sha256': sha(pins)}
+        super().__init__(plan, hosts, commands, revalidate=self._revalidate_admission)
 
     def read(self, path):
         return read_document(path)
