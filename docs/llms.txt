@@ -6,6 +6,7 @@
 
 - [Moved: observability operations](/md/OBSERVABILITY-OPERATIONS.md)
 - [Documentation](/md/README.md)
+- [Moved: RIPDPI bundle contract](/md/RIPDPI-BUNDLE.md)
 - [Documentation style guide](/md/STYLE.md)
 
 ## Tutorials

@@ -61,20 +61,48 @@ surface; [the target reference](docs/reference/make-targets.md) mirrors `make he
 ## Quick start
 
 [The quickstart](docs/tutorials/quickstart.md) takes a new operator from an empty
-provider account to a working node and a first client in about thirty minutes:
+provider account to a working node and a first client in about thirty minutes.
+It runs as three fail-fast blocks with a human review between each; `make clean`
+shreds the plaintext secrets when a block ends, even after a failure.
 
 ```bash
-make init PROVIDER=upcloud       # terraform init for the chosen provider
-make validate                    # fmt, validate, gitleaks, ansible-lint
-make decrypt && make plan        # plaintext secrets live only until `make clean`
-make apply && make inventory && make wait
-make dry-run && make deploy && make verify
-make emit-singbox CLIENT=laptop  # first client config
-make clean                       # shred the plaintext
+export PROVIDER=upcloud          # every make call below reads it (hetzner, vultr, scaleway)
+(
+  set -e
+  trap 'make clean || exit $?' EXIT
+  make init                      # terraform init for $PROVIDER
+  make validate                  # fmt, validate, gitleaks, ansible-lint
+  make decrypt && make plan
+)
 ```
 
-Every target that touches cloud credentials, inventory, SSH or decrypted
-secrets stops for review and runs only when an operator has authorised it.
+Review the plan. Stop on any unexpected update or replacement of an existing
+server; apply only the plan you reviewed.
+
+```bash
+(
+  set -e
+  trap 'make clean || exit $?' EXIT
+  make apply && make inventory && make wait
+  make decrypt && make dry-run   # full --check --diff
+)
+```
+
+Review the dry-run. If it shows a change you did not expect, stop and investigate.
+
+```bash
+(
+  set -e
+  trap 'make clean || exit $?' EXIT
+  make decrypt
+  make deploy && make verify
+  make emit-singbox CLIENT=laptop > laptop.singbox.json   # first client config
+)
+```
+
+Targets that touch cloud credentials, inventory, SSH or decrypted secrets
+mutate real infrastructure and do not prompt; an operator authorises each
+block after reviewing the output of the one before.
 
 ## Documentation
 

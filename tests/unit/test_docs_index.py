@@ -37,8 +37,9 @@ LINK = re.compile(r"\]\(([^)\s]+)\)")
 # Lower-case tokens that name a place, a regulator, a carrier or a censorship
 # apparatus. Names and headings describe behaviour instead (docs/STYLE.md).
 FORBIDDEN_LABEL_TOKENS = ("ru-", "-ru", "russia", "tspu", "rkn", "roskomnadzor")
-# Pages kept at the old top-level path because an immutable closed task record links to them.
-REDIRECT_STUBS = {"OBSERVABILITY-OPERATIONS.md"}
+# Pages kept at the old top-level path because an immutable closed task record or a
+# contract file vendored byte-identical in another repository links to them.
+REDIRECT_STUBS = {"OBSERVABILITY-OPERATIONS.md", "RIPDPI-BUNDLE.md"}
 
 
 def _tracked() -> set[str]:

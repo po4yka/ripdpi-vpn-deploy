@@ -140,3 +140,4 @@ Historical audits and notes kept for provenance. Links from these pages are not 
 | [demo/](demo/README.md) | Static demo of the recipient page served by the subscription host |
 | [measurements/](measurements/CLAUDE.md) | Measurement report template and dated reports |
 | [OBSERVABILITY-OPERATIONS.md](OBSERVABILITY-OPERATIONS.md) | Redirect stub kept for immutable closed task records |
+| [RIPDPI-BUNDLE.md](RIPDPI-BUNDLE.md) | Redirect stub kept for the bundle schema vendored in the client repository |

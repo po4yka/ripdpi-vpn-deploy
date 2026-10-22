@@ -146,4 +146,32 @@ Variables (override on command line):
   test-native-runtime        Run native integration tests in disposable Linux root environment
   test-four-transport-native Complete four-transport source/client acceptance in isolated Linux
   test-awg-source-candidate  Build and exercise exact AWG source pairs in local Docker (build-gate required)
+  transport-native-acceptance  Complete local four-protocol traffic, isolation and recovery suites
+  test-xhttp-delivery-matrix  Compare direct endpoints and typed XHTTP profiles with real engines
+  test-reality-target-validation  Exercise controlled TLS identities and bounded cleanup
+  test-awg-dualstack-runtime  Exercise dual-stack AWG forwarding, MTU and compensation in the isolated native lab
+  verify-awg-dualstack-client-evidence Validate invocation-bound Android native-core evidence from PEER_ROOT
+  test-transport-runtime-acceptance  Run complete consumer transactions in a separate fresh Linux root
+  test-probe-matrix-mtproto   Run the compiled Go helper tests
+  snapshot-check             Diff every Jinja render against tests/snapshot/golden/
+  snapshot-update            Refresh the goldens (run after intentional change)
+  validate-secrets           jsonschema check (strict if SECRETS_FILE is set)
+  validate-bundle            jsonschema + fingerprint check of a ripdpi bundle (BUNDLE=… or example)
+  actionlint-check           Validate every GitHub Actions workflow
+  zizmor-check               Audit owned GitHub automation (strict, offline)
+  cloud-init-schema          Render shared cloud-init and run cloud-init schema
+  tf-test                    terraform test for all provider roots
+  yamllint-check             Lint repository YAML with the CI configuration
+  shellcheck                 Lint every operator shell script
+  ci-fast                    Portable CI-parity bundle (excludes native Linux lane, Molecule and validate)
+  bats-test                  Run bats shell tests (tests/bats/)
+  vpnd-test                  complete Python vpnd test suite
+  vpnd-lint                  Python lint and type checks
+  vpnd-dependency-check      audit hash-locked Python runtime dependencies
+  vpnd-package-check         verify installed Python release artifacts
+  tf-policy                  terraform test + conftest OPA policy check for all providers
+  tf-policy-verify           Run pinned Conftest policy tests without provider credentials
+  network-exposure-review    Validate signed policy without changing managed hosts
+  molecule-test ROLE=<name>  Run one role's molecule scenario
+  molecule-full-stack        site.yml end-to-end inside a Docker container
 ```

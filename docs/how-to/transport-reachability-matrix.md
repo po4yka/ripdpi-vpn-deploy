@@ -175,8 +175,10 @@ as separate evidence.
 
 ## Template for the dated publish doc
 
-Save the consolidated two-vantage table at
-`docs/TRANSPORT-REACHABILITY-MATRIX-<YYYY-MM-DD>.md` using:
+Save the consolidated two-vantage table as a dated field report at
+`docs/measurements/transport-reachability-matrix-<YYYY-MM-DD>.md` (the folder
+contract in `docs/measurements/CLAUDE.md` applies: lower-case topic, date suffix,
+raw data before interpretation) using:
 
 ```markdown
 # Transport reachability matrix — <YYYY-MM-DD>

@@ -42,8 +42,15 @@ from it. Installation and development notes: [`vpnd/README.md`](../../vpnd/READM
 
 | Subcommand | Purpose |
 |---|---|
+| `vpnd fleet status` | Summary table across every host:env pair. |
+| `vpnd fleet rotate` | Coordinated rotation across the fleet. |
+| `vpnd fleet drift` | Diff fleet state against the last known-good tag. |
 
 ### `vpnd host`
 
 | Subcommand | Purpose |
 |---|---|
+| `vpnd host list` | List registered hosts. |
+| `vpnd host show` | Show one host record. |
+| `vpnd host add` | Add a host record. |
+| `vpnd host remove` | Remove a host record. |

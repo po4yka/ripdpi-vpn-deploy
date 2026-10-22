@@ -32,7 +32,9 @@ TARGETS = {
 
 def make_targets() -> str:
     text = (ROOT / "Makefile").read_text(encoding="utf-8")
-    match = re.search(r"^help:\n((?:\t.*\n)+)", text, re.MULTILINE)
+    # GNU Make ignores blank lines inside a recipe, so the help list continues
+    # past them until the next non-indented line.
+    match = re.search(r"^help:\n((?:\t.*\n|\n)+)", text, re.MULTILINE)
     if not match:
         raise SystemExit("Makefile: help recipe not found")
     lines = []
@@ -89,8 +91,8 @@ def vpnd_commands() -> str:
         if not nested:
             continue
         rows += ["", f"### `vpnd {name}`", "", "| Subcommand | Purpose |", "|---|---|"]
-        for choice in nested[0]._choices_actions:
-            rows.append(f"| `vpnd {name} {choice.dest}` | {_help(choice.help)} |")
+        for action_name, grandchild in nested[0].choices.items():
+            rows.append(f"| `vpnd {name} {action_name}` | {_help(grandchild.description)} |")
     return "\n".join(rows) + "\n"
 
 
