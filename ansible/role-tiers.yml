@@ -3,7 +3,7 @@
 # every Ansible role as CORE, TACTICAL, or RESEARCH.
 #
 # Rationale and the full ADR (three independent angles + reconciliation) live
-# in docs/ROLE-TIERING.md. Tiers:
+# in docs/decisions/0002-role-and-doc-tiering.md. Tiers:
 #
 #   core      — required for the family-VPN baseline (P0+P1+P2). Default-on
 #               (or always-on). If it breaks, the family loses connectivity

@@ -10,10 +10,10 @@ Cleanup authority is resource- and phase-bound. A run's explicit cleanup authori
 ## Classify what remains
 
 - **Configured runtime plaintext:** `make clean` removes the selected `SECRETS_FILE` through its canonical contract. Record any failure or retained plaintext; this does not remove provider resources, issued identities or executors.
-- **Disposable provider node:** follow [UUID-bound staging cleanup](../../../docs/CI-REAL-DEPLOY.md#uuid-bound-operator-staging-cleanup). Use the registered current manifest and original private state, not another checkout's copied authority.
-- **Bound disposable sentinel/executor:** follow [disposable lifecycle](../../../docs/PROTOCOL-LIVENESS.md#disposable-consumer-uplink-executor), preserving binding and generation artifacts for de-onboarding.
+- **Disposable provider node:** follow [UUID-bound staging cleanup](../../../docs/how-to/ci-real-deploy.md#uuid-bound-operator-staging-cleanup). Use the registered current manifest and original private state, not another checkout's copied authority.
+- **Bound disposable sentinel/executor:** follow [disposable lifecycle](../../../docs/reference/protocol-liveness.md#disposable-consumer-uplink-executor), preserving binding and generation artifacts for de-onboarding.
 - **Never-bound client/executor:** use that same runbook's explicit unbound retirement path. An absent binding is not permission to fabricate one or delete a VM directly. Unknown or partial onboarding state remains a reconciliation blocker.
-- **Monitoring component:** [current observability operations](../../../docs/OBSERVABILITY-OPERATIONS.md#command-effects) defines exact-host `make observability-remove`, which retains data/secrets. Historical dedicated-staging resources use only [retained cleanup](../../../docs/OBSERVABILITY-OPERATIONS.md#retained-dedicated-staging-cleanup-only) with its sealed authority, not a new dedicated deployment.
+- **Monitoring component:** [current observability operations](../../../docs/reference/observability-operations.md#command-effects) defines exact-host `make observability-remove`, which retains data/secrets. Historical dedicated-staging resources use only [retained cleanup](../../../docs/reference/observability-operations.md#retained-dedicated-staging-cleanup-only) with its sealed authority, not a new dedicated deployment.
 
 ## Destroy and retire in order
 

@@ -1,0 +1,35 @@
+name: Documentation
+description: A page is wrong, missing, unclear or in the wrong place in the documentation tree.
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The tree and its rules are described in `docs/STYLE.md`; every page is listed in `docs/README.md`.
+        Do not paste deployment details into this form.
+  - type: input
+    id: page
+    attributes:
+      label: Page
+      description: Path of the page, for example `docs/how-to/rotate.md`, or `new page` with the folder it belongs in.
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Problem
+      options:
+        - Wrong or outdated statement
+        - Missing step or missing page
+        - Unclear or hard to follow
+        - Wrong folder or type for its content
+        - Broken link or generated page out of date
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: Quote the sentence or step, say what you expected, and if you know the answer propose the wording.
+    validations:
+      required: true

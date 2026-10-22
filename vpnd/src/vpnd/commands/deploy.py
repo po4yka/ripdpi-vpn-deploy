@@ -60,5 +60,5 @@ async def run(ctx, args):
         await stop.cleanup(ctx, error)
     if not ctx.explain:
         print(
-            f"\nDeploy complete.\n\n  active profiles:  P0 REALITY, P1 nginx-xhttp, P2 hysteria + amneziawg (per group_vars)\n  env:              {ctx.env}\n  provider:         {ctx.provider}\n\n  next:\n    share a client: vpnd share <name> --qr\n    diagnose: vpnd doctor\n    re-deploy: vpnd reconverge\n\n  runbooks: docs/RUNBOOK-deploy.md, docs/RUNBOOK-rollback.md, docs/RUNBOOK-incident.md"
+            f"\nDeploy complete.\n\n  active profiles:  P0 REALITY, P1 nginx-xhttp, P2 hysteria + amneziawg (per group_vars)\n  env:              {ctx.env}\n  provider:         {ctx.provider}\n\n  next:\n    share a client: vpnd share <name> --qr\n    diagnose: vpnd doctor\n    re-deploy: vpnd reconverge\n\n  runbooks: docs/how-to/deploy.md, docs/how-to/rollback.md, docs/how-to/incident.md"
         )

@@ -96,7 +96,7 @@ def test_retention_preserves_other_exact_environments(backup_workspace, environm
 
 
 def recovery_recipe():
-    text = (ROOT / "docs/RUNBOOK-incident.md").read_text()
+    text = (ROOT / "docs/how-to/incident.md").read_text()
     recipe = text.split("# State backups live in", 1)[1].split("```", 1)[0]
     # Execute the documented selection and decryption. Provider work stays out.
     recipe = "# State backups live in" + recipe.split("PROVIDER=upcloud ENV=prod ./scripts/terraform-env.sh", 1)[0]

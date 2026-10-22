@@ -46,7 +46,7 @@ Revocation + rate-limit (v1.2) is a thin Lua module on top.
 
 **Can run on a separate VPS** — `vpn_subscription_only: true` deploys *only*
 this role + nginx + firewall on a host. Isolates compromise blast radius
-from the proxy host. See `docs/SUBSCRIPTION-HOST-SEPARATION.md`.
+from the proxy host. See `docs/how-to/subscription-host-separation.md`.
 
 **Audit log** — successful and rejected token fetches retain JSONL route, timestamp, hash prefix, source IP and byte count. Owner-only files and bounded rotation protect this local metadata; the payload and plaintext token are excluded. See `scripts/sub-reads.sh`.
 

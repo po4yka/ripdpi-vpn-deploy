@@ -87,7 +87,7 @@ All four effective headers must differ, so exported fingerprints describe the
 actual wire values.
 
 **Cohort profiles are config, not code** — `vars/cohorts/<slug>.yml` is the
-SOT. New cohort = new file. See `docs/AWG-COHORTS.md`. Currently shipped as
+SOT. New cohort = new file. See `docs/reference/awg-cohorts.md`. Currently shipped as
 a YAML file: `narrow-junk-sequential`. The broad-rule baseline (long junks
 + non-zero S1/S2 + random per-instance H1..H4) is encoded as the role's
 hard-coded defaults — no separate cohort file needed, that profile is the
@@ -97,7 +97,7 @@ safe starting point on any unmeasured network.
 obfuscation parameters, naming the slug after the packet shape (e.g.
 `narrow-junk-sequential`, `wide-junk-random-headers`), never after the
 carrier, ISP, or geography where it was measured. Add its row to
-`docs/AWG-COHORTS.md` (junk sizes, init/response sizes, H1..H4 strategy), and
+`docs/reference/awg-cohorts.md` (junk sizes, init/response sizes, H1..H4 strategy), and
 a `group_vars` comment if operators must know something non-default before
 selecting it with `vpn.awg_cohort`.
 
@@ -149,7 +149,7 @@ interfaces. Fresh absence and recorded enable/disable transitions stay idempoten
 - **Fresh-host check mode has no Git yet** — apt only plans the Git dependency, so defer source checkout and commit attestation until convergence. Receipt inspection still reports installed binary drift in check mode.
 - **AWG 2.0 client app version skew** — issue #2457: clients on AmneziaWG
   client v1.0.x silently fall back to vanilla WG handshake when the server
-  uses 2.0 finalmask. Pin client version in `docs/CLIENT-NOTES.md`.
+  uses 2.0 finalmask. Pin client version in `docs/reference/client-notes.md`.
 - **MTU selection is explicit** — a smaller configured MTU is not automatic
   path diagnosis. Verify sustained transfers on the actual constrained path.
 - **Endpoint port reuse with Hysteria** — both use UDP. See `firewall/CLAUDE.md`

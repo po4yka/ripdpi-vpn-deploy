@@ -28,7 +28,7 @@ REQUIRED_GUARD_KEYS = {
     "select",
     "message",
 }
-RELEASE_LINE_FILE = REPO_ROOT / "docs" / "XRAY-RELEASE-LINE.md"
+RELEASE_LINE_FILE = REPO_ROOT / "docs/reference/xray-release-line.md"
 XRAY_TEMPLATE = (
     REPO_ROOT / "ansible" / "roles" / "xray" / "templates" / "config.json.j2"
 )

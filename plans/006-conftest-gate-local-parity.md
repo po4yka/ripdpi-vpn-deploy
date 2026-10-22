@@ -60,7 +60,7 @@ CI blocks PRs on `conftest verify --rego-version v0 -p terraform/policy/` (job i
 **In scope**:
 - `Makefile` (one new target + one line in `ci-fast`)
 - `mise.toml` (one pin entry + its CI cross-reference comment)
-- `docs/TESTING.md` (single parity-table row if such a table lists local checks)
+- `docs/reference/testing.md` (single parity-table row if such a table lists local checks)
 
 **Out of scope**:
 - Any `.rego` policy content; any workflow file (CI already correct).
@@ -116,9 +116,9 @@ Temporarily append an intentionally-failing assertion to one policy test file un
 
 ### Step 5: Docs parity touch-up
 
-If `docs/TESTING.md` enumerates what `ci-fast` covers, add/adjust the row for the conftest policy tests so the doc matches reality (the audit found this doc already claims conftest among "PR-blocking CI"; make sure the LOCAL column now agrees).
+If `docs/reference/testing.md` enumerates what `ci-fast` covers, add/adjust the row for the conftest policy tests so the doc matches reality (the audit found this doc already claims conftest among "PR-blocking CI"; make sure the LOCAL column now agrees).
 
-**Verify**: `grep -n "conftest" docs/TESTING.md` reflects both CI and local coverage.
+**Verify**: `grep -n "conftest" docs/reference/testing.md` reflects both CI and local coverage.
 
 ## Test plan
 

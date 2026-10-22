@@ -58,7 +58,7 @@ make PROVIDER=upcloud ENV=green init
 make PROVIDER=upcloud ENV=green plan apply
 ```
 
-Operator scripts and `vpnd` use `scripts/terraform-env.sh`; do not invoke raw `terraform output`, `plan`, or `apply`, because it can select the wrong workspace. Back up state out-of-band; without it Terraform cannot follow blue-green or rotate the floating IP. See `docs/RUNBOOK-incident.md` § "State loss".
+Operator scripts and `vpnd` use `scripts/terraform-env.sh`; do not invoke raw `terraform output`, `plan`, or `apply`, because it can select the wrong workspace. Back up state out-of-band; without it Terraform cannot follow blue-green or rotate the floating IP. See `docs/how-to/incident.md` § "State loss".
 
 ## Public listener contract
 

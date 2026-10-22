@@ -548,6 +548,10 @@ endif
 
 -include .fleet.mk
 
+ifneq ($(filter blue-green,$(MAKECMDGOALS)),)
+override BLUE_GREEN_ENV_EXPLICIT := $(if $(filter command line environment,$(origin ENV)),1,0)
+endif
+
 # Capture deployment labels before the eager Terraform path assignments below.
 # The included fleet file remains trusted executable Make configuration.
 ifneq ($(filter deploy dry-run deploy-canary blue-green backup-configure install-ssh-recovery staging-cleanup-manifest staging-cleanup-reissue staging-destroy $(_DISPOSABLE_LIVENESS_GOALS),$(MAKECMDGOALS)),)
@@ -669,7 +673,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
         actionlint-check zizmor-check zizmor-test cloud-init-schema tf-test yamllint-check shellcheck \
         ci-fast bats-test vpnd-test vpnd-lint vpnd-dependency-check vpnd-package-check vpnd-parity-check vpnd-mutants tf-policy tf-policy-verify \
         task-tools task-check task-list task-ready task-graph task-federation \
-        check
+        docs-reference docs-check check
 
 help:
 	@echo "vpn-deploy Makefile"
@@ -691,7 +695,7 @@ help:
 	@echo "  scan-targets {SEEDS=…|CIDR=…|CRAWL=…}  Discover REALITY targets (RealiTLScanner)"
 	@echo "  validate-target            Bounded REALITY target validation (local hygiene only)"
 	@echo "  monitor-reality-target     Daily ASN/path signal from an explicit filtered VANTAGE"
-	@echo "  probe-sni-survival         EXIT_IP=… bare/www SNI survival probe (run on RU vantage)"
+	@echo "  probe-sni-survival         EXIT_IP=… bare/www SNI survival probe (run from a filtered vantage)"
 	@echo "  probe-asn HOST=…           Team Cymru ASN lookup"
 	@echo "  install-hooks              Install pre-commit hooks"
 	@echo "  task-tools                 Install pinned mdtask and OpenSpec tools"
@@ -787,7 +791,7 @@ help:
 	@echo "  check-ip-reputation        Spamhaus / optional FireHOL file / AbuseIPDB"
 	@echo "  probing-summary            7-day Xray/nginx/honeypot rollup"
 	@echo "  xray-diagnostics           Fresh redacted Xray counters via local StatsService"
-	@echo "  tspu-canary                Daily TSPU rule-drift probes (in-cohort box)"
+	@echo "  tspu-canary                Daily DPI rule-drift probes (in-cohort box)"
 	@echo "  test-tls-policing HOST=…   Probe the ~12-concurrent-TLS home-ISP rule"
 	@echo "  probe-payload-throttle HOST=… Probe per-ASN ~16 KiB payload throttling"
 	@echo "  snell-refinement BUNDLE=… CONFIG=… VANTAGE=…  Run staged Snell refinement matrix"
@@ -1531,10 +1535,22 @@ ci-fast:
 
 	@echo "ci-fast: OK"
 
-# Union gate: everything in validate + everything in ci-fast.
+# Union gate: task contract, everything in validate, everything in ci-fast,
+# then the documentation guards.
 # Run this before any commit touching Ansible, Terraform, or Python to get
 # the same signal that CI produces without waiting for a remote run.
-check: task-check validate ci-fast  ## Full local gate: task contract + validate + ci-fast
+check: task-check validate ci-fast docs-check  ## Full local gate: task contract + validate + ci-fast + docs-check
+
+# Regenerate the documentation pages that mirror code: the Make target
+# reference, the vpnd command reference and the machine-readable docs index.
+docs-reference:
+	python3 scripts/docs-reference.py
+
+# Documentation guards: generated pages are current, every page is indexed,
+# status lines and file names conform, relative links resolve.
+docs-check:
+	@echo "== generated references =="; python3 scripts/docs-reference.py --check
+	@echo "== docs index and links =="; env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/test_docs_index.py tests/unit/test_docs_reference.py --fail-on-skip -q
 
 molecule-test:
 	@test -n "$(ROLE)" || { echo "ROLE=<role-name> required (e.g. baseline, firewall, xray)"; exit 1; }
@@ -1560,7 +1576,7 @@ monitor-reality-target:
 # Run this from the FILTERED (RU) vantage — it decides which SNI variant survives.
 # EXIT_IP=<vps-ip> make probe-sni-survival   (VANTAGE defaults to "filtered")
 probe-sni-survival:
-	@test -n "$(EXIT_IP)" || { echo "set EXIT_IP=<vps-ip> — run this from the filtered RU vantage"; exit 1; }
+	@test -n "$(EXIT_IP)" || { echo "set EXIT_IP=<vps-ip> — run this from a filtered vantage"; exit 1; }
 	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run 'make decrypt'"; exit 1; }
 	VANTAGE="$${VANTAGE:-filtered}" ./scripts/probe-sni-survival.sh "$(EXIT_IP)" --secrets "$(SECRETS_FILE)"
 
@@ -2008,6 +2024,7 @@ scan-targets:
 	  $(if $(VALIDATE),--validate)
 
 ifneq ($(filter blue-green,$(MAKECMDGOALS)),)
+override BLUE_GREEN_REQUESTED_ENV := $(value ENV)
 override BLUE_ENV := $(value BLUE_ENV)
 override BLUE_GREEN_SOURCE_ENV := $(or $(value BLUE_ENV),$(value ENV))
 override GREEN_ENV := $(value GREEN_ENV)
@@ -2016,9 +2033,10 @@ override DEVICE_MIGRATION_PLAN := $(value DEVICE_MIGRATION_PLAN)
 override DEVICE_MIGRATION_APPROVAL := $(value DEVICE_MIGRATION_APPROVAL)
 override BLUE_COHORT := $(value BLUE_COHORT)
 override GREEN_COHORT := $(value GREEN_COHORT)
-export BLUE_GREEN_SOURCE_ENV GREEN_ENV GREEN_SOPS_FILE DEVICE_MIGRATION_PLAN DEVICE_MIGRATION_APPROVAL BLUE_COHORT GREEN_COHORT
+export BLUE_ENV BLUE_GREEN_ENV_EXPLICIT BLUE_GREEN_REQUESTED_ENV BLUE_GREEN_SOURCE_ENV GREEN_ENV GREEN_SOPS_FILE DEVICE_MIGRATION_PLAN DEVICE_MIGRATION_APPROVAL BLUE_COHORT GREEN_COHORT
 endif
 blue-green:
+	@if test "$${BLUE_GREEN_ENV_EXPLICIT}" = 1 && test -n "$${BLUE_ENV}" && test "$${BLUE_ENV}" != "$${BLUE_GREEN_REQUESTED_ENV}"; then echo "BLUE_ENV and ENV select different environments; set only one" >&2; exit 1; fi
 	@test -n "$${GREEN_ENV:-}" || { echo "GREEN_ENV=<name> required (e.g. green, spare2)"; exit 1; }
 	@test -n "$${BLUE_GREEN_SOURCE_ENV:-}" || { echo "BLUE_ENV or ENV required"; exit 1; }
 	PROVIDER="$${PROVIDER}" BLUE_ENV="$${BLUE_GREEN_SOURCE_ENV}" GREEN_ENV="$${GREEN_ENV}" ./scripts/blue-green.sh

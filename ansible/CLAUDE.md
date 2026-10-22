@@ -206,13 +206,13 @@ meta, handlers as needed); add its `vpn.enable_*` toggle to
 `group_vars/all.yml`; classify it in `role-tiers.yml` (tier and
 `toggle_role_map`, checked by `scripts/check-deploy-profile.py`); add any
 secret keys to `secrets/prod.secrets.example.yaml` and `secrets/schema.json`;
-add a Molecule scenario or a justified skip in `docs/TESTING.md`; create
+add a Molecule scenario or a justified skip in `docs/reference/testing.md`; create
 goldens for new templates with `make snapshot-update`; write
 `roles/<name>/CLAUDE.md` plus its `AGENTS.md -> CLAUDE.md` symlink; include
 the role in `playbooks/site.yml` behind the toggle; update `README.md` if
 operator-facing behaviour changed. `tests/unit/test_governance_counts.py`
 then requires the new role count in the root `AGENTS.md` and the template
-count in `docs/TESTING.md`.
+count in `docs/reference/testing.md`.
 
 ## What's done well
 

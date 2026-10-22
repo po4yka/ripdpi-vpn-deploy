@@ -20,7 +20,7 @@ even if publication was interrupted and its bytes are now unchanged.
 
 **Optional, off by default** — `vpn.enable_naive: false`. NaiveProxy is a
 useful tactical option for HTTP/2 + Chromium TLS fingerprint. Client
-preamble behavior and compatibility checks are in `docs/CLIENT-NOTES.md`.
+preamble behavior and compatibility checks are in `docs/reference/client-notes.md`.
 
 **Mutually exclusive with nginx-xhttp** — both want 443/tcp; the global
 listener manifest guard rejects the pair before any role runs. The role
@@ -49,10 +49,10 @@ forward-proxy handler and retains the decoy, without an unauthenticated fallback
 
 ## What's done well
 
-- **Pinned binary + version** — pinned per `docs/CLIENT-NOTES.md` because
+- **Pinned binary + version** — pinned per `docs/reference/client-notes.md` because
   client/server version skew is a real breakage class here.
 - **Padding leak fix is monitored** — sing-box ≤ 1.13.7 NaiveProxy padding leak
-  (fixed in 1.13.8, `docs/CLIENT-NOTES.md`) is noted; the role bumps the client recommendation when applicable.
+  (fixed in 1.13.8, `docs/reference/client-notes.md`) is noted; the role bumps the client recommendation when applicable.
 
 ## Pitfalls
 
@@ -66,7 +66,7 @@ forward-proxy handler and retains the decoy, without an unauthenticated fallback
 
 - **Qualify the exact client/server pair** — v147 changes client preamble
   cover; it does not establish a universal server compatibility cutoff.
-  Follow the staging and rollback checks in `docs/CLIENT-NOTES.md`.
+  Follow the staging and rollback checks in `docs/reference/client-notes.md`.
 - **CONNECT errors contain request metadata** — do not enable HTTP access logs.
   Caddy emits 5xx access entries at ERROR, so raising the log level is insufficient.
   Exclude both `http.log.access` and `http.log.error` namespaces. Preserve existing

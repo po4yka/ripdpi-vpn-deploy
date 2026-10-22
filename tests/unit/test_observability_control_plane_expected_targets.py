@@ -292,7 +292,7 @@ def test_promtool_rules_require_matching_family_and_resolve_when_evidence_arrive
                 "        alertname: ObservabilityRequiredFamilyMissing_vpn_p0_edge_vpn_watchdog_collection_success",
                 "        exp_alerts:",
                 "          - exp_labels: {severity: warning, component: expected-target, environment: staging, node: vpn-p0, role: edge}",
-                "            exp_annotations: {incident_family: expected-target-family, evidence_class: required-family-absent, source_generation: cccccccccccccccccccccccccccccccccccccccc, summary: Required bounded evidence family is absent for an expected target., runbook: docs/RUNBOOK-incident.md}",
+                "            exp_annotations: {incident_family: expected-target-family, evidence_class: required-family-absent, source_generation: cccccccccccccccccccccccccccccccccccccccc, summary: Required bounded evidence family is absent for an expected target., runbook: docs/how-to/incident.md}",
                 "      - eval_time: 4m",
                 "        alertname: ObservabilityRequiredFamilyMissing_vpn_p2_edge_vpn_watchdog_collection_success",
                 "        exp_alerts: []",
@@ -300,7 +300,7 @@ def test_promtool_rules_require_matching_family_and_resolve_when_evidence_arrive
                 "        alertname: ObservabilityExpectedTargetMissing",
                 "        exp_alerts:",
                 "          - exp_labels: {severity: warning, component: expected-target, environment: staging, node: vpn-p0, role: edge}",
-                "            exp_annotations: {incident_family: expected-target-absence, evidence_class: no-required-family, source_generation: cccccccccccccccccccccccccccccccccccccccc, summary: Expected observability target has no required producer family., runbook: docs/RUNBOOK-incident.md}",
+                "            exp_annotations: {incident_family: expected-target-absence, evidence_class: no-required-family, source_generation: cccccccccccccccccccccccccccccccccccccccc, summary: Expected observability target has no required producer family., runbook: docs/how-to/incident.md}",
                 "      - eval_time: 5m",
                 "        alertname: ObservabilityExpectedTargetMissing",
                 "        exp_alerts: []",
@@ -447,7 +447,7 @@ def test_rules_are_prometheus_rule_documents_without_notification_routes() -> No
             assert rule["annotations"]["incident_family"]
             assert rule["annotations"]["evidence_class"]
             assert rule["annotations"]["source_generation"] == "c" * 40
-            assert rule["annotations"]["runbook"] == "docs/RUNBOOK-incident.md"
+            assert rule["annotations"]["runbook"] == "docs/how-to/incident.md"
     template = (
         ROLE / "templates/observability-expected-target-rules.yml.j2"
     ).read_text()

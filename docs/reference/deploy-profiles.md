@@ -1,0 +1,115 @@
+# Deploy profiles
+
+> **Status:** Current · **Type:** reference · **Tier:** — · **Reviewed:** 2026-10-21
+
+Deploy profiles are `ansible/group_vars/vpn-*.yml` files that define the
+transport surface and host-hardening posture for a cohort. New hosts should use
+an explicit profile rather than relying on inherited `all.yml` defaults.
+
+## Family profiles
+
+Family profiles are listed in `ansible/role-tiers.yml` under
+`family_profiles`. The deploy-profile guard treats them as production-safe
+surfaces and fails if any RESEARCH-tier role becomes enabled.
+
+| Profile | Transport surface | Hardening posture | Use case |
+|---|---|---|---|
+| `vpn-p0-minimal.yml` | Xray REALITY only | default family controls | smallest P0 endpoint |
+| `vpn-p0-self-steal.yml` | Xray REALITY + owned loopback TLS/H2 target | default family controls; no additional public listener | P0 endpoint after DNS and certificate promotion gates pass |
+| `vpn-p1-web.yml` | public HTTP/HTTPS site + nginx-xhttp on TCP/443 | default family controls | domain-facing P1 endpoint |
+| `vpn-p2-udp.yml` | Hysteria2 + AmneziaWG | default family controls | UDP-only fallback endpoint |
+| `vpn-family-standard.yml` | Xray REALITY + nginx-xhttp + Hysteria2 | default family controls | normal family node without AmneziaWG |
+| `vpn-device-full.yml` | family-standard + AmneziaWG | default family controls | full device-VPN family node |
+| `vpn-prod-hardened.yml` | device-full | Fail2Ban, tighter SSH limits, egress observation counters | production node when the operator accepts extra host controls |
+
+`vpn-p0-minimal.yml` intentionally leaves `vpn.enable_reality_self_steal` off. Use `vpn-p0-self-steal.yml` only after adding the owned certificate secret contract and changing `xray.target` plus `xray.server_names` together; the role adds a private loopback TLS target without widening the profile's public listener surface.
+
+Every fleet profile inherits security-only unattended updates from `all.yml`.
+Automatic reboot remains disabled; use `make os-maintenance` for a serial full
+upgrade, conditional reboot, and both verification gates.
+
+## Hardened production profile
+
+`vpn-prod-hardened.yml` intentionally keeps the same transport contract as
+`vpn-device-full.yml` while changing host hardening. It enables:
+
+- the baseline `package_updates` policy without changing its no-automatic-reboot
+  contract.
+- `security_controls.fail2ban=true` through the `intrusion_prevention` role.
+  Fail2Ban uses nftables sets owned by the firewall role.
+- Stricter SSH posture: `RequiredRSASize 3072`, `MaxSessions 1`, and lower
+  `MaxStartups`.
+- `firewall_egress_policy=logged`, which adds observation counters without
+  default-dropping transport egress.
+
+It deliberately keeps RESEARCH-tier roles disabled:
+
+- `dns-morph-bridge`
+- `hysteria-realm`
+- `split-hop-egress`
+
+## How to use
+
+For a three-provider split, copy `.fleet.mk.example` to the ignored `.fleet.mk`. The committed example maps the P0, P2 UDP, and P1 web provider environments to their explicit cohorts, and `make inventory` loads it automatically.
+
+Render inventory with the hardened cohort:
+
+```bash
+HOSTS="upcloud:prod" COHORTS="prod-hardened" ./scripts/render-inventory.sh
+```
+
+Then run the normal lifecycle:
+
+```bash
+make decrypt
+make dry-run
+make deploy
+make verify
+make smoke-test
+```
+
+## Decoy site identity
+
+Committed profiles carry only the neutral placeholder
+(`https://vpn.example.com`) for `public_site_canonical_url`. Supply the real
+decoy origin per deploy through the validated override file (regular,
+non-symlink, owner-only mode 0600) and deploy only to explicitly limited
+hosts:
+
+```bash
+mkdir -p secrets/local
+echo 'public_site_canonical_url: "https://<your-decoy-origin>"' > secrets/local/decoy-origin.yml
+chmod 0600 secrets/local/decoy-origin.yml
+make dry-run ANSIBLE_LIMIT=<host> ANSIBLE_EXTRA_VARS_FILE=secrets/local/decoy-origin.yml
+make deploy ANSIBLE_LIMIT=<host> ANSIBLE_EXTRA_VARS_FILE=secrets/local/decoy-origin.yml
+```
+
+The value must be an https origin; convergence fails closed on the
+`nginx-xhttp` / `hysteria` role asserts if it does not match the site identity
+in secrets. The dry run reaches those same asserts, so it needs the override
+too.
+
+### Secrets that rotate together with the origin
+
+Changing the override alone is not enough — the following SOPS keys must be
+updated to the new domain in the same rotation, or convergence fails (or worse,
+clients keep the old TLS name):
+
+| Secrets key | Why it must match |
+|---|---|
+| `nginx_xhttp.server_name`, `nginx_xhttp.cert_pem`, `nginx_xhttp.key_pem` | The p1-web site identity; the nginx-xhttp assert pins `public_site_canonical_url == https://<server_name>` |
+| `nginx_xhttp.fallback_server_name`, `fallback_cert_pem`, `fallback_key_pem` | Only when the optional direct fallback serves a distinct domain |
+| `hysteria.masquerade_url` | The hysteria assert requires it to equal `public_site_canonical_url` exactly |
+| `hysteria.cert_pem`, `hysteria.key_pem` | Hysteria's own TLS certificate must cover the client-facing name |
+| Client-facing server name used by emitters (`hysteria.server_name` or, on p1-web, `nginx_xhttp.server_name`) | Emitted clients derive their TLS SNI from it; a stale value keeps old-domain traffic alive after rotation |
+| `reality_self_steal.server_name`, `cert_pem`, `key_pem` | Only when REALITY self-steal shares the decoy identity |
+
+Rotating means: register the new domain, issue the certificate, update these
+keys in SOPS, update the extra-vars override file — never any committed file.
+
+## When not to use it
+
+Use `vpn-device-full.yml` instead when you are debugging a new node and want the
+least moving parts. Use `vpn-prod-hardened.yml` once the transport surface is
+stable and you want the host-level controls to be part of the production
+contract.
