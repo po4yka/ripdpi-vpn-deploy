@@ -14,7 +14,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 RENDER_CHECK = ROOT / "scripts/check-templates-render.py"
 BUNDLE_HELPER = ROOT / "scripts/build-real-vps-awg-nat-source-bundle.sh"
-RUNBOOK = ROOT / "docs/REAL-VPS-AWG-NAT.md"
+RUNBOOK = ROOT / "docs/how-to/real-vps-awg-nat.md"
 
 
 def _git(repo: Path, *args: str) -> None:

@@ -6,7 +6,7 @@
 
 
 **Off by default** — `vpn.enable_cdn_front: false`. Rationale lives in
-`docs/CDN-DECISION.md`: as of 2026-04, RU traffic to Cloudflare egresses via
+`docs/decisions/0001-cdn-not-filtered-path-baseline.md`: as of 2026-04, RU traffic to Cloudflare egresses via
 RU PoPs (DME/KJA/LED) which carry TSPU, with a 16KB byte-threshold curtain
 applied to non-`/cdn-cgi/trace` traffic.
 

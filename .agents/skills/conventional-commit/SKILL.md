@@ -43,4 +43,4 @@ Name the area touched, singular: a role directory (`xray`, `nginx-xhttp`, `amnez
 - One logical change per commit; split unrelated work.
 - Never edit `CHANGELOG.md` or the `# x-release-please-version` line in `vpnd/pyproject.toml` by hand.
 
-Release mechanics (release PR, tags, package handoff) are in `docs/RELEASE-PLEASE.md`.
+Release mechanics (release PR, tags, package handoff) are in `docs/how-to/release-please.md`.

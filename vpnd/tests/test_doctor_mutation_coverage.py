@@ -135,7 +135,7 @@ def test_ai_prompt_redacts_report_and_excerpts_and_keeps_context(controlled):
     assert "- env: test" in prompt and "- provider: upcloud" in prompt
     assert "- host: (active env)" in prompt
     assert "healthy report" in prompt and "runbook evidence" in prompt
-    assert "docs/RUNBOOK-incident.md" in prompt and "CDN is NOT the baseline" in prompt
+    assert "docs/how-to/incident.md" in prompt and "CDN is NOT the baseline" in prompt
     assert prompt.count(doctor.MARKER) == 2
     assert str(ctx.secrets_file) not in prompt and "/tmp/vpn-test.secrets.yaml" not in prompt
     assert "- host: synthetic-host" in doctor.ai_prompt(ctx, "synthetic-host", "", "")

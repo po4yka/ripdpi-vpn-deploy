@@ -19,7 +19,7 @@
 # WARNING: the literal 1, 2, 3, 4 magic set is intentional for this
 # profile. Reusing the same set in another cohort creates a
 # cross-cohort fingerprint — randomise H1..H4 per peer for any other
-# profile (see docs/AWG-COHORTS.md "Operational notes").
+# profile (see docs/reference/awg-cohorts.md "Operational notes").
 
 amneziawg_cohort:
   name: narrow-junk-sequential

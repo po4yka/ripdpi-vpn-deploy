@@ -17,7 +17,7 @@ groups:
           source_generation: ""
           summary: Synthetic rule-to-relay freshness receipt.
           evidence_class: synthetic-pipeline
-          runbook: docs/RUNBOOK-incident.md
+          runbook: docs/how-to/incident.md
 
 
 
@@ -40,7 +40,7 @@ groups:
           summary: Independent monitoring coverage is unavailable; VPN reachability is unknown.
           incident_family: observability-external-coverage
           evidence_class: external-coverage-unavailable
-          runbook: docs/RUNBOOK-incident.md
+          runbook: docs/how-to/incident.md
 
 
       - alert: ObservabilityExternalCoverageUnavailable
@@ -62,7 +62,7 @@ groups:
           summary: Independent monitoring coverage is unavailable; VPN reachability is unknown.
           incident_family: observability-external-coverage
           evidence_class: external-coverage-unavailable
-          runbook: docs/RUNBOOK-incident.md
+          runbook: docs/how-to/incident.md
 
 
 
@@ -86,7 +86,7 @@ groups:
           summary: Independent monitoring coverage is unavailable; VPN reachability is unknown.
           incident_family: observability-external-coverage
           evidence_class: external-coverage-unavailable
-          runbook: docs/RUNBOOK-incident.md
+          runbook: docs/how-to/incident.md
 
 
 
@@ -110,7 +110,7 @@ groups:
           summary: Independent monitoring coverage is unavailable; VPN reachability is unknown.
           incident_family: observability-external-coverage
           evidence_class: external-coverage-unavailable
-          runbook: docs/RUNBOOK-incident.md
+          runbook: docs/how-to/incident.md
 
 
   - name: observability_agent_delivery
@@ -125,7 +125,7 @@ groups:
         for: 0s
         keep_firing_for: 3m
         labels: {severity: "warning", component: observability-agent}
-        annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/incident.md}
   - name: observability_node_resource_service
     rules:
       - alert: ObservabilityNodeCpuPressure
@@ -135,7 +135,7 @@ groups:
         for: 5m
         keep_firing_for: 3m
         labels: {severity: "warning", component: node-resource}
-        annotations: {incident_family: node-cpu, evidence_class: sustained-cpu-pressure, source_generation: "", summary: Node CPU utilization is above the bounded warning threshold., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: node-cpu, evidence_class: sustained-cpu-pressure, source_generation: "", summary: Node CPU utilization is above the bounded warning threshold., runbook: docs/how-to/incident.md}
       - alert: ObservabilityNodeMemoryPressure
         expr: >-
           (1 - (max by (environment, node) (node_memory_MemAvailable_bytes)
@@ -143,7 +143,7 @@ groups:
         for: 5m
         keep_firing_for: 3m
         labels: {severity: "warning", component: node-resource}
-        annotations: {incident_family: node-memory, evidence_class: memory-available-low, source_generation: "", summary: Node available memory is below the bounded warning threshold., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: node-memory, evidence_class: memory-available-low, source_generation: "", summary: Node available memory is below the bounded warning threshold., runbook: docs/how-to/incident.md}
       - alert: ObservabilityNodeSwapPressure
         expr: >-
           max by (environment, node) (node_memory_SwapTotal_bytes) > 0
@@ -154,7 +154,7 @@ groups:
         for: 5m
         keep_firing_for: 3m
         labels: {severity: "warning", component: node-resource}
-        annotations: {incident_family: node-swap, evidence_class: sustained-swap-pressure, source_generation: "", summary: Node swap utilization is above the bounded warning threshold., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: node-swap, evidence_class: sustained-swap-pressure, source_generation: "", summary: Node swap utilization is above the bounded warning threshold., runbook: docs/how-to/incident.md}
       - alert: ObservabilityNodeDiskSpaceLow
         expr: >-
           min by (environment, node) (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.1
@@ -163,28 +163,28 @@ groups:
         for: 5m
         keep_firing_for: 3m
         labels: {severity: "warning", component: node-filesystem}
-        annotations: {incident_family: node-disk, evidence_class: disk-available-low, source_generation: "", summary: Root filesystem available space crossed the configured warning threshold., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: node-disk, evidence_class: disk-available-low, source_generation: "", summary: Root filesystem available space crossed the configured warning threshold., runbook: docs/how-to/incident.md}
       - alert: ObservabilityNodeDiskSpaceCritical
         expr: >-
           min by (environment, node) (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.05
         for: 3m
         keep_firing_for: 3m
         labels: {severity: "critical", component: node-filesystem}
-        annotations: {incident_family: node-disk, evidence_class: disk-available-critical, source_generation: "", summary: Root filesystem available space crossed the configured critical threshold., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: node-disk, evidence_class: disk-available-critical, source_generation: "", summary: Root filesystem available space crossed the configured critical threshold., runbook: docs/how-to/incident.md}
       - alert: ObservabilityNodeInodesLow
         expr: >-
           min by (environment, node) (node_filesystem_files_free{mountpoint="/"} / node_filesystem_files{mountpoint="/"}) < 0.1
         for: 5m
         keep_firing_for: 3m
         labels: {severity: "warning", component: node-filesystem}
-        annotations: {incident_family: node-inodes, evidence_class: inode-available-low, source_generation: "", summary: Root filesystem free inodes crossed the configured warning threshold., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: node-inodes, evidence_class: inode-available-low, source_generation: "", summary: Root filesystem free inodes crossed the configured warning threshold., runbook: docs/how-to/incident.md}
       - alert: ObservabilityNodeInodesCritical
         expr: >-
           min by (environment, node) (node_filesystem_files_free{mountpoint="/"} / node_filesystem_files{mountpoint="/"}) < 0.05
         for: 3m
         keep_firing_for: 3m
         labels: {severity: "critical", component: node-filesystem}
-        annotations: {incident_family: node-inodes, evidence_class: inode-available-critical, source_generation: "", summary: Root filesystem free inodes crossed the configured critical threshold., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: node-inodes, evidence_class: inode-available-critical, source_generation: "", summary: Root filesystem free inodes crossed the configured critical threshold., runbook: docs/how-to/incident.md}
       - alert: ObservabilityRequiredServiceNotActive
         expr: >-
           max by (environment, node, role) (
@@ -194,7 +194,7 @@ groups:
         for: 3m
         keep_firing_for: 3m
         labels: {severity: "critical", component: service}
-        annotations: {incident_family: required-service, evidence_class: observed-service-not-active, source_generation: "", summary: Fresh node telemetry reports a required systemd service is not active., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: required-service, evidence_class: observed-service-not-active, source_generation: "", summary: Fresh node telemetry reports a required systemd service is not active., runbook: docs/how-to/incident.md}
       - alert: ObservabilityRequiredServiceEvidenceMissing
         expr: >-
           (vpn_observability_required_service == 1)
@@ -203,50 +203,50 @@ groups:
         for: 3m
         keep_firing_for: 3m
         labels: {severity: "warning", component: service}
-        annotations: {incident_family: required-service-evidence, evidence_class: service-evidence-absent, source_generation: "", summary: A profile-required service has no systemd evidence; its health is unknown., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: required-service-evidence, evidence_class: service-evidence-absent, source_generation: "", summary: A profile-required service has no systemd evidence; its health is unknown., runbook: docs/how-to/incident.md}
       - alert: ObservabilityNodeClockSkew
         expr: max by (environment, node) (abs(node_time_seconds - time())) > 60
         for: 3m
         keep_firing_for: 3m
         labels: {severity: "warning", component: node-clock}
-        annotations: {incident_family: node-clock, evidence_class: wall-clock-skew, source_generation: "", summary: Node wall clock differs from control-plane evaluation time., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: node-clock, evidence_class: wall-clock-skew, source_generation: "", summary: Node wall clock differs from control-plane evaluation time., runbook: docs/how-to/incident.md}
       - alert: ObservabilityCertificateExpiresSoon
         expr: min by (environment, node) (vpn_certificate_not_after_timestamp_seconds - time()) < 1209600
         for: 3m
         keep_firing_for: 3m
         labels: {severity: "warning", component: certificate}
-        annotations: {incident_family: certificate-expiry, evidence_class: certificate-expiry-warning, source_generation: "", summary: A managed certificate crossed the configured expiry warning threshold., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: certificate-expiry, evidence_class: certificate-expiry-warning, source_generation: "", summary: A managed certificate crossed the configured expiry warning threshold., runbook: docs/how-to/incident.md}
       - alert: ObservabilityCertificateCollectionFailed
         expr: max by (environment, node) (vpn_certificate_collection_success) == 0
         for: 3m
         keep_firing_for: 3m
         labels: {severity: "warning", component: certificate}
-        annotations: {incident_family: certificate-health, evidence_class: collection-failed, source_generation: "", summary: Managed certificate expiry collection failed., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: certificate-health, evidence_class: collection-failed, source_generation: "", summary: Managed certificate expiry collection failed., runbook: docs/how-to/incident.md}
       - alert: ObservabilityCertificateExpiresCritical
         expr: min by (environment, node) (vpn_certificate_not_after_timestamp_seconds - time()) < 259200
         for: 3m
         keep_firing_for: 3m
         labels: {severity: "critical", component: certificate}
-        annotations: {incident_family: certificate-expiry, evidence_class: certificate-expiry-critical, source_generation: "", summary: A managed certificate crossed the configured expiry critical threshold., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: certificate-expiry, evidence_class: certificate-expiry-critical, source_generation: "", summary: A managed certificate crossed the configured expiry critical threshold., runbook: docs/how-to/incident.md}
       - alert: ObservabilityNodeNetworkErrors
         expr: >-
           sum by (environment, node) (rate(node_network_receive_errs_total{device!~"^lo$"}[5m]) + rate(node_network_transmit_errs_total{device!~"^lo$"}[5m])) > 0
         for: 3m
         keep_firing_for: 3m
         labels: {severity: "warning", component: node-network}
-        annotations: {incident_family: node-network, evidence_class: sustained-interface-errors, source_generation: "", summary: A node reports sustained interface errors., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: node-network, evidence_class: sustained-interface-errors, source_generation: "", summary: A node reports sustained interface errors., runbook: docs/how-to/incident.md}
       - alert: ObservabilityNodeFilesystemReadOnly
         expr: max by (environment, node) (node_filesystem_readonly{mountpoint="/"}) == 1
         for: 3m
         keep_firing_for: 3m
         labels: {severity: "critical", component: node-filesystem}
-        annotations: {incident_family: node-filesystem, evidence_class: root-filesystem-read-only, source_generation: "", summary: The root filesystem is read only., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: node-filesystem, evidence_class: root-filesystem-read-only, source_generation: "", summary: The root filesystem is read only., runbook: docs/how-to/incident.md}
       - alert: ObservabilityServiceRestartLoop
         expr: max by (environment, node) (vpn_watchdog_restart_attempts) >= 3
         for: 3m
         keep_firing_for: 3m
         labels: {severity: "warning", component: service}
-        annotations: {incident_family: service-restart-loop, evidence_class: bounded-restart-limit, source_generation: "", summary: Bounded watchdog restart attempts reached the configured limit., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: service-restart-loop, evidence_class: bounded-restart-limit, source_generation: "", summary: Bounded watchdog restart attempts reached the configured limit., runbook: docs/how-to/incident.md}
   - name: observability_security_detectors
     rules:
       - alert: ObservabilityDetectorCollectionFailed
@@ -258,7 +258,7 @@ groups:
         for: 3m
         keep_firing_for: 3m
         labels: {severity: "warning", component: detector}
-        annotations: {incident_family: detector-health, evidence_class: collection-failed, source_generation: "", summary: A bounded detector collection failed., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: detector-health, evidence_class: collection-failed, source_generation: "", summary: A bounded detector collection failed., runbook: docs/how-to/incident.md}
       - alert: ObservabilityDetectorEvidenceStale
         expr: >-
           max by (environment, node) (time() - vpn_honeypot_last_success_timestamp_seconds) > 180
@@ -268,7 +268,7 @@ groups:
         for: 3m
         keep_firing_for: 3m
         labels: {severity: "warning", component: detector}
-        annotations: {incident_family: detector-health, evidence_class: evidence-stale, source_generation: "", summary: A detector success timestamp exceeded its bounded cadence., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: detector-health, evidence_class: evidence-stale, source_generation: "", summary: A detector success timestamp exceeded its bounded cadence., runbook: docs/how-to/incident.md}
       - alert: ObservabilityDetectorInputStalled
         expr: >-
           max by (environment, node) (vpn_policy_ratelimit_dead_contract) == 1
@@ -277,7 +277,7 @@ groups:
         for: 3m
         keep_firing_for: 3m
         labels: {severity: "warning", component: detector}
-        annotations: {incident_family: detector-input, evidence_class: input-contract-stalled, source_generation: "", summary: Detector input advanced without any recognized policy event., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: detector-input, evidence_class: input-contract-stalled, source_generation: "", summary: Detector input advanced without any recognized policy event., runbook: docs/how-to/incident.md}
       - alert: ObservabilityDetectorError
         expr: >-
           sum by (environment, node) (increase(vpn_honeypot_input_errors_total[3m])) > 0
@@ -286,7 +286,7 @@ groups:
         for: 0m
         keep_firing_for: 3m
         labels: {severity: "warning", component: detector}
-        annotations: {incident_family: detector-error, evidence_class: bounded-producer-error, source_generation: "", summary: A detector reports a bounded producer error., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: detector-error, evidence_class: bounded-producer-error, source_generation: "", summary: A detector reports a bounded producer error., runbook: docs/how-to/incident.md}
       - alert: ObservabilityDetectorEventThreshold
         expr: >-
           max by (environment, node) (vpn_honeypot_events_60min) > 100
@@ -295,7 +295,7 @@ groups:
         for: 3m
         keep_firing_for: 3m
         labels: {severity: "warning", component: detector}
-        annotations: {incident_family: detector-events, evidence_class: event-threshold, source_generation: "", summary: A security or reachability detector crossed its event threshold., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: detector-events, evidence_class: event-threshold, source_generation: "", summary: A security or reachability detector crossed its event threshold., runbook: docs/how-to/incident.md}
   - name: observability_producer_deadlines
     rules:
 
@@ -306,7 +306,7 @@ groups:
         for: 3m
         keep_firing_for: 3m
         labels: {severity: warning, component: producer-evidence, node: "node-01", environment: "staging"}
-        annotations: {incident_family: producer-evidence, evidence_class: required-adapter-never-published, source_generation: "", summary: A required node adapter has no completion clock; monitoring health is unknown., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: producer-evidence, evidence_class: required-adapter-never-published, source_generation: "", summary: A required node adapter has no completion clock; monitoring health is unknown., runbook: docs/how-to/incident.md}
 
       - alert: ObservabilityAdapterCompletionMissing
         expr: >-
@@ -315,7 +315,7 @@ groups:
         for: 3m
         keep_firing_for: 3m
         labels: {severity: warning, component: producer-evidence, node: "node-02", environment: "staging"}
-        annotations: {incident_family: producer-evidence, evidence_class: required-adapter-never-published, source_generation: "", summary: A required node adapter has no completion clock; monitoring health is unknown., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: producer-evidence, evidence_class: required-adapter-never-published, source_generation: "", summary: A required node adapter has no completion clock; monitoring health is unknown., runbook: docs/how-to/incident.md}
 
 
       - alert: ObservabilityProducerEvidenceUnavailable
@@ -329,7 +329,7 @@ groups:
         for: 3m
         keep_firing_for: 3m
         labels: {severity: warning, component: producer-evidence}
-        annotations: {incident_family: producer-evidence, evidence_class: stale-future-or-incomplete-deadline, source_generation: "", summary: Producer evidence expired or has an invalid deadline; monitoring health is unknown., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: producer-evidence, evidence_class: stale-future-or-incomplete-deadline, source_generation: "", summary: Producer evidence expired or has an invalid deadline; monitoring health is unknown., runbook: docs/how-to/incident.md}
       - alert: ObservabilityManifestAdapterStalled
         expr: >-
           (time() - vpn_observability_adapter_collected_timestamp_seconds > 180)
@@ -337,7 +337,7 @@ groups:
         for: 3m
         keep_firing_for: 3m
         labels: {severity: warning, component: producer-evidence}
-        annotations: {incident_family: producer-evidence, evidence_class: manifest-adapter-stalled, source_generation: "", summary: Node manifest adapter completion is expired or future dated., runbook: docs/RUNBOOK-incident.md}
+        annotations: {incident_family: producer-evidence, evidence_class: manifest-adapter-stalled, source_generation: "", summary: Node manifest adapter completion is expired or future dated., runbook: docs/how-to/incident.md}
   - name: observability_watchdog_backup
     rules:
       - alert: ObservabilityWatchdogEvidenceStale
@@ -355,7 +355,7 @@ groups:
           evidence_class: stale-or-unknown
           source_generation: ""
           summary: Watchdog evidence is missing or stale.
-          runbook: docs/RUNBOOK-incident.md
+          runbook: docs/how-to/incident.md
       - alert: ObservabilityWatchdogRecoveryUnresolved
         expr: vpn_watchdog_recovery_outcome{state="unresolved"} == 1
         for: 2m
@@ -368,7 +368,7 @@ groups:
           evidence_class: local-recovery-unresolved
           source_generation: ""
           summary: Bounded local watchdog recovery remains unresolved.
-          runbook: docs/RUNBOOK-incident.md
+          runbook: docs/how-to/incident.md
       - alert: ObservabilityBackupEvidenceStale
         expr: >-
           (vpn_backup_collection_success == 0)
@@ -384,7 +384,7 @@ groups:
           evidence_class: stale-or-unknown
           source_generation: ""
           summary: Backup evidence is missing or stale.
-          runbook: docs/RUNBOOK-restore.md
+          runbook: docs/how-to/restore.md
       - alert: ObservabilityBackupStageFailed
         expr: vpn_backup_result{state="failed"} == 1
         for: 3m
@@ -397,7 +397,7 @@ groups:
           evidence_class: confirmed-stage-failure
           source_generation: ""
           summary: A producer-owned backup stage reported failure.
-          runbook: docs/RUNBOOK-restore.md
+          runbook: docs/how-to/restore.md
       - alert: ObservabilityRestoreReadinessStale
         expr: vpn_backup_freshness_state{role="restore-drill",state="stale"} == 1
         for: 3m
@@ -410,4 +410,4 @@ groups:
           evidence_class: stale-restore-proof
           source_generation: ""
           summary: Approved isolated restore evidence is stale.
-          runbook: docs/RUNBOOK-restore.md
+          runbook: docs/how-to/restore.md

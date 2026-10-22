@@ -14,7 +14,7 @@ from jinja2 import UndefinedError
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CHECK_SCRIPT = REPO_ROOT / "scripts" / "check-xray-breaking-changes.py"
-RELEASE_LINE = REPO_ROOT / "docs" / "XRAY-RELEASE-LINE.md"
+RELEASE_LINE = REPO_ROOT / "docs/reference/xray-release-line.md"
 
 
 def _load_checker():

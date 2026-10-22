@@ -5,9 +5,9 @@ from pathlib import Path
 from vpnd.text import lf_lines
 
 KEYWORD_MAP = [
-    ("fleet-status", ["RUNBOOK-incident.md", "RUNBOOK-rollback.md"]),
-    ("asn-drift", ["RUNBOOK-incident.md"]),
-    ("burn-check", ["RUNBOOK-incident.md", "RUNBOOK-rotate.md"]),
+    ("fleet-status", ["how-to/incident.md", "how-to/rollback.md"]),
+    ("asn-drift", ["how-to/incident.md"]),
+    ("burn-check", ["how-to/incident.md", "how-to/rotate.md"]),
 ]
 
 

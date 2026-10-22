@@ -4,7 +4,7 @@ The daemon ships as a Jinja2 template; this test renders it against the role
 defaults, execs the rendered module, and exercises the pure `RateLimiter`
 decision core against golden Xray-core v26.3.27 log fixtures.
 
-It pins the finding from docs/AUDIT-SILENT-FAILURE.md: the daemon bans
+It pins the finding from docs/reference/silent-failure-audit.md: the daemon bans
 authenticated clients whose traffic is routed to the `block` outbound (or
 rejected at the VLESS layer), and it can NOT see external REALITY probes —
 those land in error.log, not the access.log it tails. The fixtures encode

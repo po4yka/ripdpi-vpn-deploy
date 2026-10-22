@@ -37,7 +37,7 @@ Contributors can also submit a focused pull request for:
 
 - Template misconfigurations that the validators didn't catch.
 - Role hardening suggestions (sysctl, systemd unit, capability drops).
-- Documentation gaps in `docs/RUNBOOK-*.md`.
+- Documentation gaps in the `docs/how-to/` runbooks.
 - CI gate gaps (a class of bug we should be testing for and aren't).
 - Suggestions for stronger gitleaks rules.
 
@@ -48,7 +48,7 @@ After we've shipped a fix:
 1. Public release notes describe the issue class generically (no
    reproducer until the median operator can update).
 2. After 30 days, full reproducer can be added to the relevant
-   `docs/RUNBOOK-*.md` for future operators.
+   `docs/how-to/` runbook for future operators.
 
 ## What this repo treats as out-of-scope
 
@@ -65,8 +65,8 @@ to our deployment:
 
 When you suspect any of the critical-class events:
 
-1. `docs/RUNBOOK-incident.md` — decision matrix
-2. `docs/RUNBOOK-rotate.md` — credential rotation procedures
-3. `docs/RUNBOOK-restore.md` — disaster recovery from encrypted backup
+1. `docs/how-to/incident.md` — decision matrix
+2. `docs/how-to/rotate.md` — credential rotation procedures
+3. `docs/how-to/restore.md` — disaster recovery from encrypted backup
 
 These are the same runbooks we'd point a reporter at after triage.

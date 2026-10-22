@@ -27,8 +27,8 @@ ALLOWLIST = {
     "scripts/check-templates-render.py",
     "scripts/pre-commit-placeholder-scan.py",
     "scripts/render-snapshots.py",
-    "docs/QUICKSTART.md",
-    "docs/SECRETS.md",
+    "docs/tutorials/quickstart.md",
+    "docs/reference/secrets.md",
 }
 
 # Path prefixes whose contents legitimately echo the schema placeholders.

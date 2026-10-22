@@ -34,7 +34,7 @@ xray_block_quic_outbound: true
 # also accepts firefox/edge/safari/ios/android/random/…. Changing this is only
 # materially relevant under the June-2026 RU-AS cascade pattern (Chrome/Safari/iOS
 # flagged, Firefox/Android pass) — NOT on the foreign-VPS baseline. See
-# docs/CLIENT-NOTES.md. Do NOT rotate it automatically; see the failover caveat.
+# docs/reference/client-notes.md. Do NOT rotate it automatically; see the failover caveat.
 xray_utls_fingerprint: "chrome"
 
 # Version sentinel — must be overridden in secrets/group_vars.
