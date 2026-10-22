@@ -295,7 +295,7 @@ def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes
             assert subprocess.run(['systemctl', 'is-active', '--quiet', unit.name], capture_output=True).returncode != 0
             assert path.read_text() == revoked_config
             assert '10.70.0.2' not in firewall.read_text()
-            assert (Path('/var/lib/ripdpi/amneziawg') / 'pending.json').exists()
+            assert (Path('/var/lib/ripdpi/amneziawg/runtime') / 'pending.json').exists()
             ordinary = publisher.role([candidate], firewall=firewall_text(candidate))
             assert ordinary.returncode != 0
             injection.unlink()
@@ -320,6 +320,10 @@ def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes
             for address in ('10.70.0.3/32', 'fd42:10::3/128'):
                 command(['ip', '-n', client, 'address', 'add', address, 'dev', ci, 'nodad'] if ':' in address
                         else ['ip', '-n', client, 'address', 'add', address, 'dev', ci])
+            # Removing the final address can discard the interface's routes.
+            # Reconcile the owned client routes after replacing its identity.
+            for family in ('-4', '-6'):
+                command(['ip', '-n', client, family, 'route', 'replace', 'default', 'dev', ci])
             for address in ('198.18.1.2', 'fd88::2'):
                 positive = subprocess.run(['ip', 'netns', 'exec', client, sys.executable, '-c', PROBE, address, '', '20'],
                                           capture_output=True, timeout=30)

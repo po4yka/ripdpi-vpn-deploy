@@ -116,7 +116,7 @@ def test_awg_normalization_never_prints_private_material_under_verbose_callback(
             if "_awg_instances" in str(task.get("loop", "")):
                 assert task.get("no_log") is True
     rotation = tasks("playbooks/rotate-credentials.yml")[0]
-    assert not any(task["name"] == "Restart amneziawg" for task in rotation["handlers"])
+    assert not any(task["name"] == "Restart amneziawg" for task in rotation.get("handlers", []))
     activation = named(rotation["tasks"], "Activate rotated AmneziaWG peers and firewall claims together")
     assert activation["ansible.builtin.import_tasks"] == "tasks/awg-rotate.yml"
     lifecycle = tasks("playbooks/tasks/awg-rotate.yml")[0]
