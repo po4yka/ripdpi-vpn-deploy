@@ -80,3 +80,34 @@ _run_dry() {
     assert_failure
   fi
 }
+
+@test "dry-run neither creates state nor reads a missing health configuration" {
+  checkout="$BATS_TEST_TMPDIR/checkout"
+  mkdir -p "$checkout/scripts"
+  cp "$SCRIPT" "$REPO_ROOT/scripts/fleet_rotation.py" \
+    "$REPO_ROOT/scripts/fleet_rotation_liveness.py" \
+    "$REPO_ROOT/scripts/fleet_inspection.py" \
+    "$REPO_ROOT/scripts/bootstrap_readiness.py" "$checkout/scripts/"
+  cp "$PLAN" "$checkout/plan.yaml"
+  run bash "$checkout/scripts/fleet-rotate.sh" --plan "$checkout/plan.yaml" --dry-run
+  assert_success
+  [ ! -e "$checkout/.omc" ]
+  [ ! -e "$checkout/liveness.yaml" ]
+}
+
+@test "dry-run rejects duplicate keys instead of accepting a changed safety floor" {
+  plan="$BATS_TEST_TMPDIR/duplicate.yaml"
+  cp "$PLAN" "$plan"
+  printf '\nmin_active: 0\n' >> "$plan"
+  run bash "$SCRIPT" --plan "$plan" --dry-run
+  assert_failure
+  assert_output --partial "duplicate-or-invalid-mapping"
+}
+
+@test "dry-run refuses legacy unbound plans" {
+  plan="$BATS_TEST_TMPDIR/legacy.yaml"
+  printf '%s\n' 'id: old-plan' 'min_active: 1' 'rotations: []' > "$plan"
+  run bash "$SCRIPT" --plan "$plan" --dry-run
+  assert_failure
+  assert_output --partial "invalid-plan"
+}

@@ -1,12 +1,22 @@
 # Test fixture for scripts/fleet-rotate.sh --plan
 # All provider/env names are placeholders. Values match the script's
-# expected YAML shape (id, min_active, rotations[].current/new_env/new_zone).
+# versioned plan contract. The health file is not read during dry-run.
+schema_version: 1
 id: 2026-05-test-rotation
 min_active: 1
+health:
+  config: liveness.yaml
+  nodes:
+    - current: upcloud:prod
+      inventory_alias: node-a
+    - current: hetzner:prod
+      inventory_alias: node-b
+    - current: vultr:standby
+      inventory_alias: node-c
 rotations:
   - current: upcloud:prod
     new_env: prod-2026-05
-    new_zone: nl-ams1
+    new_zone: zone-a
   - current: hetzner:prod
     new_env: prod-2026-05
-    new_zone: hel1
+    new_zone: zone-b
