@@ -15,7 +15,7 @@ import ssl
 import sys
 import tempfile
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -147,9 +147,11 @@ class PublisherIO:
     def origin(self, alias):
         origin = urlsplit(self.plan['publication']['origin'])
         host = self.hosts[alias]['address']
-        with socket.create_connection((host, origin.port or 443), timeout=10) as connection:
-            with ssl.create_default_context().wrap_socket(connection, server_hostname=origin.hostname):
-                pass
+        context = ssl.create_default_context()
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        with socket.create_connection((host, origin.port or 443), timeout=10) as connection, \
+                context.wrap_socket(connection, server_hostname=origin.hostname):
+            pass
 
     def pivot_ready(self):
         origin = urlsplit(self.plan['publication']['origin'])
@@ -174,7 +176,7 @@ class PublisherIO:
             token = secrets.token_urlsafe(32)
             token_hash = sha(token.encode())
             payload = encoded({'migration_route_nonce': secrets.token_hex(32)})
-            expires = (datetime.now(timezone.utc) + timedelta(minutes=5)).strftime('%Y-%m-%dT%H:%M:%SZ')
+            expires = (datetime.now(UTC) + timedelta(minutes=5)).strftime('%Y-%m-%dT%H:%M:%SZ')
             document = encoded({'schema_version': 1, 'client': 'migration-route-check', 'expires': expires,
                                 'payload_b64': base64.b64encode(payload).decode()})
             try:
