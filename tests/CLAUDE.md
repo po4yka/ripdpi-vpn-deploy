@@ -14,6 +14,15 @@
 
 ## Design decisions
 
+Device migration regressions execute real test-only SOPS transactions and the
+actual publisher behind local HTTP. Lost acknowledgements after remote and
+cross-document writes must resume identical bytes without reallocation.
+Validate complete encrypted journal states against the secrets schema and
+reconstruct migrated delivery identity through the ordinary drift checker.
+Owned CA/TLS route tests cover exact SNI, body, redirect refusal and total
+deadlines; orchestration doubles do not establish live deployment or device
+acceptance. Preserve explicit proof requirements after publication.
+
 Fleet regressions distinguish strict inventory-bound collection, completed
 watchdog evidence and authenticated client-path health. Rotation tests exercise
 positive UDP-only survivors and successful resume as well as stale/wrong-target

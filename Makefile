@@ -7,6 +7,31 @@ endif
 .PHONY: workspace-status
 workspace-status:
 	@python3 scripts/workspace-status.py
+else ifneq ($(filter device-migration,$(MAKECMDGOALS)),)
+ifneq ($(MAKECMDGOALS),device-migration)
+$(error device migration requires exactly one make goal)
+endif
+override MIGRATION_ACTION_LITERAL := $(value ACTION)
+override MIGRATION_PLAN_LITERAL := $(value DEVICE_MIGRATION_PLAN)
+override MIGRATION_APPROVAL_LITERAL := $(value DEVICE_MIGRATION_APPROVAL)
+override MIGRATION_RECEIPT_LITERAL := $(value MIGRATION_RECEIPT)
+override MIGRATION_CLIENT_LITERAL := $(value MIGRATION_CLIENT)
+override MIGRATION_REASON_LITERAL := $(value MIGRATION_REASON)
+export MIGRATION_ACTION_LITERAL MIGRATION_PLAN_LITERAL MIGRATION_APPROVAL_LITERAL
+export MIGRATION_RECEIPT_LITERAL MIGRATION_CLIENT_LITERAL MIGRATION_REASON_LITERAL
+unexport ACTION DEVICE_MIGRATION_PLAN DEVICE_MIGRATION_APPROVAL MIGRATION_RECEIPT MIGRATION_CLIENT MIGRATION_REASON MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+.PHONY: device-migration
+device-migration:
+	@set -eu; \
+	  case "$${MIGRATION_ACTION_LITERAL}" in plan|prepare|publish|status|receipt|attest|ready|rollback) ;; *) echo 'ACTION=plan|prepare|publish|status|receipt|attest|ready|rollback required' >&2; exit 2 ;; esac; \
+	  test -n "$${MIGRATION_PLAN_LITERAL}" || { echo 'DEVICE_MIGRATION_PLAN required' >&2; exit 2; }; \
+	  set -- "$${MIGRATION_ACTION_LITERAL}" "--plan=$${MIGRATION_PLAN_LITERAL}"; \
+	  if test -n "$${MIGRATION_APPROVAL_LITERAL}"; then set -- "$$@" "--approve=$${MIGRATION_APPROVAL_LITERAL}"; fi; \
+	  if test -n "$${MIGRATION_RECEIPT_LITERAL}"; then set -- "$$@" "--receipt=$${MIGRATION_RECEIPT_LITERAL}"; fi; \
+	  if test -n "$${MIGRATION_CLIENT_LITERAL}"; then set -- "$$@" "--client=$${MIGRATION_CLIENT_LITERAL}"; fi; \
+	  if test -n "$${MIGRATION_REASON_LITERAL}"; then set -- "$$@" "--reason=$${MIGRATION_REASON_LITERAL}"; fi; \
+	  exec python3 scripts/device-migration.py "$$@"
 else ifneq ($(filter setup-yubikey,$(MAKECMDGOALS)),)
 ifneq ($(MAKECMDGOALS),setup-yubikey)
 $(error hardware enrollment requires exactly one make goal)
@@ -507,7 +532,7 @@ endif
 
 # Capture deployment labels before the eager Terraform path assignments below.
 # The included fleet file remains trusted executable Make configuration.
-ifneq ($(filter deploy dry-run deploy-canary backup-configure install-ssh-recovery staging-cleanup-manifest staging-cleanup-reissue staging-destroy $(_DISPOSABLE_LIVENESS_GOALS),$(MAKECMDGOALS)),)
+ifneq ($(filter deploy dry-run deploy-canary blue-green backup-configure install-ssh-recovery staging-cleanup-manifest staging-cleanup-reissue staging-destroy $(_DISPOSABLE_LIVENESS_GOALS),$(MAKECMDGOALS)),)
 override ENV := $(value ENV)
 override PROVIDER := $(value PROVIDER)
 endif
@@ -693,7 +718,8 @@ help:
 	@echo "  destroy                    Safe terraform destroy (double confirmation)"
 	@echo "  backup-state               age-encrypt the local terraform state"
 	@echo "  drift-since-tag            Diff fleet against last vpn-deploy-known-good-* tag"
-	@echo "  blue-green GREEN_ENV=<name>  Orchestrate single-host blue-green"
+	@echo "  blue-green GREEN_ENV=… GREEN_SOPS_FILE=… DEVICE_MIGRATION_PLAN=…  Replace with device handover"
+	@echo "  device-migration ACTION=… DEVICE_MIGRATION_PLAN=…  Plan, prepare, publish and verify device handover"
 	@echo "  fleet-rotate PLAN=…        Authenticated survivor floor and exact-plan resume"
 	@echo "  protocol-liveness LIVENESS_CONFIG=…  Pull sentinel probes and evaluate quorum"
 	@echo "  monitor-protocol-liveness LIVENESS_CONFIG=…  Persist and alert on protocol-liveness transitions"
@@ -1958,10 +1984,21 @@ scan-targets:
 	  $(if $(TOP),--top $(TOP)) \
 	  $(if $(VALIDATE),--validate)
 
+ifneq ($(filter blue-green,$(MAKECMDGOALS)),)
+override BLUE_ENV := $(value BLUE_ENV)
+override BLUE_GREEN_SOURCE_ENV := $(or $(value BLUE_ENV),$(value ENV))
+override GREEN_ENV := $(value GREEN_ENV)
+override GREEN_SOPS_FILE := $(value GREEN_SOPS_FILE)
+override DEVICE_MIGRATION_PLAN := $(value DEVICE_MIGRATION_PLAN)
+override DEVICE_MIGRATION_APPROVAL := $(value DEVICE_MIGRATION_APPROVAL)
+override BLUE_COHORT := $(value BLUE_COHORT)
+override GREEN_COHORT := $(value GREEN_COHORT)
+export BLUE_GREEN_SOURCE_ENV GREEN_ENV GREEN_SOPS_FILE DEVICE_MIGRATION_PLAN DEVICE_MIGRATION_APPROVAL BLUE_COHORT GREEN_COHORT
+endif
 blue-green:
-	@test -n "$(GREEN_ENV)" || { echo "GREEN_ENV=<name> required (e.g. green, spare2)"; exit 1; }
-	$(require-blue-env)
-	PROVIDER=$(PROVIDER) BLUE_ENV=$(blue_env) GREEN_ENV=$(GREEN_ENV) ./scripts/blue-green.sh
+	@test -n "$${GREEN_ENV:-}" || { echo "GREEN_ENV=<name> required (e.g. green, spare2)"; exit 1; }
+	@test -n "$${BLUE_GREEN_SOURCE_ENV:-}" || { echo "BLUE_ENV or ENV required"; exit 1; }
+	PROVIDER="$${PROVIDER}" BLUE_ENV="$${BLUE_GREEN_SOURCE_ENV}" GREEN_ENV="$${GREEN_ENV}" ./scripts/blue-green.sh
 
 bats-test:
 	bats tests/bats/

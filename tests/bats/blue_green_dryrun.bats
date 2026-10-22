@@ -22,6 +22,18 @@ setup() {
   export GREEN_ENV="green1"
   export PROVIDER="upcloud"
   export SOPS_FILE="${FAKE_SOPS}"
+  export GREEN_SOPS_FILE="${BATS_TEST_TMPDIR}/target.sops.yaml"
+  export DEVICE_MIGRATION_PLAN="${BATS_TEST_TMPDIR}/migration.json"
+  printf 'synthetic separate target\n' > "$GREEN_SOPS_FILE"
+  export DEVICE_MIGRATION_APPROVAL="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  python3 - "$DEVICE_MIGRATION_PLAN" "$REPO_ROOT" "$SOPS_FILE" "$GREEN_SOPS_FILE" <<'PYTHON'
+import json, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+path.write_text(json.dumps({'inventory': sys.argv[2] + '/ansible/inventory/generated.ini',
+    'source': {'host': 'upcloud:prod', 'alias': 'vpn-test.example.com', 'cohort': 'fullstack', 'secrets_file': sys.argv[3]},
+    'target': {'host': 'upcloud:green1', 'alias': 'node-green', 'cohort': 'device-full-tailnet', 'secrets_file': sys.argv[4]}}))
+path.chmod(0o600)
+PYTHON
   export ANSIBLE_SSH_PRIVATE_KEY_FILE="${BATS_TEST_TMPDIR}/id_ed25519"
   export MAKE="true"
 }
@@ -40,7 +52,7 @@ _run_dry() {
 }
 
 @test "environment dry-run needs no private inputs and runs no tools" {
-  run env -u ANSIBLE_SSH_PRIVATE_KEY_FILE DRY_RUN=1 \
+  run env -u ANSIBLE_SSH_PRIVATE_KEY_FILE -u GREEN_SOPS_FILE -u DEVICE_MIGRATION_PLAN -u DEVICE_MIGRATION_APPROVAL DRY_RUN=1 \
     SOPS_FILE="${BATS_TEST_TMPDIR}/absent.sops.yaml" bash "$SCRIPT"
   assert_success
   assert_output --partial "[dry-run] blue-green sequence"
