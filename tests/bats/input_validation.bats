@@ -9,10 +9,10 @@
 
 @test "fleet rotation reads a plan path as an argv value" {
   plan="$BATS_TEST_TMPDIR/plan;not-executed.yaml"
-  printf '%s\n' 'id: safe' 'min_active: 1' 'rotations: []' > "$plan"
+  cp tests/fixtures/fleet-plan-sample.yaml "$plan"
   run ./scripts/fleet-rotate.sh --plan "$plan" --dry-run
   [ "$status" -eq 0 ]
-  [[ "$output" == *"plan id=safe"* ]]
+  [[ "$output" == *"plan id=2026-05-test-rotation"* ]]
 }
 
 @test "Make passes client values as one argv argument" {

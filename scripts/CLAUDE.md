@@ -11,6 +11,15 @@ Recipient failover uses `payload_failover_policy.py` for strict two-origin HTTPS
 policy admission; all contributing hosts must agree before extended emission.
 Plain sing-box exports retain their RTT-only urltest contract.
 
+Fleet status resolves provider/environment selections through strict inventory
+inspection, preserving Tailnet transport, public host identity and custom ports.
+Its local watchdog verdict requires a recent completed result; neither a timer
+nor a listening socket proves client-path connectivity. Rotation uses canonical
+authenticated liveness for distinct survivors outside the current/completed
+original targets. The versioned plan owns the survivor mapping. Private locked
+journals bind the entire plan, synchronize in-flight before external execution,
+and never automatically replay an uncertain outcome. Dry-run has no state writes.
+
 The offline AWG sentinel installer binds the same correction into its existing
 toolchain inputs and returns those public inputs to its provenance caller.
 Liveness and real-VPS lane readers require that complete identity from the
