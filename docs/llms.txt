@@ -29,7 +29,7 @@
 - [Local operator kit](/md/how-to/local-operator-kit.md)
 - [Multi-cohort host](/md/how-to/multi-cohort.md)
 - [Multi-operator RBAC](/md/how-to/multi-operator.md)
-- [Per-ASN payload-size throttling probe](/md/how-to/payload-throttle.md)
+- [Exact payload probes](/md/how-to/payload-throttle.md)
 - [Topology-aware multi-protocol probe matrix](/md/how-to/probe-matrix.md)
 - [Real-VPS AWG/NAT evidence sentinel](/md/how-to/real-vps-awg-nat.md)
 - [Deploy-side regression baseline](/md/how-to/regression-baseline.md)

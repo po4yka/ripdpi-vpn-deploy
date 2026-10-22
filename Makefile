@@ -50,6 +50,40 @@ device-migration:
 	  if test -n "$${MIGRATION_CLIENT_LITERAL}"; then set -- "$$@" "--client=$${MIGRATION_CLIENT_LITERAL}"; fi; \
 	  if test -n "$${MIGRATION_REASON_LITERAL}"; then set -- "$$@" "--reason=$${MIGRATION_REASON_LITERAL}"; fi; \
 	  exec python3 scripts/device-migration.py "$$@"
+else ifneq ($(filter probe-payload-throttle,$(MAKECMDGOALS)),)
+ifneq ($(MAKECMDGOALS),probe-payload-throttle)
+$(error payload probe requires exactly one make goal)
+endif
+override PAYLOAD_HOST_LITERAL := $(value HOST)
+override PAYLOAD_PORT_LITERAL := $(value PORT)
+override PAYLOAD_SIZES_LITERAL := $(value SIZES)
+override PAYLOAD_ASN_LITERAL := $(value ASN)
+override PAYLOAD_SOCKS_PORT_LITERAL := $(value SOCKS_PORT)
+override PAYLOAD_UPLOAD_LITERAL := $(value UPLOAD)
+override PAYLOAD_CA_FILE_LITERAL := $(value CA_FILE)
+override PAYLOAD_SCHEME_LITERAL := $(value SCHEME)
+override PAYLOAD_ECHO_PATH_LITERAL := $(value ECHO_PATH)
+override PAYLOAD_TIMEOUT_LITERAL := $(value TIMEOUT)
+override PAYLOAD_NO_STATE_LITERAL := $(value NO_STATE)
+export PAYLOAD_HOST_LITERAL PAYLOAD_PORT_LITERAL PAYLOAD_SIZES_LITERAL PAYLOAD_ASN_LITERAL PAYLOAD_SOCKS_PORT_LITERAL PAYLOAD_UPLOAD_LITERAL PAYLOAD_CA_FILE_LITERAL PAYLOAD_SCHEME_LITERAL PAYLOAD_ECHO_PATH_LITERAL PAYLOAD_TIMEOUT_LITERAL PAYLOAD_NO_STATE_LITERAL
+unexport HOST PORT SIZES ASN SOCKS_PORT UPLOAD CA_FILE SCHEME ECHO_PATH TIMEOUT NO_STATE MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+.PHONY: probe-payload-throttle
+probe-payload-throttle:
+	@set -eu; \
+	  test -n "$${PAYLOAD_HOST_LITERAL}" || { echo "HOST is required" >&2; exit 2; }; \
+	  set -- --host "$${PAYLOAD_HOST_LITERAL}"; \
+	  if test -n "$${PAYLOAD_PORT_LITERAL}"; then set -- "$$@" --port "$${PAYLOAD_PORT_LITERAL}"; fi; \
+	  if test -n "$${PAYLOAD_SIZES_LITERAL}"; then set -- "$$@" --sizes "$${PAYLOAD_SIZES_LITERAL}"; fi; \
+	  if test -n "$${PAYLOAD_ASN_LITERAL}"; then set -- "$$@" --asn "$${PAYLOAD_ASN_LITERAL}"; fi; \
+	  if test -n "$${PAYLOAD_SOCKS_PORT_LITERAL}"; then set -- "$$@" --socks-port "$${PAYLOAD_SOCKS_PORT_LITERAL}"; fi; \
+	  case "$${PAYLOAD_UPLOAD_LITERAL:-0}" in 1) set -- "$$@" --upload ;; 0) ;; *) echo "UPLOAD must be 0 or 1" >&2; exit 2 ;; esac; \
+	  if test -n "$${PAYLOAD_CA_FILE_LITERAL}"; then set -- "$$@" --ca-file "$${PAYLOAD_CA_FILE_LITERAL}"; fi; \
+	  if test -n "$${PAYLOAD_SCHEME_LITERAL}"; then set -- "$$@" --scheme "$${PAYLOAD_SCHEME_LITERAL}"; fi; \
+	  if test -n "$${PAYLOAD_ECHO_PATH_LITERAL}"; then set -- "$$@" --echo-path "$${PAYLOAD_ECHO_PATH_LITERAL}"; fi; \
+	  if test -n "$${PAYLOAD_TIMEOUT_LITERAL}"; then set -- "$$@" --timeout "$${PAYLOAD_TIMEOUT_LITERAL}"; fi; \
+	  case "$${PAYLOAD_NO_STATE_LITERAL:-0}" in 1) set -- "$$@" --no-state ;; 0) ;; *) echo "NO_STATE must be 0 or 1" >&2; exit 2 ;; esac; \
+	  exec ./scripts/probe-payload-throttle.sh "$$@"
 else ifneq ($(filter setup-yubikey,$(MAKECMDGOALS)),)
 ifneq ($(MAKECMDGOALS),setup-yubikey)
 $(error hardware enrollment requires exactly one make goal)
@@ -1614,15 +1648,6 @@ emit-probe-matrix-profile:
 probe-matrix-cell:
 	@if test -n "$(MATRIX_CONFIG)" -a -n "$(TARGET_ID)" -a -n "$(PROTOCOL)" -a -n "$(CONTROL_VERDICT)"; then MATRIX_CONFIG="$(MATRIX_CONFIG)" TARGET_ID="$(TARGET_ID)" PROTOCOL="$(PROTOCOL)" CONTROL_VERDICT="$(CONTROL_VERDICT)" ./scripts/probe-matrix-cell.sh; else printf '%s\n' '{"verdict":"error","rtt_ms":null,"error_kind":"request-invalid"}'; fi
 
-# Per-ASN ~16 KiB payload-throttling probe. Emits one JSON verdict line
-# on stdout keyed to the target ASN. Run from a filtered client path,
-# NOT the VPS. See scripts/probe-payload-throttle.sh.
-probe-payload-throttle:
-	@test -n "$(HOST)" || { echo "usage: make probe-payload-throttle HOST=endpoint [PORT=443] [SIZES=1024,4096,8192,16384,24576,32768] [ASN=AS64500]"; exit 1; }
-	@./scripts/probe-payload-throttle.sh --host $(HOST) \
-	  $(if $(PORT),--port $(PORT)) \
-	  $(if $(SIZES),--sizes $(SIZES)) \
-	  $(if $(ASN),--asn $(ASN))
 
 snell-refinement:
 	@test -n "$(BUNDLE)" -a -n "$(CONFIG)" -a -n "$(VANTAGE)" || { echo "usage: make snell-refinement BUNDLE=sing-box.json CONFIG=snell-refinement.yaml VANTAGE=technical-id"; exit 1; }

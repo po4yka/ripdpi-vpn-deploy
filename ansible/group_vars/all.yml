@@ -172,35 +172,23 @@ p0_reality_shapes:
 # with flow_mode. Both inherit this canonical default when omitted.
 p0_reality_flow_mode: vision
 
+# Optional complete RIPDPI payload verification policy. Select two owned HTTPS
+# controls with known content before enabling; ordinary sing-box stays RTT-only.
+# See docs/RIPDPI-BUNDLE.md. Keep outside the replaceable vpn toggle map.
+client_payload_failover: null
+
 # Ports
 # These are the runtime defaults used by pre-task listener rendering and all
 # transport consumers. Terraform's resolved public_listener_contract is
 # intentionally independent: it is the provider-edge policy and site.yml
 # compares it with the rendered runtime manifest before a role can converge.
 xray_port: 443
-# Secondary VLESS+REALITY+Vision inbound on a non-443 port. Lets a
-# client carry both endpoints in its selector group and roll over to
-# the alt-port when the TLS-connection-cap policing rule on the home
-# ISP fires on port 443 specifically. Default 2053 because it is one
-# of Cloudflare's published alternate HTTPS ports — looks like
-# ordinary HTTPS to a censor and clear of every existing toggle in
-# this repo (8443 collides with nginx_xhttp_public_port; 8444 with
-# subscription-host and hysteria-realm). Set to 0 to disable; ignored
-# entirely when xray.cohorts is non-empty (multi-cohort layouts carry
-# their own ports). Rotate when the alt-port itself gets targeted.
-# xray_fallback_port must not collide with any other listener on the host.
-# Known collisions to avoid:
-#   8443 — nginx_xhttp_public_port (P1 direct listener)
-#   8444 — subscription.port (vpn-bootstrap, default) AND
-#           hysteria_realm.listen_port (sing-box rendezvous, default)
-#           If both subscription-host and hysteria-realm are enabled on the
-#           same node, override one of those ports too. An assert in
-#           roles/hysteria-realm/tasks/main.yml enforces the realm/sub
-#           collision at deploy time.
-# Default 2053 is a Cloudflare alternate-HTTPS port — appears as ordinary
-# HTTPS to a censor and is clear of all existing toggles listed above.
-# Set to 0 to disable; ignored when xray.cohorts is non-empty.
-xray_fallback_port: 2053
+# Alternate REALITY is opt-in after path-specific measurement. A different port
+# on the same address does not survive an address-wide block. Prefer a separate
+# reachable TCP/443 endpoint for resilience; non-443 camouflage is not guaranteed.
+# A nonzero value requires a matching provider listener and no port collision.
+# Multi-cohort layouts declare their own ports and ignore this setting.
+xray_fallback_port: 0
 nginx_xhttp_public_port: 8443 # public nginx listener; direct-only cohorts may override to 443
 nginx_xhttp_port: 10085       # localhost-only Xray XHTTP inbound behind nginx
 xray_api_listen: "127.0.0.1:10086"  # localhost-only Xray StatsService
@@ -208,9 +196,8 @@ xray_api_listen: "127.0.0.1:10086"  # localhost-only Xray StatsService
 # Opt-in via nginx_xhttp.fallback_enabled (off by default); when on, nginx
 # renders an extra server block that shares the same Xray localhost upstream
 # so XHTTP delivery survives a Cloudflare/cdn-front outage. Default 2083
-# because it is one of Cloudflare's published alternate HTTPS ports — looks
-# like ordinary HTTPS to a censor and is clear of every existing toggle in
-# this repo (443 = REALITY tcp / Hysteria udp; 2053 = xray_fallback_port;
+# as an explicit alternate listener; its reachability must be measured.
+# Avoid collisions (443 = REALITY tcp / Hysteria udp;
 # 8443 = nginx_xhttp_public_port AND cdn_front.port; 8444 = subscription-host
 # / hysteria-realm). A pre-flight assert in the nginx-xhttp role rejects a
 # collision with any of those. Rotate if the alt-port itself gets targeted.

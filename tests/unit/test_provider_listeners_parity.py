@@ -13,7 +13,6 @@ PROVIDERS = ("upcloud", "hetzner", "vultr", "scaleway")
 # Ansible default separately.
 EXPECTED_FIXED_LISTENERS = [
     ('"xray"', '"tcp"', "443"),
-    ('"xray-fallback"', '"tcp"', "2053"),
     ('"public-site-http"', '"tcp"', "80"),
     ('"amneziawg"', '"udp"', "51820"),
     ('"hysteria"', '"udp"', "443"),
@@ -44,8 +43,7 @@ def test_provider_roots_declare_identical_fixed_listener_sets() -> None:
             f"{provider} listeners.tf drifted from upcloud; rotate the fixed "
             "ports in lockstep across all four roots"
         )
-        for expected in EXPECTED_FIXED_LISTENERS:
-            assert expected in entries, f"{provider}: missing {expected}"
+        assert entries == EXPECTED_FIXED_LISTENERS, f"{provider}: unexpected default listener"
 
 
 def test_nginx_xhttp_listener_port_matches_ansible_default() -> None:

@@ -73,13 +73,21 @@ def test_shared_shape_refuses_unknown_mode() -> None:
         _shape(merge_render_vars(), {"flow_mode": "unknown-shape"})
 
 
-def test_canonical_fixture_renders_watchdog_through_shared_shape() -> None:
-    config = json.loads(render_template(WATCHDOG, merge_render_vars()))
+@pytest.mark.parametrize("alternate", [False, True])
+def test_canonical_fixture_renders_watchdog_through_shared_shape(alternate: bool) -> None:
+    variables = merge_render_vars()
+    expected_ports = [443]
+    if alternate:
+        fallback = deepcopy(variables["watchdog_reality_probes"][0])
+        fallback.update(name="fallback", port=2053)
+        variables["watchdog_reality_probes"].append(fallback)
+        expected_ports.append(2053)
+    config = json.loads(render_template(WATCHDOG, variables))
 
     reality = [outbound for outbound in config['outbounds']
                if outbound['streamSettings']['security'] == 'reality']
-    assert len(reality) == 2
-    assert len(config['outbounds']) == 3  # REALITY primary/fallback plus XHTTP.
+    assert [outbound["settings"]["vnext"][0]["port"] for outbound in reality] == expected_ports
+    assert len(config['outbounds']) == len(expected_ports) + 1  # REALITY plus XHTTP.
     assert all(
         outbound["settings"]["vnext"][0]["users"][0]["flow"] == "xtls-rprx-vision"
         for outbound in reality
