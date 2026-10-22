@@ -60,6 +60,13 @@ description = "Snell PSK or per-user key"
 regex = '''(?i)(?:snell[_ .-]{0,30}(?:psk|userkey)|\b(?:psk|userkey)\b)["'\s:=]+[A-Za-z0-9+/_.-]{16,}={0,2}'''
 tags = ["vpn", "secret"]
 
+[[rules.allowlists]]
+description = "Snell per-device credential generation expression"
+condition = "AND"
+paths = ['''^scripts/device_lifecycle_credentials\.py$''']
+regexTarget = "line"
+regexes = ['''^\s*variant\['users'\]\.append\(\{'name': name, 'userkey': secrets\.token_urlsafe\(32\)\}\)\s*$''']
+
 [allowlist]
 description = "Narrowly scoped fixtures/placeholders that intentionally look secret-like"
 commits = [
@@ -83,7 +90,6 @@ paths = [
 regexes = [
     '''REPLACE_WITH_[A-Z_]+''',
     '''<[A-Z_]+>''',
-    '''AAAA_REPLACE_WITH_PUBLIC_KEY''',
     '''age-keygen''',
     '''STUB_[A-Z_]+''',
     '''MOLECULE_[A-Z_]+''',
