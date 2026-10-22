@@ -62,8 +62,8 @@ surface; [the target reference](docs/reference/make-targets.md) mirrors `make he
 
 [The quickstart](docs/tutorials/quickstart.md) takes a new operator from an empty
 provider account to a working node and a first client in about thirty minutes.
-It runs as three fail-fast blocks with a human review between each; `make clean`
-shreds the plaintext secrets when a block ends, even after a failure.
+Its first block is credential-free until `make decrypt` and stops at a plan review;
+`make clean` shreds the plaintext secrets when the block ends, even after a failure.
 
 ```bash
 export PROVIDER=upcloud          # every make call below reads it (hetzner, vultr, scaleway)
@@ -76,33 +76,19 @@ export PROVIDER=upcloud          # every make call below reads it (hetzner, vult
 )
 ```
 
-Review the plan. Stop on any unexpected update or replacement of an existing
-server; apply only the plan you reviewed.
-
-```bash
-(
-  set -e
-  trap 'make clean || exit $?' EXIT
-  make apply && make inventory && make wait
-  make decrypt && make dry-run   # full --check --diff
-)
-```
-
-Review the dry-run. If it shows a change you did not expect, stop and investigate.
-
-```bash
-(
-  set -e
-  trap 'make clean || exit $?' EXIT
-  make decrypt
-  make deploy && make verify
-  make emit-singbox CLIENT=laptop > laptop.singbox.json   # first client config
-)
-```
+Review the plan and stop on any unexpected update or replacement. What follows
+is not a paste-and-run sequence: after `make apply` a fresh node must be enrolled
+before its first deploy (SSH recovery installed, Tailnet bootstrapped, inventory
+rendered with the confirmed handoffs, the deployment context files prepared), and
+`make dry-run` is reviewed before `make deploy`. [The deploy section of the
+quickstart](docs/tutorials/quickstart.md#6-deploy) carries those steps with their
+review points, and [the client section](docs/tutorials/quickstart.md#7-generate-a-client-config)
+writes the first client configuration into the ignored `secrets/local/clients/`
+tree with mode 0600; the emitted document holds live per-device credentials.
 
 Targets that touch cloud credentials, inventory, SSH or decrypted secrets
 mutate real infrastructure and do not prompt; an operator authorises each
-block after reviewing the output of the one before.
+step after reviewing the output of the one before.
 
 ## Documentation
 

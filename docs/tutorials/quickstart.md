@@ -256,10 +256,21 @@ For an official sing-box JSON with selector + urltest covering the supported
 P0 REALITY and P2 Hysteria2 profiles:
 
 ```bash
-make decrypt
-make emit-singbox CLIENT=laptop > laptop.singbox.json
-make clean
+(
+  set -e -o noclobber
+  trap 'make clean || exit $?' EXIT
+  umask 077                                   # directory 0700, file 0600
+  out=secrets/local/clients/laptop            # ignored operator-kit tree
+  mkdir -p "$out"
+  make decrypt
+  make emit-singbox CLIENT=laptop > "$out/laptop.singbox.json"
+)
 ```
+
+The emitted document holds the device's live credentials. The destination is
+inside the ignored `secrets/local/` kit, `noclobber` refuses to overwrite an
+earlier artifact, and the `umask` keeps other local users out; never redirect
+it into the repository root or a shared folder.
 
 The emitter reads the same private runtime file as `vpnd share`; it does not
 decrypt again. Do not combine that shared document with per-host `SOPS_FILES`.
