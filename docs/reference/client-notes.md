@@ -131,29 +131,26 @@ than via app-side SOCKS5.
 
 ## VLESS+REALITY alt-port roll-over (xray_fallback_port)
 
-The server stack ships a secondary VLESS+REALITY+Vision inbound on a
-non-443 port by default. The Ansible variable is `xray_fallback_port`
-(default 2053; set to 0 to disable). The default value matches one of
-the published Cloudflare alternate HTTPS ports, so the listener looks
-indistinguishable from any other HTTPS endpoint to a censor.
+The secondary VLESS+REALITY+Vision inbound is disabled by default:
+`xray_fallback_port: 0`. An operator may select a nonzero alternate port after
+measuring a path-specific benefit. A port number alone does not make the
+listener indistinguishable from HTTPS or overcome IP-level blocking.
 
-When `make emit-singbox CLIENT=name` runs, every `xray_fallback_port`
-≠ 0 ≠ `xray_port` adds a second outbound to the emitted bundle. The
-two outbounds share the same Reality identity (private key, server
-names, short IDs); only the port differs. The selector + urltest
-group treats them as peer endpoints, so a client whose port-443 path
-gets policed by a TLS-handshake-count rule on the home ISP can roll
-over to the alt-port automatically.
+An enabled alternate distinct from `xray_port` adds a second recipient outbound
+sharing the same REALITY identity. Ordinary sing-box selection retains its
+latency-only urltest behavior; it does not verify useful response bytes. An
+explicit RIPDPI payload-failover policy uses its coordinated consumer instead.
 
-Operationally:
+Enabling an alternate requires the same port in the explicit Terraform
+`public_listeners` contract and the Ansible runtime input. Provider/runtime
+preflight continues to reject a mismatch. The firewall role derives its rules
+from that admitted contract; no manual nftables edits are needed. Multi-cohort
+layouts declare each listener explicitly and bypass the default alternate.
 
-- The alt-port is itself a finite resource. Rotate `xray_fallback_port`
-  before clients begin seeing the same policing pattern on it.
-- A multi-cohort deploy (`xray.cohorts` non-empty in secrets) bypasses
-  the default fallback and uses the operator-defined cohort ports
-  instead.
-- The firewall role already opens both ports; no manual nftables
-  edits are needed when toggling the fallback on or off.
+Existing private configurations are not rewritten by this source change. Keep
+both runtime and provider declarations explicit when retaining an alternate;
+removing a live listener requires an authorized coordinated rollout and refreshed
+recipient profiles.
 
 ## uTLS fingerprint + the "TLS frozen" failover caveat (domestic-AS cascade only)
 
