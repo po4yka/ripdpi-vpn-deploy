@@ -7,6 +7,24 @@ endif
 .PHONY: workspace-status
 workspace-status:
 	@python3 scripts/workspace-status.py
+else ifneq ($(filter recovery,$(MAKECMDGOALS)),)
+ifneq ($(MAKECMDGOALS),recovery)
+$(error recovery requires exactly one make goal)
+endif
+override RECOVERY_ACTION_LITERAL := $(value ACTION)
+override RECOVERY_MANIFEST_LITERAL := $(value RECOVERY_MANIFEST)
+override RECOVERY_APPROVAL_LITERAL := $(value RECOVERY_APPROVAL)
+export RECOVERY_ACTION_LITERAL RECOVERY_MANIFEST_LITERAL RECOVERY_APPROVAL_LITERAL
+unexport ACTION RECOVERY_MANIFEST RECOVERY_APPROVAL MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+.PHONY: recovery
+recovery:
+	@set -eu; \
+	  case "$${RECOVERY_ACTION_LITERAL}" in run|resume|status) ;; *) echo 'ACTION=run|resume|status required' >&2; exit 2 ;; esac; \
+	  test -n "$${RECOVERY_MANIFEST_LITERAL}" || { echo 'RECOVERY_MANIFEST required' >&2; exit 2; }; \
+	  set -- "$${RECOVERY_ACTION_LITERAL}" "--manifest=$${RECOVERY_MANIFEST_LITERAL}"; \
+	  if test -n "$${RECOVERY_APPROVAL_LITERAL}"; then set -- "$$@" "--approve=$${RECOVERY_APPROVAL_LITERAL}"; fi; \
+	  exec python3 scripts/recovery.py "$$@"
 else ifneq ($(filter device-migration,$(MAKECMDGOALS)),)
 ifneq ($(MAKECMDGOALS),device-migration)
 $(error device migration requires exactly one make goal)
@@ -719,6 +737,7 @@ help:
 	@echo "  backup-state               age-encrypt the local terraform state"
 	@echo "  drift-since-tag            Diff fleet against last vpn-deploy-known-good-* tag"
 	@echo "  blue-green GREEN_ENV=… GREEN_SOPS_FILE=… DEVICE_MIGRATION_PLAN=…  Replace with device handover"
+	@echo "  recovery ACTION=… RECOVERY_MANIFEST=…  Execute or resume an exact reviewed replacement"
 	@echo "  device-migration ACTION=… DEVICE_MIGRATION_PLAN=…  Plan, prepare, publish and verify device handover"
 	@echo "  fleet-rotate PLAN=…        Authenticated survivor floor and exact-plan resume"
 	@echo "  protocol-liveness LIVENESS_CONFIG=…  Pull sentinel probes and evaluate quorum"

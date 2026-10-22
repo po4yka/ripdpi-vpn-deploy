@@ -2,6 +2,16 @@
 
 ## Design decisions
 
+Executable recovery admits one exact UpCloud replacement with a surviving
+separate publisher. Private durable intent precedes external operations; resume
+reconciles account, unique resource, state and exact saved-plan postconditions.
+Provider credentials reach only provider operations. Frozen private inputs bind
+canonical management and deployment, and a real post-data-plane sentinel receipt
+creates the promotion epoch. Never invent applied_at, auto-import an ambiguous
+resource, replay an uncertain apply blindly or claim device readiness from
+publication alone. The Make recovery entry point preserves literal inputs and
+runs before operator configuration is parsed.
+
 Device migration uses separate source/target SOPS authorities and an encrypted
 intent before cross-document writes. Exact inventory, host pins, alternate
 sources and endpoint fingerprints fence resume. Publisher CAS preserves every
