@@ -522,7 +522,11 @@ def run_request(request, *, runtime=None):
                     state, reason = "denied", "absent-peer-no-handshake"
                 elif witnesses["peer_absent"] and measured["exit"] in {35, 52, 56, 97}:
                     state, reason = "denied", "absent-identity-access-failed"
-                elif witnesses["peer_absent"] and witnesses["inactive_confirmed"] and measured["exit"] == 7:
+                elif witnesses["peer_absent"] and witnesses["inactive_confirmed"] and (
+                    measured["exit"] == 7
+                    or (profile["engine"] == "hysteria" and measured["exit"] == 28
+                        and measured["elapsed"] >= timeout)
+                ):
                     state, reason = "denied", "retired-runtime-access-failed"
                 else:
                     reason = "access-ambiguous"

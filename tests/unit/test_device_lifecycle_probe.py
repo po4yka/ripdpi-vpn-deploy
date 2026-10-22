@@ -367,3 +367,74 @@ def test_missing_tools_do_not_become_denial(tmp_path):
     result = worker.run_request(value, runtime=runtime)
     assert result["profiles"][0]["state"] == "unknown"
     assert not result["profiles"][0]["control_ok"]
+
+
+@pytest.mark.parametrize("case", [
+    "retired", "active", "peer-present", "short-timeout", "other-engine",
+    "initial-control-failed", "final-control-failed", "setup-incomplete",
+    "cleanup-incomplete", "runtime-unhealthy", "changed-authority", "changed-unit",
+    "inactive-only-before", "inactive-only-after", "absent-only-before",
+    "absent-only-after", "missing-duration", "different-exit",
+])
+def test_hysteria_retirement_requires_complete_stable_timeout_evidence(case):
+    """Classifier boundaries only; native traffic is verified separately."""
+    before = {"peer_absent": True, "runtime_healthy": True, "inactive_confirmed": True,
+              "token": "absent", "unit_token": "stopped"}
+    after = before.copy()
+    measured = {"accepted": False, "exit": 28, "elapsed": 2.0,
+                "setup_ok": True, "cleanup_ok": True}
+    controls = [True, True]
+    if case == "active":
+        before["inactive_confirmed"] = after["inactive_confirmed"] = False
+    elif case == "peer-present":
+        before["peer_absent"] = after["peer_absent"] = False
+    elif case == "short-timeout":
+        measured["elapsed"] = 1.999
+    elif case == "initial-control-failed":
+        controls[0] = False
+    elif case == "final-control-failed":
+        controls[1] = False
+    elif case == "setup-incomplete":
+        measured["setup_ok"] = False
+    elif case == "cleanup-incomplete":
+        measured["cleanup_ok"] = False
+    elif case == "runtime-unhealthy":
+        before["runtime_healthy"] = after["runtime_healthy"] = False
+    elif case == "changed-authority":
+        after["token"] = "changed"
+    elif case == "changed-unit":
+        after["unit_token"] = "changed"
+    elif case == "inactive-only-before":
+        after["inactive_confirmed"] = False
+    elif case == "inactive-only-after":
+        before["inactive_confirmed"] = False
+    elif case == "absent-only-before":
+        after["peer_absent"] = False
+    elif case == "absent-only-after":
+        before["peer_absent"] = False
+    elif case == "missing-duration":
+        del measured["elapsed"]
+    elif case == "different-exit":
+        measured["exit"] = 18
+    witness_results, control_results = iter((before, after)), iter(controls)
+
+    class Runtime(worker.Runtime):
+        def http(self, *_args, **_kwargs):
+            return {"accepted": next(control_results)}
+
+        def witness(self, _profile):
+            return next(witness_results)
+
+        def stream(self, *_args):
+            return measured
+
+    engine = "xray" if case == "other-engine" else "hysteria"
+    profile = {"id": engine + "-1", "engine": engine, "config": {}, "witness": {
+        "kind": "uuid" if engine == "xray" else "username", "credential": "owned-user",
+        "instance": None, "config_path": "/etc/owned/config", "unit": "owned.service"}}
+    value = request([profile], "https://localhost/probe")
+    value["mode"] = "deny"
+    row = worker.run_request(value, runtime=Runtime())["profiles"][0]
+    assert row["state"] == ("denied" if case == "retired" else "unknown"), row
+    if case == "retired":
+        assert row["reason"] == "retired-runtime-access-failed"

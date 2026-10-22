@@ -25,6 +25,11 @@ witnesses require a mapping of actual HTTP servers even after the last user
 retires. Publisher revocation requires an owned TLS canary accepted before authority replacement and rejected
 after it; snapshot flags alone are insufficient. Never recreate credentials on
 resume or treat status as fresh runtime verification.
+Retired Hysteria keeps its lazy client SOCKS listener while the absent UDP peer
+consumes the request deadline. A full-duration curl timeout qualifies as denial
+only with unchanged before/after authority, confirmed inactive runtime and
+absent identity, successful controls, setup and cleanup. Active or unproven
+timeouts remain unknown.
 
 Device migration uses separate source/target SOPS authorities and an encrypted
 intent before cross-document writes. Exact inventory, host pins, alternate
