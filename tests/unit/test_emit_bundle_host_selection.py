@@ -48,7 +48,7 @@ def test_bundle_uses_feature_host_and_emits_ingress_topology(
         REPO_ROOT / "scripts" / "ripdpi_cohort_fingerprint.py",
         scripts / "ripdpi_cohort_fingerprint.py",
     )
-    for name in ('awg_client.py', 'awg_device_binding.py', 'encrypted_client_document.py', 'private_client_artifact.py', 'client_payload.py', 'fleet_inspection.py'):
+    for name in ('awg_client.py', 'awg_device_binding.py', 'encrypted_client_document.py', 'private_client_artifact.py', 'client_payload.py', 'payload_failover_policy.py', 'fleet_inspection.py'):
         shutil.copy2(REPO_ROOT / 'scripts' / name, scripts / name)
     defaults = repo / 'ansible/roles/amneziawg/defaults'
     defaults.mkdir(parents=True)

@@ -78,8 +78,7 @@ def validate_config(value, distro, profile):
 
 
 def listeners(profile):
-    selected = [{"name": "xray", "protocol": "tcp", "port": 443},
-                {"name": "xray-fallback", "protocol": "tcp", "port": 2053}]
+    selected = [{"name": "xray", "protocol": "tcp", "port": 443}]
     if profile in {"p0p1", "p0p1p2"}:
         selected.extend([{ "name": "nginx-xhttp", "protocol": "tcp", "port": 8443},
                          {"name": "public-site-http", "protocol": "tcp", "port": 80}])
