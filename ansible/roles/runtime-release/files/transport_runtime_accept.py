@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 
 
 from transport_runtime_transaction import Transaction, Refusal
-from transport_runtime_probe import ProbeRefused, probe, run, xray_clients, hysteria_client
+from transport_runtime_probe import ProbeRefused, probe, run, xray_clients
 
 STATE = Path('/var/lib/ripdpi/transport-runtime')
 PARAMETERS = STATE / 'parameters.json'
@@ -44,7 +44,7 @@ def validate_parameters(value):
 
 def read_parameters(*, uid=0):
     """Read exact published authority, including a claimed interrupted backup."""
-    from transport_runtime_transaction import identity, node, read_private, storage_path, storage_claim
+    from transport_runtime_transaction import node, read_private, storage_path, storage_claim
     observed = node(PARAMETERS, uid, links=2)
     if observed is None:
         receipt = read_private(STATE / 'accepted.json', uid)
