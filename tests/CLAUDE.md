@@ -23,6 +23,12 @@ still accepts the token. Native Linux tests launch real pinned protocols and
 systemd services for accepted and revoked access; orchestration callbacks alone
 are not native proof. Missing tools, TUN, source receipts or cleanup fail the
 isolated native lane instead of skipping it.
+Portable Ansible publication fixtures explicitly disable become for their owned
+temporary files, even when Make exports the production Ansible configuration.
+Revocation hint tests follow the shared publication task and render its actual
+denylist; native partition checks include every revocation interruption case.
+Rotation still admits remaining public listeners when AWG is disabled; cover
+both matching provider claims and refusal before mutation when claims are absent.
 
 Device migration regressions execute real test-only SOPS transactions and the
 actual publisher behind local HTTP. Lost acknowledgements after remote and

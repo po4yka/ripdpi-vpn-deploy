@@ -239,7 +239,15 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
     assert reality_cases and len(reality_cases) == 5
     reality_workflow = yaml.safe_load((ROOT / ".github/workflows/reality-target-validation.yml").read_text())["jobs"]["reality-target-validation"]
     assert any("make test-reality-target-validation" in s.get("run", "") for s in reality_workflow["steps"])
-    assert transactions and len(transactions) == 12
+    assert transactions and len(transactions) == 18
+    revocation_cases = {
+        'tests/unit/test_transport_runtime_acceptance_native.py::'
+        'test_native_revocation_never_restores_credentials_and_exact_resume_converges'
+        f'[{interruption}-{profile}]'
+        for interruption in ('published-0', 'adopted', 'outer-failure')
+        for profile in ('xray', 'hysteria')
+    }
+    assert {case for case in transactions if 'test_native_revocation_' in case} == revocation_cases
     assert ('tests/unit/test_transport_runtime_acceptance_native.py::'
             'test_native_ech_admission_retains_custom_configuration_directory') in transactions
     assert awg_cases and len(ech_cases) == 13

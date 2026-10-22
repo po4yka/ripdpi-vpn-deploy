@@ -133,7 +133,7 @@ def test_role_plan_hashes_match_actual_ansible_template_publication(tmp_path):
             {'ansible.builtin.assert': {'that': ['expected == published.stat.checksum']}},
         ])
     play = tmp_path / 'render.yml'
-    play.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False,
+    play.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False, 'become': False,
                                   'vars': {**values, 'ansible_python_interpreter': sys.executable}, 'tasks': tasks}]))
     result = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(play)], capture_output=True, text=True, timeout=60, check=False)
     assert result.returncode == 0, result.stdout + result.stderr

@@ -295,7 +295,7 @@ def test_failed_complete_config_restores_addresses_mtu_service_and_private_bytes
             assert subprocess.run(['systemctl', 'is-active', '--quiet', unit.name], capture_output=True).returncode != 0
             assert path.read_text() == revoked_config
             assert '10.70.0.2' not in firewall.read_text()
-            assert (Path('/var/lib/ripdpi/amneziawg') / 'pending.json').exists()
+            assert (Path('/var/lib/ripdpi/amneziawg/runtime') / 'pending.json').exists()
             ordinary = publisher.role([candidate], firewall=firewall_text(candidate))
             assert ordinary.returncode != 0
             injection.unlink()
