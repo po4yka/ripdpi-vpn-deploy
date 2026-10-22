@@ -122,7 +122,11 @@ PROVIDER=upcloud BLUE_ENV=prod GREEN_ENV=green-2026-05 \
 #    (e.g., vpn-prod-fi2 instead of vpn-prod-fi1) so they coexist. You'll have
 #    to drop or temporarily relax `prevent_destroy` on blue if you want
 #    Terraform to manage both — easiest is a separate ENV value:
-ENV=green make plan apply inventory wait dry-run deploy verify
+ENV=green make plan              # READ THE PLAN; stop on any destroy or replace
+ENV=green make apply             # only after the plan review
+ENV=green make inventory wait
+ENV=green make dry-run           # review the change set
+ENV=green make deploy verify     # only after the dry-run review
 
 # 2. Test green with a real client.
 

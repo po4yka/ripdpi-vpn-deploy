@@ -59,10 +59,13 @@ writes an `llms.txt` with one H2 per documentation folder in reading order and
 an `## Optional` section for `archive/`. The committed `docs/llms.txt` is that
 output; regenerate it when a page is added, moved or removed. A rerun into
 the same `--out` removes only the pages listed in the `.vpnd-ai-docs`
-manifest of the previous run, so `--out` may point at a directory that holds
-other files; a tree without a manifest is overwritten page by page, never
-deleted. The runbook excerpt map in `docs_bundle.py` names pages relative to
-the docs root.
+manifest, so `--out` may point at a directory that holds other files; a tree
+without a manifest is overwritten page by page, never deleted. The manifest is
+written with the union of old and new pages before the first page write, so an
+interrupted run leaves nothing untracked; every page is decoded before any
+write; and a symlink at any component under `md/` makes the run refuse rather
+than write or delete through it. The runbook excerpt map in `docs_bundle.py`
+names pages relative to the docs root.
 
 **State retains its formats.** The local TOML registry resolves host aliases to
 environment/provider/IPs. TOML reads use the standard library; writes use

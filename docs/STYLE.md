@@ -133,8 +133,12 @@ Status: Accepted — YYYY-MM-DD
 
 Decisions are immutable once accepted. Change course with a new numbered
 record and mark the old one `Superseded by`. Records accepted before the
-2026-10 rewrite keep their original section structure; only their status
-line and file name were normalised.
+2026-10 rewrite keep their original section structure, decisions, scope and
+dates. That rewrite normalised their status line and file name, rewrote
+citations to moved pages, and replaced geographic and censor-apparatus labels
+in their wording with the vocabulary above, because the repository hard rule
+forbids those labels in headings and table cells; `git log --follow` keeps the
+original wording of every record.
 
 ## Writing
 

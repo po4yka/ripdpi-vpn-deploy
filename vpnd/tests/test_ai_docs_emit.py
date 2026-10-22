@@ -1,5 +1,7 @@
 import asyncio
 from types import SimpleNamespace
+
+import pytest
 from artifact_helpers import scaffold, context
 from vpnd.commands.ai_docs import run
 
@@ -144,3 +146,56 @@ def test_files_the_command_did_not_write_are_never_deleted(tmp_path):
         assert foreign.read_text() == "# not generated\n"
         assert stray.read_text() == "# not generated either\n"
     assert (tmp_path / "out/md/how-to/deploy.md").read_text() == "# Deploy\nbody of Deploy\n"
+
+
+def test_a_symlinked_directory_in_the_output_tree_is_refused(tmp_path):
+    ctx = setup_tree(tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "deploy.md").write_text("# keep me\n")
+    (tmp_path / "out/md").mkdir(parents=True)
+    (tmp_path / "out/md/how-to").symlink_to(elsewhere, target_is_directory=True)
+    with pytest.raises(RuntimeError, match="symlink"):
+        asyncio.run(run(ctx, SimpleNamespace(out=tmp_path / "out")))
+    assert (elsewhere / "deploy.md").read_text() == "# keep me\n"
+    assert not (tmp_path / "out/llms.txt").exists()
+
+
+def test_a_symlinked_page_in_the_output_tree_is_refused(tmp_path):
+    ctx = setup(tmp_path)
+    elsewhere = tmp_path / "elsewhere.md"
+    elsewhere.write_text("# keep me\n")
+    (tmp_path / "out/md").mkdir(parents=True)
+    (tmp_path / "out/md/ALPHA.md").symlink_to(elsewhere)
+    with pytest.raises(RuntimeError, match="symlink"):
+        asyncio.run(run(ctx, SimpleNamespace(out=tmp_path / "out")))
+    assert elsewhere.read_text() == "# keep me\n"
+
+
+def test_a_page_that_is_not_utf8_fails_before_anything_is_written(tmp_path):
+    ctx = setup(tmp_path)
+    (tmp_path / "docs/ZETA.md").write_bytes(b"# bad\n\xff\xfe\n")
+    with pytest.raises(UnicodeDecodeError):
+        asyncio.run(run(ctx, SimpleNamespace(out=tmp_path / "out")))
+    assert not (tmp_path / "out").exists()
+
+
+def test_manifest_lists_every_page_before_the_first_page_is_written(tmp_path, monkeypatch):
+    from vpnd.commands import ai_docs
+
+    ctx = setup(tmp_path)
+
+    def disk_full(target, body):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(ai_docs, "_write_page", disk_full)
+    with pytest.raises(OSError):
+        asyncio.run(run(ctx, SimpleNamespace(out=tmp_path / "out")))
+    assert (tmp_path / "out/.vpnd-ai-docs").read_text().splitlines() == ["ALPHA.md", "BETA.md"]
+    monkeypatch.undo()
+    # Whatever the failed run left behind is removed once its source is gone.
+    (tmp_path / "out/md/BETA.md").write_text("# partially written\n")
+    (tmp_path / "docs/BETA.md").unlink()
+    asyncio.run(run(ctx, SimpleNamespace(out=tmp_path / "out")))
+    assert not (tmp_path / "out/md/BETA.md").exists()
+    assert (tmp_path / "out/.vpnd-ai-docs").read_text() == "ALPHA.md\n"

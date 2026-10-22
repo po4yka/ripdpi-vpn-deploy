@@ -40,8 +40,14 @@ PROVIDER=upcloud SOURCE_ENV=prod \
   ./scripts/new-cohort.sh spare de-fra1
 $EDITOR terraform/providers/upcloud/environments/spare.tfvars   # review
 
-# Provision and deploy the spare
-ENV=spare make init plan apply inventory wait dry-run deploy verify
+# Provision and deploy the spare: each review point is its own make call,
+# because make runs the goals of one invocation back to back
+ENV=spare make init
+ENV=spare make plan              # READ THE PLAN; stop on any destroy or replace
+ENV=spare make apply             # only after the plan review
+ENV=spare make inventory wait
+ENV=spare make dry-run           # review the change set
+ENV=spare make deploy verify     # only after the dry-run review
 ```
 
 Both VPSes now share the same secrets and same Ansible roles. They have
@@ -62,7 +68,13 @@ cp terraform/providers/hetzner/environments/prod.tfvars.example \
    terraform/providers/hetzner/environments/prod.tfvars
 $EDITOR terraform/providers/hetzner/environments/prod.tfvars
 
-HCLOUD_TOKEN=... PROVIDER=hetzner make init plan apply inventory wait dry-run deploy verify
+export PROVIDER=hetzner HCLOUD_TOKEN=...   # provider credentials stay in env vars
+make init
+make plan              # READ THE PLAN; stop on any destroy or replace
+make apply             # only after the plan review
+make inventory wait
+make dry-run           # review the change set
+make deploy verify     # only after the dry-run review
 ```
 
 Now you have two VPSes in different ASNs. To make them serve different
@@ -98,9 +110,11 @@ For a separate-role split, use the cohort group_vars shipped with the
 repo and the multi-host mode of `render-inventory.sh`:
 
 ```bash
-# Provision both nodes (different ENVs or PROVIDERs)
-ENV=p0    make init plan apply
-ENV=p1p2  make init plan apply
+# Provision both nodes (different ENVs or PROVIDERs); review each plan before its apply
+ENV=p0    make init plan        # READ THE PLAN
+ENV=p0    make apply
+ENV=p1p2  make init plan        # READ THE PLAN
+ENV=p1p2  make apply
 
 # Render a multi-host inventory with cohort groups
 HOSTS="upcloud:p0,upcloud:p1p2" \
