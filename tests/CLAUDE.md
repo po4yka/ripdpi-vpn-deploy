@@ -23,6 +23,8 @@ the client parser; invalid policies and literal Make inputs refuse safely.
 Default listener coverage excludes the alternate port; explicit provider and
 Molecule cases continue to exercise opt-in port 2053. Real Ansible inventory
 resolution checks both full-stack host overrides against canonical group vars.
+Shared P0 shape rendering covers the default primary and an explicitly supplied
+alternate watchdog probe, preserving flow checks for both listener sets.
 
 Recovery boundary tests use real age ciphertext and preserve the prior state
 inode on failed decryption or structure validation. Same-second writers publish
