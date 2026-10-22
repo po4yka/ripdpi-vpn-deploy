@@ -26,6 +26,9 @@ from transport_socks import (FAILURE, MAX_HANDSHAKE, NeedMore, WireError, authen
 MAX_CONFIG = 131072
 MAX_STREAM_BUFFER = 65536
 MAX_RESOLVER_RESPONSE = 8192
+MAX_CONNECT_CANDIDATES = 8
+MAX_CONNECT_CONTROLS = 2
+CONNECT_STAGGER_SECONDS = 0.25
 LISTENERS = {"direct_xray": "direct", "direct_hysteria": "direct", "warp_xray": "warp"}
 
 
@@ -408,6 +411,67 @@ class PortPool:
             self.ports.append(port)
 
 
+class _GatewayConnect:
+    """One nonblocking authenticated CONNECT; application bytes stay unread."""
+    def __init__(self, backend, literal, port, deadline, admitted):
+        self.literal, self.port, self.deadline = literal, port, deadline
+        self.backend, self.admitted = backend, admitted
+        self.pending, self.received, self.stage = b"\x05\x01\x02", bytearray(), 0
+        self.connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            self.connection.setblocking(False)
+            result = self.connection.connect_ex((backend["address"], backend["port"]))
+            if result not in (0, errno.EINPROGRESS, errno.EWOULDBLOCK, errno.EALREADY, errno.EINTR):
+                raise NormalizerError("upstream-unavailable")
+            self.connecting = result != 0
+        except (OSError, ValueError):
+            self.connection.close()
+            raise
+
+    @property
+    def writing(self):
+        return self.connecting or bool(self.pending)
+
+    def advance(self, readable, writable):
+        if self.connecting and writable:
+            if self.connection.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR):
+                raise NormalizerError("upstream-unavailable")
+            self.connecting = False
+        if self.pending and writable and not self.connecting:
+            try:
+                sent = self.connection.send(self.pending)
+            except BlockingIOError:
+                return False
+            if not sent:
+                raise NormalizerError("upstream-unavailable")
+            self.pending = self.pending[sent:]
+        if not readable or self.writing:
+            return False
+        try:
+            chunk = self.connection.recv(1)
+        except BlockingIOError:
+            return False
+        if not chunk or len(self.received) >= MAX_HANDSHAKE:
+            raise NormalizerError("upstream-unavailable")
+        self.received.extend(chunk)
+        try:
+            if self.stage == 2:
+                upstream_reply(self.received)
+                return True
+            _expected(self.received, b"\x05\x02" if self.stage == 0 else b"\x01\x00")
+        except NeedMore:
+            return False
+        self.received.clear()
+        if self.stage == 0:
+            self.pending = upstream_auth(self.backend["username"], self.backend["password"])
+        else:
+            if not self.admitted(self.literal, self.port, "tcp"):
+                raise PolicyError("destination-denied")
+            self.pending = upstream_request(1, self.literal, self.port)
+        self.stage += 1
+        return False
+
+
 class Normalizer:
     def __init__(self, config, *, resolver=None, clock=time.monotonic):
         self.config = validate_config(config)
@@ -482,17 +546,80 @@ class Normalizer:
             if worker is not threading.current_thread():
                 worker.join(timeout=max(0, deadline - time.monotonic()))
 
-    def _literal(self, host, port, network, control):
+    def _destinations(self, host, port, network, control):
         try:
-            value = str(normalize_address(host))
+            values = (str(normalize_address(host)),)
         except PolicyError:
             values = self.resolver.resolve(canonical_name(host), port, network,
                                            lambda: self.stopped.is_set() or _closed(control)
                                            or (network == "udp" and bool(_wait([control], timeout=0)[0])))
-            value = self.policy.select_admitted(values, port, network)
-        if not self.policy.allows(value, port, network):
-            raise PolicyError("destination-denied")
-        return value
+        return self.policy.admitted_candidates(values, port, network)
+
+    def _connect_candidates(self, item, candidates, port, control):
+        backend = self.config["backends"][item["backend"]]
+        started = time.monotonic()
+        deadline = started + self.limits["connect_seconds"]
+        waves = (len(candidates) + MAX_CONNECT_CONTROLS - 1) // MAX_CONNECT_CONTROLS
+        attempt_seconds = self.limits["connect_seconds"] / max(1, waves)
+        active, index, next_start = {}, 0, started
+        try:
+            while not self.stopped.is_set() and not _closed(control):
+                now = time.monotonic()
+                if now >= deadline:
+                    break
+                for connection, attempt in tuple(active.items()):
+                    if now >= attempt.deadline:
+                        connection.close()
+                        del active[connection]
+                        next_start = now
+                if len(active) < MAX_CONNECT_CONTROLS and index < len(candidates) and now >= next_start:
+                    literal = candidates[index]
+                    index += 1
+                    try:
+                        if not self.policy.allows(literal, port, "tcp"):
+                            raise PolicyError("destination-denied")
+                        attempt = _GatewayConnect(
+                            backend, literal, port, min(deadline, now + attempt_seconds),
+                            lambda address, target_port, network: self.policy.allows(address, target_port, network))
+                    except (OSError, ValueError):
+                        next_start = now
+                        continue
+                    active[attempt.connection] = attempt
+                    next_start = now + CONNECT_STAGGER_SECONDS
+                if not active:
+                    if index == len(candidates):
+                        break
+                    continue
+                waits = [0.05, deadline - now, *(attempt.deadline - now for attempt in active.values())]
+                if index < len(candidates) and len(active) < MAX_CONNECT_CONTROLS:
+                    waits.append(next_start - now)
+                readable, writable = _wait(
+                    [connection for connection, attempt in active.items() if not attempt.writing],
+                    [connection for connection, attempt in active.items() if attempt.writing],
+                    timeout=max(0, min(waits)))
+                for connection, attempt in tuple(active.items()):
+                    if time.monotonic() >= attempt.deadline:
+                        connection.close()
+                        del active[connection]
+                        next_start = time.monotonic()
+                        continue
+                    try:
+                        complete = attempt.advance(connection in readable, connection in writable)
+                    except (OSError, ValueError):
+                        connection.close()
+                        del active[connection]
+                        next_start = time.monotonic()
+                        continue
+                    if complete:
+                        if (self.stopped.is_set() or _closed(control) or time.monotonic() >= deadline
+                                or not self.policy.allows(attempt.literal, port, "tcp")):
+                            raise NormalizerError("upstream-unavailable")
+                        del active[connection]
+                        return connection
+            raise NormalizerError("upstream-unavailable")
+        finally:
+            for connection in active:
+                connection.close()
 
     def _backend(self, item, command, host="0.0.0.0", port=0):
         backend = self.config["backends"][item["backend"]]
@@ -528,10 +655,8 @@ class Normalizer:
             phase = "request"
             _, command, host, port = _frame(connection, request, deadline)
             if command == 1:
-                literal = self._literal(host, port, "tcp", connection)
-                if _closed(connection):
-                    return
-                backend_control, _ = self._backend(item, command, literal, port)
+                candidates = self._destinations(host, port, "tcp", connection)[:MAX_CONNECT_CANDIDATES]
+                backend_control = self._connect_candidates(item, candidates, port, connection)
                 connection.settimeout(self.limits["connect_seconds"])
                 connection.sendall(reply(item["address"], item["port"]))
                 phase = "relay"
@@ -630,7 +755,7 @@ class Normalizer:
                         if key not in bindings:
                             if len(bindings) >= self.limits["max_bindings_per_association"]:
                                 continue
-                            bindings[key] = self._literal(host, port, "udp", control)
+                            bindings[key] = self._destinations(host, port, "udp", control)[0]
                         literal = bindings[key]
                         if not self.policy.allows(literal, port, "udp"):
                             continue

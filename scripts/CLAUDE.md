@@ -2,6 +2,13 @@
 
 ## Design decisions
 
+TCP destination failover uses one immutable admitted DNS snapshot, interleaves
+address families and races at most two gateway controls across eight candidates.
+One connect deadline covers authentication and every attempt; per-attempt expiry
+prevents two stalled controls from hiding later addresses. Only the winner enters
+the relay, after loser sockets close. Never retry after application transfer.
+UDP retains one pinned literal and one send per datagram.
+
 Fleet status resolves provider/environment selections through strict inventory
 inspection, preserving Tailnet transport, public host identity and custom ports.
 Its local watchdog verdict requires a recent completed result; neither a timer

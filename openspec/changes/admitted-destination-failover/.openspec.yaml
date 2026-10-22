@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-22
+goal: SEC-1792678909985498 Fail over TCP connections across admitted destination
+  addresses
