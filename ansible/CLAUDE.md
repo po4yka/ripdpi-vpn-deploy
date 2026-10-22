@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+The protected activation orchestrator closes standalone full retirement through `playbooks/tasks/transport-egress-finish.yml`. A surrounding ingress site transaction retains completion ownership instead, including the exact revocation authority in its durable commit decision.
+
 Explicit empty Xray/Hysteria client lists retire their effective transports.
 Empty named REALITY cohorts and Snell variants are excluded before admission;
 an empty variant must never fall back to shared Snell authentication. The

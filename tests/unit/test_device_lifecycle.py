@@ -15,6 +15,7 @@ from test_device_migration import LocalPublisher
 from test_device_migration_route import route_io
 from test_device_migration_route import tls_server as tls_server  # noqa: PLC0414
 from test_subscription_document import service as service  # noqa: PLC0414
+from test_vpn_consumer_reliability import context as context, data  # noqa: PLC0414
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -184,6 +185,44 @@ def test_revoke_all_real_grants_preserves_unrelated_user_and_confirms_policy(ope
     assert doc['client_registry']['phone'] == original['client_registry']['phone']
     assert all(row['name'] != 'new-phone' for row in doc['xray']['clients'])
     assert all(row['revoked'] for row in revoke.snapshots()['upcloud:prod']['rows'].values())
+
+
+def test_revoke_controller_resumes_real_awg_journal_through_check_then_apply(operation, context, monkeypatch):
+    prepare(operation)
+    operation.run()
+    manifest = copy.deepcopy(operation.manifest)
+    manifest.update(id='22222222-2222-4222-8222-222222222222', action='revoke', delivery=None)
+    revoke = Lifecycle(manifest, operation.io)
+    prepare(revoke)
+    c = context
+    candidate = b'[Interface]\nListenPort=51820\n# revoked peer removed\n'
+    events = []
+    runtime, ready = operation.io.runtime, c.awg.Adapter.ready
+    failures = []
+    def reject_once(self):
+        if not failures:
+            failures.append(True)
+            raise c.tx.Refusal('injected-readiness-failure')
+        return ready(self)
+    monkeypatch.setattr(c.awg.Adapter, 'ready', reject_once)
+    def reconcile(host, document, *, check=False, verify_only=False, revocation=None):
+        if not verify_only:
+            events.append('check' if check else 'apply')
+            payload = {'check': check, 'revocation': revocation, 'candidates': [data(c.cfg, candidate)],
+                       'firewall': base64.b64encode(c.fw.HEADER + b'table inet filter {}\n').decode()}
+            c.awg.operate('recover', {'check': check, 'revocation': revocation})
+            c.awg.operate('apply', payload)
+        return runtime(host, document, check=check, verify_only=verify_only, revocation=revocation)
+    monkeypatch.setattr(operation.io, 'runtime', reconcile)
+    with pytest.raises(c.tx.Refusal, match='candidate-refused'):
+        revoke.run()
+    assert (c.awg.STATE / 'pending.json').exists()
+    assert c.states['awg-quick@a0.service']['ActiveState'] == 'inactive'
+    assert revoke.run()['phase'] == 'complete'
+    assert events == ['check', 'apply', 'check', 'apply']
+    assert c.cfg.read_bytes() == candidate
+    assert not (c.awg.STATE / 'pending.json').exists()
+    assert not (c.awg.STATE / 'firewall.json').exists()
 
 
 def test_output_collision_retains_existing_bytes_and_incomplete_operation(operation):

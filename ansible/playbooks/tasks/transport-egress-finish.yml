@@ -1,0 +1,16 @@
+---
+- name: Commit the complete protected route or its full retirement
+  ansible.builtin.command:
+    argv: [/usr/bin/python3, -Es, /usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py, finish, --revocation-stdin]
+    stdin: '{{ vpn_device_revocation | default(none) | to_json }}'
+    stdin_add_newline: false
+  changed_when: false
+  no_log: true
+  when:
+    - not ansible_check_mode
+    - (transport_egress_role_enabled | default(false) | bool) or (_transport_egress_full_retirement | default(false) | bool)
+
+- name: Release the completed protected route transaction
+  ansible.builtin.set_fact:
+    _transport_egress_transaction_started: false
+  when: not ansible_check_mode

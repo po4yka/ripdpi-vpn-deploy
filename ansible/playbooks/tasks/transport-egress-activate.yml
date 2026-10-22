@@ -30,6 +30,12 @@
         name: transport-egress
         tasks_from: retire
       when: not (transport_egress_role_enabled | default(false) | bool)
+
+    - name: Finish a complete standalone protected retirement
+      ansible.builtin.include_tasks: transport-egress-finish.yml
+      when:
+        - not (transport_egress_role_enabled | default(false) | bool)
+        - not (transport_site_transaction_active | default(false) | bool)
   rescue:
     - name: Restore accepted generation after protected activation failure
       ansible.builtin.include_role:
