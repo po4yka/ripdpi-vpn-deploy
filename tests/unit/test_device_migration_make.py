@@ -56,7 +56,12 @@ def test_missing_or_mixed_actions_do_not_reach_controller(checkout, args):
     assert result.returncode != 0 and not (checkout / 'arguments.json').exists()
 
 
-def test_blue_green_make_preserves_literal_migration_inputs(checkout):
+@pytest.mark.parametrize('environment_selector', [None, 'source', 'other'])
+def test_blue_green_make_preserves_literal_migration_inputs(checkout, monkeypatch, environment_selector):
+    if environment_selector is None:
+        monkeypatch.delenv('ENV', raising=False)
+    else:
+        monkeypatch.setenv('ENV', environment_selector)
     (checkout / '.fleet.mk').write_text('')
     marker = checkout / 'unexpected'
     (checkout / 'scripts/blue-green.sh').write_text('#!/usr/bin/env python3\nimport json,os,pathlib\n'
@@ -68,8 +73,13 @@ def test_blue_green_make_preserves_literal_migration_inputs(checkout):
         'GREEN_SOPS_FILE=/private/separate target.sops.yaml', 'DEVICE_MIGRATION_PLAN=' + path,
         'DEVICE_MIGRATION_APPROVAL=' + 'a' * 64], cwd=checkout, capture_output=True, text=True, timeout=10, check=False,
         env={key: value for key, value in os.environ.items() if key not in {'MAKEFILES', 'MAKEFLAGS', 'MFLAGS', 'GNUMAKEFLAGS'}})
-    assert result.returncode == 0, result.stdout + result.stderr
     assert not marker.exists()
+    if environment_selector == 'other':
+        assert result.returncode != 0
+        assert 'BLUE_ENV and ENV select different environments' in result.stderr
+        assert not (checkout / 'arguments.json').exists()
+        return
+    assert result.returncode == 0, result.stdout + result.stderr
     assert json.loads((checkout / 'arguments.json').read_text()) == {
         'BLUE_ENV': 'source', 'GREEN_ENV': 'target', 'GREEN_SOPS_FILE': '/private/separate target.sops.yaml',
         'DEVICE_MIGRATION_PLAN': path, 'DEVICE_MIGRATION_APPROVAL': 'a' * 64}
