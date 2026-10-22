@@ -138,7 +138,8 @@ def test_origin_and_route_require_verified_tls12_or_newer(tls_server, monkeypatc
         instance.origin('delivery')
         migration_route.probe({'origin': instance.plan['publication']['origin'],
                                'address': '127.0.0.1', 'token': TOKEN,
-                               'expected_b64': base64.b64encode(PAYLOAD).decode()})
+                               'expected_b64': base64.b64encode(PAYLOAD).decode(),
+                               'expected_status': 200})
         assert names == [HOSTNAME, HOSTNAME]
         assert requests == [('/sub/' + TOKEN, f'{HOSTNAME}:{port}')]
     assert len(contexts) == 2
@@ -153,7 +154,7 @@ def test_origin_and_route_require_verified_tls12_or_newer(tls_server, monkeypatc
     b'[' * 2000 + b']' * 2000,
     b'\xff',
     migration_io.encoded({'origin': None, 'address': '127.0.0.1',
-                          'token': TOKEN, 'expected_b64': 'eA=='}),
+                          'token': TOKEN, 'expected_b64': 'eA==', 'expected_status': 200}),
 ])
 def test_route_refuses_malformed_private_input_without_diagnostics(payload):
     result = subprocess.run([sys.executable, migration_route.__file__],
