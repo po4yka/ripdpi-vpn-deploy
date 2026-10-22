@@ -18,8 +18,7 @@ refuse before provider mutation. Use a separate authorized procedure for them.
 
 ## Preconditions
 
-Use a clean exact source revision and pinned tools. Read the local operator kit
-contract before collecting recovery inputs. Prepare a new, explicitly named
+Use a clean exact source revision and pinned tools. Read [the local operator kit contract](local-operator-kit.md) before collecting recovery inputs. Prepare a new, explicitly named
 replacement environment and its Terraform variables. The environment must not
 be `prod`, `default`, `staging` or a disposable CI environment. The planned
 server must have the operation's recovery label and the canonical managed label.

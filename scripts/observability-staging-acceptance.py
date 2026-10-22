@@ -1341,7 +1341,7 @@ def request(path, data=None, method="GET"):
 
 now = datetime.datetime.now(datetime.timezone.utc)
 labels = {{"alertname":"ObservabilityStagingCriticalLifecycle","component":"control-plane","environment":"staging","severity":"critical"}}
-alert = {{"labels":labels,"annotations":{{"summary":"staging critical lifecycle","runbook":"docs/OBSERVABILITY-OPERATIONS.md"}},"startsAt":now.isoformat()}}
+alert = {{"labels":labels,"annotations":{{"summary":"staging critical lifecycle","runbook":"docs/reference/observability-operations.md"}},"startsAt":now.isoformat()}}
 def send(value):
     with request("/api/v2/alerts", data=json.dumps([value]).encode("utf-8"), method="POST") as response:
         if response.status not in (200, 202):
@@ -1392,7 +1392,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl): raise RuntimeError
 labels={"alertname":"ObservabilityStagingCriticalLifecycle","component":"control-plane","environment":"staging","severity":"critical"}
 now=datetime.datetime.now(datetime.timezone.utc).isoformat()
-alert={"labels":labels,"annotations":{"summary":"staging critical lifecycle","runbook":"docs/OBSERVABILITY-OPERATIONS.md"},"startsAt":now,"endsAt":now}
+alert={"labels":labels,"annotations":{"summary":"staging critical lifecycle","runbook":"docs/reference/observability-operations.md"},"startsAt":now,"endsAt":now}
 opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
 request=urllib.request.Request("http://127.0.0.1:19094/api/v2/alerts",data=json.dumps([alert]).encode(),headers={"Authorization":"Bearer "+token.decode().strip(),"Content-Type":"application/json"},method="POST")
 with opener.open(request,timeout=5) as response:

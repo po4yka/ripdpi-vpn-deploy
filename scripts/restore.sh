@@ -1,5 +1,5 @@
 #!/bin/sh
-# Disaster-recovery restore orchestrator. Mirrors RUNBOOK-restore.md.
+# Disaster-recovery restore orchestrator. Mirrors docs/how-to/restore.md.
 # Note: intentional POSIX /bin/sh shebang — pipefail is a bash extension
 # and is not available in POSIX sh. set -eu provides the necessary fail-fast
 # behaviour within plain sh; pipelines in this script do not need pipefail
@@ -90,10 +90,10 @@ if [ "$PATH_A" -eq 1 ] && [ "$PATH_B" -eq 1 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Path A — full rebuild from scratch (RUNBOOK-restore.md § Path A)
+# Path A — full rebuild from scratch (docs/how-to/restore.md § Path A)
 # ---------------------------------------------------------------------------
 print_prerequisites() {
-  printf '  Follow docs/RUNBOOK-restore.md Fresh-node prerequisites and RUNBOOK-deploy.md.\n'
+  printf '  Follow docs/how-to/restore.md Fresh-node prerequisites and docs/how-to/deploy.md.\n'
   printf '  Select reviewed operator SSH key, provider, environment and exact deploy_alias.\n'
   printf '  Provision with separate ordered goals (PROVIDER=%s ENV=%s):\n' "$PROVIDER" "$ENV"
   printf '          make init\n          make plan\n'

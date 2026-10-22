@@ -41,7 +41,7 @@ jobs:
           GitHub requires this approval for PRs created with GITHUB_TOKEN.
           Wait for the native required PR checks before reviewing and merging.
           A separate workflow_dispatch run does not replace this approval.
-          See docs/RELEASE-PLEASE.md for the release handoff and recovery.
+          See docs/how-to/release-please.md for the release handoff and recovery.
           NOTICE
 
   dispatch-binaries:

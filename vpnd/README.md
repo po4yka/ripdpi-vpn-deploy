@@ -65,7 +65,7 @@ uses a disposable tracked working-tree copy with sibling docs, fixtures and
 scripts. `pyproject.toml` defines the mutation scope. Empty, incomplete,
 uncovered, timed-out or technically failed runs fail; exit 2 denotes verified
 completed results containing survivors. Reports are retained per invocation
-under `vpnd/mutants/`. See [testing guidance](../docs/TESTING.md).
+under `vpnd/mutants/`. See [testing guidance](../docs/reference/testing.md).
 
 ## Use
 
@@ -116,7 +116,7 @@ It reports passive observations and local watchdog results, not client-path
 reachability. `fleet rotate` requires a versioned plan with an explicit survivor
 pool and authenticated liveness configuration. Resume accepts only the unchanged
 plan and durable completed boundaries; uncertain in-flight work requires
-operator reconciliation. See [the fleet contract](../docs/PROTOCOL-LIVENESS.md#fleet-status-and-coordinated-rotation).
+operator reconciliation. See [the fleet contract](../docs/reference/protocol-liveness.md#fleet-status-and-coordinated-rotation).
 
 ## `--explain`
 

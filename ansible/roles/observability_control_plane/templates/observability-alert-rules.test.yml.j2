@@ -15,7 +15,7 @@ tests:
 {% if increasing %}
         exp_alerts:
           - exp_labels: {component: observability-agent, environment: staging, node: vpn-p0, severity: warning}
-            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/RUNBOOK-incident.md}
+            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/incident.md}
 {% else %}
         exp_alerts: []
 {% endif %}
@@ -41,7 +41,7 @@ tests:
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts:
           - exp_labels: {component: observability-agent, environment: staging, node: vpn-p0, severity: warning}
-            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/RUNBOOK-incident.md}
+            exp_annotations: {incident_family: observability-delivery-loss, evidence_class: samples-or-blocks-discarded, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Telemetry was discarded; monitoring history is incomplete and VPN reachability is unknown., runbook: docs/how-to/incident.md}
       - eval_time: 10m
         alertname: ObservabilityAgentDeliveryLoss
         exp_alerts: []
@@ -67,7 +67,7 @@ tests:
             exp_annotations:
               evidence_class: stale-or-unknown
               incident_family: watchdog-evidence
-              runbook: docs/RUNBOOK-incident.md
+              runbook: docs/how-to/incident.md
               source_generation: "{{ observability_control_plane.alerting.source_generation }}"
               summary: Watchdog evidence is missing or stale.
       - eval_time: 9m
@@ -90,7 +90,7 @@ tests:
             exp_annotations:
               evidence_class: stale-restore-proof
               incident_family: restore-readiness
-              runbook: docs/RUNBOOK-restore.md
+              runbook: docs/how-to/restore.md
               source_generation: "{{ observability_control_plane.alerting.source_generation }}"
               summary: Approved isolated restore evidence is stale.
   - interval: 1m
@@ -111,12 +111,12 @@ tests:
         alertname: ObservabilityNodeDiskSpaceCritical
         exp_alerts:
           - exp_labels: {component: node-filesystem, environment: staging, node: vpn-p0, severity: critical}
-            exp_annotations: {incident_family: node-disk, evidence_class: disk-available-critical, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Root filesystem available space crossed the configured critical threshold., runbook: docs/RUNBOOK-incident.md}
+            exp_annotations: {incident_family: node-disk, evidence_class: disk-available-critical, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Root filesystem available space crossed the configured critical threshold., runbook: docs/how-to/incident.md}
       - eval_time: 6m
         alertname: ObservabilityNodeDiskSpaceLow
         exp_alerts:
           - exp_labels: {component: node-filesystem, environment: staging, node: vpn-p0, severity: warning}
-            exp_annotations: {incident_family: node-disk, evidence_class: disk-available-low, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Root filesystem available space crossed the configured warning threshold., runbook: docs/RUNBOOK-incident.md}
+            exp_annotations: {incident_family: node-disk, evidence_class: disk-available-low, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Root filesystem available space crossed the configured warning threshold., runbook: docs/how-to/incident.md}
   - interval: 1m
     input_series:
       - series: 'vpn_observability_required_service{environment="staging",node="vpn-p0",role="nginx"}'
@@ -130,7 +130,7 @@ tests:
         alertname: ObservabilityRequiredServiceNotActive
         exp_alerts:
           - exp_labels: {component: service, environment: staging, node: vpn-p0, role: nginx, severity: critical}
-            exp_annotations: {incident_family: required-service, evidence_class: observed-service-not-active, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Fresh node telemetry reports a required systemd service is not active., runbook: docs/RUNBOOK-incident.md}
+            exp_annotations: {incident_family: required-service, evidence_class: observed-service-not-active, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Fresh node telemetry reports a required systemd service is not active., runbook: docs/how-to/incident.md}
   - interval: 1m
     alert_rule_test:
       - eval_time: 5m
@@ -151,17 +151,17 @@ tests:
         alertname: ObservabilityDetectorInputStalled
         exp_alerts:
           - exp_labels: {component: detector, environment: staging, node: vpn-p1, severity: warning}
-            exp_annotations: {incident_family: detector-input, evidence_class: input-contract-stalled, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Detector input advanced without any recognized policy event., runbook: docs/RUNBOOK-incident.md}
+            exp_annotations: {incident_family: detector-input, evidence_class: input-contract-stalled, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Detector input advanced without any recognized policy event., runbook: docs/how-to/incident.md}
       - eval_time: 4m
         alertname: ObservabilityDetectorEventThreshold
         exp_alerts:
           - exp_labels: {component: detector, environment: staging, node: vpn-p1, severity: warning}
-            exp_annotations: {incident_family: detector-events, evidence_class: event-threshold, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A security or reachability detector crossed its event threshold., runbook: docs/RUNBOOK-incident.md}
+            exp_annotations: {incident_family: detector-events, evidence_class: event-threshold, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A security or reachability detector crossed its event threshold., runbook: docs/how-to/incident.md}
       - eval_time: 7m
         alertname: ObservabilityDetectorEvidenceStale
         exp_alerts:
           - exp_labels: {component: detector, environment: staging, node: vpn-p1, severity: warning}
-            exp_annotations: {incident_family: detector-health, evidence_class: evidence-stale, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A detector success timestamp exceeded its bounded cadence., runbook: docs/RUNBOOK-incident.md}
+            exp_annotations: {incident_family: detector-health, evidence_class: evidence-stale, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A detector success timestamp exceeded its bounded cadence., runbook: docs/how-to/incident.md}
   - interval: 1m
     input_series:
       - series: 'vpn_honeypot_input_errors_total{environment="staging",node="vpn-p1"}'
@@ -173,12 +173,12 @@ tests:
         alertname: ObservabilityDetectorError
         exp_alerts:
           - exp_labels: {component: detector, environment: staging, node: vpn-p1, severity: warning}
-            exp_annotations: {incident_family: detector-error, evidence_class: bounded-producer-error, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A detector reports a bounded producer error., runbook: docs/RUNBOOK-incident.md}
+            exp_annotations: {incident_family: detector-error, evidence_class: bounded-producer-error, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A detector reports a bounded producer error., runbook: docs/how-to/incident.md}
       - eval_time: 5m
         alertname: ObservabilityDetectorError
         exp_alerts:
           - exp_labels: {component: detector, environment: staging, node: vpn-p1, severity: warning}
-            exp_annotations: {incident_family: detector-error, evidence_class: bounded-producer-error, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A detector reports a bounded producer error., runbook: docs/RUNBOOK-incident.md}
+            exp_annotations: {incident_family: detector-error, evidence_class: bounded-producer-error, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: A detector reports a bounded producer error., runbook: docs/how-to/incident.md}
       - eval_time: 8m
         alertname: ObservabilityDetectorError
         exp_alerts: []
@@ -191,4 +191,4 @@ tests:
         alertname: ObservabilityCertificateCollectionFailed
         exp_alerts:
           - exp_labels: {component: certificate, environment: staging, node: vpn-p0, severity: warning}
-            exp_annotations: {incident_family: certificate-health, evidence_class: collection-failed, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Managed certificate expiry collection failed., runbook: docs/RUNBOOK-incident.md}
+            exp_annotations: {incident_family: certificate-health, evidence_class: collection-failed, source_generation: "{{ observability_control_plane.alerting.source_generation }}", summary: Managed certificate expiry collection failed., runbook: docs/how-to/incident.md}
