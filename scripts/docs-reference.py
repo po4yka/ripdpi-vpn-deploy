@@ -76,23 +76,29 @@ def vpnd_commands() -> str:
         "",
         "## Global options",
         "",
-        "Every command and subcommand accepts these as well.",
+        "Every command and subcommand accepts these as well, except where a row says otherwise.",
         "",
         "| Option | Purpose |",
         "|---|---|",
     ]
     subparsers = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
-    child_dests = set.intersection(*({a.dest for a in child._actions} for child in subparsers.choices.values()))
+    tree = list(_walk(parser))
     global_dests = set()
     root_only = []
     for action in parser._actions:
-        if action.option_strings and action.help != argparse.SUPPRESS:
-            row = f"| `{', '.join(action.option_strings)}` | {_help(action.help)} |"
-            if action.dest in child_dests:
-                rows.append(row)
-                global_dests.add(action.dest)
-            else:
-                root_only.append(row)
+        if not action.option_strings or action.help == argparse.SUPPRESS:
+            continue
+        row = f"| `{', '.join(action.option_strings)}` | {_help(action.help)}"
+        missing = [(path, child) for path, child in tree if action.dest not in {a.dest for a in child._actions}]
+        if len(missing) == len(tree):
+            root_only.append(row + " |")
+            continue
+        global_dests.add(action.dest)
+        for path, child in missing:
+            own = [o for a in child._actions for o in a.option_strings if o in action.option_strings]
+            row += f" Not accepted by `{path}`"
+            row += f", which defines its own `{', '.join(own)}` (see that command)." if own else "."
+        rows.append(row + " |")
     if root_only:
         rows += ["", "Accepted only before the command name:", "", "| Option | Purpose |", "|---|---|", *root_only]
     rows += ["", "## Commands", "", "| Command | Purpose |", "|---|---|"]
@@ -106,6 +112,17 @@ def vpnd_commands() -> str:
             rows += ["", f"#### `vpnd {name} {action_name}`", "", _help(grandchild.description)]
             rows += _arguments(grandchild, global_dests)
     return "\n".join(rows) + "\n"
+
+
+def _walk(parser, prefix="vpnd"):
+    """Yield (command path, parser) for every command and subcommand below
+    `parser`, so an option counts as global only when every one of them takes it."""
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            for name, child in action.choices.items():
+                path = f"{prefix} {name}"
+                yield path, child
+                yield from _walk(child, path)
 
 
 def _arguments(parser, global_dests) -> list:

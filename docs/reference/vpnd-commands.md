@@ -11,7 +11,7 @@ from it. Installation and development notes: [`vpnd/README.md`](../../vpnd/READM
 
 ## Global options
 
-Every command and subcommand accepts these as well.
+Every command and subcommand accepts these as well, except where a row says otherwise.
 
 | Option | Purpose |
 |---|---|
@@ -19,8 +19,8 @@ Every command and subcommand accepts these as well.
 | `--explain` | Print underlying invocations without running them. |
 | `--yes, -y` | Skip settings confirmation; plan and dry-run reviews still prompt. |
 | `--root` | Override repository root (VPN_DEPLOY_ROOT; default: discover from cwd). |
-| `--env, -e` | Target environment (VPN_ENV; default: prod). |
-| `--provider, -p` | Cloud provider Terraform root (VPN_PROVIDER; default: upcloud). |
+| `--env, -e` | Target environment (VPN_ENV; default: prod). Not accepted by `vpnd host add`, which defines its own `--env` (see that command). |
+| `--provider, -p` | Cloud provider Terraform root (VPN_PROVIDER; default: upcloud). Not accepted by `vpnd host add`, which defines its own `--provider` (see that command). |
 
 Accepted only before the command name:
 

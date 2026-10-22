@@ -189,13 +189,15 @@ release-please reads them on every push to `main` to maintain
 |---|---|---|
 | `feat:` | New role, transport profile, provider, vpnd subcommand, AWG cohort or operator capability | minor |
 | `fix:` | Bug fix in a role, template, script or document | patch |
-| `docs:` | Documentation only | none |
-| `test:` | Molecule scenarios, validators, smoke tests | none |
-| `refactor:` / `perf:` | Restructure or performance change without behaviour change | none |
-| `chore:` / `build:` / `ci:` | Tooling, dependencies (including Renovate PRs), workflows | none |
+| `docs:` | Documentation only | patch |
+| `test:` | Molecule scenarios, validators, smoke tests | patch |
+| `refactor:` / `perf:` | Restructure or performance change without behaviour change | patch |
+| `chore:` / `build:` / `ci:` | Tooling, dependencies (including Renovate PRs), workflows | none (hidden section) |
 | `revert:` | Reverts a prior commit | as reverted |
 
-`feat!:`, `fix!:` or a `BREAKING CHANGE:` trailer bumps the major version.
+`feat!:`, `fix!:` or a `BREAKING CHANGE:` trailer bumps the major version. Every
+type with a visible section in `.github/release-please-config.json` produces a
+release, so a `docs:` commit alone on `main` creates a patch release PR.
 Do not add `Co-Authored-By:` trailers; the commit-message hook rejects them.
 
 ## Adding a role, template or script
