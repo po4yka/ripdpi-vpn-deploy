@@ -530,6 +530,10 @@ endif
 
 -include .fleet.mk
 
+ifneq ($(filter blue-green,$(MAKECMDGOALS)),)
+override BLUE_GREEN_ENV_EXPLICIT := $(if $(filter command line environment,$(origin ENV)),1,0)
+endif
+
 # Capture deployment labels before the eager Terraform path assignments below.
 # The included fleet file remains trusted executable Make configuration.
 ifneq ($(filter deploy dry-run deploy-canary blue-green backup-configure install-ssh-recovery staging-cleanup-manifest staging-cleanup-reissue staging-destroy $(_DISPOSABLE_LIVENESS_GOALS),$(MAKECMDGOALS)),)
@@ -1985,6 +1989,7 @@ scan-targets:
 	  $(if $(VALIDATE),--validate)
 
 ifneq ($(filter blue-green,$(MAKECMDGOALS)),)
+override BLUE_GREEN_REQUESTED_ENV := $(value ENV)
 override BLUE_ENV := $(value BLUE_ENV)
 override BLUE_GREEN_SOURCE_ENV := $(or $(value BLUE_ENV),$(value ENV))
 override GREEN_ENV := $(value GREEN_ENV)
@@ -1993,9 +1998,10 @@ override DEVICE_MIGRATION_PLAN := $(value DEVICE_MIGRATION_PLAN)
 override DEVICE_MIGRATION_APPROVAL := $(value DEVICE_MIGRATION_APPROVAL)
 override BLUE_COHORT := $(value BLUE_COHORT)
 override GREEN_COHORT := $(value GREEN_COHORT)
-export BLUE_GREEN_SOURCE_ENV GREEN_ENV GREEN_SOPS_FILE DEVICE_MIGRATION_PLAN DEVICE_MIGRATION_APPROVAL BLUE_COHORT GREEN_COHORT
+export BLUE_ENV BLUE_GREEN_ENV_EXPLICIT BLUE_GREEN_REQUESTED_ENV BLUE_GREEN_SOURCE_ENV GREEN_ENV GREEN_SOPS_FILE DEVICE_MIGRATION_PLAN DEVICE_MIGRATION_APPROVAL BLUE_COHORT GREEN_COHORT
 endif
 blue-green:
+	@if test "$${BLUE_GREEN_ENV_EXPLICIT}" = 1 && test -n "$${BLUE_ENV}" && test "$${BLUE_ENV}" != "$${BLUE_GREEN_REQUESTED_ENV}"; then echo "BLUE_ENV and ENV select different environments; set only one" >&2; exit 1; fi
 	@test -n "$${GREEN_ENV:-}" || { echo "GREEN_ENV=<name> required (e.g. green, spare2)"; exit 1; }
 	@test -n "$${BLUE_GREEN_SOURCE_ENV:-}" || { echo "BLUE_ENV or ENV required"; exit 1; }
 	PROVIDER="$${PROVIDER}" BLUE_ENV="$${BLUE_GREEN_SOURCE_ENV}" GREEN_ENV="$${GREEN_ENV}" ./scripts/blue-green.sh
