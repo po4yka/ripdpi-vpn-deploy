@@ -597,3 +597,22 @@ def test_preflight_failure_retains_ordinary_refusal(lab, monkeypatch, capsys, re
     assert result == 2 and not observed.out and 'reconcile' not in observed.err
     assert path.read_bytes() == before
     assert (capture.read_bytes() if capture.exists() else None) == previous
+
+
+def test_payload_policy_change_marks_real_delivery_stale(lab, monkeypatch, capsys):
+    path, capture, drift = lab
+    policy = json.loads((ROOT / 'contract/ripdpi-bundle.payload-failover.json').read_text())['ripdpi']['payload_failover']
+    original_context = payload.context
+
+    def configured_context(cohort):
+        return dict(original_context(cohort), client_payload_failover=policy)
+
+    monkeypatch.setattr(payload, 'context', configured_context)
+    deliver()
+    capsys.readouterr()
+    assert json.loads(capture.read_bytes())['ripdpi']['payload_failover'] == policy
+    assert drift._verdict('phone')[0] == 'current'
+    original = path.read_bytes()
+    policy['cooldown_seconds'] = 180
+    assert drift._verdict('phone')[0] == 'stale'
+    assert path.read_bytes() == original

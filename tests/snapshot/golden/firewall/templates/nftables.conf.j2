@@ -41,8 +41,6 @@ destroy table inet nat
 
 
 
-
-
 table inet filter {
   # This transaction-owned fragment may declare only the two typed SSH source
   # sets below.  It is validated before this complete candidate is installed.
@@ -98,12 +96,6 @@ table inet filter {
     # Public listener contract: xray (tcp/443)
 
     tcp dport 443 accept
-
-
-
-    # Public listener contract: xray-fallback (tcp/2053)
-
-    tcp dport 2053 accept
 
 
 
