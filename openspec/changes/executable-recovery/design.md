@@ -31,6 +31,14 @@ Recovery composes these contracts instead of replacing them.
 - Generate fresh deployment failure sinks for each attempt; never remove a receipt
   to make retry pass. Full dry-run requires a current review before deploy. Current
   source-drift and verify can reconcile a completed deployment with lost response.
+- First production onboarding uses a typed recovery promotion intent and an
+  already prepared dedicated SSH sentinel with an existing per-device identity.
+  The deploy controller freezes its ciphertext/key inputs before any site writes;
+  the final SSH play invokes the canonical installer after data-plane convergence.
+  Only that phase creates the real application epoch. Private authority, registry
+  and pending records retain the generation across interrupted publication; retry
+  checks the exact remote committed receipt before producing ordinary proof.
+  Clean source revision/digest and the current recovery resource/state remain bound.
 - Device migration prepares target credential continuity before convergence and
   publishes only after the target passes. Its ready contract owns final device and
   stable-origin acceptance. No cleanup or node retirement is implicit.
@@ -57,6 +65,11 @@ Recovery composes these contracts instead of replacing them.
   recovery reports that concrete pending condition and retains its artifacts.
 - A surviving dedicated publisher is an explicit topology requirement. A destroyed
   publisher needs backup authority restoration and is not accepted by this feature.
+- Inventory selections with observability enabled are refused before provisioning;
+  this recovery does not reconstruct a separate observability controller topology.
+- The dedicated sentinel's SSH trust, runtime pins and independent existing client
+  identity are prerequisites, not fabricated by recovery. Its proof must cover
+  every enabled target transport, including the client's retained AWG key if used.
 - Portable fixtures prove orchestration and interruption behavior only; real node,
   provider and client acceptance are reported separately.
 

@@ -218,6 +218,18 @@ def test_runtime_never_forwards_tailnet_enrollment_key_to_other_children(manifes
         assert output.strip() == b'True'
 
 
+def test_provider_credentials_reach_only_provider_operations(manifest, monkeypatch):
+    value, path = manifest
+    monkeypatch.setenv('UPCLOUD_TOKEN', 'synthetic-provider-capability')
+    with Journal(value) as journal:
+        runtime = Runtime(value, path, journal)
+        command = [sys.executable, '-c', 'import os; print("UPCLOUD_TOKEN" in os.environ)']
+        for name, expected in (('observe-provider', b'True'), ('apply', b'True'), ('decrypt', b'False'),
+                               ('deploy', b'False'), ('bootstrap-tailnet', b'False'), ('migration-publish', b'False')):
+            _, output = runtime.command(name, command)
+            assert output.strip() == expected
+
+
 def test_runtime_changed_manifest_refuses_before_child(manifest):
     value, path = manifest
     with Journal(value) as journal:
@@ -338,6 +350,72 @@ def test_expired_dry_run_requires_new_review(manifest, monkeypatch):
         current = approve_next(lambda _: runtime.converge(contexts, journal, previous))
         assert previous != current
         assert calls.count('dry-run') == 2 and 'deploy' not in calls
+
+
+def test_ciphertext_change_during_decrypt_never_reaches_review_or_deploy(manifest, monkeypatch):
+    from pathlib import Path
+    value, _ = manifest
+    with Journal(value) as journal:
+        runtime, contexts, calls = concrete_convergence(manifest, monkeypatch, journal)
+        make = runtime.make
+        def changed(goal, **kwargs):
+            result = make(goal, **kwargs)
+            if goal == 'decrypt':
+                Path(value['sops_file']).write_bytes(b'changed ciphertext')
+            return result
+        monkeypatch.setattr(runtime, 'make', changed)
+        with pytest.raises(RecoveryError, match='decrypt-input-changed'):
+            runtime.converge(contexts, journal, None)
+        assert calls == ['decrypt']
+        assert not (journal.directory / 'runtime-secrets.yaml').exists()
+
+
+def test_plan_change_while_terraform_runs_never_becomes_reviewable(manifest, monkeypatch):
+    from recovery_io import canonical
+    value, path = manifest
+    with Journal(value) as journal:
+        runtime = Runtime(value, path, journal)
+        runtime.tfroot = path.parent
+        saved = path.parent / (value['environment'] + '.tfplan')
+        saved.write_bytes(b'synthetic binary plan')
+        original = {'source': 'original'}
+        monkeypatch.setattr(runtime, 'inputs', lambda: dict(original))
+        monkeypatch.setattr(runtime, 'make', lambda _: original.update(source='changed'))
+        monkeypatch.setattr(runtime, 'terraform', lambda *args, **kwargs: (0, canonical({})))
+        monkeypatch.setattr('recovery_runtime.review_plan', lambda *args, **kwargs: {'changes': []})
+        monkeypatch.setattr(runtime, 'command', lambda *args, **kwargs: (0, b''))
+        with pytest.raises(RecoveryError, match='plan-input-changed'):
+            runtime.plan(None)
+
+
+def test_apply_consumes_same_private_reviewed_bytes_after_retained_file_replaced(manifest, monkeypatch):
+    import hashlib
+    from pathlib import Path
+
+    from recovery_io import canonical
+    value, path = manifest
+    with Journal(value) as journal:
+        runtime = Runtime(value, path, journal)
+        original = journal.write('approved.tfplan', b'reviewed plan bytes')
+        retained = {'plan_sha256': hashlib.sha256(original.read_bytes()).hexdigest(), 'inputs': {'source': 'fixed'}}
+        monkeypatch.setattr(runtime, 'inputs', lambda: {'source': 'fixed'})
+        monkeypatch.setattr(runtime, 'state', lambda: None)
+        monkeypatch.setattr('recovery_runtime.review_plan', lambda *args, **kwargs: {})
+        calls = []
+        def terraform(*args, **kwargs):
+            frozen = Path(args[-1])
+            assert frozen != original and frozen.read_bytes() == b'reviewed plan bytes'
+            assert frozen.stat().st_mode & 0o777 == 0o600
+            calls.append((args[0], frozen))
+            return 0, canonical({})
+        def policy(*args, **kwargs):
+            original.write_bytes(b'unreviewed replacement')
+            return 0, b''
+        monkeypatch.setattr(runtime, 'terraform', terraform)
+        monkeypatch.setattr(runtime, 'command', policy)
+        runtime.apply(retained)
+        assert [call[0] for call in calls] == ['show', 'apply']
+        assert calls[0][1] == calls[1][1] and not calls[0][1].exists()
 
 
 def test_authenticated_pin_uses_real_ssh_keygen_and_hashed_known_hosts(manifest, monkeypatch):

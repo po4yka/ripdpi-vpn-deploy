@@ -7,6 +7,7 @@ import json
 import os
 import stat
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -69,6 +70,10 @@ class Runtime:
         environment = self.environment | (extra or {})
         if name != 'bootstrap-tailnet':
             environment.pop('TAILSCALE_AUTH_KEY', None)
+        if name not in {'observe-provider', 'init', 'plan', 'apply', 'import-server'}:
+            for key in ('UPCLOUD_TOKEN', 'UPCLOUD_USERNAME', 'UPCLOUD_PASSWORD',
+                        'UPCLOUD_API_USERNAME', 'UPCLOUD_API_PASSWORD'):
+                environment.pop(key, None)
         with self.journal.operation(name, {'argv_sha256': digest(argv)}):
             try:
                 status, output = bootstrap_readiness.run_command(argv, timeout=timeout,
@@ -129,6 +134,7 @@ class Runtime:
             self.tfroot / 'environments' / (self.manifest['environment'] + '.tfvars'), private=False)}
 
     def plan(self, existing):
+        inputs = self.inputs()
         self.make('plan')
         saved = self.tfroot / (self.manifest['environment'] + '.tfplan')
         payload = read(saved, private=False, limit=16_777_216)
@@ -138,22 +144,27 @@ class Runtime:
         reviewed = review_plan(parsed, self.manifest, existing=existing)
         plan_json = self.journal.write('approved-plan.json', raw)
         self.command('plan-policy', [str(self.root / 'scripts/check-tf-plan.sh'), str(plan_json)])
+        if self.inputs() != inputs:
+            raise RecoveryError('recovery-plan-input-changed')
         return {'plan_sha256': hashlib.sha256(payload).hexdigest(), 'review': reviewed,
-                'inputs': self.inputs(), 'state_sha256': digest(existing)}
+                'inputs': inputs, 'state_sha256': digest(existing)}
 
     def apply(self, retained):
         path = self.journal.directory / 'approved.tfplan'
-        if file_digest(path) != retained['plan_sha256'] or self.inputs() != retained['inputs']:
+        payload = read(path, limit=16_777_216)
+        if hashlib.sha256(payload).hexdigest() != retained['plan_sha256'] or self.inputs() != retained['inputs']:
             raise RecoveryError('recovery-approved-plan-changed')
-        # Policy and apply consume the same private snapshot, never the mutable
-        # ordinary ENV.tfplan produced by a later operator invocation.
-        _, raw = self.terraform('show', '-json', str(path), name='recheck-plan')
-        review_plan(json.loads(raw), self.manifest, existing=self.state())
-        policy = self.journal.write('apply-policy.json', raw)
-        self.command('apply-policy', [str(self.root / 'scripts/check-tf-plan.sh'), str(policy)])
-        if file_digest(path) != retained['plan_sha256'] or self.inputs() != retained['inputs']:
-            raise RecoveryError('recovery-approved-plan-changed')
-        self.terraform('apply', str(path), name='apply')
+        # As in policy-plan.sh, policy and apply consume one private per-operation
+        # snapshot. Replacing the retained approval file cannot change this apply.
+        with tempfile.TemporaryDirectory(prefix='apply-', dir=self.journal.directory) as owned:
+            frozen = module('deploy-controller').private_file(Path(owned) / 'plan.tfplan', payload)
+            _, raw = self.terraform('show', '-json', str(frozen), name='recheck-plan')
+            review_plan(json.loads(raw), self.manifest, existing=self.state())
+            policy = self.journal.write('apply-policy.json', raw)
+            self.command('apply-policy', [str(self.root / 'scripts/check-tf-plan.sh'), str(policy)])
+            if file_digest(frozen) != retained['plan_sha256'] or self.inputs() != retained['inputs']:
+                raise RecoveryError('recovery-approved-plan-changed')
+            self.terraform('apply', str(frozen), name='apply')
 
     def import_server(self, server):
         self.source()
@@ -275,8 +286,11 @@ class Runtime:
             raise RecoveryError('recovery-plaintext-output-occupied')
         journal.observe('plaintext_owned', True)
         try:
+            ciphertext = file_digest(self.manifest['sops_file'])
             self.make('decrypt', extra=environment)
-            inputs = {'source': self.source(), 'secrets_sha256': file_digest(self.manifest['sops_file']),
+            if file_digest(self.manifest['sops_file']) != ciphertext:
+                raise RecoveryError('recovery-decrypt-input-changed')
+            inputs = {'source': self.source(), 'secrets_sha256': ciphertext,
                 'inventory_sha256': file_digest(self.inventory, private=False),
                 'pins_sha256': file_digest(self.manifest['known_hosts_file'], private=False),
                 'promotion_sha256': file_digest(self.manifest['promotion_configs_file']),

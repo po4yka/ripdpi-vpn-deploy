@@ -11,6 +11,8 @@ The implementation MUST admit only a private versioned UpCloud Path A manifest
 binding source revision, provider account, replacement environment, hostname,
 cohort, encrypted source and management/publication inputs. It MUST refuse
 unsupported providers and root-restic paths before mutation.
+Selections requiring observability topology reconstruction MUST be refused before
+provider mutation.
 
 #### Scenario: Reviewed positive recovery plan
 
@@ -73,6 +75,21 @@ cannot become success through a stale journal or skipped check.
 
 - **WHEN** fresh source parity and node verification prove the requested generation
 - **THEN** resume continues to current acceptance without reissuing credentials.
+
+#### Scenario: First production replacement has no prior promotion epoch
+
+- **WHEN** full deployment has converged the data plane and the owner supplied a
+  typed recovery promotion intent for an existing dedicated SSH sentinel client
+- **THEN** the canonical final SSH transaction installs and tests the complete
+  enabled transport set, publishes a real application epoch and exact generation,
+  and requires ordinary fresh promotion proof before confirming SSH ownership.
+
+#### Scenario: Sentinel installation or local receipt publication is interrupted
+
+- **WHEN** the next deployment resumes the same source, resource and input binding
+- **THEN** the controller retains its original epoch and reconciles the canonical
+  installer pending/committed generation without inventing a receipt or replacing
+  a proven generation merely because its earlier acknowledgement was lost.
 
 ### Requirement: REQ-RECOVERY-DELIVERY — Existing-device continuity
 

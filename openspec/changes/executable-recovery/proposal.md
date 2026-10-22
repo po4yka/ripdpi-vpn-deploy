@@ -19,6 +19,10 @@ next invocation reconciles external outcomes after controller failure.
 - Support surviving publication authority through the device migration contract.
   Lost co-located publication authority requires a separately reviewed recovery
   input and must never be reported as restored from server convergence alone.
+- Admit first production SSH promotion through an existing dedicated sentinel,
+  freezing the reviewed capabilities before deployment and invoking the canonical
+  installer after data-plane convergence without a fabricated application epoch.
+- Refuse inventory requiring observability topology reconstruction before mutation.
 - BREAKING: real Path A requires an explicit versioned private recovery manifest;
   the old argument-only invocation is insufficient mutation authority.
 - Keep emergency rescue and root restic restoration outside this Path A change.
