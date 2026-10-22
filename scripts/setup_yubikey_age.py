@@ -104,12 +104,14 @@ def operator_terminal():
 
 
 def plugin_identity(serial, slot, generate):
-    with ExitStack() as stack:
-        terminal = stack.enter_context(operator_terminal()) if generate else None
-        result = subprocess.run(['age-plugin-yubikey', '--generate' if generate else '--identity',
-                                 '--serial', str(serial), '--slot', str(slot)],
-                                stdin=terminal, stdout=subprocess.PIPE,
-                                stderr=terminal if generate else subprocess.PIPE,
+    argv = ['age-plugin-yubikey', '--generate' if generate else '--identity',
+            '--serial', str(serial), '--slot', str(slot)]
+    if generate:
+        with operator_terminal() as terminal:
+            result = subprocess.run(argv, stdin=terminal, stdout=subprocess.PIPE, stderr=terminal,
+                                    check=False, timeout=180)
+    else:
+        result = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 check=False, timeout=180)
     if result.returncode or len(result.stdout) > 16384:
         raise ValueError('hardware-identity-operation-refused')
