@@ -20,6 +20,10 @@ Ship exact useful-data probes, coordinated recipient selection and opt-in altern
 - Parent serializes all shared `CLAUDE.md`, Makefile, task/spec/board edits,
   contract synchronization, commits and deployment PR operations. Workers must
   preserve unrelated edits and request ownership before editing other paths.
+- The acceptance worker owns this task's issue, execution, verification, archive,
+  synchronized specifications and generated board for the separate metadata PR.
+  The parent independently reviews that PR and owns its merge. Runtime files,
+  unrelated tasks and the consumer's independent harness correction are excluded.
 
 ## Execution
 
