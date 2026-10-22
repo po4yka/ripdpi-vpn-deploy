@@ -26,6 +26,7 @@ def probe(value):
     if not 1 <= len(expected) <= 1024:
         raise ValueError('invalid-route-body')
     context = ssl.create_default_context()
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     connection = http.client.HTTPSConnection(origin.hostname, origin.port or 443, timeout=10, context=context)
     try:
         raw = socket.create_connection((value['address'], origin.port or 443), timeout=10)
@@ -49,7 +50,7 @@ def main():
             return 2
         probe(json.loads(raw))
         return 0
-    except Exception:
+    except (OSError, ValueError, TypeError, RecursionError, http.client.HTTPException):
         return 2
 
 
