@@ -49,6 +49,9 @@ values and shared activation. Naive dispatch remains inside its revocation fence
 with abort admission required before a failed credential change can return.
 Native AWG identity replacement reconciles client routes after removing its last
 address; accepted-survivor traffic must traverse both families after revocation.
+Standalone Naive adoption fixtures install the real revocation admission helper
+and its transaction dependency under their owned private root. Rendered units
+retain the canonical prestart check even when their executable paths are isolated.
 
 The complete native AWG rollback gate runs once before the remaining runtime
 suites; retain the complete collection union and refusal of skipped cases.
