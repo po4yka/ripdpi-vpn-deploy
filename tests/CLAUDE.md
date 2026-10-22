@@ -52,6 +52,10 @@ address; accepted-survivor traffic must traverse both families after revocation.
 Standalone Naive adoption fixtures install the real revocation admission helper
 and its transaction dependency under their owned private root. Rendered units
 retain the canonical prestart check even when their executable paths are isolated.
+The lifecycle HTTPS canary performs bounded TLS handshakes inside per-connection
+workers so REALITY target startup cannot block independent controls. Native
+barrier fixtures disable bytecode for their owned helper invocations; failure
+diagnostics expose only route kind, curl exit, elapsed time and acceptance booleans.
 
 The complete native AWG rollback gate runs once before the remaining runtime
 suites; retain the complete collection union and refusal of skipped cases.
