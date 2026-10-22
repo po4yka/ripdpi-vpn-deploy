@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-22
+goal: SCR-1792659157802819 Deliver payload-verified failover and explicit
+  alternate listeners

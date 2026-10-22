@@ -516,7 +516,7 @@ def test_subscription_directory_rejected_before_external_commands(
     script = scripts / script_name
     script.write_text((REPO_ROOT / "scripts" / script_name).read_text())
     if script_name == "issue-sub-token.sh":
-        for module in ("issue_sub_token.py", "client_payload.py", "fleet_inspection.py", "client_delivery_identity.py", "awg_client.py", "awg_device_binding.py", "encrypted_client_document.py", "transport_semantics.py", "ripdpi_cohort_fingerprint.py"):
+        for module in ("issue_sub_token.py", "client_payload.py", "payload_failover_policy.py", "fleet_inspection.py", "client_delivery_identity.py", "awg_client.py", "awg_device_binding.py", "encrypted_client_document.py", "transport_semantics.py", "ripdpi_cohort_fingerprint.py"):
             (scripts / module).write_text((REPO_ROOT / "scripts" / module).read_text())
     marker = tmp_path / "external-call"
     _write_executable(
@@ -541,7 +541,7 @@ def test_safe_subscription_directory_reaches_next_stage(tmp_path, script_name):
     script = scripts / script_name
     script.write_text((REPO_ROOT / "scripts" / script_name).read_text())
     if script_name == "issue-sub-token.sh":
-        for module in ("issue_sub_token.py", "client_payload.py", "fleet_inspection.py", "client_delivery_identity.py", "awg_client.py", "awg_device_binding.py", "encrypted_client_document.py", "transport_semantics.py", "ripdpi_cohort_fingerprint.py"):
+        for module in ("issue_sub_token.py", "client_payload.py", "payload_failover_policy.py", "fleet_inspection.py", "client_delivery_identity.py", "awg_client.py", "awg_device_binding.py", "encrypted_client_document.py", "transport_semantics.py", "ripdpi_cohort_fingerprint.py"):
             (scripts / module).write_text((REPO_ROOT / "scripts" / module).read_text())
     marker = tmp_path / "external-call"
     _write_executable(
