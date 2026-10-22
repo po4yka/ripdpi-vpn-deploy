@@ -14,8 +14,14 @@ runs:
     - name: Install system dependencies
       shell: bash
       run: |
-        sudo apt-get update
-        sudo apt-get install -y --no-install-recommends \
+        test -s /etc/apt/sources.list.d/ubuntu.sources
+        apt_options=(
+          -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources
+          -o Dir::Etc::sourceparts=-
+          -o APT::Update::Error-Mode=any
+        )
+        sudo apt-get "${apt_options[@]}" update
+        sudo apt-get "${apt_options[@]}" install -y --no-install-recommends \
           age jq wireguard-tools uuid-runtime e2fsprogs openssh-server unzip
         test "$(mke2fs -V 2>&1 | head -1 | awk '{print $2}')" = 1.47.0
     - name: Admit trusted executable directories for disposable CI
