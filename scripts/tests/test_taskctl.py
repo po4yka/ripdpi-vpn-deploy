@@ -3286,6 +3286,77 @@ class TaskctlHistoryTest(TaskctlFixture):
         self.git("merge", "--no-ff", "feature", "-m", "PR merge")
         taskctl.validate_deleted_history(self.root, base)
 
+    def test_base_lifecycle_import_through_feature_parent(self) -> None:
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        self.commit_all("bootstrap owner before source exists")
+        integration = self.git("branch", "--show-current")
+        self.git("branch", "carrier")
+        self.git("branch", "combined")
+        source = self.add_simple_task(status="review")
+        self.write_board()
+        self.commit_all("introduce source on base")
+        self.git("switch", "carrier")
+        (self.root / "carrier.txt").write_text("unrelated carrier feature\n")
+        self.commit_all("implement carrier feature")
+        self.git("merge", integration, "-m", "import active source")
+        self.git("switch", "combined")
+        (self.root / "combined.txt").write_text("unrelated combined feature\n")
+        self.commit_all("implement combined feature")
+        self.git("merge", "carrier", "-m", "import active source indirectly")
+        self.git("switch", integration)
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        self.commit_all("complete source in base")
+        self.purge_simple_task(source)
+        self.write_board()
+        base = self.commit_all("purge source in base")
+        self.git("switch", "carrier")
+        self.git("merge", integration, "-m", "import base purge")
+        self.git("switch", "combined")
+        self.git("merge", "carrier", "-m", "import purge indirectly")
+        taskctl.validate_deleted_history(self.root, base)
+        self.git("switch", integration)
+        self.git("merge", "--no-ff", "combined", "-m", "PR merge")
+        taskctl.validate_deleted_history(self.root, base)
+
+    def test_indirect_purge_import_cannot_hide_carrier_lifecycle_edit(self) -> None:
+        source = self.add_simple_task(status="review")
+        self.add_simple_task(task_id="CIC-1786234567890003")
+        self.write_board()
+        self.commit_all("add active source")
+        integration = self.git("branch", "--show-current")
+        self.git("branch", "carrier")
+        self.git("branch", "combined")
+        self.prepare_simple_terminal(source)
+        self.write_board()
+        self.commit_all("complete source in base")
+        self.purge_simple_task(source)
+        self.write_board()
+        base = self.commit_all("purge source in base")
+        self.git("switch", "carrier")
+        source.write_text(source.read_text().replace("status: review", "status: doing"))
+        self.write_board()
+        self.commit_all("independent lifecycle edit")
+        merge = subprocess.run(
+            ["git", "merge", "--no-commit", integration], cwd=self.root,
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(1, merge.returncode, merge.stdout + merge.stderr)
+        source.unlink()
+        self.write_board()
+        self.commit_all("resolve carrier to exact base purge")
+        self.git("switch", "combined")
+        self.git("merge", "--no-ff", "carrier", "-m", "import carrier purge")
+        index = taskctl.build_terminal_history_index(
+            self.root, taskctl.load_project_config(self.root),
+        )
+        self.assertTrue(taskctl.task_lifecycle_changed_outside_base(
+            self.root, base, "CIC-1786234567890001", dict(index.by_revision),
+        ))
+        with self.assertRaises(taskctl.ContractError):
+            taskctl.validate_deleted_history(self.root, base)
+
     def test_exact_stale_snapshot_import_after_base_purge_is_audited(self) -> None:
         source = self.add_simple_task(status="review")
         self.add_simple_task(task_id="CIC-1786234567890003")
