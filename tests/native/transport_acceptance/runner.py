@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
@@ -10,10 +11,13 @@ import grp
 import re
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 SUITES = (
@@ -50,7 +54,7 @@ SUITES = (
 
 def suite_commands(plan):
     """Fixed complete CI plans; the local default executes their entire union."""
-    if plan not in {"all", "core", "recovery-1", "recovery-2"}:
+    if plan not in {"all", "core", "recovery-1", "recovery-2", "recovery-3"}:
         raise RuntimeError("native-plan-refused")
     commands = []
     for name, paths in SUITES:
@@ -58,13 +62,127 @@ def suite_commands(plan):
             if plan in {"all", "core"}:
                 commands.append((name, paths, []))
             continue
-        for group in (1, 2):
+        for group in (1, 2, 3):
             if plan in {"all", "recovery-" + str(group)}:
                 commands.append((name + "-" + str(group), paths, [
-                    "--splits", "2", "--group", str(group),
+                    "--splits", "3", "--group", str(group),
                     "--splitting-algorithm", "least_duration",
                 ]))
     return commands
+
+
+
+PROGRESS_LIMIT = 4096
+PROGRESS_PHASES = {"setup", "call", "teardown", "complete"}
+
+
+def pytest_addoption(parser):
+    parser.addoption("--native-progress", type=Path, help="Owned private native progress journal")
+
+
+def pytest_configure(config):
+    path = config.getoption("--native-progress")
+    if path is not None:
+        info = path.parent.lstat()
+        if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid()
+                or stat.S_IMODE(info.st_mode) != 0o700 or os.path.lexists(path)):
+            raise RuntimeError("native-progress-path-refused")
+        config.pluginmanager.register(NativeProgress(path), "native-progress")
+
+
+class NativeProgress:
+    """Write only identity hashes and fixed outcomes, including before blocking fixtures."""
+    def __init__(self, path):
+        self.path = path
+        self.value = {"current": None, "completed": {"passed": 0, "failed": 0, "skipped": 0}}
+        self.outcome = "passed"
+
+    def write(self):
+        descriptor, name = tempfile.mkstemp(dir=self.path.parent, prefix=".progress-")
+        try:
+            with os.fdopen(descriptor, "w") as stream:
+                json.dump(self.value, stream)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(name, self.path)
+        finally:
+            Path(name).unlink(missing_ok=True)
+
+    def stage(self, item, phase):
+        name = getattr(item, "originalname", None) or item.name.split("[", 1)[0]
+        self.value["current"] = {
+            "case": str(Path(item.path).relative_to(ROOT)) + "::" + name,
+            "case_sha256": hashlib.sha256(item.nodeid.encode()).hexdigest(), "phase": phase,
+        }
+        self.write()
+
+    @pytest.hookimpl(tryfirst=True)
+    def pytest_runtest_setup(self, item):
+        self.outcome = "passed"
+        self.stage(item, "setup")
+
+    @pytest.hookimpl(tryfirst=True)
+    def pytest_runtest_call(self, item):
+        self.stage(item, "call")
+
+    @pytest.hookimpl(tryfirst=True)
+    def pytest_runtest_teardown(self, item, nextitem):
+        self.stage(item, "teardown")
+
+    def pytest_runtest_logreport(self, report):
+        if report.failed:
+            self.outcome = "failed"
+        elif report.skipped and self.outcome != "failed":
+            self.outcome = "skipped"
+
+    def pytest_runtest_logfinish(self, nodeid, location):
+        self.value["completed"][self.outcome] += 1
+        self.value["current"]["phase"] = "complete"
+        self.write()
+
+
+def progress_cases(paths):
+    """Admit only test function identifiers from the selected repository sources."""
+    result = set()
+    for raw in paths:
+        path = (ROOT / raw).resolve()
+        relative = path.relative_to(ROOT).as_posix()
+        if not re.fullmatch(r"tests/(?:[A-Za-z0-9_]+/)*test_[A-Za-z0-9_]+\.py", relative):
+            raise RuntimeError("native-progress-source-refused")
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and re.fullmatch(r"test_[A-Za-z0-9_]+", node.name):
+                result.add(relative + "::" + node.name)
+    return result
+
+
+def timeout_progress(path, allowed):
+    """Fail closed on damaged records; never publish arbitrary private strings."""
+    try:
+        with path.open("rb") as source:
+            raw = source.read(PROGRESS_LIMIT + 1)
+        if len(raw) > PROGRESS_LIMIT:
+            return None
+        def unique(pairs):
+            value = dict(pairs)
+            if len(value) != len(pairs):
+                raise ValueError("duplicate-progress-field")
+            return value
+        value = json.loads(raw, object_pairs_hook=unique)
+        if not isinstance(value, dict) or set(value) != {"current", "completed"}:
+            return None
+        counts, current = value["completed"], value["current"]
+        if (not isinstance(counts, dict) or set(counts) != {"passed", "failed", "skipped"}
+                or any(type(count) is not int or not 0 <= count <= 10000 for count in counts.values())
+                or sum(counts.values()) > 10000 or not isinstance(current, dict)
+                or set(current) != {"case", "case_sha256", "phase"}
+                or type(current["case"]) is not str or len(current["case"]) > 512
+                or current["case"] not in allowed or type(current["phase"]) is not str
+                or current["phase"] not in PROGRESS_PHASES or type(current["case_sha256"]) is not str
+                or not re.fullmatch(r"[0-9a-f]{64}", current["case_sha256"])):
+            return None
+        return value
+    except (OSError, ValueError, TypeError, RecursionError):
+        return None
 
 
 def run(argv, **kwargs):
@@ -533,26 +651,36 @@ def main():
             for name, paths, selection in executions:
                 evidence["phase"] = name
                 report = Path(private) / (name + ".xml")
-                with (Path(private) / (name + ".log")).open("wb") as log:
-                    result = subprocess.run(
-                        [
-                            sys.executable,
-                            "-m",
-                            "pytest",
-                            *paths,
-                            *selection,
-                            "--fail-on-skip",
-                            "--native-resource-checks",
-                            "--basetemp=" + str(Path(private) / (name + "-scratch")),
-                            "--tb=short",
-                            "-q",
-                            "--junitxml=" + str(report),
-                        ],
-                        cwd=ROOT,
-                        stdout=log,
-                        stderr=subprocess.STDOUT,
-                        timeout=2400,
-                    )
+                progress = Path(private) / (name + ".progress.json")
+                allowed = progress_cases(paths)
+                try:
+                    with (Path(private) / (name + ".log")).open("wb") as log:
+                        result = subprocess.run(
+                            [
+                                sys.executable,
+                                "-m",
+                                "pytest",
+                                "-p", "tests.native.transport_acceptance.runner",
+                                "--native-progress=" + str(progress),
+                                *paths,
+                                *selection,
+                                "--fail-on-skip",
+                                "--native-resource-checks",
+                                "--basetemp=" + str(Path(private) / (name + "-scratch")),
+                                "--tb=short",
+                                "-q",
+                                "--junitxml=" + str(report),
+                            ],
+                            cwd=ROOT,
+                            stdout=log,
+                            stderr=subprocess.STDOUT,
+                            timeout=2400,
+                        )
+                except subprocess.TimeoutExpired:
+                    evidence["timeout_progress"] = timeout_progress(progress, allowed)
+                    evidence["case_cleanup"] = "unconfirmed"
+                    retain_diagnostic(Path(private) / (name + ".log"), output.with_suffix("." + name + ".log"))
+                    raise RuntimeError("native-suite-timeout:" + name) from None
                 # Hopping owns the one-record observation. An early failure has no
                 # canonical result, so retain that failed attempt instead.
                 if name == "hopping" or (name == "dhcpv6-preflight" and result.returncode):
@@ -602,6 +730,7 @@ def main():
             "engine-missing:" + name
             for name in ("xray", "hysteria", "amneziawg-go", "awg")
         )
+        known.update("native-suite-timeout:" + name for name, _paths, _selection in executions)
         known.update("native-suite-failed:" + name for name, _paths, _selection in executions)
         known.update("native-suite-cleanup-unconfirmed:" + name for name, _paths, _selection in executions)
         evidence["failure_category"] = code if code in known else type(error).__name__
