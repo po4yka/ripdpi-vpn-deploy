@@ -2,7 +2,7 @@
 id: CIC-1792759317705110
 title: Refresh reviewed dependency pins and integrate pending updates
 kind: chore
-status: doing
+status: review
 area: ci
 priority: high
 risk: standard
