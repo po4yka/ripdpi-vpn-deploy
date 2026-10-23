@@ -173,7 +173,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4
         with:
-          terraform_version: "1.15.2"
+          terraform_version: "1.15.9"
 
       - name: terraform fmt -check
         working-directory: terraform/providers/${{ matrix.provider }}
@@ -199,7 +199,7 @@ jobs:
           persist-credentials: false
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4
         with:
-          terraform_version: "1.15.2"
+          terraform_version: "1.15.9"
       - name: terraform fmt -check
         working-directory: terraform/exception/cascade-ingress
         run: terraform fmt -check
@@ -321,7 +321,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         if: matrix.role == 'naive'
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.3"
           cache: false
 
       - name: Build exact composite for Naive role acceptance
@@ -568,7 +568,7 @@ jobs:
             alertmanager-0.28.1.linux-amd64/alertmanager alertmanager-0.28.1.linux-amd64/amtool
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.3"
           cache: false
       - name: Build exact native Naive composite
         run: make native-naive-build
@@ -719,7 +719,7 @@ jobs:
       - uses: ./.github/actions/setup-disposable-ci
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.3"
           cache: false
       - name: Build exact native source pairs and verified protocol artifacts
         run: |
@@ -812,7 +812,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.3"
           cache-dependency-path: tools/probe-matrix-mtproto/go.sum
       - run: make test-probe-matrix-mtproto
 
@@ -853,7 +853,7 @@ jobs:
           persist-credentials: false
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4
         with:
-          terraform_version: "1.15.2"
+          terraform_version: "1.15.9"
       - name: terraform init -backend=false
         working-directory: terraform/providers/${{ matrix.provider }}
         run: terraform init -backend=false

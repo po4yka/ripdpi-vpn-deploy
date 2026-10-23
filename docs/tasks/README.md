@@ -303,4 +303,4 @@ Without a peer checkout an external blocker remains unresolved. Strict validatio
 
 ## Tool licenses
 
-OpenSpec 1.8.0 is MIT-licensed. mdtask 0.1.17 uses PolyForm Shield 1.0.0 and is pinned solely as an internal development tool; its notice and merge-time legal gate are recorded in `tools/tasking/THIRD_PARTY_NOTICES.md`.
+OpenSpec 1.14.3 is MIT-licensed. mdtask 0.1.17 uses PolyForm Shield 1.0.0 and is pinned solely as an internal development tool; its notice and merge-time legal gate are recorded in `tools/tasking/THIRD_PARTY_NOTICES.md`.

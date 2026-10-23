@@ -28,7 +28,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4
         with:
-          terraform_version: "1.15.2"
+          terraform_version: "1.15.9"
 
       - name: install conftest
         # Conftest 0.57.0 — pinned SHA256 verified against upstream release

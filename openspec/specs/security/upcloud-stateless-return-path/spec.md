@@ -25,15 +25,18 @@ in-place update, not a server replacement.
   storage, network identities, SSH allowlist and listener contract.
 
 ### Requirement: REQ-UPF-RETURN — Return traffic has a complete dual-stack matrix
-
 The managed ruleset MUST accept inbound TCP and UDP packets destined to the
 configured Linux ephemeral client-port range for both IPv4 and IPv6 before the
-terminal drops. It MUST also accept DHCPv4 server-to-client UDP 67 to 68 and
-DHCPv6 server-to-client UDP 547 to 546 so initial network configuration is not
-silently blocked. The ruleset MUST explicitly accept outbound traffic so it
-does not depend on mutable account defaults. The ephemeral range MUST be
-explicit, ordered, bounded to 1024..65535 and have start less than or equal to
-end.
+terminal drops.
+
+#### Scenario: Admit initial network traffic and explicit outbound policy
+- **WHEN** the managed dual-stack ruleset is configured
+- **THEN** It MUST also accept DHCPv4 server-to-client UDP 67 to 68 and
+  DHCPv6 server-to-client UDP 547 to 546 so initial network configuration is not
+  silently blocked. The ruleset MUST explicitly accept outbound traffic so it
+  does not depend on mutable account defaults. The ephemeral range MUST be
+  explicit, ordered, bounded to 1024..65535 and have start less than or equal to
+  end.
 
 #### Scenario: Server initiates an arbitrary TCP or UDP flow
 
@@ -63,14 +66,17 @@ family drops MUST remain present.
   drop.
 
 ### Requirement: REQ-UPF-STAGING — Promotion and rollback use isolated live evidence
-
 Before production adoption, an authorized isolated UpCloud node MUST prove
 cloud-init package bootstrap, DNS, outbound TCP and UDP, strict SSH and required
 public listeners with the provider firewall disabled and again after in-place
-activation. Failure MUST stop promotion; rollback disables the provider
-firewall through Terraform and rechecks SSH. Cleanup MUST delete only the exact
-manifest-bound server, root storage and Terraform-owned rules, then verify
-provider absence before the 47-hour hard deadline.
+activation.
+
+#### Scenario: Stop promotion and clean up only admitted resources
+- **WHEN** isolated staging fails or reaches rollback and cleanup
+- **THEN** Failure MUST stop promotion; rollback disables the provider
+  firewall through Terraform and rechecks SSH. Cleanup MUST delete only the exact
+  manifest-bound server, root storage and Terraform-owned rules, then verify
+  provider absence before the 47-hour hard deadline.
 
 #### Scenario: Post-activation network check fails
 

@@ -33,6 +33,11 @@ so they exercise the effective legacy contract.
 
 ## Pitfalls
 
+- **Provider refreshes stay within reviewed 2.x resources** — keep the baseline
+  and generated Linux amd64/arm64 and Darwin arm64 lock checksums together. The
+  Instance root remains project-scoped; provider documentation for
+  organization-scoped resources does not add an organization input here.
+
 - **Administrator identity is creation-time state** — username/key edits hit
   replacement guards and `prevent_destroy`. First adoption compares retained
   cloud-init identity, normalizing surrounding key whitespace while checking the

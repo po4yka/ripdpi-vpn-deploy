@@ -156,15 +156,18 @@ Malformed policy, unavailable resolution or unsupported runtime semantics MUST r
 - **AND** the watchdog's finite service deadline covers every enabled protected request at the supported maximum timeout
 
 ### Requirement: REQ-PROTO-RDB-FAILOVER — Bounded TCP candidate connection
-
 A named TCP request MUST use one immutable, deduplicated, policy-admitted DNS
-snapshot. Candidate order MUST be deterministic and interleave IPv4 and IPv6
-while retaining IPv4 as the first family. At most eight candidates and at most
-two simultaneous gateway controls MUST be attempted under one connect deadline;
-starting a later attempt MUST NOT reset that deadline. Per-attempt expiry MUST
-allow later admitted candidates to run when both active controls stall. The next candidate MUST
-be eligible after 250 milliseconds or an earlier attempt failure. Only canonical
-literals admitted by the current policy MAY be sent to the fixed native gateway.
+snapshot.
+
+#### Scenario: Bound candidate ordering and every connection attempt
+- **WHEN** a named TCP request attempts admitted destination candidates
+- **THEN** Candidate order MUST be deterministic and interleave IPv4 and IPv6
+  while retaining IPv4 as the first family. At most eight candidates and at most
+  two simultaneous gateway controls MUST be attempted under one connect deadline;
+  starting a later attempt MUST NOT reset that deadline. Per-attempt expiry MUST
+  allow later admitted candidates to run when both active controls stall. The next candidate MUST
+  be eligible after 250 milliseconds or an earlier attempt failure. Only canonical
+  literals admitted by the current policy MAY be sent to the fixed native gateway.
 
 #### Scenario: Stalled first IPv4 retains IPv6 capability
 
@@ -195,15 +198,18 @@ literals admitted by the current policy MAY be sent to the fixed native gateway.
 - **AND** every attempted control closes and request capacity is restored
 
 ### Requirement: REQ-PROTO-RDB-COMMIT — One winning TCP stream without replay
-
 The normalizer MUST select one successful gateway CONNECT before acknowledging
-success to the recipient or forwarding application bytes. It MUST close all
-other candidate controls before beginning the existing relay. Once a winner is
-selected, any recipient, gateway or relay failure MUST terminate that stream
-without starting another candidate or replaying application bytes. Cancellation
-and process stop MUST reclaim all candidate sockets and existing request slots.
-UDP associations MUST retain their existing single-literal binding and one-send
-semantics; TCP failover MUST NOT introduce datagram retries.
+success to the recipient or forwarding application bytes.
+
+#### Scenario: Commit one stream and preserve UDP semantics
+- **WHEN** the normalizer selects a winner or a request fails or is cancelled
+- **THEN** It MUST close all
+  other candidate controls before beginning the existing relay. Once a winner is
+  selected, any recipient, gateway or relay failure MUST terminate that stream
+  without starting another candidate or replaying application bytes. Cancellation
+  and process stop MUST reclaim all candidate sockets and existing request slots.
+  UDP associations MUST retain their existing single-literal binding and one-send
+  semantics; TCP failover MUST NOT introduce datagram retries.
 
 #### Scenario: Winner failure never retries
 

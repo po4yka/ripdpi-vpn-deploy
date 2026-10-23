@@ -14,6 +14,10 @@
 
 ## Design decisions
 
+Compiler patch refreshes keep the AWG source-candidate fixture and role archive
+digests aligned with `mise.toml`; workflow assertions follow the same Terraform
+patch as local and hosted native validation.
+
 Native Snell fixtures reserve all server and client listeners simultaneously,
 releasing each process's sockets only after parsing and immediately before launch.
 This prevents self-collisions; a foreign bind in the remaining launch gap still

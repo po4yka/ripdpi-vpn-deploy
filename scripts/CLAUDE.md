@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Taskctl validates the exact OpenSpec tool version and reviewed generated-skill hashes together. Dependency security updates change the version pin without overwriting repository-customized workflow skills or their generation provenance.
+
 Executable recovery admits one exact UpCloud replacement with a surviving
 separate publisher. Private durable intent precedes external operations; resume
 reconciles account, unique resource, state and exact saved-plan postconditions.
@@ -427,9 +429,10 @@ Named cohorts load only through validated repository-owned technical slugs.
 **Native semantic fixtures use pinned real inputs** —
 `build-native-transport-semantics.sh` provisions exact-commit AWG source outputs
 and checksum-verified Hysteria only in the isolated Linux amd64 fixture cache.
-It uses pinned Go with two jobs, rejects tracked source drift and never installs
-onto a live service path. The native lane verifies source commits, compiled ELF
-outputs, actual parser/startup behavior and owned cleanup; fixtures and missing
+It uses repository-pinned Go with two jobs; native builder version guards must
+match `mise.toml` and the role archive pins. It rejects tracked source drift and
+never installs onto a live service path. The native lane verifies source commits,
+compiled ELF outputs, actual parser/startup behavior and owned cleanup; fixtures and missing
 prerequisites cannot become a native pass.
 
 **Naive devices have independent encrypted identities** — `naive-client.py`

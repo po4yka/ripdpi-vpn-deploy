@@ -3276,7 +3276,7 @@ def validate_generated_assets(root: Path) -> None:
     if (
         payload.get("schema") != 1
         or payload.get("mdtask") != "0.1.17"
-        or payload.get("openspec") != "1.8.0"
+        or payload.get("openspec") != "1.14.3"
     ):
         fail("generated asset lock does not match pinned tool versions")
     files = payload.get("files")

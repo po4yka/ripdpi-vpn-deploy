@@ -20,15 +20,18 @@ Failed upgrades MUST retain the last usable installed command.
 - **AND** a corrupt artifact or interrupted replacement preserves the previous installation
 
 ### Requirement: REQ-PYDELIVERY-TESTS — Exhaustive assertion and property transfer
-
 Every baseline Rust test function, inline module test, property, regression
 seed, snapshot and Rust-dependent Python contract assertion MUST map to an
-executed Python equivalent before Rust removal. A checked transfer manifest
-MUST reject unmapped/new baseline cases, absent target node IDs, skips and
-weakened assertions. Generated properties and mutation checks MUST continue;
-compiler checks MUST be replaced by relevant Python validation, not claimed
-as runtime parity. All four platform test partitions MUST run their relevant
-positive and failure cases.
+executed Python equivalent before Rust removal.
+
+#### Scenario: Reject incomplete transfer and retain every platform check
+- **WHEN** the test transfer is checked before Rust removal
+- **THEN** A checked transfer manifest
+  MUST reject unmapped/new baseline cases, absent target node IDs, skips and
+  weakened assertions. Generated properties and mutation checks MUST continue;
+  compiler checks MUST be replaced by relevant Python validation, not claimed
+  as runtime parity. All four platform test partitions MUST run their relevant
+  positive and failure cases.
 
 #### Scenario: A test is lost during migration
 
