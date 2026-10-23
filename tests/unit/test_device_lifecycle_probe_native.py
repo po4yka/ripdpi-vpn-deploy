@@ -416,7 +416,7 @@ def barrier_call(helper, action, unit, payload, *, killed=False):
 @pytest.mark.parametrize("engine", ["snell", "naive"])
 @pytest.mark.parametrize("interruption", ["after-begin", "after-publication", "after-activation"])
 def test_actual_native_revocation_interruption_fences_restart_and_resumes(
-    native_tools, owned_origin, monkeypatch, engine, interruption,
+    native_tools, owned_origin, tmp_path, monkeypatch, engine, interruption,
 ):
     origin, cert, key = owned_origin
     source, config = authority(), settings()
@@ -468,6 +468,7 @@ def test_actual_native_revocation_interruption_fences_restart_and_resumes(
         for profile in (old, survivor):
             profile["witness"].update(config_path=str(path), unit=unit)
         command(["systemctl", "start", unit])
+        wait_for_native_access(runtime, survivor, origin, tmp_path)
         assert_access(runtime, old, origin, "accepted")
         assert_access(runtime, survivor, origin, "accepted")
         plan = {str(unit_path): hashlib.sha256(unit_path.read_bytes()).hexdigest(),
@@ -507,6 +508,7 @@ def test_actual_native_revocation_interruption_fences_restart_and_resumes(
         assert_access(runtime, survivor, origin, "accepted")
         assert json.loads(barrier_call(helper, "activate", unit, payload).stdout) == {"changed": False}
         command(["systemctl", "restart", unit])
+        wait_for_native_access(runtime, survivor, origin, tmp_path)
         assert_access(runtime, old, origin, "denied")
         assert_access(runtime, survivor, origin, "accepted")
 
