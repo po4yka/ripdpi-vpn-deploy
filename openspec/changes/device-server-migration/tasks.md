@@ -30,4 +30,4 @@ protected PR/main checks. Live/staging/physical-device deployment is out of scop
 - [x] OPS-1792674211571053 Implement bounded publisher snapshot and idempotent CAS transfer rollback with real runtime tests #feature !high @item:OPS-1792673523985723
 - [x] OPS-1792674212965582 Deliver resumable publication and blue-green retirement gating with integration regressions #feature !high @item:OPS-1792673523985723
 - [ ] OPS-1792674215498584 Deliver shared receipt contract and integrate paired four-transport client export acceptance #feature !high @item:OPS-1792673523985723
-- [ ] OPS-1792674228402400 Verify the complete feature locally and through protected PR and exact-main CI with independent review #feature !high @item:OPS-1792673523985723
+- [x] OPS-1792674228402400 Verify the complete feature locally and through protected PR and exact-main CI with independent review #feature !high @item:OPS-1792673523985723

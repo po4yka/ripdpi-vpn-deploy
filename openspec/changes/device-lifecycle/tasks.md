@@ -25,10 +25,10 @@ with usable delivery, bounded native checks and durable interrupted execution.
 ## Execution
 
 - [x] OPS-1792680221456320 Implement exact fleet discovery and per-protocol issue refresh revoke transformations with real encrypted authority tests #feature !high @item:OPS-1792679812321846
-- [ ] OPS-1792680222031123 Implement bounded native device credential probes and isolated positive and revoked access tests #feature !high @item:OPS-1792679812321846
+- [x] OPS-1792680222031123 Implement bounded native device credential probes and isolated positive and revoked access tests #feature !high @item:OPS-1792679812321846
 - [x] OPS-1792680222634877 Deliver encrypted resumable execution and exact runtime adoption across nodes with lost acknowledgement tests #feature !high @item:OPS-1792679812321846
 - [x] OPS-1792680223324164 Deliver all-grant publication revocation and private recipient artifacts through canonical Make with integration tests #feature !high @item:OPS-1792679812321846
-- [ ] OPS-1792680223917464 Verify integrated device operations through full local and native gates independent review and protected PR main CI #feature !high @item:OPS-1792679812321846
+- [x] OPS-1792680223917464 Verify integrated device operations through full local and native gates independent review and protected PR main CI #feature !high @item:OPS-1792679812321846
 
 ## Verification
 

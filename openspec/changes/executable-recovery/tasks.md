@@ -15,7 +15,7 @@ guidance. No live inputs or infrastructure mutation during source implementation
 - [x] OPS-1792678266947663 Execute private recovery manifest admission and durable interrupted-operation reconciliation with regression coverage #feature !high @item:OPS-1792678016174902
 - [x] OPS-1792678267794418 Provision and reconcile exact UpCloud replacement resources through reviewed canonical Terraform with lost-response tests #feature !high @item:OPS-1792678016174902
 - [ ] OPS-1792678268575909 Run authenticated bootstrap ownership full deployment and device acceptance with resumed positive workflow tests #feature !high @item:OPS-1792678016174902
-- [ ] OPS-1792678269304356 Integrate canonical operator entrypoint and verify complete source through independent review PR and main CI #feature !high @item:OPS-1792678016174902
+- [x] OPS-1792678269304356 Integrate canonical operator entrypoint and verify complete source through independent review PR and main CI #feature !high @item:OPS-1792678016174902
 
 ## Verification
 

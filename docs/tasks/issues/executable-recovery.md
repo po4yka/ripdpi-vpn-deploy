@@ -2,7 +2,7 @@
 id: OPS-1792678016174902
 title: Implement executable Path A recovery with crash resume
 kind: feature
-status: doing
+status: review
 area: operations
 priority: high
 risk: high
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: executable-recovery
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-10-23
 related_tasks: []
 ---
 
