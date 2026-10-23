@@ -14,8 +14,24 @@
 
 ## Design decisions
 
+Native Snell fixtures reserve all server and client listeners simultaneously,
+releasing each process's sockets only after parsing and immediately before launch.
+This prevents self-collisions; a foreign bind in the remaining launch gap still
+fails without retry. Startup logs stay private (0600), bounded reads emit only
+fixed failure categories, and readiness never adds counted probe connections.
+
 Four-transport recovery uses three complete, disjoint partitions with the same
-2400-second suite limit. Timeout evidence retains only source-admitted test names,
+2400-second suite limit. `tests/native/transport_acceptance/recovery-durations.json`
+contains 18 scheduling estimates derived from public CI completion timestamps for
+source `a8ec8492068ea8fda535c68455b93dbd75e8ec3c`, across its two complete runtime
+partitions. Each interval starts at the preceding completion, or the group-start
+line for the first case. These are observed wall-clock intervals, not pytest
+phase timings or acceptance evidence. Unmeasured cases use pytest-split 0.11.0's
+mean of relevant weights; do not invent measurements for them. The recovery runner
+requires this profile so a missing file cannot silently restore count balancing.
+Real collection checks keep the complete disjoint union, separate the three
+largest weights and bound estimated load imbalance; actual native CI still owns
+runtime completion. Timeout evidence retains only source-admitted test names,
 parameterization hashes, fixed phases and bounded outcome counts from an atomic
 private progress journal. Raw logs remain private; an interrupted case has no
 confirmed cleanup or completed suite result, even if outer cleanup succeeds.
@@ -31,6 +47,10 @@ discovery. After revocation restarts, prove survivor readiness before checking
 the removed identity so cold-start TLS failures cannot stand in for denial.
 Interruption fixtures also admit survivor payload readiness after their explicit
 bare starts and final restarts; systemd completion alone does not prove a listener.
+Hysteria and every Snell reuse profile prove survivor access after bare restarts.
+When Naive removes its last handler, require verified TLS and the exact owned
+decoy body on the same listener before strict revoked-credential denial. These
+fixture waits never wrap canonical barrier activation or relax its readiness contract.
 
 Recovery source tests exercise actual private journal publication, SOPS input
 fences, immutable apply snapshots and canonical dispatcher boundaries. Model

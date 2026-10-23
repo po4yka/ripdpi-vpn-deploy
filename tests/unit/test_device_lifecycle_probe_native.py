@@ -164,6 +164,20 @@ def wait_for_native_access(runtime, profile, origin, directory):
         time.sleep(min(0.05, max(0, deadline - time.monotonic())))
 
 
+def wait_for_native_decoy(runtime, url, body, directory, *, timeout=15):
+    """Prove the remaining TLS listener serves the exact owned decoy payload."""
+    control = {"url": url, "status": 200, "body_sha256": hashlib.sha256(body).hexdigest()}
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        assert remaining > 0, "native fixture did not reach decoy readiness"
+        measured = runtime.http(control, min(5, remaining), directory)
+        assert time.monotonic() < deadline, "native fixture exceeded decoy readiness deadline"
+        if measured["accepted"]:
+            return
+        time.sleep(min(0.05, max(0, deadline - time.monotonic())))
+
+
 def assert_access(runtime, profile, origin, state):
     runtime.measurements.clear()
     value = request([profile], origin.url)
@@ -256,10 +270,16 @@ def test_actual_hysteria_issue_revoke_and_last_device(native_tools, owned_origin
     runtime = MeasuredRuntime(binaries=native_tools, ca_file=cert)
     with service(native_tools["hysteria"], ["server", "-c"], path, cert) as unit:
         profile["witness"].update(config_path=str(path), unit=unit)
+        wait_for_native_access(runtime, profile, origin, tmp_path)
         assert_access(runtime, profile, origin, "accepted")
+        survivor = copy.deepcopy(profile)
+        survivor["config"]["auth"] = "survivor:survivor-hy-password"
+        survivor["witness"]["credential"] = "survivor"
         del server["auth"]["userpass"]["device0"]
         publish()
         command(["systemctl", "restart", unit])
+        wait_for_native_access(runtime, survivor, origin, tmp_path)
+        assert_access(runtime, survivor, origin, "accepted")
         assert_access(runtime, profile, origin, "denied")
         command(["systemctl", "stop", unit])
         path.unlink()
@@ -287,11 +307,17 @@ def test_actual_snell_fresh_reuse_and_revoked_user(native_tools, owned_origin, t
     with service(native_tools["snell"], ["run", "-c"], path, cert) as unit:
         for profile in profiles:
             profile["witness"].update(config_path=str(path), unit=unit)
+            wait_for_native_access(runtime, profile, origin, tmp_path)
             assert_access(runtime, profile, origin, "accepted")
         inbound["users"] = [inbound["users"][-1]]
         write(path, server)
         command(["systemctl", "restart", unit])
         for profile in profiles:
+            survivor = copy.deepcopy(profile)
+            survivor["config"]["outbounds"][0]["userkey"] = "STUB_SURVIVOR_USER_KEY"
+            survivor["witness"]["credential"] = "STUB_SURVIVOR_USER_KEY"
+            wait_for_native_access(runtime, survivor, origin, tmp_path)
+            assert_access(runtime, survivor, origin, "accepted")
             assert_access(runtime, profile, origin, "denied")
         command(["systemctl", "stop", unit])
         path.unlink()
@@ -306,6 +332,8 @@ def test_actual_naive_issue_revoke_and_last_handler(native_tools, owned_origin, 
     config["naive_bind_port"] = free_port()
     profile = selected_profiles(monkeypatch, source, config)[0]
     path = tmp_path / "caddy.json"
+    decoy = b"owned exact lifecycle decoy\n"
+    (tmp_path / "index.html").write_bytes(decoy)
     shutil.copyfile(cert, tmp_path / "server.fullchain.pem")
     shutil.copyfile(key, tmp_path / "server.key")
     values = {"naive": {"bind_port": config["naive_bind_port"], "config_dir": str(tmp_path), "log_dir": str(tmp_path), "decoy_root": str(tmp_path)},
@@ -317,10 +345,12 @@ def test_actual_naive_issue_revoke_and_last_handler(native_tools, owned_origin, 
     runtime = MeasuredRuntime(binaries=native_tools, ca_file=cert)
     with service(native_tools["naive"], ["run", "--config"], path, cert) as unit:
         profile["witness"].update(config_path=str(path), unit=unit)
+        wait_for_native_access(runtime, profile, origin, tmp_path)
         assert_access(runtime, profile, origin, "accepted")
         values["naive_secrets"]["clients"] = []
         publish()
         command(["systemctl", "restart", unit])
+        wait_for_native_decoy(runtime, f"https://{ADDRESS}:{config['naive_bind_port']}/", decoy, tmp_path)
         assert_access(runtime, profile, origin, "denied")
 
 

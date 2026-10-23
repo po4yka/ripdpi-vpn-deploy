@@ -1,0 +1,20 @@
+{
+  "tests/unit/test_transport_runtime_acceptance_native.py::test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous[hysteria]": 564.452,
+  "tests/unit/test_transport_runtime_acceptance_native.py::test_complete_native_upgrade_and_unchanged_retry_preserve_distinct_previous[xray]": 937.353,
+  "tests/unit/test_transport_runtime_acceptance_native.py::test_hysteria_admission_sigkill_reconciles_exact_validation_lease": 52.844,
+  "tests/unit/test_transport_runtime_acceptance_native.py::test_native_ech_admission_retains_custom_configuration_directory": 76.897,
+  "tests/unit/test_transport_runtime_acceptance_native.py::test_native_ech_rotation_idempotence_and_complete_compensation": 510.555,
+  "tests/unit/test_transport_runtime_acceptance_native.py::test_native_ingress_egress_commit_sigkill_recovers_one_accepted_generation[after-decision]": 108.161,
+  "tests/unit/test_transport_runtime_acceptance_native.py::test_native_ingress_egress_commit_sigkill_recovers_one_accepted_generation[after-egress-finish]": 121.181,
+  "tests/unit/test_transport_runtime_acceptance_native.py::test_native_ingress_egress_commit_sigkill_recovers_one_accepted_generation[after-ingress-clear]": 113.14,
+  "tests/unit/test_transport_runtime_acceptance_native.py::test_native_ingress_egress_commit_sigkill_recovers_one_accepted_generation[before-decision]": 139.573,
+  "tests/unit/test_transport_runtime_acceptance_native.py::test_native_ingress_egress_commit_sigkill_recovers_one_accepted_generation[before-egress-finish]": 112.401,
+  "tests/unit/test_transport_runtime_acceptance_native.py::test_native_ingress_egress_commit_sigkill_recovers_one_accepted_generation[before-ingress-clear]": 123.49,
+  "tests/unit/test_transport_runtime_acceptance_native.py::test_native_revocation_never_restores_credentials_and_exact_resume_converges[adopted-hysteria]": 97.678,
+  "tests/unit/test_transport_runtime_acceptance_native.py::test_native_revocation_never_restores_credentials_and_exact_resume_converges[adopted-xray]": 145.238,
+  "tests/unit/test_transport_runtime_acceptance_native.py::test_native_revocation_never_restores_credentials_and_exact_resume_converges[outer-failure-hysteria]": 150.163,
+  "tests/unit/test_transport_runtime_acceptance_native.py::test_native_revocation_never_restores_credentials_and_exact_resume_converges[outer-failure-xray]": 209.445,
+  "tests/unit/test_transport_runtime_acceptance_native.py::test_native_revocation_never_restores_credentials_and_exact_resume_converges[published-0-hysteria]": 91.904,
+  "tests/unit/test_transport_runtime_acceptance_native.py::test_native_revocation_never_restores_credentials_and_exact_resume_converges[published-0-xray]": 147.314,
+  "tests/unit/test_transport_runtime_acceptance_native.py::test_native_site_retirement_and_remaining_upgrade_commit_once": 252.017
+}
