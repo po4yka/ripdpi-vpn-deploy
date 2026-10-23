@@ -21,7 +21,17 @@ fails without retry. Startup logs stay private (0600), bounded reads emit only
 fixed failure categories, and readiness never adds counted probe connections.
 
 Four-transport recovery uses three complete, disjoint partitions with the same
-2400-second suite limit. Timeout evidence retains only source-admitted test names,
+2400-second suite limit. `tests/native/transport_acceptance/recovery-durations.json`
+contains 18 scheduling estimates derived from public CI completion timestamps for
+source `a8ec8492068ea8fda535c68455b93dbd75e8ec3c`, across its two complete runtime
+partitions. Each interval starts at the preceding completion, or the group-start
+line for the first case. These are observed wall-clock intervals, not pytest
+phase timings or acceptance evidence. Unmeasured cases use pytest-split 0.11.0's
+mean of relevant weights; do not invent measurements for them. The recovery runner
+requires this profile so a missing file cannot silently restore count balancing.
+Real collection checks keep the complete disjoint union, separate the three
+largest weights and bound estimated load imbalance; actual native CI still owns
+runtime completion. Timeout evidence retains only source-admitted test names,
 parameterization hashes, fixed phases and bounded outcome counts from an atomic
 private progress journal. Raw logs remain private; an interrupted case has no
 confirmed cleanup or completed suite result, even if outer cleanup succeeds.

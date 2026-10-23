@@ -64,9 +64,13 @@ def suite_commands(plan):
             continue
         for group in (1, 2, 3):
             if plan in {"all", "recovery-" + str(group)}:
+                durations = ROOT / "tests/native/transport_acceptance/recovery-durations.json"
+                if not durations.is_file():
+                    raise RuntimeError("native-duration-profile-required")
                 commands.append((name + "-" + str(group), paths, [
                     "--splits", "3", "--group", str(group),
                     "--splitting-algorithm", "least_duration",
+                    "--durations-path", str(durations),
                 ]))
     return commands
 
