@@ -7,7 +7,12 @@ through the existing recipient runtime without inventing network evidence.
 
 ### Requirement: REQ-QUALITY-CONTRACT — Admit a complete coordinated quality policy
 
-The producer and recipient MUST implement payload failover policy version 2.
+The producer and recipient MUST admit one coordinated version 2 quality policy.
+
+#### Scenario: Policy admission contract
+
+- **WHEN** a producer emits or a recipient admits a payload failover policy
+- **THEN** The producer and recipient MUST implement payload failover policy version 2.
 They MUST reject version 1 wire input rather than maintain a second policy implementation.
 The optional quality object MUST contain only max_pass_bytes, max_window_bytes,
 window_seconds, minimum_gain_percent and maximum_loaded_latency_increase_ms.
@@ -35,7 +40,12 @@ agree. Quality configuration MUST be absent unless explicitly configured.
 
 ### Requirement: REQ-QUALITY-MEASUREMENT — Measure actual verified transfer quality
 
-The recipient MUST measure goodput from exact digest-verified body bytes and a
+The recipient MUST measure verified transfer quality through the actual candidate path.
+
+#### Scenario: Measurement authority and timing
+
+- **WHEN** the recipient measures a candidate
+- **THEN** The recipient MUST measure goodput from exact digest-verified body bytes and a
 positive monotonic body duration through the candidate's actual encrypted path.
 It MUST measure baseline and loaded HTTPS HEAD transaction latency against the
 same admitted object without redirects, retries or direct fallback. A HEAD
@@ -60,7 +70,12 @@ of measured load. Request latency MUST NOT be labeled packet RTT or bandwidth.
 
 ### Requirement: REQ-QUALITY-BUDGET — Bound work before network activity
 
-The recipient MUST reserve body-read allowance before each attempt under one
+The recipient MUST enforce durable body-read budgets before network activity.
+
+#### Scenario: Reservation and limit contract
+
+- **WHEN** the recipient admits a measurement attempt
+- **THEN** The recipient MUST reserve body-read allowance before each attempt under one
 serialized pass and durable application window ledger. The allowance MUST
 include the extra byte used to detect an oversized body. Failed, cancelled and
 partial attempts MUST consume their reservation. Network changes, policy
@@ -83,7 +98,12 @@ measurement without recording a transport failure or switching to direct.
 
 ### Requirement: REQ-QUALITY-SELECTION — Improve the existing selector without oscillation
 
-The existing selector MUST compare a healthy active member with a bounded
+The existing selector MUST require sustained current quality improvement before promotion.
+
+#### Scenario: Selection authority and comparison
+
+- **WHEN** the existing selector compares member quality
+- **THEN** The existing selector MUST compare a healthy active member with a bounded
 rotating challenger. It MUST require complete, current measurements and the
 existing recovery threshold of consecutive wins before quality promotion.
 A goodput win MUST meet minimum_gain_percent without exceeding the allowed
@@ -108,7 +128,12 @@ pool through this change.
 
 ### Requirement: REQ-QUALITY-DIAGNOSIS — Explain quality and packet-size evidence
 
-The recipient MUST show current verified goodput, baseline and loaded request
+The recipient MUST explain quality and packet-size evidence within its observed scope.
+
+#### Scenario: Diagnostic presentation and scope
+
+- **WHEN** the recipient presents quality or packet-size results
+- **THEN** The recipient MUST show current verified goodput, baseline and loaded request
 latency, partial or unavailable reasons, selection reason and remaining budget
 without exposing credentials or target addresses. MTU diagnosis MUST reuse the
 existing non-root packet probe and distinguish configured interface MTU,
@@ -130,7 +155,12 @@ tunnel MTU, filtering or a path black hole. It MUST NOT change AWG or server MTU
 
 ### Requirement: REQ-QUALITY-ACCEPTANCE — Exercise the positive capability
 
-Completion MUST include real socket tests with verified bodies, concurrent
+Completion MUST include positive native evidence and all required acceptance gates.
+
+#### Scenario: Required acceptance evidence
+
+- **WHEN** this feature is considered for completion
+- **THEN** Completion MUST include real socket tests with verified bodies, concurrent
 control requests, shaped transfer quality, cancellation and byte-budget bounds.
 The paired client MUST execute its production measurement and existing selector
 path with owned native runtimes. Packet-size diagnosis MUST retain real QUIC
