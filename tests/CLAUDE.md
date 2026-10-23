@@ -14,6 +14,12 @@
 
 ## Design decisions
 
+Four-transport recovery uses three complete, disjoint partitions with the same
+2400-second suite limit. Timeout evidence retains only source-admitted test names,
+parameterization hashes, fixed phases and bounded outcome counts from an atomic
+private progress journal. Raw logs remain private; an interrupted case has no
+confirmed cleanup or completed suite result, even if outer cleanup succeeds.
+
 Xray geodata comparison tests execute the real Ansible copy tasks in check mode,
 including cached-but-inactive pairs and receipt-only changes. Preserve active
 bytes, modes and inodes; native revocation tests separately establish outer
@@ -971,7 +977,7 @@ metadata failure classification remains covered by the shared monitor tests.
 Bulk four-transport probes supply the canonical driver socket timeout explicitly;
 they retain its three-second default while expanding byte payloads.
 
-The required four-transport CI matrix runs core coverage and two complete,
+The required four-transport CI matrix runs core coverage and three complete,
 disjoint compensation partitions in independent owned containers. Each phase
 retains its 40-minute bound; the local default executes their complete union.
 A real collection regression rejects gaps and overlaps as native cases expand.
