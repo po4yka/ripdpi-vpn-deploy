@@ -103,15 +103,18 @@ def payload_policy():
     from payload_probe_content import payload
 
     return {
-        "schema_version": 1, "selector_tag": "select",
+        "schema_version": 2, "selector_tag": "select",
         "probes": [
-            {"url": f"https://control-{letter}.example.test/__throttle_probe?bytes=32768",
-             "expected_bytes": 32768, "sha256": sha256(payload(32768)).hexdigest()}
+            {"url": f"https://control-{letter}.example.test/__throttle_probe?bytes=262144",
+             "expected_bytes": 262144, "sha256": sha256(payload(262144)).hexdigest()}
             for letter in ("a", "b")
         ],
         "interval_seconds": 60, "timeout_seconds": 10,
         "failure_threshold": 2, "recovery_threshold": 2,
         "cooldown_seconds": 120, "max_backoff_seconds": 900,
+        "quality": {"max_pass_bytes": 2097152, "max_window_bytes": 16777216,
+                    "window_seconds": 3600, "minimum_gain_percent": 20,
+                    "maximum_loaded_latency_increase_ms": 50},
     }
 
 
@@ -141,6 +144,12 @@ def test_policy_omitted_until_explicitly_configured(materialization):
     assert "payload_failover" not in materialization[2]("ripdpi")["ripdpi"]
 
 
+def test_version_two_without_quality_keeps_health_only_policy(materialization, payload_policy):
+    payload_policy.pop("quality")
+    materialization[0]["client_payload_failover"] = payload_policy
+    assert materialization[2]("ripdpi")["ripdpi"]["payload_failover"] == payload_policy
+
+
 def test_multihost_policy_disagreement_refuses(materialization, payload_policy, monkeypatch):
     context, first, render = materialization
     contexts = iter([dict(context, client_payload_failover=payload_policy), context])
@@ -161,6 +170,7 @@ def test_policy_requires_proxy_candidates(materialization, payload_policy):
     ("interval_seconds", 29), ("interval_seconds", True), ("timeout_seconds", 31),
     ("failure_threshold", 1), ("recovery_threshold", 1), ("cooldown_seconds", 0),
     ("max_backoff_seconds", 59), ("selector_tag", "direct"), ("schema_version", True),
+    ("schema_version", 1),
 ])
 def test_policy_bounds_refuse(materialization, payload_policy, field, value):
     context, _, render = materialization
@@ -193,9 +203,81 @@ def test_policy_cross_field_and_exact_shape(payload_policy):
     detached = validate_policy(payload_policy)
     detached["probes"][0]["sha256"] = "changed"
     assert payload_policy["probes"][0]["sha256"] != "changed"
+    detached["quality"]["max_pass_bytes"] = 0
+    assert payload_policy["quality"]["max_pass_bytes"] == 2097152
 
 
-@pytest.mark.parametrize("mutate", ["duplicate-origin", "empty-fragment", "backoff", "digest", "unknown", "null"])
+@pytest.mark.parametrize("field,bad", [
+    ("max_pass_bytes", 65537), ("max_pass_bytes", 16777217),
+    ("max_window_bytes", 65537), ("max_window_bytes", 268435457),
+    ("window_seconds", 59), ("window_seconds", 86401),
+    ("minimum_gain_percent", 4), ("minimum_gain_percent", 101),
+    ("maximum_loaded_latency_increase_ms", -1), ("maximum_loaded_latency_increase_ms", 2001),
+    ("max_pass_bytes", True), ("max_window_bytes", "16777216"),
+    ("window_seconds", 3600.0), ("minimum_gain_percent", False),
+    ("maximum_loaded_latency_increase_ms", None),
+])
+def test_quality_numerical_bounds_reject_before_emission(materialization, payload_policy, field, bad):
+    payload_policy["quality"][field] = bad
+    materialization[0]["client_payload_failover"] = payload_policy
+    with pytest.raises(ValueError, match="invalid-payload-failover-policy"):
+        materialization[2]("ripdpi")
+
+
+@pytest.mark.parametrize("quality", [None, [], {}, {"unknown": 1}])
+def test_quality_requires_complete_exact_object(payload_policy, quality):
+    from payload_failover_policy import validate_policy
+    payload_policy["quality"] = quality
+    with pytest.raises(ValueError, match="invalid-payload-failover-policy"):
+        validate_policy(payload_policy)
+
+
+@pytest.mark.parametrize("field", [
+    "max_pass_bytes", "max_window_bytes", "window_seconds", "minimum_gain_percent",
+    "maximum_loaded_latency_increase_ms",
+])
+def test_quality_missing_field_refuses(payload_policy, field):
+    from payload_failover_policy import validate_policy
+    payload_policy["quality"].pop(field)
+    with pytest.raises(ValueError, match="invalid-payload-failover-policy"):
+        validate_policy(payload_policy)
+
+
+def test_quality_semantic_capacity_and_exact_bounds(payload_policy):
+    from payload_failover_policy import validate_policy
+    quality = payload_policy["quality"]
+    required = 2 * sum(probe["expected_bytes"] + 1 for probe in payload_policy["probes"])
+    quality.update(max_pass_bytes=required, max_window_bytes=required, window_seconds=60,
+                   minimum_gain_percent=5, maximum_loaded_latency_increase_ms=0)
+    assert validate_policy(payload_policy) == payload_policy
+    for field, invalid in [("max_pass_bytes", required - 1), ("max_window_bytes", required - 1),
+                           ("window_seconds", 59), ("unknown", 1)]:
+        bad = deepcopy(payload_policy)
+        bad["quality"][field] = invalid
+        with pytest.raises(ValueError, match="invalid-payload-failover-policy"):
+            validate_policy(bad)
+    payload_policy["interval_seconds"] = 120
+    with pytest.raises(ValueError, match="invalid-payload-failover-policy"):
+        validate_policy(payload_policy)
+    quality.update(max_pass_bytes=16777216, max_window_bytes=268435456, window_seconds=86400,
+                   minimum_gain_percent=100, maximum_loaded_latency_increase_ms=2000)
+    assert validate_policy(payload_policy) == payload_policy
+
+
+@pytest.mark.parametrize("size,accepted", [(32767, False), (32768, True), (1048576, True), (1048577, False), (True, False)])
+def test_version_two_payload_size_bounds(payload_policy, size, accepted):
+    from payload_failover_policy import validate_policy
+    payload_policy["probes"][0]["expected_bytes"] = size
+    payload_policy["quality"]["max_pass_bytes"] = 16777216
+    if accepted:
+        assert validate_policy(payload_policy) == payload_policy
+    else:
+        with pytest.raises(ValueError, match="invalid-payload-failover-policy"):
+            validate_policy(payload_policy)
+
+
+@pytest.mark.parametrize("mutate", ["duplicate-origin", "empty-fragment", "backoff", "digest", "unknown", "null",
+                                    "version-one", "quality-capacity", "quality-window", "quality-unknown"])
 def test_bundle_validator_rejects_invalid_payload_policy(tmp_path, mutate):
     import json
     from pathlib import Path
@@ -215,6 +297,14 @@ def test_bundle_validator_rejects_invalid_payload_policy(tmp_path, mutate):
         policy["probes"][0]["sha256"] = "a" * 63
     elif mutate == "unknown":
         policy["ignored"] = True
+    elif mutate == "version-one":
+        policy["schema_version"] = 1
+    elif mutate == "quality-capacity":
+        policy["quality"]["max_pass_bytes"] = 2 * sum(p["expected_bytes"] + 1 for p in policy["probes"]) - 1
+    elif mutate == "quality-window":
+        policy["quality"]["max_window_bytes"] = policy["quality"]["max_pass_bytes"] - 1
+    elif mutate == "quality-unknown":
+        policy["quality"]["ignored"] = True
     else:
         document["ripdpi"]["payload_failover"] = None
     target = tmp_path / "bundle.json"

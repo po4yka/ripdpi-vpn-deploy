@@ -16,7 +16,7 @@ import sys
 import tempfile
 import time
 
-MAX_BYTES = 65536
+MAX_BYTES = 1048576
 PREFIX = b"vpn-deploy-payload-v1:"
 NETWORK_ERRORS = {5, 6, 7, 16, 18, 28, 35, 52, 55, 56, 92, 97}
 

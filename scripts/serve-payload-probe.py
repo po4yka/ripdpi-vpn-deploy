@@ -3,10 +3,38 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import argparse
 import socket
+from socketserver import ThreadingMixIn
 import threading
 from urllib.parse import parse_qs, urlsplit
 
 from payload_probe_content import MAX_BYTES, payload
+
+
+class Server(ThreadingMixIn, HTTPServer):
+    """Bound active connections while allowing a control beside a body transfer."""
+
+    max_workers = 4
+    request_queue_size = 4
+
+    def __init__(self, *args, **kwargs):
+        self.workers = threading.BoundedSemaphore(self.max_workers)
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, client_address):
+        if not self.workers.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self.workers.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.workers.release()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -30,7 +58,7 @@ class Handler(BaseHTTPRequestHandler):
         self.deadline.cancel()
         super().finish()
 
-    def respond(self, upload=False):
+    def respond(self, upload=False, head=False):
         self.close_connection = True
         try:
             url = urlsplit(self.path)
@@ -38,7 +66,7 @@ class Handler(BaseHTTPRequestHandler):
             if url.path != "/__throttle_probe" or set(query) != {"bytes"} or len(query["bytes"]) != 1:
                 raise ValueError
             number = query["bytes"][0]
-            if not number.isascii() or not number.isdigit() or len(number) > 5:
+            if not number.isascii() or not number.isdigit() or len(number) > 7:
                 raise ValueError
             size = int(number)
             if not 1 <= size <= MAX_BYTES or self.headers.get("Transfer-Encoding") is not None:
@@ -49,14 +77,14 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError
             elif lengths not in ([], ["0"]):
                 raise ValueError
-            data = payload(size)
             self.send_response(200)
             self.send_header("Content-Type", "application/octet-stream")
-            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Content-Length", str(size))
             self.send_header("Cache-Control", "no-store")
             self.send_header("Connection", "close")
             self.end_headers()
-            self.wfile.write(data)
+            if not head:
+                self.wfile.write(payload(size))
         except (ValueError, OSError, socket.timeout):
             try:
                 self.send_error(400)
@@ -66,6 +94,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         self.respond()
+
+    def do_HEAD(self):
+        self.respond(head=True)
 
     def do_POST(self):
         self.respond(upload=True)
@@ -81,9 +112,9 @@ def main():
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
         parser.error("invalid port")
-    # A single worker with a per-connection deadline bounds active work. An
-    # existing HTTPS reverse proxy owns external TLS and concurrency admission.
-    with HTTPServer((args.host, args.port), Handler) as server:
+    # An existing HTTPS reverse proxy owns external TLS. Four workers and each
+    # connection's total deadline also bound work at this optional local helper.
+    with Server((args.host, args.port), Handler) as server:
         server.serve_forever()
 
 

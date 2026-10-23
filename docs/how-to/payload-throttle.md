@@ -1,6 +1,6 @@
 # Exact payload probes
 
-> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-21
+> **Status:** Current · **Type:** how-to · **Tier:** — · **Reviewed:** 2026-10-23
 
 `make probe-payload-throttle` checks useful data on the selected client path.
 Run it from that path, not from the VPN server. Every completed step requires
@@ -18,21 +18,22 @@ python3 scripts/serve-payload-probe.py --host 127.0.0.1 --port 8080
 Place `/__throttle_probe` behind an existing operator-owned HTTPS reverse proxy,
 forwarding query strings and POST bodies unchanged. Disable response compression
 and caching for that route; retain ordinary TLS verification and bounded request
-sizes/deadlines. The canary serves GET `?bytes=N`. POST requires `Content-Length:
+sizes/deadlines. The canary serves GET `?bytes=N` and HEAD with the same exact Content-Length
+and no response body. POST requires `Content-Length:
 N` and the canonical N-byte request body, then returns the same bytes. It rejects
 chunked uploads, invalid sizes and incorrect content. Each connection has a
-10-second total deadline, closes after the response, and the single worker
-bounds concurrency. The default loopback bind is not public TLS termination.
+10-second total deadline, closes after the response, and four bounded workers
+permit concurrent body and latency controls without serializing them. The default loopback bind is not public TLS termination.
 
 Canonical content is the first N bytes of concatenated SHA256 digests of
 ASCII `vpn-deploy-payload-v1:` followed by an unsigned eight-byte big-endian
-counter starting at zero. Supported N is 1..65536. Both sides compute this
+counter starting at zero. Supported N is 1..1048576. Both sides compute this
 content independently; response headers are not evidence of body integrity.
 
 Print exact hashes for recipient `payload_failover` controls:
 
 ```sh
-python3 scripts/payload_probe_content.py --hashes 32768,65536
+python3 scripts/payload_probe_content.py --hashes 32768,262144,1048576
 ```
 
 Each resulting `{expected_bytes, sha256}` pairs with an owned HTTPS URL such as
@@ -58,7 +59,7 @@ local endpoint testing and does not provide authenticated origin identity.
 
 `--upload` adds a POST at every size through the same selected path and verifies
 the echoed body. `--timeout` bounds each transfer (1..30 seconds, default 15).
-The ladder must contain 1..16 unique ascending sizes, each at most 65536 bytes.
+The ladder must contain 1..16 unique ascending sizes, each at most 1048576 bytes.
 Downloads are capped independently of Content-Length. Total worst-case transfer
 time is the number of steps times the timeout, doubled with upload. Optional
 ASN lookup has a separate 10-second budget; `--asn AS<number>` avoids it.

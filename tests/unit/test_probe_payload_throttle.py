@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import hashlib
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import http.client
+from http.server import BaseHTTPRequestHandler
 import importlib.util
 import json
 import os
@@ -40,8 +41,8 @@ def run_probe(tmp_path, port, *args, env_extra=None):
 
 
 @contextmanager
-def origin(handler=canary.Handler, tls=None):
-    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+def origin(handler=canary.Handler, tls=None, server_type=canary.Server):
+    server = server_type(("127.0.0.1", 0), handler)
     if tls:
         server.socket = tls.wrap_socket(server.socket, server_side=True)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -99,7 +100,7 @@ def test_real_download_and_upload(tmp_path):
     assert not (tmp_path / "state").exists()
 
 
-def test_tls_verified_with_owned_ca_and_rejected_without_it(tmp_path):
+def owned_tls(tmp_path):
     cert, key = tmp_path / "cert.pem", tmp_path / "key.pem"
     subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
         "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost", "-keyout", str(key), "-out", str(cert)],
@@ -107,6 +108,11 @@ def test_tls_verified_with_owned_ca_and_rejected_without_it(tmp_path):
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(cert, key)
+    return cert, context
+
+
+def test_tls_verified_with_owned_ca_and_rejected_without_it(tmp_path):
+    cert, context = owned_tls(tmp_path)
     with origin(tls=context) as port:
         accepted = run_probe(tmp_path, port, "--scheme", "https", "--ca-file", str(cert), "--upload")
         refused = run_probe(tmp_path, port, "--scheme", "https")
@@ -196,7 +202,7 @@ def test_direct_ignores_ambient_proxy(tmp_path):
 
 
 @pytest.mark.parametrize("args", [["--port", "0"], ["--timeout", "31"], ["--socks-port", "65536"],
-    ["--asn", "../../escape"], ["--sizes", "1024,65537"], ["--sizes", "1024,1024"],
+    ["--asn", "../../escape"], ["--sizes", "1024,1048577"], ["--sizes", "1024,1024"],
     ["--sizes", "32768,1024"], ["--echo-path", "/foo?x=1"], ["--host", "-option"], ["--port"]])
 def test_invalid_inputs_before_network(tmp_path, args):
     handler = type("Response", (Fault,), {"requests": []})
@@ -232,7 +238,7 @@ def test_classification_without_host_timing(rows, verdict, threshold):
 
 def test_canary_rejects_corrupt_upload_and_invalid_bounds(tmp_path):
     with origin() as port:
-        for query, body in [("1024", b"x" * 1024), ("65537", b""), ("1&bytes=2", b"x")]:
+        for query, body in [("1024", b"x" * 1024), ("1048577", b""), ("1&bytes=2", b"x")]:
             result = subprocess.run(["curl", "--disable", "--silent", "--proxy", "", "--noproxy", "*",
                 "--max-time", "2", "--data-binary", "@-", "--output", os.devnull, "--write-out", "%{http_code}",
                 f"http://127.0.0.1:{port}/__throttle_probe?bytes={query}"], input=body, capture_output=True)
@@ -255,6 +261,130 @@ def test_hash_manifest_and_state(tmp_path):
 def test_fixed_payload_vectors():
     assert hashlib.sha256(probe.payload(32768)).hexdigest() == "80e00fc9e65a58c5ad59c399511a2ed5f27140f43e3b58f93c2f00a0c0df8816"
     assert hashlib.sha256(probe.payload(65536)).hexdigest() == "ed487b9ebb4e4ee04d86b44bc4eff46f6689bae9b8c7d8c598c57b8110a7e993"
+    assert hashlib.sha256(probe.payload(262144)).hexdigest() == "b1882646e3ee80170bd9207304f77c71d388b0a786d53e5e7f4e16fb22e8b6dc"
+
+
+def test_one_mib_verified_tls_download_upload_through_explicit_socks(tmp_path):
+    cert, context = owned_tls(tmp_path)
+    with origin(tls=context) as port, socks() as proxy:
+        result = run_probe(tmp_path, port, "--scheme", "https", "--ca-file", str(cert),
+                           "--sizes", "1048576", "--upload", "--socks-port", str(proxy.server_address[1]))
+    assert [(row["bytes"], row["direction"], row["completed"]) for row in result["sizes"]] == [
+        (1048576, "download", True), (1048576, "upload", True),
+    ]
+    assert proxy.targets == [("localhost", port), ("localhost", port)]
+
+
+@pytest.mark.parametrize("size", [1, 32768, 262144, 1048576])
+def test_head_returns_exact_object_metadata_without_body(size):
+    with origin() as port, socket.create_connection(("127.0.0.1", port), timeout=2) as connection:
+        connection.sendall(f"HEAD /__throttle_probe?bytes={size} HTTP/1.1\r\nHost: localhost\r\n\r\n".encode())
+        wire = bytearray()
+        while chunk := connection.recv(4096):
+            wire.extend(chunk)
+    headers, body = bytes(wire).split(b"\r\n\r\n", 1)
+    assert headers.startswith(b"HTTP/1.1 200 ")
+    assert f"Content-Length: {size}\r\n".encode() in headers + b"\r\n"
+    assert b"Cache-Control: no-store" in headers
+    assert b"Content-Range:" not in headers and b"Content-Encoding:" not in headers
+    assert body == b""
+
+
+def test_head_completes_while_another_worker_receives_a_real_body():
+    entered = threading.Event()
+
+    class Receiving(canary.Handler):
+        def do_POST(self):
+            entered.set()
+            super().do_POST()
+
+    data = probe.payload(32768)
+    with origin(Receiving) as port, socket.create_connection(("127.0.0.1", port), timeout=2) as upload:
+        upload.sendall(b"POST /__throttle_probe?bytes=32768 HTTP/1.1\r\nHost: localhost\r\nContent-Length: 32768\r\n\r\n" + data[:1])
+        assert entered.wait(2), "the upload must actually occupy a handler"
+        control = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        try:
+            control.request("HEAD", "/__throttle_probe?bytes=32768")
+            response = control.getresponse()
+            assert response.status == 200 and response.getheader("Content-Length") == "32768"
+            assert response.read() == b""
+        finally:
+            control.close()
+        # The HEAD completed before the remaining upload body was even sent.
+        upload.sendall(data[1:])
+        response = http.client.HTTPResponse(upload)
+        response.begin()
+        assert response.status == 200 and response.read() == data
+
+
+def test_canary_capacity_refuses_extra_connection_and_recovers_after_deadlines():
+    occupied = threading.Barrier(canary.Server.max_workers + 1)
+    released = threading.Semaphore(0)
+    expired = threading.Semaphore(0)
+    stop_upload = threading.Event()
+
+    class ObservedServer(canary.Server):
+        def process_request_thread(self, request, client_address):
+            super().process_request_thread(request, client_address)
+            released.release()
+
+    class Waiting(canary.Handler):
+        def expire(self):
+            super().expire()
+            expired.release()
+
+        def do_POST(self):
+            occupied.wait(timeout=2)
+            super().do_POST()
+
+    connections = []
+    def trickle_upload():
+        for value in probe.payload(1024):
+            if stop_upload.wait(.1):
+                return
+            for connection in connections:
+                try:
+                    connection.sendall(bytes([value]))
+                except OSError:
+                    pass  # Each real total deadline closes its own connection.
+
+    with origin(Waiting, server_type=ObservedServer) as port:
+        uploader = None
+        try:
+            for _ in range(canary.Server.max_workers):
+                connection = socket.create_connection(("127.0.0.1", port), timeout=12)
+                connections.append(connection)
+                connection.sendall(b"POST /__throttle_probe?bytes=1024 HTTP/1.1\r\nHost: localhost\r\nContent-Length: 1024\r\n\r\n")
+            occupied.wait(timeout=2)
+            with socket.create_connection(("127.0.0.1", port), timeout=2) as overflow:
+                try:
+                    overflow.sendall(b"HEAD /__throttle_probe?bytes=1024 HTTP/1.1\r\nHost: localhost\r\n\r\n")
+                    assert overflow.recv(1024) == b""
+                except ConnectionResetError:
+                    pass  # Capacity admission closes the unclaimed connection.
+            # Keep reads active so only the total deadline can terminate these
+            # incomplete bodies, rather than the equal-duration idle timeout.
+            uploader = threading.Thread(target=trickle_upload)
+            uploader.start()
+            for connection in connections:
+                assert connection.recv(1024) == b""
+        finally:
+            stop_upload.set()
+            if uploader is not None:
+                uploader.join(timeout=2)
+                assert not uploader.is_alive()
+            for connection in connections:
+                connection.close()
+        for _ in range(canary.Server.max_workers):
+            assert expired.acquire(timeout=2), "active bodies must be closed by the total deadline"
+            assert released.acquire(timeout=2), "expired workers must return their admission slots"
+        control = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+        try:
+            control.request("HEAD", "/__throttle_probe?bytes=1024")
+            response = control.getresponse()
+            assert response.status == 200 and response.read() == b""
+        finally:
+            control.close()
 
 
 def test_real_timeout_and_truncated_body_are_not_completed(tmp_path):
