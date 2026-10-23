@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-10-22
+goal: OPS-1792678016174902 Implement executable Path A recovery with crash resume

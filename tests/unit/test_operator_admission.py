@@ -3,14 +3,13 @@
 import fcntl
 import importlib.util
 import os
-from pathlib import Path
 import shutil
 import stat
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
-
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -40,7 +39,7 @@ def test_rotation_lock_admits_next_private_writer_under_public_umask(tmp_path, e
     result = subprocess.run(
         ["bash", "-c", 'umask 022; exec bash "$1"', "--", str(scripts / "rotate-secrets.sh")],
         cwd=tmp_path, env={**os.environ, "SOPS_FILE": str(source), "PATH": f"{commands}:{os.environ['PATH']}"},
-        text=True, capture_output=True, timeout=10,
+        text=True, capture_output=True, timeout=10, check=False,
     )
     assert result.returncode == 0, result.stderr
     assert stat.S_IMODE(lock.stat().st_mode) == 0o600
@@ -70,7 +69,7 @@ def test_rotation_refuses_unsafe_lock_without_changing_target(tmp_path, authorit
         target = lock
     result = subprocess.run(
         ["bash", str(ROOT / "scripts/rotate-secrets.sh")],
-        env={**os.environ, "SOPS_FILE": str(source)}, text=True, capture_output=True, timeout=5,
+        env={**os.environ, "SOPS_FILE": str(source)}, text=True, capture_output=True, timeout=5, check=False,
     )
     assert result.returncode != 0
     assert target.read_text() == "preserve this content\n"
@@ -81,9 +80,10 @@ def test_rotation_refuses_unsafe_lock_without_changing_target(tmp_path, authorit
     ("", True), ("vpn", True), ("node-a", True), ("node-b", True),
     ("observer-a", False), ("all:!vpn", False), ("missing", False),
 ])
-def test_verification_gate_uses_actual_limited_ansible_inventory(tmp_path, limit, accepted):
-    inventory = tmp_path / "ansible/inventory/generated.ini"
-    inventory.parent.mkdir(parents=True)
+@pytest.mark.parametrize("inventory_path", ["ansible/inventory/generated.ini", "snapshot.ini"])
+def test_verification_gate_uses_actual_limited_ansible_inventory(tmp_path, limit, accepted, inventory_path):
+    inventory = tmp_path / inventory_path
+    inventory.parent.mkdir(parents=True, exist_ok=True)
     inventory.write_text(
         "[vpn]\nnode-a ansible_connection=local\n"
         "[vpn-child]\nnode-b ansible_connection=local\n"
@@ -99,10 +99,13 @@ def test_verification_gate_uses_actual_limited_ansible_inventory(tmp_path, limit
     # Exercise the actual Make admission recipe without unrelated operator inputs.
     target = (ROOT / "Makefile").read_text().split("require-inventory:", 1)[1].split("\n\n", 1)[0]
     makefile = tmp_path / "Makefile"
-    makefile.write_text("ANSIBLE_DIR := ansible\nrequire-inventory:" + target + "\n")
+    makefile.write_text(
+        "ANSIBLE_DIR := ansible\n" + f"ANSIBLE_INVENTORY := {inventory_path}\n"
+        "export ANSIBLE_INVENTORY\nrequire-inventory:" + target + "\n"
+    )
     result = subprocess.run(
         ["make", "--no-print-directory", "require-inventory", f"ANSIBLE_LIMIT={limit}"],
-        cwd=tmp_path, env=environment, text=True, capture_output=True, timeout=20,
+        cwd=tmp_path, env=environment, text=True, capture_output=True, timeout=20, check=False,
     )
     assert (result.returncode == 0) is accepted, result.stdout + result.stderr
 
@@ -111,7 +114,7 @@ def test_verification_gate_uses_actual_limited_ansible_inventory(tmp_path, limit
 def test_verification_gate_refuses_invalid_inventory(document):
     result = subprocess.run(
         [sys.executable, str(ROOT / "scripts/require-vpn-selection.py")],
-        input=document, text=True, capture_output=True, timeout=5,
+        input=document, text=True, capture_output=True, timeout=5, check=False,
     )
     assert result.returncode != 0
     assert result.stdout == ""

@@ -1,3 +1,40 @@
 ---
-- name: Reconcile snell runtime lifecycle
-  ansible.builtin.include_tasks: "{{ 'enable.yml' if snell_role_enabled | bool else 'disable.yml' }}"
+- name: Prepare retained snell credential revocation admission
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: revocation-prepare
+  vars:
+    device_revocation_unit: snell.service
+
+- name: Inspect existing snell unit before arming its boot fence
+  ansible.builtin.stat:
+    path: /etc/systemd/system/snell.service
+    follow: false
+  register: _device_revocation_unit_before
+
+- name: Install revocation start admission before changing existing snell credentials
+  ansible.builtin.template:
+    src: snell.service.j2
+    dest: /etc/systemd/system/snell.service
+    owner: root
+    group: root
+    mode: '0644'
+  when:
+    - vpn_device_revocation | default(none) is not none
+    - _device_revocation_unit_before.stat.exists
+
+- name: Reconcile snell authority under its retained revocation fence
+  block:
+    - name: Reconcile snell runtime lifecycle
+      ansible.builtin.include_tasks: "{{ 'enable.yml' if snell_role_enabled | bool else 'disable.yml' }}"
+  rescue:
+    - name: Stop snell after an unacknowledged revocation
+      ansible.builtin.include_role:
+        name: runtime-release
+        tasks_from: revocation-barrier
+      vars:
+        device_revocation_unit: snell.service
+        device_revocation_action: abort
+    - name: Refuse incomplete snell authority
+      ansible.builtin.fail:
+        msg: snell-runtime-activation-failed

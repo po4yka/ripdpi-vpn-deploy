@@ -192,20 +192,8 @@
   changed_when: _subscription_retention_authority.rc == 0 and (_subscription_retention_authority.stdout | from_json).changed
   check_mode: false
 
-- name: Render revoked-hashes file
-  ansible.builtin.copy:
-    dest: "{{ subscription.revoked_file | default('/var/lib/vpn-subscription/revoked') }}"
-    owner: vpn-bootstrap
-    group: vpn-bootstrap
-    mode: "0600"
-    content: |
-      # Managed by Ansible role subscription-host. One sha256 hex per line.
-      # The Python service re-reads this file on every request.
-      {% for h in subscription.revoked_tokens | default([]) %}
-      {{ h | trim | lower }}
-      {% endfor %}
-  no_log: true
-  diff: false
+- name: Publish canonical revoked-hash authority
+  ansible.builtin.import_tasks: revoked-hashes.yml
 
 - name: Install service script
   ansible.builtin.template:

@@ -7,6 +7,7 @@ Wants=network-online.target
 Type=simple
 User=snell
 Group=snell
+ExecStartPre=+/usr/bin/python3 -Es /usr/local/libexec/ripdpi-consumer/device_revocation_barrier.py admit snell.service
 ExecStart=/usr/local/bin/sing-box-snell run -c /etc/snell/config.json
 Restart=on-failure
 RestartSec=5s

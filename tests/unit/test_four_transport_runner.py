@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -319,8 +320,16 @@ def test_native_ci_plans_cover_the_complete_real_collection_once():
 
     expected = collect([path for _name, paths in runner.SUITES for path in paths])
     assert expected
+    weights = json.loads((ROOT / "tests/native/transport_acceptance/recovery-durations.json").read_text())
+    assert weights and all(type(value) in (int, float) and math.isfinite(value) and value > 0
+                           for value in weights.values())
+    assert set(weights) == {case for case in expected
+                            if case.startswith("tests/unit/test_transport_runtime_acceptance_native.py::")}
+    mean = sum(weights.values()) / len(weights)
+    largest = set(sorted(weights, key=weights.get, reverse=True)[:3])
+    recovery_groups = []
     observed = set()
-    for plan in ("core", "recovery-1", "recovery-2"):
+    for plan in ("core", "recovery-1", "recovery-2", "recovery-3"):
         selected = set()
         for _name, paths, options in runner.suite_commands(plan):
             cases = collect(paths, options)
@@ -328,21 +337,37 @@ def test_native_ci_plans_cover_the_complete_real_collection_once():
             selected.update(cases)
         assert not observed.intersection(selected)
         observed.update(selected)
+        if plan.startswith("recovery-"):
+            assert len(selected & largest) == 1
+            recovery_groups.append(selected)
     assert observed == expected
+    compensation_paths = next(paths for name, paths in runner.SUITES if name == "compensation")
+    assert set.union(*recovery_groups) == {case for case in expected
+                                          if case.split("::", 1)[0] in compensation_paths}
+    # The pinned splitter assigns the relevant profile mean to unmeasured cases.
+    # Bound estimated imbalance, not native acceptance or a fixed case allocation.
+    loads = [sum(weights.get(case, mean) for case in group) for group in recovery_groups]
+    assert max(loads) <= sum(loads) / len(loads) * 1.1
     assert runner.suite_commands("all") == sum(
-        (runner.suite_commands(plan) for plan in ("core", "recovery-1", "recovery-2")), []
+        (runner.suite_commands(plan) for plan in ("core", "recovery-1", "recovery-2", "recovery-3")), []
     )
     import yaml
     jobs = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
     job = jobs["transport-native-acceptance"]
-    assert job["strategy"]["matrix"]["plan"] == ["core", "recovery-1", "recovery-2"]
+    assert job["strategy"]["matrix"]["plan"] == ["core", "recovery-1", "recovery-2", "recovery-3"]
     assert job["strategy"]["fail-fast"] is False
     assert "transport-native-acceptance" in jobs["required"]["needs"]
 
 
+def test_missing_recovery_profile_refuses_instead_of_silent_count_balancing(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    with pytest.raises(RuntimeError, match="native-duration-profile-required"):
+        runner.suite_commands("recovery-1")
+
+
 def test_unknown_native_plan_cannot_silently_omit_cases():
     with pytest.raises(RuntimeError, match="native-plan-refused"):
-        runner.suite_commands("recovery-3")
+        runner.suite_commands("recovery-4")
 
 
 @pytest.mark.parametrize(
@@ -654,6 +679,7 @@ def test_runner_early_regression_never_substitutes_full_suite_or_accepts_failure
     """Real pytest children prove scheduling; no native traffic is claimed here."""
     area = tmp_path / 'tests/native/transport_acceptance'
     area.mkdir(parents=True)
+    (area / 'runner.py').write_text(Path(runner.__file__).read_text())
     event_file = tmp_path / 'events'
     observation = {
         'probe_id': 'multicast-request', 'phase': 'packet', 'ready_ms': 1,
@@ -758,3 +784,109 @@ def test_ci_only_uploads_closed_evidence_and_keeps_mandatory_cleanup():
     assert cleanup['if'] == 'always()'
     assert 'test -z' in cleanup['run']
     assert steps.index(cleanup) > steps.index(public)
+
+
+@pytest.mark.parametrize("clean", [True, False])
+def test_actual_pytest_timeout_retains_private_progress_without_claiming_completion(tmp_path, monkeypatch, clean):
+    """Exercise actual killed pytest, journal and runner publication; no native claim."""
+    area = tmp_path / "tests/native/transport_acceptance"
+    area.mkdir(parents=True)
+    (area / "runner.py").write_text(Path(runner.__file__).read_text())
+    (tmp_path / "pytest.ini").write_text("[pytest]\n")
+    case = area / "test_timeout.py"
+    case.write_text(
+        "import os, time, pytest\n"
+        "def test_completed(): pass\n"
+        "@pytest.mark.parametrize('value', ['private-parameter-canary'])\n"
+        "def test_blocked(value):\n"
+        "    os.write(1, b'private-raw-log-canary\\n')\n"
+        "    time.sleep(60)\n"
+    )
+    output = tmp_path / "result.json"
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    monkeypatch.setattr(runner.sys, "platform", "linux")
+    monkeypatch.setattr(runner.os, "geteuid", lambda: 0)
+    monkeypatch.setenv("TRANSPORT_NATIVE_ISOLATED", "1")
+    monkeypatch.setenv("TRANSPORT_NATIVE_PLAN", "recovery-1")
+    monkeypatch.setenv("TRANSPORT_NATIVE_EVIDENCE", str(output))
+    monkeypatch.delenv("PYTEST_ADDOPTS", raising=False)
+    monkeypatch.delenv("PYTEST_PLUGINS", raising=False)
+    monkeypatch.setattr(runner, "preflight", lambda evidence: {})
+    monkeypatch.setattr(runner, "resources", lambda: {} if clean else {"links": ["private-link-canary"]})
+    monkeypatch.setattr(runner, "engines", dict)
+    monkeypatch.setattr(runner, "run", lambda *args, **kwargs: b"")
+    monkeypatch.setattr(runner, "suite_commands", lambda plan: [("compensation-1", [str(case)], ["-s"])])
+    actual_run = subprocess.run
+    journals = []
+
+    def portable_pytest(argv, **kwargs):
+        assert kwargs["timeout"] == 2400
+        kwargs["timeout"] = 3
+        argv = [arg for arg in argv if arg not in {"--native-resource-checks", "--fail-on-skip"}]
+        progress = Path(next(arg.split("=", 1)[1] for arg in argv if arg.startswith("--native-progress=")))
+        try:
+            return actual_run(argv, **kwargs)
+        except subprocess.TimeoutExpired:
+            assert progress.stat().st_mode & 0o777 == 0o600
+            journals.append(progress)
+            raise
+
+    monkeypatch.setattr(runner.subprocess, "run", portable_pytest)
+    error = "native-suite-timeout:compensation-1" if clean else "owned-resource-cleanup-unconfirmed"
+    with pytest.raises(RuntimeError, match=error):
+        runner.main()
+    evidence = json.loads(output.read_text())
+    assert evidence["success"] is False and evidence["cleanup"] is clean
+    assert evidence["case_cleanup"] == "unconfirmed" and evidence["suites"] == {}
+    assert evidence["phase"] == "compensation-1"
+    assert evidence["failure_category"] == "native-suite-timeout:compensation-1"
+    progress = evidence["timeout_progress"]
+    assert progress["completed"] == {"passed": 1, "failed": 0, "skipped": 0}
+    assert progress["current"]["phase"] == "call"
+    assert progress["current"]["case"] == "tests/native/transport_acceptance/test_timeout.py::test_blocked"
+    assert len(progress["current"]["case_sha256"]) == 64
+    assert "private-" not in output.read_text()
+    retained = output.with_suffix(".compensation-1.log")
+    assert retained.stat().st_mode & 0o777 == 0o600
+    assert "private-raw-log-canary" in retained.read_text()
+    assert len(journals) == 1 and not journals[0].exists()
+
+
+def test_timeout_progress_projection_rejects_private_or_damaged_fields(tmp_path):
+    import copy
+
+    path = tmp_path / "progress.json"
+    case = "tests/native/transport_acceptance/test_timeout.py::test_blocked"
+    valid = {"current": {"case": case, "case_sha256": "a" * 64, "phase": "call"},
+             "completed": {"passed": 1, "failed": 0, "skipped": 0}}
+    path.write_text(json.dumps(valid))
+    assert runner.timeout_progress(path, {case}) == valid
+    corrupt = ["{", " " * (runner.PROGRESS_LIMIT + 1), '{"current":null,"current":null,"completed":{}}', "[]"]
+    for section, key, value in [
+        ("current", "case", "/private/secret.py::test_blocked"),
+        ("current", "case", case.replace("test_blocked", "test_unknown")),
+        ("current", "case", case + "[private-parameter]"),
+        ("current", "phase", "private-phase"), ("current", "case_sha256", "private-hash"),
+        ("current", "extra", "private-extra"), ("completed", "passed", True),
+        ("completed", "passed", -1), ("completed", "failed", 10000),
+    ]:
+        value_record = copy.deepcopy(valid)
+        value_record[section][key] = value
+        corrupt.append(json.dumps(value_record))
+    for raw in corrupt:
+        path.write_text(raw)
+        assert runner.timeout_progress(path, {case}) is None
+    path.unlink()
+    assert runner.timeout_progress(path, {case}) is None
+
+
+def test_progress_case_admission_uses_selected_repository_identifiers(tmp_path, monkeypatch):
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    case = tmp_path / "tests/native/test_progress.py"
+    case.parent.mkdir(parents=True)
+    case.write_text("def helper(): pass\ndef test_allowed(): pass\n")
+    assert runner.progress_cases([str(case)]) == {"tests/native/test_progress.py::test_allowed"}
+    with pytest.raises(ValueError):
+        runner.progress_cases([str(tmp_path.parent / "test_foreign.py")])
+    with pytest.raises(RuntimeError, match="native-progress-source-refused"):
+        runner.progress_cases(["private/test_foreign.py"])

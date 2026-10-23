@@ -19,6 +19,10 @@
       ansible.builtin.import_tasks: tasks/selected-env.yml
       tags: [always]
 
+    - name: Resolve explicit device retirement before service verification
+      ansible.builtin.import_tasks: tasks/device-runtime-context.yml
+      tags: [always]
+
   tasks:
     - name: Ensure VPN_SECRETS_FILE was provided
       ansible.builtin.assert:

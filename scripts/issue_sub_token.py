@@ -73,6 +73,7 @@ def issue(args):
             status='delivered', issued_at=datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
             formats=[o['format']], hosts=o['hosts'], cohorts=o['cohorts'], token_hash_prefix=token_hash[:8], token_expires=o['expires'], awg_delivery_host=o['awg_host'],
             delivery_sources=source_paths, delivery_options=o, last_payload_identity=digest(args.client, o, payload, bindings, auth))
+        registry[args.client].pop('migration_delivery', None)
         return doc, {}
 
     def publish(mark_external_started):

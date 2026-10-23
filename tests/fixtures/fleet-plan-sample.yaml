@@ -17,6 +17,12 @@ rotations:
   - current: upcloud:prod
     new_env: prod-2026-05
     new_zone: zone-a
+    green_sops_file: target-a.sops.yaml
+    migration_plan: migration-a.json
+    migration_approval: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   - current: hetzner:prod
     new_env: prod-2026-05
     new_zone: zone-b
+    green_sops_file: target-b.sops.yaml
+    migration_plan: migration-b.json
+    migration_approval: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"

@@ -86,6 +86,11 @@ failure state and select fresh failure-receipt paths.
 
 ## Path A — full rebuild from scratch (recommended)
 
+For one UpCloud replacement with a surviving dedicated publisher, use
+[executable recovery](executable-recovery.md). It preserves private phase intent,
+reconciles interrupted provider actions and resumes through device migration
+acceptance. The manual procedure below covers other admitted recovery scopes.
+
 Rebuild configurations from current secrets and templates. Clone the repository,
 restore the operator key and encrypted secrets, then complete **Fresh-node
 prerequisites** above. Use the clean reviewed source revision required by the

@@ -106,35 +106,59 @@ def require_version(binary, expected):
     assert version.stdout.splitlines()[0] == "sing-box version " + expected
 
 
-def free_port():
-    with socket.socket() as reservation:
-        reservation.bind(("127.0.0.1", 0))
-        return reservation.getsockname()[1]
+@contextmanager
+def reserved_ports(count):
+    """Keep every owned listener distinct until its process is ready to bind."""
+    with ExitStack() as stack:
+        reservations = []
+        for _ in range(count):
+            reservation = stack.enter_context(socket.socket())
+            reservation.bind(("127.0.0.1", 0))
+            reservations.append(reservation)
+        yield reservations
+
+
+def startup_log(path):
+    with path.open("rb") as stream:
+        return stream.read(65536)
+
+
+def startup_failure(log, code):
+    category = "bind-conflict" if b"address already in use" in log else "exited"
+    return f"Snell engine startup failed: {category}; exit={code}"
 
 
 @contextmanager
-def engine(binary, path, document):
+def engine(binary, path, document, reservations):
     path.write_text(json.dumps(document))
     path.chmod(0o600)
-    checked = subprocess.run(
-        [str(binary), "check", "-c", str(path)], capture_output=True, timeout=5
-    )
+    parser_status = subprocess.run(
+        [str(binary), "check", "-c", str(path)], capture_output=True, timeout=5, check=False
+    ).returncode
     assert (
-        checked.returncode == 0
+        parser_status == 0
     ), "real Snell parser refused role-generated configuration"
-    with path.with_suffix(".log").open("wb") as log:
+    log_path = path.with_suffix(".log")
+    with log_path.open("xb") as log:
+        os.fchmod(log.fileno(), 0o600)
+        # The runtime cannot adopt these sockets. Release only its own listeners
+        # immediately before launch; a foreign bind in this gap must still fail.
+        for reservation in reservations:
+            reservation.close()
         process = subprocess.Popen(
             [str(binary), "run", "-c", str(path)], stdout=log, stderr=log
         )
         try:
-            # Startup messages contain no fixture credentials. Wait for the real
-            # runtime startup acknowledgement without opening a probe connection.
+            # Read a bounded private log; public errors contain fixed categories.
+            # Do not probe-connect: extra connections would corrupt reuse counts.
             deadline = time.monotonic() + 5
-            while "sing-box started" not in path.with_suffix(".log").read_text():
-                assert process.poll() is None, "Snell engine exited during startup"
-                assert (
-                    time.monotonic() < deadline
-                ), "Snell engine did not acknowledge startup"
+            while True:
+                code = process.poll()
+                observed = startup_log(log_path)
+                assert code is None, startup_failure(observed, code)
+                if b"sing-box started" in observed:
+                    break
+                assert time.monotonic() < deadline, "Snell engine startup failed: timeout"
                 time.sleep(0.02)
             yield process
         finally:
@@ -247,43 +271,44 @@ def test_real_snell_variants_authentication_and_connection_reuse(
     defaults = yaml.safe_load(
         (ROOT / "ansible/roles/snell/defaults/main.yml").read_text()
     )["snell"]
-    variants = [
-        {**variant, "listen_port": free_port()} for variant in defaults["variants"]
-    ]
-    selected = next(variant for variant in variants if variant["id"] == variant_id)
-    suffix = "" if credential_style == "hex" else '"\\\n\t\r'
-    secrets = [
-        {
-            "id": variant["id"],
-            "psk": token_hex(32) + suffix,
-            "users": [
-                {
-                    "name": "native-device",
-                    "userkey": token_hex(32) + suffix,
-                }
-            ],
-        }
-        for variant in variants
-    ]
-    values = {
-        "snell": {**defaults, "listen_addr": "127.0.0.1", "variants": variants},
-        "snell_secrets": {"variants": secrets},
-    }
-    server = json.loads(
-        render_template(ROOT / "ansible/roles/snell/templates/config.json.j2", values)
-    )
-    for inbound, secret in zip(server["inbounds"], secrets):
-        assert inbound["psk"] == secret["psk"], "server PSK changed during rendering"
-        assert inbound["users"] == secret["users"], "server userkeys changed during rendering"
-    server["log"] = {"level": "info"}
     with ExitStack() as stack:
-        stack.enter_context(engine(snell_binary, tmp_path / "server.json", server))
+        reservations = stack.enter_context(reserved_ports(len(defaults["variants"]) + 2))
+        variants = [
+            {**variant, "listen_port": reservation.getsockname()[1]}
+            for variant, reservation in zip(defaults["variants"], reservations[:-2])
+        ]
+        selected = next(variant for variant in variants if variant["id"] == variant_id)
+        suffix = "" if credential_style == "hex" else '"\\\n\t\r'
+        secrets = [
+            {
+                "id": variant["id"],
+                "psk": token_hex(32) + suffix,
+                "users": [
+                    {
+                        "name": "native-device",
+                        "userkey": token_hex(32) + suffix,
+                    }
+                ],
+            }
+            for variant in variants
+        ]
+        values = {
+            "snell": {**defaults, "listen_addr": "127.0.0.1", "variants": variants},
+            "snell_secrets": {"variants": secrets},
+        }
+        server = json.loads(
+            render_template(ROOT / "ansible/roles/snell/templates/config.json.j2", values)
+        )
+        for inbound, secret in zip(server["inbounds"], secrets):
+            assert inbound["psk"] == secret["psk"], "server PSK changed during rendering"
+            assert inbound["users"] == secret["users"], "server userkeys changed during rendering"
+        server["log"] = {"level": "info"}
+        stack.enter_context(engine(snell_binary, tmp_path / "server.json", server, reservations[:-2]))
         echo = stack.enter_context(service(Echo))
         echo.connections, echo.counter_lock = 0, threading.Lock()
         counted = stack.enter_context(service(CountedTransport))
         counted.destination, counted.connections = selected["listen_port"], 0
         counted.counter_lock = threading.Lock()
-        values["snell"]["smoke_port_base"] = free_port()
         # Render the actual role's client contract, then select only the variant
         # under test and point its encrypted TCP transport at the counting relay.
         client = json.loads(
@@ -295,12 +320,12 @@ def test_real_snell_variants_authentication_and_connection_reuse(
         inbound, outbound = client["inbounds"][index], client["outbounds"][index]
         assert outbound["psk"] == secrets[index]["psk"], "smoke PSK changed during rendering"
         assert outbound["userkey"] == secrets[index]["users"][0]["userkey"], "smoke userkey changed during rendering"
-        inbound["listen_port"] = free_port()
+        inbound["listen_port"] = reservations[-2].getsockname()[1]
         outbound.update(server_port=counted.server_address[1], reuse=reuse)
         wrong_userkey = token_hex(32)
         assert wrong_userkey != outbound["userkey"]
         wrong = {**outbound, "tag": "wrong-key", "userkey": wrong_userkey}
-        wrong_inbound = {**inbound, "tag": "wrong-in", "listen_port": free_port()}
+        wrong_inbound = {**inbound, "tag": "wrong-in", "listen_port": reservations[-1].getsockname()[1]}
         client.update(
             log={"level": "info"},
             inbounds=[inbound, wrong_inbound],
@@ -312,7 +337,7 @@ def test_real_snell_variants_authentication_and_connection_reuse(
                 ]
             },
         )
-        stack.enter_context(engine(snell_binary, tmp_path / "client.json", client))
+        stack.enter_context(engine(snell_binary, tmp_path / "client.json", client, reservations[-2:]))
         for sequence in range(2):
             socks_echo(
                 inbound["listen_port"],

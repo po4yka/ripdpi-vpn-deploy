@@ -76,6 +76,95 @@ def test_generation_reads_configuration_from_exact_owned_unit(tmp_path, monkeypa
             mod.frontend_config_path(unit)
 
 
+@pytest.mark.parametrize('variant', [
+    'canonical', 'reserialized', 'flow', 'wrong-address', 'wrong-user', 'wrong-password',
+    'extra-outbound', 'wrong-type', 'wrong-name', 'extra-socks-field', 'missing-socks',
+    'duplicate-root', 'duplicate-password', 'duplicate-name', 'merge-key',
+    'malformed', 'scalar', 'non-string-key', 'unsafe-tag', 'invalid-map', 'invalid-map-sequence',
+    'control-character', 'multiple-documents', 'too-deep',
+])
+def test_generation_hysteria_credentials_follow_yaml_authority(tmp_path, monkeypatch, variant):
+    import os
+    from types import SimpleNamespace
+    mod = load('generation')
+    expected = {'name': 'direct_hysteria', 'address': '127.0.0.1', 'port': 12081,
+                'username': 'normalizer-direct-hysteria', 'password': 'synthetic-authority'}
+    raw = '''outbounds:
+  - name: guarded-direct
+    type: socks5
+    socks5:
+      addr: "127.0.0.1:12081"
+      username: "normalizer-direct-hysteria"
+      password: "synthetic-authority"
+'''
+    document = yaml.safe_load(raw)
+    outbound = document['outbounds'][0]
+    if variant in {'reserialized', 'flow'}:
+        raw = yaml.safe_dump(document, default_flow_style=variant == 'flow')
+        assert yaml.safe_load(raw) == document
+    elif variant in {'wrong-address', 'wrong-user', 'wrong-password'}:
+        field = {'wrong-address': 'addr', 'wrong-user': 'username', 'wrong-password': 'password'}[variant]
+        outbound['socks5'][field] = 'synthetic-mismatch'
+        raw = yaml.safe_dump(document)
+    elif variant == 'extra-outbound':
+        document['outbounds'].append({'name': 'unguarded', 'type': 'direct'})
+        raw = yaml.safe_dump(document)
+    elif variant in {'wrong-type', 'wrong-name'}:
+        outbound['type' if variant == 'wrong-type' else 'name'] = 'unguarded'
+        raw = yaml.safe_dump(document)
+    elif variant == 'extra-socks-field':
+        outbound['socks5']['unexpected'] = True
+        raw = yaml.safe_dump(document)
+    elif variant == 'missing-socks':
+        del outbound['socks5']
+        raw = yaml.safe_dump(document)
+    elif variant == 'duplicate-root':
+        raw += raw
+    elif variant == 'duplicate-password':
+        raw += '      password: "synthetic-authority"\n'
+    elif variant == 'duplicate-name':
+        raw += '    name: guarded-direct\n'
+    elif variant == 'merge-key':
+        raw += '    <<: {type: direct}\n'
+    elif variant == 'malformed':
+        raw = 'outbounds: [\n'
+    elif variant == 'scalar':
+        raw = 'synthetic-authority\n'
+    elif variant == 'non-string-key':
+        raw += '42: synthetic-authority\n'
+    elif variant == 'unsafe-tag':
+        raw = '!!python/object/apply:builtins.print [synthetic-authority]\n'
+    elif variant == 'invalid-map':
+        raw = '!!map synthetic-authority\n'
+    elif variant == 'invalid-map-sequence':
+        raw = '!!map [synthetic-authority]\n'
+    elif variant == 'control-character':
+        raw += '\x00'
+    elif variant == 'multiple-documents':
+        raw += '---\n' + raw
+    elif variant == 'too-deep':
+        raw = '[' * 1500 + 'synthetic-authority' + ']' * 1500
+    path = tmp_path / 'config.yaml'
+    path.write_text(raw)
+    path.chmod(0o640)
+    monkeypatch.setattr(mod, 'frontend_config_path', lambda _unit: path)
+    def owned_stat(fd):
+        info = os.fstat(fd)
+        return SimpleNamespace(st_mode=info.st_mode, st_uid=0,
+                               st_nlink=info.st_nlink, st_size=info.st_size)
+    monkeypatch.setattr(mod, 'os', SimpleNamespace(open=os.open, read=os.read, close=os.close,
+                        fstat=owned_stat, O_RDONLY=os.O_RDONLY, O_NOFOLLOW=os.O_NOFOLLOW))
+    controller = object.__new__(mod.Controller)
+    controller.config = {'frontend_units': ['hysteria-server.service']}
+    controller.normalizer = {'listeners': [expected]}
+    if variant in {'canonical', 'reserialized', 'flow'}:
+        controller.frontend_credentials()
+    else:
+        with pytest.raises(mod.Refusal, match='^generation-frontend-(authority-invalid|credential-mismatch)$') as error:
+            controller.frontend_credentials()
+        assert 'synthetic' not in str(error.value)
+
+
 def test_snapshot_allowlist_covers_complete_route_and_excludes_registration():
     mod = load('snapshot')
     for path in ['/etc/xray/config.json', '/etc/hysteria/config.yaml',

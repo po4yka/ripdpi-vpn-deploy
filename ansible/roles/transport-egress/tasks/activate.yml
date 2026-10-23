@@ -33,7 +33,9 @@
       no_log: true
     - name: Commit the standalone complete-route recovery boundary
       ansible.builtin.command:
-        argv: [/usr/bin/python3, -Es, '{{ transport_egress_libexec_dir }}/transport_runtime_outer.py', finish]
+        argv: [/usr/bin/python3, -Es, '{{ transport_egress_libexec_dir }}/transport_runtime_outer.py', finish, --revocation-stdin]
+        stdin: '{{ vpn_device_revocation | default(none) | to_json }}'
+        stdin_add_newline: false
       changed_when: false
       no_log: true
       when: not (transport_site_transaction_active | default(false) | bool)

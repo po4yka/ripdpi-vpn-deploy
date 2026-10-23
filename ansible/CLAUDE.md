@@ -2,6 +2,18 @@
 
 ## Design decisions
 
+The protected activation orchestrator closes standalone full retirement through `playbooks/tasks/transport-egress-finish.yml`. A surrounding ingress site transaction retains completion ownership instead, including the exact revocation authority in its durable commit decision.
+
+Explicit empty Xray/Hysteria client lists retire their effective transports.
+Empty named REALITY cohorts and Snell variants are excluded before admission;
+an empty variant must never fall back to shared Snell authentication. The
+Snell projection filters public variants and private runtime users together;
+it retains the complete encrypted authority outside Ansible runtime facts. Device
+credential rotation invokes the full role lifecycle even for disabled transports,
+so retained old credentials cannot survive a successful fleet revocation. AWG
+retirement retains its existing firewall transaction. Naive empty-client
+handling remains the canonical role's explicit authentication retirement.
+
 Alternate REALITY listeners default to disabled (`xray_fallback_port: 0`).
 An explicit alternate must match the provider listener contract and is probed
 independently from TCP/443; choosing another port does not hide its protocol.

@@ -31,6 +31,12 @@ No production pin, default mode, P0 shape or PQE eligibility changes with it.
 
 - Candidate validation runs private staged source before quiescence. Detect validator byte changes without publishing them; installed validators and semantic companions are snapshotted and published only after the whole-route transaction opens. A rejected helper update cannot invalidate the accepted rollback receipt.
 
+- Frontend-only credential, unit, validator and selected geodata changes open
+  the canonical whole-route transaction even when gateway inputs are unchanged.
+  Compare staged geodata against active assets; a cached candidate is not proof
+  that the served pair is unchanged. Revocation rescue retains this outer owner
+  and quiesces the consumer without restoring removed credentials.
+
 **Accepted units pin immutable executables** — frontend units execute their verified release paths directly. Publishing installer CLI links cannot change the executable used by an accepted unit after a rejected candidate. Xray candidate validation also selects the planned immutable executable and bundled asset release; runtime-aware checks derive both authorities from the loaded unit.
 
 **Recipient egress is authenticated and guarded** — the direct and optional WARP outbounds target fixed local normalizer listeners; no Freedom or DNS recipient outbound remains. Requested DNS destinations and non-A payloads retain their authority. Runtime-aware validation rejects an unguarded rollback topology before native parsing. Loss of the normalizer stops the frontend; the owned generation controller resets gateway mappings and recovers enabled frontends.

@@ -1,6 +1,5 @@
 """ci-fast and validate must not silently reduce their promised coverage."""
 
-from pathlib import Path
 import importlib.util
 import io
 import json
@@ -10,6 +9,7 @@ import subprocess
 import sys
 import tarfile
 import time
+from pathlib import Path
 
 import pytest
 
@@ -358,6 +358,7 @@ def _run_cloud_init_schema_fallback(
     assert make is not None
     completed = subprocess.run(
         [make, "--no-print-directory", "cloud-init-schema", *make_arguments],
+        check=False,
         cwd=root,
         env={
             **os.environ,
@@ -697,7 +698,9 @@ def test_live_ansible_targets_require_a_nonempty_generated_inventory():
         "\n\npre-deploy-check:", 1
     )[0]
 
-    assert 'test -s "$(ANSIBLE_DIR)/inventory/generated.ini"' in guard
+    assert 'ANSIBLE_INVENTORY ?= $(ANSIBLE_DIR)/inventory/generated.ini' in makefile
+    assert 'export ANSIBLE_INVENTORY' in makefile
+    assert 'test -s "$(ANSIBLE_INVENTORY)"' in guard
     assert 'scripts/require-vpn-selection.py' in guard
     assert '--limit "$(ANSIBLE_LIMIT)"' in guard
     for target in (
@@ -711,6 +714,38 @@ def test_live_ansible_targets_require_a_nonempty_generated_inventory():
         assert "require-inventory" in declaration
     for target in ("dry-run", "deploy"):
         assert f"{target}:\n\t@python3 scripts/deploy-controller.py {target}" in makefile
+
+
+@pytest.mark.parametrize("custom_inventory", [False, True])
+@pytest.mark.parametrize("empty_file", [False, True])
+def test_inventory_guard_refuses_missing_or_empty_selected_file(tmp_path, custom_inventory, empty_file):
+    root = Path(__file__).resolve().parents[2]
+    ansible_dir = tmp_path / "ansible"
+    generated = ansible_dir / "inventory/generated.ini"
+    generated.parent.mkdir(parents=True)
+    selected = tmp_path / "snapshot.ini" if custom_inventory else generated
+    if custom_inventory:
+        generated.write_text("[vpn]\nunused-default\n")
+    if empty_file:
+        selected.touch()
+    marker = tmp_path / "inventory-reader-called"
+    tool_dir = tmp_path / "bin"
+    tool_dir.mkdir()
+    reader = tool_dir / "ansible-inventory"
+    reader.write_text(f'#!/bin/sh\ntouch "{marker}"\nexit 99\n')
+    reader.chmod(0o755)
+    env = {key: value for key, value in os.environ.items()
+           if key not in {"MAKEFILES", "MAKEFLAGS", "GNUMAKEFLAGS", "MFLAGS", "ANSIBLE_INVENTORY"}}
+    env["PATH"] = f"{tool_dir}:{env['PATH']}"
+    result = subprocess.run(
+        ["make", "--no-print-directory", "-f", str(root / "Makefile"),
+         "require-inventory", f"ANSIBLE_DIR={ansible_dir}",
+         *([f"ANSIBLE_INVENTORY={selected}"] if custom_inventory else [])],
+        cwd=tmp_path, env=env, capture_output=True, text=True, timeout=10, check=False,
+    )
+    assert result.returncode != 0
+    assert "missing generated inventory" in result.stdout + result.stderr
+    assert not marker.exists()
 
 
 def test_xray_diagnostics_rejects_unsafe_extra_vars_files():
@@ -817,7 +852,7 @@ def test_local_policy_gate_propagates_a_real_policy_failure(tmp_path):
     policy.mkdir(parents=True)
     (policy / 'failing_test.rego').write_text('package regression\ntest_deliberate_failure { false }\n')
     result = subprocess.run(['make', '--no-print-directory', '-f', str(root / 'Makefile'),
-                             'tf-policy-verify'], cwd=tmp_path, capture_output=True, text=True, timeout=10)
+                             'tf-policy-verify'], cwd=tmp_path, capture_output=True, text=True, timeout=10, check=False)
     assert result.returncode != 0
     assert '1 failure' in result.stdout + result.stderr
 
@@ -837,7 +872,7 @@ def test_canary_scope_guard_precedes_recursive_deploy(tmp_path, secrets_file, so
     result = subprocess.run([
         'make', '--no-print-directory', '-f', str(root / 'Makefile'), 'deploy-canary',
         f'MAKE={child_make}', f'SECRETS_FILE={secrets_file}', f'SOPS_FILE={sops_file}',
-    ], cwd=tmp_path, capture_output=True, text=True, timeout=10)
+    ], cwd=tmp_path, capture_output=True, text=True, timeout=10, check=False)
     if accepted:
         assert result.returncode == 0, result.stderr
         assert marker.read_text().strip() == 'ENV=canary deploy'

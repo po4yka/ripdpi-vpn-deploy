@@ -176,3 +176,28 @@ def test_rejects_duplicate_network_exposure_fields(tmp_path: Path) -> None:
         "  promotion_approved: false\n  promotion_digest: ''\n  authorized_hosts: []\n")
     with pytest.raises(ValueError, match="duplicate"):
         validator.validate(path)
+
+
+@pytest.mark.parametrize('changes', [{}, {'intent_sha256': 'invalid'}, {'operation_id': 'INVALID'}, {'extra': True}])
+def test_revocation_intent_is_strictly_typed(tmp_path, changes):
+    value = {'operation_id': '11111111-1111-4111-8111-111111111111', 'intent_sha256': 'a'*64}
+    value.update(changes)
+    path = write_yaml(tmp_path, {'vpn_device_revocation': value})
+    if changes:
+        with pytest.raises(ValueError, match='exact operation'):
+            validator.validate(path)
+    else:
+        validator.validate(path)
+
+
+@pytest.mark.parametrize('value', [False, 'true', 1, None])
+def test_retained_publisher_override_rejects_untyped_flag(tmp_path, value):
+    with pytest.raises(ValueError, match='retained publisher'):
+        validator.validate(write_yaml(tmp_path, {'vpn_device_retained_publisher': value}))
+
+
+def test_retained_publisher_override_requires_revocation(tmp_path):
+    with pytest.raises(ValueError, match='revocation authority'):
+        validator.validate(write_yaml(tmp_path, {'vpn_device_retained_publisher': True}))
+    validator.validate(write_yaml(tmp_path, {'vpn_device_retained_publisher': True,
+        'vpn_device_revocation': {'operation_id': '11111111-1111-4111-8111-111111111111', 'intent_sha256': 'a'*64}}))

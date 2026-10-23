@@ -225,6 +225,33 @@
   changed_when: naive_log_preparation.rc == 0 and (naive_log_preparation.stdout | from_json).changed | bool
   when: not ansible_check_mode
 
+- name: Install systemd unit
+  ansible.builtin.template:
+    src: caddy-naive.service.j2
+    dest: /etc/systemd/system/caddy-naive.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Bind exact Naive revocation candidate bytes before publication
+  ansible.builtin.set_fact:
+    _device_revocation_plan: >-
+      {{ {'/etc/systemd/system/caddy-naive.service': lookup('ansible.builtin.template', 'caddy-naive.service.j2') | hash('sha256'),
+          naive.config_dir ~ '/caddy.json': lookup('ansible.builtin.template', 'caddy.json.j2') | hash('sha256'),
+          naive.config_dir ~ '/server.fullchain.pem': naive_secrets.cert_pem | hash('sha256'),
+          naive.config_dir ~ '/server.key': naive_secrets.key_pem | hash('sha256')} }}
+  no_log: true
+  when: vpn_device_revocation | default(none) is not none
+
+- name: Stop accepted Naive credentials under the exact durable operation
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: revocation-barrier
+  vars:
+    device_revocation_unit: caddy-naive.service
+    device_revocation_action: begin
+    device_revocation_plan: '{{ _device_revocation_plan | default({}) }}'
+
 - name: Drop TLS cert + key
   ansible.builtin.copy:
     content: "{{ item.content }}"
@@ -251,20 +278,13 @@
   no_log: true
   diff: false
 
-- name: Install systemd unit
-  ansible.builtin.template:
-    src: caddy-naive.service.j2
-    dest: /etc/systemd/system/caddy-naive.service
-    owner: root
-    group: root
-    mode: "0644"
-
 - name: Enable caddy-naive
   ansible.builtin.systemd_service:
     name: caddy-naive
     enabled: true
     state: started
     daemon_reload: true
+  when: vpn_device_revocation | default(none) is none
 
 - name: Install durable Naive activation helper
   ansible.builtin.copy:
@@ -307,5 +327,19 @@
       - "{{ naive.bind_port | string }}"
   register: naive_activation_result
   changed_when: (naive_activation_result.stdout | from_json).changed | bool
-  when: not ansible_check_mode
+  when:
+    - not ansible_check_mode
+    - vpn_device_revocation | default(none) is none
   no_log: true
+
+- name: Activate only the exact revoked Naive candidate
+  ansible.builtin.include_role:
+    name: runtime-release
+    tasks_from: revocation-barrier
+  vars:
+    device_revocation_unit: caddy-naive.service
+    device_revocation_action: activate
+    device_revocation_plan: '{{ _device_revocation_plan | default({}) }}'
+    device_revocation_activation:
+      server_name: '{{ naive_secrets.server_name }}'
+      port: '{{ naive.bind_port | int }}'

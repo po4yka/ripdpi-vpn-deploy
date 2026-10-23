@@ -14,6 +14,7 @@
   ansible.builtin.set_fact:
     _transport_ingress_request:
       check: '{{ ansible_check_mode }}'
+      revocation: '{{ vpn_device_revocation | default(none) }}'
       owners:
         - owner: nginx-xhttp
           roots: [/etc/nginx, /var/www/public-site]

@@ -299,7 +299,7 @@ def _transports(host):
 
 
 def prepare_promotion(path, environment):
-    """Only a typed staging intent can invoke the fixed onboarding adapter."""
+    """Only a typed lifecycle intent can invoke its fixed onboarding adapter."""
     try:
         with os.fdopen(fleet_inspection._open_local_file(path, private=True), "rb") as handle:
             raw = handle.read(MAX_REQUEST + 1)
@@ -308,6 +308,9 @@ def prepare_promotion(path, environment):
         document = json.loads(raw)
         if isinstance(document, dict) and document.get("kind") == "disposable-staging-intent":
             from disposable_promotion import finalize
+            return finalize(document, environment), True
+        if isinstance(document, dict) and document.get("kind") == "recovery-promotion-intent":
+            from recovery_promotion import finalize
             return finalize(document, environment), True
         return path, False
     except (OSError, ValueError, fleet_inspection.InspectionError):

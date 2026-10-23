@@ -2,6 +2,69 @@
 
 ## Design decisions
 
+Executable recovery admits one exact UpCloud replacement with a surviving
+separate publisher. Private durable intent precedes external operations; resume
+reconciles account, unique resource, state and exact saved-plan postconditions.
+Provider credentials reach only provider operations. Frozen private inputs bind
+canonical management and deployment, and a real post-data-plane sentinel receipt
+creates the promotion epoch. Never invent applied_at, auto-import an ambiguous
+resource, replay an uncertain apply blindly or claim device readiness from
+publication alone. The Make recovery entry point preserves literal inputs and
+runs before operator configuration is parsed.
+
+Device lifecycle admits the complete inventory and every configured or retained
+publisher. Overlapping fleets lock every authority in sorted order, regardless
+of journal host. Revocation binds immutable encrypted intent to the canonical
+runtime forward-only barrier through a private typed override; progress updates
+cannot change that digest. Native-only delivery exports official AWG/Naive
+configuration without a published token.
+Its encrypted intent freezes generated credentials, grant CAS bytes, source
+identity and recipient output before mutation. Canonical role rotation and
+private native probes must succeed for each affected node. Naive revocation
+witnesses require a mapping of actual HTTP servers even after the last user
+retires. Publisher revocation requires an owned TLS canary accepted before authority replacement and rejected
+after it; snapshot flags alone are insufficient. Never recreate credentials on
+resume or treat status as fresh runtime verification.
+Retired Hysteria keeps its lazy client SOCKS listener while the absent UDP peer
+consumes the request deadline. A full-duration curl timeout qualifies as denial
+only with unchanged before/after authority, confirmed inactive runtime and
+absent identity, successful controls, setup and cleanup. Active or unproven
+timeouts remain unknown.
+An owned AWG TUN can exist before its userspace control API. Probe startup waits
+for a successful bounded listen-port read before the single configuration write;
+the fresh daemon may already hold an ephemeral UDP port. Setup failures expose
+only fixed phase categories, never native output or private configuration.
+
+Device migration uses separate source/target SOPS authorities and an encrypted
+intent before cross-document writes. Exact inventory, host pins, alternate
+sources and endpoint fingerprints fence resume. Publisher IO owns initialization
+of the complete plan, hosts, commands and admission callback; subclasses admit
+local values before the single base initialization. Publisher CAS
+preserves every active URL and expiry; registry identity includes the exact migration metadata.
+Preparation precedes target convergence. Publication and readiness re-run
+target verification and an expiring credential-free TLS route canary, then
+re-read authority before accepting delivery. Old credentials remain until a
+separate retirement action. Origin and route probes explicitly require TLS 1.2
+or newer while retaining certificate and hostname verification. Keep published,
+received and fresh path-tested
+states distinct; official-client attestations are explicit operator evidence.
+Blue-green retains the target environment selector after handover because
+delivered bindings now refer to it. Never rename target tfvars into the source
+selector or recommend unconditional target destruction after publication.
+Pair inventory rendering uses an owned temporary output and retains unrelated
+publisher/alternate rows and memberships after strict admission. A changed
+global SSH authority or concurrent inventory edit refuses replacement. A
+topology-wide observability generation must be rendered by its complete owner;
+the pair wrapper refuses it before provisioning. Standalone migration consumes
+the complete reviewed inventory without re-rendering it.
+
+TCP destination failover uses one immutable admitted DNS snapshot, interleaves
+address families and races at most two gateway controls across eight candidates.
+One connect deadline covers authentication and every attempt; per-attempt expiry
+prevents two stalled controls from hiding later addresses. Only the winner enters
+the relay, after loser sockets close. Never retry after application transfer.
+UDP retains one pinned literal and one send per datagram.
+
 Payload probing requires exact canonical bytes and bounded curl output through
 `payload_probe_content.py`. Explicit SOCKS ignores ambient proxies and never
 falls back to direct. Successful-transfer slowdown compares time per byte
@@ -907,6 +970,15 @@ promotion authority. No validator installs a client, edits secrets or deploys.
 Task deletion audits compare against the explicit trusted base while retaining
 feature first-parent lifecycle history. Importing a purge already in that base
 is not a new deletion when no issue, execution or receipt changed outside it.
-Independent lifecycle edits and merge-only resurrection retain the full audit.
+Earlier active-state imports must match the unique latest common ancestor with
+that base exactly, including imports carried by another feature parent that
+contains that ancestor and preserves its projection. Scan every introduced
+commit across the full DAG, including each carrier's own history.
+Stale ancestor imports after a newer base state, independent
+lifecycle edits and merge-only resurrection retain the full audit.
 
 The monitor wraps the canonical REALITY collector in one owned process session and parent-owned temporary directory. Invalid explicit target, name, mode and owned-public prerequisites refuse before missing private defaults are loaded.
+
+Device revocation also admits exact published grants after source credentials were
+already removed. Reconcile every declared runtime and report the retained native
+profile count; absent preimages never imply that an old-key probe was executed.

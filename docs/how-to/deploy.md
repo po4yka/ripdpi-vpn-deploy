@@ -409,6 +409,16 @@ in `terraform apply`. To deliberately destroy, run `make destroy`: the
 wrapper lifts that lifecycle block through a temporary override file so
 the tracked source stays clean.
 
+## Replace a server with existing devices
+
+Follow [Device migration](device-migration.md) before retiring the source.
+Blue-green requires a separate `GREEN_SOPS_FILE` and a reviewed
+`DEVICE_MIGRATION_PLAN`. It prepares device identities before target convergence,
+preserves every active subscription URL, and gates drain on fresh device path
+evidence. Keep the source available while any device is only published or
+received. Publication, device receipt and successful target traffic are separate
+states; a healthy replacement alone does not complete device migration.
+
 ## Add a new client device
 
 ```bash

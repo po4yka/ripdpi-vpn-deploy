@@ -16,14 +16,14 @@
 #   --path-b           Restore from restic snapshot
 #   --dry-run          Print the procedural steps without touching state
 #
-# In real mode the individual make / ansible-playbook / ssh invocations are
-# performed interactively. See docs/how-to/restore.md for the canonical procedure.
-#
-# TODO(maintainer): real-mode automation beyond dry-run is deferred to a
-# future iteration — the runbook remains the source of truth for live
-# recovery. Only dry-run is fully automated and tested.
+# Executable Path A: scripts/restore.sh --manifest <private.json> [--resume]
+#                    [--approve <review-digest>]
+# The private manifest selects the exact replacement; Path B remains manual.
 set -eu
 
+MANIFEST=""
+APPROVAL=""
+ACTION="run"
 ENV=""
 PROVIDER="upcloud"
 PATH_A=0
@@ -32,6 +32,13 @@ DRY_RUN=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --manifest)
+      [ $# -ge 2 ] || exit 2
+      MANIFEST="$2"; shift 2 ;;
+    --approve)
+      [ $# -ge 2 ] || exit 2
+      APPROVAL="$2"; shift 2 ;;
+    --resume) ACTION="resume"; shift ;;
     --env)
       [ $# -ge 2 ] || { printf 'error: --env requires a value\n' >&2; exit 1; }
       ENV="$2"; shift 2 ;;
@@ -49,6 +56,17 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+if [ -n "$MANIFEST" ]; then
+  [ "$PATH_B" -eq 0 ] && [ "$DRY_RUN" -eq 0 ] && [ -z "$ENV" ] && [ "$PROVIDER" = "upcloud" ] || {
+    printf 'error: manifest execution is exact UpCloud Path A only\n' >&2; exit 2;
+  }
+  SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+  if [ -n "$APPROVAL" ]; then
+    exec python3 "$SCRIPT_DIR/recovery.py" "$ACTION" --manifest "$MANIFEST" --approve "$APPROVAL"
+  fi
+  exec python3 "$SCRIPT_DIR/recovery.py" "$ACTION" --manifest "$MANIFEST"
+fi
+[ -z "$APPROVAL" ] && [ "$ACTION" = "run" ] || { printf 'error: --manifest required\n' >&2; exit 2; }
 [ -n "$ENV" ] || { printf 'error: --env <name> is required\n' >&2; exit 1; }
 
 case "$ENV" in
@@ -143,14 +161,8 @@ if [ "$DRY_RUN" -eq 1 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Real mode: interactive guided execution.
-# TODO(maintainer): Automate real-mode steps. The runbook is the SOT for now.
+# Executable recovery requires a complete immutable private selection.
 # ---------------------------------------------------------------------------
-printf 'restore.sh real mode is not yet automated.\n'
-printf 'Follow docs/how-to/restore.md manually for ENV=%s PROVIDER=%s\n' "$ENV" "$PROVIDER"
-if [ "$PATH_A" -eq 1 ]; then
-  printf 'Use Path A (full rebuild from scratch).\n'
-else
-  printf 'Use Path B (restore from restic snapshot).\n'
-fi
-exit 1
+printf 'Executable Path A requires --manifest <private.json>.\n' >&2
+printf 'Path B root-restic restoration requires the separately reviewed runbook.\n' >&2
+exit 2

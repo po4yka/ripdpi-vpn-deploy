@@ -285,42 +285,213 @@ def _retire_interrupted_documents(directory):
         _sync_directory(directory)
 
 
+def _write_subscription(directory, token_hash, content):
+    """The caller retains the state lock and has admitted the current document."""
+    _retire_interrupted_documents(directory)
+    temporary = ".document-" + uuid.uuid4().hex
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                         0o600, dir_fd=directory)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, token_hash + ".document", src_dir_fd=directory, dst_dir_fd=directory)
+        _sync_directory(directory)
+    finally:
+        try:
+            os.unlink(temporary, dir_fd=directory)
+        except FileNotFoundError:
+            pass
+
+
 def _publish_subscription(token_hash, content):
     if not re.fullmatch(r"[0-9a-f]{64}", token_hash) or len(content) > MAX_DOCUMENT_BYTES:
         raise ValueError("invalid publication request")
     _document(content)
     with _state_authority() as root:
         directory = _publication_route(root)
-        temporary = None
-        temporary_owned = False
         try:
-            _retire_interrupted_documents(directory)
-            name = token_hash + ".document"
             try:
-                existing = _read_bounded(directory, name, MAX_DOCUMENT_BYTES)
+                existing = _read_bounded(directory, token_hash + ".document", MAX_DOCUMENT_BYTES)
             except FileNotFoundError:
                 pass
             else:
                 _document(existing)
-            temporary = ".document-" + uuid.uuid4().hex
-            descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                                 0o600, dir_fd=directory)
-            temporary_owned = True
-            with os.fdopen(descriptor, "wb") as stream:
-                stream.write(content)
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(temporary, name, src_dir_fd=directory, dst_dir_fd=directory)
-            _sync_directory(directory)
+            _write_subscription(directory, token_hash, content)
         finally:
+            os.close(directory)
+
+
+MIGRATION_MAX_DOCUMENTS = 256
+MIGRATION_MAX_BYTES = 2 * 1024 * 1024
+MIGRATION_MAX_REQUEST_BYTES = 4 * ((MIGRATION_MAX_BYTES + 2) // 3) + 1024
+
+
+def _migration_names(directory, maximum):
+    names = []
+    with os.scandir(directory) as entries:
+        for entry in entries:
+            names.append(entry.name)
+            if len(names) > maximum:
+                raise ValueError("migration namespace capacity exceeded")
+    return sorted(names)
+
+
+def _migration_revocations():
+    # Read the whole authority: a matching early entry cannot hide later damage.
+    revoked = set()
+    with _open_revocation() as stream:
+        if os.fstat(stream.fileno()).st_size > MIGRATION_MAX_BYTES:
+            raise ValueError("migration revocation capacity exceeded")
+        for line in stream:
+            value = line.strip().lower()
+            if not value or value.startswith("#"):
+                continue
+            if not re.fullmatch(r"[0-9a-f]{64}", value):
+                raise ValueError("invalid migration revocation authority")
+            revoked.add(value)
+    return revoked
+
+
+def _migration_bootstrap_count(root, revoked):
+    _read_fence(root)
+    directory = _private_route(root, "bootstrap")
+    try:
+        names = _migration_names(directory, 20000)
+        hashes = set()
+        for name in names:
+            match = re.fullmatch(r"([0-9a-f]{64})(?:\.meta)?", name)
+            if match is None:
+                raise ValueError("unsupported bootstrap publication")
+            _read_bounded(directory, name, MAX_PAYLOAD_BYTES, private=False)
+            hashes.add(match[1])
+        count = 0
+        for token_hash in hashes:
+            if token_hash not in names:
+                raise ValueError("orphan bootstrap metadata")
+            consumed = _bootstrap_consumed(token_hash)
+            if consumed is None:
+                raise ValueError("bootstrap consumption authority unavailable")
+            # Hashes cannot recover intrinsic token issuance. Missing/invalid
+            # expiry is conservatively active; consumed grants are never copied.
+            _, expired = _delivery(SUBSCRIPTION_DIR / "bootstrap", token_hash, document=False)
+            if not consumed and token_hash not in revoked and expired is not True:
+                count += 1
+        return count
+    finally:
+        os.close(directory)
+
+
+def _migration_snapshot():
+    with _state_authority() as root:
+        directory = _publication_route(root)
+        try:
+            revoked = _migration_revocations()
+            names = _migration_names(directory, MIGRATION_MAX_DOCUMENTS * 4 + 128)
+            documents = []
+            total = 0
+            for name in names:
+                match = re.fullmatch(r"([0-9a-f]{64})\.document", name)
+                if match is None:
+                    legacy = re.fullmatch(r"([0-9a-f]{64})(?:\.(?:meta|json))?", name)
+                    if legacy and legacy[1] + ".document" in names:
+                        _read_bounded(directory, name, MAX_PAYLOAD_BYTES, private=False)
+                        continue
+                    if re.fullmatch(r"\.document-[0-9a-f]{32}", name):
+                        _read_bounded(directory, name, MAX_DOCUMENT_BYTES)
+                        continue
+                    raise ValueError("unsupported migration publication")
+                content = _read_bounded(directory, name, MIGRATION_MAX_BYTES)
+                _, expires = _document(content)
+                expired = _expiry_due(expires) if expires else False
+                if expired is None:
+                    raise ValueError("invalid migration expiry")
+                total += len(content)
+                if total > MIGRATION_MAX_BYTES or len(documents) >= MIGRATION_MAX_DOCUMENTS:
+                    raise ValueError("migration document capacity exceeded")
+                documents.append(dict(token_hash=match[1], document_sha256=hashlib.sha256(content).hexdigest(),
+                                      document_b64=base64.b64encode(content).decode("ascii"),
+                                      revoked=match[1] in revoked, expired=expired))
+            return dict(schema_version=1, documents=documents,
+                        active_bootstrap_count=_migration_bootstrap_count(root, revoked))
+        finally:
+            os.close(directory)
+
+
+def _migration_publish(token_hash, request):
+    if not re.fullmatch(r"[0-9a-f]{64}", token_hash) or len(request) > MIGRATION_MAX_REQUEST_BYTES:
+        raise ValueError("invalid migration publication request")
+    value = json.loads(request, object_pairs_hook=_unique_authority_object)
+    if (not isinstance(value, dict) or set(value) != {"schema_version", "expected_document_sha256", "document_b64"}
+            or type(value["schema_version"]) is not int or value["schema_version"] != 1):
+        raise ValueError("invalid migration publication request")
+    expected, encoded = value["expected_document_sha256"], value["document_b64"]
+    if expected is not None and (not isinstance(expected, str) or not re.fullmatch(r"[0-9a-f]{64}", expected)):
+        raise ValueError("invalid migration expected identity")
+    desired = None
+    if encoded is not None:
+        if not isinstance(encoded, str):
+            raise ValueError("invalid migration document encoding")
+        desired = base64.b64decode(encoded, validate=True)
+        if len(desired) > MIGRATION_MAX_BYTES or base64.b64encode(desired).decode("ascii") != encoded:
+            raise ValueError("invalid migration document encoding")
+        _document(desired)
+    elif expected is None:
+        raise ValueError("migration deletion requires an owned identity")
+    with _state_authority() as root:
+        directory = _publication_route(root)
+        try:
+            if token_hash in _migration_revocations() and desired is not None:
+                raise ValueError("migration grant revoked")
+            legacy_names = []
+            for suffix in ("", ".meta", ".json"):
+                try:
+                    os.stat(token_hash + suffix, dir_fd=directory, follow_symlinks=False)
+                except FileNotFoundError:
+                    continue
+                legacy_names.append(token_hash + suffix)
             try:
-                if temporary_owned:
+                current = _read_bounded(directory, token_hash + ".document", MIGRATION_MAX_BYTES)
+            except FileNotFoundError:
+                current = None
+            if legacy_names and (current is None or desired is None):
+                # Creation cannot adopt a legacy grant; deletion cannot reveal it.
+                raise ValueError("migration legacy publication exists")
+            for name in legacy_names:
+                _read_bounded(directory, name, MAX_PAYLOAD_BYTES, private=False)
+            admitted = []
+            for content in (current, desired):
+                if content is not None:
+                    _, expires = _document(content)
+                    if expires and _expiry_due(expires) is not False:
+                        raise ValueError("migration grant expired")
+                    admitted.append(json.loads(content))
+            if len(admitted) == 2 and any(admitted[0][key] != admitted[1][key] for key in ("client", "expires")):
+                raise ValueError("migration grant identity changed")
+            new_hash = hashlib.sha256(desired).hexdigest() if desired is not None else None
+            if current == desired:
+                if current is not None:
+                    descriptor = _private_file(directory, token_hash + ".document")
                     try:
-                        os.unlink(temporary, dir_fd=directory)
-                    except FileNotFoundError:
-                        pass
-            finally:
-                os.close(directory)
+                        os.fsync(descriptor)
+                    finally:
+                        os.close(descriptor)
+                _sync_directory(directory)
+                result = "already-applied"
+            else:
+                actual = hashlib.sha256(current).hexdigest() if current is not None else None
+                if actual != expected:
+                    raise ValueError("migration publication conflict")
+                if desired is None:
+                    os.unlink(token_hash + ".document", dir_fd=directory)
+                    _sync_directory(directory)
+                else:
+                    _write_subscription(directory, token_hash, desired)
+                result = "applied"
+            return dict(schema_version=1, token_hash=token_hash, document_sha256=new_hash, result=result)
+        finally:
+            os.close(directory)
 
 
 def _delivery(route_dir, token_hash, *, document=True):
@@ -879,6 +1050,16 @@ def main(arguments=()):
             and arguments[2] == str(SUBSCRIPTION_DIR)):
         _publish_subscription(arguments[1], sys.stdin.buffer.read(MAX_DOCUMENT_BYTES + 1))
         print("subscription-published-v1")
+        return
+    if (len(arguments) == 2 and arguments[0] in {"--migration-ready", "--migration-snapshot"}
+            and arguments[1] == str(SUBSCRIPTION_DIR)):
+        snapshot = _migration_snapshot()
+        print("migration-publisher-v1" if arguments[0] == "--migration-ready" else json.dumps(snapshot, separators=(",", ":")))
+        return
+    if (len(arguments) == 3 and arguments[0] == "--migration-publish"
+            and arguments[2] == str(SUBSCRIPTION_DIR)):
+        receipt = _migration_publish(arguments[1], sys.stdin.buffer.read(MIGRATION_MAX_REQUEST_BYTES + 1))
+        print(json.dumps(receipt, separators=(",", ":")))
         return
     if list(arguments) == ["--maintain"]:
         with _state_authority() as authority:

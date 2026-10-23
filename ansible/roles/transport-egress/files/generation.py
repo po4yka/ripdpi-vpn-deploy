@@ -7,7 +7,6 @@ import json
 import os
 from pathlib import Path
 import pwd
-import re
 import signal
 import socket
 import stat
@@ -49,6 +48,43 @@ def runtime_admission():
         admission('/var/lib/ripdpi/transport-runtime')
     except RuntimeRefusal:
         raise Refusal('generation-runtime-admission-refused') from None
+
+
+def hysteria_outbound(raw):
+    # Installed by the Hysteria role for this same system Python interpreter.
+    import yaml
+
+    class AuthorityLoader(yaml.SafeLoader):
+        def construct_mapping(self, node, deep=False):
+            if not isinstance(node, yaml.MappingNode):
+                raise Refusal('generation-frontend-authority-invalid')
+            result = {}
+            for key_node, value_node in node.value:
+                key = self.construct_object(key_node, deep=deep)
+                if not isinstance(key, str) or key in result:
+                    raise Refusal('generation-frontend-authority-invalid')
+                result[key] = self.construct_object(value_node, deep=deep)
+            return result
+
+    loader = None
+    try:
+        loader = AuthorityLoader(raw)
+        document = loader.get_single_data()
+    except (yaml.YAMLError, RecursionError):
+        raise Refusal('generation-frontend-authority-invalid') from None
+    finally:
+        if loader is not None:
+            loader.dispose()
+    outbounds = document.get('outbounds') if isinstance(document, dict) else None
+    if not isinstance(outbounds, list) or len(outbounds) != 1:
+        raise Refusal('generation-frontend-authority-invalid')
+    outbound = outbounds[0]
+    if (not isinstance(outbound, dict) or set(outbound) != {'name', 'type', 'socks5'}
+            or outbound['name'] != 'guarded-direct' or outbound['type'] != 'socks5'
+            or not isinstance(outbound['socks5'], dict)
+            or set(outbound['socks5']) != {'addr', 'username', 'password'}):
+        raise Refusal('generation-frontend-authority-invalid')
+    return outbound['socks5']
 
 
 def frontend_config_path(unit):
@@ -376,15 +412,11 @@ class Controller:
                     if server['address'] != expected['address'] or server['port'] != expected['port'] or server['users'] != [{'user': expected['username'], 'pass': expected['password']}]:
                         raise Refusal('generation-frontend-credential-mismatch')
             else:
-                blocks = raw.split('outbounds:\n')
-                if len(blocks) != 2:
-                    raise Refusal('generation-frontend-authority-invalid')
+                server = hysteria_outbound(raw)
                 expected = by_name['direct_hysteria']
-                for field, value in [('addr', expected['address']+':'+str(expected['port'])),
-                                     ('username', expected['username']), ('password', expected['password'])]:
-                    found = re.findall(r'^      '+field+r': (".*")$', blocks[1], re.MULTILINE)
-                    if len(found) != 1 or json.loads(found[0]) != value:
-                        raise Refusal('generation-frontend-credential-mismatch')
+                if server != {'addr': expected['address']+':'+str(expected['port']),
+                              'username': expected['username'], 'password': expected['password']}:
+                    raise Refusal('generation-frontend-credential-mismatch')
 
     def run(self):
         global stopping
