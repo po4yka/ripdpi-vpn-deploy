@@ -14,6 +14,12 @@
 
 ## Design decisions
 
+Native Snell fixtures reserve all server and client listeners simultaneously,
+releasing each process's sockets only after parsing and immediately before launch.
+This prevents self-collisions; a foreign bind in the remaining launch gap still
+fails without retry. Startup logs stay private (0600), bounded reads emit only
+fixed failure categories, and readiness never adds counted probe connections.
+
 Four-transport recovery uses three complete, disjoint partitions with the same
 2400-second suite limit. Timeout evidence retains only source-admitted test names,
 parameterization hashes, fixed phases and bounded outcome counts from an atomic
