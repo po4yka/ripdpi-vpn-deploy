@@ -92,6 +92,8 @@ mode 0600, because they hold live per-device credentials.
 | Something broke after a change | [how-to/rollback.md](docs/how-to/rollback.md) |
 | An address burned, a key leaked, SSH is gone | [how-to/incident.md](docs/how-to/incident.md) |
 | Rotate one device or a server-wide key | [how-to/rotate.md](docs/how-to/rotate.md) |
+| Replace a server and confirm device handover | [how-to/device-migration.md](docs/how-to/device-migration.md) |
+| Issue, refresh or revoke one device across the fleet | [how-to/device-lifecycle.md](docs/how-to/device-lifecycle.md) |
 | Rebuild after host loss | [how-to/restore.md](docs/how-to/restore.md) |
 | The secrets model and age key recovery | [reference/secrets.md](docs/reference/secrets.md), [how-to/age-recovery.md](docs/how-to/age-recovery.md) |
 | Why the design looks like this | [explanation/threat-model.md](docs/explanation/threat-model.md), [decisions/](docs/decisions/README.md) |

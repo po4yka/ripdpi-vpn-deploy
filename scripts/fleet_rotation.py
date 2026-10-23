@@ -70,11 +70,18 @@ def load_plan(path):
             aliases.add(node["inventory_alias"])
         sources, destinations = set(), set()
         for entry in rotations:
-            keys(entry, ("current", "new_env"), ("new_zone",))
+            keys(entry, ("current", "new_env", "green_sops_file", "migration_plan", "migration_approval"), ("new_zone",))
             if (not isinstance(entry["current"], str) or entry["current"] not in pairs
                     or entry["current"] in sources or not matches(NAME, entry["new_env"])
                     or entry["new_env"] == "default"
                     or ("new_zone" in entry and not matches(ALIAS, entry["new_zone"]))):
+                raise RotationError("invalid-plan")
+            for field in ("green_sops_file", "migration_plan"):
+                value = entry[field]
+                if not isinstance(value, str) or not value or len(value) > 4096 or any(ord(c) < 32 for c in value):
+                    raise RotationError("invalid-plan")
+                entry[field] = os.path.abspath(os.path.join(path.parent, value))
+            if not matches(re.compile(r"[0-9a-f]{64}\Z"), entry["migration_approval"]):
                 raise RotationError("invalid-plan")
             destination = entry["current"].split(":", 1)[0] + ":" + entry["new_env"]
             if destination in pairs or destination in destinations:
@@ -224,9 +231,23 @@ def validate_state(state, plan):
 
 def execute_rotation(entry, root, lock):
     provider, environment = entry["current"].split(":", 1)
+    # Only real execution reads the private migration plan; dry-run remains
+    # independent of every migration/credential input referenced by the fleet.
+    from device_migration_io import load_plan as load_migration_plan
+    try:
+        migration = load_migration_plan(entry["migration_plan"])
+        if (migration["source"]["host"] != entry["current"]
+                or migration["target"]["host"] != provider + ":" + entry["new_env"]
+                or migration["target"]["secrets_file"] != entry["green_sops_file"]):
+            raise ValueError
+    except (OSError, ValueError, KeyError, TypeError):
+        raise RotationError("migration-plan-does-not-match-rotation") from None
     child_env = dict(os.environ)
     child_env.update(PROVIDER=provider, ENV=environment, BLUE_ENV=environment,
-                     GREEN_ENV=entry["new_env"], GREEN_ZONE=entry.get("new_zone", ""), DRY_RUN="0")
+                     GREEN_ENV=entry["new_env"], GREEN_ZONE=entry.get("new_zone", ""), DRY_RUN="0",
+                     SOPS_FILE=migration["source"]["secrets_file"], GREEN_SOPS_FILE=entry["green_sops_file"],
+                     BLUE_COHORT=migration["source"]["cohort"], GREEN_COHORT=migration["target"]["cohort"],
+                     DEVICE_MIGRATION_PLAN=entry["migration_plan"], DEVICE_MIGRATION_APPROVAL=entry["migration_approval"])
     # The existing script keeps every interactive provider/deploy/pivot gate.
     child = subprocess.Popen([str(Path(root) / "scripts/blue-green.sh")], env=child_env,
                              start_new_session=True, pass_fds=(lock,))
@@ -291,7 +312,7 @@ def run_plan(path, *, root=ROOT, resume=False, dry_run=False, confirm=operator_c
     print(f"plan id={plan['id']} rotations={len(plan['rotations'])} min_active={plan['min_active']}", flush=True)
     if dry_run:
         for entry in plan["rotations"]:
-            print(f"  {entry['current']} -> ENV={entry['new_env']} zone={entry.get('new_zone', '(same)')}")
+            print(f"  {entry['current']} -> ENV={entry['new_env']} zone={entry.get('new_zone', '(same)')} migration=reviewed separate-target-secrets")
         return 0
     with Journal(root, plan["id"]) as journal:
         state = journal.read()

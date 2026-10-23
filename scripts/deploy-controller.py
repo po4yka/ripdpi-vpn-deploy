@@ -554,10 +554,14 @@ def transaction_inputs(mode, hosts, identity, directory, root, environment, *,
                     or any(target.get(key) != value for key, value in expected_target.items())):
                 raise DeployError("promotion proof configs do not bind selected targets")
             config = promotions[alias]
-            if config.get("kind") == "disposable-staging-intent":
-                from disposable_promotion import OnboardingError, prepare_intent
+            if config.get("kind") in {"disposable-staging-intent", "recovery-promotion-intent"}:
+                if config["kind"] == "recovery-promotion-intent":
+                    from recovery_promotion import PromotionError as OnboardingError
+                    from recovery_promotion import prepare_intent
+                else:
+                    from disposable_promotion import OnboardingError, prepare_intent
                 if len(hosts) != 1 or memberships is None or deployed_secrets is None:
-                    raise DeployError("onboarding requires one staging host")
+                    raise DeployError("onboarding requires one exact host")
                 try:
                     config = prepare_intent(config, host, memberships[alias], directory,
                                             deployed_secrets, environment)

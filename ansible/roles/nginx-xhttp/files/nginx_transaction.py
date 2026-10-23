@@ -34,10 +34,11 @@ class TransactionError(RuntimeError):
     """Only categorical failure text may reach Ansible or a journal."""
 
 
-def command(argv):
+def command(argv, *, data=None):
     try:
         result = subprocess.run(
-            argv, stdin=subprocess.DEVNULL, capture_output=True, timeout=30
+            argv, **({'stdin': subprocess.DEVNULL} if data is None else {'input': data}),
+            capture_output=True, timeout=30
         )
     except (OSError, subprocess.SubprocessError):
         raise TransactionError("runtime-command") from None
@@ -861,11 +862,21 @@ def unit_lock(state):
         os.close(descriptor)
 
 
+def revocation_authority(value):
+    if value is not None and (not isinstance(value, dict) or set(value) != {'operation_id', 'intent_sha256'}
+            or not isinstance(value['operation_id'], str)
+            or re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', value['operation_id']) is None
+            or not isinstance(value['intent_sha256'], str) or re.fullmatch(r'[0-9a-f]{64}', value['intent_sha256']) is None):
+        raise TransactionError('site-revocation-invalid')
+    return value
+
+
 def site_request(document):
-    if (not isinstance(document, dict) or set(document) != {"owners", "check"}
+    if (not isinstance(document, dict) or set(document) - {'revocation'} != {"owners", "check"}
             or type(document["check"]) is not bool or not isinstance(document["owners"], list)
             or len(document["owners"]) != 2):
         raise TransactionError("site-request")
+    revocation_authority(document.get('revocation'))
     result = []
     for owner in document["owners"]:
         if (not isinstance(owner, dict) or set(owner) != {"owner", "roots", "paths", "prune_releases"}
@@ -889,12 +900,14 @@ def read_site(state):
         return None
     if (not isinstance(journal, dict) or set(journal) != {
             "schema", "requests", "files", "receipts", "allowed", "allowed_receipts", "service", "phase"}
-            | (({"finish_egress", "finish_firewall"} if "finish_firewall" in journal else {"finish_egress"}) if journal.get("phase") == "committing" else set())
+            | ({"finish_egress", "finish_firewall", "revocation"} if journal.get("phase") == "committing" else set())
             or type(journal["schema"]) is not int or journal["schema"] != 1 or journal["phase"] not in {"open", "restoring", "committing"}
             or (journal["phase"] == "committing" and (type(journal["finish_egress"]) is not bool or type(journal.get("finish_firewall", False)) is not bool))
             or not isinstance(journal["requests"], list) or len(journal["requests"]) != 2
             or {value.get("owner") for value in journal["requests"]} != SITE_OWNERS):
         raise TransactionError("unsafe-site-journal")
+    if journal['phase'] == 'committing':
+        revocation_authority(journal['revocation'])
     paths = set()
     for value in journal["requests"]:
         request(value)
@@ -1069,6 +1082,8 @@ def site_transaction(action, document, *, finish_egress=False, finish_firewall=F
             return {"status": "absent", "changed": False}
         if action == "recover-commit" and journal["phase"] != "committing":
             return {"status": "open", "changed": False}
+        if journal['phase'] == 'committing' and journal['revocation'] != document.get('revocation'):
+            raise TransactionError('revocation-resume-required')
         if journal["phase"] == "committing" and action not in {"commit", "recover-commit"}:
             raise TransactionError("commit-recovery-required")
         pending = private_json(state / "pending.json")
@@ -1103,10 +1118,15 @@ def site_transaction(action, document, *, finish_egress=False, finish_firewall=F
                 journal["phase"] = "committing"
                 journal["finish_egress"] = finish_egress
                 journal["finish_firewall"] = finish_firewall
+                journal['revocation'] = document.get('revocation')
                 persist(state / "site.json", journal)
             if journal["finish_egress"]:
-                command(["/usr/bin/python3", "-Es",
-                         "/usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py", "finish"])
+                argv = ["/usr/bin/python3", "-Es",
+                        "/usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py", "finish"]
+                if journal['revocation'] is None:
+                    command(argv)
+                else:
+                    command([*argv, '--revocation-stdin'], data=json.dumps(journal['revocation']).encode())
             if journal.get("finish_firewall", False):
                 command(["/usr/bin/python3", "-Es",
                          "/usr/local/libexec/ripdpi-consumer/firewall_consumer.py", "finish", "--owner", "site"])

@@ -7,6 +7,67 @@ endif
 .PHONY: workspace-status
 workspace-status:
 	@python3 scripts/workspace-status.py
+else ifneq ($(filter recovery,$(MAKECMDGOALS)),)
+ifneq ($(MAKECMDGOALS),recovery)
+$(error recovery requires exactly one make goal)
+endif
+override RECOVERY_ACTION_LITERAL := $(value ACTION)
+override RECOVERY_MANIFEST_LITERAL := $(value RECOVERY_MANIFEST)
+override RECOVERY_APPROVAL_LITERAL := $(value RECOVERY_APPROVAL)
+export RECOVERY_ACTION_LITERAL RECOVERY_MANIFEST_LITERAL RECOVERY_APPROVAL_LITERAL
+unexport ACTION RECOVERY_MANIFEST RECOVERY_APPROVAL MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+.PHONY: recovery
+recovery:
+	@set -eu; \
+	  case "$${RECOVERY_ACTION_LITERAL}" in run|resume|status) ;; *) echo 'ACTION=run|resume|status required' >&2; exit 2 ;; esac; \
+	  test -n "$${RECOVERY_MANIFEST_LITERAL}" || { echo 'RECOVERY_MANIFEST required' >&2; exit 2; }; \
+	  set -- "$${RECOVERY_ACTION_LITERAL}" "--manifest=$${RECOVERY_MANIFEST_LITERAL}"; \
+	  if test -n "$${RECOVERY_APPROVAL_LITERAL}"; then set -- "$$@" "--approve=$${RECOVERY_APPROVAL_LITERAL}"; fi; \
+	  exec python3 scripts/recovery.py "$$@"
+else ifneq ($(filter device-lifecycle,$(MAKECMDGOALS)),)
+ifneq ($(MAKECMDGOALS),device-lifecycle)
+$(error device lifecycle requires exactly one make goal)
+endif
+override DEVICE_COMMAND_LITERAL := $(value ACTION)
+override DEVICE_MANIFEST_LITERAL := $(value DEVICE_MANIFEST)
+override DEVICE_APPROVAL_LITERAL := $(value DEVICE_APPROVAL)
+export DEVICE_COMMAND_LITERAL DEVICE_MANIFEST_LITERAL DEVICE_APPROVAL_LITERAL
+unexport ACTION DEVICE_MANIFEST DEVICE_APPROVAL MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+.PHONY: device-lifecycle
+device-lifecycle:
+	@set -eu; \
+	  case "$${DEVICE_COMMAND_LITERAL}" in plan|prepare|run|resume|status) ;; *) echo 'ACTION=plan|prepare|run|resume|status required' >&2; exit 2 ;; esac; \
+	  test -n "$${DEVICE_MANIFEST_LITERAL}" || { echo 'DEVICE_MANIFEST required' >&2; exit 2; }; \
+	  set -- "$${DEVICE_COMMAND_LITERAL}" "--manifest=$${DEVICE_MANIFEST_LITERAL}"; \
+	  if test -n "$${DEVICE_APPROVAL_LITERAL}"; then set -- "$$@" "--approve=$${DEVICE_APPROVAL_LITERAL}"; fi; \
+	  exec python3 scripts/device-lifecycle.py "$$@"
+else ifneq ($(filter device-migration,$(MAKECMDGOALS)),)
+ifneq ($(MAKECMDGOALS),device-migration)
+$(error device migration requires exactly one make goal)
+endif
+override MIGRATION_ACTION_LITERAL := $(value ACTION)
+override MIGRATION_PLAN_LITERAL := $(value DEVICE_MIGRATION_PLAN)
+override MIGRATION_APPROVAL_LITERAL := $(value DEVICE_MIGRATION_APPROVAL)
+override MIGRATION_RECEIPT_LITERAL := $(value MIGRATION_RECEIPT)
+override MIGRATION_CLIENT_LITERAL := $(value MIGRATION_CLIENT)
+override MIGRATION_REASON_LITERAL := $(value MIGRATION_REASON)
+export MIGRATION_ACTION_LITERAL MIGRATION_PLAN_LITERAL MIGRATION_APPROVAL_LITERAL
+export MIGRATION_RECEIPT_LITERAL MIGRATION_CLIENT_LITERAL MIGRATION_REASON_LITERAL
+unexport ACTION DEVICE_MIGRATION_PLAN DEVICE_MIGRATION_APPROVAL MIGRATION_RECEIPT MIGRATION_CLIENT MIGRATION_REASON MAKEFLAGS MFLAGS
+MAKEOVERRIDES :=
+.PHONY: device-migration
+device-migration:
+	@set -eu; \
+	  case "$${MIGRATION_ACTION_LITERAL}" in plan|prepare|publish|status|receipt|attest|ready|rollback) ;; *) echo 'ACTION=plan|prepare|publish|status|receipt|attest|ready|rollback required' >&2; exit 2 ;; esac; \
+	  test -n "$${MIGRATION_PLAN_LITERAL}" || { echo 'DEVICE_MIGRATION_PLAN required' >&2; exit 2; }; \
+	  set -- "$${MIGRATION_ACTION_LITERAL}" "--plan=$${MIGRATION_PLAN_LITERAL}"; \
+	  if test -n "$${MIGRATION_APPROVAL_LITERAL}"; then set -- "$$@" "--approve=$${MIGRATION_APPROVAL_LITERAL}"; fi; \
+	  if test -n "$${MIGRATION_RECEIPT_LITERAL}"; then set -- "$$@" "--receipt=$${MIGRATION_RECEIPT_LITERAL}"; fi; \
+	  if test -n "$${MIGRATION_CLIENT_LITERAL}"; then set -- "$$@" "--client=$${MIGRATION_CLIENT_LITERAL}"; fi; \
+	  if test -n "$${MIGRATION_REASON_LITERAL}"; then set -- "$$@" "--reason=$${MIGRATION_REASON_LITERAL}"; fi; \
+	  exec python3 scripts/device-migration.py "$$@"
 else ifneq ($(filter probe-payload-throttle,$(MAKECMDGOALS)),)
 ifneq ($(MAKECMDGOALS),probe-payload-throttle)
 $(error payload probe requires exactly one make goal)
@@ -539,9 +600,13 @@ endif
 
 -include .fleet.mk
 
+ifneq ($(filter blue-green,$(MAKECMDGOALS)),)
+override BLUE_GREEN_ENV_EXPLICIT := $(if $(filter command line environment,$(origin ENV)),1,0)
+endif
+
 # Capture deployment labels before the eager Terraform path assignments below.
 # The included fleet file remains trusted executable Make configuration.
-ifneq ($(filter deploy dry-run deploy-canary backup-configure install-ssh-recovery staging-cleanup-manifest staging-cleanup-reissue staging-destroy $(_DISPOSABLE_LIVENESS_GOALS),$(MAKECMDGOALS)),)
+ifneq ($(filter deploy dry-run deploy-canary blue-green backup-configure install-ssh-recovery staging-cleanup-manifest staging-cleanup-reissue staging-destroy $(_DISPOSABLE_LIVENESS_GOALS),$(MAKECMDGOALS)),)
 override ENV := $(value ENV)
 override PROVIDER := $(value PROVIDER)
 endif
@@ -638,7 +703,7 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
 
 .PHONY: help init validate plan apply inventory wait decrypt require-inventory require-exact-node require-clean-source validate-ansible-extra-vars dry-run deploy tailnet-network-promote backup-configure deploy-canary os-maintenance verify source-drift security-verify security-audit clean \
         pre-deploy-check network-exposure-review \
-        rollback-xray rollback-config rotate-credentials check-prereqs \
+        rollback-xray rollback-config rotate-credentials rotate-credentials-check check-prereqs \
         destroy backup-state burn-check diff-secrets emit-singbox emit-xray emit-awg emit-bundle install-hooks \
         molecule-test smoke-test validate-target monitor-reality-target probe-sni-survival scan-targets blue-green \
         spot-check-secrets bootstrap-secrets probe-asn probe-matrix-control probe-matrix-cell probe-matrix-tools emit-probe-matrix-profile emit-qr check-certs \
@@ -727,7 +792,10 @@ help:
 	@echo "  destroy                    Safe terraform destroy (double confirmation)"
 	@echo "  backup-state               age-encrypt the local terraform state"
 	@echo "  drift-since-tag            Diff fleet against last vpn-deploy-known-good-* tag"
-	@echo "  blue-green GREEN_ENV=<name>  Orchestrate single-host blue-green"
+	@echo "  blue-green GREEN_ENV=… GREEN_SOPS_FILE=… DEVICE_MIGRATION_PLAN=…  Replace with device handover"
+	@echo "  recovery ACTION=… RECOVERY_MANIFEST=…  Execute or resume an exact reviewed replacement"
+	@echo "  device-lifecycle ACTION=… DEVICE_MANIFEST=…  Issue, refresh or revoke one device across the declared fleet"
+	@echo "  device-migration ACTION=… DEVICE_MIGRATION_PLAN=…  Plan, prepare, publish and verify device handover"
 	@echo "  fleet-rotate PLAN=…        Authenticated survivor floor and exact-plan resume"
 	@echo "  protocol-liveness LIVENESS_CONFIG=…  Pull sentinel probes and evaluate quorum"
 	@echo "  monitor-protocol-liveness LIVENESS_CONFIG=…  Persist and alert on protocol-liveness transitions"
@@ -888,8 +956,8 @@ wait:
 # same node. The other operator variables (ENV, PROVIDER, SECRETS_FILE and
 # the rest) are still expanded as Make and shell syntax; SCR-1792057680449496
 # tracks them.
-ifneq ($(filter rotate-credentials rollback-xray rollback-config require-exact-node,$(MAKECMDGOALS)),)
-ifneq ($(filter-out rotate-credentials rollback-xray rollback-config require-exact-node,$(MAKECMDGOALS)),)
+ifneq ($(filter rotate-credentials rotate-credentials-check rollback-xray rollback-config require-exact-node,$(MAKECMDGOALS)),)
+ifneq ($(filter-out rotate-credentials rotate-credentials-check rollback-xray rollback-config require-exact-node,$(MAKECMDGOALS)),)
 $(error the exact-node verbs cannot share an invocation with other Make goals)
 endif
 .NOTPARALLEL:
@@ -904,8 +972,11 @@ endif
 require-exact-node:
 	@python3 -c 'import os, re; raise SystemExit(0 if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", os.environ.get("EXACT_NODE_ALIAS", "")) else 1)' || { echo "this live operator verb requires ANSIBLE_LIMIT=<exact inventory alias> ([A-Za-z0-9][A-Za-z0-9_.-]{0,127})"; exit 1; }
 
+ANSIBLE_INVENTORY ?= $(ANSIBLE_DIR)/inventory/generated.ini
+export ANSIBLE_INVENTORY
+
 require-inventory:
-	@test -s "$(ANSIBLE_DIR)/inventory/generated.ini" || { echo "missing generated inventory — run 'make inventory'"; exit 1; }
+	@test -s "$(ANSIBLE_INVENTORY)" || { echo "missing generated inventory — run 'make inventory'"; exit 1; }
 	@inventory=$$(ansible-inventory --list $(if $(strip $(ANSIBLE_LIMIT)),--limit "$(ANSIBLE_LIMIT)")) && \
 	  printf '%s\n' "$$inventory" | python3 scripts/require-vpn-selection.py || { echo "inventory limit selects no VPN hosts or inventory is invalid"; exit 1; }
 
@@ -929,7 +1000,7 @@ pre-deploy-check:
 	  python3 ./scripts/validate-secrets.py $(SECRETS_FILE) --strict --environment "$(ENV)" && \
 	  VPN_SECRETS_FILE=$(SECRETS_FILE) python3 ./scripts/spot-check-secrets.py && \
 	  VPN_SECRETS_FILE=$(SECRETS_FILE) VPN_CERT_COHORTS="$(COHORTS)" \
-	  VPN_CERT_INVENTORY="$(wildcard $(ANSIBLE_DIR)/inventory/generated.ini)" VPN_CERT_LIMIT="$(ANSIBLE_LIMIT)" \
+	  VPN_CERT_INVENTORY="$(ANSIBLE_INVENTORY)" VPN_CERT_LIMIT="$(ANSIBLE_LIMIT)" \
 	  VPN_CERT_EXTRA_VARS_FILE="$(ANSIBLE_EXTRA_VARS_FILE)" ./scripts/check-certs.sh; \
 	fi
 
@@ -1145,11 +1216,12 @@ rollback-config: require-exact-node require-inventory
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
 	ansible-playbook $(ANSIBLE_DIR)/playbooks/rollback-config.yml --limit "$(ANSIBLE_LIMIT)"
 
-rotate-credentials: require-exact-node require-clean-source require-inventory pre-deploy-check
+rotate-credentials rotate-credentials-check: require-exact-node require-clean-source require-inventory validate-ansible-extra-vars pre-deploy-check
 	env -u ANSIBLE_SKIP_TAGS -u ANSIBLE_RUN_TAGS \
 	VPN_SECRETS_FILE=$(SECRETS_FILE) \
-	ansible-playbook $(ANSIBLE_DIR)/playbooks/rotate-credentials.yml --limit "$(ANSIBLE_LIMIT)"
-	@ENV=$(ENV) PROVIDER=$(PROVIDER) ./scripts/audit-log.sh append-best-effort \
+	ansible-playbook $(ANSIBLE_DIR)/playbooks/rotate-credentials.yml --limit "$(ANSIBLE_LIMIT)" $(if $(filter rotate-credentials-check,$@),--check --diff,) \
+	  $(if $(strip $(ANSIBLE_EXTRA_VARS_FILE)),--extra-vars "@$(ANSIBLE_EXTRA_VARS_FILE)")
+	@$(if $(filter rotate-credentials-check,$@),true,ENV=$(ENV) PROVIDER=$(PROVIDER) ./scripts/audit-log.sh append-best-effort) \
 	  --action rotate-credentials \
 	  --note "playbook=rotate-credentials.yml node=$(ANSIBLE_LIMIT) secrets_file=$(notdir $(SECRETS_FILE))"
 
@@ -1620,7 +1692,7 @@ emit-qr:
 check-certs:
 	@test -f "$(SECRETS_FILE)" || { echo "missing $(SECRETS_FILE) — run 'make decrypt'"; exit 1; }
 	VPN_SECRETS_FILE=$(SECRETS_FILE) VPN_CERT_COHORTS="$(COHORTS)" \
-	VPN_CERT_INVENTORY="$(wildcard $(ANSIBLE_DIR)/inventory/generated.ini)" VPN_CERT_LIMIT="$(ANSIBLE_LIMIT)" \
+	VPN_CERT_INVENTORY="$(ANSIBLE_INVENTORY)" VPN_CERT_LIMIT="$(ANSIBLE_LIMIT)" \
 	  VPN_CERT_EXTRA_VARS_FILE="$(ANSIBLE_EXTRA_VARS_FILE)" ./scripts/check-certs.sh
 
 audit-permissions:
@@ -1995,10 +2067,23 @@ scan-targets:
 	  $(if $(TOP),--top $(TOP)) \
 	  $(if $(VALIDATE),--validate)
 
+ifneq ($(filter blue-green,$(MAKECMDGOALS)),)
+override BLUE_GREEN_REQUESTED_ENV := $(value ENV)
+override BLUE_ENV := $(value BLUE_ENV)
+override BLUE_GREEN_SOURCE_ENV := $(or $(value BLUE_ENV),$(value ENV))
+override GREEN_ENV := $(value GREEN_ENV)
+override GREEN_SOPS_FILE := $(value GREEN_SOPS_FILE)
+override DEVICE_MIGRATION_PLAN := $(value DEVICE_MIGRATION_PLAN)
+override DEVICE_MIGRATION_APPROVAL := $(value DEVICE_MIGRATION_APPROVAL)
+override BLUE_COHORT := $(value BLUE_COHORT)
+override GREEN_COHORT := $(value GREEN_COHORT)
+export BLUE_ENV BLUE_GREEN_ENV_EXPLICIT BLUE_GREEN_REQUESTED_ENV BLUE_GREEN_SOURCE_ENV GREEN_ENV GREEN_SOPS_FILE DEVICE_MIGRATION_PLAN DEVICE_MIGRATION_APPROVAL BLUE_COHORT GREEN_COHORT
+endif
 blue-green:
-	@test -n "$(GREEN_ENV)" || { echo "GREEN_ENV=<name> required (e.g. green, spare2)"; exit 1; }
-	$(require-blue-env)
-	PROVIDER=$(PROVIDER) BLUE_ENV=$(blue_env) GREEN_ENV=$(GREEN_ENV) ./scripts/blue-green.sh
+	@if test "$${BLUE_GREEN_ENV_EXPLICIT}" = 1 && test -n "$${BLUE_ENV}" && test "$${BLUE_ENV}" != "$${BLUE_GREEN_REQUESTED_ENV}"; then echo "BLUE_ENV and ENV select different environments; set only one" >&2; exit 1; fi
+	@test -n "$${GREEN_ENV:-}" || { echo "GREEN_ENV=<name> required (e.g. green, spare2)"; exit 1; }
+	@test -n "$${BLUE_GREEN_SOURCE_ENV:-}" || { echo "BLUE_ENV or ENV required"; exit 1; }
+	PROVIDER="$${PROVIDER}" BLUE_ENV="$${BLUE_GREEN_SOURCE_ENV}" GREEN_ENV="$${GREEN_ENV}" ./scripts/blue-green.sh
 
 bats-test:
 	bats tests/bats/

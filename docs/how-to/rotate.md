@@ -22,6 +22,12 @@ Infrastructure rotation caused by sustained protocol failure is separate from cr
 
 Every target below that uses cloud credentials, inventory, SSH or decrypted secrets needs the operator's authorization for this environment, target and plan before it runs ([decision boundaries](../../AGENTS.md#decision-boundaries)). A reviewable plan or dry-run precedes every mutation. `rotate-credentials` is an exact-node verb: one alias per invocation, one authorization per node.
 
+For server replacement, use [Device migration](device-migration.md). Its separate
+target authority preserves each device's existing identity during handover;
+this does not rotate a leaked credential. Fresh replacement credentials are
+required for compromise recovery. The source stays available until every
+affected device has fresh target-path evidence.
+
 ## 1. Single client leak
 
 A device was lost / stolen / decommissioned, or one client URI showed up

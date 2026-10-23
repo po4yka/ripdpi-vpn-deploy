@@ -37,7 +37,9 @@
 - name: Recover complete interrupted AWG authority before build acquisition
   ansible.builtin.command:
     argv: [python3, -Es, /usr/local/libexec/ripdpi-consumer/amneziawg_consumer.py, recover]
-    stdin: "{{ {'check': ansible_check_mode, 'retiring': awg_consumer_retiring | default(false) | bool} | to_json }}"
+    stdin: >-
+      {{ {'check': ansible_check_mode, 'retiring': awg_consumer_retiring | default(false) | bool,
+          'revocation': vpn_device_revocation | default(none)} | to_json }}
   register: _awg_consumer_recovery
   changed_when: (_awg_consumer_recovery.stdout | from_json).changed | bool
   check_mode: false

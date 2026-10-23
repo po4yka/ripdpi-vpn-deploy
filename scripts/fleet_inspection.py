@@ -30,9 +30,9 @@ class InspectionError(Exception):
     """Only categorical messages from this class may reach operator output."""
 
 
-def bounded_command(command, *, timeout=5, limit=LIMIT, input_bytes=b"", environment=None):
+def bounded_command(command, *, timeout=5, limit=LIMIT, input_bytes=b"", environment=None, input_limit=LIMIT * 2):
     """Bound stdin, both output streams, and our fixed command's lifetime."""
-    if len(input_bytes) > LIMIT * 2:
+    if not 0 <= input_limit <= 4 * 1024 * 1024 or len(input_bytes) > input_limit:
         raise InspectionError("input-limit")
     env = environment if environment is not None else {"PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "C", "LC_ALL": "C", "TZ": "UTC"}
     try:
@@ -360,7 +360,7 @@ def _local_file(path, private=False):
     return str(Path(path).expanduser().absolute())
 
 
-def select_hosts(inventory_path, selected, *, primary_section="vpn", include_variables=False, selection_kind="name"):
+def select_hosts(inventory_path, selected, *, primary_section="vpn", include_variables=False, selection_kind="name", include_cohorts=False):
     if selection_kind not in ("name", "provider-env"):
         raise InspectionError("unsupported-selection-kind")
     if not selected or any(not isinstance(s, str) for s in selected) or len(selected) != len(set(selected)):
@@ -381,7 +381,7 @@ def select_hosts(inventory_path, selected, *, primary_section="vpn", include_var
         lines = raw.decode("utf-8").splitlines()
     except (OSError, UnicodeError):
         raise InspectionError("unreadable-inventory") from None
-    hosts, global_vars, observability_vars = {}, {}, {}
+    hosts, global_vars, observability_vars, cohorts = {}, {}, {}, {}
     section = ""
     for line in lines:
         line = line.strip()
@@ -414,6 +414,7 @@ def select_hosts(inventory_path, selected, *, primary_section="vpn", include_var
         elif section == "observability:children" and len(words) == 1 and words[0] in sections:
             continue
         elif section.startswith("vpn-") and len(words) == 1 and SAFE_NAME.fullmatch(words[0]):
+            cohorts.setdefault(words[0], set()).add(section[4:])
             continue
         else:
             raise InspectionError("unsupported-inventory")
@@ -484,6 +485,8 @@ def select_hosts(inventory_path, selected, *, primary_section="vpn", include_var
                 "alias": _connection_name(values.get("inspection_host_key_alias", address))}
         if include_variables:
             host["variables"] = {key: value for key, value in values.items() if key != "__sections"}
+        if include_cohorts:
+            host["cohorts"] = sorted(cohorts.get(name, set()))
         result.append(host)
     for key in ("alias", "transport"):
         identities = {(host[key].lower(), host["port"]) for host in result}

@@ -171,3 +171,21 @@ def test_actionlint_is_checksum_verified_not_go_installed() -> None:
     install = next(step["run"] for step in steps if "actionlint" in step.get("name", ""))
     assert "ACTIONLINT_SHA256}  ${archive}" in install
     assert "go install" not in install
+
+
+@pytest.mark.parametrize("case", ["generator", "literal", "different-path", "appended-secret"])
+@pytest.mark.usefixtures("isolated_synthetic_git_config")
+def test_snell_generator_exception_is_exact(tmp_path: Path, case: str) -> None:
+    repo = _temporary_repo(tmp_path)
+    source = "variant['users'].append({'name': name, 'userkey': secrets.token_urlsafe(32)})"
+    if case == "literal":
+        source = source.replace("secrets.token_urlsafe(32)", "'" + "Z" * 32 + "'")
+    if case == "appended-secret":
+        source += "; psk = '" + "Z" * 32 + "'"
+    path = "scripts/device_lifecycle_credentials.py" if case != "different-path" else "other.py"
+    target = repo / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(source + "\n")
+    _git(repo, "add", path)
+    _git(repo, "commit", "-qm", "credential generation boundary")
+    assert (_gitleaks(repo).returncode == 0) == (case == "generator")

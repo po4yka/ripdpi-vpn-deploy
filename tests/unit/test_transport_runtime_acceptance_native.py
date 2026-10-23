@@ -652,3 +652,94 @@ def test_native_ingress_egress_commit_sigkill_recovers_one_accepted_generation(b
         assert not accepted.with_name('outer.json').exists()
         # This executes actual authenticated frontend canary traffic after recovery.
         adapter().ready()
+
+
+@pytest.mark.parametrize('profile', ['xray', 'hysteria'])
+@pytest.mark.parametrize('interruption', ['published-0', 'adopted', 'outer-failure'])
+def test_native_revocation_never_restores_credentials_and_exact_resume_converges(profile, interruption):
+    """Real PID1, native authentication and canonical convergence across failure."""
+    import secrets
+    import uuid
+    import yaml
+    with fixture.Lab() as lab:
+        from transport_runtime_accept import Adapter, STATE, read_parameters, unit_binary
+        from transport_runtime_probe import ProbeRefused, probe
+        from transport_runtime_transaction import Refusal, Transaction
+        removed = {'name': 'native-revoked', **({'uuid': str(uuid.uuid4()), 'short_id': secrets.token_hex(4)}
+                  if profile == 'xray' else {'password': secrets.token_hex(24)})}
+        lab.context[profile]['clients'].append(removed)
+        assert lab.converge(profile, site=True) == 0
+        config = Path('/etc/xray/config.json' if profile == 'xray' else '/etc/hysteria/config.yaml')
+        unit = Path('/etc/systemd/system/' + ('xray.service' if profile == 'xray' else 'hysteria-server.service'))
+        old = lab.private / 'revoked-client-source'
+        old.write_bytes(config.read_bytes()); old.chmod(0o600)
+        parameters = read_parameters()
+        binary, assets, _ = unit_binary(unit.read_text())
+        options = dict(asset_dir=assets if profile == 'xray' else None,
+                       url=parameters['probe_url'], client_name=removed['name'], timeout=8)
+        probe(binary, old, **options)
+        authority = {'operation_id': str(uuid.uuid4()), 'intent_sha256': secrets.token_hex(32)}
+        lab.context[profile]['clients'].remove(removed)
+        if interruption == 'outer-failure':
+            lab.context['vpn_device_revocation'] = authority
+            assert lab.converge(profile, site=True, fail_after_acceptance=True, allow_failure=True) != 0
+            assert (STATE / 'outer.json').exists(), lab.failure_categories()
+            assert config.read_bytes() != old.read_bytes()
+            assert subprocess.run(['systemctl', 'is-active', '--quiet', unit.name], capture_output=True).returncode != 0
+            assert lab.converge(profile, site=True) == 0
+            lab.context.pop('vpn_device_revocation')
+        else:
+            if profile == 'xray':
+                document = json.loads(config.read_bytes())
+                for inbound in document['inbounds']:
+                    if inbound.get('protocol') != 'vless':
+                        continue
+                    users = inbound['settings']['clients']
+                    keep = [index for index, user in enumerate(users) if user['id'] != removed['uuid']]
+                    inbound['settings']['clients'] = [users[index] for index in keep]
+                    stream = inbound['streamSettings']
+                    if stream.get('security') == 'reality':
+                        ids = stream['realitySettings']['shortIds']
+                        stream['realitySettings']['shortIds'] = [ids[index] for index in keep]
+                data = json.dumps(document).encode()
+            else:
+                document = yaml.safe_load(config.read_bytes())
+                del document['auth']['userpass'][removed['name']]
+                data = yaml.safe_dump(document).encode()
+            plan = [{'path': str(config), 'data': base64.b64encode(data).decode(), 'mode': 0o640,
+                     'gid': config.stat().st_gid},
+                    {'path': str(unit), 'data': base64.b64encode(unit.read_bytes()).decode(), 'mode': 0o644, 'gid': 0}]
+            source = '''import json,os,signal,sys
+sys.path.insert(0,sys.argv[1])
+from transport_runtime_accept import Adapter,STATE,read_parameters
+from transport_runtime_transaction import Transaction
+v=json.load(sys.stdin);p=read_parameters()
+a=Adapter(v['plan'],p['probe_url'],p['expected_status'],p['timeout'],p['clients'])
+def checkpoint(stage):
+ if stage==v['stage']: os.kill(os.getpid(),signal.SIGKILL)
+with Transaction(STATE,revocation=v['authority']) as tx: tx.apply(v['plan'],a,checkpoint=checkpoint)
+'''
+            result = subprocess.run(['/usr/bin/python3', '-Es', '-c', source,
+                '/usr/local/libexec/ripdpi-transport-egress'], input=json.dumps(
+                {'plan': plan, 'authority': authority, 'stage': interruption}).encode(),
+                capture_output=True, timeout=120)
+            assert result.returncode == -signal.SIGKILL, 'native-revocation-kill-point-not-reached'
+            assert config.read_bytes() != old.read_bytes()
+            assert lab.converge(profile, site=True, allow_failure=True) != 0
+            adapter = Adapter(plan, parameters['probe_url'], parameters['expected_status'],
+                              parameters['timeout'], parameters['clients'])
+            with Transaction(STATE, revocation=authority) as tx:
+                assert tx.apply(plan, adapter)['status'] == 'accepted'
+            with Transaction(STATE) as tx, pytest.raises(Refusal, match='revocation-rollback-forbidden'):
+                tx.compensate_latest(adapter)
+        # Both retained-device traffic and the retired credential are exercised
+        # through new native clients while the actual service is healthy.
+        with pytest.raises(ProbeRefused):
+            probe(binary, old, **options)
+        surviving = parameters['clients'][profile]
+        probe(binary, config, **{**options, 'client_name': surviving})
+        assert lab.converge(profile, site=True) == 0
+        with pytest.raises(ProbeRefused):
+            probe(binary, old, **options)
+        probe(binary, config, **{**options, 'client_name': surviving})
+        assert not (STATE / 'pending.json').exists() and not (STATE / 'outer.json').exists()

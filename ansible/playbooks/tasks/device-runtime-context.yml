@@ -1,0 +1,61 @@
+---
+- name: Load public Snell defaults for device authority projection
+  ansible.builtin.include_vars:
+    file: >-
+      {{ (role_path ~ '/../snell/defaults/main.yml') if role_path is defined
+         else (playbook_dir ~ '/../roles/snell/defaults/main.yml') }}
+    name: _device_snell_defaults
+  tags: [always]
+
+- name: Resolve configured Snell variants without replacing inventory settings
+  ansible.builtin.set_fact:
+    _device_snell_context: '{{ _device_snell_defaults.snell | combine(snell | default({}), recursive=true) }}'
+  tags: [always]
+
+- name: Resolve explicit empty device authorities before runtime admission
+  ansible.builtin.command:
+    argv:
+      - '{{ ansible_playbook_python }}'
+      - >-
+        {{ (role_path ~ '/../../../scripts/device_runtime_context.py') if role_path is defined
+           else (playbook_dir ~ '/../../scripts/device_runtime_context.py') }}
+    stdin: >-
+      {{ {'secrets': {'xray': xray | default({}), 'hysteria': hysteria | default({}),
+                      'snell_secrets': snell_secrets | default({})},
+          'context': {'vpn': vpn | default({}), 'snell': _device_snell_context}} | to_json }}
+    stdin_add_newline: false
+  register: _device_runtime_projection
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+  no_log: true
+  tags: [always]
+
+- name: Retain effective device transport toggles
+  ansible.builtin.set_fact:
+    vpn: '{{ (_device_runtime_projection.stdout | from_json).vpn }}'
+  no_log: true
+  tags: [always]
+
+- name: Exclude empty REALITY cohorts from active listeners
+  ansible.builtin.set_fact:
+    xray: >-
+      {{ xray | combine({'cohorts': xray.cohorts | selectattr('name', 'in',
+           (_device_runtime_projection.stdout | from_json).xray_cohorts) | list}) }}
+  when: xray.cohorts is defined
+  no_log: true
+  tags: [always]
+
+- name: Exclude empty Snell variants from active listeners
+  ansible.builtin.set_fact:
+    snell: >-
+      {{ _device_snell_context | combine({'variants': _device_snell_context.variants | selectattr('id', 'in',
+           (_device_runtime_projection.stdout | from_json).snell_variants) | list}) }}
+    snell_secrets: >-
+      {{ snell_secrets | combine({'variants': snell_secrets.variants | selectattr('id', 'in',
+           (_device_runtime_projection.stdout | from_json).snell_variants) | list}) }}
+  when:
+    - (_device_runtime_projection.stdout | from_json).snell_variants is not none
+  no_log: true
+  tags: [always]

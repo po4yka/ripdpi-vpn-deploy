@@ -1,0 +1,22 @@
+---
+- name: Reconcile exact credential revocation activation barrier
+  ansible.builtin.command:
+    argv:
+      - python3
+      - -Es
+      - /usr/local/libexec/ripdpi-consumer/device_revocation_barrier.py
+      - '{{ device_revocation_action }}'
+      - '{{ device_revocation_unit }}'
+    stdin: >-
+      {{ {'authority': vpn_device_revocation | default(none),
+          'plan': device_revocation_plan | default({}),
+          'activation': device_revocation_activation | default(none),
+          'check': ansible_check_mode} | to_json }}
+    stdin_add_newline: false
+  register: _device_revocation_barrier
+  changed_when: (_device_revocation_barrier.stdout | from_json).changed | bool
+  check_mode: false
+  no_log: true
+  when:
+    - vpn_device_revocation | default(none) is not none
+    - not (ansible_check_mode and _device_revocation_helpers.changed)

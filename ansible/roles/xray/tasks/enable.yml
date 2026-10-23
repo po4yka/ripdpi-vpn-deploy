@@ -222,6 +222,53 @@
   check_mode: true
   register: _xray_validator_change
 
+- name: Detect selected geodata changes without publishing active assets
+  ansible.builtin.copy:
+    src: "{{ transport_runtime_geodata_candidate_dir }}/{{ item }}"
+    dest: "{{ geodata.install_dir }}/{{ item }}"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0644'
+  loop: [geoip.dat, geosite.dat]
+  check_mode: true
+  register: _xray_geodata_change
+  when: transport_runtime_geodata_candidate_dir is defined
+
+- name: Define selected geodata activation receipt
+  ansible.builtin.set_fact:
+    _xray_geodata_receipt: >-
+      {{ {'schema': 1, 'desired': {'geoip.dat': geodata.geoip_sha256 | lower,
+                                  'geosite.dat': geodata.geosite_sha256 | lower},
+          'metadata': {'mode': 420, 'uid': 0, 'gid': 0}}
+         | to_json(sort_keys=true, separators=[',', ':']) }}
+  when: transport_runtime_geodata_candidate_dir is defined
+
+- name: Detect selected geodata receipt changes without publication
+  ansible.builtin.copy:
+    content: "{{ _xray_geodata_receipt }}"
+    dest: "{{ geodata.install_dir }}/.geodata-activated.json"
+    owner: root
+    group: root
+    mode: '0600'
+  check_mode: true
+  register: _xray_geodata_receipt_change
+  when: transport_runtime_geodata_candidate_dir is defined
+
+- name: Retain whole-route recovery for changed Xray authority
+  ansible.builtin.include_role:
+    name: transport-egress
+    tasks_from: begin
+  when:
+    - not ansible_check_mode
+    - not (transport_egress_fresh_check_mode | default(false) | bool)
+    - >-
+      (_xray_config_change.changed | bool) or
+      (_xray_unit_change.changed | bool) or
+      (_xray_validator_change.changed | bool) or
+      (_xray_geodata_change.changed | default(false) | bool) or
+      (_xray_geodata_receipt_change.changed | default(false) | bool)
+
 - name: Stage complete Xray authority for guarded consumer acceptance
   ansible.builtin.set_fact:
     transport_runtime_candidates: >-
@@ -249,9 +296,7 @@
          {'path': geodata.install_dir ~ '/geosite.dat', 'source': transport_runtime_geodata_candidate_dir ~ '/geosite.dat',
           'sha256': geodata.geosite_sha256 | lower, 'mode': 420, 'gid': 0},
          {'path': geodata.install_dir ~ '/.geodata-activated.json', 'mode': 384, 'gid': 0, 'deferred': true,
-          'data': ({'schema': 1, 'desired': {'geoip.dat': geodata.geoip_sha256 | lower,
-                                          'geosite.dat': geodata.geosite_sha256 | lower},
-                    'metadata': {'mode': 420, 'uid': 0, 'gid': 0}} | to_json(sort_keys=true, separators=[',', ':'])) | b64encode}
+          'data': _xray_geodata_receipt | b64encode}
          ] }}
   no_log: true
   diff: false

@@ -53,10 +53,14 @@ def run_play(tmp_path: Path, verb: str, limit: str | None, *, hosts: str = "", e
                 vars={"ansible_python_interpreter": sys.executable},
                 tasks=[{"name": "Publish mutation marker",
                         "ansible.builtin.copy": {"dest": str(marker), "content": "mutated"}}])
-    (tmp_path / "tasks").mkdir()
-    for guard in ("exact-node.yml", "selected-env.yml"):
-        shutil.copy(PLAYBOOKS / "tasks" / guard, tmp_path / "tasks" / guard)
-    (tmp_path / "play.yml").write_text(yaml.safe_dump([play]))
+    for relative in ("ansible/playbooks/tasks/exact-node.yml", "ansible/playbooks/tasks/selected-env.yml",
+                     "ansible/playbooks/tasks/device-runtime-context.yml", "ansible/roles/snell/defaults/main.yml",
+                     "scripts/device_runtime_context.py"):
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(ROOT / relative, destination)
+    playbook = tmp_path / "ansible/playbooks/play.yml"
+    playbook.write_text(yaml.safe_dump([play]))
     (tmp_path / "hosts.ini").write_text(hosts or inventory())
     (tmp_path / "ansible.cfg").write_text("[defaults]\nhost_key_checking = False\nretry_files_enabled = False\n")
     env = {key: value for key, value in os.environ.items() if not key.startswith("ANSIBLE_") and key != "ENV"}
@@ -64,7 +68,7 @@ def run_play(tmp_path: Path, verb: str, limit: str | None, *, hosts: str = "", e
     if environment is not None:
         env["ENV"] = environment
     env.update(extra_env or {})
-    argv = ["ansible-playbook", "-i", "hosts.ini", "play.yml"] + ([] if limit is None else ["--limit", limit])
+    argv = ["ansible-playbook", "-i", "hosts.ini", str(playbook)] + ([] if limit is None else ["--limit", limit])
     result = subprocess.run(argv, cwd=tmp_path, env=env, capture_output=True, text=True, timeout=90)
     return result, result.stdout + result.stderr, marker
 
@@ -314,6 +318,7 @@ def test_make_runs_ansible_with_the_exact_alias_and_without_inherited_tag_select
                                            f"run=${{ANSIBLE_RUN_TAGS-unset}} limit=${{ANSIBLE_LIMIT-unset}}\" >> {calls}\n")
     (tools / "ansible-playbook").chmod(0o755)
     result = make(verb, *(["ANSIBLE_LIMIT=node-a"] if source == "argument" else []), f"ANSIBLE_DIR={ansible_dir}",
+                  f"ANSIBLE_INVENTORY={ansible_dir}/inventory/generated.ini",
                   f"SECRETS_FILE={tmp_path}/runtime.yaml", "ROLLBACK_XRAY_VERSION=v26.3.27",
                   env={"PATH": f"{tools}{os.pathsep}{os.environ['PATH']}", "ANSIBLE_SKIP_TAGS": "always",
                        "ANSIBLE_RUN_TAGS": "never", **({"ANSIBLE_LIMIT": "node-a"} if source == "environment" else {})})
@@ -332,6 +337,7 @@ def test_make_runs_verbs_sharing_an_invocation_one_at_a_time_under_parallelism(t
                                            f"sleep 0.5\necho \"end $play\" >> {calls}\n")
     (tools / "ansible-playbook").chmod(0o755)
     result = make("-j4", "rollback-xray", "rollback-config", "ANSIBLE_LIMIT=node-a", f"ANSIBLE_DIR={ansible_dir}",
+                  f"ANSIBLE_INVENTORY={ansible_dir}/inventory/generated.ini",
                   f"SECRETS_FILE={tmp_path}/runtime.yaml", "ROLLBACK_XRAY_VERSION=v26.3.27",
                   env={"PATH": f"{tools}{os.pathsep}{os.environ['PATH']}"})
     assert result.returncode == 0, result.stdout + result.stderr

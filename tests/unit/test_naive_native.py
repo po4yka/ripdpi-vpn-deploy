@@ -658,6 +658,11 @@ def test_naive_unacknowledged_revocation_is_adopted_by_actual_unit():
         for authority in (config, base / "server.key", base / "server.fullchain.pem"):
             authority.chmod(0o640)
             os.chown(authority, 0, account.pw_gid)
+        # The canonical unit's root prestart executes the real admission helper;
+        # this private fixture must install its dependency just like the role.
+        for name in ("device_revocation_barrier.py", "transport_runtime_transaction.py"):
+            shutil.copyfile(ROOT / "ansible/roles/runtime-release/files" / name, base / name)
+            (base / name).chmod(0o500)
         canonical_unit = render_template(
             ROOT / "ansible/roles/naive/templates/caddy-naive.service.j2",
             dict(**values),
@@ -667,6 +672,8 @@ def test_naive_unacknowledged_revocation_is_adopted_by_actual_unit():
             .replace("Group=naive", "Group=" + principal)
             .replace("/usr/local/bin/caddy-naive", str(binary))
             .replace("/var/lib/naive", str(base / "home"))
+            .replace("/usr/local/libexec/ripdpi-consumer/device_revocation_barrier.py",
+                     str(base / "device_revocation_barrier.py"))
         )
         unit_file.chmod(0o644)
         run(["setcap", "cap_net_bind_service=+ep", str(binary)])

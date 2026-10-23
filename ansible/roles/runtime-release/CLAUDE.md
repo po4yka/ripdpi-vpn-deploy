@@ -2,6 +2,10 @@
 
 ## Design decisions
 
+Standalone frontend retirement passes its exact revocation authority to outer-route completion. Full protected retirement closes through the shared production egress finish task after every staged consumer and owned route has retired.
+
+Device revocation uses the existing transaction with an exact operation/digest and immutable candidate plan. A durable private fence precedes stopping the old generation; failures retain denial and journals for the same forward retry. Ordinary callers and boot admission cannot adopt unfinished revocation. The accepted revocation receipt is a compensation floor; later ordinary changes may still compensate to that revoked baseline. Snell/Naive reuse the same lock and fence around role-owned writes, without a second publication journal.
+
 AWG executable admission also accepts the exact Go release path with a
 64-character lowercase correction digest after the immutable source commit.
 Legacy commit-only paths remain available for retained rollback. Tools paths

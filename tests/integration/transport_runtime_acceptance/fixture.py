@@ -298,11 +298,8 @@ server.serve_forever()
                 {'name': 'Stage canonical Hysteria frontend', 'ansible.builtin.include_role': {'name': 'hysteria'}},
                 {'name': 'Accept complete native site', 'ansible.builtin.include_tasks':
                     str(ROOT / 'ansible/playbooks/tasks/transport-egress-activate.yml')},
-                {'name': 'Finish complete native site', 'ansible.builtin.command': {
-                    'argv': ['/usr/bin/python3', '-Es',
-                        '/usr/local/libexec/ripdpi-transport-egress/transport_runtime_outer.py', 'finish']},
-                    'when': '(transport_egress_role_enabled | bool) or (_transport_egress_full_retirement | default(false) | bool)',
-                    'changed_when': False, 'no_log': True}]
+                {'name': 'Finish complete native site', 'ansible.builtin.include_tasks':
+                    str(ROOT / 'ansible/playbooks/tasks/transport-egress-finish.yml')}]
             if retain_commit:
                 play['tasks'] = play['tasks'][:-1]
             if stage_only:

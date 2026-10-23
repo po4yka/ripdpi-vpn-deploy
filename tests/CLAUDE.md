@@ -14,6 +14,82 @@
 
 ## Design decisions
 
+Xray geodata comparison tests execute the real Ansible copy tasks in check mode,
+including cached-but-inactive pairs and receipt-only changes. Preserve active
+bytes, modes and inodes; native revocation tests separately establish outer
+recovery retention and stopped consumers after post-acceptance failure.
+
+Native lifecycle fixtures admit the exact authenticated payload before checking
+operation receipts: systemd Type=simple activation precedes REALITY target
+discovery. After revocation restarts, prove survivor readiness before checking
+the removed identity so cold-start TLS failures cannot stand in for denial.
+
+Recovery source tests exercise actual private journal publication, SOPS input
+fences, immutable apply snapshots and canonical dispatcher boundaries. Model
+provider adapters demonstrate orchestration only. Positive promotion tests must
+retain the actual installer generation across lost acknowledgements and refuse
+synthetic deployment epochs. Recovery status is retained evidence, not a new
+provider or device observation.
+
+Revocation resume tests connect the actual lifecycle controller's check/apply sequence to real AWG journals. Full retirement executes production orchestration and its shared finish task; native fixtures reuse that task rather than carrying a separate outer-completion command. Portable daemon adapters do not establish native traffic acceptance.
+
+Credential scanner exceptions bind the exact generator expression and source path.
+Real literals, other paths and appended assignments must remain detectable.
+
+Device lifecycle cases exercise actual SOPS journals and subscription publisher
+state. Shared publisher fixtures preserve actual CAS and lost acknowledgements,
+with distinct migration-wide and host-scoped lifecycle route contracts. Owned
+probe TLS servers explicitly require TLS 1.2 or newer; malformed Naive server
+trees must refuse retirement evidence. TLS canaries distinguish on-disk
+revocation from a running reader that still accepts the token. Native Linux tests launch real pinned protocols and
+systemd services for accepted and revoked access; orchestration callbacks alone
+are not native proof. Missing tools, TUN, source receipts or cleanup fail the
+isolated native lane instead of skipping it.
+Portable Ansible publication fixtures explicitly disable become for their owned
+temporary files, even when Make exports the production Ansible configuration.
+Revocation hint tests follow the shared publication task and render its actual
+denylist; native partition checks include every revocation interruption case.
+Rotation still admits remaining public listeners when AWG is disabled; cover
+both matching provider claims and refusal before mutation when claims are absent.
+Copied verification plays retain the device-context task, public defaults and
+projection helper in their repository-relative layout. Operator fixtures that
+own an inventory select that exact path instead of inheriting the parent Make path.
+Rotation selectors reconcile both enabled and retired roles; verify their selector
+values and shared activation. Naive dispatch remains inside its revocation fence,
+with abort admission required before a failed credential change can return.
+Native AWG identity replacement reconciles client routes after removing its last
+address; accepted-survivor traffic must traverse both families after revocation.
+Standalone Naive adoption fixtures install the real revocation admission helper
+and its transaction dependency under their owned private root. Rendered units
+retain the canonical prestart check even when their executable paths are isolated.
+The lifecycle HTTPS canary performs bounded TLS handshakes inside per-connection
+workers so REALITY target startup cannot block independent controls. Native
+barrier fixtures disable bytecode for their owned helper invocations; failure
+diagnostics expose only route kind, curl exit, elapsed time and acceptance booleans.
+
+The complete native AWG rollback gate runs once before the remaining runtime
+suites; retain the complete collection union and refusal of skipped cases.
+
+Device migration regressions execute real test-only SOPS transactions and the
+actual publisher behind local HTTP. Lost acknowledgements after remote and
+cross-document writes must resume identical bytes without reallocation.
+Validate complete encrypted journal states against the secrets schema and
+reconstruct migrated delivery identity through the ordinary drift checker.
+Migration metadata and the published payload-failover policy share one bundle
+schema; keep both validated when synchronizing the paired client contract.
+Owned CA/TLS route tests cover exact SNI, body, redirect refusal and total
+deadlines, with verified TLS 1.2-or-newer contexts for both origin and route
+probes; orchestration doubles do not establish live deployment or device
+acceptance. Preserve explicit proof requirements after publication.
+Make migration fixtures choose their own ENV selector because parent Make gates
+export it; preserve both matching-selector success and conflicting-selector refusal.
+
+Destination failover tests use real SOCKS controls and owned IPv4/IPv6 TCP peers.
+The gateway is a local protocol fixture, not deployed native proof. Preserve
+stalled/refused/abrupt candidates, third-address success, exact admitted snapshots,
+policy rechecks, shared deadlines, socket caps and winner-only application bytes.
+Cancellation and stop must restore worker and request capacity.
+
 Payload probe regressions use real HTTP/TLS/SOCKS sockets, including short,
 corrupt and oversized bodies, TLS trust, actual POST and remote DNS routing.
 Pure classifier tests supply durations without claiming live path evidence,
@@ -725,10 +801,11 @@ Python vpnd. Keep Ansible scenarios together for cross-role inputs, and full CI 
 main/manual/shared/unknown changes. The final gate requires every selected job
 and permits only planned skips; adding a job must update the selector and tests.
 
-**Cloud-init schema uses Ubuntu package sources only** — its installer selects
-the runner's `ubuntu.sources` for both APT operations. An unrelated preinstalled
-repository cannot block this gate. Missing Ubuntu sources and failed updates
-remain fatal; package signatures and the real schema validator stay enforced.
+**CI package installation uses Ubuntu sources only** — the cloud-init and
+disposable runtime installers select the runner's `ubuntu.sources` for both APT
+operations. Unrelated preinstalled repositories cannot block these gates. Missing
+Ubuntu sources and failed updates or installs remain fatal; package signatures,
+the runtime tool versions and the real schema validator stay enforced.
 
 Runtime acceptance has a separate canonical-role Linux lab. It uses exact checksum-pinned runtimes, generated dedicated client/TLS authority and an owned routed namespace canary. Credential mount propagation is established before creating namespace references, so parent bind mounts cannot hide those references at cleanup. Upgrade, retry, check mode, failure compensation and real process-death cases must retain actual authenticated traffic and fail selected skips. Portable inode/state tests complement that lab and never claim service or client acceptance. The operator runtime rollback case asserts frontend and generation-selected gateway unit text, accepted claims and native `/proc/<MainPID>/exe` identity. A real gateway sandbox refusal and SIGKILL after gateway publication or adoption must restore all exact original unit inodes and authenticated forwarding. A following ordinary converge with the newer pin restores the whole generation and retains the rolled-back release as `previous`. Portable tests cover direct-only and paired gateway candidate selection, validated topology refusal and the sole publication lane. The isolated native lab exercises its selected direct gateway; this is not vendor tunnel or production acceptance. Native retirement follows the re-converged receipt. First-adoption interruption failures retain only bounded task/frame categories, the last static task and owned publication-state booleans for diagnosis. Keep the real interruption predicate and deadline intact.
 

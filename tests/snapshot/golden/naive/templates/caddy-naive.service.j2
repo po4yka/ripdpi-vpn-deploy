@@ -7,6 +7,7 @@ Wants=network-online.target
 [Service]
 User=naive
 Group=naive
+ExecStartPre=+/usr/bin/python3 -Es /usr/local/libexec/ripdpi-consumer/device_revocation_barrier.py admit caddy-naive.service
 ExecStart=/usr/local/bin/caddy-naive run --config /etc/naive/caddy.json
 ExecReload=/usr/local/bin/caddy-naive reload --config /etc/naive/caddy.json
 Restart=on-failure

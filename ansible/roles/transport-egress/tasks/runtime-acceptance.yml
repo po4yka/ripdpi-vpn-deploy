@@ -59,7 +59,8 @@
           'probe_url': transport_runtime_probe_url,
           'asset_dir': transport_runtime_geodata_candidate_dir | default(none),
           'expected_status': transport_runtime_probe_expected_status | int,
-          'timeout': transport_runtime_timeout_seconds | int}) | to_json }}
+          'timeout': transport_runtime_timeout_seconds | int}) |
+          combine({'revocation': vpn_device_revocation | default(none)}) | to_json }}
     stdin_add_newline: false
   register: _transport_runtime_acceptance
   changed_when: >-

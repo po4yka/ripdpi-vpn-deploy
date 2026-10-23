@@ -658,10 +658,10 @@ def test_interrupted_transaction_detection_matches_the_production_contract():
                        if isinstance(node, ast.FunctionDef) and node.name == '__init__')
     defaults = {argument.arg: ast.literal_eval(value)
                 for argument, value in zip(constructor.args.kwonlyargs, constructor.args.kw_defaults)}
-    assert defaults == {'uid': 0, 'check': False, 'awg': False}
+    assert defaults == {'uid': 0, 'check': False, 'awg': False, 'revocation': None}
     assert type(defaults['uid']) is int and defaults['check'] is False and defaults['awg'] is False
     assert 'info.st_uid != self.uid or stat.S_IMODE(info.st_mode) != 0o700' in transaction
-    assert "with Transaction(STATE, check=args.action == 'status') as tx:" in (RUNTIME_FILES / 'transport_runtime_outer.py').read_text()
+    assert "with Transaction(STATE, check=args.action == 'status', revocation=authority) as tx:" in (RUNTIME_FILES / 'transport_runtime_outer.py').read_text()
     assert state_dir['ansible.builtin.stat'] == {'path': OUTER_STATE, 'follow': False}
     assert record['ansible.builtin.stat'] == {'path': OUTER_RECORD, 'follow': False}
     absent_helper = ['_transport_ingress_interrupted.stat.exists', 'not ansible_check_mode', 'not _transport_ingress_interrupted_helper.stat.exists']
@@ -795,7 +795,7 @@ def test_rescue_rolls_forward_commit_and_never_compensates_after_lost_ack(tmp_pa
         commit = [commit[0], {'ansible.builtin.fail': {'msg': 'lost commit acknowledgement'}}]
     else:
         # The subprocess dies after deciding commit; retry must complete it.
-        marker = "import json,sys;from pathlib import Path;p=Path(sys.argv[1]);v=json.loads(p.read_text());v.update(phase='committing',finish_egress=False,finish_firewall=True);p.write_text(json.dumps(v))"
+        marker = "import json,sys;from pathlib import Path;p=Path(sys.argv[1]);v=json.loads(p.read_text());v.update(phase='committing',finish_egress=False,finish_firewall=True,revocation=None);p.write_text(json.dumps(v))"
         commit = [{'ansible.builtin.command': {'argv': [sys.executable, '-c', marker, str(root / 'nginx-state/nginx.service/site.json')]}, 'changed_when': False},
                   {'ansible.builtin.fail': {'msg': 'lost commit acknowledgement'}}]
     _write(root / 'tasks/transport-ingress-commit.yml', commit)
@@ -814,7 +814,7 @@ def test_next_deploy_finishes_recorded_commit_before_staging(tmp_path):
     _interrupt(root, 'open')
     journal = root / 'nginx-state/nginx.service/site.json'
     decision = json.loads(journal.read_text())
-    decision.update(phase='committing', finish_egress=True)
+    decision.update(phase='committing', finish_egress=True, finish_firewall=False, revocation=None)
     journal.write_text(json.dumps(decision))
     result = _run(root)
     assert result.returncode == 0, result.stdout + result.stderr

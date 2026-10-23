@@ -29,7 +29,7 @@ def awg():
                        "allowed_ips": {"ipv4": "10.66.66.2/32", "ipv6": "fd42:42:42::2/128"}}]}
 
 
-@pytest.mark.parametrize("refs", [None, [], ["device", "device"], ["missing"], [None], [{"secret": "marker"}]])
+@pytest.mark.parametrize("refs", [None, ["device", "device"], ["missing"], [None], [{"secret": "marker"}]])
 def test_incoherent_cohort_membership_is_rejected_without_values(refs):
     cohort = {"name": "technical", "port": 443, "flow_mode": "xtls-rprx-vision"}
     if refs is not None:
@@ -149,7 +149,15 @@ def test_shared_cli_consumes_stdin_only_and_reports_categorical_fields():
 
 def test_early_controller_preflight_precedes_every_mutation_boundary(tmp_path):
     preflight = ROOT / "ansible/playbooks/tasks/transport-input-preflight.yml"
-    task = yaml.safe_load(preflight.read_text())[0]
+    tasks = yaml.safe_load(preflight.read_text())
+    assert tasks[0]['ansible.builtin.import_tasks'] == 'device-runtime-context.yml'
+    projection = yaml.safe_load((preflight.parent / 'device-runtime-context.yml').read_text())
+    assert all(any(key in task for key in ('ansible.builtin.include_vars', 'ansible.builtin.set_fact',
+                                          'ansible.builtin.command')) for task in projection)
+    for command in (task for task in projection if 'ansible.builtin.command' in task):
+        assert command['delegate_to'] == 'localhost' and command['become'] is False
+        assert command['changed_when'] is False and command['check_mode'] is False
+    task = next(task for task in tasks if 'ansible.builtin.command' in task)
     assert task["delegate_to"] == "localhost" and task["become"] is False
     assert task["check_mode"] is False and task["no_log"] is True
     assert "always" in task["tags"] and "stdin" in task["ansible.builtin.command"]
@@ -176,7 +184,7 @@ def test_early_controller_preflight_precedes_every_mutation_boundary(tmp_path):
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_actual_controller_preflight_preserves_before_mutation_and_check_mode(tmp_path, input_kind, check_mode):
     marker = tmp_path / "mutation"
-    valid = input_kind == "accepted"
+    valid = input_kind in ("accepted", "empty-membership")
     xray = {"clients": [{"name": "device", "uuid": "00000000-0000-4000-8000-000000000001", "short_id": "aa"}],
             "cohorts": [{"name": "technical", "clients": [] if input_kind == "empty-membership" else ["device"]}]}
     if input_kind == "duplicate-client-name":
@@ -192,6 +200,9 @@ def test_actual_controller_preflight_preserves_before_mutation_and_check_mode(tm
         "vars": {"ansible_python_interpreter": sys.executable, "role_path": str(ROOT / "ansible/roles/xray"),
                  "transport_input_sections": ["xray"], "xray": xray, "vpn": {"enable_xray_reality": True, "enable_hysteria": False, "enable_amneziawg": False}},
         "tasks": [{"ansible.builtin.import_tasks": str(ROOT / "ansible/playbooks/tasks/transport-input-preflight.yml")},
+                  {"name": "Confirm retired cohort cannot reopen the implicit listener",
+                   "ansible.builtin.assert": {"that": ["not vpn.enable_xray_reality", "xray.cohorts == []"]},
+                   "when": input_kind == "empty-membership"},
                   {"name": "Publish mutation marker", "ansible.builtin.copy": {"dest": str(marker), "content": "mutated"}}],
     }]))
     argv = ["ansible-playbook", "-i", "localhost,", str(play)]
@@ -260,3 +271,8 @@ def test_unknown_cohort_fields_are_not_silently_discarded():
     from transport_semantics import effective_awg_instances
     with pytest.raises(ValueError, match='unsupported-awg-policy'):
         effective_awg_instances({'instances': [awg()]}, cohort={'unknown_wire_field': 1})
+
+
+def test_explicit_empty_membership_represents_retired_cohort():
+    assert not cohort_errors({'clients': [{'name': 'device', 'short_id': 'aa'}],
+                              'cohorts': [{'name': 'retired', 'clients': []}]})

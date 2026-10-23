@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import ipaddress
 import json
+from itertools import zip_longest
 
 IPV4_DENY = ("0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8",
              "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/4", "240.0.0.0/4")
@@ -62,13 +63,16 @@ class DestinationPolicy:
             return False
         return not (str(normalized) in self.owned and port in self.management[network])
 
-    def select_admitted(self, addresses, port: int, network: str) -> str:
-        candidates = {str(normalize_address(value)) for value in addresses}
-        candidates = [value for value in candidates if self.allows(value, port, network)]
+    def admitted_candidates(self, addresses, port: int, network: str) -> tuple[str, ...]:
+        candidates = {normalize_address(value) for value in addresses}
+        candidates = [value for value in candidates if self.allows(str(value), port, network)]
         if not candidates:
             raise PolicyError("destination-denied")
-        # A stable family preference does not inherit host gai.conf authority.
-        return min(candidates, key=lambda value: (normalize_address(value).version, int(normalize_address(value))))
+        # Stable family ordering never inherits host gai.conf authority. Preserve
+        # IPv6 opportunity even when the bounded dial set has many IPv4 answers.
+        ipv4 = sorted((value for value in candidates if value.version == 4), key=int)
+        ipv6 = sorted((value for value in candidates if value.version == 6), key=int)
+        return tuple(str(value) for pair in zip_longest(ipv4, ipv6) for value in pair if value is not None)
 
 
 def main() -> int:

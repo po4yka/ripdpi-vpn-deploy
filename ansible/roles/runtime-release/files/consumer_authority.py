@@ -6,7 +6,8 @@ import stat
 import sys
 
 DIRECTORY = Path('/usr/local/libexec/ripdpi-consumer')
-NAMES = {'firewall_consumer.py', 'amneziawg_consumer.py', 'transport_runtime_transaction.py', 'runtime_build_receipt.py'}
+NAMES = {'firewall_consumer.py', 'amneziawg_consumer.py', 'transport_runtime_transaction.py', 'runtime_build_receipt.py',
+         'device_revocation_barrier.py'}
 
 
 def directory(path, *, private=False):

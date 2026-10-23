@@ -452,14 +452,21 @@ def test_issuer_revoke_hint_names_the_key_the_role_consumes() -> None:
     `subscription.revoked_token_hashes`, which nothing reads — so a leaked
     token stayed valid after a by-the-book revocation.
     """
-    role_tasks = (
-        REPO_ROOT / "ansible/roles/subscription-host/tasks/enable.yml"
-    ).read_text()
-    iterated = set(re.findall(r"for \w+ in subscription\.(\w+)", role_tasks))
-    assert iterated == {"revoked_tokens"}
-    assert (
-        set(re.findall(r"subscription\.(revoked_\w+)", (REPO_ROOT / "scripts/issue_sub_token.py").read_text())) == iterated
-    )
+    from template_render import render_fragment
+
+    role = REPO_ROOT / "ansible/roles/subscription-host/tasks"
+    enabled = yaml.safe_load((role / "enable.yml").read_text())
+    assert any(task.get("ansible.builtin.import_tasks") == "revoked-hashes.yml" for task in enabled)
+    publication = yaml.safe_load((role / "revoked-hashes.yml").read_text())[0]["ansible.builtin.copy"]
+    instructed = set(re.findall(r"subscription\.(revoked_\w+)", (REPO_ROOT / "scripts/issue_sub_token.py").read_text()))
+    assert instructed == {"revoked_tokens"}
+    token_hash = hashlib.sha256(b"revoked-fixture-token").hexdigest()
+    subscription = {instructed.pop(): [" " + token_hash.upper() + " "],
+                    "revoked_token_hashes": ["f" * 64]}
+    rendered = render_fragment("revoked", publication["content"], {"subscription": subscription})
+    assert [line.strip() for line in rendered.splitlines() if line.strip() and not line.startswith("#")] == [token_hash]
+    empty = render_fragment("revoked", publication["content"], {"subscription": {}})
+    assert not [line for line in empty.splitlines() if line.strip() and not line.startswith("#")]
 
 
 @pytest.mark.parametrize(

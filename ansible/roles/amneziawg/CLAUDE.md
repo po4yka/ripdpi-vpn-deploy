@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+Predictive recovery admits an interrupted revocation only for its exact operation and valid runtime/firewall owners. It never repairs files or starts units. The subsequent predictive apply validates both immutable candidate plans before the lifecycle controller may resume real activation.
+Interrupted post-commit retirement cleanup is admitted read-only only when its before receipt matches that operation's accepted revocation receipt. Missing or different authority cannot prune it; altered cleanup claims and reappeared files retain the marker for diagnosis.
+
+Device revocation passes one exact operation/digest through runtime and firewall owners. Failed activation never restores the old peer or firewall; units stay stopped and retained journals require the identical candidate to resume. Retired path absence remains bound after membership cleanup, and normal later convergence preserves the accepted revoked baseline.
+
 The reviewed UDP checksum correction applies only to exact admitted source
 commits and complete tree bytes. Its manifest, helper and replacement asset
 hashes form build identity and qualify both checkout and release paths. Apply

@@ -2,6 +2,15 @@
 
 ## Design decisions
 
+**Migration publication** — the SSH-only `migration-publisher-v1` API exposes a
+bounded snapshot and compare-and-swap updates under the existing state lock.
+It admits only exact atomic documents, preserves client/expiry on replacement,
+rechecks revocation and expiry, and syncs identical committed bytes before an
+idempotent acknowledgement. Deletion requires the expected current document;
+it cannot expose legacy siblings. Snapshots report active bootstrap grants so
+controller handover cannot silently reset consumption authority. Mirror and
+legacy-only namespaces require their own migration before this API can run.
+
 **Atomic subscription delivery** — new `/sub/` publications use one bounded
 version-1 `<sha256>.document` with exact base64 payload bytes, client and expiry.
 The installed runtime exposes a fixed readiness/publish protocol under the
@@ -47,6 +56,15 @@ owned by the service account, reject symlinks and malformed entries, and fail
 closed if authority is lost. Convergence owns initial authority publication.
 Token-bearing share directory and bundle operations set both `no_log` and
 `diff: false`, including loops and verbose callbacks.
+
+**Disabled profiles can retain a serving publisher** — device revocation uses
+`tasks/revoke-grants.yml` only with an explicit retained-publisher intent. It
+requires the canonical root-owned helper, a running existing service, matching
+namespace/denylist paths and intact replay authority, and refuses removal of
+any existing revoked hash. It shares the normal role's denylist publication
+task, without installing, enabling, starting or restarting a listener. The
+device controller must still observe its owned TLS canary change from 200 to
+410 and clean it up; stopped or incomplete retained runtime is unfinished.
 
 **Share files have OS read boundaries** — the dedicated subscription-host and
 share directories are root:www-data 0750; token directories use 0750 and files
