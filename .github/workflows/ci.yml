@@ -640,7 +640,8 @@ jobs:
     if: ${{ fromJSON(needs.selection.outputs.checks)['transport-runtime-acceptance'] }}
     name: native transport runtime acceptance (${{ matrix.group }}/2)
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    # Cold artifact setup and all native recovery cases share the job budget.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
