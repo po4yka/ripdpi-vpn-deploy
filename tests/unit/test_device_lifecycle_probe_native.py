@@ -149,6 +149,21 @@ class MeasuredRuntime(worker.Runtime):
         return result
 
 
+def wait_for_native_access(runtime, profile, origin, directory):
+    """Admit actual payload readiness before testing the operation receipt."""
+    control = request([profile], origin.url)["control"]
+    deadline = time.monotonic() + 15
+    while True:
+        remaining = deadline - time.monotonic()
+        assert remaining > 0, "native fixture did not reach authenticated readiness"
+        measured = runtime.stream(profile, control, min(5, remaining), directory)
+        assert measured["setup_ok"] and measured["cleanup_ok"], "native readiness resources were not reclaimed"
+        assert time.monotonic() < deadline, "native fixture exceeded authenticated readiness deadline"
+        if measured["accepted"]:
+            return
+        time.sleep(min(0.05, max(0, deadline - time.monotonic())))
+
+
 def assert_access(runtime, profile, origin, state):
     runtime.measurements.clear()
     value = request([profile], origin.url)
@@ -200,10 +215,18 @@ def test_actual_xray_profile_issue_revoke_and_last_device(native_tools, owned_or
     runtime = MeasuredRuntime(binaries=native_tools, ca_file=cert)
     with service(native_tools["xray"], ["run", "-config"], path, cert) as unit:
         profile["witness"].update(config_path=str(path), unit=unit)
+        # Type=simple is active before REALITY's asynchronous target discovery.
+        wait_for_native_access(runtime, profile, origin, tmp_path)
         assert_access(runtime, profile, origin, "accepted")
-        server["inbounds"][0]["settings"]["clients"] = [{"id": str(uuid4()), "email": "survivor", **({"flow": user["flow"]} if "flow" in user else {})}]
+        survivor_id = str(uuid4())
+        survivor = copy.deepcopy(profile)
+        survivor["config"]["outbounds"][0]["settings"]["vnext"][0]["users"][0]["id"] = survivor_id
+        survivor["witness"]["credential"] = survivor_id
+        server["inbounds"][0]["settings"]["clients"] = [{"id": survivor_id, "email": "survivor", **({"flow": user["flow"]} if "flow" in user else {})}]
         write(path, server)
         command(["systemctl", "restart", unit])
+        wait_for_native_access(runtime, survivor, origin, tmp_path)
+        assert_access(runtime, survivor, origin, "accepted")
         assert_access(runtime, profile, origin, "denied")
         command(["systemctl", "stop", unit])
         path.unlink()

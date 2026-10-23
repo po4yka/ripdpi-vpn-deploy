@@ -19,6 +19,11 @@ including cached-but-inactive pairs and receipt-only changes. Preserve active
 bytes, modes and inodes; native revocation tests separately establish outer
 recovery retention and stopped consumers after post-acceptance failure.
 
+Native lifecycle fixtures admit the exact authenticated payload before checking
+operation receipts: systemd Type=simple activation precedes REALITY target
+discovery. After revocation restarts, prove survivor readiness before checking
+the removed identity so cold-start TLS failures cannot stand in for denial.
+
 Recovery source tests exercise actual private journal publication, SOPS input
 fences, immutable apply snapshots and canonical dispatcher boundaries. Model
 provider adapters demonstrate orchestration only. Positive promotion tests must
