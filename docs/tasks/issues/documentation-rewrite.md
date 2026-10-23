@@ -2,7 +2,7 @@
 id: DOC-1792603004056378
 title: "Documentation rewrite: Diátaxis tree, neutral vocabulary, public README"
 kind: chore
-status: review
+status: done
 area: docs
 priority: high
 risk: standard
@@ -12,10 +12,13 @@ blocked_by: []
 spec_mode: not-required
 openspec_change: null
 created: 2026-10-21
-updated: 2026-10-21
+updated: 2026-10-22
 spec_reason: docs-only
 related_tasks: []
 status_detail: "Pull request #354 opened with local check evidence; hosted checks and merge pending."
+closed_at: "2026-10-22T15:00:01Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: Merged PR 354 at 17815812 (squash). CI run 39786453067 on PR head 5dd54f57 passed every required check after a rerun of two jobs cancelled by an unreachable apt mirror; markdown-link-check, claude-md-touch, REALITY target validation and CodeQL passed on the same head. Local make docs-check, make task-check and focused unit tests passed on the merged tree. No live infrastructure operation was performed.
 ---
 
 ## Goal
