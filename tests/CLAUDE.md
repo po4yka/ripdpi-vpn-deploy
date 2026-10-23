@@ -14,6 +14,12 @@
 
 ## Design decisions
 
+Payload quality contract tests compare the exact paired version-2 fixture,
+including semantic pass/window budgets. Canary tests use real sockets for
+HEAD, exact 1 MiB content, concurrent requests and worker admission. These
+local controls do not establish deployed origin or filtered-path acceptance.
+
+
 Native Snell fixtures reserve all server and client listeners simultaneously,
 releasing each process's sockets only after parsing and immediately before launch.
 This prevents self-collisions; a foreign bind in the remaining launch gap still
