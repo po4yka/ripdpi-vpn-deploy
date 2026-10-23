@@ -31,6 +31,10 @@ discovery. After revocation restarts, prove survivor readiness before checking
 the removed identity so cold-start TLS failures cannot stand in for denial.
 Interruption fixtures also admit survivor payload readiness after their explicit
 bare starts and final restarts; systemd completion alone does not prove a listener.
+Hysteria and every Snell reuse profile prove survivor access after bare restarts.
+When Naive removes its last handler, require verified TLS and the exact owned
+decoy body on the same listener before strict revoked-credential denial. These
+fixture waits never wrap canonical barrier activation or relax its readiness contract.
 
 Recovery source tests exercise actual private journal publication, SOPS input
 fences, immutable apply snapshots and canonical dispatcher boundaries. Model
