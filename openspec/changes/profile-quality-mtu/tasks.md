@@ -27,10 +27,10 @@ native acceptance.
 
 ## Execution
 
-- [ ] OPS-1792759876681957 Implement and verify version 2 quality policy admission and exact bundle emission #feature !high @item:OPS-1792759217301702
-- [ ] OPS-1792759877415719 Serve bounded concurrent HEAD and verified payload transfers with real socket regressions #feature !high @item:OPS-1792759217301702
-- [ ] OPS-1792759878148038 Integrate durable quality budgets and stable selection in the paired native recipient #feature !high @item:OPS-1792759217301702
-- [ ] OPS-1792759878904355 Expose measured quality and scoped MTU diagnosis with real packet evidence #feature !high @item:OPS-1792759217301702
+- [x] OPS-1792759876681957 Implement and verify version 2 quality policy admission and exact bundle emission #feature !high @item:OPS-1792759217301702
+- [x] OPS-1792759877415719 Serve bounded concurrent HEAD and verified payload transfers with real socket regressions #feature !high @item:OPS-1792759217301702
+- [x] OPS-1792759878148038 Integrate durable quality budgets and stable selection in the paired native recipient #feature !high @item:OPS-1792759217301702
+- [x] OPS-1792759878904355 Expose measured quality and scoped MTU diagnosis with real packet evidence #feature !high @item:OPS-1792759217301702
 - [ ] OPS-1792759879627556 Complete positive acceptance independent review local gates and protected PR main integration #feature !high @item:OPS-1792759217301702
 
 ## Verification

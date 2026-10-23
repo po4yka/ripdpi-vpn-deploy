@@ -2,7 +2,7 @@
 id: OPS-1792759217301702
 title: Select profiles by transfer quality and diagnose MTU
 kind: feature
-status: doing
+status: review
 area: operations
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: profile-quality-mtu
 created: 2026-10-23
 updated: 2026-10-23
 related_tasks: ["po4yka/RIPDPI#TRN-1792759596946903"]
+status_detail: The source capability and positive native checks pass. Full local acceptance remains open because the macOS process cleanup failure also occurs on the clean baseline; see CIC-1792759317705110. Protected producer PR and exact-main CI remain required.
 ---
 
 ## Goal
