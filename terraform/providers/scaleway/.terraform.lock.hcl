@@ -2,22 +2,24 @@
 # Manual edits may be lost in future updates.
 
 provider "registry.terraform.io/scaleway/scaleway" {
-  version     = "2.78.0"
-  constraints = "~> 2.77"
+  version     = "2.88.0"
+  constraints = "~> 2.88"
   hashes = [
-    "h1:q19v7VXSR+RXDTbD59lE//bsnLIc7/u7mRXsZEpchGY=",
-    "zh:02ac2b39da9fa3acff807af9beeb6d0c91245ac9c1c14cfc2004b37ac17ee02a",
-    "zh:0acd82f9c85866445c98b8e46c5da9fae71022d117b6db95ff0620779202634a",
-    "zh:30039795248c9ce95fb07fd50271e90fcb2063fef89d2286f306bffd0e81f2b2",
-    "zh:629f47ed416c44568019798833c749ec633bf8d629b3a9de0b84e5c60ca47914",
-    "zh:650f8a2a4daf3edba08709f5de5f23cffc823a7ddce723fe9ca321505abb8523",
-    "zh:712a4febfb6352e92758299992f0ad76e6ddab6001c6405afd4758bfdae295ef",
-    "zh:716474a7271780ed51f8809551c5b2bf950a4d2c4781198d540ffb40c348694b",
-    "zh:88d5379af493fe2fc3f8142af9396656544c22902ad7f412a77238276151ebb2",
-    "zh:9b5938bfea23e959228494374a5b4be939bbe26ba13be6f3ca99da400361defb",
-    "zh:ae9a83bff95d6b255af3158258bfa284846048571b7741114898b09babda0b24",
-    "zh:c2e9a9e4d08d17b42bbe1931fa43a54ab09f54583493f855d4d5a158b9d2672d",
-    "zh:c8565dd0a239ac883fde0b68264501d7b3c6a62a628d2b9c0a44be443a8d78c1",
-    "zh:cc47c6030ba188fdae288baed5122d0e0e73275ee1b7ad6a6e8e6b6281841bef",
+    "h1:3LwyPFJgje1OO00RBSMAkbwfRpZKJ5yxdQkb1mw1eBA=",
+    "h1:LxogY39K0mMyB41A0dSbLyhdjCYZC5CoBYEOWOlq+E8=",
+    "h1:kp0ZD9WAqscBKQUbewva4pypOp/a39+iHVvZl3xrwPE=",
+    "zh:1e2fe730b88b984c23f64ac72c39e6d90de0cc381d9108294b84652241992c7b",
+    "zh:4dbe7bb1ab57f9302bf5975ea01586e33d4ba5f81a1596d2bed4a0db76bf41aa",
+    "zh:7d4b27b465fbb49b8c4b8034ebb8668b16f9272f9dcb04d3590335a7c901944a",
+    "zh:8af0a335ca350f44aff6a1e808259f8e1580b91d9f0315ce10c843582e43f149",
+    "zh:92bef9f8bec704fb3d5448194ecec9b9db50fe22714168a293adafed8faf19a2",
+    "zh:9c1686ab9c854bea0f35517f9c0b827aefd4c238486a0ef3f772cdacb22374a2",
+    "zh:a7652aa1aaff0e329f2e6ea1da0bb4f0b463b3ea8cfa32198a40b1e7041af382",
+    "zh:a8dbae96a5c08b1d14e7e80d27e3c8255076852da5b2f3faaa643c3ec70f46ca",
+    "zh:aae56c9f4eaf94401cbe1d9db46043d62b501b99e985271c3e39aa95990e0b59",
+    "zh:b6d319188f531f85b6eb131e43d046ee4b13d2b712add1f9eb4617f7efbeb422",
+    "zh:becfe929e820d6077637a611b9b256e860214e632f7075e58771c20a4ef2c2b3",
+    "zh:d2a961dd2d6722613250f803da6e71a9d82e855f28e279661c69f4fd7658b154",
+    "zh:f4191779fc232b5f9599965d4701ecb869ba4038a89e7606256a8eff7608dd37",
   ]
 }

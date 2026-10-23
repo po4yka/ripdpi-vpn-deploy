@@ -8,7 +8,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW_DIR = REPO_ROOT / ".github" / "workflows"
 SETUP_TERRAFORM = "hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e"
-SUPPORTED_VERSION = "1.15.2"
+SUPPORTED_VERSION = "1.15.9"
 WORKFLOWS = ("ci.yml", "real-vps-deploy.yml", "transport-reachability-matrix.yml")
 
 

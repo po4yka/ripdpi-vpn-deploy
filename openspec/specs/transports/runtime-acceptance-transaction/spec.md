@@ -65,8 +65,11 @@ The implementation MUST Check mode MUST inspect trusted state and report intende
 - **THEN** foreign bytes remain intact and logs argv and environment expose no credential value
 
 ### Requirement: REQ-PROTO-RTA-QUEUE — Preserve historical sender samples across rejected activation
+Sender candidate publication MUST preserve the complete single-receiver native queue before any runtime selector changes, under the same publisher lock as stop, publication, readiness and compensation.
 
-Sender candidate publication MUST preserve the complete single-receiver native queue before any runtime selector changes, under the same publisher lock as stop, publication, readiness and compensation. The private snapshot MUST remain until durable acceptance. Recovery MUST restore bytes and bookkeeping in place before the previous runtime starts, preserving the queue root inode. Working data plus retained snapshot MUST fit the existing 2 GiB admission and filesystem reserve. Foreign authority or unknown queue contents MUST refuse without deletion.
+#### Scenario: Retain accepted queue authority through compensation
+- **WHEN** sender candidate publication proceeds to acceptance or recovery
+- **THEN** The private snapshot MUST remain until durable acceptance. Recovery MUST restore bytes and bookkeeping in place before the previous runtime starts, preserving the queue root inode. Working data plus retained snapshot MUST fit the existing 2 GiB admission and filesystem reserve. Foreign authority or unknown queue contents MUST refuse without deletion.
 
 #### Scenario: Failed bind recovers historical samples
 

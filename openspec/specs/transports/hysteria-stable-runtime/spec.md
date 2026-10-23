@@ -4,8 +4,11 @@
 Provide observable, testable guarantees for upgrade hysteria with validated congestion and udp resource profiles across accepted inputs, successful operation, failure and retained authority.
 ## Requirements
 ### Requirement: REQ-PROTO-HY-VERSION — Select an exact eligible stable runtime and compatible clients
+Hysteria upgrades MUST bind a stable non-prerelease release tag to refreshed publication metadata, architecture asset digests and known reachable critical/high advisory status.
 
-Hysteria upgrades MUST bind a stable non-prerelease release tag to refreshed publication metadata, architecture asset digests and known reachable critical/high advisory status. Local source adoption MUST validate exact artifact digests and real local parser/traffic/rollback behavior. Production promotion remains separately authorized and requires stable publication eligibility plus its own operational acceptance; unavailable current advisory metadata MUST keep promotion ineligible without fabricating a passing observation. Exact supported client parser versions MUST be refreshed and validated without automatic latest tracking.
+#### Scenario: Separate local adoption from production eligibility
+- **WHEN** a Hysteria release is adopted locally or considered for production promotion
+- **THEN** Local source adoption MUST validate exact artifact digests and real local parser/traffic/rollback behavior. Production promotion remains separately authorized and requires stable publication eligibility plus its own operational acceptance; unavailable current advisory metadata MUST keep promotion ineligible without fabricating a passing observation. Exact supported client parser versions MUST be refreshed and validated without automatic latest tracking.
 
 #### Scenario: Eligible stable candidate and supported parser
 

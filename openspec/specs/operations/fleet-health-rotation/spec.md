@@ -47,15 +47,18 @@ client-path health MUST remain unknown, including on UDP-only nodes.
   a TCP listener reachable or blocked VPN access.
 
 ### Requirement: REQ-FLEET-MIN-ACTIVE — Authenticated survivor floor
-
 Before each external rotation, the controller MUST count distinct surviving
 nodes using current authenticated reports accepted by the canonical liveness
-validator for every required profile. Plan nodes MUST bind exact inventory
-provider/environment, alias and public service address to liveness targets.
-The current rotation target and already-completed original targets MUST NOT
-satisfy the survivor floor. Explicit nonrotating standby nodes MAY satisfy it.
-Unknown, stale, wrong-target, unauthenticated, degraded or missing evidence
-MUST NOT count. The controller MUST re-evaluate after operator confirmation.
+validator for every required profile.
+
+#### Scenario: Count only exact authenticated survivors after review
+- **WHEN** the controller binds plan nodes and evaluates the survivor floor
+- **THEN** Plan nodes MUST bind exact inventory
+  provider/environment, alias and public service address to liveness targets.
+  The current rotation target and already-completed original targets MUST NOT
+  satisfy the survivor floor. Explicit nonrotating standby nodes MAY satisfy it.
+  Unknown, stale, wrong-target, unauthenticated, degraded or missing evidence
+  MUST NOT count. The controller MUST re-evaluate after operator confirmation.
 
 #### Scenario: Healthy UDP-only survivor
 

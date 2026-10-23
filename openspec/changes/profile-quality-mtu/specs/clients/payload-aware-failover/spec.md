@@ -12,6 +12,13 @@ absent rather than inventing public endpoints. Version 1 MUST be rejected.
 Official sing-box artifacts MUST retain only supported engine fields and MUST
 NOT claim that their HEAD-based urltest verifies payload transfer.
 
+#### Scenario: Keep policy agreement and engine boundaries
+
+- **WHEN** delivery artifacts consume explicit or absent failover configuration
+- **THEN** all contributing hosts MUST agree on the policy
+- **AND** absent configuration MUST remain absent rather than inventing public endpoints
+- **AND** official sing-box artifacts MUST retain only supported engine fields and MUST NOT claim that HEAD-based urltest verifies payload transfer
+
 #### Scenario: Invalid or conflicting policy
 
 - **WHEN** supplied policy is malformed, obsolete, unbounded, lacks independent origins or differs between hosts

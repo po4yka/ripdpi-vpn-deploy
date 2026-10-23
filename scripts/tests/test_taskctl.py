@@ -78,7 +78,7 @@ class TaskctlFixture(TestCase):
             json.dumps(
                 {
                     "mdtask": "0.1.17",
-                    "openspec": "1.8.0",
+                    "openspec": "1.14.3",
                     "schema": 1,
                     "files": generated_files,
                 }

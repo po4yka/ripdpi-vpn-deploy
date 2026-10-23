@@ -108,8 +108,11 @@ Operator drills MUST supply the current relay payload contract and distinguish s
 - **THEN** current node, evidence and source fields reach the relay; a confirmed API send permits resolution and a rejected or failed send cannot produce a successful drill result.
 
 ### Requirement: REQ-QUEUE-ORDER — Accept bounded reordered queue replay
+The collector MUST accept reordered remote-write samples within its configured seven-day window relative to the global TSDB maximum timestamp.
 
-The collector MUST accept reordered remote-write samples within its configured seven-day window relative to the global TSDB maximum timestamp. It MUST preserve original timestamps and labels, reject samples outside the finite window, and keep private authentication and resource bounds. This is not a wall-clock queue-age guarantee; rejected HTTP batches MUST remain observable as delivery loss. The isolated one-hour collector MUST use a matching one-hour policy. Small receiver regressions MUST NOT replace measured late-history replay resource admission before rollout.
+#### Scenario: Preserve replay identity and finite-window evidence
+- **WHEN** the collector admits or rejects reordered samples
+- **THEN** It MUST preserve original timestamps and labels, reject samples outside the finite window, and keep private authentication and resource bounds. This is not a wall-clock queue-age guarantee; rejected HTTP batches MUST remain observable as delivery loss. The isolated one-hour collector MUST use a matching one-hour policy. Small receiver regressions MUST NOT replace measured late-history replay resource admission before rollout.
 
 #### Scenario: An unsent worker block is replayed after newer samples
 

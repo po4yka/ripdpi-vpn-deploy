@@ -8,7 +8,7 @@ naive_test_build_dir="${NAIVE_NATIVE_BUILD_DIR:-${repo_root}/.cache/p2-native-ca
   echo 'native Naive build directory must be absolute' >&2
   exit 1
 }
-[[ "$(go env GOVERSION)" == go1.27.1 ]] || {
+[[ "$(go env GOVERSION)" == go1.27.3 ]] || {
   echo 'native Naive acceptance requires the repository-pinned Go toolchain' >&2
   exit 1
 }
