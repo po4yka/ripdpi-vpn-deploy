@@ -63,7 +63,7 @@ equals the version they support.
 
 ## `ripdpi.payload_failover`
 
-Optional payload health policy for the RIPDPI imported selector runtime. Set
+Optional payload health and quality policy for the RIPDPI imported selector runtime. Set
 `client_payload_failover` in the contributing Ansible group/profile variables;
 every selected host must resolve to the same policy. The emitter refuses
 conflicting policies or a policy without proxy candidates. Standard sing-box
@@ -72,21 +72,27 @@ which does not establish useful payload transfer.
 
 ```yaml
 client_payload_failover:
-  schema_version: 1
+  schema_version: 2
   selector_tag: select
   probes:
-    - url: https://control-a.example.test/__throttle_probe?bytes=32768
-      expected_bytes: 32768
-      sha256: 80e00fc9e65a58c5ad59c399511a2ed5f27140f43e3b58f93c2f00a0c0df8816
-    - url: https://control-b.example.test/__throttle_probe?bytes=32768
-      expected_bytes: 32768
-      sha256: 80e00fc9e65a58c5ad59c399511a2ed5f27140f43e3b58f93c2f00a0c0df8816
+    - url: https://control-a.example.test/__throttle_probe?bytes=262144
+      expected_bytes: 262144
+      sha256: b1882646e3ee80170bd9207304f77c71d388b0a786d53e5e7f4e16fb22e8b6dc
+    - url: https://control-b.example.test/__throttle_probe?bytes=262144
+      expected_bytes: 262144
+      sha256: b1882646e3ee80170bd9207304f77c71d388b0a786d53e5e7f4e16fb22e8b6dc
   interval_seconds: 60
   timeout_seconds: 10
   failure_threshold: 2
   recovery_threshold: 2
   cooldown_seconds: 120
   max_backoff_seconds: 900
+  quality:
+    max_pass_bytes: 2097152
+    max_window_bytes: 16777216
+    window_seconds: 3600
+    minimum_gain_percent: 20
+    maximum_loaded_latency_increase_ms: 50
 ```
 
 Replace both illustrative URLs with separately operated HTTPS origins serving
@@ -98,21 +104,49 @@ short bodies and digest mismatches do not pass. A successful control can qualify
 a candidate when the other control is unavailable; failure requires both
 controls to fail through that same candidate.
 
-Each probe requires 32768–65536 bytes and a lowercase SHA-256 digest. Origins
+Each probe requires 32768–1048576 bytes and a lowercase SHA-256 digest. Origins
 must differ after host/port normalization. URLs are ASCII HTTPS without userinfo
 or fragments. Bounds are: interval 30–3600 seconds, per-control timeout 1–30,
 failure/recovery thresholds 2–10, cooldown 30–3600, maximum backoff 60–3600.
 Timeout cannot exceed the interval; maximum backoff cannot be below it. Unknown
 fields and invalid input refuse the policy instead of silently dropping it.
 
-The coordinated client implementation owns failure/recovery counters, cooldown,
-backoff and network-change reset. If all candidates fail, it retains its last
-proxy selection and does not select direct. This policy applies to full imported
-selector profiles; the simple seeded-profile import surface explicitly refuses
-it. Use a coordinated client version: older clients may ignore additive fields
-and cannot be treated as payload-qualified. The paired
-`contract/ripdpi-bundle.payload-failover.json` fixture contains synthetic emitted
-input for the client parser, not live acceptance evidence.
+The nested policy accepts only version 2; version 1 must be migrated before
+refresh. The enclosing bundle version remains unchanged. Omitting `quality`
+retains health-only selection. With quality enabled, each origin must also
+answer HEAD with status 200 and its exact Content-Length. Baseline and loaded
+request latency include the complete control transaction; neither is RTT.
+Verified GET body bytes divided by positive monotonic body duration establish
+goodput. Loaded latency requires a concurrent HEAD fully inside that body
+interval. A fast transfer may produce partial evidence, which cannot promote a
+candidate on quality alone.
+
+Quality bounds are: pass allowance 65538–16777216 bytes, window allowance
+65538–268435456 bytes, window duration 60–86400 seconds, minimum gain 5–100
+percent and allowed loaded-latency increase 0–2000 ms. The window allowance
+must cover the pass allowance and its duration must cover the probe interval.
+The pass allowance must cover twice the sum of both `expected_bytes + 1`
+reservations. Reservations precede network I/O, survive failures, cancellation,
+restart, network and policy changes, and expire conservatively after reboot.
+They bound application body bytes, not TLS, tunnel or retransmission overhead.
+
+A pass compares the active member and one rotating challenger using the same
+origin. Promotion requires repeated complete measurements: either the required
+goodput gain without exceeding the loaded-latency allowance, or a loaded-latency
+reduction meeting the same percentage threshold with non-regressing goodput.
+Existing recovery
+threshold and cooldown still apply. Partial, stale or deferred evidence stays
+visible without authorizing a quality switch. Ordinary health recovery still
+requires verified payload reachability; all-candidate failure retains the last
+proxy and never selects direct. REALITY uses the existing Xray candidate
+runtime; AWG is outside this selector pool. Plain sing-box URLTest remains
+RTT-only.
+
+This policy applies to full imported selector profiles; the simple seeded-profile
+import surface explicitly refuses it. Upgrade the paired recipient before
+publishing version 2. The paired `contract/ripdpi-bundle.payload-failover.json`
+fixture contains synthetic emitted input for parser agreement, not live
+acceptance evidence. No policy or control endpoint is deployed by this change.
 
 ## `ripdpi.amneziawg`
 

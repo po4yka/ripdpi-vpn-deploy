@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-10-23
+goal: OPS-1792759217301702 Select profiles by transfer quality and diagnose MTU
