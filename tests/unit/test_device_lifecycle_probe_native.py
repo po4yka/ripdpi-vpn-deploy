@@ -566,9 +566,16 @@ def test_actual_awg_issued_peer_revoked_peer_and_ambiguous_controls(native_tools
     # still creates its independent client TUN and namespace for every attempt.
     with service(native_tools["awg-go"], ["-f"], Path(interface), cert) as unit:
         deadline = time.monotonic() + 5
-        while subprocess.run(["ip", "link", "show", interface], capture_output=True).returncode:
-            assert time.monotonic() < deadline
-            time.sleep(0.05)
+        while True:
+            remaining = deadline - time.monotonic()
+            assert remaining > 0, "native AWG control API did not become ready"
+            ready = subprocess.run([native_tools["awg"], "show", interface, "listen-port"],
+                                   capture_output=True, timeout=min(2, remaining), check=False)
+            assert time.monotonic() < deadline, "native AWG control readiness exceeded deadline"
+            if ready.returncode == 0:
+                assert ready.stdout.strip().isdigit() and 0 <= int(ready.stdout) <= 65535
+                break
+            time.sleep(min(0.05, max(0, deadline - time.monotonic())))
         command([native_tools["awg"], "setconf", interface, config_path])
         for name in ("address_v4", "address_v6"):
             command(["ip", "address", "add", instance[name], "dev", interface])

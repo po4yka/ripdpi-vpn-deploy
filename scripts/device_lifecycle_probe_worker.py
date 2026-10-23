@@ -390,10 +390,10 @@ class Runtime:
         process, attempted, location, resolver_created = None, False, None, False
         filename = _private(directory / (interface + ".conf"), config["text"].encode())
 
-        def checked(args, *, data=None):
+        def checked(args, reason, *, data=None):
             code, output = self.command(args, data=data)
             if code:
-                raise ProbeError("awg-setup-failed")
+                raise ProbeError(reason)
             return output
 
         try:
@@ -401,7 +401,7 @@ class Runtime:
             if code != 1 or marker.exists() or marker.is_symlink():
                 raise ProbeError("awg-resource-collision")
             attempted = True
-            checked([ip, "netns", "add", namespace])
+            checked([ip, "netns", "add", namespace], "awg-namespace-create-failed")
             self.namespace_root.mkdir(mode=0o700, exist_ok=True)
             info = self.namespace_root.lstat()
             if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022:
@@ -409,7 +409,7 @@ class Runtime:
             resolver.mkdir(mode=0o700)
             resolver_created = True
             _private(resolver / "resolv.conf", "".join("nameserver " + value + "\n" for value in dns).encode())
-            stripped = checked([quick, "strip", filename])
+            stripped = checked([quick, "strip", filename], "awg-config-strip-failed")
             process = subprocess.Popen([go, "-f", interface], stdin=subprocess.DEVNULL,
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                        env=self.environment, start_new_session=True)
@@ -418,28 +418,47 @@ class Runtime:
             while time.monotonic() < deadline:
                 if process.poll() is not None:
                     raise ProbeError("awg-client-exited")
-                code, _ = self.command([ip, "link", "show", interface], timeout=2)
-                if code == 0:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
                     break
-                if code != 1:
+                code, _ = self.command([ip, "link", "show", interface], timeout=min(2, remaining))
+                if code == 0:
+                    # The TUN appears before the userspace control socket.
+                    # Read the fresh daemon before the single configuration write.
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    ready, port = self.command([awg, "show", interface, "listen-port"],
+                                               timeout=min(2, remaining))
+                    if process.poll() is not None:
+                        raise ProbeError("awg-client-exited")
+                    if ready == 0:
+                        if not re.fullmatch(rb"(?:0|[1-9][0-9]{0,4})\n", port) or int(port) > 65535:
+                            raise ProbeError("awg-client-state-invalid")
+                        break
+                elif code != 1:
                     raise ProbeError("awg-interface-unavailable")
-                time.sleep(0.05)
+                remaining = deadline - time.monotonic()
+                if remaining > 0:
+                    time.sleep(min(0.05, remaining))
             else:
                 raise ProbeError("awg-client-start-timeout")
-            checked([awg, "setconf", interface, "/dev/stdin"], data=stripped)
+            if time.monotonic() >= deadline:
+                raise ProbeError("awg-client-start-timeout")
+            checked([awg, "setconf", interface, "/dev/stdin"], "awg-configure-failed", data=stripped)
             # Record intent before the move; cleanup reconciles both namespaces.
             location = "uncertain"
-            checked([ip, "link", "set", interface, "netns", namespace])
+            checked([ip, "link", "set", interface, "netns", namespace], "awg-namespace-move-failed")
             location = "namespace"
-            checked([ip, "-n", namespace, "link", "set", "lo", "up"])
+            checked([ip, "-n", namespace, "link", "set", "lo", "up"], "awg-loopback-failed")
             for address in addresses:
-                checked([ip, "-n", namespace, "address", "add", str(address), "dev", interface])
-            checked([ip, "-n", namespace, "link", "set", interface, "mtu", str(config["mtu"]), "up"])
+                checked([ip, "-n", namespace, "address", "add", str(address), "dev", interface], "awg-address-failed")
+            checked([ip, "-n", namespace, "link", "set", interface, "mtu", str(config["mtu"]), "up"], "awg-interface-up-failed")
             for version in {address.version for address in addresses}:
-                checked([ip, "-n", namespace, "-" + str(version), "route", "add", "default", "dev", interface])
+                checked([ip, "-n", namespace, "-" + str(version), "route", "add", "default", "dev", interface], "awg-route-failed")
             started = int(time.time())
             result = self.http(control, timeout, directory, namespace=namespace)
-            handshakes = checked([ip, "netns", "exec", namespace, awg, "show", interface, "latest-handshakes"])
+            handshakes = checked([ip, "netns", "exec", namespace, awg, "show", interface, "latest-handshakes"], "awg-handshake-read-failed")
             rows = [line.split() for line in handshakes.decode("ascii").splitlines()]
             if len(rows) != 1 or len(rows[0]) != 2 or not rows[0][1].isdigit():
                 raise ProbeError("awg-handshake-unavailable")

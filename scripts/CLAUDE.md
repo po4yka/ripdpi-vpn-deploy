@@ -30,6 +30,10 @@ consumes the request deadline. A full-duration curl timeout qualifies as denial
 only with unchanged before/after authority, confirmed inactive runtime and
 absent identity, successful controls, setup and cleanup. Active or unproven
 timeouts remain unknown.
+An owned AWG TUN can exist before its userspace control API. Probe startup waits
+for a successful bounded listen-port read before the single configuration write;
+the fresh daemon may already hold an ephemeral UDP port. Setup failures expose
+only fixed phase categories, never native output or private configuration.
 
 Device migration uses separate source/target SOPS authorities and an encrypted
 intent before cross-document writes. Exact inventory, host pins, alternate
