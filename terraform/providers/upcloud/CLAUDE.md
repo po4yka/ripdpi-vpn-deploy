@@ -55,6 +55,10 @@ Destroy authorization includes the exact seed storage UUID and its absence.
 
 ## Pitfalls
 
+- **Provider refreshes preserve platform verification** — update the reviewed
+  5.x baseline and generated lock together, retaining checksums for Linux amd64,
+  Linux arm64 and Darwin arm64. Mock tests establish configuration shape only.
+
 - **Port inputs are integers** — singleton and legacy XHTTP ports reject
   fractions before provider calls. Legacy collision tests clear explicit listeners
   so they exercise the effective legacy contract.

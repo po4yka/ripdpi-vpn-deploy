@@ -12,4 +12,7 @@ This helper uses gotd's MTProxy resolver and Telegram test application identity 
 ## Pitfalls
 
 - Keep `github.com/gotd/td` pinned and commit `go.sum` changes with the source.
+- Refresh indirect modules with `go get` and retain canonical `go mod tidy`
+  output. OpenTelemetry core, metric and trace pins move together; advisory
+  matches in unimported upstream test dependencies do not prove reachability.
 - Never add user login, bot tokens, messages, contacts, or persistent sessions to this measurement helper.

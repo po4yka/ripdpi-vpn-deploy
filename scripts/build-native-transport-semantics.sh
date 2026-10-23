@@ -11,8 +11,8 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
   echo 'explicit isolated native fixture ownership is required' >&2
   exit 1
 }
-[[ "$(go env GOVERSION)" == go1.27.1 ]] || {
-  echo 'native transport builds require repository-pinned Go 1.27.1' >&2
+[[ "$(go env GOVERSION)" == go1.27.3 ]] || {
+  echo 'native transport builds require repository-pinned Go 1.27.3' >&2
   exit 1
 }
 native_root="${repo_root}/.cache/native-transport-semantics"

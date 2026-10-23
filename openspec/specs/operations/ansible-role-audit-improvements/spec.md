@@ -5,15 +5,18 @@ Complete the remaining role audit opportunities with bounded storage, independen
 per-device access, durable runtime intent and verifiable private acceptance.
 ## Requirements
 ### Requirement: REQ-IMP-RETENTION — Bound recipient history without resurrection
+Bootstrap audit records MUST have explicit byte/archive bounds.
 
-Bootstrap audit records MUST have explicit byte/archive bounds. Bootstrap-only
-bearers MUST bind issuance time to their identity, enforce an intrinsic maximum
-lifetime and reject legacy formats. Consumption and collection MUST serialize
-through owned private authority. A monotonic retired-before fence MUST be
-committed durably before marker removal. Admission MUST reject retired issuance
-regardless of restored metadata, changed lifetime settings or wall-clock rollback.
-Marker capacity MUST be bounded without removing unexpired consumption authority.
-Unknown/unsafe state MUST refuse before deletion. Subscription bearers are unchanged.
+#### Scenario: Retire bootstrap bearer authority without resurrection
+- **WHEN** bootstrap-only bearers are issued, consumed or collected
+- **THEN** Bootstrap-only
+  bearers MUST bind issuance time to their identity, enforce an intrinsic maximum
+  lifetime and reject legacy formats. Consumption and collection MUST serialize
+  through owned private authority. A monotonic retired-before fence MUST be
+  committed durably before marker removal. Admission MUST reject retired issuance
+  regardless of restored metadata, changed lifetime settings or wall-clock rollback.
+  Marker capacity MUST be bounded without removing unexpired consumption authority.
+  Unknown/unsafe state MUST refuse before deletion. Subscription bearers are unchanged.
 
 #### Scenario: Restore a collected consumed grant
 
@@ -27,15 +30,18 @@ Unknown/unsafe state MUST refuse before deletion. Subscription bearers are uncha
 - **THEN** no valid consumption record is discarded; admission refuses safely and prior authority remains usable
 
 ### Requirement: REQ-IMP-ACTIVATION — Reconcile interrupted desired state
-
 Managed nginx and geodata publication MUST retain durable desired-versus-activated
-identity under their existing resource lock. Retrying unchanged desired bytes
-MUST activate any pending or missing receipt only after complete validation.
-Activation receipts MUST become current only after successful runtime adoption;
-failure MUST retain pending intent and preserve compensating publication. Known
-interrupted journals MUST restore/reactivate complete prior authority or roll
-forward only an exactly matching complete desired target under the same lock.
-Foreign/malformed/unknown journals MUST refuse without deletion.
+identity under their existing resource lock.
+
+#### Scenario: Recover pending runtime activation under the same lock
+- **WHEN** publication retries after desired bytes or runtime activation were interrupted
+- **THEN** Retrying unchanged desired bytes
+  MUST activate any pending or missing receipt only after complete validation.
+  Activation receipts MUST become current only after successful runtime adoption;
+  failure MUST retain pending intent and preserve compensating publication. Known
+  interrupted journals MUST restore/reactivate complete prior authority or roll
+  forward only an exactly matching complete desired target under the same lock.
+  Foreign/malformed/unknown journals MUST refuse without deletion.
 
 #### Scenario: Controller dies between publication and activation
 
@@ -55,16 +61,18 @@ and must not publish credentials. A controller MUST NOT clean another run's stat
 - **THEN** only a complete validated pair becomes active; cleanup is private and failed publication preserves prior authority
 
 ### Requirement: REQ-IMP-DEVICE-AUTH — Independently issue and revoke Naive clients
-
 Naive secrets MUST expose a per-device collection with unique device names,
 usernames and strong independent passwords; the old scalar pair MUST be rejected.
-The exact pinned Caddy composite MUST accept each enabled client. Issuance and
-revocation MUST update the encrypted document atomically through existing locking,
-redaction and registry contracts. Exported material MUST select one device.
-Revoking a device MUST remove its access while preserving another device's access.
-An empty collection after last-device revocation MUST serve only the decoy and
-MUST NOT create an unauthenticated forward proxy.
-No real credential issuance is required for source validation.
+
+#### Scenario: Preserve independent authentication across device changes
+- **WHEN** Naive clients are issued, exported or revoked
+- **THEN** The exact pinned Caddy composite MUST accept each enabled client. Issuance and
+  revocation MUST update the encrypted document atomically through existing locking,
+  redaction and registry contracts. Exported material MUST select one device.
+  Revoking a device MUST remove its access while preserving another device's access.
+  An empty collection after last-device revocation MUST serve only the decoy and
+  MUST NOT create an unauthenticated forward proxy.
+  No real credential issuance is required for source validation.
 
 #### Scenario: Two devices and one revocation
 
@@ -72,14 +80,17 @@ No real credential issuance is required for source validation.
 - **THEN** both initially authenticate, only the removed client is subsequently denied, and the other still completes real CONNECT traffic
 
 ### Requirement: REQ-IMP-METRICS — Preserve complete observations and tail recovery
-
 Policy tailing MUST recover from same-inode truncation and inode replacement
-without missing subsequent records or counting retained history twice. Honeypot
-observation totals MUST include all admitted events independently of bounded logs;
-suppressed logs and busy-worker drops MUST remain distinguishable. Monitoring
-MUST reject wildcard/public/hostname/injected listeners before mutation and admit
-only validated loopback or explicitly approved local Tailnet endpoints. Sender
-scraping and verification MUST consume the same normalized endpoint.
+without missing subsequent records or counting retained history twice.
+
+#### Scenario: Preserve event totals and endpoint admission
+- **WHEN** honeypot observations and monitoring endpoints are processed
+- **THEN** Honeypot
+  observation totals MUST include all admitted events independently of bounded logs;
+  suppressed logs and busy-worker drops MUST remain distinguishable. Monitoring
+  MUST reject wildcard/public/hostname/injected listeners before mutation and admit
+  only validated loopback or explicitly approved local Tailnet endpoints. Sender
+  scraping and verification MUST consume the same normalized endpoint.
 
 #### Scenario: Truncate, rotate and exceed the logging cap
 
@@ -92,14 +103,17 @@ scraping and verification MUST consume the same normalized endpoint.
 - **THEN** approved sockets/scrapes agree; rejected input changes no runtime authority
 
 ### Requirement: REQ-IMP-RECOVERY-INTENT — Durably retry recovery notification
-
 Recovery notification intent MUST persist independently of incident health and
-canary freshness. Failed delivery MUST remain retryable at a bounded interval
-through fresh pulses and process restart. Only confirmed matching delivery MUST clear
-intent; stale completions MUST not discard a newer event. Known completed
-recovery MUST not repeatedly deliver; ambiguous external acknowledgement may
-require at-least-once retry. Private notification
-credentials and replay/generation invariants MUST remain unchanged.
+canary freshness.
+
+#### Scenario: Retry only unconfirmed recovery delivery
+- **WHEN** recovery delivery fails or completes while event state changes
+- **THEN** Failed delivery MUST remain retryable at a bounded interval
+  through fresh pulses and process restart. Only confirmed matching delivery MUST clear
+  intent; stale completions MUST not discard a newer event. Known completed
+  recovery MUST not repeatedly deliver; ambiguous external acknowledgement may
+  require at-least-once retry. Private notification
+  credentials and replay/generation invariants MUST remain unchanged.
 
 #### Scenario: Healthy pulses follow failed recovery delivery
 
@@ -120,14 +134,17 @@ Check mode MUST distinguish prediction from collection evidence.
 - **THEN** opt-in acceptance refuses; default reporting retains its documented non-blocking behavior
 
 ### Requirement: REQ-IMP-ACCEPTANCE — Preserve prior fixes and prove positive behavior
-
 F43 WARP tests MUST execute actual role success, repeated convergence, failure
-and recovery instead of changing an invented counter. I01-I06 corrections and
-qualifications MUST remain explicit, including the supported DNS boundary and
-unavailable full morphology artifact. All new behavior MUST have positive and
-boundary evidence, reviewed snapshots, independent review, the complete local
-gate and exact-source hosted checks in existing PR 282. Synthetic fixtures MUST
-NOT be represented as provider, live client or vendor-registration acceptance.
+and recovery instead of changing an invented counter.
+
+#### Scenario: Require complete evidence without overstating fixtures
+- **WHEN** the implementation is qualified for acceptance
+- **THEN** I01-I06 corrections and
+  qualifications MUST remain explicit, including the supported DNS boundary and
+  unavailable full morphology artifact. All new behavior MUST have positive and
+  boundary evidence, reviewed snapshots, independent review, the complete local
+  gate and exact-source hosted checks in existing PR 282. Synthetic fixtures MUST
+  NOT be represented as provider, live client or vendor-registration acceptance.
 
 #### Scenario: Review source extension
 
@@ -135,8 +152,11 @@ NOT be represented as provider, live client or vendor-registration acceptance.
 - **THEN** I07-I15 and F43 have per-ID evidence, P1/P2 regressions remain intact and source/native/CI results are separated from live acceptance
 
 ### Requirement: REQ-IMP-REVIEW — Preserve private runtime and export boundaries
+PR review corrections MUST close descriptors on every failure path, preserve no-follow authority, use owner-only log/state access when no group reader is needed, and explicitly reject deprecated TLS protocols.
 
-PR review corrections MUST close descriptors on every failure path, preserve no-follow authority, use owner-only log/state access when no group reader is needed, and explicitly reject deprecated TLS protocols. Named template rendering MUST escape HTML/XML while preserving the quoting of non-HTML artifacts. Selected-device credentials MUST be delivered only through an explicitly requested private artifact, never standard output or diagnostics. No warning exclusion, dismissal or suppression substitutes for an observed correction.
+#### Scenario: Keep rendering and selected credentials private
+- **WHEN** review corrections affect rendered artifacts or credential delivery
+- **THEN** Named template rendering MUST escape HTML/XML while preserving the quoting of non-HTML artifacts. Selected-device credentials MUST be delivered only through an explicitly requested private artifact, never standard output or diagnostics. No warning exclusion, dismissal or suppression substitutes for an observed correction.
 
 #### Scenario: Export one device and encounter unsafe output authority
 

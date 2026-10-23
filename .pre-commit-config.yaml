@@ -9,7 +9,7 @@ repos:
       - id: gitleaks
 
   - repo: https://github.com/antonbabenko/pre-commit-terraform
-    rev: v1.105.0
+    rev: v1.109.3
     hooks:
       - id: terraform_fmt
       - id: terraform_validate
@@ -24,7 +24,7 @@ repos:
           - --args=--recursive
 
   - repo: https://github.com/ansible/ansible-lint
-    rev: v26.4.0
+    rev: v26.10.1
     hooks:
       - id: ansible-lint
         entry: env ANSIBLE_CONFIG=ansible/ansible.cfg ansible-lint ansible
@@ -154,7 +154,7 @@ repos:
         stages: [commit-msg]
 
   - repo: https://github.com/rbubley/mirrors-prettier
-    rev: v3.5.3
+    rev: v3.9.10
     hooks:
       - id: prettier
         name: prettier (JSON fixtures and secrets schema)

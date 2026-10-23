@@ -44,7 +44,7 @@ def test_molecule_driver_collection_is_pinned_before_scenarios_run() -> None:
         item["name"]: item["version"] for item in requirements["collections"]
     }
 
-    assert collections["community.docker"] == "5.3.0"
+    assert collections["community.docker"] == "5.4.0"
 
 
 def _published_scenario() -> dict:

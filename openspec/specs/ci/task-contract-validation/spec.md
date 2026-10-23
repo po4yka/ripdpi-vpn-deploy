@@ -228,17 +228,19 @@ survival checks.
 - **AND** required evidence transfers and terminal mapping survival still fail closed
 
 ### Requirement: REQ-CIC-1788902865968549-001 — version committed-review history enforcement
-
 The task validator MUST determine whether committed-review enforcement was
 activated anywhere in the first-parent project-config ancestry of the exact
 terminal transition and MUST keep that activation effective for all descendant
 terminal transitions even if a later config removes or lowers the policy field.
-Base-aware validation MUST reject that downgrade independently of whether the
-selected range contains a terminal task candidate. A terminal transition
-without version 1 in its own first-parent ancestry MUST receive legacy treatment
-only when its commit is an ancestor of the first version-1 activation already
-present in the trusted validation base. An activation introduced after that
-base MUST NOT grandfather an earlier transition in the same untrusted change.
+
+#### Scenario: Retain activation across untrusted history
+- **WHEN** the validator evaluates a selected history range and terminal transitions
+- **THEN** Base-aware validation MUST reject that downgrade independently of whether the
+  selected range contains a terminal task candidate. A terminal transition
+  without version 1 in its own first-parent ancestry MUST receive legacy treatment
+  only when its commit is an ancestor of the first version-1 activation already
+  present in the trusted validation base. An activation introduced after that
+  base MUST NOT grandfather an earlier transition in the same untrusted change.
 
 #### Scenario: Pre-activation terminal history remains valid
 

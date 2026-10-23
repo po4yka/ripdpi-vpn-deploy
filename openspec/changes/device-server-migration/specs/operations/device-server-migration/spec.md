@@ -46,14 +46,17 @@ refuse; plaintext credentials MUST NOT enter journals, logs or Git.
   conflicting generation; it does not duplicate peers or allocate a second key.
 
 ### Requirement: REQ-DEVICE-MIGRATION-PUBLISH — Stable grant publication
-
 The controller MUST retain existing tokens and expiry, use the canonical payload
 materializer, and publish exact replacement bytes with compare-and-swap under
-the installed subscription authority lock. It MUST preserve revocation and
-mirror boundaries and verify every required publisher before counting publication.
-Moving a delivery host MUST preserve the reviewed subscription origin and retain
-the old publisher during overlap. Unknown remote outcomes MUST be reconciled
-against exact bytes before replay or local registry completion.
+the installed subscription authority lock.
+
+#### Scenario: Preserve publication authority during migration
+- **WHEN** the controller publishes replacement delivery bytes
+- **THEN** It MUST preserve revocation and
+  mirror boundaries and verify every required publisher before counting publication.
+  Moving a delivery host MUST preserve the reviewed subscription origin and retain
+  the old publisher during overlap. Unknown remote outcomes MUST be reconciled
+  against exact bytes before replay or local registry completion.
 
 #### Scenario: Existing subscription receives the replacement
 
@@ -69,18 +72,21 @@ against exact bytes before replay or local registry completion.
   document refuses without overwriting it or reviving revoked/expired access.
 
 ### Requirement: REQ-DEVICE-MIGRATION-RECEIPT — Honest explicit client evidence
-
 RIPDPI deliveries MUST carry a bounded per-delivery migration identity and secret
-receipt key. The client MUST hash exact received bytes, persist receipt context
-only with successful import, and export evidence only on explicit user action.
-Received and path-tested MUST remain distinct. Path-tested evidence MUST come
-from a real authenticated payload request through an exact replacement candidate
-or exact consumed AWG configuration, with no old/direct fallback. The controller
-MUST validate receipt MAC, delivery identity, raw payload digest, target tag,
-state and time, reject replay across deliveries, and never downgrade evidence.
-AWG migration MUST preserve an existing device-local private key through an
-explicit previous-to-target tag mapping within that same subscription. It MUST
-NOT search unrelated groups for a key or export the previous tag in receipts.
+receipt key.
+
+#### Scenario: Bind imported and tested evidence to one delivery
+- **WHEN** a client imports a migration delivery and explicitly exports evidence
+- **THEN** The client MUST hash exact received bytes, persist receipt context
+  only with successful import, and export evidence only on explicit user action.
+  Received and path-tested MUST remain distinct. Path-tested evidence MUST come
+  from a real authenticated payload request through an exact replacement candidate
+  or exact consumed AWG configuration, with no old/direct fallback. The controller
+  MUST validate receipt MAC, delivery identity, raw payload digest, target tag,
+  state and time, reject replay across deliveries, and never downgrade evidence.
+  AWG migration MUST preserve an existing device-local private key through an
+  explicit previous-to-target tag mapping within that same subscription. It MUST
+  NOT search unrelated groups for a key or export the previous tag in receipts.
 
 #### Scenario: Imported profile has not been tested
 

@@ -11,5 +11,7 @@ Compiled helpers live here only when the operator-facing `scripts/` layer cannot
 
 ## Pitfalls
 
+- OpenSpec security updates keep the repository-customized taskctl-only skills and their hash inventory. Update the installed version pins and license notice together; do not run upstream init/update over these skills.
+
 - Do not commit built binaries; build into the ignored helper output path.
 - A helper is not a second operator interface. The Make target and scripts remain canonical.

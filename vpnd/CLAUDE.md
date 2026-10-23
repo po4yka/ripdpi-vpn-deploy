@@ -53,6 +53,8 @@ repository launcher is `scripts/vpnd-cli.py`; installed execution reads distribu
 metadata. Release packaging copies reviewed tracked source/docs and bundles
 Jinja templates plus parser-generated manuals. Python 3.12, exact hashes and
 an isolated offline installation replace the native executable distribution.
+Keep the isolated build-system Setuptools pin aligned with the root tooling lock
+so release builds receive the same archive-extraction security fixes.
 SBOM generation uses its own hash-pinned tool environment from
 `sbom-requirements.txt`. Its optional schema-format libraries must never enter
 the operator validation environment or change signed-policy acceptance.

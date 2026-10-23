@@ -128,17 +128,20 @@ The implementation MUST re-materialize the selected device payload from current 
 - **THEN** the check reports unknown with a non-zero exit and does not guess defaults
 
 ### Requirement: REQ-REGISTRY-SECURITY — Registry confidentiality and revocation
-
 The registry MUST live only inside the SOPS-encrypted document (never in
 git-tracked files, never on the delivery host), and token revocation MUST append
 the hash to `subscription.revoked_tokens` and set registry status to `revoked`
-in the same operator action. Removal of an unbound staging-only identity MUST
-require exact original intent, cleanup manifest, verified provider absence and
-state-zero binding. The recovery action MUST accept only status `issued`,
-remove every exact client collection entry in one serialized compare-bound
-encrypted transaction, remove every matching Xray cohort reference, validate
-the resulting client graph, and emit only a redacted durable receipt. The
-transaction MUST use the same project lock as every supported SOPS writer.
+in the same operator action.
+
+#### Scenario: Recover only the admitted staging identity
+- **WHEN** the recovery action removes an unbound staging-only identity
+- **THEN** Removal of an unbound staging-only identity MUST
+  require exact original intent, cleanup manifest, verified provider absence and
+  state-zero binding. The recovery action MUST accept only status `issued`,
+  remove every exact client collection entry in one serialized compare-bound
+  encrypted transaction, remove every matching Xray cohort reference, validate
+  the resulting client graph, and emit only a redacted durable receipt. The
+  transaction MUST use the same project lock as every supported SOPS writer.
 
 #### Scenario: Revocation is atomic in the registry
 
