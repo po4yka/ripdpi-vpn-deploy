@@ -51,6 +51,10 @@ Hysteria and every Snell reuse profile prove survivor access after bare restarts
 When Naive removes its last handler, require verified TLS and the exact owned
 decoy body on the same listener before strict revoked-credential denial. These
 fixture waits never wrap canonical barrier activation or relax its readiness contract.
+AWG fixtures and the real worker require control-API readiness before setconf,
+not merely a visible TUN. Portable regressions model delayed control startup,
+deadline exhaustion, process death and each setup failure with strict cleanup;
+they are separate from real pinned-daemon traffic acceptance.
 
 Recovery source tests exercise actual private journal publication, SOPS input
 fences, immutable apply snapshots and canonical dispatcher boundaries. Model
