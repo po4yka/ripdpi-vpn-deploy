@@ -18,9 +18,9 @@ ansible-core==2.21.5 \
     #   ansible-compat
     #   ansible-lint
     #   molecule
-ansible-lint==26.10.0 \
-    --hash=sha256:89590b86bf53cd1310099587d0ce91e22389514a37148cf5081553e5c278517e \
-    --hash=sha256:eaf427a800a65312f4446c33e53d531ddca1d81b82915a3a07dadc79160ec9dc
+ansible-lint==26.10.1 \
+    --hash=sha256:a746c6f3cb5719d1c202bc14e956ef3b0eca704025d1aa92707a27fc73ed73ea \
+    --hash=sha256:cc26d405ee38c3390e80ec18c4137b5685c36d03ce7d4d8233b0470d9a0e21e9
     # via -r requirements.in
 ast-serialize==0.12.1 \
     --hash=sha256:09cc4d3103c1fc97f6845ba307af1db9cde5226bef47f8843220dde83f2276ba \
