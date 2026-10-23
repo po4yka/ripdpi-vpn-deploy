@@ -366,6 +366,8 @@ proves lifecycle behavior only, never protocol parsing or authenticated traffic.
 
 REALITY monitor cancellation tests wait until synthetic decryption has completed, assert that the shell work path is inside the supervisor-owned parent, and then deliver each supported termination signal. Genuine SOPS/age coverage encrypts YAML with a fresh synthetic authority and requires successful monitor admission and cleanup. CLI diagnostics remain on stderr while stdout remains JSON-only. Aggregate-deadline coverage admits the intended descendant before expiry and retains one bounded clock across setup and cleanup.
 
+Portable process fixtures publish PID records atomically and wait within a bounded deadline for confirmed exit. Darwin's transient exiting state is not successful cleanup. Timeout guards must reclaim the complete owned subprocess session, including quiet descendants, before the fixture returns. Transaction setup can batch equivalent real API calls; it retains journal writes, fsync and all later refusal assertions.
+
 Runtime acceptance requires the production log-parent trust contract: root ownership and no group/other write permission. Tighten an owned disposable image before tests; never relax the descriptor-based provisioner or rewrite its failure as a successful activation.
 
 Native Alertmanager timeout coverage publishes split alert updates inside a real grouping window. Zero group wait can dispatch before all seven alerts join the group; retain the five-alert cap, two-alert truncation and one-second webhook deadline assertions.

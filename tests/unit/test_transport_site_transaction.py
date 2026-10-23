@@ -216,6 +216,9 @@ def write(owner,payload):
 if action=='seed':
  for owner in tx.SITE_OWNERS:write(owner,b'accepted ingress')
 elif action=='publish':write(sys.argv[4],b'changed ingress')
+elif action=='interrupt':
+ tx.site_transaction('begin',context)
+ for owner in ['nginx-xhttp','reality-self-steal']:write(owner,b'changed ingress')
 elif action=='pend':
  value=next(v for v in tx.site_request(context) if v['owner']=='nginx-xhttp')
  value['files']=[dict(path=value['files'][0]['path'],kind='file',uid=os.geteuid(),gid=os.getegid(),mode=0o640,content_b64=base64.b64encode(b'changed ingress').decode())]
@@ -349,12 +352,11 @@ def _outer_state(root):
 
 
 def _interrupt(root, outer):
-    """Leave the on-node state of a protected deploy killed after staging began."""
+    """Prepare retained state through real APIs, without claiming a process kill."""
     driver = root / 'ingress_driver.py'
-    for action, owner in [('begin', None), ('publish', 'nginx-xhttp'), ('publish', 'reality-self-steal')]:
-        argv = [sys.executable, str(driver), str(root), action, str(HELPER)] + ([owner] if owner else [])
-        result = subprocess.run(argv, capture_output=True, text=True, timeout=10)
-        assert result.returncode == 0, result.stderr
+    argv = [sys.executable, str(driver), str(root), 'interrupt', str(HELPER)]
+    result = subprocess.run(argv, capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stderr
     (root / 'events').write_text('')
     if not outer.startswith('no-helper'):
         helper = root / 'libexec/transport_runtime_outer.py'

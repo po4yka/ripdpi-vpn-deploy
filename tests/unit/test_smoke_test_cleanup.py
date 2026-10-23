@@ -24,10 +24,73 @@ from jinja2 import Environment, StrictUndefined
 import pytest
 import yaml
 
+import bootstrap_readiness
+from bootstrap_readiness import CommandTimeout, run_command
+
 
 ROOT = Path(__file__).resolve().parents[2]
 PROTOCOLS = ("xray", "hysteria", "snell")
 TOGGLES = {"xray": "enable_xray_reality", "hysteria": "enable_hysteria", "snell": "enable_snell"}
+
+
+def _run_owned(argv, *, env=None, cwd=None, timeout=45):
+    errors = bytearray()
+    try:
+        status, output = run_command(argv, environment=env, cwd=cwd, timeout=timeout,
+                                     capture=True, stderr_output=errors, output_limit=1_049_600)
+    except CommandTimeout:
+        raise subprocess.TimeoutExpired(argv, timeout) from None
+    return subprocess.CompletedProcess(argv, status, output.decode().replace('\r\n', '\n').replace('\r', '\n'),
+                                       errors.decode().replace('\r\n', '\n').replace('\r', '\n'))
+
+
+@pytest.mark.parametrize('quiet', [False, True])
+def test_fixture_timeout_reclaims_descendant_before_later_write(tmp_path, monkeypatch, quiet):
+    record, later, release = tmp_path / 'child.pid', tmp_path / 'later', tmp_path / 'release'
+    child = ("import os,time,pathlib\n"
+             + ("os.close(1);os.close(2)\n" if quiet else "")
+             + f"p=pathlib.Path({str(record)!r});pending=p.with_suffix('.pending');pending.write_text(str(os.getpid()));pending.replace(p)\n"
+             + f"while not pathlib.Path({str(release)!r}).exists():time.sleep(.01)\n"
+             + f"pathlib.Path({str(later)!r}).write_text('escaped')")
+    launcher = ("import subprocess,sys,time; "
+                f"subprocess.Popen([sys.executable,'-c',{child!r}]);time.sleep(30)")
+    deadline = time.monotonic() + 30
+    class ReadyClock:
+        started = False
+        def monotonic(self):
+            assert time.monotonic() < deadline, 'descendant readiness deadline exceeded'
+            if not self.started:
+                self.started = True
+                return 0
+            # Only the runner's deadline advances, after the actual child is ready.
+            return 2 if record.exists() else 0
+    monkeypatch.setattr(bootstrap_readiness, 'time', ReadyClock())
+    try:
+        with pytest.raises(subprocess.TimeoutExpired):
+            _run_owned([sys.executable, '-c', launcher], timeout=1)
+        assert record.exists(), 'descendant did not reach the timeout fixture'
+        pid = int(record.read_text())
+        while True:
+            remaining = deadline - time.monotonic()
+            assert remaining > 0, 'descendant escaped fixture timeout'
+            state = subprocess.run(['ps', '-p', str(pid), '-o', 'stat='],
+                                   capture_output=True, text=True, timeout=remaining).stdout.strip()
+            if not state or state.startswith('Z'):
+                break
+            time.sleep(.01)
+        release.touch()
+        assert not later.exists(), 'descendant wrote after fixture timeout'
+    finally:
+        release.touch()
+
+
+def test_fixture_command_preserves_status_and_separate_text_streams(tmp_path):
+    result = _run_owned([sys.executable, '-c',
+                         "import os,sys;print(os.environ['FIXTURE_VALUE']);print('error',file=sys.stderr);sys.exit(7)"],
+                        env={**os.environ, 'FIXTURE_VALUE': 'report'}, cwd=tmp_path)
+    assert result.returncode == 7
+    assert result.stdout == 'report\n'
+    assert result.stderr == 'error\n'
 
 EXECUTABLE = r'''#!/usr/bin/env python3
 import json
@@ -274,7 +337,7 @@ def smoke_run(tmp_path):
 
     def execute(**options):
         argv, env = prepare(**options)
-        return subprocess.run(argv, env=env, cwd=tmp_path, capture_output=True, text=True, timeout=45)
+        return _run_owned(argv, env=env, cwd=tmp_path, timeout=45)
 
     def calls():
         log = state / 'calls.jsonl'
