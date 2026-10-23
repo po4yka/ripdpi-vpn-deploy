@@ -2,7 +2,7 @@
 id: OPS-1792673523985723
 title: Migrate devices safely during server replacement
 kind: feature
-status: doing
+status: review
 area: operations
 priority: high
 risk: high
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: device-server-migration
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-10-23
 related_tasks: ["po4yka/RIPDPI#TRN-1792673614153980"]
 ---
 

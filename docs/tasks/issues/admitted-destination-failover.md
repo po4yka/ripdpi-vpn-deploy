@@ -2,7 +2,7 @@
 id: SEC-1792678909985498
 title: Fail over TCP connections across admitted destination addresses
 kind: feature
-status: doing
+status: review
 area: security
 priority: high
 risk: high
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: admitted-destination-failover
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-10-23
 related_tasks: []
 ---
 

@@ -2,7 +2,7 @@
 id: OPS-1792679812321846
 title: Unify device issuance refresh and complete revocation
 kind: feature
-status: doing
+status: review
 area: operations
 priority: high
 risk: high
@@ -12,7 +12,7 @@ blocked_by: []
 spec_mode: required
 openspec_change: device-lifecycle
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-10-23
 related_tasks: []
 ---
 

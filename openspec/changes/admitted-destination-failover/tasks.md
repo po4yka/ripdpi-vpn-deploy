@@ -12,7 +12,7 @@ Transport audit owns `scripts/transport_destination_policy.py`, `scripts/transpo
 
 - [x] SEC-1792679160742251 Return ordered immutable admitted address sets and update TCP and UDP policy consumers with normalization and family-order tests #feature !high @item:SEC-1792678909985498
 - [x] SEC-1792679161411775 Race bounded nonblocking gateway CONNECT attempts under one deadline with winner-only relay and resource cleanup #feature !high @item:SEC-1792678909985498
-- [ ] SEC-1792679162099578 Exercise real socket failover, stalled and abrupt controls, deadlines, policy changes, cancellation and no application replay; run complete local and hosted gates #feature !high @item:SEC-1792678909985498
+- [x] SEC-1792679162099578 Exercise real socket failover, stalled and abrupt controls, deadlines, policy changes, cancellation and no application replay; run complete local and hosted gates #feature !high @item:SEC-1792678909985498
 
 ## Verification
 
