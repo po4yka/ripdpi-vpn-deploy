@@ -87,7 +87,7 @@ def test_bundle_uses_feature_host_and_emits_ingress_topology(
             {
                 "client_registry": {"android-ripdpi": {"status": "active", "awg_binding": {
                     "provider": "vultr", "environment": "p2", "instance": "awg0"}}},
-                "amneziawg_secrets": {"instances": [{"name": "awg0", "address_v4": "10.66.66.1/24", "address_v6": "fd42:42:42::1/64",
+                "amneziawg_secrets": {"instances": [{"wire_profile": "awg-3.1-ranges-v1", "name": "awg0", "address_v4": "10.66.66.1/24", "address_v6": "fd42:42:42::1/64",
                     "server_private_key": base64.b64encode(bytes([8]) * 32).decode(),
                     "listen_port": 51820,
                     "jc": 4,
@@ -95,10 +95,10 @@ def test_bundle_uses_feature_host_and_emits_ingress_topology(
                     "jmax": 70,
                     "s1": 50,
                     "s2": 100,
-                    "h1": 1,
-                    "h2": 2,
-                    "h3": 3,
-                    "h4": 4,
+                    "h1": '1',
+                    "h2": '2',
+                    "h3": '3',
+                    "h4": '4',
                     "peers": [
                         {
                             "name": "android-ripdpi",

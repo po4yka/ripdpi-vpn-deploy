@@ -140,13 +140,14 @@ with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
 
 
 class Tunnel:
-    def __init__(self, index, server_pair, client_pair, shape):
+    def __init__(self, index, server_pair, client_pair, shape, signatures=None):
         self.index = index
         self.names = [f"awglab{index}s", f"awglab{index}c"]
         self.units = [name + ".service" for name in self.names]
         self.processes = []
         self.configs = []
         self.shape = shape
+        self.signatures = signatures or {}
         self.server_pair = server_pair
         self.client_pair = client_pair
         self.initiator = 0
@@ -201,8 +202,9 @@ class Tunnel:
             Path("/etc/systemd/system", self.units[side]).write_text(unit + "\n")
             config = Path("/lab", name + ".conf")
             jc, jmin, jmax, s1, s2, h1, h2, h3, h4 = self.shape
+            signatures = "".join(f"{key.upper()} = {value}\n" for key, value in self.signatures.items())
             config.write_text(
-                f"[Interface]\nPrivateKey = {private[side]}\nListenPort = 51900\nJc = {jc}\nJmin = {jmin}\nJmax = {jmax}\nS1 = {s1}\nS2 = {s2}\nH1 = {h1}\nH2 = {h2}\nH3 = {h3}\nH4 = {h4}\n[Peer]\nPublicKey = {public[1 - side]}\nPresharedKey = {psk}\nAllowedIPs = 10.{i}.0.{2 - side}/32\nEndpoint = 192.0.2.{2 - side}:51900\n"
+                f"[Interface]\nPrivateKey = {private[side]}\nListenPort = 51900\nJc = {jc}\nJmin = {jmin}\nJmax = {jmax}\nS1 = {s1}\nS2 = {s2}\nH1 = {h1}\nH2 = {h2}\nH3 = {h3}\nH4 = {h4}\n{signatures}[Peer]\nPublicKey = {public[1 - side]}\nPresharedKey = {psk}\nAllowedIPs = 10.{i}.0.{2 - side}/32\nEndpoint = 192.0.2.{2 - side}:51900\n"
             )
             config.chmod(0o600)
             self.configs.append(config)
@@ -398,15 +400,34 @@ def capture_headers(tunnel):
         header = (frame[14] & 15) * 4
         packets.append(frame[14 + header + 8 :])
     _, _, _, s1, s2, h1, h2, _, h4 = tunnel.shape
+    def contains(header, data):
+        if len(data) < 4:
+            return False
+        bounds = str(header).split("-")
+        return int(bounds[0]) <= int.from_bytes(data[:4], "little") <= int(bounds[-1])
+
     for size, padding, header in ((148 + s1, s1, h1), (92 + s2, s2, h2)):
         assert any(
             len(packet) == size
-            and packet[padding : padding + 4] == struct.pack("<I", header)
+            and contains(header, packet[padding : padding + 4])
             for packet in packets
         ), "handshake packet bytes/offset changed"
-    assert any(packet[:4] == struct.pack("<I", h4) for packet in packets), (
+    assert any(contains(h4, packet) for packet in packets), (
         "transport header changed"
     )
+    if "-" in str(h4):
+        observed = {packet[:4] for packet in packets if contains(h4, packet)}
+        assert len(observed) > 1, "transport headers do not vary within the range"
+    for index in range(1, len(tunnel.signatures) + 1):
+        # Each fixture program emits four literal bytes, four random bytes,
+        # two digits, two letters, then the four-byte network-order timestamp.
+        prefix = bytes.fromhex(f"aabbcc{index:02x}")
+        matches = [packet for packet in packets if len(packet) == 16 and packet.startswith(prefix)]
+        assert matches, "signature packet missing from the real wire"
+        for packet in matches:
+            assert all(48 <= byte <= 57 for byte in packet[8:10]), "signature digit encoding changed"
+            assert all(65 <= byte <= 90 or 97 <= byte <= 122 for byte in packet[10:12]), "signature letter encoding changed"
+            assert abs(int.from_bytes(packet[12:], "big") - int(time.time())) < 120, "signature timestamp encoding changed"
     capture.unlink()
 
 
@@ -446,6 +467,19 @@ class Acceptance(unittest.TestCase):
                         tunnel.probe()
                 finally:
                     tunnel.close()
+        range_shape = PINS["range_signature_shape"]
+        tunnel = Tunnel(index, "candidate", "candidate",
+                        tuple(range_shape[key] for key in ("jc", "jmin", "jmax", "s1", "s2", "h1", "h2", "h3", "h4")),
+                        {f"i{i}": range_shape[f"i{i}"] for i in range(1, 6)})
+        index += 1
+        try:
+            tunnel.start()
+            capture_headers(tunnel)
+            for _ in range(3):
+                tunnel.restart(1)
+                tunnel.probe()
+        finally:
+            tunnel.close()
         owned = [Tunnel(index + i, "live", "baseline", shapes[i]) for i in range(2)]
         foreign = Tunnel(index + 2, "baseline", "baseline", shapes[0])
         try:
@@ -547,7 +581,7 @@ class Acceptance(unittest.TestCase):
             for tunnel in [*owned, foreign]:
                 tunnel.close()
         print(
-            "PASS: exact pairs, six wire matrices, reconnects, TCP/UDP/DNS both directions, warm pair/unit adoption, build/readiness compensation, unchanged repeat and foreign tunnel"
+            "PASS: exact pairs, six scalar wire matrices and one range/signature matrix, reconnects, TCP/UDP/DNS both directions, warm pair/unit adoption, build/readiness compensation, unchanged repeat and foreign tunnel"
         )
 
 

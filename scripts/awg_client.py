@@ -26,7 +26,7 @@ from ripdpi_cohort_fingerprint import cohort_fingerprint
 from transport_semantics import transport_errors, selected_context
 
 ROOT = Path(__file__).resolve().parents[1]
-PARAMS = ('jc', 'jmin', 'jmax', 's1', 's2', 'h1', 'h2', 'h3', 'h4')
+PARAMS = ('wire_profile', 'jc', 'jmin', 'jmax', 's1', 's2', 'h1', 'h2', 'h3', 'h4')
 
 
 def host_context(cohort=''):
@@ -119,6 +119,7 @@ def export(document, context, name, host, instance, endpoint):
     server, peer = binding.instance, binding.peer
     endpoint = ('[' + endpoint + ']' if ':' in endpoint else endpoint) + ':' + str(server['listen_port'])
     params = {name: server[name] for name in PARAMS}
+    params.update({f"i{index}": server[f"i{index}"] for index in range(1, 6) if f"i{index}" in server})
     block = {'tag': 'p2-awg-' + name, 'address': [peer['allowed_ips'][family] for family in ('ipv4', 'ipv6')],
              'dns': server['dns_servers'], 'mtu': server['mtu'], **params,
              'private_key_placeholder': True, 'peer': {'public_key': public_key(server['server_private_key']),
@@ -131,7 +132,8 @@ def export(document, context, name, host, instance, endpoint):
 def config(block):
     fields = ['[Interface]', 'PrivateKey = <CLIENT_PRIVATE_KEY>', 'Address = ' + ', '.join(block['address']),
               'DNS = ' + ', '.join(block['dns']), 'MTU = ' + str(block['mtu'])]
-    fields += [key.capitalize() + ' = ' + str(block[key]) for key in PARAMS]
+    fields += [key.capitalize() + ' = ' + str(block[key]) for key in (*PARAMS, *(f"i{i}" for i in range(1, 6)))
+               if key != "wire_profile" and key in block]
     peer = block['peer']
     fields += ['', '[Peer]', 'PublicKey = ' + peer['public_key'], 'PresharedKey = ' + peer['preshared_key'],
                'Endpoint = ' + peer['endpoint'], 'AllowedIPs = ' + ', '.join(peer['allowed_ips']), 'PersistentKeepalive = 25']

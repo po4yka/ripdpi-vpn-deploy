@@ -2,6 +2,11 @@
 
 ## Design decisions
 
+Xray pin parity reads exactly one repository-pin heading. Upstream Latest is
+a separate release fact and never authorizes promotion or bypasses staging.
+
+AWG delivery uses bundle version 2 and the named range/signature profile. Header values are canonical strings; signature programs retain their exact supported tags. Source admission requires the reviewed source pair for ranges or signatures. Standalone native configuration omits the JSON profile marker. Keep schema, fingerprint and paired consumer mirrors aligned; numeric legacy headers require a fresh export.
+
 Taskctl validates the exact OpenSpec tool version and reviewed generated-skill hashes together. Dependency security updates change the version pin without overwriting repository-customized workflow skills or their generation provenance.
 
 Executable recovery admits one exact UpCloud replacement with a surviving

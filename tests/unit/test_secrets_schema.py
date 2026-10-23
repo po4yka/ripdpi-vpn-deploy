@@ -165,7 +165,7 @@ def filled():
         "amneziawg_go_commit": "2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf",
         "amneziawg_tools_version": "v1.0.20241018",
         "amneziawg_tools_commit": "c0b400c6dfc046f5cae8f3051b14cb61686fcf55",
-        "amneziawg_secrets": {"instances": [{"name": "awg0", "listen_port": 51820,
+        "amneziawg_secrets": {"instances": [{"wire_profile": "awg-3.1-ranges-v1", "name": "awg0", "listen_port": 51820,
             "address_v4": "10.66.66.1/24", "address_v6": "fd42:42:42::1/64",
             "server_private_key": base64.b64encode(bytes([8]) * 32).decode(),
             "jc": 4,
@@ -173,10 +173,10 @@ def filled():
             "jmax": 70,
             "s1": 50,
             "s2": 100,
-            "h1": 1234567890,
-            "h2": 2345678901,
-            "h3": 3456789012,
-            "h4": 234567890,
+            "h1": '1234567890',
+            "h2": '2345678901',
+            "h3": '3456789012',
+            "h4": '234567890',
             "peers": [
                 {
                     "name": "phone",
@@ -951,7 +951,7 @@ def test_awg_peer_public_keys_must_be_unique(filled, tmp_path):
 def test_awg_instance_cidr_is_validated_semantically(filled, tmp_path):
     doc = deepcopy(filled)
     source = doc["amneziawg_secrets"]["instances"][0]
-    doc["amneziawg_secrets"]["instances"] = [{
+    doc["amneziawg_secrets"]["instances"] = [{"wire_profile": "awg-3.1-ranges-v1",
         "name": "awg1",
         "listen_port": 51820,
         "address_v4": "999.66.66.1/24",

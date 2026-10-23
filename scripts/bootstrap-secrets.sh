@@ -46,7 +46,7 @@ usage: $0 --target HOST:PORT --server-name HOST [options]
 
 Generates: age key (if missing), REALITY x25519 keypair, per-client
 UUIDs and 8-hex shortIds, restic password, AmneziaWG server key, four
-random H1..H4 integers. Writes plaintext + SOPS-encrypted output to
+random H1..H4 singleton strings. Writes plaintext + SOPS-encrypted output to
 ~/.config/vpn-provision/.
 USAGE
   exit 1
@@ -393,10 +393,11 @@ amneziawg_secrets:
       jmax: 70
       s1: 50
       s2: 100
-      h1: ${H1}
-      h2: ${H2}
-      h3: ${H3}
-      h4: ${H4}
+      wire_profile: awg-3.1-ranges-v1
+      h1: "${H1}"
+      h2: "${H2}"
+      h3: "${H3}"
+      h4: "${H4}"
       peers: []
 NAIVE
 

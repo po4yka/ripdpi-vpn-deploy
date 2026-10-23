@@ -10,7 +10,7 @@ firewall_forward_interface_contract: []
 real_vps_awg_nat_apply_prerequisites: false
 real_vps_awg_nat_expected_source_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 real_vps_awg_nat_expected_source_archive_sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-real_vps_awg_nat_obfuscation: {"jc": 4, "jmin": 40, "jmax": 70, "s1": 50, "s2": 100, "h1": 1, "h2": 2, "h3": 3, "h4": 4}
+real_vps_awg_nat_obfuscation: {"jc": 4, "jmin": 40, "jmax": 70, "s1": 50, "s2": 100, "wire_profile": "awg-3.1-ranges-v1", "h1": "1", "h2": "2", "h3": "3", "h4": "4"}
 real_vps_awg_nat_secrets:
   server_private_key: "REPLACE_WITH_AWG_EVIDENCE_SERVER_PRIVATE_KEY"
   current_client_public_key: "REPLACE_WITH_AWG_EVIDENCE_CURRENT_CLIENT_PUBLIC_KEY"

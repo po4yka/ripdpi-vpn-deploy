@@ -170,7 +170,8 @@ def _awg(secrets, client, binding, endpoint, private_key, derive, defaults, coho
     port = chosen["listen_port"]
     peer = selected.peer
     assigned = [peer["allowed_ips"][family] for family in ("ipv4", "ipv6")]
-    parameters = {name: chosen[name] for name in (*PARAM_DEFAULTS, "h1", "h2", "h3", "h4")}
+    parameters = {name: chosen[name] for name in ("wire_profile", *PARAM_DEFAULTS, "h1", "h2", "h3", "h4")}
+    parameters.update({f"i{i}": chosen[f"i{i}"] for i in range(1, 6) if f"i{i}" in chosen})
     if parameter_errors(parameters, "amneziawg_secrets"):
         raise ProfileError("awg-input-semantics")
     if peer.get("address_kind", "device") != "device":
@@ -183,7 +184,7 @@ def _awg(secrets, client, binding, endpoint, private_key, derive, defaults, coho
     endpoint_text = f"[{endpoint}]" if ":" in endpoint else endpoint
     fields = ["[Interface]", f"PrivateKey = {_key(private_key)}", "Address = " + ", ".join(assigned),
               "DNS = " + ", ".join(chosen["dns_servers"]), f"MTU = {chosen['mtu']}"]
-    fields += [f"{name.capitalize()} = {value}" for name, value in parameters.items()]
+    fields += [f"{name.capitalize()} = {value}" for name, value in parameters.items() if name != "wire_profile"]
     fields += ["", "[Peer]", f"PublicKey = {server_public}", f"PresharedKey = {_key(peer.get('preshared_key'))}",
                f"Endpoint = {endpoint_text}:{port}", "AllowedIPs = 0.0.0.0/0, ::/0", "PersistentKeepalive = 25", ""]
     public = {"profile": "p2-amneziawg", "server": endpoint, "port": port, **binding}

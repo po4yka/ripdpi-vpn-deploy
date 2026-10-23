@@ -10,6 +10,46 @@
       sentinel
   tags: [always]
 
+- name: Admit singleton AWG evidence profile on the controller
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - -c
+      - |
+        import json, sys
+        sys.path.insert(0, sys.argv[1])
+        from transport_semantics import AWG_PARAMETERS, HEADERS, SIGNATURES, parameter_errors, source_errors
+        raw = json.load(sys.stdin)
+        required = {"wire_profile", *AWG_PARAMETERS, *HEADERS}
+        allowed = required | set(SIGNATURES) | {"s3", "s4"}
+        if not isinstance(raw, dict) or not required <= raw.keys() or raw.keys() - allowed:
+            sys.exit(1)
+        if any(type(raw.get(name, 0)) is not int or raw.get(name, 0) != 0 for name in ("s3", "s4")):
+            sys.exit(1)
+        # This evidence lane is not qualified for candidate ranges or signatures.
+        errors = parameter_errors(raw, "evidence") + source_errors(raw, {}, "evidence")
+        sys.exit(bool(errors))
+      - "{{ role_path }}/../../../scripts"
+    stdin: "{{ real_vps_awg_nat_obfuscation | to_json }}"
+    stdin_add_newline: false
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+  failed_when: false
+  register: _real_vps_awg_nat_profile
+  no_log: true
+  tags: [always]
+
+- name: Require the supported AWG evidence profile before provisioning
+  ansible.builtin.assert:
+    that:
+      - _real_vps_awg_nat_profile.rc == 0
+    fail_msg: >-
+      Refusing AWG evidence profile: require canonical singleton headers, bounded
+      parameters, zero S3/S4, no signature programs and no unknown fields.
+  tags: [always]
+
 - name: Validate protected fleet placement before provisioning
   ansible.builtin.assert:
     that:

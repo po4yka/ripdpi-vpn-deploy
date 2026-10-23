@@ -14,6 +14,8 @@
 
 ## Design decisions
 
+AWG source-candidate acceptance retains all six scalar pair matrices and adds a candidate-only range/signature matrix. Packet capture checks header membership and variation, all five signature packets and their byte encodings. Real TCP/UDP/DNS probes and reconnects remain required. Contract fixtures use bundle version 2; encrypted public fixtures are regenerated through SOPS after source fixture changes.
+
 Compiler patch refreshes keep the AWG source-candidate fixture and role archive
 digests aligned with `mise.toml`; workflow assertions follow the same Terraform
 patch as local and hosted native validation.
@@ -954,7 +956,7 @@ prior service-state record without rewinding replay or incident state.
 
 Release-publication fixtures must explicitly chmod directories to the tested
 contract after mkdir: the shared build gate uses a restrictive umask, so
-mkdir's requested 0755 alone cannot establish the helper's ownership boundary.
+mkdir's requested 0755 alone cannot establish the helper's ownership boundary. Runtime-build receipt fixtures must also set the required 0644 file mode explicitly.
 Task-source readers follow enabled task files and recursively inspect real
 publication blocks; dispatcher files cannot prove mutation or activation order.
 

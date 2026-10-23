@@ -21,7 +21,8 @@ def document():
             "name": f"awg{index}", "listen_port": 51820 + index,
             "address_v4": f"10.{70 + index}.0.1/29", "address_v6": f"fd42:{index + 10}::1/64",
             "server_private_key": key(index + 1), "jc": 4, "jmin": 10, "jmax": 50,
-            "s1": 0, "s2": 0, **{f"h{i}": index * 10 + i for i in range(1, 5)},
+            "s1": 0, "s2": 0, "wire_profile": "awg-3.1-ranges-v1",
+            **{f"h{i}": str(index * 10 + i) for i in range(1, 5)},
             "peers": [{"name": f"device{index}", "public_key": public_key(key(index + 10)),
                        "preshared_key": key(index + 20), "allowed_ips": {"ipv4": f"10.{70 + index}.0.2/32", "ipv6": f"fd42:{index + 10}::2/128"}}],
         }

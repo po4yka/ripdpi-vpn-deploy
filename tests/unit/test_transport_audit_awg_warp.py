@@ -33,8 +33,8 @@ def test_equal_awg_handshake_sizes_refuse_before_recipient_export(s1, s2):
 ])
 def test_awg_headers_that_the_pinned_engine_rewrites_refuse(index, value):
     source = document()
-    instance(source).update({f"h{i}": 10 + i for i in range(1, 5)})
-    instance(source)[f"h{index}"] = value
+    instance(source).update({f"h{i}": str(10 + i) for i in range(1, 5)})
+    instance(source)[f"h{index}"] = str(value)
     assert any(path.endswith(f".h{index}") for path, _ in awg_errors(source["amneziawg_secrets"]))
     with pytest.raises(BindingError, match="invalid-awg-contract"):
         export(source, {}, "device0", "upcloud:fixture", "awg0", "192.0.2.1")
@@ -46,16 +46,16 @@ def test_awg_headers_that_the_pinned_engine_rewrites_refuse(index, value):
 ])
 def test_supported_awg_headers_and_distinct_sizes_keep_exact_export_values(headers):
     source = document()
-    instance(source).update(s1=0, s2=55, **{f"h{i}": value for i, value in enumerate(headers, 1)})
+    instance(source).update(s1=0, s2=55, **{f"h{i}": str(value) for i, value in enumerate(headers, 1)})
     assert awg_errors(source["amneziawg_secrets"]) == []
     block = export(source, {}, "device0", "upcloud:fixture", "awg0", "192.0.2.1")
-    assert [block[f"h{i}"] for i in range(1, 5)] == headers
+    assert [block[f"h{i}"] for i in range(1, 5)] == [str(value) for value in headers]
 
 
 def test_effective_awg_headers_still_must_be_distinct():
     source = document()
-    instance(source).update(h1=11, h2=11, h3=13, h4=14)
-    assert any("headers must be pairwise distinct" in reason
+    instance(source).update(h1="11", h2="11", h3="13", h4="14")
+    assert any("header ranges must be pairwise disjoint" in reason
                for _, reason in awg_errors(source["amneziawg_secrets"]))
 
 

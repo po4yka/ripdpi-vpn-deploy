@@ -90,8 +90,8 @@ def test_exact_awg_parser_accepts_host_and_explicit_routed_peers(tmp_path):
     client_private = command([str(tools), "genkey"]).strip()
     public = command([str(tools), "pubkey"], data=client_private).strip()
     psk = command([str(tools), "genpsk"]).strip()
-    raw = {"name": interface, "listen_port": 51999, "address_v4": "10.66.66.1/24", "address_v6": "fd42:42:42::1/64", "server_private_key": private, "jc": 4, "jmin": 40, "jmax": 70,
-           "s1": 50, "s2": 100, "h1": 11, "h2": 12, "h3": 13, "h4": 14,
+    raw = {"wire_profile": "awg-3.1-ranges-v1", "name": interface, "listen_port": 51999, "address_v4": "10.66.66.1/24", "address_v6": "fd42:42:42::1/64", "server_private_key": private, "jc": 4, "jmin": 40, "jmax": 70,
+           "s1": 50, "s2": 100, "h1": '11', "h2": '12', "h3": '13', "h4": '14',
            "peers": [{"name": "device", "public_key": public,
                       "preshared_key": psk, "allowed_ips": {"ipv4": "10.66.66.2/32", "ipv6": "fd42:42:42::2/128"}}]}
     if awg_errors({"instances": [raw]}):

@@ -51,7 +51,7 @@ def resolve_binding(document, context, client, host, instance=None, *, enrollmen
         raise BindingError("invalid-awg-contract")
     raw = document.get("amneziawg_secrets")
     defaults, cohort = context.get("amneziawg", {}), context.get("amneziawg_cohort", {})
-    if awg_errors(raw, defaults, cohort):
+    if awg_errors(raw, defaults, cohort, source=document):
         raise BindingError("invalid-awg-contract")
     instances = effective_awg_instances(raw, defaults, cohort)
     peer_count = sum(peer["name"] == client for item in instances for peer in item["peers"])
@@ -212,7 +212,7 @@ def main():
         raw = request["secrets"]["amneziawg_secrets"]
         context = request["context"]
         defaults, cohort = context.get("amneziawg", {}), context.get("amneziawg_cohort", {})
-        if awg_errors(raw, defaults, cohort):
+        if awg_errors(raw, defaults, cohort, source=request["secrets"]):
             raise BindingError("invalid-awg-contract")
         json.dump(effective_awg_instances(raw, defaults, cohort), sys.stdout)
         return 0

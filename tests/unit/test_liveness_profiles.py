@@ -31,10 +31,10 @@ def inputs():
         "xray": {"clients": [xray], "reality_public_key": "public-reality-key", "server_names": ["cover.example"], "xhttp_path": "/sync"},
         "nginx_xhttp": {"server_name": "origin.example"},
         "hysteria": {"masquerade_url": "https://origin.example", "clients": [{"name": "sentinel", "password": "private-password"}]},
-        "amneziawg_secrets": {"instances": [{"name": "awg0", "listen_port": 51820,
+        "amneziawg_secrets": {"instances": [{"wire_profile": "awg-3.1-ranges-v1", "name": "awg0", "listen_port": 51820,
                               "address_v4": "10.66.66.1/24", "address_v6": "fd42:42:42::1/64",
                               "server_private_key": key(4), "peers": [peer],
-                              "jc": 0, "h1": 11, "h2": 12, "h3": 13, "h4": 14}]},
+                              "jc": 0, "h1": '11', "h2": '12', "h3": '13', "h4": '14'}]},
     }
     p0 = {"type": "vless", "tag": "p0-reality-upcloud-probe", "server": "192.0.2.1", "server_port": 443,
           "uuid": xray["uuid"], "flow": "xtls-rprx-vision", "tls": {"enabled": True, "server_name": "cover.example",

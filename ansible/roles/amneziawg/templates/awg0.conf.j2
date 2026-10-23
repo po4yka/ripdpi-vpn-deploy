@@ -18,6 +18,8 @@ H1 = {{ _inst.h1 }}
 H2 = {{ _inst.h2 }}
 H3 = {{ _inst.h3 }}
 H4 = {{ _inst.h4 }}
+{% for index in range(1, 6) if ("i" ~ index) in _inst %}I{{ index }} = {{ _inst["i" ~ index] }}
+{% endfor %}
 
 {% for peer in _inst.peers %}
 [Peer]

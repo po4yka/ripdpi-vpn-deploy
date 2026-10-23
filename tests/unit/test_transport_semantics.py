@@ -22,9 +22,9 @@ def key(value):
 
 
 def awg():
-    return {"name": "awg0", "listen_port": 51820, "address_v4": "10.66.66.1/24",
+    return {"wire_profile": "awg-3.1-ranges-v1", "name": "awg0", "listen_port": 51820, "address_v4": "10.66.66.1/24",
             "address_v6": "fd42:42:42::1/64", "server_private_key": key(1), "jc": 4, "jmin": 40, "jmax": 70,
-            "s1": 50, "s2": 100, "h1": 11, "h2": 12, "h3": 13, "h4": 14,
+            "s1": 50, "s2": 100, "h1": '11', "h2": '12', "h3": '13', "h4": '14',
             "peers": [{"name": "device", "public_key": key(2), "preshared_key": key(3),
                        "allowed_ips": {"ipv4": "10.66.66.2/32", "ipv6": "fd42:42:42::2/128"}}]}
 
@@ -248,18 +248,30 @@ def test_native_provisioning_is_version_pinned_and_precedes_selected_tests():
         assert yaml.safe_load((ROOT / "secrets/prod.secrets.example.yaml").read_text())[field] in steps[run]["run"]
 
 
-@pytest.mark.parametrize('layer', ['amneziawg', 'amneziawg_cohort'])
 @pytest.mark.parametrize('parameter', ['i1', 'i2', 'i3', 'i4', 'i5'])
-def test_policy_i_parameters_refuse_before_effective_normalization(layer, parameter):
+def test_default_i_parameters_refuse_before_effective_normalization(parameter):
     from awg_device_binding import BindingError, resolve_binding
     from test_awg_device_binding import document
     from transport_semantics import effective_awg_instances
     doc = document()
-    context = {layer: {parameter: '<b 0x01>'}}
+    context = {'amneziawg': {parameter: '<b 0x01>'}}
     with pytest.raises(ValueError):
         effective_awg_instances(doc['amneziawg_secrets'], context.get('amneziawg'), context.get('amneziawg_cohort'))
     with pytest.raises(BindingError, match='invalid-awg-contract'):
         resolve_binding(doc, context, 'device0', 'upcloud:fixture', 'awg0')
+
+
+@pytest.mark.parametrize('parameter', ['i1', 'i2', 'i3', 'i4', 'i5'])
+def test_cohort_signature_requires_reviewed_source_and_is_not_dropped(parameter):
+    from awg_device_binding import BindingError, resolve_binding
+    from test_awg_device_binding import document
+    from transport_semantics import RANGE_SOURCE, RANGE_TOOLS
+    doc = document()
+    context = {'amneziawg_cohort': {parameter: '<b 0x01>'}}
+    with pytest.raises(BindingError, match='invalid-awg-contract'):
+        resolve_binding(doc, context, 'device0', 'upcloud:fixture', 'awg0')
+    doc.update(amneziawg_go_commit=RANGE_SOURCE, amneziawg_tools_commit=RANGE_TOOLS)
+    assert resolve_binding(doc, context, 'device0', 'upcloud:fixture', 'awg0').instance[parameter] == '<b 0x01>'
 
 
 @pytest.mark.parametrize('parameter', ['s3', 's4'])

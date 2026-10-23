@@ -34,6 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ripdpi_cohort_fingerprint import ORDER, cohort_fingerprint  # noqa: E402
+from transport_semantics import parameter_errors
 from payload_failover_policy import validate_policy  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -188,10 +189,7 @@ def _semantic_errors(ripdpi: dict) -> list[str]:
             except ValueError:
                 errors.append(f"{prefix}.dns: requires literal unicast IP addresses")
                 break
-        if entry["jmin"] > entry["jmax"]:
-            errors.append(f"{prefix}: junk bounds must be ordered")
-        if len({entry[name] for name in ("h1", "h2", "h3", "h4")}) != 4:
-            errors.append(f"{prefix}: headers must be pairwise distinct")
+        errors.extend(f"{path}: {message}" for path, message in parameter_errors(entry, prefix))
     for index, extra in enumerate(ripdpi["hysteria_extras"].values()):
         hopping = extra.get("port_hopping")
         if hopping is not None:

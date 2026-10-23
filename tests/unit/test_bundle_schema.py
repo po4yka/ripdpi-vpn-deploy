@@ -47,7 +47,7 @@ def _ripdpi(doc):
 # Cross-repo drift pin. The client's SingBoxSubscriptionParser.RipdpiSchemaVersion
 # and its vendored schema's x-contract-version must equal this. Bumping it is a
 # coordinated, breaking change across both repos.
-CONTRACT_VERSION = 1
+CONTRACT_VERSION = 2
 
 
 @pytest.fixture(scope="module")
@@ -87,6 +87,21 @@ def test_example_validates_via_cli():
     assert proc.returncode == 0, proc.stderr
 
 
+def test_payload_failover_bundle_validates_via_cli():
+    fixture = REPO_ROOT / "contract/ripdpi-bundle.payload-failover.json"
+    proc = subprocess.run([sys.executable, str(VALIDATOR), str(fixture)],
+                          capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+
+
+@pytest.mark.parametrize("field,value", [("h1", "11\n"), ("h1", "11-99\n"),
+                                        ("i1", "<b 0xaabb>\n"), ("i5", "<t>\n")])
+def test_wire_profile_schema_rejects_trailing_newline(schema, example, field, value):
+    bundle = copy.deepcopy(example)
+    bundle["amneziawg"][0][field] = value
+    assert list(_validator(schema).iter_errors(bundle))
+
+
 # ---------------------------------------------------------------------------
 # Paired cohort-fingerprint golden (the client recomputes the same value)
 # ---------------------------------------------------------------------------
@@ -102,8 +117,8 @@ def test_example_awg_fingerprint_recomputes(example):
 
 
 def test_fingerprint_is_order_stable():
-    a = {"jc": 4, "jmin": 10, "jmax": 50, "s1": 0, "s2": 0,
-         "h1": 1, "h2": 2, "h3": 3, "h4": 4}
+    a = {"wire_profile": "awg-3.1-ranges-v1", "jc": 4, "jmin": 10, "jmax": 50, "s1": 0, "s2": 0,
+         "h1": '1', "h2": '2', "h3": '3', "h4": '4'}
     b = {k: a[k] for k in reversed(list(a))}
     assert cohort_fingerprint(a) == cohort_fingerprint(b)
 
@@ -154,9 +169,10 @@ def test_typo_in_awg_entry_rejected(schema, example):
 # ---------------------------------------------------------------------------
 # Field-format class
 # ---------------------------------------------------------------------------
-def test_schema_version_2_rejected(schema, example):
+@pytest.mark.parametrize("version", [1, 3])
+def test_other_schema_versions_rejected(schema, example, version):
     doc = copy.deepcopy(example)
-    doc["schema_version"] = 2
+    doc["schema_version"] = version
     assert list(_validator(schema).iter_errors(doc))
 
 

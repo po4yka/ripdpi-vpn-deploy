@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+The range/signature profile keeps canonical string headers and bounded I1-I5 programs through admission and render. Both source commits travel with controller normalization, so a candidate-only field cannot reach an earlier runtime. The S3/S4 guard and source-candidate production hold remain independent. The profile marker is delivery metadata and is not an upstream configuration key.
+
 Predictive recovery admits an interrupted revocation only for its exact operation and valid runtime/firewall owners. It never repairs files or starts units. The subsequent predictive apply validates both immutable candidate plans before the lifecycle controller may resume real activation.
 Interrupted post-commit retirement cleanup is admitted read-only only when its before receipt matches that operation's accepted revocation receipt. Missing or different authority cannot prune it; altered cleanup claims and reappeared files retain the marker for diagnosis.
 
