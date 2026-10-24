@@ -24,6 +24,7 @@ BACKTICK = re.compile(r"`([^`\s]+)`")
 FILE_NAME = re.compile(r"/[^/]*\.[a-z][a-z0-9]*$")
 # The leading ./ or ../ path of any span, so commands with arguments are checked too.
 RELATIVE = re.compile(r"`(\.\.?/[^`\s]+)")
+MAX_NOTE_LINES = 300
 
 
 def _tracked(*patterns: str) -> list[str]:
@@ -64,6 +65,12 @@ def test_every_nested_agents_md_points_at_a_tracked_claude_md() -> None:
     assert not orphaned, f"AGENTS.md must be a symlink to a tracked sibling CLAUDE.md: {orphaned}"
 
 
+def test_folder_notes_stay_within_the_always_loaded_budget() -> None:
+    # Agents load every CLAUDE.md on the path they read; long history belongs in DESIGN-NOTES.md.
+    oversized = [path for path in _tracked("*CLAUDE.md") if len((ROOT / path).read_text().splitlines()) > MAX_NOTE_LINES]
+    assert not oversized, f"move detail to a sibling DESIGN-NOTES.md (limit {MAX_NOTE_LINES} lines): {oversized}"
+
+
 def test_skills_have_portable_frontmatter() -> None:
     for skill in _skill_dirs():
         text = (skill / "SKILL.md").read_text()
@@ -95,7 +102,7 @@ def test_agent_instructions_reference_existing_paths() -> None:
     tracked = set(_tracked())
     tracked_dirs = {str(parent) for path in tracked for parent in PurePosixPath(path).parents if str(parent) != "."}
     top_level = {path.split("/")[0] for path in tracked if "/" in path}
-    documents = _tracked("AGENTS.md", "*CLAUDE.md", ".agents/skills/**/*.md", "scripts/DESIGN-NOTES.md")
+    documents = _tracked("AGENTS.md", "*CLAUDE.md", ".agents/skills/**/*.md", "*DESIGN-NOTES.md")
     stale = []
     for document in documents:
         folder = PurePosixPath(document).parent
