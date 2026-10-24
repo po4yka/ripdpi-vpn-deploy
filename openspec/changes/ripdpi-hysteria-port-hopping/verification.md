@@ -13,7 +13,7 @@ staging_evidence: No staging resource mutation in this source delivery.
 live: not_applicable
 live_evidence: No fleet deployment or live credential action authorized.
 client: required
-client_evidence: null
+client_evidence: Native source 764d7519483e5879d3ae58c1b532723df16dbfbd passed all eleven controlled Hysteria peer cases with actual Kotlin serializer inputs. Final client PR and main checks remain required.
 artifact: required
 artifact_evidence: null
 ---
@@ -34,5 +34,7 @@ artifact_evidence: null
 - Targeted recipient hopping, payload boundary, bundle schema, transport semantics, host selection and Hysteria audit tests: 307 passed.
 - Documentation checks: 10 passed. The generated hopping bundle passed semantic validation.
 - Task contracts and strict OpenSpec validation passed. Independent source review found no code defect.
-- The full local check was canceled while still queued at the shared build gate; it did not start and remains required.
-- Source review identified the paired client qualification as a release precondition. Keep this producer change local until the client passes the real peer matrix and reaches main. No client, artifact or hosted completion is claimed here.
+- The full local check exposed two local tool mismatches: setuptools 84.0.0 instead of 84.2.1, then sing-box 1.13.16 instead of 1.14.3. An isolated Python environment and a process-local PATH select the pinned versions. Package reproducibility, offline installation and rollback passed; the full check remains required.
+- Paired native source `764d7519483e5879d3ae58c1b532723df16dbfbd` passed eight hopping cases across IPv4/IPv6, plain/Salamander and fixed/random intervals, plus ordinary TCP/UDP, auth rejection and TLS rejection. Each hopping case preserved one authenticated session across three local/remote port changes and verified 20 TCP replies of 8208 bytes and 60 distinct UDP replies of 2736 bytes. Cleanup passed in every case. The test peer is Hysteria 2.13.0, which matches the public server example; no live server version is inferred.
+- Local peer tests consumed actual Kotlin serializer outputs. The client lane also passed 3911 targeted Kotlin tests and 295 affected native tests. Linux GRO, final hosted checks and the Android artifact remain separate client gates in `po4yka/RIPDPI#661`.
+- Source review identified paired client qualification as a release precondition. Draft PR checks can run in parallel, but this producer must not merge or release until the qualified client reaches main. No hosted, device or fleet completion is claimed here.
