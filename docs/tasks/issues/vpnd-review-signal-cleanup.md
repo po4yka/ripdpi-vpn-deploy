@@ -2,7 +2,7 @@
 id: SEC-1792842686096891
 title: Stop terminal reviews on worker-delivered signals
 kind: bug
-status: review
+status: done
 area: security
 priority: high
 risk: high
@@ -15,6 +15,9 @@ created: 2026-10-24
 updated: 2026-10-24
 related_tasks: []
 status_detail: Deterministic actual-launcher regressions, all 12 installed CLI cases, full local gates, independent review and exact combined-main CI passed. Native cleanup is confirmed by the job log.
+closed_at: "2026-10-24T18:22:09Z"
+closed_reason: All acceptance criteria and required evidence passed.
+evidence_summary: The installed native CLI passed all 12 worker-signal, approval and refusal cases with actual launchers and synthetic infrastructure inputs. Full local checks, independent reviews, PR 385 and all five exact combined-main workflows passed at f6f6a8e77c3d8deaa2ddf37582e17f94c78fccbc. Native staging cleanup was confirmed in the terminal job log.
 ---
 
 ## Goal
