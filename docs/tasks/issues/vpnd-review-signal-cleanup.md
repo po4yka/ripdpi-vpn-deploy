@@ -2,7 +2,7 @@
 id: SEC-1792842686096891
 title: Stop terminal reviews on worker-delivered signals
 kind: bug
-status: doing
+status: review
 area: security
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: vpnd-review-signal-cleanup
 created: 2026-10-24
 updated: 2026-10-24
 related_tasks: []
+status_detail: Deterministic actual-launcher regressions, all 12 installed CLI cases, full local gates, independent review and exact combined-main CI passed. Native cleanup is confirmed by the job log.
 ---
 
 ## Goal

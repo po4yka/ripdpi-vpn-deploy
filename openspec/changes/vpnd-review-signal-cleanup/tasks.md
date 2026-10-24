@@ -16,7 +16,7 @@ The independent reviewer is read-only. Runner process ownership is unchanged.
 
 - [x] SEC-1792842915023775 Implement signal-responsive terminal reviews and deterministic worker-signal regressions #bug !high @item:SEC-1792842686096891
 - [x] SEC-1792842915762104 Preserve cancellation cleanup and terminal resource lifetimes with boundary tests #bug !high @item:SEC-1792842686096891
-- [ ] SEC-1792842916403380 Verify the installed CLI, complete local gates, independent review and exact PR/main CI #bug !high @item:SEC-1792842686096891
+- [x] SEC-1792842916403380 Verify the installed CLI, complete local gates, independent review and exact PR/main CI #bug !high @item:SEC-1792842686096891
 
 ## Verification
 
