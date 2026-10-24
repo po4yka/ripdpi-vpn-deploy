@@ -203,11 +203,12 @@ def reused_plan(repo, sha, api):
 def plan_from_git(repo, event, base, sha="", api=None):
     if event == "push" and api is not None:
         try:
-            if reused := reused_plan(repo, sha, api):
-                return reused
+            reused = reused_plan(repo, sha, api)
         except (OSError, ValueError, KeyError, TypeError, AttributeError, http.client.HTTPException,
                 subprocess.SubprocessError):
-            pass
+            reused = None  # An API, network or history failure keeps full CI.
+        if reused:
+            return reused
     if event != "pull_request":
         return full_plan("Main pushes and manual runs execute full CI")
     if re.fullmatch(r"[0-9a-f]{40}", base) is None or base == "0" * 40:
