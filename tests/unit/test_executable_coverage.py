@@ -246,7 +246,7 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
     selected = []
     for arguments in commands:
         result = subprocess.run([sys.executable, '-m', 'pytest', *arguments, '--collect-only', '-q'],
-            cwd=ROOT, text=True, capture_output=True, check=True, timeout=60)
+            cwd=ROOT, text=True, capture_output=True, check=True, timeout=180)  # Hang guard beside xdist workers.
         selected.append({line for line in result.stdout.splitlines()
                          if line.startswith('tests/unit/') and '::' in line})
     all_native, existing, transactions, endpoint_cases, awg_cases, ech_cases = selected[:6]

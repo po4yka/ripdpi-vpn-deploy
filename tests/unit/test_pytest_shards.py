@@ -190,8 +190,9 @@ raise SystemExit(pytest.main(["--collect-only", "-q"], plugins=[Collection()]))
 '''
     collections = []
     for clock in (1700000000, 1700003600):
+        # A hang guard for a full collection that shares the CPU with xdist workers.
         result = subprocess.run([sys.executable, "-c", script, str(clock)], cwd=ROOT,
-                                capture_output=True, text=True, timeout=30)
+                                capture_output=True, text=True, timeout=180)
         assert result.returncode == 0, result.stdout + result.stderr
         payload = next(line.removeprefix("COLLECTION_JSON=") for line in result.stdout.splitlines()
                        if line.startswith("COLLECTION_JSON="))
