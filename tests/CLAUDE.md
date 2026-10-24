@@ -756,7 +756,7 @@ version command succeeds. Template routing rules need the adjacent data files.
 **Pytest groups use measured durations** — four `pytest-split` groups share a
 committed Linux profile. Keep `pytest unit tests` as the required aggregate: it
 checks identical collections/profiles, disjoint selections and full execution.
-Refresh the profile from the verified artifact; local `test-unit` stays complete.
+Refresh the profile from the verified artifact; local `test-unit` stays complete. Both `test-unit` and each CI group run under pytest-xdist with `--dist loadfile` (`PYTEST_WORKERS`, default `auto`), so a module and its fixtures stay on one worker; the shard report takes the identical worker collection through `workeroutput` and the controller writes it. Tests that bind a fixed loopback port or share a path outside `tmp_path` must stay inside one module or reserve their resource; a collision across modules is a test defect.
 Give clock-dependent parameter values stable IDs so collection agrees across runners.
 
 **Promotion proof covers aliased temp roots** — the controller's snapshots

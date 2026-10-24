@@ -550,6 +550,9 @@ A test stalled for two minutes emits its Python stack; each CI group has a
 15-minute deadline. Timeouts fail the required aggregate.
 Run one group locally with `PYTEST_GROUP=1 make test-unit-shard` (1 through 4);
 `make test-unit` still executes the complete portable suite.
+Both targets run pytest-xdist workers with `--dist loadfile`, so each test module
+stays on one worker. `PYTEST_WORKERS` sets the count (default `auto`, one per CPU);
+use `PYTEST_WORKERS=0` to run serially when debugging an order or timing problem.
 
 The required `pytest unit tests` status waits for all four groups, then checks
 that every portable test was selected and finished exactly once. Missing groups,

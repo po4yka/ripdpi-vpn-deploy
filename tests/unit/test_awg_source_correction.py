@@ -287,11 +287,13 @@ def test_runtime_receipt_rebuilds_when_correction_identity_changes(correction):
                     "outputs": [{"name": "installed", "staged_path": str(stage / "amneziawg-go" / "amneziawg-go"), "path": str(output)}]}
         descriptor = receipt._normalize_descriptor(document, stage_root=stage)
         (root / "amneziawg-go.json").write_text(json.dumps(receipt._receipt_payload(descriptor)))
+        (root / "amneziawg-go.json").chmod(0o644)  # The helper admits only 0644; do not depend on umask.
         assert receipt.inspect(root, document)["rebuild_required"] is False
         document["source"]["patches"] = helper.describe(commit)
         assert receipt.inspect(root, document)["reason"] == "inputs-changed"
         descriptor = receipt._normalize_descriptor(document, stage_root=stage)
         (root / "amneziawg-go.json").write_text(json.dumps(receipt._receipt_payload(descriptor)))
+        (root / "amneziawg-go.json").chmod(0o644)  # The helper admits only 0644; do not depend on umask.
         assert receipt.inspect(root, document)["rebuild_required"] is False
         manifest["name"] += "-next"
         write_json(assets / helper.MANIFEST, manifest)
