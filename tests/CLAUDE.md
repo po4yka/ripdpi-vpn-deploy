@@ -899,6 +899,10 @@ Warm AWG fixtures stage the exact tools and quick script outside the source chec
 
 ## Pitfalls
 
+- Restricted-PATH fixtures invoke the active Python executable through a shell
+  launcher. Do not relocate it with a symlink: copied virtual-environment
+  interpreters can lose their standard-library and environment paths.
+
 - Ubuntu Molecule consumers use one immutable digest from the repository-owned,
   security-gated publication. Refresh every consumer and pin regression together;
   never waive fixable HIGH or CRITICAL image findings.
