@@ -4,6 +4,7 @@ from pathlib import Path
 from dataclasses import replace
 from argparse import Namespace
 import asyncio
+import errno
 import os
 import pty
 import select
@@ -828,8 +829,10 @@ def test_launcher_uses_controlling_terminal_for_both_confirmations(tmp_path, nam
             if select.select([terminal], [], [], 0.05)[0]:
                 try:
                     transcript += os.read(terminal, 8192)
-                except OSError:
-                    pass
+                except OSError as error:
+                    # A closed PTY slave reports EOF as EIO on this read path.
+                    if error.errno != errno.EIO:
+                        raise
             found, status = os.waitpid(pid, os.WNOHANG)
             if found:
                 reaped = True
