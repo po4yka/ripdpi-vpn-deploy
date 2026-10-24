@@ -25,7 +25,6 @@ import pytest
 import yaml
 
 import bootstrap_readiness
-from bootstrap_readiness import CommandTimeout, run_command
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -36,9 +35,11 @@ TOGGLES = {"xray": "enable_xray_reality", "hysteria": "enable_hysteria", "snell"
 def _run_owned(argv, *, env=None, cwd=None, timeout=45):
     errors = bytearray()
     try:
-        status, output = run_command(argv, environment=env, cwd=cwd, timeout=timeout,
-                                     capture=True, stderr_output=errors, output_limit=1_049_600)
-    except CommandTimeout:
+        status, output = bootstrap_readiness.run_command(
+            argv, environment=env, cwd=cwd, timeout=timeout,
+            capture=True, stderr_output=errors, output_limit=1_049_600,
+        )
+    except bootstrap_readiness.CommandTimeout:
         raise subprocess.TimeoutExpired(argv, timeout) from None
     return subprocess.CompletedProcess(argv, status, output.decode().replace('\r\n', '\n').replace('\r', '\n'),
                                        errors.decode().replace('\r\n', '\n').replace('\r', '\n'))
@@ -245,7 +246,9 @@ def smoke_run(tmp_path):
         path.write_text(EXECUTABLE)
         path.chmod(0o700)
     config = tmp_path / 'ansible.cfg'
-    config.write_text('[defaults]\nfact_caching=memory\n')
+    # This unprivileged local fixture can send modules through stdin. The full
+    # task graph and target file operations still use the real Ansible modules.
+    config.write_text('[defaults]\nfact_caching=memory\n\n[connection]\npipelining=true\n')
     template_dir = tmp_path / 'roles/snell/templates'
     template_dir.mkdir(parents=True)
     shutil.copyfile(

@@ -1281,6 +1281,7 @@ def _guard_build_command(
         elif command is not None:
             command.wait(timeout=2)
     except BaseException:
+        # Fatal errors must not bypass group cleanup or the failure report.
         result = b"E" if failure_known else b"U"
         if not detached:
             # If S vanished before detach, there is no external group to join.
@@ -1289,7 +1290,7 @@ def _guard_build_command(
             try:
                 os.killpg(process_group, signal.SIGKILL)
             except OSError:
-                pass
+                pass  # Keep the failure result. Cleanup has not been confirmed.
         elif not cleanup_started:
             try:
                 _drain_build_group(process_group, command)
@@ -1314,7 +1315,6 @@ def _supervise_build(payload: int, control: int, status: int, directory: int) ->
     signal.signal(signal.SIGCHLD, signal.SIG_DFL)
     guardian = None
     guardian_control = guardian_status = None
-    result = b"U"
     failure_known = False
     exitcode = 1
     try:
@@ -1374,6 +1374,7 @@ def _supervise_build(payload: int, control: int, status: int, directory: int) ->
                 raise UnsafeState("build-process-cleanup-failed")
             exitcode = 0
     except BaseException:
+        # Fatal errors must not bypass cleanup while the guardian is unreaped.
         if guardian:
             # Never poll/wait B before this fallback: its unreaped PID reserves
             # the old group even when a startup or detach acknowledgement is lost.
@@ -1384,7 +1385,7 @@ def _supervise_build(payload: int, control: int, status: int, directory: int) ->
             try:
                 os.kill(guardian, signal.SIGKILL)
             except ProcessLookupError:
-                pass
+                pass  # The guardian can have exited. It is reaped below.
         _guardian_write(status, b"E" if failure_known else b"U")
     finally:
         if guardian:
@@ -1419,8 +1420,8 @@ def _run_guarded_build(step: dict, environment: dict, directory: int) -> None:
                     "-B",
                     "-c",
                     "import runpy,sys;runpy.run_path(sys.argv[1],"
-                    "run_name='_runtime_build_supervisor')['_supervise_build']"
-                    "(*map(int,sys.argv[2:]))",
+                    + "run_name='_runtime_build_supervisor')['_supervise_build']"
+                    + "(*map(int,sys.argv[2:]))",
                     str(Path(__file__).resolve()),
                     str(payload.fileno()),
                     str(child_control),

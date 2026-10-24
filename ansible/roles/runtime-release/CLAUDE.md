@@ -164,6 +164,7 @@ Staged includes return `runtime_release_candidates` for their own consumer. They
   or its supervisor holding it unreaped, may act on the old group. EPERM is an
   unknown state that must settle to ESRCH; it never proves successful cleanup.
   Control-channel loss refuses publication and requests owned cleanup.
+  Fatal Python exceptions also use this cleanup path.
   Callers must retain default SIGCHLD handling so owned children remain
   waitable; the helper refuses a nondefault handler before launching a build
   and never changes the caller's handler.

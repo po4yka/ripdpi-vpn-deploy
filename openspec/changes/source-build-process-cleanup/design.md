@@ -18,6 +18,7 @@ The existing helper reaps the command leader before checking its group. A real m
 - Preserve command argv, environment, output suppression and retained-directory execution. Control and status descriptors never enter the actual command. Keep cancellation and failure causes; cleanup cannot convert refusal into success.
 - Keep monitor exit checks asynchronous and bounded. Publish synthetic PID records atomically. For transaction test setup, batch only equivalent preparatory API calls while retaining real journal and fsync behavior.
 - Measure smoke fixture execution before selecting a performance change. Keep the complete source task graph and its safety assertions. Any test timeout must also reclaim the owned subprocess session.
+- Use pipelining in the unprivileged local smoke fixture. A real Snell profile reduced transport operations from 65 to 16 while keeping all source tasks and the target file copy. Keep the 45-second deadline and all cleanup assertions.
 
 ## Contracts and ownership
 
