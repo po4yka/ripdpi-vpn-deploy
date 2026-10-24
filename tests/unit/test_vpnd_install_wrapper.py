@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import shlex
 import subprocess
 import sys
 import tarfile
@@ -24,7 +25,9 @@ def test_shell_installer_requires_expected_provenance(tmp_path, verification_sta
         archive.addfile(member, io.BytesIO(payload))
     binary = tmp_path / "bin"
     binary.mkdir()
-    (binary / "python3").symlink_to(sys.executable)
+    python = binary / "python3"
+    python.write_text(f'#!/bin/sh\nexec {shlex.quote(sys.executable)} "$@"\n')
+    python.chmod(0o755)
     curl = binary / "curl"
     curl.write_text(
         f"#!{sys.executable}\n"
