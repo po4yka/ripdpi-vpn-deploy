@@ -35,6 +35,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ripdpi_cohort_fingerprint import ORDER, cohort_fingerprint  # noqa: E402
 from payload_failover_policy import validate_policy  # noqa: E402
+from transport_semantics import hysteria_port_hopping  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = REPO_ROOT / "contract" / "ripdpi-bundle.schema.json"
@@ -195,12 +196,10 @@ def _semantic_errors(ripdpi: dict) -> list[str]:
     for index, extra in enumerate(ripdpi["hysteria_extras"].values()):
         hopping = extra.get("port_hopping")
         if hopping is not None:
-            bounds = re.split(r"[:-]", hopping["ports"])
-            lower, upper = (map(int, bounds) if all(len(value) <= 5 for value in bounds) else (0, 0))
-            if not 1 <= lower <= upper <= 65535:
-                errors.append(f"hysteria_extras[{index}].port_hopping: invalid port range")
-            if len(hopping["interval"]) > 10 or int(hopping["interval"][:-1]) < 1:
-                errors.append(f"hysteria_extras[{index}].port_hopping: interval must be positive")
+            try:
+                hysteria_port_hopping(hopping["ports"], hopping["interval"])
+            except ValueError:
+                errors.append(f"hysteria_extras[{index}].port_hopping: invalid range or interval")
     if "expires" in ripdpi:
         try:
             value = ripdpi["expires"]

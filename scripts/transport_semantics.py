@@ -250,6 +250,23 @@ def ech_keys_config(pem, *, verify_private=False):
         raise ValueError("invalid-ech-authority") from None
 
 
+def hysteria_port_hopping(ports, interval):
+    """Validate the producer's fixed-range policy without exposing input values."""
+    if (not isinstance(ports, str) or len(ports) > 11
+            or not re.fullmatch(r"[0-9]+[:-][0-9]+", ports)):
+        raise ValueError('invalid-hysteria-hopping')
+    lower, upper = map(int, re.split(r"[:-]", ports))
+    if not 1 <= lower <= upper <= 65535:
+        raise ValueError('invalid-hysteria-hopping')
+    if (not isinstance(interval, str) or len(interval) > 32
+            or not re.fullmatch(r"[0-9]+[smh]", interval)):
+        raise ValueError('invalid-hysteria-hopping')
+    milliseconds = int(interval[:-1]) * {'s': 1000, 'm': 60000, 'h': 3600000}[interval[-1]]
+    if not 5000 <= milliseconds <= 9223372036854:
+        raise ValueError('invalid-hysteria-hopping')
+    return dict(ports=f'{lower}:{upper}', interval=interval)
+
+
 def hysteria_client_bandwidth(raw):
     """Return whole-Mbps client hints; server negotiation retains exact rates."""
     if raw.get('resource_profile', 'bandwidth-capped') != 'bandwidth-capped':

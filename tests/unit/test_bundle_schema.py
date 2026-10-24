@@ -459,7 +459,8 @@ def test_awg_relational_semantics_refuse(tmp_path, example, field, value):
 @pytest.mark.parametrize("field,value", [
     ("ports", "50000:20000"), ("ports", "0:50000"), ("ports", "1:65536"),
     ("ports", "1:" + "9" * 5000), ("interval", "0s"),
-    ("interval", "9" * 5000 + "s"),
+    ("interval", "9" * 5000 + "s"), ("interval", "4s"),
+    ("interval", "9223372037s"), ("interval", "2562048h"),
 ])
 def test_hopping_semantics_refuse_without_traceback(tmp_path, example, field, value):
     doc = copy.deepcopy(example)
@@ -510,3 +511,12 @@ def test_runtime_mode_nonobject_refuses_without_traceback(tmp_path, doc):
     proc = _run_validator(path, '--runtime-materialized')
     assert proc.returncode == 1
     assert 'Traceback' not in proc.stderr and 'synthetic-private-marker' not in proc.stderr
+
+
+@pytest.mark.parametrize("interval", ["5s", "1m", "25h", "9223372036s", "2562047h"])
+def test_hopping_interval_bounds_are_admitted(tmp_path, example, interval):
+    doc = copy.deepcopy(example)
+    next(iter(doc["hysteria_extras"].values()))["port_hopping"]["interval"] = interval
+    path = tmp_path / "bundle.json"
+    path.write_text(json.dumps(doc))
+    assert _run_validator(path).returncode == 0
