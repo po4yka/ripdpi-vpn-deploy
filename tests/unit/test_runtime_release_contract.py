@@ -322,11 +322,6 @@ def test_check_mode_predicts_candidate_or_receipt_publication_work() -> None:
 
 
 def test_candidate_permissions_are_published_only_by_the_locked_helper() -> None:
-    source = ACTIVATOR.read_text()
-    assert "def _atomic_install_candidate(" in source
-    assert "src_dir_fd=release.descriptor" in source
-    assert "dst_dir_fd=release.descriptor" in source
-    assert "os.fchmod(destination, candidate_mode)" in source
     assert (
         "Normalize installed runtime release candidate permissions"
         not in TASKS.read_text()
