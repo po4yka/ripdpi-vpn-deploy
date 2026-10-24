@@ -283,7 +283,7 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
             'test_native_ech_admission_retains_custom_configuration_directory') in transactions
     assert awg_cases and len(ech_cases) == 13
     assert endpoint_cases and len(endpoint_cases) == 10
-    assert "$(MAKE) test-probe-matrix-mtproto" in makefile.split("ci-fast:", 1)[1]
+    assert "test-probe-matrix-mtproto" in makefile.split("ci-fast:", 1)[1].split("\n\t", 1)[0]
     assert "go test -mod=readonly -count=1" in makefile
     names = []
     import ast

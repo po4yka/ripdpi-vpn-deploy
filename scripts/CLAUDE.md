@@ -514,7 +514,7 @@ Makefile `help` recipe as text, builds the vpnd argparse tree without running a
 command, and calls the `ai-docs` emitter into a temporary directory to produce
 `docs/reference/make-targets.md`, `docs/reference/vpnd-commands.md` and
 `docs/llms.txt`. `--check` compares and exits 1 on drift; `make docs-check`
-runs it inside `make check`. It reads no credentials, inventory or secrets.
+runs it, and `make check` runs it through `test_docs_reference.py`. It reads no credentials, inventory or secrets.
 Change the help text or the parser and run `make docs-reference`; never edit
 the generated pages.
 

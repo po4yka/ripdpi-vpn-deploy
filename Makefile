@@ -907,17 +907,30 @@ check-prereqs:
 init:
 	PROVIDER=$(PROVIDER) ENV=$(ENV) $(TF_ENV) init
 
-validate:
+# validate and tf-test share one backend-free Terraform data directory per
+# provider: providers install once per invocation and `make -j` never runs two
+# inits on the same directory.
+TF_VALIDATION_ENV = TF_DATA_DIR="$(CURDIR)/terraform/providers/$$provider/.terraform-env/.validation" TF_WORKSPACE=default
+
+.PHONY: terraform-init ansible-syntax-check
+terraform-init:
+	@command -v terraform >/dev/null 2>&1 || { echo "missing: terraform" >&2; exit 1; }
+	@for provider in upcloud hetzner vultr scaleway; do \
+	  $(TF_VALIDATION_ENV) terraform -chdir=terraform/providers/$$provider init -backend=false -input=false -lockfile=readonly >/dev/null || exit 1; \
+	done
+
+ansible-syntax-check:
+	@command -v ansible-playbook >/dev/null 2>&1 || { echo "missing: ansible-playbook" >&2; exit 1; }
+	@echo "== ansible syntax =="; cd $(ANSIBLE_DIR) && ansible-playbook playbooks/site.yml --syntax-check -i 'localhost,'
+
+validate: terraform-init ansible-syntax-check
 	@for provider in upcloud hetzner vultr scaleway; do \
 	  terraform -chdir=terraform/providers/$$provider fmt -check -recursive || exit 1; \
-	  data_dir="$(CURDIR)/terraform/providers/$$provider/.terraform-env/.validation"; \
-	  TF_DATA_DIR="$$data_dir" TF_WORKSPACE=default terraform -chdir=terraform/providers/$$provider init -backend=false -input=false -lockfile=readonly >/dev/null || exit 1; \
-	  TF_DATA_DIR="$$data_dir" TF_WORKSPACE=default terraform -chdir=terraform/providers/$$provider validate || exit 1; \
+	  $(TF_VALIDATION_ENV) terraform -chdir=terraform/providers/$$provider validate || exit 1; \
 	done
 	gitleaks git --redact --no-banner .
 	gitleaks git --staged --redact --no-banner .
 	ANSIBLE_CONFIG=$(ANSIBLE_DIR)/ansible.cfg ansible-lint $(ANSIBLE_DIR)
-	cd $(ANSIBLE_DIR) && ansible-playbook playbooks/site.yml --syntax-check
 
 decrypt:
 	SECRETS_FILE="$(SECRETS_FILE)" SOPS_FILE="$(SOPS_FILE)" ./scripts/decrypt-secrets.sh
@@ -1494,12 +1507,10 @@ cloud-init-schema:
 	    exit 1; \
 	  fi
 
-tf-test:
-	@command -v terraform >/dev/null 2>&1 || { echo "missing: terraform" >&2; exit 1; }
+tf-test: terraform-init
 	@for provider in upcloud hetzner vultr scaleway; do \
 	  echo "== terraform test: $$provider =="; \
-	  terraform -chdir=terraform/providers/$$provider init -backend=false >/dev/null && \
-	  terraform -chdir=terraform/providers/$$provider test || exit 1; \
+	  $(TF_VALIDATION_ENV) terraform -chdir=terraform/providers/$$provider test || exit 1; \
 	done
 	python3 -m pytest -q tests/unit/test_provider_bootstrap_lifecycle.py -m native_runtime --fail-on-skip
 
@@ -1526,7 +1537,8 @@ vpnd-dependency-check:
 vpnd-package-check:
 	python3 scripts/check-vpnd-package.py
 
-vpnd-parity-check:
+# Parity reads the results vpnd-test writes, so it runs after vpnd-test even under make -j.
+vpnd-parity-check: vpnd-test
 	python3 scripts/check-vpnd-test-transfer.py
 
 vpnd-lint:
@@ -1562,18 +1574,15 @@ task-federation:
 liveness-profile-check:
 	python3 scripts/check-liveness-profile-compatibility.py --sing-box-version 1.14.3 --xray-version 26.3.27
 
-ci-fast:
-	@$(MAKE) test-probe-matrix-mtproto
-	@$(MAKE) actionlint-check
-	@$(MAKE) zizmor-check
-	@$(MAKE) zizmor-test
-	@$(MAKE) cloud-init-schema
-	@$(MAKE) tf-test
-	@$(MAKE) tf-policy-verify
-	@$(MAKE) yamllint-check
-	@$(MAKE) shellcheck
-	@$(MAKE) vpnd-dependency-check
-	@$(MAKE) vpnd-package-check
+# Independent checks are prerequisites, so `make -j N ci-fast` (or `check`) runs them in parallel.
+ci-fast: test-probe-matrix-mtproto actionlint-check zizmor-check zizmor-test cloud-init-schema \
+  tf-test tf-policy-verify yamllint-check shellcheck vpnd-dependency-check vpnd-package-check \
+  ci-fast-scripts ansible-syntax-check liveness-profile-check promtool-check test-unit bats-test \
+  vpnd-lint vpnd-test vpnd-parity-check
+	@echo "ci-fast: OK"
+
+.PHONY: ci-fast-scripts promtool-check
+ci-fast-scripts:
 	@echo "== render check =="; python3 scripts/check-templates-render.py
 	@echo "== AmneziaWG arm64 version floor =="; python3 scripts/check-amneziawg-arm64-version-floor.py
 	@echo "== Xray breaking-change guard =="; python3 scripts/check-xray-breaking-changes.py
@@ -1582,24 +1591,16 @@ ci-fast:
 	@echo "== snapshot diff =="; python3 scripts/render-snapshots.py
 	@echo "== schema validation =="; python3 scripts/validate-secrets.py
 	@echo "== bundle contract =="; python3 scripts/validate-bundle.py
-	@command -v ansible-playbook >/dev/null 2>&1 || { echo "missing: ansible-playbook" >&2; exit 1; }
-	@echo "== ansible syntax =="; cd $(ANSIBLE_DIR) && ansible-playbook playbooks/site.yml --syntax-check -i 'localhost,'
-	@$(MAKE) liveness-profile-check
+
+promtool-check:
 	@command -v promtool >/dev/null 2>&1 || { echo "missing: promtool $(PROMTOOL_VERSION) (run: mise install)" >&2; exit 1; }
 	@promtool --version 2>&1 | grep -F "version $(PROMTOOL_VERSION)" >/dev/null || { echo "promtool $(PROMTOOL_VERSION) required (run: mise install)" >&2; exit 1; }
-	@$(MAKE) test-unit
-	@echo "== bats shell tests =="; bats tests/bats/
-	@$(MAKE) vpnd-lint
-	@$(MAKE) vpnd-test
-	@$(MAKE) vpnd-parity-check
 
-	@echo "ci-fast: OK"
-
-# Union gate: task contract, everything in validate, everything in ci-fast,
-# then the documentation guards.
+# Union gate: task contract, everything in validate and everything in ci-fast.
+# test-unit already runs the documentation guards that docs-check runs alone.
 # Run this before any commit touching Ansible, Terraform, or Python to get
 # the same signal that CI produces without waiting for a remote run.
-check: task-check validate ci-fast docs-check  ## Full local gate: task contract + validate + ci-fast + docs-check
+check: task-check validate ci-fast  ## Full local gate: task contract + validate + ci-fast (includes the docs guards)
 
 # Regenerate the documentation pages that mirror code: the Make target
 # reference, the vpnd command reference and the machine-readable docs index.

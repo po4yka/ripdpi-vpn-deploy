@@ -296,6 +296,8 @@ def test_validate_checks_every_provider_and_ci_fast_has_no_tool_skips():
     assert "skipped: cargo" not in makefile
 
     ci_fast = makefile.split("ci-fast:", 1)[1].split("\n\n# Union gate", 1)[0]
+    # Prerequisites, not recursive calls, so make -j can run them in parallel.
+    prerequisites = ci_fast.split("\n\t", 1)[0].replace("\\\n", " ").split()
     for target in (
         "actionlint-check",
         "zizmor-check",
@@ -309,7 +311,13 @@ def test_validate_checks_every_provider_and_ci_fast_has_no_tool_skips():
         "vpnd-package-check",
         "vpnd-parity-check",
     ):
-        assert f"$(MAKE) {target}" in ci_fast
+        assert target in prerequisites
+    for target in ("test-unit", "bats-test", "vpnd-test", "ansible-syntax-check", "promtool-check", "ci-fast-scripts"):
+        assert target in prerequisites
+    assert "$(MAKE)" not in ci_fast
+    assert "vpnd-parity-check: vpnd-test" in makefile
+    assert "validate: terraform-init ansible-syntax-check" in makefile
+    assert "tf-test: terraform-init" in makefile
     assert "python3 scripts/render-cloud-init-ci.py" in ci
 
 
