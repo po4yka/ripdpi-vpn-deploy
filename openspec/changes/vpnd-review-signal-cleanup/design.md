@@ -18,10 +18,20 @@ read. The real-launcher reproduction stops only after terminal input arrives.
 - Keep `StopSignals` as the only signal owner throughout pipeline, review and
   cleanup. Record the first handled signal and notify an async waiter. Preserve
   inherited ignored handlers. Remove the separate review signal handler path.
+  The launcher must preserve ignored SIGINT/SIGTERM for these two commands
+  before entering the pipeline guard; other command dispatch stays unchanged.
 - Add a terminal reader that uses the event loop and nonblocking descriptor
   reads. Keep stderr terminal admission and the existing stdin-or-controlling-
-  terminal rule. Do not consume piped answers. Restore descriptor flags, remove
-  reader registration and close only owned descriptors on every exit.
+  terminal rule. Do not consume piped answers. Open an independent descriptor
+  for stdin's exact terminal, or `/dev/tty` when stdin is not a terminal. Verify
+  the reopened stdin terminal identity before reading. Use O_NOCTTY and never
+  change flags on an inherited open-file description. A direct signal exit at
+  the initial prompt must not leave the parent shell's stdin nonblocking.
+  Remove reader registration and close the owned descriptor on every exit.
+  On Darwin, the two commands use the standard `PollSelector` event loop:
+  `KqueueSelector` rejects a descriptor opened through `/dev/tty` with EINVAL.
+  Real controlling-terminal tests verify both confirmations. Other commands
+  and platforms keep their default loop; do not substitute stderr's terminal.
 - Consume exactly one line per confirmation. Read bounded data without a
   blocking `readline`; preserve encoding, prompt text, invalid-answer handling
   and defaults. Move both initial deploy/reconverge confirmations to this path
@@ -32,6 +42,9 @@ read. The real-launcher reproduction stops only after terminal input arrives.
 - Catch task cancellation at the pipeline boundary. Retain and await the
   cleanup task through later cancellation; preserve the primary error. A stop
   signal does not cancel the running Make step or its capture worker.
+  Repeated caller cancellation must also wait for the existing runner worker
+  to finish before this boundary can start cleanup. Retain the worker join;
+  do not change process-group, spawn or capture rules.
 - Reject polling sleeps, timeout increases and a background stdin thread:
   these do not give the prompt a clear cancellation and resource lifetime.
 
@@ -39,17 +52,19 @@ read. The real-launcher reproduction stops only after terminal input arrives.
 
 - The implementer owns `vpnd/src/vpnd/wizard/async_prompts.py`, its export,
   `commands/__init__.py`, `commands/deploy.py`, `commands/reconverge.py`,
-  wizard/lifecycle tests and `vpnd/CLAUDE.md`. Root owns planning and acceptance.
-- `runner/process.py`, command flags, generated command references and all
-  infrastructure layers retain their existing contracts.
+  the narrow signal and Darwin loop dispatch in `__main__.py`, the retained cancellation
+  join in `runner/process.py`, wizard/lifecycle/runner tests and `vpnd/CLAUDE.md`.
+  Root owns planning and acceptance. Command flags, generated command references
+  and all infrastructure layers retain their existing contracts.
 - Test-only permission/interpreter fixture repairs already reviewed in the
   hopping branch are included as local-gate prerequisites. They change no
   production validation or permission policy.
 
 ## Risks / Trade-offs
 
-- Descriptor flags affect the open file description: save and restore them in
-  a synchronous cleanup block and test cancellation, EOF and partial input.
+- Descriptor flags affect the open file description: use an independent open,
+  not a duplicate of stdin. Test parent flags during input and after abrupt
+  initial-prompt termination, plus cancellation, EOF and partial input.
 - Buffered answers can cross prompt boundaries: use one async input path for
   both confirmations and test queued initial/review answers.
 - An answer and signal can become ready together: the signal check wins before

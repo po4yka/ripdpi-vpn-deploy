@@ -28,19 +28,29 @@ parent process environment remains unchanged.
 `make plan` and before `make apply`; `reconverge` asks after `make dry-run` and
 before `make deploy`. `require_review` defaults to no, ignores `--yes` and runs
 inside the cleanup boundary, so a declined or unavailable review still runs
-`make clean`. Dispatch keeps default terminal signals, so the review alone maps
-SIGINT, SIGQUIT, SIGTERM and SIGHUP to an ordinary failure that exits
-128 + signal; otherwise Ctrl-C or a dropped session at the prompt would kill
-vpnd with plaintext on disk. Around the whole pipeline and its cleanup,
-`StopSignals` records the same four signals on the event loop; the pipeline
-stops at the next step boundary, runs `make clean` and exits 128 + signal.
-The prompt keeps its own handler because a blocking prompt stops the loop.
-vpnd never kills the running Make step: terminal signals reach it directly,
-and a killed Make could leave a child that writes plaintext after cleanup.
-`StopSignals.cleanup` keeps `make clean` under the guard, so a signal there
-still exits 128 + signal. An inherited ignored signal (SIGHUP under `nohup`)
-stays ignored: a caught signal resets to the default action in Make children,
-so guarding it would let a lost session kill a running apply.
+`make clean`. Initial and review confirmations use one unbuffered async terminal
+reader, so queued answers remain separate and partial input cannot block signals.
+The reader requires terminal stderr and opens a private descriptor for the
+stdin terminal or `/dev/tty`; it never consumes piped answers. It checks that
+reopened stdin still names the same terminal. Nonblocking mode is set on this
+new open file description, so inherited stdin flags stay unchanged even after
+abrupt termination. It reads one byte per readiness callback, then removes the
+reader and closes its private descriptor on success, failure or cancellation.
+On macOS these two commands use the built-in poll event loop, because kqueue
+cannot watch `/dev/tty`. Other commands keep the default event loop.
+
+`StopSignals` is the only signal owner around the pipeline, review and cleanup.
+It records the first SIGINT, SIGQUIT, SIGTERM or SIGHUP and wakes async review
+waiters, including when a worker receives the signal. A recorded signal wins
+over a ready answer, stops the next step, runs `make clean` and exits 128 + signal.
+Inherited ignored signals stay ignored in dispatch, reviews and Make children.
+vpnd never cancels a running Make step in response to a signal: terminal signals
+reach it directly, and killing Make could leave a child that writes plaintext
+after cleanup. Task cancellation releases prompt resources before cleanup and
+retains the cleanup task through later cancellation. Cleanup failure does not
+replace the primary pipeline error or cancellation. The process runner also
+retains its worker join through repeated cancellation, so caller cleanup starts
+only after the worker returns. Worker errors still propagate from that join.
 
 **One command definition.** `src/vpnd/cli.py` owns the standard-library parser,
 global-flag precedence, help, completions and all twenty man pages. Add commands
@@ -168,6 +178,6 @@ a complete prior verified environment, without migrating operator state.
   caller; it skips the Make verb's clean-source, pre-check and inventory gates,
   so a real command must route through `make rotate-credentials`.
 - **Respect capture lifetimes.** Doctor/matrix need group ownership and signal
-  owners. Share/reconverge retain foreground captures and default signals during
-  token input and confirmation. Kill before reaping; await cleanup rather than
+  owners. Share/reconverge retain foreground captures. Share keeps default signals
+  during token input; reconverge reviews use the pipeline signal guard. Kill before reaping; await cleanup rather than
   relying on garbage collection or an executor queue.

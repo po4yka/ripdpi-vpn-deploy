@@ -30,9 +30,10 @@ This fixes the local acceptance blocker for the quality and hopping delivery.
 - Default choices, terminal authority, queued answers, partial input, EOF,
   ignored signals and explain behavior remain correct. A signal wins over an
   answer that is ready at the same boundary.
-- Cancellation removes terminal readers, restores descriptor flags and waits
+- Cancellation removes terminal readers, preserves inherited descriptor flags and waits
   for cleanup. Repeated cancellation cannot leave cleanup detached or replace
-  the primary failure. Running Make steps retain their current ownership.
+  the primary failure. A cancelled worker must finish before cleanup starts.
+  Running Make steps retain their current ownership.
 - Targeted regressions, the complete vpnd tests/lint/parity, package checks,
   full local check, independent review and exact PR/main CI pass.
 - Real providers, private credentials, SSH, deployment and physical devices
@@ -41,7 +42,8 @@ This fixes the local acceptance blocker for the quality and hopping delivery.
 ## Ownership
 
 - CLI implementer owns the async terminal reader, its export, shared review and
-  signal contracts, deploy/reconverge callers, wizard/lifecycle regressions and
+  signal contracts, deploy/reconverge callers, narrow signal/Darwin loop dispatch,
+  the retained runner cancellation join, wizard/lifecycle/runner regressions and
   vpnd folder guidance. Runner process ownership is preserved.
 - Root owns task/spec planning, shared board, package and combined acceptance,
   reviewed test-environment prerequisites, Git integration and task closure.

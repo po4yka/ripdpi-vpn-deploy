@@ -12,9 +12,12 @@ import subprocess
 import sys
 import time
 import tarfile
+import termios
+import fcntl
 import pytest
 from vpnd.config import Context
-from vpnd.commands import deploy, preflight, fleet, finish_with_cleanup, ensure_host_in_registry
+from vpnd import commands
+from vpnd.commands import deploy, reconverge, preflight, fleet, finish_with_cleanup, ensure_host_in_registry
 from vpnd.runner import Cmd
 from vpnd.state import Registry, Host
 
@@ -95,6 +98,9 @@ if [ "$target" = "${SLOW_TARGET:-none}" ]; then : > "$FIXTURE_ROOT/started"; sle
 if [ -n "${HUP_RECORD:-}" ]; then
   python3 -c 'import signal; print(signal.getsignal(signal.SIGHUP) == signal.SIG_IGN)' >> "$HUP_RECORD"
 fi
+if [ -n "${SIGNAL_RECORD:-}" ]; then
+  python3 -c 'import os, signal; print(signal.getsignal(int(os.environ["IGNORED_SIGNAL"])) == signal.SIG_IGN)' >> "$SIGNAL_RECORD"
+fi
 """,
         )
         self.executable(
@@ -133,27 +139,31 @@ exit "${PLAYBOOK_EXIT:-0}"
             input=input,
         )
 
-    def interactive(self, args, answer):
+    def interactive(self, args, answer, *, yes=True, extra=None, ignore=None):
         """Answer the first terminal prompt that the review gate prints.
 
         An integer answer delivers that signal to vpnd instead of typing a line.
         """
         master, slave = pty.openpty()
         child = subprocess.Popen(
-            self.argv(args, True),
+            self.argv(args, yes),
             stdin=slave,
             stderr=slave,
             stdout=subprocess.DEVNULL,
-            env=self.environment(),
+            env=self.environment(extra),
+            preexec_fn=(lambda: signal.signal(ignore, signal.SIG_IGN)) if ignore else None,
         )
         os.close(slave)
         transcript = b""
         try:
             deadline = time.monotonic() + 15
-            while b"[y/N]" not in transcript:
+            marker = b"[y/N]" if yes else b"[Y/n]"
+            while marker not in transcript:
                 assert time.monotonic() < deadline and child.poll() is None, transcript
                 if select.select([master], [], [], 0.05)[0]:
                     transcript += os.read(master, 8192)
+            if ignore is not None:
+                os.kill(child.pid, ignore)
             if isinstance(answer, int):
                 os.kill(child.pid, answer)
             else:
@@ -578,3 +588,294 @@ def test_signal_at_the_review_still_cleans_plaintext(tmp_path, name, reviewed, g
     assert returncode == 128 + number, transcript
     assert f"make {reviewed}\n" in calls and f"make {gated}\n" not in calls
     assert calls.endswith("make clean\n") and not fixture.secrets().exists()
+
+
+@pytest.mark.parametrize(("name", "reviewed", "gated"), REVIEW_GATES)
+@pytest.mark.parametrize("number", (signal.SIGINT, signal.SIGQUIT, signal.SIGTERM, signal.SIGHUP))
+@pytest.mark.parametrize("partial", (False, True), ids=("canonical", "noncanonical-partial"))
+def test_worker_signal_at_review_needs_no_terminal_input(tmp_path, name, reviewed, gated, number, partial):
+    fixture = Fixture(tmp_path)
+    master, slave = pty.openpty()
+    reader, writer = os.pipe()
+    bootstrap = '''import os, runpy, signal, sys, threading
+fd = int(os.environ.pop("WORKER_SIGNAL_FD"))
+number = int(os.environ.pop("WORKER_SIGNAL_NUMBER"))
+def receive():
+    os.read(fd, 1)
+    signal.pthread_kill(threading.get_ident(), number)
+threading.Thread(target=receive, daemon=True).start()
+sys.argv = sys.argv[1:]
+runpy.run_path(sys.argv[0], run_name="__main__")
+'''
+    child = subprocess.Popen(
+        [sys.executable, "-c", bootstrap, *fixture.argv([name], True)[1:]],
+        stdin=slave, stderr=slave, stdout=subprocess.DEVNULL, pass_fds=(reader,),
+        env=fixture.environment({"WORKER_SIGNAL_FD": reader, "WORKER_SIGNAL_NUMBER": number}),
+    )
+    os.close(slave)
+    os.close(reader)
+    transcript = b""
+    try:
+        deadline = time.monotonic() + 15
+        while b"[y/N]" not in transcript:
+            assert time.monotonic() < deadline and child.poll() is None, transcript
+            if select.select([master], [], [], 0.05)[0]:
+                transcript += os.read(master, 8192)
+        if partial:
+            attributes = termios.tcgetattr(master)
+            attributes[3] &= ~termios.ICANON
+            termios.tcsetattr(master, termios.TCSANOW, attributes)
+            os.write(master, b"y")
+        os.write(writer, b"x")
+        child.wait(timeout=3)
+        assert child.returncode == 128 + number, transcript
+        calls = fixture.calls()
+        assert f"make {reviewed}\n" in calls and f"make {gated}\n" not in calls
+        assert calls.count("make clean\n") == 1 and not fixture.secrets().exists()
+    finally:
+        if child.poll() is None:
+            child.kill()
+        child.wait()
+        os.close(master)
+        os.close(writer)
+
+
+@pytest.mark.parametrize(("name", "reviewed", "gated"), REVIEW_GATES)
+@pytest.mark.parametrize(("answers", "accepted"), ((b"y\nn\n", False), (b"\ny\n", True),
+                                                (b"y\ninvalid\nn\n", False)))
+def test_queued_answers_keep_initial_and_review_authority_separate(tmp_path, name, reviewed, gated,
+                                                                 answers, accepted):
+    fixture = Fixture(tmp_path)
+    returncode, transcript = fixture.interactive([name], answers, yes=False)
+    assert (returncode == 0) is accepted, transcript
+    assert (f"make {gated}\n" in fixture.calls()) is accepted
+    assert f"make {reviewed}\n" in fixture.calls()
+    assert fixture.calls().count("make clean\n") == 1 and not fixture.secrets().exists()
+
+
+@pytest.mark.parametrize(("name", "reviewed", "gated"), REVIEW_GATES)
+def test_eof_at_review_cleans_plaintext(tmp_path, name, reviewed, gated):
+    fixture = Fixture(tmp_path)
+    returncode, transcript = fixture.interactive([name], b"\x04")
+    assert returncode != 0 and "terminal input closed" in transcript
+    assert f"make {reviewed}\n" in fixture.calls() and f"make {gated}\n" not in fixture.calls()
+    assert fixture.calls().count("make clean\n") == 1 and not fixture.secrets().exists()
+
+
+@pytest.mark.parametrize(("name", "reviewed", "gated"), REVIEW_GATES)
+@pytest.mark.parametrize("number", commands.REVIEW_SIGNALS)
+def test_ignored_signal_survives_review_and_make_children(tmp_path, name, reviewed, gated, number):
+    fixture = Fixture(tmp_path)
+    record = tmp_path / "ignored"
+    returncode, transcript = fixture.interactive(
+        [name], b"y\n", ignore=number,
+        extra={"SIGNAL_RECORD": record, "IGNORED_SIGNAL": int(number)},
+    )
+    assert returncode == 0, transcript
+    assert f"make {gated}\n" in fixture.calls()
+    assert fixture.calls().count("make clean\n") == 1 and not fixture.secrets().exists()
+    assert set(record.read_text().split()) == {"True"}
+
+
+@pytest.mark.parametrize("timing", ("recorded", "answer-first", "signal-first"))
+def test_review_prioritizes_first_signal_over_ready_answer(tmp_path, monkeypatch, timing):
+    opened = []
+
+    async def exercise():
+        with commands.StopSignals() as stop:
+            async def answer(_label, default):
+                opened.append(default)
+                if timing == "answer-first":
+                    asyncio.get_running_loop().call_soon(stop._record, signal.SIGTERM)
+                else:
+                    stop._record(signal.SIGTERM)
+                return True
+
+            monkeypatch.setattr(commands, "confirm_async", answer)
+            if timing == "recorded":
+                stop._record(signal.SIGQUIT)
+                stop._record(signal.SIGTERM)
+            with pytest.raises(commands.OperationInterrupted) as failure:
+                await commands.require_review(fake_ctx(tmp_path), "Review?", stop)
+            expected = signal.SIGQUIT if timing == "recorded" else signal.SIGTERM
+            assert failure.value.exit_code == 128 + expected
+            assert opened == ([] if timing == "recorded" else [False])
+            assert not [task for task in asyncio.all_tasks() if task is not asyncio.current_task()]
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("module", (deploy, reconverge), ids=("deploy", "reconverge"))
+@pytest.mark.parametrize("cleanup_fails", (False, True))
+@pytest.mark.parametrize("primary", ("review-cancel", "step-error"))
+def test_pipeline_retains_cleanup_through_repeated_cancellation(tmp_path, monkeypatch, module,
+                                                               cleanup_fails, primary):
+    master, slave = pty.openpty()
+    stdin = os.fdopen(os.dup(slave), encoding="utf-8")
+    stderr = os.fdopen(os.open(os.ttyname(slave), os.O_WRONLY), "w", encoding="utf-8")
+    monkeypatch.setattr(sys, "stdin", stdin)
+    monkeypatch.setattr(sys, "stderr", stderr)
+    flags = fcntl.fcntl(stdin.fileno(), fcntl.F_GETFL)
+    original = RuntimeError("primary step error")
+    ctx = fake_ctx(tmp_path)
+    calls = []
+
+    async def exercise():
+        loop = asyncio.get_running_loop()
+        reviewing, cleaning, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        real_add = loop.add_reader
+        removed = []
+        real_remove = loop.remove_reader
+
+        def add_reader(fd, callback):
+            real_add(fd, callback)
+            reviewing.set()
+
+        def remove_reader(fd):
+            removed.append(fd)
+            return real_remove(fd)
+
+        monkeypatch.setattr(loop, "add_reader", add_reader)
+        monkeypatch.setattr(loop, "remove_reader", remove_reader)
+
+        async def run(command, explain):
+            name = command.argv[0]
+            calls.append(name)
+            if name == "decrypt":
+                ctx.secrets_file.write_text("synthetic: true\n")
+            if name == "plan" and primary == "step-error":
+                raise original
+            if name == "clean":
+                if reviewing.is_set():
+                    assert len(removed) == 1 and removed[0] != stdin.fileno()
+                    with pytest.raises(OSError):
+                        os.fstat(removed[0])
+                assert fcntl.fcntl(stdin.fileno(), fcntl.F_GETFL) == flags
+                cleaning.set()
+                await release.wait()
+                ctx.secrets_file.unlink()
+                if cleanup_fails:
+                    raise RuntimeError("cleanup failed")
+
+        async def limit(*_args):
+            return "fixture-node"
+
+        monkeypatch.setattr(Cmd, "run", run)
+        monkeypatch.setattr(reconverge.ansible, "scoped_limit", limit)
+        args = Namespace(skip_precheck=False, tag_on_success=False, host=None, dry_run=False)
+        task = asyncio.create_task(module.run(ctx, args))
+        try:
+            if primary == "review-cancel":
+                await reviewing.wait()
+                task.cancel("primary cancellation")
+            await cleaning.wait()
+            assert ctx.secrets_file.exists()
+            task.cancel("later cancellation")
+            delivered = loop.create_future()
+            loop.call_soon(delivered.set_result, None)
+            await delivered
+            assert not task.done()
+            task.cancel("last cancellation")
+            release.set()
+            if primary == "review-cancel":
+                with pytest.raises(asyncio.CancelledError, match="primary cancellation"):
+                    await task
+            else:
+                with pytest.raises(RuntimeError) as failure:
+                    await task
+                assert failure.value is original
+            assert calls.count("clean") == 1 and not ctx.secrets_file.exists()
+            assert "apply" not in calls and "deploy" not in calls
+            assert not [task for task in asyncio.all_tasks() if task is not asyncio.current_task()]
+        finally:
+            release.set()
+            await asyncio.gather(task, return_exceptions=True)
+
+    try:
+        asyncio.run(exercise())
+    finally:
+        stdin.close()
+        stderr.close()
+        os.close(slave)
+        os.close(master)
+
+
+@pytest.mark.parametrize(("name", "reviewed", "gated"), REVIEW_GATES)
+@pytest.mark.parametrize(("answer", "accepted"), ((b"n\n", False), (b"y\n", True)))
+def test_launcher_uses_controlling_terminal_for_both_confirmations(tmp_path, name, reviewed, gated,
+                                                                  answer, accepted):
+    fixture = Fixture(tmp_path)
+    pid, terminal = pty.fork()
+    if pid == 0:
+        reader, writer = os.pipe()
+        os.write(writer, b"y\ny\n")
+        os.close(writer)
+        os.dup2(reader, 0)
+        os.close(reader)
+        os.execve(sys.executable, fixture.argv([name], False), fixture.environment())
+    reaped = False
+    transcript = b""
+    try:
+        deadline = time.monotonic() + 15
+        for marker, response in ((b"[Y/n]", b"y\n"), (b"[y/N]", answer)):
+            while marker not in transcript:
+                assert time.monotonic() < deadline, transcript
+                if select.select([terminal], [], [], 0.05)[0]:
+                    transcript += os.read(terminal, 8192)
+            os.write(terminal, response)
+        while True:
+            assert time.monotonic() < deadline, transcript
+            if select.select([terminal], [], [], 0.05)[0]:
+                try:
+                    transcript += os.read(terminal, 8192)
+                except OSError:
+                    pass
+            found, status = os.waitpid(pid, os.WNOHANG)
+            if found:
+                reaped = True
+                break
+        assert os.WIFEXITED(status) and (os.WEXITSTATUS(status) == 0) is accepted, transcript
+        assert f"make {reviewed}\n" in fixture.calls()
+        assert (f"make {gated}\n" in fixture.calls()) is accepted
+        assert fixture.calls().count("make clean\n") == 1 and not fixture.secrets().exists()
+    finally:
+        if not reaped:
+            os.kill(pid, signal.SIGKILL)
+            os.waitpid(pid, 0)
+        os.close(terminal)
+
+
+@pytest.mark.parametrize("name", ("deploy", "reconverge"))
+@pytest.mark.parametrize("number", (*commands.REVIEW_SIGNALS, signal.SIGKILL))
+def test_initial_prompt_signals_leave_inherited_terminal_flags_unchanged(tmp_path, name, number):
+    fixture = Fixture(tmp_path)
+    master, slave = pty.openpty()
+    # A separate stderr description keeps Darwin's write bookkeeping out of
+    # the inherited stdin flags that the parent must retain unchanged.
+    error_fd = os.open(os.ttyname(slave), os.O_WRONLY | os.O_NOCTTY)
+    before = fcntl.fcntl(slave, fcntl.F_GETFL)
+    child = subprocess.Popen(
+        fixture.argv([name], False), stdin=slave, stderr=error_fd,
+        stdout=subprocess.DEVNULL, env=fixture.environment(),
+    )
+    transcript = b""
+    try:
+        deadline = time.monotonic() + 15
+        while b"[Y/n]" not in transcript:
+            assert time.monotonic() < deadline and child.poll() is None, transcript
+            if select.select([master], [], [], 0.05)[0]:
+                transcript += os.read(master, 8192)
+        during = fcntl.fcntl(slave, fcntl.F_GETFL)
+        os.kill(child.pid, number)
+        child.wait(timeout=3)
+        assert child.returncode == -number, transcript
+        assert during == before
+        assert fcntl.fcntl(slave, fcntl.F_GETFL) == before
+        assert "make " not in fixture.calls() and not fixture.secrets().exists()
+    finally:
+        if child.poll() is None:
+            child.kill()
+        child.wait()
+        os.close(error_fd)
+        os.close(slave)
+        os.close(master)

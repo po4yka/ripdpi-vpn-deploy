@@ -21,7 +21,7 @@ release owned terminal resources before the operation returns.
 #### Scenario: Cancel a review with retained terminal resources
 
 - **WHEN** a task is cancelled during a complete or partial review read
-- **THEN** it MUST remove its reader registration, restore descriptor flags and close only owned descriptors
+- **THEN** it MUST remove its reader registration, preserve inherited descriptor flags and close its owned terminal descriptor
 - **AND** it MUST await secrets cleanup and propagate cancellation without a gated mutation
 
 #### Scenario: Cancel again while cleanup runs
@@ -29,6 +29,18 @@ release owned terminal resources before the operation returns.
 - **WHEN** another cancellation arrives while cleanup is in progress
 - **THEN** the operation MUST retain and await that cleanup rather than detach or cancel it
 - **AND** cleanup failure MUST NOT replace the original failure or cancellation
+
+#### Scenario: Cancel again while a runner worker stops
+
+- **WHEN** another cancellation arrives before a cancelled runner worker finishes
+- **THEN** the caller MUST retain and await that worker before starting pipeline cleanup
+- **AND** no retained worker may write pipeline output after cleanup begins
+
+#### Scenario: Terminate at the initial confirmation
+
+- **WHEN** a signal terminates deploy or reconverge while its initial confirmation reads input
+- **THEN** the command MUST NOT change the inherited terminal's open-file flags
+- **AND** this guarantee MUST hold even when process termination skips Python finalizers
 
 #### Scenario: Stop an active Make step
 

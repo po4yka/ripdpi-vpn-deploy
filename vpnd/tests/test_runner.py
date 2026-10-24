@@ -669,3 +669,61 @@ def test_more_than_32_owned_captures_start_simultaneously(tmp_path):
             ]
 
     asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("worker_fails", (False, True))
+def test_repeated_cancellation_joins_worker_before_caller_cleanup(monkeypatch, worker_fails):
+    import threading
+
+    release = threading.Event()
+    original = RuntimeError("worker failed")
+
+    async def exercise():
+        loop = asyncio.get_running_loop()
+        started, cancelling = asyncio.Event(), asyncio.Event()
+        cleanup = asyncio.Event()
+        worker_done = threading.Event()
+
+        def held_worker(self, stopped, *_args):
+            loop.call_soon_threadsafe(started.set)
+            assert stopped.wait(3)
+            loop.call_soon_threadsafe(cancelling.set)
+            assert release.wait(3)
+            worker_done.set()
+            if worker_fails:
+                raise original
+            return 0, b"", b""
+
+        monkeypatch.setattr(Cmd, "_worker", held_worker)
+
+        async def caller():
+            try:
+                await Cmd.new("held-worker").run()
+            finally:
+                cleanup.set()
+
+        task = asyncio.create_task(caller())
+        try:
+            await started.wait()
+            task.cancel("first cancellation")
+            await cancelling.wait()
+            task.cancel("second cancellation")
+            # The cancellation callback runs before this ordered acknowledgement.
+            delivered = loop.create_future()
+            loop.call_soon(delivered.set_result, None)
+            await delivered
+            assert not cleanup.is_set(), "caller cleanup ran before the worker returned"
+            release.set()
+            if worker_fails:
+                with pytest.raises(RuntimeError) as failure:
+                    await task
+                assert failure.value is original
+            else:
+                with pytest.raises(asyncio.CancelledError, match="first cancellation"):
+                    await task
+            assert worker_done.is_set() and cleanup.is_set()
+        finally:
+            release.set()
+            await asyncio.gather(task, return_exceptions=True)
+
+    asyncio.run(exercise())
