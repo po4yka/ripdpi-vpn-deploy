@@ -115,6 +115,8 @@ def test_actual_classifier_distinct_public_paths_and_private_management_refusal(
     unit = Path("/etc/systemd/system") / (token+".service")
     password = secrets.token_urlsafe(48)
     try:
+        # A fresh disposable host may lack the shared parent; never rely on an earlier suite creating it.
+        library.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
         for directory, mode in ((library, 0o755), (state, 0o700), (driver_state, 0o700)):
             directory.mkdir(mode=mode);directory.chmod(mode)
         ids = {}
