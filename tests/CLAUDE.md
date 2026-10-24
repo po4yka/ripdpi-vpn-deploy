@@ -964,6 +964,9 @@ prior service-state record without rewinding replay or incident state.
 Release-publication fixtures must explicitly chmod directories to the tested
 contract after mkdir: the shared build gate uses a restrictive umask, so
 mkdir's requested 0755 alone cannot establish the helper's ownership boundary.
+AWG source-correction receipt fixtures must also set the production receipt
+mode to 0644 after creation; write_text inherits the process umask. Keep the
+runtime helper's exact mode check unchanged.
 Task-source readers follow enabled task files and recursively inspect real
 publication blocks; dispatcher files cannot prove mutation or activation order.
 
