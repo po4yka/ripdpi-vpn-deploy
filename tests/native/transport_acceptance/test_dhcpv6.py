@@ -287,14 +287,16 @@ def packet(sender, receiver, *, source="fe80::20", target="fe80::10",
         diagnostic["elapsed_ms"] = min(30000, int((time.monotonic() - started) * 1000))
         print("dhcpv6-probe:" + json.dumps(diagnostic, sort_keys=True), flush=True)
         readiness_error = ""
-        if listener is not None and listener.poll() is None:
-            listener.kill()
-            _unused, readiness_error = listener.communicate(timeout=3)
-        elif listener is not None and diagnostic["phase"] == "readiness":
+        # A receiver can close stdout before it is reaped, so the kill path must
+        # tolerate undecodable stderr too; otherwise it hides the original assertion.
+        if listener is not None and (listener.poll() is None or diagnostic["phase"] == "readiness"):
+            if listener.poll() is None:
+                listener.kill()
             try:
                 _unused, readiness_error = listener.communicate(timeout=3)
             except (subprocess.SubprocessError, OSError, UnicodeError):
-                print("dhcpv6-readiness-unavailable", flush=True)
+                if diagnostic["phase"] == "readiness":
+                    print("dhcpv6-readiness-unavailable", flush=True)
         try:
             if observe_multicast and diagnostic["phase"] == "readiness" and record_property is not None:
                 refusal = readiness_record(readiness_error)

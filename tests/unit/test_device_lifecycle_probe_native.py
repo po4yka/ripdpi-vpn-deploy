@@ -62,6 +62,8 @@ def native_tools(snell_binary):
     info = command([naive, "build-info"])
     assert b"v2.11.7" in info and b"c096d6a00cb2" in info
     directory = Path("/usr/local/libexec") / ("device-probe-test-" + uuid4().hex)
+    # A fresh disposable host may lack the shared parent; never rely on an earlier suite creating it.
+    directory.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
     directory.mkdir(mode=0o700)
     binaries = {name: shutil.which(name) for name in ("ip", "curl", "systemctl")}
     try:

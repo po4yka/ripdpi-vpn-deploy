@@ -50,7 +50,17 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
             == "${{ fromJSON(needs.selection.outputs.checks)['" + name + "'] }}"
         )
         assert "continue-on-error" not in job
-        assert any(f"make {target}" in step.get("run", "") for step in job["steps"])
+        goals = [part.get("goals", "") for part in job.get("strategy", {}).get("matrix", {}).get("include", [])]
+        assert any(f"make {target}" in step.get("run", "") for step in job["steps"]) or target in " ".join(goals).split()
+    parts = jobs["native-runtime"]["strategy"]["matrix"]["include"]
+    assert jobs["native-runtime"]["strategy"]["fail-fast"] is False
+    assert [part["part"] for part in parts] == [1, 2, 3]
+    native_goals = [goal for part in parts for goal in part["goals"].split()]
+    assert sorted(native_goals) == sorted([
+        "test-native-runtime", "test-native-runtime",
+        "test-xhttp-delivery-matrix", "test-topology-authenticated-probes"])
+    assert sorted(part["runtime-group"] for part in parts if "test-native-runtime" in part["goals"].split()) == ["1", "2"]
+    assert all(part["runtime-group"] == "" for part in parts if "test-native-runtime" not in part["goals"].split())
     native = jobs["native-runtime"]["steps"]
     assert any(s.get("uses") == "./.github/actions/setup-disposable-ci" for s in native)
     assert any(s.get("run") == 'sudo env "PATH=$PATH" make test-mtg-native-compatibility' for s in native)
@@ -64,14 +74,17 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
     ech_step = next(step["run"] for step in native if "make test-hysteria-ech-runtime" in step.get("run", ""))
     assert "PATH=$PATH" in shlex.split(ech_step.replace("\\\n", ""))
     complete = next(step for step in native if step.get("name") == "Execute native tests with UID and GID capabilities")
-    command = shlex.split(complete["run"].replace("\\\n", ""))
+    command = shlex.split(complete["run"].replace("\\\n", ""), comments=True)
     assert command[:2] == ["sudo", "env"]
-    assert command[-4:] == ["make", "test-native-runtime", "test-xhttp-delivery-matrix", "test-topology-authenticated-probes"]
+    assert command[-2:] == ["make", "$NATIVE_GOALS"]
+    assert complete["env"] == {"NATIVE_GOALS": "${{ matrix.goals }}",
+                               "NATIVE_RUNTIME_GROUP": "${{ matrix.runtime-group }}"}
     environment = {}
-    for assignment in command[2:-4]:
+    for assignment in command[2:-2]:
         name, value = assignment.split("=", 1)
         assert name not in environment, f"duplicate native environment override: {name}"
         environment[name] = value
+    assert environment["NATIVE_RUNTIME_GROUP"] == "$NATIVE_RUNTIME_GROUP"
     assert environment["PATH"] == (
         "$NATIVE_RUNTIME_ROOT/.cache/native-transport-semantics/bin:$PATH"
     )
@@ -102,7 +115,12 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
     early_environment = dict(assignment.split("=", 1) for assignment in early_command[2:-2])
     for variable in ("TRANSPORT_NATIVE_ISOLATED", "AWG_NATIVE_GO_SOURCE", "AWG_NATIVE_TOOLS_SOURCE", "PATH"):
         assert early_environment[variable] == environment[variable]
-    assert "continue-on-error" not in early and "if" not in early
+    assert "continue-on-error" not in early
+    # Early AWG and ECH gates run once, in the part that also starts the runtime suite.
+    for step in native:
+        if step.get("name", "").startswith(("Check native AWG", "Exercise ECH")):
+            assert step["if"] == "matrix.part == 1"
+    assert "if" not in complete
 
 
 def native_staging_steps():
@@ -201,15 +219,17 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
     assert '--ignore' not in consumer + endpoints and ' -k ' not in baseline + consumer + endpoints
     import subprocess
     import sys
+    baseline_selection = [
+        'tests/unit/', '-m', 'native_runtime', '--ignore=tests/unit/test_transport_runtime_acceptance_native.py',
+        '--ignore=tests/unit/test_xhttp_endpoint_contract_native.py',
+        '--ignore=tests/unit/test_awg_device_binding_native.py', '--ignore=tests/unit/test_hysteria_ech_native.py',
+        '--ignore=tests/unit/test_topology_authenticated_probes_native.py',
+        '--ignore=tests/unit/test_topology_awg_warm_native.py',
+        '--ignore=tests/unit/test_awg_dualstack_native.py', '--ignore=tests/unit/test_awg_activation_native.py',
+        '--ignore=tests/unit/test_validate_reality_target_native.py']
     commands = [
         ['tests/unit/', '-m', 'native_runtime'],
-        ['tests/unit/', '-m', 'native_runtime', '--ignore=tests/unit/test_transport_runtime_acceptance_native.py',
-         '--ignore=tests/unit/test_xhttp_endpoint_contract_native.py',
-         '--ignore=tests/unit/test_awg_device_binding_native.py', '--ignore=tests/unit/test_hysteria_ech_native.py',
-         '--ignore=tests/unit/test_topology_authenticated_probes_native.py',
-         '--ignore=tests/unit/test_topology_awg_warm_native.py',
-         '--ignore=tests/unit/test_awg_dualstack_native.py', '--ignore=tests/unit/test_awg_activation_native.py',
-         '--ignore=tests/unit/test_validate_reality_target_native.py'],
+        baseline_selection,
         ['tests/unit/test_transport_runtime_acceptance_native.py'],
         ['tests/unit/test_xhttp_endpoint_contract_native.py'],
         ['tests/unit/test_awg_device_binding_native.py'],
@@ -217,24 +237,33 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
         ['tests/unit/test_topology_authenticated_probes_native.py', 'tests/unit/test_topology_awg_warm_native.py'],
         ['tests/unit/test_awg_dualstack_native.py', 'tests/unit/test_awg_activation_native.py'],
         ['tests/unit/test_validate_reality_target_native.py'],
-        *[['tests/unit/test_transport_runtime_acceptance_native.py', '--splits', '2', '--group', str(group),
-           '--splitting-algorithm', 'least_duration'] for group in (1, 2)],
+        *[['tests/unit/test_transport_runtime_acceptance_native.py', '--splits', '3', '--group', str(group),
+           '--splitting-algorithm', 'least_duration', '--durations-path',
+           'tests/native/transport_acceptance/recovery-durations.json'] for group in (1, 2, 3)],
+        *[[*baseline_selection, '--splits', '2', '--group', str(group), '--splitting-algorithm', 'least_duration',
+           '--durations-path', 'tests/native/native-runtime-durations.json'] for group in (1, 2)],
     ]
     selected = []
     for arguments in commands:
         result = subprocess.run([sys.executable, '-m', 'pytest', *arguments, '--collect-only', '-q'],
-            cwd=ROOT, text=True, capture_output=True, check=True, timeout=60)
+            cwd=ROOT, text=True, capture_output=True, check=True, timeout=180)  # Hang guard beside xdist workers.
         selected.append({line for line in result.stdout.splitlines()
                          if line.startswith('tests/unit/') and '::' in line})
     all_native, existing, transactions, endpoint_cases, awg_cases, ech_cases = selected[:6]
-    topology_cases, dualstack_cases, reality_cases, first, second = selected[6:]
-    assert transactions == first | second and not first & second
-    assert all(sum('test_native_ingress_egress_commit_sigkill' in item for item in group) == 3
-               for group in (first, second))
+    topology_cases, dualstack_cases, reality_cases, *partitions = selected[6:]
+    rta_groups, runtime_groups = partitions[:3], partitions[3:]
+    assert transactions == set().union(*rta_groups)
+    assert all(not left & right for index, left in enumerate(rta_groups) for right in rta_groups[index + 1:])
+    assert all(any('test_native_ingress_egress_commit_sigkill' in item for item in group) for group in rta_groups)
+    assert existing == runtime_groups[0] | runtime_groups[1] and not runtime_groups[0] & runtime_groups[1]
     workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]["transport-runtime-acceptance"]
-    assert workflow["strategy"]["matrix"]["group"] == [1, 2]
+    assert workflow["strategy"]["matrix"]["group"] == [1, 2, 3]
     assert workflow["strategy"]["fail-fast"] is False
-    assert any("--splits 2 --group $PYTEST_NATIVE_GROUP --splitting-algorithm least_duration" in s.get("run", "") for s in workflow["steps"])
+    assert any("--splits 3 --group $PYTEST_NATIVE_GROUP --splitting-algorithm least_duration "
+               "--durations-path tests/native/transport_acceptance/recovery-durations.json" in s.get("run", "")
+               for s in workflow["steps"])
+    assert ('$${NATIVE_RUNTIME_GROUP:+--splits 2 --group "$$NATIVE_RUNTIME_GROUP" --splitting-algorithm least_duration '
+            '--durations-path tests/native/native-runtime-durations.json}') in baseline
     assert all_native == existing | transactions | endpoint_cases | awg_cases | ech_cases | topology_cases | dualstack_cases | reality_cases
     groups = [existing, transactions, endpoint_cases, awg_cases, ech_cases, topology_cases, dualstack_cases, reality_cases]
     assert all(not left & right for index,left in enumerate(groups) for right in groups[index+1:])
@@ -254,7 +283,7 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
             'test_native_ech_admission_retains_custom_configuration_directory') in transactions
     assert awg_cases and len(ech_cases) == 13
     assert endpoint_cases and len(endpoint_cases) == 10
-    assert "$(MAKE) test-probe-matrix-mtproto" in makefile.split("ci-fast:", 1)[1]
+    assert "test-probe-matrix-mtproto" in makefile.split("ci-fast:", 1)[1].split("\n\t", 1)[0]
     assert "go test -mod=readonly -count=1" in makefile
     names = []
     import ast

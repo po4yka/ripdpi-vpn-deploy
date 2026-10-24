@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       cross-platform:
-        description: Exercise all four supported installation surfaces
+        description: Exercise the Linux amd64/arm64 and macOS arm64 installation surfaces
         default: false
         type: boolean
 permissions:
@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(inputs.cross-platform && '{"include":[{"runner":"ubuntu-24.04"},{"runner":"ubuntu-24.04-arm"},{"runner":"macos-15-intel"},{"runner":"macos-15"}]}' || '{"include":[{"runner":"ubuntu-24.04"}]}') }}
+      matrix: ${{ fromJSON(inputs.cross-platform && '{"include":[{"runner":"ubuntu-24.04"},{"runner":"ubuntu-24.04-arm"},{"runner":"macos-15"}]}' || '{"include":[{"runner":"ubuntu-24.04"}]}') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:

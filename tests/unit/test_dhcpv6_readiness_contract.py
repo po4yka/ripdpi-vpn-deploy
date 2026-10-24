@@ -77,17 +77,22 @@ def test_marker_byte_cap_is_exact():
     assert native.readiness_record(bounded + ' ') is None
 
 
+@pytest.mark.parametrize('child_exits', [True, False], ids=['exited', 'unreaped'])
 @pytest.mark.parametrize('property_failure', [False, True])
 @pytest.mark.parametrize('invalid_stderr', [False, True])
-def test_actual_child_eof_keeps_original_ready_assert_and_never_launches_sender(monkeypatch, property_failure, invalid_stderr):
+def test_actual_child_eof_keeps_original_ready_assert_and_never_launches_sender(
+        monkeypatch, property_failure, invalid_stderr, child_exits):
     real_popen = subprocess.Popen
     children, properties = [], []
 
     def listener(*_args, **kwargs):
         program = ('import os;os.write(2,bytes([255]))' if invalid_stderr else
                    'import sys;sys.stderr.write(' + repr(encoded('bind-join')) + ')')
+        # An unreaped receiver closes stdout but keeps running, so cleanup takes the kill path.
+        ending = (';raise SystemExit(1)' if child_exits else
+                  ';import os,sys,time;sys.stderr.flush();os.close(1);time.sleep(30)')
         child = real_popen([sys.executable, '-c',
-                            program + ';raise SystemExit(1)'],
+                            program + ending],
                            stdin=kwargs['stdin'], stdout=kwargs['stdout'],
                            stderr=kwargs['stderr'], text=kwargs['text'])
         children.append(child)

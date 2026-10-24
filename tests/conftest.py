@@ -107,6 +107,9 @@ class ShardReport:
         self.expected = []
         self.selected = []
         self.finished = []
+        # Under pytest-xdist, workers collect and the controller writes the report.
+        self.worker = hasattr(config, "workerinput")
+        self.worker_collections = []
 
     @pytest.hookimpl(wrapper=True, tryfirst=True)
     def pytest_collection_modifyitems(self, items):
@@ -119,8 +122,23 @@ class ShardReport:
     def pytest_runtest_logfinish(self, nodeid):
         self.finished.append(nodeid)
 
+    @pytest.hookimpl(optionalhook=True)
+    def pytest_testnodedown(self, node, error):
+        self.worker_collections.append(getattr(node, "workeroutput", {}).get("shard_collection"))
+
     @pytest.hookimpl(wrapper=True, tryfirst=True)
     def pytest_sessionfinish(self, session):
+        if self.worker:
+            # xdist sends workeroutput after the inner sessionfinish hooks return.
+            self.config.workeroutput["shard_collection"] = {"expected": self.expected, "selected": self.selected}
+            return (yield)
+        if self.worker_collections:
+            # Every worker must collect and select the same tests; otherwise the report stays empty.
+            first = self.worker_collections[0]
+            if first and all(collection == first for collection in self.worker_collections):
+                self.expected, self.selected = first["expected"], first["selected"]
+            else:
+                self.expected, self.selected = [], []
         # Observe the final skip verdict and pytest-split's fresh duration file.
         yield
         report = {
