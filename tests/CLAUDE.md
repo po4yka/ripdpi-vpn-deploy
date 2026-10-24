@@ -32,11 +32,19 @@ committed Linux profile. Keep `pytest unit tests` as the required aggregate: it
 checks identical collections/profiles, disjoint selections and full execution.
 Refresh the profile from the verified artifact; local `test-unit` stays complete.
 Give clock-dependent parameter values stable IDs so collection agrees across runners.
+Local and CI groups run under pytest-xdist with `--dist loadfile` (`PYTEST_WORKERS`,
+default `auto`); the shard report receives the worker collection through
+`workeroutput`. A fixed loopback port or a shared path outside `tmp_path` must stay
+inside one module; a collision across modules is a test defect.
 
 **CI selection follows complete consumers** — common Python/static checks always
 run; costly PR lanes follow the selector's path graph. Docs are bundled into
 Python vpnd. Keep Ansible scenarios together for cross-role inputs, and full CI for
-main/manual/shared/unknown changes. The final gate requires every selected job
+manual/shared/unknown changes. A main push runs only the always-run checks when it
+reuses a full successful PR run of the same tree (see the selector docstring);
+any uncertainty keeps full CI. A portable-only `tests/unit/test_*.py` edit skips
+native lanes only when no native lane selects, names or imports that module, and
+such modules must not change process state at import time. The final gate requires every selected job
 and permits only planned skips; adding a job must update the selector and tests.
 
 **The documentation tree is a tested contract** — `test_docs_index.py` requires

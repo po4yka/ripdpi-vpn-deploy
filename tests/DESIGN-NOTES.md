@@ -158,6 +158,8 @@ Real restic restore cases remove one selected artifact at a time, including
 delivery TLS/vhost, auxiliary transports, topology policy and watchdog inputs.
 Empty revocation sets remain valid. Archived absolute links resolve only within
 the restored filesystem; a live-only target cannot satisfy verification.
+The completeness module initializes one real encrypted repository and copies it into
+each case before that case's own backup; restic init key derivation dominated case time.
 
 Recipient regressions execute actual Ansible share mode repair, including retained
 shares without a new upload and unchanged repeats. Molecule separately checks
@@ -229,6 +231,9 @@ retains the original receiver refusal and verifies this property through the
 runner parser. Readiness evidence is separate from complete packet observations.
 The sender remains blocked until ready, and all probe assertions and deadlines
 stay fixed.
+Readiness cleanup decodes receiver stderr safely on both paths: an exited receiver
+and one that closed stdout but is not yet reaped and must be killed. A regression
+holds the receiver running so the kill path is deterministic.
 Both veth endpoints must be UP before manual nodad addresses are added in either
 DHCPv6 case. Address creation can succeed while multicast route creation rejects
 a DOWN device; waiting for a later link notification makes cold delivery depend
@@ -451,7 +456,8 @@ Guidance coverage exercises the workflow's actual Git collection against an adva
 
 Baseline resource tests execute its real first Ansible assertion and require an invalid value to stop before the next mutating task. ECH native leak checks run Hysteria with debug logging as well as secure positive/negative recipient traffic. The systemd generation case adopts both BBR profiles under the actual credential sandbox.
 
-The complete native transaction suite is split into two disjoint CI groups in independent fresh systemd containers; both are required and a collection test proves their complete union. Keep the full local Make target unchanged.
+The complete native transaction suite is split into three disjoint CI groups in independent fresh systemd containers, balanced by the measured recovery profile; all are required and a collection test proves their complete union. Keep the full local Make target unchanged.
+The native runtime job runs as three parallel parts: early AWG/ECH gates with `test-native-runtime` group 1, group 2 with topology probes, and the XHTTP endpoint and delivery targets. `NATIVE_RUNTIME_GROUP` selects a `least_duration` group using `tests/native/native-runtime-durations.json`: 180 observed wall-clock intervals between consecutive verbose results of CI run 40069354263 at source `dd9fef311cde792af2a2d94ff0ee5c7f7427e6e9`. They are scheduling estimates, not acceptance evidence; unmeasured cases take pytest-split's mean. Unset, the target still runs the complete suite, and a collection test proves the two groups' disjoint complete union. Each part starts on a fresh runner, so a native fixture creates any shared parent it writes into, such as `/usr/local/libexec`, instead of relying on an earlier suite.
 Each case imports installed runtime helpers only after its own lab has established the module path; isolated partitions must not depend on earlier cases initializing the interpreter.
 ECH probe regressions exercise both isolated import and Ansible's inline loading. Whole-route snapshot cases retain private ECH bytes, permissions, group and exact absence; generation helper unit cases establish their own runtime library path.
 ECH identity admission excludes literal IPs before executable acquisition. Native UDP listeners probe the UDP port space; BBR recipient tests retain the paired XHTTP intermediate while refusing unqualified engine output.

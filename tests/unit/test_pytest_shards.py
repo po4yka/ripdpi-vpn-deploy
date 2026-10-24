@@ -23,7 +23,7 @@ def verifier():
     return module
 
 
-def run_group(repo, group, mode="pass"):
+def run_group(repo, group, mode="pass", workers=0):
     tests = repo / "tests"
     tests.mkdir(exist_ok=True, parents=True)
     (tests / "conftest.py").write_text((ROOT / "tests/conftest.py").read_text())
@@ -38,6 +38,10 @@ def run_group(repo, group, mode="pass"):
             durations[f"tests/test_cases.py::test_case_{number:02d}"] = 12 - number
     cases.append("@pytest.mark.native_runtime\ndef test_native():\n    assert False\n")
     (tests / "test_cases.py").write_text("\n".join(cases))
+    if workers:
+        # A second file gives every xdist worker its own file to run.
+        (tests / "test_more_cases.py").write_text(
+            "".join(f"def test_more_{number}():\n    pass\n" for number in range(4)))
     profile = repo / f"durations-{group}.json"
     profile.write_text(json.dumps(durations))
     report = repo / "reports" / f"group-{group}" / "report.json"
@@ -45,6 +49,8 @@ def run_group(repo, group, mode="pass"):
             "--fail-on-skip", "--splits", "4", "--group", str(group),
             "--splitting-algorithm", "least_duration", "--durations-path", str(profile),
             "--store-durations", "--clean-durations", "--shard-report", str(report), "-q"]
+    if workers:
+        args.extend(["-n", str(workers), "--dist", "loadfile"])
     if mode == "collect":
         args.append("--collect-only")
     if mode == "filter":
@@ -65,6 +71,20 @@ def complete_reports(tmp_path_factory):
         assert result.returncode == 0, result.stdout + result.stderr
         reports.append(report)
     return reports
+
+
+@pytest.fixture(scope="module")
+def parallel_reports(tmp_path_factory):
+    repo = tmp_path_factory.mktemp("pytest-grouping-xdist")
+    return [run_group(repo, group, workers=2) for group in range(1, 5)]
+
+
+def test_xdist_workers_report_complete_disjoint_groups(parallel_reports):
+    for result, _ in parallel_reports:
+        assert result.returncode == 0, result.stdout + result.stderr
+    durations = verifier().verify([report for _, report in parallel_reports])
+    assert len(durations) == 16
+    assert all("test_native" not in node for node in durations)
 
 
 def test_four_groups_execute_every_portable_test_once(complete_reports):
@@ -170,8 +190,9 @@ raise SystemExit(pytest.main(["--collect-only", "-q"], plugins=[Collection()]))
 '''
     collections = []
     for clock in (1700000000, 1700003600):
+        # A hang guard for a full collection that shares the CPU with xdist workers.
         result = subprocess.run([sys.executable, "-c", script, str(clock)], cwd=ROOT,
-                                capture_output=True, text=True, timeout=30)
+                                capture_output=True, text=True, timeout=180)
         assert result.returncode == 0, result.stdout + result.stderr
         payload = next(line.removeprefix("COLLECTION_JSON=") for line in result.stdout.splitlines()
                        if line.startswith("COLLECTION_JSON="))
