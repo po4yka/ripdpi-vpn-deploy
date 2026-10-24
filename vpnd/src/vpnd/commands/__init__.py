@@ -4,7 +4,7 @@ import asyncio
 import signal
 import sys
 from ..runner.make import target
-from ..wizard import confirm
+from ..wizard import confirm, confirm_async
 
 __all__ = [
     "confirm",
@@ -17,8 +17,19 @@ __all__ = [
 
 
 async def finish_with_cleanup(ctx, outcome=None):
+    # Shield the retained cleanup task. Later cancellation must not detach it
+    # or replace a failure from the pipeline.
+    cleanup_task = asyncio.create_task(target(ctx, "clean").run(ctx.explain))
+    while not cleanup_task.done():
+        try:
+            await asyncio.shield(cleanup_task)
+        except asyncio.CancelledError as cancelled:
+            if outcome is None:
+                outcome = cancelled
+        except Exception:
+            break
     try:
-        await target(ctx, "clean").run(ctx.explain)
+        cleanup_task.result()
     except Exception as cleanup:
         if outcome is None:
             raise
@@ -26,18 +37,6 @@ async def finish_with_cleanup(ctx, outcome=None):
     if outcome is not None:
         print("error: pipeline failed — attempted secrets cleanup (make clean)", file=sys.stderr)
         raise outcome
-
-
-class ReviewInterrupted(RuntimeError):
-    """A signal ended the review while decrypted secrets existed."""
-
-    def __init__(self, number: int):
-        super().__init__(f"review interrupted by signal {number}; stopped before mutation")
-        self.exit_code = 128 + number
-
-
-def _interrupt_review(number, _frame):
-    raise ReviewInterrupted(number)
 
 
 # Terminal interrupts, a dropped session and service stops all end the review.
@@ -70,6 +69,7 @@ class StopSignals:
     def __init__(self):
         self.received = None
         self._previous = {}
+        self._stopped = asyncio.Event()
 
     def __enter__(self):
         loop = asyncio.get_running_loop()
@@ -91,6 +91,10 @@ class StopSignals:
     def _record(self, number):
         if self.received is None:
             self.received = number
+            self._stopped.set()
+
+    async def wait(self):
+        await self._stopped.wait()
 
     def check(self):
         if self.received is not None:
@@ -98,6 +102,8 @@ class StopSignals:
 
     def outcome(self, error):
         """Report a recorded signal in place of the step failure it caused."""
+        if isinstance(error, asyncio.CancelledError):
+            return error
         if self.received is not None and getattr(error, "exit_code", None) is None:
             interrupted = OperationInterrupted(self.received, error)
             interrupted.__cause__ = error
@@ -116,23 +122,35 @@ class StopSignals:
         self.check()
 
 
-def require_review(ctx, label):
-    """Gate a mutation on a reviewed plan; --yes never answers this prompt.
-
-    Dispatch keeps default terminal signals, which would kill the process with
-    plaintext on disk. During the review a signal becomes an ordinary failure,
-    so the caller's cleanup boundary still runs `make clean`.
-    """
+async def require_review(ctx, label, stop):
+    """Gate mutation on terminal approval, with recorded signals taking priority."""
     if ctx.explain:
         return
-    previous = {number: signal.signal(number, _interrupt_review) for number in REVIEW_SIGNALS}
+    stop.check()
+    answer = asyncio.create_task(confirm_async(label, default=False))
+    interrupted = asyncio.create_task(stop.wait())
     try:
-        approved = confirm(label, default=False)
+        await asyncio.wait((answer, interrupted), return_when=asyncio.FIRST_COMPLETED)
+        stop.check()
+        if not answer.result():
+            raise RuntimeError("review declined; stopped before mutation")
     finally:
-        for number, handler in previous.items():
-            signal.signal(number, handler)
-    if not approved:
-        raise RuntimeError("review declined; stopped before mutation")
+        primary = sys.exception()
+        for task in (answer, interrupted):
+            if not task.done():
+                task.cancel()
+        # Retain both waits through repeated caller cancellation. The reader's
+        # synchronous finalizer releases its descriptor before cleanup starts.
+        waits = asyncio.gather(answer, interrupted, return_exceptions=True)
+        cancellation = None
+        while not waits.done():
+            try:
+                await asyncio.shield(waits)
+            except asyncio.CancelledError as error:
+                cancellation = error
+        if cancellation is not None and primary is None:
+            raise cancellation
+    stop.check()
 
 
 def ensure_host_in_registry(ctx, registry, host):

@@ -1,9 +1,10 @@
+import asyncio
 import sys
 from ..runner import ansible
 from ..runner.make import target
 from ..state import Registry
 from ..state.version import warn_on_skew
-from . import StopSignals, confirm, render_summary, require_review
+from . import StopSignals, confirm_async, render_summary, require_review
 
 
 async def run(ctx, args):
@@ -26,7 +27,7 @@ async def run(ctx, args):
             ("mode", "dry-run only" if args.dry_run else "apply if changed"),
         ],
     )
-    if not ctx.yes and not ctx.explain and not confirm("Proceed?"):
+    if not ctx.yes and not ctx.explain and not await confirm_async("Proceed?"):
         print("aborted by user", file=sys.stderr)
         return
     error = None
@@ -43,11 +44,12 @@ async def run(ctx, args):
             if args.dry_run:
                 print("dry-run only — stopping before apply", file=sys.stderr)
             else:
-                require_review(ctx, "Review the dry-run above. Deploy it?")
+                await require_review(ctx, "Review the dry-run above. Deploy it?", stop)
+                stop.check()
                 for name in ("deploy", "verify"):
                     await target(ctx, name).env("ANSIBLE_LIMIT", limit).run(ctx.explain)
                     stop.check()
-        except Exception as outcome:
+        except (Exception, asyncio.CancelledError) as outcome:
             error = stop.outcome(outcome)
         await stop.cleanup(ctx, error)
     if not ctx.explain:
