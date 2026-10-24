@@ -80,7 +80,29 @@ def variables(profile: str, repository: Path) -> dict:
     return values
 
 
-def run_drill(tmp_path: Path, profile: str, *, missing: str | None = None,
+PASSWORD = 'synthetic-selected-profile-password\n'
+
+
+@pytest.fixture(scope='module')
+def empty_repository(tmp_path_factory) -> Path:
+    """Initialize one real encrypted repository; each case backs up into its own copy.
+
+    restic init spends most of a case's time on key derivation, and every copy keeps
+    the same real key and format.
+    """
+    restic = shutil.which('restic')
+    assert restic, 'real restic required for selected restore artifact coverage'
+    root = tmp_path_factory.mktemp('restic-template')
+    password = root / 'password'
+    password.write_text(PASSWORD)
+    password.chmod(0o600)
+    env = {**os.environ, 'RESTIC_PASSWORD_FILE': str(password), 'RESTIC_CACHE_DIR': str(root / 'cache')}
+    subprocess.run([restic, '-r', str(root / 'repository'), 'init'], env=env, check=True,
+                   capture_output=True, timeout=45)
+    return root / 'repository'
+
+
+def run_drill(tmp_path: Path, template: Path, profile: str, *, missing: str | None = None,
               realm_link: str | None = None,
               malformed: str | None = None) -> tuple[subprocess.CompletedProcess, Path]:
     restic = shutil.which('restic')
@@ -107,8 +129,9 @@ def run_drill(tmp_path: Path, profile: str, *, missing: str | None = None,
         if realm_link == 'captured':
             sources.append(str(external))
     repository = tmp_path / 'repository'
+    shutil.copytree(template, repository)
     password = tmp_path / 'password'
-    password.write_text('synthetic-selected-profile-password\n')
+    password.write_text(PASSWORD)
     password.chmod(0o600)
     runtime, state = tmp_path / 'runtime', tmp_path / 'state'
     runtime.mkdir(mode=0o700)
@@ -118,9 +141,8 @@ def run_drill(tmp_path: Path, profile: str, *, missing: str | None = None,
     env = {**os.environ, 'RESTIC_PASSWORD_FILE': str(password),
            'RESTIC_CACHE_DIR': str(tmp_path / 'cache'),
            'RUNTIME_DIRECTORY': str(runtime), 'STATE_DIRECTORY': str(state)}
-    for args in ([restic, '-r', str(repository), 'init'],
-                 [restic, '-r', str(repository), 'backup', '--tag', 'vpn-stack', *sources]):
-        subprocess.run(args, env=env, check=True, capture_output=True, timeout=45)
+    subprocess.run([restic, '-r', str(repository), 'backup', '--tag', 'vpn-stack', *sources],
+                   env=env, check=True, capture_output=True, timeout=45)
     script = render_template(TEMPLATE, variables(profile, repository))
     script = script.replace('/etc/restic/password', str(password))
     prefix = str(tree).lstrip('/')
@@ -138,28 +160,28 @@ def run_drill(tmp_path: Path, profile: str, *, missing: str | None = None,
 @pytest.mark.parametrize('profile,missing', [
     (profile, artifact) for profile, artifacts in ARTIFACTS.items() for artifact in artifacts
 ])
-def test_missing_selected_artifact_cannot_replace_success(tmp_path, profile, missing):
-    result, marker = run_drill(tmp_path, profile, missing=missing)
+def test_missing_selected_artifact_cannot_replace_success(tmp_path, empty_repository, profile, missing):
+    result, marker = run_drill(tmp_path, empty_repository, profile, missing=missing)
     assert result.returncode != 0
     assert json.loads(marker.read_text()) == {'prior': True}
 
 
 @pytest.mark.parametrize('profile', list(ARTIFACTS))
-def test_complete_selected_profile_restores_and_cleans(tmp_path, profile):
-    result, marker = run_drill(tmp_path, profile)
+def test_complete_selected_profile_restores_and_cleans(tmp_path, empty_repository, profile):
+    result, marker = run_drill(tmp_path, empty_repository, profile)
     assert result.returncode == 0, result.stderr
     assert json.loads(marker.read_text())['repository_source'] == 'local'
 
 
-def test_malformed_snell_config_cannot_replace_success(tmp_path):
-    result, marker = run_drill(tmp_path, 'snell', malformed='etc/snell/config.json')
+def test_malformed_snell_config_cannot_replace_success(tmp_path, empty_repository):
+    result, marker = run_drill(tmp_path, empty_repository, 'snell', malformed='etc/snell/config.json')
     assert result.returncode != 0
     assert json.loads(marker.read_text()) == {'prior': True}
 
 
 @pytest.mark.parametrize('mode', ['captured', 'live-only'])
-def test_realm_absolute_tls_links_use_only_restored_targets(tmp_path, mode):
-    result, marker = run_drill(tmp_path, 'hysteria_realm', realm_link=mode)
+def test_realm_absolute_tls_links_use_only_restored_targets(tmp_path, empty_repository, mode):
+    result, marker = run_drill(tmp_path, empty_repository, 'hysteria_realm', realm_link=mode)
     if mode == 'captured':
         assert result.returncode == 0, result.stderr
         assert 'snapshot_id' in json.loads(marker.read_text())

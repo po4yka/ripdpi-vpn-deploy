@@ -166,6 +166,8 @@ Real restic restore cases remove one selected artifact at a time, including
 delivery TLS/vhost, auxiliary transports, topology policy and watchdog inputs.
 Empty revocation sets remain valid. Archived absolute links resolve only within
 the restored filesystem; a live-only target cannot satisfy verification.
+The completeness module initializes one real encrypted repository and copies it into
+each case before that case's own backup; restic init key derivation dominated case time.
 
 Recipient regressions execute actual Ansible share mode repair, including retained
 shares without a new upload and unchanged repeats. Molecule separately checks
