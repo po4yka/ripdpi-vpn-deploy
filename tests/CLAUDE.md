@@ -234,6 +234,9 @@ retains the original receiver refusal and verifies this property through the
 runner parser. Readiness evidence is separate from complete packet observations.
 The sender remains blocked until ready, and all probe assertions and deadlines
 stay fixed.
+Readiness cleanup decodes receiver stderr safely on both paths: an exited receiver
+and one that closed stdout but is not yet reaped and must be killed. A regression
+holds the receiver running so the kill path is deterministic.
 Both veth endpoints must be UP before manual nodad addresses are added in either
 DHCPv6 case. Address creation can succeed while multicast route creation rejects
 a DOWN device; waiting for a later link notification makes cold delivery depend
