@@ -28,6 +28,10 @@ ignore: |
   .terraform/
   .venv/
   vpnd/mutants/
+  # Local agent worktrees and installed packages are not repository content.
+  .worktrees/
+  .claude/worktrees/
+  node_modules/
   ansible/inventory/generated.ini
   secrets/local/
   state-backups/
