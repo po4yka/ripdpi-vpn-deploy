@@ -2,7 +2,7 @@
 id: ANS-1792776076428131
 title: Deliver AWG range and signature profiles across server and client
 kind: feature
-status: doing
+status: review
 area: ansible
 priority: high
 risk: high
@@ -12,8 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: awg-range-signature-profile
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-10-24
 related_tasks: ["po4yka/RIPDPI#TRN-1792776081374051"]
+status_detail: Reviewed source passed full local checks and prior hosted source gates; incoming current-main hopping policy is integrated with bundle version 2. Final published merge CI and paired contract synchronization remain required.
 ---
 
 ## Goal

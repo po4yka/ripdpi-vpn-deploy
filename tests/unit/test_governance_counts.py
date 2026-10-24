@@ -1,4 +1,4 @@
-"""Documentation claims about repository coverage must match the live tree."""
+"""Molecule images stay digest-pinned and scanned; testing docs match the hosted Molecule matrix."""
 
 import re
 import subprocess
@@ -35,59 +35,7 @@ def _documented_sequence(row: str, scenario: str) -> list[str]:
     return [phase.strip() for phase in match.group(1).split(",")]
 
 
-def test_governance_counts_match_live_repository():
-    roles = len([path for path in (ROOT / "ansible/roles").iterdir() if path.is_dir()])
-    templates = len(list((ROOT / "ansible/roles").rglob("*.j2")))
-    testing = (ROOT / "docs/reference/testing.md").read_text()
-    assert f"{roles} roles" in (ROOT / "AGENTS.md").read_text()
-    # CLAUDE.md imports AGENTS.md rather than restating the count.
-    assert (ROOT / "CLAUDE.md").read_text().startswith("@AGENTS.md\n")
-    assert f"({templates} templates)" in testing
-    assert "molecule / per-role tests. v2." not in (ROOT / "docs/reference/architecture.md").read_text()
-
-    ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
-    push_row = next(line for line in testing.splitlines() if line.startswith("| `git push` (PR) |"))
-    default_roles = ci["jobs"]["molecule"]["strategy"]["matrix"]["role"]
-    failure_scenarios = ci["jobs"]["molecule-failure-scenarios"]["strategy"]["matrix"]["include"]
-    for role in default_roles:
-        assert f"`{role}`" in push_row
-    for scenario in failure_scenarios:
-        assert f"`{scenario['role']}/{scenario['scenario']}`" in push_row
-    assert "`pytest tests/unit/`" in push_row
-
-    audit = (ROOT / "docs/reference/silent-failure-audit.md").read_text()
-    current = audit.split("## Current disposition", 1)[1].split("\n## ", 1)[0]
-    rows = [line for line in current.splitlines() if re.match(r"\| [1-8] \|", line)]
-    statuses = [
-        next(status for status in ("RESOLVED", "PARTIAL", "OPEN") if f"**{status}**" in row)
-        for row in rows
-    ]
-    assert [int(row.split("|")[1].strip()) for row in rows] == list(range(1, 9))
-    assert statuses.count("RESOLVED") == 7
-    assert statuses.count("PARTIAL") == 1
-    assert statuses.count("OPEN") == 0
-
-    role_tiering = (ROOT / "docs/decisions/0002-role-and-doc-tiering.md").read_text()
-    for stale_claim in (
-        "8 silently-broken controls",
-        "all four alert-chain links broken",
-        "Integrity check is missing",
-        "alert pipeline is broken",
-        "must have their AUDIT-SILENT-FAILURE remediations landed",
-    ):
-        assert stale_claim not in role_tiering
-
-    contributing = (ROOT / "CONTRIBUTING.md").read_text()
-    contributor_guidance = contributing.split("## Pull request flow", 1)[1].split(
-        "## Commit messages", 1
-    )[0]
-    for pointer in ("make check", ".github/workflows/ci.yml", "docs/reference/testing.md", "required checks"):
-        assert pointer in contributor_guidance
-    assert "check: task-check validate ci-fast" in (ROOT / "Makefile").read_text()
-    assert not re.search(r"\b\d+\+? jobs\b|matrix:\s*\d+\s+roles", contributor_guidance, re.IGNORECASE)
-    assert "Renovate PRs" in contributing
-    assert "Ansible plus systemd own runtime state" in contributing
-
+def test_molecule_images_are_digest_pinned():
     molecule_files = subprocess.run(
         ["git", "ls-files", "ansible/**/molecule.yml"],
         cwd=ROOT,

@@ -266,6 +266,8 @@ def test_materialized_runtime_key_is_rejected_without_explicit_mode(tmp_path, ex
 def test_runtime_mode_accepts_valid_materialized_key(tmp_path, example, full_bundle):
     ripdpi = _materialized_bundle(example)
     doc = {"ripdpi": ripdpi, "outbounds": []} if full_bundle else ripdpi
+    if full_bundle:
+        doc['outbounds'] = [{'type': 'hysteria2', 'tag': tag} for tag in ripdpi['hysteria_extras']]
     path = tmp_path / "runtime.json"
     _write_runtime(path, doc)
 
@@ -475,7 +477,8 @@ def test_awg_relational_semantics_refuse(tmp_path, example, field, value):
 @pytest.mark.parametrize("field,value", [
     ("ports", "50000:20000"), ("ports", "0:50000"), ("ports", "1:65536"),
     ("ports", "1:" + "9" * 5000), ("interval", "0s"),
-    ("interval", "9" * 5000 + "s"),
+    ("interval", "9" * 5000 + "s"), ("interval", "4s"),
+    ("interval", "9223372037s"), ("interval", "2562048h"),
 ])
 def test_hopping_semantics_refuse_without_traceback(tmp_path, example, field, value):
     doc = copy.deepcopy(example)
@@ -526,3 +529,74 @@ def test_runtime_mode_nonobject_refuses_without_traceback(tmp_path, doc):
     proc = _run_validator(path, '--runtime-materialized')
     assert proc.returncode == 1
     assert 'Traceback' not in proc.stderr and 'synthetic-private-marker' not in proc.stderr
+
+
+@pytest.mark.parametrize("interval", ["5s", "1m", "25h", "9223372036s", "2562047h"])
+def test_hopping_interval_bounds_are_admitted(tmp_path, example, interval):
+    doc = copy.deepcopy(example)
+    next(iter(doc["hysteria_extras"].values()))["port_hopping"]["interval"] = interval
+    path = tmp_path / "bundle.json"
+    path.write_text(json.dumps(doc))
+    assert _run_validator(path).returncode == 0
+
+
+@pytest.mark.parametrize("fields,accepted", [
+    ({"server_ports": ["20000:21000"], "hop_interval": "45s"}, True),
+    ({"server_ports": ["20500:21000", "20000:20500"], "hop_interval": "45000ms"}, True),
+    ({"server_ports": "20000:21000", "hop_interval": "0.75m", "hop_interval_max": "45s"}, True),
+    ({"server_ports": ["20000:21000"], "hop_interval": "44s1000ms"}, True),
+    ({}, True),
+    ({"server_ports": ["20000:21001"], "hop_interval": "45s"}, False),
+    ({"server_ports": ["20000:21000"], "hop_interval": "46s"}, False),
+    ({"server_ports": ["20000:21000"], "hop_interval": "45s", "hop_interval_max": "46s"}, False),
+    ({"server_ports": ["20000:21000"], "hop_interval": "45s", "hop_interval_max": "44s"}, False),
+    ({"server_ports": ["20000:21000"], "hop_interval": "45000000us"}, True),
+    ({"server_ports": ["20000:21000"], "hop_interval": "45.0000001s"}, False),
+    ({"server_ports": ["20000:21000"], "hop_interval": "44.9999999999s0.0000000001s"}, False),
+    ({"server_ports": ["20000:21000"], "hop_interval": None}, False),
+    ({"server_ports": ["20000:21000"], "hop_interval": "9" * 129 + "s"}, False),
+    ({"server_ports": None}, False),
+    ({"server_ports": []}, False),
+    ({"server_ports": [20000]}, False),
+    ({"server_ports": ["21000:20000"]}, False),
+    ({"server_ports": ["20000:65536"]}, False),
+    ({"hop_interval": "45s"}, False),
+])
+def test_full_bundle_hopping_policies_agree_by_semantics(tmp_path, fields, accepted):
+    doc = json.loads((REPO_ROOT / "contract/ripdpi-bundle.hysteria-port-hopping.json").read_text())
+    outbound = next(value for value in doc["outbounds"] if value["type"] == "hysteria2")
+    for name in ("server_ports", "hop_interval"):
+        outbound.pop(name)
+    outbound.update(fields)
+    path = tmp_path / "bundle.json"
+    path.write_text(json.dumps(doc))
+    result = _run_validator(path)
+    assert result.returncode == (0 if accepted else 1), result.stderr
+    assert "Traceback" not in result.stderr
+    assert "synthetic-obfs-first" not in result.stderr
+
+
+@pytest.mark.parametrize("mode", ["standard-only", "default-interval", "equivalent-units", "missing-tag", "duplicate-tag", "wrong-type"])
+def test_full_bundle_hopping_matches_one_outbound(tmp_path, mode):
+    doc = json.loads((REPO_ROOT / "contract/ripdpi-bundle.hysteria-port-hopping.json").read_text())
+    outbound = next(value for value in doc["outbounds"] if value["type"] == "hysteria2")
+    extra = doc["ripdpi"]["hysteria_extras"][outbound["tag"]]
+    if mode == "standard-only":
+        extra.pop("port_hopping")
+    elif mode == "default-interval":
+        outbound.pop("hop_interval")
+        extra["port_hopping"]["interval"] = "30s"
+    elif mode == "equivalent-units":
+        outbound["hop_interval"] = "60s"
+        extra["port_hopping"]["interval"] = "1m"
+    elif mode == "missing-tag":
+        outbound["tag"] = "different"
+    elif mode == "duplicate-tag":
+        doc["outbounds"].append(copy.deepcopy(outbound))
+    else:
+        outbound["type"] = "socks"
+    path = tmp_path / "bundle.json"
+    path.write_text(json.dumps(doc))
+    result = _run_validator(path)
+    assert result.returncode == (0 if mode in {"standard-only", "default-interval", "equivalent-units"} else 1)
+    assert "Traceback" not in result.stderr

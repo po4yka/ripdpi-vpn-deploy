@@ -15,7 +15,7 @@ import yaml
 from awg_client import export as awg_export, host_context
 from awg_device_binding import resolve_binding
 from encrypted_client_document import MAX_BYTES, private_file, identity
-from transport_semantics import hysteria_client_bandwidth, transport_errors, xhttp_endpoints, xhttp_tuning
+from transport_semantics import hysteria_client_bandwidth, hysteria_port_hopping, transport_errors, xhttp_endpoints, xhttp_tuning
 from fleet_inspection import bounded_command, InspectionError
 from payload_failover_policy import validate_policy
 
@@ -272,8 +272,6 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
                                                **({'xmux': tuning} if tuning else {}))))
         if enabled('enable_hysteria'):
             hy = d['hysteria']
-            if o['format'] == 'ripdpi' and c.get('hysteria_port_range'):
-                raise ValueError('RIPDPI Hysteria port hopping requires a qualified client')
             ech = hy.get('ech')
             resource = hy.get('resource_profile', 'bandwidth-capped')
             if ech and o['format'] != 'singbox':
@@ -298,10 +296,12 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
                 if hy.get('version') and not hy['version'].startswith('REPLACE_WITH_'):
                     extra['salamander_upstream_tag'] = hy['version']
             if c.get('hysteria_port_range'):
-                ports = c['hysteria_port_range'].replace('-', ':')
+                ports = c['hysteria_port_range']
                 interval = c.get('hysteria_hop_interval', '30s')
-                hyout.update(server_ports=[ports], hop_interval=interval)
-                extra['port_hopping'] = dict(ports=ports, interval=interval)
+                hopping = (hysteria_port_hopping(ports, interval) if o['format'] == 'ripdpi'
+                           else dict(ports=ports.replace('-', ':'), interval=interval))
+                hyout.update(server_ports=[hopping['ports']], hop_interval=hopping['interval'])
+                extra['port_hopping'] = hopping
             out.append(hyout)
             extras[hyout['tag']] = extra
         if enabled('enable_snell'):
@@ -405,7 +405,7 @@ def main():
         print(json.dumps(payload, indent=2))
         return 0
     except (OSError, ValueError, KeyError, TypeError, AttributeError, RecursionError, StopIteration, subprocess.SubprocessError, yaml.YAMLError) as error:
-        safe = {'--xhttp-only requires --profile-format ripdpi', 'ECH requires the verified official sing-box engine; RIPDPI export is unsupported', 'BBR resource profiles require the verified official sing-box engine; RIPDPI export is unsupported', 'RIPDPI Hysteria port hopping requires a qualified client', 'P0 REALITY finalmask requires an Xray client', 'P0 REALITY Mux.Cool requires an Xray client; sing-mux is incompatible', 'conflicting vpn.hysteria_realm values across HOSTS', 'ambiguous-device-binding', 'missing-device-binding', 'plaintext secrets cannot be combined with SOPS_FILES', 'missing-snell-variant'}
+        safe = {'--xhttp-only requires --profile-format ripdpi', 'ECH requires the verified official sing-box engine; RIPDPI export is unsupported', 'BBR resource profiles require the verified official sing-box engine; RIPDPI export is unsupported', 'invalid-hysteria-hopping', 'P0 REALITY finalmask requires an Xray client', 'P0 REALITY Mux.Cool requires an Xray client; sing-mux is incompatible', 'conflicting vpn.hysteria_realm values across HOSTS', 'ambiguous-device-binding', 'missing-device-binding', 'plaintext secrets cannot be combined with SOPS_FILES', 'missing-snell-variant'}
         detail = str(error) if isinstance(error, ValueError) and str(error) in safe else ('plaintext secrets unavailable' if 'VPN_SECRETS_FILE' in os.environ else 'materialization refused')
         print('client-payload: ' + detail, file=__import__('sys').stderr)
         return 2

@@ -1588,11 +1588,12 @@ ci-fast:
 
 	@echo "ci-fast: OK"
 
-# Union gate: task contract, everything in validate, everything in ci-fast,
-# then the documentation guards.
+# Union gate: task contract, everything in validate, everything in ci-fast.
+# ci-fast's test-unit already runs the docs guards (test_docs_index.py,
+# test_docs_reference.py), so docs-check stays a standalone docs-only target.
 # Run this before any commit touching Ansible, Terraform, or Python to get
 # the same signal that CI produces without waiting for a remote run.
-check: task-check validate ci-fast docs-check  ## Full local gate: task contract + validate + ci-fast + docs-check
+check: task-check validate ci-fast  ## Full local gate: task contract + validate + ci-fast
 
 # Regenerate the documentation pages that mirror code: the Make target
 # reference, the vpnd command reference and the machine-readable docs index.

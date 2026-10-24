@@ -330,7 +330,7 @@ subscription format.
   // (= hysteria.version from SOPS).  Present only alongside salamander obfs.
   "salamander_upstream_tag": "v2.9.0",
 
-  // Retained schema compatibility field; current RIPDPI emission refuses hopping.
+  // Hopping policy for the qualified native RIPDPI client.
   // ports is the range string "low:high"; interval is the hop cadence.
   "port_hopping": {
     "ports":    "20000:50000",
@@ -440,11 +440,18 @@ The new BBR recipient profiles use the same qualified official engine and also
 refuse RIPDPI export. The bandwidth-capped classical profile remains supported.
 
 
-Hysteria port hopping remains an unqualified RIPDPI recipient feature. The
-emitter refuses a selected `hysteria_port_range` before output; it does not
-strip `server_ports` or `hop_interval`. Official sing-box output retains its
-port-hopping profile. Multi-host RIPDPI output includes extras for every exact
-Hysteria outbound tag, independently of host order.
+Hysteria port hopping requires the qualified native RIPDPI client. The emitter
+retains `hysteria_port_range` as standard `server_ports` and matching extras,
+with the same fixed `hop_interval`. The interval uses whole seconds, minutes or
+hours, from 5 seconds through 9223372036854 milliseconds. Invalid policy fails
+before output. The scalar `server_port` does not widen the hopping set. Older
+clients do not satisfy this contract. Official sing-box output retains its
+existing policy. Multi-host output includes extras for every Hysteria tag,
+independently of host order.
+Full bundle validation requires each hopping extra to match one Hysteria
+outbound by tag. When standard hopping fields are also present, their port set
+and effective interval must agree after normalization. Either policy form alone
+and standalone extension validation remain supported.
 
 ### Dual-stack device contract
 

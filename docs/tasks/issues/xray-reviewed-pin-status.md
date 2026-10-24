@@ -2,7 +2,7 @@
 id: XRY-1792776853872491
 title: Separate reviewed Xray pins from upstream release status
 kind: bug
-status: doing
+status: review
 area: xray-config
 priority: high
 risk: standard
@@ -12,8 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: xray-reviewed-pin-status
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-10-24
 related_tasks: ["po4yka/RIPDPI#TRN-1792776009699531"]
+status_detail: Reviewed Xray pin separation passed local and prior hosted checks. Final published merge CI remains required; no deployed version or credentials changed.
 ---
 
 ## Goal
