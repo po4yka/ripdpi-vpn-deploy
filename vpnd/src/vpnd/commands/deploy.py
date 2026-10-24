@@ -1,8 +1,9 @@
 """Deploy delegates the canonical ordered Make pipeline."""
 
+import asyncio
 import sys
 from ..runner.make import target, target_with
-from . import StopSignals, confirm, render_summary, require_review
+from . import StopSignals, confirm_async, render_summary, require_review
 
 # The operator reviews the saved plan between these two groups.
 PLAN_TARGETS = ("check-prereqs", "validate", "decrypt", "init", "plan")
@@ -42,7 +43,7 @@ async def run(ctx, args):
         file=sys.stderr,
     )
     render_summary("Deploy plan", build_plan_summary(ctx, args))
-    if not ctx.yes and not ctx.explain and not confirm("Proceed with these settings?"):
+    if not ctx.yes and not ctx.explain and not await confirm_async("Proceed with these settings?"):
         print("aborted by user", file=sys.stderr)
         return
     steps = plan_steps(ctx, args)
@@ -52,10 +53,11 @@ async def run(ctx, args):
             for index, cmd in enumerate(steps):
                 stop.check()
                 if index == len(PLAN_TARGETS):
-                    require_review(ctx, "Review the Terraform plan above. Apply it?")
+                    await require_review(ctx, "Review the Terraform plan above. Apply it?", stop)
+                    stop.check()
                 await cmd.run(ctx.explain)
             stop.check()
-        except Exception as outcome:
+        except (Exception, asyncio.CancelledError) as outcome:
             error = stop.outcome(outcome)
         await stop.cleanup(ctx, error)
     if not ctx.explain:
