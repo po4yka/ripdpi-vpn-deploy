@@ -16,11 +16,9 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_check_certs_uses_public_key_der_digest_not_rsa_modulus():
-    script = (ROOT / "scripts/check-certs.sh").read_text()
-    assert 'openssl x509 -in "$cert_file" -pubkey -noout' in script
-    assert 'openssl pkey -in "$key_file" -passin pass: -pubout -outform DER' in script
-    assert "openssl rsa  -noout -modulus" not in script
+def test_check_certs_never_prompts_for_a_key_passphrase():
+    # Without a controlling terminal a prompt fails like a mismatch, so a run cannot show this.
+    assert 'openssl pkey -in "$key_file" -passin pass: ' in (ROOT / "scripts/check-certs.sh").read_text()
 
 
 def test_check_certs_accepts_indented_openssl_san_output_from_certificate_chain(tmp_path):

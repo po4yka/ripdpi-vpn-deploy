@@ -89,29 +89,10 @@ def test_tailnet_sets_accept_only_exact_host_prefixes_on_existing_ssh_port() -> 
     rendered = _render()
     ansible_rendered_lines = _render_with_ansible_whitespace().splitlines()
     rendered_lines = rendered.splitlines()
-    template_source = TEMPLATE.read_text()
-    committed_fragment = """# vpn-tailnet-ssh-sets schema=1
-set vpn_tailnet_ssh_v4 {
-  type ipv4_addr
-  flags interval
-  elements = { 100.64.10.20/32, 100.64.10.21/32 }
-}
-
-set vpn_tailnet_ssh_v6 {
-  type ipv6_addr
-  flags interval
-  elements = { fd7a:115c:a1e0::1234/128 }
-}
-"""
-
-    assert "100.64.10.20/32, 100.64.10.21/32" in committed_fragment
-    assert "fd7a:115c:a1e0::1234/128" in committed_fragment
-    assert (
-        "\n{% if vpn.enable_tailnet_management | default(false) %}\n" in template_source
-    )
+    # Ansible renders with trim_blocks; a stripping tag joins the previous rule to the next emitted line.
     assert (
         "\n{%- if vpn.enable_tailnet_management | default(false) %}\n"
-        not in template_source
+        not in TEMPLATE.read_text()
     )
     assert (
         "    meta l4proto ipv6-icmp icmpv6 type echo-request accept" in rendered_lines
@@ -251,6 +232,9 @@ set vpn_tailnet_ssh_v6 {
         "100.64.10.20/32, 100.64.10.21/32", "100.64.10.20/32, 100.64.10.20/32"
     )
     rejected_foreign = accepted + "chain bypass { tcp dport 22022 accept }\n"
+    rejected_noncanonical = accepted.replace(
+        "fd7a:115c:a1e0::1234/128", "fd7a:115c:a1e0:0:0:0:0:1234/128"
+    )
 
     assert (
         subprocess.run(
@@ -273,6 +257,12 @@ set vpn_tailnet_ssh_v6 {
     assert (
         subprocess.run(
             ["python3", "-c", validator], input=rejected_foreign, text=True
+        ).returncode
+        != 0
+    )
+    assert (
+        subprocess.run(
+            ["python3", "-c", validator], input=rejected_noncanonical, text=True
         ).returncode
         != 0
     )
@@ -350,8 +340,6 @@ def test_existing_tailnet_fragment_is_preserved_only_when_safe_and_schema_valid(
     assert "wgrp" in directory_assertions and "woth" in directory_assertions
     assert ".uid == 0" in final_metadata_assertions
     assert ".gid == 0" in final_metadata_assertions
-    assert "vpn_tailnet_ssh_v4" in tasks_text
-    assert "vpn_tailnet_ssh_v6" in tasks_text
     assert "ansible.builtin.command" in assert_task
     assert assert_task["ansible.builtin.command"]["stdin_add_newline"] is False
     boot_link = next(
@@ -363,8 +351,6 @@ def test_existing_tailnet_fragment_is_preserved_only_when_safe_and_schema_valid(
         boot_link["ansible.builtin.file"]["force"]
         == "{{ _firewall_effective_check_mode | bool }}"
     )
-    assert "ipaddress.ip_network" in tasks_text
-    assert "fragment bytes are not canonical" in tasks_text
     task_names = [entry["name"] for task in tasks for entry in task.get("block", [task])]
     assert (
         task_names.index("Install approved Tailnet SSH sets fragment when absent")

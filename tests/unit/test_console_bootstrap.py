@@ -65,9 +65,8 @@ def test_normalization_preserves_quota_and_expressions(guest):
     assert value == [{'rule': {'expr': [{'counter': {}}, {'quota': {'bytes': 1024}}, {'accept': None}]}}]
 
 
-def test_renderer_and_guest_are_syntax_valid():
-    for name in ['render-console-bootstrap.py', 'console_bootstrap_guest.py']:
-        ast.parse((ROOT/'scripts'/name).read_text())
+def test_renderer_is_syntax_valid():
+    ast.parse((ROOT/'scripts/render-console-bootstrap.py').read_text())
 
 
 def test_make_renderer_rejects_other_capabilities():
