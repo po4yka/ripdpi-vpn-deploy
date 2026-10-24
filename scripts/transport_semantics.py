@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+from fractions import Fraction
 import ipaddress
 import json
 import os
@@ -265,6 +266,58 @@ def hysteria_port_hopping(ports, interval):
     if not 5000 <= milliseconds <= 9223372036854:
         raise ValueError('invalid-hysteria-hopping')
     return dict(ports=f'{lower}:{upper}', interval=interval)
+
+
+def _hysteria_hop_milliseconds(raw):
+    """Match the client's exact Go duration units without rounding."""
+    if not isinstance(raw, str) or not 1 <= len(raw.encode('utf-8')) <= 128:
+        raise ValueError('invalid-hysteria-hopping')
+    units = {'h': 3600000, 'm': 60000, 's': 1000, 'ms': 1,
+             'us': Fraction(1, 1000), 'µs': Fraction(1, 1000),
+             'μs': Fraction(1, 1000), 'ns': Fraction(1, 1000000)}
+    total, offset = Fraction(0), 0
+    for match in re.finditer(r'([0-9]+(?:\.[0-9]*)?|\.[0-9]+)(ns|us|µs|μs|ms|s|m|h)', raw):
+        value = Fraction(match[1]) * units[match[2]]
+        if match.start() != offset or (value * 1000000).denominator != 1:
+            raise ValueError('invalid-hysteria-hopping')
+        total += value
+        offset = match.end()
+    if offset != len(raw) or total.denominator != 1 or not 5000 <= total <= 9223372036854:
+        raise ValueError('invalid-hysteria-hopping')
+    return int(total)
+
+
+def hysteria_hopping_matches(outbound, hopping):
+    """Compare two present policies; an extras-only policy remains valid."""
+    if not any(name in outbound for name in ('server_ports', 'hop_interval', 'hop_interval_max')):
+        return True
+    values = outbound.get('server_ports')
+    values = [values] if isinstance(values, str) else values
+    if (not isinstance(values, list) or not 1 <= len(values) <= 65535
+            or not all(isinstance(value, str) for value in values)
+            or sum(map(len, values)) + len(values) - 1 > 1048576):
+        raise ValueError('invalid-hysteria-hopping')
+    ranges = []
+    for value in values:
+        if not re.fullmatch(r'[0-9]{1,5}(?::[0-9]{1,5})?', value):
+            raise ValueError('invalid-hysteria-hopping')
+        bounds = list(map(int, value.split(':')))
+        lower, upper = bounds[0], bounds[-1]
+        if not 1 <= lower <= upper <= 65535:
+            raise ValueError('invalid-hysteria-hopping')
+        ranges.append((lower, upper))
+    merged = []
+    for lower, upper in sorted(ranges):
+        if merged and lower <= merged[-1][1] + 1:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], upper))
+        else:
+            merged.append((lower, upper))
+    minimum = _hysteria_hop_milliseconds(outbound.get('hop_interval', '30s'))
+    maximum = (_hysteria_hop_milliseconds(outbound['hop_interval_max'])
+               if 'hop_interval_max' in outbound else minimum)
+    expected = hysteria_port_hopping(hopping['ports'], hopping['interval'])
+    return (merged == [tuple(map(int, expected['ports'].split(':')))]
+            and minimum == maximum == _hysteria_hop_milliseconds(expected['interval']))
 
 
 def hysteria_client_bandwidth(raw):

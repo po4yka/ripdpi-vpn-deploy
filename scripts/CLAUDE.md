@@ -184,6 +184,10 @@ qualified RIPDPI client. Shared transport semantics validate the port range and
 fixed interval (5 seconds through 9223372036854 milliseconds) before output.
 Standard fields and extras carry the same policy. Official sing-box behavior
 and other engine guards remain intact; XHTTP-only selection ignores Hysteria.
+Full bundle validation matches hopping extras to one Hysteria outbound by tag.
+When both policies exist, compare normalized port unions and exact durations;
+equivalent units and a maximum equal to the minimum remain fixed policies.
+Standalone extensions and either single policy form remain valid.
 
 State backup retention and recovery match the complete UTC timestamp suffix
 after the exact provider/environment prefix. A broad prefix glob also selects

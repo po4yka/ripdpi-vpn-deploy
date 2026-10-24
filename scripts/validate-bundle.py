@@ -35,7 +35,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ripdpi_cohort_fingerprint import ORDER, cohort_fingerprint  # noqa: E402
 from payload_failover_policy import validate_policy  # noqa: E402
-from transport_semantics import hysteria_port_hopping  # noqa: E402
+from transport_semantics import hysteria_hopping_matches, hysteria_port_hopping  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = REPO_ROOT / "contract" / "ripdpi-bundle.schema.json"
@@ -212,6 +212,26 @@ def _semantic_errors(ripdpi: dict) -> list[str]:
     return errors
 
 
+def _hysteria_hopping_errors(doc: dict, ripdpi: dict) -> list[str]:
+    if not isinstance(doc.get('ripdpi'), dict):
+        return []  # The CLI also validates a standalone extension without outbounds.
+    errors = []
+    outbounds = doc.get('outbounds')
+    for index, (tag, extra) in enumerate(ripdpi['hysteria_extras'].items()):
+        hopping = extra.get('port_hopping')
+        if hopping is None:
+            continue
+        matches = ([value for value in outbounds if isinstance(value, dict) and value.get('tag') == tag]
+                   if isinstance(outbounds, list) else [])
+        try:
+            if (len(matches) != 1 or matches[0].get('type') != 'hysteria2'
+                    or not hysteria_hopping_matches(matches[0], hopping)):
+                raise ValueError
+        except ValueError:
+            errors.append(f'hysteria_extras[{index}].port_hopping: requires one matching outbound policy')
+    return errors
+
+
 def _normalize_runtime_materialized(ripdpi: dict) -> tuple[dict, list[str]]:
     """Return a redacted in-memory copy of a locally materialized bundle."""
     normalized = copy.deepcopy(ripdpi)
@@ -311,6 +331,8 @@ def main() -> int:
     errors = sorted(validator.iter_errors(ripdpi), key=lambda e: list(e.absolute_path))
 
     fp_errors = ([] if errors else _fingerprint_errors(ripdpi) + _address_errors(ripdpi) + _semantic_errors(ripdpi))
+    if not errors and not fp_errors:
+        fp_errors = _hysteria_hopping_errors(doc, ripdpi)
 
     if errors or fp_errors or runtime_errors:
         print(

@@ -32,6 +32,8 @@ artifact_evidence: null
 ## Current source evidence
 
 - Targeted recipient hopping, payload boundary, bundle schema, transport semantics, host selection and Hysteria audit tests: 307 passed.
+- Full bundle consistency regressions reproduced 17 invalid-policy admissions before the fix. After the fix, 164 bundle and recipient tests plus 202 transport, recipient boundary, emitter roundtrip and Hysteria audit tests passed. Standalone extensions, either policy form alone and equivalent normalized policies remain valid.
+- Follow-up source review reported one Unicode exception concern. A direct CLI reproduction rejected the surrogate with exit 1 and no traceback: `UnicodeEncodeError` inherits `ValueError`, which the boundary already catches. The finding was rejected; no actionable follow-up finding remains.
 - Documentation checks: 10 passed. The generated hopping bundle passed semantic validation.
 - Task contracts and strict OpenSpec validation passed. Independent source review found no code defect.
 - The full local check exposed two local tool mismatches: setuptools 84.0.0 instead of 84.2.1, then sing-box 1.13.16 instead of 1.14.3. An isolated Python environment and a process-local PATH select the pinned versions. Package reproducibility, offline installation and rollback passed; the full check remains required.

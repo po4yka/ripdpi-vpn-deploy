@@ -175,6 +175,8 @@ tests preserve both standard fields and extras, reject invalid intervals before
 output, and compare an actual emitted contract fixture. Native client session
 continuity remains separate positive acceptance; official sing-box retains its
 existing hopping policy.
+Full bundle regressions reject conflicting hopping fields and ambiguous tags,
+but admit equivalent port unions, duration units, and either policy form alone.
 Expression-only Jinja test environments enable autoescape explicitly; their
 compiled predicates keep the same boolean results.
 The mirror retirement fixture defers independent timer schedules and drains their

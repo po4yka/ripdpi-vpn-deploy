@@ -438,6 +438,10 @@ before output. The scalar `server_port` does not widen the hopping set. Older
 clients do not satisfy this contract. Official sing-box output retains its
 existing policy. Multi-host output includes extras for every Hysteria tag,
 independently of host order.
+Full bundle validation requires each hopping extra to match one Hysteria
+outbound by tag. When standard hopping fields are also present, their port set
+and effective interval must agree after normalization. Either policy form alone
+and standalone extension validation remain supported.
 
 ### Dual-stack device contract
 
