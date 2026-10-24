@@ -91,6 +91,9 @@ of descriptor-gated YAML. Shared strict loading preserves scalar semantics and
 rejects duplicate mappings with categorical errors.
 
 Lifecycle fixtures publish complete PID manifests by rename before readers observe them; file existence alone cannot admit a partially written process list.
+Abrupt-signal fixtures disable core export in their own Python process after exec,
+then run the actual launcher. Default signal dispositions and terminal descriptor
+checks remain unchanged; the exit deadline must not depend on a host crash collector.
 Loopback release fixtures bound accept and thread cleanup even when no client
 connects. Timeout tests require an observed request before claiming network proof.
 

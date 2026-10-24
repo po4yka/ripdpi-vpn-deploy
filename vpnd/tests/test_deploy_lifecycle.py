@@ -857,8 +857,26 @@ def test_initial_prompt_signals_leave_inherited_terminal_flags_unchanged(tmp_pat
     # the inherited stdin flags that the parent must retain unchanged.
     error_fd = os.open(os.ttyname(slave), os.O_WRONLY | os.O_NOCTTY)
     before = fcntl.fcntl(slave, fcntl.F_GETFL)
+    # Do not make the exit deadline depend on a host crash collector. Linux
+    # ignores RLIMIT_CORE for pipe handlers and resets dumpability on exec, so
+    # disable and check it after Python starts, before running the real launcher.
+    bootstrap = """import ctypes, os, resource, runpy, sys
+resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+if sys.platform == "linux":
+    prctl = ctypes.CDLL(None, use_errno=True).prctl
+    prctl.argtypes = [ctypes.c_int, *([ctypes.c_ulong] * 4)]
+    prctl.restype = ctypes.c_int
+    PR_SET_DUMPABLE, PR_GET_DUMPABLE = 4, 3
+    if prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) != 0:
+        raise OSError(ctypes.get_errno(), "cannot disable test core dumps")
+    if prctl(PR_GET_DUMPABLE, 0, 0, 0, 0) != 0:
+        raise RuntimeError("test process is still dumpable")
+sys.argv = sys.argv[1:]
+runpy.run_path(sys.argv[0], run_name="__main__")
+"""
     child = subprocess.Popen(
-        fixture.argv([name], False), stdin=slave, stderr=error_fd,
+        [sys.executable, "-c", bootstrap, *fixture.argv([name], False)[1:]],
+        stdin=slave, stderr=error_fd,
         stdout=subprocess.DEVNULL, env=fixture.environment(),
     )
     transcript = b""
