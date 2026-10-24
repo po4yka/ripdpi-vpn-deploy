@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 
@@ -14,7 +15,9 @@ ROOT = Path(__file__).resolve().parents[2]
 def probe(tmp_path, document):
     tools = tmp_path / "bin"
     tools.mkdir()
-    (tools / "python3").symlink_to(sys.executable)
+    python = tools / "python3"
+    python.write_text(f'#!/bin/sh\nexec {shlex.quote(sys.executable)} "$@"\n')
+    python.chmod(0o755)
     for name, content in {
         "timeout": '#!/bin/sh\nshift\nexec "$@"\n',
         "openssl": '#!/bin/sh\nprintf "%s\\n" "-----BEGIN CERTIFICATE-----"\n',

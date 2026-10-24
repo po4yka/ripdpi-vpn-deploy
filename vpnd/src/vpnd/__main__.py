@@ -3,6 +3,7 @@
 import asyncio
 import importlib
 import signal
+import selectors
 import sys
 from .cli import parse_args
 from .config import Context
@@ -59,6 +60,13 @@ async def dispatch(args):
             interrupted.cancel()
 
 
+def _terminal_loop():
+    # Darwin kqueue cannot watch /dev/tty; poll supports the controlling terminal.
+    loop = asyncio.SelectorEventLoop(selectors.PollSelector())
+    asyncio.set_event_loop(loop)
+    return loop
+
+
 def main(argv=None):
     args = parse_args(argv)
     # Interactive dispatch keeps the kernel's terminal signal behavior,
@@ -66,9 +74,12 @@ def main(argv=None):
     previous = {}
     if args.command not in {"doctor", "probe-matrix"}:
         for sig in (signal.SIGINT, signal.SIGTERM):
+            if args.command in {"deploy", "reconverge"} and signal.getsignal(sig) == signal.SIG_IGN:
+                continue
             previous[sig] = signal.signal(sig, signal.SIG_DFL)
+    factory = _terminal_loop if sys.platform == "darwin" and args.command in {"deploy", "reconverge"} else None
     try:
-        return asyncio.run(dispatch(args))
+        return asyncio.run(dispatch(args), loop_factory=factory)
     except KeyboardInterrupt:
         return 130
     except Exception as error:
@@ -76,6 +87,8 @@ def main(argv=None):
         code = getattr(error, "exit_code", None)
         return code() if callable(code) else code if isinstance(code, int) else 1
     finally:
+        if factory is not None:
+            asyncio.set_event_loop(None)
         for sig, handler in previous.items():
             signal.signal(sig, handler)
 

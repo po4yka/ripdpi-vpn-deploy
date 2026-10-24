@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -347,8 +348,10 @@ def _run_cloud_init_schema_fallback(
     )
     docker.chmod(0o755)
     capture = tmp_path / "docker-input.tar"
+    python = tools / "python3"
+    python.write_text(f'#!/bin/sh\nexec {shlex.quote(sys.executable)} "$@"\n')
+    python.chmod(0o755)
     for name, source in (
-        ("python3", sys.executable),
         ("mktemp", shutil.which("mktemp")),
         ("rm", shutil.which("rm")),
     ):

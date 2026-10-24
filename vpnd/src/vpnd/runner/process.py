@@ -230,7 +230,14 @@ class Cmd:
                 stopped.set()
             # Cancellation completes only after owned descendants are killed
             # and the direct child is reaped; no background cleanup is orphaned.
-            await asyncio.shield(worker)
+            while not worker.done():
+                try:
+                    await asyncio.shield(worker)
+                except asyncio.CancelledError:
+                    # Later cancellation cannot release the caller while this
+                    # worker still owns a child or can write pipeline output.
+                    continue
+            worker.result()
             raise
         rc = returncode if returncode >= 0 else -1
         if not detailed and rc:
