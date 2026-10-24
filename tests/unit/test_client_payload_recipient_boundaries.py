@@ -40,16 +40,31 @@ def materialization(monkeypatch):
     return context, document, render
 
 
-def test_ripdpi_hysteria_hopping_refuses_instead_of_emitting_a_partial_profile(materialization):
+def test_ripdpi_hysteria_hopping_preserves_complete_profile(materialization):
     context, _, render = materialization
     context.update(hysteria_port_range="20000-21000", hysteria_hop_interval="45s")
-    with pytest.raises(ValueError, match="RIPDPI.*port hopping"):
-        render("ripdpi")
+    payload = render("ripdpi")
+    outbound = next(value for value in payload["outbounds"] if value["type"] == "hysteria2")
+    assert outbound["server_ports"] == ["20000:21000"]
+    assert outbound["hop_interval"] == "45s"
+    assert payload["ripdpi"]["hysteria_extras"][outbound["tag"]]["port_hopping"] == {
+        "ports": "20000:21000", "interval": "45s",
+    }
 
+
+
+def test_emitted_hopping_contract_fixture(materialization):
+    import json
+    from pathlib import Path
+
+    context, _, render = materialization
+    context.update(hysteria_port_range="20000-21000", hysteria_hop_interval="45s")
+    expected = Path(__file__).resolve().parents[2] / "contract/ripdpi-bundle.hysteria-port-hopping.json"
+    assert render("ripdpi") == json.loads(expected.read_text())
 
 def test_ripdpi_hopping_cli_emits_no_artifact_or_private_diagnostic(materialization, monkeypatch, capsys):
     context, document, _ = materialization
-    context["hysteria_port_range"] = "20000-21000"
+    context.update(hysteria_port_range="20000-21000", hysteria_hop_interval="4s")
     monkeypatch.setattr(client_payload, "paths", lambda _: ["/synthetic-authority"])
     monkeypatch.setattr(client_payload, "read_document", lambda *_, **__: document)
     monkeypatch.setattr("sys.argv", ["client_payload.py", "fixture-device", "--bundle"])
@@ -60,7 +75,7 @@ def test_ripdpi_hopping_cli_emits_no_artifact_or_private_diagnostic(materializat
     assert result == 2
     output = capsys.readouterr()
     assert output.out == ""
-    assert output.err == "client-payload: RIPDPI Hysteria port hopping requires a qualified client\n"
+    assert output.err == "client-payload: invalid-hysteria-hopping\n"
     assert document["hysteria"]["clients"][0]["password"] not in output.err
 
 

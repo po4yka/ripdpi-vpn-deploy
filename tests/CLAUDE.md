@@ -173,7 +173,12 @@ Recipient regressions execute actual Ansible share mode repair, including retain
 shares without a new upload and unchanged repeats. Molecule separately checks
 nginx-group read access, unrelated-UID refusal and mirror true-to-false execution
 retirement with accepted payload and replay authority retained. RIPDPI hopping
-refuses before output; official sing-box keeps supported hopping.
+tests preserve both standard fields and extras, reject invalid intervals before
+output, and compare an actual emitted contract fixture. Native client session
+continuity remains separate positive acceptance; official sing-box retains its
+existing hopping policy.
+Full bundle regressions reject conflicting hopping fields and ambiguous tags,
+but admit equivalent port unions, duration units, and either policy form alone.
 Expression-only Jinja test environments enable autoescape explicitly; their
 compiled predicates keep the same boolean results.
 The mirror retirement fixture defers independent timer schedules and drains their
