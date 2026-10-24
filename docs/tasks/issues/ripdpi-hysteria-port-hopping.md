@@ -2,7 +2,7 @@
 id: OPS-1792820562787120
 title: Deliver native Hysteria port hopping to RIPDPI
 kind: feature
-status: doing
+status: review
 area: operations
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: ripdpi-hysteria-port-hopping
 created: 2026-10-24
 updated: 2026-10-24
 related_tasks: ["po4yka/RIPDPI#OUT-1792820412611017"]
+status_detail: The qualified client and producer reached main with the tested trees. Full local checks, all 93 exact-main CI jobs, all native lanes and cleanup passed. Only source acceptance is claimed.
 ---
 
 ## Goal

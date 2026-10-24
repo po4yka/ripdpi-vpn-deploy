@@ -12,9 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: profile-quality-mtu
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-10-24
 related_tasks: ["po4yka/RIPDPI#TRN-1792759596946903"]
-status_detail: The source capability and positive native checks pass. Full local acceptance remains open because the macOS process cleanup failure also occurs on the clean baseline; see CIC-1792759317705110. Protected producer PR and exact-main CI remain required.
+status_detail: Positive native and emulator acceptance, catalogue migration repair, full local gate, producer/client PRs and exact combined-main CI passed. No fleet or physical-device acceptance is claimed.
 ---
 
 ## Goal
