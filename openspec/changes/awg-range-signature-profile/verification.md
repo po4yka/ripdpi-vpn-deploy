@@ -1,11 +1,11 @@
 ---
 task_id: ANS-1792776076428131
 change: awg-range-signature-profile
-commit_sha: null
-local: required
-local_evidence: Targeted profile tests passed (40), bundle tests passed (100), encrypted transactions passed (62), source correction tests passed (47), and research admission tests passed (91). All 165 snapshots, make validate and make docs-check passed. Full make check and the native source-pair lane remain pending.
+commit_sha: 6d65d28b07376ecd226eb7635608d6279bb6cf21
+local: passed
+local_evidence: The full canonical make check passed with exit 0 on 2026-10-24 in the pinned environment. It included 10280 Python tests and 45 subtests, 70 Bats tests, 387 vpnd tests, validation and documentation checks. The local stage deselected its 253 native-runtime cases by the existing partition; hosted native runtime integration passed. Earlier targeted tests and all 165 snapshots also passed.
 remote_ci: required
-remote_ci_evidence: null
+remote_ci_evidence: Head 6d65d28b07376ecd226eb7635608d6279bb6cf21 completed 97 successful checks and one neutral result. Client contract-sync and its aggregate check failed because the paired contract is not yet on the client default branch. Retry those jobs after the paired client merge.
 dry_run: not_applicable
 dry_run_evidence: Source implementation only; no private deployment plan.
 staging: not_applicable
