@@ -16,10 +16,12 @@ import hashlib
 import json
 import os
 import re
+import select
 import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from contextlib import contextmanager
@@ -1144,47 +1146,360 @@ def _require_directory_identity(path: Path, expected: int) -> None:
         os.close(current)
 
 
-def _process_group_exists(process_group: int) -> bool:
+def _group_state(process_group: int) -> str:
     try:
         os.killpg(process_group, 0)
     except ProcessLookupError:
-        return False
+        return "gone"
     except PermissionError:
-        return True
-    return True
+        return "unknown"
+    return "present"
 
 
-def _terminate_process_group(process: subprocess.Popen) -> None:
-    process_group = process.pid
-    try:
-        os.killpg(process_group, signal.SIGTERM)
-    except ProcessLookupError:
-        # The group exited after the caller observed the build failure.
-        pass
+def _settle_build_group(
+    process_group: int, command: subprocess.Popen | None, timeout: float
+) -> str:
+    deadline = time.monotonic() + timeout
+    while True:
+        if command is not None:
+            command.poll()
+        state = _group_state(process_group)
+        if state != "unknown" or time.monotonic() >= deadline:
+            return state
+        time.sleep(0.02)
 
-    deadline = time.monotonic() + 2
-    while _process_group_exists(process_group) and time.monotonic() < deadline:
-        process.poll()
-        time.sleep(0.05)
 
-    if _process_group_exists(process_group):
+def _drain_build_group(
+    process_group: int, command: subprocess.Popen | None = None
+) -> None:
+    # The caller is either the live guardian, detached from this group, or its
+    # supervisor holding that guardian unreaped. The numeric identity is reserved.
+    for group_signal in (signal.SIGTERM, signal.SIGKILL):
         try:
-            os.killpg(process_group, signal.SIGKILL)
+            os.killpg(process_group, group_signal)
         except ProcessLookupError:
-            # The group exited between the final existence probe and escalation.
+            break
+        except PermissionError:
+            # A zombie-only Darwin group is unknown until it disappears.
             pass
+        deadline = time.monotonic() + 2
+        while True:
+            if command is not None:
+                command.poll()
+            state = _group_state(process_group)
+            if state == "gone":
+                break
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(0.02)
+        if state == "gone":
+            break
+    if command is not None:
+        try:
+            command.wait(timeout=2)
+        except subprocess.TimeoutExpired as error:
+            raise UnsafeState("build-process-cleanup-failed") from error
+    if _group_state(process_group) != "gone":
+        raise UnsafeState("build-process-cleanup-failed")
 
-    if process.poll() is None:
+
+def _guardian_read(descriptor: int, timeout: float) -> bytes | None:
+    if not select.select([descriptor], [], [], max(0, timeout))[0]:
+        return None
+    return os.read(descriptor, 1)
+
+
+def _guardian_write(descriptor: int, message: bytes) -> bool:
+    # All protocol records are one byte, below PIPE_BUF and the 64-byte bound.
+    try:
+        return os.write(descriptor, message) == 1
+    except BrokenPipeError:
+        return False
+
+
+def _guardian_release(control: int) -> bool:
+    deadline = time.monotonic() + 6
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        message = _guardian_read(control, remaining)
+        if message == b"C":
+            continue  # Cancellation queued before the owner's release is valid.
+        if message in (b"R", b"", None):
+            return message == b"R"
+        raise UnsafeState("build-process-cleanup-failed")
+
+
+def _guard_build_command(
+    step: dict,
+    environment: dict,
+    directory: int,
+    control: int,
+    status: int,
+    deadline: float,
+    supervisor: int,
+) -> None:
+    command = None
+    detached = False
+    cleanup_started = False
+    failure_known = False
+    result = b"F"
+    process_group = os.getpid()
+    try:
+        os.setpgid(0, 0)
+        if _guardian_read(control, 0) is None:
+            command = subprocess.Popen(
+                step["argv"],
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                pass_fds=(directory,),
+                **_retained_cwd_options(directory),
+            )
+            while command.poll() is None:
+                if (
+                    _BUILD_CANCELLED_SIGNAL
+                    or time.monotonic() >= deadline
+                    or _guardian_read(control, 0.02) is not None
+                ):
+                    break
+            else:
+                result = b"O" if command.returncode == 0 else b"F"
+                failure_known = command.returncode != 0
+        os.setpgid(0, supervisor)
+        detached = True
+        state = _settle_build_group(process_group, command, 2)
+        if state != "gone":
+            # A positive observation after command success proves a descendant.
+            # Unknown never permits publication, even if termination succeeds.
+            result = b"F"
+            failure_known = failure_known or state == "present"
+            cleanup_started = True
+            _drain_build_group(process_group, command)
+        elif command is not None:
+            command.wait(timeout=2)
+    except BaseException:
+        # Fatal errors must not bypass group cleanup or the failure report.
+        result = b"E" if failure_known else b"U"
+        if not detached:
+            # If S vanished before detach, there is no external group to join.
+            # Kill the still-owned group, including B; S (if alive) keeps B
+            # unreaped and reports the missing cleanup proof categorically.
+            try:
+                os.killpg(process_group, signal.SIGKILL)
+            except OSError:
+                pass  # Keep the failure result. Cleanup has not been confirmed.
+        elif not cleanup_started:
+            try:
+                _drain_build_group(process_group, command)
+            except BaseException:
+                pass  # The supervisor receives an explicit unconfirmed result.
+    _guardian_write(status, result)
+    # Keep the PID reserved until the supervisor releases us. On supervisor loss
+    # the guardian itself owns cleanup; no stale acknowledgement reaches a caller.
+    exitcode = 1
+    try:
+        if _guardian_release(control):
+            exitcode = 0
+        elif detached:
+            _drain_build_group(process_group, command)
+    except BaseException:
+        pass  # Publication was already refused for any unconfirmed result.
+    finally:
+        os._exit(exitcode)
+
+
+def _supervise_build(payload: int, control: int, status: int, directory: int) -> None:
+    signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+    guardian = None
+    guardian_control = guardian_status = None
+    failure_known = False
+    exitcode = 1
+    try:
+        with os.fdopen(payload, "rb") as document:
+            encoded = document.read(MAX_JOURNAL_BYTES + 1)
+        if len(encoded) > MAX_JOURNAL_BYTES:
+            raise UnsafeState("build-step-failed")
+        step, environment, deadline = json.loads(encoded)
+        # S has a private session. B is deliberately not its session leader and
+        # can later leave its own group without releasing that group's identity.
+        with _build_cancellation():
+            child_control, guardian_control = os.pipe()
+            guardian_status, child_status = os.pipe()
+            supervisor = os.getpid()
+            guardian = os.fork()
+            if guardian == 0:
+                os.close(guardian_control)
+                os.close(guardian_status)
+                os.close(control)
+                os.close(status)
+                _guard_build_command(
+                    step,
+                    environment,
+                    directory,
+                    child_control,
+                    child_status,
+                    deadline,
+                    supervisor,
+                )
+                os._exit(1)
+            os.close(child_control)
+            os.close(child_status)
+            cancelled = False
+            cleanup_deadline = deadline + 6
+            while time.monotonic() < cleanup_deadline:
+                message = _guardian_read(guardian_status, 0.02)
+                if message is not None:
+                    failure_known = message in (b"F", b"E")
+                    if message not in (b"O", b"F"):
+                        raise UnsafeState("build-process-cleanup-failed")
+                    result = message
+                    break
+                if not cancelled and (
+                    _BUILD_CANCELLED_SIGNAL
+                    or time.monotonic() >= deadline
+                    or _guardian_read(control, 0) is not None
+                ):
+                    _guardian_write(guardian_control, b"C")
+                    cancelled = True
+                    cleanup_deadline = min(cleanup_deadline, time.monotonic() + 6)
+            else:
+                raise UnsafeState("build-process-cleanup-failed")
+            _guardian_write(status, result)
+            if not _guardian_release(control):
+                raise UnsafeState("build-process-cleanup-failed")
+            if not _guardian_write(guardian_control, b"R"):
+                raise UnsafeState("build-process-cleanup-failed")
+            exitcode = 0
+    except BaseException:
+        # Fatal errors must not bypass cleanup while the guardian is unreaped.
+        if guardian:
+            # Never poll/wait B before this fallback: its unreaped PID reserves
+            # the old group even when a startup or detach acknowledgement is lost.
+            try:
+                _drain_build_group(guardian)
+            except BaseException:
+                pass  # Lost detach/cleanup proof is always reported as unknown.
+            try:
+                os.kill(guardian, signal.SIGKILL)
+            except ProcessLookupError:
+                pass  # The guardian can have exited. It is reaped below.
+        _guardian_write(status, b"E" if failure_known else b"U")
+    finally:
+        if guardian:
+            if guardian_control is not None:
+                os.close(guardian_control)
+            if guardian_status is not None:
+                os.close(guardian_status)
+            _, wait_status = os.waitpid(guardian, 0)
+            if wait_status != 0:
+                exitcode = 1
+        os._exit(exitcode)
+
+
+def _run_guarded_build(step: dict, environment: dict, directory: int) -> None:
+    if signal.getsignal(signal.SIGCHLD) != signal.SIG_DFL:
+        raise UnsafeState("build-process-cleanup-failed")
+    child_control, control = os.pipe()
+    status, child_status = os.pipe()
+    process = None
+    primary_error = None
+    result = None
+    deadline = time.monotonic() + step["timeout_seconds"]
+    try:
+        with tempfile.TemporaryFile() as payload:
+            payload.write(json.dumps([step, environment, deadline]).encode())
+            payload.flush()
+            payload.seek(0)
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-I",
+                    "-B",
+                    "-c",
+                    "import runpy,sys;runpy.run_path(sys.argv[1],"
+                    + "run_name='_runtime_build_supervisor')['_supervise_build']"
+                    + "(*map(int,sys.argv[2:]))",
+                    str(Path(__file__).resolve()),
+                    str(payload.fileno()),
+                    str(child_control),
+                    str(child_status),
+                    str(directory),
+                ],
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                pass_fds=(payload.fileno(), child_control, child_status, directory),
+                start_new_session=True,
+                cwd="/",
+            )
+        os.close(child_control)
+        child_control = -1
+        os.close(child_status)
+        child_status = -1
+        while result is None:
+            try:
+                _raise_if_build_cancelled()
+                if time.monotonic() >= deadline:
+                    raise UnsafeState("build-step-failed")
+                result = _guardian_read(status, min(0.05, deadline - time.monotonic()))
+            except (Exception, KeyboardInterrupt, SystemExit) as error:
+                primary_error = error
+                _guardian_write(control, b"C")
+                break
+        if primary_error is not None:
+            result = _guardian_read(status, 6)
+        if result not in (b"O", b"F"):
+            if primary_error is None and result == b"E":
+                primary_error = UnsafeState("build-step-failed")
+            raise UnsafeState("build-process-cleanup-failed") from primary_error
+        if primary_error is None and result == b"F":
+            primary_error = UnsafeState("build-step-failed")
+        if not _guardian_write(control, b"R"):
+            raise UnsafeState("build-process-cleanup-failed") from primary_error
         try:
             process.wait(timeout=2)
         except subprocess.TimeoutExpired as error:
-            raise UnsafeState("build-process-cleanup-failed") from error
-
-    deadline = time.monotonic() + 2
-    while _process_group_exists(process_group) and time.monotonic() < deadline:
-        time.sleep(0.05)
-    if _process_group_exists(process_group):
-        raise UnsafeState("build-process-cleanup-failed")
+            raise UnsafeState("build-process-cleanup-failed") from (
+                primary_error or error
+            )
+        if process.returncode != 0:
+            raise UnsafeState("build-process-cleanup-failed") from primary_error
+        if primary_error is not None:
+            raise primary_error
+    except OSError as error:
+        reason = (
+            "build-step-failed" if process is None else "build-process-cleanup-failed"
+        )
+        raise UnsafeState(reason) from (primary_error or error)
+    finally:
+        os.close(control)
+        os.close(status)
+        if child_control != -1:
+            os.close(child_control)
+        if child_status != -1:
+            os.close(child_status)
+        if process is not None and process.returncode is None:
+            # EOF requests cleanup in S, which retains and reaps B. The caller
+            # never probes or signals an old numeric build group.
+            try:
+                process.wait(timeout=8)
+            except subprocess.TimeoutExpired as error:
+                # Only this exact owned S is signalled. B observes control EOF
+                # and cleans its reserved old group; missing proof stays failure.
+                try:
+                    process.kill()
+                    process.wait(timeout=2)
+                except Exception as cleanup_error:
+                    raise UnsafeState("build-process-cleanup-failed") from (
+                        primary_error or cleanup_error
+                    )
+                raise UnsafeState("build-process-cleanup-failed") from (
+                    primary_error or error
+                )
 
 
 @contextmanager
@@ -1250,45 +1565,8 @@ def _run_build_steps(descriptor: dict, base_environment: dict[str, str]) -> None
                 **step["environment"],
                 **base_environment,
             }
-            process: subprocess.Popen | None = None
             try:
-                process = subprocess.Popen(
-                    step["argv"],
-                    env=environment,
-                    stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    pass_fds=(directory,),
-                    start_new_session=True,
-                    **_retained_cwd_options(directory),
-                )
-                _raise_if_build_cancelled()
-                deadline = time.monotonic() + step["timeout_seconds"]
-                while True:
-                    _raise_if_build_cancelled()
-                    remaining = deadline - time.monotonic()
-                    if remaining <= 0:
-                        raise UnsafeState("build-step-failed")
-                    try:
-                        returncode = process.wait(timeout=min(0.1, remaining))
-                        break
-                    except subprocess.TimeoutExpired:
-                        continue
-                if returncode != 0:
-                    raise UnsafeState("build-step-failed")
-                if _process_group_exists(process.pid):
-                    raise UnsafeState("build-step-failed")
-            except (Exception, KeyboardInterrupt, SystemExit) as primary_error:
-                if process is not None:
-                    try:
-                        _terminate_process_group(process)
-                    except Exception as cleanup_error:
-                        raise UnsafeState(
-                            "build-process-cleanup-failed"
-                        ) from primary_error
-                elif isinstance(primary_error, OSError):
-                    raise UnsafeState("build-step-failed") from primary_error
-                raise
+                _run_guarded_build(step, environment, directory)
             finally:
                 os.close(directory)
         _raise_if_build_cancelled()

@@ -7,6 +7,7 @@ import os
 import stat
 import subprocess
 import shutil
+import time
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,46 @@ CRON_INSTALLER = REPO_ROOT / "scripts" / "install-operator-crons.sh"
 TARGET = "private-target.example:443"
 SERVER_NAMES = ["private-sni.example", "alt-private-sni.example"]
 IPS = ["203.0.113.7", "203.0.113.8"]
+
+
+def _assert_child_stopped(pid, timeout=3, *, clock=time):
+    deadline = clock.monotonic() + timeout
+    while True:
+        remaining = deadline - clock.monotonic()
+        assert remaining > 0, "monitor child did not stop"
+        observed = subprocess.run(["ps", "-p", str(pid), "-o", "stat="],
+                                  capture_output=True, text=True, timeout=remaining)
+        if observed.returncode != 0 or observed.stdout.strip().startswith("Z"):
+            return
+        clock.sleep(min(.01, max(0, deadline - clock.monotonic())))
+
+
+@pytest.fixture
+def exit_observation_clock():
+    class Clock:
+        now = 0
+        def monotonic(self):
+            return self.now
+        def sleep(self, interval):
+            self.now += interval
+    return Clock()
+
+
+def test_child_exit_observation_waits_for_transient_exiting_state(monkeypatch, exit_observation_clock):
+    observations = iter([(0, "?E"), (1, "")])
+    def observe(*args, **kwargs):
+        status, state = next(observations)
+        return subprocess.CompletedProcess(args[0], status, state, "")
+    monkeypatch.setattr(subprocess, "run", observe)
+    _assert_child_stopped(123, clock=exit_observation_clock)
+
+
+@pytest.mark.parametrize("state", ["?E", "S", "R"])
+def test_child_exit_observation_refuses_persistent_process(monkeypatch, exit_observation_clock, state):
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs:
+                        subprocess.CompletedProcess(args[0], 0, state, ""))
+    with pytest.raises(AssertionError):
+        _assert_child_stopped(123, clock=exit_observation_clock)
 
 
 def _make_stub(bin_dir: Path, name: str, body: str) -> None:
@@ -571,7 +612,7 @@ def test_monitor_cancellation_removes_decrypted_authority_and_children(monitor_e
     import time
     pid_file = tmp_path / "cancelled-child.pid"
     collector = Path(monitor_env["MONITOR_FIXTURE_SCRIPT"]).with_name("reality_target_validation.py")
-    collector.write_text("import os,pathlib,time,sys,json\nif sys.argv[1] == 'collect':\n pathlib.Path(" + repr(str(pid_file)) + ").write_text(json.dumps([os.getpid(),sys.argv[sys.argv.index('--observations')+1],os.environ['TMPDIR']]))\n time.sleep(60)\n" + collector.read_text())
+    collector.write_text("import os,pathlib,time,sys,json\nif sys.argv[1] == 'collect':\n p=pathlib.Path(" + repr(str(pid_file)) + "); pending=p.with_suffix('.pending'); pending.write_text(json.dumps([os.getpid(),sys.argv[sys.argv.index('--observations')+1],os.environ['TMPDIR']])); pending.replace(p)\n time.sleep(60)\n" + collector.read_text())
     process = subprocess.Popen(["bash", monitor_env["MONITOR_FIXTURE_SCRIPT"]], cwd=REPO_ROOT,
                                env=monitor_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
@@ -588,8 +629,7 @@ def test_monitor_cancellation_removes_decrypted_authority_and_children(monitor_e
         assert process.returncode == 128 + getattr(signal, signal_name), errors
         assert json.loads(output)["verdict"] == "error"
         assert not list(Path(monitor_env["TMPDIR"]).iterdir())
-        observed = subprocess.run(["ps", "-p", str(child), "-o", "stat="], capture_output=True, text=True, timeout=3)
-        assert observed.returncode != 0 or observed.stdout.strip().startswith("Z")
+        _assert_child_stopped(child)
     finally:
         if process.poll() is None:
             process.kill()

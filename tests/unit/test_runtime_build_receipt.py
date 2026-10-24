@@ -2249,6 +2249,412 @@ def test_project_lock_has_a_bounded_acquisition_deadline(
         os.close(directory)
 
 
+def test_transient_empty_group_eperm_does_not_reject_a_real_successful_build(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    real_killpg = helper.os.killpg
+    injected = False
+
+    def transient_empty_group(group: int, group_signal: int) -> None:
+        nonlocal injected
+        if group_signal == 0 and not injected:
+            injected = True
+            raise PermissionError(errno.EPERM, "exiting empty group")
+        real_killpg(group, group_signal)
+
+    # The isolated private supervisor loads the same implementation with this
+    # syscall fault; the actual copy command and transaction still run for real.
+    fault_source = trusted_root / "fault-helper.py"
+    fault_source.write_text(
+        HELPER.read_text()
+        + """
+_real_probe_killpg = os.killpg
+_probe_injected = False
+def _transient_probe_killpg(group, group_signal):
+    global _probe_injected
+    if group_signal == 0 and not _probe_injected:
+        _probe_injected = True
+        raise PermissionError(1, "exiting empty group")
+    return _real_probe_killpg(group, group_signal)
+os.killpg = _transient_probe_killpg
+"""
+    )
+    monkeypatch.setattr(helper, "__file__", str(fault_source))
+    monkeypatch.setattr(helper.os, "killpg", transient_empty_group)
+
+    assert helper.converge(receipt_root, _descriptor(output))["changed"] is True
+    assert helper.inspect(receipt_root, _descriptor(output))["reason"] == "current"
+
+
+def _faulted_build_helper(root: Path, monkeypatch: pytest.MonkeyPatch, fault: str):
+    helper = _helper_module()
+    source = root / "fault-helper.py"
+    source.write_text(HELPER.read_text() + "\n" + fault)
+    monkeypatch.setattr(helper, "__file__", str(source))
+    return helper
+
+
+@pytest.mark.parametrize(
+    "failure", ["PermissionError(1, 'unknown')", "OSError(5, 'failed')"]
+)
+def test_persistent_group_uncertainty_refuses_publication(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    helper = _faulted_build_helper(
+        trusted_root,
+        monkeypatch,
+        """
+def _unknown_group(group, group_signal):
+    raise FAILURE
+os.killpg = _unknown_group
+""".replace("FAILURE", failure),
+    )
+    receipt_root, output = _prepare_layout(trusted_root)
+    with pytest.raises(helper.UnsafeState, match="build-process-cleanup-failed"):
+        helper.converge(receipt_root, _descriptor(output))
+    assert not (receipt_root / "fixture-runtime.json").exists()
+    assert output.read_bytes() == b"runtime-v1\n"
+
+
+@pytest.mark.parametrize("after_detach", [False, True], ids=["startup", "detached"])
+def test_lost_guardian_cannot_authorize_publication(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch, after_detach: bool
+) -> None:
+    fault = """
+_real_setpgid = os.setpgid
+def _lose_guardian(pid, group):
+    _real_setpgid(pid, group)
+    if (group != 0) == AFTER_DETACH:
+        os._exit(91)
+os.setpgid = _lose_guardian
+""".replace("AFTER_DETACH", repr(after_detach))
+    helper = _faulted_build_helper(trusted_root, monkeypatch, fault)
+    receipt_root, output = _prepare_layout(trusted_root)
+    descriptor, ready, marker, release = _surviving_build_child(trusted_root, output)
+    try:
+        with pytest.raises(helper.UnsafeState, match="build-process-cleanup-failed"):
+            helper.converge(receipt_root, descriptor)
+        assert ready.exists() is after_detach
+        assert _fixture_child_stopped(ready)
+        assert not marker.exists()
+        assert not (receipt_root / "fixture-runtime.json").exists()
+        assert output.read_bytes() == b"runtime-v1\n"
+    finally:
+        _release_fixture_child(ready, release, sys.exception())
+
+
+def _surviving_build_child(root: Path, output: Path) -> tuple[dict, Path, Path, Path]:
+    ready = root / "descendant-ready"
+    marker = root / "escaped-descendant"
+    release = root / "release-descendant"
+    child = (
+        "import os,pathlib,signal,sys,time\n"
+        "signal.signal(signal.SIGTERM,signal.SIG_IGN)\n"
+        "ready=pathlib.Path(sys.argv[1]);pending=ready.with_suffix('.pending')\n"
+        "pending.write_text(str(os.getpid()));pending.replace(ready)\n"
+        "release=pathlib.Path(sys.argv[3]);deadline=time.monotonic()+60\n"
+        "while not release.exists() and time.monotonic()<deadline: time.sleep(0.01)\n"
+        "if release.exists(): pathlib.Path(sys.argv[2]).write_text('escaped')\n"
+    )
+    builder = root / "descendant-builder.py"
+    builder.write_text(
+        "import pathlib,subprocess,sys,time\n"
+        f"subprocess.Popen([sys.executable,'-c',{child!r},*sys.argv[1:]])\n"
+        "while not pathlib.Path(sys.argv[1]).exists(): time.sleep(0.01)\n"
+    )
+    descriptor = _descriptor(
+        output,
+        steps=[
+            {
+                "argv": [
+                    sys.executable,
+                    str(builder),
+                    str(ready),
+                    str(marker),
+                    str(release),
+                ],
+                "chdir": str(root),
+                "environment": {},
+                "timeout_seconds": 10,
+            }
+        ],
+    )
+    return descriptor, ready, marker, release
+
+
+def _fixture_child_stopped(ready: Path) -> bool:
+    if not ready.exists():
+        return True
+    child = int(ready.read_text())
+    deadline = time.monotonic() + 5
+    while True:
+        observed = subprocess.run(
+            ["ps", "-o", "stat=", "-p", str(child)],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        assert observed.returncode in (0, 1), observed.stderr
+        state = observed.stdout.strip()
+        if (observed.returncode == 1 and not state) or state.startswith("Z"):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.02)
+
+
+def _release_fixture_child(
+    ready: Path, release: Path, primary_error: BaseException | None
+) -> None:
+    release.touch()
+    if not _fixture_child_stopped(ready):
+        message = "owned fixture descendant did not exit after explicit release"
+        if primary_error is not None:
+            primary_error.add_note(message)
+        else:
+            pytest.fail(message)
+
+
+def test_supervisor_loss_requests_old_group_cleanup_through_eof(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    receipt_root, output = _prepare_layout(trusted_root)
+    descriptor, ready, marker, release = _surviving_build_child(trusted_root, output)
+    helper = _faulted_build_helper(
+        trusted_root,
+        monkeypatch,
+        """
+_real_guardian_read = _guardian_read
+def _lose_supervisor(descriptor, timeout):
+    if os.getpid() == os.getsid(0) and Path(READY).exists():
+        os._exit(91)
+    return _real_guardian_read(descriptor, timeout)
+_guardian_read = _lose_supervisor
+""".replace("READY", repr(str(ready))),
+    )
+    try:
+        with pytest.raises(helper.UnsafeState, match="build-process-cleanup-failed"):
+            helper.converge(receipt_root, descriptor)
+        assert ready.is_file()
+        assert _fixture_child_stopped(ready)
+        assert not marker.exists()
+        assert not (receipt_root / "fixture-runtime.json").exists()
+    finally:
+        _release_fixture_child(ready, release, sys.exception())
+
+
+def test_cancellation_during_guardian_detachment_preserves_primary_signal(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _faulted_build_helper(
+        trusted_root,
+        monkeypatch,
+        """
+_real_setpgid = os.setpgid
+def _cancel_during_detach(pid, group):
+    if group != 0:
+        os.kill(CONTROLLER, signal.SIGTERM)
+        time.sleep(0.05)
+    _real_setpgid(pid, group)
+os.setpgid = _cancel_during_detach
+""".replace("CONTROLLER", str(os.getpid())),
+    )
+    receipt_root, output = _prepare_layout(trusted_root)
+    with pytest.raises(SystemExit) as cancelled:
+        helper.converge(receipt_root, _descriptor(output))
+    assert cancelled.value.code == 128 + signal.SIGTERM
+    assert not (receipt_root / "fixture-runtime.json").exists()
+    assert (
+        helper.inspect(receipt_root, _descriptor(output))["reason"] == "missing-receipt"
+    )
+
+
+def test_command_failure_survives_unconfirmed_group_cleanup(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _faulted_build_helper(
+        trusted_root,
+        monkeypatch,
+        """
+def _failed_group_control(group, group_signal):
+    raise OSError(5, "group control failed")
+os.killpg = _failed_group_control
+""",
+    )
+    receipt_root, output = _prepare_layout(trusted_root)
+    descriptor = _descriptor(
+        output,
+        steps=[
+            {
+                "argv": [sys.executable, "-c", "raise SystemExit(7)"],
+                "chdir": str(trusted_root),
+                "environment": {},
+                "timeout_seconds": 10,
+            }
+        ],
+    )
+    with pytest.raises(
+        helper.UnsafeState, match="build-process-cleanup-failed"
+    ) as failure:
+        helper.converge(receipt_root, descriptor)
+    assert isinstance(failure.value.__cause__, helper.UnsafeState)
+    assert str(failure.value.__cause__) == "build-step-failed"
+    assert not (receipt_root / "fixture-runtime.json").exists()
+
+
+def test_supervisor_error_after_release_cannot_authorize_publication(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    helper = _faulted_build_helper(
+        trusted_root,
+        monkeypatch,
+        """
+_real_guardian_release = _guardian_release
+def _lose_release_confirmation(control):
+    released = _real_guardian_release(control)
+    if os.getpid() == os.getsid(0) and released:
+        raise OSError(5, "release confirmation failed")
+    return released
+_guardian_release = _lose_release_confirmation
+""",
+    )
+    receipt_root, output = _prepare_layout(trusted_root)
+    with pytest.raises(helper.UnsafeState, match="build-process-cleanup-failed"):
+        helper.converge(receipt_root, _descriptor(output))
+    assert not (receipt_root / "fixture-runtime.json").exists()
+
+
+@pytest.mark.parametrize("final_wait", [False, True], ids=["release", "final"])
+@pytest.mark.parametrize("cancelled", [False, True], ids=["command-failure", "sigterm"])
+def test_supervisor_wait_failure_preserves_primary_cause(
+    trusted_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    final_wait: bool,
+    cancelled: bool,
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    descriptor = _descriptor(
+        output,
+        steps=[
+            {
+                "argv": [sys.executable, "-c", "raise SystemExit(7)"],
+                "chdir": str(trusted_root),
+                "environment": {},
+                "timeout_seconds": 10,
+            }
+        ],
+    )
+    real_popen = helper.subprocess.Popen
+
+    def spawn_with_failed_wait(*args, **kwargs):
+        process = real_popen(*args, **kwargs)
+        real_wait = process.wait
+        injected = False
+
+        def fail_wait(timeout=None):
+            nonlocal injected
+            if not injected or (final_wait and timeout == 8):
+                injected = True
+                raise subprocess.TimeoutExpired(process.args, timeout)
+            return real_wait(timeout=timeout)
+
+        process.wait = fail_wait
+        if cancelled:
+            helper._BUILD_CANCELLED_SIGNAL = signal.SIGTERM
+        return process
+
+    monkeypatch.setattr(helper.subprocess, "Popen", spawn_with_failed_wait)
+    with pytest.raises(
+        helper.UnsafeState, match="build-process-cleanup-failed"
+    ) as failure:
+        helper.converge(receipt_root, descriptor)
+    cause = failure.value.__cause__
+    if cancelled:
+        assert isinstance(cause, SystemExit)
+        assert cause.code == 128 + signal.SIGTERM
+    else:
+        assert isinstance(cause, helper.UnsafeState)
+        assert str(cause) == "build-step-failed"
+    assert not (receipt_root / "fixture-runtime.json").exists()
+
+
+@pytest.mark.parametrize("recipient", ["guardian", "supervisor"])
+def test_late_cancel_record_does_not_replace_release_acknowledgement(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch, recipient: str
+) -> None:
+    helper = _faulted_build_helper(
+        trusted_root,
+        monkeypatch,
+        """
+_real_guardian_read = _guardian_read
+_real_guardian_write = _guardian_write
+_real_exit = os._exit
+_release_seen = False
+def _track_release(descriptor, timeout):
+    global _release_seen
+    message = _real_guardian_read(descriptor, timeout)
+    if message == b'R':
+        _release_seen = True
+    return message
+def _queue_cancel(descriptor, message):
+    if RECIPIENT == 'guardian' and os.getpid() == os.getsid(0) and message == b'R':
+        return os.write(descriptor, b'CR') == 2
+    return _real_guardian_write(descriptor, message)
+def _require_release(exitcode):
+    role = 'supervisor' if os.getpid() == os.getsid(0) else 'guardian'
+    if role == RECIPIENT and exitcode == 0 and not _release_seen:
+        exitcode = 92
+    _real_exit(exitcode)
+_guardian_read = _track_release
+_guardian_write = _queue_cancel
+os._exit = _require_release
+""".replace("RECIPIENT", repr(recipient)),
+    )
+    if recipient == "supervisor":
+        real_write = helper._guardian_write
+
+        def queue_cancel(descriptor, message):
+            if message == b"R":
+                return os.write(descriptor, b"CR") == 2
+            return real_write(descriptor, message)
+
+        monkeypatch.setattr(helper, "_guardian_write", queue_cancel)
+    receipt_root, output = _prepare_layout(trusted_root)
+    assert helper.converge(receipt_root, _descriptor(output))["changed"] is True
+    assert helper.inspect(receipt_root, _descriptor(output))["reason"] == "current"
+
+
+@pytest.mark.parametrize("ignored", [False, True], ids=["custom", "ignored"])
+def test_nondefault_sigchld_refuses_before_spawning_a_supervisor(
+    trusted_root: Path, monkeypatch: pytest.MonkeyPatch, ignored: bool
+) -> None:
+    helper = _helper_module()
+    receipt_root, output = _prepare_layout(trusted_root)
+    handler = signal.SIG_IGN if ignored else lambda _signum, _frame: None
+    previous = signal.signal(signal.SIGCHLD, handler)
+    real_popen = helper.subprocess.Popen
+    spawned = False
+
+    def record_spawn(*args, **kwargs):
+        nonlocal spawned
+        spawned = True
+        return real_popen(*args, **kwargs)
+
+    monkeypatch.setattr(helper.subprocess, "Popen", record_spawn)
+    try:
+        with pytest.raises(helper.UnsafeState, match="build-process-cleanup-failed"):
+            helper.converge(receipt_root, _descriptor(output))
+        assert signal.getsignal(signal.SIGCHLD) is handler
+        assert not spawned
+        assert not (receipt_root / "fixture-runtime.json").exists()
+    finally:
+        signal.signal(signal.SIGCHLD, previous)
+
+
 def test_build_timeout_terminates_the_whole_child_process_group(
     trusted_root: Path,
 ) -> None:
@@ -2322,8 +2728,8 @@ def test_re_sessioned_descendant_is_outside_foreground_group_contract(
 ) -> None:
     helper = _helper_module()
     escaped_pid_path = trusted_root / "escaped-session-pid"
-    leader = subprocess.Popen(
-        [
+    step = {
+        "argv": [
             sys.executable,
             "-c",
             (
@@ -2335,28 +2741,21 @@ def test_re_sessioned_descendant_is_outside_foreground_group_contract(
             ),
             str(escaped_pid_path),
         ],
-        start_new_session=True,
-    )
-    deadline = time.monotonic() + 5
-    while not escaped_pid_path.exists() and time.monotonic() < deadline:
-        time.sleep(0.02)
-    assert escaped_pid_path.is_file()
-    escaped_pid = int(escaped_pid_path.read_text())
-
+        "chdir": str(trusted_root),
+        "environment": {},
+        "timeout_seconds": 1,
+    }
     try:
-        helper._terminate_process_group(leader)
-        assert leader.poll() is not None
-        os.kill(escaped_pid, 0)
+        with pytest.raises(helper.UnsafeState, match="build-step-failed"):
+            helper._run_build_steps({"steps": [step]}, {})
+        assert escaped_pid_path.is_file()
+        os.kill(int(escaped_pid_path.read_text()), 0)
     finally:
-        try:
-            os.kill(escaped_pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass  # The detached test process may already have exited.
-        try:
-            leader.kill()
-        except ProcessLookupError:
-            pass  # Foreground process-group cleanup already reaped the leader.
-        leader.wait(timeout=5)
+        if escaped_pid_path.is_file():
+            try:
+                os.kill(int(escaped_pid_path.read_text()), signal.SIGKILL)
+            except ProcessLookupError:
+                pass  # The detached test process may already have exited.
 
 
 def test_cancellation_observed_after_spawn_reaps_before_lock_release(
@@ -2416,7 +2815,8 @@ def test_cli_interrupt_terminates_and_reaps_the_build_process_group(
     builder = trusted_root / "spawn-interrupt-child.py"
     builder.write_text(
         "import os,pathlib,subprocess,sys,time\n"
-        "pathlib.Path(sys.argv[1]).write_text(str(os.getpid()))\n"
+        "ready=pathlib.Path(sys.argv[1]);pending=ready.with_suffix('.pending')\n"
+        "pending.write_text(str(os.getpgrp()));pending.replace(ready)\n"
         "subprocess.Popen([sys.executable,'-c',"
         "'import pathlib,signal,time;signal.signal(signal.SIGTERM,signal.SIG_IGN);"
         "time.sleep(3);pathlib.Path(r\\\"'"
