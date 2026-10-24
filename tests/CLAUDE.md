@@ -16,6 +16,11 @@
 
 AWG source-candidate acceptance retains all six scalar pair matrices and adds a candidate-only range/signature matrix. Packet capture checks header membership and variation, all five signature packets and their byte encodings. Real TCP/UDP/DNS probes and reconnects remain required. Contract fixtures use bundle version 2; encrypted public fixtures are regenerated through SOPS after source fixture changes.
 
+Payload quality contract tests compare the exact paired version-2 fixture,
+including semantic pass/window budgets. Canary tests use real sockets for
+HEAD, exact 1 MiB content, concurrent requests and worker admission. These
+local controls do not establish deployed origin or filtered-path acceptance.
+
 Compiler patch refreshes keep the AWG source-candidate fixture and role archive
 digests aligned with `mise.toml`; workflow assertions follow the same Terraform
 patch as local and hosted native validation.

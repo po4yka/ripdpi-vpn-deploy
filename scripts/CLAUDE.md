@@ -80,7 +80,11 @@ Classify every direction before combining evidence: any proven cliff wins
 over an underconstrained direction, using the smallest proven threshold.
 HTTP/2 framing and stream failures are network evidence; certificate and
 content failures retain error priority.
-The loopback canary applies a total request deadline.
+The loopback canary applies a total request deadline and four bounded workers;
+HEAD reports exact canonical length without a body. Canonical objects are at
+most 1 MiB. Recipient policy version 2 optionally admits bounded quality
+measurements; pass/window reservations include each body plus one overflow
+byte. Quality absence retains health-only behavior; version 1 is rejected.
 Recipient failover uses `payload_failover_policy.py` for strict two-origin HTTPS
 policy admission; all contributing hosts must agree before extended emission.
 Control URLs reject fragment delimiters even when the fragment is empty, matching

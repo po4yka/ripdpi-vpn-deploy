@@ -16,6 +16,13 @@ BOUNDS = {
     "max_backoff_seconds": (60, 3600),
 }
 FIELDS = {"schema_version", "selector_tag", "probes", *BOUNDS}
+QUALITY_BOUNDS = {
+    "max_pass_bytes": (65538, 16777216),
+    "max_window_bytes": (65538, 268435456),
+    "window_seconds": (60, 86400),
+    "minimum_gain_percent": (5, 100),
+    "maximum_loaded_latency_increase_ms": (0, 2000),
+}
 
 
 def https_origin(url):
@@ -54,8 +61,8 @@ def validate_policy(value):
     if value is None:
         return None
     invalid = ValueError("invalid-payload-failover-policy")
-    if (not isinstance(value, dict) or set(value) != FIELDS
-            or type(value["schema_version"]) is not int or value["schema_version"] != 1
+    if (not isinstance(value, dict) or set(value) not in (FIELDS, FIELDS | {"quality"})
+            or type(value["schema_version"]) is not int or value["schema_version"] != 2
             or value["selector_tag"] != "select"):
         raise invalid
     for field, (low, high) in BOUNDS.items():
@@ -70,11 +77,25 @@ def validate_policy(value):
     origins = set()
     for probe in probes:
         if (not isinstance(probe, dict) or set(probe) != {"url", "expected_bytes", "sha256"}
-                or type(probe["expected_bytes"]) is not int or not 32768 <= probe["expected_bytes"] <= 65536
+                or type(probe["expected_bytes"]) is not int or not 32768 <= probe["expected_bytes"] <= 1048576
                 or not isinstance(probe["sha256"], str)
                 or not re.fullmatch(r"[0-9a-f]{64}", probe["sha256"])):
             raise invalid
         origins.add(https_origin(probe["url"]))
     if len(origins) != 2:
         raise invalid
+    if "quality" in value:
+        quality = value["quality"]
+        if not isinstance(quality, dict) or set(quality) != set(QUALITY_BOUNDS):
+            raise invalid
+        for field, (low, high) in QUALITY_BOUNDS.items():
+            if type(quality[field]) is not int or not low <= quality[field] <= high:
+                raise invalid
+        # Reserve both origins for the active member and one challenger. The
+        # extra byte detects oversized bodies; headers and wire bytes are separate.
+        required = 2 * sum(probe["expected_bytes"] + 1 for probe in probes)
+        if (quality["max_pass_bytes"] < required
+                or quality["max_window_bytes"] < quality["max_pass_bytes"]
+                or quality["window_seconds"] < value["interval_seconds"]):
+            raise invalid
     return deepcopy(value)
