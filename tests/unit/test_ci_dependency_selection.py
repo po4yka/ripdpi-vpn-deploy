@@ -114,6 +114,57 @@ def isolated_git_configuration(monkeypatch):
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
 
 
+def test_portable_unit_test_changes_skip_native_lanes_only_when_unreachable(tmp_path):
+    units = tmp_path / "tests/unit"
+    units.mkdir(parents=True)
+    (tmp_path / "tests/native").mkdir()
+    (tmp_path / "tests/native/runner.py").write_text("import test_runner_helper\n")
+    (tmp_path / "Makefile").write_text("probe:\n\tpytest tests/unit/test_named_by_make.py\n")
+    files = {
+        "test_portable.py": "def test_ok():\n    pass\n",
+        "test_marked.py": "import pytest\n@pytest.mark.native_runtime\ndef test_x():\n    pass\n",
+        "test_lab_native.py": "from test_shared_helper import value\n",
+        "test_shared_helper.py": "from test_transitive_helper import value\n",
+        "test_transitive_helper.py": "value = 1\n",
+        "test_runner_helper.py": "value = 2\n",
+        "test_named_by_make.py": "def test_ok():\n    pass\n",
+        "helper.py": "value = 3\n",
+    }
+    for name, text in files.items():
+        (units / name).write_text(text)
+    portable = selection.portable_unit_tests(tmp_path)
+    assert portable == {"tests/unit/test_portable.py"}
+    assert not selection.plan(["tests/unit/test_portable.py"], portable)["checks"]["native-runtime"]
+    for name in [*files, "test_deleted.py", "fixtures/data.json"]:
+        checks = selection.plan([f"tests/unit/{name}"], portable)["checks"]
+        if name != "test_portable.py":
+            assert checks["native-runtime"] and checks["transport-runtime-acceptance"], name
+        assert checks["unit-tests"]
+    # The live repository keeps Make-named and imported helpers native-reachable.
+    live = selection.portable_unit_tests(ROOT)
+    # Naming a module here would make it reachable through this file, so count instead.
+    assert len(live) >= 100
+    assert all("native_runtime" not in (ROOT / path).read_text() for path in live)
+    assert "tests/unit/test_ci_dependency_selection.py" not in live  # It names the marker.
+    assert "tests/unit/test_watchdog_templates.py" not in live
+    assert "tests/unit/test_awg_device_binding.py" not in live
+
+
+def test_pr_selection_skips_native_lanes_for_a_portable_test_edit(repo):
+    (repo / "tests/unit").mkdir(parents=True)
+    (repo / "tests/native").mkdir()
+    (repo / "Makefile").write_text("all:\n")
+    (repo / "tests/unit/test_portable.py").write_text("def test_ok():\n    pass\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "portable test")
+    base = git(repo, "rev-parse", "HEAD")
+    (repo / "tests/unit/test_portable.py").write_text("def test_ok():\n    assert True\n")
+    git(repo, "commit", "-qam", "edit portable test")
+    result = selection.plan_from_git(repo, "pull_request", base)
+    assert result["mode"] == "selected" and result["checks"]["unit-tests"]
+    assert not result["checks"]["native-runtime"]
+
+
 def test_an_unknown_path_after_300_files_cannot_be_truncated_away():
     paths = [f"docs/page-{i}.md" for i in range(350)] + ["unknown/input"]
     assert all(selection.plan(paths)["checks"].values())
