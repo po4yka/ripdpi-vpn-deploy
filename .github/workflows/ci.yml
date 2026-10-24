@@ -19,6 +19,11 @@ jobs:
     name: CI dependency selection
     runs-on: ubuntu-24.04
     timeout-minutes: 3
+    # Read-only API access lets a main push reuse the full PR run of its exact tree.
+    permissions:
+      contents: read  # check out the tested tree
+      actions: read  # read the PR run and its job conclusions
+      pull-requests: read  # find the merged PR of the pushed commit
     outputs:
       checks: ${{ steps.plan.outputs.checks }}
     steps:
@@ -30,6 +35,7 @@ jobs:
         id: plan
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/select-ci-checks.py
 
   gitleaks:

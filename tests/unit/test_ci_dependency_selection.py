@@ -368,3 +368,67 @@ def test_selector_cli_writes_machine_outputs_and_explains_the_plan(repo, tmp_pat
     checks = json.loads(output.read_text().split("checks=", 1)[1])
     assert all(checks.values())
     assert "Full CI" in summary.read_text()
+
+
+def fake_api(repo, head_tree=None, pulls=None, jobs=None, conclusion="success"):
+    """Answer the GitHub REST reads with one merged PR and one full run by default."""
+    sha = git(repo, "rev-parse", "HEAD")
+    tree = git(repo, "rev-parse", "HEAD^{tree}")
+    responses = {
+        f"commits/{sha}/pulls": pulls if pulls is not None else [
+            {"merged_at": "2026-10-24T00:00:00Z", "merge_commit_sha": sha,
+             "base": {"ref": "main"}, "head": {"sha": "a" * 40}}],
+        f"commits/{'a' * 40}": {"commit": {"tree": {"sha": head_tree or tree}}},
+        f"actions/workflows/ci.yml/runs?event=pull_request&head_sha={'a' * 40}&status=success&per_page=20":
+            {"workflow_runs": [{"id": 7, "head_sha": "a" * 40, "conclusion": conclusion}]},
+        "actions/runs/7/jobs?filter=latest&per_page=100": jobs if jobs is not None else
+            {"total_count": 2, "jobs": [{"name": "a", "conclusion": "success"},
+                                        {"name": "b", "conclusion": "success"}]},
+    }
+    return sha, lambda path: responses[path]
+
+
+def test_main_push_reuses_a_full_successful_run_of_the_identical_tree(repo):
+    sha, api = fake_api(repo)
+    result = selection.plan_from_git(repo, "push", "", sha=sha, api=api)
+    assert result["mode"] == "reused"
+    assert {name for name, selected in result["checks"].items() if selected} == selection.ALWAYS
+    assert run_gate({"selection": {"result": "success", "outputs": {"checks": json.dumps(result["checks"])}},
+                     **{name: {"result": "success" if selected else "skipped"}
+                        for name, selected in result["checks"].items()}}).returncode == 0
+
+
+@pytest.mark.parametrize("case", ["tree", "no-pr", "two-prs", "unmerged", "other-base", "skipped-job",
+                                  "failed-job", "partial-jobs", "no-run", "api-error", "bad-sha", "dispatch"])
+def test_main_push_keeps_full_ci_when_reuse_is_uncertain(repo, case):
+    sha, api = fake_api(repo)
+    merged = {"merged_at": "2026-10-24T00:00:00Z", "merge_commit_sha": sha, "base": {"ref": "main"},
+              "head": {"sha": "a" * 40}}
+    event = "push"
+    if case == "tree":
+        sha, api = fake_api(repo, head_tree="b" * 40)
+    elif case == "no-pr":
+        sha, api = fake_api(repo, pulls=[])
+    elif case == "two-prs":
+        sha, api = fake_api(repo, pulls=[merged, merged])
+    elif case == "unmerged":
+        sha, api = fake_api(repo, pulls=[{**merged, "merged_at": None}])
+    elif case == "other-base":
+        sha, api = fake_api(repo, pulls=[{**merged, "base": {"ref": "release"}}])
+    elif case in {"skipped-job", "failed-job"}:
+        outcome = "skipped" if case == "skipped-job" else "failure"
+        sha, api = fake_api(repo, jobs={"total_count": 2, "jobs": [
+            {"name": "a", "conclusion": "success"}, {"name": "b", "conclusion": outcome}]})
+    elif case == "partial-jobs":
+        sha, api = fake_api(repo, jobs={"total_count": 120, "jobs": [{"name": "a", "conclusion": "success"}]})
+    elif case == "no-run":
+        sha, api = fake_api(repo, conclusion="failure")
+    elif case == "api-error":
+        def api(path):
+            raise OSError("network unavailable")
+    elif case == "bad-sha":
+        sha = "HEAD"
+    elif case == "dispatch":
+        event = "workflow_dispatch"
+    result = selection.plan_from_git(repo, event, "", sha=sha, api=api)
+    assert result["mode"] == "full" and all(result["checks"].values())

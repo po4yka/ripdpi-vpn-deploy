@@ -846,7 +846,10 @@ coverage follows that composite and includes its required Galaxy installation.
 **CI selection follows complete consumers** — common Python/static checks always
 run; costly PR lanes follow the selector's path graph. Docs are bundled into
 Python vpnd. Keep Ansible scenarios together for cross-role inputs, and full CI for
-main/manual/shared/unknown changes. A changed top-level `tests/unit/test_*.py` module skips the native lanes only when no native lane can run or import it: its name and text avoid the native marker, the Makefile does not name it, and no native-reachable test file mentions its module name. Deleted and other `tests/unit/` paths keep native selection. The final gate requires every selected job
+main/manual/shared/unknown changes. A main push reuses a PR run only when exactly one merged PR has that
+merge commit, its head tree equals the pushed tree, and a successful run of that
+head has every job successful with none skipped; it then runs only the always-run
+checks. Any API, history or match uncertainty keeps full CI. A changed top-level `tests/unit/test_*.py` module skips the native lanes only when no native lane can run or import it: its name and text avoid the native marker, the Makefile does not name it, and no native-reachable test file mentions its module name. Deleted and other `tests/unit/` paths keep native selection. The final gate requires every selected job
 and permits only planned skips; adding a job must update the selector and tests.
 
 **CI package installation uses Ubuntu sources only** — the cloud-init and

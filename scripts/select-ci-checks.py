@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import urllib.request
 
 
 # These checks inspect the whole repository, including executable documentation
@@ -127,7 +128,60 @@ def plan(paths, portable_tests=frozenset()):
     }
 
 
-def plan_from_git(repo, event, base):
+def github_api(path):
+    """GET one GitHub REST resource of this repository with the job token."""
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/{path}",
+        headers={"Accept": "application/vnd.github+json",
+                 "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
+                 "X-GitHub-Api-Version": "2022-11-28"},
+    )
+    with urllib.request.urlopen(request, timeout=20) as response:
+        return json.load(response)
+
+
+def reused_plan(repo, sha, api):
+    """Reuse a full successful PR run when main received exactly its tested tree.
+
+    Branch protection requires up-to-date branches, so merging commits the PR
+    head tree. Anything else returns None and keeps full CI.
+    """
+    if re.fullmatch(r"[0-9a-f]{40}", sha) is None:
+        return None
+    pulls = [pull for pull in api(f"commits/{sha}/pulls")
+             if pull.get("merged_at") and pull.get("merge_commit_sha") == sha
+             and pull.get("base", {}).get("ref") == "main"]
+    if len(pulls) != 1:
+        return None
+    head = pulls[0]["head"]["sha"]
+    tree = subprocess.check_output(["git", "rev-parse", f"{sha}^{{tree}}"], cwd=repo, text=True,
+                                   stderr=subprocess.PIPE, timeout=30).strip()
+    if re.fullmatch(r"[0-9a-f]{40}", head) is None or api(f"commits/{head}")["commit"]["tree"]["sha"] != tree:
+        return None
+    runs = api(f"actions/workflows/ci.yml/runs?event=pull_request&head_sha={head}&status=success&per_page=20")
+    for run in runs.get("workflow_runs", []):
+        if run.get("head_sha") != head or run.get("conclusion") != "success":
+            continue
+        jobs = api(f"actions/runs/{run['id']}/jobs?filter=latest&per_page=100")
+        listed = jobs.get("jobs", [])
+        # A full plan runs every job; one skipped job means the PR used a selection.
+        if listed and jobs.get("total_count") == len(listed) and all(
+                job.get("conclusion") == "success" for job in listed):
+            return {
+                "mode": "reused", "reason": f"Main tree matches full successful PR CI run {run['id']}",
+                "changed_files": None, "components": [],
+                "checks": {name: name in ALWAYS for name in sorted(ALL_CHECKS)},
+            }
+    return None
+
+
+def plan_from_git(repo, event, base, sha="", api=None):
+    if event == "push" and api is not None:
+        try:
+            if reused := reused_plan(repo, sha, api):
+                return reused
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.SubprocessError):
+            pass
     if event != "pull_request":
         return full_plan("Main pushes and manual runs execute full CI")
     if re.fullmatch(r"[0-9a-f]{40}", base) is None or base == "0" * 40:
@@ -157,7 +211,9 @@ def plan_from_git(repo, event, base):
 
 
 def main():
-    result = plan_from_git(Path.cwd(), os.environ.get("GITHUB_EVENT_NAME", ""), os.environ.get("PR_BASE_SHA", ""))
+    api = github_api if os.environ.get("GITHUB_TOKEN") and os.environ.get("GITHUB_REPOSITORY") else None
+    result = plan_from_git(Path.cwd(), os.environ.get("GITHUB_EVENT_NAME", ""), os.environ.get("PR_BASE_SHA", ""),
+                           os.environ.get("GITHUB_SHA", ""), api)
     print(json.dumps(result, sort_keys=True))
     if output := os.environ.get("GITHUB_OUTPUT"):
         with open(output, "a", encoding="utf-8") as stream:
