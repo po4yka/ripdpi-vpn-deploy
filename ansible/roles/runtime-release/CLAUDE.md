@@ -158,6 +158,16 @@ Staged includes return `runtime_release_candidates` for their own consumer. They
 - **Build cancellation owns the foreground process group** — SIGINT, SIGTERM,
   timeouts, direct exceptions, and a leader that exits with same-group children
   terminate and reap that private session before the project lock is released.
+  A private session supervisor retains a non-session-leader command guardian;
+  the guardian leaves its original group before probing or terminating it and
+  keeps its PID allocated until cleanup is confirmed. Only that live guardian,
+  or its supervisor holding it unreaped, may act on the old group. EPERM is an
+  unknown state that must settle to ESRCH; it never proves successful cleanup.
+  Control-channel loss refuses publication and requests owned cleanup.
+  Fatal Python exceptions also use this cleanup path.
+  Callers must retain default SIGCHLD handling so owned children remain
+  waitable; the helper refuses a nondefault handler before launching a build
+  and never changes the caller's handler.
   Repository-authored build commands must stay foreground: `setsid`, `setpgrp`,
   double-fork, and daemon modes escape portable process-group containment and
   are outside this helper's trusted-command contract.
