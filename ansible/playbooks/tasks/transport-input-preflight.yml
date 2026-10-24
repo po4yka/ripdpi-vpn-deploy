@@ -14,6 +14,8 @@
       {{ {'secrets': {'xray': xray | default({}),
                       'nginx_xhttp': nginx_xhttp | default({}),
                       'amneziawg_secrets': amneziawg_secrets | default({}),
+                      'amneziawg_go_commit': amneziawg_go_commit | default(''),
+                      'amneziawg_tools_commit': amneziawg_tools_commit | default(''),
                       'hysteria': hysteria | default({}),
                       'transport_egress_secrets': transport_egress_secrets | default(none)},
           'context': {'vpn': (vpn | default({})) | combine(

@@ -378,7 +378,7 @@ def _materialize(client, o, *, documents=None, source_paths=None, private_only=F
             raise ValueError('ambiguous-device-binding')
         if o['awg_host'] and not awg:
             raise ValueError('missing-device-binding')
-        payload['ripdpi'] = dict(schema_version=1, amneziawg=awg, hysteria_extras=extras, topology=topology)
+        payload['ripdpi'] = dict(schema_version=2, amneziawg=awg, hysteria_extras=extras, topology=topology)
         if policy is not None:
             payload['ripdpi']['payload_failover'] = policy
         if o['expires']:

@@ -2,6 +2,13 @@
 
 ## Design decisions
 
+Evidence fixtures use the named AWG wire profile with canonical singleton
+headers only. Shared parameter and source-capability admission runs on the
+controller before host changes, including check mode. This separate lane rejects
+ranges and I1-I5 even when candidate source pins are supplied; it also rejects
+nonzero S3/S4 and unknown fields. The format change does not qualify candidate
+sources or physical devices.
+
 The offline sentinel AWG build uses the same reviewed source correction as the
 family role. Its full correction identity participates in immutable toolchain
 inputs, so an older uncorrected generation cannot satisfy the new manifest.

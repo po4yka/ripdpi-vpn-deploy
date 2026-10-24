@@ -1,0 +1,4 @@
+schema: ripdpi-deploy-change
+created: 2026-10-23
+goal: ANS-1792776076428131 Deliver AWG range and signature profiles across
+  server and client

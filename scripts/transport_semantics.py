@@ -18,6 +18,99 @@ import re
 import sys
 from urllib.parse import urlsplit
 
+WIRE_PROFILE = "awg-3.1-ranges-v1"
+HEADERS = tuple(f"h{index}" for index in range(1, 5))
+SIGNATURES = tuple(f"i{index}" for index in range(1, 6))
+RANGE_SOURCE = "b5928efb6ca19f0153958460c3d141f04abc5c2e"
+RANGE_TOOLS = "ee0f0a9aa34ff0a0da4b3433b9512781cfe02843"
+DECIMAL = r"(?:0|[1-9][0-9]{0,9})"
+HEADER_PATTERN = rf"{DECIMAL}(?:-{DECIMAL})?"
+TOKEN = re.compile(r"<(?:(b) 0x([0-9a-f]+)|(r|rd|rc) ([1-9][0-9]{0,3})|(t))>")
+
+
+def header_range(value: object) -> tuple[int, int]:
+    if not isinstance(value, str) or re.fullmatch(HEADER_PATTERN, value) is None:
+        raise ValueError("invalid-awg-header-range")
+    parts = value.split("-")
+    lower, upper = int(parts[0]), int(parts[-1])
+    if upper > 0xFFFFFFFF or lower > upper or (len(parts) == 2 and lower == upper):
+        raise ValueError("invalid-awg-header-range")
+    return lower, upper
+
+
+def signature_size(value: object) -> int:
+    """Validate canonical source text without creating generated packet bytes."""
+    if not isinstance(value, str) or not 1 <= len(value) <= 4096:
+        raise ValueError("invalid-awg-signature")
+    offset = size = count = 0
+    while offset < len(value):
+        token = TOKEN.match(value, offset)
+        if token is None:
+            raise ValueError("invalid-awg-signature")
+        literal, hex_bytes, random_kind, length, timestamp = token.groups()
+        if literal:
+            if len(hex_bytes) % 2:
+                raise ValueError("invalid-awg-signature")
+            size += len(hex_bytes) // 2
+        elif random_kind:
+            size += int(length)
+        elif timestamp:
+            size += 4
+        count += 1
+        if count > 64 or size > 1280:
+            raise ValueError("invalid-awg-signature")
+        offset = token.end()
+    return size
+
+
+def profile_errors(raw: dict, path: str, *, allow_placeholders: bool = False) -> list[tuple[str, str]]:
+    errors = []
+    if raw.get("wire_profile") != WIRE_PROFILE:
+        errors.append((f"{path}.wire_profile", "requires the supported AWG wire profile"))
+    ranges = []
+    for index, name in enumerate(HEADERS, 1):
+        value = raw.get(name)
+        if allow_placeholders and isinstance(value, str) and re.fullmatch(r"REPLACE(?:_WITH_[A-Z0-9_]+)?", value):
+            continue
+        try:
+            interval = header_range(value)
+            if interval[0] <= 4 and interval != (index, index):
+                errors.append((f"{path}.{name}", "requires the standard message type or values above four"))
+            if any(interval[0] <= prior[1] and prior[0] <= interval[1] for prior in ranges):
+                errors.append((path, "header ranges must be pairwise disjoint"))
+            ranges.append(interval)
+        except ValueError:
+            errors.append((f"{path}.{name}", "requires a canonical uint32 range string"))
+    for name in SIGNATURES:
+        if name in raw:
+            try:
+                signature_size(raw[name])
+            except ValueError:
+                errors.append((f"{path}.{name}", "requires a bounded canonical signature program"))
+    return errors
+
+
+def source_errors(raw: dict, source: dict, path: str) -> list[tuple[str, str]]:
+    """Earlier peers support singleton headers with their original type mapping."""
+    reviewed = (source.get("amneziawg_go_commit") == RANGE_SOURCE
+                and source.get("amneziawg_tools_commit") == RANGE_TOOLS)
+    if reviewed:
+        return []
+    if any(name in raw for name in SIGNATURES):
+        return [(path, "signature programs require the reviewed source pair")]
+    errors = []
+    for index, name in enumerate(HEADERS, 1):
+        try:
+            lower, upper = header_range(raw.get(name))
+        except ValueError:
+            continue  # Profile admission reports malformed values.
+        if lower != upper:
+            errors.append((f"{path}.{name}", "header ranges require the reviewed source pair"))
+        elif lower <= 4 and lower != index:
+            errors.append((f"{path}.{name}", "requires the standard message type or a value above four"))
+    return errors
+
+
 INTERFACE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,14}\Z")
 PLACEHOLDER = re.compile(r"REPLACE_WITH_[A-Z0-9_]+\Z")
 AWG_PARAMETERS = {"jc": 4, "jmin": 40, "jmax": 70, "s1": 50, "s2": 100}
@@ -498,13 +591,11 @@ def cohort_errors(raw: object, *, allow_placeholders: bool = False) -> list[tupl
 
 
 def parameter_errors(raw: dict, path: str, *, allow_placeholders: bool = False) -> list[tuple[str, str]]:
-    errors = []
+    errors = profile_errors(raw, path, allow_placeholders=allow_placeholders)
     effective = {**AWG_PARAMETERS, **raw}
-    for name in (*AWG_PARAMETERS, "h1", "h2", "h3", "h4"):
+    for name in AWG_PARAMETERS:
         value = effective.get(name)
-        if name.startswith("h") and allow_placeholders and isinstance(value, str) and PLACEHOLDER.fullmatch(value):
-            continue
-        maximum = 128 if name == "jc" else (2**32 - 1 if name.startswith("h") else 1280)
+        maximum = 128 if name == "jc" else 1280
         if type(value) is not int or not 0 <= value <= maximum:
             errors.append((f"{path}.{name}", "invalid bounded integer"))
     if all(type(effective.get(name)) is int for name in ("jmin", "jmax")) and effective["jmin"] > effective["jmax"]:
@@ -512,14 +603,6 @@ def parameter_errors(raw: dict, path: str, *, allow_placeholders: bool = False) 
     if (all(type(effective.get(name)) is int for name in ("s1", "s2"))
             and 148 + effective["s1"] == 92 + effective["s2"]):
         errors.append((path, "initiation and response sizes must differ"))
-    headers = [effective.get(f"h{i}") for i in range(1, 5)]
-    for index, value in enumerate(headers, 1):
-        # The pinned engine maps every value at most four to this message's
-        # standard type. Refuse rewrites so exports describe the actual wire.
-        if type(value) is int and 0 <= value <= 4 and value != index:
-            errors.append((f"{path}.h{index}", "requires the standard message type or a value above four"))
-    if all(type(value) is int for value in headers) and len(set(headers)) != 4:
-        errors.append((path, "headers must be pairwise distinct"))
     return errors
 
 
@@ -542,12 +625,12 @@ def effective_awg_instances(raw: object, defaults: object = None, cohort: object
     if not isinstance(instances, list) or not instances or any(not isinstance(item, dict) for item in instances):
         raise ValueError("invalid-awg-contract")
     fields = {"name", "listen_port", "address_v4", "address_v6", "server_private_key", "peers",
-              "mtu", "s3", "s4", *AWG_PARAMETERS, "h1", "h2", "h3", "h4"}
+              "mtu", "s3", "s4", "wire_profile", *AWG_PARAMETERS, *HEADERS, *SIGNATURES}
     if any(set(item) - fields for item in instances):
         raise ValueError("invalid-awg-contract")
     defaults = defaults if isinstance(defaults, dict) else {}
     cohort = cohort if isinstance(cohort, dict) else {}
-    if set(cohort) - fields or any(f"i{index}" in defaults for index in range(1, 6)):
+    if set(cohort) - fields or any(name in defaults for name in SIGNATURES):
         raise ValueError("unsupported-awg-policy")
     return [{**AWG_PARAMETERS, "mtu": cohort.get("mtu", defaults.get("mtu", AWG_MTU_DEFAULT)),
              "dns_servers": ["1.1.1.1", "1.0.0.1"],
@@ -558,7 +641,7 @@ def effective_awg_instances(raw: object, defaults: object = None, cohort: object
 
 
 def awg_errors(raw: object, defaults: object = None, cohort: object = None, *,
-               allow_placeholders: bool = False) -> list[tuple[str, str]]:
+               allow_placeholders: bool = False, source: dict | None = None) -> list[tuple[str, str]]:
     if not isinstance(raw, dict):
         return [("amneziawg_secrets", "must be a mapping")]
     defaults = defaults if isinstance(defaults, dict) else {}
@@ -569,9 +652,9 @@ def awg_errors(raw: object, defaults: object = None, cohort: object = None, *,
         return [("amneziawg_secrets.instances", "must be the sole nonempty instance authority")]
     errors = []
     # Preserve the existing forward guard across every declared source.
-    for source in [raw, defaults, cohort, *instances]:
+    for layer in [raw, defaults, cohort, *instances]:
         for name in ("s3", "s4"):
-            if type(source.get(name, 0)) is not int or source.get(name, 0) != 0:
+            if type(layer.get(name, 0)) is not int or layer.get(name, 0) != 0:
                 errors.append(("amneziawg_secrets", "S3/S4 must remain zero"))
     selected = [(f"amneziawg_secrets.instances.{index}", item) for index, item in enumerate(instances)]
     names, ports, claims = set(), set(), []
@@ -613,6 +696,7 @@ def awg_errors(raw: object, defaults: object = None, cohort: object = None, *,
                 except (ValueError, TypeError):
                     errors.append((f"{path}.{field}", "invalid interface address family or CIDR"))
         errors.extend(parameter_errors(item, path, allow_placeholders=allow_placeholders))
+        errors.extend(source_errors(item, source or {}, path))
         server_key = item.get("server_private_key")
         if not key_valid(server_key, allow_placeholders=allow_placeholders):
             errors.append((f"{path}.server_private_key", "invalid canonical 32-byte key"))
@@ -787,7 +871,7 @@ def transport_errors(doc: object, context: object = None, *, sections: list[str]
             or ("hysteria" in sections and isinstance(vpn, dict) and vpn.get("enable_nginx_xhttp", False))):
         errors.extend(xhttp_errors(doc, context))
     if "awg" in sections:
-        errors.extend(awg_errors(doc.get("amneziawg_secrets"), context.get("amneziawg"), context.get("amneziawg_cohort"), allow_placeholders=allow_placeholders))
+        errors.extend(awg_errors(doc.get("amneziawg_secrets"), context.get("amneziawg"), context.get("amneziawg_cohort"), allow_placeholders=allow_placeholders, source=doc))
 
     if "hysteria" in sections:
         errors.extend(hysteria_errors(doc.get("hysteria"), context.get("public_site_canonical_url")))

@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-10-23
+goal: XRY-1792776853872491 Separate reviewed Xray pins from upstream release status

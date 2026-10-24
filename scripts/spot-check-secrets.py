@@ -3,7 +3,7 @@
 
 Walks the YAML tree and flags anything that would deploy as a known-bad
 value: REPLACE_WITH_* placeholders, expired or self-signed cert PEMs,
-H1..H4 still as strings, weak passwords, plaintext cloudflare default
+invalid H1..H4 range strings, weak passwords, plaintext cloudflare default
 target, etc.
 
 Reads $VPN_SECRETS_FILE (set by `make decrypt`) or the path passed as

@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Transport preflight passes the exact AWG Go and tools commits with the private instance authority. Range and signature admission requires both reviewed commits before runtime mutation. The role normalization path uses the same inputs.
+
 The protected activation orchestrator closes standalone full retirement through `playbooks/tasks/transport-egress-finish.yml`. A surrounding ingress site transaction retains completion ownership instead, including the exact revocation authority in its durable commit decision.
 
 Explicit empty Xray/Hysteria client lists retire their effective transports.

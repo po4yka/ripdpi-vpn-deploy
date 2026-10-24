@@ -21,7 +21,9 @@
       - "{{ role_path }}/../../../scripts/awg_device_binding.py"
       - normalize
     stdin: >-
-      {{ {'secrets': {'amneziawg_secrets': amneziawg_secrets},
+      {{ {'secrets': {'amneziawg_secrets': amneziawg_secrets,
+                      'amneziawg_go_commit': amneziawg_go_commit | default(''),
+                      'amneziawg_tools_commit': amneziawg_tools_commit | default('')},
           'context': {'amneziawg': amneziawg, 'amneziawg_cohort': amneziawg_cohort}} | to_json }}
     stdin_add_newline: false
   delegate_to: localhost

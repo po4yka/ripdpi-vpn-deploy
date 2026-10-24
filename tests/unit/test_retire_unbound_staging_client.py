@@ -228,10 +228,10 @@ def setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             ],
         },
         "hysteria": {"clients": [{"name": client, "password": "private-hy"}]},
-        "amneziawg_secrets": {"instances": [{
+        "amneziawg_secrets": {"instances": [{"wire_profile": "awg-3.1-ranges-v1",
             "name": "awg0", "listen_port": 51820, "address_v4": "10.66.66.1/24", "address_v6": "fd42:42:42::1/64",
             "server_private_key": key(1),
-            "h1": 1, "h2": 2, "h3": 3, "h4": 4,
+            "h1": '1', "h2": '2', "h3": '3', "h4": '4',
             "peers": [{"name": client, "public_key": "CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk=",
                        "preshared_key": "CgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgo=", "allowed_ips": {"ipv4": "10.66.66.2/32", "ipv6": "fd42:42:42::2/128"}}]}]},
         "snell_secrets": {

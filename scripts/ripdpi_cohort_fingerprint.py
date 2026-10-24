@@ -12,13 +12,13 @@ The algorithm is the cross-language contract (bash emit-side calls this file;
 the Kotlin client reimplements it). Keep it byte-for-byte identical to the
 `cohort_fingerprint` $defs note in contract/ripdpi-bundle.schema.json:
 
-  preimage = "jc=<jc>&jmin=<jmin>&jmax=<jmax>&s1=<s1>&s2=<s2>"
+  preimage = "wire_profile=awg-3.1-ranges-v1&jc=<jc>&jmin=<jmin>&jmax=<jmax>&s1=<s1>&s2=<s2>"
              "&h1=<h1>&h2=<h2>&h3=<h3>&h4=<h4>"
              "&i1=<i1>&i2=<i2>&i3=<i3>&i4=<i4>&i5=<i5>"
   fingerprint = "sha256:" + hex(sha256(preimage.encode("utf-8")))
 
-Each numeric value is base-10 with no leading zeros; each i-value is its
-lowercase-hex string or "" when absent.
+Each scalar is base-10 with no leading zeros; headers are canonical range
+strings and each i-value is its canonical tag program or "" when absent.
 
 Usage:
   python3 scripts/ripdpi_cohort_fingerprint.py --jc 4 --jmin 10 ... --h4 4
@@ -31,7 +31,7 @@ import hashlib
 import json
 import sys
 
-ORDER = ["jc", "jmin", "jmax", "s1", "s2", "h1", "h2", "h3", "h4",
+ORDER = ["wire_profile", "jc", "jmin", "jmax", "s1", "s2", "h1", "h2", "h3", "h4",
          "i1", "i2", "i3", "i4", "i5"]
 
 
