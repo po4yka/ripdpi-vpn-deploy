@@ -91,6 +91,8 @@ class NativeStack:
         return unit
 
     def start(self, common=False, peer_source=None):
+        # A fresh disposable host may lack the shared parent; never rely on an earlier suite creating it.
+        self.library.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
         self.library.mkdir(mode=0o755)
         self.library.chmod(0o755)
         binary = self.library / "xray"
