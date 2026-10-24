@@ -12,9 +12,9 @@ Confirm foreground build cleanup without false macOS failures or surviving desce
 
 ## Execution
 
-- [ ] ANS-1792773632226275 Retain source build group identity through completion and cancellation with real regression coverage #bug !high @item:ANS-1792773060904443
-- [ ] ANS-1792773633446824 Synchronize local process fixtures and preserve complete smoke and transaction checks #bug !high @item:ANS-1792773060904443
-- [ ] ANS-1792773634640147 Pass full local and hosted gates and verify the source change for integration #bug !high @item:ANS-1792773060904443
+- [x] ANS-1792773632226275 Retain source build group identity through completion and cancellation with real regression coverage #bug !high @item:ANS-1792773060904443
+- [x] ANS-1792773633446824 Synchronize local process fixtures and preserve complete smoke and transaction checks #bug !high @item:ANS-1792773060904443
+- [x] ANS-1792773634640147 Pass full local and hosted gates and verify the source change for integration #bug !high @item:ANS-1792773060904443
 
 ## Verification
 
