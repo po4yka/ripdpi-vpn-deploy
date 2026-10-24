@@ -2,7 +2,7 @@
 id: CIC-1792759317705110
 title: Refresh reviewed dependency pins and integrate pending updates
 kind: chore
-status: doing
+status: review
 area: ci
 priority: high
 risk: standard
@@ -12,10 +12,10 @@ blocked_by: [ANS-1792773060904443]
 spec_mode: not-required
 openspec_change: null
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-10-24
 spec_reason: dependency-only
 related_tasks: [ANS-1792773060904443]
-status_detail: Resume the local gate fix and close after complete source validation.
+status_detail: Dependency integration and complete source validation passed; ready for closure.
 ---
 
 ## Goal

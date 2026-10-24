@@ -2,7 +2,7 @@
 id: ANS-1792773060904443
 title: Make source build process cleanup deterministic
 kind: bug
-status: doing
+status: review
 area: ansible
 priority: high
 risk: high
@@ -12,8 +12,9 @@ blocked_by: []
 spec_mode: required
 openspec_change: source-build-process-cleanup
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-10-24
 related_tasks: [CIC-1792759317705110]
+status_detail: Source cleanup and complete local and hosted gates passed; ready for archival.
 ---
 
 ## Goal
