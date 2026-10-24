@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Select complete CI consumer groups; uncertain inputs always request full CI."""
 
+import http.client
 import json
 import os
 from pathlib import Path
@@ -66,12 +67,15 @@ def full_plan(reason, changed_files=None):
 
 
 def portable_unit_tests(repo):
-    """Return top-level tests/unit modules that no native lane can run or import.
+    """Return top-level tests/unit modules that no native lane selects, names or imports.
 
     A module is native-reachable when its name contains "native", it mentions
     the native_runtime marker, the Makefile names it, or its module name appears
-    in another native-reachable test file. The closure is textual and
-    deliberately broad: a false positive only selects more CI.
+    in another native-reachable test file, a native or integration helper, a
+    script or a CI definition. The closure is textual and deliberately broad: a
+    false positive only selects more CI. Native collection still imports every
+    tests/unit module before deselection, so a portable module must not change
+    process state at import time; its import errors fail the portable groups.
     """
     root = Path(repo)
     units = {path.relative_to(root).as_posix(): path.read_text(errors="replace")
@@ -82,7 +86,11 @@ def portable_unit_tests(repo):
                  if not Path(path).name.startswith("test_") or "native" in Path(path).name
                  or "native_runtime" in text or Path(path).name in makefile}
     texts = [units[path] for path in reachable]
-    texts += [path.read_text(errors="replace") for path in sorted((root / "tests/native").rglob("*.py"))]
+    # Other consumers that can name a test module: native suites, integration
+    # helpers, scripts and CI definitions.
+    for directory in ("tests/native", "tests/integration", "scripts", ".github"):
+        texts += [path.read_text(errors="replace") for path in sorted((root / directory).rglob("*"))
+                  if path.is_file() and path.suffix in {".py", ".sh", ".yml", ".yaml", ".json", ".j2"}]
     while texts:
         text = texts.pop()
         for path in set(units) - reachable:
@@ -143,8 +151,8 @@ def github_api(path):
 def reused_plan(repo, sha, api):
     """Reuse a full successful PR run when main received exactly its tested tree.
 
-    Branch protection requires up-to-date branches, so merging commits the PR
-    head tree. Anything else returns None and keeps full CI.
+    The pushed tree must equal the PR head tree, and the previous main tip must
+    be an ancestor of that head. Anything else returns None and keeps full CI.
     """
     if re.fullmatch(r"[0-9a-f]{40}", sha) is None:
         return None
@@ -154,18 +162,35 @@ def reused_plan(repo, sha, api):
     if len(pulls) != 1:
         return None
     head = pulls[0]["head"]["sha"]
-    tree = subprocess.check_output(["git", "rev-parse", f"{sha}^{{tree}}"], cwd=repo, text=True,
-                                   stderr=subprocess.PIPE, timeout=30).strip()
-    if re.fullmatch(r"[0-9a-f]{40}", head) is None or api(f"commits/{head}")["commit"]["tree"]["sha"] != tree:
+    if re.fullmatch(r"[0-9a-f]{40}", head) is None:
+        return None
+
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True,
+                              text=True, timeout=60).stdout.strip()
+
+    if subprocess.run(["git", "cat-file", "-e", f"{head}^{{commit}}"], cwd=repo,
+                      capture_output=True, timeout=30).returncode != 0:
+        git("fetch", "--no-tags", "--quiet", "origin", head)
+    # The PR run tested head merged with the main of its time. When the previous
+    # main tip is already in head, every such merge has head's tree, whatever the
+    # branch protection settings are.
+    git("merge-base", "--is-ancestor", f"{sha}^", head)
+    if git("rev-parse", f"{head}^{{tree}}") != git("rev-parse", f"{sha}^{{tree}}"):
         return None
     runs = api(f"actions/workflows/ci.yml/runs?event=pull_request&head_sha={head}&status=success&per_page=20")
     for run in runs.get("workflow_runs", []):
         if run.get("head_sha") != head or run.get("conclusion") != "success":
             continue
-        jobs = api(f"actions/runs/{run['id']}/jobs?filter=latest&per_page=100")
-        listed = jobs.get("jobs", [])
+        listed, total = [], None
+        for page in range(1, 6):
+            jobs = api(f"actions/runs/{run['id']}/jobs?filter=latest&per_page=100&page={page}")
+            total = jobs.get("total_count")
+            listed += jobs.get("jobs", [])
+            if not jobs.get("jobs") or len(listed) >= (total or 0):
+                break
         # A full plan runs every job; one skipped job means the PR used a selection.
-        if listed and jobs.get("total_count") == len(listed) and all(
+        if listed and total == len(listed) and all(
                 job.get("conclusion") == "success" for job in listed):
             return {
                 "mode": "reused", "reason": f"Main tree matches full successful PR CI run {run['id']}",
@@ -180,7 +205,8 @@ def plan_from_git(repo, event, base, sha="", api=None):
         try:
             if reused := reused_plan(repo, sha, api):
                 return reused
-        except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.SubprocessError):
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, http.client.HTTPException,
+                subprocess.SubprocessError):
             pass
     if event != "pull_request":
         return full_plan("Main pushes and manual runs execute full CI")

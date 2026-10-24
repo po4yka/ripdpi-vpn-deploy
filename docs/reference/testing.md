@@ -553,6 +553,8 @@ Run one group locally with `PYTEST_GROUP=1 make test-unit-shard` (1 through 4);
 Both targets run pytest-xdist workers with `--dist loadfile`, so each test module
 stays on one worker. `PYTEST_WORKERS` sets the count (default `auto`, one per CPU);
 use `PYTEST_WORKERS=0` to run serially when debugging an order or timing problem.
+With `make -j N check` other targets share the CPU, so on a busy machine also
+lower `PYTEST_WORKERS`; tests with fixed subprocess deadlines can otherwise time out.
 
 The required `pytest unit tests` status waits for all four groups, then checks
 that every portable test was selected and finished exactly once. Missing groups,
