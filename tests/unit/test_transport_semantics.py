@@ -234,7 +234,9 @@ def test_native_provisioning_is_version_pinned_and_precedes_selected_tests():
     workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
     steps = workflow["jobs"]["native-runtime"]["steps"]
     build = next(index for index, task in enumerate(steps) if task.get("run") == "make native-transport-semantics-build")
-    run = next(index for index, task in enumerate(steps) if "make test-native-runtime" in task.get("run", ""))
+    run = next(index for index, task in enumerate(steps)
+               if task.get("name") == "Execute native tests with UID and GID capabilities")
+    assert "make $NATIVE_GOALS" in steps[run]["run"]
     assert build < run
     script = (ROOT / "scripts/build-native-transport-semantics.sh").read_text()
     assert "907ba8c9693edb104b20582681fb7dc15639d5b64a9cbb616a7b539190a86691" in script

@@ -543,10 +543,24 @@ jobs:
   native-runtime:
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['native-runtime'] }}
-    name: native runtime integration
+    name: native runtime integration (${{ matrix.part }}/3)
     runs-on: ubuntu-24.04
-    # Setup, early AWG gates, the complete native suite and cleanup share this budget.
-    timeout-minutes: 75
+    # Setup, early AWG gates, one native part and cleanup share this budget.
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      # Three disjoint parts; their union is the complete native runtime bundle.
+      matrix:
+        include:
+          - part: 1
+            goals: test-native-runtime
+            runtime-group: "1"
+          - part: 2
+            goals: test-native-runtime test-topology-authenticated-probes
+            runtime-group: "2"
+          - part: 3
+            goals: test-xhttp-delivery-matrix
+            runtime-group: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -591,6 +605,7 @@ jobs:
           printf 'NATIVE_RUNTIME_ROOT=%s\n' "$stage" >> "$GITHUB_ENV"
           trap - ERR
       - name: Check native AWG warm publication before the complete runtime suite
+        if: matrix.part == 1
         working-directory: ${{ env.NATIVE_RUNTIME_ROOT }}
         run: |
           sudo env \
@@ -600,6 +615,7 @@ jobs:
             "PATH=$NATIVE_RUNTIME_ROOT/.cache/native-transport-semantics/bin:$PATH" \
             python3 -m pytest tests/unit/test_topology_awg_warm_native.py --fail-on-skip -v --tb=short
       - name: Check native AWG rollback before the complete runtime suite
+        if: matrix.part == 1
         working-directory: ${{ env.NATIVE_RUNTIME_ROOT }}
         run: |
           sudo env \
@@ -610,23 +626,29 @@ jobs:
             "PYTEST_ADDOPTS=--tb=short" \
             make test-awg-dualstack-runtime
       - name: Exercise ECH recipients, privacy and resource profiles
+        if: matrix.part == 1
         working-directory: ${{ env.NATIVE_RUNTIME_ROOT }}
         run: |
           sudo env "PATH=$PATH" TRANSPORT_NATIVE_ISOLATED=1 PYTEST_ADDOPTS=--tb=short \
             make test-hysteria-ech-runtime
       - name: Execute native tests with UID and GID capabilities
         working-directory: ${{ env.NATIVE_RUNTIME_ROOT }}
+        env:
+          NATIVE_GOALS: ${{ matrix.goals }}
+          NATIVE_RUNTIME_GROUP: ${{ matrix.runtime-group }}
         run: |
+          # shellcheck disable=SC2086 # NATIVE_GOALS is a fixed matrix list of Make goals.
           sudo env \
             "TRANSPORT_NATIVE_ISOLATED=1" \
             "PYTEST_ADDOPTS=--tb=short" \
+            "NATIVE_RUNTIME_GROUP=$NATIVE_RUNTIME_GROUP" \
             "ALERTMANAGER_BIN=$NATIVE_RUNTIME_ROOT/.cache/native-alertmanager/alertmanager" \
             "NAIVE_NATIVE_BINARY=$NATIVE_RUNTIME_ROOT/.cache/p2-native-caddy/caddy" \
             "SNELL_NATIVE_BINARY=/usr/local/bin/sing-box" \
             "AWG_NATIVE_GO_SOURCE=$NATIVE_RUNTIME_ROOT/.cache/native-transport-semantics/amneziawg-go-2e3f7d122ca8ef61e403fddc48a9db8fccd95dbf" \
             "AWG_NATIVE_TOOLS_SOURCE=$NATIVE_RUNTIME_ROOT/.cache/native-transport-semantics/amneziawg-tools-c0b400c6dfc046f5cae8f3051b14cb61686fcf55" \
             "PATH=$NATIVE_RUNTIME_ROOT/.cache/native-transport-semantics/bin:$PATH" \
-            make test-native-runtime test-xhttp-delivery-matrix test-topology-authenticated-probes
+            make $NATIVE_GOALS
       - name: Remove owned native runtime staging
         if: ${{ always() && env.NATIVE_RUNTIME_ROOT != '' }}
         run: |
@@ -638,14 +660,14 @@ jobs:
   transport-runtime-acceptance:
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['transport-runtime-acceptance'] }}
-    name: native transport runtime acceptance (${{ matrix.group }}/2)
+    name: native transport runtime acceptance (${{ matrix.group }}/3)
     runs-on: ubuntu-24.04
     # Cold artifact setup and all native recovery cases share the job budget.
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        group: [1, 2]
+        group: [1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -685,7 +707,7 @@ jobs:
         run: |
           docker exec --workdir /opt/rta \
             --env TRANSPORT_NATIVE_ISOLATED=1 \
-            --env "PYTEST_ADDOPTS=--tb=short --splits 2 --group $PYTEST_NATIVE_GROUP --splitting-algorithm least_duration" \
+            --env "PYTEST_ADDOPTS=--tb=short --splits 3 --group $PYTEST_NATIVE_GROUP --splitting-algorithm least_duration --durations-path tests/native/transport_acceptance/recovery-durations.json" \
             --env ANSIBLE_COLLECTIONS_PATH=/opt/rta/.ansible/collections \
             --env "PATH=$RTA_PYTHON_PREFIX/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
             transport-runtime-acceptance \

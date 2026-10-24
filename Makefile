@@ -1399,9 +1399,13 @@ test-xhttp-delivery-matrix:
 	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest \
 	  tests/unit/test_xhttp_delivery_matrix_native.py --fail-on-skip -v -s
 
+# CI runs this goal as two disjoint measured groups (NATIVE_RUNTIME_GROUP=1|2);
+# unset runs the complete suite.
 test-native-runtime:
 	@test "$$(uname -s)" = Linux && test "$$(id -u)" = 0 || { echo "native runtime tests require a disposable Linux root environment" >&2; exit 1; }
+	@case "$${NATIVE_RUNTIME_GROUP:-}" in ''|1|2) ;; *) echo "NATIVE_RUNTIME_GROUP must be empty, 1 or 2" >&2; exit 2 ;; esac
 	env -u MAKELEVEL -u MAKEFLAGS -u MFLAGS -u MAKEOVERRIDES python3 -m pytest tests/unit/ -m native_runtime \
+	  $${NATIVE_RUNTIME_GROUP:+--splits 2 --group "$$NATIVE_RUNTIME_GROUP" --splitting-algorithm least_duration --durations-path tests/native/native-runtime-durations.json} \
 	  --ignore=tests/unit/test_transport_runtime_acceptance_native.py \
 	  --ignore=tests/unit/test_topology_authenticated_probes_native.py \
 	  --ignore=tests/unit/test_topology_awg_warm_native.py \

@@ -99,7 +99,7 @@ matrix records coverage and commands rather than manually maintained totals.
 | **vpnd Python CLI** | `make vpnd-lint` (Ruff + mypy) | `make vpnd-parity-check` after complete pytest | `make vpnd-test` (blocking CI on Linux/macOS x86_64/arm64) | Covers all command/parser, runner, registry, secrets, descriptor/atomic-file, recipient/QR, diagnostics, docs/cache/completions/man-page and matrix lifecycle contracts. The transfer manifest maps all 206 baseline functions to passed Python node IDs; Hypothesis preserves properties and explicit regression seeds. |
 | **vpnd mutation testing (weekly)** | `make vpnd-mutants` (`.github/workflows/mutants.yml`) | real unmutated pytest baseline | full `pyproject.toml` mutation scope | Pinned mutmut 3.8 runs in a disposable tracked working-tree copy with sibling docs, fixtures and scripts; stage new inputs first. The wrapper rejects partial selections. Exit 2 means completed structured results contain survivors; empty, uncovered, interrupted, timed-out or technically failed results fail. Logs/reports are retained per run for 14 days. |
 | **vpnd release SBOM** | shared `.github/actions/vpnd-sbom` in required CI and release publication | exact hash-locked Python runtime inventory | pinned CycloneDX generation | Verifies package version, direct pins, runtime components and unchanged `vpnd/requirements.txt` before publishing `dist/sbom.json`. The five runtime packages have reviewed license-file/SPDX and official non-yanked source checks under `make vpnd-dependency-check`. Deployment inventories remain separate under `make emit-sbom`. |
-| **Native runtime integration** | required `native-runtime` CI lane; `make test-native-runtime` in disposable Linux root environment | Terraform 1.15.9 FD-backed commands and saved-plan lifecycle | Alertmanager 0.28.1 webhook timeout; supplementary-group metrics reader | `native_runtime` tests; SHA256-verified Alertmanager/amtool; missing tools or UID/GID capabilities fail. No cloud credentials or provider resources. |
+| **Native runtime integration** | required `native-runtime` CI lane in three parallel parts (early AWG/ECH gates with runtime group 1, runtime group 2 with topology probes, XHTTP endpoints and delivery); `make test-native-runtime` in disposable Linux root environment | Terraform 1.15.9 FD-backed commands and saved-plan lifecycle | Alertmanager 0.28.1 webhook timeout; supplementary-group metrics reader | `native_runtime` tests; SHA256-verified Alertmanager/amtool; missing tools or UID/GID capabilities fail. No cloud credentials or provider resources. |
 | **Complete transport runtime acceptance** | required `transport-runtime-acceptance` CI lane; `make test-transport-runtime-acceptance` in a separate fresh Linux root | canonical Xray/Hysteria adoption, retry, compensation, retirement and operator rollback | actual pinned clients, native parser/admission, HTTPS receiver and real publisher SIGKILL | Every complete scenario executes; foreign authority and selected skips fail. Together with the existing native lane, covers all native cases. |
 | **MTProxy Go helper** | required `go-helper` CI lane; `make test-probe-matrix-mtproto` in `ci-fast` | Go tests with locked module resolution and uncached execution | injected connector; no Telegram traffic | Go 1.27.3, dependency cache keyed by `go.sum`; native helper tests supplement Python driver coverage. |
 | **REALITY scanner wrapper** | pytest | installer, CSV filtering, ASN status, top limit, empty-output failure | offline scanner/WHOIS fixtures | Full public TLS scan remains an explicit operator integration (`scripts/scan-reality-targets.sh --seeds <file>`), not automated coverage. No placeholder or unconditional skipped test. |
@@ -291,7 +291,7 @@ The limits bound running jobs, not time waiting for a runner.
 | Terraform validation/tests, cloud-init, Bats, Python validators, SBOM and Markdown links | 10 |
 | Pytest groups, Ansible lint, Go helper, Terraform policy, image scans | 15 |
 | Role/failure Molecule scenarios, CodeQL | 20 |
-| Native runtime integration, including setup and cleanup | 60 |
+| Native runtime integration, each of three parts including setup and cleanup | 45 |
 | Complete transport runtime acceptance, each consumer group | 40 |
 | Full-stack Molecule scenarios | 30 |
 | Shared Python vpnd test/lint/package/dependency job | 30 |
@@ -581,9 +581,10 @@ transaction suite includes root-only ECH credential activation, unchanged retry,
 rotation, process death and compensating rollback. Portable tests do not establish
 these Linux results or a staging soak.
 
-The complete transport transaction suite runs in two disjoint CI partitions,
-each with its own fresh systemd runner. Both groups are required; collection
+The complete transport transaction suite runs in three disjoint CI partitions,
+each with its own fresh systemd runner. All groups are required; collection
 regressions verify their union equals the complete native transaction suite.
+The partitions use the measured `recovery-durations.json` profile.
 This keeps ECH compensation and the earlier upgrade/failure cases within the
 per-runner budget. Salamander upgrade cases exercise real firewall-owned hops
 and an unaffected UDP control before/after adoption and compensation.
