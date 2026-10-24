@@ -109,7 +109,7 @@ matrix records coverage and commands rather than manually maintained totals.
 | **Container image scanning (Trivy)** | `.github/workflows/image-scan.yml` when selected; always on main/manual CI | n/a | n/a | When the image consumer group is selected, scans the complete deduplicated set of digest-pinned images from all Molecule scenarios; selection never narrows the image inventory. Uploads HIGH/CRITICAL SARIF to the Security tab under a digest-free per-image category, so a clean scan of a repinned digest closes the previous digest's alerts. Escalate only with rationale + expiry + owner in `.trivyignore`. |
 | **Repo drift (weekly)** | `.github/workflows/drift.yml` | `scripts/drift-since-tag.sh --repo-only` | n/a | Scheduled Monday 12:00 UTC. Diffs the repository against the last known-good tag. Updates a single rolling issue labelled `automation:drift` when drift is detected; silent when clean. Operator-side cron (against live servers) is unchanged and uses the script without `--repo-only`. |
 | **Task and OpenSpec contract** | `make task-check` + required `task-contract` CI job | strict portfolio, mdtask, OpenSpec, generated-asset, board, and deletion-history validation | peer checkout in CI | Federation resolves qualified RIPDPI task references, terminal Git history, and cross-repository cycles. The Python shard checkout also fetches full history because real workspace/taskctl integration verifies immutable archive source commits. |
-| **Jinja2 snapshot diff (165 templates)** | `scripts/render-snapshots.py` | golden-file diff | n/a | Fails on any unintended render change. Run `make snapshot-update` after intentional template edits. |
+| **Jinja2 snapshot diff (every template)** | `scripts/render-snapshots.py` | golden-file diff | n/a | Fails on any unintended render change. Run `make snapshot-update` after intentional template edits. |
 
 ## Test fixtures and stubs
 
@@ -310,8 +310,8 @@ Setup took up to 3.5 minutes, so a 20-minute job limit cancelled successful test
 runs. The 30-minute limit covers the complete job. Test selection, per-process
 deadlines and skip refusal remain unchanged.
 
-`markdown-link-check` and `claude-md-touch` use workflow/event/PR concurrency
-keys and cancel older runs of that PR. The run-ID fallback keeps scheduled
+`markdown-link-check` uses workflow/event/PR concurrency
+keys and cancels older runs of that PR. The run-ID fallback keeps scheduled
 Markdown checks independent. Different workflows and different PRs do not share
 a key. Main CI and CodeQL retain their existing cancellation policies; the
 reusable Terraform, image and contract checks are cancelled with their CI caller,

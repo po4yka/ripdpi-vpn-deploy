@@ -1596,11 +1596,12 @@ promtool-check:
 	@command -v promtool >/dev/null 2>&1 || { echo "missing: promtool $(PROMTOOL_VERSION) (run: mise install)" >&2; exit 1; }
 	@promtool --version 2>&1 | grep -F "version $(PROMTOOL_VERSION)" >/dev/null || { echo "promtool $(PROMTOOL_VERSION) required (run: mise install)" >&2; exit 1; }
 
-# Union gate: task contract, everything in validate and everything in ci-fast.
-# test-unit already runs the documentation guards that docs-check runs alone.
+# Union gate: task contract, everything in validate, everything in ci-fast.
+# ci-fast's test-unit already runs the docs guards (test_docs_index.py,
+# test_docs_reference.py), so docs-check stays a standalone docs-only target.
 # Run this before any commit touching Ansible, Terraform, or Python to get
 # the same signal that CI produces without waiting for a remote run.
-check: task-check validate ci-fast  ## Full local gate: task contract + validate + ci-fast (includes the docs guards)
+check: task-check validate ci-fast  ## Full local gate: task contract + validate + ci-fast
 
 # Regenerate the documentation pages that mirror code: the Make target
 # reference, the vpnd command reference and the machine-readable docs index.

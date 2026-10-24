@@ -164,9 +164,8 @@ in a clean checkout without `.fleet.mk` before attributing it to source.
    ```
 
    `make check` is the fail-closed union of `make task-check`,
-   `make validate` and `make ci-fast`; the portable pytest suite inside
-   `ci-fast` already runs the `make docs-check` guards. `make -j 4 check`
-   runs the independent checks in parallel. When changing a
+   `make validate` and `make ci-fast`, whose unit tests include the docs guards.
+   `make -j 4 check` runs the independent checks in parallel. When changing a
    role, also run `make molecule-test ROLE=<name>` when Docker is available.
    [The testing reference](docs/reference/testing.md) maps each area to its
    CI coverage and names the lanes that remain CI-only.
