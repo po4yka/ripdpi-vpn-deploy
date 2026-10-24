@@ -1,0 +1,11 @@
+{
+  "change": "profile-quality-mtu",
+  "evidence_summary": "Positive native and emulator quality and packet-size acceptance, catalogue migration repair, full local make check, producer/client PRs and all five exact-main workflows passed at f6f6a8e77c3d8deaa2ddf37582e17f94c78fccbc. No fleet or physical-device acceptance is claimed.",
+  "execution_sha256": "56968eff3f202afe35682c4a5cd4c0f55abb799211b45672329c678a9c7b9c5b",
+  "issue_sha256": "d070a437fd24ae6a09736479cf77adb6e1300a05689730cc9a0d2c6c956b7484",
+  "outcome": "done",
+  "prepared_at": "2026-10-24T18:10:20Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "OPS-1792759217301702"
+}
