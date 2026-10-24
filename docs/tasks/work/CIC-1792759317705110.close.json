@@ -1,0 +1,11 @@
+{
+  "change": null,
+  "evidence_summary": "Reviewed dependency updates are integrated in main. PR 380 fixes the local source cleanup failures; full make check passed at dd9fef311cde792af2a2d94ff0ee5c7f7427e6e9, with an identical tree at integrated ec655f037b5a1b7a26d8ddf4c673ef4e55791701. Hosted run 40069354263 passed all required checks. The linked ANS task is complete.",
+  "execution_sha256": "10a62727946b8bf377665b805588c3b6bca6732c55cd3b796f1d089cd4095b1f",
+  "issue_sha256": "6c5573526f361cf8d9715294aa44b653e838959110e8ac68de24892291ae8e15",
+  "outcome": "done",
+  "prepared_at": "2026-10-24T09:06:57Z",
+  "reason": "All acceptance criteria and required evidence passed.",
+  "schema": 1,
+  "task_id": "CIC-1792759317705110"
+}
