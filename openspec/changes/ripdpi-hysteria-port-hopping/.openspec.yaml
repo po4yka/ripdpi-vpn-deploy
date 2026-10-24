@@ -1,0 +1,3 @@
+schema: ripdpi-deploy-change
+created: 2026-10-24
+goal: OPS-1792820562787120 Deliver native Hysteria port hopping to RIPDPI

@@ -179,10 +179,15 @@ installed recovery generation, Tailnet handoff, SSH ownership and all three priv
 deployment mappings before convergence. A restored root snapshot is not fresh
 SSH or promotion proof. Keep dependent Make goals in separate invocations.
 
-Canonical client payload materialization refuses nonempty Hysteria port ranges
-for RIPDPI with `RIPDPI Hysteria port hopping requires a qualified client` before publication.
-Official sing-box hopping remains supported; the XHTTP-only native Xray selection
-ignores unselected Hysteria. Keep the other engine compatibility guards.
+Canonical client payload materialization preserves Hysteria hopping for the
+qualified RIPDPI client. Shared transport semantics validate the port range and
+fixed interval (5 seconds through 9223372036854 milliseconds) before output.
+Standard fields and extras carry the same policy. Official sing-box behavior
+and other engine guards remain intact; XHTTP-only selection ignores Hysteria.
+Full bundle validation matches hopping extras to one Hysteria outbound by tag.
+When both policies exist, compare normalized port unions and exact durations;
+equivalent units and a maximum equal to the minimum remain fixed policies.
+Standalone extensions and either single policy form remain valid.
 
 State backup retention and recovery match the complete UTC timestamp suffix
 after the exact provider/environment prefix. A broad prefix glob also selects
@@ -203,9 +208,10 @@ before native hostname matching. Do not restore domain-name regular expressions,
 CN fallback or partial wildcards. Use `verify -verify_hostname`: OpenSSL 3.0
 `x509 -checkhost` can exit zero on mismatch. Keep expiry and public-key checks separate.
 
-RIPDPI Hysteria delivery refuses port hopping until its actual consumer is
-qualified. The official sing-box path retains hopping. Per-host Hysteria
-extension entries follow every emitted tag, not only the first host.
+RIPDPI Hysteria hopping release admission requires positive native-client
+traffic across scheduled destination-port changes. Per-host Hysteria extension
+entries follow every emitted tag, not only the first host. A scalar server port
+outside the hopping range must not widen the client destination set.
 
 The REALITY monitor supervisor handles INT, TERM, HUP and QUIT before launching any decrypting child. The shell creates its work directory using an explicit parent path; BSD mktemp -t can ignore TMPDIR. Parent-owned temporary authority is removed after session cleanup on cancellation. Bounded child stderr is forwarded separately from the JSON stdout protocol. The monitor requests SOPS JSON directly into its private owned file; the general decrypt cache retains its YAML contract.
 
