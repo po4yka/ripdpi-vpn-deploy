@@ -1205,23 +1205,6 @@ print(json.dumps({{"schema_version":1,"state":"resolved"}},sort_keys=True))
     ).encode()
 
 
-def _service_fault_program(units: tuple[str, ...], wait_seconds: int) -> bytes:
-    return (
-        "import json, subprocess, time\n"
-        f"units={units!r}\n"
-        "active=[]\n"
-        "for unit in units:\n"
-        " r=subprocess.run(['/usr/bin/systemctl','is-active','--quiet',unit],check=False); active.append(r.returncode==0)\n"
-        "try:\n"
-        " subprocess.run(['/usr/bin/systemctl','stop',*units],check=True,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)\n"
-        f" time.sleep({wait_seconds})\n"
-        "finally:\n"
-        " restore=[unit for unit,was_active in zip(units,active) if was_active]\n"
-        " if restore: subprocess.run(['/usr/bin/systemctl','start',*restore],check=True,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)\n"
-        "print(json.dumps({'schema_version':1,'state':'restored'}))\n"
-    ).encode()
-
-
 def _unit_action_program(action: str, units: tuple[str, ...]) -> bytes:
     if action not in {"start", "stop"}:
         raise AcceptanceError("unit action rejected")
@@ -1563,14 +1546,6 @@ def _hetzner_action(manifest: dict[str, Any], action: str) -> None:
                 raise AcceptanceError("provider action failed")
     except (OSError, urllib.error.URLError, urllib.error.HTTPError):
         raise AcceptanceError("provider action failed") from None
-
-
-def _hetzner_power_cycle(manifest: dict[str, Any], wait_seconds: int) -> None:
-    _hetzner_action(manifest, "poweroff")
-    try:
-        time.sleep(wait_seconds)
-    finally:
-        _hetzner_action(manifest, "poweron")
 
 
 def _token_rejected(path: Path) -> bool:
