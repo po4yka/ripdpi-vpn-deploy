@@ -55,4 +55,4 @@ opa fmt --diff terraform/policy/*.rego
 conftest verify --rego-version v0 -p terraform/policy/
 ```
 
-The CI workflow (`tf-policy.yml`) runs the same provider tests plus Conftest verification on every pull request.
+When CI selects Terraform checks, the `tf-test` job runs the provider tests and `tf-policy.yml` runs the Conftest verification once.
