@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -666,3 +667,28 @@ def test_retained_receiver_failed_first_activation_removes_new_authority(tmp_pat
     )
     assert result.returncode == 0, result.stderr
     assert not token.exists()
+
+
+def test_authority_snapshot_accepts_only_the_owned_sticky_textfile_parent(
+    root: Path,
+) -> None:
+    spec = importlib.util.spec_from_file_location("observability_authority_snapshot_textfile", HELPER)
+    assert spec is not None and spec.loader is not None
+    authority = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(authority)
+    textfile = root / "var/lib/node_exporter/textfile"
+    os.chown(textfile, -1, os.getegid())
+    textfile.chmod(0o3775)
+    snapshot = authority.Snapshot(root)
+
+    assert snapshot.read(authority.DEADMAN_METRIC, allow_missing=True) == {
+        "kind": "absent"
+    }
+    metric = root / authority.DEADMAN_METRIC
+    metric.write_text("metric 1\n")
+    metric.chmod(0o644)
+    assert snapshot.read(authority.DEADMAN_METRIC)["kind"] == "file"
+
+    textfile.chmod(0o0775)
+    with pytest.raises(ValueError, match="unsafe-parent"):
+        snapshot.read(authority.DEADMAN_METRIC)
