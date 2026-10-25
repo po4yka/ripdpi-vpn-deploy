@@ -54,7 +54,7 @@ SUITES = (
 
 def suite_commands(plan):
     """Fixed complete CI plans; the local default executes their entire union."""
-    if plan not in {"all", "core", "recovery-1", "recovery-2", "recovery-3"}:
+    if plan not in {"all", "core", "recovery-1", "recovery-2", "recovery-3", "recovery-4"}:
         raise RuntimeError("native-plan-refused")
     commands = []
     for name, paths in SUITES:
@@ -62,13 +62,13 @@ def suite_commands(plan):
             if plan in {"all", "core"}:
                 commands.append((name, paths, []))
             continue
-        for group in (1, 2, 3):
+        for group in (1, 2, 3, 4):
             if plan in {"all", "recovery-" + str(group)}:
                 durations = ROOT / "tests/native/transport_acceptance/recovery-durations.json"
                 if not durations.is_file():
                     raise RuntimeError("native-duration-profile-required")
                 commands.append((name + "-" + str(group), paths, [
-                    "--splits", "3", "--group", str(group),
+                    "--splits", "4", "--group", str(group),
                     "--splitting-algorithm", "least_duration",
                     "--durations-path", str(durations),
                 ]))

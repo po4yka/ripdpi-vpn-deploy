@@ -21,7 +21,7 @@ This prevents self-collisions; a foreign bind in the remaining launch gap still
 fails without retry. Startup logs stay private (0600), bounded reads emit only
 fixed failure categories, and readiness never adds counted probe connections.
 
-Four-transport recovery uses three complete, disjoint partitions with the same
+Four-transport recovery uses four complete, disjoint partitions with the same
 2400-second suite limit. `tests/native/transport_acceptance/recovery-durations.json`
 contains 18 scheduling estimates derived from public CI completion timestamps for
 source `a8ec8492068ea8fda535c68455b93dbd75e8ec3c`, across its two complete runtime
@@ -456,7 +456,7 @@ Guidance coverage exercises the workflow's actual Git collection against an adva
 
 Baseline resource tests execute its real first Ansible assertion and require an invalid value to stop before the next mutating task. ECH native leak checks run Hysteria with debug logging as well as secure positive/negative recipient traffic. The systemd generation case adopts both BBR profiles under the actual credential sandbox.
 
-The complete native transaction suite is split into three disjoint CI groups in independent fresh systemd containers, balanced by the measured recovery profile; all are required and a collection test proves their complete union. Keep the full local Make target unchanged.
+The complete native transaction suite is split into four disjoint CI groups in independent fresh systemd containers, balanced by the measured recovery profile; all are required and a collection test proves their complete union. Keep the full local Make target unchanged.
 The native runtime job runs as three parallel parts: early AWG/ECH gates with `test-native-runtime` group 1, group 2 with topology probes, and the XHTTP endpoint and delivery targets. `NATIVE_RUNTIME_GROUP` selects a `least_duration` group using `tests/native/native-runtime-durations.json`: 180 observed wall-clock intervals between consecutive verbose results of CI run 40069354263 at source `dd9fef311cde792af2a2d94ff0ee5c7f7427e6e9`. They are scheduling estimates, not acceptance evidence; unmeasured cases take pytest-split's mean. Unset, the target still runs the complete suite, and a collection test proves the two groups' disjoint complete union. Each part starts on a fresh runner, so a native fixture creates any shared parent it writes into, such as `/usr/local/libexec`, instead of relying on an earlier suite.
 Each case imports installed runtime helpers only after its own lab has established the module path; isolated partitions must not depend on earlier cases initializing the interpreter.
 ECH probe regressions exercise both isolated import and Ansible's inline loading. Whole-route snapshot cases retain private ECH bytes, permissions, group and exact absence; generation helper unit cases establish their own runtime library path.
@@ -965,7 +965,7 @@ metadata failure classification remains covered by the shared monitor tests.
 Bulk four-transport probes supply the canonical driver socket timeout explicitly;
 they retain its three-second default while expanding byte payloads.
 
-The required four-transport CI matrix runs core coverage and three complete,
+The required four-transport CI matrix runs core coverage and four complete,
 disjoint compensation partitions in independent owned containers. Each phase
 retains its 40-minute bound; the local default executes their complete union.
 A real collection regression rejects gaps and overlaps as native cases expand.

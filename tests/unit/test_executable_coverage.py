@@ -1,5 +1,6 @@
 """Execute skip-policy regressions and guard mandatory native/Go lane wiring."""
 
+import json
 import os
 import re
 import shlex
@@ -54,7 +55,7 @@ def test_native_and_go_lanes_remain_executable_and_dependency_gated():
         assert any(f"make {target}" in step.get("run", "") for step in job["steps"]) or target in " ".join(goals).split()
     parts = jobs["native-runtime"]["strategy"]["matrix"]["include"]
     assert jobs["native-runtime"]["strategy"]["fail-fast"] is False
-    assert [part["part"] for part in parts] == [1, 2, 3]
+    assert [part["part"] for part in parts] == [1, 2, 3, 4]
     native_goals = [goal for part in parts for goal in part["goals"].split()]
     assert sorted(native_goals) == sorted([
         "test-native-runtime", "test-native-runtime",
@@ -237,9 +238,9 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
         ['tests/unit/test_topology_authenticated_probes_native.py', 'tests/unit/test_topology_awg_warm_native.py'],
         ['tests/unit/test_awg_dualstack_native.py', 'tests/unit/test_awg_activation_native.py'],
         ['tests/unit/test_validate_reality_target_native.py'],
-        *[['tests/unit/test_transport_runtime_acceptance_native.py', '--splits', '3', '--group', str(group),
+        *[['tests/unit/test_transport_runtime_acceptance_native.py', '--splits', '4', '--group', str(group),
            '--splitting-algorithm', 'least_duration', '--durations-path',
-           'tests/native/transport_acceptance/recovery-durations.json'] for group in (1, 2, 3)],
+           'tests/native/transport_acceptance/recovery-durations.json'] for group in (1, 2, 3, 4)],
         *[[*baseline_selection, '--splits', '2', '--group', str(group), '--splitting-algorithm', 'least_duration',
            '--durations-path', 'tests/native/native-runtime-durations.json'] for group in (1, 2)],
     ]
@@ -251,15 +252,19 @@ def test_local_and_ci_partition_native_tests_without_silent_skips():
                          if line.startswith('tests/unit/') and '::' in line})
     all_native, existing, transactions, endpoint_cases, awg_cases, ech_cases = selected[:6]
     topology_cases, dualstack_cases, reality_cases, *partitions = selected[6:]
-    rta_groups, runtime_groups = partitions[:3], partitions[3:]
+    rta_groups, runtime_groups = partitions[:4], partitions[4:]
     assert transactions == set().union(*rta_groups)
     assert all(not left & right for index, left in enumerate(rta_groups) for right in rta_groups[index + 1:])
-    assert all(any('test_native_ingress_egress_commit_sigkill' in item for item in group) for group in rta_groups)
+    # pytest-split gives unmeasured cases the profile mean; bound the estimated imbalance.
+    weights = json.loads((ROOT / "tests/native/transport_acceptance/recovery-durations.json").read_text())
+    mean = sum(weights.values()) / len(weights)
+    loads = [sum(weights.get(case, mean) for case in group) for group in rta_groups]
+    assert max(loads) <= sum(loads) / len(loads) * 1.1
     assert existing == runtime_groups[0] | runtime_groups[1] and not runtime_groups[0] & runtime_groups[1]
     workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]["transport-runtime-acceptance"]
-    assert workflow["strategy"]["matrix"]["group"] == [1, 2, 3]
+    assert workflow["strategy"]["matrix"]["group"] == [1, 2, 3, 4]
     assert workflow["strategy"]["fail-fast"] is False
-    assert any("--splits 3 --group $PYTEST_NATIVE_GROUP --splitting-algorithm least_duration "
+    assert any("--splits 4 --group $PYTEST_NATIVE_GROUP --splitting-algorithm least_duration "
                "--durations-path tests/native/transport_acceptance/recovery-durations.json" in s.get("run", "")
                for s in workflow["steps"])
     assert ('$${NATIVE_RUNTIME_GROUP:+--splits 2 --group "$$NATIVE_RUNTIME_GROUP" --splitting-algorithm least_duration '
