@@ -69,7 +69,10 @@ make repository-policy-plan
 The second plan must be `[]`. The command verifies repository identity, owner
 identity, admin access, and the absence of classic `main` protection before any
 write. It preserves unrelated rulesets and refuses ambiguous managed names or
-inherited rulesets. It creates integrity protection before converting the old
+inherited rulesets. Before the first migration, disable the obsolete `branch-protection` workflow
+with `gh workflow disable branch-protection.yml`. This prevents a manual run
+from restoring classic protection while its source removal is in review.
+The command creates integrity protection before converting the old
 `main` ruleset to `main-ci`; no rule deletion is needed. It reads back every
 managed setting after apply and fails if any drift remains.
 

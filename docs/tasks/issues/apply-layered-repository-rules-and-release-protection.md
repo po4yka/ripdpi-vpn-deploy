@@ -2,7 +2,7 @@
 id: CIC-1792911952227614
 title: Apply layered repository rules and release protection
 kind: feature
-status: doing
+status: review
 area: ci
 priority: high
 risk: high
@@ -14,6 +14,7 @@ openspec_change: repository-rulesets
 created: 2026-10-25
 updated: 2026-10-25
 related_tasks: []
+status_detail: Source and live repository policy verified. PR 396 opened; final hosted CI is pending. No infrastructure deployment or merge.
 ---
 
 ## Goal

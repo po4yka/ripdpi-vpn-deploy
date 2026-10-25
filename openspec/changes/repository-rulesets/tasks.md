@@ -10,7 +10,7 @@ Primary: `.github/`, `scripts/configure-repository.py`, matching tests, CONTRIBU
 
 ## Execution
 
-- [ ] CIC-1792912060113090 Implement and verify layered rulesets release integrity dependency updates and squash merging #feature !high @item:CIC-1792911952227614
+- [x] CIC-1792912060113090 Implement and verify layered rulesets release integrity dependency updates and squash merging #feature !high @item:CIC-1792911952227614
 
 ## Verification
 
