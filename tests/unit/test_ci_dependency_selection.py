@@ -77,6 +77,18 @@ JOBS = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
             {"vpnd-test", "terraform"},
         ),
         ("README.md", set(), {"molecule", "vpnd-test", "terraform", "go-helper"}),
+        *(
+            (path, set(), {"molecule", "native-runtime", "transport-native-acceptance", "vpnd-test", "terraform"})
+            for path in (
+                ".agents/skills/ponytail/SKILL.md",
+                ".claude/skills/ponytail",
+                ".github/skills/mdtask",
+                "tests/CLAUDE.md",
+                "ansible/roles/xray/CLAUDE.md",
+                "terraform/AGENTS.md",
+            )
+        ),
+        ("docs/measurements/CLAUDE.md", {"vpnd-test"}, {"molecule", "native-runtime"}),
     ],
 )
 def test_transitive_consumers_are_selected(path, selected, unselected):
