@@ -94,7 +94,7 @@ def test_testing_documentation_matches_molecule_sequences_and_hosted_matrix():
     documented_defaults = set(re.findall(r"`([^`]+)`", default_segment.split("default Molecule scenarios for ", 1)[1]))
     documented_full_stack_scenarios = set(re.findall(r"`([^`]+)`", full_stack_segment))
     documented_non_defaults = set(re.findall(r"`([^`]+)`", non_default_segment.split("; shellcheck", 1)[0]))
-    expected_defaults = set(ci["jobs"]["molecule"]["strategy"]["matrix"]["role"])
+    expected_defaults = {role for group in ci["jobs"]["molecule"]["strategy"]["matrix"]["roles"] for role in group.split()}
     expected_non_defaults = {
         f"{scenario['role']}/{scenario['scenario']}"
         for scenario in ci["jobs"]["molecule-failure-scenarios"]["strategy"]["matrix"]["include"]

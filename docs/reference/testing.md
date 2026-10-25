@@ -187,7 +187,9 @@ retains both sides of renames and deleted paths. No workflow-level path filter
 can suppress the required gate. Each run's summary lists the decisions.
 
 A new push to a PR cancels that PR's running `ci`. Closing or merging the PR
-cancels it too: `ci-cancel-closed.yml` joins the same concurrency group. Main
+cancels it too: `ci-cancel-closed.yml` joins the same concurrency group, which
+both workflows key by PR number because a merged PR's closed event reports the
+base branch as its ref. Main
 runs are not cancelled; each finishes, and only the newest pending main run
 waits behind it.
 
@@ -296,8 +298,9 @@ The limits bound running jobs, not time waiting for a runner.
 | Task contracts | 8 |
 | Terraform validation/tests, cloud-init, Bats, Python validators, SBOM and Markdown links | 10 |
 | Pytest groups, Ansible lint, Go helper, Terraform policy, image scans | 15 |
-| Role/failure Molecule scenarios, CodeQL | 20 |
-| Native runtime integration, each of three parts including setup and cleanup | 45 |
+| Failure Molecule scenarios, CodeQL | 20 |
+| Role Molecule jobs, each running up to four short roles in sequence | 30 |
+| Native runtime integration, each of four parts including setup and cleanup | 45 |
 | Complete transport runtime acceptance, each consumer group | 40 |
 | Full-stack Molecule scenarios | 30 |
 | Shared Python vpnd test/lint/package/dependency job | 30 |
@@ -594,7 +597,7 @@ transaction suite includes root-only ECH credential activation, unchanged retry,
 rotation, process death and compensating rollback. Portable tests do not establish
 these Linux results or a staging soak.
 
-The complete transport transaction suite runs in three disjoint CI partitions,
+The complete transport transaction suite runs in four disjoint CI partitions,
 each with its own fresh systemd runner. All groups are required; collection
 regressions verify their union equals the complete native transaction suite.
 The partitions use the measured `recovery-durations.json` profile.
@@ -688,8 +691,8 @@ firewall hopping and compensation suites in a fresh Linux root with systemd,
 real TUN and nftables. Set `TRANSPORT_NATIVE_ISOLATED=1` only for an owned
 throwaway environment. The selected CI job provisions checksum-verified Xray
 and Hysteria plus both immutable AWG source pairs, then removes its exact
-labelled container. Core, recovery-1 and recovery-2 run in independent containers;
-the two recovery groups partition the complete real collection without overlap.
+labelled container. Core and recovery-1 to recovery-4 run in independent containers;
+the four recovery groups partition the complete real collection without overlap.
 Each phase retains a 40-minute bound. The local default runs their entire union.
 All three CI plans are selected with the native consumer group and required by
 the aggregate check. The separate `transport-native-acceptance` roadmap target

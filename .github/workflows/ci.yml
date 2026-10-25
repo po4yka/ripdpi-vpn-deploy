@@ -14,7 +14,7 @@ permissions:
 # A new PR push replaces the running check. Main runs finish, and only the
 # newest pending main run waits, so every merge burst ends with a result.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -290,45 +290,29 @@ jobs:
         run: ansible-playbook playbooks/site.yml --syntax-check -i 'localhost,'
 
   molecule:
-    timeout-minutes: ${{ matrix.role == 'naive' && 30 || 20 }}
+    timeout-minutes: 30
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['molecule'] }}
-    name: molecule (${{ matrix.role }})
+    name: molecule (${{ matrix.roles }})
     runs-on: ubuntu-24.04
     env:
       ANSIBLE_COLLECTIONS_PATH: ${{ github.workspace }}/.ansible/collections
     strategy:
       fail-fast: false
+      # Short roles share a job (packed by measured test time, about 9 minutes
+      # each) so they hold fewer runner slots; naive and observability_kuma
+      # keep their own jobs for their role-specific steps.
       matrix:
-        role:
-          - baseline
-          - package_updates
-          - network-exposure-gate
-          - firewall
-          - intrusion_prevention
-          - xray
-          - transport-egress
-          - hysteria
+        roles:
           - naive
-          - nginx-xhttp
-          - watchdog
-          - monitoring
-          - observability_agent
-          - observability_control_plane
-          - observability_deadman
           - observability_kuma
-          - backup
-          - subscription-host
-          - amneziawg
-          - geodata
-          - cascade-egress
-          - cdn-front
-          - warp-outbound
-          - hysteria-realm
-          - honeypot
-          - dns-morph-bridge
-          - split-hop-egress
-          - tailnet-management
+          - hysteria observability_agent observability_deadman
+          - amneziawg baseline cdn-front geodata
+          - subscription-host network-exposure-gate dns-morph-bridge hysteria-realm
+          - transport-egress tailnet-management cascade-egress
+          - xray honeypot observability_control_plane intrusion_prevention
+          - firewall monitoring split-hop-egress package_updates
+          - backup warp-outbound nginx-xhttp watchdog
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -339,25 +323,36 @@ jobs:
           galaxy: "true"
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
-        if: matrix.role == 'naive'
+        if: matrix.roles == 'naive'
         with:
           go-version: "1.27.3"
           cache: false
 
       - name: Build exact composite for Naive role acceptance
-        if: matrix.role == 'naive'
+        if: matrix.roles == 'naive'
         run: make native-naive-build
 
       - name: molecule test
-        working-directory: ansible/roles/${{ matrix.role }}
-        run: molecule test
+        # Every role runs even after a failure; the step fails at the end and names the failed roles.
+        run: |
+          failed=()
+          for role in $MOLECULE_ROLES; do
+            echo "::group::molecule test $role"
+            (cd "ansible/roles/$role" && molecule test) || failed+=("$role")
+            echo "::endgroup::"
+          done
+          if (( ${#failed[@]} )); then
+            echo "::error::molecule test failed for: ${failed[*]}"
+            exit 1
+          fi
         env:
+          MOLECULE_ROLES: ${{ matrix.roles }}
           PY_COLORS: "1"
           ANSIBLE_FORCE_COLOR: "1"
           NAIVE_NATIVE_BINARY: ${{ github.workspace }}/.cache/p2-native-caddy/caddy
 
       - name: Verify pinned Kuma push timing persistence and encrypted restore
-        if: matrix.role == 'observability_kuma'
+        if: matrix.roles == 'observability_kuma'
         run: |
           test "$(uname -m)" = x86_64
           age_dir="$(mktemp -d "$RUNNER_TEMP/kuma-age.XXXXXX")"
@@ -563,23 +558,26 @@ jobs:
   native-runtime:
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['native-runtime'] }}
-    name: native runtime integration (${{ matrix.part }}/3)
+    name: native runtime integration (${{ matrix.part }}/4)
     runs-on: ubuntu-24.04
     # Setup, early AWG gates, one native part and cleanup share this budget.
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      # Three disjoint parts; their union is the complete native runtime bundle.
+      # Four disjoint parts; their union is the complete native runtime bundle.
       matrix:
         include:
           - part: 1
             goals: test-native-runtime
             runtime-group: "1"
           - part: 2
-            goals: test-native-runtime test-topology-authenticated-probes
+            goals: test-native-runtime
             runtime-group: "2"
           - part: 3
             goals: test-xhttp-delivery-matrix
+            runtime-group: ""
+          - part: 4
+            goals: test-topology-authenticated-probes
             runtime-group: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -680,14 +678,14 @@ jobs:
   transport-runtime-acceptance:
     needs: selection
     if: ${{ fromJSON(needs.selection.outputs.checks)['transport-runtime-acceptance'] }}
-    name: native transport runtime acceptance (${{ matrix.group }}/3)
+    name: native transport runtime acceptance (${{ matrix.group }}/4)
     runs-on: ubuntu-24.04
     # Cold artifact setup and all native recovery cases share the job budget.
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        group: [1, 2, 3]
+        group: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -727,7 +725,7 @@ jobs:
         run: |
           docker exec --workdir /opt/rta \
             --env TRANSPORT_NATIVE_ISOLATED=1 \
-            --env "PYTEST_ADDOPTS=--tb=short --splits 3 --group $PYTEST_NATIVE_GROUP --splitting-algorithm least_duration --durations-path tests/native/transport_acceptance/recovery-durations.json" \
+            --env "PYTEST_ADDOPTS=--tb=short --splits 4 --group $PYTEST_NATIVE_GROUP --splitting-algorithm least_duration --durations-path tests/native/transport_acceptance/recovery-durations.json" \
             --env ANSIBLE_COLLECTIONS_PATH=/opt/rta/.ansible/collections \
             --env "PATH=$RTA_PYTHON_PREFIX/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
             transport-runtime-acceptance \
@@ -753,7 +751,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        plan: [core, recovery-1, recovery-2, recovery-3]
+        plan: [core, recovery-1, recovery-2, recovery-3, recovery-4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:

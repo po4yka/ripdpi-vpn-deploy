@@ -326,10 +326,10 @@ def test_native_ci_plans_cover_the_complete_real_collection_once():
     assert set(weights) == {case for case in expected
                             if case.startswith("tests/unit/test_transport_runtime_acceptance_native.py::")}
     mean = sum(weights.values()) / len(weights)
-    largest = set(sorted(weights, key=weights.get, reverse=True)[:3])
+    largest = set(sorted(weights, key=weights.get, reverse=True)[:4])
     recovery_groups = []
     observed = set()
-    for plan in ("core", "recovery-1", "recovery-2", "recovery-3"):
+    for plan in ("core", "recovery-1", "recovery-2", "recovery-3", "recovery-4"):
         selected = set()
         for _name, paths, options in runner.suite_commands(plan):
             cases = collect(paths, options)
@@ -349,12 +349,12 @@ def test_native_ci_plans_cover_the_complete_real_collection_once():
     loads = [sum(weights.get(case, mean) for case in group) for group in recovery_groups]
     assert max(loads) <= sum(loads) / len(loads) * 1.1
     assert runner.suite_commands("all") == sum(
-        (runner.suite_commands(plan) for plan in ("core", "recovery-1", "recovery-2", "recovery-3")), []
+        (runner.suite_commands(plan) for plan in ("core", "recovery-1", "recovery-2", "recovery-3", "recovery-4")), []
     )
     import yaml
     jobs = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
     job = jobs["transport-native-acceptance"]
-    assert job["strategy"]["matrix"]["plan"] == ["core", "recovery-1", "recovery-2", "recovery-3"]
+    assert job["strategy"]["matrix"]["plan"] == ["core", "recovery-1", "recovery-2", "recovery-3", "recovery-4"]
     assert job["strategy"]["fail-fast"] is False
     assert "transport-native-acceptance" in jobs["required"]["needs"]
 
@@ -367,7 +367,7 @@ def test_missing_recovery_profile_refuses_instead_of_silent_count_balancing(tmp_
 
 def test_unknown_native_plan_cannot_silently_omit_cases():
     with pytest.raises(RuntimeError, match="native-plan-refused"):
-        runner.suite_commands("recovery-4")
+        runner.suite_commands("recovery-5")
 
 
 @pytest.mark.parametrize(
