@@ -2142,7 +2142,11 @@ def test_transition_recovery_refuses_mismatched_successor_fields_without_mutatio
             **old,
             "status": "apply_started",
             "plan_binding": {
-                "identity": [evidence_identity[0], evidence_identity[1] + 1],
+                # Offset the bound plan inode itself; the evidence inode + 1 can be the plan inode.
+                "identity": [
+                    old["plan_binding"]["identity"][0],
+                    old["plan_binding"]["identity"][1] + 1,
+                ],
                 "sha256": old["plan_binding"]["sha256"],
             },
             "apply_started_at": guard._format_time(NOW),
