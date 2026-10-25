@@ -126,6 +126,7 @@ def _verify_listeners(
     ssh_port: int = 22,
     tailnet_sources: list[str] | None = None,
     include_tailnet_drop: bool = True,
+    native_acme: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir(exist_ok=True)
@@ -161,7 +162,7 @@ def _verify_listeners(
             str(ssh_port),
             "--tailnet-sources-b64",
             encoded_tailnet,
-        ],
+        ] + (["--native-acme"] if native_acme else []),
         capture_output=True,
         env=env,
         text=True,
@@ -170,6 +171,29 @@ def _verify_listeners(
 
 def _ss_line(protocol: str, address: str) -> str:
     return f"{protocol} LISTEN 0 128 {address} 0.0.0.0:*"
+
+
+@pytest.mark.parametrize('active', [False, True])
+@pytest.mark.parametrize('native_acme', [False, True])
+def test_native_acme_socket_is_transient_but_its_firewall_allowance_is_required(tmp_path, active, native_acme):
+    contract = [_listener('hysteria-acme', 'tcp', port=80), _listener('hysteria', 'udp', port=443)]
+    sockets = _ss_line('udp', '0.0.0.0:443') + ('\n' + _ss_line('tcp', '0.0.0.0:80') if active else '')
+    result = _verify_listeners(tmp_path, contract, sockets, native_acme=native_acme)
+    assert result.returncode == (0 if native_acme or active else 1), result.stdout + result.stderr
+    if not native_acme and not active: assert 'missing tcp 80' in result.stdout
+    result = _verify_listeners(tmp_path, contract, sockets, nft_output=_nft_for_contract(contract[1:]), native_acme=native_acme)
+    assert result.returncode == 1 and 'missing firewall tcp 80' in result.stdout
+
+
+def test_ordinary_http_listener_remains_required(tmp_path):
+    result = _verify_listeners(tmp_path, [_listener('public-site-http', 'tcp', port=80)], '', native_acme=True)
+    assert result.returncode == 1 and result.stdout == 'missing tcp 80\n'
+
+
+@pytest.mark.parametrize('protocol,port', [('tcp', 443), ('udp', 80)])
+def test_transient_acme_role_cannot_relax_another_socket(tmp_path, protocol, port):
+    result = _verify_listeners(tmp_path, [_listener('hysteria-acme', protocol, port=port)], '')
+    assert result.returncode == 2 and 'requires exactly TCP/80' in result.stderr
 
 
 def test_playbook_runs_repository_listener_verifier() -> None:
@@ -189,6 +213,24 @@ def test_playbook_runs_repository_listener_verifier() -> None:
     assert "--tailnet-sources-b64" in task["ansible.builtin.script"]["cmd"]
     assert "vpn.enable_tailnet_management" in task["ansible.builtin.script"]["cmd"]
     assert task["failed_when"] == "security_unexpected_public_listeners.rc != 0"
+
+
+@pytest.mark.parametrize('enabled,native,subscription_only,expected', [
+    (True, True, False, True), (True, False, False, False),
+    (False, True, False, False), (True, True, True, False),
+])
+def test_security_playbook_declares_transience_only_for_enabled_native_acme(enabled, native, subscription_only, expected):
+    import shlex
+    from scripts.template_render import render_fragment
+
+    play = yaml.safe_load(PLAYBOOK.read_text())[0]
+    task = next(task for task in play['tasks'] if task['name'] == 'Public listeners match enabled profile manifest')
+    command = render_fragment('security-command.sh.j2', task['ansible.builtin.script']['cmd'], {
+        'playbook_dir': str(PLAYBOOK.parent), 'terraform_public_listeners_b64': 'W10=',
+        'security_effective_ssh_ports': [22], 'vpn': {'enable_hysteria': enabled},
+        'vpn_subscription_only': subscription_only, 'hysteria': {'acme': {}} if native else {},
+    })
+    assert ('--native-acme' in shlex.split(command)) is expected
 
     tailnet_check = next(
         item

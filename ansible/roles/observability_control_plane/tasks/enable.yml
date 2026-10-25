@@ -321,10 +321,6 @@
       ansible.builtin.include_tasks: alerting.yml
       when: observability_control_plane.alerting.enabled | bool
 
-    - name: Remove disabled alerting artifacts
-      ansible.builtin.include_tasks: alerting-disable.yml
-      when: not (observability_control_plane.alerting.enabled | bool)
-
     - name: Derive the immutable Prometheus generation from candidate content
       ansible.builtin.set_fact:
         _observability_generation: "{{ lookup('ansible.builtin.template', 'prometheus.yml.j2') | hash('sha256') }}"
@@ -505,6 +501,10 @@
     - name: Commit ready collector runtime activation
       ansible.builtin.set_fact:
         _observability_prometheus_runtime_ready: true
+
+    - name: Remove disabled alerting artifacts
+      ansible.builtin.include_tasks: alerting-disable.yml
+      when: not (observability_control_plane.alerting.enabled | bool)
 
     - name: Create unprivileged isolated ingress group
       ansible.builtin.group:

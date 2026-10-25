@@ -65,7 +65,7 @@
   "protocol": "tcp",
   "port": 80,
   "enabled": (vpn.enable_hysteria | default(false)) and not subscription_only and hysteria is defined and hysteria.acme is defined,
-  "reason": "Native ACME HTTP-01 challenge"
+  "reason": "Transient native ACME HTTP-01 challenge"
 }) %}
 {% set _hysteria_range = hysteria_port_range | string %}
 {% set _ = ns.listeners.append({

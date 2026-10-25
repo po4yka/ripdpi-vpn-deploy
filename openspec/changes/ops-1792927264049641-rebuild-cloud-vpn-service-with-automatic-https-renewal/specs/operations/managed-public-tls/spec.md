@@ -26,3 +26,8 @@ The implementation MUST validate the domain set, key match and remaining validit
 
 - **WHEN** an eligible certificate renews
 - **THEN** the declared HTTPS and protocol consumers use the renewed certificate and encrypted backup can recover its private authority.
+
+#### Scenario: Native HTTP-01 solver is idle
+
+- **WHEN** native Hysteria ACME is enabled and no HTTP-01 challenge is active
+- **THEN** TCP/80 remains in the exact provider and firewall contract, its absent challenge socket is accepted, and all permanent sockets remain required.

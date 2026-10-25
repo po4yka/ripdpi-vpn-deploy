@@ -25,4 +25,8 @@
 
     - name: Refuse incomplete observability collector convergence
       ansible.builtin.fail:
-        msg: Observability collector convergence failed; an unaccepted binary activation was reverted.
+        msg: >-
+          {{ 'Collector activation was committed; later convergence failed. '
+             ~ 'Binary rollback was not run; cleanup or remaining configuration is incomplete.'
+             if _observability_prometheus_runtime_ready | default(false) | bool
+             else 'Collector convergence failed before readiness; unaccepted activation recovery was attempted.' }}

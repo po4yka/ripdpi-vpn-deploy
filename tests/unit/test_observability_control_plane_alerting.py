@@ -2208,10 +2208,13 @@ def test_alerting_disable_resolves_partial_generation_paths_without_writes(
     assert "changed=0" in completed.stdout
 
 
-def test_panel_only_transition_retires_delivery_and_alert_credentials(tmp_path: Path) -> None:
-    """Run owned file retirement; only the external service manager is substituted."""
+@pytest.mark.parametrize('ready,cleanup_error', [(True, False), (False, False), (True, True)])
+def test_panel_only_transition_retires_delivery_and_alert_credentials(tmp_path: Path, ready: bool, cleanup_error: bool) -> None:
+    """Run real readiness and retirement in source order; substitute only services and HTTP."""
     import copy
     import sys
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
     kuma = ROOT / 'ansible/roles/observability_kuma/tasks'
     producers = yaml.safe_load((kuma/'producers.yml').read_text())
@@ -2241,28 +2244,76 @@ def test_panel_only_transition_retires_delivery_and_alert_credentials(tmp_path: 
         files += ['etc/observability-push/'+kind+suffix for suffix in ('.json', '.token')]
         files += ['etc/systemd/system/observability-push-'+kind+suffix for suffix in ('.service', '.timer')]
         files += ['var/lib/node_exporter/textfile/observability-push-'+kind+'.prom']
-    credentials = ['telegram-bot-token', 'telegram-relay-auth-token', 'silence-policy.json', 'silence-owner-operator-a-token', 'node-client.key']
+    credentials = ['telegram-bot-token', 'telegram-relay-auth-token', 'silence-sender-token',
+                   'silence-policy.json', 'silence-owner-operator-a-token', 'node-client.key']
     files += ['etc/observability-control-plane/credentials/'+name for name in credentials]
+    if cleanup_error:
+        files += ['etc/observability-control-plane/credentials/silence-unowned-token']
     for name in files:
         path = tmp_path/name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('synthetic-private-authority')
         path.chmod(0o600)
     (tmp_path/'etc/observability-control-plane/generations').mkdir()
-    playbook = tmp_path/'panel-transition.yml'
-    playbook.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False, 'become': False,
-        'vars': {'ansible_python_interpreter': sys.executable,
-                 'observability_kuma_secrets': {'notification_mode': 'panel-only'},
-                 'observability_control_plane': {'config_root': str(tmp_path/'etc/observability-control-plane')},
-                 'observability_control_plane_alerting_generation': {'schema': 1}},
-        'tasks': [copy.deepcopy(hook)] + alerting_tasks}], sort_keys=False))
-    completed = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(playbook)],
-        capture_output=True, text=True, timeout=60)
-    assert completed.returncode == 0, completed.stdout + completed.stderr
+    binary_root = tmp_path/'runtime'
+    binary_root.mkdir()
+    for name in ('previous', 'ready'):
+        (binary_root/name).mkdir()
+    (binary_root/'current').symlink_to(binary_root/'ready', target_is_directory=True)
+    class Readiness(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200 if ready else 503)
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+        def log_message(self, *args):
+            pass
+    with ThreadingHTTPServer(('127.0.0.1', 0), Readiness) as server:
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            publication = next(task['block'] for task in yaml.safe_load((ROLE/'tasks/enable.yml').read_text())
+                               if task['name'] == 'Publish validated collector runtime outside check mode')
+            flow = []
+            for task in publication:
+                if task['name'] == 'Activate complete validated Prometheus generation with rollback':
+                    readiness = copy.deepcopy(next(row for row in task['block']
+                        if row['name'] == 'Require loopback-only Prometheus candidate readiness'))
+                    readiness['ansible.builtin.uri']['url'] = f'http://127.0.0.1:{server.server_port}/-/ready'
+                    flow.append(readiness)
+                elif task['name'] == 'Commit ready collector runtime activation':
+                    flow.append(copy.deepcopy(task))
+                elif task['name'] == 'Remove disabled alerting artifacts':
+                    flow.extend(alerting_tasks)
+            playbook = tmp_path/'panel-transition.yml'
+            playbook.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False, 'become': False,
+                'vars': {'ansible_python_interpreter': sys.executable,
+                         'observability_kuma_secrets': {'notification_mode': 'panel-only'},
+                         'observability_control_plane': {'config_root': str(tmp_path/'etc/observability-control-plane'),
+                                                         'install_root': str(binary_root)},
+                         '_observability_prometheus_previous_release': {'stat': {'islnk': True, 'exists': True,
+                             'lnk_source': str(binary_root/'previous')}},
+                         'observability_control_plane_alerting_generation': {'schema': 1}},
+                'tasks': [{'block': flow + [copy.deepcopy(hook)], 'rescue':
+                    yaml.safe_load((ROLE/'tasks/main.yml').read_text())[0]['rescue']}]}], sort_keys=False))
+            completed = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(playbook)],
+                capture_output=True, text=True, timeout=60)
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
+    assert (completed.returncode == 0) is (ready and not cleanup_error), completed.stdout + completed.stderr
+    assert (binary_root/'current').resolve() == binary_root/('ready' if ready else 'previous')
     for name in files:
-        retired = '/delivery' in name or '-delivery.' in name or name.endswith(tuple(credentials[:-1]))
+        retired = ready and not cleanup_error and ('/delivery' in name or '-delivery.' in name or name.endswith(tuple(credentials[:-1])))
         assert (tmp_path/name).exists() is not retired, name
     service_calls = events.read_text()
+    if cleanup_error:
+        assert 'Binary rollback was not run; cleanup or remaining configuration is incomplete.' in ' '.join(completed.stdout.split())
+        assert 'unaccepted activation recovery was attempted' not in completed.stdout
+        return
+    if not ready:
+        assert 'unaccepted activation recovery was attempted' in completed.stdout
+        assert service_calls == ''
+        return
     assert 'observability-push-delivery' in service_calls
     assert 'observability-push-node' not in service_calls and 'observability-push-pipeline' not in service_calls
     for name in ('observability-silence-gateway', 'observability-alertmanager', 'observability-telegram-relay'):

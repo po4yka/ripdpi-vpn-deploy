@@ -40,3 +40,8 @@ Notification-enabled mode MUST distinguish fresh-message send from edit receipts
 
 - **WHEN** an isolated relay/producer receives a stale receipt, failed canary or missing delivery authority
 - **THEN** it refuses a healthy delivery heartbeat without logging credentials; actual Telegram delivery and human receipt remain unverified outside this task.
+
+#### Scenario: Panel-only activation is rejected
+
+- **WHEN** an existing notification-enabled collector changes to panel-only and candidate startup or readiness fails
+- **THEN** its previous configuration, unit and credential authority remain available for rollback; notification retirement starts only after ready collector activation commits.
