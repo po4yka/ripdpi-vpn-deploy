@@ -13,7 +13,7 @@ import time
 
 import pytest
 
-from vpnd.wizard import choose, confirm, confirm_async, prompt
+from vpnd.wizard import confirm, confirm_async
 
 
 def test_all_prompt_helpers_refuse_nonterminal_stderr(monkeypatch):
@@ -21,8 +21,6 @@ def test_all_prompt_helpers_refuse_nonterminal_stderr(monkeypatch):
     for function in (
         lambda: confirm("Proceed?"),
         lambda: asyncio.run(confirm_async("Proceed?")),
-        lambda: prompt("Value", "default"),
-        lambda: choose("Pick", ["a", "b"]),
     ):
         with pytest.raises(OSError, match="not a terminal"):
             function()

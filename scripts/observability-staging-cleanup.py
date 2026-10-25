@@ -981,7 +981,10 @@ def _expected_state_path(provider: str) -> Path:
     )
 
 
-def _state_bytes(provider: str) -> bytes:
+def _state_pull(provider: str) -> bytes:
+    # The local-backend bytes, not a reserialized stdout view, are the frozen
+    # identity.  Terraform still receives every operation through the routed
+    # wrapper; this read only fences the exact state artifact used by it.
     path = _expected_state_path(provider)
     try:
         descriptor = fleet_inspection._open_local_file(path, private=True)
@@ -1014,13 +1017,6 @@ def _state_bytes(provider: str) -> bytes:
         return raw
     finally:
         os.close(descriptor)
-
-
-def _state_pull(provider: str) -> bytes:
-    # The local-backend bytes, not a reserialized stdout view, are the frozen
-    # identity.  Terraform still receives every operation through the routed
-    # wrapper; this read only fences the exact state artifact used by it.
-    return _state_bytes(provider)
 
 
 def _instance_address(resource: Mapping[str, Any], instance: Mapping[str, Any]) -> str:
