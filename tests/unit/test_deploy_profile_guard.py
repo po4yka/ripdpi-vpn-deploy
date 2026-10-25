@@ -127,6 +127,7 @@ def test_live_explicit_profile_surfaces_are_locked():
     assert p1_web["enable_nginx_xhttp"] is True
     assert p1_web["enable_hysteria"] is False
     assert p1_web["enable_amneziawg"] is False
+    assert p1_web["enable_subscription_host"] is False
     assert p1_web_data["nginx_xhttp_public_port"] == 443
 
     assert p2_udp["enable_xray_reality"] is False

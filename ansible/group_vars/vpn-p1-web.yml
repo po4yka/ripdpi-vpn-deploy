@@ -1,10 +1,6 @@
 ---
-# Profile: public web, direct XHTTP, and subscription delivery node.
-# Public listeners: HTTP redirect, nginx HTTPS/XHTTP, and the
-# subscription delivery HTTPS listener (tcp/8444; the matching
-# public_listeners entry lives in the scaleway environment tfvars).
-# Co-located subscription delivery follows the v1 default in
-# docs/how-to/subscription-host-separation.md.
+# Profile: public web and direct XHTTP node.
+# Public listeners: HTTP redirect and nginx HTTPS/XHTTP on TCP/80 and TCP/443.
 
 vpn:
   enable_xray_reality: false
@@ -17,7 +13,7 @@ vpn:
   enable_watchdog: true
   enable_backup: true
   enable_tailnet_management: true
-  enable_subscription_host: true
+  enable_subscription_host: false
   enable_policy_ratelimit: false
   enable_cdn_front: false
   enable_honeypot: false

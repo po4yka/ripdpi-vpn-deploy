@@ -21,3 +21,8 @@ The implementation MUST provide consistent canonical metadata and a real 404 res
 
 - **WHEN** an ordinary browser loads the public site or requests a missing route
 - **THEN** valid HTTPS serves the expected public page or a styled 404 with correct HTTP status and without management or credential disclosure.
+
+#### Scenario: Domain-facing web profile
+
+- **WHEN** the public site uses the `vpn-p1-web` profile
+- **THEN** its public listener contract contains only TCP/80 and TCP/443, and subscription delivery is disabled.
