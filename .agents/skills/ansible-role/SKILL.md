@@ -24,9 +24,9 @@ Deliver the requested runtime behavior with its integration and local evidence. 
 
 ## Validate and hand off
 
-1. Run focused tests for the changed failure/boundary behavior, then `make molecule-test ROLE=<name>` where the role has a scenario. Require its convergence, idempotency and verification outcomes; a documented unsupported environment is a gap, not a passing run. Use the pinned `mise` environment and machine-wide build gate where root instructions require it.
+1. Run focused tests for the changed failure/boundary behavior, then `make molecule-test ROLE=<name>` when tasks, handlers, templates or defaults changed and the role has a scenario. Require its convergence, idempotency and verification outcomes; a documented unsupported environment is a gap, not a passing run. Use the pinned `mise` environment.
 2. For changed templates, review the rendered output before `make snapshot-update`, then run `make snapshot-check`. Refresh only intended snapshots. Run relevant secrets/profile/listener checks when those contracts changed and use [the test map](../../../docs/reference/testing.md) to select remaining coverage.
-3. Run required `make check` for changes crossing layers, schemas, secret handling or shared scripts. Review the final diff for complete call sites and unintended changes, then follow the task's verification/commit workflow with exact owned paths. Live deployment and acceptance remain separate when not requested.
+3. Run `make check` once when the [root verification rule](../../../AGENTS.md#build-and-verify) requires it: changes crossing layers, schemas, secret handling or shared scripts. Review the final diff for complete call sites and unintended changes, then follow the task's verification/commit workflow with exact owned paths. Live deployment and acceptance remain separate when not requested.
 
 Report implemented behavior, affected roles/contracts, exact local commands/results and any unverified runtime or environment claim. Successful Molecule, snapshots or check mode do not prove live host identity, external client traffic or production readiness.
 
