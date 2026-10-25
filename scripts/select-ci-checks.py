@@ -53,9 +53,15 @@ PATHS = (
     ("scripts/tests/", set()),
     ("tools/tasking/", set()),
     ("openspec/", set()),
+    # Agent instructions and skills; the common pytest and task-contract checks read them.
+    (".agents/", set()),
+    (".claude/", set()),
+    (".github/skills/", set()),
 )
 COMMON_ONLY = {"README.md", "CHANGELOG.md", "CONTRIBUTING.md", "LICENSE", "AGENTS.md", "CLAUDE.md"}
-NATIVE_TEST_INPUTS = {"tests/conftest.py", "tests/pytest-durations.json.gz", "tests/CLAUDE.md", "tests/AGENTS.md"}
+NATIVE_TEST_INPUTS = {"tests/conftest.py", "tests/pytest-durations.json.gz"}
+# Folder notes are read only by the common pytest checks; docs/ notes ship with vpnd.
+INSTRUCTION_NAMES = {"AGENTS.md", "CLAUDE.md"}
 ALL_CHECKS = ALWAYS | set().union(*CHECKS.values())
 
 
@@ -111,6 +117,8 @@ def plan(paths, portable_tests=frozenset()):
     components = set()
     for path in paths:
         if path in COMMON_ONLY or path in portable_tests:
+            continue
+        if Path(path).name in INSTRUCTION_NAMES and not path.startswith("docs/"):
             continue
         if path in NATIVE_TEST_INPUTS:
             components.add("native")

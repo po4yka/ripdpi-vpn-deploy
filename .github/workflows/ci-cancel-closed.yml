@@ -1,0 +1,24 @@
+---
+name: ci-cancel-closed
+
+# Closing or merging a PR does not cancel its ci run. Joining the same
+# repository-wide concurrency group as ci.yml cancels that run and its
+# queued jobs, so they stop holding runner slots.
+on:
+  pull_request:
+    types: [closed]
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cancel:
+    name: cancel closed PR CI
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Release the PR concurrency group
+        run: echo "Cancelled any ci run for ${GITHUB_REF}"
