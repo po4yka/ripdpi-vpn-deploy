@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+Consumer admission streams its fixed helper sources with the private request on stdin. The small launcher pins each source digest and path before any module executes; complete sources must not enter a command argument, which has a separate Linux size limit.
+
 Device revocation carries the same exact operation/digest through outer begin, frontend acceptance and finish. Pending revocation refuses ordinary recovery and snapshot restoration; failure quiesces the route and leaves the immutable candidate for an authorized forward retry. Even after consumer acceptance, an unfinished outer revocation cannot compensate to its old credential snapshot.
 
 Protected site commit finishes `outer.json` through the ingress decision owner, retaining `site.json` until finish succeeds. Interrupted begin and rescue resolve a recorded commit before route status/adoption or quiescence. Do not independently roll back egress while that ingress decision remains committing.

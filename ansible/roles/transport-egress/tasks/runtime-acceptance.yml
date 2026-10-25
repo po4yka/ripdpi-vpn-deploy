@@ -22,20 +22,41 @@
       - -Es
       - -c
       - |-
-        import sys, types
+        import hashlib, io, json, sys, types
+        bindings = {
         {% for helper in ['transport_runtime_transaction', 'transport_runtime_probe',
                           'transport_runtime_validate', 'transport_runtime_accept'] %}
-        module = types.ModuleType({{ helper | to_json }})
-        module.__file__ = {{ (transport_egress_libexec_dir ~ '/' ~ helper ~ '.py') | to_json }}
-        sys.modules[{{ helper | to_json }}] = module
-        exec({{ lookup('ansible.builtin.file', role_path ~ '/../runtime-release/files/' ~ helper ~ '.py') | to_json }}, module.__dict__)
+            {{ helper | to_json }}: ({{ (transport_egress_libexec_dir ~ '/' ~ helper ~ '.py') | to_json }},
+                {{ lookup('ansible.builtin.file',
+                    role_path ~ '/../runtime-release/files/' ~ helper ~ '.py', rstrip=False) | hash('sha256') | to_json }}),
         {% endfor %}
+        }
         try:
+            raw = sys.stdin.buffer.read(37748737)
+            if len(raw) > 37748736:
+                raise ValueError()
+            envelope = json.loads(raw)
+            if (not isinstance(envelope, dict) or set(envelope) != {'sources', 'request'}
+                    or not isinstance(envelope['sources'], dict) or set(envelope['sources']) != set(bindings)):
+                raise ValueError()
+            for name, (path, digest) in bindings.items():
+                source = envelope['sources'][name]
+                if (not isinstance(source, str) or len(source.encode()) > 262144
+                        or hashlib.sha256(source.encode()).hexdigest() != digest):
+                    raise ValueError()
+            for name, (path, digest) in bindings.items():
+                module = types.ModuleType(name)
+                module.__file__ = path
+                sys.modules[name] = module
+                exec(compile(envelope['sources'][name], path, 'exec'), module.__dict__)
+            sys.stdin = io.TextIOWrapper(io.BytesIO(json.dumps(envelope['request']).encode()), encoding='utf-8')
             sys.modules['transport_runtime_accept'].main()
         except Exception as error:
             import re, traceback
-            known = (sys.modules['transport_runtime_transaction'].Refusal,
-                     sys.modules['transport_runtime_probe'].ProbeRefused)
+            known = tuple(getattr(sys.modules[name], attribute)
+                          for name, attribute in [('transport_runtime_transaction', 'Refusal'),
+                                                  ('transport_runtime_probe', 'ProbeRefused')]
+                          if name in sys.modules and hasattr(sys.modules[name], attribute))
             cause = error
             for _index in range(4):
                 if cause is None:
@@ -52,7 +73,16 @@
       - "{{ '--retire' if (_transport_runtime_retire_all | default(false) | bool) else '--apply' }}"
       - "{{ '--check' if ansible_check_mode else '--apply' }}"
     stdin: >-
-      {{ ({'paths': transport_runtime_candidates | map(attribute='path') | list}
+      {{ {'sources': {
+            'transport_runtime_transaction': lookup('ansible.builtin.file',
+                role_path ~ '/../runtime-release/files/transport_runtime_transaction.py', rstrip=False),
+            'transport_runtime_probe': lookup('ansible.builtin.file',
+                role_path ~ '/../runtime-release/files/transport_runtime_probe.py', rstrip=False),
+            'transport_runtime_validate': lookup('ansible.builtin.file',
+                role_path ~ '/../runtime-release/files/transport_runtime_validate.py', rstrip=False),
+            'transport_runtime_accept': lookup('ansible.builtin.file',
+                role_path ~ '/../runtime-release/files/transport_runtime_accept.py', rstrip=False)},
+          'request': ({'paths': transport_runtime_candidates | map(attribute='path') | list}
          if (_transport_runtime_retire_all | default(false) | bool) else
          {'candidates': transport_runtime_candidates,
           'clients': transport_runtime_probe_clients,
@@ -60,7 +90,7 @@
           'asset_dir': transport_runtime_geodata_candidate_dir | default(none),
           'expected_status': transport_runtime_probe_expected_status | int,
           'timeout': transport_runtime_timeout_seconds | int}) |
-          combine({'revocation': vpn_device_revocation | default(none)}) | to_json }}
+          combine({'revocation': vpn_device_revocation | default(none)})} | to_json }}
     stdin_add_newline: false
   register: _transport_runtime_acceptance
   changed_when: >-
