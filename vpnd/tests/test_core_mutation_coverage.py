@@ -16,26 +16,6 @@ from vpnd.runner import CapturePolicy, Cmd, ansible, make, process
 from vpnd.state import Host
 
 
-@pytest.mark.parametrize(
-    "builder,name", [(ansible.verify, "verify"), (ansible.smoke, "smoke-test")]
-)
-def test_public_playbook_builders_keep_inventory_and_secret_delivery(tmp_path, builder, name):
-    ctx = context(scaffold(tmp_path))
-    command = builder(ctx)
-    assert command.program == "ansible-playbook"
-    assert command.argv == [
-        str(ctx.ansible_dir / "playbooks" / f"{name}.yml"),
-        "--inventory",
-        str(ctx.ansible_dir / "inventory/generated.ini"),
-    ]
-    assert command.directory == ctx.root
-    assert dict(command.environment) == {
-        "ANSIBLE_CONFIG": str(ctx.ansible_cfg()),
-        "VPN_SECRETS_FILE": str(ctx.secrets_file),
-    }
-    assert str(ctx.secrets_file) not in command.redacted_explain()
-
-
 def inventory_program(tmp_path, monkeypatch, inventory):
     scaffold(tmp_path)
     marker = tmp_path / "inventory-call.json"

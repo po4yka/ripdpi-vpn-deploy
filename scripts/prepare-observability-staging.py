@@ -322,10 +322,6 @@ def _write_private(path: Path, raw: bytes) -> None:
             os.close(parent)
 
 
-def _write_json(path: Path, value: object) -> None:
-    _write_private(path, _canonical(value))
-
-
 def _open_relative_directory(root: int, relative: Path, category: str) -> int:
     if relative.is_absolute() or any(
         part in ("", ".", "..") for part in relative.parts
