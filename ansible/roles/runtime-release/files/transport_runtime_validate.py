@@ -1,7 +1,7 @@
 """Native Hysteria admission with a durable, exact isolated-resource lease."""
 from __future__ import annotations
 
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack
 import base64
 from datetime import UTC, datetime
 import grp
@@ -35,38 +35,41 @@ def certmagic_key(value):
     return re.sub(r'[^a-z0-9_@.\-]', '', value)
 
 
-@contextmanager
-def cache_descriptor(path, flags, *, dir_fd=None):
-    """Keep descriptor ownership explicit on success and refusal paths."""
-    descriptor = os.open(path, flags, dir_fd=dir_fd)
-    try:
-        yield descriptor
-    finally:
-        os.close(descriptor)
-
-
 def cache_file(root, relative, *, private=True):
     """Read bounded snapshot bytes without following any archived link."""
     path = Path(relative)
-    if path.is_absolute() or '..' in path.parts or not path.parts:
+    if path.is_absolute() or '..' in path.parts or not path.parts or len(path.parts) > 32:
         raise Refusal('acme-cache-path')
-    with ExitStack() as stack:
-        fd = stack.enter_context(cache_descriptor(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW))
-        for part in path.parts[:-1]:
-            fd = stack.enter_context(cache_descriptor(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd))
-            if os.fstat(fd).st_mode & 0o022:
-                raise Refusal('acme-cache-directory')
-        source = stack.enter_context(cache_descriptor(path.name, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=fd))
-        info = os.fstat(source)
-        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_mode & (0o077 if private else 0o022)
-                or not 1 <= info.st_size <= 1024 * 1024):
-            raise Refusal('acme-cache-file')
-        data = os.read(source, 1024 * 1024 + 1)
-        after = os.fstat(source)
-        if len(data) != info.st_size or (info.st_ino, info.st_dev, info.st_mtime_ns, info.st_ctime_ns) != (
-                after.st_ino, after.st_dev, after.st_mtime_ns, after.st_ctime_ns):
-            raise Refusal('acme-cache-file-changed')
-        return data
+
+    def descend(directory, index):
+        if index < len(path.parts) - 1:
+            child_fd = os.open(path.parts[index], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory)
+            try:
+                if os.fstat(child_fd).st_mode & 0o022:
+                    raise Refusal('acme-cache-directory')
+                return descend(child_fd, index + 1)
+            finally:
+                os.close(child_fd)
+        source = os.open(path.name, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=directory)
+        try:
+            info = os.fstat(source)
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_mode & (0o077 if private else 0o022)
+                    or not 1 <= info.st_size <= 1024 * 1024):
+                raise Refusal('acme-cache-file')
+            data = os.read(source, 1024 * 1024 + 1)
+            after = os.fstat(source)
+            if len(data) != info.st_size or (info.st_ino, info.st_dev, info.st_mtime_ns, info.st_ctime_ns) != (
+                    after.st_ino, after.st_dev, after.st_mtime_ns, after.st_ctime_ns):
+                raise Refusal('acme-cache-file-changed')
+            return data
+        finally:
+            os.close(source)
+
+    directory = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        return descend(directory, 0)
+    finally:
+        os.close(directory)
 
 
 def cache_authority(root, document, *, prefix=''):

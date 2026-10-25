@@ -317,9 +317,11 @@ def acme_cache(tls, tmp_path, monkeypatch):
     return root, document, files, cert, account
 
 
-@pytest.mark.parametrize('case', ['success', 'directory-refusal', 'file-refusal', 'missing', 'read-error'])
-def test_cache_read_closes_every_descriptor(tmp_path, monkeypatch, case):
-    directory = tmp_path/'one/two'
+@pytest.mark.parametrize('case,depth', [('success', 2), ('success', 31), ('depth-refusal', 32),
+    ('directory-refusal', 2), ('file-refusal', 2), ('missing', 2), ('read-error', 2)])
+def test_cache_read_closes_every_descriptor(tmp_path, monkeypatch, case, depth):
+    relative = '/'.join(['one'] * depth + ['cache.json'])
+    directory = (tmp_path/relative).parent
     directory.mkdir(parents=True, mode=0o700)
     path = directory/'cache.json'
     path.write_bytes(b'cache')
@@ -339,11 +341,11 @@ def test_cache_read_closes_every_descriptor(tmp_path, monkeypatch, case):
         change.setattr(validation.os, 'open', tracked_open)
         if case == 'read-error': change.setattr(validation.os, 'read', failed_read)
         if case == 'success':
-            assert validation.cache_file(tmp_path, 'one/two/cache.json') == b'cache'
+            assert validation.cache_file(tmp_path, relative) == b'cache'
         else:
             with pytest.raises((Refusal, OSError)):
-                validation.cache_file(tmp_path, 'one/two/cache.json')
-    assert opened
+                validation.cache_file(tmp_path, relative)
+    assert bool(opened) is (case != 'depth-refusal')
     for descriptor in opened:
         with pytest.raises(OSError) as error:
             os.fstat(descriptor)

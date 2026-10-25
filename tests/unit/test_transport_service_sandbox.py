@@ -71,7 +71,7 @@ def test_public_tls_coordinator_can_inspect_cross_uid_nginx_workers():
 def test_direct_realm_refuses_native_acme_before_mutation(sharing):
     tasks = yaml.safe_load((REPO_ROOT / 'ansible/roles/hysteria-realm/tasks/enable.yml').read_text())
     guard = tasks[0]['ansible.builtin.assert']['that'][0]
-    environment = Environment(undefined=StrictUndefined)
+    environment = Environment(autoescape=True, undefined=StrictUndefined)
     evaluate = environment.compile_expression(guard)
     assert evaluate(hysteria={'cert_pem': 'owned'}, hysteria_realm={'share_hysteria_tls': sharing})
     assert not evaluate(hysteria={'acme': {}}, hysteria_realm={'share_hysteria_tls': sharing})
