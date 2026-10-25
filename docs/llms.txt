@@ -17,7 +17,7 @@
 
 - [Runbook — add a fallback VPS](/md/how-to/add-fallback.md)
 - [age key recovery — Shamir split](/md/how-to/age-recovery.md)
-- [Branch protection](/md/how-to/branch-protection.md)
+- [Repository rules and merge policy](/md/how-to/branch-protection.md)
 - [Certificate preflight](/md/how-to/certificates.md)
 - [Disposable real-VPS CI deployment](/md/how-to/ci-real-deploy.md)
 - [Recurring real-VPS AWG/NAT evidence lane](/md/how-to/ci-real-vps-awg-nat.md)

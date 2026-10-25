@@ -103,3 +103,12 @@ Set the repository variable `RELEASE_PLEASE_ENABLED=false` to pause new
 release-please runs. Delete the variable or set it to `true` to resume.
 Deleting the variable now enables automation. This switch does not cancel
 already dispatched builds or disable manual `release-vpnd` recovery.
+
+## Immutable releases
+
+Repository policy enables immutability for future published releases and blocks
+updates and deletion of `vpnd-v*` tags. Keep the existing draft-first sequence:
+create the tag and draft, build and upload all assets, then publish. Draft retries
+can replace assets. After publication, publish a new version for a correction;
+do not move the tag or replace an asset. Earlier releases are not retroactively
+made immutable. See [repository policy](branch-protection.md).

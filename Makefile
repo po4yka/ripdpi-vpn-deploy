@@ -7,6 +7,18 @@ endif
 .PHONY: workspace-status
 workspace-status:
 	@python3 scripts/workspace-status.py
+else ifneq ($(filter repository-policy-plan repository-policy-apply,$(MAKECMDGOALS)),)
+ifneq ($(words $(MAKECMDGOALS)),1)
+$(error repository policy requires exactly one make goal)
+endif
+ifneq ($(strip $(foreach variable,$(.VARIABLES),$(if $(filter command line,$(origin $(variable))),$(variable)))),)
+$(error repository policy does not accept command-line variables)
+endif
+.PHONY: repository-policy-plan repository-policy-apply
+repository-policy-plan:
+	@python3 scripts/configure-repository.py
+repository-policy-apply:
+	@python3 scripts/configure-repository.py --apply
 else ifneq ($(filter recovery,$(MAKECMDGOALS)),)
 ifneq ($(MAKECMDGOALS),recovery)
 $(error recovery requires exactly one make goal)
@@ -729,6 +741,8 @@ export INSPECT_HOSTS INSPECT_INVENTORY INSPECT_KNOWN_HOSTS
 
 help:
 	@echo "vpn-deploy Makefile"
+	@echo "  repository-policy-plan     Preview managed GitHub rules, merge settings, and release integrity"
+	@echo "  repository-policy-apply    Apply reviewed GitHub repository policy and verify readback"
 	@echo "  workspace-status  Read-only local checkout provenance (no fetch or fleet configuration)"
 	@echo ""
 	@echo "Variables (override on command line):"

@@ -5,6 +5,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
   workflow_dispatch:
 
 permissions:
@@ -17,6 +18,17 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  pr-title:
+    name: PR title
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate squash commit subject
+        run: python3 scripts/check-pr-title.py
+
   selection:
     name: CI dependency selection
     runs-on: ubuntu-24.04
@@ -1056,6 +1068,7 @@ jobs:
     name: required checks
     if: always()
     needs:
+      - pr-title
       - selection
       - gitleaks
       - actionlint

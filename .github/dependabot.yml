@@ -1,59 +1,54 @@
 ---
-# Dependabot config: weekly updates per ecosystem, grouped to keep PR
-# count low. Auto-merge intentionally disabled — every PR runs through the
-# full CI matrix and a human merges.
-#
-# Limitations:
-#   - Ansible Galaxy collections (requirements.yml) are NOT covered by
-#     Dependabot. Refresh manually each quarter; see docs/reference/testing.md
-#     "Dependency updates".
+# Weekly grouped updates. CI and human merge remain required.
+# Galaxy collections use the separate drift workflow.
 version: 2
-
 updates:
-  # GitHub Actions used in workflows
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
       day: monday
-      time: "09:00"
+      time: 09:00
       timezone: Etc/UTC
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
     groups:
-      gh-actions:
+      routine:
         patterns:
-          - "*"
+          - '*'
     labels:
       - dependencies
       - github-actions
-
-  # Terraform provider versions per provider root
+    commit-message:
+      prefix: chore
+      include: scope
   - package-ecosystem: terraform
     directory: /terraform/providers/upcloud
     schedule:
       interval: weekly
       day: monday
-      time: "09:00"
+      time: 09:00
       timezone: Etc/UTC
     cooldown:
       default-days: 7
     open-pull-requests-limit: 3
     groups:
-      tf-upcloud:
+      routine:
         patterns:
-          - "*"
+          - '*'
     labels:
       - dependencies
       - terraform
-
+    commit-message:
+      prefix: chore
+      include: scope
   - package-ecosystem: terraform
     directory: /terraform/providers/hetzner
     schedule:
       interval: weekly
       day: monday
-      time: "09:00"
+      time: 09:00
       timezone: Etc/UTC
     cooldown:
       default-days: 7
@@ -61,13 +56,19 @@ updates:
     labels:
       - dependencies
       - terraform
-
+    groups:
+      routine:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: chore
+      include: scope
   - package-ecosystem: terraform
     directory: /terraform/providers/vultr
     schedule:
       interval: weekly
       day: monday
-      time: "09:00"
+      time: 09:00
       timezone: Etc/UTC
     cooldown:
       default-days: 7
@@ -75,27 +76,106 @@ updates:
     labels:
       - dependencies
       - terraform
-
-  # Python tooling pinned in requirements.txt (ansible-core, ansible-lint,
-  # molecule, yamllint, jmespath)
+    groups:
+      routine:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: chore
+      include: scope
   - package-ecosystem: pip
     directory: /
     schedule:
       interval: weekly
       day: monday
-      time: "09:00"
+      time: 09:00
       timezone: Etc/UTC
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
     groups:
-      pip-runtime:
+      routine:
         patterns:
-          - "ansible-core"
-          - "ansible-lint"
-          - "molecule*"
-          - "yamllint"
-          - "jmespath"
+          - '*'
     labels:
       - dependencies
       - python
+    commit-message:
+      prefix: chore
+      include: scope
+  - package-ecosystem: terraform
+    directory: /terraform/providers/scaleway
+    schedule:
+      interval: weekly
+      day: monday
+      time: 09:00
+      timezone: Etc/UTC
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+    groups:
+      routine:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: chore
+      include: scope
+  - package-ecosystem: pip
+    directory: /vpnd
+    schedule:
+      interval: weekly
+      day: monday
+      time: 09:00
+      timezone: Etc/UTC
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+    groups:
+      routine:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: chore
+      include: scope
+  - package-ecosystem: npm
+    directory: /tools/tasking
+    schedule:
+      interval: weekly
+      day: monday
+      time: 09:00
+      timezone: Etc/UTC
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+    groups:
+      routine:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: chore
+      include: scope
+  - package-ecosystem: gomod
+    directory: /tools/probe-matrix-mtproto
+    schedule:
+      interval: weekly
+      day: monday
+      time: 09:00
+      timezone: Etc/UTC
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+    groups:
+      routine:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: chore
+      include: scope

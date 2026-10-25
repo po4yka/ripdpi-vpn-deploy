@@ -13,7 +13,7 @@ import urllib.request
 # These checks inspect the whole repository, including executable documentation
 # and test contracts. Do not infer individual pytest dependencies from filenames.
 ALWAYS = {
-    "gitleaks", "actionlint", "zizmor", "task-contract", "shellcheck",
+    "pr-title", "gitleaks", "actionlint", "zizmor", "task-contract", "shellcheck",
     "python-validators", "unit-tests", "pytest-required",
 }
 CHECKS = {

@@ -28,9 +28,3 @@ def test_all_checkout_steps_disable_persisted_credentials():
         assert step.get("with", {}).get("persist-credentials") is False, (
             f"{path_name}:{job_name} persists checkout credentials"
         )
-
-
-def test_branch_protection_job_does_not_checkout_repository():
-    source = (WORKFLOW_DIR / "branch-protection.yml").read_text()
-
-    assert "actions/checkout@" not in source

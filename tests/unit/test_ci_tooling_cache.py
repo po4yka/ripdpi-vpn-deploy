@@ -93,9 +93,6 @@ def test_combined_validators_preserve_every_check_and_required_context():
         assert matching[0]["if"] == "${{ !cancelled() }}"
         assert "continue-on-error" not in matching[0]
     assert not OLD_CONTEXTS.intersection(item.get("name") for item in jobs.values())
-    protection = (ROOT / ".github/workflows/branch-protection.yml").read_text()
-    assert f'"{job["name"]}"' in protection
-    assert not any(f'"{name}"' in protection for name in OLD_CONTEXTS)
 
 
 def test_taskctl_consumers_checkout_verifiable_terminal_history():
