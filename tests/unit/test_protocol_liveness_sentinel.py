@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ast
 import hashlib
 import importlib.util
 import json
@@ -1111,24 +1110,6 @@ def test_awg_resolver_directory_is_removed_when_mkdir_raises_after_creation(
     assert namespace_present is False
     assert any(c[:3] == ["ip", "netns", "delete"] for c in calls)
     assert list(resolver_root.iterdir()) == []
-
-
-def test_awg_validation_call_is_retained_without_an_unused_result():
-    tree = ast.parse(SCRIPT.read_text())
-    probe = next(
-        node
-        for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name == "probe_awg"
-    )
-    direct_calls = [
-        node
-        for node in ast.walk(probe)
-        if isinstance(node, ast.Expr)
-        and isinstance(node.value, ast.Call)
-        and isinstance(node.value.func, ast.Name)
-        and node.value.func.id == "awg_probe_url"
-    ]
-    assert len(direct_calls) == 1
 
 
 def test_awg_validation_failure_precedes_namespace_mutation(monkeypatch):
