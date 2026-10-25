@@ -230,9 +230,6 @@ def _read_payload(path: str) -> bytes:
 
 def validate(
     path: str,
-    required: list[str],
-    required_mappings: list[str],
-    required_strings: list[str],
     profile: str | None,
     *,
     allow_dns_morph_echo_only: bool = False,
@@ -241,16 +238,6 @@ def validate(
     document = yaml.load(payload, Loader=UniqueKeyLoader)
     if not isinstance(document, dict):
         raise ValueError("configuration root must be a mapping")
-    all_required = [*required, *required_mappings, *required_strings]
-    if any(key not in document for key in all_required):
-        raise ValueError("configuration is missing required keys")
-    if any(not isinstance(document[key], dict) for key in required_mappings):
-        raise ValueError("configuration mapping has an invalid type")
-    if any(
-        not isinstance(document[key], str) or not document[key]
-        for key in required_strings
-    ):
-        raise ValueError("configuration string has an invalid type")
     if profile == "dns-morph":
         _validate_dns_morph(document, allow_echo_only=allow_dns_morph_echo_only)
     elif allow_dns_morph_echo_only:
@@ -261,9 +248,6 @@ def validate(
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--require", action="append", default=[])
-    parser.add_argument("--require-mapping", action="append", default=[])
-    parser.add_argument("--require-string", action="append", default=[])
     parser.add_argument("--profile", choices=sorted(PROFILE_VALIDATORS))
     parser.add_argument("--allow-dns-morph-echo-only", action="store_true")
     parser.add_argument("path")
@@ -271,9 +255,6 @@ def main() -> int:
     try:
         validate(
             arguments.path,
-            arguments.require,
-            arguments.require_mapping,
-            arguments.require_string,
             arguments.profile,
             allow_dns_morph_echo_only=arguments.allow_dns_morph_echo_only,
         )

@@ -138,29 +138,13 @@ def _live_payloads(policy: dict) -> tuple[list[dict], list[dict]]:
     return issues, releases
 
 
-def _load_fixture(path: Path) -> object:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--policy", type=Path, default=DEFAULT_POLICY)
-    parser.add_argument("--issues-fixture", type=Path)
-    parser.add_argument("--releases-fixture", type=Path)
     args = parser.parse_args(argv)
     try:
         policy = json.loads(args.policy.read_text(encoding="utf-8"))
-        if bool(args.issues_fixture) != bool(args.releases_fixture):
-            raise ValueError(
-                "both --issues-fixture and --releases-fixture are required together"
-            )
-        if args.issues_fixture:
-            issues = _load_fixture(args.issues_fixture)
-            releases = _load_fixture(args.releases_fixture)
-        else:
-            issues, releases = _live_payloads(policy)
-        if not isinstance(issues, list) or not isinstance(releases, list):
-            raise ValueError("fixture roots must be JSON arrays")
+        issues, releases = _live_payloads(policy)
         result = classify(policy, issues, releases)
     except (
         OSError,

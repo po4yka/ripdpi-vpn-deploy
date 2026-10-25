@@ -25,7 +25,7 @@ def _named(items: list[dict], name: str) -> dict:
     return next(item for item in items if item["name"] == name)
 
 
-def test_shared_yaml_validator_rejects_invalid_duplicate_and_missing_keys(
+def test_shared_yaml_validator_rejects_invalid_and_duplicate_keys(
     tmp_path: Path,
 ) -> None:
     valid = tmp_path / "valid.yaml"
@@ -34,10 +34,6 @@ def test_shared_yaml_validator_rejects_invalid_duplicate_and_missing_keys(
         [
             sys.executable,
             str(VALIDATOR),
-            "--require-string",
-            "listen",
-            "--require-mapping",
-            "forward",
             str(valid),
         ],
         capture_output=True,
@@ -49,9 +45,7 @@ def test_shared_yaml_validator_rejects_invalid_duplicate_and_missing_keys(
     for content in (
         "- item\n",
         "listen: {}\nlisten: {}\n",
-        "listen: {}\n",
         "? [listen, forward]\n: value\n",
-        "listen: endpoint\nforward: []\n",
     ):
         invalid = tmp_path / "invalid.yaml"
         invalid.write_text(content, encoding="utf-8")
@@ -59,10 +53,6 @@ def test_shared_yaml_validator_rejects_invalid_duplicate_and_missing_keys(
             [
                 sys.executable,
                 str(VALIDATOR),
-                "--require-string",
-                "listen",
-                "--require-mapping",
-                "forward",
                 str(invalid),
             ],
             capture_output=True,

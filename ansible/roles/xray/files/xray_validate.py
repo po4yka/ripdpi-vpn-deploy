@@ -106,7 +106,6 @@ def main() -> int:
     parser.add_argument("--binary")
     parser.add_argument("--asset-dir")
     parser.add_argument("--config", required=True)
-    parser.add_argument("--dump-config", action="store_true")
     args = parser.parse_args()
     try:
         args.binary = managed_authority(args.binary, "XRAY_RUNTIME_BINARY")
@@ -114,10 +113,7 @@ def main() -> int:
             raise ValueError("absolute paths required")
         read_candidate(args.config)
         environment = {**os.environ, "XRAY_LOCATION_ASSET": managed_authority(args.asset_dir, "XRAY_LOCATION_ASSET")}
-        command = [args.binary, "run", "-test"]
-        if args.dump_config:
-            command.append("-dump-config")
-        command.extend(["-config", args.config])
+        command = [args.binary, "run", "-test", "-config", args.config]
         os.execve(args.binary, command, environment)
     except (OSError, ValueError, TypeError, KeyError, AttributeError, subprocess.SubprocessError):
         print("Xray configuration or managed runtime authority was refused.", file=sys.stderr)
