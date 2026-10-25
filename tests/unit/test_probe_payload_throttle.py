@@ -450,8 +450,8 @@ def test_proven_cliff_survives_unknown_direction_and_hash_order(seed, direction,
     if reverse:
         rows.reverse()
     result = subprocess.run([sys.executable, "-c",
-        "import json, sys; from payload_probe_content import classify; "
-        "print(json.dumps(classify(json.load(sys.stdin))))"],
+        ("import json, sys; from payload_probe_content import classify; "
+         "print(json.dumps(classify(json.load(sys.stdin))))")],
         input=json.dumps(rows), text=True, capture_output=True, check=True,
         env=dict(os.environ, PYTHONHASHSEED=seed, PYTHONPATH=str(ROOT / "scripts")), timeout=10)
     classified = json.loads(result.stdout)
