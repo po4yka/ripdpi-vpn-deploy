@@ -1518,3 +1518,39 @@ def test_activation_restarts_changed_receiver_inputs_inside_rollback_block() -> 
     assert readiness["ansible.builtin.uri"]["follow_redirects"] == "none"
     assert "Restart observability dead-man" not in str(activation)
     assert "Restart observability dead-man" not in handlers
+
+
+def test_deadman_reverse_summary_contains_every_bounded_health_axis(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        deadman,
+        "_host_health",
+        lambda *_args: {name: "ok" for name in deadman.HEALTH_AXES},
+    )
+    captured: list[dict[str, object]] = []
+
+    def post(_config, _token, payload, _context=None):  # type: ignore[no-untyped-def]
+        captured.append(payload)
+        return True
+
+    monkeypatch.setattr(deadman, "_post_reverse", post)
+    current = deadman._empty_state("a" * 40)
+    current.update(last_sequence=4, last_pulse=NOW, last_delivery="recovery")
+
+    assert deadman._reverse_health({}, TOKEN, current, NOW) is True
+    assert set(captured[0]["health"]) == {
+        "receiver",
+        "delivery",
+        *deadman.HEALTH_AXES,
+    }
+    assert set(captured[0]["health"].values()) <= {
+        "ok",
+        "error",
+        "healthy",
+        "incident",
+        "never",
+        "firing",
+        "recovery",
+        "failed",
+    }

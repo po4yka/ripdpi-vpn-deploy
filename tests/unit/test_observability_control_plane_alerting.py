@@ -1997,3 +1997,212 @@ else:
                 service(name, "stopped", "false")
         finally:
             stop_servers()
+
+
+def test_current_collector_does_not_install_retired_pipeline_units() -> None:
+    authority = (ROLE / "tasks/alerting-authority.yml").read_text()
+    for name in (
+        "observability-deadman-pipeline.service",
+        "observability-deadman-pulse.service",
+        "observability-deadman-pulse.timer",
+        "observability-primary-canary.service",
+        "observability-primary-canary.timer",
+    ):
+        assert name not in authority
+        assert not (ROLE / "templates" / (name + ".j2")).exists()
+
+
+def test_historical_alarm_route_is_refused_before_runtime_mutation() -> None:
+    tasks = list(_task_tree(yaml.safe_load((ROLE / "tasks/enable.yml").read_text())))
+    names = [task["name"] for task in tasks]
+    probe = next(
+        task
+        for task in tasks
+        if task["name"].startswith("Inspect historical alarm services")
+    )
+    guard = next(
+        task
+        for task in tasks
+        if task["name"].startswith("Preserve any working historical alarm")
+    )
+    assert probe["ansible.builtin.command"]["argv"] == [
+        "systemctl",
+        "is-active",
+        "--quiet",
+        "{{ item }}",
+    ]
+    assert probe["loop"] == [
+        "observability-deadman-pipeline.service",
+        "observability-deadman-pulse.timer",
+        "observability-primary-canary.timer",
+    ]
+    assert probe["check_mode"] is False
+    assert guard["ansible.builtin.assert"]["that"] == ["item.rc != 0"]
+    mutators = (
+        "ansible.builtin.apt",
+        "ansible.builtin.copy",
+        "ansible.builtin.file",
+        "ansible.builtin.template",
+        "ansible.builtin.user",
+        "ansible.builtin.systemd_service",
+    )
+    first_mutation = next(
+        index
+        for index, task in enumerate(tasks)
+        if any(key in task for key in mutators)
+    )
+    assert names.index(guard["name"]) < first_mutation
+
+
+def test_authority_snapshot_restores_only_current_authority_chain() -> None:
+    tasks = yaml.safe_load((ROLE / "tasks/alerting-authority.yml").read_text())
+    capture = next(
+        task
+        for task in tasks
+        if task["name"] == "Capture previous active and enabled states"
+    )
+    expected = [
+        "observability-alertmanager.service",
+        "observability-telegram-relay.service",
+        "observability-silence-gateway.service",
+        "observability-prometheus.service",
+    ]
+    assert capture["loop"] == expected
+    activation = next(
+        task
+        for task in tasks
+        if task["name"] == "Activate validated Alertmanager generation with rollback"
+    )
+    restore_block = next(
+        task["block"]
+        for task in activation["rescue"]
+        if task["name"]
+        == "Restore the captured authority and service credential snapshots"
+    )
+    restore = next(
+        task
+        for task in restore_block
+        if task["name"]
+        == "Restore previous service state and LoadCredential snapshots in dependency order"
+    )
+    assert set(restore["loop"]) == set(expected)
+    assert (
+        restore["ansible.builtin.systemd_service"]["enabled"]
+        == "{{ _observability_authority.services[item].enabled }}"
+    )
+    assert (
+        "services[item].active" in restore["ansible.builtin.systemd_service"]["state"]
+    )
+
+
+def test_collector_disable_scopes_kuma_producers_without_erasing_legacy_credentials() -> (
+    None
+):
+    tasks = yaml.safe_load((ROLE / "tasks/disable.yml").read_text())
+    tasks += yaml.safe_load((ROLE / "tasks/alerting-disable.yml").read_text())
+    producer = next(
+        task
+        for task in tasks
+        if task.get("ansible.builtin.include_role", {}).get("tasks_from")
+        == "producers-disable"
+    )
+    assert producer["ansible.builtin.include_role"]["name"] == "observability_kuma"
+    assert producer["vars"]["observability_push_disable_kinds"] == [
+        "pipeline",
+        "delivery",
+    ]
+    removed = [
+        item
+        for task in tasks
+        if task.get("ansible.builtin.file", {}).get("state") == "absent"
+        for item in task.get("loop", [])
+    ]
+    assert not any("deadman" in item for item in removed)
+    assert not (ROLE / "tasks/alerting-deadman-disable.yml").exists()
+
+
+@pytest.mark.parametrize(
+    ("generation", "expected"),
+    [
+        (
+            {"schema": 1},
+            [
+                "/etc/observability-control-plane/credentials/"
+                "telegram-relay-auth-token"
+            ],
+        ),
+        (
+            {
+                "schema": 1,
+                "relay_auth_path": (
+                    "/etc/observability-control-plane/credentials/"
+                    "telegram-relay-auth-token"
+                ),
+            },
+            [
+                "/etc/observability-control-plane/credentials/"
+                "telegram-relay-auth-token"
+            ],
+        ),
+    ],
+)
+def test_alerting_disable_resolves_partial_generation_paths_without_writes(
+    tmp_path: Path, generation: dict[str, object], expected: list[str]
+) -> None:
+    tasks = yaml.safe_load(
+        (ROLE / "tasks/alerting-disable.yml").read_text(encoding="utf-8")
+    )
+    resolver = next(
+        task
+        for task in tasks
+        if task["name"] == "Resolve current and retained relay credential paths"
+    )
+    playbook = tmp_path / "disable-paths.yml"
+    playbook.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "hosts": "localhost",
+                    "connection": "local",
+                    "gather_facts": False,
+                    "vars": {
+                        "observability_control_plane": {
+                            "alerting": {
+                                "telegram": {
+                                    "relay_auth_path": (
+                                        "/etc/observability-control-plane/credentials/"
+                                        "telegram-relay-auth-token"
+                                    )
+                                }
+                            }
+                        },
+                        "observability_control_plane_alerting_generation": generation,
+                    },
+                    "tasks": [
+                        resolver,
+                        {
+                            "ansible.builtin.assert": {
+                                "that": [
+                                    "_observability_disabled_relay_auth_paths == expected"
+                                ]
+                            },
+                            "vars": {"expected": expected},
+                        },
+                    ],
+                }
+            ],
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    completed = subprocess.run(
+        ["ansible-playbook", "-i", "localhost,", str(playbook)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "changed=0" in completed.stdout

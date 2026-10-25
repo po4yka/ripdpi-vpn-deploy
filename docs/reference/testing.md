@@ -170,6 +170,7 @@ with the checked-out merge commit and follows downstream consumer groups:
 | `tools/probe-matrix-mtproto/` | Compiled Go helper tests |
 | `tests/unit/` | Native runtime tests, alongside the complete common pytest suite |
 | `tests/bats/` | Bats tests |
+| Agent instructions: `AGENTS.md`/`CLAUDE.md` outside `docs/`, `.agents/`, `.claude/`, `.github/skills/` | None |
 | Shared scripts, fixtures, tooling/configuration, CI or any unmapped path | Full graph |
 
 The common checks are gitleaks, actionlint, zizmor, task contracts, shellcheck,
@@ -184,6 +185,11 @@ PR history, a non-ancestor base and an empty diff also select everything. The
 Git diff covers the whole PR without API file limits, uses NUL delimiters and
 retains both sides of renames and deleted paths. No workflow-level path filter
 can suppress the required gate. Each run's summary lists the decisions.
+
+A new push to a PR cancels that PR's running `ci`. Closing or merging the PR
+cancels it too: `ci-cancel-closed.yml` joins the same concurrency group. Main
+runs are not cancelled; each finishes, and only the newest pending main run
+waits behind it.
 
 `required checks` compares every job result with the successful selector's plan.
 Only an explicitly unselected job may be skipped; failures, cancellations,

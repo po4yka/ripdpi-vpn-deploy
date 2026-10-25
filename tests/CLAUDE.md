@@ -16,7 +16,7 @@
 
 Per-area decisions (native lanes, AWG, REALITY, monitoring, recovery, delivery and so on) live in [DESIGN-NOTES.md](DESIGN-NOTES.md). Before you change tests in an area, search that file for the area or test name and read only the matching paragraphs.
 
-**`ci-fast` is the portable pre-PR gate** — runs the credential-free required
+**`ci-fast` is the portable CI parity bundle** — runs the credential-free required
 CI checks, including workflow/YAML/shell lint, cloud-init schema, all Terraform
 tests, pytest/bats, Go helper integration, and vpnd Python tests, lint/type
 checks, baseline parity, packages and dependency policy. `make check` adds

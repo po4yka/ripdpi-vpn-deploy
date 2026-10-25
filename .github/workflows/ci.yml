@@ -11,9 +11,11 @@ on:
 permissions:
   contents: read
 
+# A new PR push replaces the running check. Main runs finish, and only the
+# newest pending main run waits, so every merge burst ends with a result.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   pr-title:
