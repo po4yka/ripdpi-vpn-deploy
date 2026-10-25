@@ -10,6 +10,7 @@ ConditionPathExists=!/var/lib/observability-disk-guard/latched
 Slice=observability-collector.slice
 User=observability-prometheus
 Group=observability-prometheus
+Environment=OBSERVABILITY_NOTIFICATION_MODE=panel-only
 
 ExecStart=/usr/local/libexec/observability-prometheus --config.file=/etc/observability-control-plane/current.yml --web.listen-address=127.0.0.1:9090 --web.enable-remote-write-receiver --storage.tsdb.path=/var/lib/observability-prometheus --storage.tsdb.retention.time=7d --storage.tsdb.retention.size=1GB
 Restart=on-failure

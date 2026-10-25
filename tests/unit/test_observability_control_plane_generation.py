@@ -36,6 +36,9 @@ def test_enable_preserves_previous_generation_before_current_activation() -> Non
     activation = tasks[
         "Activate complete validated Prometheus generation with rollback"
     ]
+    assert ordered.index("Commit ready collector runtime activation") < ordered.index("Remove disabled alerting artifacts")
+    assert not any(task.get('ansible.builtin.include_tasks') == 'alerting-disable.yml'
+                   for task in activation['block'] + activation['rescue'])
     activation_tasks = {task["name"]: task for task in activation["block"]}
     activation_order = list(activation_tasks)
     assert (

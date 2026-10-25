@@ -24,6 +24,24 @@ body {
   background: var(--bg);
   color: var(--text);
   line-height: 1.65;
+  overflow-wrap: break-word;
+  -webkit-font-smoothing: antialiased;
+}
+
+.skip-link {
+  position: fixed;
+  z-index: 10;
+  top: 12px;
+  left: 20px;
+  padding: 12px 18px;
+  background: var(--text);
+  color: var(--bg);
+  transform: translateY(-180%);
+}
+
+.skip-link:focus {
+  transform: none;
+  color: var(--bg);
 }
 
 header,
@@ -56,6 +74,7 @@ nav a {
 .brand {
   font-weight: 750;
   letter-spacing: -0.02em;
+  gap: 10px;
 }
 
 nav a {
@@ -100,6 +119,42 @@ main {
   font-size: clamp(2.4rem, 7vw, 5.2rem);
   letter-spacing: -0.055em;
   line-height: 1.02;
+  text-wrap: balance;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  margin-top: 28px;
+}
+
+.hero-actions a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.primary-link {
+  gap: 28px;
+  padding: 12px 20px;
+  background: var(--accent);
+  color: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.primary-link:hover {
+  background: var(--text);
+  color: var(--bg);
+}
+
+#current-notes,
+.note h2 {
+  scroll-margin-top: 24px;
 }
 
 .hero p:not(.eyebrow),
@@ -125,21 +180,25 @@ main {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
   gap: 20px;
 }
 
 .grid article {
   padding: 24px;
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 6px;
   background: var(--panel);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .grid h3 {
   margin: 0.7rem 0;
   font-size: 1.35rem;
   line-height: 1.25;
+  text-wrap: balance;
 }
 
 .grid article p:last-child {
@@ -180,6 +239,7 @@ main {
 .note > p,
 .note li {
   max-width: 72ch;
+  line-height: 1.8;
 }
 
 .note .dek {
@@ -272,6 +332,11 @@ footer {
   border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 0.9rem;
+  align-items: flex-start;
+}
+
+footer p {
+  margin: 6px 0 0;
 }
 
 @media (max-width: 760px) {
@@ -292,16 +357,12 @@ footer {
     padding-bottom: 40px;
   }
 
-  .grid {
-    grid-template-columns: 1fr;
-  }
-
   footer {
     display: block;
   }
 
-  footer span {
-    display: block;
+  footer nav {
+    margin-top: 16px;
   }
 }
 

@@ -169,6 +169,9 @@
         cmd: >-
           {{ playbook_dir }}/../../scripts/verify-public-listeners.py
           --contract-b64 {{ terraform_public_listeners_b64 }}
+          {{ '--native-acme' if (vpn.enable_hysteria | default(false) | bool)
+             and not (vpn_subscription_only | default(false) | bool)
+             and hysteria is defined and hysteria.acme is defined else '' }}
           --ssh-port {{ security_effective_ssh_ports[0] }}
           --tailnet-sources-b64 {{
           (

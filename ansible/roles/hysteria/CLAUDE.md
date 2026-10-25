@@ -12,7 +12,8 @@ Changed Hysteria authority opens the whole-route recovery boundary even when nor
 - Site staging defers frontend rescue to the protected site transaction, which restores matching ingress before accepted frontend recovery. Standalone role reconciliation keeps its own guarded rollback.
 
 - The guarded generation is the sole frontend lifecycle owner, including TLS
-  changes and credential rotation. It reloads systemd before startup and proves
+  policy changes and credential rotation. Native ACME owns only its mutable
+  private cache; supplied TLS remains sealed generation authority. It reloads systemd before startup and proves
   authenticated readiness; delayed direct restart handlers cannot invalidate
   the admitted PID snapshot after activation.
 
@@ -65,7 +66,7 @@ acquisition.
 
 **Masquerade follows an owned site** — `hysteria.masquerade_url` is required in production secrets and must equal `public_site_canonical_url` exactly (asserted in `tasks/main.yml`). This keeps QUIC probes on the same public identity without coupling the UDP-only role to nginx state.
 
-Complete config, unit, origin hosts, TLS and runtime selections enter the private consumer plan. Native candidate admission runs the actual binary, unchanged protocol/listener/auth/outbound configuration and relocated TLS paths in an owned disconnected namespace under the consumer sandbox. Its exact native client must authenticate and forward before cleanup is confirmed; the namespace never pulls the live normalizer dependency. The configured dedicated probe client is also required for live process adoption. Shape validation alone cannot commit a runtime.
+Complete config, unit, origin hosts, TLS policy and runtime selections enter the private consumer plan. Native ACME candidates require absent supplied TLS files and a root-owned parent with one private service-owned cache. Offline admission uses an explicit temporary TLS projection; only live system-trust acceptance proves issuance. The cache is not part of the sealed transaction. Ordinary convergence never writes its contents. Explicit fresh recovery alone can publish five validated certificate/account files with current service ownership after native warm admission and an exact-directory commit journal. Native candidate admission runs the actual binary, unchanged protocol/listener/auth/outbound configuration and relocated TLS paths in an owned disconnected namespace under the consumer sandbox. Its exact native client must authenticate and forward before cleanup is confirmed; the namespace never pulls the live normalizer dependency. The configured dedicated probe client is also required for live process adoption. Shape validation alone cannot commit a runtime.
 
 ## What's done well
 
@@ -73,7 +74,7 @@ Complete config, unit, origin hosts, TLS and runtime selections enter the privat
 - **TLS reuses the P1 certificate material** — saves a renewal path. The
   operator supplies the same PEM pair to `hysteria.cert_pem`/`key_pem` and
   `nginx_xhttp.cert_pem`/`key_pem`; each role writes its own copy (no shared
-  mount).
+  mount). Native ACME instead renews on the cloud host while the operator is offline.
 
 The staged runtime-release include returns generic `runtime_release_candidates`; this consumer appends them to its transport transaction before adding complete TLS and configuration authority.
 

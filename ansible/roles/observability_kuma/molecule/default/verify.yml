@@ -34,17 +34,36 @@
         stopped.stdout | trim not in ['inactive', 'failed']) or
         (item != 'observability-kuma-backup.service' and stopped.stdout | trim != 'inactive')
 
-    - name: Verify disabled observer and producer units cannot restart at boot
+    - name: Verify retained observer units cannot restart at boot
       ansible.builtin.command:
         argv: [/usr/bin/systemctl, is-enabled, "{{ item }}"]
       loop:
         - observability-kuma-backup.timer
         - observability-kuma.service
-        - observability-push-node.service
-        - observability-push-node.timer
       register: disabled
       changed_when: false
       failed_when: disabled.stdout | trim != 'disabled'
+
+    - name: Verify retired producer units have no systemd authority
+      ansible.builtin.command:
+        argv: [/usr/bin/systemctl, is-enabled, "{{ item }}"]
+      loop:
+        - observability-push-node.service
+        - observability-push-node.timer
+      register: retired
+      changed_when: false
+      failed_when: retired.rc != 4 or retired.stdout | trim != 'not-found'
+
+    - name: Verify retired producer unit files and credentials are absent
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/systemd/system/observability-push-node.service
+        - /etc/systemd/system/observability-push-node.timer
+        - /etc/observability-push/node.token
+        - /etc/observability-push/node.json
+      register: retired_file
+      failed_when: retired_file.stat.exists
 
     - name: Confirm backup finalizer actually restarted observer before final stop
       ansible.builtin.slurp:

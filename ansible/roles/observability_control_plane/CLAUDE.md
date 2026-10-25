@@ -2,6 +2,14 @@
 
 ## Design decisions
 
+Alerting opt-out stops the Telegram and silence services before deleting their exact owned credentials. Unsafe retained paths refuse retirement; unrelated collector and node credentials remain intact.
+
+Opt-out retirement runs after ready Prometheus activation commits. Failed candidate startup or readiness retains the previous unit's credential authority for rollback; later retirement failure leaves the ready collector running and reports incomplete cleanup.
+
+Panel-only mode requires expected-target rules and a pipeline producer, with alerting and delivery disabled. The panel reports data collection and rule evaluation; it makes no external delivery claim.
+
+Status reads the notification mode from the installed Prometheus unit. Panel-only reports omit retired alerting units and do not read gateway credentials; a missing mode or unavailable notification credential reports degraded status.
+
 Expected-target alerts use the finite-silence gateway's configured environment.
 Do not replace it with a fleet label: exact maintenance matchers must select
 the alerts produced in that same environment.

@@ -25,7 +25,7 @@ import uuid
 
 LIMIT = 8 * 1024 * 1024
 STATE_ROOT = Path("/var/lib/vpn-nginx-publication")
-SITE_OWNERS = {"nginx-xhttp", "reality-self-steal"}
+SITE_OWNERS = {"nginx-xhttp", "reality-self-steal", "public-tls"}
 DEFAULT_ENABLED = Path("/etc/nginx/sites-enabled/default")
 DEFAULT_AVAILABLE = Path("/etc/nginx/sites-available/default")
 
@@ -844,7 +844,7 @@ def merged_roots(roots):
 
 
 @contextmanager
-def unit_lock(state):
+def unit_lock(state, *, allow_issuer=False):
     safe(state.parent, missing=True)
     state.mkdir(mode=0o700, parents=True, exist_ok=True)
     safe(state)
@@ -857,9 +857,16 @@ def unit_lock(state):
                 or info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o600):
             raise TransactionError("unsafe-lock")
         fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        yield
+        if not allow_issuer:
+            require_issuer_closed(state)
+        yield descriptor
     finally:
         os.close(descriptor)
+
+
+def require_issuer_closed(state):
+    if os.path.lexists(state / 'public-tls-issuer.json'):
+        raise TransactionError('public-tls-issuer-recovery-required')
 
 
 def revocation_authority(value):
@@ -874,7 +881,7 @@ def revocation_authority(value):
 def site_request(document):
     if (not isinstance(document, dict) or set(document) - {'revocation'} != {"owners", "check"}
             or type(document["check"]) is not bool or not isinstance(document["owners"], list)
-            or len(document["owners"]) != 2):
+            or len(document["owners"]) != len(SITE_OWNERS)):
         raise TransactionError("site-request")
     revocation_authority(document.get('revocation'))
     result = []
@@ -901,9 +908,9 @@ def read_site(state):
     if (not isinstance(journal, dict) or set(journal) != {
             "schema", "requests", "files", "receipts", "allowed", "allowed_receipts", "service", "phase"}
             | ({"finish_egress", "finish_firewall", "revocation"} if journal.get("phase") == "committing" else set())
-            or type(journal["schema"]) is not int or journal["schema"] != 1 or journal["phase"] not in {"open", "restoring", "committing"}
+            or type(journal["schema"]) is not int or journal["schema"] != 2 or journal["phase"] not in {"open", "restoring", "committing"}
             or (journal["phase"] == "committing" and (type(journal["finish_egress"]) is not bool or type(journal.get("finish_firewall", False)) is not bool))
-            or not isinstance(journal["requests"], list) or len(journal["requests"]) != 2
+            or not isinstance(journal["requests"], list) or len(journal["requests"]) != len(SITE_OWNERS)
             or {value.get("owner") for value in journal["requests"]} != SITE_OWNERS):
         raise TransactionError("unsafe-site-journal")
     if journal['phase'] == 'committing':
@@ -1019,6 +1026,7 @@ def site_authorize(state, document, expected_receipt):
 def site_transaction(action, document, *, finish_egress=False, finish_firewall=False):
     requests = site_request(document)
     state = STATE_ROOT / "nginx.service"
+    require_issuer_closed(state)
     if document["check"]:
         if os.path.lexists(state / "site.json") or os.path.lexists(state / "pending.json"):
             raise TransactionError("recovery-required")
@@ -1071,7 +1079,7 @@ def site_transaction(action, document, *, finish_egress=False, finish_firewall=F
                 receipts[value["owner"]] = capture(path)
             if sum(len(json.dumps(row)) for row in files.values()) > LIMIT:
                 raise TransactionError("snapshot-size")
-            journal = {"schema": 1, "phase": "open", "requests": requests, "files": files,
+            journal = {"schema": 2, "phase": "open", "requests": requests, "files": files,
                        "receipts": receipts, "allowed": {path: [witness(row)] for path, row in files.items()},
                        "allowed_receipts": {owner: [row] for owner, row in receipts.items()},
                        "service": service_state("nginx.service")}
@@ -1284,7 +1292,7 @@ def recover(pending, unit):
     return True
 
 
-def publish(document):
+def publish(document, *, outside_site=False, lock_fd=None):
     document, roots = request(document)
     logical_document = copy.deepcopy(document)
     admission_receipt = private_json(STATE_ROOT / document["unit"] / (document["owner"] + ".activated.json"))
@@ -1298,6 +1306,7 @@ def publish(document):
         raise TransactionError("snapshot-size")
     validate_previous(document, previous)
     state = STATE_ROOT / document["unit"]
+    require_issuer_closed(state)
     safe(state.parent, missing=True)
     pending = state / "pending.json"
     if document["check"]:
@@ -1322,7 +1331,9 @@ def publish(document):
         raise TransactionError("unsafe-state")
     prepared_owned = False
     publication_may_have_occurred = False
-    lock_fd = os.open(state / "lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    owns_lock = lock_fd is None
+    if owns_lock:
+        lock_fd = os.open(state / "lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     try:
         info = os.fstat(lock_fd)
         if (
@@ -1330,9 +1341,13 @@ def publish(document):
             or info.st_nlink != 1
             or info.st_uid != os.geteuid()
             or stat.S_IMODE(info.st_mode) != 0o600
+            or (info.st_dev, info.st_ino) != (state.joinpath('lock').lstat().st_dev, state.joinpath('lock').lstat().st_ino)
         ):
             raise TransactionError("unsafe-lock")
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        require_issuer_closed(state)
+        if outside_site and os.path.lexists(state / "site.json"):
+            raise TransactionError("site-transaction-busy")
         recovered = recover(pending, document["unit"])
         receipt = state / (document["owner"] + ".activated.json")
         receipt_data = private_json(receipt)
@@ -1653,7 +1668,8 @@ def publish(document):
         if prepared_owned and not publication_may_have_occurred:
             remove_candidate(state / snapshot["candidate"])
             clear(pending)
-        os.close(lock_fd)
+        if owns_lock:
+            os.close(lock_fd)
 
 
 def main():
@@ -1662,8 +1678,11 @@ def main():
     parser.add_argument("--site", choices=("begin", "restore", "commit", "recover-commit"))
     parser.add_argument("--finish-egress", action="store_true")
     parser.add_argument("--finish-firewall", action="store_true")
+    parser.add_argument("--outside-site", action="store_true")
     args = parser.parse_args()
     try:
+        if args.outside_site and (args.site or args.validate):
+            raise TransactionError("request")
         if args.validate:
             validate(json.loads(Path(args.validate).read_text()))
             return 0
@@ -1671,7 +1690,7 @@ def main():
         if len(data) > LIMIT:
             raise TransactionError("request-size")
         document = json.loads(data)
-        print(json.dumps(site_transaction(args.site, document, finish_egress=args.finish_egress, finish_firewall=args.finish_firewall) if args.site else publish(document)))
+        print(json.dumps(site_transaction(args.site, document, finish_egress=args.finish_egress, finish_firewall=args.finish_firewall) if args.site else publish(document, outside_site=args.outside_site)))
     except (TransactionError, OSError, ValueError, KeyError, TypeError):
         print("nginx publication failed", file=sys.stderr)
         return 1

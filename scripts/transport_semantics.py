@@ -201,6 +201,10 @@ def xhttp_endpoints(doc: dict, context: dict) -> list[dict]:
     enabled = frontend.get("fallback_enabled", False)
     if type(enabled) is not bool:
         raise ValueError("invalid-xhttp-alternate")
+    if "acme" in frontend:
+        managed_http_acme(frontend["acme"], primary["host"])
+        if enabled or "cert_pem" in frontend or "key_pem" in frontend:
+            raise ValueError("conflicting-xhttp-tls-authority")
     endpoints = [primary]
     if enabled:
         alternate = {"name": "alternate", "host": frontend.get("fallback_server_name", primary["host"]),
@@ -258,6 +262,30 @@ def hostname_valid(value):
     except ValueError:
         return True
     return False
+
+
+def managed_http_acme(raw, primary):
+    """Admit a fixed public HTTP-01 authority before host mutation."""
+    if (not isinstance(raw, dict) or set(raw) != {"email", "domains"}
+            or not isinstance(raw["email"], str) or len(raw["email"]) > 254
+            or re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", raw["email"]) is None
+            or not isinstance(raw["domains"], list) or not 1 <= len(raw["domains"]) <= 4
+            or any(not hostname_valid(name) or len(name) > 253 or name != name.lower() for name in raw["domains"])
+            or raw["domains"][0] != primary or len(set(raw["domains"])) != len(raw["domains"])):
+        raise ValueError("invalid-http-acme-authority")
+    return raw
+
+
+def hysteria_native_acme(raw):
+    """Admit only the role-owned native certificate cache and HTTP challenge."""
+    if (not isinstance(raw, dict) or set(raw) != {'domains', 'email', 'ca', 'dir', 'type', 'http'}
+            or raw.get('ca') != 'letsencrypt' or raw.get('dir') != '/var/lib/hysteria/acme'
+            or raw.get('type') != 'http' or raw.get('http') != {'altPort': 80}
+            or type(raw['http']['altPort']) is not int
+            or not isinstance(raw.get('domains'), list) or len(raw['domains']) != 1):
+        raise ValueError('invalid-native-acme-authority')
+    managed_http_acme({key: raw[key] for key in ('domains', 'email')}, raw['domains'][0])
+    return raw
 
 
 def ech_config(raw):
@@ -472,6 +500,13 @@ def hysteria_errors(raw: object, canonical_origin: object = None) -> list[tuple[
     if not isinstance(raw, dict):
         return [("hysteria", "must be a mapping")]
     errors = hysteria_profile_errors(raw)
+    if 'acme' in raw:
+        try:
+            managed_http_acme(raw['acme'], raw.get('server_name'))
+            if len(raw['acme']['domains']) != 1 or any(key in raw for key in ('cert_pem', 'key_pem', 'ech')):
+                raise ValueError()
+        except (TypeError, ValueError, KeyError):
+            errors.append(('hysteria.acme', 'requires one fixed HTTP-01 identity and exclusive native TLS authority'))
     if raw.get("masquerade_type", "proxy") != "proxy":
         errors.append(("hysteria.masquerade_type", "only owned HTTPS proxy is supported"))
     if not origin_valid(raw.get("masquerade_url")):
@@ -866,6 +901,9 @@ def transport_errors(doc: object, context: object = None, *, sections: list[str]
     if "xray" in sections:
         errors.extend(cohort_errors(doc.get("xray"), allow_placeholders=allow_placeholders))
     vpn = context.get("vpn")
+    if (isinstance(vpn, dict) and vpn.get('enable_hysteria_realm', False)
+            and isinstance(doc.get('hysteria'), dict) and 'acme' in doc['hysteria']):
+        errors.append(('hysteria.acme', 'Realm requires supplied PEM authority; native ACME cannot supply it'))
     if ("xhttp" in sections
             or ("xray" in sections and (not isinstance(vpn, dict) or vpn.get("enable_nginx_xhttp", False)))
             or ("hysteria" in sections and isinstance(vpn, dict) and vpn.get("enable_nginx_xhttp", False))):
@@ -875,6 +913,9 @@ def transport_errors(doc: object, context: object = None, *, sections: list[str]
 
     if "hysteria" in sections:
         errors.extend(hysteria_errors(doc.get("hysteria"), context.get("public_site_canonical_url")))
+        if (isinstance(doc.get('hysteria'), dict) and 'acme' in doc['hysteria']
+                and isinstance(vpn, dict) and vpn.get('enable_nginx_xhttp', False)):
+            errors.append(('hysteria.acme', 'native HTTP-01 requires its own public TCP/80 listener'))
     if "egress" in sections:
         errors.extend(egress_errors(doc.get("transport_egress_secrets"), context.get("vpn"),
                                     required=require_egress,

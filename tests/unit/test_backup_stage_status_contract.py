@@ -10,6 +10,8 @@ import shlex
 import re
 import subprocess
 import sys
+
+import pytest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -24,7 +26,7 @@ sys.modules[renderer_spec.name] = renderer
 renderer_spec.loader.exec_module(renderer)
 
 
-def _render(*, remote_enabled: bool) -> str:
+def _render(*, remote_enabled: bool, native_acme: bool = False) -> str:
     variables = renderer.merge_render_vars()
     variables["xray_etc_dir"] = variables["xray_config_dir"]
     variables.update(
@@ -42,14 +44,18 @@ def _render(*, remote_enabled: bool) -> str:
             },
         }
     )
+    if native_acme:
+        variables['hysteria']['acme'] = {'domains': ['h2.example.test'], 'email': 'operator@example.test'}
     return renderer.render_template(TEMPLATE, variables)
 
 
 def _environment(
-    tmp_path: Path, *, fail_at: str | None = None, remote_enabled: bool = False
+    tmp_path: Path, *, fail_at: str | None = None, remote_enabled: bool = False, native_acme: bool = False
 ) -> tuple[Path, dict[str, str], Path]:
     script = tmp_path / "vpn-backup.sh"
-    rendered = _render(remote_enabled=remote_enabled).replace('/etc/', str(tmp_path / 'etc') + '/').replace('/var/lib/vpn-subscription', str(tmp_path / 'subscription'))
+    rendered = _render(remote_enabled=remote_enabled, native_acme=native_acme).replace('/etc/', str(tmp_path / 'etc') + '/').replace('/var/lib/vpn-subscription', str(tmp_path / 'subscription'))
+    if native_acme:
+        rendered = rendered.replace('/var/lib/hysteria/acme', str(tmp_path/'native-cache'))
     for block in ('INCLUDES', 'REQUIRED_FILES'):
         entries = shlex.split(re.search(rf'{block}=\((.*?)\)', rendered, re.S)[1])
         for entry in entries:
@@ -185,3 +191,49 @@ def test_template_uses_fd_backed_atomic_replacement_and_does_not_change_backup_c
     assert "O_EXCL" in script
     assert "written = os.write(temporary_fd, view)" in script
     assert "if written <= 0:" in script
+
+
+@pytest.mark.parametrize('case', ['valid', 'cache-refused', 'summary-missing', 'summary-duplicate', 'summary-short'])
+def test_native_cache_snapshot_is_admitted_before_retention_or_replication(tmp_path, case):
+    script, environment, state = _environment(tmp_path, remote_enabled=True, native_acme=True)
+    runtime = tmp_path/'runtime'
+    runtime.mkdir(mode=0o700)
+    actions = tmp_path/'actions.jsonl'
+    actions.write_text('')
+    environment.update(RUNTIME_DIRECTORY=str(runtime), TEST_ACTIONS=str(actions), TEST_CACHE_CASE=case)
+    restic = tmp_path/'bin/restic'
+    restic.write_text(f'#!{sys.executable}\n' + '''import datetime as dt,json,os,pathlib,sys
+args=sys.argv[1:]
+log=pathlib.Path(os.environ['TEST_ACTIONS'])
+with log.open('a') as out:out.write(json.dumps(args)+'\\n')
+if 'backup' in args:
+ case=os.environ['TEST_CACHE_CASE']
+ row={'message_type':'summary','snapshot_id':'a'*64}
+ if case=='summary-short':row['snapshot_id']='short-id'
+ if case!='summary-missing':print(json.dumps(row))
+ if case=='summary-duplicate':print(json.dumps(row))
+if 'snapshots' in args:print(json.dumps([{'short_id':'different-latest-snapshot','time':dt.datetime.now(dt.timezone.utc).isoformat()}]))
+''')
+    restic.chmod(0o700)
+    checker = tmp_path/'cache-check.py'
+    checker.write_text('''import json,os,pathlib,sys
+with pathlib.Path(os.environ['TEST_ACTIONS']).open('a') as out:out.write(json.dumps(['cache-check'])+'\\n')
+raise SystemExit(1 if os.environ['TEST_CACHE_CASE']=='cache-refused' else 0)
+''')
+    script.write_text(script.read_text().replace('/usr/local/libexec/ripdpi-transport-egress/transport_runtime_validate.py', str(checker)))
+    completed = subprocess.run([str(script)], env=environment, capture_output=True, text=True, timeout=20)
+    calls = [json.loads(line) for line in actions.read_text().splitlines()]
+    restored = [call for call in calls if 'restore' in call]
+    marker = json.loads((state/'backup-stage-status.json').read_text())
+    if case == 'valid':
+        assert completed.returncode == 0, completed.stderr
+        assert restored[0][restored[0].index('restore')+1] == 'a'*64
+        kinds = [next((kind for kind in ('backup','restore','cache-check','forget','check','snapshots') if kind in call), '') for call in calls]
+        assert kinds == ['backup', 'restore', 'cache-check', 'forget', 'check', 'snapshots']
+        assert marker['local_backup']['result'] == 'success' and marker['remote_copy']['result'] == 'success'
+    else:
+        assert completed.returncode != 0
+        assert marker['local_backup']['result'] == 'failed' and marker['remote_copy']['result'] == 'disabled'
+        assert not any('forget' in call or 'check' in call for call in calls)
+        assert bool(restored) is (case == 'cache-refused')
+    assert not list(runtime.iterdir())

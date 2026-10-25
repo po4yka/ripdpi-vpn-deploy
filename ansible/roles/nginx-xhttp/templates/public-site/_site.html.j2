@@ -93,9 +93,11 @@
 {%- endmacro -%}
 
 {% macro header(current="") -%}
+<a class="skip-link" href="#main-content">Skip to content</a>
 <header>
-  <a class="brand" href="/">LLM Model Notes</a>
+  <a class="brand" href="/"><img src="/favicon.svg" width="28" height="28" alt="">LLM Model Notes</a>
   <nav aria-label="Primary">
+    <a{% if current == "notes" %} aria-current="page"{% endif %} href="/#current-notes">Notes</a>
     <a{% if current == "about" %} aria-current="page"{% endif %} href="/about.html">About</a>
     <a{% if current == "methodology" %} aria-current="page"{% endif %} href="/methodology.html">Methodology</a>
     <a{% if current == "updates" %} aria-current="page"{% endif %} href="/updates.html">Updates</a>
@@ -105,7 +107,7 @@
 
 {% macro footer() -%}
 <footer>
-  <span>LLM Model Notes</span>
-  <span>Independent notes on practical evaluation</span>
+  <div><strong>LLM Model Notes</strong><p>Independent notes on practical evaluation.</p></div>
+  <nav aria-label="Footer"><a href="/methodology.html">Our method</a><a href="/feed.xml">Atom feed</a></nav>
 </footer>
 {%- endmacro -%}

@@ -141,7 +141,7 @@ print_path_b() {
   printf '          make clean\n'
   printf '  Make the trusted restic repository available; inspect its selected snapshot.\n'
   printf '  In the pinned exact-node SSH session:\n'
-  printf '          sudo restic -r /var/backups/vpn-restic --password-file /etc/restic/password restore latest --target /\n'
+  printf '          sudo restic -r /var/backups/vpn-restic --password-file /etc/restic/password restore latest --target / --exclude /var/lib/hysteria/acme --exclude /etc/hysteria/config.yaml --exclude /etc/systemd/system/hysteria-server.service\n'
   printf '  Root restoration can overwrite SSH/recovery/source authority. Stop and inspect it.\n'
   printf '  Repeat required foundation, bootstrap and ownership admission; refresh private mappings.\n'
   print_convergence

@@ -65,7 +65,11 @@ def variables(profile: str, repository: Path) -> dict:
     values['vpn'] = {key: False for key in values['vpn']}
     values['backup']['remote']['enabled'] = False
     values['restic_repo_dir'] = str(repository)
-    if profile == 'subscription-only':
+    if profile == 'managed-tls':
+        values['vpn']['enable_nginx_xhttp'] = True
+        values['nginx_xhttp']['acme'] = {'email': 'operator@example.test', 'domains': [values['nginx_xhttp']['server_name']]}
+        values['nginx_xhttp'].pop('cert_pem'); values['nginx_xhttp'].pop('key_pem')
+    elif profile == 'subscription-only':
         values['vpn_subscription_only'] = True
     else:
         values['vpn']['enable_' + profile] = True
@@ -146,7 +150,7 @@ def run_drill(tmp_path: Path, template: Path, profile: str, *, missing: str | No
     script = render_template(TEMPLATE, variables(profile, repository))
     script = script.replace('/etc/restic/password', str(password))
     prefix = str(tree).lstrip('/')
-    for subtree in ('etc', 'var/lib/vpn-subscription'):
+    for subtree in ('etc', 'var/lib/vpn-subscription', 'var/lib/vpn-nginx-publication'):
         script = script.replace('"' + subtree, '"' + prefix + '/' + subtree)
     result = subprocess.run(['bash', '-c', script], env=env, capture_output=True,
                             text=True, timeout=45)
@@ -188,3 +192,24 @@ def test_realm_absolute_tls_links_use_only_restored_targets(tmp_path, empty_repo
     else:
         assert result.returncode != 0
         assert json.loads(marker.read_text()) == {'prior': True}
+
+
+@pytest.mark.parametrize('case', ['nested-account', 'empty-account', 'missing-claim', 'invalid-config'])
+def test_managed_tls_nested_account_tree_and_ownership_restore(tmp_path, empty_repository, monkeypatch, case):
+    files = {'etc/xray/config.json': '{}', 'etc/nginx/sites-available/vpn-xhttp.conf': 'server {}',
+             'etc/nginx/tls/vpn.example.com.fullchain.pem': 'certificate bytes', 'etc/nginx/tls/vpn.example.com.key': 'private bytes',
+             'etc/vpn-public-tls/config.json': '{}',
+             'etc/letsencrypt/live/vpn.example.com/fullchain.pem': 'certificate bytes',
+             'etc/letsencrypt/live/vpn.example.com/privkey.pem': 'private bytes',
+             'var/lib/vpn-nginx-publication/nginx.service/public-tls-lineage-vpn.example.com.json': '{}',
+             'var/lib/vpn-nginx-publication/nginx.service/public-tls.activated.json': '{}'}
+    # This protects restored file completeness; real certificate trust is covered by the activation tests.
+    if case != 'empty-account':
+        for name in ('private_key.json', 'meta.json', 'regr.json'):
+            files['etc/letsencrypt/accounts/acme-v02.api.letsencrypt.org/directory/account/'+name] = '{}'
+    monkeypatch.setitem(ARTIFACTS, 'managed-tls', files)
+    result, marker = run_drill(tmp_path, empty_repository, 'managed-tls',
+        missing='var/lib/vpn-nginx-publication/nginx.service/public-tls-lineage-vpn.example.com.json' if case == 'missing-claim' else None,
+        malformed='etc/vpn-public-tls/config.json' if case == 'invalid-config' else None)
+    assert (result.returncode == 0) is (case == 'nested-account'), result.stderr
+    if case != 'nested-account': assert json.loads(marker.read_text()) == {'prior': True}

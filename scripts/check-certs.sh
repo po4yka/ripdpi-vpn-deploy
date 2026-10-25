@@ -61,6 +61,8 @@ import yaml
 
 try:
     source, temporary, root = map(Path, sys.argv[1:])
+    sys.path.insert(0, str(root / 'scripts'))
+    from transport_semantics import managed_http_acme
     temporary = temporary.resolve()
     def load(paths):
         effective = {}
@@ -135,6 +137,12 @@ try:
                 material = effective.get(block, {})
                 if not isinstance(material, dict):
                     raise ValueError
+                if 'acme' in material:
+                    managed_http_acme(material['acme'], material.get('server_name'))
+                    if block not in {'nginx_xhttp', 'hysteria'} or any(name in material for name in ('cert_pem', 'key_pem')):
+                        raise ValueError
+                    print(f'[{block}] managed HTTP-01 policy admitted; trusted certificate requires live acceptance')
+                    continue
                 selected[block] = dict(material)
             if 'hysteria' in selected:
                 material = selected['hysteria']
@@ -285,7 +293,11 @@ done < "$tmp_dir/blocks"
 
 echo
 if (( findings == 0 )); then
-  echo "OK — certs healthy"
+  if [[ -s "$tmp_dir/blocks" ]]; then
+    echo "OK — supplied certs healthy; managed certificates require live acceptance"
+  else
+    echo "OK — no supplied certificates selected; managed certificates require live acceptance"
+  fi
   exit 0
 else
   echo "$findings finding(s) — fix before deploy"

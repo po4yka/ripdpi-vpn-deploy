@@ -21,3 +21,29 @@
     nginx_transaction_activation: reload
     nginx_transaction_activate_inactive: false
     nginx_transaction_desired_enabled: null
+
+- name: Inspect public TLS lifecycle before owned retirement
+  ansible.builtin.stat:
+    path: /etc/systemd/system/vpn-public-tls.timer
+    follow: false
+  register: _nginx_public_tls_timer
+
+- name: Stop autonomous issuance before retiring public TLS authority
+  ansible.builtin.systemd_service:
+    name: '{{ item }}'
+    state: stopped
+    enabled: false
+  loop: [vpn-public-tls.timer, vpn-public-tls.service]
+  when:
+    - not ansible_check_mode
+    - _nginx_public_tls_timer.stat.exists | default(false)
+
+- name: Retire only accepted public TLS paths through their guarded owner
+  ansible.builtin.command:
+    argv: [python3, /usr/local/libexec/vpn-public-tls, --retire]
+  register: _nginx_public_tls_retired
+  changed_when: (_nginx_public_tls_retired.stdout | from_json).changed
+  no_log: true
+  when:
+    - not ansible_check_mode
+    - _nginx_public_tls_timer.stat.exists | default(false)

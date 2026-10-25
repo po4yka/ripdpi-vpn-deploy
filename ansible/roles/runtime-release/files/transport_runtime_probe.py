@@ -192,7 +192,7 @@ def xray_clients(document, port, client_name, timeout=30):
     return candidates
 
 
-def hysteria_client(document, port, ca, client_name):
+def hysteria_client(document, port, ca, client_name, *, tls_server_name=None):
     if document['auth']['type'] != 'userpass' or not document['auth']['userpass']:
         raise ProbeRefused('frontend-credentials-empty')
     if client_name not in document['auth']['userpass']:
@@ -201,10 +201,13 @@ def hysteria_client(document, port, ca, client_name):
     listen = document['listen']
     host, server_port = listen.rsplit(':', 1)
     host = '127.0.0.1' if host in ('', '0.0.0.0', '[::]') else host
-    sni = urlsplit(document['masquerade']['proxy']['url']).hostname
+    sni = tls_server_name or (document['acme']['domains'][0] if 'acme' in document
+                             else urlsplit(document['masquerade']['proxy']['url']).hostname)
     client = {'server': host + ':' + server_port, 'auth': name + ':' + password,
-              'tls': {'sni': sni, 'ca': str(ca), 'insecure': False},
+              'tls': {'sni': sni, 'insecure': False},
               'socks5': {'listen': '127.0.0.1:' + str(port)}}
+    if ca is not None:
+        client['tls']['ca'] = str(ca)
     if 'ech' in document:
         import importlib.util
         # Ansible can execute this source inline without the installed library
@@ -246,7 +249,7 @@ def request(port, url, expected, process, deadline):
     raise ProbeRefused('authenticated-traffic-refused')
 
 
-def probe(binary, config, *, asset_dir=None, url, client_name, expected=204, timeout=30):
+def probe(binary, config, *, asset_dir=None, url, client_name, expected=204, timeout=30, tls_server_name=None):
     deadline = time.monotonic() + timeout
     raw = Path(config).read_bytes()
     if asset_dir is None:
@@ -263,7 +266,8 @@ def probe(binary, config, *, asset_dir=None, url, client_name, expected=204, tim
                 with child([str(binary), 'run', '-config', str(path)], env) as process:
                     request(port, url, expected, process, deadline)
         else:
-            client = hysteria_client(document, port, document['tls']['cert'], client_name)
+            client = hysteria_client(document, port, document.get('tls', {}).get('cert'), client_name,
+                                     tls_server_name=tls_server_name)
             path = private_file(directory, 'client.yaml', yaml.safe_dump(client))
             with child([str(binary), 'client', '--config', str(path)]) as process:
                 request(port, url, expected, process, deadline)

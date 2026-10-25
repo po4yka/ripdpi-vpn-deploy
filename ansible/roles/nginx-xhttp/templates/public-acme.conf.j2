@@ -1,0 +1,16 @@
+{% if nginx_xhttp.acme is defined %}
+# The public TLS owner keeps HTTP-01 independent of application publication.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name {{ nginx_xhttp.acme.domains | join(' ') }};
+    access_log off;
+    error_log /dev/null crit;
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/lib/vpn-public-tls;
+        default_type text/plain;
+        try_files $uri =404;
+    }
+    location / { return 301 {{ public_site_canonical_url }}$request_uri; }
+}
+{% endif -%}

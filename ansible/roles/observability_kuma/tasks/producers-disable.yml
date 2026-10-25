@@ -37,3 +37,17 @@
     path: "/var/lib/node_exporter/textfile/observability-push-{{ item }}.prom"
     state: absent
   loop: "{{ observability_push_disable_kinds }}"
+
+- name: Remove only disabled heartbeat credentials and unit authority
+  ansible.builtin.file:
+    path: >-
+      {{ '/etc/observability-push/' ~ item.0 ~ item.1 if item.1 in ['.token', '.json']
+         else '/etc/systemd/system/observability-push-' ~ item.0 ~ item.1 }}
+    state: absent
+  loop: "{{ observability_push_disable_kinds | product(['.token', '.json', '.service', '.timer']) | list }}"
+  no_log: true
+
+- name: Reload systemd after bounded heartbeat retirement
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: not ansible_check_mode

@@ -45,6 +45,9 @@ def private_address(value):
 def validate_config(config):
     if config["kind"] not in {"node", "pipeline", "delivery"} or not ALIAS.fullmatch(config["node_id"]):
         raise Refusal("config")
+    mode = config.get("notification_mode", "telegram")
+    if mode not in {"telegram", "panel-only"} or (mode == "panel-only" and config["kind"] == "delivery"):
+        raise Refusal("notification-mode")
     origin = parse.urlsplit(config["origin"])
     if origin.scheme != "https" or origin.username or origin.password or origin.path or origin.query or origin.fragment:
         raise Refusal("destination")
@@ -116,38 +119,48 @@ def conditions(config, credentials, previous, now, fetcher=fetch, runner=subproc
             if completed.returncode:
                 raise Refusal("local-service")
         return None
-    relay_auth = credential(credentials, "relay-auth-token").strip()
-    if not TOKEN.fullmatch(relay_auth):
-        raise Refusal("relay-credential")
-    if kind == "delivery":
-        started = time.monotonic()
-        answer = fetcher(config["relay_origin"] + "/v1/delivery-canary", bearer=relay_auth, method="POST", timeout=35)
-        now += time.monotonic() - started
-        if answer != {"status": "delivered"}:
-            raise Refusal("delivery-canary")
-    receipt = fetcher(config["relay_origin"] + "/v1/receipts", bearer=relay_auth)
-    if kind == "delivery":
-        sequence = receipt.get("edit_sequence")
-        if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence <= previous.get("sequence", 0) or not fresh(receipt.get("edit_at"), now, 330) or not fresh(receipt.get("send_at"), now, 26 * 3600):
-            raise Refusal("delivery-receipt")
-        return sequence
-    # The canary timestamp is consumed once: a cached acknowledgement cannot
-    # repeatedly prove a functioning rule -> Alertmanager -> relay pipeline.
-    stamp = receipt.get("rule_to_relay_at")
-    if not fresh(stamp, now, 150) or stamp <= previous.get("sequence", 0):
-        raise Refusal("pipeline-receipt")
+    panel_only = config.get("notification_mode", "telegram") == "panel-only"
+    stamp = None
+    if not panel_only:
+        relay_auth = credential(credentials, "relay-auth-token").strip()
+        if not TOKEN.fullmatch(relay_auth):
+            raise Refusal("relay-credential")
+        if kind == "delivery":
+            started = time.monotonic()
+            answer = fetcher(config["relay_origin"] + "/v1/delivery-canary", bearer=relay_auth, method="POST", timeout=35)
+            now += time.monotonic() - started
+            if answer != {"status": "delivered"}:
+                raise Refusal("delivery-canary")
+        receipt = fetcher(config["relay_origin"] + "/v1/receipts", bearer=relay_auth)
+        if kind == "delivery":
+            sequence = receipt.get("edit_sequence")
+            if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence <= previous.get("sequence", 0) or not fresh(receipt.get("edit_at"), now, 330) or not fresh(receipt.get("send_at"), now, 26 * 3600):
+                raise Refusal("delivery-receipt")
+            return sequence
+        # The canary timestamp is consumed once: a cached acknowledgement cannot
+        # repeatedly prove a functioning rule -> Alertmanager -> relay pipeline.
+        stamp = receipt.get("rule_to_relay_at")
+        if not fresh(stamp, now, 150) or stamp <= previous.get("sequence", 0):
+            raise Refusal("pipeline-receipt")
     origin = config["prometheus_origin"]
     for node in config["expected_nodes"]:
         query(origin, 'min((up{job="node-exporter",node="' + node + '"} == bool 1) * (time() - timestamp(up{job="node-exporter",node="' + node + '"}) < bool 150))', now, fetcher)
-    query(origin, 'min((up{job="observability-alertmanager"} == bool 1) * (time() - timestamp(up{job="observability-alertmanager"}) < bool 150))', now, fetcher)
+    if not panel_only:
+        query(origin, 'min((up{job="observability-alertmanager"} == bool 1) * (time() - timestamp(up{job="observability-alertmanager"}) < bool 150))', now, fetcher)
     rules = fetcher(origin + "/api/v1/rules")
     groups = rules.get("data", {}).get("groups", [])
     if rules.get("status") != "success" or not groups:
         raise Refusal("rule-evaluation")
+    evaluations = []
     for group in groups:
         evaluated = dt.datetime.fromisoformat(group["lastEvaluation"].replace("Z", "+00:00")).timestamp()
         if not fresh(evaluated, now, 150) or not group.get("rules") or any(rule.get("health") != "ok" or rule.get("lastError") for rule in group["rules"]):
             raise Refusal("rule-evaluation")
+        evaluations.append(evaluated)
+    if panel_only:
+        stamp = min(evaluations)
+        if stamp <= previous.get("sequence", 0):
+            raise Refusal("pipeline-evaluation-stale")
     return stamp
 
 

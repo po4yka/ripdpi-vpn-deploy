@@ -34,13 +34,24 @@
                       and not (vpn_subscription_only | default(false) | bool)) else [])
                + (['/etc/nginx/tls/' ~ nginx_xhttp.server_name ~ '.fullchain.pem',
                    '/etc/nginx/tls/' ~ nginx_xhttp.server_name ~ '.key']
-                  if ((vpn.enable_nginx_xhttp | default(true) | bool) and not (vpn_subscription_only | default(false) | bool)) else [])
+                  if ((vpn.enable_nginx_xhttp | default(true) | bool) and not (vpn_subscription_only | default(false) | bool)
+                      and nginx_xhttp.acme is not defined) else [])
                + (['/etc/nginx/tls/' ~ nginx_xhttp.fallback_server_name ~ '.fullchain.pem',
                    '/etc/nginx/tls/' ~ nginx_xhttp.fallback_server_name ~ '.key']
                   if ((vpn.enable_nginx_xhttp | default(true) | bool)
                       and not (vpn_subscription_only | default(false) | bool))
                      and (nginx_xhttp.fallback_enabled | default(false) | bool)
                      and nginx_xhttp.fallback_server_name != nginx_xhttp.server_name else []) }}
+          prune_releases: null
+        - owner: public-tls
+          roots: [/etc/nginx, /etc/vpn-public-tls]
+          paths: >-
+            {{ ['/etc/nginx/conf.d/vpn-public-acme.conf', '/etc/vpn-public-tls/config.json']
+               + (['/etc/nginx/tls/' ~ nginx_xhttp.server_name ~ '.fullchain.pem',
+                   '/etc/nginx/tls/' ~ nginx_xhttp.server_name ~ '.key']
+                  if ((vpn.enable_nginx_xhttp | default(true) | bool)
+                      and not (vpn_subscription_only | default(false) | bool)
+                      and nginx_xhttp.acme is defined) else []) }}
           prune_releases: null
         - owner: reality-self-steal
           roots: >-

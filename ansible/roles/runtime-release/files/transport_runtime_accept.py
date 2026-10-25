@@ -199,7 +199,7 @@ class Adapter:
                 import yaml
                 raw = self.candidate(config_path)
                 document = yaml.safe_load(raw)
-                tls = document['tls']
+                tls = document.get('tls')
                 ech_key = None
                 if 'ech' in document:
                     prefix = 'LoadCredential=hysteria-ech:'
@@ -208,8 +208,8 @@ class Adapter:
                             or str(Path(sources[0])) != sources[0] or '..' in Path(sources[0]).parts):
                         raise Refusal('unit-credential-invalid')
                     ech_key = self.candidate(sources[0])
-                validate_hysteria(binary, raw, self.candidate(tls['cert']),
-                                  self.candidate(tls['key']),
+                validate_hysteria(binary, raw, self.candidate(tls['cert']) if tls else None,
+                                  self.candidate(tls['key']) if tls else None,
                                   unit_text, self.timeout, self.clients['hysteria'],
                                   transaction=getattr(self, 'transaction', None),
                                   ech_key=ech_key,

@@ -23,6 +23,9 @@ remote_attempted_at=""
 remote_succeeded_at=""
 remote_failed_at=""
 active_stage=""
+{% if not (vpn_subscription_only | default(false)) and vpn.enable_hysteria | default(true) and hysteria.acme is defined %}
+native_snapshot_scratch=""
+{% endif %}
 
 timestamp() {
   date -u +%Y-%m-%dT%H:%M:%SZ
@@ -124,6 +127,11 @@ publish_outcome() {
 
 record_failure() {
   local status=$?
+{% if not (vpn_subscription_only | default(false)) and vpn.enable_hysteria | default(true) and hysteria.acme is defined %}
+  if [[ -n "$native_snapshot_scratch" ]]; then
+    rm -rf -- "$native_snapshot_scratch" || status=1
+  fi
+{% endif %}
   if [[ "$active_stage" == "local" && "$local_result" == "pending" ]]; then
     local_result="failed"
     local_failed_at="$(timestamp)"
@@ -156,6 +164,9 @@ INCLUDES=(
 {% endif %}
 {% if primary and vpn.enable_hysteria | default(true) %}
   "{{ hysteria_config_dir | default('/etc/hysteria') }}"
+{% if hysteria.acme is defined %}
+  /var/lib/hysteria/acme
+{% endif %}
 {% endif %}
 {% if primary and vpn.enable_snell | default(false) %}
   /etc/snell
@@ -165,6 +176,11 @@ INCLUDES=(
 {% endif %}
 {% if nginx_enabled %}
   /etc/nginx
+{% if nginx_xhttp.acme is defined and primary and vpn.enable_nginx_xhttp | default(true) %}
+  /etc/letsencrypt
+  /etc/vpn-public-tls
+  /var/lib/vpn-nginx-publication
+{% endif %}
 {% endif %}
 {% if primary and vpn.enable_naive | default(false) %}
   "{{ (naive | default({})).config_dir | default('/etc/naive') }}"
@@ -277,6 +293,18 @@ append_tls_input "$CDN_TLS_INPUT"
 
 # restic may tolerate a partially unreadable tree. Required selected inputs
 # must exist before snapshot/retention/integrity can publish success.
+{% if primary and vpn.enable_nginx_xhttp | default(true) and nginx_xhttp.acme is defined %}
+# Use the publication lock so certificate, accepted policy and lineage agree.
+exec {managed_tls_lock}</var/lib/vpn-nginx-publication/nginx.service/lock
+flock --shared --nonblock "$managed_tls_lock" || exit 1
+for pending in site.json pending.json public-tls-issuer.json; do
+  if [[ -e "/var/lib/vpn-nginx-publication/nginx.service/$pending" || -L "/var/lib/vpn-nginx-publication/nginx.service/$pending" ]]; then
+    printf '%s\n' 'backup: public certificate transaction requires recovery' >&2
+    exit 1
+  fi
+done
+python3 /usr/local/libexec/vpn-public-tls --check-backup >/dev/null
+{% endif %}
 for input in "${INCLUDES[@]}"; do
   if [[ ! -e "$input" ]]; then
     printf '%s\n' 'backup: required enabled input is absent' >&2
@@ -293,8 +321,10 @@ REQUIRED_FILES=(
 {% endif %}
 {% if primary and vpn.enable_hysteria | default(true) %}
   "{{ hysteria_config_dir | default('/etc/hysteria') }}/config.yaml"
+{% if hysteria.acme is not defined %}
   "{{ hysteria_config_dir | default('/etc/hysteria') }}/server.fullchain.pem"
   "{{ hysteria_config_dir | default('/etc/hysteria') }}/server.key"
+{% endif %}
 {% endif %}
 {% if primary and vpn.enable_snell | default(false) %}
   /etc/snell/config.json
@@ -372,11 +402,43 @@ for input in "${REQUIRED_FILES[@]}"; do
   fi
 done
 
+{% if primary and vpn.enable_hysteria | default(true) and hysteria.acme is defined %}
+# A daemon renewal writes key/cert/metadata separately. Admit the exact archived
+# set after snapshot creation, before retention or replication can report success.
+native_snapshot_scratch=$(mktemp -d "${RUNTIME_DIRECTORY:?}/snapshot.XXXXXXXXXX")
+restic -r "$REPO" backup --json \
+  --tag "vpn-stack" --tag "host=$(hostname)" \
+  "${INCLUDES[@]}" > "$native_snapshot_scratch/backup.jsonl"
+native_snapshot_id=$(python3 - "$native_snapshot_scratch/backup.jsonl" <<'PY_NATIVE_SNAPSHOT'
+import json
+import re
+import sys
+with open(sys.argv[1], encoding='utf-8') as source:
+    summaries = [row for line in source if (row := json.loads(line)).get('message_type') == 'summary']
+if len(summaries) != 1 or re.fullmatch('[0-9a-f]{64}', summaries[0].get('snapshot_id', '')) is None:
+    raise SystemExit('backup: exact native cache snapshot is unconfirmed')
+print(summaries[0]['snapshot_id'])
+PY_NATIVE_SNAPSHOT
+)
+mkdir -m 0700 -- "$native_snapshot_scratch/restore"
+restic -r "$REPO" restore "$native_snapshot_id" --target "$native_snapshot_scratch/restore" \
+  --include /var/lib/hysteria/acme --include "{{ hysteria_config_dir | default('/etc/hysteria') }}/config.yaml"
+python3 -Es /usr/local/libexec/ripdpi-transport-egress/transport_runtime_validate.py \
+  --check-cache "$native_snapshot_scratch/restore" \
+  --config-relative "{{ hysteria_config_dir | default('/etc/hysteria') | regex_replace('^/', '') }}/config.yaml"
+rm -rf -- "$native_snapshot_scratch"
+native_snapshot_scratch=""
+{% else %}
 restic -r "$REPO" backup \
   --tag "vpn-stack" \
   --tag "host=$(hostname)" \
   "${INCLUDES[@]}"
+{% endif %}
 
+{% if primary and vpn.enable_nginx_xhttp | default(true) and nginx_xhttp.acme is defined %}
+flock --unlock "$managed_tls_lock"
+exec {managed_tls_lock}<&-
+{% endif %}
 restic -r "$REPO" forget \
   --tag vpn-stack \
   --keep-daily 7 --keep-weekly 4 --keep-monthly 6 \

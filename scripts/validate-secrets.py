@@ -399,9 +399,10 @@ def _observability_topology_errors(
             )
         ]
     collector = next(node["node_id"] for node in nodes if "collector" in node["capabilities"])
-    expected = {(node_id, "node") for node_id in vpn_node_ids} | {
-        (collector, "pipeline"), (collector, "delivery")
-    }
+    mode = (doc.get("observability_kuma_secrets") or {}).get("notification_mode", "telegram")
+    expected = {(node_id, "node") for node_id in vpn_node_ids} | {(collector, "pipeline")}
+    if mode == "telegram":
+        expected.add((collector, "delivery"))
     monitors = (doc.get("observability_kuma_secrets") or {}).get("push_monitors") or []
     actual = {(item.get("node_id"), item.get("kind")) for item in monitors if isinstance(item, dict)}
     if actual != expected or len(monitors) != len(expected):

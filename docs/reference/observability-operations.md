@@ -35,6 +35,15 @@ queue overhead, and the unchanged resource and live acceptance gates.
 
 ## Current contract and task history
 
+The approved fresh-service rebuild is tracked by
+[OPS-1792927264049641](../tasks/issues/rebuild-cloud-vpn-service-with-automatic-https-renewal.md).
+Its panel-only mode uses N node monitors plus one pipeline monitor, without
+Telegram credentials, delivery producers or notification-receipt claims.
+Transition to this mode retires the exact delivery units and alerting credentials;
+co-hosted node heartbeats and collector data remain. Host provisioning and paid
+storage belong to the separate approved Terraform/bootstrap plan. This does not
+remove the environment, resource, runtime or live acceptance gates below.
+
 When an older monitoring task or archived proposal leads here, use the
 [resource-bounded requirements](../../openspec/changes/archive/2026-10-16-mon-1792080593038468-isolated-resource-bounded-monitoring/specs/operations/resource-bounded-observability/spec.md)
 and [design](../../openspec/changes/archive/2026-10-16-mon-1792080593038468-isolated-resource-bounded-monitoring/design.md) in
@@ -118,6 +127,11 @@ It never runs `site.yml` or prints secret values or rendered secret content.
 | `make observability-drill` | Explicit staging notification injection; requires human observation separately. |
 | `make observability-silence-create` / `delete` | Finite scoped suppression through the authenticated gateway. |
 | `make observability-pki-prepare` | Explicit local generation of new private IP-SAN PKI, encrypted to the approved age recipient. No host or notification access. |
+
+Collector status reports include `notification_mode` from the installed Prometheus
+unit. Panel-only status checks collection and pipeline units without notification
+credentials. A missing or invalid installed mode reports `unknown` and `degraded`;
+it never infers a healthy panel-only mode from a missing credential.
 
 The CLI check verb additionally requires `--confirm-host-access`; Make supplies
 it only for the explicitly selected check target. Other lifecycle confirmations

@@ -20,6 +20,50 @@ spec.loader.exec_module(accept)
 
 
 @pytest.fixture
+def consumer_bootstrap():
+    import yaml
+    from jinja2 import DictLoader
+    from scripts.template_render import template_environment
+
+    role = ROOT/'ansible/roles/transport-egress'
+    tasks = yaml.safe_load((role/'tasks/runtime-acceptance.yml').read_text())
+    command = next(task['ansible.builtin.command'] for task in tasks if 'register' in task)
+    environment = template_environment(DictLoader({'bootstrap.py.j2': command['argv'][3]}))
+    def lookup(plugin, path, **kwargs):
+        source = Path(path).read_text()
+        return source + ('\n#' + 'x' * 131072 + '\n' if Path(path).name == 'transport_runtime_validate.py' else '')
+    environment.globals['lookup'] = lookup
+    variables = {'role_path': str(role), 'transport_egress_libexec_dir': str(LIBRARY),
+        'transport_runtime_candidates': [], 'transport_runtime_probe_clients': {},
+        'transport_runtime_probe_url': 'https://canary.example.test',
+        'transport_runtime_probe_expected_status': 200, 'transport_runtime_timeout_seconds': 10}
+    program = environment.get_template('bootstrap.py.j2').render(**variables)
+    expression = environment.compile_expression(command['stdin'].strip()[2:-2])
+    envelope = json.loads(expression(**variables))
+    return program, envelope
+
+
+@pytest.mark.parametrize('damage', ['none', 'changed-source', 'extra-source'])
+def test_consumer_bootstrap_streams_large_sources_and_checks_pinned_bytes(consumer_bootstrap, damage):
+    import subprocess
+
+    program, envelope = consumer_bootstrap
+    assert len(program.encode()) < 131072
+    assert sum(len(source.encode()) for source in envelope['sources'].values()) > 131072
+    assert envelope['request'] == {'candidates': [], 'clients': {}, 'probe_url': 'https://canary.example.test',
+        'asset_dir': None, 'expected_status': 200, 'timeout': 10, 'revocation': None}
+    envelope['request'] = {'private-marker': 'must-not-be-logged'}
+    if damage == 'changed-source': envelope['sources']['transport_runtime_validate'] += '\nraise SystemExit(99)\n'
+    elif damage == 'extra-source': envelope['sources']['untrusted'] = 'raise SystemExit(99)'
+    result = subprocess.run([sys.executable, '-Es', '-c', program, '--apply', '--check'],
+        input=json.dumps(envelope), text=True, capture_output=True, timeout=10)
+    category = ('input-invalid' if os.geteuid() == 0 else 'root-required') if damage == 'none' else 'validation-refused'
+    assert result.returncode == 1 and result.stdout == ''
+    assert 'transport-runtime-refused:' + category in result.stderr
+    assert 'must-not-be-logged' not in result.stderr and 'untrusted' not in result.stderr
+
+
+@pytest.fixture
 def tmp_path(private_authority_path):
     return private_authority_path
 

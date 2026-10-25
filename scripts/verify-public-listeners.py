@@ -92,7 +92,10 @@ def _decode_contract(encoded: str) -> dict[PortSelector, str]:
         )
         if selector in selectors:
             raise ValueError(f"duplicate listener selector {selector.label}")
-        selectors[selector] = str(listener.get("name") or "")
+        name = str(listener.get("name") or "")
+        if name == "hysteria-acme" and selector != PortSelector("tcp", 80, 80):
+            raise ValueError("native ACME challenge allowance requires exactly TCP/80")
+        selectors[selector] = name
     return selectors
 
 
@@ -374,6 +377,7 @@ def _violations(
     sockets: set[tuple[str, int]],
     ssh_port: int,
     tailnet_sources: frozenset[str],
+    native_acme: bool = False,
 ) -> list[str]:
     violations: list[str] = []
     conforming: dict[PortSelector, int] = {selector: 0 for selector in expected}
@@ -462,6 +466,9 @@ def _violations(
         ) or any(position <= drop_position for position in public_ssh_positions):
             violations.append("invalid Tailnet SSH drop ordering")
     for selector in sorted(expected):
+        # CertMagic closes HTTP-01 after each challenge; its firewall rule stays required.
+        if native_acme and expected[selector] == "hysteria-acme" and selector == PortSelector("tcp", 80, 80):
+            continue
         for port in range(selector.start, selector.end + 1):
             if (selector.protocol, port) in sockets:
                 continue
@@ -481,6 +488,7 @@ def main() -> int:
     parser.add_argument("--contract-b64", required=True)
     parser.add_argument("--ssh-port", required=True, type=_port)
     parser.add_argument("--tailnet-sources-b64", required=True)
+    parser.add_argument("--native-acme", action="store_true")
     args = parser.parse_args()
     try:
         expected = _decode_contract(args.contract_b64)
@@ -492,7 +500,7 @@ def main() -> int:
         return 2
 
     violations = _violations(
-        expected, firewall, sockets, args.ssh_port, tailnet_sources
+        expected, firewall, sockets, args.ssh_port, tailnet_sources, args.native_acme
     )
     if violations:
         print("\n".join(violations))

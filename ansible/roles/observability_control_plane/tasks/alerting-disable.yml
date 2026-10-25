@@ -42,6 +42,19 @@
     fail_msg: Retained alerting generation contains an unsafe relay credential path.
   loop: "{{ _observability_disabled_relay_auth_paths }}"
 
+- name: Refuse an unowned Telegram credential path before retirement
+  ansible.builtin.assert:
+    that:
+      - >-
+        observability_control_plane.alerting.credential_path |
+        default('/etc/observability-control-plane/credentials/telegram-bot-token') ==
+        '/etc/observability-control-plane/credentials/telegram-bot-token'
+      - >-
+        observability_control_plane_alerting_generation.credential_path |
+        default('/etc/observability-control-plane/credentials/telegram-bot-token') ==
+        '/etc/observability-control-plane/credentials/telegram-bot-token'
+    fail_msg: Alerting retirement permits only the exact owned Telegram credential path.
+
 - name: Stop disabled silence authority
   ansible.builtin.systemd_service:
     name: observability-silence-gateway
@@ -55,11 +68,23 @@
   ansible.builtin.find:
     paths: /etc/observability-control-plane/credentials
     patterns: 'silence-*'
-    file_type: file
+    file_type: any
     follow: false
     recurse: false
   register: _observability_disabled_silence_credentials
   changed_when: false
+  no_log: true
+
+- name: Validate discovered silence credential paths before removal
+  ansible.builtin.assert:
+    that:
+      - >-
+        item.path is match('^/etc/observability-control-plane/credentials/silence-'
+        ~ '(policy[.]json|auth[.]json|backend-(ca[.]pem|server[.]crt|server[.]key|client[.]crt|client[.]key)'
+        ~ '|sender-token|owner-[A-Za-z][A-Za-z0-9_-]{0,63}-token)$')
+      - item.isreg | default(false) or item.islnk | default(false)
+    fail_msg: Alerting retirement found an unowned silence credential path.
+  loop: '{{ _observability_disabled_silence_credentials.files | default([]) }}'
   no_log: true
 
 - name: Stop disabled Alertmanager service
@@ -106,9 +131,12 @@
         '/usr/local/libexec/observability-telegram-relay',
         '/usr/local/libexec/observability-silence-gateway',
         '/etc/observability-control-plane/alertmanager-web.yml',
+        '/etc/observability-control-plane/credentials/telegram-bot-token',
         observability_control_plane.config_root ~ '/alertmanager-current.yml',
         observability_control_plane.config_root ~ '/alertmanager-previous.yml',
       ]
+      + _observability_disabled_relay_auth_paths
+      + (_observability_disabled_silence_credentials.files | default([]) | map(attribute='path') | list)
       + (_observability_alerting_generations.files | map(attribute='path') | list)
     }}
 

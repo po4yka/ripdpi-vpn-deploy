@@ -1153,3 +1153,22 @@ def test_encrypted_native_fixture_has_complete_device_authority():
     validator = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(validator)
     assert validator.registry_errors(document()) == []
+
+
+@pytest.mark.parametrize('case', ['panel', 'telegram', 'delivery', 'bot', 'primary-bot'])
+def test_panel_only_schema_excludes_notification_credentials_and_delivery(filled, case):
+    import jsonschema
+    document = deepcopy(filled)
+    fixture = yaml.safe_load(PLAIN_FIXTURE.read_text())
+    document.update({key: fixture[key] for key in ('observability_secrets', 'observability_kuma_secrets')})
+    kuma = document['observability_kuma_secrets']
+    kuma['notification_mode'] = 'panel-only'
+    kuma.pop('telegram', None)
+    document['observability_secrets'].pop('telegram', None)
+    kuma['push_monitors'] = [item for item in kuma['push_monitors'] if item['kind'] != 'delivery']
+    if case == 'telegram': kuma['notification_mode'] = 'telegram'
+    elif case == 'delivery': kuma['push_monitors'].append({'check_id': 'delivery', 'node_id': 'node-a', 'kind': 'delivery', 'token': 'a'*32})
+    elif case == 'bot': kuma['telegram'] = {'bot_token': 'b'*32, 'chat_id': '123456789'}
+    elif case == 'primary-bot': document['observability_secrets']['telegram'] = {'bot_token': 'b'*32, 'chat_id': '123456789', 'relay_auth_token': 'a'*64}
+    errors = list(jsonschema.Draft202012Validator(json.loads(SCHEMA.read_text())).iter_errors(document))
+    assert bool(errors) is (case != 'panel')

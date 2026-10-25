@@ -149,6 +149,16 @@ require_nonempty_directory() {
   fi
 }
 
+require_nonempty_tree() {
+  local relative_path="$1" artifact
+  artifact="$(restored_path "$relative_path")" || return 1
+  if [[ ! -d "$artifact" ]] ||
+     ! find "$artifact" -type f -size +0c -print -quit | grep -q .; then
+    echo "restore drill: required artifact tree empty: $relative_path" >&2
+    return 1
+  fi
+}
+
 require_file "etc/nftables.conf"
 require_file "etc/ssh/sshd_config.d/20-ansible-hardening.conf"
 require_file "etc/sysctl.d/90-vpn.conf"
@@ -164,9 +174,12 @@ require_file "etc/nginx/tls/vpn.example.com.key"
 
 
 
+
 require_file "etc/hysteria/config.yaml"
+
 require_file "etc/hysteria/server.fullchain.pem"
 require_file "etc/hysteria/server.key"
+
 
 
 

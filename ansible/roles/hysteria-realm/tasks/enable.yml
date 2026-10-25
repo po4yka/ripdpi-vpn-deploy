@@ -2,6 +2,13 @@
 # Hysteria Realm rendezvous — see defaults/main.yml for rationale. The global
 # listener manifest guard in site.yml owns every protocol/port collision.
 
+- name: Require supplied PEM authority before any Realm mutation
+  ansible.builtin.assert:
+    that:
+      - (hysteria | default({})).acme is not defined
+    fail_msg: Realm requires supplied PEM authority; Hysteria native ACME cannot supply shared or copied PEM files.
+  tags: [always]
+
 - name: Require supported bounded Realm version and staging prereleases before mutation
   ansible.builtin.assert:
     that:

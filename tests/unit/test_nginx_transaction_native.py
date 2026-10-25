@@ -42,8 +42,10 @@ def test_real_nginx_complete_tls_boot_and_failed_activation_compensation():
     suffix = uuid.uuid4().hex[:12]
     unit = "vpn-p2-nginx-" + suffix + ".service"
     unit_file = pathlib.Path("/etc/systemd/system") / unit
+    renewal_unit = "vpn-p2-renewal-" + suffix + ".service"
+    renewal_unit_file = unit_file.with_name(renewal_unit)
     base = pathlib.Path("/var/lib") / ("vpn-p2-nginx-" + suffix)
-    assert not base.exists() and not unit_file.exists()
+    assert not base.exists() and not unit_file.exists() and not renewal_unit_file.exists()
     base.mkdir(mode=0o700)
     config = base / "config"
     config.mkdir(mode=0o750)
@@ -83,7 +85,7 @@ def test_real_nginx_complete_tls_boot_and_failed_activation_compensation():
     unit_text = f'[Unit]\nDescription=Owned nginx transaction regression\n[Service]\nType=simple\nLoadCredential=server.crt:{tls}/server.crt\nLoadCredential=server.key:{tls}/server.key\nRuntimeDirectory=vpn-p2-nginx-{suffix}\nExecStart=/usr/sbin/nginx -c {config}/nginx.conf -g "daemon off;"\nPrivateTmp=true\nProtectSystem=strict\nNoNewPrivileges=true\nRestrictNamespaces=true\nReadWritePaths={logs}\n[Install]\nWantedBy=multi-user.target\n'
 
     def configuration(body):
-        return f'pid {runtime}/nginx.pid;\nerror_log {logs}/error.log;\nevents {{}}\nhttp {{ access_log {logs}/access.log; server {{ listen 127.0.0.1:{port} ssl; ssl_certificate /run/credentials/{unit}/server.crt; ssl_certificate_key /run/credentials/{unit}/server.key; location / {{ return 200 "{body}"; }} }} }}\n'
+        return f'user www-data;\npid {runtime}/nginx.pid;\nerror_log {logs}/error.log;\nevents {{}}\nhttp {{ access_log {logs}/access.log; server {{ listen 127.0.0.1:{port} ssl; ssl_certificate /run/credentials/{unit}/server.crt; ssl_certificate_key /run/credentials/{unit}/server.key; location / {{ return 200 "{body}"; }} }} }}\n'
 
     def file(path, data, mode):
         return {
@@ -208,6 +210,37 @@ def test_real_nginx_complete_tls_boot_and_failed_activation_compensation():
         assert first.returncode == 0, first.stderr
         assert body() == "old"
         assert run("systemctl", "is-enabled", unit).stdout.strip() == "enabled"
+        # Run the real adoption checks inside the renewal service sandbox.
+        # Only paths and ExecStart are scoped to this owned nginx fixture.
+        inspection = base / 'renewal-inspection.py'
+        inspected = base / 'renewal-workers.json'
+        inspection.write_text(
+            "import importlib.util,json,pwd\nfrom pathlib import Path\n"
+            f"spec=importlib.util.spec_from_file_location('transaction',{str(helper)!r})\n"
+            "m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)\n"
+            f"workers=m.nginx_workers(m.nginx_master({unit!r}))\nm.wait_adoption({unit!r})\n"
+            "assert workers\nuid=pwd.getpwnam('www-data').pw_uid\n"
+            "for pid,_started in workers:\n"
+            " status=Path('/proc',pid,'status').read_text()\n"
+            " assert next(line.split()[1] for line in status.splitlines() if line.startswith('Uid:'))==str(uid)\n"
+            f"Path({str(inspected)!r}).write_text(json.dumps({{'workers':len(workers)}}))\n"
+        )
+        renewal_policy = (ROOT / 'ansible/roles/nginx-xhttp/templates/vpn-public-tls.service.j2').read_text()
+        renewal_policy = '\n'.join(
+            f'ExecStart=/usr/bin/python3 {inspection}' if line.startswith('ExecStart=') else
+            f'ReadWritePaths={base}' if line.startswith('ReadWritePaths=') else line
+            for line in renewal_policy.splitlines()
+        ) + '\n'
+        renewal_unit_file.write_text(renewal_policy.replace(' CAP_SYS_PTRACE', ''))
+        run('systemctl', 'daemon-reload')
+        assert run('systemctl', 'start', renewal_unit, check=False).returncode != 0
+        assert not inspected.exists()
+        assert 'PermissionError' in run('journalctl', '-u', renewal_unit, '--no-pager', '-o', 'cat').stdout
+        run('systemctl', 'reset-failed', renewal_unit)
+        renewal_unit_file.write_text(renewal_policy)
+        run('systemctl', 'daemon-reload')
+        run('systemctl', 'start', renewal_unit)
+        assert json.loads(inspected.read_text())['workers'] > 0
         prior = snapshot()
         fifo = config / "unrelated-fifo"
         os.mkfifo(fifo, 0o600)
@@ -447,6 +480,8 @@ def test_real_nginx_complete_tls_boot_and_failed_activation_compensation():
             )
         )
     finally:
+        run("systemctl", "stop", renewal_unit, check=False)
+        renewal_unit_file.unlink(missing_ok=True)
         run("systemctl", "stop", unit, check=False)
         run("systemctl", "disable", unit, check=False)
         unit_file.unlink(missing_ok=True)

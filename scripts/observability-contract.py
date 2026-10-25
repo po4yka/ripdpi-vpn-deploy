@@ -89,6 +89,7 @@ VPN_PUBLIC_LISTENERS = frozenset(
     {
         ("amneziawg", "udp"),
         ("hysteria", "udp"),
+        ("hysteria-acme", "tcp"),
         ("nginx-xhttp", "tcp"),
         ("public-site-http", "tcp"),
         ("xray", "tcp"),

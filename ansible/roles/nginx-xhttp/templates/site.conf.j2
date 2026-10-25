@@ -183,6 +183,24 @@ server {
 {% endif %}
 {% endif %}
 
+{% if nginx_xhttp.acme is defined %}
+{% set nginx_aliases = nginx_xhttp.acme.domains | difference([nginx_xhttp.server_name]) %}
+{% if nginx_aliases | length > 0 %}
+server {
+    listen {{ nginx_xhttp_public_port }} ssl http2;
+    listen [::]:{{ nginx_xhttp_public_port }} ssl http2;
+    server_name {{ nginx_aliases | join(' ') }};
+    server_tokens off;
+    ssl_certificate /etc/nginx/tls/{{ nginx_xhttp.server_name }}.fullchain.pem;
+    ssl_certificate_key /etc/nginx/tls/{{ nginx_xhttp.server_name }}.key;
+    ssl_protocols TLSv1.3;
+    ssl_ecdh_curve X25519;
+    access_log off;
+    error_log /dev/null crit;
+    return 301 {{ public_site_canonical_url }}$request_uri;
+}
+{% endif %}
+{% else %}
 # HTTP → HTTPS redirect (so the host looks like a normal website)
 server {
     listen 80;
@@ -194,3 +212,4 @@ server {
     error_log /dev/null crit;
     return 301 https://$host{% if nginx_redirect_port != 443 %}:{{ nginx_redirect_port }}{% endif %}$request_uri;
 }
+{% endif -%}

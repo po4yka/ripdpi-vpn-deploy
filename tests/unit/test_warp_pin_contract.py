@@ -69,7 +69,7 @@ def test_checksum_tasks_are_not_gated_on_the_pin_being_set() -> None:
 
 def test_health_gate_runs_before_xray_can_activate_warp_routes() -> None:
     plays = yaml.safe_load((REPO_ROOT / "ansible/playbooks/site.yml").read_text())
-    roles = site_roles(plays[0])
+    roles = [role for role in site_roles(plays[0]) if role.get("tasks_from", "main") in {"main", "prepare-site"}]
     names = [role["role"] for role in roles]
     protected = roles[names.index("transport-egress")]
     assert protected["tasks_from"] == "prepare-site"
@@ -87,7 +87,7 @@ def test_health_gate_runs_before_xray_can_activate_warp_routes() -> None:
         {"name": "transport-egress", "tasks_from": "activate"},
     ]
     site = plays[0]
-    protected_block = site["tasks"][0]
+    protected_block = next(task for task in site["tasks"] if "block" in task)
     block = protected_block["block"]
     activation = next(task for task in block if task.get("ansible.builtin.import_tasks") == "tasks/transport-egress-activate.yml")
     commit = next(task for task in block if task.get("ansible.builtin.import_tasks") == "tasks/transport-ingress-commit.yml")

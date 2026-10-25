@@ -84,7 +84,7 @@ def test_canonical_extraction_rejects_ambiguous_or_non_head_links(malformed):
 
 
 def protected():
-    return copy.deepcopy(yaml.safe_load(SITE.read_text())[0]['tasks'][0])
+    return copy.deepcopy(next(task for task in yaml.safe_load(SITE.read_text())[0]['tasks'] if 'block' in task))
 
 
 def test_site_closes_complete_protected_block_before_unrelated_roles():
@@ -92,18 +92,18 @@ def test_site_closes_complete_protected_block_before_unrelated_roles():
     assert [value['role'] for value in play['roles']] == ['baseline', 'package_updates']
     block = protected()
     names = [value.get('ansible.builtin.import_role', {}).get('name') for value in block['block']]
-    assert [name for name in names if name] == ['firewall', 'intrusion_prevention', 'geodata', 'tailnet-management',
-                                             'transport-egress', 'xray', 'reality-self-steal', 'nginx-xhttp', 'hysteria']
+    assert [name for name in names if name] == ['firewall', 'intrusion_prevention', 'nginx-xhttp', 'geodata', 'tailnet-management',
+                                             'transport-egress', 'xray', 'reality-self-steal', 'nginx-xhttp', 'hysteria', 'nginx-xhttp']
     assert block['block'][0]['ansible.builtin.import_tasks'] == 'tasks/transport-ingress-begin.yml'
     assert block['block'][1]['vars']['firewall_site_transaction'] is True
     assert 'always' in block['block'][1]['tags']
-    assert block['block'][-3]['ansible.builtin.import_tasks'] == 'tasks/transport-egress-activate.yml'
-    assert block['block'][-2]['ansible.builtin.import_tasks'] == 'tasks/transport-ingress-commit.yml'
+    assert block['block'][-4]['ansible.builtin.import_tasks'] == 'tasks/transport-egress-activate.yml'
+    assert block['block'][-3]['ansible.builtin.import_tasks'] == 'tasks/transport-ingress-commit.yml'
     finish = block['block'][-1]
     assert finish['ansible.builtin.command']['argv'] == [
         'python3', '-Es', '/usr/local/libexec/ripdpi-consumer/firewall_consumer.py', 'finish', '--owner', 'site']
     assert finish['when'] == '_firewall_site_transaction_active | default(false) | bool'
-    assert play['tasks'][1]['ansible.builtin.import_role']['name'] == 'cdn-front'
+    assert play['tasks'][2]['ansible.builtin.import_role']['name'] == 'cdn-front'
     assert 'post_tasks' not in play
     assert block['rescue'][0]['ansible.builtin.include_tasks'] == 'tasks/transport-ingress-recover-commit.yml'
     assert block['rescue'][1]['ansible.builtin.include_role']['tasks_from'] == 'quiesce'
@@ -175,7 +175,7 @@ def _fixture(tmp_path, failure, state_owner=None):
     ingress = root / 'ingress'
     ingress.mkdir(mode=0o700)
     context = {'check': False, 'owners': [{'owner': owner, 'roots': [str(ingress)], 'paths': [str(ingress / (owner + '.conf'))], 'prune_releases': None}
-                                        for owner in ['nginx-xhttp', 'reality-self-steal']]}
+                                        for owner in ['nginx-xhttp', 'public-tls', 'reality-self-steal']]}
     (root / 'context.json').write_text(json.dumps(context))
     driver = root / 'ingress_driver.py'
     # The real production transaction API owns all file/receipt/journal checks.
@@ -246,6 +246,8 @@ if action!='recover-commit':
         _write(roles / role / 'defaults/main.yml', {role.replace('-', '_') + '_parse_visible': True})
     for role in ['intrusion_prevention', 'geodata', 'tailnet-management']:
         _write(roles / role / 'tasks/main.yml', [])
+    _write(roles / 'nginx-xhttp/tasks/tls-bootstrap.yml', [])
+    _write(roles / 'nginx-xhttp/tasks/tls-finish.yml', [])
     (root / 'firewall-policy').write_bytes(b'accepted firewall')
     _write(roles / 'firewall/tasks/main.yml', [
         {'ansible.builtin.set_fact': {'_firewall_site_transaction_active': True}},
@@ -400,7 +402,7 @@ def test_later_unrelated_failure_keeps_once_activated_committed_generation(tmp_p
     assert (root / 'frontend.conf').read_bytes() == b'changed frontend'
     assert (root / 'state').read_text() == 'candidate-running'
     assert (root / 'firewall-policy').read_bytes() == b'candidate firewall'
-    assert all(Path(value['paths'][0]).read_bytes() == b'changed ingress' for value in context['owners'])
+    assert all(Path(value['paths'][0]).read_bytes() == (b'accepted ingress' if value['owner'] == 'public-tls' else b'changed ingress') for value in context['owners'])
     events = (root / 'events').read_text().splitlines()
     assert events.count('activate') == 1 and 'resume' not in events
     assert events.index('activate') < events.index('ingress-commit')
@@ -437,7 +439,7 @@ def test_interrupted_prior_site_transaction_is_compensated_in_rescue_order_then_
     assert again.returncode == 0, again.stdout + again.stderr
     events = (root / 'events').read_text().splitlines()
     assert events.count('activate') == 1 and events[-1] == 'ingress-commit'
-    assert all(Path(value['paths'][0]).read_bytes() == b'changed ingress' for value in context['owners'])
+    assert all(Path(value['paths'][0]).read_bytes() == (b'accepted ingress' if value['owner'] == 'public-tls' else b'changed ingress') for value in context['owners'])
 
 
 def test_check_mode_refuses_an_interrupted_prior_site_transaction_without_mutation(tmp_path):
@@ -451,7 +453,7 @@ def test_check_mode_refuses_an_interrupted_prior_site_transaction_without_mutati
     assert 'recovery was attempted when available' not in result.stdout
     assert (_journal_state(root), (root / 'frontend.conf').read_bytes(), (root / 'state').read_text()) == before
     assert (root / 'nginx-state/nginx.service/site.json').exists()
-    assert all(Path(value['paths'][0]).read_bytes() == b'changed ingress' for value in context['owners'])
+    assert all(Path(value['paths'][0]).read_bytes() == (b'accepted ingress' if value['owner'] == 'public-tls' else b'changed ingress') for value in context['owners'])
     # Adoption alone records no event, so the message above catches it; these catch the outer helper or quiesce running in check mode.
     assert not (root / 'status-ran').exists() and (root / 'events').read_text() == ''
 
@@ -478,7 +480,7 @@ def test_pending_only_journal_refuses_dry_run_with_its_own_category_and_one_depl
     assert not pending.exists() and not (root / 'nginx-state/nginx.service/site.json').exists()
     events = (root / 'events').read_text().splitlines()
     assert events.count('activate') == 1 and events[-1] == 'ingress-commit'
-    assert all(Path(value['paths'][0]).read_bytes() == b'changed ingress' for value in context['owners'])
+    assert all(Path(value['paths'][0]).read_bytes() == (b'accepted ingress' if value['owner'] == 'public-tls' else b'changed ingress') for value in context['owners'])
 
 
 @pytest.mark.parametrize('tamper', ['symlink', 'group-writable', 'hardlink', 'writable-directory'])
@@ -510,7 +512,7 @@ def test_unsafe_outer_helper_is_refused_before_status_runs_and_the_journal_is_re
     assert not (root / 'status-ran').exists()
     assert (_journal_state(root), (root / 'frontend.conf').read_bytes(), (root / 'state').read_text()) == before
     assert (root / 'nginx-state/nginx.service/site.json').exists()
-    assert all(Path(value['paths'][0]).read_bytes() == b'changed ingress' for value in context['owners'])
+    assert all(Path(value['paths'][0]).read_bytes() == (b'accepted ingress' if value['owner'] == 'public-tls' else b'changed ingress') for value in context['owners'])
     assert (root / 'events').read_text() == ''
 
 
@@ -557,7 +559,7 @@ def test_missing_outer_helper_with_route_state_present_or_unjudgeable_refuses_be
     assert not (root / 'status-ran').exists() and (root / 'events').read_text() == ''
     assert (_journal_state(root), (root / 'frontend.conf').read_bytes(), (root / 'state').read_text()) == before
     assert (root / 'nginx-state/nginx.service/site.json').exists()
-    assert all(Path(value['paths'][0]).read_bytes() == b'changed ingress' for value in context['owners'])
+    assert all(Path(value['paths'][0]).read_bytes() == (b'accepted ingress' if value['owner'] == 'public-tls' else b'changed ingress') for value in context['owners'])
 
 
 def test_unreadable_outer_route_refuses_categorically_and_retains_the_journal(tmp_path):
@@ -571,7 +573,7 @@ def test_unreadable_outer_route_refuses_categorically_and_retains_the_journal(tm
     assert 'private-detail-that-must-not-be-echoed' not in result.stdout + result.stderr
     assert 'no accepted-generation recovery was attempted' in result.stdout
     assert (_journal_state(root), (root / 'frontend.conf').read_bytes(), (root / 'state').read_text()) == before
-    assert all(Path(value['paths'][0]).read_bytes() == b'changed ingress' for value in context['owners'])
+    assert all(Path(value['paths'][0]).read_bytes() == (b'accepted ingress' if value['owner'] == 'public-tls' else b'changed ingress') for value in context['owners'])
     assert (root / 'events').read_text() == ''
 
 
@@ -585,7 +587,7 @@ def test_malformed_prior_site_journal_fails_closed_before_capture_and_is_retaine
     result = _run(root)
     assert result.returncode != 0 and 'Complete a recorded protected commit' in result.stdout
     assert _journal_state(root) == before
-    assert all(Path(value['paths'][0]).read_bytes() == b'changed ingress' for value in context['owners'])
+    assert all(Path(value['paths'][0]).read_bytes() == (b'accepted ingress' if value['owner'] == 'public-tls' else b'changed ingress') for value in context['owners'])
     events = (root / 'events').read_text().splitlines()
     assert 'ingress-restore' not in events and 'ingress-begin' not in events and 'stage' not in events
     # An unreadable decision refuses before adoption, quiescence or compensation.
@@ -731,7 +733,7 @@ def test_actual_ingress_declaration_has_exact_candidate_paths_and_optional_secre
         expected_self += ['/etc/nginx/reality-self-steal/releases/' + release + '/' + name for name in ['fullchain.pem', 'privkey.pem']]
     source = yaml.safe_load((ROOT / 'ansible/playbooks/tasks/transport-ingress-begin.yml').read_text())[:2]
     _write(root / 'playbooks/play.yml', [{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False, 'become': False, 'vars': {**variables, 'expected_xhttp': sorted(expected_xhttp), 'expected_self': sorted(expected_self)},
-                              'tasks': source + [{'ansible.builtin.assert': {'that': ["_transport_ingress_request.owners[0].paths | sort == expected_xhttp", "_transport_ingress_request.owners[1].paths | sort == expected_self"]}, 'no_log': True}]}])
+                              'tasks': source + [{'ansible.builtin.assert': {'that': ["_transport_ingress_request.owners[0].paths | sort == expected_xhttp", "_transport_ingress_request.owners[2].paths | sort == expected_self", "_transport_ingress_request.owners[1].paths | sort == ['/etc/nginx/conf.d/vpn-public-acme.conf', '/etc/vpn-public-tls/config.json']"]}, 'no_log': True}]}])
     result = _run(root / "playbooks")
     assert result.returncode == 0, result.stdout + result.stderr
 
@@ -805,7 +807,7 @@ def test_rescue_rolls_forward_commit_and_never_compensates_after_lost_ack(tmp_pa
     assert result.returncode != 0 and 'lost commit acknowledgement' in result.stdout
     events = (root / 'events').read_text().splitlines()
     assert 'quiesce' not in events and 'resume' not in events and 'ingress-restore' not in events
-    assert all(Path(owner['paths'][0]).read_bytes() == b'changed ingress' for owner in context['owners'])
+    assert all(Path(owner['paths'][0]).read_bytes() == (b'accepted ingress' if owner['owner'] == 'public-tls' else b'changed ingress') for owner in context['owners'])
     assert (root / 'frontend.conf').read_bytes() == b'changed frontend'
     assert (root / 'firewall-policy').read_bytes() == b'candidate firewall'
     assert not (root / 'nginx-state/nginx.service/site.json').exists()
@@ -823,5 +825,5 @@ def test_next_deploy_finishes_recorded_commit_before_staging(tmp_path):
     events = (root / 'events').read_text().splitlines()
     assert 'quiesce' not in events and 'resume' not in events and 'ingress-restore' not in events
     assert events.index('ingress-begin') < events.index('stage')
-    assert all(Path(owner['paths'][0]).read_bytes() == b'changed ingress' for owner in context['owners'])
+    assert all(Path(owner['paths'][0]).read_bytes() == (b'accepted ingress' if owner['owner'] == 'public-tls' else b'changed ingress') for owner in context['owners'])
     assert not journal.exists() and not (root / 'outer-open').exists()

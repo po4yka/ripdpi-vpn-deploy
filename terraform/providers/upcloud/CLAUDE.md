@@ -2,6 +2,8 @@
 
 ## Design decisions
 
+An explicit observer requires one encrypted 10 GB Archive backup volume at a separate device slot. VPN nodes retain zero extra observer storage. Independent filesystem and private-path admission remain guest checks, not Terraform success.
+
 REALITY alternate listeners are opt-in: examples and the legacy listener set
 only declare the primary port. An enabled `xray_fallback_port` also requires an
 explicit matching `public_listeners` entry; runtime/provider parity stays strict.
@@ -52,6 +54,9 @@ Destroy authorization includes the exact seed storage UUID and its absence.
 - **Outputs are minimal** — only what `render-inventory.sh` needs.
 - **No `local-exec`** — TF stays declarative; cloud-init and Ansible own the
   imperative side.
+
+
+Small Starter plans use their exact bundled Standard disk size (10, 20 or 30 GB). The root selects the Standard tier explicitly, so the provider cannot add a MaxIOPS surcharge. A management-only observer sets `node_purpose = "observer"`, `public_listeners = []`, `use_legacy_public_listeners = false` and `enable_hysteria = false`; it is not a VPN fleet node.
 
 ## Pitfalls
 

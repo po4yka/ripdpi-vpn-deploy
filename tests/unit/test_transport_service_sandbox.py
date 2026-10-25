@@ -60,6 +60,23 @@ def test_transport_units_carry_the_sandbox_baseline() -> None:
             assert "AmbientCapabilities=" not in unit
 
 
+def test_public_tls_coordinator_can_inspect_cross_uid_nginx_workers():
+    unit = (REPO_ROOT / 'ansible/roles/nginx-xhttp/templates/vpn-public-tls.service.j2').read_text()
+    capabilities = next(line.split('=', 1)[1].split() for line in unit.splitlines()
+                        if line.startswith('CapabilityBoundingSet='))
+    assert set(capabilities) == {'CAP_CHOWN', 'CAP_DAC_OVERRIDE', 'CAP_FOWNER', 'CAP_SYS_ADMIN', 'CAP_SYS_PTRACE'}
+
+
+@pytest.mark.parametrize('sharing', [False, True])
+def test_direct_realm_refuses_native_acme_before_mutation(sharing):
+    tasks = yaml.safe_load((REPO_ROOT / 'ansible/roles/hysteria-realm/tasks/enable.yml').read_text())
+    guard = tasks[0]['ansible.builtin.assert']['that'][0]
+    environment = Environment(autoescape=True, undefined=StrictUndefined)
+    evaluate = environment.compile_expression(guard)
+    assert evaluate(hysteria={'cert_pem': 'owned'}, hysteria_realm={'share_hysteria_tls': sharing})
+    assert not evaluate(hysteria={'acme': {}}, hysteria_realm={'share_hysteria_tls': sharing})
+
+
 def test_non_net_admin_units_exclude_privileged_and_resource_syscalls() -> None:
     for rel, capability in UNITS.items():
         if capability == "CAP_NET_ADMIN":

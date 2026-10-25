@@ -95,3 +95,91 @@ def test_frontend_does_not_split_literal_and_name_policy_with_geoip():
     assert config['routing']['domainStrategy'] == 'AsIs'
     assert not any('geoip:private' in rule.get('ip', []) for rule in config['routing']['rules'])
     validator.admitted_frontend(config)
+
+
+@pytest.mark.parametrize('case', ['valid', 'both', 'neither', 'ca', 'path', 'type', 'email', 'ech'])
+def test_native_acme_yaml_has_exact_role_owned_policy(tmp_path, case):
+    from template_render import merge_render_vars, render_template
+    variables = merge_render_vars()
+    h = variables['hysteria']
+    h.pop('cert_pem', None); h.pop('key_pem', None)
+    h['server_name'] = 'h2.example.test'
+    h['acme'] = {'domains': [h['server_name']], 'email': 'operator@example.test'}
+    config = yaml.safe_load(render_template(ROOT/'ansible/roles/hysteria/templates/config.yaml.j2', variables))
+    assert 'tls' not in config
+    if case == 'both': config['tls'] = {'cert': '/foreign/cert', 'key': '/foreign/key'}
+    elif case == 'neither': config.pop('acme')
+    elif case == 'ca': config['acme']['ca'] = 'foreign'
+    elif case == 'path': config['acme']['dir'] = '/foreign'
+    elif case == 'type': config['acme']['type'] = 'dns'
+    elif case == 'email': config['acme']['email'] = 'private-unit-sentinel'
+    elif case == 'ech': config['ech'] = {'keyPath': '/run/credentials/hysteria-server.service/hysteria-ech'}
+    path = tmp_path/'candidate.yaml'
+    path.write_text(yaml.safe_dump(config)); path.chmod(0o600)
+    result = subprocess.run([sys.executable, str(ROOT/'ansible/roles/runtime-release/files/validate_yaml_mapping.py'), '--profile', 'hysteria', str(path)], text=True, capture_output=True)
+    assert (result.returncode == 0) is (case == 'valid')
+    assert 'private-unit-sentinel' not in result.stderr
+
+
+def test_native_acme_candidates_seal_absence_and_unit_keeps_config_read_only():
+    from template_render import merge_render_vars, render_template
+    variables = merge_render_vars()
+    h = variables['hysteria']
+    h.pop('cert_pem', None); h.pop('key_pem', None)
+    h['server_name'] = 'h2.example.test'
+    h['acme'] = {'domains': [h['server_name']], 'email': 'operator@example.test'}
+    variables['transport_egress_frontend_gids'] = {'hysteria': 1234}
+    variables['hysteria_masquerade_hosts'] = {'enabled': False, 'content': ''}
+    # Resolve the two role template lookups, as Ansible does, before rendering its actual candidate expression.
+    tasks = yaml.safe_load((ROOT/'ansible/roles/hysteria/tasks/enable.yml').read_text())
+    task = next(task for task in tasks if task['name'] == 'Stage complete Hysteria authority for guarded consumer acceptance')
+    expression = task['ansible.builtin.set_fact']['transport_runtime_candidates'].strip()[2:-2]
+    # Template lookup is already exercised above; use the real rendered bytes for the external Ansible lookup boundary.
+    from jinja2.nativetypes import NativeEnvironment
+    import base64
+    env = NativeEnvironment()
+    env.filters.update({'b64encode': lambda value: base64.b64encode(value.encode()).decode(), 'bool': bool})
+    def lookup(plugin, path, **kwargs):
+        if plugin.endswith('template'): return render_template(ROOT/'ansible/roles/hysteria/templates'/path, variables)
+        return Path(path).read_text()
+    env.globals['lookup'] = lookup
+    variables['role_path'] = str(ROOT/'ansible/roles/hysteria')
+    candidate = env.from_string('{{ '+expression+' }}').render(**variables)
+    paths = {row['path']: row for row in candidate}
+    for suffix in ('server.fullchain.pem', 'server.key'):
+        path = variables['hysteria_config_dir']+'/'+suffix
+        assert paths[path] == {'path': path, 'absent': True}
+    assert not any('/var/lib/hysteria/acme' in path for path in paths)
+    unit = render_template(ROOT/'ansible/roles/hysteria/templates/hysteria-server.service.j2', variables)
+    writes = next(line for line in unit.splitlines() if line.startswith('ReadWritePaths='))
+    assert writes == 'ReadWritePaths='+variables['hysteria_log_dir']+' /var/lib/hysteria/acme'
+
+
+@pytest.mark.parametrize('fresh', [True, False])
+def test_native_acme_directory_check_uses_only_existing_identities(tmp_path, fresh):
+    import os
+    tasks = yaml.safe_load((ROOT/'ansible/roles/hysteria/tasks/enable.yml').read_text())
+    names = {'Ensure hysteria directories', 'Keep native ACME parent under root authority',
+             'Create the private native ACME cache without managing its contents'}
+    selected = [task for task in tasks if task['name'] in names]
+    # Only host paths and the nonexistent service identity are retargeted.
+    source = yaml.safe_dump(selected).replace('/var/lib/hysteria', str(tmp_path/'data'))
+    source = source.replace('"hysteria"', '"vpn-test-absent-identity"').replace("'hysteria'", "'vpn-test-absent-identity'")
+    selected = yaml.safe_load(source)
+    for task in selected:
+        for item in task.get('loop', []):
+            for key in ('owner', 'group'):
+                if item.get(key) == 'hysteria':
+                    item[key] = 'vpn-test-absent-identity'
+    for path in ('config', 'logs', 'data', 'data/acme'):
+        (tmp_path/path).mkdir(parents=True, exist_ok=True)
+    before = {path: path.stat().st_mode for path in tmp_path.rglob('*')}
+    play = tmp_path/'check.yml'
+    play.write_text(yaml.safe_dump([{'hosts': 'localhost', 'connection': 'local', 'gather_facts': False, 'become': False,
+        'vars': {'ansible_python_interpreter': sys.executable, 'hysteria': {'acme': {}},
+                 'transport_egress_fresh_check_mode': fresh, 'hysteria_config_dir': str(tmp_path/'config'),
+                 'hysteria_log_dir': str(tmp_path/'logs')}, 'tasks': selected}]))
+    completed = subprocess.run(['ansible-playbook', '-i', 'localhost,', str(play), '--check'],
+        env={**os.environ, 'ANSIBLE_STDOUT_CALLBACK': 'default'}, capture_output=True, text=True, timeout=45)
+    assert (completed.returncode == 0) is fresh, completed.stdout + completed.stderr
+    assert all(path.stat().st_mode == mode for path, mode in before.items())

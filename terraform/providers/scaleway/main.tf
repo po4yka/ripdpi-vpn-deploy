@@ -61,6 +61,12 @@ resource "scaleway_instance_server" "vpn" {
   )
   security_group_id = scaleway_instance_security_group.vpn.id
   tags              = local.base_tags
+  root_volume {
+    size_in_gb            = var.root_size_gb
+    volume_type           = "sbs_volume"
+    sbs_iops              = 5000
+    delete_on_termination = true
+  }
   user_data = {
     cloud-init = local.user_data
   }

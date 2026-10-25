@@ -19,6 +19,30 @@ variables {
   ]
 }
 
+run "site_root_has_a_bounded_block_storage_cost" {
+  command = plan
+
+  assert {
+    condition = (
+      scaleway_instance_server.vpn.root_volume[0].size_in_gb == 20
+      && scaleway_instance_server.vpn.root_volume[0].volume_type == "sbs_volume"
+      && scaleway_instance_server.vpn.root_volume[0].sbs_iops == 5000
+      && scaleway_instance_server.vpn.root_volume[0].delete_on_termination
+    )
+    error_message = "The site root must explicitly use 20 GB Block Storage 5K and retire with its instance"
+  }
+}
+
+run "root_storage_rejects_fractional_capacity" {
+  command = plan
+
+  variables {
+    root_size_gb = 20.5
+  }
+
+  expect_failures = [var.root_size_gb]
+}
+
 run "server_cloud_init_user_data_is_wired" {
   command = plan
 

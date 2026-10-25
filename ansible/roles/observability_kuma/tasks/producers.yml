@@ -2,6 +2,12 @@
 - name: Validate qualified push inputs before any mutation
   ansible.builtin.import_tasks: producers-contract.yml
 
+- name: Retire delivery heartbeat when the private panel is the selected notification mode
+  ansible.builtin.import_tasks: producers-disable.yml
+  vars:
+    observability_push_disable_kinds: [delivery]
+  when: (observability_kuma_secrets.notification_mode | default('telegram')) == 'panel-only'
+
 - name: Establish bounded slice before any heartbeat can start
   ansible.builtin.include_role:
     name: observability_agent
@@ -58,7 +64,8 @@
 - name: Install non-secret scoped condition configuration
   ansible.builtin.copy:
     content: >-
-      {{ {'kind': item, 'node_id': observability_push.node_id, 'origin': observability_push.origin,
+      {{ {'notification_mode': observability_kuma_secrets.notification_mode | default('telegram'),
+      'kind': item, 'node_id': observability_push.node_id, 'origin': observability_push.origin,
       'services': observability_push.services, 'expected_nodes': observability_push.expected_nodes,
       'prometheus_origin': observability_push.prometheus_origin, 'relay_origin': observability_push.relay_origin,
       'textfile_dir': observability_push.textfile_dir} | to_nice_json }}

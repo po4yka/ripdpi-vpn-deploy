@@ -1,0 +1,28 @@
+[Unit]
+Description=Renew and reconcile the public HTTPS certificate
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+ExecStart=/usr/bin/python3 /usr/local/libexec/vpn-public-tls --renewal
+TimeoutStartSec=600
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+# The guarded nginx validator creates only a private mount namespace.
+RestrictNamespaces=mnt
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+# Runtime adoption checks /proc identities of nginx workers with another UID.
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_SYS_ADMIN CAP_SYS_PTRACE
+ReadWritePaths=/etc/letsencrypt /var/lib/letsencrypt /var/log/letsencrypt /var/lib/vpn-public-tls /etc/nginx/tls /etc/nginx/conf.d /etc/vpn-public-tls /var/log/nginx /var/lib/vpn-nginx-publication

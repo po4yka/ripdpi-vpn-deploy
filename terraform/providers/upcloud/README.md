@@ -15,6 +15,9 @@ inventory-facing outputs as `providers/hetzner/` and `providers/vultr/`:
 - `server_hostname`
 - `zone`
 
+
+Small Starter plans use their exact bundled Standard disk size (10, 20 or 30 GB). The root selects the Standard tier explicitly, so the provider cannot add a MaxIOPS surcharge. A management-only observer sets `node_purpose = "observer"`, `public_listeners = []`, `use_legacy_public_listeners = false` and `enable_hysteria = false`; it is not a VPN fleet node.
+
 Example:
 
 ```bash
@@ -69,6 +72,7 @@ No modules.
 | [upcloud_firewall_rules.vpn](https://registry.terraform.io/providers/UpCloudLtd/upcloud/latest/docs/resources/firewall_rules) | resource |
 | [upcloud_server.vpn](https://registry.terraform.io/providers/UpCloudLtd/upcloud/latest/docs/resources/server) | resource |
 | [upcloud_storage.ci_ssh_seed](https://registry.terraform.io/providers/UpCloudLtd/upcloud/latest/docs/resources/storage) | resource |
+| [upcloud_storage.observer_backup](https://registry.terraform.io/providers/UpCloudLtd/upcloud/latest/docs/resources/storage) | resource |
 
 ## Inputs
 
@@ -86,6 +90,8 @@ No modules.
 | <a name="input_enable_provider_firewall"></a> [enable\_provider\_firewall](#input\_enable\_provider\_firewall) | Activate the UpCloud stateless Public & Utility firewall after the exact node has passed guest-firewall and strict-SSH verification. | `bool` | `false` | no |
 | <a name="input_labels"></a> [labels](#input\_labels) | Provider-specific resource tags/labels. | `map(string)` | `{}` | no |
 | <a name="input_nginx_xhttp_public_port"></a> [nginx\_xhttp\_public\_port](#input\_nginx\_xhttp\_public\_port) | Public TCP port for nginx-xhttp. Keep this in sync with Ansible nginx\_xhttp\_public\_port. | `number` | `8443` | no |
+| <a name="input_node_purpose"></a> [node\_purpose](#input\_node\_purpose) | VPN node or management-only independent observer; observers must declare no public protocol listeners. | `string` | `"vpn"` | no |
+| <a name="input_observer_backup_size_gb"></a> [observer\_backup\_size\_gb](#input\_observer\_backup\_size\_gb) | Explicit separate Archive backup disk for the observer; zero creates no extra storage. | `number` | `0` | no |
 | <a name="input_plan"></a> [plan](#input\_plan) | Exact UpCloud plan slug, e.g. STARTER-2xCPU-4GB or an existing supported legacy SKU. | `string` | n/a | yes |
 | <a name="input_provider_return_ephemeral_ports"></a> [provider\_return\_ephemeral\_ports](#input\_provider\_return\_ephemeral\_ports) | Linux client ephemeral port range accepted for inbound TCP/UDP return traffic by the stateless provider firewall. | <pre>object({<br/>    start = number<br/>    end   = number<br/>  })</pre> | <pre>{<br/>  "end": 60999,<br/>  "start": 32768<br/>}</pre> | no |
 | <a name="input_public_listeners"></a> [public\_listeners](#input\_public\_listeners) | Public TCP/UDP listeners allowed at the provider edge. Specify exactly one of port or port\_range for each entry. | <pre>list(object({<br/>    name       = string<br/>    protocol   = string<br/>    port       = optional(number)<br/>    port_range = optional(string)<br/>  }))</pre> | `[]` | no |
@@ -110,3 +116,7 @@ No modules.
 | <a name="output_ssh_port"></a> [ssh\_port](#output\_ssh\_port) | Effective SSH listener port. |
 | <a name="output_zone"></a> [zone](#output\_zone) | Provider-specific zone/region/location identifier. |
 <!-- END_TF_DOCS -->
+
+An observer sets `node_purpose = "observer"` and `observer_backup_size_gb = 10`.
+This adds one encrypted Archive volume for separate backup filesystem admission.
+VPN nodes keep `observer_backup_size_gb = 0`.
