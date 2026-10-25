@@ -1,9 +1,13 @@
 """Execute the CI installer with real ZIP/hash tools and a local download fixture."""
 
 import hashlib
+import http.server
 import os
 from pathlib import Path
+import shutil
 import subprocess
+import threading
+import time
 import zipfile
 
 import pytest
@@ -33,7 +37,10 @@ def test_ci_xray_consumers_share_one_reviewed_pin():
     assert set(pin["XRAY_SHA256"]) <= set("0123456789abcdef")
 
 
-@pytest.mark.parametrize("case", ["valid", "corrupt", "download-error", "version-drift", "runtime-error"])
+@pytest.mark.parametrize("case", [
+    "valid", "corrupt", "download-error", "version-drift", "runtime-error",
+    "timeout-recovered", "timeout-exhausted", "timeout-corrupt",
+])
 def test_installer_never_executes_or_installs_unverified_bytes(tmp_path, case):
     step = installer()
     repo = tmp_path / "repo"
@@ -49,20 +56,21 @@ def test_installer_never_executes_or_installs_unverified_bytes(tmp_path, case):
         fixture.writestr("geoip.dat", b"fixture geoip")
         fixture.writestr("geosite.dat", b"fixture geosite")
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
-    if case == "corrupt":
+    if case in {"corrupt", "timeout-corrupt"}:
         with archive.open("ab") as stream:
             stream.write(b"tampered")
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     curl = bin_dir / "curl"
     curl.write_text(
-        '#!/usr/bin/env python3\nimport os, pathlib, shutil, sys\n'
+        '#!/usr/bin/env python3\nimport os, pathlib, sys\n'
         'pathlib.Path(os.environ["DOWNLOAD_LOG"]).write_text("called")\n'
-        'if os.environ["DOWNLOAD_ERROR"] == "true": sys.exit(22)\n'
         'args = sys.argv[1:]\n'
-        'assert "https://github.com/XTLS/Xray-core/releases/download/" + '
-        'os.environ["XRAY_VERSION"] + "/Xray-linux-64.zip" in args\n'
-        'shutil.copyfile(os.environ["FIXTURE"], args[args.index("-o") + 1])\n'
+        'url = "https://github.com/XTLS/Xray-core/releases/download/" + '
+        'os.environ["XRAY_VERSION"] + "/Xray-linux-64.zip"\n'
+        'args[args.index(url)] = os.environ["DOWNLOAD_URL"]\n'
+        'os.execv(os.environ["REAL_CURL"], [os.environ["REAL_CURL"], *args, '
+        '"--max-time", "0.5", "--retry-delay", "1", "--noproxy", "127.0.0.1"])\n'
     )
     curl.chmod(0o755)
     sudo = bin_dir / "sudo"
@@ -81,23 +89,61 @@ def test_installer_never_executes_or_installs_unverified_bytes(tmp_path, case):
     install_root.mkdir()
     installed = install_root / "xray"
     installed.write_text("existing runtime")
+    attempts = []
+
+    class Download(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            attempts.append(self.path)
+            if case == "timeout-exhausted" or (case.startswith("timeout-") and len(attempts) == 1):
+                time.sleep(1)
+                self.close_connection = True
+                return
+            if case == "download-error":
+                self.send_error(404)
+                return
+            data = archive.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_message(self, *_args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Download)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
     env = dict(os.environ, **step["env"])
     env.update(XRAY_SHA256=digest, PATH=f"{bin_dir}:{os.environ['PATH']}",
                RUNNER_TEMP=str(runner_temp), INSTALL_ROOT=str(install_root),
-               FIXTURE=str(archive), EXEC_LOG=str(tmp_path / "executed"),
+               EXEC_LOG=str(tmp_path / "executed"),
                DOWNLOAD_LOG=str(tmp_path / "downloaded"),
-               DOWNLOAD_ERROR=str(case == "download-error").lower())
-    result = subprocess.run(["bash", "-c", step["run"]], cwd=repo, env=env,
-                            capture_output=True, text=True, timeout=15)
-    assert (result.returncode == 0) == (case == "valid"), result.stderr
-    assert (tmp_path / "executed").exists() == (case in {"valid", "runtime-error"})
-    if case == "valid":
+               REAL_CURL=shutil.which("curl"),
+               DOWNLOAD_URL=f"http://127.0.0.1:{server.server_port}/xray.zip")
+    try:
+        result = subprocess.run(["bash", "-c", step["run"]], cwd=repo, env=env,
+                                capture_output=True, text=True, timeout=15)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+    assert (result.returncode == 0) == (case in {"valid", "timeout-recovered"}), result.stderr
+    if case in {"timeout-recovered", "timeout-corrupt"}:
+        assert len(attempts) == 2
+    elif case == "timeout-exhausted":
+        assert result.returncode == 28
+        assert len(attempts) == 4
+    elif case == "download-error":
+        assert result.returncode == 22
+        assert len(attempts) == 1
+    assert (tmp_path / "executed").exists() == (case in {"valid", "runtime-error", "timeout-recovered"})
+    if case in {"valid", "timeout-recovered"}:
         with zipfile.ZipFile(archive) as fixture:
             for name in ("xray", "geoip.dat", "geosite.dat"):
                 assert (install_root / name).read_bytes() == fixture.read(name)
     else:
         assert installed.read_text() == "existing runtime"
-    if case in {"corrupt", "download-error"}:
+    if case in {"corrupt", "download-error", "timeout-exhausted", "timeout-corrupt"}:
         assert not list(runner_temp.rglob("xray"))
     if case == "version-drift":
         assert not (tmp_path / "downloaded").exists()
